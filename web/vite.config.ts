@@ -45,7 +45,7 @@ export default defineConfig({
           }
         ]
       },
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
+      includeAssets: ['favicon.ico', 'icon-adaptive.svg', 'maskable-icon-adaptive.svg'],
       manifest: {
         name: 'qBittorrent WebUI',
         short_name: 'qBitWeb',
@@ -58,10 +58,18 @@ export default defineConfig({
         categories: ['utilities', 'productivity'],
         icons: [
           {
-            src: 'pwa-64x64.png',
-            sizes: '64x64',
-            type: 'image/png'
+            src: 'icon-adaptive.svg',
+            sizes: '64x64 192x192 512x512',
+            type: 'image/svg+xml',
+            purpose: 'any'
           },
+          {
+            src: 'maskable-icon-adaptive.svg',
+            sizes: '512x512',
+            type: 'image/svg+xml',
+            purpose: 'maskable'
+          },
+          // Fallback PNG icons for older browsers
           {
             src: 'pwa-192x192.png',
             sizes: '192x192',
@@ -72,12 +80,6 @@ export default defineConfig({
             sizes: '512x512',
             type: 'image/png',
             purpose: 'any'
-          },
-          {
-            src: 'maskable-icon-512x512.png',
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'maskable'
           }
         ]
       }

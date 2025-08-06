@@ -1,0 +1,21 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style>
+      @media (prefers-color-scheme: dark) {
+        .icon-bg { fill: #ffffff; }
+        .icon-fg { fill: #000000; }
+      }
+      @media (prefers-color-scheme: light) {
+        .icon-bg { fill: #000000; }
+        .icon-fg { fill: #ffffff; }
+      }
+    </style>
+  </defs>
+  
+  <!-- Safe area background (full 512x512 for maskable) -->
+  <rect width="512" height="512" class="icon-bg" />
+  
+  <!-- "qui" text centered - sized for legibility -->
+  <text x="256" y="256" text-anchor="middle" dominant-baseline="middle" class="icon-fg" 
+        font-family="Arial, sans-serif" font-size="160" font-weight="bold">qui</text>
+</svg>
