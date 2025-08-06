@@ -50,7 +50,7 @@ export default defineConfig({
         name: 'qBittorrent WebUI',
         short_name: 'qBitWeb',
         description: 'Alternative WebUI for qBittorrent - manage your torrents with a modern interface',
-        theme_color: '#0f172a',
+        theme_color: '#000000', // Will be updated dynamically by PWA theme manager
         background_color: '#ffffff',
         display: 'standalone',
         scope: '/',
