@@ -3,54 +3,46 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { converter, formatHex } from 'culori'
+
 /**
- * Converts OKLCH color to hex for manifest compatibility
- * Basic conversion for theme colors - handles common OKLCH formats
+ * Converts OKLCH color string to hex using proper culori library
+ * Handles the OKLCH CSS function format: oklch(L C H)
  */
 function oklchToHex(oklchValue: string): string {
-  // Handle basic OKLCH values like "oklch(0.1450 0 0)" (grayscale)
-  const match = oklchValue.match(/oklch\(([^)]+)\)/)
+  // Parse OKLCH string like "oklch(0.1450 0 0)" or "oklch(0.7 0.15 240)"
+  const match = oklchValue.match(/oklch\(\s*([^)]+)\s*\)/)
   if (!match) return '#000000'
 
-  const [lightness, chroma, hue] = match[1].split(' ').map(v => parseFloat(v.trim()))
-  
-  // For grayscale colors (chroma = 0), convert lightness to hex
-  if (chroma === 0) {
-    const gray = Math.round(lightness * 255)
-    const hex = gray.toString(16).padStart(2, '0')
-    return `#${hex}${hex}${hex}`
-  }
-  
-  // For colors with chroma, approximate conversion
-  // This is a simplified conversion - for production you might want a proper OKLCH->sRGB conversion
-  const c = chroma * lightness
-  const x = c * (1 - Math.abs(((hue || 0) / 60) % 2 - 1))
-  const m = lightness - c
-  
-  let r = 0, g = 0, b = 0
-  const h = hue || 0
-  if (h >= 0 && h < 60) {
-    r = c; g = x; b = 0
-  } else if (h >= 60 && h < 120) {
-    r = x; g = c; b = 0
-  } else if (h >= 120 && h < 180) {
-    r = 0; g = c; b = x
-  } else if (h >= 180 && h < 240) {
-    r = 0; g = x; b = c
-  } else if (h >= 240 && h < 300) {
-    r = x; g = 0; b = c
-  } else if (h >= 300 && h < 360) {
-    r = c; g = 0; b = x
-  }
-  
-  r = Math.round((r + m) * 255)
-  g = Math.round((g + m) * 255)
-  b = Math.round((b + m) * 255)
-  
-  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`
-}
+  const parts = match[1].trim().split(/\s+/)
+  if (parts.length < 3) return '#000000'
 
-// Removed unused getThemeColor function - theme colors are now read directly from computed styles
+  const [lightness, chroma, hue] = parts.map(v => parseFloat(v.trim()))
+  
+  try {
+    // Create OKLCH color object with proper type
+    const oklchColor = { 
+      mode: 'oklch' as const, 
+      l: lightness, 
+      c: chroma, 
+      h: hue || 0 
+    }
+
+    // Create converter function for OKLCH to RGB
+    const toRgb = converter('rgb')
+    
+    // Convert OKLCH to RGB
+    const rgbColor = toRgb(oklchColor)
+    if (!rgbColor) return '#000000'
+    
+    // Convert RGB to hex
+    const hexColor = formatHex(rgbColor)
+    return hexColor || '#000000'
+  } catch (error) {
+    console.warn('Failed to convert OKLCH to hex:', oklchValue, error)
+    return '#000000'
+  }
+}
 
 /**
  * Update the PWA manifest theme-color meta tag
@@ -112,11 +104,10 @@ export function initializePWANativeTheme(): void {
       
       // Get computed CSS variables from the root element
       const rootStyles = getComputedStyle(document.documentElement)
-      const primaryColor = rootStyles.getPropertyValue('--primary').trim()
       const backgroundColor = rootStyles.getPropertyValue('--background').trim()
       
-      // Use primary color, fall back to background
-      let themeColor = primaryColor || backgroundColor
+      // Use background color for seamless status bar
+      let themeColor = backgroundColor
       
       // Convert OKLCH to hex if needed
       if (themeColor.includes('oklch')) {
