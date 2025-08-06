@@ -10,7 +10,10 @@
     "preview": "vite preview"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["@tailwindcss/oxide", "esbuild"]
+    "onlyBuiltDependencies": [
+      "@tailwindcss/oxide",
+      "esbuild"
+    ]
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -68,6 +71,7 @@
     "tailwindcss": "^4.1.11",
     "typescript": "~5.8.3",
     "typescript-eslint": "^8.35.1",
-    "vite": "^7.0.4"
+    "vite": "^7.0.4",
+    "vite-plugin-pwa": "^1.0.2"
   }
 }

@@ -4,6 +4,7 @@ import { router } from './router'
 import { useEffect } from 'react'
 import { initializeTheme } from '@/utils/theme'
 import { Toaster } from '@/components/ui/sonner'
+import { InstallPrompt } from '@/components/pwa/InstallPrompt'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -23,6 +24,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
       <Toaster />
+      <InstallPrompt />
     </QueryClientProvider>
   )
 }

@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { User, LogOut, Key } from 'lucide-react'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
+import { PWAStatus } from '@/components/pwa/PWAStatus'
 import { cn } from '@/lib/utils'
 
 interface HeaderProps {
@@ -32,6 +33,7 @@ export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
       </div>
       
       <div className="flex items-center gap-4">
+        <PWAStatus />
         <ThemeToggle />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
