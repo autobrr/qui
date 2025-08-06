@@ -5,6 +5,7 @@ import { useEffect } from 'react'
 import { initializeTheme } from '@/utils/theme'
 import { Toaster } from '@/components/ui/sonner'
 import { InstallPrompt } from '@/components/pwa/InstallPrompt'
+import { IOSInstallPrompt } from '@/components/pwa/IOSInstallPrompt'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -25,6 +26,7 @@ function App() {
       <RouterProvider router={router} />
       <Toaster />
       <InstallPrompt />
+      <IOSInstallPrompt />
     </QueryClientProvider>
   )
 }
