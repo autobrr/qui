@@ -56,20 +56,6 @@ export function PWAStatus() {
         </Tooltip>
       </div>
 
-      {/* PWA Status */}
-      {isStandalone && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Badge variant="secondary" className="text-xs">
-              PWA
-            </Badge>
-          </TooltipTrigger>
-          <TooltipContent>
-            Running as installed app
-          </TooltipContent>
-        </Tooltip>
-      )}
-
       {/* Install Button */}
       {isInstallable && !isStandalone && (
         <Tooltip>
