@@ -47,7 +47,7 @@ builds:
 
 archives:
   - id: qui-archive
-    builds:
+    ids:
       - qui
     format_overrides:
       - goos: windows
