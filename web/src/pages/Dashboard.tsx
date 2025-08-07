@@ -4,10 +4,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { Button } from '@/components/ui/button'
-import { HardDrive, Download, Upload, AlertCircle, Activity, Plus, Zap } from 'lucide-react'
+import { HardDrive, Download, Upload, AlertCircle, Activity, Plus, Zap, ChevronDown } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
 import { useMemo } from 'react'
 import { formatSpeed } from '@/lib/utils'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 // Custom hook to safely get all instance stats
 function useAllInstanceStats(instances: any[]) {
@@ -191,7 +199,7 @@ function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: any, sta
   }, [statsData])
 
   return (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+    <>
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-medium">Instances</CardTitle>
@@ -253,11 +261,11 @@ function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: any, sta
           </p>
         </CardContent>
       </Card>
-    </div>
+    </>
   )
 }
 
-function QuickActionsCard({ statsData }: { statsData: Array<{ instance: any, stats: any }> }) {
+function QuickActionsDropdown({ statsData }: { statsData: Array<{ instance: any, stats: any }> }) {
   const connectedInstances = statsData
     .filter(({ stats }) => stats?.connected)
     .map(({ instance }) => instance)
@@ -267,39 +275,32 @@ function QuickActionsCard({ statsData }: { statsData: Array<{ instance: any, sta
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Zap className="h-5 w-5" />
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="sm" className="w-full sm:w-auto">
+          <Zap className="h-4 w-4 mr-2" />
           Quick Actions
-        </CardTitle>
-        <CardDescription>
-          Fast access to common tasks
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="flex flex-wrap gap-2">
-          {connectedInstances.slice(0, 3).map(instance => (
-            <Link 
-              key={instance.id} 
-              to="/instances/$instanceId" 
-              params={{ instanceId: instance.id.toString() }}
-              search={{ modal: 'add-torrent' }}
-            >
-              <Button variant="outline" size="sm" className="h-8">
-                <Plus className="h-3 w-3 mr-1" />
-                Add to {instance.name}
-              </Button>
-            </Link>
-          ))}
-          {connectedInstances.length > 3 && (
-            <Badge variant="secondary" className="ml-2">
-              +{connectedInstances.length - 3} more
-            </Badge>
-          )}
-        </div>
-      </CardContent>
-    </Card>
+          <ChevronDown className="h-3 w-3 ml-1" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuLabel>Add Torrent</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {connectedInstances.map(instance => (
+          <Link 
+            key={instance.id} 
+            to="/instances/$instanceId" 
+            params={{ instanceId: instance.id.toString() }}
+            search={{ modal: 'add-torrent' }}
+          >
+            <DropdownMenuItem className="cursor-pointer active:bg-accent focus:bg-accent">
+              <Plus className="h-4 w-4 mr-2" />
+              <span>Add to {instance.name}</span>
+            </DropdownMenuItem>
+          </Link>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 
@@ -339,22 +340,24 @@ export function Dashboard() {
       {instances && instances.length > 0 ? (
         <div className="space-y-6">
           {/* Global Stats */}
-          <GlobalStatsCards statsData={statsData} />
-          
-          {/* Quick Actions */}
-          <QuickActionsCard statsData={statsData} />
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <GlobalStatsCards statsData={statsData} />
+          </div>
           
           {/* Instance Cards */}
           {allInstances.length > 0 && (
             <div>
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
                 <h2 className="text-xl font-semibold">Instances</h2>
-                <Link to="/instances" search={{ modal: 'add-instance' }}>
-                  <Button variant="outline" size="sm">
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Instance
-                  </Button>
-                </Link>
+                <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                  <QuickActionsDropdown statsData={statsData} />
+                  <Link to="/instances" search={{ modal: 'add-instance' }} className="w-full sm:w-auto">
+                    <Button variant="outline" size="sm" className="w-full sm:w-auto">
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Instance
+                    </Button>
+                  </Link>
+                </div>
               </div>
               <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
                 {allInstances.map(instance => (
