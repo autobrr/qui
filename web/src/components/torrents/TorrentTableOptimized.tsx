@@ -1383,7 +1383,7 @@ export function TorrentTableOptimized({ instanceId, filters, selectedTorrent, on
                 </span>
                 <button
                   onClick={() => setRowSelection({})}
-                  className="ml-2 text-xs text-muted-foreground hover:text-foreground transition-colors underline-offset-4 hover:underline"
+                  className="ml-2 text-xs text-primary hover:text-foreground transition-colors underline-offset-4 hover:underline"
                 >
                   Clear selection
                 </button>
