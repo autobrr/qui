@@ -43,9 +43,9 @@ export function PWAStatus() {
           <TooltipTrigger asChild>
             <div className="flex items-center">
               {isOnline ? (
-                <Wifi className="h-4 w-4 text-green-500" />
+                <Wifi className="h-4 w-4 text-primary" />
               ) : (
-                <WifiOff className="h-4 w-4 text-red-500" />
+                <WifiOff className="h-4 w-4 text-destructive" />
               )}
             </div>
           </TooltipTrigger>
