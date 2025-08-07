@@ -204,7 +204,7 @@ export function FilterSidebar({
 
   return (
     <div className="w-full h-full flex flex-col xl:min-w-fit xl:max-w-xs xl:flex-shrink-0 xl:border-r xl:bg-muted/10">
-      <ScrollArea className="h-full flex-1">
+      <ScrollArea className="h-full flex-1 overscroll-contain">
         <div className="p-4">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold">Filters</h3>

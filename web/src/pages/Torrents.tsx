@@ -123,11 +123,11 @@ export function Torrents({ instanceId, instanceName }: TorrentsProps) {
       
       {/* Mobile Filter Sheet */}
       <Sheet open={mobileFilterOpen} onOpenChange={setMobileFilterOpen}>
-        <SheetContent side="left" className="p-0 w-[280px] sm:w-[320px] xl:hidden">
+        <SheetContent side="left" className="p-0 w-[280px] sm:w-[320px] xl:hidden flex flex-col max-h-[100dvh]">
           <SheetHeader className="px-4 py-3 border-b">
             <SheetTitle className="text-lg font-semibold">Filters</SheetTitle>
           </SheetHeader>
-          <div className="h-[calc(100vh-3.5rem)]">
+          <div className="flex-1 min-h-0 overflow-hidden">
             <FilterSidebar
               instanceId={instanceId}
               selectedFilters={filters}
