@@ -126,16 +126,39 @@ function InstanceCard({ instance }: { instance: any }) {
           <CardDescription className="text-xs">{instance.host}:{instance.port}</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">Torrents</span>
-            <span className="text-sm font-semibold">{stats.torrents.total}</span>
-          </div>
-          {stats.torrents.error > 0 && (
-            <div className="flex items-center gap-1 text-destructive text-xs mt-2 pt-2 border-t">
-              <AlertCircle className="h-3 w-3" />
-              <span>{stats.torrents.error} errors</span>
+          <div className="space-y-3">
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs text-muted-foreground">Total</span>
+                <span className="text-xs text-muted-foreground">Active</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-lg font-semibold">{stats.torrents.total}</span>
+                <span className="text-lg font-semibold">
+                  {(stats.torrents.downloading || 0) + (stats.torrents.seeding || 0)}
+                </span>
+              </div>
             </div>
-          )}
+            
+            <div className="flex items-center gap-2 text-xs">
+              <Download className="h-3 w-3 text-muted-foreground" />
+              <span className="text-muted-foreground">Download</span>
+              <span className="ml-auto font-medium">{formatSpeed(stats.speeds?.download || 0)}</span>
+            </div>
+            
+            <div className="flex items-center gap-2 text-xs">
+              <Upload className="h-3 w-3 text-muted-foreground" />
+              <span className="text-muted-foreground">Upload</span>
+              <span className="ml-auto font-medium">{formatSpeed(stats.speeds?.upload || 0)}</span>
+            </div>
+            
+            {stats.torrents.error > 0 && (
+              <div className="flex items-center gap-1 text-destructive text-xs pt-2 border-t">
+                <AlertCircle className="h-3 w-3" />
+                <span>{stats.torrents.error} errors</span>
+              </div>
+            )}
+          </div>
         </CardContent>
       </Card>
     </Link>
@@ -207,21 +230,27 @@ function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: any, sta
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium">Download Speed</CardTitle>
+          <CardTitle className="text-sm font-medium">Total Download</CardTitle>
           <Download className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold">{formatSpeed(globalStats.totalDownload)}</div>
+          <p className="text-xs text-muted-foreground">
+            All instances combined
+          </p>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium">Upload Speed</CardTitle>
+          <CardTitle className="text-sm font-medium">Total Upload</CardTitle>
           <Upload className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold">{formatSpeed(globalStats.totalUpload)}</div>
+          <p className="text-xs text-muted-foreground">
+            All instances combined
+          </p>
         </CardContent>
       </Card>
     </div>
