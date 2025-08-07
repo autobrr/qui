@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { Button } from '@/components/ui/button'
-import { HardDrive, Download, Upload, AlertCircle, Activity, TrendingUp, Plus, Zap } from 'lucide-react'
+import { HardDrive, Download, Upload, AlertCircle, Activity, Plus, Zap } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
 import { useMemo } from 'react'
 
