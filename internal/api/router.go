@@ -52,7 +52,7 @@ func NewRouter(deps *Dependencies) *chi.Mux {
 
 	// Create handlers
 	authHandler := handlers.NewAuthHandler(deps.AuthService)
-	instancesHandler := handlers.NewInstancesHandler(deps.InstanceStore, deps.ClientPool)
+	instancesHandler := handlers.NewInstancesHandler(deps.InstanceStore, deps.ClientPool, deps.SyncManager)
 	torrentsHandler := handlers.NewTorrentsHandler(deps.SyncManager)
 
 	// Theme license handler (optional, only if service is configured)

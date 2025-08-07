@@ -559,11 +559,19 @@ type TorrentCounts struct {
 	Total      int            `json:"total"`
 }
 
+// InstanceSpeeds represents download/upload speeds for an instance
+type InstanceSpeeds struct {
+	Download int64 `json:"download"`
+	Upload   int64 `json:"upload"`
+}
+
 // GetTorrentCounts gets all torrent counts for the filter sidebar
 func (sm *SyncManager) GetTorrentCounts(ctx context.Context, instanceID int) (*TorrentCounts, error) {
 	// IMPORTANT: We don't cache counts separately anymore
 	// Instead, we ALWAYS derive counts from the same cached torrent data that the table uses
 	// This ensures the sidebar and table are always in sync
+	
+	log.Debug().Int("instanceID", instanceID).Msg("GetTorrentCounts: fetching from getAllTorrentsForStats")
 	
 	// Get all torrents from the same cache the table uses
 	// This will use the dynamic TTL (2-60s based on instance speed)
@@ -571,6 +579,8 @@ func (sm *SyncManager) GetTorrentCounts(ctx context.Context, instanceID int) (*T
 	if err != nil {
 		return nil, fmt.Errorf("failed to get all torrents for counts: %w", err)
 	}
+	
+	log.Debug().Int("instanceID", instanceID).Int("torrents", len(allTorrents)).Msg("GetTorrentCounts: got torrents from cache/API")
 
 	// Get categories and tags (cached for 60s)
 	categories, err := sm.GetCategories(ctx, instanceID)
@@ -677,6 +687,34 @@ func (sm *SyncManager) GetTorrentCounts(ctx context.Context, instanceID int) (*T
 		Msg("Calculated torrent counts")
 
 	return counts, nil
+}
+
+// GetInstanceSpeeds calculates total download/upload speeds from cached torrent data
+// This avoids making slow SyncMainData API calls for large instances
+func (sm *SyncManager) GetInstanceSpeeds(ctx context.Context, instanceID int) (*InstanceSpeeds, error) {
+	// Get all torrents from the same cache the table uses
+	// This will use the dynamic TTL (2-60s based on instance speed)
+	log.Debug().Int("instanceID", instanceID).Msg("GetInstanceSpeeds: fetching from getAllTorrentsForStats")
+	
+	allTorrents, err := sm.getAllTorrentsForStats(ctx, instanceID, "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get all torrents for speeds: %w", err)
+	}
+	
+	// Calculate total speeds from torrents
+	speeds := &InstanceSpeeds{
+		Download: 0,
+		Upload:   0,
+	}
+	
+	for _, torrent := range allTorrents {
+		speeds.Download += torrent.DlSpeed
+		speeds.Upload += torrent.UpSpeed
+	}
+	
+	log.Debug().Int("instanceID", instanceID).Int64("download", speeds.Download).Int64("upload", speeds.Upload).Msg("GetInstanceSpeeds: calculated from cached torrents")
+	
+	return speeds, nil
 }
 
 // Helper methods
@@ -990,9 +1028,12 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 	cacheKey := fmt.Sprintf("all_torrents:%d:%s", instanceID, search)
 	if cached, found := sm.cache.Get(cacheKey); found {
 		if torrents, ok := cached.([]qbt.Torrent); ok {
+			log.Debug().Int("instanceID", instanceID).Int("torrents", len(torrents)).Str("cacheKey", cacheKey).Msg("getAllTorrentsForStats: CACHE HIT")
 			return torrents, nil
 		}
 	}
+	
+	log.Debug().Int("instanceID", instanceID).Str("cacheKey", cacheKey).Msg("getAllTorrentsForStats: CACHE MISS")
 
 	// Get client
 	client, err := sm.clientPool.GetClient(instanceID)
@@ -1003,6 +1044,8 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 	// Measure response time to dynamically adjust cache TTL
 	startTime := time.Now()
 
+	log.Debug().Int("instanceID", instanceID).Msg("getAllTorrentsForStats: Fetching from qBittorrent API")
+	
 	// Get all torrents
 	torrents, err := client.GetTorrentsCtx(ctx, qbt.TorrentFilterOptions{})
 	if err != nil {
@@ -1011,6 +1054,8 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 
 	// Calculate response time
 	responseTime := time.Since(startTime)
+	
+	log.Debug().Int("instanceID", instanceID).Int("torrents", len(torrents)).Dur("responseTime", responseTime).Msg("getAllTorrentsForStats: Fetched from qBittorrent")
 
 	// Dynamic cache TTL based on actual response time
 	// Fast instances: shorter cache for responsiveness
