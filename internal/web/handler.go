@@ -66,8 +66,17 @@ func (h *Handler) RegisterRoutes(r chi.Router) {
 	// Serve static assets with proper MIME types
 	r.Get("/assets/*", h.serveAssets)
 
+	// Serve PWA files
+	r.Get("/registerSW.js", h.serveAssets)
+	r.Get("/sw.js", h.serveAssets)
+	r.Get("/manifest.webmanifest", h.serveAssets)
+
 	// Serve favicon and other root assets
 	r.Get("/qui.png", h.serveAssets)
+	r.Get("/favicon.png", h.serveAssets)
+	r.Get("/apple-touch-icon.png", h.serveAssets)
+	r.Get("/pwa-192x192.png", h.serveAssets)
+	r.Get("/pwa-512x512.png", h.serveAssets)
 
 	// SPA catch-all route
 	r.Get("/*", h.serveSPA)
