@@ -387,7 +387,7 @@ const createColumns = (incognitoMode: boolean): ColumnDef<Torrent>[] => [
 
 export function TorrentTableOptimized({ instanceId, filters, selectedTorrent, onTorrentSelect, addTorrentModalOpen, onAddTorrentModalChange, onFilteredDataUpdate }: TorrentTableOptimizedProps) {
   // State management
-  const [sorting, setSorting] = usePersistedColumnSorting(instanceId, [])
+  const [sorting, setSorting] = usePersistedColumnSorting([])
   const [globalFilter, setGlobalFilter] = useState('')
   const [immediateSearch, setImmediateSearch] = useState('')
   const [rowSelection, setRowSelection] = useState({})
@@ -412,7 +412,6 @@ export function TorrentTableOptimized({ instanceId, filters, selectedTorrent, on
     priority: false,
   }
   const [columnVisibility, setColumnVisibility] = usePersistedColumnVisibility(
-    instanceId,
     defaultColumnVisibility
   )
   
@@ -426,13 +425,11 @@ export function TorrentTableOptimized({ instanceId, filters, selectedTorrent, on
     }).filter(Boolean) as string[]
   }, [])
   const [columnOrder, setColumnOrder] = usePersistedColumnOrder(
-    instanceId,
     defaultColumnOrder
   )
   
   // Column sizing with persistence
   const [columnSizing, setColumnSizing] = usePersistedColumnSizing(
-    instanceId,
     {} // Start with empty object, let columns use their default sizes
   )
   

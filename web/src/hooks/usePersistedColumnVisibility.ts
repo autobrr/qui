@@ -2,10 +2,10 @@ import { useState, useEffect } from 'react'
 import type { VisibilityState } from '@tanstack/react-table'
 
 export function usePersistedColumnVisibility(
-  instanceId: number,
   defaultVisibility: VisibilityState = {}
 ) {
-  const storageKey = `qui-column-visibility-${instanceId}`
+  // Global key shared across all instances
+  const storageKey = `qui-column-visibility`
   
   // Initialize state from localStorage or default values
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(() => {

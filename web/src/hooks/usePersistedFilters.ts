@@ -7,8 +7,9 @@ interface Filters {
   trackers: string[]
 }
 
-export function usePersistedFilters(instanceId: number) {
-  const storageKey = `qui-filters-${instanceId}`
+export function usePersistedFilters() {
+  // Global key shared across all instances
+  const storageKey = `qui-filters`
   
   // Initialize state from localStorage or default values
   const [filters, setFilters] = useState<Filters>(() => {

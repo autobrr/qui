@@ -2,10 +2,10 @@ import { useState, useEffect } from 'react'
 import type { ColumnSizingState } from '@tanstack/react-table'
 
 export function usePersistedColumnSizing(
-  instanceId: number,
   defaultSizing: ColumnSizingState = {}
 ) {
-  const storageKey = `qui-column-sizing-${instanceId}`
+  // Global key shared across all instances
+  const storageKey = `qui-column-sizing`
   
   // Initialize state from localStorage or default values
   const [columnSizing, setColumnSizing] = useState<ColumnSizingState>(() => {

@@ -89,7 +89,7 @@ export function FilterSidebar({
   const [incognitoMode] = useIncognitoMode()
   
   // Persist accordion state
-  const [expandedItems, setExpandedItems] = usePersistedAccordion(instanceId)
+  const [expandedItems, setExpandedItems] = usePersistedAccordion()
   
   // Dialog states
   const [showCreateTagDialog, setShowCreateTagDialog] = useState(false)

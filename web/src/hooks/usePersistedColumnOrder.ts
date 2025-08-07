@@ -2,10 +2,10 @@ import { useState, useEffect } from 'react'
 import type { ColumnOrderState } from '@tanstack/react-table'
 
 export function usePersistedColumnOrder(
-  instanceId: number,
   defaultOrder: ColumnOrderState = []
 ) {
-  const storageKey = `qui-column-order-${instanceId}`
+  // Global key shared across all instances
+  const storageKey = `qui-column-order`
   
   // Initialize state from localStorage or default values
   const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(() => {
