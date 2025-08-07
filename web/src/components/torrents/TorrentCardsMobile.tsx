@@ -282,7 +282,7 @@ function SwipeableCard({
         </div>
         
         {/* Bottom row: Category and Tags */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between gap-2 min-h-[20px]">
           {/* Category */}
           {displayCategory && (
             <div className="flex items-center gap-1 flex-shrink-0">
@@ -291,9 +291,9 @@ function SwipeableCard({
             </div>
           )}
           
-          {/* Tags */}
+          {/* Tags - aligned to the right */}
           {displayTags && (
-            <div className="flex items-center gap-1 flex-wrap">
+            <div className="flex items-center gap-1 flex-wrap justify-end ml-auto">
               <Tag className="h-3 w-3 text-muted-foreground flex-shrink-0" />
               {(Array.isArray(displayTags) ? displayTags : displayTags.split(',')).map((tag, i) => (
                 <Badge key={i} variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
@@ -359,12 +359,19 @@ export function TorrentCardsMobile({
     staleTime: 60000,
   })
   
-  // Virtual scrolling
+  // Virtual scrolling with consistent spacing
   const parentRef = useRef<HTMLDivElement>(null)
-  const virtualizer = useVirtualizer({
+  const rowVirtualizer = useVirtualizer({
     count: torrents.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 180, // Estimated card height
+    estimateSize: () => 180, // Default estimate for card height
+    measureElement: (element) => {
+      // Measure actual element height
+      if (element) {
+        return element.getBoundingClientRect().height
+      }
+      return 180
+    },
     overscan: 5,
     onChange: (instance) => {
       const lastItem = instance.getVirtualItems().at(-1)
@@ -373,6 +380,8 @@ export function TorrentCardsMobile({
       }
     },
   })
+  
+  const virtualizer = rowVirtualizer
   
   const virtualItems = virtualizer.getVirtualItems()
   
@@ -556,8 +565,8 @@ export function TorrentCardsMobile({
   return (
     <div className="h-full flex flex-col relative">
       {/* Header with stats */}
-      <div className="sticky top-0 z-40 bg-background border-b">
-        <div className="p-3">
+      <div className="sticky top-0 z-40 bg-background">
+        <div>
           {/* Stats bar */}
           <div className="flex items-center justify-between text-xs mb-3">
             <div className="flex items-center gap-2">
@@ -605,7 +614,7 @@ export function TorrentCardsMobile({
         
         {/* Selection mode header */}
         {selectionMode && (
-          <div className="bg-primary text-primary-foreground px-3 py-2 flex items-center justify-between">
+          <div className="bg-primary text-primary-foreground px-4 py-2 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <button
                 onClick={() => {
@@ -631,7 +640,7 @@ export function TorrentCardsMobile({
       </div>
       
       {/* Torrent cards with virtual scrolling */}
-      <div ref={parentRef} className="flex-1 overflow-auto p-3 pb-20">
+      <div ref={parentRef} className="flex-1 overflow-auto pt-3 pb-20">
         <div
           style={{
             height: `${virtualizer.getTotalSize()}px`,
@@ -645,15 +654,16 @@ export function TorrentCardsMobile({
             
             return (
               <div
-                key={torrent.hash}
+                key={virtualItem.key}
+                ref={virtualizer.measureElement}
+                data-index={virtualItem.index}
                 style={{
                   position: 'absolute',
                   top: 0,
                   left: 0,
                   width: '100%',
-                  height: `${virtualItem.size}px`,
                   transform: `translateY(${virtualItem.start}px)`,
-                  padding: '0 0 12px 0',
+                  paddingBottom: '12px',
                 }}
               >
                 <SwipeableCard
@@ -748,7 +758,7 @@ export function TorrentCardsMobile({
             exit={{ opacity: 0 }}
             className="fixed inset-0 bg-background z-50 flex flex-col"
           >
-            <div className="flex items-center gap-2 p-3 border-b">
+            <div className="flex items-center gap-2 px-4 py-3 border-b">
               <button onClick={() => setShowSearchOverlay(false)}>
                 <ChevronRight className="h-5 w-5 rotate-180" />
               </button>
@@ -766,7 +776,7 @@ export function TorrentCardsMobile({
                 className="flex-1"
               />
             </div>
-            <div className="p-4">
+            <div className="px-4 py-3">
               <h3 className="font-medium mb-2">Search Tips:</h3>
               <ul className="text-sm text-muted-foreground space-y-1">
                 <li>• Use * for wildcards: *.mkv</li>
