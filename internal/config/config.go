@@ -38,7 +38,7 @@ func New(configPath string) (*AppConfig, error) {
 	}
 
 	// Override with environment variables
-	c.loadFromEnv()
+	//c.loadFromEnv()
 
 	// Unmarshal the configuration
 	if err := c.viper.Unmarshal(c.Config); err != nil {
