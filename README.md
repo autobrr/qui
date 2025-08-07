@@ -22,10 +22,18 @@ A fast, modern web interface for qBittorrent. Manage multiple qBittorrent instan
 
 ```bash
 # Download and extract the latest release
-wget $(curl -s https://api.github.com/repos/autobrr/qui/releases/latest | grep download | grep linux_x86_64 | cut -d\" -f4)
-tar -C /usr/local/bin -xzf qui*.tar.gz
-rm qui*.tar.gz
+wget $(curl -s https://api.github.com/repos/autobrr/qui/releases/latest | grep browser_download_url | grep linux_x86_64 | cut -d\" -f4)
 ```
+
+### Unpack
+
+Run with root or sudo. If you do not have root, or are on a shared system, place the binaries somewhere in your home directory like ~/.bin.
+
+```bash
+tar -C /usr/local/bin -xzf qui*.tar.gz
+```
+
+This will extract both qui to /usr/local/bin. Note: If the command fails, prefix it with sudo and re-run again.
 
 ### Manual Download
 
