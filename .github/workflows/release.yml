@@ -273,8 +273,8 @@ jobs:
         with:
           name: qui-release
           path: |
-            dist/*.tar.gz
-            dist/*.zip
+            dist/**/*.tar.gz
+            dist/**/*.zip
             dist/*.txt
 
   docker:
