@@ -7,45 +7,11 @@ import { Progress } from '@/components/ui/progress'
 import { Loader2 } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { Torrent } from '@/types'
+import { formatBytes, formatSpeed, formatTimestamp, formatDuration } from '@/lib/utils'
 
 interface TorrentDetailsPanelProps {
   instanceId: number
   torrent: Torrent | null
-}
-
-// Helper functions
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`
-}
-
-function formatSpeed(bytesPerSecond: number): string {
-  if (bytesPerSecond === 0) return '0 B/s'
-  return `${formatBytes(bytesPerSecond)}/s`
-}
-
-function formatTimestamp(timestamp: number): string {
-  if (!timestamp || timestamp === 0) return 'N/A'
-  return new Date(timestamp * 1000).toLocaleString()
-}
-
-function formatDuration(seconds: number): string {
-  if (seconds === 0) return '0s'
-  const days = Math.floor(seconds / 86400)
-  const hours = Math.floor((seconds % 86400) / 3600)
-  const minutes = Math.floor((seconds % 3600) / 60)
-  const secs = seconds % 60
-  
-  const parts = []
-  if (days > 0) parts.push(`${days}d`)
-  if (hours > 0) parts.push(`${hours}h`)
-  if (minutes > 0) parts.push(`${minutes}m`)
-  if (secs > 0) parts.push(`${secs}s`)
-  
-  return parts.join(' ')
 }
 
 function getTrackerStatusBadge(status: number) {
