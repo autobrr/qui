@@ -131,48 +131,22 @@ function InstanceCard({ instance }: { instance: any }) {
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg">{instance.name}</CardTitle>
             <Badge variant={instance.isActive && stats.connected ? 'default' : 'destructive'}>
-              {instance.isActive && stats.connected ? 'Active' : 'Inactive'}
+              {instance.isActive && stats.connected ? 'Connected' : 'Disconnected'}
             </Badge>
           </div>
-          <CardDescription>{instance.host}:{instance.port}</CardDescription>
+          <CardDescription className="text-xs">{instance.host}:{instance.port}</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <p className="text-muted-foreground">Total</p>
-                <p className="font-semibold">{stats.torrents.total}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">Active</p>
-                <p className="font-semibold">{stats.torrents.downloading + stats.torrents.seeding}</p>
-              </div>
-            </div>
-            
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-sm">
-                <span className="flex items-center gap-1">
-                  <Download className="h-3 w-3" />
-                  Download
-                </span>
-                <span className="font-mono">{formatSpeed(stats.speeds.download)}</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="flex items-center gap-1">
-                  <Upload className="h-3 w-3" />
-                  Upload
-                </span>
-                <span className="font-mono">{formatSpeed(stats.speeds.upload)}</span>
-              </div>
-            </div>
-            
-            {stats.torrents.error > 0 && (
-              <div className="flex items-center gap-2 text-destructive text-sm">
-                <AlertCircle className="h-4 w-4" />
-                {stats.torrents.error} torrents with errors
-              </div>
-            )}
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Torrents</span>
+            <span className="text-sm font-semibold">{stats.torrents.total}</span>
           </div>
+          {stats.torrents.error > 0 && (
+            <div className="flex items-center gap-1 text-destructive text-xs mt-2 pt-2 border-t">
+              <AlertCircle className="h-3 w-3" />
+              <span>{stats.torrents.error} errors</span>
+            </div>
+          )}
         </CardContent>
       </Card>
     </Link>
@@ -350,33 +324,7 @@ export function Dashboard() {
           <GlobalStatsCards statsData={statsData} />
           
           {/* Quick Actions */}
-          <div className="grid gap-6 lg:grid-cols-3">
-            <div className="lg:col-span-2">
-              <QuickActionsCard statsData={statsData} />
-            </div>
-            <Card className="lg:col-span-1">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <TrendingUp className="h-5 w-5" />
-                  System Status
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span>Active Instances</span>
-                    <span className="font-mono">
-                      {statsData.filter(({ stats }) => stats?.connected).length}/{allInstances.length}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Last Updated</span>
-                    <span className="font-mono">{new Date().toLocaleTimeString()}</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+          <QuickActionsCard statsData={statsData} />
           
           {/* Instance Cards */}
           {allInstances.length > 0 && (

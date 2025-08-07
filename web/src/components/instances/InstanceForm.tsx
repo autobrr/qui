@@ -70,6 +70,8 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
               onBlur={field.handleBlur}
               onChange={(e) => field.handleChange(e.target.value)}
               placeholder="My qBittorrent"
+              data-1p-ignore
+              autoComplete='off'
             />
             {field.state.meta.isTouched && field.state.meta.errors[0] && (
               <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
@@ -143,6 +145,8 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
               onBlur={field.handleBlur}
               onChange={(e) => field.handleChange(e.target.value)}
               placeholder="admin"
+              data-1p-ignore
+              autoComplete='off'
             />
           </div>
         )}
@@ -165,6 +169,8 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
               onBlur={field.handleBlur}
               onChange={(e) => field.handleChange(e.target.value)}
               placeholder={instance ? 'Leave empty to keep current password' : 'Enter password'}
+              data-1p-ignore
+              autoComplete='off'
             />
             {field.state.meta.isTouched && field.state.meta.errors[0] && (
               <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>

@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge'
 import { Copy, Plus, Trash2, ExternalLink } from 'lucide-react'
 import { ThemeLicenseManager } from '@/components/themes/ThemeLicenseManager'
 import { ThemeSelector } from '@/components/themes/ThemeSelector'
+import { useSearch } from '@tanstack/react-router'
 import {
   Dialog,
   DialogContent,
@@ -391,6 +392,9 @@ function ApiKeysManager() {
 }
 
 export function Settings() {
+  const search = useSearch({ from: '/_authenticated/settings' })
+  const defaultTab = (search as any)?.tab || 'security'
+  
   return (
     <div className="container mx-auto p-4 sm:p-6 max-w-4xl">
       <div className="mb-4 sm:mb-6">
@@ -400,7 +404,7 @@ export function Settings() {
         </p>
       </div>
 
-      <Tabs defaultValue="security" className="space-y-4">
+      <Tabs defaultValue={defaultTab} className="space-y-4">
         <div className="w-full overflow-x-auto">
           <TabsList className="inline-flex h-auto min-w-full sm:grid sm:grid-cols-3">
             <TabsTrigger value="security" className="text-xs px-3 py-2 min-w-fit">Security</TabsTrigger>
