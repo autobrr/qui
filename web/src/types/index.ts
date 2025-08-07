@@ -16,6 +16,7 @@ export interface Instance {
   host: string
   port: number
   username: string
+  basicUsername?: string
   isActive: boolean
   lastConnectedAt?: string
   createdAt: string

@@ -123,6 +123,12 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
             <span className="text-muted-foreground">Username:</span>
             <span>{instance.username}</span>
           </div>
+          {instance.basicUsername && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Basic Auth:</span>
+              <span>{instance.basicUsername}</span>
+            </div>
+          )}
           {instance.lastConnectedAt && (
             <div className="flex justify-between">
               <span className="text-muted-foreground">Last connected:</span>

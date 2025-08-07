@@ -105,8 +105,17 @@ func (cp *ClientPool) createClient(instanceID int) (*Client, error) {
 		return nil, fmt.Errorf("failed to decrypt password: %w", err)
 	}
 
+	// Decrypt basic auth password if present
+	var basicPassword *string
+	if instance.BasicPasswordEncrypted != nil {
+		basicPassword, err = cp.instanceStore.GetDecryptedBasicPassword(instance)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decrypt basic auth password: %w", err)
+		}
+	}
+
 	// Create new client
-	client, err := NewClient(instanceID, instance.Host, instance.Port, instance.Username, password)
+	client, err := NewClient(instanceID, instance.Host, instance.Port, instance.Username, password, instance.BasicUsername, basicPassword)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create client: %w", err)
 	}

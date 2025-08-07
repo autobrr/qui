@@ -72,6 +72,8 @@ class ApiClient {
     port: number
     username: string
     password: string
+    basicUsername?: string
+    basicPassword?: string
   }): Promise<Instance> {
     return this.request<Instance>('/instances', {
       method: 'POST',
@@ -87,6 +89,8 @@ class ApiClient {
       port: number
       username: string
       password: string
+      basicUsername?: string
+      basicPassword?: string
     }>
   ): Promise<Instance> {
     return this.request<Instance>(`/instances/${id}`, {

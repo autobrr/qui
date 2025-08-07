@@ -1,8 +1,10 @@
+import { useState } from 'react'
 import { useForm } from '@tanstack/react-form'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
 import type { Instance } from '@/types'
 import { api } from '@/lib/api'
 
@@ -12,6 +14,8 @@ interface InstanceFormData {
   port: number
   username: string
   password: string
+  basicUsername?: string
+  basicPassword?: string
 }
 
 interface InstanceFormProps {
@@ -22,6 +26,7 @@ interface InstanceFormProps {
 
 export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProps) {
   const queryClient = useQueryClient()
+  const [showBasicAuth, setShowBasicAuth] = useState(!!instance?.basicUsername)
   
   const mutation = useMutation({
     mutationFn: (data: InstanceFormData) => 
@@ -40,9 +45,17 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
       port: instance?.port ?? 8080,
       username: instance?.username ?? '',
       password: '',
+      basicUsername: instance?.basicUsername ?? '',
+      basicPassword: '',
     },
     onSubmit: async ({ value }) => {
-      await mutation.mutateAsync(value)
+      // Clear basic auth fields if toggle is off
+      const submitData = showBasicAuth ? value : {
+        ...value,
+        basicUsername: undefined,
+        basicPassword: undefined,
+      }
+      await mutation.mutateAsync(submitData)
     },
   })
 
@@ -178,6 +191,61 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
           </div>
         )}
       </form.Field>
+
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <Label htmlFor="basic-auth-toggle">HTTP Basic Authentication</Label>
+            <p className="text-sm text-muted-foreground">
+              Enable if your qBittorrent is behind a reverse proxy with Basic Auth
+            </p>
+          </div>
+          <Switch
+            id="basic-auth-toggle"
+            checked={showBasicAuth}
+            onCheckedChange={setShowBasicAuth}
+          />
+        </div>
+
+        {showBasicAuth && (
+          <div className="space-y-4 pl-6 border-l-2 border-muted">
+            <form.Field name="basicUsername">
+              {(field) => (
+                <div className="space-y-2">
+                  <Label htmlFor={field.name}>Basic Auth Username</Label>
+                  <Input
+                    id={field.name}
+                    value={field.state.value}
+                    onBlur={field.handleBlur}
+                    onChange={(e) => field.handleChange(e.target.value)}
+                    placeholder="Basic auth username"
+                    data-1p-ignore
+                    autoComplete='off'
+                  />
+                </div>
+              )}
+            </form.Field>
+
+            <form.Field name="basicPassword">
+              {(field) => (
+                <div className="space-y-2">
+                  <Label htmlFor={field.name}>Basic Auth Password</Label>
+                  <Input
+                    id={field.name}
+                    type="password"
+                    value={field.state.value}
+                    onBlur={field.handleBlur}
+                    onChange={(e) => field.handleChange(e.target.value)}
+                    placeholder={instance?.basicUsername ? 'Leave empty to keep current password' : 'Enter basic auth password'}
+                    data-1p-ignore
+                    autoComplete='off'
+                  />
+                </div>
+              )}
+            </form.Field>
+          </div>
+        )}
+      </div>
 
       {mutation.error && (
         <p className="text-sm text-destructive">
