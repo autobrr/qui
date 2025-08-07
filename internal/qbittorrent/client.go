@@ -81,8 +81,9 @@ func NewClient(instanceID int, host string, port int, username, password string,
 
 	qbtClient := qbt.NewClient(cfg)
 
-	// Test connection
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	// Test connection - use 30 seconds to match the client timeout configuration
+	// This is especially important for large instances with 10k+ torrents
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	if err := qbtClient.LoginCtx(ctx); err != nil {

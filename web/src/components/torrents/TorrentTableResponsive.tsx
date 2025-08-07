@@ -15,6 +15,7 @@ interface TorrentTableResponsiveProps {
   onTorrentSelect?: (torrent: Torrent | null) => void
   addTorrentModalOpen?: boolean
   onAddTorrentModalChange?: (open: boolean) => void
+  onFilteredDataUpdate?: (torrents: Torrent[], total: number) => void
 }
 
 export function TorrentTableResponsive(props: TorrentTableResponsiveProps) {

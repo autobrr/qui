@@ -38,15 +38,33 @@ export function useTorrentsList(
     totalUploadSpeed: 0,
   })
   
-  // Reset pagination when filters or search change
+  // Reset state when instanceId changes (different instance = completely new data)
   useEffect(() => {
     setCurrentPage(0)
     setAllTorrents([])
     setHasLoadedAll(false)
+    // Also reset stats to avoid showing stale data from previous instance
+    setStats({
+      total: 0,
+      downloading: 0,
+      seeding: 0,
+      paused: 0,
+      error: 0,
+      totalDownloadSpeed: 0,
+      totalUploadSpeed: 0,
+    })
+  }, [instanceId])
+  
+  // Reset pagination when filters or search change (same instance, different view)
+  useEffect(() => {
+    setCurrentPage(0)
+    // Don't clear torrents - keep showing old data while fetching new
+    // This provides a smoother experience (stale-while-revalidate pattern)
+    setHasLoadedAll(false)
   }, [filters, search])
   
   // Initial load
-  const { data: initialData, isLoading: initialLoading } = useQuery({
+  const { data: initialData, isLoading: initialLoading, isFetching } = useQuery({
     queryKey: ['torrents-list', instanceId, currentPage, filters, search],
     queryFn: () => api.getTorrents(instanceId, { 
       page: currentPage, 
@@ -56,13 +74,13 @@ export function useTorrentsList(
       search,
       filters
     }),
-    staleTime: 2000, // 2 seconds - match backend cache TTL
-    refetchInterval: 5000, // Poll every 5 seconds for real-time updates
+    staleTime: 1000, // 1 second - ensure data is considered stale quickly
+    refetchInterval: 3000, // Poll every 3 seconds for more responsive updates
     refetchIntervalInBackground: false, // Don't poll when tab is not active
     enabled,
   })
   
-  // Update torrents when data arrives
+  // Update torrents when data arrives or instanceId changes
   useEffect(() => {
     if (initialData?.torrents) {
       if (currentPage === 0) {
@@ -99,7 +117,7 @@ export function useTorrentsList(
       
       setIsLoadingMore(false)
     }
-  }, [initialData, currentPage, pageSize])
+  }, [initialData, currentPage, pageSize, instanceId, filters, search]) // Added filters and search to dependencies
   
   // Load more function
   const loadMore = () => {
@@ -115,11 +133,13 @@ export function useTorrentsList(
   return {
     torrents: filteredTorrents,
     allTorrents,
-    totalCount: stats.total,
+    totalCount: initialData?.total ?? stats.total, // Use fresh data total if available
     stats,
     isLoading: initialLoading && currentPage === 0,
+    isFetching, // Indicates background refetch is happening
     isLoadingMore,
     hasLoadedAll,
     loadMore,
+    isFreshData: !!initialData, // Flag to indicate if we have fresh data
   }
 }

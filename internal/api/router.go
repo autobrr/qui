@@ -108,6 +108,7 @@ func NewRouter(deps *Dependencies) *chi.Mux {
 						r.Get("/", torrentsHandler.ListTorrents)
 						r.Get("/sync", torrentsHandler.SyncTorrents)
 						r.Get("/filter", torrentsHandler.GetFilteredTorrents)
+						r.Get("/counts", torrentsHandler.GetTorrentCounts)
 						r.Post("/", torrentsHandler.AddTorrent)
 						r.Post("/bulk-action", torrentsHandler.BulkAction)
 

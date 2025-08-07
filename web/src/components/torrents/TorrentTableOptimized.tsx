@@ -82,7 +82,7 @@ import {
   useIncognitoMode,
 } from '@/lib/incognito'
 import { formatBytes, formatSpeed } from '@/lib/utils'
-import { applyOptimisticUpdates, applyOptimisticStateUpdates } from '@/lib/torrent-state-utils'
+import { applyOptimisticUpdates } from '@/lib/torrent-state-utils'
 
 interface TorrentTableOptimizedProps {
   instanceId: number
@@ -96,6 +96,7 @@ interface TorrentTableOptimizedProps {
   onTorrentSelect?: (torrent: Torrent | null) => void
   addTorrentModalOpen?: boolean
   onAddTorrentModalChange?: (open: boolean) => void
+  onFilteredDataUpdate?: (torrents: Torrent[], total: number) => void
 }
 
 
@@ -384,7 +385,7 @@ const createColumns = (incognitoMode: boolean): ColumnDef<Torrent>[] => [
   },
 ]
 
-export function TorrentTableOptimized({ instanceId, filters, selectedTorrent, onTorrentSelect, addTorrentModalOpen, onAddTorrentModalChange }: TorrentTableOptimizedProps) {
+export function TorrentTableOptimized({ instanceId, filters, selectedTorrent, onTorrentSelect, addTorrentModalOpen, onAddTorrentModalChange, onFilteredDataUpdate }: TorrentTableOptimizedProps) {
   // State management
   const [sorting, setSorting] = usePersistedColumnSorting(instanceId, [])
   const [globalFilter, setGlobalFilter] = useState('')
@@ -397,6 +398,7 @@ export function TorrentTableOptimized({ instanceId, filters, selectedTorrent, on
   const [showTagsDialog, setShowTagsDialog] = useState(false)
   const [showCategoryDialog, setShowCategoryDialog] = useState(false)
   const [showRemoveTagsDialog, setShowRemoveTagsDialog] = useState(false)
+  const [showRefetchIndicator, setShowRefetchIndicator] = useState(false)
   
   // Use incognito mode hook
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
@@ -469,13 +471,39 @@ export function TorrentTableOptimized({ instanceId, filters, selectedTorrent, on
     totalCount, 
     stats, 
     isLoading,
+    isFetching,
     isLoadingMore,
     hasLoadedAll,
     loadMore: loadMoreTorrents,
+    isFreshData,
   } = useTorrentsList(instanceId, {
     search: effectiveSearch,
     filters,
   })
+  
+  // Call the callback when filtered data updates
+  useEffect(() => {
+    if (onFilteredDataUpdate && isFreshData && torrents && totalCount !== undefined && !isLoading) {
+      onFilteredDataUpdate(torrents, totalCount)
+    }
+  }, [totalCount, isFreshData, isLoading, torrents.length, onFilteredDataUpdate]) // Update when data changes
+  
+  // Show refetch indicator only if fetching takes more than 2 seconds
+  // This avoids annoying flickering for fast instances
+  useEffect(() => {
+    let timeoutId: NodeJS.Timeout
+    
+    if (isFetching && !isLoading && torrents.length > 0) {
+      // Only show indicator after 2 second delay
+      timeoutId = setTimeout(() => {
+        setShowRefetchIndicator(true)
+      }, 2000)
+    } else {
+      setShowRefetchIndicator(false)
+    }
+    
+    return () => clearTimeout(timeoutId)
+  }, [isFetching, isLoading, torrents.length])
   
   // Handle Enter key for immediate search
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -675,7 +703,7 @@ export function TorrentTableOptimized({ instanceId, filters, selectedTorrent, on
           })
           // Also invalidate the counts query to update filter sidebar immediately
           queryClient.invalidateQueries({ 
-            queryKey: ['all-torrents-for-counts', instanceId],
+            queryKey: ['torrent-counts', instanceId],
             exact: false 
           })
         }, refetchDelay)
@@ -717,24 +745,7 @@ export function TorrentTableOptimized({ instanceId, filters, selectedTorrent, on
             })
           })
           
-          // Also optimistically update the all-torrents-for-counts query
-          const countsQueries = cache.findAll({
-            queryKey: ['all-torrents-for-counts', instanceId],
-            exact: false
-          })
-          
-          countsQueries.forEach(query => {
-            queryClient.setQueryData(query.queryKey, (oldData: any) => {
-              if (!oldData || !Array.isArray(oldData)) return oldData
-              
-              // Apply optimistic state updates without filtering
-              return applyOptimisticStateUpdates(
-                oldData,
-                variables.hashes,
-                variables.action as 'pause' | 'resume'
-              )
-            })
-          })
+          // Note: torrent-counts are handled server-side now, no need for optimistic updates
         }
         
         // For other operations, add delay to allow qBittorrent to process
@@ -748,7 +759,7 @@ export function TorrentTableOptimized({ instanceId, filters, selectedTorrent, on
             exact: false 
           })
           queryClient.invalidateQueries({ 
-            queryKey: ['all-torrents-for-counts', instanceId],
+            queryKey: ['torrent-counts', instanceId],
             exact: false 
           })
         }, delay)
@@ -1371,6 +1382,12 @@ export function TorrentTableOptimized({ instanceId, filters, selectedTorrent, on
             {selectedHashes.length > 0 && (
               <span className="ml-2">
                 ({selectedHashes.length} selected)
+              </span>
+            )}
+            {showRefetchIndicator && (
+              <span className="ml-2">
+                <Loader2 className="h-3 w-3 animate-spin inline mr-1" />
+                Updating...
               </span>
             )}
           </div>

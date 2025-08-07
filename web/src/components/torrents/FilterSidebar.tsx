@@ -19,7 +19,6 @@ import {
 import { usePersistedAccordion } from '@/hooks/usePersistedAccordion'
 import { api } from '@/lib/api'
 import {
-  Circle,
   Download,
   Upload,
   CheckCircle2,
@@ -65,7 +64,6 @@ interface FilterSidebarProps {
 
 // Define torrent states based on qBittorrent
 const TORRENT_STATES: Array<{ value: string; label: string; icon: LucideIcon }> = [
-  { value: 'all', label: 'All', icon: Circle },
   { value: 'downloading', label: 'Downloading', icon: Download },
   { value: 'seeding', label: 'Seeding', icon: Upload },
   { value: 'completed', label: 'Completed', icon: CheckCircle2 },

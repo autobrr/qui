@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { TorrentTableResponsive } from '@/components/torrents/TorrentTableResponsive'
 import { FilterSidebar } from '@/components/torrents/FilterSidebar'
@@ -8,7 +8,6 @@ import { VisuallyHidden } from '@/components/ui/visually-hidden'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Filter } from 'lucide-react'
-import { useTorrentCounts } from '@/hooks/useTorrentCounts'
 import { usePersistedFilters } from '@/hooks/usePersistedFilters'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { api } from '@/lib/api'
@@ -25,6 +24,9 @@ export function Torrents({ instanceId, instanceName }: TorrentsProps) {
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false)
   const navigate = useNavigate()
   const search = useSearch({ strict: false }) as any
+  
+  // Store dynamic counts from filtered results
+  const [dynamicCounts, setDynamicCounts] = useState<Record<string, number>>({})
   
   // Check if add torrent modal should be open
   const isAddTorrentModalOpen = search?.modal === 'add-torrent'
@@ -44,62 +46,90 @@ export function Torrents({ instanceId, instanceName }: TorrentsProps) {
     }
   }
   
-  // Get all torrents for accurate counting (separate from table's progressive loading)
-  const { data: allTorrentsForCounts } = useQuery({
-    queryKey: ['all-torrents-for-counts', instanceId],
-    queryFn: async () => {
-      // Load torrents in batches until we get them all
-      let allTorrents: any[] = []
-      let page = 0
-      const pageSize = 1000
-      let hasMore = true
-      
-      while (hasMore) {
-        const response = await api.getTorrents(instanceId, { 
-          page,
-          limit: pageSize,
-          sort: 'addedOn',
-          order: 'desc'
-        })
-        
-        allTorrents = [...allTorrents, ...response.torrents]
-        hasMore = response.torrents.length === pageSize && allTorrents.length < response.total
-        page++
-        
-        // Safety break to prevent infinite loops
-        if (page > 10) break
-      }
-      
-      console.log(`Loaded ${allTorrents.length} torrents for counting in ${page} batches`)
-      return allTorrents
-    },
-    staleTime: 30000, // Cache for 30 seconds
-    refetchInterval: 60000, // Refresh every minute
+  // Get torrent counts from backend
+  // This now uses the same cache as the table data (getAllTorrentsForStats)
+  // so counts and table are always in sync
+  const { data: countsData } = useQuery({
+    queryKey: ['torrent-counts', instanceId],
+    queryFn: () => api.getTorrentCounts(instanceId),
+    staleTime: 1000, // 1 second - match the table's stale time
+    refetchInterval: 3000, // 3 seconds - match the table's refetch interval
   })
 
-  // Fetch categories and tags for count calculation
-  const { data: categories = {} } = useQuery({
-    queryKey: ['categories', instanceId],
-    queryFn: () => api.getCategories(instanceId),
-    staleTime: 60000,
-  })
-
-  const { data: tags = [] } = useQuery({
-    queryKey: ['tags', instanceId],
-    queryFn: () => api.getTags(instanceId),
-    staleTime: 60000,
-  })
-  
-  // Calculate torrent counts for the sidebar
-  const torrentCounts = useTorrentCounts({ 
-    torrents: allTorrentsForCounts || [], 
-    allCategories: categories, 
-    allTags: tags 
-  })
+  // Transform backend counts to match the expected format for FilterSidebar
+  const torrentCounts = useMemo(() => {
+    if (!countsData) return {}
+    
+    const counts: Record<string, number> = {}
+    
+    // Add status counts
+    Object.entries(countsData.status).forEach(([status, count]) => {
+      counts[`status:${status}`] = count
+    })
+    
+    // Add category counts
+    Object.entries(countsData.categories).forEach(([category, count]) => {
+      counts[`category:${category}`] = count
+    })
+    
+    // Add tag counts
+    Object.entries(countsData.tags).forEach(([tag, count]) => {
+      counts[`tag:${tag}`] = count
+    })
+    
+    // Add tracker counts
+    Object.entries(countsData.trackers).forEach(([tracker, count]) => {
+      counts[`tracker:${tracker}`] = count
+    })
+    
+    // Merge with dynamic counts for active filters
+    // Dynamic counts override the base counts for active filters
+    return { ...counts, ...dynamicCounts }
+  }, [countsData, dynamicCounts])
   
   const handleTorrentSelect = (torrent: Torrent | null) => {
     setSelectedTorrent(torrent)
   }
+
+  // Callback to update dynamic counts from filtered results
+  const handleFilteredDataUpdate = useCallback((_torrents: Torrent[], total: number) => {
+    // Only update dynamic counts if filters are active
+    const hasFilters = filters.status.length > 0 || 
+                      filters.categories.length > 0 || 
+                      filters.tags.length > 0 || 
+                      filters.trackers.length > 0
+    
+    if (!hasFilters) {
+      // Clear dynamic counts when no filters
+      setDynamicCounts({})
+      return
+    }
+    
+    // Calculate counts for the filtered torrents
+    const newCounts: Record<string, number> = {}
+    
+    // If filtering by a single status, update that status count
+    if (filters.status.length === 1) {
+      newCounts[`status:${filters.status[0]}`] = total
+    }
+    
+    // If filtering by a single category, update that category count
+    if (filters.categories.length === 1) {
+      newCounts[`category:${filters.categories[0]}`] = total
+    }
+    
+    // If filtering by a single tag, update that tag count
+    if (filters.tags.length === 1) {
+      newCounts[`tag:${filters.tags[0]}`] = total
+    }
+    
+    // If filtering by a single tracker, update that tracker count
+    if (filters.trackers.length === 1) {
+      newCounts[`tracker:${filters.trackers[0]}`] = total
+    }
+    
+    setDynamicCounts(newCounts)
+  }, [filters])
 
   // Calculate total active filters for badge
   const activeFilterCount = useMemo(() => {
@@ -178,6 +208,7 @@ export function Torrents({ instanceId, instanceName }: TorrentsProps) {
               onTorrentSelect={handleTorrentSelect}
               addTorrentModalOpen={isAddTorrentModalOpen}
               onAddTorrentModalChange={handleAddTorrentModalChange}
+              onFilteredDataUpdate={handleFilteredDataUpdate}
             />
           </div>
         </div>

@@ -770,3 +770,23 @@ func (h *TorrentsHandler) GetTorrentWebSeeds(w http.ResponseWriter, r *http.Requ
 
 	RespondJSON(w, http.StatusOK, webSeeds)
 }
+
+// GetTorrentCounts returns torrent counts for filter sidebar
+func (h *TorrentsHandler) GetTorrentCounts(w http.ResponseWriter, r *http.Request) {
+	// Get instance ID from URL
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	// Get torrent counts
+	counts, err := h.syncManager.GetTorrentCounts(r.Context(), instanceID)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get torrent counts")
+		RespondError(w, http.StatusInternalServerError, "Failed to get torrent counts")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, counts)
+}

@@ -238,6 +238,17 @@ class ApiClient {
     })
   }
 
+  // Torrent Counts
+  async getTorrentCounts(instanceId: number): Promise<{
+    status: Record<string, number>
+    categories: Record<string, number>
+    tags: Record<string, number>
+    trackers: Record<string, number>
+    total: number
+  }> {
+    return this.request(`/instances/${instanceId}/torrents/counts`)
+  }
+
   // Torrent Details
   async getTorrentProperties(instanceId: number, hash: string): Promise<any> {
     return this.request(`/instances/${instanceId}/torrents/${hash}/properties`)

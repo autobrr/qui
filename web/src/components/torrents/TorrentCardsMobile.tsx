@@ -69,6 +69,7 @@ interface TorrentCardsMobileProps {
   onTorrentSelect?: (torrent: Torrent | null) => void
   addTorrentModalOpen?: boolean
   onAddTorrentModalChange?: (open: boolean) => void
+  onFilteredDataUpdate?: (torrents: Torrent[], total: number) => void
 }
 
 function formatEta(seconds: number): string {
@@ -319,7 +320,8 @@ export function TorrentCardsMobile({
   filters, 
   onTorrentSelect,
   addTorrentModalOpen,
-  onAddTorrentModalChange 
+  onAddTorrentModalChange,
+  onFilteredDataUpdate 
 }: TorrentCardsMobileProps) {
   // State
   const [globalFilter, setGlobalFilter] = useState('')
@@ -341,15 +343,24 @@ export function TorrentCardsMobile({
   
   // Fetch data
   const { 
-    torrents, 
+    torrents,
+    totalCount, 
     stats, 
     isLoadingMore,
     hasLoadedAll,
     loadMore: loadMoreTorrents,
+    isFreshData,
   } = useTorrentsList(instanceId, {
     search: effectiveSearch,
     filters,
   })
+  
+  // Call the callback when filtered data updates
+  useEffect(() => {
+    if (onFilteredDataUpdate && isFreshData && torrents && totalCount !== undefined) {
+      onFilteredDataUpdate(torrents, totalCount)
+    }
+  }, [totalCount, isFreshData, torrents.length, onFilteredDataUpdate]) // Update when data changes
   
   // Fetch available tags and categories
   const { data: availableTags = [] } = useQuery({
