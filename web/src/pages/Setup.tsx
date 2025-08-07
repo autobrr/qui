@@ -39,7 +39,7 @@ export function Setup() {
         <CardHeader>
           <CardTitle>Initial Setup</CardTitle>
           <CardDescription>
-            Create your admin account to get started with qBittorrent WebUI
+            Create your account to get started with qui
           </CardDescription>
         </CardHeader>
         <CardContent>

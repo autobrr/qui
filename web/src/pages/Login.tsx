@@ -37,7 +37,7 @@ export function Login() {
         <CardHeader>
           <CardTitle>Login</CardTitle>
           <CardDescription>
-            Enter your credentials to access qBittorrent WebUI
+            Enter your credentials
           </CardDescription>
         </CardHeader>
         <CardContent>

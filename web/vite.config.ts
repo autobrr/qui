@@ -45,41 +45,35 @@ export default defineConfig({
           }
         ]
       },
-      includeAssets: ['favicon.ico', 'icon-adaptive.svg', 'maskable-icon-adaptive.svg'],
+      includeAssets: ['favicon.png', 'apple-touch-icon.png'],
       manifest: {
         name: 'qBittorrent WebUI',
         short_name: 'qBitWeb',
         description: 'Alternative WebUI for qBittorrent - manage your torrents with a modern interface',
         theme_color: '#000000', // Will be updated dynamically by PWA theme manager
-        background_color: '#ffffff',
+        background_color: '#000000',
         display: 'standalone',
         scope: '/',
         start_url: '/',
         categories: ['utilities', 'productivity'],
         icons: [
           {
-            src: 'icon-adaptive.svg',
-            sizes: '64x64 192x192 512x512',
-            type: 'image/svg+xml',
-            purpose: 'any'
-          },
-          {
-            src: 'maskable-icon-adaptive.svg',
-            sizes: '512x512',
-            type: 'image/svg+xml',
-            purpose: 'maskable'
-          },
-          // Fallback PNG icons for older browsers
-          {
             src: 'pwa-192x192.png',
             sizes: '192x192',
-            type: 'image/png'
+            type: 'image/png',
+            purpose: 'any'
           },
           {
             src: 'pwa-512x512.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'any'
+          },
+          {
+            src: 'pwa-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable'
           }
         ]
       }
