@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { TorrentTableOptimized } from '@/components/torrents/TorrentTableOptimized'
 import { FilterSidebar } from '@/components/torrents/FilterSidebar'
 import { TorrentDetailsPanel } from '@/components/torrents/TorrentDetailsPanel'
@@ -14,8 +14,6 @@ import { useInstanceStats } from '@/hooks/useInstanceStats'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { api } from '@/lib/api'
 import { formatSpeed } from '@/lib/utils'
-import { usePullToRefresh } from '@/hooks/usePullToRefresh'
-import { PullToRefreshIndicator } from '@/components/ui/PullToRefreshIndicator'
 import type { Torrent } from '@/types'
 
 interface TorrentsProps {
@@ -29,32 +27,9 @@ export function Torrents({ instanceId, instanceName }: TorrentsProps) {
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false)
   const navigate = useNavigate()
   const search = useSearch({ strict: false }) as any
-  const queryClient = useQueryClient()
   
   // Get instance stats for speeds
   const { data: stats } = useInstanceStats(instanceId)
-
-  // Pull-to-refresh functionality
-  const handleRefresh = async () => {
-    // Invalidate all torrent-related queries for this instance
-    await queryClient.invalidateQueries({ 
-      queryKey: ['torrents-list', instanceId],
-      exact: false 
-    })
-    await queryClient.invalidateQueries({ 
-      queryKey: ['all-torrents-for-counts', instanceId] 
-    })
-    await queryClient.invalidateQueries({ 
-      queryKey: ['instance-stats', instanceId] 
-    })
-  }
-
-  const pullToRefresh = usePullToRefresh({
-    onRefresh: handleRefresh,
-    threshold: 80,
-    resistance: 2.5,
-    enabled: true // Enable for PWA
-  })
   
   // Check if add torrent modal should be open
   const isAddTorrentModalOpen = search?.modal === 'add-torrent'
@@ -140,17 +115,7 @@ export function Torrents({ instanceId, instanceName }: TorrentsProps) {
   }, [filters])
 
   return (
-    <>
-      {/* Pull to refresh indicator */}
-      <PullToRefreshIndicator
-        pullDistance={pullToRefresh.pullDistance}
-        threshold={80}
-        isRefreshing={pullToRefresh.isRefreshing}
-        canRefresh={pullToRefresh.canRefresh}
-        isPulling={pullToRefresh.isPulling}
-      />
-      
-      <div className="flex h-full" ref={(el) => pullToRefresh.setContainer(el)}>
+    <div className="flex h-full">
       {/* Desktop Sidebar - hidden on mobile */}
       <div className="hidden xl:block">
         <FilterSidebar
@@ -255,7 +220,6 @@ export function Torrents({ instanceId, instanceName }: TorrentsProps) {
           )}
         </SheetContent>
       </Sheet>
-      </div>
-    </>
+    </div>
   )
 }

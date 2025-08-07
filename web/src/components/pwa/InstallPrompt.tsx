@@ -96,10 +96,10 @@ export function InstallPrompt({ onInstall, onDismiss }: InstallPromptProps) {
             <div className="p-2 rounded-lg bg-primary/10">
               <Download className="h-6 w-6 text-primary" />
             </div>
-            <DialogTitle className="text-left">Install qBittorrent WebUI</DialogTitle>
+            <DialogTitle className="text-left">Install qui</DialogTitle>
           </div>
           <DialogDescription className="text-left">
-            Install this app on your device for a native-like experience. Access your torrents faster with offline support.
+            Install this app on your device for a native-like experience.
           </DialogDescription>
         </DialogHeader>
         

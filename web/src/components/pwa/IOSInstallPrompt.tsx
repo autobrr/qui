@@ -57,7 +57,7 @@ export function IOSInstallPrompt() {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Share className="h-5 w-5" />
-            Install qBittorrent WebUI
+            Install qui
           </DialogTitle>
           <DialogDescription>
             Add this app to your home screen for quick access and a native experience.
