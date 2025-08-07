@@ -229,14 +229,23 @@ function SwipeableCard({
             <span className="text-xs text-muted-foreground">
               {formatBytes(torrent.downloaded)} / {formatBytes(torrent.size)}
             </span>
-            <span className="text-xs font-medium">
-              {Math.round(torrent.progress * 100)}%
-            </span>
+            <div className="flex items-center gap-2">
+              {/* ETA */}
+              {torrent.eta > 0 && torrent.eta !== 8640000 && (
+                <div className="flex items-center gap-1">
+                  <Clock className="h-3 w-3 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">{formatEta(torrent.eta)}</span>
+                </div>
+              )}
+              <span className="text-xs font-medium">
+                {Math.round(torrent.progress * 100)}%
+              </span>
+            </div>
           </div>
           <Progress value={torrent.progress * 100} className="h-2" />
         </div>
         
-        {/* Speed, ETA, Ratio and State row */}
+        {/* Speed, Ratio and State row */}
         <div className="flex items-center justify-between text-xs mb-2">
           <div className="flex items-center gap-3">
             {/* Ratio on the left */}
@@ -263,14 +272,6 @@ function SwipeableCard({
               <div className="flex items-center gap-1">
                 <ChevronUp className="h-3 w-3 [color:var(--chart-3)]" />
                 <span className="font-medium">{formatSpeed(torrent.upspeed)}</span>
-              </div>
-            )}
-            
-            {/* ETA */}
-            {torrent.eta > 0 && torrent.eta !== 8640000 && (
-              <div className="flex items-center gap-1">
-                <Clock className="h-3 w-3 text-muted-foreground" />
-                <span>{formatEta(torrent.eta)}</span>
               </div>
             )}
           </div>
