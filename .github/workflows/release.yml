@@ -206,7 +206,7 @@ jobs:
       - name: Save partial build cache  
         uses: actions/cache/save@v4
         with:
-          path: dist
+          path: ${{ matrix.os == 'windows-latest' && 'D:/a/qui/dist' || 'dist' }}
           key: goreleaser-partial-${{ github.sha }}-${{ matrix.target }}
           enableCrossOsArchive: true
 
