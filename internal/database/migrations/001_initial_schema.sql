@@ -1,4 +1,4 @@
--- Initial schema for qbitweb
+-- Initial schema for qui
 -- Single user table (only one record allowed)
 CREATE TABLE IF NOT EXISTS user (
     id INTEGER PRIMARY KEY CHECK (id = 1), -- Ensures only one user

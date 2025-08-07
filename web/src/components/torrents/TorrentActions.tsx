@@ -3,6 +3,7 @@ import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
 import { applyOptimisticUpdates, applyOptimisticStateUpdates } from '@/lib/torrent-state-utils'
+import { getCommonTags, getCommonCategory } from '@/lib/torrent-utils'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -255,41 +256,6 @@ export function TorrentActions({ instanceId, selectedHashes, selectedTorrents = 
   const handleSetCategory = async (category: string) => {
     await mutation.mutateAsync({ action: 'setCategory', category })
     setShowCategoryDialog(false)
-  }
-  
-  // Get common tags from selected torrents (tags that ALL selected torrents have)
-  const getCommonTags = (torrents: any[]): string[] => {
-    if (torrents.length === 0) return []
-    
-    // Get tags from first torrent
-    const firstTorrentTags = torrents[0].tags
-      ? torrents[0].tags.split(',').map((t: string) => t.trim()).filter((t: string) => t)
-      : []
-    
-    // If only one torrent, return its tags
-    if (torrents.length === 1) return firstTorrentTags
-    
-    // Find common tags across all torrents
-    return firstTorrentTags.filter((tag: string) => 
-      torrents.every(torrent => {
-        const torrentTags = torrent.tags
-          ? torrent.tags.split(',').map((t: string) => t.trim())
-          : []
-        return torrentTags.includes(tag)
-      })
-    )
-  }
-  
-  // Get common category from selected torrents (if all have the same category)
-  const getCommonCategory = (torrents: any[]): string => {
-    if (torrents.length === 0) return ''
-    
-    const firstCategory = torrents[0].category || ''
-    
-    // Check if all torrents have the same category
-    const allSameCategory = torrents.every(t => (t.category || '') === firstCategory)
-    
-    return allSameCategory ? firstCategory : ''
   }
 
   return (

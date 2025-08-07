@@ -53,6 +53,7 @@ import {
 } from '@/lib/incognito'
 import { formatBytes, formatSpeed, cn } from '@/lib/utils'
 import { applyOptimisticUpdates } from '@/lib/torrent-state-utils'
+import { getCommonTags, getCommonCategory } from '@/lib/torrent-utils'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 
@@ -845,7 +846,7 @@ export function TorrentCardsMobile({
         hashCount={actionTorrents.length}
         onConfirm={handleSetTags}
         isPending={mutation.isPending}
-        initialTags={[]}
+        initialTags={getCommonTags(actionTorrents)}
       />
       
       {/* Category dialog */}
@@ -856,7 +857,7 @@ export function TorrentCardsMobile({
         hashCount={actionTorrents.length}
         onConfirm={handleSetCategory}
         isPending={mutation.isPending}
-        initialCategory=""
+        initialCategory={getCommonCategory(actionTorrents)}
       />
       
       {/* Add torrent dialog */}
