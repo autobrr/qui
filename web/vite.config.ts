@@ -47,8 +47,8 @@ export default defineConfig({
       },
       includeAssets: ['favicon.png', 'apple-touch-icon.png'],
       manifest: {
-        name: 'qBittorrent WebUI',
-        short_name: 'qBitWeb',
+        name: 'qui',
+        short_name: 'qui',
         description: 'Alternative WebUI for qBittorrent - manage your torrents with a modern interface',
         theme_color: '#000000', // Will be updated dynamically by PWA theme manager
         background_color: '#000000',
