@@ -1380,9 +1380,17 @@ export function TorrentTableOptimized({ instanceId, filters, selectedTorrent, on
               </>
             )}
             {selectedHashes.length > 0 && (
-              <span className="ml-2">
-                ({selectedHashes.length} selected)
-              </span>
+              <>
+                <span className="ml-2">
+                  ({selectedHashes.length} selected)
+                </span>
+                <button
+                  onClick={() => setRowSelection({})}
+                  className="ml-2 text-xs text-muted-foreground hover:text-foreground transition-colors underline-offset-4 hover:underline"
+                >
+                  Clear selection
+                </button>
+              </>
             )}
             {showRefetchIndicator && (
               <span className="ml-2">
