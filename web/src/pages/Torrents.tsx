@@ -203,7 +203,7 @@ export function Torrents({ instanceId, instanceName }: TorrentsProps) {
       <Sheet open={!!selectedTorrent} onOpenChange={(open) => !open && setSelectedTorrent(null)}>
         <SheetContent 
           side="right"
-          className="w-full sm:w-[480px] md:w-[540px] lg:w-[600px] xl:w-[640px] sm:max-w-[480px] md:max-w-[540px] lg:max-w-[600px] xl:max-w-[640px] p-0"
+          className="w-full fixed inset-y-0 right-0 h-full sm:w-[480px] md:w-[540px] lg:w-[600px] xl:w-[640px] sm:max-w-[480px] md:max-w-[540px] lg:max-w-[600px] xl:max-w-[640px] p-0 z-[100]"
         >
           <SheetHeader>
             <VisuallyHidden>
