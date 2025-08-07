@@ -329,12 +329,25 @@ export function Dashboard() {
   
   return (
     <div className="container mx-auto p-4 sm:p-6">
-      {/* Header */}
+      {/* Header with Actions */}
       <div className="mb-6">
         <h1 className="text-2xl sm:text-3xl font-bold">Dashboard</h1>
-        <p className="text-muted-foreground mt-2">
-          Overview of all your qBittorrent instances
-        </p>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mt-2">
+          <p className="text-muted-foreground">
+            Overview of all your qBittorrent instances
+          </p>
+          {instances && instances.length > 0 && (
+            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+              <QuickActionsDropdown statsData={statsData} />
+              <Link to="/instances" search={{ modal: 'add-instance' }} className="w-full sm:w-auto">
+                <Button variant="outline" size="sm" className="w-full sm:w-auto">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Instance
+                </Button>
+              </Link>
+            </div>
+          )}
+        </div>
       </div>
       
       {instances && instances.length > 0 ? (
@@ -347,18 +360,7 @@ export function Dashboard() {
           {/* Instance Cards */}
           {allInstances.length > 0 && (
             <div>
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-                <h2 className="text-xl font-semibold">Instances</h2>
-                <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                  <QuickActionsDropdown statsData={statsData} />
-                  <Link to="/instances" search={{ modal: 'add-instance' }} className="w-full sm:w-auto">
-                    <Button variant="outline" size="sm" className="w-full sm:w-auto">
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add Instance
-                    </Button>
-                  </Link>
-                </div>
-              </div>
+              <h2 className="text-xl font-semibold mb-4">Instances</h2>
               <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
                 {allInstances.map(instance => (
                   <InstanceCard key={instance.id} instance={instance} />
