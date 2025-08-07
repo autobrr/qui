@@ -638,7 +638,7 @@ export function TorrentCardsMobile({
       </div>
       
       {/* Torrent cards with virtual scrolling */}
-      <div ref={parentRef} className="flex-1 overflow-auto pb-20">
+      <div ref={parentRef} className="flex-1 overflow-auto" style={{ paddingBottom: 'calc(5rem + env(safe-area-inset-bottom))' }}>
         <div
           style={{
             height: `${virtualizer.getTotalSize()}px`,
@@ -693,7 +693,11 @@ export function TorrentCardsMobile({
             initial={{ y: 100 }}
             animate={{ y: 0 }}
             exit={{ y: 100 }}
-            className="fixed bottom-0 left-0 right-0 bg-background border-t p-3 z-50"
+            className="fixed bottom-0 left-0 right-0 bg-background border-t z-50"
+            style={{ 
+              padding: '0.75rem',
+              paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))'
+            }}
           >
             <div className="flex items-center justify-around">
               <button

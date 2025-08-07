@@ -22,8 +22,8 @@ export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
   const { user, logout } = useAuth()
 
   return (
-    <header className="flex h-16 items-center justify-between border-b px-4 sm:px-6">
-      <div className="flex items-center gap-4">
+    <header className="sticky top-0 z-50 flex h-16 items-center justify-between sm:border-b bg-background pl-1 pr-4 sm:pr-6 lg:static">
+      <div className="flex items-center gap-1">
         {children}
         <h1 className={cn(
           "text-xl font-semibold transition-opacity duration-300",

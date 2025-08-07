@@ -1,6 +1,155 @@
 @import 'tailwindcss';
 @plugin 'tailwindcss-animate';
 
+/* Animation utilities for sheet transitions */
+@layer utilities {
+  @keyframes slide-in-from-left {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(0);
+    }
+  }
+  
+  @keyframes slide-out-to-left {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(-100%);
+    }
+  }
+  
+  @keyframes slide-in-from-right {
+    from {
+      transform: translateX(100%);
+    }
+    to {
+      transform: translateX(0);
+    }
+  }
+  
+  @keyframes slide-out-to-right {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(100%);
+    }
+  }
+  
+  @keyframes slide-in-from-top {
+    from {
+      transform: translateY(-100%);
+    }
+    to {
+      transform: translateY(0);
+    }
+  }
+  
+  @keyframes slide-out-to-top {
+    from {
+      transform: translateY(0);
+    }
+    to {
+      transform: translateY(-100%);
+    }
+  }
+  
+  @keyframes slide-in-from-bottom {
+    from {
+      transform: translateY(100%);
+    }
+    to {
+      transform: translateY(0);
+    }
+  }
+  
+  @keyframes slide-out-to-bottom {
+    from {
+      transform: translateY(0);
+    }
+    to {
+      transform: translateY(100%);
+    }
+  }
+  
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  
+  @keyframes fade-out {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+  
+  .animate-in {
+    animation-fill-mode: both;
+  }
+  
+  .animate-out {
+    animation-fill-mode: both;
+  }
+  
+  .slide-in-from-left {
+    animation-name: slide-in-from-left;
+  }
+  
+  .slide-out-to-left {
+    animation-name: slide-out-to-left;
+  }
+  
+  .slide-in-from-right {
+    animation-name: slide-in-from-right;
+  }
+  
+  .slide-out-to-right {
+    animation-name: slide-out-to-right;
+  }
+  
+  .slide-in-from-top {
+    animation-name: slide-in-from-top;
+  }
+  
+  .slide-out-to-top {
+    animation-name: slide-out-to-top;
+  }
+  
+  .slide-in-from-bottom {
+    animation-name: slide-in-from-bottom;
+  }
+  
+  .slide-out-to-bottom {
+    animation-name: slide-out-to-bottom;
+  }
+  
+  .fade-in-0 {
+    animation-name: fade-in;
+  }
+  
+  .fade-out-0 {
+    animation-name: fade-out;
+  }
+  
+  .duration-200 {
+    animation-duration: 200ms;
+  }
+  
+  .duration-300 {
+    animation-duration: 300ms;
+  }
+}
+
 @custom-variant dark (&:is(.dark *));
 
 :root {
@@ -165,10 +314,22 @@
   * {
     @apply border-border;
   }
+  
+  html, body, #root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+  }
+  
   body {
     @apply bg-background text-foreground;
     letter-spacing: var(--tracking-normal);
     font-family: var(--font-sans);
+    /* Handle safe areas for iOS devices */
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
   }
 
   /* Apply font families from theme */
