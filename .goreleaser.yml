@@ -1,5 +1,9 @@
 version: 2
 
+# Support for partial builds
+partial:
+  by: target
+
 before:
   hooks:
     - go mod tidy

@@ -138,8 +138,132 @@ jobs:
             coverage.out
             coverage.html
 
+  # Partial builds for tags - split across multiple runners
+  goreleaser-partial:
+    name: Build partial binaries (${{ matrix.target }})
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ${{ matrix.os }}
+    needs: [test, web]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux  # Includes Linux and FreeBSD builds
+          - os: macos-latest
+            target: darwin
+          - os: windows-latest
+            target: windows
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download web production build
+        uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: internal/web/dist
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Run partial build
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser-pro
+          version: "~> v2"
+          args: release --clean --split
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
+          BUILDER: ${{ github.actor }}@github-actions
+          POLAR_ACCESS_TOKEN: ${{ secrets.POLAR_ACCESS_TOKEN }}
+          POLAR_ORG_ID: ${{ secrets.POLAR_ORG_ID }}
+          POLAR_ENVIRONMENT: ${{ secrets.POLAR_ENVIRONMENT || 'production' }}
+
+      - name: Save partial build cache  
+        uses: actions/cache/save@v4
+        with:
+          path: dist
+          key: goreleaser-partial-${{ github.sha }}-${{ matrix.target }}
+
+  # Merge partial builds and create release
+  goreleaser-merge:
+    name: Merge and release
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    needs: [goreleaser-partial]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download web production build
+        uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: internal/web/dist
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Restore Linux partial build
+        uses: actions/cache/restore@v4
+        with:
+          path: dist
+          key: goreleaser-partial-${{ github.sha }}-linux
+          fail-on-cache-miss: true
+
+      - name: Restore Darwin partial build
+        uses: actions/cache/restore@v4
+        with:
+          path: dist
+          key: goreleaser-partial-${{ github.sha }}-darwin
+          fail-on-cache-miss: true
+
+      - name: Restore Windows partial build
+        uses: actions/cache/restore@v4
+        with:
+          path: dist
+          key: goreleaser-partial-${{ github.sha }}-windows
+          fail-on-cache-miss: true
+
+      - name: Merge partial builds and release
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser-pro
+          version: "~> v2"
+          args: continue --merge
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
+          BUILDER: ${{ github.actor }}@github-actions
+          POLAR_ACCESS_TOKEN: ${{ secrets.POLAR_ACCESS_TOKEN }}
+          POLAR_ORG_ID: ${{ secrets.POLAR_ORG_ID }}
+          POLAR_ENVIRONMENT: ${{ secrets.POLAR_ENVIRONMENT || 'production' }}
+
+      - name: Upload release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: qui-release
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*.txt
+
+  # Regular build for PRs and non-tag pushes
   goreleaserbuild:
     name: Build distribution binaries
+    if: "!startsWith(github.ref, 'refs/tags/')"
     runs-on: ubuntu-latest
     needs: [test, web]
     steps:
@@ -171,17 +295,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BUILDER: ${{ github.actor }}@github-actions
 
-      - name: Run GoReleaser build and publish tags
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          distribution: goreleaser
-          version: "~> v2"
-          args: release --clean
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BUILDER: ${{ github.actor }}@github-actions
-
       - name: Upload assets
         uses: actions/upload-artifact@v4
         with:
@@ -189,13 +302,13 @@ jobs:
           path: |
             dist/*.tar.gz
             dist/*.zip
-            dist/*.deb
-            dist/*.rpm
 
   docker:
     name: Build Docker images
     runs-on: ubuntu-latest
     needs: [test, web]
+    # Only run after release artifacts are ready (either from merge or regular build)
+    if: always() && (needs.test.result == 'success' && needs.web.result == 'success')
     strategy:
       fail-fast: true
       matrix:
