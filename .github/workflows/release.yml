@@ -173,12 +173,29 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
+      # Optimize Windows builds by using faster D: drive
+      - name: Configure Windows for faster builds
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          # Set environment variables to use D: drive for Go builds
+          echo "GOCACHE=D:/go-cache" >> "$GITHUB_ENV"
+          echo "GOMODCACHE=D:/go-mod" >> "$GITHUB_ENV"
+          echo "GOTMPDIR=D:/tmp" >> "$GITHUB_ENV"
+          
+          # Create directories
+          mkdir -p D:/go-cache D:/go-mod D:/tmp D:/a
+          
+          # Copy source to D: drive for faster I/O
+          cp -r . D:/a/qui
+
       - name: Run partial build
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser-pro
           version: "~> v2"
           args: release --clean --split ${{ !startsWith(github.ref, 'refs/tags/') && '--skip=publish' || '' }}
+          workdir: ${{ matrix.os == 'windows-latest' && 'D:/a/qui' || '.' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
