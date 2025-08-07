@@ -126,20 +126,74 @@ export function matchesStatusFilter(torrent: Torrent | any, statusFilter: string
 // Optimistically update a torrent's state for an action
 export function getOptimisticTorrentState(
   torrent: Torrent | any,
-  action: 'pause' | 'resume'
+  action: string,
+  payload?: any
 ): Torrent | any {
-  if (action === 'pause') {
-    return {
-      ...torrent,
-      state: getPausedState(torrent),
-      dlspeed: 0,
-      upspeed: 0
-    }
-  } else {
-    return {
-      ...torrent,
-      state: getResumedState(torrent)
-    }
+  switch (action) {
+    case 'pause':
+      return {
+        ...torrent,
+        state: getPausedState(torrent),
+        dlspeed: 0,
+        upspeed: 0
+      }
+    
+    case 'resume':
+      return {
+        ...torrent,
+        state: getResumedState(torrent)
+      }
+    
+    case 'recheck':
+      // Set to checking state
+      return {
+        ...torrent,
+        state: torrent.progress < 1 ? 'checkingDL' : 'checkingUP',
+        dlspeed: 0,
+        upspeed: 0
+      }
+    
+    case 'setCategory':
+      return {
+        ...torrent,
+        category: payload?.category || ''
+      }
+    
+    case 'addTags':
+      // Add tags to existing tags
+      const currentTags = torrent.tags ? torrent.tags.split(', ').filter(Boolean) : []
+      const newTags = payload?.tags ? payload.tags.split(',').map((t: string) => t.trim()) : []
+      const combinedTags = [...new Set([...currentTags, ...newTags])]
+      return {
+        ...torrent,
+        tags: combinedTags.join(', ')
+      }
+    
+    case 'removeTags':
+      // Remove tags from existing tags
+      const existingTags = torrent.tags ? torrent.tags.split(', ').filter(Boolean) : []
+      const tagsToRemove = payload?.tags ? payload.tags.split(',').map((t: string) => t.trim()) : []
+      const remainingTags = existingTags.filter((tag: string) => !tagsToRemove.includes(tag))
+      return {
+        ...torrent,
+        tags: remainingTags.join(', ')
+      }
+    
+    case 'setTags':
+      // Replace all tags
+      return {
+        ...torrent,
+        tags: payload?.tags || ''
+      }
+    
+    case 'toggleAutoTMM':
+      return {
+        ...torrent,
+        auto_tmm: payload?.enable || false
+      }
+    
+    default:
+      return torrent
   }
 }
 
@@ -168,26 +222,44 @@ export function shouldRemainVisible(
 export function applyOptimisticUpdates(
   torrents: any[],
   targetHashes: string[],
-  action: 'pause' | 'resume',
-  statusFilters: string[] = []
+  action: string,
+  statusFilters: string[] = [],
+  payload?: any
 ): { torrents: any[], removedCount: number } {
   let removedCount = 0
+  
+  // For delete action, just filter out the torrents
+  if (action === 'delete' || action === 'deleteWithFiles') {
+    const filteredTorrents = torrents.filter(torrent => {
+      const isTarget = targetHashes.includes(torrent.hash)
+      if (isTarget) {
+        removedCount++
+        return false
+      }
+      return true
+    })
+    return { torrents: filteredTorrents, removedCount }
+  }
   
   const updatedTorrents = torrents
     .map(torrent => {
       const isTarget = targetHashes.includes(torrent.hash)
       if (isTarget) {
-        return getOptimisticTorrentState(torrent, action)
+        return getOptimisticTorrentState(torrent, action, payload)
       }
       return torrent
     })
     .filter(torrent => {
-      const isTarget = targetHashes.includes(torrent.hash)
-      const remains = shouldRemainVisible(torrent, statusFilters, action, isTarget)
-      if (isTarget && !remains) {
-        removedCount++
+      // Only filter for pause/resume actions based on status filters
+      if (action === 'pause' || action === 'resume') {
+        const isTarget = targetHashes.includes(torrent.hash)
+        const remains = shouldRemainVisible(torrent, statusFilters, action as 'pause' | 'resume', isTarget)
+        if (isTarget && !remains) {
+          removedCount++
+        }
+        return remains
       }
-      return remains
+      return true
     })
   
   return { torrents: updatedTorrents, removedCount }
@@ -197,11 +269,17 @@ export function applyOptimisticUpdates(
 export function applyOptimisticStateUpdates(
   torrents: any[],
   targetHashes: string[],
-  action: 'pause' | 'resume'
+  action: string,
+  payload?: any
 ): any[] {
+  // For delete, filter out the torrents
+  if (action === 'delete' || action === 'deleteWithFiles') {
+    return torrents.filter(torrent => !targetHashes.includes(torrent.hash))
+  }
+  
   return torrents.map(torrent => {
     if (targetHashes.includes(torrent.hash)) {
-      return getOptimisticTorrentState(torrent, action)
+      return getOptimisticTorrentState(torrent, action, payload)
     }
     return torrent
   })

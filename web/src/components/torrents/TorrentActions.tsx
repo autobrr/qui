@@ -95,14 +95,24 @@ export function TorrentActions({ instanceId, selectedHashes, selectedTorrents = 
         })
         onComplete?.()
       } else {
-        // For pause/resume, optimistically update the cache immediately
-        if (variables.action === 'pause' || variables.action === 'resume') {
+        // Apply optimistic updates for actions that change visible state
+        const optimisticActions = ['pause', 'resume', 'delete', 'deleteWithFiles', 'recheck', 'setCategory', 'addTags', 'removeTags', 'setTags', 'toggleAutoTMM']
+        
+        if (optimisticActions.includes(variables.action)) {
           // Get all cached queries for this instance
           const cache = queryClient.getQueryCache()
           const queries = cache.findAll({
             queryKey: ['torrents-list', instanceId],
             exact: false
           })
+          
+          // Build payload for the action
+          const payload = {
+            category: variables.category,
+            tags: variables.tags,
+            enable: variables.enable,
+            deleteFiles: variables.deleteFiles
+          }
           
           // Optimistically update torrent states in all cached queries
           queries.forEach(query => {
@@ -119,8 +129,9 @@ export function TorrentActions({ instanceId, selectedHashes, selectedTorrents = 
               const { torrents: updatedTorrents } = applyOptimisticUpdates(
                 oldData.torrents,
                 selectedHashes,
-                variables.action as 'pause' | 'resume', // Type narrowed by if condition above
-                statusFilters
+                variables.action,
+                statusFilters,
+                payload
               )
               
               return {

@@ -345,28 +345,50 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 	// Perform action based on type
 	switch action {
 	case "pause":
-		return client.PauseCtx(ctx, hashes)
+		err = client.PauseCtx(ctx, hashes)
+		if err == nil {
+			sm.applyOptimisticCacheUpdate(instanceID, hashes, action, nil)
+		}
 	case "resume":
-		return client.ResumeCtx(ctx, hashes)
+		err = client.ResumeCtx(ctx, hashes)
+		if err == nil {
+			sm.applyOptimisticCacheUpdate(instanceID, hashes, action, nil)
+		}
 	case "delete":
-		return client.DeleteTorrentsCtx(ctx, hashes, false)
+		err = client.DeleteTorrentsCtx(ctx, hashes, false)
+		if err == nil {
+			sm.applyOptimisticCacheUpdate(instanceID, hashes, action, nil)
+		}
 	case "deleteWithFiles":
-		return client.DeleteTorrentsCtx(ctx, hashes, true)
+		err = client.DeleteTorrentsCtx(ctx, hashes, true)
+		if err == nil {
+			sm.applyOptimisticCacheUpdate(instanceID, hashes, "delete", nil)
+		}
 	case "recheck":
-		return client.RecheckCtx(ctx, hashes)
+		err = client.RecheckCtx(ctx, hashes)
+		if err == nil {
+			sm.applyOptimisticCacheUpdate(instanceID, hashes, action, nil)
+		}
 	case "reannounce":
-		return client.ReAnnounceTorrentsCtx(ctx, hashes)
-	case "increasePriority":
-		return client.IncreasePriorityCtx(ctx, hashes)
-	case "decreasePriority":
-		return client.DecreasePriorityCtx(ctx, hashes)
-	case "topPriority":
-		return client.SetMaxPriorityCtx(ctx, hashes)
-	case "bottomPriority":
-		return client.SetMinPriorityCtx(ctx, hashes)
+		// No cache update needed - no visible state change
+		err = client.ReAnnounceTorrentsCtx(ctx, hashes)
+	case "increasePriority", "decreasePriority", "topPriority", "bottomPriority":
+		// Priority changes - no cache update needed as priority not shown
+		switch action {
+		case "increasePriority":
+			err = client.IncreasePriorityCtx(ctx, hashes)
+		case "decreasePriority":
+			err = client.DecreasePriorityCtx(ctx, hashes)
+		case "topPriority":
+			err = client.SetMaxPriorityCtx(ctx, hashes)
+		case "bottomPriority":
+			err = client.SetMinPriorityCtx(ctx, hashes)
+		}
 	default:
 		return fmt.Errorf("unknown bulk action: %s", action)
 	}
+
+	return err
 }
 
 // AddTorrent adds a new torrent from file content
@@ -788,6 +810,7 @@ func (sm *SyncManager) ResetRID(instanceID int) {
 }
 
 // InvalidateCache clears all cached data for a specific instance
+// NOTE: With optimistic updates, this is rarely needed now
 func (sm *SyncManager) InvalidateCache(instanceID int) {
 	log.Debug().Int("instanceID", instanceID).Msg("Invalidating cache for instance")
 
@@ -796,10 +819,7 @@ func (sm *SyncManager) InvalidateCache(instanceID int) {
 	// but ensures consistency and is simple to implement.
 	sm.cache.Clear()
 
-	// Track when cache was cleared to avoid re-caching stale data
-	sm.mu.Lock()
-	sm.cacheCleared = time.Now()
-	sm.mu.Unlock()
+	// No longer track cache cleared time since we don't skip caching anymore
 }
 
 // invalidateTagsCache invalidates the tags cache for a specific instance
@@ -818,10 +838,148 @@ func (sm *SyncManager) invalidateCategoriesCache(instanceID int) {
 
 // shouldSkipCache returns true if we should skip caching (cache was recently cleared)
 func (sm *SyncManager) shouldSkipCache() bool {
-	sm.mu.RLock()
-	defer sm.mu.RUnlock()
-	// Skip caching for 3 seconds after cache clear to let qBittorrent process changes
-	return time.Since(sm.cacheCleared) < 3*time.Second
+	// With optimistic updates, we no longer need to skip caching after actions
+	// The cache is kept updated with expected changes
+	return false
+}
+
+// applyOptimisticCacheUpdate applies optimistic updates to cached torrents
+func (sm *SyncManager) applyOptimisticCacheUpdate(instanceID int, hashes []string, action string, payload map[string]interface{}) {
+	// Get the cache key for all torrents
+	cacheKey := fmt.Sprintf("all_torrents:%d:", instanceID)
+	
+	// Try to get cached torrents
+	if cached, found := sm.cache.Get(cacheKey); found {
+		if torrents, ok := cached.([]qbt.Torrent); ok {
+			// Create a map for quick hash lookup
+			hashMap := make(map[string]bool)
+			for _, hash := range hashes {
+				hashMap[strings.ToLower(hash)] = true
+			}
+			
+			var updatedTorrents []qbt.Torrent
+			
+			// Handle delete action - filter out deleted torrents
+			if action == "delete" {
+				for _, torrent := range torrents {
+					if !hashMap[strings.ToLower(torrent.Hash)] {
+						updatedTorrents = append(updatedTorrents, torrent)
+					}
+				}
+				log.Debug().Int("instanceID", instanceID).Int("deletedCount", len(torrents)-len(updatedTorrents)).Msg("Removed deleted torrents from cache")
+			} else {
+				// For other actions, update torrent properties
+				for _, torrent := range torrents {
+					if hashMap[strings.ToLower(torrent.Hash)] {
+						// Apply optimistic state change
+						switch action {
+						case "pause":
+							// Set to paused state based on progress
+							if torrent.Progress < 1 || strings.Contains(string(torrent.State), "DL") {
+								torrent.State = qbt.TorrentStateStoppedDl
+							} else {
+								torrent.State = qbt.TorrentStateStoppedUp
+							}
+							// Clear speeds
+							torrent.DlSpeed = 0
+							torrent.UpSpeed = 0
+						
+						case "resume":
+							// Set to stalled state initially (will be corrected when real data comes)
+							if torrent.Progress < 1 {
+								torrent.State = qbt.TorrentStateStalledDl
+							} else {
+								torrent.State = qbt.TorrentStateStalledUp
+							}
+						
+						case "recheck":
+							// Set to checking state
+							if torrent.Progress < 1 {
+								torrent.State = qbt.TorrentStateCheckingDl
+							} else {
+								torrent.State = qbt.TorrentStateCheckingUp
+							}
+							// Clear speeds during checking
+							torrent.DlSpeed = 0
+							torrent.UpSpeed = 0
+						
+						case "setCategory":
+							if category, ok := payload["category"].(string); ok {
+								torrent.Category = category
+							}
+						
+						case "addTags":
+							if tags, ok := payload["tags"].(string); ok {
+								// Parse current tags
+								currentTags := []string{}
+								if torrent.Tags != "" {
+									currentTags = strings.Split(torrent.Tags, ", ")
+								}
+								// Add new tags
+								newTags := strings.Split(tags, ",")
+								for _, tag := range newTags {
+									tag = strings.TrimSpace(tag)
+									if tag != "" && !stringSliceContains(currentTags, tag) {
+										currentTags = append(currentTags, tag)
+									}
+								}
+								torrent.Tags = strings.Join(currentTags, ", ")
+							}
+						
+						case "removeTags":
+							if tags, ok := payload["tags"].(string); ok {
+								// Parse current tags
+								currentTags := []string{}
+								if torrent.Tags != "" {
+									currentTags = strings.Split(torrent.Tags, ", ")
+								}
+								// Remove specified tags
+								tagsToRemove := strings.Split(tags, ",")
+								var remainingTags []string
+								for _, tag := range currentTags {
+									tag = strings.TrimSpace(tag)
+									if !stringSliceContains(tagsToRemove, tag) {
+										remainingTags = append(remainingTags, tag)
+									}
+								}
+								torrent.Tags = strings.Join(remainingTags, ", ")
+							}
+						
+						case "setTags":
+							if tags, ok := payload["tags"].(string); ok {
+								torrent.Tags = tags
+							}
+						
+						case "toggleAutoTMM":
+							// AutoTMM field might not be available in the Torrent struct
+							// Just log that we would update it
+							if _, ok := payload["enable"].(bool); ok {
+								// Note: AutoTMM field not available in current qbt.Torrent struct
+								// This would be updated when fetching fresh data
+							}
+						}
+					}
+					updatedTorrents = append(updatedTorrents, torrent)
+				}
+				log.Debug().Int("instanceID", instanceID).Int("updatedCount", len(hashes)).Str("action", action).Msg("Applied optimistic cache update")
+			}
+			
+			// Update cache with modified torrents
+			// Use a conservative 5 second TTL since we don't know the original TTL
+			sm.cache.SetWithTTL(cacheKey, updatedTorrents, 1, 5*time.Second)
+		}
+	}
+}
+
+// stringSliceContains checks if a string slice contains a value
+func stringSliceContains(slice []string, value string) bool {
+	value = strings.TrimSpace(value)
+	for _, item := range slice {
+		if strings.TrimSpace(item) == value {
+			return true
+		}
+	}
+	return false
 }
 
 // getAllTorrentsForStats gets all torrents for stats calculation (cached)
@@ -1546,7 +1704,13 @@ func (sm *SyncManager) AddTags(ctx context.Context, instanceID int, hashes []str
 		return fmt.Errorf("failed to get client: %w", err)
 	}
 
-	return client.Client.AddTagsCtx(ctx, hashes, tags)
+	if err := client.Client.AddTagsCtx(ctx, hashes, tags); err != nil {
+		return err
+	}
+
+	// Apply optimistic update to cache
+	sm.applyOptimisticCacheUpdate(instanceID, hashes, "addTags", map[string]interface{}{"tags": tags})
+	return nil
 }
 
 // RemoveTags removes specific tags from the specified torrents
@@ -1556,7 +1720,13 @@ func (sm *SyncManager) RemoveTags(ctx context.Context, instanceID int, hashes []
 		return fmt.Errorf("failed to get client: %w", err)
 	}
 
-	return client.Client.RemoveTagsCtx(ctx, hashes, tags)
+	if err := client.Client.RemoveTagsCtx(ctx, hashes, tags); err != nil {
+		return err
+	}
+
+	// Apply optimistic update to cache
+	sm.applyOptimisticCacheUpdate(instanceID, hashes, "removeTags", map[string]interface{}{"tags": tags})
+	return nil
 }
 
 // SetTags sets tags on the specified torrents (replaces all existing tags)
@@ -1574,6 +1744,8 @@ func (sm *SyncManager) SetTags(ctx context.Context, instanceID int, hashes []str
 		return err
 	}
 
+	// Apply optimistic update to cache
+	sm.applyOptimisticCacheUpdate(instanceID, hashes, "setTags", map[string]interface{}{"tags": tags})
 	return nil
 }
 
@@ -1584,7 +1756,13 @@ func (sm *SyncManager) SetCategory(ctx context.Context, instanceID int, hashes [
 		return fmt.Errorf("failed to get client: %w", err)
 	}
 
-	return client.Client.SetCategoryCtx(ctx, hashes, category)
+	if err := client.Client.SetCategoryCtx(ctx, hashes, category); err != nil {
+		return err
+	}
+
+	// Apply optimistic update to cache
+	sm.applyOptimisticCacheUpdate(instanceID, hashes, "setCategory", map[string]interface{}{"category": category})
+	return nil
 }
 
 // SetAutoTMM sets the automatic torrent management for torrents
@@ -1594,7 +1772,13 @@ func (sm *SyncManager) SetAutoTMM(ctx context.Context, instanceID int, hashes []
 		return fmt.Errorf("failed to get client: %w", err)
 	}
 
-	return client.Client.SetAutoManagementCtx(ctx, hashes, enable)
+	if err := client.Client.SetAutoManagementCtx(ctx, hashes, enable); err != nil {
+		return err
+	}
+
+	// Apply optimistic update to cache
+	sm.applyOptimisticCacheUpdate(instanceID, hashes, "toggleAutoTMM", map[string]interface{}{"enable": enable})
+	return nil
 }
 
 // CreateTags creates new tags

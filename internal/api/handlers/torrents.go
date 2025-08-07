@@ -298,9 +298,9 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Immediately invalidate cache - the next request will get fresh data from qBittorrent
-	h.syncManager.InvalidateCache(instanceID)
-	log.Debug().Int("instanceID", instanceID).Str("action", req.Action).Msg("Cache invalidated after bulk action")
+	// Note: We no longer invalidate cache here since optimistic updates are applied
+	// in the sync manager for supported actions (pause, resume, delete, recheck, category, tags)
+	log.Debug().Int("instanceID", instanceID).Str("action", req.Action).Msg("Bulk action completed with optimistic cache update")
 
 	RespondJSON(w, http.StatusOK, map[string]string{
 		"message": "Bulk action completed successfully",
