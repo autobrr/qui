@@ -141,8 +141,7 @@ jobs:
   # Partial builds - split across multiple runners
   goreleaser-partial:
     name: Build partial binaries (${{ matrix.target }})
-    # Only run if we have GoReleaser Pro key or for tags
-    if: (secrets.GORELEASER_KEY != '' && (github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')) || startsWith(github.ref, 'refs/tags/')
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/tags/')
     runs-on: ${{ matrix.os }}
     needs: [test, web]
     strategy:
