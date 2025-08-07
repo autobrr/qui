@@ -10,7 +10,6 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { User, LogOut, Key } from 'lucide-react'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
-import { PWAStatus } from '@/components/pwa/PWAStatus'
 import { cn } from '@/lib/utils'
 import { Link } from '@tanstack/react-router'
 
@@ -33,14 +32,13 @@ export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
         )}>qui</h1>
       </div>
       
-      <div className="flex items-center gap-4">
-        <PWAStatus />
+      <div className="flex items-center gap-3">
         <ThemeToggle />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="sm" className="gap-2">
               <User className="h-4 w-4" />
-              {user?.username}
+              <span className="hidden sm:inline">{user?.username}</span>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">

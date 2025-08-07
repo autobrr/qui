@@ -32,8 +32,7 @@ import {
   Trash2, 
   Plus, 
   Search, 
-  X, 
-  ChevronRight,
+  X,
   Clock,
   CheckCircle2,
   MoreVertical,
@@ -54,8 +53,7 @@ import {
 } from '@/lib/incognito'
 import { formatBytes, formatSpeed, cn } from '@/lib/utils'
 import { applyOptimisticUpdates } from '@/lib/torrent-state-utils'
-import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion'
-import type { PanInfo } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 
 interface TorrentCardsMobileProps {
@@ -117,7 +115,6 @@ function SwipeableCard({
   torrent, 
   isSelected,
   onSelect,
-  onSwipe,
   onClick,
   onLongPress,
   incognitoMode,
@@ -126,30 +123,50 @@ function SwipeableCard({
   torrent: Torrent
   isSelected: boolean
   onSelect: (selected: boolean) => void
-  onSwipe: (direction: 'left' | 'right', torrent: Torrent) => void
   onClick: () => void
-  onLongPress: () => void
+  onLongPress: (torrent: Torrent) => void
   incognitoMode: boolean
   selectionMode: boolean
 }) {
-  const x = useMotionValue(0)
-  const background = useTransform(
-    x,
-    [-100, 0, 100],
-    ['hsl(var(--destructive))', 'transparent', 'hsl(var(--chart-3))']
-  )
   
   const [longPressTimer, setLongPressTimer] = useState<NodeJS.Timeout | null>(null)
+  const [touchStart, setTouchStart] = useState<{ x: number; y: number } | null>(null)
+  const [hasMoved, setHasMoved] = useState(false)
   
-  const handleTouchStart = () => {
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (selectionMode) return // Don't trigger long press in selection mode
+    
+    const touch = e.touches[0]
+    setTouchStart({ x: touch.clientX, y: touch.clientY })
+    setHasMoved(false)
+    
     const timer = setTimeout(() => {
-      // Vibrate if available
-      if ('vibrate' in navigator) {
-        navigator.vibrate(50)
+      if (!hasMoved) {
+        // Vibrate if available
+        if ('vibrate' in navigator) {
+          navigator.vibrate(50)
+        }
+        onLongPress(torrent)
       }
-      onLongPress()
-    }, 500)
+    }, 600) // Increased to 600ms to be less sensitive
     setLongPressTimer(timer)
+  }
+  
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!touchStart || hasMoved) return
+    
+    const touch = e.touches[0]
+    const deltaX = Math.abs(touch.clientX - touchStart.x)
+    const deltaY = Math.abs(touch.clientY - touchStart.y)
+    
+    // If moved more than 10px in any direction, cancel long press
+    if (deltaX > 10 || deltaY > 10) {
+      setHasMoved(true)
+      if (longPressTimer) {
+        clearTimeout(longPressTimer)
+        setLongPressTimer(null)
+      }
+    }
   }
   
   const handleTouchEnd = () => {
@@ -157,15 +174,8 @@ function SwipeableCard({
       clearTimeout(longPressTimer)
       setLongPressTimer(null)
     }
-  }
-  
-  const handleDragEnd = (_: any, info: PanInfo) => {
-    const threshold = 100
-    if (info.offset.x > threshold) {
-      onSwipe('right', torrent)
-    } else if (info.offset.x < -threshold) {
-      onSwipe('left', torrent)
-    }
+    setTouchStart(null)
+    setHasMoved(false)
   }
   
   const displayName = incognitoMode ? getLinuxIsoName(torrent.hash) : torrent.name
@@ -174,51 +184,46 @@ function SwipeableCard({
   const displayRatio = incognitoMode ? getLinuxRatio(torrent.hash) : torrent.ratio
   
   return (
-    <motion.div
-      className="relative"
-      style={{ background }}
-      whileTap={{ scale: 0.98 }}
-      transition={{ type: "spring", stiffness: 300, damping: 30 }}
+    <div
+      className={cn(
+        "bg-card rounded-lg border p-4 cursor-pointer transition-all relative overflow-hidden select-none",
+        isSelected && "bg-accent/50",
+        !selectionMode && "active:scale-[0.98]"
+      )}
+      onTouchStart={!selectionMode ? handleTouchStart : undefined}
+      onTouchMove={!selectionMode ? handleTouchMove : undefined}
+      onTouchEnd={!selectionMode ? handleTouchEnd : undefined}
+      onTouchCancel={!selectionMode ? handleTouchEnd : undefined}
+      onClick={() => {
+        if (selectionMode) {
+          onSelect(!isSelected)
+        } else {
+          onClick()
+        }
+      }}
     >
-      <motion.div
-        drag="x"
-        dragConstraints={{ left: 0, right: 0 }}
-        dragElastic={0.2}
-        onDragEnd={handleDragEnd}
-        style={{ x }}
-        className={cn(
-          "bg-card rounded-lg border p-4 cursor-pointer transition-all",
-          isSelected && "ring-2 ring-primary bg-accent/50",
-          !selectionMode && "active:scale-[0.98]"
+        {/* Inner selection ring */}
+        {isSelected && (
+          <div className="absolute inset-0 rounded-lg ring-2 ring-primary ring-inset pointer-events-none" />
         )}
-        onTouchStart={!selectionMode ? handleTouchStart : undefined}
-        onTouchEnd={!selectionMode ? handleTouchEnd : undefined}
-        onTouchCancel={!selectionMode ? handleTouchEnd : undefined}
-        onClick={() => {
-          if (selectionMode) {
-            onSelect(!isSelected)
-          } else {
-            onClick()
-          }
-        }}
-      >
         {/* Selection checkbox - visible in selection mode */}
         {selectionMode && (
-          <div className="absolute -top-2 -right-2 z-10">
-            <div className="bg-background rounded-full p-1 shadow-lg border">
-              <Checkbox
-                checked={isSelected}
-                onCheckedChange={onSelect}
-                className="h-5 w-5"
-                onClick={(e) => e.stopPropagation()}
-              />
-            </div>
+          <div className="absolute top-2 right-2 z-10">
+            <Checkbox
+              checked={isSelected}
+              onCheckedChange={onSelect}
+              className="h-5 w-5"
+              onClick={(e) => e.stopPropagation()}
+            />
           </div>
         )}
         
         {/* Torrent name */}
         <div className="mb-3">
-          <h3 className="font-medium text-sm line-clamp-2 break-all">
+          <h3 className={cn(
+            "font-medium text-sm line-clamp-2 break-all",
+            selectionMode && "pr-8"
+          )}>
             {displayName}
           </h3>
         </div>
@@ -304,8 +309,7 @@ function SwipeableCard({
             </div>
           )}
         </div>
-      </motion.div>
-    </motion.div>
+    </div>
   )
 }
 
@@ -325,10 +329,9 @@ export function TorrentCardsMobile({
   const [deleteFiles, setDeleteFiles] = useState(false)
   const [torrentToDelete, setTorrentToDelete] = useState<Torrent | null>(null)
   const [showActionsSheet, setShowActionsSheet] = useState(false)
-  const [showSearchOverlay, setShowSearchOverlay] = useState(false)
   const [showTagsDialog, setShowTagsDialog] = useState(false)
   const [showCategoryDialog, setShowCategoryDialog] = useState(false)
-  const [actionTorrents, setActionTorrents] = useState<Torrent[]>([])
+  const [actionTorrents, setActionTorrents] = useState<Torrent[]>([]);
   
   const [incognitoMode] = useIncognitoMode()
   const queryClient = useQueryClient()
@@ -475,21 +478,9 @@ export function TorrentCardsMobile({
   })
   
   // Handlers
-  const handleSwipe = useCallback((direction: 'left' | 'right', torrent: Torrent) => {
-    if (direction === 'left') {
-      // Quick delete
-      setTorrentToDelete(torrent)
-      setShowDeleteDialog(true)
-    } else {
-      // Quick pause/resume
-      const action = torrent.state === 'pausedDL' || torrent.state === 'pausedUP' ? 'resume' : 'pause'
-      mutation.mutate({ action, hashes: [torrent.hash] })
-      toast.success(`Torrent ${action}d`)
-    }
-  }, [mutation])
-  
-  const handleLongPress = useCallback(() => {
+  const handleLongPress = useCallback((torrent: Torrent) => {
     setSelectionMode(true)
+    setSelectedHashes(new Set([torrent.hash]))
   }, [])
   
   const handleSelect = useCallback((hash: string, selected: boolean) => {
@@ -567,7 +558,7 @@ export function TorrentCardsMobile({
     <div className="h-full flex flex-col relative">
       {/* Header with stats */}
       <div className="sticky top-0 z-40 bg-background">
-        <div>
+        <div className="pb-3">
           {/* Stats bar */}
           <div className="flex items-center justify-between text-xs mb-3">
             <div className="flex items-center gap-2">
@@ -593,15 +584,21 @@ export function TorrentCardsMobile({
           
           {/* Search bar */}
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowSearchOverlay(true)}
-              className="flex-1 flex items-center gap-2 px-3 py-2 bg-muted/50 rounded-lg text-left"
-            >
-              <Search className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">
-                {effectiveSearch || "Search torrents..."}
-              </span>
-            </button>
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <Input
+                type="text"
+                placeholder="Search torrents..."
+                value={globalFilter}
+                onChange={(e) => setGlobalFilter(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    setImmediateSearch(globalFilter)
+                  }
+                }}
+                className="pl-9 pr-3 h-9"
+              />
+            </div>
             
             <Button
               size="icon"
@@ -615,7 +612,7 @@ export function TorrentCardsMobile({
         
         {/* Selection mode header */}
         {selectionMode && (
-          <div className="bg-primary text-primary-foreground px-4 py-2 flex items-center justify-between">
+          <div className="bg-primary text-primary-foreground px-4 py-2 mb-3 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <button
                 onClick={() => {
@@ -641,7 +638,7 @@ export function TorrentCardsMobile({
       </div>
       
       {/* Torrent cards with virtual scrolling */}
-      <div ref={parentRef} className="flex-1 overflow-auto pt-3 pb-20">
+      <div ref={parentRef} className="flex-1 overflow-auto pb-20">
         <div
           style={{
             height: `${virtualizer.getTotalSize()}px`,
@@ -671,7 +668,6 @@ export function TorrentCardsMobile({
                   torrent={torrent}
                   isSelected={isSelected}
                   onSelect={(selected) => handleSelect(torrent.hash, selected)}
-                  onSwipe={handleSwipe}
                   onClick={() => onTorrentSelect?.(torrent)}
                   onLongPress={handleLongPress}
                   incognitoMode={incognitoMode}
@@ -750,53 +746,13 @@ export function TorrentCardsMobile({
         )}
       </AnimatePresence>
       
-      {/* Search overlay */}
-      <AnimatePresence>
-        {showSearchOverlay && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-background z-50 flex flex-col"
-          >
-            <div className="flex items-center gap-2 px-4 py-3 border-b">
-              <button onClick={() => setShowSearchOverlay(false)}>
-                <ChevronRight className="h-5 w-5 rotate-180" />
-              </button>
-              <Input
-                autoFocus
-                placeholder="Search torrents..."
-                value={globalFilter}
-                onChange={e => setGlobalFilter(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') {
-                    setImmediateSearch(globalFilter)
-                    setShowSearchOverlay(false)
-                  }
-                }}
-                className="flex-1"
-              />
-            </div>
-            <div className="px-4 py-3">
-              <h3 className="font-medium mb-2">Search Tips:</h3>
-              <ul className="text-sm text-muted-foreground space-y-1">
-                <li>• Use * for wildcards: *.mkv</li>
-                <li>• Pattern matching: S??E??</li>
-                <li>• Searches name, category, and tags</li>
-                <li>• Press Enter for instant search</li>
-              </ul>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-      
       {/* More actions sheet */}
       <Sheet open={showActionsSheet} onOpenChange={setShowActionsSheet}>
         <SheetContent side="bottom" className="h-auto">
           <SheetHeader>
             <SheetTitle>Actions for {selectedHashes.size} torrent(s)</SheetTitle>
           </SheetHeader>
-          <div className="grid gap-2 py-4">
+          <div className="grid gap-2 py-4 px-4">
             <Button
               variant="outline"
               onClick={() => handleBulkAction('recheck')}

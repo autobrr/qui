@@ -7,13 +7,11 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { VisuallyHidden } from '@/components/ui/visually-hidden'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Filter, ChevronDown, ChevronUp } from 'lucide-react'
+import { Filter } from 'lucide-react'
 import { useTorrentCounts } from '@/hooks/useTorrentCounts'
 import { usePersistedFilters } from '@/hooks/usePersistedFilters'
-import { useInstanceStats } from '@/hooks/useInstanceStats'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { api } from '@/lib/api'
-import { formatSpeed } from '@/lib/utils'
 import type { Torrent } from '@/types'
 
 interface TorrentsProps {
@@ -27,9 +25,6 @@ export function Torrents({ instanceId, instanceName }: TorrentsProps) {
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false)
   const navigate = useNavigate()
   const search = useSearch({ strict: false }) as any
-  
-  // Get instance stats for speeds
-  const { data: stats } = useInstanceStats(instanceId)
   
   // Check if add torrent modal should be open
   const isAddTorrentModalOpen = search?.modal === 'add-torrent'
