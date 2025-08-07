@@ -686,6 +686,46 @@ paths:
                     url:
                       type: string
 
+  /api/instances/{instanceId}/torrents/counts:
+    get:
+      tags:
+        - Torrents
+      summary: Get torrent counts
+      description: Get counts of torrents by status, category, tag, and tracker
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+      responses:
+        '200':
+          description: Torrent counts by various criteria
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                    description: Total number of torrents
+                  status:
+                    type: object
+                    description: Counts by torrent status
+                    additionalProperties:
+                      type: integer
+                  categories:
+                    type: object
+                    description: Counts by category
+                    additionalProperties:
+                      type: integer
+                  tags:
+                    type: object
+                    description: Counts by tag
+                    additionalProperties:
+                      type: integer
+                  trackers:
+                    type: object
+                    description: Counts by tracker domain
+                    additionalProperties:
+                      type: integer
+
   /api/instances/{instanceId}/categories:
     get:
       tags:
