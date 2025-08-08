@@ -10,6 +10,8 @@ export function useInstanceStats(instanceId: number, options?: { enabled?: boole
     enabled,
     refetchInterval: pollingInterval,
     staleTime: 2000,
+    gcTime: 300000, // Keep in cache for 5 minutes
+    placeholderData: (previousData) => previousData, // Show old stats while fetching new
     retry: 1,
     retryDelay: 1000,
   })
