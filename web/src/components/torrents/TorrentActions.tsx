@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import React, { useState, useCallback } from 'react'
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
@@ -32,7 +32,7 @@ interface TorrentActionsProps {
   onComplete?: () => void
 }
 
-export function TorrentActions({ instanceId, selectedHashes, selectedTorrents = [], onComplete }: TorrentActionsProps) {
+export const TorrentActions = React.memo(function TorrentActions({ instanceId, selectedHashes, selectedTorrents = [], onComplete }: TorrentActionsProps) {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [deleteFiles, setDeleteFiles] = useState(false)
   const [showTagsDialog, setShowTagsDialog] = useState(false)
@@ -224,13 +224,13 @@ export function TorrentActions({ instanceId, selectedHashes, selectedTorrents = 
     },
   })
 
-  const handleDelete = async () => {
+  const handleDelete = useCallback(async () => {
     await mutation.mutateAsync({ action: 'delete', deleteFiles })
     setShowDeleteDialog(false)
     setDeleteFiles(false)
-  }
+  }, [mutation, deleteFiles])
 
-  const handleSetTags = async (tags: string[]) => {
+  const handleSetTags = useCallback(async (tags: string[]) => {
     // Use setTags action (with fallback to addTags for older versions)
     // The backend will handle the version check
     try {
@@ -245,12 +245,12 @@ export function TorrentActions({ instanceId, selectedHashes, selectedTorrents = 
     }
     
     setShowTagsDialog(false)
-  }
+  }, [mutation])
 
-  const handleSetCategory = async (category: string) => {
+  const handleSetCategory = useCallback(async (category: string) => {
     await mutation.mutateAsync({ action: 'setCategory', category })
     setShowCategoryDialog(false)
-  }
+  }, [mutation])
 
   return (
     <>
@@ -449,4 +449,4 @@ export function TorrentActions({ instanceId, selectedHashes, selectedTorrents = 
       />
     </>
   )
-}
+})

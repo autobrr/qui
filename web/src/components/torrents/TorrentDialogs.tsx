@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -33,7 +33,7 @@ interface SetTagsDialogProps {
   initialTags?: string[]
 }
 
-export function SetTagsDialog({
+export const SetTagsDialog = React.memo(function SetTagsDialog({
   open,
   onOpenChange,
   availableTags,
@@ -54,25 +54,23 @@ export function SetTagsDialog({
     wasOpen.current = open
   }, [open, initialTags])
 
-  const handleConfirm = () => {
+  const handleConfirm = useCallback(() => {
     const allTags = [...selectedTags]
     if (newTag.trim() && !allTags.includes(newTag.trim())) {
       allTags.push(newTag.trim())
     }
-    
     if (allTags.length > 0) {
       onConfirm(allTags)
-      // Reset state
       setSelectedTags([])
       setNewTag('')
     }
-  }
+  }, [selectedTags, newTag, onConfirm])
 
-  const handleCancel = () => {
+  const handleCancel = useCallback(() => {
     setSelectedTags([])
     setNewTag('')
     onOpenChange(false)
-  }
+  }, [onOpenChange])
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -171,7 +169,7 @@ export function SetTagsDialog({
       </AlertDialogContent>
     </AlertDialog>
   )
-}
+})
 
 interface SetCategoryDialogProps {
   open: boolean
@@ -183,7 +181,7 @@ interface SetCategoryDialogProps {
   initialCategory?: string
 }
 
-export function SetCategoryDialog({
+export const SetCategoryDialog = React.memo(function SetCategoryDialog({
   open,
   onOpenChange,
   availableCategories,
@@ -203,15 +201,15 @@ export function SetCategoryDialog({
     wasOpen.current = open
   }, [open, initialCategory])
 
-  const handleConfirm = () => {
+  const handleConfirm = useCallback(() => {
     onConfirm(categoryInput)
     setCategoryInput('')
-  }
+  }, [categoryInput, onConfirm])
 
-  const handleCancel = () => {
+  const handleCancel = useCallback(() => {
     setCategoryInput('')
     onOpenChange(false)
-  }
+  }, [onOpenChange])
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -270,7 +268,7 @@ export function SetCategoryDialog({
       </AlertDialogContent>
     </AlertDialog>
   )
-}
+})
 
 interface RemoveTagsDialogProps {
   open: boolean
@@ -282,7 +280,7 @@ interface RemoveTagsDialogProps {
   currentTags?: string[]
 }
 
-export function RemoveTagsDialog({
+export const RemoveTagsDialog = React.memo(function RemoveTagsDialog({
   open,
   onOpenChange,
   availableTags,
@@ -303,17 +301,17 @@ export function RemoveTagsDialog({
     wasOpen.current = open
   }, [open, currentTags, availableTags])
 
-  const handleConfirm = () => {
+  const handleConfirm = useCallback(() => {
     if (selectedTags.length > 0) {
       onConfirm(selectedTags)
       setSelectedTags([])
     }
-  }
+  }, [selectedTags, onConfirm])
 
-  const handleCancel = () => {
+  const handleCancel = useCallback(() => {
     setSelectedTags([])
     onOpenChange(false)
-  }
+  }, [onOpenChange])
 
   // Filter available tags to only show those that are on the selected torrents
   const relevantTags = availableTags.filter(tag => currentTags.includes(tag))
@@ -384,4 +382,4 @@ export function RemoveTagsDialog({
       </AlertDialogContent>
     </AlertDialog>
   )
-}
+})
