@@ -38,17 +38,6 @@ const DEFAULT_COLUMN_VISIBILITY = {
   priority: false,
 }
 const DEFAULT_COLUMN_SIZING = {}
-// ...existing code...
-// ...existing code...
-// After createColumns is defined
-const DEFAULT_COLUMN_ORDER = (() => {
-  const cols = createColumns(false)
-  return cols.map(col => {
-    if ('id' in col && col.id) return col.id
-    if ('accessorKey' in col && typeof col.accessorKey === 'string') return col.accessorKey
-    return null
-  }).filter((v): v is string => typeof v === 'string');
-})();
 import { useInstanceMetadata } from '@/hooks/useInstanceMetadata'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
@@ -149,6 +138,16 @@ function calculateMinWidth(text: string, padding: number = 48): number {
   return Math.max(60, Math.ceil(text.length * charWidth) + padding + extraPadding)
 }
 
+
+// Helper function to get default column order
+function getDefaultColumnOrder(): string[] {
+  const cols = createColumns(false)
+  return cols.map(col => {
+    if ('id' in col && col.id) return col.id
+    if ('accessorKey' in col && typeof col.accessorKey === 'string') return col.accessorKey
+    return null
+  }).filter((v): v is string => typeof v === 'string')
+}
 
 const createColumns = (incognitoMode: boolean): ColumnDef<Torrent>[] => [
   {
@@ -432,16 +431,7 @@ export function TorrentTableOptimized({ instanceId, filters, selectedTorrent, on
   // Column visibility with persistence
   const [columnVisibility, setColumnVisibility] = usePersistedColumnVisibility(DEFAULT_COLUMN_VISIBILITY)
   // Column order with persistence (get default order at runtime to avoid initialization order issues)
-  const [columnOrder, setColumnOrder] = usePersistedColumnOrder(
-    (() => {
-      const cols = createColumns(false)
-      return cols.map(col => {
-        if ('id' in col && col.id) return col.id
-        if ('accessorKey' in col && typeof col.accessorKey === 'string') return col.accessorKey
-        return null
-      }).filter((v): v is string => typeof v === 'string')
-    })()
-  )
+  const [columnOrder, setColumnOrder] = usePersistedColumnOrder(getDefaultColumnOrder())
   // Column sizing with persistence
   const [columnSizing, setColumnSizing] = usePersistedColumnSizing(DEFAULT_COLUMN_SIZING)
   
