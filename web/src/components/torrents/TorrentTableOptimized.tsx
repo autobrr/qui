@@ -582,6 +582,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       .filter(Boolean) as Torrent[]
   }, [selectedHashes, sortedTorrents])
 
+  // Virtualization setup with progressive loading
+  const { rows } = table.getRowModel()
+  const parentRef = useRef<HTMLDivElement>(null)
+  
   // Load more rows as user scrolls (progressive loading)
   const loadMore = useCallback((): void => {
     const newLoadedRows = Math.min(loadedRows + 100, sortedTorrents.length)
@@ -592,26 +596,20 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     }
   }, [loadedRows, sortedTorrents.length, hasLoadedAll, isLoadingMore, loadMoreTorrents])
 
-  // Virtualization setup with progressive loading
-  const { rows } = table.getRowModel()
-  const parentRef = useRef<HTMLDivElement>(null)
-
-  // Memoize virtualizer config to avoid unnecessary recalculations
-  const virtualizer = useMemo(() =>
-    useVirtualizer({
-      count: Math.min(loadedRows, rows.length),
-      getScrollElement: () => parentRef.current,
-      estimateSize: () => 40,
-      overscan: 20, // Increased for smoother scrolling
-      onChange: (instance: any) => {
-        const lastItem = instance.getVirtualItems().at(-1)
-        if (lastItem && lastItem.index >= loadedRows - 50) {
-          loadMore()
-        }
-      },
-    }),
-    [loadedRows, rows.length, loadMore]
-  )
+  // useVirtualizer must be called at the top level, not inside useMemo
+  const virtualizer = useVirtualizer({
+    count: Math.min(loadedRows, rows.length),
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 40,
+    overscan: 20, // Increased for smoother scrolling
+    onChange: (instance: any) => {
+      const lastItem = instance.getVirtualItems().at(-1)
+      if (lastItem && lastItem.index >= loadedRows - 50) {
+        loadMore()
+      }
+    },
+  })
+  
   const virtualRows = virtualizer.getVirtualItems()
 
 
@@ -873,22 +871,19 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   }
   
   // Drag and drop setup
-  // Memoize sensors for DnD
-  const sensors = useMemo(() =>
-    useSensors(
-      useSensor(MouseSensor, {
-        activationConstraint: {
-          distance: 8,
-        },
-      }),
-      useSensor(TouchSensor, {
-        activationConstraint: {
-          delay: 250,
-          tolerance: 5,
-        },
-      })
-    ),
-    []
+  // Sensors must be called at the top level, not inside useMemo
+  const sensors = useSensors(
+    useSensor(MouseSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 250,
+        tolerance: 5,
+      },
+    })
   )
   
   const handleDragEnd = useCallback((event: DragEndEvent) => {
