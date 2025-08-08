@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import type { Torrent, TorrentResponse } from '@/types'
@@ -63,6 +63,10 @@ export function useTorrentsList(
     setHasLoadedAll(false)
   }, [filters, search])
   
+  // Track previous filters to detect filter changes
+  const previousFiltersRef = useRef(filters)
+  const previousSearchRef = useRef(search)
+  
   // Initial load
   const { data: initialData, isLoading: initialLoading, isFetching } = useQuery<TorrentResponse>({
     queryKey: ['torrents-list', instanceId, currentPage, filters, search],
@@ -76,7 +80,22 @@ export function useTorrentsList(
     }),
     staleTime: 2000, // 2 seconds - match minimum backend cache TTL
     gcTime: 300000, // Keep in cache for 5 minutes (was cacheTime in v4, now gcTime in v5)
-    placeholderData: (previousData: TorrentResponse | undefined) => previousData, // Show old data while fetching (was keepPreviousData in v4)
+    placeholderData: (previousData: TorrentResponse | undefined) => {
+      // Only show previous data if filters and search haven't changed
+      // This prevents showing wrong data when switching filters
+      const filtersChanged = JSON.stringify(previousFiltersRef.current) !== JSON.stringify(filters)
+      const searchChanged = previousSearchRef.current !== search
+      
+      if (filtersChanged || searchChanged) {
+        // Filters/search changed - don't show old data from different filter
+        previousFiltersRef.current = filters
+        previousSearchRef.current = search
+        return undefined
+      }
+      
+      // Same filters - safe to show previous data (e.g. during refetch)
+      return previousData
+    },
     refetchInterval: 3000, // Poll every 3 seconds for more responsive updates
     refetchIntervalInBackground: false, // Don't poll when tab is not active
     enabled,
