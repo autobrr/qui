@@ -98,6 +98,7 @@ interface TorrentTableOptimizedProps {
   addTorrentModalOpen?: boolean
   onAddTorrentModalChange?: (open: boolean) => void
   onFilteredDataUpdate?: (torrents: Torrent[], total: number, counts?: any, categories?: any, tags?: string[]) => void
+  filterButton?: React.ReactNode
 }
 
 
@@ -386,7 +387,7 @@ const createColumns = (incognitoMode: boolean): ColumnDef<Torrent>[] => [
   },
 ]
 
-export function TorrentTableOptimized({ instanceId, filters, selectedTorrent, onTorrentSelect, addTorrentModalOpen, onAddTorrentModalChange, onFilteredDataUpdate }: TorrentTableOptimizedProps) {
+export function TorrentTableOptimized({ instanceId, filters, selectedTorrent, onTorrentSelect, addTorrentModalOpen, onAddTorrentModalChange, onFilteredDataUpdate, filterButton }: TorrentTableOptimizedProps) {
   // State management
   const [sorting, setSorting] = usePersistedColumnSorting([])
   const [globalFilter, setGlobalFilter] = useState('')
@@ -916,6 +917,12 @@ export function TorrentTableOptimized({ instanceId, filters, selectedTorrent, on
       <div className="flex flex-col gap-2 flex-shrink-0 sm:mt-3">
         {/* Search bar row */}
         <div className="flex items-center gap-1 sm:gap-2">
+          {/* Filter button - only on desktop */}
+          {filterButton && (
+            <div className="hidden xl:block">
+              {filterButton}
+            </div>
+          )}
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
             <Input
