@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, memo } from 'react'
 import {
   Accordion,
   AccordionContent,
@@ -59,6 +59,9 @@ interface FilterSidebarProps {
   torrentCounts?: Record<string, number>
   categories?: Record<string, { name: string; savePath: string }>
   tags?: string[]
+  collapsed?: boolean
+  onCollapsedChange?: (collapsed: boolean) => void
+  className?: string
 }
 
 
@@ -79,14 +82,16 @@ const TORRENT_STATES: Array<{ value: string; label: string; icon: LucideIcon }> 
   { value: 'moving', label: 'Moving', icon: MoveRight },
 ]
 
-export function FilterSidebar({
+const FilterSidebarComponent = ({
   instanceId,
   selectedFilters,
   onFilterChange,
-  torrentCounts,
+  torrentCounts = {},
   categories: propsCategories,
   tags: propsTags,
-}: FilterSidebarProps) {
+  collapsed = false,
+  className = '',
+}: FilterSidebarProps) => {
   // Use incognito mode hook
   const [incognitoMode] = useIncognitoMode()
   
@@ -190,21 +195,26 @@ export function FilterSidebar({
     selectedFilters.tags.length > 0 ||
     selectedFilters.trackers.length > 0
 
+  // Simple slide animation - sidebar slides in/out from the left
   return (
-    <div className="w-full h-full flex flex-col xl:min-w-fit xl:max-w-xs xl:flex-shrink-0 xl:border-r xl:bg-muted/10">
-      <ScrollArea className="h-full flex-1 overscroll-contain">
-        <div className="p-4">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold">Filters</h3>
-            {hasActiveFilters && (
-              <button
-                onClick={clearFilters}
-                className="text-xs text-muted-foreground hover:text-foreground"
-              >
-                Clear all
-              </button>
-            )}
-          </div>
+    <div 
+      className={`${className} h-full w-full xl:max-w-xs flex flex-col xl:flex-shrink-0 xl:border-r xl:bg-muted/10 transition-transform duration-300 ease-in-out ${
+        collapsed ? '-translate-x-full' : 'translate-x-0'
+      }`}
+    >
+        <ScrollArea className="h-full flex-1 overscroll-contain">
+          <div className="p-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold">Filters</h3>
+              {hasActiveFilters && (
+                <button
+                  onClick={clearFilters}
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Clear all
+                </button>
+              )}
+            </div>
 
           <Accordion 
             type="multiple" 
@@ -295,7 +305,7 @@ export function FilterSidebar({
                             checked={selectedFilters.categories.includes(name)}
                             onCheckedChange={() => handleCategoryToggle(name)}
                           />
-                          <span className="text-sm flex-1 truncate" title={name}>
+                          <span className="text-sm flex-1 truncate w-8" title={name}>
                             {name}
                           </span>
                           <span className="text-xs text-muted-foreground">
@@ -378,7 +388,7 @@ export function FilterSidebar({
                             checked={selectedFilters.tags.includes(tag)}
                             onCheckedChange={() => handleTagToggle(tag)}
                           />
-                          <span className="text-sm flex-1 truncate" title={tag}>
+                          <span className="text-sm flex-1 truncate w-8" title={tag}>
                             {tag}
                           </span>
                           <span className="text-xs text-muted-foreground">
@@ -451,7 +461,7 @@ export function FilterSidebar({
                         checked={selectedFilters.trackers.includes(tracker)}
                         onCheckedChange={() => handleTrackerToggle(tracker)}
                       />
-                      <span className="text-sm flex-1 truncate" title={tracker}>
+                      <span className="text-sm flex-1 truncate w-8" title={tracker}>
                         {tracker}
                       </span>
                       <span className="text-xs text-muted-foreground">
@@ -463,8 +473,8 @@ export function FilterSidebar({
               </AccordionContent>
             </AccordionItem>
           </Accordion>
-        </div>
-      </ScrollArea>
+          </div>
+        </ScrollArea>
       
       {/* Dialogs */}
       <CreateTagDialog
@@ -512,3 +522,17 @@ export function FilterSidebar({
     </div>
   )
 }
+
+// Memoize the component to prevent unnecessary re-renders during polling
+export const FilterSidebar = memo(FilterSidebarComponent, (prevProps, nextProps) => {
+  // Custom comparison function - only re-render if these props change
+  return (
+    prevProps.instanceId === nextProps.instanceId &&
+    prevProps.collapsed === nextProps.collapsed &&
+    JSON.stringify(prevProps.selectedFilters) === JSON.stringify(nextProps.selectedFilters) &&
+    JSON.stringify(prevProps.torrentCounts) === JSON.stringify(nextProps.torrentCounts) &&
+    JSON.stringify(prevProps.categories) === JSON.stringify(nextProps.categories) &&
+    JSON.stringify(prevProps.tags) === JSON.stringify(nextProps.tags) &&
+    prevProps.className === nextProps.className
+  )
+})
