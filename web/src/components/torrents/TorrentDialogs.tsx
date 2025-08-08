@@ -1,4 +1,5 @@
-import { memo, useState, useEffect, useRef, useCallback, ChangeEvent, KeyboardEvent } from 'react'
+import { memo, useState, useEffect, useRef, useCallback } from 'react'
+import type { ChangeEvent, KeyboardEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
