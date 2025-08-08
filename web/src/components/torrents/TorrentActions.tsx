@@ -24,7 +24,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { ChevronDown, Play, Pause, Trash2, CheckCircle, Tag, Folder, Radio, ArrowUp, ArrowDown, ChevronsUp, ChevronsDown, Settings2, Sparkles } from 'lucide-react'
-import { SetTagsDialog, SetCategoryDialog } from './TorrentDialogs'
+import { SetTagsDialog, SetCategoryDialog, RemoveTagsDialog } from './TorrentDialogs'
 
 interface TorrentActionsProps {
   instanceId: number
