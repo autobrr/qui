@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Filter } from 'lucide-react'
 import { usePersistedFilters } from '@/hooks/usePersistedFilters'
+import { usePersistedFilterSidebarState } from '@/hooks/usePersistedFilterSidebarState'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import type { Torrent } from '@/types'
 
@@ -18,6 +19,7 @@ interface TorrentsProps {
 
 export function Torrents({ instanceId, instanceName }: TorrentsProps) {
   const [filters, setFilters] = usePersistedFilters()
+  const [filterSidebarCollapsed, setFilterSidebarCollapsed] = usePersistedFilterSidebarState(false)
   const [selectedTorrent, setSelectedTorrent] = useState<Torrent | null>(null)
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false)
   const navigate = useNavigate()
@@ -105,10 +107,26 @@ export function Torrents({ instanceId, instanceName }: TorrentsProps) {
            filters.trackers.length
   }, [filters])
 
+  // Create the filter toggle button for the table toolbar
+  const filterToggleButton = (
+    <Button
+      variant="outline"
+      size="icon"
+      onClick={() => setFilterSidebarCollapsed(!filterSidebarCollapsed)}
+      className="relative"
+      title={filterSidebarCollapsed ? "Show filters" : "Hide filters"}
+    >
+      <Filter className="h-4 w-4" />
+      {activeFilterCount > 0 && (
+        <span className="absolute -top-1 -right-1 h-2 w-2 bg-primary rounded-full" />
+      )}
+    </Button>
+  )
+
   return (
-    <div className="flex h-full">
-      {/* Desktop Sidebar - hidden on mobile */}
-      <div className="hidden xl:block">
+    <div className="flex h-full relative">
+      {/* Desktop Sidebar - hidden on mobile, with slide animation */}
+      <div className={`hidden xl:block ${filterSidebarCollapsed ? 'w-0' : 'w-full xl:max-w-xs'} transition-all duration-300 ease-in-out overflow-hidden`}>
         <FilterSidebar
           instanceId={instanceId}
           selectedFilters={filters}
@@ -116,6 +134,8 @@ export function Torrents({ instanceId, instanceName }: TorrentsProps) {
           torrentCounts={torrentCounts}
           categories={categories}
           tags={tags}
+          collapsed={filterSidebarCollapsed}
+          onCollapsedChange={setFilterSidebarCollapsed}
         />
       </div>
       
@@ -179,6 +199,7 @@ export function Torrents({ instanceId, instanceName }: TorrentsProps) {
               addTorrentModalOpen={isAddTorrentModalOpen}
               onAddTorrentModalChange={handleAddTorrentModalChange}
               onFilteredDataUpdate={handleFilteredDataUpdate}
+              filterButton={filterToggleButton}
             />
           </div>
         </div>
