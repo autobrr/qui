@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react'
+import { memo, useState, useCallback, ChangeEvent } from 'react'
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
@@ -32,7 +32,7 @@ interface TorrentActionsProps {
   onComplete?: () => void
 }
 
-export const TorrentActions = React.memo(function TorrentActions({ instanceId, selectedHashes, selectedTorrents = [], onComplete }: TorrentActionsProps) {
+export const TorrentActions = memo(function TorrentActions({ instanceId, selectedHashes, selectedTorrents = [], onComplete }: TorrentActionsProps) {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [deleteFiles, setDeleteFiles] = useState(false)
   const [showTagsDialog, setShowTagsDialog] = useState(false)
@@ -70,7 +70,7 @@ export const TorrentActions = React.memo(function TorrentActions({ instanceId, s
         enable: data.enable,
       })
     },
-    onSuccess: async (_, variables) => {
+  onSuccess: async (_: unknown, variables: any) => {
       // For delete operations, force immediate refetch
       if (variables.action === 'delete') {
         // Remove the query data to force immediate UI update
@@ -115,7 +115,7 @@ export const TorrentActions = React.memo(function TorrentActions({ instanceId, s
           }
           
           // Optimistically update torrent states in all cached queries
-          queries.forEach(query => {
+          queries.forEach((query: any) => {
             queryClient.setQueryData(query.queryKey, (oldData: any) => {
               if (!oldData?.torrents) return oldData
               
@@ -213,7 +213,7 @@ export const TorrentActions = React.memo(function TorrentActions({ instanceId, s
           break
       }
     },
-    onError: (error, variables) => {
+  onError: (error: any, variables: any) => {
       const count = selectedHashes.length
       const torrentText = count === 1 ? 'torrent' : 'torrents'
       const actionText = variables.action === 'recheck' ? 'recheck' : variables.action
@@ -407,7 +407,7 @@ export const TorrentActions = React.memo(function TorrentActions({ instanceId, s
               type="checkbox"
               id="deleteFiles"
               checked={deleteFiles}
-              onChange={(e) => setDeleteFiles(e.target.checked)}
+              onChange={(e: ChangeEvent<HTMLInputElement>) => setDeleteFiles(e.target.checked)}
               className="rounded border-input"
             />
             <label htmlFor="deleteFiles" className="text-sm font-medium">

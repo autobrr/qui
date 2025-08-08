@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import { memo, useState, useEffect, useRef, useCallback, ChangeEvent, KeyboardEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -33,7 +33,7 @@ interface SetTagsDialogProps {
   initialTags?: string[]
 }
 
-export const SetTagsDialog = React.memo(function SetTagsDialog({
+export const SetTagsDialog = memo(function SetTagsDialog({
   open,
   onOpenChange,
   availableTags,
@@ -54,7 +54,7 @@ export const SetTagsDialog = React.memo(function SetTagsDialog({
     wasOpen.current = open
   }, [open, initialTags])
 
-  const handleConfirm = useCallback(() => {
+  const handleConfirm = useCallback((): void => {
     const allTags = [...selectedTags]
     if (newTag.trim() && !allTags.includes(newTag.trim())) {
       allTags.push(newTag.trim())
@@ -66,7 +66,7 @@ export const SetTagsDialog = React.memo(function SetTagsDialog({
     }
   }, [selectedTags, newTag, onConfirm])
 
-  const handleCancel = useCallback(() => {
+  const handleCancel = useCallback((): void => {
     setSelectedTags([])
     setNewTag('')
     onOpenChange(false)
@@ -93,11 +93,11 @@ export const SetTagsDialog = React.memo(function SetTagsDialog({
                       <Checkbox
                         id={`tag-${tag}`}
                         checked={selectedTags.includes(tag)}
-                        onCheckedChange={(checked) => {
+                        onCheckedChange={(checked: boolean | string) => {
                           if (checked) {
                             setSelectedTags([...selectedTags, tag])
                           } else {
-                            setSelectedTags(selectedTags.filter(t => t !== tag))
+                            setSelectedTags(selectedTags.filter((t: string) => t !== tag))
                           }
                         }}
                       />
@@ -121,9 +121,9 @@ export const SetTagsDialog = React.memo(function SetTagsDialog({
               <Input
                 id="newTag"
                 value={newTag}
-                onChange={(e) => setNewTag(e.target.value)}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => setNewTag(e.target.value)}
                 placeholder="Enter new tag"
-                onKeyDown={(e) => {
+                onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
                   if (e.key === 'Enter' && newTag.trim()) {
                     e.preventDefault()
                     if (!selectedTags.includes(newTag.trim())) {
@@ -181,7 +181,7 @@ interface SetCategoryDialogProps {
   initialCategory?: string
 }
 
-export const SetCategoryDialog = React.memo(function SetCategoryDialog({
+export const SetCategoryDialog = memo(function SetCategoryDialog({
   open,
   onOpenChange,
   availableCategories,
@@ -223,7 +223,7 @@ export const SetCategoryDialog = React.memo(function SetCategoryDialog({
         <div className="py-4 space-y-4">
           <div className="space-y-2">
             <Label>Category</Label>
-            <Select value={categoryInput || "__none__"} onValueChange={(value) => setCategoryInput(value === "__none__" ? "" : value)}>
+            <Select value={categoryInput || "__none__"} onValueChange={(value: string) => setCategoryInput(value === "__none__" ? "" : value)}>
               <SelectTrigger>
                 <SelectValue placeholder="Select a category..." />
               </SelectTrigger>
@@ -247,8 +247,8 @@ export const SetCategoryDialog = React.memo(function SetCategoryDialog({
               id="newCategory"
               placeholder="Enter new category name"
               value={categoryInput && categoryInput !== "__none__" && (!availableCategories || !Object.keys(availableCategories).includes(categoryInput)) ? categoryInput : ''}
-              onChange={(e) => setCategoryInput(e.target.value)}
-              onKeyDown={(e) => {
+              onChange={(e: ChangeEvent<HTMLInputElement>) => setCategoryInput(e.target.value)}
+              onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
                 if (e.key === 'Enter') {
                   handleConfirm()
                 }
@@ -280,7 +280,7 @@ interface RemoveTagsDialogProps {
   currentTags?: string[]
 }
 
-export const RemoveTagsDialog = React.memo(function RemoveTagsDialog({
+export const RemoveTagsDialog = memo(function RemoveTagsDialog({
   open,
   onOpenChange,
   availableTags,

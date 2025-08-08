@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react'
+import { memo, useState, useMemo, useRef, useCallback, useEffect } from 'react'
 import {
   useReactTable,
   getCoreRowModel,
@@ -405,7 +405,7 @@ const createColumns = (incognitoMode: boolean): ColumnDef<Torrent>[] => [
   },
 ]
 
-export function TorrentTableOptimized({ instanceId, filters, selectedTorrent, onTorrentSelect, addTorrentModalOpen, onAddTorrentModalChange, onFilteredDataUpdate }: TorrentTableOptimizedProps) {
+export const TorrentTableOptimized = memo(function TorrentTableOptimized({ instanceId, filters, selectedTorrent, onTorrentSelect, addTorrentModalOpen, onAddTorrentModalChange, onFilteredDataUpdate }: TorrentTableOptimizedProps) {
   // State management
   // Move default values outside the component for stable references
   // (This should be at module scope, not inside the component)
@@ -1501,4 +1501,4 @@ export function TorrentTableOptimized({ instanceId, filters, selectedTorrent, on
       />
     </div>
   )
-}
+});

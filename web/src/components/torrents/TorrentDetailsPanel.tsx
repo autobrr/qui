@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { memo, useState, useEffect, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -31,7 +31,8 @@ function getTrackerStatusBadge(status: number) {
   }
 }
 
-export function TorrentDetailsPanel({ instanceId, torrent }: TorrentDetailsPanelProps) {
+
+export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceId, torrent }: TorrentDetailsPanelProps) {
   const [activeTab, setActiveTab] = useState('general')
 
   // Reset tab when torrent changes
@@ -62,6 +63,14 @@ export function TorrentDetailsPanel({ instanceId, torrent }: TorrentDetailsPanel
 
   if (!torrent) return null
 
+  const handleTabChange = useCallback((tab: string) => {
+    setActiveTab(tab)
+  }, [])
+
+  // ...rest of the component
+
+});
+
   return (
     <div className="h-full flex flex-col">
       <div className="flex items-center justify-between px-4 py-3 sm:px-6 border-b bg-muted/30">
@@ -70,7 +79,7 @@ export function TorrentDetailsPanel({ instanceId, torrent }: TorrentDetailsPanel
         </h3>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="flex-1 flex flex-col">
         <TabsList className="w-full justify-start rounded-none border-b h-10 bg-background px-4 sm:px-6 py-0">
           <TabsTrigger 
             value="general" 
