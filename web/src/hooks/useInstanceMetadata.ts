@@ -18,7 +18,7 @@ interface InstanceMetadata {
  * This prevents duplicate API calls when multiple components need the same data
  */
 export function useInstanceMetadata(instanceId: number) {
-  return useQuery<InstanceMetadata>({
+  const query = useQuery<InstanceMetadata>({
     queryKey: ['instance-metadata', instanceId],
     queryFn: async () => {
       // Fetch all metadata in parallel for efficiency
@@ -34,5 +34,9 @@ export function useInstanceMetadata(instanceId: number) {
     gcTime: 300000, // Keep in cache for 5 minutes (was cacheTime in v4, now gcTime in v5)
     refetchInterval: 30000, // Refetch every 30 seconds
     refetchIntervalInBackground: false, // Don't refetch when tab is not active
+    // IMPORTANT: Keep showing previous data while fetching new data
+    placeholderData: (previousData) => previousData,
   })
+  
+  return query
 }

@@ -25,9 +25,6 @@ export function Torrents({ instanceId, instanceName }: TorrentsProps) {
   const navigate = useNavigate()
   const search = useSearch({ strict: false }) as any
   
-  // Store dynamic counts from filtered results
-  const [dynamicCounts, setDynamicCounts] = useState<Record<string, number>>({})
-  
   // Check if add torrent modal should be open
   const isAddTorrentModalOpen = search?.modal === 'add-torrent'
   
@@ -82,54 +79,19 @@ export function Torrents({ instanceId, instanceName }: TorrentsProps) {
       counts[`tracker:${tracker}`] = count
     })
     
-    // Merge with dynamic counts for active filters
-    // Dynamic counts override the base counts for active filters
-    return { ...counts, ...dynamicCounts }
-  }, [countsData, dynamicCounts])
+    // Return the real counts from backend - don't override with filtered results
+    return counts
+  }, [countsData])
   
   const handleTorrentSelect = (torrent: Torrent | null) => {
     setSelectedTorrent(torrent)
   }
 
-  // Callback to update dynamic counts from filtered results
-  const handleFilteredDataUpdate = useCallback((_torrents: Torrent[], total: number) => {
-    // Only update dynamic counts if filters are active
-    const hasFilters = filters.status.length > 0 || 
-                      filters.categories.length > 0 || 
-                      filters.tags.length > 0 || 
-                      filters.trackers.length > 0
-    
-    if (!hasFilters) {
-      // Clear dynamic counts when no filters
-      setDynamicCounts({})
-      return
-    }
-    
-    // Calculate counts for the filtered torrents
-    const newCounts: Record<string, number> = {}
-    
-    // If filtering by a single status, update that status count
-    if (filters.status.length === 1) {
-      newCounts[`status:${filters.status[0]}`] = total
-    }
-    
-    // If filtering by a single category, update that category count
-    if (filters.categories.length === 1) {
-      newCounts[`category:${filters.categories[0]}`] = total
-    }
-    
-    // If filtering by a single tag, update that tag count
-    if (filters.tags.length === 1) {
-      newCounts[`tag:${filters.tags[0]}`] = total
-    }
-    
-    // If filtering by a single tracker, update that tracker count
-    if (filters.trackers.length === 1) {
-      newCounts[`tracker:${filters.trackers[0]}`] = total
-    }
-    
-    setDynamicCounts(newCounts)
-  }, [filters])
+  // Callback when filtered data updates - no longer used for dynamic counts
+  const handleFilteredDataUpdate = useCallback((_torrents: Torrent[], _total: number) => {
+    // We don't update counts based on filtered results anymore
+    // Counts should always show the real totals from backend, not filtered counts
+  }, [])
 
   // Calculate total active filters for badge
   const activeFilterCount = useMemo(() => {
