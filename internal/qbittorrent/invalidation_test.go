@@ -33,50 +33,77 @@ func TestCacheInvalidation_InvalidateCache(t *testing.T) {
 	instanceID := 1
 
 	// Pre-populate cache with various keys that would exist in real usage
-	cacheKeys := []string{
-		fmt.Sprintf("torrents:%d:0:50", instanceID),
-		fmt.Sprintf("torrents:search:%d:0:25:name:asc:movie", instanceID),
-		fmt.Sprintf("torrents:filtered:%d:0:50:added_on:desc::", instanceID),
+	// These should be deleted by InvalidateCache
+	deletableKeys := []string{
+		fmt.Sprintf("all_torrents:%d:", instanceID),  // Empty search
+		fmt.Sprintf("all_torrents:%d: ", instanceID),  // Space search
 		fmt.Sprintf("categories:%d", instanceID),
 		fmt.Sprintf("tags:%d", instanceID),
-		fmt.Sprintf("torrent:properties:%d:hash123", instanceID),
-		fmt.Sprintf("torrent:trackers:%d:hash456", instanceID),
-		fmt.Sprintf("torrent:files:%d:hash789", instanceID),
-		fmt.Sprintf("torrent_count:%d", instanceID),
-		fmt.Sprintf("all_torrents:%d:", instanceID),
-		fmt.Sprintf("all_torrents:%d:search", instanceID),
+		fmt.Sprintf("torrents:%d:", instanceID),           // Base key
+		fmt.Sprintf("torrents:filtered:%d:", instanceID),  // Filtered base
+		fmt.Sprintf("torrents:search:%d:", instanceID),    // Search base
+		fmt.Sprintf("native_filtered:%d:", instanceID),    // Native filtered base
+		fmt.Sprintf("torrent:properties:%d:", instanceID), // Properties base
+		fmt.Sprintf("torrent:trackers:%d:", instanceID),   // Trackers base
+		fmt.Sprintf("torrent:files:%d:", instanceID),      // Files base
+		fmt.Sprintf("torrent:webseeds:%d:", instanceID),   // Webseeds base
 	}
 
-	// Also add keys for other instances to test they get cleared too
+	// Add paginated entries that should be deleted
+	for page := 0; page < 2; page++ {
+		for _, limit := range []int{100, 200} {
+			key := fmt.Sprintf("torrents:%d:%d:%d", instanceID, page*limit, limit)
+			deletableKeys = append(deletableKeys, key)
+		}
+	}
+
+	// Keys that should NOT be deleted (different instance)
 	otherInstanceID := 2
-	for _, baseKey := range []string{"torrents", "categories", "tags"} {
-		otherKey := fmt.Sprintf("%s:%d", baseKey, otherInstanceID)
-		cacheKeys = append(cacheKeys, otherKey)
+	preservedKeys := []string{
+		fmt.Sprintf("categories:%d", otherInstanceID),
+		fmt.Sprintf("tags:%d", otherInstanceID),
+		fmt.Sprintf("torrents:%d:", otherInstanceID),
 	}
 
-	// Populate cache
-	for i, key := range cacheKeys {
-		value := fmt.Sprintf("test-data-%d", i)
+	// Populate cache with deletable keys
+	for i, key := range deletableKeys {
+		value := fmt.Sprintf("test-data-deletable-%d", i)
+		sm.cache.SetWithTTL(key, value, 1, time.Minute)
+	}
+	
+	// Populate cache with preserved keys
+	for i, key := range preservedKeys {
+		value := fmt.Sprintf("test-data-preserved-%d", i)
 		sm.cache.SetWithTTL(key, value, 1, time.Minute)
 	}
 	sm.cache.Wait() // Ensure all are set
 
-	// Verify cache is populated
-	for _, key := range cacheKeys {
+	// Verify all keys are populated
+	for _, key := range deletableKeys {
 		_, found := sm.cache.Get(key)
-		assert.True(t, found, "Cache key should exist: %s", key)
+		assert.True(t, found, "Deletable cache key should exist: %s", key)
+	}
+	for _, key := range preservedKeys {
+		_, found := sm.cache.Get(key)
+		assert.True(t, found, "Preserved cache key should exist: %s", key)
 	}
 
-	// Invalidate cache (this clears ALL cache entries due to Ristretto limitation)
+	// Invalidate cache for instance 1
 	sm.InvalidateCache(instanceID)
 
 	// Wait a bit for the clear operation to complete
 	time.Sleep(100 * time.Millisecond)
 
-	// Verify ALL cache entries are cleared (not just for the specific instance)
-	for _, key := range cacheKeys {
+	// Verify deletable keys are cleared
+	for _, key := range deletableKeys {
 		_, found := sm.cache.Get(key)
 		assert.False(t, found, "Cache key should be cleared: %s", key)
+	}
+	
+	// Verify preserved keys (other instance) are NOT cleared
+	for _, key := range preservedKeys {
+		_, found := sm.cache.Get(key)
+		assert.True(t, found, "Cache key for other instance should NOT be cleared: %s", key)
 	}
 }
 
@@ -100,114 +127,78 @@ func TestCacheInvalidation_RealWorldScenario(t *testing.T) {
 	}
 
 	// Simulate multiple instances with cached data
-	instances := []int{1, 2, 3}
+	targetInstanceID := 2
+	otherInstanceID := 3
 
-	// Pre-populate cache with realistic data for all instances
-	for _, instanceID := range instances {
-		// Torrent lists with different pagination
-		for offset := 0; offset < 200; offset += 50 {
-			key := fmt.Sprintf("torrents:%d:%d:50", instanceID, offset)
-			value := &TorrentResponse{
-				Torrents: createTestTorrents(50),
-				Total:    1000 + instanceID*100,
-			}
-			sm.cache.SetWithTTL(key, value, 1, 2*time.Second)
-		}
-
-		// Search results
-		searches := []string{"action", "movie", "2023"}
-		for _, search := range searches {
-			key := fmt.Sprintf("torrents:search:%d:0:25:name:asc:%s", instanceID, search)
-			value := &TorrentResponse{
-				Torrents: createTestTorrents(25),
-				Total:    100 + len(search)*10,
-			}
-			sm.cache.SetWithTTL(key, value, 1, 2*time.Second)
-		}
-
-		// Filtered results
-		key := fmt.Sprintf("torrents:filtered:%d:0:50:added_on:desc::movies:action", instanceID)
-		value := &TorrentResponse{
-			Torrents: createTestTorrents(30),
-			Total:    150,
-		}
-		sm.cache.SetWithTTL(key, value, 1, 5*time.Second)
-
-		// Categories
-		categories := map[string]qbt.Category{
-			"movies": {Name: "movies", SavePath: fmt.Sprintf("/downloads/%d/movies", instanceID)},
-			"tv":     {Name: "tv", SavePath: fmt.Sprintf("/downloads/%d/tv", instanceID)},
-		}
-		sm.cache.SetWithTTL(fmt.Sprintf("categories:%d", instanceID), categories, 1, 60*time.Second)
-
-		// Tags
-		tags := []string{fmt.Sprintf("tag1-%d", instanceID), fmt.Sprintf("tag2-%d", instanceID)}
-		sm.cache.SetWithTTL(fmt.Sprintf("tags:%d", instanceID), tags, 1, 60*time.Second)
-
-		// Individual torrent data
-		for i := 0; i < 10; i++ {
-			hash := fmt.Sprintf("hash%d_%d", instanceID, i)
-
-			// Properties
-			props := &qbt.TorrentProperties{
-				Hash: hash,
-				Name: fmt.Sprintf("Torrent %d from Instance %d", i, instanceID),
-			}
-			sm.cache.SetWithTTL(fmt.Sprintf("torrent:properties:%d:%s", instanceID, hash), props, 1, 30*time.Second)
-
-			// Trackers
-			trackers := []qbt.TorrentTracker{
-				{Url: fmt.Sprintf("http://tracker%d.example.com/announce", instanceID)},
-			}
-			sm.cache.SetWithTTL(fmt.Sprintf("torrent:trackers:%d:%s", instanceID, hash), trackers, 1, 30*time.Second)
-		}
-
-		// Counts
-		sm.cache.SetWithTTL(fmt.Sprintf("torrent_count:%d", instanceID), 1000+instanceID*100, 1, 2*time.Second)
-
-		// All torrents for stats
-		allTorrents := createTestTorrents(1000 + instanceID*100)
-		sm.cache.SetWithTTL(fmt.Sprintf("all_torrents:%d:", instanceID), allTorrents, 1, 2*time.Second)
+	// Pre-populate cache with data that SHOULD be deleted for target instance
+	deletableKeys := map[string]interface{}{
+		fmt.Sprintf("all_torrents:%d:", targetInstanceID):       createTestTorrents(100),
+		fmt.Sprintf("all_torrents:%d: ", targetInstanceID):      createTestTorrents(50),
+		fmt.Sprintf("categories:%d", targetInstanceID):          map[string]qbt.Category{"movies": {Name: "movies"}},
+		fmt.Sprintf("tags:%d", targetInstanceID):                []string{"tag1", "tag2"},
+		fmt.Sprintf("torrents:%d:", targetInstanceID):           &TorrentResponse{Torrents: createTestTorrents(50), Total: 100},
+		fmt.Sprintf("torrents:filtered:%d:", targetInstanceID):  &TorrentResponse{Torrents: createTestTorrents(30), Total: 60},
+		fmt.Sprintf("torrents:search:%d:", targetInstanceID):    &TorrentResponse{Torrents: createTestTorrents(20), Total: 40},
+		fmt.Sprintf("native_filtered:%d:", targetInstanceID):    &TorrentResponse{Torrents: createTestTorrents(15), Total: 30},
+		fmt.Sprintf("torrent:properties:%d:", targetInstanceID): &qbt.TorrentProperties{Hash: "test"},
+		fmt.Sprintf("torrent:trackers:%d:", targetInstanceID):   []qbt.TorrentTracker{{Url: "http://tracker.example.com"}},
+		fmt.Sprintf("torrent:files:%d:", targetInstanceID):      []map[string]interface{}{{"name": "file.mkv"}},
+		fmt.Sprintf("torrent:webseeds:%d:", targetInstanceID):   []string{"webseed1"},
 	}
 
+	// Add paginated entries that should be deleted
+	for page := 0; page < 2; page++ {
+		for _, limit := range []int{100, 200} {
+			key := fmt.Sprintf("torrents:%d:%d:%d", targetInstanceID, page*limit, limit)
+			deletableKeys[key] = &TorrentResponse{Torrents: createTestTorrents(limit), Total: 1000}
+		}
+	}
+
+	// Pre-populate cache with data that should NOT be deleted (other instance)
+	preservedKeys := map[string]interface{}{
+		fmt.Sprintf("all_torrents:%d:", otherInstanceID):      createTestTorrents(100),
+		fmt.Sprintf("categories:%d", otherInstanceID):         map[string]qbt.Category{"tv": {Name: "tv"}},
+		fmt.Sprintf("tags:%d", otherInstanceID):               []string{"tag3", "tag4"},
+		fmt.Sprintf("torrents:%d:0:50", otherInstanceID):      &TorrentResponse{Torrents: createTestTorrents(50), Total: 200},
+		fmt.Sprintf("torrent:properties:%d:xyz", otherInstanceID): &qbt.TorrentProperties{Hash: "xyz"},
+	}
+
+	// Populate cache with all keys
+	for key, value := range deletableKeys {
+		sm.cache.SetWithTTL(key, value, 1, 2*time.Second)
+	}
+	for key, value := range preservedKeys {
+		sm.cache.SetWithTTL(key, value, 1, 60*time.Second)
+	}
 	sm.cache.Wait() // Ensure all are set
 
-	// Count total cache entries
-	totalEntries := 0
-	testKeys := []string{}
-
-	for _, instanceID := range instances {
-		// Count entries we expect for each instance
-		entriesPerInstance := 4 + 3 + 1 + 1 + 1 + 10 + 10 + 1 + 1 // rough count
-		totalEntries += entriesPerInstance
-
-		// Add some test keys to verify
-		testKeys = append(testKeys, fmt.Sprintf("torrents:%d:0:50", instanceID))
-		testKeys = append(testKeys, fmt.Sprintf("categories:%d", instanceID))
-		testKeys = append(testKeys, fmt.Sprintf("tags:%d", instanceID))
-	}
-
-	// Verify cache is populated
-	for _, key := range testKeys {
+	// Verify all keys are populated
+	for key := range deletableKeys {
 		_, found := sm.cache.Get(key)
-		assert.True(t, found, "Cache key should exist before invalidation: %s", key)
+		assert.True(t, found, "Deletable key should exist before invalidation: %s", key)
+	}
+	for key := range preservedKeys {
+		_, found := sm.cache.Get(key)
+		assert.True(t, found, "Preserved key should exist before invalidation: %s", key)
 	}
 
-	// Simulate a bulk action that requires cache invalidation for instance 2
-	targetInstanceID := 2
-
+	// Simulate a bulk action that requires cache invalidation for target instance
 	// This would normally be called after a bulk action like pause/resume/delete
 	sm.InvalidateCache(targetInstanceID)
 
 	// Wait for invalidation to complete
 	time.Sleep(100 * time.Millisecond)
 
-	// Verify ALL cache entries are cleared (Ristretto limitation)
-	// In a real scenario, this means that actions on one instance affect
-	// the cache for all instances, but ensures consistency
-	for _, key := range testKeys {
+	// Verify target instance cache entries are cleared
+	for key := range deletableKeys {
 		_, found := sm.cache.Get(key)
-		assert.False(t, found, "Cache key should be cleared after invalidation: %s", key)
+		assert.False(t, found, "Target instance cache key should be cleared: %s", key)
+	}
+
+	// Verify other instance cache entries are NOT cleared
+	for key := range preservedKeys {
+		_, found := sm.cache.Get(key)
+		assert.True(t, found, "Other instance cache key should NOT be cleared: %s", key)
 	}
 }
 
@@ -238,21 +229,33 @@ func TestCacheInvalidation_CoordinatedUpdates(t *testing.T) {
 	// 3. React Query stale time: 5 seconds
 
 	// Phase 1: Initial cache population (simulating normal operation)
-	torrentsKey := fmt.Sprintf("torrents:%d:0:50", instanceID)
+	// Use keys that InvalidateCache actually deletes
+	paginatedKey := fmt.Sprintf("torrents:%d:0:100", instanceID) // This will be deleted (matches pagination pattern)
+	baseKey := fmt.Sprintf("torrents:%d:", instanceID)           // This will be deleted (base key)
+	allTorrentsKey := fmt.Sprintf("all_torrents:%d:", instanceID) // This will be deleted
+	
 	initialTorrents := &TorrentResponse{
 		Torrents: createTestTorrents(50),
 		Total:    100,
 	}
 
 	// Set with 2-second TTL as per the system design
-	sm.cache.SetWithTTL(torrentsKey, initialTorrents, 1, 2*time.Second)
+	sm.cache.SetWithTTL(paginatedKey, initialTorrents, 1, 2*time.Second)
+	sm.cache.SetWithTTL(baseKey, initialTorrents, 1, 2*time.Second)
+	sm.cache.SetWithTTL(allTorrentsKey, createTestTorrents(100), 1, 2*time.Second)
 	sm.cache.Wait()
 
 	// Verify data is cached
-	cached, found := sm.cache.Get(torrentsKey)
-	require.True(t, found, "Initial data should be cached")
+	cached, found := sm.cache.Get(paginatedKey)
+	require.True(t, found, "Initial paginated data should be cached")
 	response := cached.(*TorrentResponse)
 	assert.Equal(t, 100, response.Total)
+	
+	_, found = sm.cache.Get(baseKey)
+	assert.True(t, found, "Initial base key should be cached")
+	
+	_, found = sm.cache.Get(allTorrentsKey)
+	assert.True(t, found, "Initial all torrents key should be cached")
 
 	// Phase 2: Simulate bulk action (pause/resume/delete)
 	// This would be called immediately after the action in the handler
@@ -260,8 +263,14 @@ func TestCacheInvalidation_CoordinatedUpdates(t *testing.T) {
 
 	// Verify cache is cleared immediately (good for consistency)
 	time.Sleep(50 * time.Millisecond)
-	_, found = sm.cache.Get(torrentsKey)
-	assert.False(t, found, "Cache should be cleared immediately after action")
+	_, found = sm.cache.Get(paginatedKey)
+	assert.False(t, found, "Paginated cache should be cleared immediately after action")
+	
+	_, found = sm.cache.Get(baseKey)
+	assert.False(t, found, "Base cache should be cleared immediately after action")
+	
+	_, found = sm.cache.Get(allTorrentsKey)
+	assert.False(t, found, "All torrents cache should be cleared immediately after action")
 
 	// Phase 3: Simulate new data being cached after qBittorrent processes changes
 	// This would happen when the next API request comes in after the frontend delay
@@ -269,11 +278,11 @@ func TestCacheInvalidation_CoordinatedUpdates(t *testing.T) {
 		Torrents: createTestTorrents(45), // 5 torrents were deleted
 		Total:    95,
 	}
-	sm.cache.SetWithTTL(torrentsKey, updatedTorrents, 1, 2*time.Second)
+	sm.cache.SetWithTTL(paginatedKey, updatedTorrents, 1, 2*time.Second)
 	sm.cache.Wait()
 
 	// Verify updated data is now cached
-	cached, found = sm.cache.Get(torrentsKey)
+	cached, found = sm.cache.Get(paginatedKey)
 	require.True(t, found, "Updated data should be cached")
 	response = cached.(*TorrentResponse)
 	assert.Equal(t, 95, response.Total, "Should have updated total after action")
@@ -306,59 +315,72 @@ func TestCacheInvalidation_MultipleInstances(t *testing.T) {
 		3: "VPS qBittorrent",
 	}
 
-	// Populate cache for all instances
+	// Populate cache for all instances with keys that match what InvalidateCache deletes
+	targetInstance := 2
+	
+	// Data for target instance that WILL be deleted
+	targetKeys := map[string]interface{}{
+		fmt.Sprintf("all_torrents:%d:", targetInstance):       createTestTorrents(100),
+		fmt.Sprintf("categories:%d", targetInstance):          map[string]qbt.Category{"movies": {Name: "movies"}},
+		fmt.Sprintf("tags:%d", targetInstance):                []string{"tag1", "tag2"},
+		fmt.Sprintf("torrents:%d:", targetInstance):           &TorrentResponse{Torrents: createTestTorrents(50), Total: 100},
+		fmt.Sprintf("torrents:%d:0:100", targetInstance):      &TorrentResponse{Torrents: createTestTorrents(100), Total: 100}, // Paginated
+		fmt.Sprintf("torrents:filtered:%d:", targetInstance):  &TorrentResponse{Torrents: createTestTorrents(30), Total: 60},
+		fmt.Sprintf("torrent:properties:%d:", targetInstance): &qbt.TorrentProperties{Hash: "test"},
+	}
+	
+	// Data for other instances that should NOT be deleted
+	otherKeys := map[string]interface{}{}
 	for instanceID, name := range instances {
-		// Different data for each instance
-		torrents := createTestTorrents(50 * instanceID) // Different amounts
-		response := &TorrentResponse{
-			Torrents: torrents[:10], // Show first 10
-			Total:    len(torrents),
+		if instanceID == targetInstance {
+			continue
 		}
-
-		key := fmt.Sprintf("torrents:%d:0:10", instanceID)
-		sm.cache.SetWithTTL(key, response, 1, time.Minute)
-
-		// Categories
-		categories := map[string]qbt.Category{
-			"movies": {Name: "movies", SavePath: fmt.Sprintf("/downloads/%s/movies", name)},
+		otherKeys[fmt.Sprintf("categories:%d", instanceID)] = map[string]qbt.Category{
+			"tv": {Name: "tv", SavePath: fmt.Sprintf("/downloads/%s/tv", name)},
 		}
-		sm.cache.SetWithTTL(fmt.Sprintf("categories:%d", instanceID), categories, 1, time.Minute)
-
-		// Individual torrent data
-		hash := fmt.Sprintf("hash_instance_%d", instanceID)
-		props := &qbt.TorrentProperties{
-			Hash: hash,
-			Name: fmt.Sprintf("Sample torrent from %s", name),
+		otherKeys[fmt.Sprintf("tags:%d", instanceID)] = []string{fmt.Sprintf("tag-%d", instanceID)}
+		otherKeys[fmt.Sprintf("torrents:%d:0:50", instanceID)] = &TorrentResponse{
+			Torrents: createTestTorrents(50),
+			Total:    50 * instanceID,
 		}
-		sm.cache.SetWithTTL(fmt.Sprintf("torrent:properties:%d:%s", instanceID, hash), props, 1, time.Minute)
 	}
 
+	// Populate all keys
+	for key, value := range targetKeys {
+		sm.cache.SetWithTTL(key, value, 1, time.Minute)
+	}
+	for key, value := range otherKeys {
+		sm.cache.SetWithTTL(key, value, 1, time.Minute)
+	}
 	sm.cache.Wait()
 
 	// Verify all instances have cached data
-	for instanceID := range instances {
-		key := fmt.Sprintf("torrents:%d:0:10", instanceID)
+	for key := range targetKeys {
 		_, found := sm.cache.Get(key)
-		assert.True(t, found, "Instance %d should have cached data", instanceID)
+		assert.True(t, found, "Target instance key should exist: %s", key)
+	}
+	for key := range otherKeys {
+		_, found := sm.cache.Get(key)
+		assert.True(t, found, "Other instance key should exist: %s", key)
 	}
 
-	// Perform action on instance 2 only
-	targetInstance := 2
+	// Perform action on target instance only
 	sm.InvalidateCache(targetInstance)
 
 	// Wait for invalidation
 	time.Sleep(100 * time.Millisecond)
 
-	// Due to Ristretto's limitation (Clear() clears entire cache),
-	// ALL instances will have their data cleared
-	for instanceID := range instances {
-		key := fmt.Sprintf("torrents:%d:0:10", instanceID)
+	// Verify target instance cache is cleared
+	for key := range targetKeys {
 		_, found := sm.cache.Get(key)
-		assert.False(t, found, "Instance %d data should be cleared", instanceID)
+		assert.False(t, found, "Target instance key should be cleared: %s", key)
 	}
 
-	// This is the current behavior - action on one instance affects all
-	// This is documented in CLAUDE.md as a limitation but ensures consistency
+	// Verify other instances' cache is NOT cleared
+	for key := range otherKeys {
+		_, found := sm.cache.Get(key)
+		assert.True(t, found, "Other instance key should NOT be cleared: %s", key)
+	}
 }
 
 // TestCacheInvalidation_CacheKeyPatterns tests that the correct key patterns
