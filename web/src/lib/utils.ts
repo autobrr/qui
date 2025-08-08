@@ -27,6 +27,27 @@ export function formatTimestamp(timestamp: number): string {
   return new Date(timestamp * 1000).toLocaleString()
 }
 
+/**
+ * Get the appropriate color for a torrent ratio based on predefined thresholds
+ * @param ratio - The ratio value (uploaded/downloaded)
+ * @returns CSS custom property string for the appropriate color
+ */
+export function getRatioColor(ratio: number): string {
+  if (ratio < 0) return ''
+  
+  if (ratio < 0.5) {
+    return 'var(--chart-5)' // very bad - lowest/darkest
+  } else if (ratio < 1.0) {
+    return 'var(--chart-4)' // bad - below 1.0
+  } else if (ratio < 2.0) {
+    return 'var(--chart-3)' // okay - above 1.0
+  } else if (ratio < 5.0) {
+    return 'var(--chart-2)' // good - healthy ratio
+  } else {
+    return 'var(--chart-1)' // excellent - best ratio
+  }
+}
+
 export function formatDuration(seconds: number): string {
   if (seconds === 0) return '0s'
   const days = Math.floor(seconds / 86400)
