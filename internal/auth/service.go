@@ -6,9 +6,14 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/autobrr/qui/internal/models"
 	"github.com/gorilla/sessions"
 	"github.com/rs/zerolog/log"
+
+	"github.com/autobrr/qui/internal/models"
+)
+
+const (
+	SessionName = "qui_user_session"
 )
 
 var (
