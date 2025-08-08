@@ -71,6 +71,13 @@ export function useTorrentsList(
   const previousSearchRef = useRef(search)
   const previousInstanceRef = useRef(instanceId)
   
+  // Update refs when values actually change (not in placeholderData)
+  useEffect(() => {
+    previousInstanceRef.current = instanceId
+    previousFiltersRef.current = filters
+    previousSearchRef.current = search
+  }, [instanceId, filters, search])
+  
   // Initial load
   const { data: initialData, isLoading: initialLoading, isFetching } = useQuery<TorrentResponse>({
     queryKey: ['torrents-list', instanceId, currentPage, filters, search],
@@ -83,7 +90,7 @@ export function useTorrentsList(
       filters
     }),
     staleTime: 2000, // 2 seconds - match minimum backend cache TTL
-    gcTime: 300000, // Keep in cache for 5 minutes (was cacheTime in v4, now gcTime in v5)
+    gcTime: 1800000, // Keep in cache for 30 minutes to support cross-instance navigation
     placeholderData: (previousData: TorrentResponse | undefined) => {
       // Only show previous data if instance, filters, and search haven't changed
       // This prevents showing wrong data when switching instances or filters
@@ -93,9 +100,6 @@ export function useTorrentsList(
       
       if (instanceChanged || filtersChanged || searchChanged) {
         // Instance/filters/search changed - don't show old data
-        previousInstanceRef.current = instanceId
-        previousFiltersRef.current = filters
-        previousSearchRef.current = search
         return undefined
       }
       

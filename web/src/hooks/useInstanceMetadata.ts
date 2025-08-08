@@ -31,7 +31,7 @@ export function useInstanceMetadata(instanceId: number) {
       return { categories, tags, counts }
     },
     staleTime: 60000, // 1 minute - metadata doesn't change often
-    gcTime: 300000, // Keep in cache for 5 minutes (was cacheTime in v4, now gcTime in v5)
+    gcTime: 1800000, // Keep in cache for 30 minutes to support cross-instance navigation
     refetchInterval: 30000, // Refetch every 30 seconds
     refetchIntervalInBackground: false, // Don't refetch when tab is not active
     // IMPORTANT: Keep showing previous data while fetching new data
