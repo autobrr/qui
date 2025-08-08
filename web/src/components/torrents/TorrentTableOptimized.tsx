@@ -5,7 +5,6 @@ import {
   flexRender,
   type ColumnDef,
   type ColumnResizeMode,
-  type VisibilityState,
 } from '@tanstack/react-table'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import {
@@ -29,6 +28,24 @@ import { usePersistedColumnVisibility } from '@/hooks/usePersistedColumnVisibili
 import { usePersistedColumnOrder } from '@/hooks/usePersistedColumnOrder'
 import { usePersistedColumnSizing } from '@/hooks/usePersistedColumnSizing'
 import { usePersistedColumnSorting } from '@/hooks/usePersistedColumnSorting'
+
+// Default values for persisted state hooks (module scope for stable references)
+const DEFAULT_COLUMN_VISIBILITY = {
+  downloaded: false,
+  uploaded: false,
+  saveLocation: false,
+  tracker: false,
+  priority: false,
+}
+const DEFAULT_COLUMN_ORDER = (() => {
+  const cols = createColumns(false)
+  return cols.map(col => {
+    if ('id' in col && col.id) return col.id
+    if ('accessorKey' in col && typeof col.accessorKey === 'string') return col.accessorKey
+    return null
+  }).filter(Boolean)
+})()
+const DEFAULT_COLUMN_SIZING = {}
 import { useInstanceMetadata } from '@/hooks/useInstanceMetadata'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
