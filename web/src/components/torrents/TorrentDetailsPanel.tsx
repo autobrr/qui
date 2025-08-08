@@ -10,9 +10,9 @@ import type { Torrent } from '@/types'
 import { formatBytes, formatSpeed, formatTimestamp, formatDuration } from '@/lib/utils'
 
 interface TorrentDetailsPanelProps {
-  instanceId: number
-  torrent: Torrent | null
-// ...existing code...
+  instanceId: number;
+  torrent: Torrent | null;
+}
 
 function getTrackerStatusBadge(status: number) {
   switch (status) {
@@ -30,6 +30,7 @@ function getTrackerStatusBadge(status: number) {
       return <Badge variant="outline">Unknown</Badge>
   }
 }
+
 
 
 export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceId, torrent }: TorrentDetailsPanelProps) {
@@ -67,8 +68,63 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     setActiveTab(tab)
   }, [])
 
-  // ...rest of the component
+  return (
+    <div className="h-full flex flex-col">
+      <div className="flex items-center justify-between px-4 py-3 sm:px-6 border-b bg-muted/30">
+        <h3 className="text-sm font-semibold truncate flex-1 pr-2" title={torrent.name}>
+          {torrent.name}
+        </h3>
+      </div>
 
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="flex-1 flex flex-col">
+        <TabsList className="w-full justify-start rounded-none border-b h-10 bg-background px-4 sm:px-6 py-0">
+          <TabsTrigger 
+            value="general" 
+            className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform"
+          >
+            General
+          </TabsTrigger>
+          <TabsTrigger 
+            value="trackers" 
+            className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform"
+          >
+            Trackers
+          </TabsTrigger>
+          <TabsTrigger 
+            value="content" 
+            className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform"
+          >
+            Content
+          </TabsTrigger>
+        </TabsList>
+
+        <ScrollArea className="flex-1">
+          <TabsContent value="general" className="m-0 p-4 sm:p-6">
+            {loadingProperties ? (
+              <div className="flex items-center justify-center p-8">
+                <Loader2 className="h-6 w-6 animate-spin" />
+              </div>
+            ) : properties ? (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 text-sm">
+                  <div>
+                    <span className="text-muted-foreground">Total Size:</span>
+                    <span className="ml-2">{formatBytes(properties.total_size || torrent.size)}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Pieces:</span>
+                    <span className="ml-2">{properties.pieces_have || 0} / {properties.pieces_num || 0} ({formatBytes(properties.piece_size || 0)})</span>
+                  </div>
+                  {/* ...rest of the general tab ... */}
+                </div>
+              </div>
+            ) : null}
+          </TabsContent>
+          {/* ...rest of the tabs ... */}
+        </ScrollArea>
+      </Tabs>
+    </div>
+  )
 });
 
   return (
