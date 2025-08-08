@@ -436,13 +436,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const availableCategories = metadata?.categories || {}
 
   // Debounce search to prevent excessive filtering (1 second delay)
-  const debouncedSearch = useDebounce(globalFilter, 1000)
+  const debouncedSearch = useDebounce(globalFilter, 500)
 
   // Use immediate search if available, otherwise use debounced search
   const effectiveSearch = immediateSearch || debouncedSearch
-  
+
   // Check if search contains glob patterns
-  const isGlobSearch = globalFilter && /[*?[\]]/.test(globalFilter)
+  const isGlobSearch = globalFilter && /[*?["]/.test(globalFilter)
 
   // Fetch torrents data
   const { 
@@ -507,8 +507,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   // Use a Web Worker for filtering and sorting in the background, debounced for search
   const [workerResult, setWorkerResult] = useState<Torrent[]>([])
   const workerRef = useRef<Worker | null>(null)
-  const debouncedFilter = useDebounce(globalFilter, 250)
 
+  // Only trigger worker when torrents, sorting, or effectiveSearch changes
   useEffect(() => {
     if (!workerRef.current) {
       workerRef.current = new TorrentWorker()
@@ -519,12 +519,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       if (!cancelled) setWorkerResult(e.data.filtered)
     }
     worker.addEventListener('message', handleMessage)
-    worker.postMessage({ torrents, search: debouncedFilter, sort: sorting })
+    worker.postMessage({ torrents, search: effectiveSearch, sort: sorting })
     return () => {
       cancelled = true
       worker.removeEventListener('message', handleMessage)
     }
-  }, [torrents, debouncedFilter, sorting])
+  }, [torrents, effectiveSearch, sorting])
 
   const sortedTorrents = workerResult
 
