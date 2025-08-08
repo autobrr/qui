@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
+import { memo, useState, useEffect, useRef, useCallback } from 'react'
+import type { ChangeEvent, KeyboardEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -33,7 +34,7 @@ interface SetTagsDialogProps {
   initialTags?: string[]
 }
 
-export function SetTagsDialog({
+export const SetTagsDialog = memo(function SetTagsDialog({
   open,
   onOpenChange,
   availableTags,
@@ -54,25 +55,23 @@ export function SetTagsDialog({
     wasOpen.current = open
   }, [open, initialTags])
 
-  const handleConfirm = () => {
+  const handleConfirm = useCallback((): void => {
     const allTags = [...selectedTags]
     if (newTag.trim() && !allTags.includes(newTag.trim())) {
       allTags.push(newTag.trim())
     }
-    
     if (allTags.length > 0) {
       onConfirm(allTags)
-      // Reset state
       setSelectedTags([])
       setNewTag('')
     }
-  }
+  }, [selectedTags, newTag, onConfirm])
 
-  const handleCancel = () => {
+  const handleCancel = useCallback((): void => {
     setSelectedTags([])
     setNewTag('')
     onOpenChange(false)
-  }
+  }, [onOpenChange])
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -95,11 +94,11 @@ export function SetTagsDialog({
                       <Checkbox
                         id={`tag-${tag}`}
                         checked={selectedTags.includes(tag)}
-                        onCheckedChange={(checked) => {
+                        onCheckedChange={(checked: boolean | string) => {
                           if (checked) {
                             setSelectedTags([...selectedTags, tag])
                           } else {
-                            setSelectedTags(selectedTags.filter(t => t !== tag))
+                            setSelectedTags(selectedTags.filter((t: string) => t !== tag))
                           }
                         }}
                       />
@@ -123,9 +122,9 @@ export function SetTagsDialog({
               <Input
                 id="newTag"
                 value={newTag}
-                onChange={(e) => setNewTag(e.target.value)}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => setNewTag(e.target.value)}
                 placeholder="Enter new tag"
-                onKeyDown={(e) => {
+                onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
                   if (e.key === 'Enter' && newTag.trim()) {
                     e.preventDefault()
                     if (!selectedTags.includes(newTag.trim())) {
@@ -171,7 +170,7 @@ export function SetTagsDialog({
       </AlertDialogContent>
     </AlertDialog>
   )
-}
+})
 
 interface SetCategoryDialogProps {
   open: boolean
@@ -183,7 +182,7 @@ interface SetCategoryDialogProps {
   initialCategory?: string
 }
 
-export function SetCategoryDialog({
+export const SetCategoryDialog = memo(function SetCategoryDialog({
   open,
   onOpenChange,
   availableCategories,
@@ -203,15 +202,15 @@ export function SetCategoryDialog({
     wasOpen.current = open
   }, [open, initialCategory])
 
-  const handleConfirm = () => {
+  const handleConfirm = useCallback(() => {
     onConfirm(categoryInput)
     setCategoryInput('')
-  }
+  }, [categoryInput, onConfirm])
 
-  const handleCancel = () => {
+  const handleCancel = useCallback(() => {
     setCategoryInput('')
     onOpenChange(false)
-  }
+  }, [onOpenChange])
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -225,7 +224,7 @@ export function SetCategoryDialog({
         <div className="py-4 space-y-4">
           <div className="space-y-2">
             <Label>Category</Label>
-            <Select value={categoryInput || "__none__"} onValueChange={(value) => setCategoryInput(value === "__none__" ? "" : value)}>
+            <Select value={categoryInput || "__none__"} onValueChange={(value: string) => setCategoryInput(value === "__none__" ? "" : value)}>
               <SelectTrigger>
                 <SelectValue placeholder="Select a category..." />
               </SelectTrigger>
@@ -249,8 +248,8 @@ export function SetCategoryDialog({
               id="newCategory"
               placeholder="Enter new category name"
               value={categoryInput && categoryInput !== "__none__" && (!availableCategories || !Object.keys(availableCategories).includes(categoryInput)) ? categoryInput : ''}
-              onChange={(e) => setCategoryInput(e.target.value)}
-              onKeyDown={(e) => {
+              onChange={(e: ChangeEvent<HTMLInputElement>) => setCategoryInput(e.target.value)}
+              onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
                 if (e.key === 'Enter') {
                   handleConfirm()
                 }
@@ -270,7 +269,7 @@ export function SetCategoryDialog({
       </AlertDialogContent>
     </AlertDialog>
   )
-}
+})
 
 interface RemoveTagsDialogProps {
   open: boolean
@@ -282,7 +281,7 @@ interface RemoveTagsDialogProps {
   currentTags?: string[]
 }
 
-export function RemoveTagsDialog({
+export const RemoveTagsDialog = memo(function RemoveTagsDialog({
   open,
   onOpenChange,
   availableTags,
@@ -303,17 +302,17 @@ export function RemoveTagsDialog({
     wasOpen.current = open
   }, [open, currentTags, availableTags])
 
-  const handleConfirm = () => {
+  const handleConfirm = useCallback(() => {
     if (selectedTags.length > 0) {
       onConfirm(selectedTags)
       setSelectedTags([])
     }
-  }
+  }, [selectedTags, onConfirm])
 
-  const handleCancel = () => {
+  const handleCancel = useCallback(() => {
     setSelectedTags([])
     onOpenChange(false)
-  }
+  }, [onOpenChange])
 
   // Filter available tags to only show those that are on the selected torrents
   const relevantTags = availableTags.filter(tag => currentTags.includes(tag))
@@ -384,4 +383,4 @@ export function RemoveTagsDialog({
       </AlertDialogContent>
     </AlertDialog>
   )
-}
+})

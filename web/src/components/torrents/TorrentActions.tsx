@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { memo, useState, useCallback } from 'react'
+import type { ChangeEvent } from 'react'
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
@@ -32,7 +33,7 @@ interface TorrentActionsProps {
   onComplete?: () => void
 }
 
-export function TorrentActions({ instanceId, selectedHashes, selectedTorrents = [], onComplete }: TorrentActionsProps) {
+export const TorrentActions = memo(function TorrentActions({ instanceId, selectedHashes, selectedTorrents = [], onComplete }: TorrentActionsProps) {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [deleteFiles, setDeleteFiles] = useState(false)
   const [showTagsDialog, setShowTagsDialog] = useState(false)
@@ -70,7 +71,7 @@ export function TorrentActions({ instanceId, selectedHashes, selectedTorrents = 
         enable: data.enable,
       })
     },
-    onSuccess: async (_, variables) => {
+  onSuccess: async (_: unknown, variables: any) => {
       // For delete operations, force immediate refetch
       if (variables.action === 'delete') {
         // Remove the query data to force immediate UI update
@@ -115,7 +116,7 @@ export function TorrentActions({ instanceId, selectedHashes, selectedTorrents = 
           }
           
           // Optimistically update torrent states in all cached queries
-          queries.forEach(query => {
+          queries.forEach((query: any) => {
             queryClient.setQueryData(query.queryKey, (oldData: any) => {
               if (!oldData?.torrents) return oldData
               
@@ -213,7 +214,7 @@ export function TorrentActions({ instanceId, selectedHashes, selectedTorrents = 
           break
       }
     },
-    onError: (error, variables) => {
+  onError: (error: any, variables: any) => {
       const count = selectedHashes.length
       const torrentText = count === 1 ? 'torrent' : 'torrents'
       const actionText = variables.action === 'recheck' ? 'recheck' : variables.action
@@ -224,13 +225,13 @@ export function TorrentActions({ instanceId, selectedHashes, selectedTorrents = 
     },
   })
 
-  const handleDelete = async () => {
+  const handleDelete = useCallback(async () => {
     await mutation.mutateAsync({ action: 'delete', deleteFiles })
     setShowDeleteDialog(false)
     setDeleteFiles(false)
-  }
+  }, [mutation, deleteFiles])
 
-  const handleSetTags = async (tags: string[]) => {
+  const handleSetTags = useCallback(async (tags: string[]) => {
     // Use setTags action (with fallback to addTags for older versions)
     // The backend will handle the version check
     try {
@@ -245,12 +246,12 @@ export function TorrentActions({ instanceId, selectedHashes, selectedTorrents = 
     }
     
     setShowTagsDialog(false)
-  }
+  }, [mutation])
 
-  const handleSetCategory = async (category: string) => {
+  const handleSetCategory = useCallback(async (category: string) => {
     await mutation.mutateAsync({ action: 'setCategory', category })
     setShowCategoryDialog(false)
-  }
+  }, [mutation])
 
   return (
     <>
@@ -407,7 +408,7 @@ export function TorrentActions({ instanceId, selectedHashes, selectedTorrents = 
               type="checkbox"
               id="deleteFiles"
               checked={deleteFiles}
-              onChange={(e) => setDeleteFiles(e.target.checked)}
+              onChange={(e: ChangeEvent<HTMLInputElement>) => setDeleteFiles(e.target.checked)}
               className="rounded border-input"
             />
             <label htmlFor="deleteFiles" className="text-sm font-medium">
@@ -449,4 +450,4 @@ export function TorrentActions({ instanceId, selectedHashes, selectedTorrents = 
       />
     </>
   )
-}
+})

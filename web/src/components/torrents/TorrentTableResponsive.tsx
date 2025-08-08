@@ -20,63 +20,46 @@ interface TorrentTableResponsiveProps {
 }
 
 export function TorrentTableResponsive(props: TorrentTableResponsiveProps) {
-  const [isMobile, setIsMobile] = useState(false)
-  
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768)
+
+  // Debounced resize/orientation handler
   useEffect(() => {
-    // Check initial size
-    const checkMobile = () => {
-      // Use 768px as breakpoint (md in Tailwind)
-      setIsMobile(window.innerWidth < 768)
+    // Use number for timeoutId in browser
+    let timeoutId: number | null = null
+    const checkMobile = () => setIsMobile(window.innerWidth < 768)
+    const handleResizeOrOrientation = () => {
+      if (timeoutId) clearTimeout(timeoutId)
+      timeoutId = window.setTimeout(checkMobile, 100)
     }
-    
+    window.addEventListener('resize', handleResizeOrOrientation)
+    window.addEventListener('orientationchange', handleResizeOrOrientation)
     checkMobile()
-    
-    // Listen for resize events with debounce
-    let timeoutId: NodeJS.Timeout
-    const handleResize = () => {
-      clearTimeout(timeoutId)
-      timeoutId = setTimeout(checkMobile, 150)
-    }
-    
-    window.addEventListener('resize', handleResize)
-    
-    // Also listen for orientation change on mobile devices
-    window.addEventListener('orientationchange', checkMobile)
-    
     return () => {
-      window.removeEventListener('resize', handleResize)
-      window.removeEventListener('orientationchange', checkMobile)
-      clearTimeout(timeoutId)
+      window.removeEventListener('resize', handleResizeOrOrientation)
+      window.removeEventListener('orientationchange', handleResizeOrOrientation)
+      if (timeoutId) clearTimeout(timeoutId)
     }
   }, [])
-  
-  // You can also use CSS media query for more accurate detection
+
+  // Media query for more accurate detection
   useEffect(() => {
     const mediaQuery = window.matchMedia('(max-width: 767px)')
-    
-    const handleChange = (e: MediaQueryListEvent) => {
-      setIsMobile(e.matches)
-    }
-    
-    // Set initial value
+    const handleChange = (e: MediaQueryListEvent) => setIsMobile(e.matches)
     setIsMobile(mediaQuery.matches)
-    
-    // Modern browsers
     if (mediaQuery.addEventListener) {
       mediaQuery.addEventListener('change', handleChange)
       return () => mediaQuery.removeEventListener('change', handleChange)
-    } 
-    // Legacy browsers
-    else if (mediaQuery.addListener) {
+    } else if (mediaQuery.addListener) {
       mediaQuery.addListener(handleChange)
       return () => mediaQuery.removeListener(handleChange)
     }
   }, [])
-  
-  // Render appropriate component based on screen size
+
+  // Memoize props to avoid unnecessary re-renders
+  const memoizedProps = props // If props are stable, this is fine; otherwise use useMemo
+
   if (isMobile) {
-    return <TorrentCardsMobile {...props} />
+    return <TorrentCardsMobile {...memoizedProps} />
   }
-  
-  return <TorrentTableOptimized {...props} />
+  return <TorrentTableOptimized {...memoizedProps} />
 }

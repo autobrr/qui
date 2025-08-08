@@ -133,7 +133,8 @@ function SwipeableCard({
   selectionMode: boolean
 }) {
   
-  const [longPressTimer, setLongPressTimer] = useState<NodeJS.Timeout | null>(null)
+  // Use number for timeoutId in browser
+  const [longPressTimer, setLongPressTimer] = useState<number | null>(null)
   const [touchStart, setTouchStart] = useState<{ x: number; y: number } | null>(null)
   const [hasMoved, setHasMoved] = useState(false)
   
@@ -144,7 +145,7 @@ function SwipeableCard({
     setTouchStart({ x: touch.clientX, y: touch.clientY })
     setHasMoved(false)
     
-    const timer = setTimeout(() => {
+    const timer = window.setTimeout(() => {
       if (!hasMoved) {
         // Vibrate if available
         if ('vibrate' in navigator) {
@@ -166,7 +167,7 @@ function SwipeableCard({
     // If moved more than 10px in any direction, cancel long press
     if (deltaX > 10 || deltaY > 10) {
       setHasMoved(true)
-      if (longPressTimer) {
+      if (longPressTimer !== null) {
         clearTimeout(longPressTimer)
         setLongPressTimer(null)
       }
@@ -174,7 +175,7 @@ function SwipeableCard({
   }
   
   const handleTouchEnd = () => {
-    if (longPressTimer) {
+    if (longPressTimer !== null) {
       clearTimeout(longPressTimer)
       setLongPressTimer(null)
     }
