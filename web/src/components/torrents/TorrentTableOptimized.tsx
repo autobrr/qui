@@ -1497,7 +1497,6 @@ export function TorrentTableOptimized({ instanceId, filters, selectedTorrent, on
             <button
               onClick={() => setIncognitoMode(!incognitoMode)}
               className="p-1 rounded-sm transition-all hover:bg-muted/50"
-              style={{ opacity: incognitoMode ? 0.5 : 0.2 }}
               title={incognitoMode ? "Exit incognito mode" : "Enable incognito mode"}
             >
               {incognitoMode ? (
