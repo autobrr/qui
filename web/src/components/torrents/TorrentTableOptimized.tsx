@@ -1,4 +1,5 @@
 import { memo, useState, useMemo, useRef, useCallback, useEffect } from 'react'
+import { useDebounce } from '@/hooks/useDebounce'
 // @ts-ignore
 import TorrentWorker from '@/workers/TorrentWorker.ts?worker'
 import {
@@ -504,24 +505,27 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     }
   }, [immediateSearch]) 
 
-  // Use a Web Worker for filtering and sorting in the background
+  // Use a Web Worker for filtering and sorting in the background, debounced for search
   const [workerResult, setWorkerResult] = useState<Torrent[]>([])
   const workerRef = useRef<Worker | null>(null)
+  const debouncedFilter = useDebounce(globalFilter, 250)
 
   useEffect(() => {
     if (!workerRef.current) {
       workerRef.current = new TorrentWorker()
     }
     const worker = workerRef.current
+    let cancelled = false
     const handleMessage = (e: MessageEvent) => {
-      setWorkerResult(e.data.filtered)
+      if (!cancelled) setWorkerResult(e.data.filtered)
     }
     worker.addEventListener('message', handleMessage)
-    worker.postMessage({ torrents, search: globalFilter, sort: sorting })
+    worker.postMessage({ torrents, search: debouncedFilter, sort: sorting })
     return () => {
+      cancelled = true
       worker.removeEventListener('message', handleMessage)
     }
-  }, [torrents, globalFilter, sorting])
+  }, [torrents, debouncedFilter, sorting])
 
   const sortedTorrents = workerResult
 
