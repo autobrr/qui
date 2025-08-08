@@ -82,7 +82,7 @@ import {
   getLinuxRatio,
   useIncognitoMode,
 } from '@/lib/incognito'
-import { formatBytes, formatSpeed } from '@/lib/utils'
+import { formatBytes, formatSpeed, getRatioColor } from '@/lib/utils'
 import { applyOptimisticUpdates } from '@/lib/torrent-state-utils'
 
 interface TorrentTableOptimizedProps {
@@ -254,21 +254,7 @@ const createColumns = (incognitoMode: boolean): ColumnDef<Torrent>[] => [
     cell: ({ row }) => {
       const ratio = incognitoMode ? getLinuxRatio(row.original.hash) : row.original.ratio
       const displayRatio = ratio === -1 ? "∞" : ratio.toFixed(2)
-      
-      let colorVar = ''
-      if (ratio >= 0) {
-        if (ratio < 0.5) {
-          colorVar = 'var(--chart-5)' // very bad - lowest/darkest
-        } else if (ratio < 1.0) {
-          colorVar = 'var(--chart-4)' // bad - below 1.0
-        } else if (ratio < 2.0) {
-          colorVar = 'var(--chart-3)' // okay - above 1.0
-        } else if (ratio < 5.0) {
-          colorVar = 'var(--chart-2)' // good - healthy ratio
-        } else {
-          colorVar = 'var(--chart-1)' // excellent - best ratio
-        }
-      }
+      const colorVar = getRatioColor(ratio)
       
       return (
         <span 
@@ -462,6 +448,7 @@ export function TorrentTableOptimized({ instanceId, filters, selectedTorrent, on
     counts,
     categories,
     tags,
+    serverState, 
     isLoading,
     isFetching,
     isLoadingMore,
@@ -897,18 +884,106 @@ export function TorrentTableOptimized({ instanceId, filters, selectedTorrent, on
   return (
     <div className="h-full flex flex-col">
       {/* Desktop Stats bar - shown at top on desktop */}
-      <div className="hidden sm:flex flex-wrap gap-2 sm:gap-4 text-xs sm:text-sm flex-shrink-0">
-        <div>Total: <strong>{stats.total}</strong></div>
-        <div className="hidden lg:block">Downloading: <strong>{stats.downloading}</strong></div>
-        <div className="hidden lg:block">Seeding: <strong>{stats.seeding}</strong></div>
-        <div className="hidden lg:block">Paused: <strong>{stats.paused}</strong></div>
-        <div className="hidden lg:block">Error: <strong className={stats.error > 0 ? "text-destructive" : ""}>{stats.error}</strong></div>
-        <div className="ml-auto text-xs sm:text-sm flex items-center gap-1">
-          <ChevronDown className="h-3.5 w-3.5" />
-          {formatSpeed(stats.totalDownloadSpeed || 0)}
-          <span className="text-muted-foreground mx-1">|</span>
-          <ChevronUp className="h-3.5 w-3.5" />
-          {formatSpeed(stats.totalUploadSpeed || 0)}
+      <div className="hidden sm:flex items-center justify-between gap-3 text-xs sm:text-sm flex-shrink-0">
+        {/* Torrent counts - more compact */}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5">
+            <span className="text-muted-foreground">Total:</span>
+            <strong>{stats.total}</strong>
+          </div>
+          
+          {/* Show key stats with colors */}
+          <div className="flex items-center gap-3 text-xs">
+            {stats.downloading > 0 && (
+              <div className="flex items-center gap-1">
+                <div className="w-2 h-2 rounded-full bg-blue-500" />
+                <span>{stats.downloading}</span>
+              </div>
+            )}
+            {stats.seeding > 0 && (
+              <div className="flex items-center gap-1">
+                <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                <span>{stats.seeding}</span>
+              </div>
+            )}
+            {stats.paused > 0 && (
+              <div className="flex items-center gap-1">
+                <div className="w-2 h-2 rounded-full bg-gray-500" />
+                <span>{stats.paused}</span>
+              </div>
+            )}
+            {stats.error > 0 && (
+              <div className="flex items-center gap-1">
+                <div className="w-2 h-2 rounded-full bg-red-500" />
+                <span className="text-destructive">{stats.error}</span>
+              </div>
+            )}
+          </div>
+        </div>
+        
+        {/* User statistics - more compact */}
+        {serverState && (
+          <div className="flex items-center gap-3">
+            {/* All-time stats */}
+            {serverState.alltime_dl !== undefined && (
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-muted-foreground">All-time stats:</span>
+                <div className="flex items-center gap-1">
+                  <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                  <span className="font-medium">{formatBytes(serverState.alltime_dl || 0)}</span>
+                </div>
+                <span className="text-muted-foreground">|</span>
+                <div className="flex items-center gap-1">
+                  <ChevronUp className="h-3 w-3 text-muted-foreground" />
+                  <span className="font-medium">{formatBytes(serverState.alltime_ul || 0)}</span>
+                </div>
+              </div>
+            )}
+            
+            {/* Ratio with color coding */}
+            {(serverState.global_ratio !== undefined || (serverState.alltime_dl !== undefined && serverState.alltime_ul !== undefined)) && (() => {
+              let ratioValue = 0
+              let displayRatio = '0.00'
+              
+              if (serverState.global_ratio && serverState.global_ratio !== '') {
+                ratioValue = parseFloat(serverState.global_ratio)
+                displayRatio = serverState.global_ratio
+              } else if (serverState.alltime_dl && serverState.alltime_dl > 0 && serverState.alltime_ul !== undefined) {
+                ratioValue = (serverState.alltime_ul || 0) / serverState.alltime_dl
+                displayRatio = ratioValue.toFixed(2)
+              }
+              
+              const colorVar = getRatioColor(ratioValue)
+              
+              return (
+                <div className="flex items-center gap-1.5 text-xs">
+                  <span className="text-muted-foreground">Ratio:</span>
+                  <strong style={{ color: colorVar }}>{displayRatio}</strong>
+                </div>
+              )
+            })()}
+            
+            {/* Peers */}
+            {serverState.total_peer_connections !== undefined && (
+              <div className="flex items-center gap-1.5 text-xs">
+                <span className="text-muted-foreground">Peers:</span>
+                <span className="font-medium">{serverState.total_peer_connections || 0}</span>
+              </div>
+            )}
+          </div>
+        )}
+        
+        {/* Current speeds - right aligned */}
+        <div className="flex items-center gap-2 text-xs ml-auto">
+          <div className="flex items-center gap-1">
+            <ChevronDown className="h-3 w-3 text-muted-foreground" />
+            <span className="font-medium">{formatSpeed(stats.totalDownloadSpeed || 0)}</span>
+          </div>
+          <span className="text-muted-foreground">|</span>
+          <div className="flex items-center gap-1">
+            <ChevronUp className="h-3 w-3 text-muted-foreground" />
+            <span className="font-medium">{formatSpeed(stats.totalUploadSpeed || 0)}</span>
+          </div>
         </div>
       </div>
 
