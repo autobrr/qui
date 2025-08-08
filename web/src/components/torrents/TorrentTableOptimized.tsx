@@ -38,15 +38,6 @@ const DEFAULT_COLUMN_VISIBILITY = {
   priority: false,
 }
 const DEFAULT_COLUMN_SIZING = {}
-
-function getDefaultColumnOrder() {
-  const cols = createColumns(false)
-  return cols.map(col => {
-    if ('id' in col && col.id) return col.id
-    if ('accessorKey' in col && typeof col.accessorKey === 'string') return col.accessorKey
-    return null
-  }).filter((v): v is string => typeof v === 'string')
-}
 // After createColumns is defined
 DEFAULT_COLUMN_ORDER = (() => {
   const cols = createColumns(false)
@@ -439,7 +430,16 @@ export function TorrentTableOptimized({ instanceId, filters, selectedTorrent, on
   // Column visibility with persistence
   const [columnVisibility, setColumnVisibility] = usePersistedColumnVisibility(DEFAULT_COLUMN_VISIBILITY)
   // Column order with persistence (get default order at runtime to avoid initialization order issues)
-  const [columnOrder, setColumnOrder] = usePersistedColumnOrder(getDefaultColumnOrder())
+  const [columnOrder, setColumnOrder] = usePersistedColumnOrder(
+    (() => {
+      const cols = createColumns(false)
+      return cols.map(col => {
+        if ('id' in col && col.id) return col.id
+        if ('accessorKey' in col && typeof col.accessorKey === 'string') return col.accessorKey
+        return null
+      }).filter((v): v is string => typeof v === 'string')
+    })()
+  )
   // Column sizing with persistence
   const [columnSizing, setColumnSizing] = usePersistedColumnSizing(DEFAULT_COLUMN_SIZING)
   
