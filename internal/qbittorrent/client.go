@@ -3,6 +3,7 @@ package qbittorrent
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -19,21 +20,65 @@ type Client struct {
 }
 
 // NewClient creates a new qBittorrent client wrapper
-func NewClient(instanceID int, host string, port int, username, password string) (*Client, error) {
+func NewClient(instanceID int, host string, port int, username, password string, basicUsername, basicPassword *string) (*Client, error) {
+	// Construct the host URL
+	// If the host already includes a port or path (like a reverse proxy URL), use it as-is
+	// Otherwise, append the port
+	var hostURL string
+	
+	// Remove trailing slash if present
+	if len(host) > 0 && host[len(host)-1] == '/' {
+		host = host[:len(host)-1]
+	}
+	
+	// Check if the host already contains a path (reverse proxy scenario)
+	// In this case, we don't append the port as it's already handled by the proxy
+	if strings.HasPrefix(host, "http://") || strings.HasPrefix(host, "https://") {
+		// Parse to see if there's already a path component after the domain
+		protocolEnd := 0
+		if strings.HasPrefix(host, "https://") {
+			protocolEnd = 8
+		} else {
+			protocolEnd = 7
+		}
+		
+		pathIdx := strings.IndexByte(host[protocolEnd:], '/')
+		if pathIdx != -1 {
+			// Has a path, use as-is (reverse proxy scenario)
+			hostURL = host
+		} else if port == 443 || port == 80 {
+			// Standard ports, don't append
+			hostURL = host
+		} else {
+			// Non-standard port, append it
+			hostURL = fmt.Sprintf("%s:%d", host, port)
+		}
+	} else {
+		// Fallback to original behavior
+		hostURL = fmt.Sprintf("%s:%d", host, port)
+	}
+	
 	// Create the base client
 	cfg := qbt.Config{
-		Host:      fmt.Sprintf("%s:%d", host, port),
-		Username:  username,
-		Password:  password,
-		BasicUser: username,
-		BasicPass: password,
-		Timeout:   30, // timeout in seconds
+		Host:     hostURL,
+		Username: username,
+		Password: password,
+		Timeout:  30, // timeout in seconds
+	}
+
+	// Set Basic Auth credentials if provided
+	if basicUsername != nil && *basicUsername != "" {
+		cfg.BasicUser = *basicUsername
+		if basicPassword != nil {
+			cfg.BasicPass = *basicPassword
+		}
 	}
 
 	qbtClient := qbt.NewClient(cfg)
 
-	// Test connection
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	// Test connection - use 30 seconds to match the client timeout configuration
+	// This is especially important for large instances with 10k+ torrents
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	if err := qbtClient.LoginCtx(ctx); err != nil {
@@ -72,12 +117,23 @@ func (c *Client) SetHealthy(healthy bool) {
 
 // HealthCheck performs a health check on the qBittorrent connection
 func (c *Client) HealthCheck(ctx context.Context) error {
-	// Try to login again as a health check
-	if err := c.Client.LoginCtx(ctx); err != nil {
-		c.SetHealthy(false)
-		return fmt.Errorf("health check failed: %w", err)
+	// Use a lightweight API call instead of full login
+	// GetWebAPIVersion is perfect - it's fast and doesn't load torrent data
+	_, err := c.Client.GetWebAPIVersionCtx(ctx)
+	if err != nil {
+		// If the version check fails, it might be an auth issue
+		// Try to re-login once
+		if loginErr := c.Client.LoginCtx(ctx); loginErr != nil {
+			c.SetHealthy(false)
+			return fmt.Errorf("health check failed: login error: %w", loginErr)
+		}
+		// Retry the version check after login
+		if _, err = c.Client.GetWebAPIVersionCtx(ctx); err != nil {
+			c.SetHealthy(false)
+			return fmt.Errorf("health check failed: api error: %w", err)
+		}
 	}
-
+	
 	c.SetHealthy(true)
 	return nil
 }

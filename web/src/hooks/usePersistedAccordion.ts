@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react'
 
 export function usePersistedAccordion(
-  instanceId: number, 
   defaultValue: string[] = ['status', 'categories', 'tags']
 ) {
-  const storageKey = `qui-accordion-${instanceId}`
+  // Global key shared across all instances
+  const storageKey = `qui-accordion`
   
   // Initialize state from localStorage or default values
   const [expandedItems, setExpandedItems] = useState<string[]>(() => {

@@ -1,5 +1,4 @@
 import { useState, useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import {
   Accordion,
   AccordionContent,
@@ -17,9 +16,7 @@ import {
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
 import { usePersistedAccordion } from '@/hooks/usePersistedAccordion'
-import { api } from '@/lib/api'
 import {
-  Circle,
   Download,
   Upload,
   CheckCircle2,
@@ -60,12 +57,13 @@ interface FilterSidebarProps {
     trackers: string[]
   }) => void
   torrentCounts?: Record<string, number>
+  categories?: Record<string, { name: string; savePath: string }>
+  tags?: string[]
 }
 
 
 // Define torrent states based on qBittorrent
 const TORRENT_STATES: Array<{ value: string; label: string; icon: LucideIcon }> = [
-  { value: 'all', label: 'All', icon: Circle },
   { value: 'downloading', label: 'Downloading', icon: Download },
   { value: 'seeding', label: 'Seeding', icon: Upload },
   { value: 'completed', label: 'Completed', icon: CheckCircle2 },
@@ -85,13 +83,15 @@ export function FilterSidebar({
   instanceId,
   selectedFilters,
   onFilterChange,
-  torrentCounts = {},
+  torrentCounts,
+  categories: propsCategories,
+  tags: propsTags,
 }: FilterSidebarProps) {
   // Use incognito mode hook
   const [incognitoMode] = useIncognitoMode()
   
   // Persist accordion state
-  const [expandedItems, setExpandedItems] = usePersistedAccordion(instanceId)
+  const [expandedItems, setExpandedItems] = usePersistedAccordion()
   
   // Dialog states
   const [showCreateTagDialog, setShowCreateTagDialog] = useState(false)
@@ -105,28 +105,14 @@ export function FilterSidebar({
   const [categoryToEdit, setCategoryToEdit] = useState<{ name: string; savePath: string } | null>(null)
   const [categoryToDelete, setCategoryToDelete] = useState('')
 
-  // Fetch categories
-  const { data: realCategories = {} } = useQuery({
-    queryKey: ['categories', instanceId],
-    queryFn: () => api.getCategories(instanceId),
-    staleTime: 60000, // 1 minute
-  })
-
-  // Fetch tags
-  const { data: realTags = [] } = useQuery({
-    queryKey: ['tags', instanceId],
-    queryFn: () => api.getTags(instanceId),
-    staleTime: 60000, // 1 minute
-  })
-  
-  // Use fake data if in incognito mode
+  // Use fake data if in incognito mode, otherwise use props
   const categories = useMemo(() => {
-    return incognitoMode ? LINUX_CATEGORIES : realCategories
-  }, [incognitoMode, realCategories])
+    return incognitoMode ? LINUX_CATEGORIES : (propsCategories || {})
+  }, [incognitoMode, propsCategories])
   
   const tags = useMemo(() => {
-    return incognitoMode ? LINUX_TAGS : realTags
-  }, [incognitoMode, realTags])
+    return incognitoMode ? LINUX_TAGS : (propsTags || [])
+  }, [incognitoMode, propsTags])
 
 
   const handleStatusToggle = (status: string) => {
@@ -174,11 +160,13 @@ export function FilterSidebar({
   }
 
   // Extract unique trackers from torrentCounts
-  const realTrackers = Object.keys(torrentCounts)
-    .filter(key => key.startsWith('tracker:'))
-    .map(key => key.replace('tracker:', ''))
-    .filter(tracker => torrentCounts[`tracker:${tracker}`] > 0)
-    .sort()
+  const realTrackers = torrentCounts 
+    ? Object.keys(torrentCounts)
+        .filter(key => key.startsWith('tracker:'))
+        .map(key => key.replace('tracker:', ''))
+        .filter(tracker => torrentCounts[`tracker:${tracker}`] > 0)
+        .sort()
+    : []
   
   // Use fake trackers if in incognito mode
   const trackers = useMemo(() => {
@@ -252,7 +240,7 @@ export function FilterSidebar({
                         <span>{state.label}</span>
                       </span>
                       <span className="text-xs text-muted-foreground">
-                        {torrentCounts[`status:${state.value}`] || 0}
+                        {torrentCounts ? (torrentCounts[`status:${state.value}`] || 0) : '...'}
                       </span>
                     </label>
                   ))}
@@ -294,12 +282,12 @@ export function FilterSidebar({
                       Uncategorized
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      {torrentCounts['category:'] || 0}
+                      {torrentCounts ? (torrentCounts['category:'] || 0) : '...'}
                     </span>
                   </label>
                   
                   {/* Category list */}
-                  {Object.entries(categories).map(([name, category]) => (
+                  {Object.entries(categories).map(([name, category]: [string, any]) => (
                     <ContextMenu key={name}>
                       <ContextMenuTrigger asChild>
                         <label className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer">
@@ -311,7 +299,7 @@ export function FilterSidebar({
                             {name}
                           </span>
                           <span className="text-xs text-muted-foreground">
-                            {incognitoMode ? Math.floor(Math.random() * 50) + 1 : (torrentCounts[`category:${name}`] || 0)}
+                            {incognitoMode ? Math.floor(Math.random() * 50) + 1 : (torrentCounts ? (torrentCounts[`category:${name}`] || 0) : '...')}
                           </span>
                         </label>
                       </ContextMenuTrigger>
@@ -377,12 +365,12 @@ export function FilterSidebar({
                       Untagged
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      {torrentCounts['tag:'] || 0}
+                      {torrentCounts ? (torrentCounts['tag:'] || 0) : '...'}
                     </span>
                   </label>
                   
                   {/* Tag list */}
-                  {tags.map((tag) => (
+                  {tags.map((tag: string) => (
                     <ContextMenu key={tag}>
                       <ContextMenuTrigger asChild>
                         <label className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer">
@@ -394,7 +382,7 @@ export function FilterSidebar({
                             {tag}
                           </span>
                           <span className="text-xs text-muted-foreground">
-                            {incognitoMode ? Math.floor(Math.random() * 30) + 1 : (torrentCounts[`tag:${tag}`] || 0)}
+                            {incognitoMode ? Math.floor(Math.random() * 30) + 1 : (torrentCounts ? (torrentCounts[`tag:${tag}`] || 0) : '...')}
                           </span>
                         </label>
                       </ContextMenuTrigger>
@@ -449,7 +437,7 @@ export function FilterSidebar({
                       No tracker
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      {torrentCounts['tracker:'] || 0}
+                      {torrentCounts ? (torrentCounts['tracker:'] || 0) : '...'}
                     </span>
                   </label>
                   
@@ -467,7 +455,7 @@ export function FilterSidebar({
                         {tracker}
                       </span>
                       <span className="text-xs text-muted-foreground">
-                        {incognitoMode ? Math.floor(Math.random() * 100) + 10 : (torrentCounts[`tracker:${tracker}`] || 0)}
+                        {incognitoMode ? Math.floor(Math.random() * 100) + 10 : (torrentCounts ? (torrentCounts[`tracker:${tracker}`] || 0) : '...')}
                       </span>
                     </label>
                   ))}

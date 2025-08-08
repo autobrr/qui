@@ -72,6 +72,8 @@ class ApiClient {
     port: number
     username: string
     password: string
+    basicUsername?: string
+    basicPassword?: string
   }): Promise<Instance> {
     return this.request<Instance>('/instances', {
       method: 'POST',
@@ -87,6 +89,8 @@ class ApiClient {
       port: number
       username: string
       password: string
+      basicUsername?: string
+      basicPassword?: string
     }>
   ): Promise<Instance> {
     return this.request<Instance>(`/instances/${id}`, {
@@ -161,7 +165,7 @@ class ApiClient {
   async addTorrent(
     instanceId: number,
     data: {
-      torrentFile?: File
+      torrentFiles?: File[]
       urls?: string[]
       category?: string
       tags?: string[]
@@ -171,7 +175,10 @@ class ApiClient {
     }
   ): Promise<{ success: boolean; message?: string }> {
     const formData = new FormData()
-    if (data.torrentFile) formData.append('torrent', data.torrentFile)
+    // Append each file with the same field name "torrent"
+    if (data.torrentFiles) {
+      data.torrentFiles.forEach(file => formData.append('torrent', file))
+    }
     if (data.urls) formData.append('urls', data.urls.join('\n'))
     if (data.category) formData.append('category', data.category)
     if (data.tags) formData.append('tags', data.tags.join(','))
@@ -232,6 +239,17 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify(data),
     })
+  }
+
+  // Torrent Counts
+  async getTorrentCounts(instanceId: number): Promise<{
+    status: Record<string, number>
+    categories: Record<string, number>
+    tags: Record<string, number>
+    trackers: Record<string, number>
+    total: number
+  }> {
+    return this.request(`/instances/${instanceId}/torrents/counts`)
   }
 
   // Torrent Details

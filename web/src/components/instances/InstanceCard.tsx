@@ -85,9 +85,9 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
         </div>
         <div className="flex items-center gap-2">
           <Badge 
-            variant={instance.isActive ? 'default' : 'destructive'}
+            variant="outline"
           >
-            {instance.isActive ? 'Active' : 'Inactive'}
+            Configured
           </Badge>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -123,6 +123,12 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
             <span className="text-muted-foreground">Username:</span>
             <span>{instance.username}</span>
           </div>
+          {instance.basicUsername && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Basic Auth:</span>
+              <span>{instance.basicUsername}</span>
+            </div>
+          )}
           {instance.lastConnectedAt && (
             <div className="flex justify-between">
               <span className="text-muted-foreground">Last connected:</span>

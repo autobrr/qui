@@ -29,7 +29,8 @@ import { usePersistedColumnVisibility } from '@/hooks/usePersistedColumnVisibili
 import { usePersistedColumnOrder } from '@/hooks/usePersistedColumnOrder'
 import { usePersistedColumnSizing } from '@/hooks/usePersistedColumnSizing'
 import { usePersistedColumnSorting } from '@/hooks/usePersistedColumnSorting'
-import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
+import { useInstanceMetadata } from '@/hooks/useInstanceMetadata'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
@@ -82,7 +83,7 @@ import {
   useIncognitoMode,
 } from '@/lib/incognito'
 import { formatBytes, formatSpeed } from '@/lib/utils'
-import { applyOptimisticUpdates, applyOptimisticStateUpdates } from '@/lib/torrent-state-utils'
+import { applyOptimisticUpdates } from '@/lib/torrent-state-utils'
 
 interface TorrentTableOptimizedProps {
   instanceId: number
@@ -96,6 +97,7 @@ interface TorrentTableOptimizedProps {
   onTorrentSelect?: (torrent: Torrent | null) => void
   addTorrentModalOpen?: boolean
   onAddTorrentModalChange?: (open: boolean) => void
+  onFilteredDataUpdate?: (torrents: Torrent[], total: number, counts?: any, categories?: any, tags?: string[]) => void
 }
 
 
@@ -384,9 +386,9 @@ const createColumns = (incognitoMode: boolean): ColumnDef<Torrent>[] => [
   },
 ]
 
-export function TorrentTableOptimized({ instanceId, filters, selectedTorrent, onTorrentSelect, addTorrentModalOpen, onAddTorrentModalChange }: TorrentTableOptimizedProps) {
+export function TorrentTableOptimized({ instanceId, filters, selectedTorrent, onTorrentSelect, addTorrentModalOpen, onAddTorrentModalChange, onFilteredDataUpdate }: TorrentTableOptimizedProps) {
   // State management
-  const [sorting, setSorting] = usePersistedColumnSorting(instanceId, [])
+  const [sorting, setSorting] = usePersistedColumnSorting([])
   const [globalFilter, setGlobalFilter] = useState('')
   const [immediateSearch, setImmediateSearch] = useState('')
   const [rowSelection, setRowSelection] = useState({})
@@ -397,6 +399,7 @@ export function TorrentTableOptimized({ instanceId, filters, selectedTorrent, on
   const [showTagsDialog, setShowTagsDialog] = useState(false)
   const [showCategoryDialog, setShowCategoryDialog] = useState(false)
   const [showRemoveTagsDialog, setShowRemoveTagsDialog] = useState(false)
+  const [showRefetchIndicator, setShowRefetchIndicator] = useState(false)
   
   // Use incognito mode hook
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
@@ -410,7 +413,6 @@ export function TorrentTableOptimized({ instanceId, filters, selectedTorrent, on
     priority: false,
   }
   const [columnVisibility, setColumnVisibility] = usePersistedColumnVisibility(
-    instanceId,
     defaultColumnVisibility
   )
   
@@ -424,13 +426,11 @@ export function TorrentTableOptimized({ instanceId, filters, selectedTorrent, on
     }).filter(Boolean) as string[]
   }, [])
   const [columnOrder, setColumnOrder] = usePersistedColumnOrder(
-    instanceId,
     defaultColumnOrder
   )
   
   // Column sizing with persistence
   const [columnSizing, setColumnSizing] = usePersistedColumnSizing(
-    instanceId,
     {} // Start with empty object, let columns use their default sizes
   )
   
@@ -440,19 +440,10 @@ export function TorrentTableOptimized({ instanceId, filters, selectedTorrent, on
   // Query client for invalidating queries
   const queryClient = useQueryClient()
 
-  // Fetch available tags
-  const { data: availableTags = [] } = useQuery({
-    queryKey: ['tags', instanceId],
-    queryFn: () => api.getTags(instanceId),
-    staleTime: 60000,
-  })
-
-  // Fetch available categories
-  const { data: availableCategories = {} } = useQuery({
-    queryKey: ['categories', instanceId],
-    queryFn: () => api.getCategories(instanceId),
-    staleTime: 60000,
-  })
+  // Fetch metadata using shared hook
+  const { data: metadata } = useInstanceMetadata(instanceId)
+  const availableTags = metadata?.tags || []
+  const availableCategories = metadata?.categories || {}
 
   // Debounce search to prevent excessive filtering (1 second delay)
   const debouncedSearch = useDebounce(globalFilter, 1000)
@@ -468,14 +459,44 @@ export function TorrentTableOptimized({ instanceId, filters, selectedTorrent, on
     torrents, 
     totalCount, 
     stats, 
+    counts,
+    categories,
+    tags,
     isLoading,
+    isFetching,
     isLoadingMore,
     hasLoadedAll,
     loadMore: loadMoreTorrents,
+    isCachedData,
+    isStaleData,
   } = useTorrentsList(instanceId, {
     search: effectiveSearch,
     filters,
   })
+  
+  // Call the callback when filtered data updates
+  useEffect(() => {
+    if (onFilteredDataUpdate && torrents && totalCount !== undefined && !isLoading) {
+      onFilteredDataUpdate(torrents, totalCount, counts, categories, tags)
+    }
+  }, [totalCount, isLoading, torrents.length, counts, categories, tags, onFilteredDataUpdate]) // Update when data changes
+  
+  // Show refetch indicator only if fetching takes more than 2 seconds
+  // This avoids annoying flickering for fast instances
+  useEffect(() => {
+    let timeoutId: NodeJS.Timeout
+    
+    if (isFetching && !isLoading && torrents.length > 0) {
+      // Only show indicator after 2 second delay
+      timeoutId = setTimeout(() => {
+        setShowRefetchIndicator(true)
+      }, 2000)
+    } else {
+      setShowRefetchIndicator(false)
+    }
+    
+    return () => clearTimeout(timeoutId)
+  }, [isFetching, isLoading, torrents.length])
   
   // Handle Enter key for immediate search
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -665,18 +686,21 @@ export function TorrentTableOptimized({ instanceId, filters, selectedTorrent, on
           })
         })
         
-        // Refetch later to sync with actual server state
+        // Refetch later to sync with actual server state (don't invalidate!)
         // Longer delay when deleting files from disk
         const refetchDelay = variables.deleteFiles ? 5000 : 2000
         setTimeout(() => {
-          queryClient.invalidateQueries({ 
+          // Use refetch instead of invalidate to keep showing data
+          queryClient.refetchQueries({ 
             queryKey: ['torrents-list', instanceId],
-            exact: false 
+            exact: false,
+            type: 'active' // Only refetch if component is mounted
           })
-          // Also invalidate the counts query to update filter sidebar immediately
-          queryClient.invalidateQueries({ 
-            queryKey: ['all-torrents-for-counts', instanceId],
-            exact: false 
+          // Also refetch the counts query
+          queryClient.refetchQueries({ 
+            queryKey: ['torrent-counts', instanceId],
+            exact: false,
+            type: 'active'
           })
         }, refetchDelay)
       } else {
@@ -717,24 +741,7 @@ export function TorrentTableOptimized({ instanceId, filters, selectedTorrent, on
             })
           })
           
-          // Also optimistically update the all-torrents-for-counts query
-          const countsQueries = cache.findAll({
-            queryKey: ['all-torrents-for-counts', instanceId],
-            exact: false
-          })
-          
-          countsQueries.forEach(query => {
-            queryClient.setQueryData(query.queryKey, (oldData: any) => {
-              if (!oldData || !Array.isArray(oldData)) return oldData
-              
-              // Apply optimistic state updates without filtering
-              return applyOptimisticStateUpdates(
-                oldData,
-                variables.hashes,
-                variables.action as 'pause' | 'resume'
-              )
-            })
-          })
+          // Note: torrent-counts are handled server-side now, no need for optimistic updates
         }
         
         // For other operations, add delay to allow qBittorrent to process
@@ -742,14 +749,16 @@ export function TorrentTableOptimized({ instanceId, filters, selectedTorrent, on
         const delay = variables.action === 'resume' ? 2000 : 1000
         
         setTimeout(() => {
-          // Always invalidate to get the real state from server
-          queryClient.invalidateQueries({ 
+          // Use refetch instead of invalidate to avoid loading state
+          queryClient.refetchQueries({ 
             queryKey: ['torrents-list', instanceId],
-            exact: false 
+            exact: false,
+            type: 'active'
           })
-          queryClient.invalidateQueries({ 
-            queryKey: ['all-torrents-for-counts', instanceId],
-            exact: false 
+          queryClient.refetchQueries({ 
+            queryKey: ['torrent-counts', instanceId],
+            exact: false,
+            type: 'active'
           })
         }, delay)
         setContextMenuHashes([])
@@ -1359,7 +1368,13 @@ export function TorrentTableOptimized({ instanceId, filters, selectedTorrent, on
         {/* Status bar */}
         <div className="flex items-center justify-between p-2 border-t flex-shrink-0">
           <div className="text-sm text-muted-foreground">
-            {totalCount === 0 ? (
+            {/* Show special loading message when fetching without cache (cold load) */}
+            {isLoading && !isCachedData && !isStaleData && torrents.length === 0 ? (
+              <>
+                <Loader2 className="h-3 w-3 animate-spin inline mr-1" />
+                Loading torrents from instance... (no cache available)
+              </>
+            ) : totalCount === 0 ? (
               'No torrents found'
             ) : (
               <>
@@ -1369,8 +1384,22 @@ export function TorrentTableOptimized({ instanceId, filters, selectedTorrent, on
               </>
             )}
             {selectedHashes.length > 0 && (
+              <>
+                <span className="ml-2">
+                  ({selectedHashes.length} selected)
+                </span>
+                <button
+                  onClick={() => setRowSelection({})}
+                  className="ml-2 text-xs text-primary hover:text-foreground transition-colors underline-offset-4 hover:underline"
+                >
+                  Clear selection
+                </button>
+              </>
+            )}
+            {showRefetchIndicator && (
               <span className="ml-2">
-                ({selectedHashes.length} selected)
+                <Loader2 className="h-3 w-3 animate-spin inline mr-1" />
+                Updating...
               </span>
             )}
           </div>

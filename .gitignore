@@ -1,10 +1,12 @@
 # Logs and databases
 *.log
-*.sql
 *.sqlite
 *.db*
 log/
 logs/
+
+# Exception: Allow migration SQL files
+!internal/database/migrations/*.sql
 
 # OS generated files
 .DS_Store*

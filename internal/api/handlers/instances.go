@@ -1,46 +1,54 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
-	"github.com/autobrr/go-qbittorrent"
-	"github.com/autobrr/qui/internal/models"
-	internalqbittorrent "github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
+
+	"github.com/autobrr/qui/internal/models"
+	internalqbittorrent "github.com/autobrr/qui/internal/qbittorrent"
 )
 
 type InstancesHandler struct {
 	instanceStore *models.InstanceStore
 	clientPool    *internalqbittorrent.ClientPool
+	syncManager   *internalqbittorrent.SyncManager
 }
 
-func NewInstancesHandler(instanceStore *models.InstanceStore, clientPool *internalqbittorrent.ClientPool) *InstancesHandler {
+func NewInstancesHandler(instanceStore *models.InstanceStore, clientPool *internalqbittorrent.ClientPool, syncManager *internalqbittorrent.SyncManager) *InstancesHandler {
 	return &InstancesHandler{
 		instanceStore: instanceStore,
 		clientPool:    clientPool,
+		syncManager:   syncManager,
 	}
 }
 
 // CreateInstanceRequest represents a request to create a new instance
 type CreateInstanceRequest struct {
-	Name     string `json:"name"`
-	Host     string `json:"host"`
-	Port     int    `json:"port"`
-	Username string `json:"username"`
-	Password string `json:"password"`
+	Name          string  `json:"name"`
+	Host          string  `json:"host"`
+	Port          int     `json:"port"`
+	Username      string  `json:"username"`
+	Password      string  `json:"password"`
+	BasicUsername *string `json:"basicUsername,omitempty"`
+	BasicPassword *string `json:"basicPassword,omitempty"`
 }
 
 // UpdateInstanceRequest represents a request to update an instance
 type UpdateInstanceRequest struct {
-	Name     string `json:"name"`
-	Host     string `json:"host"`
-	Port     int    `json:"port"`
-	Username string `json:"username"`
-	Password string `json:"password,omitempty"` // Optional for updates
+	Name          string  `json:"name"`
+	Host          string  `json:"host"`
+	Port          int     `json:"port"`
+	Username      string  `json:"username"`
+	Password      string  `json:"password,omitempty"` // Optional for updates
+	BasicUsername *string `json:"basicUsername,omitempty"`
+	BasicPassword *string `json:"basicPassword,omitempty"`
 }
 
 // ListInstances returns all instances
@@ -64,6 +72,7 @@ func (h *InstancesHandler) ListInstances(w http.ResponseWriter, r *http.Request)
 			"host":            instance.Host,
 			"port":            instance.Port,
 			"username":        instance.Username,
+			"basicUsername":   instance.BasicUsername,
 			"isActive":        instance.IsActive,
 			"lastConnectedAt": instance.LastConnectedAt,
 			"createdAt":       instance.CreatedAt,
@@ -89,7 +98,7 @@ func (h *InstancesHandler) CreateInstance(w http.ResponseWriter, r *http.Request
 	}
 
 	// Create instance
-	instance, err := h.instanceStore.Create(req.Name, req.Host, req.Port, req.Username, req.Password)
+	instance, err := h.instanceStore.Create(req.Name, req.Host, req.Port, req.Username, req.Password, req.BasicUsername, req.BasicPassword)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create instance")
 		RespondError(w, http.StatusInternalServerError, "Failed to create instance")
@@ -112,6 +121,7 @@ func (h *InstancesHandler) CreateInstance(w http.ResponseWriter, r *http.Request
 		"host":            instance.Host,
 		"port":            instance.Port,
 		"username":        instance.Username,
+		"basicUsername":   instance.BasicUsername,
 		"isActive":        instance.IsActive,
 		"lastConnectedAt": instance.LastConnectedAt,
 		"createdAt":       instance.CreatedAt,
@@ -141,7 +151,7 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 	}
 
 	// Update instance
-	instance, err := h.instanceStore.Update(instanceID, req.Name, req.Host, req.Port, req.Username, req.Password)
+	instance, err := h.instanceStore.Update(instanceID, req.Name, req.Host, req.Port, req.Username, req.Password, req.BasicUsername, req.BasicPassword)
 	if err != nil {
 		if errors.Is(err, models.ErrInstanceNotFound) {
 			RespondError(w, http.StatusNotFound, "Instance not found")
@@ -161,6 +171,7 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 		"host":            instance.Host,
 		"port":            instance.Port,
 		"username":        instance.Username,
+		"basicUsername":   instance.BasicUsername,
 		"isActive":        instance.IsActive,
 		"lastConnectedAt": instance.LastConnectedAt,
 		"createdAt":       instance.CreatedAt,
@@ -269,71 +280,54 @@ func (h *InstancesHandler) GetInstanceStats(w http.ResponseWriter, r *http.Reque
 	// Update connected status
 	stats["connected"] = client.IsHealthy()
 
-	// Get stats from qBittorrent using full torrent list for accurate counts
-	torrents, err := client.GetTorrentsCtx(r.Context(), qbittorrent.TorrentFilterOptions{})
+	// Get stats from the sync manager which uses cached data
+	// This ensures the dashboard doesn't make slow direct API calls to qBittorrent
+	// Use a longer timeout for slow instances with 10k+ torrents
+	// 30 seconds should be enough for initial cold cache load
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	
+	torrentCounts, err := h.syncManager.GetTorrentCounts(ctx, instanceID)
 	if err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get torrents")
+		if errors.Is(err, context.DeadlineExceeded) {
+			log.Warn().Int("instanceID", instanceID).Msg("Timeout getting torrent counts for dashboard stats")
+		} else {
+			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get torrent counts")
+		}
 		// Return default stats instead of error
 		RespondJSON(w, http.StatusOK, stats)
 		return
 	}
 
-	// Calculate torrent statistics
-	var downloading, seeding, paused, error, completed int
-	var totalDownloadSpeed, totalUploadSpeed int64
-
-	for _, torrent := range torrents {
-		// Count by state
-		switch torrent.State {
-		case "downloading", "stalledDL", "metaDL", "queuedDL", "allocating", "checkingDL":
-			downloading++
-		case "uploading", "stalledUP", "queuedUP", "checkingUP":
-			seeding++
-		case "pausedDL", "pausedUP":
-			paused++
-		case "error", "missingFiles":
-			error++
-		}
-
-		// Count completed
-		if torrent.Progress == 1 {
-			completed++
-		}
-
-		// Sum speeds
-		totalDownloadSpeed += torrent.DlSpeed
-		totalUploadSpeed += torrent.UpSpeed
-	}
-
-	// Update stats with actual values
+	// Update stats with counts from cached data
 	stats["torrents"] = map[string]interface{}{
-		"total":       len(torrents),
-		"downloading": downloading,
-		"seeding":     seeding,
-		"paused":      paused,
-		"error":       error,
-		"completed":   completed,
-	}
-	stats["speeds"] = map[string]interface{}{
-		"download": totalDownloadSpeed,
-		"upload":   totalUploadSpeed,
+		"total":       torrentCounts.Total,
+		"downloading": torrentCounts.Status["downloading"],
+		"seeding":     torrentCounts.Status["seeding"],
+		"paused":      torrentCounts.Status["paused"],
+		"error":       torrentCounts.Status["errored"],
+		"completed":   torrentCounts.Status["completed"],
 	}
 
-	// Get server state for additional info
-	mainData, err := client.SyncMainDataCtx(r.Context(), 0)
+	// Get speeds from the sync manager which calculates from cached torrents
+	// This avoids making slow API calls to qBittorrent for large instances
+	speeds, err := h.syncManager.GetInstanceSpeeds(ctx, instanceID)
 	if err != nil {
-		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to get server state")
-		// Don't fail the request, just log the warning
-	}
-
-	// Add server state if available
-	if mainData != nil {
-		stats["serverState"] = map[string]interface{}{
-			"downloadSpeed": mainData.ServerState.DlInfoSpeed,
-			"uploadSpeed":   mainData.ServerState.UpInfoSpeed,
-			"downloaded":    mainData.ServerState.DlInfoData,
-			"uploaded":      mainData.ServerState.UpInfoData,
-			"freeSpace":     mainData.ServerState.FreeSpaceOnDisk,
+		if errors.Is(err, context.DeadlineExceeded) {
+			log.Warn().Int("instanceID", instanceID).Msg("Timeout getting instance speeds")
+		} else {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to get instance speeds")
+		}
+		// Set default speeds
+		stats["speeds"] = map[string]interface{}{
+			"download": 0,
+			"upload":   0,
+		}
+	} else {
+		// Use calculated speeds from cached torrent data
+		stats["speeds"] = map[string]interface{}{
+			"download": speeds.Download,
+			"upload":   speeds.Upload,
 		}
 	}
 

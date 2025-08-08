@@ -2,10 +2,10 @@ import { useState, useEffect } from 'react'
 import type { SortingState } from '@tanstack/react-table'
 
 export function usePersistedColumnSorting(
-  instanceId: number,
   defaultSorting: SortingState = []
 ) {
-  const storageKey = `qui-column-sorting-${instanceId}`
+  // Global key shared across all instances
+  const storageKey = `qui-column-sorting`
   
   // Initialize state from localStorage or default values
   const [sorting, setSorting] = useState<SortingState>(() => {

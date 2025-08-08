@@ -29,7 +29,7 @@ func IsAuthenticated(authService *auth.Service) func(http.Handler) http.Handler 
 			}
 
 			// Check session
-			session, _ := authService.GetSessionStore().Get(r, "user_session")
+			session, _ := authService.GetSessionStore().Get(r, auth.SessionName)
 			if auth, ok := session.Values["authenticated"].(bool); !ok || !auth {
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return

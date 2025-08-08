@@ -16,6 +16,7 @@ export interface Instance {
   host: string
   port: number
   username: string
+  basicUsername?: string
   isActive: boolean
   lastConnectedAt?: string
   createdAt: string
@@ -70,10 +71,29 @@ export interface TorrentStats {
   totalUploadSpeed?: number
 }
 
+export interface CacheMetadata {
+  source: 'cache' | 'fresh'
+  age: number
+  isStale: boolean
+  nextRefresh?: string
+}
+
+export interface TorrentCounts {
+  status: Record<string, number>
+  categories: Record<string, number>
+  tags: Record<string, number>
+  trackers: Record<string, number>
+  total: number
+}
+
 export interface TorrentResponse {
   torrents: Torrent[]
   total: number
   stats?: TorrentStats
+  counts?: TorrentCounts
+  categories?: Record<string, Category>
+  tags?: string[]
+  cacheMetadata?: CacheMetadata
 }
 
 export interface MainData {

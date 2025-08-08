@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useTorrentsList } from '@/hooks/useTorrentsList'
 import { useDebounce } from '@/hooks/useDebounce'
-import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
@@ -41,6 +41,8 @@ import {
   Radio,
   ChevronDown,
   ChevronUp,
+  Eye,
+  EyeOff,
 } from 'lucide-react'
 import { SetTagsDialog, SetCategoryDialog } from './TorrentDialogs'
 import type { Torrent } from '@/types'
@@ -69,6 +71,7 @@ interface TorrentCardsMobileProps {
   onTorrentSelect?: (torrent: Torrent | null) => void
   addTorrentModalOpen?: boolean
   onAddTorrentModalChange?: (open: boolean) => void
+  onFilteredDataUpdate?: (torrents: Torrent[], total: number, counts?: any, categories?: any, tags?: string[]) => void
 }
 
 function formatEta(seconds: number): string {
@@ -319,7 +322,8 @@ export function TorrentCardsMobile({
   filters, 
   onTorrentSelect,
   addTorrentModalOpen,
-  onAddTorrentModalChange 
+  onAddTorrentModalChange,
+  onFilteredDataUpdate 
 }: TorrentCardsMobileProps) {
   // State
   const [globalFilter, setGlobalFilter] = useState('')
@@ -334,35 +338,38 @@ export function TorrentCardsMobile({
   const [showCategoryDialog, setShowCategoryDialog] = useState(false)
   const [actionTorrents, setActionTorrents] = useState<Torrent[]>([]);
   
-  const [incognitoMode] = useIncognitoMode()
+  const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const queryClient = useQueryClient()
   const debouncedSearch = useDebounce(globalFilter, 1000)
   const effectiveSearch = immediateSearch || debouncedSearch
   
   // Fetch data
   const { 
-    torrents, 
-    stats, 
+    torrents,
+    totalCount, 
+    stats,
+    counts,
+    categories,
+    tags,
     isLoadingMore,
     hasLoadedAll,
     loadMore: loadMoreTorrents,
+    isFreshData,
   } = useTorrentsList(instanceId, {
     search: effectiveSearch,
     filters,
   })
   
-  // Fetch available tags and categories
-  const { data: availableTags = [] } = useQuery({
-    queryKey: ['tags', instanceId],
-    queryFn: () => api.getTags(instanceId),
-    staleTime: 60000,
-  })
-
-  const { data: availableCategories = {} } = useQuery({
-    queryKey: ['categories', instanceId],
-    queryFn: () => api.getCategories(instanceId),
-    staleTime: 60000,
-  })
+  // Call the callback when filtered data updates
+  useEffect(() => {
+    if (onFilteredDataUpdate && isFreshData && torrents && totalCount !== undefined) {
+      onFilteredDataUpdate(torrents, totalCount, counts, categories, tags)
+    }
+  }, [totalCount, isFreshData, torrents.length, counts, categories, tags, onFilteredDataUpdate]) // Update when data changes
+  
+  // Use tags and categories from the main data fetch
+  const availableTags = tags || []
+  const availableCategories = categories || {}
   
   // Virtual scrolling with consistent spacing
   const parentRef = useRef<HTMLDivElement>(null)
@@ -600,6 +607,15 @@ export function TorrentCardsMobile({
                 className="pl-9 pr-3 h-9"
               />
             </div>
+            
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => setIncognitoMode(!incognitoMode)}
+              title={incognitoMode ? "Disable incognito mode" : "Enable incognito mode"}
+            >
+              {incognitoMode ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </Button>
             
             <Button
               size="icon"

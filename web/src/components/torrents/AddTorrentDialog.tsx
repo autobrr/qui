@@ -34,7 +34,7 @@ interface AddTorrentDialogProps {
 type TabValue = 'file' | 'url'
 
 interface FormData {
-  torrentFile: File | null
+  torrentFiles: File[] | null
   urls: string
   category: string
   tags: string
@@ -59,6 +59,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
   })
 
   const mutation = useMutation({
+    retry: false, // Don't retry - could cause duplicate torrent additions
     mutationFn: async (data: FormData) => {
       const submitData: Parameters<typeof api.addTorrent>[1] = {
         startPaused: data.startPaused,
@@ -67,8 +68,8 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
         tags: data.tags ? data.tags.split(',').map(t => t.trim()).filter(Boolean) : undefined,
       }
 
-      if (activeTab === 'file' && data.torrentFile) {
-        submitData.torrentFile = data.torrentFile
+      if (activeTab === 'file' && data.torrentFiles && data.torrentFiles.length > 0) {
+        submitData.torrentFiles = data.torrentFiles
       } else if (activeTab === 'url' && data.urls) {
         submitData.urls = data.urls.split('\n').map(u => u.trim()).filter(Boolean)
       }
@@ -78,14 +79,17 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
     onSuccess: () => {
       // Add small delay to allow qBittorrent to process the new torrent
       setTimeout(() => {
-        queryClient.invalidateQueries({ 
+        // Use refetch instead of invalidate to avoid loading state
+        queryClient.refetchQueries({ 
           queryKey: ['torrents-list', instanceId],
-          exact: false 
+          exact: false,
+          type: 'active'
         })
-        // Also invalidate the counts query to update filter sidebar immediately
-        queryClient.invalidateQueries({ 
-          queryKey: ['all-torrents-for-counts', instanceId],
-          exact: false 
+        // Also refetch the metadata (categories, tags, counts)
+        queryClient.refetchQueries({ 
+          queryKey: ['instance-metadata', instanceId],
+          exact: false,
+          type: 'active'
         })
       }, 500) // Give qBittorrent time to process
       setOpen(false)
@@ -95,7 +99,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
 
   const form = useForm({
     defaultValues: {
-      torrentFile: null as File | null,
+      torrentFiles: null as File[] | null,
       urls: '',
       category: '',
       tags: '',
@@ -163,11 +167,11 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
           {/* File upload or URL input */}
           {activeTab === 'file' ? (
             <form.Field
-              name="torrentFile"
+              name="torrentFiles"
               validators={{
                 onChange: ({ value }) => {
-                  if (!value && activeTab === 'file') {
-                    return 'Please select a torrent file'
+                  if ((!value || value.length === 0) && activeTab === 'file') {
+                    return 'Please select at least one torrent file'
                   }
                   return undefined
                 },
@@ -175,13 +179,22 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
             >
               {(field) => (
                 <div className="space-y-2">
-                  <Label htmlFor="torrentFile">Torrent File</Label>
+                  <Label htmlFor="torrentFiles">Torrent Files</Label>
                   <Input
-                    id="torrentFile"
+                    id="torrentFiles"
                     type="file"
                     accept=".torrent"
-                    onChange={(e) => field.handleChange(e.target.files?.[0] || null)}
+                    multiple
+                    onChange={(e) => {
+                      const files = e.target.files ? Array.from(e.target.files) : null
+                      field.handleChange(files)
+                    }}
                   />
+                  {field.state.value && field.state.value.length > 0 && (
+                    <p className="text-sm text-muted-foreground">
+                      {field.state.value.length} file{field.state.value.length > 1 ? 's' : ''} selected
+                    </p>
+                  )}
                   {field.state.meta.isTouched && field.state.meta.errors[0] && (
                     <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
                   )}

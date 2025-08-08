@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import type { Torrent } from '@/types'
+import type { Torrent, TorrentResponse } from '@/types'
 
 interface UseTorrentsListOptions {
   enabled?: boolean
@@ -14,39 +14,29 @@ interface UseTorrentsListOptions {
   }
 }
 
-// This hook uses the standard paginated API, not SyncMainData
-// It's simpler and more reliable for the current implementation
+// Simplified hook that trusts the backend's stale-while-revalidate pattern
+// Backend handles all caching complexity and returns fresh or stale data immediately
 export function useTorrentsList(
   instanceId: number,
   options: UseTorrentsListOptions = {}
 ) {
   const { enabled = true, search, filters } = options
   
-  const [allTorrents, setAllTorrents] = useState<Torrent[]>([])
-  const [isLoadingMore, setIsLoadingMore] = useState(false)
-  const [hasLoadedAll, setHasLoadedAll] = useState(false)
   const [currentPage, setCurrentPage] = useState(0)
-  const pageSize = 500 // Load 500 at a time
+  const [allTorrents, setAllTorrents] = useState<Torrent[]>([])
+  const [hasLoadedAll, setHasLoadedAll] = useState(false)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const pageSize = 500 // Load 500 at a time (backend default)
   
-  const [stats, setStats] = useState({
-    total: 0,
-    downloading: 0,
-    seeding: 0,
-    paused: 0,
-    error: 0,
-    totalDownloadSpeed: 0,
-    totalUploadSpeed: 0,
-  })
-  
-  // Reset pagination when filters or search change
+  // Reset state when instanceId, filters, or search change
   useEffect(() => {
     setCurrentPage(0)
     setAllTorrents([])
     setHasLoadedAll(false)
-  }, [filters, search])
+  }, [instanceId, filters, search])
   
-  // Initial load
-  const { data: initialData, isLoading: initialLoading } = useQuery({
+  // Query for torrents - backend handles stale-while-revalidate
+  const { data, isLoading, isFetching } = useQuery<TorrentResponse>({
     queryKey: ['torrents-list', instanceId, currentPage, filters, search],
     queryFn: () => api.getTorrents(instanceId, { 
       page: currentPage, 
@@ -56,70 +46,96 @@ export function useTorrentsList(
       search,
       filters
     }),
-    staleTime: 2000, // 2 seconds - match backend cache TTL
-    refetchInterval: 5000, // Poll every 5 seconds for real-time updates
+    // Trust backend cache - it returns immediately with stale data if needed
+    staleTime: 0, // Always check with backend (it decides if cache is fresh)
+    gcTime: 300000, // Keep in React Query cache for 5 minutes for navigation
+    refetchInterval: 3000, // Poll every 3 seconds to trigger backend's stale check
     refetchIntervalInBackground: false, // Don't poll when tab is not active
     enabled,
   })
   
   // Update torrents when data arrives
   useEffect(() => {
-    if (initialData?.torrents) {
+    if (data?.torrents) {
       if (currentPage === 0) {
         // First page, replace all
-        setAllTorrents(initialData.torrents)
+        setAllTorrents(data.torrents)
       } else {
-        // Append to existing
-        setAllTorrents(prev => [...prev, ...initialData.torrents])
-      }
-      
-      // Update stats - use the total from the API response
-      if (initialData.stats) {
-        setStats({
-          total: initialData.total || initialData.stats.total,
-          downloading: initialData.stats.downloading || 0,
-          seeding: initialData.stats.seeding || 0,
-          paused: initialData.stats.paused || 0,
-          error: initialData.stats.error || 0,
-          totalDownloadSpeed: initialData.stats.totalDownloadSpeed || 0,
-          totalUploadSpeed: initialData.stats.totalUploadSpeed || 0,
+        // Append to existing for pagination
+        setAllTorrents(prev => {
+          // Avoid duplicates by filtering out existing hashes
+          const existingHashes = new Set(prev.map(t => t.hash))
+          const newTorrents = data.torrents.filter(t => !existingHashes.has(t.hash))
+          return [...prev, ...newTorrents]
         })
-      } else if (initialData.total) {
-        setStats(prev => ({
-          ...prev,
-          total: initialData.total
-        }))
       }
       
-      // Check if we've loaded all - compare current loaded count with total
-      const totalLoaded = currentPage === 0 ? initialData.torrents.length : allTorrents.length + initialData.torrents.length
-      if (totalLoaded >= (initialData.total || initialData.stats?.total || 0)) {
+      // Check if we've loaded all torrents
+      const totalLoaded = currentPage === 0 
+        ? data.torrents.length 
+        : allTorrents.length + data.torrents.length
+      
+      if (totalLoaded >= (data.total || 0) || data.torrents.length < pageSize) {
         setHasLoadedAll(true)
       }
       
       setIsLoadingMore(false)
     }
-  }, [initialData, currentPage, pageSize])
+  }, [data, currentPage, pageSize])
   
-  // Load more function
+  // Load more function for pagination
   const loadMore = () => {
-    if (!hasLoadedAll && !isLoadingMore) {
+    if (!hasLoadedAll && !isLoadingMore && !isFetching) {
       setIsLoadingMore(true)
       setCurrentPage(prev => prev + 1)
     }
   }
   
-  // Since search is now handled server-side, we don't need client-side filtering
-  const filteredTorrents = allTorrents
+  // Extract stats from response or calculate defaults
+  const stats = useMemo(() => {
+    if (data?.stats) {
+      return {
+        total: data.total || data.stats.total || 0,
+        downloading: data.stats.downloading || 0,
+        seeding: data.stats.seeding || 0,
+        paused: data.stats.paused || 0,
+        error: data.stats.error || 0,
+        totalDownloadSpeed: data.stats.totalDownloadSpeed || 0,
+        totalUploadSpeed: data.stats.totalUploadSpeed || 0,
+      }
+    }
+    
+    return {
+      total: data?.total || 0,
+      downloading: 0,
+      seeding: 0,
+      paused: 0,
+      error: 0,
+      totalDownloadSpeed: 0,
+      totalUploadSpeed: 0,
+    }
+  }, [data])
+  
+  // Check if data is from cache or fresh (backend provides this info)
+  const isCachedData = data?.cacheMetadata?.source === 'cache'
+  const isStaleData = data?.cacheMetadata?.isStale === true
   
   return {
-    torrents: filteredTorrents,
-    allTorrents,
-    totalCount: stats.total,
+    torrents: allTorrents,
+    totalCount: data?.total ?? 0,
     stats,
-    isLoading: initialLoading && currentPage === 0,
+    counts: data?.counts, // Return counts from backend
+    categories: data?.categories, // Return categories from backend
+    tags: data?.tags, // Return tags from backend
+    isLoading: isLoading && currentPage === 0,
+    isFetching, // True when React Query is fetching (but we may have stale data)
     isLoadingMore,
     hasLoadedAll,
     loadMore,
+    // Metadata about data freshness
+    isFreshData: !isCachedData || !isStaleData,
+    isCachedData,
+    isStaleData,
+    cacheAge: data?.cacheMetadata?.age,
   }
 }

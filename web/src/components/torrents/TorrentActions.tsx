@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
-import { applyOptimisticUpdates, applyOptimisticStateUpdates } from '@/lib/torrent-state-utils'
+import { applyOptimisticUpdates } from '@/lib/torrent-state-utils'
 import { getCommonTags, getCommonCategory } from '@/lib/torrent-utils'
 import { Button } from '@/components/ui/button'
 import {
@@ -80,7 +80,7 @@ export function TorrentActions({ instanceId, selectedHashes, selectedTorrents = 
         })
         // Also remove counts query
         queryClient.removeQueries({
-          queryKey: ['all-torrents-for-counts', instanceId],
+          queryKey: ['torrent-counts', instanceId],
           exact: false
         })
         
@@ -90,19 +90,29 @@ export function TorrentActions({ instanceId, selectedHashes, selectedTorrents = 
           exact: false
         })
         await queryClient.refetchQueries({
-          queryKey: ['all-torrents-for-counts', instanceId],
+          queryKey: ['torrent-counts', instanceId],
           exact: false
         })
         onComplete?.()
       } else {
-        // For pause/resume, optimistically update the cache immediately
-        if (variables.action === 'pause' || variables.action === 'resume') {
+        // Apply optimistic updates for actions that change visible state
+        const optimisticActions = ['pause', 'resume', 'delete', 'deleteWithFiles', 'recheck', 'setCategory', 'addTags', 'removeTags', 'setTags', 'toggleAutoTMM']
+        
+        if (optimisticActions.includes(variables.action)) {
           // Get all cached queries for this instance
           const cache = queryClient.getQueryCache()
           const queries = cache.findAll({
             queryKey: ['torrents-list', instanceId],
             exact: false
           })
+          
+          // Build payload for the action
+          const payload = {
+            category: variables.category,
+            tags: variables.tags,
+            enable: variables.enable,
+            deleteFiles: variables.deleteFiles
+          }
           
           // Optimistically update torrent states in all cached queries
           queries.forEach(query => {
@@ -119,8 +129,9 @@ export function TorrentActions({ instanceId, selectedHashes, selectedTorrents = 
               const { torrents: updatedTorrents } = applyOptimisticUpdates(
                 oldData.torrents,
                 selectedHashes,
-                variables.action as 'pause' | 'resume', // Type narrowed by if condition above
-                statusFilters
+                variables.action,
+                statusFilters,
+                payload
               )
               
               return {
@@ -132,24 +143,7 @@ export function TorrentActions({ instanceId, selectedHashes, selectedTorrents = 
             })
           })
           
-          // Also optimistically update the all-torrents-for-counts query
-          const countsQueries = cache.findAll({
-            queryKey: ['all-torrents-for-counts', instanceId],
-            exact: false
-          })
-          
-          countsQueries.forEach(query => {
-            queryClient.setQueryData(query.queryKey, (oldData: any) => {
-              if (!oldData || !Array.isArray(oldData)) return oldData
-              
-              // Apply optimistic state updates without filtering
-              return applyOptimisticStateUpdates(
-                oldData,
-                selectedHashes,
-                variables.action as 'pause' | 'resume'
-              )
-            })
-          })
+          // Note: torrent-counts are handled server-side now, no need for optimistic updates
         }
         
         // For other operations, add delay to allow qBittorrent to process
@@ -163,7 +157,7 @@ export function TorrentActions({ instanceId, selectedHashes, selectedTorrents = 
             exact: false 
           })
           queryClient.invalidateQueries({ 
-            queryKey: ['all-torrents-for-counts', instanceId],
+            queryKey: ['torrent-counts', instanceId],
             exact: false 
           })
         }, delay)

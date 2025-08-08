@@ -1,5 +1,4 @@
-import { useState, useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useState, useMemo, useCallback } from 'react'
 import { TorrentTableResponsive } from '@/components/torrents/TorrentTableResponsive'
 import { FilterSidebar } from '@/components/torrents/FilterSidebar'
 import { TorrentDetailsPanel } from '@/components/torrents/TorrentDetailsPanel'
@@ -8,10 +7,8 @@ import { VisuallyHidden } from '@/components/ui/visually-hidden'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Filter } from 'lucide-react'
-import { useTorrentCounts } from '@/hooks/useTorrentCounts'
 import { usePersistedFilters } from '@/hooks/usePersistedFilters'
 import { useNavigate, useSearch } from '@tanstack/react-router'
-import { api } from '@/lib/api'
 import type { Torrent } from '@/types'
 
 interface TorrentsProps {
@@ -20,7 +17,7 @@ interface TorrentsProps {
 }
 
 export function Torrents({ instanceId, instanceName }: TorrentsProps) {
-  const [filters, setFilters] = usePersistedFilters(instanceId)
+  const [filters, setFilters] = usePersistedFilters()
   const [selectedTorrent, setSelectedTorrent] = useState<Torrent | null>(null)
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false)
   const navigate = useNavigate()
@@ -44,62 +41,61 @@ export function Torrents({ instanceId, instanceName }: TorrentsProps) {
     }
   }
   
-  // Get all torrents for accurate counting (separate from table's progressive loading)
-  const { data: allTorrentsForCounts } = useQuery({
-    queryKey: ['all-torrents-for-counts', instanceId],
-    queryFn: async () => {
-      // Load torrents in batches until we get them all
-      let allTorrents: any[] = []
-      let page = 0
-      const pageSize = 1000
-      let hasMore = true
-      
-      while (hasMore) {
-        const response = await api.getTorrents(instanceId, { 
-          page,
-          limit: pageSize,
-          sort: 'addedOn',
-          order: 'desc'
-        })
-        
-        allTorrents = [...allTorrents, ...response.torrents]
-        hasMore = response.torrents.length === pageSize && allTorrents.length < response.total
-        page++
-        
-        // Safety break to prevent infinite loops
-        if (page > 10) break
-      }
-      
-      console.log(`Loaded ${allTorrents.length} torrents for counting in ${page} batches`)
-      return allTorrents
-    },
-    staleTime: 30000, // Cache for 30 seconds
-    refetchInterval: 60000, // Refresh every minute
-  })
-
-  // Fetch categories and tags for count calculation
-  const { data: categories = {} } = useQuery({
-    queryKey: ['categories', instanceId],
-    queryFn: () => api.getCategories(instanceId),
-    staleTime: 60000,
-  })
-
-  const { data: tags = [] } = useQuery({
-    queryKey: ['tags', instanceId],
-    queryFn: () => api.getTags(instanceId),
-    staleTime: 60000,
-  })
-  
-  // Calculate torrent counts for the sidebar
-  const torrentCounts = useTorrentCounts({ 
-    torrents: allTorrentsForCounts || [], 
-    allCategories: categories, 
-    allTags: tags 
-  })
+  // Store counts from torrent response
+  const [torrentCounts, setTorrentCounts] = useState<Record<string, number> | undefined>(undefined)
+  const [categories, setCategories] = useState<Record<string, { name: string; savePath: string }> | undefined>(undefined)
+  const [tags, setTags] = useState<string[] | undefined>(undefined)
   
   const handleTorrentSelect = (torrent: Torrent | null) => {
     setSelectedTorrent(torrent)
   }
+
+  // Callback when filtered data updates - now receives counts, categories, and tags from backend
+  const handleFilteredDataUpdate = useCallback((_torrents: Torrent[], _total: number, counts?: any, categoriesData?: any, tagsData?: string[]) => {
+    if (counts) {
+      // Transform backend counts to match the expected format for FilterSidebar
+      const transformedCounts: Record<string, number> = {}
+      
+      // Add status counts
+      Object.entries(counts.status || {}).forEach(([status, count]) => {
+        transformedCounts[`status:${status}`] = count as number
+      })
+      
+      // Add category counts
+      Object.entries(counts.categories || {}).forEach(([category, count]) => {
+        transformedCounts[`category:${category}`] = count as number
+      })
+      
+      // Add tag counts
+      Object.entries(counts.tags || {}).forEach(([tag, count]) => {
+        transformedCounts[`tag:${tag}`] = count as number
+      })
+      
+      // Add tracker counts
+      Object.entries(counts.trackers || {}).forEach(([tracker, count]) => {
+        transformedCounts[`tracker:${tracker}`] = count as number
+      })
+      
+      setTorrentCounts(transformedCounts)
+    }
+    
+    // Store categories and tags
+    if (categoriesData) {
+      // Transform to match expected format: Record<string, { name: string; savePath: string }>
+      const transformedCategories: Record<string, { name: string; savePath: string }> = {}
+      Object.entries(categoriesData).forEach(([key, value]: [string, any]) => {
+        transformedCategories[key] = {
+          name: value.name || key,
+          savePath: value.save_path || value.savePath || ''
+        }
+      })
+      setCategories(transformedCategories)
+    }
+    
+    if (tagsData) {
+      setTags(tagsData)
+    }
+  }, [])
 
   // Calculate total active filters for badge
   const activeFilterCount = useMemo(() => {
@@ -118,6 +114,8 @@ export function Torrents({ instanceId, instanceName }: TorrentsProps) {
           selectedFilters={filters}
           onFilterChange={setFilters}
           torrentCounts={torrentCounts}
+          categories={categories}
+          tags={tags}
         />
       </div>
       
@@ -133,6 +131,8 @@ export function Torrents({ instanceId, instanceName }: TorrentsProps) {
               selectedFilters={filters}
               onFilterChange={setFilters}
               torrentCounts={torrentCounts}
+              categories={categories}
+              tags={tags}
             />
           </div>
         </SheetContent>
@@ -178,6 +178,7 @@ export function Torrents({ instanceId, instanceName }: TorrentsProps) {
               onTorrentSelect={handleTorrentSelect}
               addTorrentModalOpen={isAddTorrentModalOpen}
               onAddTorrentModalChange={handleAddTorrentModalChange}
+              onFilteredDataUpdate={handleFilteredDataUpdate}
             />
           </div>
         </div>

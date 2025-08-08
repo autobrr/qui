@@ -28,7 +28,9 @@ export function CreateTagDialog({ open, onOpenChange, instanceId }: CreateTagDia
   const mutation = useMutation({
     mutationFn: (tags: string[]) => api.createTags(instanceId, tags),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tags', instanceId] })
+      // Refetch instead of invalidate to keep showing stale data
+      queryClient.refetchQueries({ queryKey: ['tags', instanceId] })
+      queryClient.refetchQueries({ queryKey: ['instance-metadata', instanceId] })
       toast.success('Tag created successfully')
       setNewTag('')
       onOpenChange(false)
@@ -96,7 +98,9 @@ export function DeleteTagDialog({ open, onOpenChange, instanceId, tag }: DeleteT
   const mutation = useMutation({
     mutationFn: () => api.deleteTags(instanceId, [tag]),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tags', instanceId] })
+      // Refetch instead of invalidate to keep showing stale data
+      queryClient.refetchQueries({ queryKey: ['tags', instanceId] })
+      queryClient.refetchQueries({ queryKey: ['instance-metadata', instanceId] })
       toast.success('Tag deleted successfully')
       onOpenChange(false)
     },
@@ -146,7 +150,9 @@ export function CreateCategoryDialog({ open, onOpenChange, instanceId }: CreateC
     mutationFn: ({ name, savePath }: { name: string; savePath?: string }) => 
       api.createCategory(instanceId, name, savePath),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['categories', instanceId] })
+      // Refetch instead of invalidate to keep showing stale data
+      queryClient.refetchQueries({ queryKey: ['categories', instanceId] })
+      queryClient.refetchQueries({ queryKey: ['instance-metadata', instanceId] })
       toast.success('Category created successfully')
       setName('')
       setSavePath('')
@@ -225,7 +231,9 @@ export function EditCategoryDialog({ open, onOpenChange, instanceId, category }:
   const mutation = useMutation({
     mutationFn: (savePath: string) => api.editCategory(instanceId, category.name, savePath),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['categories', instanceId] })
+      // Refetch instead of invalidate to keep showing stale data
+      queryClient.refetchQueries({ queryKey: ['categories', instanceId] })
+      queryClient.refetchQueries({ queryKey: ['instance-metadata', instanceId] })
       toast.success('Category updated successfully')
       onOpenChange(false)
     },
@@ -290,7 +298,9 @@ export function DeleteCategoryDialog({ open, onOpenChange, instanceId, categoryN
   const mutation = useMutation({
     mutationFn: () => api.removeCategories(instanceId, [categoryName]),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['categories', instanceId] })
+      // Refetch instead of invalidate to keep showing stale data
+      queryClient.refetchQueries({ queryKey: ['categories', instanceId] })
+      queryClient.refetchQueries({ queryKey: ['instance-metadata', instanceId] })
       toast.success('Category deleted successfully')
       onOpenChange(false)
     },
@@ -352,7 +362,9 @@ export function DeleteUnusedTagsDialog({
   const mutation = useMutation({
     mutationFn: () => api.deleteTags(instanceId, unusedTags),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tags', instanceId] })
+      // Refetch instead of invalidate to keep showing stale data
+      queryClient.refetchQueries({ queryKey: ['tags', instanceId] })
+      queryClient.refetchQueries({ queryKey: ['instance-metadata', instanceId] })
       toast.success(`Deleted ${unusedTags.length} unused tag${unusedTags.length !== 1 ? 's' : ''}`)
       onOpenChange(false)
     },

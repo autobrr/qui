@@ -15,16 +15,18 @@ import (
 var ErrInstanceNotFound = errors.New("instance not found")
 
 type Instance struct {
-	ID                int        `json:"id"`
-	Name              string     `json:"name"`
-	Host              string     `json:"host"`
-	Port              int        `json:"port"`
-	Username          string     `json:"username"`
-	PasswordEncrypted string     `json:"-"`
-	IsActive          bool       `json:"is_active"`
-	LastConnectedAt   *time.Time `json:"last_connected_at,omitempty"`
-	CreatedAt         time.Time  `json:"created_at"`
-	UpdatedAt         time.Time  `json:"updated_at"`
+	ID                     int        `json:"id"`
+	Name                   string     `json:"name"`
+	Host                   string     `json:"host"`
+	Port                   int        `json:"port"`
+	Username               string     `json:"username"`
+	PasswordEncrypted      string     `json:"-"`
+	BasicUsername          *string    `json:"basic_username,omitempty"`
+	BasicPasswordEncrypted *string    `json:"-"`
+	IsActive               bool       `json:"is_active"`
+	LastConnectedAt        *time.Time `json:"last_connected_at,omitempty"`
+	CreatedAt              time.Time  `json:"created_at"`
+	UpdatedAt              time.Time  `json:"updated_at"`
 }
 
 type InstanceStore struct {
@@ -94,27 +96,39 @@ func (s *InstanceStore) decrypt(ciphertext string) (string, error) {
 	return string(plaintext), nil
 }
 
-func (s *InstanceStore) Create(name, host string, port int, username, password string) (*Instance, error) {
+func (s *InstanceStore) Create(name, host string, port int, username, password string, basicUsername, basicPassword *string) (*Instance, error) {
 	// Encrypt the password
 	encryptedPassword, err := s.encrypt(password)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encrypt password: %w", err)
 	}
 
+	// Encrypt basic auth password if provided
+	var encryptedBasicPassword *string
+	if basicPassword != nil && *basicPassword != "" {
+		encrypted, err := s.encrypt(*basicPassword)
+		if err != nil {
+			return nil, fmt.Errorf("failed to encrypt basic auth password: %w", err)
+		}
+		encryptedBasicPassword = &encrypted
+	}
+
 	query := `
-		INSERT INTO instances (name, host, port, username, password_encrypted) 
-		VALUES (?, ?, ?, ?, ?)
-		RETURNING id, name, host, port, username, password_encrypted, is_active, last_connected_at, created_at, updated_at
+		INSERT INTO instances (name, host, port, username, password_encrypted, basic_username, basic_password_encrypted) 
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+		RETURNING id, name, host, port, username, password_encrypted, basic_username, basic_password_encrypted, is_active, last_connected_at, created_at, updated_at
 	`
 
 	instance := &Instance{}
-	err = s.db.QueryRow(query, name, host, port, username, encryptedPassword).Scan(
+	err = s.db.QueryRow(query, name, host, port, username, encryptedPassword, basicUsername, encryptedBasicPassword).Scan(
 		&instance.ID,
 		&instance.Name,
 		&instance.Host,
 		&instance.Port,
 		&instance.Username,
 		&instance.PasswordEncrypted,
+		&instance.BasicUsername,
+		&instance.BasicPasswordEncrypted,
 		&instance.IsActive,
 		&instance.LastConnectedAt,
 		&instance.CreatedAt,
@@ -130,7 +144,7 @@ func (s *InstanceStore) Create(name, host string, port int, username, password s
 
 func (s *InstanceStore) Get(id int) (*Instance, error) {
 	query := `
-		SELECT id, name, host, port, username, password_encrypted, is_active, last_connected_at, created_at, updated_at 
+		SELECT id, name, host, port, username, password_encrypted, basic_username, basic_password_encrypted, is_active, last_connected_at, created_at, updated_at 
 		FROM instances 
 		WHERE id = ?
 	`
@@ -143,6 +157,8 @@ func (s *InstanceStore) Get(id int) (*Instance, error) {
 		&instance.Port,
 		&instance.Username,
 		&instance.PasswordEncrypted,
+		&instance.BasicUsername,
+		&instance.BasicPasswordEncrypted,
 		&instance.IsActive,
 		&instance.LastConnectedAt,
 		&instance.CreatedAt,
@@ -161,7 +177,7 @@ func (s *InstanceStore) Get(id int) (*Instance, error) {
 
 func (s *InstanceStore) List(activeOnly bool) ([]*Instance, error) {
 	query := `
-		SELECT id, name, host, port, username, password_encrypted, is_active, last_connected_at, created_at, updated_at 
+		SELECT id, name, host, port, username, password_encrypted, basic_username, basic_password_encrypted, is_active, last_connected_at, created_at, updated_at 
 		FROM instances
 	`
 
@@ -187,6 +203,8 @@ func (s *InstanceStore) List(activeOnly bool) ([]*Instance, error) {
 			&instance.Port,
 			&instance.Username,
 			&instance.PasswordEncrypted,
+			&instance.BasicUsername,
+			&instance.BasicPasswordEncrypted,
 			&instance.IsActive,
 			&instance.LastConnectedAt,
 			&instance.CreatedAt,
@@ -201,10 +219,10 @@ func (s *InstanceStore) List(activeOnly bool) ([]*Instance, error) {
 	return instances, rows.Err()
 }
 
-func (s *InstanceStore) Update(id int, name, host string, port int, username, password string) (*Instance, error) {
+func (s *InstanceStore) Update(id int, name, host string, port int, username, password string, basicUsername, basicPassword *string) (*Instance, error) {
 	// Start building the update query
-	query := `UPDATE instances SET name = ?, host = ?, port = ?, username = ?`
-	args := []interface{}{name, host, port, username}
+	query := `UPDATE instances SET name = ?, host = ?, port = ?, username = ?, basic_username = ?`
+	args := []interface{}{name, host, port, username, basicUsername}
 
 	// Only update password if provided
 	if password != "" {
@@ -214,6 +232,19 @@ func (s *InstanceStore) Update(id int, name, host string, port int, username, pa
 		}
 		query += ", password_encrypted = ?"
 		args = append(args, encryptedPassword)
+	}
+
+	// Only update basic password if provided
+	if basicPassword != nil && *basicPassword != "" {
+		encryptedBasicPassword, err := s.encrypt(*basicPassword)
+		if err != nil {
+			return nil, fmt.Errorf("failed to encrypt basic auth password: %w", err)
+		}
+		query += ", basic_password_encrypted = ?"
+		args = append(args, encryptedBasicPassword)
+	} else if basicPassword != nil && *basicPassword == "" {
+		// Clear basic password if empty string provided
+		query += ", basic_password_encrypted = NULL"
 	}
 
 	query += " WHERE id = ?"
@@ -299,4 +330,16 @@ func (s *InstanceStore) Delete(id int) error {
 // GetDecryptedPassword returns the decrypted password for an instance
 func (s *InstanceStore) GetDecryptedPassword(instance *Instance) (string, error) {
 	return s.decrypt(instance.PasswordEncrypted)
+}
+
+// GetDecryptedBasicPassword returns the decrypted basic auth password for an instance
+func (s *InstanceStore) GetDecryptedBasicPassword(instance *Instance) (*string, error) {
+	if instance.BasicPasswordEncrypted == nil {
+		return nil, nil
+	}
+	decrypted, err := s.decrypt(*instance.BasicPasswordEncrypted)
+	if err != nil {
+		return nil, err
+	}
+	return &decrypted, nil
 }

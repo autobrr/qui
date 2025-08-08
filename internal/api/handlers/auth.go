@@ -77,7 +77,7 @@ func (h *AuthHandler) Setup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create session
-	session, _ := h.authService.GetSessionStore().Get(r, "user_session")
+	session, _ := h.authService.GetSessionStore().Get(r, auth.SessionName)
 	session.Values["authenticated"] = true
 	session.Values["user_id"] = user.ID
 	session.Values["username"] = user.Username
@@ -136,7 +136,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create session
-	session, _ := h.authService.GetSessionStore().Get(r, "user_session")
+	session, _ := h.authService.GetSessionStore().Get(r, auth.SessionName)
 	session.Values["authenticated"] = true
 	session.Values["user_id"] = user.ID
 	session.Values["username"] = user.Username
@@ -172,7 +172,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 // Logout handles user logout
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
-	session, _ := h.authService.GetSessionStore().Get(r, "user_session")
+	session, _ := h.authService.GetSessionStore().Get(r, auth.SessionName)
 
 	// Clear session values
 	session.Values["authenticated"] = false
@@ -191,7 +191,7 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 
 // GetCurrentUser returns the current user information
 func (h *AuthHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
-	session, _ := h.authService.GetSessionStore().Get(r, "user_session")
+	session, _ := h.authService.GetSessionStore().Get(r, auth.SessionName)
 
 	userID, ok := session.Values["user_id"].(int)
 	if !ok {
