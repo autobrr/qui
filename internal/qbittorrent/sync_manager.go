@@ -16,11 +16,25 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// TorrentResponse represents a response containing torrents with stats
+// CacheMetadata provides information about cache state
+type CacheMetadata struct {
+	Source  string    `json:"source"`  // "cache" or "fresh"
+	Age     int       `json:"age"`     // Age in seconds
+	IsStale bool      `json:"isStale"` // Whether data is stale
+	NextRefresh time.Time `json:"nextRefresh,omitempty"` // When next refresh will occur
+}
+
+// TorrentResponse represents a response containing torrents with stats and cache metadata
 type TorrentResponse struct {
 	Torrents []qbt.Torrent `json:"torrents"`
 	Total    int           `json:"total"`
 	Stats    *TorrentStats `json:"stats,omitempty"`
+	Counts   *TorrentCounts `json:"counts,omitempty"` // Include counts for sidebar
+	Categories map[string]qbt.Category `json:"categories,omitempty"` // Include categories for sidebar
+	Tags     []string `json:"tags,omitempty"` // Include tags for sidebar
+	CacheMetadata *CacheMetadata `json:"cacheMetadata,omitempty"` // Cache state information
+	HasMore  bool          `json:"hasMore"`    // Whether more pages are available
+	SessionID string       `json:"sessionId,omitempty"` // Optional session tracking
 }
 
 // TorrentStats represents aggregated torrent statistics
@@ -169,17 +183,26 @@ func (sm *SyncManager) GetTorrentsWithSearch(ctx context.Context, instanceID int
 }
 
 // GetTorrentsWithFilters gets torrents with filters, search, sorting, and pagination
+// Implements stale-while-revalidate pattern for responsive UI
 func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID int, limit, offset int, sort, order, search string, filters FilterOptions) (*TorrentResponse, error) {
-	// Build cache key
+	// No longer caching filtered results - always compute from all_torrents cache
+	// This ensures optimistic updates are always reflected
 	cacheKey := fmt.Sprintf("torrents:filtered:%d:%d:%d:%s:%s:%s:%+v", instanceID, offset, limit, sort, order, search, filters)
-	if cached, found := sm.cache.Get(cacheKey); found {
-		if response, ok := cached.(*TorrentResponse); ok {
-			return response, nil
-		}
-	}
+	
+	// Always fetch from all_torrents cache and apply filters
+	// This uses the optimistically updated cache as the single source of truth
+	return sm.fetchFreshTorrentData(ctx, instanceID, limit, offset, sort, order, search, filters, cacheKey)
+}
 
+// fetchFreshTorrentData fetches fresh torrent data from all_torrents cache and applies filters
+func (sm *SyncManager) fetchFreshTorrentData(ctx context.Context, instanceID int, limit, offset int, sort, order, search string, filters FilterOptions, _ string) (*TorrentResponse, error) {
 	var filteredTorrents []qbt.Torrent
 	var err error
+
+	// Check if data is in cache first to determine source
+	// Must match the exact key format used in getAllTorrentsForStats
+	cacheKey := fmt.Sprintf("all_torrents:%d:%s", instanceID, "")
+	_, isFromCache := sm.cache.Get(cacheKey)
 
 	// Always try to use getAllTorrentsForStats as the single source of truth
 	// It has smart dynamic caching based on response time
@@ -191,6 +214,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	log.Debug().
 		Int("instanceID", instanceID).
 		Int("totalCount", len(allTorrents)).
+		Bool("fromCache", isFromCache).
 		Msg("Using getAllTorrentsForStats as single source")
 
 	// Now we always have all torrents from getAllTorrentsForStats
@@ -206,12 +230,6 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		Int("instanceID", instanceID).
 		Int("filtered", len(filteredTorrents)).
 		Msg("Applied in-memory filtering")
-	
-	// Note: We removed the native filtering path because:
-	// 1. getAllTorrentsForStats already has smart caching (2-60s based on speed)
-	// 2. In-memory filtering is very fast
-	// 3. This gives us a single source of truth for caching
-	
 
 	// Calculate stats from filtered torrents
 	stats := sm.calculateStats(filteredTorrents)
@@ -230,15 +248,50 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		paginatedTorrents = filteredTorrents[start:end]
 	}
 
+	// Check if there are more pages
+	hasMore := end < len(filteredTorrents)
+
+	// Calculate counts from ALL torrents (not filtered) for sidebar
+	// This uses the same cached data, so it's very fast
+	counts := sm.calculateCountsFromTorrents(allTorrents)
+
+	// Fetch categories and tags (cached separately for 60s)
+	categories, err := sm.GetCategories(ctx, instanceID)
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to get categories")
+		categories = make(map[string]qbt.Category)
+	}
+
+	tags, err := sm.GetTags(ctx, instanceID)
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to get tags")
+		tags = []string{}
+	}
+
+	// Set cache metadata based on whether data came from cache
+	cacheSource := "fresh"
+	if isFromCache {
+		cacheSource = "cache"
+	}
+	
 	response := &TorrentResponse{
 		Torrents: paginatedTorrents,
 		Total:    len(filteredTorrents),
 		Stats:    stats,
+		Counts:   counts,  // Include counts for sidebar
+		Categories: categories, // Include categories for sidebar
+		Tags:     tags,     // Include tags for sidebar
+		HasMore:  hasMore,
+		CacheMetadata: &CacheMetadata{
+			Source:  cacheSource,
+			Age:     0, // TODO: Track actual cache age if needed
+			IsStale: false, // With our current design, cached data is never stale
+		},
 	}
 
-	// Don't cache the filtered response separately - we're using getAllTorrentsForStats as the single source
-	// The underlying data is already cached with smart TTL (2-60s based on response time)
-	// This avoids duplicate caching and ensures consistent update intervals
+	// Don't cache filtered results - always compute from all_torrents cache
+	// This ensures optimistic updates are always reflected
+	// The all_torrents cache is the single source of truth
 
 	log.Debug().
 		Int("instanceID", instanceID).
@@ -246,7 +299,8 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		Int("total", len(filteredTorrents)).
 		Str("search", search).
 		Interface("filters", filters).
-		Msg("Torrent filtering completed")
+		Bool("hasMore", hasMore).
+		Msg("Fresh torrent data fetched and cached")
 
 	return response, nil
 }
@@ -609,6 +663,81 @@ type InstanceSpeeds struct {
 	Upload   int64 `json:"upload"`
 }
 
+// calculateCountsFromTorrents calculates counts from a list of torrents
+// This is used internally to generate counts without additional API calls
+func (sm *SyncManager) calculateCountsFromTorrents(allTorrents []qbt.Torrent) *TorrentCounts {
+	// Initialize counts
+	counts := &TorrentCounts{
+		Status:     make(map[string]int),
+		Categories: make(map[string]int),
+		Tags:       make(map[string]int),
+		Trackers:   make(map[string]int),
+		Total:      len(allTorrents),
+	}
+
+	// Status counts
+	statusFilters := []string{
+		"all", "downloading", "seeding", "completed", "paused",
+		"active", "inactive", "resumed", "stalled",
+		"stalled_uploading", "stalled_downloading", "errored",
+		"checking", "moving",
+	}
+
+	for _, status := range statusFilters {
+		count := 0
+		for _, torrent := range allTorrents {
+			if sm.matchTorrentStatus(torrent, status) {
+				count++
+			}
+		}
+		counts.Status[status] = count
+	}
+
+	// Count torrents by category, tag, and tracker
+	for _, torrent := range allTorrents {
+		// Category count
+		category := torrent.Category
+		if category == "" {
+			counts.Categories[""]++
+		} else {
+			counts.Categories[category]++
+		}
+
+		// Tag counts
+		if torrent.Tags == "" {
+			counts.Tags[""]++
+		} else {
+			torrentTags := strings.Split(torrent.Tags, ", ")
+			for _, tag := range torrentTags {
+				tag = strings.TrimSpace(tag)
+				if tag != "" {
+					counts.Tags[tag]++
+				}
+			}
+		}
+
+		// Tracker count (use first tracker URL)
+		if torrent.Tracker != "" {
+			// Extract domain from tracker URL
+			domain := torrent.Tracker
+			if strings.Contains(domain, "://") {
+				parts := strings.Split(domain, "://")
+				if len(parts) > 1 {
+					domain = parts[1]
+					if idx := strings.IndexAny(domain, ":/"); idx != -1 {
+						domain = domain[:idx]
+					}
+				}
+			}
+			counts.Trackers[domain]++
+		} else {
+			counts.Trackers[""]++
+		}
+	}
+
+	return counts
+}
+
 // GetTorrentCounts gets all torrent counts for the filter sidebar
 func (sm *SyncManager) GetTorrentCounts(ctx context.Context, instanceID int) (*TorrentCounts, error) {
 	// IMPORTANT: We don't cache counts separately anymore
@@ -924,6 +1053,7 @@ func (sm *SyncManager) shouldSkipCache() bool {
 // applyOptimisticCacheUpdate applies optimistic updates to cached torrents
 func (sm *SyncManager) applyOptimisticCacheUpdate(instanceID int, hashes []string, action string, payload map[string]interface{}) {
 	// Get the cache key for all torrents
+	// Since we no longer cache filtered results, updating this cache affects all queries
 	cacheKey := fmt.Sprintf("all_torrents:%d:", instanceID)
 	
 	// Try to get cached torrents

@@ -51,8 +51,8 @@ function InstanceCard({ instance }: { instance: any }) {
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg">{instance.name}</CardTitle>
-              <Badge variant={instance.isActive ? 'default' : 'destructive'}>
-                {instance.isActive ? 'Active' : 'Inactive'}
+              <Badge variant="secondary">
+                Loading...
               </Badge>
             </div>
             <CardDescription>{instance.host}:{instance.port}</CardDescription>
@@ -127,8 +127,8 @@ function InstanceCard({ instance }: { instance: any }) {
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg">{instance.name}</CardTitle>
-            <Badge variant={instance.isActive && stats.connected ? 'default' : 'destructive'}>
-              {instance.isActive && stats.connected ? 'Connected' : 'Disconnected'}
+            <Badge variant={stats.connected ? 'default' : 'destructive'}>
+              {stats.connected ? 'Connected' : 'Disconnected'}
             </Badge>
           </div>
           <CardDescription className="text-xs">{instance.host}:{instance.port}</CardDescription>

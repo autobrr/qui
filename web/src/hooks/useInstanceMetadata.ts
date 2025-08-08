@@ -4,31 +4,25 @@ import { api } from '@/lib/api'
 interface InstanceMetadata {
   categories: Record<string, { name: string; savePath: string }>
   tags: string[]
-  counts: {
-    status: Record<string, number>
-    categories: Record<string, number>
-    tags: Record<string, number>
-    trackers: Record<string, number>
-    total: number
-  }
 }
 
 /**
- * Shared hook for fetching instance metadata (categories, tags, counts)
+ * Shared hook for fetching instance metadata (categories, tags)
  * This prevents duplicate API calls when multiple components need the same data
+ * Note: Counts are now included in the torrents response, so we don't fetch them separately
  */
 export function useInstanceMetadata(instanceId: number) {
   const query = useQuery<InstanceMetadata>({
     queryKey: ['instance-metadata', instanceId],
     queryFn: async () => {
-      // Fetch all metadata in parallel for efficiency
-      const [categories, tags, counts] = await Promise.all([
+      // Fetch metadata in parallel for efficiency
+      const [categories, tags] = await Promise.all([
         api.getCategories(instanceId),
         api.getTags(instanceId),
-        api.getTorrentCounts(instanceId)
+        // Counts are now included in torrents response, no separate fetch needed
       ])
       
-      return { categories, tags, counts }
+      return { categories, tags }
     },
     staleTime: 60000, // 1 minute - metadata doesn't change often
     gcTime: 1800000, // Keep in cache for 30 minutes to support cross-instance navigation

@@ -1,5 +1,4 @@
 import { useState, useMemo, useCallback } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import { TorrentTableResponsive } from '@/components/torrents/TorrentTableResponsive'
 import { FilterSidebar } from '@/components/torrents/FilterSidebar'
 import { TorrentDetailsPanel } from '@/components/torrents/TorrentDetailsPanel'
@@ -10,7 +9,6 @@ import { Badge } from '@/components/ui/badge'
 import { Filter } from 'lucide-react'
 import { usePersistedFilters } from '@/hooks/usePersistedFilters'
 import { useNavigate, useSearch } from '@tanstack/react-router'
-import { api } from '@/lib/api'
 import type { Torrent } from '@/types'
 
 interface TorrentsProps {
@@ -43,54 +41,60 @@ export function Torrents({ instanceId, instanceName }: TorrentsProps) {
     }
   }
   
-  // Get torrent counts from backend
-  // This now uses the same cache as the table data (getAllTorrentsForStats)
-  // so counts and table are always in sync
-  const { data: countsData } = useQuery({
-    queryKey: ['torrent-counts', instanceId],
-    queryFn: () => api.getTorrentCounts(instanceId),
-    staleTime: 1000, // 1 second - match the table's stale time
-    refetchInterval: 3000, // 3 seconds - match the table's refetch interval
-  })
-
-  // Transform backend counts to match the expected format for FilterSidebar
-  const torrentCounts = useMemo(() => {
-    if (!countsData) return {}
-    
-    const counts: Record<string, number> = {}
-    
-    // Add status counts
-    Object.entries(countsData.status).forEach(([status, count]) => {
-      counts[`status:${status}`] = count
-    })
-    
-    // Add category counts
-    Object.entries(countsData.categories).forEach(([category, count]) => {
-      counts[`category:${category}`] = count
-    })
-    
-    // Add tag counts
-    Object.entries(countsData.tags).forEach(([tag, count]) => {
-      counts[`tag:${tag}`] = count
-    })
-    
-    // Add tracker counts
-    Object.entries(countsData.trackers).forEach(([tracker, count]) => {
-      counts[`tracker:${tracker}`] = count
-    })
-    
-    // Return the real counts from backend - don't override with filtered results
-    return counts
-  }, [countsData])
+  // Store counts from torrent response
+  const [torrentCounts, setTorrentCounts] = useState<Record<string, number> | undefined>(undefined)
+  const [categories, setCategories] = useState<Record<string, { name: string; savePath: string }> | undefined>(undefined)
+  const [tags, setTags] = useState<string[] | undefined>(undefined)
   
   const handleTorrentSelect = (torrent: Torrent | null) => {
     setSelectedTorrent(torrent)
   }
 
-  // Callback when filtered data updates - no longer used for dynamic counts
-  const handleFilteredDataUpdate = useCallback((_torrents: Torrent[], _total: number) => {
-    // We don't update counts based on filtered results anymore
-    // Counts should always show the real totals from backend, not filtered counts
+  // Callback when filtered data updates - now receives counts, categories, and tags from backend
+  const handleFilteredDataUpdate = useCallback((_torrents: Torrent[], _total: number, counts?: any, categoriesData?: any, tagsData?: string[]) => {
+    if (counts) {
+      // Transform backend counts to match the expected format for FilterSidebar
+      const transformedCounts: Record<string, number> = {}
+      
+      // Add status counts
+      Object.entries(counts.status || {}).forEach(([status, count]) => {
+        transformedCounts[`status:${status}`] = count as number
+      })
+      
+      // Add category counts
+      Object.entries(counts.categories || {}).forEach(([category, count]) => {
+        transformedCounts[`category:${category}`] = count as number
+      })
+      
+      // Add tag counts
+      Object.entries(counts.tags || {}).forEach(([tag, count]) => {
+        transformedCounts[`tag:${tag}`] = count as number
+      })
+      
+      // Add tracker counts
+      Object.entries(counts.trackers || {}).forEach(([tracker, count]) => {
+        transformedCounts[`tracker:${tracker}`] = count as number
+      })
+      
+      setTorrentCounts(transformedCounts)
+    }
+    
+    // Store categories and tags
+    if (categoriesData) {
+      // Transform to match expected format: Record<string, { name: string; savePath: string }>
+      const transformedCategories: Record<string, { name: string; savePath: string }> = {}
+      Object.entries(categoriesData).forEach(([key, value]: [string, any]) => {
+        transformedCategories[key] = {
+          name: value.name || key,
+          savePath: value.save_path || value.savePath || ''
+        }
+      })
+      setCategories(transformedCategories)
+    }
+    
+    if (tagsData) {
+      setTags(tagsData)
+    }
   }, [])
 
   // Calculate total active filters for badge
@@ -110,6 +114,8 @@ export function Torrents({ instanceId, instanceName }: TorrentsProps) {
           selectedFilters={filters}
           onFilterChange={setFilters}
           torrentCounts={torrentCounts}
+          categories={categories}
+          tags={tags}
         />
       </div>
       
@@ -125,6 +131,8 @@ export function Torrents({ instanceId, instanceName }: TorrentsProps) {
               selectedFilters={filters}
               onFilterChange={setFilters}
               torrentCounts={torrentCounts}
+              categories={categories}
+              tags={tags}
             />
           </div>
         </SheetContent>

@@ -26,7 +26,7 @@ func NewTorrentsHandler(syncManager *qbittorrent.SyncManager) *TorrentsHandler {
 	}
 }
 
-// ListTorrents returns paginated torrents for an instance
+// ListTorrents returns paginated torrents for an instance with enhanced metadata
 func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 	// Get instance ID from URL
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
@@ -36,14 +36,15 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Parse query parameters
-	limit := 50
+	limit := 500 // Increased default for better performance
 	page := 0
 	sort := "addedOn"
 	order := "desc"
 	search := ""
+	sessionID := r.Header.Get("X-Session-ID") // Optional session tracking
 
 	if l := r.URL.Query().Get("limit"); l != "" {
-		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 1000 {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 2000 {
 			limit = parsed
 		}
 	}
@@ -83,17 +84,30 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 		Int("limit", limit).
 		Str("search", search).
 		Interface("filters", filters).
+		Str("sessionID", sessionID).
 		Msg("Torrent list request parameters")
 
 	// Calculate offset from page
 	offset := page * limit
 
 	// Get torrents with search, sorting and filters
+	// The sync manager will handle stale-while-revalidate internally
 	response, err := h.syncManager.GetTorrentsWithFilters(r.Context(), instanceID, limit, offset, sort, order, search, filters)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get torrents")
 		RespondError(w, http.StatusInternalServerError, "Failed to get torrents")
 		return
+	}
+
+	// Add cache headers for transparency
+	if response.CacheMetadata != nil {
+		w.Header().Set("X-Cache", response.CacheMetadata.Source)
+		w.Header().Set("X-Cache-Age", fmt.Sprintf("%d", response.CacheMetadata.Age))
+		if response.CacheMetadata.IsStale {
+			w.Header().Set("X-Cache-Status", "stale")
+		} else {
+			w.Header().Set("X-Cache-Status", "fresh")
+		}
 	}
 
 	RespondJSON(w, http.StatusOK, response)

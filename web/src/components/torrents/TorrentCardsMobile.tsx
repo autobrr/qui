@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useTorrentsList } from '@/hooks/useTorrentsList'
 import { useDebounce } from '@/hooks/useDebounce'
-import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
@@ -71,7 +71,7 @@ interface TorrentCardsMobileProps {
   onTorrentSelect?: (torrent: Torrent | null) => void
   addTorrentModalOpen?: boolean
   onAddTorrentModalChange?: (open: boolean) => void
-  onFilteredDataUpdate?: (torrents: Torrent[], total: number) => void
+  onFilteredDataUpdate?: (torrents: Torrent[], total: number, counts?: any, categories?: any, tags?: string[]) => void
 }
 
 function formatEta(seconds: number): string {
@@ -347,7 +347,10 @@ export function TorrentCardsMobile({
   const { 
     torrents,
     totalCount, 
-    stats, 
+    stats,
+    counts,
+    categories,
+    tags,
     isLoadingMore,
     hasLoadedAll,
     loadMore: loadMoreTorrents,
@@ -360,22 +363,13 @@ export function TorrentCardsMobile({
   // Call the callback when filtered data updates
   useEffect(() => {
     if (onFilteredDataUpdate && isFreshData && torrents && totalCount !== undefined) {
-      onFilteredDataUpdate(torrents, totalCount)
+      onFilteredDataUpdate(torrents, totalCount, counts, categories, tags)
     }
-  }, [totalCount, isFreshData, torrents.length, onFilteredDataUpdate]) // Update when data changes
+  }, [totalCount, isFreshData, torrents.length, counts, categories, tags, onFilteredDataUpdate]) // Update when data changes
   
-  // Fetch available tags and categories
-  const { data: availableTags = [] } = useQuery({
-    queryKey: ['tags', instanceId],
-    queryFn: () => api.getTags(instanceId),
-    staleTime: 60000,
-  })
-
-  const { data: availableCategories = {} } = useQuery({
-    queryKey: ['categories', instanceId],
-    queryFn: () => api.getCategories(instanceId),
-    staleTime: 60000,
-  })
+  // Use tags and categories from the main data fetch
+  const availableTags = tags || []
+  const availableCategories = categories || {}
   
   // Virtual scrolling with consistent spacing
   const parentRef = useRef<HTMLDivElement>(null)

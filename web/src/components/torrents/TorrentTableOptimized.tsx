@@ -97,7 +97,7 @@ interface TorrentTableOptimizedProps {
   onTorrentSelect?: (torrent: Torrent | null) => void
   addTorrentModalOpen?: boolean
   onAddTorrentModalChange?: (open: boolean) => void
-  onFilteredDataUpdate?: (torrents: Torrent[], total: number) => void
+  onFilteredDataUpdate?: (torrents: Torrent[], total: number, counts?: any, categories?: any, tags?: string[]) => void
 }
 
 
@@ -459,12 +459,16 @@ export function TorrentTableOptimized({ instanceId, filters, selectedTorrent, on
     torrents, 
     totalCount, 
     stats, 
+    counts,
+    categories,
+    tags,
     isLoading,
     isFetching,
     isLoadingMore,
     hasLoadedAll,
     loadMore: loadMoreTorrents,
-    isFreshData,
+    isCachedData,
+    isStaleData,
   } = useTorrentsList(instanceId, {
     search: effectiveSearch,
     filters,
@@ -472,10 +476,10 @@ export function TorrentTableOptimized({ instanceId, filters, selectedTorrent, on
   
   // Call the callback when filtered data updates
   useEffect(() => {
-    if (onFilteredDataUpdate && isFreshData && torrents && totalCount !== undefined && !isLoading) {
-      onFilteredDataUpdate(torrents, totalCount)
+    if (onFilteredDataUpdate && torrents && totalCount !== undefined && !isLoading) {
+      onFilteredDataUpdate(torrents, totalCount, counts, categories, tags)
     }
-  }, [totalCount, isFreshData, isLoading, torrents.length, onFilteredDataUpdate]) // Update when data changes
+  }, [totalCount, isLoading, torrents.length, counts, categories, tags, onFilteredDataUpdate]) // Update when data changes
   
   // Show refetch indicator only if fetching takes more than 2 seconds
   // This avoids annoying flickering for fast instances
@@ -1364,7 +1368,13 @@ export function TorrentTableOptimized({ instanceId, filters, selectedTorrent, on
         {/* Status bar */}
         <div className="flex items-center justify-between p-2 border-t flex-shrink-0">
           <div className="text-sm text-muted-foreground">
-            {totalCount === 0 ? (
+            {/* Show special loading message when fetching without cache (cold load) */}
+            {isLoading && !isCachedData && !isStaleData && torrents.length === 0 ? (
+              <>
+                <Loader2 className="h-3 w-3 animate-spin inline mr-1" />
+                Loading torrents from instance... (no cache available)
+              </>
+            ) : totalCount === 0 ? (
               'No torrents found'
             ) : (
               <>
