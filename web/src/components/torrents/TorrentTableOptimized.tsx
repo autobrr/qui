@@ -404,34 +404,39 @@ export function TorrentTableOptimized({ instanceId, filters, selectedTorrent, on
   // Use incognito mode hook
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   
+// Move default values outside the component for stable references
+const DEFAULT_COLUMN_VISIBILITY: VisibilityState = {
+  downloaded: false,
+  uploaded: false,
+  saveLocation: false,
+  tracker: false,
+  priority: false,
+}
+const DEFAULT_COLUMN_ORDER: string[] = (() => {
+  const cols = createColumns(false)
+  return cols.map(col => {
+    if ('id' in col && col.id) return col.id
+    if ('accessorKey' in col && typeof col.accessorKey === 'string') return col.accessorKey
+    return null
+  }).filter(Boolean) as string[]
+})()
+const DEFAULT_COLUMN_SIZING = {}
+
+// ...existing code...
+
   // Column visibility with persistence
-  const defaultColumnVisibility: VisibilityState = {
-    downloaded: false,
-    uploaded: false,
-    saveLocation: false,
-    tracker: false,
-    priority: false,
-  }
   const [columnVisibility, setColumnVisibility] = usePersistedColumnVisibility(
-    defaultColumnVisibility
+    DEFAULT_COLUMN_VISIBILITY
   )
-  
+
   // Column order with persistence
-  const defaultColumnOrder = useMemo(() => {
-    const cols = createColumns(false) // Use non-incognito columns for default order
-    return cols.map(col => {
-      if ('id' in col && col.id) return col.id
-      if ('accessorKey' in col && typeof col.accessorKey === 'string') return col.accessorKey
-      return null
-    }).filter(Boolean) as string[]
-  }, [])
   const [columnOrder, setColumnOrder] = usePersistedColumnOrder(
-    defaultColumnOrder
+    DEFAULT_COLUMN_ORDER
   )
-  
+
   // Column sizing with persistence
   const [columnSizing, setColumnSizing] = usePersistedColumnSizing(
-    {} // Start with empty object, let columns use their default sizes
+    DEFAULT_COLUMN_SIZING
   )
   
   // Progressive loading state
