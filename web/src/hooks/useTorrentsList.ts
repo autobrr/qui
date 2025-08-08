@@ -58,14 +58,16 @@ export function useTorrentsList(
   // Reset pagination when filters or search change (same instance, different view)
   useEffect(() => {
     setCurrentPage(0)
-    // Keep showing old data while fetching new (stale-while-revalidate pattern)
-    // Don't clear torrents array to avoid loading state
+    // Clear torrents when filters/search change to avoid showing wrong data
+    // React Query's cache will still show previously cached results for that filter
+    setAllTorrents([])
     setHasLoadedAll(false)
   }, [filters, search])
   
-  // Track previous filters to detect filter changes
+  // Track previous values to detect changes
   const previousFiltersRef = useRef(filters)
   const previousSearchRef = useRef(search)
+  const previousInstanceRef = useRef(instanceId)
   
   // Initial load
   const { data: initialData, isLoading: initialLoading, isFetching } = useQuery<TorrentResponse>({
@@ -81,19 +83,21 @@ export function useTorrentsList(
     staleTime: 2000, // 2 seconds - match minimum backend cache TTL
     gcTime: 300000, // Keep in cache for 5 minutes (was cacheTime in v4, now gcTime in v5)
     placeholderData: (previousData: TorrentResponse | undefined) => {
-      // Only show previous data if filters and search haven't changed
-      // This prevents showing wrong data when switching filters
+      // Only show previous data if instance, filters, and search haven't changed
+      // This prevents showing wrong data when switching instances or filters
+      const instanceChanged = previousInstanceRef.current !== instanceId
       const filtersChanged = JSON.stringify(previousFiltersRef.current) !== JSON.stringify(filters)
       const searchChanged = previousSearchRef.current !== search
       
-      if (filtersChanged || searchChanged) {
-        // Filters/search changed - don't show old data from different filter
+      if (instanceChanged || filtersChanged || searchChanged) {
+        // Instance/filters/search changed - don't show old data
+        previousInstanceRef.current = instanceId
         previousFiltersRef.current = filters
         previousSearchRef.current = search
         return undefined
       }
       
-      // Same filters - safe to show previous data (e.g. during refetch)
+      // Same instance and filters - safe to show previous data (e.g. during refetch)
       return previousData
     },
     refetchInterval: 3000, // Poll every 3 seconds for more responsive updates
