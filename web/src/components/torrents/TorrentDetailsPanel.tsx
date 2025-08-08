@@ -12,7 +12,7 @@ import { formatBytes, formatSpeed, formatTimestamp, formatDuration } from '@/lib
 interface TorrentDetailsPanelProps {
   instanceId: number
   torrent: Torrent | null
-}
+// ...existing code...
 
 function getTrackerStatusBadge(status: number) {
   switch (status) {
