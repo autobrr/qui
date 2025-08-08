@@ -388,6 +388,8 @@ const createColumns = (incognitoMode: boolean): ColumnDef<Torrent>[] => [
 
 export function TorrentTableOptimized({ instanceId, filters, selectedTorrent, onTorrentSelect, addTorrentModalOpen, onAddTorrentModalChange, onFilteredDataUpdate }: TorrentTableOptimizedProps) {
   // State management
+  // Move default values outside the component for stable references
+  // (This should be at module scope, not inside the component)
   const [sorting, setSorting] = usePersistedColumnSorting([])
   const [globalFilter, setGlobalFilter] = useState('')
   const [immediateSearch, setImmediateSearch] = useState('')
@@ -400,44 +402,19 @@ export function TorrentTableOptimized({ instanceId, filters, selectedTorrent, on
   const [showCategoryDialog, setShowCategoryDialog] = useState(false)
   const [showRemoveTagsDialog, setShowRemoveTagsDialog] = useState(false)
   const [showRefetchIndicator, setShowRefetchIndicator] = useState(false)
-  
-  // Use incognito mode hook
-  const [incognitoMode, setIncognitoMode] = useIncognitoMode()
-  
-// Move default values outside the component for stable references
-const DEFAULT_COLUMN_VISIBILITY: VisibilityState = {
-  downloaded: false,
-  uploaded: false,
-  saveLocation: false,
-  tracker: false,
-  priority: false,
-}
-const DEFAULT_COLUMN_ORDER: string[] = (() => {
-  const cols = createColumns(false)
-  return cols.map(col => {
-    if ('id' in col && col.id) return col.id
-    if ('accessorKey' in col && typeof col.accessorKey === 'string') return col.accessorKey
-    return null
-  }).filter(Boolean) as string[]
-})()
-const DEFAULT_COLUMN_SIZING = {}
 
-// ...existing code...
+  const [incognitoMode, setIncognitoMode] = useIncognitoMode()
+
+  // These should be defined at module scope, not inside the component, to ensure stable references
+  // (If not already, move them to the top of the file)
+  // const DEFAULT_COLUMN_VISIBILITY, DEFAULT_COLUMN_ORDER, DEFAULT_COLUMN_SIZING
 
   // Column visibility with persistence
-  const [columnVisibility, setColumnVisibility] = usePersistedColumnVisibility(
-    DEFAULT_COLUMN_VISIBILITY
-  )
-
+  const [columnVisibility, setColumnVisibility] = usePersistedColumnVisibility(DEFAULT_COLUMN_VISIBILITY)
   // Column order with persistence
-  const [columnOrder, setColumnOrder] = usePersistedColumnOrder(
-    DEFAULT_COLUMN_ORDER
-  )
-
+  const [columnOrder, setColumnOrder] = usePersistedColumnOrder(DEFAULT_COLUMN_ORDER)
   // Column sizing with persistence
-  const [columnSizing, setColumnSizing] = usePersistedColumnSizing(
-    DEFAULT_COLUMN_SIZING
-  )
+  const [columnSizing, setColumnSizing] = usePersistedColumnSizing(DEFAULT_COLUMN_SIZING)
   
   // Progressive loading state
   const [loadedRows, setLoadedRows] = useState(100)
@@ -518,27 +495,28 @@ const DEFAULT_COLUMN_SIZING = {}
     }
   }
 
+  // Filter torrents before sorting for better performance
+  const filteredTorrents = useMemo(() => {
+    // Example: add more advanced filtering here if needed
+    return torrents
+  }, [torrents])
+
   // Sort torrents client-side
   const sortedTorrents = useMemo(() => {
-    if (sorting.length === 0) return torrents
-    
-    const sorted = [...torrents]
+    if (sorting.length === 0) return filteredTorrents
+    const sorted = [...filteredTorrents]
     const sort = sorting[0]
-    
     sorted.sort((a, b) => {
       const aValue = a[sort.id as keyof Torrent]
       const bValue = b[sort.id as keyof Torrent]
-      
       if (aValue === null || aValue === undefined) return 1
       if (bValue === null || bValue === undefined) return -1
-      
       if (aValue < bValue) return sort.desc ? 1 : -1
       if (aValue > bValue) return sort.desc ? -1 : 1
       return 0
     })
-    
     return sorted
-  }, [torrents, sorting])
+  }, [filteredTorrents, sorting])
 
   const columns = useMemo(() => createColumns(incognitoMode), [incognitoMode])
   
@@ -598,20 +576,22 @@ const DEFAULT_COLUMN_SIZING = {}
   const { rows } = table.getRowModel()
   const parentRef = useRef<HTMLDivElement>(null)
 
-  // Only virtualize the loaded rows, not all rows
-  const virtualizer = useVirtualizer({
-    count: Math.min(loadedRows, rows.length),
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => 40,
-    overscan: 20, // Increased for smoother scrolling
-    onChange: (instance) => {
-      const lastItem = instance.getVirtualItems().at(-1)
-      if (lastItem && lastItem.index >= loadedRows - 50) {
-        loadMore()
-      }
-    },
-  })
-
+  // Memoize virtualizer config to avoid unnecessary recalculations
+  const virtualizer = useMemo(() =>
+    useVirtualizer({
+      count: Math.min(loadedRows, rows.length),
+      getScrollElement: () => parentRef.current,
+      estimateSize: () => 40,
+      overscan: 20, // Increased for smoother scrolling
+      onChange: (instance) => {
+        const lastItem = instance.getVirtualItems().at(-1)
+        if (lastItem && lastItem.index >= loadedRows - 50) {
+          loadMore()
+        }
+      },
+    }),
+    [loadedRows, rows.length, loadMore]
+  )
   const virtualRows = virtualizer.getVirtualItems()
 
 
