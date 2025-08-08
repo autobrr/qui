@@ -1,4 +1,6 @@
 import { memo, useState, useMemo, useRef, useCallback, useEffect } from 'react'
+// @ts-ignore
+import TorrentWorker from '@/workers/TorrentWorker.ts?worker'
 import {
   useReactTable,
   getCoreRowModel,
@@ -502,28 +504,26 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     }
   }, [immediateSearch]) 
 
-  // Filter torrents before sorting for better performance
-  const filteredTorrents = useMemo(() => {
-    // Example: add more advanced filtering here if needed
-    return torrents
-  }, [torrents])
+  // Use a Web Worker for filtering and sorting in the background
+  const [workerResult, setWorkerResult] = useState<Torrent[]>([])
+  const workerRef = useRef<Worker | null>(null)
 
-  // Sort torrents client-side
-  const sortedTorrents = useMemo(() => {
-    if (sorting.length === 0) return filteredTorrents
-    const sorted = [...filteredTorrents]
-    const sort = sorting[0]
-    sorted.sort((a, b) => {
-      const aValue = a[sort.id as keyof Torrent]
-      const bValue = b[sort.id as keyof Torrent]
-      if (aValue === null || aValue === undefined) return 1
-      if (bValue === null || bValue === undefined) return -1
-      if (aValue < bValue) return sort.desc ? 1 : -1
-      if (aValue > bValue) return sort.desc ? -1 : 1
-      return 0
-    })
-    return sorted
-  }, [filteredTorrents, sorting])
+  useEffect(() => {
+    if (!workerRef.current) {
+      workerRef.current = new TorrentWorker()
+    }
+    const worker = workerRef.current
+    const handleMessage = (e: MessageEvent) => {
+      setWorkerResult(e.data.filtered)
+    }
+    worker.addEventListener('message', handleMessage)
+    worker.postMessage({ torrents, search: globalFilter, sort: sorting })
+    return () => {
+      worker.removeEventListener('message', handleMessage)
+    }
+  }, [torrents, globalFilter, sorting])
+
+  const sortedTorrents = workerResult
 
   // Memoize columns to avoid unnecessary recalculations
   const columns = useMemo(() => createColumns(incognitoMode), [incognitoMode])
