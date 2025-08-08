@@ -4,10 +4,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { Button } from '@/components/ui/button'
-import { HardDrive, Download, Upload, AlertCircle, Activity, Plus, Zap, ChevronDown } from 'lucide-react'
+import { HardDrive, Download, Upload, AlertCircle, Activity, Plus, Zap, ChevronDown, ChevronUp } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
 import { useMemo } from 'react'
-import { formatSpeed } from '@/lib/utils'
+import { formatSpeed, formatBytes, getRatioColor } from '@/lib/utils'
+import { useQuery } from '@tanstack/react-query'
+import { api } from '@/lib/api'
+import type { ServerState } from '@/types'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,6 +19,25 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+
+// Custom hook to fetch serverState for an instance
+function useInstanceServerState(instanceId: number, enabled: boolean) {
+  return useQuery({
+    queryKey: ['server-state', instanceId],
+    queryFn: async () => {
+      try {
+        const data = await api.syncMainData(instanceId, 0)
+        return (data as any).server_state || data.serverState || null
+      } catch (error) {
+        console.error('Error fetching server state for instance', instanceId, error)
+        return null
+      }
+    },
+    staleTime: 30000, // 30 seconds
+    refetchInterval: 30000, // Refetch every 30 seconds
+    enabled: enabled && !!instanceId,
+  })
+}
 
 // Custom hook to safely get all instance stats
 function useAllInstanceStats(instances: any[]) {
@@ -30,9 +52,14 @@ function useAllInstanceStats(instances: any[]) {
     })
   )
   
+  const serverStateQueries = fixedInstances.map((instance) =>
+    useInstanceServerState(instance?.id || -1, instance !== null)
+  )
+  
   return instances.map((instance, index) => ({
     instance,
-    stats: statsQueries[index].data
+    stats: statsQueries[index].data,
+    serverState: serverStateQueries[index].data as ServerState | null
   }))
 }
 
@@ -173,7 +200,7 @@ function InstanceCard({ instance }: { instance: any }) {
   )
 }
 
-function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: any, stats: any }> }) {
+function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: any, stats: any, serverState: ServerState | null }> }) {
   const globalStats = useMemo(() => {
     const connected = statsData.filter(({ stats }) => stats?.connected).length
     const totalTorrents = statsData.reduce((sum, { stats }) => 
@@ -186,6 +213,20 @@ function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: any, sta
       sum + (stats?.speeds?.upload || 0), 0)
     const totalErrors = statsData.reduce((sum, { stats }) => 
       sum + (stats?.torrents?.error || 0), 0)
+    
+    // Calculate all-time stats
+    const alltimeDl = statsData.reduce((sum, { serverState }) => 
+      sum + (serverState?.alltime_dl || 0), 0)
+    const alltimeUl = statsData.reduce((sum, { serverState }) => 
+      sum + (serverState?.alltime_ul || 0), 0)
+    const totalPeers = statsData.reduce((sum, { serverState }) => 
+      sum + (serverState?.total_peer_connections || 0), 0)
+    
+    // Calculate global ratio
+    let globalRatio = 0
+    if (alltimeDl > 0) {
+      globalRatio = alltimeUl / alltimeDl
+    }
 
     return {
       connected,
@@ -194,7 +235,11 @@ function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: any, sta
       activeTorrents,
       totalDownload,
       totalUpload,
-      totalErrors
+      totalErrors,
+      alltimeDl,
+      alltimeUl,
+      globalRatio,
+      totalPeers
     }
   }, [statsData])
 
@@ -265,7 +310,110 @@ function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: any, sta
   )
 }
 
-function QuickActionsDropdown({ statsData }: { statsData: Array<{ instance: any, stats: any }> }) {
+function GlobalAllTimeStats({ statsData }: { statsData: Array<{ instance: any, stats: any, serverState: ServerState | null }> }) {
+  const globalStats = useMemo(() => {
+    // Calculate all-time stats
+    const alltimeDl = statsData.reduce((sum, { serverState }) => 
+      sum + (serverState?.alltime_dl || 0), 0)
+    const alltimeUl = statsData.reduce((sum, { serverState }) => 
+      sum + (serverState?.alltime_ul || 0), 0)
+    const totalPeers = statsData.reduce((sum, { serverState }) => 
+      sum + (serverState?.total_peer_connections || 0), 0)
+    
+    // Calculate global ratio
+    let globalRatio = 0
+    if (alltimeDl > 0) {
+      globalRatio = alltimeUl / alltimeDl
+    }
+
+    return {
+      alltimeDl,
+      alltimeUl,
+      globalRatio,
+      totalPeers
+    }
+  }, [statsData])
+
+  // Apply color grading to ratio
+  const ratioColor = getRatioColor(globalStats.globalRatio)
+
+  // Don't show if no data
+  if (globalStats.alltimeDl === 0 && globalStats.alltimeUl === 0) {
+    return null
+  }
+
+  return (
+    <div className="rounded-lg border bg-card p-4">
+      {/* Mobile layout */}
+      <div className="sm:hidden">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-medium text-muted-foreground">All-Time Statistics</h3>
+          <Badge variant="secondary" className="text-xs">combined</Badge>
+        </div>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-1.5">
+              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-sm font-semibold">{formatBytes(globalStats.alltimeDl)}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-sm font-semibold">{formatBytes(globalStats.alltimeUl)}</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-4 text-sm">
+            <div>
+              <span className="text-xs text-muted-foreground">Ratio: </span>
+              <span className="font-semibold" style={{ color: ratioColor }}>
+                {globalStats.globalRatio.toFixed(2)}
+              </span>
+            </div>
+            {globalStats.totalPeers > 0 && (
+              <div>
+                <span className="text-xs text-muted-foreground">Peers: </span>
+                <span className="font-semibold">{globalStats.totalPeers}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+      
+      {/* Desktop layout - unchanged */}
+      <div className="hidden sm:flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="items-center">
+          <h3 className="text-base font-medium">All-Time Statistics <Badge variant="secondary" className="ml-1">combined</Badge></h3>
+        </div>
+        <div className="flex flex-wrap items-center gap-6 text-sm">
+          <div className="flex items-center gap-2">
+            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            <span className="text-lg font-semibold">{formatBytes(globalStats.alltimeDl)}</span>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <ChevronUp className="h-4 w-4 text-muted-foreground" />
+            <span className="text-lg font-semibold">{formatBytes(globalStats.alltimeUl)}</span>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <span className="text-muted-foreground">Ratio:</span>
+            <span className="text-lg font-semibold" style={{ color: ratioColor }}>
+              {globalStats.globalRatio.toFixed(2)}
+            </span>
+          </div>
+          
+          {globalStats.totalPeers > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground">Peers:</span>
+              <span className="text-lg font-semibold">{globalStats.totalPeers}</span>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function QuickActionsDropdown({ statsData }: { statsData: Array<{ instance: any, stats: any, serverState: ServerState | null }> }) {
   const connectedInstances = statsData
     .filter(({ stats }) => stats?.connected)
     .map(({ instance }) => instance)
@@ -352,6 +500,9 @@ export function Dashboard() {
       
       {instances && instances.length > 0 ? (
         <div className="space-y-6">
+            {/* All-Time Stats Bar */}
+            <GlobalAllTimeStats statsData={statsData} />
+          
           {/* Global Stats */}
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <GlobalStatsCards statsData={statsData} />
