@@ -37,15 +37,25 @@ const DEFAULT_COLUMN_VISIBILITY = {
   tracker: false,
   priority: false,
 }
-const DEFAULT_COLUMN_ORDER = (() => {
+const DEFAULT_COLUMN_SIZING = {}
+
+function getDefaultColumnOrder() {
   const cols = createColumns(false)
   return cols.map(col => {
     if ('id' in col && col.id) return col.id
     if ('accessorKey' in col && typeof col.accessorKey === 'string') return col.accessorKey
     return null
-  }).filter(Boolean)
-})()
-const DEFAULT_COLUMN_SIZING = {}
+  }).filter((v): v is string => typeof v === 'string')
+}
+// After createColumns is defined
+DEFAULT_COLUMN_ORDER = (() => {
+  const cols = createColumns(false)
+  return cols.map(col => {
+    if ('id' in col && col.id) return col.id
+    if ('accessorKey' in col && typeof col.accessorKey === 'string') return col.accessorKey
+    return null
+  }).filter((v): v is string => typeof v === 'string');
+})();
 import { useInstanceMetadata } from '@/hooks/useInstanceMetadata'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
@@ -428,8 +438,8 @@ export function TorrentTableOptimized({ instanceId, filters, selectedTorrent, on
 
   // Column visibility with persistence
   const [columnVisibility, setColumnVisibility] = usePersistedColumnVisibility(DEFAULT_COLUMN_VISIBILITY)
-  // Column order with persistence
-  const [columnOrder, setColumnOrder] = usePersistedColumnOrder(DEFAULT_COLUMN_ORDER)
+  // Column order with persistence (get default order at runtime to avoid initialization order issues)
+  const [columnOrder, setColumnOrder] = usePersistedColumnOrder(getDefaultColumnOrder())
   // Column sizing with persistence
   const [columnSizing, setColumnSizing] = usePersistedColumnSizing(DEFAULT_COLUMN_SIZING)
   
