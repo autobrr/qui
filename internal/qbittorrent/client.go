@@ -19,11 +19,6 @@ type Client struct {
 	mu              sync.RWMutex
 }
 
-// firstPathSeparator finds the first path separator after the protocol
-func firstPathSeparator(s string) int {
-	return strings.IndexByte(s, '/')
-}
-
 // NewClient creates a new qBittorrent client wrapper
 func NewClient(instanceID int, host string, port int, username, password string, basicUsername, basicPassword *string) (*Client, error) {
 	// Construct the host URL
@@ -122,12 +117,23 @@ func (c *Client) SetHealthy(healthy bool) {
 
 // HealthCheck performs a health check on the qBittorrent connection
 func (c *Client) HealthCheck(ctx context.Context) error {
-	// Try to login again as a health check
-	if err := c.Client.LoginCtx(ctx); err != nil {
-		c.SetHealthy(false)
-		return fmt.Errorf("health check failed: %w", err)
+	// Use a lightweight API call instead of full login
+	// GetWebAPIVersion is perfect - it's fast and doesn't load torrent data
+	_, err := c.Client.GetWebAPIVersionCtx(ctx)
+	if err != nil {
+		// If the version check fails, it might be an auth issue
+		// Try to re-login once
+		if loginErr := c.Client.LoginCtx(ctx); loginErr != nil {
+			c.SetHealthy(false)
+			return fmt.Errorf("health check failed: login error: %w", loginErr)
+		}
+		// Retry the version check after login
+		if _, err = c.Client.GetWebAPIVersionCtx(ctx); err != nil {
+			c.SetHealthy(false)
+			return fmt.Errorf("health check failed: api error: %w", err)
+		}
 	}
-
+	
 	c.SetHealthy(true)
 	return nil
 }

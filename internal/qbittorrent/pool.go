@@ -176,9 +176,10 @@ func (cp *ClientPool) performHealthChecks() {
 		// Submit health check to goroutine pool
 		instanceID := client.GetInstanceID()
 		cp.pool.Submit(func() {
-			// Use longer timeout for health checks - 30 seconds to match qBittorrent client timeout
-			// This is especially important for large instances with 10k+ torrents
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			// Use appropriate timeout for health checks
+			// Since we're now using GetWebAPIVersion instead of Login,
+			// this should be much faster even for large instances
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
 			if err := client.HealthCheck(ctx); err != nil {

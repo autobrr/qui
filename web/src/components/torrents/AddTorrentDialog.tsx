@@ -78,14 +78,17 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
     onSuccess: () => {
       // Add small delay to allow qBittorrent to process the new torrent
       setTimeout(() => {
-        queryClient.invalidateQueries({ 
+        // Use refetch instead of invalidate to avoid loading state
+        queryClient.refetchQueries({ 
           queryKey: ['torrents-list', instanceId],
-          exact: false 
+          exact: false,
+          type: 'active'
         })
-        // Also invalidate the counts query to update filter sidebar immediately
-        queryClient.invalidateQueries({ 
-          queryKey: ['torrent-counts', instanceId],
-          exact: false 
+        // Also refetch the metadata (categories, tags, counts)
+        queryClient.refetchQueries({ 
+          queryKey: ['instance-metadata', instanceId],
+          exact: false,
+          type: 'active'
         })
       }, 500) // Give qBittorrent time to process
       setOpen(false)

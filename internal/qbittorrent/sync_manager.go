@@ -711,30 +711,41 @@ func (sm *SyncManager) GetTorrentCounts(ctx context.Context, instanceID int) (*T
 	return counts, nil
 }
 
-// GetInstanceSpeeds calculates total download/upload speeds from cached torrent data
-// This avoids making slow SyncMainData API calls for large instances
+// GetInstanceSpeeds gets total download/upload speeds efficiently using GetTransferInfo
+// This is MUCH faster than fetching all torrents for large instances
 func (sm *SyncManager) GetInstanceSpeeds(ctx context.Context, instanceID int) (*InstanceSpeeds, error) {
-	// Get all torrents from the same cache the table uses
-	// This will use the dynamic TTL (2-60s based on instance speed)
-	log.Debug().Int("instanceID", instanceID).Msg("GetInstanceSpeeds: fetching from getAllTorrentsForStats")
+	// Check cache for speeds
+	cacheKey := fmt.Sprintf("instance:speeds:%d", instanceID)
+	if cached, found := sm.cache.Get(cacheKey); found {
+		if speeds, ok := cached.(*InstanceSpeeds); ok {
+			log.Debug().Int("instanceID", instanceID).Msg("GetInstanceSpeeds: returning cached speeds")
+			return speeds, nil
+		}
+	}
 	
-	allTorrents, err := sm.getAllTorrentsForStats(ctx, instanceID, "")
+	// Get client
+	client, err := sm.clientPool.GetClient(instanceID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get all torrents for speeds: %w", err)
+		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
 	
-	// Calculate total speeds from torrents
+	// Use GetTransferInfo - a lightweight API that returns just global speeds
+	// This doesn't fetch any torrents, making it perfect for dashboard stats
+	transferInfo, err := client.GetTransferInfoCtx(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get transfer info: %w", err)
+	}
+	
+	// Extract speeds from TransferInfo
 	speeds := &InstanceSpeeds{
-		Download: 0,
-		Upload:   0,
+		Download: transferInfo.DlInfoSpeed,
+		Upload:   transferInfo.UpInfoSpeed,
 	}
 	
-	for _, torrent := range allTorrents {
-		speeds.Download += torrent.DlSpeed
-		speeds.Upload += torrent.UpSpeed
-	}
+	// Cache for 2 seconds (matches torrent data cache)
+	sm.cache.SetWithTTL(cacheKey, speeds, 1, 2*time.Second)
 	
-	log.Debug().Int("instanceID", instanceID).Int64("download", speeds.Download).Int64("upload", speeds.Upload).Msg("GetInstanceSpeeds: calculated from cached torrents")
+	log.Debug().Int("instanceID", instanceID).Int64("download", speeds.Download).Int64("upload", speeds.Upload).Msg("GetInstanceSpeeds: got from GetTransferInfo API")
 	
 	return speeds, nil
 }
@@ -814,12 +825,57 @@ func (sm *SyncManager) ResetRID(instanceID int) {
 func (sm *SyncManager) InvalidateCache(instanceID int) {
 	log.Debug().Int("instanceID", instanceID).Msg("Invalidating cache for instance")
 
-	// Ristretto doesn't support pattern deletion, so we use a simpler approach:
-	// Just clear the entire cache. This is not ideal for multi-instance setups,
-	// but ensures consistency and is simple to implement.
-	sm.cache.Clear()
-
-	// No longer track cache cleared time since we don't skip caching anymore
+	// Delete specific cache keys for this instance only
+	// This prevents affecting other instances' caches
+	keysToDelete := []string{
+		// All torrents variations
+		fmt.Sprintf("all_torrents:%d:", instanceID), // Empty search
+		fmt.Sprintf("all_torrents:%d:*", instanceID), // With search
+		
+		// Paginated torrents
+		fmt.Sprintf("torrents:%d:", instanceID),
+		
+		// Filtered torrents
+		fmt.Sprintf("torrents:filtered:%d:", instanceID),
+		fmt.Sprintf("torrents:search:%d:", instanceID),
+		fmt.Sprintf("native_filtered:%d:", instanceID),
+		
+		// Metadata
+		fmt.Sprintf("categories:%d", instanceID),
+		fmt.Sprintf("tags:%d", instanceID),
+		
+		// Individual torrent data
+		fmt.Sprintf("torrent:properties:%d:", instanceID),
+		fmt.Sprintf("torrent:trackers:%d:", instanceID),
+		fmt.Sprintf("torrent:files:%d:", instanceID),
+		fmt.Sprintf("torrent:webseeds:%d:", instanceID),
+	}
+	
+	// Since Ristretto doesn't support wildcard/pattern deletion,
+	// we need to be more explicit about what we delete
+	for _, keyPrefix := range keysToDelete {
+		// Try to delete with common suffixes
+		sm.cache.Del(keyPrefix)
+		
+		// For paginated results, try to clear first few pages
+		if strings.Contains(keyPrefix, "torrents:") {
+			for page := 0; page < 10; page++ {
+				for _, limit := range []int{100, 200, 500, 1000} {
+					paginatedKey := fmt.Sprintf("%s%d:%d", keyPrefix, page*limit, limit)
+					sm.cache.Del(paginatedKey)
+				}
+			}
+		}
+		
+		// For search results, we can't predict all search terms
+		// but we can clear common empty searches
+		if keyPrefix == fmt.Sprintf("all_torrents:%d:", instanceID) {
+			sm.cache.Del(keyPrefix) // Empty search
+			sm.cache.Del(fmt.Sprintf("all_torrents:%d: ", instanceID)) // Space
+		}
+	}
+	
+	log.Debug().Int("instanceID", instanceID).Msg("Instance-specific cache invalidation completed")
 }
 
 // invalidateTagsCache invalidates the tags cache for a specific instance

@@ -282,8 +282,9 @@ func (h *InstancesHandler) GetInstanceStats(w http.ResponseWriter, r *http.Reque
 
 	// Get stats from the sync manager which uses cached data
 	// This ensures the dashboard doesn't make slow direct API calls to qBittorrent
-	// Use a timeout to prevent hanging on slow instances
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	// Use a longer timeout for slow instances with 10k+ torrents
+	// 30 seconds should be enough for initial cold cache load
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 	
 	torrentCounts, err := h.syncManager.GetTorrentCounts(ctx, instanceID)

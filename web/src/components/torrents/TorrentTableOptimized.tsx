@@ -29,7 +29,8 @@ import { usePersistedColumnVisibility } from '@/hooks/usePersistedColumnVisibili
 import { usePersistedColumnOrder } from '@/hooks/usePersistedColumnOrder'
 import { usePersistedColumnSizing } from '@/hooks/usePersistedColumnSizing'
 import { usePersistedColumnSorting } from '@/hooks/usePersistedColumnSorting'
-import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
+import { useInstanceMetadata } from '@/hooks/useInstanceMetadata'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
@@ -439,19 +440,10 @@ export function TorrentTableOptimized({ instanceId, filters, selectedTorrent, on
   // Query client for invalidating queries
   const queryClient = useQueryClient()
 
-  // Fetch available tags
-  const { data: availableTags = [] } = useQuery({
-    queryKey: ['tags', instanceId],
-    queryFn: () => api.getTags(instanceId),
-    staleTime: 60000,
-  })
-
-  // Fetch available categories
-  const { data: availableCategories = {} } = useQuery({
-    queryKey: ['categories', instanceId],
-    queryFn: () => api.getCategories(instanceId),
-    staleTime: 60000,
-  })
+  // Fetch metadata using shared hook
+  const { data: metadata } = useInstanceMetadata(instanceId)
+  const availableTags = metadata?.tags || []
+  const availableCategories = metadata?.categories || {}
 
   // Debounce search to prevent excessive filtering (1 second delay)
   const debouncedSearch = useDebounce(globalFilter, 1000)
@@ -690,18 +682,21 @@ export function TorrentTableOptimized({ instanceId, filters, selectedTorrent, on
           })
         })
         
-        // Refetch later to sync with actual server state
+        // Refetch later to sync with actual server state (don't invalidate!)
         // Longer delay when deleting files from disk
         const refetchDelay = variables.deleteFiles ? 5000 : 2000
         setTimeout(() => {
-          queryClient.invalidateQueries({ 
+          // Use refetch instead of invalidate to keep showing data
+          queryClient.refetchQueries({ 
             queryKey: ['torrents-list', instanceId],
-            exact: false 
+            exact: false,
+            type: 'active' // Only refetch if component is mounted
           })
-          // Also invalidate the counts query to update filter sidebar immediately
-          queryClient.invalidateQueries({ 
+          // Also refetch the counts query
+          queryClient.refetchQueries({ 
             queryKey: ['torrent-counts', instanceId],
-            exact: false 
+            exact: false,
+            type: 'active'
           })
         }, refetchDelay)
       } else {
@@ -750,14 +745,16 @@ export function TorrentTableOptimized({ instanceId, filters, selectedTorrent, on
         const delay = variables.action === 'resume' ? 2000 : 1000
         
         setTimeout(() => {
-          // Always invalidate to get the real state from server
-          queryClient.invalidateQueries({ 
+          // Use refetch instead of invalidate to avoid loading state
+          queryClient.refetchQueries({ 
             queryKey: ['torrents-list', instanceId],
-            exact: false 
+            exact: false,
+            type: 'active'
           })
-          queryClient.invalidateQueries({ 
+          queryClient.refetchQueries({ 
             queryKey: ['torrent-counts', instanceId],
-            exact: false 
+            exact: false,
+            type: 'active'
           })
         }, delay)
         setContextMenuHashes([])

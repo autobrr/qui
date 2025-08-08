@@ -1,5 +1,4 @@
 import { useState, useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import {
   Accordion,
   AccordionContent,
@@ -17,7 +16,7 @@ import {
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
 import { usePersistedAccordion } from '@/hooks/usePersistedAccordion'
-import { api } from '@/lib/api'
+import { useInstanceMetadata } from '@/hooks/useInstanceMetadata'
 import {
   Download,
   Upload,
@@ -103,19 +102,10 @@ export function FilterSidebar({
   const [categoryToEdit, setCategoryToEdit] = useState<{ name: string; savePath: string } | null>(null)
   const [categoryToDelete, setCategoryToDelete] = useState('')
 
-  // Fetch categories
-  const { data: realCategories = {} } = useQuery({
-    queryKey: ['categories', instanceId],
-    queryFn: () => api.getCategories(instanceId),
-    staleTime: 60000, // 1 minute
-  })
-
-  // Fetch tags
-  const { data: realTags = [] } = useQuery({
-    queryKey: ['tags', instanceId],
-    queryFn: () => api.getTags(instanceId),
-    staleTime: 60000, // 1 minute
-  })
+  // Fetch metadata using shared hook
+  const { data: metadata } = useInstanceMetadata(instanceId)
+  const realCategories = metadata?.categories || {}
+  const realTags = metadata?.tags || []
   
   // Use fake data if in incognito mode
   const categories = useMemo(() => {
@@ -297,7 +287,7 @@ export function FilterSidebar({
                   </label>
                   
                   {/* Category list */}
-                  {Object.entries(categories).map(([name, category]) => (
+                  {Object.entries(categories).map(([name, category]: [string, any]) => (
                     <ContextMenu key={name}>
                       <ContextMenuTrigger asChild>
                         <label className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer">
@@ -380,7 +370,7 @@ export function FilterSidebar({
                   </label>
                   
                   {/* Tag list */}
-                  {tags.map((tag) => (
+                  {tags.map((tag: string) => (
                     <ContextMenu key={tag}>
                       <ContextMenuTrigger asChild>
                         <label className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer">

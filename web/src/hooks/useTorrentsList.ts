@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import type { Torrent } from '@/types'
+import type { Torrent, TorrentResponse } from '@/types'
 
 interface UseTorrentsListOptions {
   enabled?: boolean
@@ -58,13 +58,13 @@ export function useTorrentsList(
   // Reset pagination when filters or search change (same instance, different view)
   useEffect(() => {
     setCurrentPage(0)
-    // Don't clear torrents - keep showing old data while fetching new
-    // This provides a smoother experience (stale-while-revalidate pattern)
+    // Keep showing old data while fetching new (stale-while-revalidate pattern)
+    // Don't clear torrents array to avoid loading state
     setHasLoadedAll(false)
   }, [filters, search])
   
   // Initial load
-  const { data: initialData, isLoading: initialLoading, isFetching } = useQuery({
+  const { data: initialData, isLoading: initialLoading, isFetching } = useQuery<TorrentResponse>({
     queryKey: ['torrents-list', instanceId, currentPage, filters, search],
     queryFn: () => api.getTorrents(instanceId, { 
       page: currentPage, 
@@ -74,7 +74,9 @@ export function useTorrentsList(
       search,
       filters
     }),
-    staleTime: 1000, // 1 second - ensure data is considered stale quickly
+    staleTime: 2000, // 2 seconds - match minimum backend cache TTL
+    gcTime: 300000, // Keep in cache for 5 minutes (was cacheTime in v4, now gcTime in v5)
+    placeholderData: (previousData: TorrentResponse | undefined) => previousData, // Show old data while fetching (was keepPreviousData in v4)
     refetchInterval: 3000, // Poll every 3 seconds for more responsive updates
     refetchIntervalInBackground: false, // Don't poll when tab is not active
     enabled,
