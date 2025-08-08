@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import type { Torrent, TorrentResponse } from '@/types'
@@ -23,6 +23,7 @@ export function useTorrentsList(
   const { enabled = true, search, filters } = options
   
   const [allTorrents, setAllTorrents] = useState<Torrent[]>([])
+  const [lastValidInstanceId, setLastValidInstanceId] = useState<number>(instanceId)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [hasLoadedAll, setHasLoadedAll] = useState(false)
   const [currentPage, setCurrentPage] = useState(0)
@@ -42,6 +43,7 @@ export function useTorrentsList(
   useEffect(() => {
     setCurrentPage(0)
     setAllTorrents([])
+    setLastValidInstanceId(instanceId) // Update to track the new instance
     setHasLoadedAll(false)
     // Also reset stats to avoid showing stale data from previous instance
     setStats({
@@ -153,7 +155,11 @@ export function useTorrentsList(
   }
   
   // Since search is now handled server-side, we don't need client-side filtering
-  const filteredTorrents = allTorrents
+  // Only return torrents if they belong to the current instance
+  const filteredTorrents = useMemo(
+    () => lastValidInstanceId === instanceId ? allTorrents : [],
+    [allTorrents, lastValidInstanceId, instanceId]
+  )
   
   return {
     torrents: filteredTorrents,
