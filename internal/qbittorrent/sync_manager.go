@@ -399,9 +399,31 @@ func (sm *SyncManager) AddTorrent(ctx context.Context, instanceID int, fileConte
 		return fmt.Errorf("failed to get client: %w", err)
 	}
 
-	// The go-qbittorrent library expects a filename for the torrent file
-	// We'll use a generic name since we're passing the content directly
-	return client.AddTorrentFromFileCtx(ctx, "upload.torrent", options)
+	// Use AddTorrentFromMemoryCtx which accepts byte array
+	return client.AddTorrentFromMemoryCtx(ctx, fileContent, options)
+}
+
+// AddTorrentFromURLs adds new torrents from URLs or magnet links
+func (sm *SyncManager) AddTorrentFromURLs(ctx context.Context, instanceID int, urls []string, options map[string]string) error {
+	// Get client
+	client, err := sm.clientPool.GetClient(instanceID)
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	// Add each URL/magnet link
+	for _, url := range urls {
+		url = strings.TrimSpace(url)
+		if url == "" {
+			continue
+		}
+		
+		if err := client.AddTorrentFromUrlCtx(ctx, url, options); err != nil {
+			return fmt.Errorf("failed to add torrent from URL %s: %w", url, err)
+		}
+	}
+	
+	return nil
 }
 
 // GetCategories gets all categories

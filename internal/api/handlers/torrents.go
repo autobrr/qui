@@ -1,10 +1,14 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/autobrr/qui/internal/qbittorrent"
@@ -126,6 +130,11 @@ type AddTorrentRequest struct {
 
 // AddTorrent adds a new torrent
 func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
+	// Set a reasonable timeout for the entire operation
+	// With multiple files, we allow 60 seconds total (not per file)
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+	
 	// Get instance ID from URL
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
@@ -140,19 +149,42 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get torrent file
-	file, _, err := r.FormFile("torrent")
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Torrent file is required")
-		return
-	}
-	defer file.Close()
+	var torrentFiles [][]byte
+	var urls []string
 
-	// Read file content
-	fileContent, err := io.ReadAll(file)
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Failed to read torrent file")
-		return
+	// Check for torrent files (multiple files supported)
+	if r.MultipartForm != nil && r.MultipartForm.File != nil {
+		fileHeaders := r.MultipartForm.File["torrent"]
+		if len(fileHeaders) > 0 {
+			for _, fileHeader := range fileHeaders {
+				file, err := fileHeader.Open()
+				if err != nil {
+					log.Error().Err(err).Str("filename", fileHeader.Filename).Msg("Failed to open torrent file")
+					continue
+				}
+				defer file.Close()
+				
+				fileContent, err := io.ReadAll(file)
+				if err != nil {
+					log.Error().Err(err).Str("filename", fileHeader.Filename).Msg("Failed to read torrent file")
+					continue
+				}
+				torrentFiles = append(torrentFiles, fileContent)
+			}
+		}
+	}
+	
+	// Check for URLs/magnet links if no files
+	if len(torrentFiles) == 0 {
+		urlsParam := r.FormValue("urls")
+		if urlsParam != "" {
+			// Support both comma and newline separated URLs
+			urlsParam = strings.ReplaceAll(urlsParam, "\n", ",")
+			urls = strings.Split(urlsParam, ",")
+		} else {
+			RespondError(w, http.StatusBadRequest, "Either torrent files or URLs are required")
+			return
+		}
 	}
 
 	// Parse options from form
@@ -168,6 +200,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 
 	if paused := r.FormValue("paused"); paused == "true" {
 		options["paused"] = "true"
+		options["stopped"] = "true"  // qBittorrent API requires both paused and stopped
 	}
 
 	if skipChecking := r.FormValue("skip_checking"); skipChecking == "true" {
@@ -189,10 +222,43 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Add torrent
-	if err := h.syncManager.AddTorrent(r.Context(), instanceID, fileContent, options); err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to add torrent")
-		RespondError(w, http.StatusInternalServerError, "Failed to add torrent")
+	// Track results for multiple files
+	var addedCount int
+	var failedCount int
+	var lastError error
+
+	// Add torrent(s)
+	if len(torrentFiles) > 0 {
+		// Add from files
+		for i, fileContent := range torrentFiles {
+			// Check if context is already cancelled (timeout or client disconnect)
+			if ctx.Err() != nil {
+				log.Warn().Int("instanceID", instanceID).Msg("Request cancelled, stopping torrent additions")
+				break
+			}
+			
+			if err := h.syncManager.AddTorrent(ctx, instanceID, fileContent, options); err != nil {
+				log.Error().Err(err).Int("instanceID", instanceID).Int("fileIndex", i).Msg("Failed to add torrent file")
+				failedCount++
+				lastError = err
+			} else {
+				addedCount++
+			}
+		}
+	} else if len(urls) > 0 {
+		// Add from URLs
+		if err := h.syncManager.AddTorrentFromURLs(ctx, instanceID, urls, options); err != nil {
+			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to add torrent from URLs")
+			RespondError(w, http.StatusInternalServerError, "Failed to add torrent")
+			return
+		}
+		addedCount = len(urls) // Assume all URLs succeeded for simplicity
+	}
+	
+	// Check if any torrents failed
+	if failedCount > 0 && addedCount == 0 {
+		// All failed
+		RespondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to add all torrents: %v", lastError))
 		return
 	}
 
@@ -200,8 +266,20 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 	h.syncManager.InvalidateCache(instanceID)
 	log.Debug().Int("instanceID", instanceID).Msg("Cache invalidated after adding torrent")
 
-	RespondJSON(w, http.StatusCreated, map[string]string{
-		"message": "Torrent added successfully",
+	// Build response message
+	var message string
+	if failedCount > 0 {
+		message = fmt.Sprintf("Added %d torrent(s), %d failed", addedCount, failedCount)
+	} else if addedCount > 1 {
+		message = fmt.Sprintf("%d torrents added successfully", addedCount)
+	} else {
+		message = "Torrent added successfully"
+	}
+	
+	RespondJSON(w, http.StatusCreated, map[string]interface{}{
+		"message": message,
+		"added": addedCount,
+		"failed": failedCount,
 	})
 }
 
