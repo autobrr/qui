@@ -344,8 +344,45 @@ function GlobalAllTimeStats({ statsData }: { statsData: Array<{ instance: any, s
 
   return (
     <div className="rounded-lg border bg-card p-4">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div className="items-center"><h3 className="text-base font-medium">All-Time Statistics <Badge className="ml-1">combined</Badge></h3></div>
+      {/* Mobile layout */}
+      <div className="sm:hidden">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-medium text-muted-foreground">All-Time Statistics</h3>
+          <Badge variant="secondary" className="text-xs">combined</Badge>
+        </div>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-1.5">
+              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-sm font-semibold">{formatBytes(globalStats.alltimeDl)}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-sm font-semibold">{formatBytes(globalStats.alltimeUl)}</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-4 text-sm">
+            <div>
+              <span className="text-xs text-muted-foreground">Ratio: </span>
+              <span className="font-semibold" style={{ color: ratioColor }}>
+                {globalStats.globalRatio.toFixed(2)}
+              </span>
+            </div>
+            {globalStats.totalPeers > 0 && (
+              <div>
+                <span className="text-xs text-muted-foreground">Peers: </span>
+                <span className="font-semibold">{globalStats.totalPeers}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+      
+      {/* Desktop layout - unchanged */}
+      <div className="hidden sm:flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="items-center">
+          <h3 className="text-base font-medium">All-Time Statistics <Badge variant="secondary" className="ml-1">combined</Badge></h3>
+        </div>
         <div className="flex flex-wrap items-center gap-6 text-sm">
           <div className="flex items-center gap-2">
             <ChevronDown className="h-4 w-4 text-muted-foreground" />
