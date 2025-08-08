@@ -20,16 +20,20 @@ type DB struct {
 }
 
 func New(databasePath string) (*DB, error) {
+	log.Info().Msgf("Initializing database at: %s", databasePath)
+	
 	// Ensure the directory exists
 	dir := filepath.Dir(databasePath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create database directory: %w", err)
+		return nil, fmt.Errorf("failed to create database directory %s: %w", dir, err)
 	}
+	log.Debug().Msgf("Database directory ensured: %s", dir)
 
 	conn, err := sql.Open("sqlite", databasePath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open database: %w", err)
+		return nil, fmt.Errorf("failed to open database at %s: %w", databasePath, err)
 	}
+	log.Debug().Msg("Database connection opened")
 
 	// Enable foreign keys and WAL mode for better performance
 	if _, err := conn.Exec("PRAGMA foreign_keys = ON"); err != nil {
@@ -57,6 +61,13 @@ func New(databasePath string) (*DB, error) {
 		conn.Close()
 		return nil, fmt.Errorf("failed to run migrations: %w", err)
 	}
+
+	// Verify database file was created
+	if _, err := os.Stat(databasePath); err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("database file was not created at %s: %w", databasePath, err)
+	}
+	log.Info().Msgf("Database initialized successfully at: %s", databasePath)
 
 	return db, nil
 }

@@ -84,7 +84,14 @@ func (c *AppConfig) load(configPath string) error {
 					return err
 				}
 				// Re-read after creating
-				return c.viper.ReadInConfig()
+				if err := c.viper.ReadInConfig(); err != nil {
+					return fmt.Errorf("failed to read newly created config: %w", err)
+				}
+				// Explicitly set database path for newly created config
+				configDir := filepath.Dir(configPath)
+				c.databasePath = filepath.Join(configDir, "qui.db")
+				log.Info().Msgf("Database path set to: %s (new config)", c.databasePath)
+				return nil
 			}
 			return fmt.Errorf("failed to read config: %w", err)
 		}
@@ -104,7 +111,14 @@ func (c *AppConfig) load(configPath string) error {
 				}
 				// Set the config file explicitly and read it
 				c.viper.SetConfigFile(defaultConfigPath)
-				return c.viper.ReadInConfig()
+				if err := c.viper.ReadInConfig(); err != nil {
+					return fmt.Errorf("failed to read newly created config: %w", err)
+				}
+				// Explicitly set database path for newly created config
+				configDir := filepath.Dir(defaultConfigPath)
+				c.databasePath = filepath.Join(configDir, "qui.db")
+				log.Info().Msgf("Database path set to: %s (new config)", c.databasePath)
+				return nil
 			}
 			return fmt.Errorf("failed to read config: %w", err)
 		}
@@ -114,9 +128,11 @@ func (c *AppConfig) load(configPath string) error {
 	if c.viper.ConfigFileUsed() != "" {
 		configDir := filepath.Dir(c.viper.ConfigFileUsed())
 		c.databasePath = filepath.Join(configDir, "qui.db")
+		log.Info().Msgf("Database path set to: %s (existing config)", c.databasePath)
 	} else {
 		// Fallback to current directory if no config file
 		c.databasePath = "qui.db"
+		log.Warn().Msg("No config file found, using current directory for database")
 	}
 
 	return nil
@@ -160,14 +176,16 @@ func (c *AppConfig) applyDynamicChanges() {
 func (c *AppConfig) writeDefaultConfig(path string) error {
 	// Check if config already exists
 	if _, err := os.Stat(path); err == nil {
+		log.Debug().Msgf("Config file already exists at: %s", path)
 		return nil
 	}
 
 	// Ensure directory exists
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("failed to create config directory: %w", err)
+		return fmt.Errorf("failed to create config directory %s: %w", dir, err)
 	}
+	log.Debug().Msgf("Created config directory: %s", dir)
 
 	// Create config template
 	configTemplate := `# config.toml - Auto-generated on first run
