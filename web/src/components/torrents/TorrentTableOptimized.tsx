@@ -38,8 +38,10 @@ const DEFAULT_COLUMN_VISIBILITY = {
   priority: false,
 }
 const DEFAULT_COLUMN_SIZING = {}
+// ...existing code...
+// ...existing code...
 // After createColumns is defined
-DEFAULT_COLUMN_ORDER = (() => {
+const DEFAULT_COLUMN_ORDER = (() => {
   const cols = createColumns(false)
   return cols.map(col => {
     if ('id' in col && col.id) return col.id
