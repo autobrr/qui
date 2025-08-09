@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, memo, useRef } from 'react'
+import { useState, useMemo, useCallback, memo, useRef } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
