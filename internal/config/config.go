@@ -139,16 +139,29 @@ func (c *AppConfig) load(configPath string) error {
 }
 
 func (c *AppConfig) loadFromEnv() {
-	// DO NOT use AutomaticEnv() - it reads ALL env vars and causes conflicts with K8s
-	// Instead, explicitly bind only the environment variables we want
+	// Enable environment variable support with prefix
+	c.viper.SetEnvPrefix("qui__")
+	c.viper.SetEnvKeyReplacer(strings.NewReplacer(".", "__"))
+	c.viper.AutomaticEnv()
 
-	// Use double underscore to avoid conflicts with K8s deployment_PORT patterns
-	c.viper.BindEnv("host", "QUI__HOST")
-	c.viper.BindEnv("port", "QUI__PORT")
-	c.viper.BindEnv("baseUrl", "QUI__BASE_URL")
-	c.viper.BindEnv("sessionSecret", "QUI__SESSION_SECRET")
-	c.viper.BindEnv("logLevel", "QUI__LOG_LEVEL")
-	c.viper.BindEnv("logPath", "QUI__LOG_PATH")
+	// Manually bind specific environment variables to avoid conflicts with Kubernetes
+	// These will only be used if the prefixed versions (QUI_*) are not set
+	c.bindEnvWithFallback("host", "QUI_HOST")
+	c.bindEnvWithFallback("port", "QUI_PORT")
+	c.bindEnvWithFallback("baseUrl", "QUI_BASE_URL", "QUI_BASEURL")
+	c.bindEnvWithFallback("sessionSecret", "QUI_SESSION_SECRET", "QUI_SESSIONSECRET")
+	c.bindEnvWithFallback("logLevel", "QUI_LOG_LEVEL", "QUI_LOGLEVEL")
+	c.bindEnvWithFallback("logPath", "QUI_LOG_PATH", "QUI_LOGPATH")
+}
+
+// bindEnvWithFallback binds environment variables with preference for prefixed versions
+func (c *AppConfig) bindEnvWithFallback(key string, envVars ...string) {
+	for _, envVar := range envVars {
+		if value := os.Getenv(envVar); value != "" {
+			c.viper.Set(key, value)
+			return
+		}
+	}
 }
 
 func (c *AppConfig) watchConfig() {
