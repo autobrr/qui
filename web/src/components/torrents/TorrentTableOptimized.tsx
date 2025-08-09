@@ -80,7 +80,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { AddTorrentDialog } from './AddTorrentDialog'
 import { TorrentActions } from './TorrentActions'
-import { Loader2, Play, Pause, Trash2, CheckCircle, Copy, Tag, Folder, Search, Info, Columns3, Radio, ArrowUp, ArrowDown, ChevronsUp, ChevronsDown, Eye, EyeOff, Plus, ChevronDown, ChevronUp, ListOrdered, Settings2, Sparkles } from 'lucide-react'
+import { Loader2, Play, Pause, Trash2, CheckCircle, Copy, Tag, Folder, Search, Info, Columns3, Radio, ArrowUp, ArrowDown, ChevronsDown, Eye, EyeOff, Plus, ChevronDown, ChevronUp, ListOrdered, Settings2, Sparkles } from 'lucide-react'
 import { SetTagsDialog, SetCategoryDialog, RemoveTagsDialog } from './TorrentDialogs'
 import { DraggableTableHeader } from './DraggableTableHeader'
 import type { Torrent } from '@/types'
