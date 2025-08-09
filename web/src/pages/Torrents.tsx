@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef } from 'react'
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { TorrentTableResponsive } from '@/components/torrents/TorrentTableResponsive'
 import { FilterSidebar } from '@/components/torrents/FilterSidebar'
 import { TorrentDetailsPanel } from '@/components/torrents/TorrentDetailsPanel'
@@ -62,6 +62,15 @@ export function Torrents({ instanceId, instanceName }: TorrentsProps) {
   const handleTorrentSelect = (torrent: Torrent | null) => {
     setSelectedTorrent(torrent)
   }
+
+  // Clear filter data when instance changes to prevent showing stale data
+  useEffect(() => {
+    setTorrentCounts(undefined)
+    setCategories(undefined)
+    setTags(undefined)
+    setSelectedTorrent(null) // Also clear selected torrent
+    // Note: We don't clear filters here as they are persisted per user preference
+  }, [instanceId])
 
   // Callback when filtered data updates - now receives counts, categories, and tags from backend
   const handleFilteredDataUpdate = useCallback((_torrents: Torrent[], _total: number, counts?: any, categoriesData?: any, tagsData?: string[]) => {
@@ -139,6 +148,7 @@ export function Torrents({ instanceId, instanceName }: TorrentsProps) {
       {/* Desktop Sidebar - hidden on mobile, with slide animation */}
       <div className={`hidden xl:block ${filterSidebarCollapsed ? 'w-0' : 'w-full xl:max-w-xs'} transition-all duration-300 ease-in-out overflow-hidden`}>
         <FilterSidebar
+          key={`filter-sidebar-${instanceId}`}
           instanceId={instanceId}
           selectedFilters={filters}
           onFilterChange={debouncedSetFilters}
@@ -158,6 +168,7 @@ export function Torrents({ instanceId, instanceName }: TorrentsProps) {
           </SheetHeader>
           <div className="flex-1 min-h-0 overflow-hidden">
             <FilterSidebar
+              key={`filter-sidebar-mobile-${instanceId}`}
               instanceId={instanceId}
               selectedFilters={filters}
               onFilterChange={debouncedSetFilters}

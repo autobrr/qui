@@ -47,6 +47,7 @@ function getDefaultColumnOrder(): string[] {
     return null
   }).filter((v): v is string => typeof v === 'string')
 }
+
 import { useInstanceMetadata } from '@/hooks/useInstanceMetadata'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
@@ -90,7 +91,7 @@ import { TorrentActions } from './TorrentActions'
 import { Loader2, Play, Pause, Trash2, CheckCircle, Copy, Tag, Folder, Search, Info, Columns3, Radio, ArrowUp, ArrowDown, ChevronsUp, ChevronsDown, Eye, EyeOff, Plus, ChevronDown, ChevronUp, ListOrdered, Settings2, Sparkles } from 'lucide-react'
 import { SetTagsDialog, SetCategoryDialog, RemoveTagsDialog } from './TorrentDialogs'
 import { DraggableTableHeader } from './DraggableTableHeader'
-import type { Torrent } from '@/types'
+import type { Torrent, TorrentCounts, Category } from '@/types'
 import {
   getLinuxIsoName,
   getLinuxCategory,
@@ -115,7 +116,7 @@ interface TorrentTableOptimizedProps {
   onTorrentSelect?: (torrent: Torrent | null) => void
   addTorrentModalOpen?: boolean
   onAddTorrentModalChange?: (open: boolean) => void
-  onFilteredDataUpdate?: (torrents: Torrent[], total: number, counts?: any, categories?: any, tags?: string[]) => void
+  onFilteredDataUpdate?: (torrents: Torrent[], total: number, counts?: TorrentCounts, categories?: Record<string, Category>, tags?: string[]) => void
   filterButton?: React.ReactNode
 }
 
@@ -388,7 +389,7 @@ const createColumns = (incognitoMode: boolean): ColumnDef<Torrent>[] => [
           const url = new URL(tracker)
           displayTracker = url.hostname
         }
-      } catch (e) {
+      } catch {
         // If URL parsing fails, show as is
       }
       return (
@@ -588,6 +589,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     // If we're near the end of loaded torrents and haven't loaded all from server
     if (newLoadedRows >= sortedTorrents.length - 50 && !hasLoadedAll && !isLoadingMore) {
       loadMoreTorrents()
+    }
+  }, [loadedRows, sortedTorrents.length, hasLoadedAll, isLoadingMore, loadMoreTorrents])
 
   // useVirtualizer must be called at the top level, not inside useMemo
   const virtualizer = useVirtualizer({
@@ -742,8 +745,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
               
               // Check if this query has a status filter in its key
               // Query key structure: ['torrents-list', instanceId, currentPage, filters, search]
-              const queryKey = query.queryKey as any[]
-              const filters = queryKey[3] // filters is at index 3
+              const queryKey = query.queryKey as unknown[]
+              const filters = queryKey[3] as { status?: string[] } | undefined // filters is at index 3
               const statusFilters = filters?.status || []
               
               // Apply optimistic updates using our utility function
@@ -808,9 +811,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         action: 'setTags', 
         tags: tags.join(',') 
       })
-    } catch (error: any) {
+    } catch (error) {
       // If setTags fails due to version requirement, fall back to addTags
-      if (error.message?.includes('requires qBittorrent')) {
+      if ((error as Error).message?.includes('requires qBittorrent')) {
         await mutation.mutateAsync({ 
           hashes: contextMenuHashes,
           action: 'addTags', 
@@ -1212,7 +1215,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         <div className="relative flex-1 overflow-auto scrollbar-thin" ref={parentRef}>
           <div style={{ position: 'relative', minWidth: 'min-content' }}>
             {/* Header */}
-            <div className="sticky top-0 bg-background border-b" style={{ zIndex: 50, position: 'sticky' }}>
+            <div className="sticky top-0 bg-background border-b" style={{ zIndex: 50 }}>
               <DndContext
                 sensors={sensors}
                 collisionDetection={closestCenter}
@@ -1273,7 +1276,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                   const isSelected = selectedTorrent?.hash === torrent.hash
                   
                   // Use memoized minTableWidth
-
                   return (
                     <ContextMenu key={torrent.hash}>
                       <ContextMenuTrigger asChild>
@@ -1562,7 +1564,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
             <button
               onClick={() => setIncognitoMode(!incognitoMode)}
               className="p-1 rounded-sm transition-all hover:bg-muted/50"
-              style={{ opacity: incognitoMode ? 0.5 : 0.2 }}
               title={incognitoMode ? "Exit incognito mode" : "Enable incognito mode"}
             >
               {incognitoMode ? (
