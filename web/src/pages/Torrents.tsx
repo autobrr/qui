@@ -10,7 +10,6 @@ import { Filter } from 'lucide-react'
 import { usePersistedFilters } from '@/hooks/usePersistedFilters'
 import { usePersistedFilterSidebarState } from '@/hooks/usePersistedFilterSidebarState'
 import { useNavigate, useSearch } from '@tanstack/react-router'
-import { debounce } from '@/lib/utils'
 import type { Torrent } from '@/types'
 
 interface TorrentsProps {
@@ -27,7 +26,7 @@ export function Torrents({ instanceId, instanceName }: TorrentsProps) {
   const search = useSearch({ strict: false }) as any
   
   // Debounced filter updates to prevent excessive API calls during rapid filter changes
-  const filterTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const filterTimeoutRef = useRef<number | null>(null)
   const debouncedSetFilters = useCallback((newFilters: typeof filters) => {
     if (filterTimeoutRef.current) {
       clearTimeout(filterTimeoutRef.current)

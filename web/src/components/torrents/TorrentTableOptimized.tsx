@@ -667,30 +667,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     columnResizeMode: 'onChange' as ColumnResizeMode,
   })
 
-  // Get the rows from the table model - but fallback to workerResult if visibleTorrents is empty
+  // Get the rows from the table model
   const { rows } = table.getRowModel()
-  
-  // If we have no visible torrents but we have worker results, create a temporary table for row calculation
-  const actualData = visibleTorrents.length > 0 ? visibleTorrents : workerResult.slice(0, Math.min(100, workerResult.length))
-  
-  // Create a fallback table if needed
-  const fallbackTable = useReactTable({
-    data: actualData,
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-    getRowId: (row: Torrent) => row.hash,
-    state: {
-      sorting,
-      globalFilter,
-      rowSelection,
-      columnSizing,
-      columnVisibility,
-      columnOrder,
-    },
-  })
-  
-  // Use fallback rows if main table has no rows
-  const finalRows = rows.length > 0 ? rows : fallbackTable.getRowModel().rows
 
   // Get selected torrent hashes - optimized to avoid recreating array unnecessarily
   const selectedHashes = useMemo((): string[] => {
