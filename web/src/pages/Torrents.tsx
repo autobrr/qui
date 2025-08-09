@@ -18,7 +18,7 @@ interface TorrentsProps {
 }
 
 export function Torrents({ instanceId, instanceName }: TorrentsProps) {
-  const [filters, setFilters] = usePersistedFilters()
+  const [filters, setFilters] = usePersistedFilters(instanceId)
   const [filterSidebarCollapsed, setFilterSidebarCollapsed] = usePersistedFilterSidebarState(false)
   const [selectedTorrent, setSelectedTorrent] = useState<Torrent | null>(null)
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false)
