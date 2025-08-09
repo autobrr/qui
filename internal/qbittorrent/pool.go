@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/dgraph-io/ristretto"
 	"github.com/panjf2000/ants/v2"
 	"github.com/rs/zerolog/log"
@@ -22,6 +23,7 @@ var (
 // ClientPool manages multiple qBittorrent client connections
 type ClientPool struct {
 	clients       map[int]*Client
+	syncManagers  map[int]*qbt.SyncManager
 	instanceStore *models.InstanceStore
 	cache         *ristretto.Cache
 	pool          *ants.Pool
@@ -52,6 +54,7 @@ func NewClientPool(instanceStore *models.InstanceStore) (*ClientPool, error) {
 
 	cp := &ClientPool{
 		clients:       make(map[int]*Client),
+		syncManagers:  make(map[int]*qbt.SyncManager),
 		instanceStore: instanceStore,
 		cache:         cache,
 		pool:          pool,
@@ -82,6 +85,52 @@ func (cp *ClientPool) GetClient(instanceID int) (*Client, error) {
 
 	// Need to create or recreate the client
 	return cp.createClient(instanceID)
+}
+
+// GetSyncManager returns a sync manager for the given instance ID
+func (cp *ClientPool) GetSyncManager(ctx context.Context, instanceID int) (*qbt.SyncManager, error) {
+	cp.mu.RLock()
+	if cp.closed {
+		cp.mu.RUnlock()
+		return nil, ErrPoolClosed
+	}
+
+	syncMgr, exists := cp.syncManagers[instanceID]
+	cp.mu.RUnlock()
+
+	if exists {
+		return syncMgr, nil
+	}
+
+	// Need to create the sync manager
+	return cp.createSyncManager(ctx, instanceID)
+}
+
+// createSyncManager creates a new sync manager for an instance
+func (cp *ClientPool) createSyncManager(ctx context.Context, instanceID int) (*qbt.SyncManager, error) {
+	cp.mu.Lock()
+	defer cp.mu.Unlock()
+
+	// Double-check after acquiring write lock
+	if syncMgr, exists := cp.syncManagers[instanceID]; exists {
+		return syncMgr, nil
+	}
+
+	// Get client for this instance
+	client, err := cp.GetClient(instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client for instance %d: %w", instanceID, err)
+	}
+
+	// Create sync manager with default options
+	opts := qbt.DefaultSyncOptions()
+	opts.AutoSync = false // We'll manage syncing manually
+
+	syncMgr := qbt.NewSyncManager(client.Client, opts)
+	cp.syncManagers[instanceID] = syncMgr
+
+	log.Debug().Int("instanceID", instanceID).Msg("Created sync manager for instance")
+	return syncMgr, nil
 }
 
 // createClient creates a new client connection
@@ -143,7 +192,8 @@ func (cp *ClientPool) RemoveClient(instanceID int) {
 	defer cp.mu.Unlock()
 
 	delete(cp.clients, instanceID)
-	log.Info().Int("instanceID", instanceID).Msg("Removed client from pool")
+	delete(cp.syncManagers, instanceID)
+	log.Info().Int("instanceID", instanceID).Msg("Removed client and sync manager from pool")
 }
 
 // healthCheckLoop periodically checks the health of all clients
@@ -231,9 +281,12 @@ func (cp *ClientPool) Close() error {
 	close(cp.stopHealth)
 	cp.healthTicker.Stop()
 
-	// Clear all clients
+	// Clear all clients and sync managers
 	for id := range cp.clients {
 		delete(cp.clients, id)
+	}
+	for id := range cp.syncManagers {
+		delete(cp.syncManagers, id)
 	}
 
 	// Release resources

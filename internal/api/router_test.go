@@ -32,7 +32,6 @@ func TestAllEndpointsDocumented(t *testing.T) {
 		AuthService:         &auth.Service{},
 		InstanceStore:       &models.InstanceStore{},
 		ClientPool:          &qbittorrent.ClientPool{},
-		SyncManager:         &qbittorrent.SyncManager{},
 		WebHandler:          &web.Handler{},
 		ThemeLicenseService: &services.ThemeLicenseService{}, // Include theme service to get all routes
 	}

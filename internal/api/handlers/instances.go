@@ -18,14 +18,12 @@ import (
 type InstancesHandler struct {
 	instanceStore *models.InstanceStore
 	clientPool    *internalqbittorrent.ClientPool
-	syncManager   *internalqbittorrent.SyncManager
 }
 
-func NewInstancesHandler(instanceStore *models.InstanceStore, clientPool *internalqbittorrent.ClientPool, syncManager *internalqbittorrent.SyncManager) *InstancesHandler {
+func NewInstancesHandler(instanceStore *models.InstanceStore, clientPool *internalqbittorrent.ClientPool) *InstancesHandler {
 	return &InstancesHandler{
 		instanceStore: instanceStore,
 		clientPool:    clientPool,
-		syncManager:   syncManager,
 	}
 }
 
@@ -286,7 +284,7 @@ func (h *InstancesHandler) GetInstanceStats(w http.ResponseWriter, r *http.Reque
 	// 30 seconds should be enough for initial cold cache load
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
-	
+
 	torrentCounts, err := h.syncManager.GetTorrentCounts(ctx, instanceID)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
