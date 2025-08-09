@@ -17,32 +17,100 @@ export interface WorkerResponse {
 }
 
 
-// Optimized search: pre-processes data for faster lookups, uses early exit patterns
-function filterTorrents(torrents: Torrent[], search?: string): Torrent[] {
+// Async processing with yielding for non-blocking operations
+async function processInBatches<T>(items: T[], batchSize: number, processor: (batch: T[]) => T[]): Promise<T[]> {
+	const results: T[] = [];
+	
+	for (let i = 0; i < items.length; i += batchSize) {
+		const batch = items.slice(i, i + batchSize);
+		const processed = processor(batch);
+		results.push(...processed);
+		
+		// Yield control back to the main thread every batch
+		if (i + batchSize < items.length) {
+			await new Promise(resolve => setTimeout(resolve, 0));
+		}
+	}
+	
+	return results;
+}
+
+// Optimized search with async batching for large datasets
+async function filterTorrentsAsync(torrents: Torrent[], search?: string): Promise<Torrent[]> {
 	if (!search) return torrents;
 	const terms = search.toLowerCase().split(/\s+/).filter(Boolean);
 	if (terms.length === 0) return torrents;
 	
-	// Only search in a subset of fields for performance
-	const SEARCH_FIELDS = ['name', 'category', 'tags', 'state', 'hash'];
+	// For small datasets, use sync processing
+	if (torrents.length < 5000) {
+		return filterTorrentsSync(torrents, search);
+	}
 	
-	// For exact term matches, use Set for O(1) lookup instead of Array.includes
+	// For large datasets, process in batches to avoid blocking
+	const BATCH_SIZE = 1000;
+	const SEARCH_FIELDS = ['name', 'category', 'tags', 'state', 'hash'];
+	const exactMatches = new Set(terms);
+	
+	return processInBatches(torrents, BATCH_SIZE, (batch) => {
+		return batch.filter(torrent => {
+			for (const field of SEARCH_FIELDS) {
+				const value = torrent[field];
+				if (!value) continue;
+				
+				if (typeof value === 'string') {
+					const valueLower = value.toLowerCase();
+					if (exactMatches.has(valueLower)) return true;
+					
+					let allTermsMatch = true;
+					for (const term of terms) {
+						if (!valueLower.includes(term)) {
+							allTermsMatch = false;
+							break;
+						}
+					}
+					if (allTermsMatch) return true;
+				} else if (Array.isArray(value)) {
+					for (const item of value) {
+						if (typeof item === 'string') {
+							const itemLower = item.toLowerCase();
+							if (exactMatches.has(itemLower)) return true;
+						}
+					}
+					
+					const joined = value.join(' ').toLowerCase();
+					let allTermsMatch = true;
+					for (const term of terms) {
+						if (!joined.includes(term)) {
+							allTermsMatch = false;
+							break;
+						}
+					}
+					if (allTermsMatch) return true;
+				}
+			}
+			return false;
+		});
+	});
+}
+
+// Synchronous version for smaller datasets
+function filterTorrentsSync(torrents: Torrent[], search?: string): Torrent[] {
+	if (!search) return torrents;
+	const terms = search.toLowerCase().split(/\s+/).filter(Boolean);
+	if (terms.length === 0) return torrents;
+	
+	const SEARCH_FIELDS = ['name', 'category', 'tags', 'state', 'hash'];
 	const exactMatches = new Set(terms);
 	
 	return torrents.filter(torrent => {
-		// Check exact matches first (much faster)
 		for (const field of SEARCH_FIELDS) {
 			const value = torrent[field];
 			if (!value) continue;
 			
-			// For exact matches, use Set.has() which is O(1) instead of string.includes() which is O(n)
 			if (typeof value === 'string') {
 				const valueLower = value.toLowerCase();
-				// Early return for exact matches (performance optimization)
 				if (exactMatches.has(valueLower)) return true;
 				
-				// For expensive substring searches, check if term exists in string once
-				// instead of checking each term individually (better branch prediction)
 				let allTermsMatch = true;
 				for (const term of terms) {
 					if (!valueLower.includes(term)) {
@@ -52,7 +120,6 @@ function filterTorrents(torrents: Torrent[], search?: string): Torrent[] {
 				}
 				if (allTermsMatch) return true;
 			} else if (Array.isArray(value)) {
-				// For arrays, check each item individually first (avoids string concatenation)
 				for (const item of value) {
 					if (typeof item === 'string') {
 						const itemLower = item.toLowerCase();
@@ -60,7 +127,6 @@ function filterTorrents(torrents: Torrent[], search?: string): Torrent[] {
 					}
 				}
 				
-				// Fall back to joined approach if needed
 				const joined = value.join(' ').toLowerCase();
 				let allTermsMatch = true;
 				for (const term of terms) {
@@ -147,11 +213,26 @@ function sortTorrents(torrents: Torrent[], sort?: { id: string; desc?: boolean }
 	return result;
 }
 
-self.onmessage = function (e) {
+// Enhanced async message handling
+self.onmessage = async function (e) {
 	const { torrents, search, sort } = e.data as WorkerRequest;
-	let filtered = filterTorrents(torrents, search);
-	filtered = sortTorrents(filtered, sort);
-	const response: WorkerResponse = { filtered };
-	// @ts-ignore
-	self.postMessage(response);
+	
+	try {
+		// Use async filtering for better non-blocking behavior
+		let filtered = await filterTorrentsAsync(torrents, search);
+		filtered = sortTorrents(filtered, sort);
+		
+		const response: WorkerResponse = { filtered };
+		// @ts-ignore
+		self.postMessage(response);
+	} catch (error) {
+		// Fallback to sync processing if async fails
+		console.warn('Async processing failed, falling back to sync:', error);
+		let filtered = filterTorrentsSync(torrents, search);
+		filtered = sortTorrents(filtered, sort);
+		
+		const response: WorkerResponse = { filtered };
+		// @ts-ignore
+		self.postMessage(response);
+	}
 };

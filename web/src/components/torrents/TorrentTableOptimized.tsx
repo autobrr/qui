@@ -424,8 +424,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   // Column sizing with persistence
   const [columnSizing, setColumnSizing] = usePersistedColumnSizing(DEFAULT_COLUMN_SIZING)
   
-  // Progressive loading state
+  // Progressive loading state with async management
   const [loadedRows, setLoadedRows] = useState(100)
+  const loadingTimeoutRef = useRef<number | null>(null)
   
   // Query client for invalidating queries
   const queryClient = useQueryClient()
@@ -435,7 +436,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const availableTags = metadata?.tags || []
   const availableCategories = metadata?.categories || {}
 
-  // Debounce search to prevent excessive filtering (1 second delay)
+  // Debounce search to prevent excessive filtering (500ms delay)
   const debouncedSearch = useDebounce(globalFilter, 500)
 
   // Use immediate search if available, otherwise use debounced search
@@ -470,15 +471,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     if (onFilteredDataUpdate && torrents && totalCount !== undefined && !isLoading) {
       onFilteredDataUpdate(torrents, totalCount, counts, categories, tags)
     }
-  }, [totalCount, isLoading, torrents.length, counts, categories, tags, onFilteredDataUpdate]) // Update when data changes
+  }, [totalCount, isLoading, torrents.length, counts, categories, tags, onFilteredDataUpdate])
   
   // Show refetch indicator only if fetching takes more than 2 seconds
-  // This avoids annoying flickering for fast instances
   useEffect(() => {
-    let timeoutId: NodeJS.Timeout
+    let timeoutId: number
     
     if (isFetching && !isLoading && torrents.length > 0) {
-      // Only show indicator after 2 second delay
       timeoutId = setTimeout(() => {
         setShowRefetchIndicator(true)
       }, 2000)
@@ -489,8 +488,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     return () => clearTimeout(timeoutId)
   }, [isFetching, isLoading, torrents.length])
   
-  // Handle Enter key for immediate search
-  // Memoize handlers to avoid unnecessary re-renders
+  // Handle Enter key for immediate search - memoized to avoid re-renders
   const handleSearchKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       setImmediateSearch(globalFilter)
@@ -504,30 +502,59 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     }
   }, [immediateSearch]) 
 
-  // Use a Web Worker for filtering and sorting in the background, debounced for search
+  // Use a Web Worker for filtering and sorting in the background, with async handling
   const [workerResult, setWorkerResult] = useState<Torrent[]>([])
   const workerRef = useRef<Worker | null>(null)
+  const processingTimeoutRef = useRef<number | null>(null)
 
-  // Only trigger worker when torrents, sorting, or effectiveSearch changes
+  // Debounced async worker processing
   useEffect(() => {
     if (!workerRef.current) {
       workerRef.current = new TorrentWorker()
     }
     const worker = workerRef.current
+    
+    // Clear any pending processing
+    if (processingTimeoutRef.current) {
+      clearTimeout(processingTimeoutRef.current)
+    }
+    
     let cancelled = false
     const handleMessage = (e: MessageEvent) => {
-      if (!cancelled) setWorkerResult(e.data.filtered)
+      if (!cancelled) {
+        // Use requestIdleCallback for non-blocking updates when available
+        if ('requestIdleCallback' in window) {
+          requestIdleCallback(() => {
+            if (!cancelled) setWorkerResult(e.data.filtered)
+          }, { timeout: 100 })
+        } else {
+          // Fallback to setTimeout for browsers without requestIdleCallback
+          setTimeout(() => {
+            if (!cancelled) setWorkerResult(e.data.filtered)
+          }, 0)
+        }
+      }
     }
+    
     worker.addEventListener('message', handleMessage)
-    worker.postMessage({ torrents, search: effectiveSearch, sort: sorting })
+    
+    // Debounce worker processing to avoid excessive calls during rapid filter changes
+    processingTimeoutRef.current = setTimeout(() => {
+      if (!cancelled) {
+        worker.postMessage({ torrents, search: effectiveSearch, sort: sorting })
+      }
+    }, 50) // Small delay to batch rapid changes
+    
     return () => {
       cancelled = true
       worker.removeEventListener('message', handleMessage)
+      if (processingTimeoutRef.current) {
+        clearTimeout(processingTimeoutRef.current)
+      }
     }
   }, [torrents, effectiveSearch, sorting])
 
   // Store all torrents in a plain object outside React state for faster lookups
-  // Plain objects have faster property access than Map for large datasets
   const allTorrentsMapRef = useRef<Record<string, Torrent>>({})
   useEffect(() => {
     if (Array.isArray(workerResult)) {
@@ -548,28 +575,63 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const isMountedRef = useRef(true)
   useEffect(() => { isMountedRef.current = true; return () => { isMountedRef.current = false } }, [])
 
-  // Helper to update visible slice based on virtual rows
+  // Async helper to update visible slice based on virtual rows
   const updateVisibleTorrents = useCallback((virtualRows: { index: number }[], rows: any[]) => {
     if (!virtualRows || !rows) return
     
-    // Preallocate array for better performance
-    const slice: Torrent[] = [];
-    
-    // Direct for loop is much faster than map/filter for large arrays
-    for (let i = 0; i < virtualRows.length; i++) {
-      const vr = virtualRows[i];
-      if (rows[vr.index]?.original?.hash) {
-        const hash = rows[vr.index].original.hash;
-        const torrent = allTorrentsMapRef.current[hash];
-        if (torrent) {
-          slice.push(torrent);
+    // For large datasets, use async processing to avoid blocking
+    if (virtualRows.length > 100) {
+      requestAnimationFrame(() => {
+        if (!isMountedRef.current) return
+        
+        const slice: Torrent[] = [];
+        
+        // Process in chunks to avoid blocking the main thread
+        const processChunk = (startIndex: number) => {
+          const endIndex = Math.min(startIndex + 20, virtualRows.length);
+          
+          for (let i = startIndex; i < endIndex; i++) {
+            const vr = virtualRows[i];
+            if (rows[vr.index]?.original?.hash) {
+              const hash = rows[vr.index].original.hash;
+              const torrent = allTorrentsMapRef.current[hash];
+              if (torrent) {
+                slice.push(torrent);
+              }
+            }
+          }
+          
+          if (endIndex < virtualRows.length) {
+            // Continue processing in next frame
+            requestAnimationFrame(() => processChunk(endIndex));
+          } else {
+            // All chunks processed, update state
+            if (isMountedRef.current && slice.length > 0) {
+              setVisibleTorrents(slice);
+            }
+          }
+        };
+        
+        processChunk(0);
+      });
+    } else {
+      // For smaller datasets, process synchronously
+      const slice: Torrent[] = [];
+      
+      for (let i = 0; i < virtualRows.length; i++) {
+        const vr = virtualRows[i];
+        if (rows[vr.index]?.original?.hash) {
+          const hash = rows[vr.index].original.hash;
+          const torrent = allTorrentsMapRef.current[hash];
+          if (torrent) {
+            slice.push(torrent);
+          }
         }
       }
-    }
-    
-    // Only update if mounted and if we have rows to show
-    if (isMountedRef.current && slice.length > 0) {
-      setVisibleTorrents(slice);
+      
+      if (isMountedRef.current && slice.length > 0) {
+        setVisibleTorrents(slice);
+      }
     }
   }, [])
 
@@ -643,14 +705,32 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const { rows } = table.getRowModel()
   const parentRef = useRef<HTMLDivElement>(null)
   
-  // Load more rows as user scrolls (progressive loading)
+  // Async progressive loading to avoid blocking
   const loadMore = useCallback((): void => {
-    const newLoadedRows = Math.min(loadedRows + 100, workerResult.length)
-    setLoadedRows(newLoadedRows)
-    // If we're near the end of loaded torrents and haven't loaded all from server
-    if (newLoadedRows >= workerResult.length - 50 && !hasLoadedAll && !isLoadingMore) {
-      loadMoreTorrents()
+    // Cancel any pending loads
+    if (loadingTimeoutRef.current) {
+      clearTimeout(loadingTimeoutRef.current)
     }
+    
+    // Use async scheduling for non-blocking loading
+    loadingTimeoutRef.current = setTimeout(() => {
+      const newLoadedRows = Math.min(loadedRows + 100, workerResult.length)
+      setLoadedRows(newLoadedRows)
+      
+      // If we're near the end of loaded torrents and haven't loaded all from server
+      if (newLoadedRows >= workerResult.length - 50 && !hasLoadedAll && !isLoadingMore) {
+        // Use requestIdleCallback for server loading if available
+        if ('requestIdleCallback' in window) {
+          requestIdleCallback(() => {
+            loadMoreTorrents()
+          }, { timeout: 200 })
+        } else {
+          setTimeout(() => {
+            loadMoreTorrents()
+          }, 0)
+        }
+      }
+    }, 0) // Immediate async execution
   }, [loadedRows, workerResult.length, hasLoadedAll, isLoadingMore, loadMoreTorrents])
 
   // useVirtualizer must be called at the top level, not inside useMemo
@@ -691,12 +771,28 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   })
   const virtualRows = virtualizer.getVirtualItems()
 
-  // Update visibleTorrents on data/rows/virtualRows change
+  // Update visibleTorrents on data/rows/virtualRows change with async processing
   useEffect(() => {
-    // Only update if lengths match (virtualizer and table in sync)
-    if (virtualRows.length === rows.length || virtualRows.length === 0) {
-      updateVisibleTorrents(virtualRows, rows)
+    // Use requestIdleCallback for non-blocking updates when available
+    const scheduleUpdate = () => {
+      if ('requestIdleCallback' in window) {
+        requestIdleCallback(() => {
+          // Only update if lengths match (virtualizer and table in sync)
+          if (virtualRows.length === rows.length || virtualRows.length === 0) {
+            updateVisibleTorrents(virtualRows, rows)
+          }
+        }, { timeout: 16 }) // 16ms timeout for 60fps
+      } else {
+        // Fallback to setTimeout for browsers without requestIdleCallback
+        setTimeout(() => {
+          if (virtualRows.length === rows.length || virtualRows.length === 0) {
+            updateVisibleTorrents(virtualRows, rows)
+          }
+        }, 0)
+      }
     }
+
+    scheduleUpdate()
     // eslint-disable-next-line
   }, [rows, virtualRows])
 
@@ -929,8 +1025,87 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     navigator.clipboard.writeText(text)
   }, []) 
   
-  // Optimized version of getCommonTags that avoids unnecessary string operations
-  const getCommonTags = (torrents: Torrent[]): string[] => {
+  // Async optimized version of getCommonTags that yields control during processing
+  const getCommonTags = useCallback(async (torrents: Torrent[]): Promise<string[]> => {
+    if (torrents.length === 0) return []
+    
+    // Fast path for single torrent
+    if (torrents.length === 1) {
+      const tags = torrents[0].tags;
+      return tags ? tags.split(',').map(t => t.trim()).filter(Boolean) : [];
+    }
+    
+    return new Promise((resolve) => {
+      requestAnimationFrame(() => {
+        // Initialize with first torrent's tags
+        const firstTorrent = torrents[0];
+        if (!firstTorrent.tags) {
+          resolve([]);
+          return;
+        }
+        
+        // Use a Set for O(1) lookups
+        const firstTorrentTagsSet = new Set(
+          firstTorrent.tags.split(',').map(t => t.trim()).filter(Boolean)
+        );
+        
+        // If first torrent has no tags, no common tags exist
+        if (firstTorrentTagsSet.size === 0) {
+          resolve([]);
+          return;
+        }
+        
+        // Convert to array once for iteration
+        const firstTorrentTags = Array.from(firstTorrentTagsSet);
+        
+        // Use Object as a counter map for better performance with large datasets
+        const tagCounts: Record<string, number> = {};
+        for (const tag of firstTorrentTags) {
+          tagCounts[tag] = 1; // First torrent has this tag
+        }
+        
+        // Process remaining torrents in chunks to avoid blocking
+        const processChunk = (startIndex: number) => {
+          const endIndex = Math.min(startIndex + 50, torrents.length);
+          
+          for (let i = startIndex; i < endIndex; i++) {
+            const torrent = torrents[i];
+            if (!torrent.tags) continue;
+            
+            // Create a Set of this torrent's tags for O(1) lookups
+            const currentTags = new Set(
+              torrent.tags.split(',').map(t => t.trim()).filter(Boolean)
+            );
+            
+            // Only increment count for tags that this torrent has
+            for (const tag in tagCounts) {
+              if (currentTags.has(tag)) {
+                tagCounts[tag]++;
+              }
+            }
+          }
+          
+          if (endIndex < torrents.length) {
+            // Continue processing in next frame
+            requestAnimationFrame(() => processChunk(endIndex));
+          } else {
+            // All chunks processed, return tags that appear in all torrents
+            const result = Object.keys(tagCounts).filter(tag => tagCounts[tag] === torrents.length);
+            resolve(result);
+          }
+        };
+        
+        if (torrents.length > 1) {
+          processChunk(1); // Start from index 1 since we already processed index 0
+        } else {
+          resolve(firstTorrentTags);
+        }
+      });
+    });
+  }, [])
+  
+  // Synchronous version for immediate use (backwards compatibility)
+  const getCommonTagsSync = (torrents: Torrent[]): string[] => {
     if (torrents.length === 0) return []
     
     // Fast path for single torrent
@@ -953,9 +1128,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     
     // Convert to array once for iteration
     const firstTorrentTags = Array.from(firstTorrentTagsSet);
-    
-    // Fast path if no common tags possible (first has none)
-    if (firstTorrentTags.length === 0) return [];
     
     // Use Object as a counter map for better performance with large datasets
     const tagCounts: Record<string, number> = {};
@@ -1699,7 +1871,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         hashCount={contextMenuHashes.length}
         onConfirm={handleSetTags}
         isPending={mutation.isPending}
-        initialTags={getCommonTags(contextMenuTorrents)}
+        initialTags={getCommonTagsSync(contextMenuTorrents)}
       />
 
       {/* Set Category Dialog */}
@@ -1721,7 +1893,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         hashCount={contextMenuHashes.length}
         onConfirm={handleRemoveTags}
         isPending={mutation.isPending}
-        currentTags={getCommonTags(contextMenuTorrents)}
+        currentTags={getCommonTagsSync(contextMenuTorrents)}
       />
     </div>
   )
