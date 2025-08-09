@@ -1,6 +1,4 @@
 import { memo, useState, useMemo, useRef, useCallback, useEffect } from 'react'
-// @ts-ignore
-import TorrentWorker from '@/workers/TorrentWorker.ts?worker'
 import {
   useReactTable,
   getCoreRowModel,
@@ -396,8 +394,6 @@ const createColumns = (incognitoMode: boolean): ColumnDef<Torrent>[] => [
 
 export const TorrentTableOptimized = memo(function TorrentTableOptimized({ instanceId, filters, selectedTorrent, onTorrentSelect, addTorrentModalOpen, onAddTorrentModalChange, onFilteredDataUpdate, filterButton }: TorrentTableOptimizedProps) {
   // State management
-  // Move default values outside the component for stable references
-  // (This should be at module scope, not inside the component)
   const [sorting, setSorting] = usePersistedColumnSorting([])
   const [globalFilter, setGlobalFilter] = useState('')
   const [immediateSearch, setImmediateSearch] = useState('')
@@ -413,19 +409,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
 
-  // These should be defined at module scope, not inside the component, to ensure stable references
-  // (If not already, move them to the top of the file)
-  // const DEFAULT_COLUMN_VISIBILITY, DEFAULT_COLUMN_ORDER, DEFAULT_COLUMN_SIZING
-
   // Column visibility with persistence
   const [columnVisibility, setColumnVisibility] = usePersistedColumnVisibility(DEFAULT_COLUMN_VISIBILITY)
   // Column order with persistence (get default order at runtime to avoid initialization order issues)
   const [columnOrder, setColumnOrder] = usePersistedColumnOrder(getDefaultColumnOrder())
   // Column sizing with persistence
   const [columnSizing, setColumnSizing] = usePersistedColumnSizing(DEFAULT_COLUMN_SIZING)
-  
-  // Progressive loading state
-  const [loadedRows, setLoadedRows] = useState(100)
   
   // Query client for invalidating queries
   const queryClient = useQueryClient()
@@ -470,15 +459,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     if (onFilteredDataUpdate && torrents && totalCount !== undefined && !isLoading) {
       onFilteredDataUpdate(torrents, totalCount, counts, categories, tags)
     }
-  }, [totalCount, isLoading, torrents.length, counts, categories, tags, onFilteredDataUpdate]) // Update when data changes
+  }, [totalCount, isLoading, torrents.length, counts, categories, tags, onFilteredDataUpdate])
   
   // Show refetch indicator only if fetching takes more than 2 seconds
-  // This avoids annoying flickering for fast instances
   useEffect(() => {
     let timeoutId: NodeJS.Timeout
     
     if (isFetching && !isLoading && torrents.length > 0) {
-      // Only show indicator after 2 second delay
       timeoutId = setTimeout(() => {
         setShowRefetchIndicator(true)
       }, 2000)
@@ -490,7 +477,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   }, [isFetching, isLoading, torrents.length])
   
   // Handle Enter key for immediate search
-  // Memoize handlers to avoid unnecessary re-renders
   const handleSearchKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       setImmediateSearch(globalFilter)
@@ -504,55 +490,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     }
   }, [immediateSearch]) 
 
-  // Use a Web Worker for filtering and sorting in the background, debounced for search
-  const [workerResult, setWorkerResult] = useState<Torrent[]>([])
-  const workerRef = useRef<Worker | null>(null)
-
-  // Only trigger worker when torrents, sorting, or effectiveSearch changes
-  useEffect(() => {
-    if (!workerRef.current) {
-      workerRef.current = new TorrentWorker()
-    }
-    const worker = workerRef.current
-    let cancelled = false
-    const handleMessage = (e: MessageEvent) => {
-      if (!cancelled) setWorkerResult(e.data.filtered)
-    }
-    worker.addEventListener('message', handleMessage)
-    worker.postMessage({ torrents, search: effectiveSearch, sort: sorting })
-    return () => {
-      cancelled = true
-      worker.removeEventListener('message', handleMessage)
-    }
-  }, [torrents, effectiveSearch, sorting])
-
-  // Store all torrents in a Map outside React state
-  const allTorrentsMapRef = useRef(new Map())
-  useEffect(() => {
-    if (Array.isArray(workerResult)) {
-      allTorrentsMapRef.current = new Map(workerResult.map(t => [t.hash, t]))
-    }
-  }, [workerResult])
-
-  // Only keep visible/virtualized slice in React state
-  const [visibleTorrents, setVisibleTorrents] = useState<Torrent[]>([])
-
-  // Helper to update visible slice based on virtual rows
-  const updateVisibleTorrents = useCallback((virtualRows: { index: number }[], rows: any[]) => {
-    if (!virtualRows || !rows) return
-    // Only get hashes for visible rows, then fetch from persistent map
-    const slice = virtualRows.map((vr) => {
-      const hash = rows[vr.index]?.original?.hash
-      return hash ? allTorrentsMapRef.current.get(hash) : undefined
-    }).filter(Boolean) as Torrent[]
-    setVisibleTorrents(slice)
-  }, [])
-
   // Memoize columns to avoid unnecessary recalculations
   const columns = useMemo(() => createColumns(incognitoMode), [incognitoMode])
   
   const table = useReactTable({
-    data: visibleTorrents,
+    data: torrents, // Use torrents directly instead of complex state management
     columns,
     getCoreRowModel: getCoreRowModel(),
     // Use torrent hash as stable row ID
@@ -585,73 +527,36 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       .filter((key: string) => (rowSelection as Record<string, boolean>)[key])
   }, [rowSelection])
 
-  // Get selected torrents from allTorrentsMapRef
+  // Get selected torrents directly from torrents array
   const selectedTorrents = useMemo((): Torrent[] => {
-    return selectedHashes
-      .map((hash: string) => allTorrentsMapRef.current.get(hash))
-      .filter(Boolean) as Torrent[]
-  }, [selectedHashes, workerResult])
+    return torrents.filter(torrent => selectedHashes.includes(torrent.hash))
+  }, [selectedHashes, torrents])
 
-  // Virtualization setup with progressive loading
+  // Virtualization setup
   const { rows } = table.getRowModel()
   const parentRef = useRef<HTMLDivElement>(null)
   
-  // Load more rows as user scrolls (progressive loading)
+  // Load more rows as user scrolls
   const loadMore = useCallback((): void => {
-    const newLoadedRows = Math.min(loadedRows + 100, workerResult.length)
-    setLoadedRows(newLoadedRows)
-    // If we're near the end of loaded torrents and haven't loaded all from server
-    if (newLoadedRows >= workerResult.length - 50 && !hasLoadedAll && !isLoadingMore) {
+    if (!hasLoadedAll && !isLoadingMore) {
       loadMoreTorrents()
     }
-  }, [loadedRows, workerResult.length, hasLoadedAll, isLoadingMore, loadMoreTorrents])
+  }, [hasLoadedAll, isLoadingMore, loadMoreTorrents])
 
-  // useVirtualizer must be called at the top level, not inside useMemo
   const virtualizer = useVirtualizer({
-    count: Math.min(loadedRows, rows.length),
+    count: rows.length,
     getScrollElement: () => parentRef.current,
     estimateSize: () => 40,
     overscan: 20,
     onChange: (instance: any) => {
       const vRows = instance.getVirtualItems() as { index: number }[]
-      updateVisibleTorrents(vRows, rows)
       const lastItem = vRows.at(-1)
-      if (lastItem && lastItem.index >= loadedRows - 50) {
+      if (lastItem && lastItem.index >= rows.length - 50) {
         loadMore()
       }
     },
   })
   const virtualRows = virtualizer.getVirtualItems()
-
-  // Update visibleTorrents on data/rows/virtualRows change
-  useEffect(() => {
-    updateVisibleTorrents(virtualRows, rows)
-    // eslint-disable-next-line
-  }, [rows, virtualRows])
-
-
-  // Reset loaded rows when data changes
-  useEffect(() => {
-    if (workerResult.length > 0) {
-      if (loadedRows === 0) {
-        setLoadedRows(Math.min(100, workerResult.length))
-      } else if (workerResult.length < loadedRows) {
-        setLoadedRows(workerResult.length)
-      } else if (workerResult.length > loadedRows && loadedRows < 100) {
-        setLoadedRows(Math.min(100, workerResult.length))
-      }
-    }
-  }, [workerResult.length, loadedRows])
-
-  // Reset loaded rows when filters change
-  useEffect(() => {
-    setLoadedRows(Math.min(100, workerResult.length))
-    // Scroll to top and force virtualizer recalculation
-    if (parentRef.current) {
-      parentRef.current.scrollTop = 0
-    }
-  }, [filters, workerResult.length])
-
 
   // Mutation for bulk actions
   const mutation = useMutation({
@@ -680,7 +585,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         setContextMenuHashes([])
         
         // Optimistically remove torrents from ALL cached queries for this instance
-        // This includes all pages, filters, and search variations
         const cache = queryClient.getQueryCache()
         const queries = cache.findAll({
           queryKey: ['torrents-list', instanceId],
@@ -701,17 +605,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
           })
         })
         
-        // Refetch later to sync with actual server state (don't invalidate!)
-        // Longer delay when deleting files from disk
+        // Refetch later to sync with actual server state
         const refetchDelay = variables.deleteFiles ? 5000 : 2000
         setTimeout(() => {
-          // Use refetch instead of invalidate to keep showing data
           queryClient.refetchQueries({ 
             queryKey: ['torrents-list', instanceId],
             exact: false,
-            type: 'active' // Only refetch if component is mounted
+            type: 'active'
           })
-          // Also refetch the counts query
           queryClient.refetchQueries({ 
             queryKey: ['torrent-counts', instanceId],
             exact: false,
@@ -721,29 +622,24 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       } else {
         // For pause/resume, optimistically update the cache immediately
         if (variables.action === 'pause' || variables.action === 'resume') {
-          // Get all cached queries for this instance
           const cache = queryClient.getQueryCache()
           const queries = cache.findAll({
             queryKey: ['torrents-list', instanceId],
             exact: false
           })
           
-          // Optimistically update torrent states in all cached queries
           queries.forEach((query: any) => {
             queryClient.setQueryData(query.queryKey, (oldData: any) => {
               if (!oldData?.torrents) return oldData
               
-              // Check if this query has a status filter in its key
-              // Query key structure: ['torrents-list', instanceId, currentPage, filters, search]
               const queryKey = query.queryKey as any[]
-              const filters = queryKey[3] // filters is at index 3
+              const filters = queryKey[3]
               const statusFilters = filters?.status || []
               
-              // Apply optimistic updates using our utility function
               const { torrents: updatedTorrents } = applyOptimisticUpdates(
                 oldData.torrents,
                 variables.hashes,
-                variables.action as 'pause' | 'resume', // Type narrowed by if condition above
+                variables.action as 'pause' | 'resume',
                 statusFilters
               )
               
@@ -755,16 +651,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
               }
             })
           })
-          
-          // Note: torrent-counts are handled server-side now, no need for optimistic updates
         }
         
-        // For other operations, add delay to allow qBittorrent to process
-        // Resume operations need more time for state transition
         const delay = variables.action === 'resume' ? 2000 : 1000
         
         setTimeout(() => {
-          // Use refetch instead of invalidate to avoid loading state
           queryClient.refetchQueries({ 
             queryKey: ['torrents-list', instanceId],
             exact: false,
@@ -793,8 +684,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   }
   
   const handleSetTags = async (tags: string[]) => {
-    // Use setTags action (with fallback to addTags for older versions)
-    // The backend will handle the version check
     try {
       await mutation.mutateAsync({ 
         hashes: contextMenuHashes,
@@ -802,7 +691,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         tags: tags.join(',') 
       })
     } catch (error: any) {
-      // If setTags fails due to version requirement, fall back to addTags
       if (error.message?.includes('requires qBittorrent')) {
         await mutation.mutateAsync({ 
           hashes: contextMenuHashes,
@@ -824,17 +712,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       category,
       hashes: contextMenuHashes,
     })
-    // Only update affected torrents in the map
-    contextMenuHashes.forEach(hash => {
-      const t = allTorrentsMapRef.current.get(hash)
-      if (t) {
-        allTorrentsMapRef.current.set(hash, { ...t, category })
-      }
-    })
     setShowCategoryDialog(false)
     setContextMenuHashes([])
-    // Force visibleTorrents update
-    updateVisibleTorrents(virtualRows, rows)
   }
   
   const handleRemoveTags = async (tags: string[]) => {
@@ -892,7 +771,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   }
   
   // Drag and drop setup
-  // Sensors must be called at the top level, not inside useMemo
   const sensors = useSensors(
     useSensor(MouseSensor, {
       activationConstraint: {
