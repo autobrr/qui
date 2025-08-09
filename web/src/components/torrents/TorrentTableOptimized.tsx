@@ -606,7 +606,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
             requestAnimationFrame(() => processChunk(endIndex));
           } else {
             // All chunks processed, update state
-            if (isMountedRef.current && slice.length > 0) {
+            if (isMountedRef.current) {
               setVisibleTorrents(slice);
             }
           }
@@ -629,7 +629,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         }
       }
       
-      if (isMountedRef.current && slice.length > 0) {
+      // Always update state, even if slice is empty (important for clearing the table)
+      if (isMountedRef.current) {
         setVisibleTorrents(slice);
       }
     }
@@ -665,6 +666,31 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     enableColumnResizing: true,
     columnResizeMode: 'onChange' as ColumnResizeMode,
   })
+
+  // Get the rows from the table model - but fallback to workerResult if visibleTorrents is empty
+  const { rows } = table.getRowModel()
+  
+  // If we have no visible torrents but we have worker results, create a temporary table for row calculation
+  const actualData = visibleTorrents.length > 0 ? visibleTorrents : workerResult.slice(0, Math.min(100, workerResult.length))
+  
+  // Create a fallback table if needed
+  const fallbackTable = useReactTable({
+    data: actualData,
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+    getRowId: (row: Torrent) => row.hash,
+    state: {
+      sorting,
+      globalFilter,
+      rowSelection,
+      columnSizing,
+      columnVisibility,
+      columnOrder,
+    },
+  })
+  
+  // Use fallback rows if main table has no rows
+  const finalRows = rows.length > 0 ? rows : fallbackTable.getRowModel().rows
 
   // Get selected torrent hashes - optimized to avoid recreating array unnecessarily
   const selectedHashes = useMemo((): string[] => {
@@ -702,7 +728,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   }, [selectedHashes])
 
   // Virtualization setup with progressive loading
-  const { rows } = table.getRowModel()
   const parentRef = useRef<HTMLDivElement>(null)
   
   // Async progressive loading to avoid blocking
