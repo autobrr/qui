@@ -1,4 +1,4 @@
-import { memo, useState, useMemo, useRef, useCallback, useEffect } from 'react'
+import React, { memo, useState, useMemo, useRef, useCallback, useEffect } from 'react'
 import {
   useReactTable,
   getCoreRowModel,
@@ -147,17 +147,6 @@ function calculateMinWidth(text: string, padding: number = 48): number {
   // Add padding for sort indicator
   const extraPadding = 20
   return Math.max(60, Math.ceil(text.length * charWidth) + padding + extraPadding)
-}
-
-
-// Helper function to get default column order
-function getDefaultColumnOrder(): string[] {
-  const cols = createColumns(false)
-  return cols.map(col => {
-    if ('id' in col && col.id) return col.id
-    if ('accessorKey' in col && typeof col.accessorKey === 'string') return col.accessorKey
-    return null
-  }).filter((v): v is string => typeof v === 'string')
 }
 
 const createColumns = (incognitoMode: boolean): ColumnDef<Torrent>[] => [
@@ -434,7 +423,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   
   // Progressive loading state with async management
   const [loadedRows, setLoadedRows] = useState(100)
-  const loadingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   
   // Query client for invalidating queries
   const queryClient = useQueryClient()

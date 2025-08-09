@@ -26,7 +26,7 @@ export function Torrents({ instanceId, instanceName }: TorrentsProps) {
   const search = useSearch({ strict: false }) as any
   
   // Debounced filter updates to prevent excessive API calls during rapid filter changes
-  const filterTimeoutRef = useRef<number | null>(null)
+  const filterTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const debouncedSetFilters = useCallback((newFilters: typeof filters) => {
     if (filterTimeoutRef.current) {
       clearTimeout(filterTimeoutRef.current)
