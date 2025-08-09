@@ -122,7 +122,7 @@ func (h *TorrentsHandler) calculateCounts(torrents []qbt.Torrent) *TorrentCounts
 			counts.Completed++
 		}
 
-		if torrent.DownloadSpeed > 0 || torrent.UploadSpeed > 0 {
+		if torrent.DlSpeed > 0 || torrent.UpSpeed > 0 {
 			counts.Active++
 		} else {
 			counts.Inactive++

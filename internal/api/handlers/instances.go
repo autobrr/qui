@@ -6,8 +6,10 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
@@ -47,6 +49,43 @@ type UpdateInstanceRequest struct {
 	Password      string  `json:"password,omitempty"` // Optional for updates
 	BasicUsername *string `json:"basicUsername,omitempty"`
 	BasicPassword *string `json:"basicPassword,omitempty"`
+}
+
+// SimpleTorrentCounts represents basic torrent counts for dashboard
+type SimpleTorrentCounts struct {
+	All         int `json:"all"`
+	Downloading int `json:"downloading"`
+	Seeding     int `json:"seeding"`
+	Completed   int `json:"completed"`
+	Paused      int `json:"paused"`
+	Error       int `json:"error"`
+}
+
+// calculateTorrentCounts calculates basic torrent counts by status
+func (h *InstancesHandler) calculateTorrentCounts(torrents []qbt.Torrent) *SimpleTorrentCounts {
+	counts := &SimpleTorrentCounts{}
+	counts.All = len(torrents)
+
+	for _, torrent := range torrents {
+		state := strings.ToLower(string(torrent.State))
+
+		switch state {
+		case "downloading", "metadl", "stalleddl", "forceddl", "queueddl":
+			counts.Downloading++
+		case "uploading", "stalledup", "forcedup", "queuedup":
+			counts.Seeding++
+		case "pauseddl", "pausedup":
+			counts.Paused++
+		case "error", "missingfiles":
+			counts.Error++
+		}
+
+		if torrent.Progress >= 1.0 {
+			counts.Completed++
+		}
+	}
+
+	return counts
 }
 
 // ListInstances returns all instances
@@ -285,48 +324,54 @@ func (h *InstancesHandler) GetInstanceStats(w http.ResponseWriter, r *http.Reque
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 
-	torrentCounts, err := h.syncManager.GetTorrentCounts(ctx, instanceID)
+	// Get sync manager for this instance
+	syncMgr, err := h.clientPool.GetSyncManager(ctx, instanceID)
 	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
-			log.Warn().Int("instanceID", instanceID).Msg("Timeout getting torrent counts for dashboard stats")
-		} else {
-			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get torrent counts")
-		}
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to get sync manager for torrent counts")
 		// Return default stats instead of error
 		RespondJSON(w, http.StatusOK, stats)
 		return
 	}
 
-	// Update stats with counts from cached data
-	stats["torrents"] = map[string]interface{}{
-		"total":       torrentCounts.Total,
-		"downloading": torrentCounts.Status["downloading"],
-		"seeding":     torrentCounts.Status["seeding"],
-		"paused":      torrentCounts.Status["paused"],
-		"error":       torrentCounts.Status["errored"],
-		"completed":   torrentCounts.Status["completed"],
+	torrents := syncMgr.GetTorrents()
+	
+	// Convert map to slice for calculation
+	torrentSlice := make([]qbt.Torrent, 0, len(torrents))
+	for _, torrent := range torrents {
+		torrentSlice = append(torrentSlice, torrent)
 	}
 
-	// Get speeds from the sync manager which calculates from cached torrents
-	// This avoids making slow API calls to qBittorrent for large instances
-	speeds, err := h.syncManager.GetInstanceSpeeds(ctx, instanceID)
-	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
-			log.Warn().Int("instanceID", instanceID).Msg("Timeout getting instance speeds")
-		} else {
-			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to get instance speeds")
-		}
-		// Set default speeds
-		stats["speeds"] = map[string]interface{}{
-			"download": 0,
-			"upload":   0,
-		}
-	} else {
-		// Use calculated speeds from cached torrent data
-		stats["speeds"] = map[string]interface{}{
-			"download": speeds.Download,
-			"upload":   speeds.Upload,
-		}
+	if len(torrentSlice) == 0 {
+		log.Warn().Int("instanceID", instanceID).Msg("No torrents found for stats")
+		// Return default stats
+		RespondJSON(w, http.StatusOK, stats)
+		return
+	}
+
+	// Calculate torrent counts from the torrents
+	torrentCounts := h.calculateTorrentCounts(torrentSlice)
+	
+	// Update stats with counts from cached data
+	stats["torrents"] = map[string]interface{}{
+		"total":       len(torrents),
+		"downloading": torrentCounts.Downloading,
+		"seeding":     torrentCounts.Seeding,
+		"paused":      torrentCounts.Paused,
+		"error":       torrentCounts.Error,
+		"completed":   torrentCounts.Completed,
+	}
+
+	// Calculate speeds from the torrents
+	var totalDownloadSpeed, totalUploadSpeed int64
+	for _, torrent := range torrentSlice {
+		totalDownloadSpeed += torrent.DlSpeed
+		totalUploadSpeed += torrent.UpSpeed
+	}
+
+	// Set calculated speeds
+	stats["speeds"] = map[string]interface{}{
+		"download": totalDownloadSpeed,
+		"upload":   totalUploadSpeed,
 	}
 
 	RespondJSON(w, http.StatusOK, stats)

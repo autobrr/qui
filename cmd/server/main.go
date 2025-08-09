@@ -94,9 +94,6 @@ func runServer() {
 	}
 	defer clientPool.Close()
 
-	// Initialize sync manager
-	syncManager := qbittorrent.NewSyncManager(clientPool)
-
 	// Initialize web handler (for embedded frontend)
 	webHandler, err := web.NewHandler(Version, cfg.Config.BaseURL)
 	if err != nil {
@@ -147,7 +144,6 @@ func runServer() {
 		AuthService:         authService,
 		InstanceStore:       instanceStore,
 		ClientPool:          clientPool,
-		SyncManager:         syncManager,
 		WebHandler:          webHandler,
 		ThemeLicenseService: themeLicenseService,
 	}
@@ -160,18 +156,18 @@ func runServer() {
 	if cfg.Config.BaseURL != "" && cfg.Config.BaseURL != "/" {
 		// Create a parent router and mount our app under the base URL
 		parentRouter := chi.NewRouter()
-		
+
 		// Strip trailing slash from base URL for mounting
 		mountPath := strings.TrimSuffix(cfg.Config.BaseURL, "/")
-		
+
 		// Mount the application under the base URL
 		parentRouter.Mount(mountPath, router)
-		
+
 		// Redirect root to base URL
 		parentRouter.Get("/", func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, cfg.Config.BaseURL, http.StatusMovedPermanently)
 		})
-		
+
 		handler = parentRouter
 	} else {
 		handler = router
