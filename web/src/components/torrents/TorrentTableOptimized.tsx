@@ -432,8 +432,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const availableTags = metadata?.tags || []
   const availableCategories = metadata?.categories || {}
 
-  // Debounce search to prevent excessive filtering (500ms delay)
-  const debouncedSearch = useDebounce(globalFilter, 500)
+  // Debounce search to prevent excessive filtering (200ms delay for faster response)
+  const debouncedSearch = useDebounce(globalFilter, 200)
 
   // Use immediate search if available, otherwise use debounced search
   const effectiveSearch = immediateSearch || debouncedSearch
