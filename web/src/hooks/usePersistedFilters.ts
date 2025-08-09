@@ -7,38 +7,36 @@ interface Filters {
   trackers: string[]
 }
 
-export function usePersistedFilters() {
-  // Global key shared across all instances
-  const storageKey = `qui-filters`
-  
-  // Initialize state from localStorage or default values
-  const [filters, setFilters] = useState<Filters>(() => {
-    try {
-      const stored = localStorage.getItem(storageKey)
-      if (stored) {
-        return JSON.parse(stored)
-      }
-    } catch (error) {
-      console.error('Failed to load filters from localStorage:', error)
-    }
-    
-    // Default filters
-    return {
-      status: [],
-      categories: [],
-      tags: [],
-      trackers: [],
-    }
+export function usePersistedFilters(instanceId: number) {
+  const [filters, setFilters] = useState<Filters>({
+    status: [],
+    categories: [],
+    tags: [],
+    trackers: [],
   })
   
-  // Persist to localStorage whenever filters change
+  // Load filters when instanceId changes
   useEffect(() => {
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(filters))
-    } catch (error) {
-      console.error('Failed to save filters to localStorage:', error)
-    }
-  }, [filters, storageKey])
+    const global = JSON.parse(localStorage.getItem('qui-filters-global') || '{}')
+    const instance = JSON.parse(localStorage.getItem(`qui-filters-${instanceId}`) || '{}')
+    
+    setFilters({
+      status: global.status || [],
+      categories: instance.categories || [],
+      tags: instance.tags || [],
+      trackers: instance.trackers || [],
+    })
+  }, [instanceId])
+  
+  // Save filters when they change
+  useEffect(() => {
+    localStorage.setItem('qui-filters-global', JSON.stringify({ status: filters.status }))
+    localStorage.setItem(`qui-filters-${instanceId}`, JSON.stringify({
+      categories: filters.categories,
+      tags: filters.tags,
+      trackers: filters.trackers,
+    }))
+  }, [filters, instanceId])
   
   return [filters, setFilters] as const
 }

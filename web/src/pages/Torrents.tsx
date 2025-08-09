@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from 'react'
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { TorrentTableResponsive } from '@/components/torrents/TorrentTableResponsive'
 import { FilterSidebar } from '@/components/torrents/FilterSidebar'
 import { TorrentDetailsPanel } from '@/components/torrents/TorrentDetailsPanel'
@@ -18,12 +18,23 @@ interface TorrentsProps {
 }
 
 export function Torrents({ instanceId, instanceName }: TorrentsProps) {
-  const [filters, setFilters] = usePersistedFilters()
+  const [filters, setFilters] = usePersistedFilters(instanceId)
   const [filterSidebarCollapsed, setFilterSidebarCollapsed] = usePersistedFilterSidebarState(false)
   const [selectedTorrent, setSelectedTorrent] = useState<Torrent | null>(null)
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false)
   const navigate = useNavigate()
   const search = useSearch({ strict: false }) as any
+  
+  // Debounced filter updates to prevent excessive API calls during rapid filter changes
+  const filterTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const debouncedSetFilters = useCallback((newFilters: typeof filters) => {
+    if (filterTimeoutRef.current) {
+      clearTimeout(filterTimeoutRef.current)
+    }
+    filterTimeoutRef.current = setTimeout(() => {
+      setFilters(newFilters)
+    }, 150) // 150ms delay to batch rapid filter changes
+  }, [setFilters])
   
   // Check if add torrent modal should be open
   const isAddTorrentModalOpen = search?.modal === 'add-torrent'
@@ -140,7 +151,7 @@ export function Torrents({ instanceId, instanceName }: TorrentsProps) {
           key={`filter-sidebar-${instanceId}`}
           instanceId={instanceId}
           selectedFilters={filters}
-          onFilterChange={setFilters}
+          onFilterChange={debouncedSetFilters}
           torrentCounts={torrentCounts}
           categories={categories}
           tags={tags}
@@ -160,7 +171,7 @@ export function Torrents({ instanceId, instanceName }: TorrentsProps) {
               key={`filter-sidebar-mobile-${instanceId}`}
               instanceId={instanceId}
               selectedFilters={filters}
-              onFilterChange={setFilters}
+              onFilterChange={debouncedSetFilters}
               torrentCounts={torrentCounts}
               categories={categories}
               tags={tags}
