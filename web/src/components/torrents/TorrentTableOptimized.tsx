@@ -526,17 +526,37 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     }
   }, [torrents, effectiveSearch, sorting])
 
-  const sortedTorrents = workerResult
+  // Store all torrents in a Map outside React state
+  const allTorrentsMapRef = useRef(new Map())
+  useEffect(() => {
+    if (Array.isArray(workerResult)) {
+      allTorrentsMapRef.current = new Map(workerResult.map(t => [t.hash, t]))
+    }
+  }, [workerResult])
+
+  // Only keep visible/virtualized slice in React state
+  const [visibleTorrents, setVisibleTorrents] = useState([])
+
+  // Helper to update visible slice based on virtual rows
+  const updateVisibleTorrents = useCallback((virtualRows: { index: number }[], rows: any[]) => {
+    if (!virtualRows || !rows) return
+    // Only get hashes for visible rows, then fetch from persistent map
+    const slice = virtualRows.map((vr) => {
+      const hash = rows[vr.index]?.original?.hash
+      return hash ? allTorrentsMapRef.current.get(hash) : undefined
+    }).filter(Boolean) as Torrent[]
+    setVisibleTorrents(slice)
+  }, [])
 
   // Memoize columns to avoid unnecessary recalculations
   const columns = useMemo(() => createColumns(incognitoMode), [incognitoMode])
   
   const table = useReactTable({
-    data: sortedTorrents,
+    data: visibleTorrents,
     columns,
     getCoreRowModel: getCoreRowModel(),
     // Use torrent hash as stable row ID
-    getRowId: (row) => row.hash,
+    getRowId: (row: Torrent) => row.hash,
     // State management
     state: {
       sorting,
@@ -564,13 +584,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     return Object.keys(rowSelection)
       .filter((key: string) => (rowSelection as Record<string, boolean>)[key])
   }, [rowSelection])
-  
-  // Get selected torrents
+
+  // Get selected torrents from allTorrentsMapRef
   const selectedTorrents = useMemo((): Torrent[] => {
     return selectedHashes
-      .map((hash: string) => sortedTorrents.find((t: Torrent) => t.hash === hash))
+      .map((hash: string) => allTorrentsMapRef.current.get(hash))
       .filter(Boolean) as Torrent[]
-  }, [selectedHashes, sortedTorrents])
+  }, [selectedHashes, workerResult])
 
   // Virtualization setup with progressive loading
   const { rows } = table.getRowModel()
@@ -578,48 +598,50 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   
   // Load more rows as user scrolls (progressive loading)
   const loadMore = useCallback((): void => {
-    const newLoadedRows = Math.min(loadedRows + 100, sortedTorrents.length)
+    const newLoadedRows = Math.min(loadedRows + 100, workerResult.length)
     setLoadedRows(newLoadedRows)
     // If we're near the end of loaded torrents and haven't loaded all from server
-    if (newLoadedRows >= sortedTorrents.length - 50 && !hasLoadedAll && !isLoadingMore) {
+    if (newLoadedRows >= workerResult.length - 50 && !hasLoadedAll && !isLoadingMore) {
       loadMoreTorrents()
     }
-  }, [loadedRows, sortedTorrents.length, hasLoadedAll, isLoadingMore, loadMoreTorrents])
+  }, [loadedRows, workerResult.length, hasLoadedAll, isLoadingMore, loadMoreTorrents])
 
   // useVirtualizer must be called at the top level, not inside useMemo
   const virtualizer = useVirtualizer({
     count: Math.min(loadedRows, rows.length),
     getScrollElement: () => parentRef.current,
     estimateSize: () => 40,
-    overscan: 20, // Increased for smoother scrolling
+    overscan: 20,
     onChange: (instance: any) => {
-      const lastItem = instance.getVirtualItems().at(-1)
+      const vRows = instance.getVirtualItems() as { index: number }[]
+      updateVisibleTorrents(vRows, rows)
+      const lastItem = vRows.at(-1)
       if (lastItem && lastItem.index >= loadedRows - 50) {
         loadMore()
       }
     },
   })
-  
   const virtualRows = virtualizer.getVirtualItems()
+
+  // Update visibleTorrents on data/rows/virtualRows change
+  useEffect(() => {
+    updateVisibleTorrents(virtualRows, rows)
+    // eslint-disable-next-line
+  }, [rows, virtualRows])
 
 
   // Reset loaded rows when data changes
   useEffect(() => {
-    if (sortedTorrents.length > 0) {
-      // If we have torrents but loadedRows is 0, set initial load
+    if (workerResult.length > 0) {
       if (loadedRows === 0) {
-        setLoadedRows(Math.min(100, sortedTorrents.length))
-      }
-      // If data reduced below loaded rows, adjust
-      else if (sortedTorrents.length < loadedRows) {
-        setLoadedRows(sortedTorrents.length)
-      }
-      // If data increased significantly, reset to show more rows
-      else if (sortedTorrents.length > loadedRows && loadedRows < 100) {
-        setLoadedRows(Math.min(100, sortedTorrents.length))
+        setLoadedRows(Math.min(100, workerResult.length))
+      } else if (workerResult.length < loadedRows) {
+        setLoadedRows(workerResult.length)
+      } else if (workerResult.length > loadedRows && loadedRows < 100) {
+        setLoadedRows(Math.min(100, workerResult.length))
       }
     }
-  }, [sortedTorrents.length, loadedRows])
+  }, [workerResult.length, loadedRows])
 
   // Reset loaded rows when filters change
   useEffect(() => {
@@ -802,8 +824,17 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       category,
       hashes: contextMenuHashes,
     })
+    // Only update affected torrents in the map
+    contextMenuHashes.forEach(hash => {
+      const t = allTorrentsMapRef.current.get(hash)
+      if (t) {
+        allTorrentsMapRef.current.set(hash, { ...t, category })
+      }
+    })
     setShowCategoryDialog(false)
     setContextMenuHashes([])
+    // Force visibleTorrents update
+    updateVisibleTorrents(virtualRows, rows)
   }
   
   const handleRemoveTags = async (tags: string[]) => {
