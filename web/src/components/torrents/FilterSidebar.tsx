@@ -1,4 +1,4 @@
-import { useState, useMemo, memo } from 'react'
+import { useState, useMemo, memo, useCallback } from 'react'
 import {
   Accordion,
   AccordionContent,
@@ -120,7 +120,7 @@ const FilterSidebarComponent = ({
   }, [incognitoMode, propsTags])
 
 
-  const handleStatusToggle = (status: string) => {
+  const handleStatusToggle = useCallback((status: string) => {
     const newStatus = selectedFilters.status.includes(status)
       ? selectedFilters.status.filter(s => s !== status)
       : [...selectedFilters.status, status]
@@ -129,9 +129,9 @@ const FilterSidebarComponent = ({
       ...selectedFilters,
       status: newStatus,
     })
-  }
+  }, [selectedFilters, onFilterChange])
 
-  const handleCategoryToggle = (category: string) => {
+  const handleCategoryToggle = useCallback((category: string) => {
     const newCategories = selectedFilters.categories.includes(category)
       ? selectedFilters.categories.filter(c => c !== category)
       : [...selectedFilters.categories, category]
@@ -140,9 +140,9 @@ const FilterSidebarComponent = ({
       ...selectedFilters,
       categories: newCategories,
     })
-  }
+  }, [selectedFilters, onFilterChange])
 
-  const handleTagToggle = (tag: string) => {
+  const handleTagToggle = useCallback((tag: string) => {
     const newTags = selectedFilters.tags.includes(tag)
       ? selectedFilters.tags.filter(t => t !== tag)
       : [...selectedFilters.tags, tag]
@@ -151,9 +151,9 @@ const FilterSidebarComponent = ({
       ...selectedFilters,
       tags: newTags,
     })
-  }
+  }, [selectedFilters, onFilterChange])
 
-  const handleTrackerToggle = (tracker: string) => {
+  const handleTrackerToggle = useCallback((tracker: string) => {
     const newTrackers = selectedFilters.trackers.includes(tracker)
       ? selectedFilters.trackers.filter(t => t !== tracker)
       : [...selectedFilters.trackers, tracker]
@@ -162,7 +162,7 @@ const FilterSidebarComponent = ({
       ...selectedFilters,
       trackers: newTrackers,
     })
-  }
+  }, [selectedFilters, onFilterChange])
 
   // Extract unique trackers from torrentCounts
   const realTrackers = torrentCounts 
