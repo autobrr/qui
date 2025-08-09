@@ -426,7 +426,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   
   // Progressive loading state with async management
   const [loadedRows, setLoadedRows] = useState(100)
-  const loadingTimeoutRef = useRef<number | null>(null)
+  const loadingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   
   // Query client for invalidating queries
   const queryClient = useQueryClient()
@@ -475,7 +475,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   
   // Show refetch indicator only if fetching takes more than 2 seconds
   useEffect(() => {
-    let timeoutId: number
+    let timeoutId: ReturnType<typeof setTimeout>
     
     if (isFetching && !isLoading && torrents.length > 0) {
       timeoutId = setTimeout(() => {
@@ -505,7 +505,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   // Use a Web Worker for filtering and sorting in the background, with async handling
   const [workerResult, setWorkerResult] = useState<Torrent[]>([])
   const workerRef = useRef<Worker | null>(null)
-  const processingTimeoutRef = useRef<number | null>(null)
+  const processingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Debounced async worker processing
   useEffect(() => {
@@ -675,7 +675,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     const result: string[] = [];
     for (let i = 0; i < keys.length; i++) {
       const key = keys[i];
-      if (rowSelection[key]) {
+      if ((rowSelection as Record<string, boolean>)[key]) {
         result.push(key);
       }
     }
@@ -758,16 +758,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         updateVisibleTorrents(vRows, rows);
       }
     },
-    // Enable smooth scrolling for better UX
-    scrollToFn: (offset: number, canSmooth: boolean, instance: { scrollElement: HTMLElement | null }) => {
-      const scrollElement = instance.scrollElement;
-      if (!scrollElement) return;
-      
-      scrollElement.scrollTo({
-        top: offset,
-        behavior: canSmooth ? 'smooth' : 'auto'
-      });
-    }
   })
   const virtualRows = virtualizer.getVirtualItems()
 
@@ -1024,85 +1014,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const copyToClipboard = useCallback((text: string) => {
     navigator.clipboard.writeText(text)
   }, []) 
-  
-  // Async optimized version of getCommonTags that yields control during processing
-  const getCommonTags = useCallback(async (torrents: Torrent[]): Promise<string[]> => {
-    if (torrents.length === 0) return []
-    
-    // Fast path for single torrent
-    if (torrents.length === 1) {
-      const tags = torrents[0].tags;
-      return tags ? tags.split(',').map(t => t.trim()).filter(Boolean) : [];
-    }
-    
-    return new Promise((resolve) => {
-      requestAnimationFrame(() => {
-        // Initialize with first torrent's tags
-        const firstTorrent = torrents[0];
-        if (!firstTorrent.tags) {
-          resolve([]);
-          return;
-        }
-        
-        // Use a Set for O(1) lookups
-        const firstTorrentTagsSet = new Set(
-          firstTorrent.tags.split(',').map(t => t.trim()).filter(Boolean)
-        );
-        
-        // If first torrent has no tags, no common tags exist
-        if (firstTorrentTagsSet.size === 0) {
-          resolve([]);
-          return;
-        }
-        
-        // Convert to array once for iteration
-        const firstTorrentTags = Array.from(firstTorrentTagsSet);
-        
-        // Use Object as a counter map for better performance with large datasets
-        const tagCounts: Record<string, number> = {};
-        for (const tag of firstTorrentTags) {
-          tagCounts[tag] = 1; // First torrent has this tag
-        }
-        
-        // Process remaining torrents in chunks to avoid blocking
-        const processChunk = (startIndex: number) => {
-          const endIndex = Math.min(startIndex + 50, torrents.length);
-          
-          for (let i = startIndex; i < endIndex; i++) {
-            const torrent = torrents[i];
-            if (!torrent.tags) continue;
-            
-            // Create a Set of this torrent's tags for O(1) lookups
-            const currentTags = new Set(
-              torrent.tags.split(',').map(t => t.trim()).filter(Boolean)
-            );
-            
-            // Only increment count for tags that this torrent has
-            for (const tag in tagCounts) {
-              if (currentTags.has(tag)) {
-                tagCounts[tag]++;
-              }
-            }
-          }
-          
-          if (endIndex < torrents.length) {
-            // Continue processing in next frame
-            requestAnimationFrame(() => processChunk(endIndex));
-          } else {
-            // All chunks processed, return tags that appear in all torrents
-            const result = Object.keys(tagCounts).filter(tag => tagCounts[tag] === torrents.length);
-            resolve(result);
-          }
-        };
-        
-        if (torrents.length > 1) {
-          processChunk(1); // Start from index 1 since we already processed index 0
-        } else {
-          resolve(firstTorrentTags);
-        }
-      });
-    });
-  }, [])
   
   // Synchronous version for immediate use (backwards compatibility)
   const getCommonTagsSync = (torrents: Torrent[]): string[] => {
