@@ -1,4 +1,4 @@
-import { useState, useMemo, memo } from 'react'
+import { useState, useMemo, memo, useCallback } from 'react'
 import {
   Accordion,
   AccordionContent,
@@ -8,6 +8,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Input } from '@/components/ui/input'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -16,6 +17,7 @@ import {
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
 import { usePersistedAccordion } from '@/hooks/usePersistedAccordion'
+import { useDebounce } from '@/hooks/useDebounce'
 import {
   Download,
   Upload,
@@ -30,6 +32,7 @@ import {
   Trash2,
   RotateCw,
   MoveRight,
+  Search,
   type LucideIcon,
 } from 'lucide-react'
 import {
@@ -110,6 +113,16 @@ const FilterSidebarComponent = ({
   const [categoryToEdit, setCategoryToEdit] = useState<{ name: string; savePath: string } | null>(null)
   const [categoryToDelete, setCategoryToDelete] = useState('')
 
+  // Search states for filtering large lists
+  const [categorySearch, setCategorySearch] = useState('')
+  const [tagSearch, setTagSearch] = useState('')
+  const [trackerSearch, setTrackerSearch] = useState('')
+  
+  // Debounce search terms for better performance
+  const debouncedCategorySearch = useDebounce(categorySearch, 300)
+  const debouncedTagSearch = useDebounce(tagSearch, 300)
+  const debouncedTrackerSearch = useDebounce(trackerSearch, 300)
+
   // Use fake data if in incognito mode, otherwise use props
   const categories = useMemo(() => {
     return incognitoMode ? LINUX_CATEGORIES : (propsCategories || {})
@@ -119,52 +132,7 @@ const FilterSidebarComponent = ({
     return incognitoMode ? LINUX_TAGS : (propsTags || [])
   }, [incognitoMode, propsTags])
 
-
-  const handleStatusToggle = (status: string) => {
-    const newStatus = selectedFilters.status.includes(status)
-      ? selectedFilters.status.filter(s => s !== status)
-      : [...selectedFilters.status, status]
-    
-    onFilterChange({
-      ...selectedFilters,
-      status: newStatus,
-    })
-  }
-
-  const handleCategoryToggle = (category: string) => {
-    const newCategories = selectedFilters.categories.includes(category)
-      ? selectedFilters.categories.filter(c => c !== category)
-      : [...selectedFilters.categories, category]
-    
-    onFilterChange({
-      ...selectedFilters,
-      categories: newCategories,
-    })
-  }
-
-  const handleTagToggle = (tag: string) => {
-    const newTags = selectedFilters.tags.includes(tag)
-      ? selectedFilters.tags.filter(t => t !== tag)
-      : [...selectedFilters.tags, tag]
-    
-    onFilterChange({
-      ...selectedFilters,
-      tags: newTags,
-    })
-  }
-
-  const handleTrackerToggle = (tracker: string) => {
-    const newTrackers = selectedFilters.trackers.includes(tracker)
-      ? selectedFilters.trackers.filter(t => t !== tracker)
-      : [...selectedFilters.trackers, tracker]
-    
-    onFilterChange({
-      ...selectedFilters,
-      trackers: newTrackers,
-    })
-  }
-
-  // Extract unique trackers from torrentCounts
+  // Extract unique trackers from torrentCounts (move this before filtered trackers)
   const realTrackers = torrentCounts 
     ? Object.keys(torrentCounts)
         .filter(key => key.startsWith('tracker:'))
@@ -177,6 +145,131 @@ const FilterSidebarComponent = ({
   const trackers = useMemo(() => {
     return incognitoMode ? LINUX_TRACKERS : realTrackers
   }, [incognitoMode, realTrackers])
+
+  // Optimize large lists by limiting initial render and providing search
+  const MAX_INITIAL_ITEMS = 200
+  
+  // Filtered and limited categories for performance
+  const filteredCategories = useMemo(() => {
+    const categoryEntries = Object.entries(categories)
+    
+    if (debouncedCategorySearch) {
+      const searchLower = debouncedCategorySearch.toLowerCase()
+      return categoryEntries.filter(([name]) => 
+        name.toLowerCase().includes(searchLower)
+      )
+    }
+    
+    // Show selected categories first, then others up to limit
+    const selectedCategories = categoryEntries.filter(([name]) => 
+      selectedFilters.categories.includes(name)
+    )
+    const unselectedCategories = categoryEntries.filter(([name]) => 
+      !selectedFilters.categories.includes(name)
+    )
+    
+    if (categoryEntries.length > MAX_INITIAL_ITEMS) {
+      const remainingSlots = Math.max(0, MAX_INITIAL_ITEMS - selectedCategories.length)
+      return [...selectedCategories, ...unselectedCategories.slice(0, remainingSlots)]
+    }
+    
+    return categoryEntries
+  }, [categories, debouncedCategorySearch, selectedFilters.categories])
+
+  // Filtered and limited tags for performance
+  const filteredTags = useMemo(() => {
+    if (debouncedTagSearch) {
+      const searchLower = debouncedTagSearch.toLowerCase()
+      return tags.filter(tag => 
+        tag.toLowerCase().includes(searchLower)
+      )
+    }
+    
+    // Show selected tags first, then others up to limit
+    const selectedTags = tags.filter(tag => 
+      selectedFilters.tags.includes(tag)
+    )
+    const unselectedTags = tags.filter(tag => 
+      !selectedFilters.tags.includes(tag)
+    )
+    
+    if (tags.length > MAX_INITIAL_ITEMS) {
+      const remainingSlots = Math.max(0, MAX_INITIAL_ITEMS - selectedTags.length)
+      return [...selectedTags, ...unselectedTags.slice(0, remainingSlots)]
+    }
+    
+    return tags
+  }, [tags, debouncedTagSearch, selectedFilters.tags])
+
+  // Filtered and limited trackers for performance
+  const filteredTrackers = useMemo(() => {
+    if (debouncedTrackerSearch) {
+      const searchLower = debouncedTrackerSearch.toLowerCase()
+      return trackers.filter(tracker => 
+        tracker.toLowerCase().includes(searchLower)
+      )
+    }
+    
+    // Show selected trackers first, then others up to limit
+    const selectedTrackers = trackers.filter(tracker => 
+      selectedFilters.trackers.includes(tracker)
+    )
+    const unselectedTrackers = trackers.filter(tracker => 
+      !selectedFilters.trackers.includes(tracker)
+    )
+    
+    if (trackers.length > MAX_INITIAL_ITEMS) {
+      const remainingSlots = Math.max(0, MAX_INITIAL_ITEMS - selectedTrackers.length)
+      return [...selectedTrackers, ...unselectedTrackers.slice(0, remainingSlots)]
+    }
+    
+    return trackers
+  }, [trackers, debouncedTrackerSearch, selectedFilters.trackers])
+
+
+  const handleStatusToggle = useCallback((status: string) => {
+    const newStatus = selectedFilters.status.includes(status)
+      ? selectedFilters.status.filter(s => s !== status)
+      : [...selectedFilters.status, status]
+    
+    onFilterChange({
+      ...selectedFilters,
+      status: newStatus,
+    })
+  }, [selectedFilters, onFilterChange])
+
+  const handleCategoryToggle = useCallback((category: string) => {
+    const newCategories = selectedFilters.categories.includes(category)
+      ? selectedFilters.categories.filter(c => c !== category)
+      : [...selectedFilters.categories, category]
+    
+    onFilterChange({
+      ...selectedFilters,
+      categories: newCategories,
+    })
+  }, [selectedFilters, onFilterChange])
+
+  const handleTagToggle = useCallback((tag: string) => {
+    const newTags = selectedFilters.tags.includes(tag)
+      ? selectedFilters.tags.filter(t => t !== tag)
+      : [...selectedFilters.tags, tag]
+    
+    onFilterChange({
+      ...selectedFilters,
+      tags: newTags,
+    })
+  }, [selectedFilters, onFilterChange])
+
+  const handleTrackerToggle = useCallback((tracker: string) => {
+    const newTrackers = selectedFilters.trackers.includes(tracker)
+      ? selectedFilters.trackers.filter(t => t !== tracker)
+      : [...selectedFilters.trackers, tracker]
+    
+    onFilterChange({
+      ...selectedFilters,
+      trackers: newTrackers,
+    })
+  }, [selectedFilters, onFilterChange])
 
   const clearFilters = () => {
     onFilterChange({
@@ -281,6 +374,19 @@ const FilterSidebarComponent = ({
                     Add category
                   </button>
                   
+                  {/* Search input for large category lists */}
+                  {Object.keys(categories).length > 20 && (
+                    <div className="relative mb-2">
+                      <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                      <Input
+                        placeholder="Search categories..."
+                        value={categorySearch}
+                        onChange={(e) => setCategorySearch(e.target.value)}
+                        className="pl-7 h-7 text-xs"
+                      />
+                    </div>
+                  )}
+                  
                   {/* Uncategorized option */}
                   <label className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer">
                     <Checkbox
@@ -296,8 +402,8 @@ const FilterSidebarComponent = ({
                     </span>
                   </label>
                   
-                  {/* Category list */}
-                  {Object.entries(categories).map(([name, category]: [string, any]) => (
+                  {/* Category list - use filtered categories for performance */}
+                  {filteredCategories.map(([name, category]: [string, any]) => (
                     <ContextMenu key={name}>
                       <ContextMenuTrigger asChild>
                         <label className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer">
@@ -364,6 +470,19 @@ const FilterSidebarComponent = ({
                     Add tag
                   </button>
                   
+                  {/* Search input for large tag lists */}
+                  {tags.length > 20 && (
+                    <div className="relative mb-2">
+                      <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                      <Input
+                        placeholder="Search tags..."
+                        value={tagSearch}
+                        onChange={(e) => setTagSearch(e.target.value)}
+                        className="pl-7 h-7 text-xs"
+                      />
+                    </div>
+                  )}
+                  
                   {/* Untagged option */}
                   <label className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer">
                     <Checkbox
@@ -379,8 +498,8 @@ const FilterSidebarComponent = ({
                     </span>
                   </label>
                   
-                  {/* Tag list */}
-                  {tags.map((tag: string) => (
+                  {/* Tag list - use filtered tags for performance */}
+                  {filteredTags.map((tag: string) => (
                     <ContextMenu key={tag}>
                       <ContextMenuTrigger asChild>
                         <label className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer">
@@ -436,6 +555,19 @@ const FilterSidebarComponent = ({
               </AccordionTrigger>
               <AccordionContent className="px-3 pb-2">
                 <div className="space-y-1">
+                  {/* Search input for large tracker lists */}
+                  {trackers.length > 20 && (
+                    <div className="relative mb-2">
+                      <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                      <Input
+                        placeholder="Search trackers..."
+                        value={trackerSearch}
+                        onChange={(e) => setTrackerSearch(e.target.value)}
+                        className="pl-7 h-7 text-xs"
+                      />
+                    </div>
+                  )}
+                  
                   {/* No tracker option */}
                   <label className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer">
                     <Checkbox
@@ -451,8 +583,8 @@ const FilterSidebarComponent = ({
                     </span>
                   </label>
                   
-                  {/* Tracker list */}
-                  {trackers.filter(tracker => tracker !== '').map((tracker) => (
+                  {/* Tracker list - use filtered trackers for performance */}
+                  {filteredTrackers.filter(tracker => tracker !== '').map((tracker) => (
                     <label 
                       key={tracker} 
                       className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer"

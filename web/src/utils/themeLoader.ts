@@ -8,7 +8,8 @@ import type { Theme } from '@/config/themes';
 
 // Import all theme CSS files from the themes directory
 const themeModules = import.meta.glob('/src/themes/*.css', { 
-  as: 'raw',
+  query: '?raw',
+  import: 'default',
   eager: true 
 });
 
