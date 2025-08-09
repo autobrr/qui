@@ -1237,14 +1237,15 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
               >
                 {virtualRows.map(virtualRow => {
                   const row = rows[virtualRow.index]
+                  if (!row || !row.original) return null
                   const torrent = row.original
                   const isSelected = selectedTorrent?.hash === torrent.hash
-                  
+
                   // Calculate minimum table width based on visible columns
                   const minTableWidth = table.getVisibleLeafColumns().reduce((width, col) => {
                     return width + col.getSize()
                   }, 0)
-                
+
                   return (
                     <ContextMenu key={torrent.hash}>
                       <ContextMenuTrigger asChild>
@@ -1336,16 +1337,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                           Reannounce {row.getIsSelected() && selectedHashes.length > 1 ? `(${selectedHashes.length})` : ''}
                         </ContextMenuItem>
                         <ContextMenuSeparator />
-                        <ContextMenuItem 
-                          onClick={() => {
-                            const hashes = row.getIsSelected() ? selectedHashes : [torrent.hash]
-                            handleContextMenuAction('topPriority', hashes)
-                          }}
-                          disabled={mutation.isPending}
-                        >
-                          <ChevronsUp className="mr-2 h-4 w-4" />
-                          Top Priority {row.getIsSelected() && selectedHashes.length > 1 ? `(${selectedHashes.length})` : ''}
-                        </ContextMenuItem>
                         <ContextMenuItem 
                           onClick={() => {
                             const hashes = row.getIsSelected() ? selectedHashes : [torrent.hash]
