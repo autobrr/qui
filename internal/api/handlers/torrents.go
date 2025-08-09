@@ -619,3 +619,415 @@ func (h *TorrentsHandler) EditCategory(w http.ResponseWriter, r *http.Request) {
 
 	RespondJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Category updated successfully"})
 }
+
+// GetFilteredTorrents returns torrents based on filters
+func (h *TorrentsHandler) GetFilteredTorrents(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	// Get query parameters
+	category := r.URL.Query().Get("category")
+	tag := r.URL.Query().Get("tag")
+	filter := r.URL.Query().Get("filter")
+	search := r.URL.Query().Get("search")
+
+	client, err := h.getClient(instanceID)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client")
+		RespondError(w, http.StatusInternalServerError, "Failed to get client")
+		return
+	}
+
+	opts := qbt.TorrentFilterOptions{}
+	if category != "" {
+		opts.Category = category
+	}
+	if tag != "" {
+		opts.Tag = tag
+	}
+	if filter != "" {
+		opts.Filter = qbt.TorrentFilter(filter)
+	}
+
+	torrents, err := client.GetTorrentsCtx(r.Context(), opts)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get torrents")
+		RespondError(w, http.StatusInternalServerError, "Failed to get torrents")
+		return
+	}
+
+	// Filter by search if provided
+	if search != "" {
+		torrents = h.filterTorrentsBySearch(torrents, search)
+	}
+
+	response := TorrentResponse{
+		Torrents: torrents,
+		Total:    len(torrents),
+		HasMore:  false,
+	}
+
+	RespondJSON(w, http.StatusOK, response)
+}
+
+// GetTorrentCounts returns torrent counts by status
+func (h *TorrentsHandler) GetTorrentCounts(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	client, err := h.getClient(instanceID)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client")
+		RespondError(w, http.StatusInternalServerError, "Failed to get client")
+		return
+	}
+
+	torrents, err := client.GetTorrentsCtx(r.Context(), qbt.TorrentFilterOptions{})
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get torrents")
+		RespondError(w, http.StatusInternalServerError, "Failed to get torrents")
+		return
+	}
+
+	counts := h.calculateCounts(torrents)
+	RespondJSON(w, http.StatusOK, counts)
+}
+
+// DeleteTorrent deletes a single torrent
+func (h *TorrentsHandler) DeleteTorrent(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	hash := chi.URLParam(r, "hash")
+	if hash == "" {
+		RespondError(w, http.StatusBadRequest, "Hash is required")
+		return
+	}
+
+	deleteFiles := r.URL.Query().Get("deleteFiles") == "true"
+
+	client, err := h.getClient(instanceID)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client")
+		RespondError(w, http.StatusInternalServerError, "Failed to get client")
+		return
+	}
+
+	err = client.DeleteTorrentsCtx(r.Context(), []string{hash}, deleteFiles)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to delete torrent")
+		RespondError(w, http.StatusInternalServerError, "Failed to delete torrent")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Torrent deleted successfully"})
+}
+
+// PauseTorrent pauses a single torrent
+func (h *TorrentsHandler) PauseTorrent(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	hash := chi.URLParam(r, "hash")
+	if hash == "" {
+		RespondError(w, http.StatusBadRequest, "Hash is required")
+		return
+	}
+
+	client, err := h.getClient(instanceID)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client")
+		RespondError(w, http.StatusInternalServerError, "Failed to get client")
+		return
+	}
+
+	err = client.PauseCtx(r.Context(), []string{hash})
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to pause torrent")
+		RespondError(w, http.StatusInternalServerError, "Failed to pause torrent")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Torrent paused successfully"})
+}
+
+// ResumeTorrent resumes a single torrent
+func (h *TorrentsHandler) ResumeTorrent(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	hash := chi.URLParam(r, "hash")
+	if hash == "" {
+		RespondError(w, http.StatusBadRequest, "Hash is required")
+		return
+	}
+
+	client, err := h.getClient(instanceID)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client")
+		RespondError(w, http.StatusInternalServerError, "Failed to get client")
+		return
+	}
+
+	err = client.ResumeCtx(r.Context(), []string{hash})
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to resume torrent")
+		RespondError(w, http.StatusInternalServerError, "Failed to resume torrent")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Torrent resumed successfully"})
+}
+
+// GetTorrentProperties returns properties for a specific torrent
+func (h *TorrentsHandler) GetTorrentProperties(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	hash := chi.URLParam(r, "hash")
+	if hash == "" {
+		RespondError(w, http.StatusBadRequest, "Hash is required")
+		return
+	}
+
+	client, err := h.getClient(instanceID)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client")
+		RespondError(w, http.StatusInternalServerError, "Failed to get client")
+		return
+	}
+
+	properties, err := client.GetTorrentPropertiesCtx(r.Context(), hash)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to get torrent properties")
+		RespondError(w, http.StatusInternalServerError, "Failed to get torrent properties")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, properties)
+}
+
+// GetTorrentTrackers returns trackers for a specific torrent
+func (h *TorrentsHandler) GetTorrentTrackers(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	hash := chi.URLParam(r, "hash")
+	if hash == "" {
+		RespondError(w, http.StatusBadRequest, "Hash is required")
+		return
+	}
+
+	client, err := h.getClient(instanceID)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client")
+		RespondError(w, http.StatusInternalServerError, "Failed to get client")
+		return
+	}
+
+	trackers, err := client.GetTorrentTrackersCtx(r.Context(), hash)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to get torrent trackers")
+		RespondError(w, http.StatusInternalServerError, "Failed to get torrent trackers")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, trackers)
+}
+
+// GetTorrentFiles returns files for a specific torrent
+func (h *TorrentsHandler) GetTorrentFiles(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	hash := chi.URLParam(r, "hash")
+	if hash == "" {
+		RespondError(w, http.StatusBadRequest, "Hash is required")
+		return
+	}
+
+	client, err := h.getClient(instanceID)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client")
+		RespondError(w, http.StatusInternalServerError, "Failed to get client")
+		return
+	}
+
+	files, err := client.GetFilesInformationCtx(r.Context(), hash)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to get torrent files")
+		RespondError(w, http.StatusInternalServerError, "Failed to get torrent files")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, files)
+}
+
+// GetTorrentWebSeeds returns web seeds for a specific torrent
+func (h *TorrentsHandler) GetTorrentWebSeeds(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	hash := chi.URLParam(r, "hash")
+	if hash == "" {
+		RespondError(w, http.StatusBadRequest, "Hash is required")
+		return
+	}
+
+	client, err := h.getClient(instanceID)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client")
+		RespondError(w, http.StatusInternalServerError, "Failed to get client")
+		return
+	}
+
+	webSeeds, err := client.GetTorrentsWebSeedsCtx(r.Context(), hash)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to get torrent web seeds")
+		RespondError(w, http.StatusInternalServerError, "Failed to get torrent web seeds")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, webSeeds)
+}
+
+// RemoveCategories removes multiple categories
+func (h *TorrentsHandler) RemoveCategories(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	var req struct {
+		Categories []string `json:"categories"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if len(req.Categories) == 0 {
+		RespondError(w, http.StatusBadRequest, "Categories list is required")
+		return
+	}
+
+	client, err := h.getClient(instanceID)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client")
+		RespondError(w, http.StatusInternalServerError, "Failed to get client")
+		return
+	}
+
+	err = client.RemoveCategoriesCtx(r.Context(), req.Categories)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Interface("categories", req.Categories).Msg("Failed to remove categories")
+		RespondError(w, http.StatusInternalServerError, "Failed to remove categories")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Categories removed successfully"})
+}
+
+// CreateTags creates new tags
+func (h *TorrentsHandler) CreateTags(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	var req struct {
+		Tags []string `json:"tags"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if len(req.Tags) == 0 {
+		RespondError(w, http.StatusBadRequest, "Tags list is required")
+		return
+	}
+
+	client, err := h.getClient(instanceID)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client")
+		RespondError(w, http.StatusInternalServerError, "Failed to get client")
+		return
+	}
+
+	err = client.CreateTagsCtx(r.Context(), req.Tags)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Interface("tags", req.Tags).Msg("Failed to create tags")
+		RespondError(w, http.StatusInternalServerError, "Failed to create tags")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Tags created successfully"})
+}
+
+// DeleteTags deletes existing tags
+func (h *TorrentsHandler) DeleteTags(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	var req struct {
+		Tags []string `json:"tags"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if len(req.Tags) == 0 {
+		RespondError(w, http.StatusBadRequest, "Tags list is required")
+		return
+	}
+
+	client, err := h.getClient(instanceID)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client")
+		RespondError(w, http.StatusInternalServerError, "Failed to get client")
+		return
+	}
+
+	err = client.DeleteTagsCtx(r.Context(), req.Tags)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Interface("tags", req.Tags).Msg("Failed to delete tags")
+		RespondError(w, http.StatusInternalServerError, "Failed to delete tags")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Tags deleted successfully"})
+}
