@@ -1375,8 +1375,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
               'No torrents found'
             ) : (
               <>
-                Showing {Math.min(loadedRows, totalCount)} of {totalCount} torrents
-                {loadedRows < totalCount && ' (scroll to load more)'}
+                Showing {Math.min(rows.length, totalCount)} of {totalCount} torrents
+                {rows.length < totalCount && ' (scroll to load more)'}
                 {isLoadingMore && ' • Loading more...'}
               </>
             )}
