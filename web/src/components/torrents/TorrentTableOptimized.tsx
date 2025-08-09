@@ -535,7 +535,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   }, [workerResult])
 
   // Only keep visible/virtualized slice in React state
-  const [visibleTorrents, setVisibleTorrents] = useState([])
+  const [visibleTorrents, setVisibleTorrents] = useState<Torrent[]>([])
 
   // Helper to update visible slice based on virtual rows
   const updateVisibleTorrents = useCallback((virtualRows: { index: number }[], rows: any[]) => {
@@ -645,12 +645,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
   // Reset loaded rows when filters change
   useEffect(() => {
-    setLoadedRows(Math.min(100, sortedTorrents.length))
+    setLoadedRows(Math.min(100, workerResult.length))
     // Scroll to top and force virtualizer recalculation
     if (parentRef.current) {
       parentRef.current.scrollTop = 0
     }
-  }, [filters])
+  }, [filters, workerResult.length])
 
 
   // Mutation for bulk actions
