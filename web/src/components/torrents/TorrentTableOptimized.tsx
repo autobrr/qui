@@ -4,7 +4,6 @@ import {
   getCoreRowModel,
   flexRender,
   type ColumnDef,
-  type ColumnResizeMode,
 } from '@tanstack/react-table'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import {
@@ -33,11 +32,22 @@ import { usePersistedColumnSorting } from '@/hooks/usePersistedColumnSorting'
 const DEFAULT_COLUMN_VISIBILITY = {
   downloaded: false,
   uploaded: false,
-  saveLocation: false,
+  save_path: false, // Fixed: was 'saveLocation', should match column accessorKey
   tracker: false,
   priority: false,
 }
 const DEFAULT_COLUMN_SIZING = {}
+
+// Helper function to get default column order (module scope for stable reference)
+function getDefaultColumnOrder(): string[] {
+  const cols = createColumns(false)
+  return cols.map(col => {
+    if ('id' in col && col.id) return col.id
+    if ('accessorKey' in col && typeof col.accessorKey === 'string') return col.accessorKey
+    return null
+  }).filter((v): v is string => typeof v === 'string')
+}
+
 import { useInstanceMetadata } from '@/hooks/useInstanceMetadata'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
@@ -81,7 +91,7 @@ import { TorrentActions } from './TorrentActions'
 import { Loader2, Play, Pause, Trash2, CheckCircle, Copy, Tag, Folder, Search, Info, Columns3, Radio, ArrowUp, ArrowDown, ChevronsUp, ChevronsDown, Eye, EyeOff, Plus, ChevronDown, ChevronUp, ListOrdered, Settings2, Sparkles } from 'lucide-react'
 import { SetTagsDialog, SetCategoryDialog, RemoveTagsDialog } from './TorrentDialogs'
 import { DraggableTableHeader } from './DraggableTableHeader'
-import type { Torrent } from '@/types'
+import type { Torrent, TorrentCounts, Category } from '@/types'
 import {
   getLinuxIsoName,
   getLinuxCategory,
@@ -106,7 +116,7 @@ interface TorrentTableOptimizedProps {
   onTorrentSelect?: (torrent: Torrent | null) => void
   addTorrentModalOpen?: boolean
   onAddTorrentModalChange?: (open: boolean) => void
-  onFilteredDataUpdate?: (torrents: Torrent[], total: number, counts?: any, categories?: any, tags?: string[]) => void
+  onFilteredDataUpdate?: (torrents: Torrent[], total: number, counts?: TorrentCounts, categories?: Record<string, Category>, tags?: string[]) => void
   filterButton?: React.ReactNode
 }
 
@@ -140,15 +150,6 @@ function calculateMinWidth(text: string, padding: number = 48): number {
 }
 
 
-// Helper function to get default column order
-function getDefaultColumnOrder(): string[] {
-  const cols = createColumns(false)
-  return cols.map(col => {
-    if ('id' in col && col.id) return col.id
-    if ('accessorKey' in col && typeof col.accessorKey === 'string') return col.accessorKey
-    return null
-  }).filter((v): v is string => typeof v === 'string')
-}
 
 const createColumns = (incognitoMode: boolean): ColumnDef<Torrent>[] => [
   {
@@ -379,7 +380,7 @@ const createColumns = (incognitoMode: boolean): ColumnDef<Torrent>[] => [
           const url = new URL(tracker)
           displayTracker = url.hostname
         }
-      } catch (e) {
+      } catch {
         // If URL parsing fails, show as is
       }
       return (
@@ -394,8 +395,6 @@ const createColumns = (incognitoMode: boolean): ColumnDef<Torrent>[] => [
 
 export const TorrentTableOptimized = memo(function TorrentTableOptimized({ instanceId, filters, selectedTorrent, onTorrentSelect, addTorrentModalOpen, onAddTorrentModalChange, onFilteredDataUpdate, filterButton }: TorrentTableOptimizedProps) {
   // State management
-  // Move default values outside the component for stable references
-  // (This should be at module scope, not inside the component)
   const [sorting, setSorting] = usePersistedColumnSorting([])
   const [globalFilter, setGlobalFilter] = useState('')
   const [immediateSearch, setImmediateSearch] = useState('')
@@ -410,10 +409,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const [showRefetchIndicator, setShowRefetchIndicator] = useState(false)
 
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
-
-  // These should be defined at module scope, not inside the component, to ensure stable references
-  // (If not already, move them to the top of the file)
-  // const DEFAULT_COLUMN_VISIBILITY, DEFAULT_COLUMN_ORDER, DEFAULT_COLUMN_SIZING
 
   // Column visibility with persistence
   const [columnVisibility, setColumnVisibility] = usePersistedColumnVisibility(DEFAULT_COLUMN_VISIBILITY)
@@ -440,7 +435,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const effectiveSearch = immediateSearch || debouncedSearch
   
   // Check if search contains glob patterns
-  const isGlobSearch = globalFilter && /[*?[\]]/.test(globalFilter)
+  const isGlobSearch = !!globalFilter && /[*?[\]]/.test(globalFilter)
 
   // Fetch torrents data
   const { 
@@ -468,12 +463,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     if (onFilteredDataUpdate && torrents && totalCount !== undefined && !isLoading) {
       onFilteredDataUpdate(torrents, totalCount, counts, categories, tags)
     }
-  }, [totalCount, isLoading, torrents.length, counts, categories, tags, onFilteredDataUpdate]) // Update when data changes
+  }, [totalCount, isLoading, torrents, counts, categories, tags, onFilteredDataUpdate]) // Update when data changes (use torrents not length to catch content changes)
   
   // Show refetch indicator only if fetching takes more than 2 seconds
   // This avoids annoying flickering for fast instances
   useEffect(() => {
-    let timeoutId: NodeJS.Timeout
+    let timeoutId: ReturnType<typeof setTimeout>
     
     if (isFetching && !isLoading && torrents.length > 0) {
       // Only show indicator after 2 second delay
@@ -553,7 +548,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     enableRowSelection: true,
     // Enable column resizing
     enableColumnResizing: true,
-    columnResizeMode: 'onChange' as ColumnResizeMode,
+    columnResizeMode: 'onChange' as const,
   })
 
   // Get selected torrent hashes
@@ -589,7 +584,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     getScrollElement: () => parentRef.current,
     estimateSize: () => 40,
     overscan: 20, // Increased for smoother scrolling
-    onChange: (instance: any) => {
+    onChange: (instance) => {
       const lastItem = instance.getVirtualItems().at(-1)
       if (lastItem && lastItem.index >= loadedRows - 50) {
         loadMore()
@@ -599,6 +594,17 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   
   const virtualRows = virtualizer.getVirtualItems()
 
+  // Memoize minTableWidth to avoid recalculation on every row render
+  const minTableWidth = useMemo(() => {
+    return table.getVisibleLeafColumns().reduce((width, col) => {
+      return width + col.getSize()
+    }, 0)
+  }, [table, columnSizing, columnVisibility, columnOrder])
+
+  // Derive hidden columns state from table API for accuracy
+  const hasHiddenColumns = useMemo(() => {
+    return table.getAllLeafColumns().filter(c => c.getCanHide()).some(c => !c.getIsVisible())
+  }, [table, columnVisibility])
 
   // Reset loaded rows when data changes
   useEffect(() => {
@@ -647,7 +653,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         enable: data.enable,
       })
     },
-  onSuccess: async (_: unknown, variables: any) => {
+    onSuccess: async (_: unknown, variables: {
+      action: 'pause' | 'resume' | 'delete' | 'recheck' | 'reannounce' | 'increasePriority' | 'decreasePriority' | 'topPriority' | 'bottomPriority' | 'addTags' | 'removeTags' | 'setTags' | 'setCategory' | 'toggleAutoTMM'
+      hashes: string[]
+      deleteFiles?: boolean
+      tags?: string
+      category?: string
+      enable?: boolean
+    }) => {
       // For delete operations, optimistically remove from UI immediately
       if (variables.action === 'delete') {
         // Clear selection and context menu immediately
@@ -662,8 +675,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
           exact: false
         })
         
-  queries.forEach((query: any) => {
-          queryClient.setQueryData(query.queryKey, (oldData: any) => {
+        queries.forEach((query) => {
+          queryClient.setQueryData(query.queryKey, (oldData: {
+            torrents?: Torrent[]
+            total?: number
+            totalCount?: number
+          }) => {
             if (!oldData) return oldData
             return {
               ...oldData,
@@ -704,14 +721,18 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
           })
           
           // Optimistically update torrent states in all cached queries
-          queries.forEach((query: any) => {
-            queryClient.setQueryData(query.queryKey, (oldData: any) => {
+          queries.forEach((query) => {
+            queryClient.setQueryData(query.queryKey, (oldData: {
+              torrents?: Torrent[]
+              total?: number
+              totalCount?: number
+            }) => {
               if (!oldData?.torrents) return oldData
               
               // Check if this query has a status filter in its key
               // Query key structure: ['torrents-list', instanceId, currentPage, filters, search]
-              const queryKey = query.queryKey as any[]
-              const filters = queryKey[3] // filters is at index 3
+              const queryKey = query.queryKey as unknown[]
+              const filters = queryKey[3] as { status?: string[] } | undefined // filters is at index 3
               const statusFilters = filters?.status || []
               
               // Apply optimistic updates using our utility function
@@ -776,9 +797,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         action: 'setTags', 
         tags: tags.join(',') 
       })
-    } catch (error: any) {
+    } catch (error) {
       // If setTags fails due to version requirement, fall back to addTags
-      if (error.message?.includes('requires qBittorrent')) {
+      if ((error as Error).message?.includes('requires qBittorrent')) {
         await mutation.mutateAsync({ 
           hashes: contextMenuHashes,
           action: 'addTags', 
@@ -876,13 +897,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over } = event
     if (active && over && active.id !== over.id) {
-  setColumnOrder((currentOrder: string[]) => {
+      setColumnOrder((currentOrder) => {
         const oldIndex = currentOrder.indexOf(active.id as string)
         const newIndex = currentOrder.indexOf(over.id as string)
         return arrayMove(currentOrder, oldIndex, newIndex)
       })
     }
-  }, []) 
+  }, [setColumnOrder]) 
 
   return (
     <div className="h-full flex flex-col">
@@ -1093,7 +1114,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                   className="relative"
                 >
                   <Columns3 className="h-4 w-4" />
-                {Object.values(columnVisibility).some(v => v === false) && (
+                {hasHiddenColumns && (
                   <span className="absolute -top-1 -right-1 h-2 w-2 bg-primary rounded-full" />
                 )}
                 <span className="sr-only">Toggle columns</span>
@@ -1144,7 +1165,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         <div className="relative flex-1 overflow-auto scrollbar-thin" ref={parentRef}>
           <div style={{ position: 'relative', minWidth: 'min-content' }}>
             {/* Header */}
-            <div className="sticky top-0 bg-background border-b" style={{ zIndex: 50, position: 'sticky' }}>
+            <div className="sticky top-0 bg-background border-b" style={{ zIndex: 50 }}>
               <DndContext
                 sensors={sensors}
                 collisionDetection={closestCenter}
@@ -1155,10 +1176,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                   const headers = headerGroup.headers
                   const headerIds = headers.map(h => h.column.id)
                   
-                  // Calculate minimum table width based on visible columns
-                  const minTableWidth = table.getVisibleLeafColumns().reduce((width, col) => {
-                    return width + col.getSize()
-                  }, 0)
+                  // Use memoized minTableWidth
                   
                   return (
                     <SortableContext
@@ -1206,10 +1224,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                   const torrent = row.original
                   const isSelected = selectedTorrent?.hash === torrent.hash
                   
-                  // Calculate minimum table width based on visible columns
-                  const minTableWidth = table.getVisibleLeafColumns().reduce((width, col) => {
-                    return width + col.getSize()
-                  }, 0)
+                  // Use memoized minTableWidth
                 
                   return (
                     <ContextMenu key={torrent.hash}>
