@@ -194,18 +194,26 @@ jobs:
 
   docker:
     name: Build Docker images
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     needs: [test, web]
     strategy:
       fail-fast: true
       matrix:
-        platform:
-          - linux/amd64
-          - linux/amd64/v2
-          - linux/amd64/v3
-          - linux/arm/v6
-          - linux/arm/v7
-          - linux/arm64
+        include:
+          # x86 platforms on standard runners
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/amd64/v2
+            runner: ubuntu-latest
+          - platform: linux/amd64/v3
+            runner: ubuntu-latest
+          # ARM platforms on native ARM runners
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+          - platform: linux/arm/v7
+            runner: ubuntu-24.04-arm
+          - platform: linux/arm/v6
+            runner: ubuntu-24.04-arm
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -240,6 +248,10 @@ jobs:
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
+        # QEMU is still needed for cross-compilation between ARM variants (v6/v7 on arm64 runner)
+        # and for any builds that might fall back to x86 runners
+        with:
+          platforms: ${{ matrix.platform }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
