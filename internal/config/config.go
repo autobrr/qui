@@ -139,10 +139,16 @@ func (c *AppConfig) load(configPath string) error {
 }
 
 func (c *AppConfig) loadFromEnv() {
-	// Enable environment variable support
-	c.viper.SetEnvPrefix("qui")
-	c.viper.SetEnvKeyReplacer(strings.NewReplacer(".", "__"))
-	c.viper.AutomaticEnv()
+	// DO NOT use AutomaticEnv() - it reads ALL env vars and causes conflicts with K8s
+	// Instead, explicitly bind only the environment variables we want
+
+	// Bind specific QUI_* prefixed environment variables only
+	c.viper.BindEnv("host", "QUI_HOST")
+	c.viper.BindEnv("port", "QUI_PORT")
+	c.viper.BindEnv("baseUrl", "QUI_BASE_URL")
+	c.viper.BindEnv("sessionSecret", "QUI_SESSION_SECRET")
+	c.viper.BindEnv("logLevel", "QUI_LOG_LEVEL")
+	c.viper.BindEnv("logPath", "QUI_LOG_PATH")
 }
 
 func (c *AppConfig) watchConfig() {
