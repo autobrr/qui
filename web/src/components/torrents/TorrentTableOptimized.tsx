@@ -37,6 +37,7 @@ const DEFAULT_COLUMN_VISIBILITY = {
   priority: false,
 }
 const DEFAULT_COLUMN_SIZING = {}
+const WINDOW_SIZE = 200 // Size of the sliding window for virtualization
 
 // Helper function to get default column order (module scope for stable reference)
 function getDefaultColumnOrder(): string[] {
@@ -586,9 +587,31 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       const firstVisibleIndex = vRows[0].index;
       const lastVisibleIndex = vRows[vRows.length - 1].index;
       
-      // Calculate which window of 200 we should show based on scroll position
-      const newWindowStart = Math.floor(firstVisibleIndex / 200) * 200;
+      // Only change window when we've scrolled significantly beyond current window boundaries
+      const currentWindowEnd = windowStart + WINDOW_SIZE;
+      let newWindowStart = windowStart;
       
+      // Don't change windows if we're in the middle of a reset
+      if (isResettingRef.current) return;
+      
+      // Moving forward: only change window when we've scrolled well past the current window
+      if (firstVisibleIndex >= currentWindowEnd - 20) {
+        const targetWindow = Math.floor(firstVisibleIndex / WINDOW_SIZE) * WINDOW_SIZE;
+        // Only move forward, never backwards from user scrolling
+        if (targetWindow > windowStart) {
+          newWindowStart = targetWindow;
+        }
+      }
+      // Moving backward: only change when we've scrolled well before the current window
+      else if (lastVisibleIndex < windowStart + 20) {
+        const targetWindow = Math.max(0, Math.floor(lastVisibleIndex / WINDOW_SIZE) * WINDOW_SIZE);
+        // Only move backwards if we're significantly before current window
+        if (targetWindow < windowStart) {
+          newWindowStart = targetWindow;
+        }
+      }
+      
+      // Only update if we're actually changing windows and within bounds
       if (newWindowStart !== windowStart && newWindowStart >= 0 && newWindowStart < sortedTorrents.length) {
         console.log('Updating window from', windowStart, 'to', newWindowStart, 'based on visible range', firstVisibleIndex, '-', lastVisibleIndex);
         setWindowStart(newWindowStart);
@@ -618,59 +641,54 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
   // Track previous length to detect when new data arrives
   const prevTorrentsLengthRef = useRef(0)
+  const isResettingRef = useRef(false)
+  const prevFiltersRef = useRef(filters)
+  const prevSearchRef = useRef(effectiveSearch)
   
-  // Reset window when data changes or filters applied
+  // Reset window when filters change (consolidated logic)
   useEffect(() => {
-    if (sortedTorrents.length > 0) {
-      // Check if we have active filters
-      const hasActiveFilters = filters && (
-        (filters.status && filters.status.length > 0) ||
-        (filters.categories && filters.categories.length > 0) ||
-        (filters.tags && filters.tags.length > 0) ||
-        (filters.trackers && filters.trackers.length > 0)
-      )
+    const filtersChanged = JSON.stringify(prevFiltersRef.current) !== JSON.stringify(filters)
+    const searchChanged = prevSearchRef.current !== effectiveSearch
+    
+    if (filtersChanged || searchChanged) {
+      // Filters or search actually changed - reset to start
+      console.log('Filters/search changed, resetting window to start')
+      isResettingRef.current = true
+      setWindowStart(0)
+      setVirtualizeKey((prev: number) => prev + 1)
+      if (parentRef.current) {
+        parentRef.current.scrollTop = 0
+      }
       
+      // Update refs
+      prevFiltersRef.current = filters
+      prevSearchRef.current = effectiveSearch
+    } else if (sortedTorrents.length > 0) {
+      // Just data length changed (new data loaded) - maintain position
       const prevLength = prevTorrentsLengthRef.current
       const currentLength = sortedTorrents.length
       
-      if (hasActiveFilters || effectiveSearch) {
-        // For filtered/searched data, start from beginning
-        console.log('Filters/search active, resetting window to start')
-        setWindowStart(0)
-      } else if (currentLength > prevLength) {
-        // New data arrived from server - maintain current position 
-        console.log('New server data arrived:', prevLength, '→', currentLength)
+      if (currentLength > prevLength && prevLength > 0) {
+        console.log('New server data arrived:', prevLength, '→', currentLength, '- maintaining window position')
       }
       
       // Update the ref for next time
       prevTorrentsLengthRef.current = currentLength
     }
-  }, [sortedTorrents.length, windowStart, filters, effectiveSearch])
-
-  // Reset window when filters change
-  useEffect(() => {
-    // When filters change, start from beginning
-    console.log('Filters changed, resetting window to start')
-    setWindowStart(0)
-    // Force virtualizer recreation by changing the key
-    setVirtualizeKey((prev: number) => prev + 1)
-    // Scroll to top and force virtualizer recalculation
-    if (parentRef.current) {
-      parentRef.current.scrollTop = 0
-    }
-  }, [filters, sortedTorrents.length])
+  }, [sortedTorrents.length, filters, effectiveSearch]) // Keep dependencies but handle them carefully
 
   // Force virtualizer to recalculate when filters change (after virtualizer is created)
   useEffect(() => {
-    if (virtualizer) {
+    if (virtualizer && isResettingRef.current) {
       // Reset the virtualizer's state when filters change
       setTimeout(() => {
         virtualizer.measure()
         // Also scroll to top to ensure a clean start
         virtualizer.scrollToIndex(0, { align: 'start' })
+        isResettingRef.current = false
       }, 0)
     }
-  }, [filters, virtualizer])
+  }, [virtualizer, virtualizeKey])
 
 
   // Mutation for bulk actions
