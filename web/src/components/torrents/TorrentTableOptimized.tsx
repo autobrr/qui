@@ -424,7 +424,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   // Progressive loading state with async management  
   const [windowStart, setWindowStart] = useState(0) // Track which torrents to show in 200-item window
   const [virtualizeKey, setVirtualizeKey] = useState(0) // Force virtualizer recreation
-  const [scrollOffset, setScrollOffset] = useState(0) // Track scroll position for windowing
   
   // Query client for invalidating queries
   const queryClient = useQueryClient()
