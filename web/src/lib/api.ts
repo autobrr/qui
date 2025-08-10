@@ -147,11 +147,9 @@ class ApiClient {
     }
   ): Promise<TorrentResponse> {
     const searchParams = new URLSearchParams()
-    // Support both page and offset for backwards compatibility
+    // Prefer offset over page
     if (params.offset !== undefined) {
-      // Convert offset to page for backend
-      const page = Math.floor(params.offset / (params.limit || 500))
-      searchParams.set('page', page.toString())
+      searchParams.set('offset', params.offset.toString())
     } else if (params.page !== undefined) {
       searchParams.set('page', params.page.toString())
     }

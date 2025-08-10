@@ -229,7 +229,7 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 
 	// Parse query parameters
 	limit := 500
-	page := 0
+	offset := 0
 	sort := "addedOn"
 	order := "desc"
 	search := ""
@@ -255,9 +255,14 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if p := r.URL.Query().Get("page"); p != "" {
+	// Support both offset and page for backwards compatibility
+	if o := r.URL.Query().Get("offset"); o != "" {
+		if parsed, err := strconv.Atoi(o); err == nil && parsed >= 0 {
+			offset = parsed
+		}
+	} else if p := r.URL.Query().Get("page"); p != "" {
 		if parsed, err := strconv.Atoi(p); err == nil && parsed >= 0 {
-			page = parsed
+			offset = parsed * limit // Convert page to offset
 		}
 	}
 
@@ -360,7 +365,6 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 	h.sortTorrents(filteredTorrents, sort, order)
 
 	// Apply pagination
-	offset := page * limit
 	var paginatedTorrents []qbt.Torrent
 	if offset < len(filteredTorrents) {
 		end := offset + limit
