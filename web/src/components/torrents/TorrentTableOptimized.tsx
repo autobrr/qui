@@ -421,8 +421,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   // Column sizing with persistence
   const [columnSizing, setColumnSizing] = usePersistedColumnSizing(DEFAULT_COLUMN_SIZING)
   
-  // Progressive loading state with async management
-  const [loadedRows, setLoadedRows] = useState(100)
+  // Progressive loading state with async management  
+  const [loadedRows, setLoadedRows] = useState(50)
   const [virtualizeKey, setVirtualizeKey] = useState(0) // Force virtualizer recreation
   
   // Query client for invalidating queries
@@ -574,14 +574,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   // Load more rows as user scrolls (progressive loading)
   const loadMore = useCallback((): void => {
     // Check if we need to load more data from server
-    if (loadedRows >= sortedTorrents.length - 50 && !hasLoadedAll && !isLoadingMore) {
+    if (loadedRows >= sortedTorrents.length - 20 && !hasLoadedAll && !isLoadingMore) {
       console.log('Triggering loadMoreTorrents - need more server data')
       loadMoreTorrents()
       return
     }
     
     // Otherwise, just show more of the already loaded data progressively
-    const newLoadedRows = Math.min(loadedRows + 100, sortedTorrents.length)
+    const newLoadedRows = Math.min(loadedRows + 50, sortedTorrents.length)
     setLoadedRows(newLoadedRows)
   }, [loadedRows, sortedTorrents.length, hasLoadedAll, isLoadingMore, loadMoreTorrents])
 
@@ -620,6 +620,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     return table.getAllLeafColumns().filter(c => c.getCanHide()).some(c => !c.getIsVisible())
   }, [table, columnVisibility])
 
+  // Track previous length to detect when new data arrives
+  const prevTorrentsLengthRef = useRef(0)
+  
   // Reset loaded rows when data changes
   useEffect(() => {
     if (sortedTorrents.length > 0) {
@@ -631,30 +634,29 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         (filters.trackers && filters.trackers.length > 0)
       )
       
+      const prevLength = prevTorrentsLengthRef.current
+      const currentLength = sortedTorrents.length
+      
       if (hasActiveFilters || effectiveSearch) {
         // For filtered/searched data, show all available results
         setLoadedRows(sortedTorrents.length)
       } else if (loadedRows === 0) {
         // Initial load, show first batch
-        setLoadedRows(Math.min(200, sortedTorrents.length))
-      } else if (sortedTorrents.length < loadedRows) {
+        setLoadedRows(Math.min(100, sortedTorrents.length))
+      } else if (currentLength < loadedRows) {
         // Data decreased, adjust loaded rows
-        setLoadedRows(sortedTorrents.length)
-      } else if (sortedTorrents.length > loadedRows) {
-        // Data increased from server - only show new data if user was near the end
-        // This prevents automatically showing all new data without user scroll
-        const wasNearEnd = loadedRows >= sortedTorrents.length - 100
-        if (wasNearEnd) {
-          // User was near the end, so show the new data
-          setLoadedRows(sortedTorrents.length)
-        }
-        // If user wasn't near the end, keep loadedRows as is
-        // The user will scroll to see more when they want to
+        setLoadedRows(currentLength)
+      } else if (currentLength > prevLength) {
+        // New data arrived from server - always show it
+        // This happens when user scrolled and triggered server load
+        console.log('New server data arrived:', prevLength, '→', currentLength, 'updating loadedRows to:', currentLength)
+        setLoadedRows(currentLength)
       }
       
-      // Remove auto-trigger logic - let user scroll to load more
+      // Update the ref for next time
+      prevTorrentsLengthRef.current = currentLength
     }
-  }, [sortedTorrents.length, loadedRows, filters, effectiveSearch, hasLoadedAll, isLoadingMore, loadMoreTorrents])
+  }, [sortedTorrents.length, loadedRows, filters, effectiveSearch])
 
   // Reset loaded rows when filters change
   useEffect(() => {
