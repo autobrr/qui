@@ -73,6 +73,10 @@ QUI__SESSION_SECRET=...  # Auto-generated if not set
 
 # Logging
 QUI__LOG_LEVEL=INFO      # Options: ERROR, DEBUG, INFO, WARN, TRACE
+QUI__LOG_PATH=...        # Optional: log file path
+
+# Storage
+QUI__DATABASE_PATH=...   # Optional: custom database location (default: next to config)
 ```
 
 ## API
