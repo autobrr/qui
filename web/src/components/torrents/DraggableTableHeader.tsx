@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: MIT
+ */
+
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { flexRender, type Header } from '@tanstack/react-table'

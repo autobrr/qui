@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: MIT
+ */
+
 import type { Torrent } from '@/types'
 
 // State groups for easier checking

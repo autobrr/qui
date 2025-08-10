@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: MIT
+ */
+
 import { useState, useEffect } from 'react'
 import { getCurrentTheme, getCurrentThemeMode, setTheme as setThemeUtil, setThemeMode as setThemeModeUtil, type ThemeMode } from '@/utils/theme'
 

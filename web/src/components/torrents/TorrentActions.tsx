@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: MIT
+ */
+
 import { memo, useState, useCallback } from 'react'
 import type { ChangeEvent } from 'react'
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'

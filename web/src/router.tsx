@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: MIT
+ */
+
 import { createRouter } from '@tanstack/react-router'
 import { routeTree } from './routeTree.gen'
 import { getBaseUrl } from './lib/base-url'

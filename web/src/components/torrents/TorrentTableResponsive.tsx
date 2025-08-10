@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: MIT
+ */
+
 import { useEffect, useState } from 'react'
 import { TorrentTableOptimized } from './TorrentTableOptimized'
 import { TorrentCardsMobile } from './TorrentCardsMobile'
