@@ -461,6 +461,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   } = useTorrentsList(instanceId, {
     search: effectiveSearch,
     filters,
+    sorting,
   })
   
   // Call the callback when filtered data updates
@@ -506,22 +507,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     return torrents
   }, [torrents])
 
-  // Sort torrents client-side
-  const sortedTorrents = useMemo(() => {
-    if (sorting.length === 0) return filteredTorrents
-    const sorted = [...filteredTorrents]
-    const sort = sorting[0]
-    sorted.sort((a, b) => {
-      const aValue = a[sort.id as keyof Torrent]
-      const bValue = b[sort.id as keyof Torrent]
-      if (aValue === null || aValue === undefined) return 1
-      if (bValue === null || bValue === undefined) return -1
-      if (aValue < bValue) return sort.desc ? 1 : -1
-      if (aValue > bValue) return sort.desc ? -1 : 1
-      return 0
-    })
-    return sorted
-  }, [filteredTorrents, sorting])
+  // Use torrents directly from backend (already sorted)
+  const sortedTorrents = filteredTorrents
 
   // Memoize columns to avoid unnecessary recalculations
   const columns = useMemo(() => createColumns(incognitoMode), [incognitoMode])

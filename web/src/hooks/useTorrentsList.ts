@@ -12,6 +12,10 @@ interface UseTorrentsListOptions {
     tags: string[]
     trackers: string[]
   }
+  sorting?: {
+    id: string
+    desc: boolean
+  }[]
 }
 
 // Simplified hook that trusts the backend's stale-while-revalidate pattern
@@ -20,7 +24,7 @@ export function useTorrentsList(
   instanceId: number,
   options: UseTorrentsListOptions = {}
 ) {
-  const { enabled = true, search, filters } = options
+  const { enabled = true, search, filters, sorting } = options
   
   const [offset, setOffset] = useState(0)
   const [allTorrents, setAllTorrents] = useState<Torrent[]>([])
@@ -68,14 +72,18 @@ export function useTorrentsList(
     setHasLoadedAll(false)
   }, [instanceId, filters, search])
   
+  // Convert frontend sorting to backend format
+  const backendSort = sorting && sorting.length > 0 ? sorting[0].id : 'addedOn'
+  const backendOrder = sorting && sorting.length > 0 ? (sorting[0].desc ? 'desc' : 'asc') : 'desc'
+  
   // Query for torrents - backend handles stale-while-revalidate
   const { data, isLoading, isFetching } = useQuery<TorrentResponse>({
-    queryKey: ['torrents-list', instanceId, offset, filters, search],
+    queryKey: ['torrents-list', instanceId, offset, filters, search, backendSort, backendOrder],
     queryFn: () => api.getTorrents(instanceId, { 
       offset, 
       limit,
-      sort: 'addedOn',
-      order: 'desc',
+      sort: backendSort,
+      order: backendOrder,
       search,
       filters
     }),
