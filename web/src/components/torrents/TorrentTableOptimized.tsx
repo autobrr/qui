@@ -653,9 +653,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       } else if (sortedTorrents.length < loadedRows) {
         // Data decreased, adjust loaded rows
         setLoadedRows(sortedTorrents.length)
-      } else if (sortedTorrents.length > loadedRows && loadedRows < 200) {
-        // Data increased but we haven't shown the initial batch yet
-        setLoadedRows(Math.min(200, sortedTorrents.length))
+      } else if (sortedTorrents.length > loadedRows) {
+        // Data increased from server - always show all available data
+        // This fixes the pagination bug where new server data wasn't being displayed
+        setLoadedRows(sortedTorrents.length)
       }
       
       // If we have less than 600 torrents total and haven't loaded all from server, trigger load
@@ -672,7 +673,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     // instead of limiting to 100, since filtering typically reduces the dataset significantly
     setLoadedRows(sortedTorrents.length)
     // Force virtualizer recreation by changing the key
-    setVirtualizeKey(prev => prev + 1)
+    setVirtualizeKey((prev: number) => prev + 1)
     // Scroll to top and force virtualizer recalculation
     if (parentRef.current) {
       parentRef.current.scrollTop = 0

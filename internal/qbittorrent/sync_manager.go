@@ -43,20 +43,20 @@ func (sm *SyncManager) getOrCreateState(instanceID int) *SyncState {
 	sm.mu.RLock()
 	state, exists := sm.states[instanceID]
 	sm.mu.RUnlock()
-	
+
 	if exists {
 		return state
 	}
-	
+
 	// Only take write lock if we need to create
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
-	
+
 	// Double-check after write lock
 	if state, exists := sm.states[instanceID]; exists {
 		return state
 	}
-	
+
 	state = &SyncState{}
 	sm.states[instanceID] = state
 	return state
@@ -85,7 +85,7 @@ func (sm *SyncManager) GetMainData(ctx context.Context, instanceID int) (*qbt.Ma
 		state.mu.RLock()
 		syncManager := state.SyncManager
 		state.mu.RUnlock()
-		
+
 		if syncManager != nil {
 			return syncManager.GetData(), nil
 		}
@@ -121,7 +121,7 @@ func (sm *SyncManager) GetMainData(ctx context.Context, instanceID int) (*qbt.Ma
 			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to start sync manager")
 			return nil, err
 		}
-		
+
 		// Update state with new sync manager
 		state.mu.Lock()
 		state.SyncManager = newSyncManager
@@ -129,7 +129,7 @@ func (sm *SyncManager) GetMainData(ctx context.Context, instanceID int) (*qbt.Ma
 		state.LastError = nil
 		state.HasInitialSync = true
 		state.mu.Unlock()
-		
+
 		mainData = newSyncManager.GetData()
 	} else {
 		// Just sync existing manager (network operation - no locks held)
@@ -142,7 +142,7 @@ func (sm *SyncManager) GetMainData(ctx context.Context, instanceID int) (*qbt.Ma
 			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to sync data")
 			return nil, err
 		}
-		
+
 		// Update state
 		state.mu.Lock()
 		state.LastSync = time.Now()
@@ -151,7 +151,7 @@ func (sm *SyncManager) GetMainData(ctx context.Context, instanceID int) (*qbt.Ma
 			state.HasInitialSync = true
 		}
 		state.mu.Unlock()
-		
+
 		mainData = syncManager.GetData()
 	}
 

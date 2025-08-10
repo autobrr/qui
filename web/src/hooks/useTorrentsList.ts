@@ -22,11 +22,11 @@ export function useTorrentsList(
 ) {
   const { enabled = true, search, filters } = options
   
-  const [currentPage, setCurrentPage] = useState(0)
+  const [offset, setOffset] = useState(0)
   const [allTorrents, setAllTorrents] = useState<Torrent[]>([])
   const [hasLoadedAll, setHasLoadedAll] = useState(false)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
-  const pageSize = 500 // Load 500 at a time (backend default)
+  const limit = 500 // Load 500 at a time (backend default)
   
   const [serverState, setServerState] = useState<ServerState | null>(null)
   
@@ -63,17 +63,17 @@ export function useTorrentsList(
   
   // Reset state when instanceId, filters, or search change
   useEffect(() => {
-    setCurrentPage(0)
+    setOffset(0)
     setAllTorrents([])
     setHasLoadedAll(false)
   }, [instanceId, filters, search])
   
   // Query for torrents - backend handles stale-while-revalidate
   const { data, isLoading, isFetching } = useQuery<TorrentResponse>({
-    queryKey: ['torrents-list', instanceId, currentPage, filters, search],
+    queryKey: ['torrents-list', instanceId, offset, filters, search],
     queryFn: () => api.getTorrents(instanceId, { 
-      page: currentPage, 
-      limit: pageSize,
+      offset, 
+      limit,
       sort: 'addedOn',
       order: 'desc',
       search,
@@ -90,8 +90,8 @@ export function useTorrentsList(
   // Update torrents when data arrives
   useEffect(() => {
     if (data?.torrents) {
-      if (currentPage === 0) {
-        // First page, replace all
+      if (offset === 0) {
+        // First load, replace all
         setAllTorrents(data.torrents)
       } else {
         // Append to existing for pagination
@@ -105,7 +105,7 @@ export function useTorrentsList(
       
       setIsLoadingMore(false)
     }
-  }, [data, currentPage, pageSize])
+  }, [data, offset, limit])
 
   // Separate effect to check if all data is loaded
   useEffect(() => {
@@ -116,20 +116,20 @@ export function useTorrentsList(
       } else {
         // Fallback logic: check if we received fewer torrents than requested
         const receivedCount = data.torrents.length
-        const isLastPage = receivedCount < pageSize
+        const isLastLoad = receivedCount < limit
         const totalFromServer = data.total || 0
         const currentlyLoaded = allTorrents.length
         
-        setHasLoadedAll(isLastPage || currentlyLoaded >= totalFromServer)
+        setHasLoadedAll(isLastLoad || currentlyLoaded >= totalFromServer)
       }
     }
-  }, [data, allTorrents.length, pageSize])
+  }, [data, allTorrents.length, limit])
   
   // Load more function for pagination
   const loadMore = () => {
     if (!hasLoadedAll && !isLoadingMore && !isFetching) {
       setIsLoadingMore(true)
-      setCurrentPage(prev => prev + 1)
+      setOffset((prev: number) => prev + limit)
     }
   }
   
@@ -170,7 +170,7 @@ export function useTorrentsList(
     categories: data?.categories, // Return categories from backend
     tags: data?.tags, // Return tags from backend
     serverState, // Include server state with user statistics
-    isLoading: isLoading && currentPage === 0,
+    isLoading: isLoading && offset === 0,
     isFetching, // True when React Query is fetching (but we may have stale data)
     isLoadingMore,
     hasLoadedAll,
