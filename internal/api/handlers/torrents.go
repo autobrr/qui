@@ -175,20 +175,20 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 		search = s
 	}
 
-	// Get client
-	client, err := h.getClient(r.Context(), instanceID)
+	// Get all data from sync manager
+	syncData, err := h.syncManager.GetMainData(r.Context(), instanceID)
 	if err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client")
-		RespondError(w, http.StatusInternalServerError, "Failed to get client")
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to sync data")
+		RespondError(w, http.StatusInternalServerError, "Failed to sync data")
 		return
 	}
 
-	// Get all torrents directly from client
-	allTorrents, err := client.GetTorrentsCtx(r.Context(), qbt.TorrentFilterOptions{})
-	if err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get torrents")
-		RespondError(w, http.StatusInternalServerError, "Failed to get torrents")
-		return
+	// Extract torrents from sync data
+	var allTorrents []qbt.Torrent
+	if syncData != nil && syncData.Torrents != nil {
+		for _, torrent := range syncData.Torrents {
+			allTorrents = append(allTorrents, torrent)
+		}
 	}
 
 	// Apply search filter if provided
@@ -200,6 +200,14 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 	// Calculate stats and counts
 	stats := h.calculateStats(filteredTorrents)
 	counts := h.calculateCounts(filteredTorrents)
+
+	// Get categories and tags from sync data
+	var categories map[string]qbt.Category
+	var tags []string
+	if syncData != nil {
+		categories = syncData.Categories
+		tags = syncData.Tags
+	}
 
 	// Sort torrents
 	h.sortTorrents(filteredTorrents, sort, order)
@@ -216,12 +224,14 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := &TorrentResponse{
-		Torrents:  paginatedTorrents,
-		Total:     len(filteredTorrents),
-		Stats:     stats,
-		Counts:    counts,
-		HasMore:   offset+limit < len(filteredTorrents),
-		SessionID: sessionID,
+		Torrents:   paginatedTorrents,
+		Total:      len(filteredTorrents),
+		Stats:      stats,
+		Counts:     counts,
+		Categories: categories,
+		Tags:       tags,
+		HasMore:    offset+limit < len(filteredTorrents),
+		SessionID:  sessionID,
 	}
 
 	RespondJSON(w, http.StatusOK, response)
@@ -236,7 +246,7 @@ func (h *TorrentsHandler) SyncTorrents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Sync to get latest data using our sync manager
-	syncData, err := h.syncManager.Sync(r.Context(), instanceID)
+	syncData, err := h.syncManager.GetMainData(r.Context(), instanceID)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to sync data")
 		RespondError(w, http.StatusInternalServerError, "Failed to sync data")
@@ -476,7 +486,7 @@ func (h *TorrentsHandler) GetCategories(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Sync to get latest data using our sync manager
-	syncData, err := h.syncManager.Sync(r.Context(), instanceID)
+	syncData, err := h.syncManager.GetMainData(r.Context(), instanceID)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to sync data")
 		RespondError(w, http.StatusInternalServerError, "Failed to sync data")
@@ -497,7 +507,7 @@ func (h *TorrentsHandler) GetTags(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Sync to get latest data using our sync manager
-	syncData, err := h.syncManager.Sync(r.Context(), instanceID)
+	syncData, err := h.syncManager.GetMainData(r.Context(), instanceID)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to sync data")
 		RespondError(w, http.StatusInternalServerError, "Failed to sync data")

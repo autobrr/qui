@@ -14,8 +14,7 @@ type SyncState struct {
 	LastSync       time.Time
 	LastError      error
 	HasInitialSync bool
-	MainData       *qbt.MainData
-	RID            int64
+	SyncManager    *qbt.SyncManager
 	mu             sync.RWMutex
 }
 
@@ -46,9 +45,7 @@ func (sm *SyncManager) getOrCreateState(instanceID int) *SyncState {
 
 	state, exists := sm.states[instanceID]
 	if !exists {
-		state = &SyncState{
-			RID: 0,
-		}
+		state = &SyncState{}
 		sm.states[instanceID] = state
 	}
 	return state
@@ -68,15 +65,17 @@ func (sm *SyncManager) needsSync(state *SyncState) bool {
 		time.Since(state.LastSync) > 5*time.Second
 }
 
-// Sync performs synchronization for an instance
-func (sm *SyncManager) Sync(ctx context.Context, instanceID int) (*qbt.MainData, error) {
+// GetMainData gets the main data for an instance, using cached data if recent enough
+func (sm *SyncManager) GetMainData(ctx context.Context, instanceID int) (*qbt.MainData, error) {
 	state := sm.getOrCreateState(instanceID)
 
 	// Check if sync is needed
 	if !sm.needsSync(state) {
 		state.mu.RLock()
 		defer state.mu.RUnlock()
-		return state.MainData, nil
+		if state.SyncManager != nil {
+			return state.SyncManager.GetData(), nil
+		}
 	}
 
 	// Get client
@@ -92,36 +91,44 @@ func (sm *SyncManager) Sync(ctx context.Context, instanceID int) (*qbt.MainData,
 	state.mu.Lock()
 	defer state.mu.Unlock()
 
-	syncData, err := client.SyncMainDataCtx(ctx, state.RID)
-	if err != nil {
-		state.LastError = err
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to sync main data")
-		return nil, err
+	// Initialize SyncManager if nil
+	if state.SyncManager == nil {
+		state.SyncManager = qbt.NewSyncManager(client)
+		err = state.SyncManager.Start(ctx)
+		if err != nil {
+			state.LastError = err
+			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to start sync manager")
+			return nil, err
+		}
+	} else {
+		// Just sync if already initialized
+		err = state.SyncManager.Sync(ctx)
+		if err != nil {
+			state.LastError = err
+			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to sync data")
+			return nil, err
+		}
 	}
 
 	// Update state
 	state.LastSync = time.Now()
 	state.LastError = nil
 	state.HasInitialSync = true
-	state.MainData = syncData
-	if syncData.Rid > 0 {
-		state.RID = syncData.Rid
-	}
 
-	return syncData, nil
+	return state.SyncManager.GetData(), nil
 }
 
 // GetTorrents gets cached torrents or syncs if needed
 func (sm *SyncManager) GetTorrents(ctx context.Context, instanceID int) ([]qbt.Torrent, error) {
-	syncData, err := sm.Sync(ctx, instanceID)
+	mainData, err := sm.GetMainData(ctx, instanceID)
 	if err != nil {
 		return nil, err
 	}
 
 	// Extract torrents from sync data
 	var torrents []qbt.Torrent
-	if syncData != nil && syncData.Torrents != nil {
-		for _, torrent := range syncData.Torrents {
+	if mainData != nil && mainData.Torrents != nil {
+		for _, torrent := range mainData.Torrents {
 			torrents = append(torrents, torrent)
 		}
 	}
@@ -134,20 +141,20 @@ func (sm *SyncManager) InvalidateCache(instanceID int) {
 	state := sm.getOrCreateState(instanceID)
 	state.mu.Lock()
 	defer state.mu.Unlock()
-	
+
 	// Force next call to sync by clearing the last sync time
 	state.LastSync = time.Time{}
 }
 
 // GetStats gets torrent statistics from sync data
 func (sm *SyncManager) GetStats(ctx context.Context, instanceID int) (*qbt.ServerState, error) {
-	syncData, err := sm.Sync(ctx, instanceID)
+	mainData, err := sm.GetMainData(ctx, instanceID)
 	if err != nil {
 		return nil, err
 	}
 
-	if syncData != nil {
-		return &syncData.ServerState, nil
+	if mainData != nil {
+		return &mainData.ServerState, nil
 	}
 
 	return nil, nil
