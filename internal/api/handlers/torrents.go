@@ -180,26 +180,20 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 		search = s
 	}
 
-	// Get sync manager
-	syncMgr, err := h.getSyncManager(r.Context(), instanceID)
+	// Get client
+	client, err := h.getClient(instanceID)
 	if err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get sync manager")
-		RespondError(w, http.StatusInternalServerError, "Failed to get sync manager")
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client")
+		RespondError(w, http.StatusInternalServerError, "Failed to get client")
 		return
 	}
 
-	// Sync to get latest data
-	if err := syncMgr.Sync(r.Context()); err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to sync data")
-		RespondError(w, http.StatusInternalServerError, "Failed to sync data")
+	// Get all torrents directly from client
+	allTorrents, err := client.GetTorrentsCtx(r.Context(), qbt.TorrentFilterOptions{})
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get torrents")
+		RespondError(w, http.StatusInternalServerError, "Failed to get torrents")
 		return
-	}
-
-	// Get all torrents
-	torrentsMap := syncMgr.GetTorrents()
-	allTorrents := make([]qbt.Torrent, 0, len(torrentsMap))
-	for _, torrent := range torrentsMap {
-		allTorrents = append(allTorrents, torrent)
 	}
 
 	// Apply search filter if provided
