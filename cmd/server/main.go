@@ -29,6 +29,8 @@ import (
 var (
 	Version = "dev"
 	cfgFile string
+	dbPath  string
+	logPath string
 
 	// Publisher credentials - set during build via ldflags
 	PolarAccessToken = ""           // Set via: -X main.PolarAccessToken=your-token
@@ -50,6 +52,8 @@ multiple qBittorrent instances with support for 10k+ torrents.`,
 func init() {
 	cobra.OnInitialize(initConfig)
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is OS-specific: ~/.config/qui/config.toml or %APPDATA%\\qui\\config.toml)")
+	rootCmd.PersistentFlags().StringVar(&dbPath, "database", "", "database file path (default is next to config file)")
+	rootCmd.PersistentFlags().StringVar(&logPath, "log-path", "", "log file path (default is stdout)")
 	rootCmd.Version = Version
 }
 
@@ -67,6 +71,17 @@ func runServer() {
 	cfg, err := config.New(cfgFile)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize configuration")
+	}
+
+	// Override with CLI flags if provided
+	if dbPath != "" {
+		os.Setenv("QUI__DATABASE_PATH", dbPath)
+		cfg.Config.DatabasePath = dbPath
+		cfg.SetDatabasePath(dbPath)
+	}
+	if logPath != "" {
+		os.Setenv("QUI__LOG_PATH", logPath)
+		cfg.Config.LogPath = logPath
 	}
 
 	cfg.ApplyLogConfig()

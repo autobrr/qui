@@ -45,8 +45,8 @@ func New(configPath string) (*AppConfig, error) {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
-	// Update database path after config is unmarshaled
-	c.updateDatabasePath()
+	// Resolve database path after config is unmarshaled
+	c.resolveDatabasePath()
 
 	// Watch for config changes
 	c.watchConfig()
@@ -96,8 +96,6 @@ func (c *AppConfig) load(configPath string) error {
 				if err := c.viper.ReadInConfig(); err != nil {
 					return fmt.Errorf("failed to read newly created config: %w", err)
 				}
-				// Database path will be determined after config is loaded
-				c.determineDatabasePath()
 				return nil
 			}
 			return fmt.Errorf("failed to read config: %w", err)
@@ -130,9 +128,6 @@ func (c *AppConfig) load(configPath string) error {
 			return fmt.Errorf("failed to read config: %w", err)
 		}
 	}
-
-	// Determine database path after config is loaded
-	c.determineDatabasePath()
 
 	return nil
 }
@@ -224,10 +219,7 @@ sessionSecret = "{{ .sessionSecret }}"
 # Optional
 #logPath = "log/qui.log"
 
-# Database file path
-# If not defined, database will be created next to the config file
-# Useful for read-only config directories (e.g., /etc/qui/config.toml with /var/db/qui/qui.db)
-# Optional
+# Database path (default: next to config file)
 #databasePath = "/var/db/qui/qui.db"
 
 # Log level
@@ -371,34 +363,28 @@ func setupLogFile(path string) error {
 	return nil
 }
 
-// determineDatabasePath sets the database path based on configuration (initial load)
-func (c *AppConfig) determineDatabasePath() {
-	// Default behavior: place database next to config file
-	if c.viper.ConfigFileUsed() != "" {
-		configDir := filepath.Dir(c.viper.ConfigFileUsed())
-		c.databasePath = filepath.Join(configDir, "qui.db")
-		log.Info().Msgf("Database path set to: %s (auto-detected next to config)", c.databasePath)
-	} else {
-		// Fallback to current directory if no config file
-		c.databasePath = "qui.db"
-		log.Warn().Msg("No config file found, using current directory for database")
-	}
-}
-
-// updateDatabasePath updates the database path after config is unmarshaled
-func (c *AppConfig) updateDatabasePath() {
-	// Check if database path is explicitly configured (from config file or env var)
+// resolveDatabasePath sets the database path based on configuration
+func (c *AppConfig) resolveDatabasePath() {
 	if c.Config.DatabasePath != "" {
-		// Use the explicitly configured path
+		// Use explicitly configured path
 		c.databasePath = c.Config.DatabasePath
-		log.Info().Msgf("Database path updated to: %s (configured)", c.databasePath)
+	} else if c.viper.ConfigFileUsed() != "" {
+		// Default: place database next to config file
+		c.databasePath = filepath.Join(filepath.Dir(c.viper.ConfigFileUsed()), "qui.db")
+	} else {
+		// Fallback to current directory
+		c.databasePath = "qui.db"
 	}
-	// Otherwise keep the default path set by determineDatabasePath
 }
 
 // GetDatabasePath returns the path to the database file
 func (c *AppConfig) GetDatabasePath() string {
 	return c.databasePath
+}
+
+// SetDatabasePath sets the database path (used by CLI flags)
+func (c *AppConfig) SetDatabasePath(path string) {
+	c.databasePath = path
 }
 
 // ApplyLogConfig applies the log level and log file configuration
