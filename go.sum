@@ -2,6 +2,8 @@ github.com/Masterminds/semver v1.5.0 h1:H65muMkzWKEuNDnfl9d70GUjFniHKHRbFPGBuZ3Q
 github.com/Masterminds/semver v1.5.0/go.mod h1:MB6lktGJrhw8PrUyiEoblNEGEQ+RzHPF078ddwwvV3Y=
 github.com/autobrr/go-qbittorrent v1.14.1-0.20250809205136-b29e593bdd31 h1:QHdRR6RtUVy8KhXyooDZNn8lwb8F8y/NGPYAj8sK7ic=
 github.com/autobrr/go-qbittorrent v1.14.1-0.20250809205136-b29e593bdd31/go.mod h1:AIx3ildOr1OqejxvWI4ezKth5FEfwgvb2cOp1J1TbJQ=
+github.com/autobrr/go-qbittorrent v1.14.1-0.20250810030950-4464d9eb53ce h1:BYQadJHrcS30z1kLoBmi3zUm4nnIS3GQRQP7+LUnrlk=
+github.com/autobrr/go-qbittorrent v1.14.1-0.20250810030950-4464d9eb53ce/go.mod h1:AIx3ildOr1OqejxvWI4ezKth5FEfwgvb2cOp1J1TbJQ=
 github.com/avast/retry-go v3.0.0+incompatible h1:4SOWQ7Qs+oroOTQOYnAHqelpCO0biHSxpiH9JdtuBj0=
 github.com/avast/retry-go v3.0.0+incompatible/go.mod h1:XtSnn+n/sHqQIpZ10K1qAevBhOOCWBLXXy3hyiqqBrY=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=

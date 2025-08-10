@@ -41,16 +41,11 @@ type TorrentStats struct {
 
 // TorrentCounts represents torrent counts by status
 type TorrentCounts struct {
-	All         int `json:"all"`
-	Downloading int `json:"downloading"`
-	Seeding     int `json:"seeding"`
-	Completed   int `json:"completed"`
-	Paused      int `json:"paused"`
-	Active      int `json:"active"`
-	Inactive    int `json:"inactive"`
-	Resumed     int `json:"resumed"`
-	Stalled     int `json:"stalled"`
-	Error       int `json:"error"`
+	Status     map[string]int `json:"status"`
+	Categories map[string]int `json:"categories"`
+	Tags       map[string]int `json:"tags"`
+	Trackers   map[string]int `json:"trackers"`
+	Total      int            `json:"total"`
 }
 
 type TorrentsHandler struct {
@@ -74,7 +69,7 @@ func (h *TorrentsHandler) calculateStats(torrents []qbt.Torrent) *TorrentStats {
 	stats.Total = len(torrents)
 
 	for _, torrent := range torrents {
-		switch strings.ToLower(string(torrent.State)) {
+		switch string(torrent.State) {
 		case "downloading", "metadl", "stalledDL", "forcedDL", "queuedDL":
 			stats.Downloading++
 			stats.TotalDownloadSpeed += int(torrent.DlSpeed)
@@ -94,45 +89,134 @@ func (h *TorrentsHandler) calculateStats(torrents []qbt.Torrent) *TorrentStats {
 	return stats
 }
 
-// calculateCounts calculates torrent counts by status
+// calculateCounts calculates torrent counts by status (legacy function - now we use calculateDetailedCounts)
 func (h *TorrentsHandler) calculateCounts(torrents []qbt.Torrent) *TorrentCounts {
-	counts := &TorrentCounts{}
-	counts.All = len(torrents)
+	counts := &TorrentCounts{
+		Status:     make(map[string]int),
+		Categories: make(map[string]int),
+		Tags:       make(map[string]int),
+		Trackers:   make(map[string]int),
+		Total:      len(torrents),
+	}
+
+	// Initialize status counts
+	counts.Status["all"] = len(torrents)
+	counts.Status["downloading"] = 0
+	counts.Status["seeding"] = 0
+	counts.Status["completed"] = 0
+	counts.Status["paused"] = 0
+	counts.Status["active"] = 0
+	counts.Status["inactive"] = 0
+	counts.Status["resumed"] = 0
+	counts.Status["stalled"] = 0
+	counts.Status["error"] = 0
 
 	for _, torrent := range torrents {
-		state := strings.ToLower(string(torrent.State))
+		state := string(torrent.State)
 
 		switch state {
 		case "downloading", "metadl", "stalledDL", "forcedDL", "queuedDL":
-			counts.Downloading++
+			counts.Status["downloading"]++
 		case "uploading", "stalledUP", "forcedUP", "queuedUP":
-			counts.Seeding++
+			counts.Status["seeding"]++
 		case "pausedDL", "pausedUP":
-			counts.Paused++
+			counts.Status["paused"]++
 		case "error", "missingFiles":
-			counts.Error++
+			counts.Status["error"]++
 		}
 
 		if torrent.Progress >= 1.0 {
-			counts.Completed++
+			counts.Status["completed"]++
 		}
 
 		if torrent.DlSpeed > 0 || torrent.UpSpeed > 0 {
-			counts.Active++
+			counts.Status["active"]++
 		} else {
-			counts.Inactive++
+			counts.Status["inactive"]++
 		}
 
 		if strings.Contains(state, "stalled") {
-			counts.Stalled++
+			counts.Status["stalled"]++
 		}
 
 		if !strings.Contains(state, "paused") {
-			counts.Resumed++
+			counts.Status["resumed"]++
 		}
 	}
 
 	return counts
+}
+
+// calculateDetailedCounts calculates detailed counts for filter sidebar
+func (h *TorrentsHandler) calculateDetailedCounts(torrents []qbt.Torrent) map[string]int {
+	detailedCounts := make(map[string]int)
+
+	// Count by status filters (matching frontend logic)
+	statusFilters := []string{"all", "downloading", "seeding", "completed", "paused", "active", "inactive", "resumed", "stalled", "stalled_uploading", "stalled_downloading", "errored", "checking", "moving"}
+	for _, status := range statusFilters {
+		filtered := h.filterTorrentsByStatus(torrents, status)
+		detailedCounts["status:"+status] = len(filtered)
+	}
+
+	// Count by categories
+	categoryMap := make(map[string]int)
+	for _, torrent := range torrents {
+		category := torrent.Category
+		if category == "" {
+			categoryMap[""] += 1 // Uncategorized
+		} else {
+			categoryMap[category] += 1
+		}
+	}
+	for category, count := range categoryMap {
+		detailedCounts["category:"+category] = count
+	}
+
+	// Count by tags
+	tagMap := make(map[string]int)
+	untaggedCount := 0
+	for _, torrent := range torrents {
+		if torrent.Tags == "" {
+			untaggedCount++
+		} else {
+			tags := strings.Split(torrent.Tags, ",")
+			for _, tag := range tags {
+				tag = strings.TrimSpace(tag)
+				if tag != "" {
+					tagMap[tag] += 1
+				}
+			}
+		}
+	}
+	detailedCounts["tag:"] = untaggedCount // Untagged
+	for tag, count := range tagMap {
+		detailedCounts["tag:"+tag] = count
+	}
+
+	// Count by trackers
+	trackerMap := make(map[string]int)
+	for _, torrent := range torrents {
+		tracker := torrent.Tracker
+		if tracker == "" {
+			trackerMap[""] += 1 // No tracker
+		} else {
+			// Extract domain from tracker URL for grouping
+			if strings.Contains(tracker, "://") {
+				parts := strings.Split(tracker, "://")
+				if len(parts) > 1 {
+					domain := strings.Split(parts[1], "/")[0]
+					trackerMap[domain] += 1
+				}
+			} else {
+				trackerMap[tracker] += 1
+			}
+		}
+	}
+	for tracker, count := range trackerMap {
+		detailedCounts["tracker:"+tracker] = count
+	}
+
+	return detailedCounts
 }
 
 // ListTorrents returns paginated torrents for an instance with enhanced metadata
@@ -150,6 +234,20 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 	order := "desc"
 	search := ""
 	sessionID := r.Header.Get("X-Session-ID")
+
+	// Parse filters from JSON if provided
+	var filters struct {
+		Status     []string `json:"status"`
+		Categories []string `json:"categories"`
+		Tags       []string `json:"tags"`
+		Trackers   []string `json:"trackers"`
+	}
+
+	if filtersParam := r.URL.Query().Get("filters"); filtersParam != "" {
+		if err := json.Unmarshal([]byte(filtersParam), &filters); err != nil {
+			log.Error().Err(err).Str("filters", filtersParam).Msg("Failed to parse filters JSON")
+		}
+	}
 
 	if l := r.URL.Query().Get("limit"); l != "" {
 		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 2000 {
@@ -184,10 +282,12 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Extract torrents from sync data
-	var allTorrents []qbt.Torrent
-	if syncData != nil && syncData.Torrents != nil {
-		for _, torrent := range syncData.Torrents {
-			allTorrents = append(allTorrents, torrent)
+	allTorrents := make([]qbt.Torrent, 0, len(syncData.Torrents))
+	if syncData != nil {
+		if syncData.Torrents != nil {
+			for _, torrent := range syncData.Torrents {
+				allTorrents = append(allTorrents, torrent)
+			}
 		}
 	}
 
@@ -197,9 +297,56 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 		filteredTorrents = h.filterTorrentsBySearch(allTorrents, search)
 	}
 
+	// Apply status filters if provided
+	if len(filters.Status) > 0 {
+		filteredTorrents = h.filterTorrentsByStatuses(filteredTorrents, filters.Status)
+	}
+
+	// Apply category filters if provided
+	if len(filters.Categories) > 0 {
+		filteredTorrents = h.filterTorrentsByCategories(filteredTorrents, filters.Categories)
+	}
+
+	// Apply tag filters if provided
+	if len(filters.Tags) > 0 {
+		filteredTorrents = h.filterTorrentsByTags(filteredTorrents, filters.Tags)
+	}
+
+	// Apply tracker filters if provided
+	if len(filters.Trackers) > 0 {
+		filteredTorrents = h.filterTorrentsByTrackers(filteredTorrents, filters.Trackers)
+	}
+
 	// Calculate stats and counts
 	stats := h.calculateStats(filteredTorrents)
-	counts := h.calculateCounts(filteredTorrents)
+
+	// Calculate detailed counts for filter sidebar (using all torrents, not filtered ones)
+	detailedCounts := h.calculateDetailedCounts(allTorrents)
+
+	// Convert flat counts to structured format expected by frontend
+	structuredCounts := &TorrentCounts{
+		Status:     make(map[string]int),
+		Categories: make(map[string]int),
+		Tags:       make(map[string]int),
+		Trackers:   make(map[string]int),
+		Total:      len(allTorrents),
+	}
+
+	for key, count := range detailedCounts {
+		if strings.HasPrefix(key, "status:") {
+			statusKey := strings.TrimPrefix(key, "status:")
+			structuredCounts.Status[statusKey] = count
+		} else if strings.HasPrefix(key, "category:") {
+			categoryKey := strings.TrimPrefix(key, "category:")
+			structuredCounts.Categories[categoryKey] = count
+		} else if strings.HasPrefix(key, "tag:") {
+			tagKey := strings.TrimPrefix(key, "tag:")
+			structuredCounts.Tags[tagKey] = count
+		} else if strings.HasPrefix(key, "tracker:") {
+			trackerKey := strings.TrimPrefix(key, "tracker:")
+			structuredCounts.Trackers[trackerKey] = count
+		}
+	}
 
 	// Get categories and tags from sync data
 	var categories map[string]qbt.Category
@@ -227,7 +374,7 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 		Torrents:   paginatedTorrents,
 		Total:      len(filteredTorrents),
 		Stats:      stats,
-		Counts:     counts,
+		Counts:     structuredCounts,
 		Categories: categories,
 		Tags:       tags,
 		HasMore:    offset+limit < len(filteredTorrents),
@@ -274,6 +421,223 @@ func (h *TorrentsHandler) filterTorrentsBySearch(torrents []qbt.Torrent, search 
 	for _, torrent := range torrents {
 		if strings.Contains(strings.ToLower(torrent.Name), search) {
 			filtered = append(filtered, torrent)
+		}
+	}
+
+	return filtered
+}
+
+// filterTorrentsByStatus filters torrents by status
+func (h *TorrentsHandler) filterTorrentsByStatus(torrents []qbt.Torrent, status string) []qbt.Torrent {
+	if status == "" {
+		return torrents
+	}
+
+	var filtered []qbt.Torrent
+
+	for _, torrent := range torrents {
+		state := string(torrent.State)
+
+		// Match frontend status filter logic
+		switch status {
+		case "all":
+			filtered = append(filtered, torrent)
+		case "downloading":
+			if state == "downloading" || state == "metaDL" || state == "stalledDL" || state == "forcedDL" || state == "queuedDL" {
+				filtered = append(filtered, torrent)
+			}
+		case "seeding":
+			if state == "uploading" || state == "stalledUP" || state == "forcedUP" || state == "queuedUP" {
+				filtered = append(filtered, torrent)
+			}
+		case "completed":
+			if torrent.Progress >= 1.0 {
+				filtered = append(filtered, torrent)
+			}
+		case "paused":
+			if state == "pausedDL" || state == "pausedUP" || state == "stoppedDL" || state == "stoppedUP" {
+				filtered = append(filtered, torrent)
+			}
+		case "active":
+			if torrent.DlSpeed > 0 || torrent.UpSpeed > 0 {
+				filtered = append(filtered, torrent)
+			}
+		case "inactive":
+			if torrent.DlSpeed == 0 && torrent.UpSpeed == 0 {
+				filtered = append(filtered, torrent)
+			}
+		case "resumed":
+			if !strings.Contains(state, "paused") && !strings.Contains(state, "stopped") {
+				filtered = append(filtered, torrent)
+			}
+		case "stalled":
+			if state == "stalledDL" || state == "stalledUP" {
+				filtered = append(filtered, torrent)
+			}
+		case "stalled_uploading":
+			if state == "stalledUP" {
+				filtered = append(filtered, torrent)
+			}
+		case "stalled_downloading":
+			if state == "stalledDL" {
+				filtered = append(filtered, torrent)
+			}
+		case "errored":
+			if state == "error" || state == "missingFiles" {
+				filtered = append(filtered, torrent)
+			}
+		case "checking":
+			if state == "checkingDL" || state == "checkingUP" || state == "checkingResumeData" {
+				filtered = append(filtered, torrent)
+			}
+		case "moving":
+			if state == "moving" {
+				filtered = append(filtered, torrent)
+			}
+		default:
+			// Direct state match for any other status
+			if state == status {
+				filtered = append(filtered, torrent)
+			}
+		}
+	}
+
+	return filtered
+}
+
+// filterTorrentsByCategory filters torrents by category
+func (h *TorrentsHandler) filterTorrentsByCategory(torrents []qbt.Torrent, category string) []qbt.Torrent {
+	var filtered []qbt.Torrent
+
+	for _, torrent := range torrents {
+		// Handle empty category (uncategorized)
+		if category == "" && torrent.Category == "" {
+			filtered = append(filtered, torrent)
+		} else if category != "" && torrent.Category == category {
+			filtered = append(filtered, torrent)
+		}
+	}
+
+	return filtered
+}
+
+// filterTorrentsByTag filters torrents by tag
+func (h *TorrentsHandler) filterTorrentsByTag(torrents []qbt.Torrent, tag string) []qbt.Torrent {
+	var filtered []qbt.Torrent
+
+	for _, torrent := range torrents {
+		// Handle empty tag (untagged)
+		if tag == "" && torrent.Tags == "" {
+			filtered = append(filtered, torrent)
+		} else if tag != "" && torrent.Tags != "" {
+			// Split tags and check if the requested tag is present
+			tags := strings.Split(torrent.Tags, ",")
+			for _, t := range tags {
+				if strings.TrimSpace(t) == tag {
+					filtered = append(filtered, torrent)
+					break
+				}
+			}
+		}
+	}
+
+	return filtered
+}
+
+// filterTorrentsByTracker filters torrents by tracker
+func (h *TorrentsHandler) filterTorrentsByTracker(torrents []qbt.Torrent, tracker string) []qbt.Torrent {
+	var filtered []qbt.Torrent
+
+	for _, torrent := range torrents {
+		// Handle empty tracker
+		if tracker == "" && torrent.Tracker == "" {
+			filtered = append(filtered, torrent)
+		} else if tracker != "" && strings.Contains(strings.ToLower(torrent.Tracker), strings.ToLower(tracker)) {
+			filtered = append(filtered, torrent)
+		}
+	}
+
+	return filtered
+}
+
+// filterTorrentsByStatuses filters torrents by multiple statuses (OR logic)
+func (h *TorrentsHandler) filterTorrentsByStatuses(torrents []qbt.Torrent, statuses []string) []qbt.Torrent {
+	if len(statuses) == 0 {
+		return torrents
+	}
+
+	var filtered []qbt.Torrent
+
+	for _, torrent := range torrents {
+		for _, status := range statuses {
+			statusFiltered := h.filterTorrentsByStatus([]qbt.Torrent{torrent}, status)
+			if len(statusFiltered) > 0 {
+				filtered = append(filtered, torrent)
+				break // Found a match, no need to check other statuses for this torrent
+			}
+		}
+	}
+
+	return filtered
+}
+
+// filterTorrentsByCategories filters torrents by multiple categories (OR logic)
+func (h *TorrentsHandler) filterTorrentsByCategories(torrents []qbt.Torrent, categories []string) []qbt.Torrent {
+	if len(categories) == 0 {
+		return torrents
+	}
+
+	var filtered []qbt.Torrent
+
+	for _, torrent := range torrents {
+		for _, category := range categories {
+			categoryFiltered := h.filterTorrentsByCategory([]qbt.Torrent{torrent}, category)
+			if len(categoryFiltered) > 0 {
+				filtered = append(filtered, torrent)
+				break // Found a match, no need to check other categories for this torrent
+			}
+		}
+	}
+
+	return filtered
+}
+
+// filterTorrentsByTags filters torrents by multiple tags (OR logic)
+func (h *TorrentsHandler) filterTorrentsByTags(torrents []qbt.Torrent, tags []string) []qbt.Torrent {
+	if len(tags) == 0 {
+		return torrents
+	}
+
+	var filtered []qbt.Torrent
+
+	for _, torrent := range torrents {
+		for _, tag := range tags {
+			tagFiltered := h.filterTorrentsByTag([]qbt.Torrent{torrent}, tag)
+			if len(tagFiltered) > 0 {
+				filtered = append(filtered, torrent)
+				break // Found a match, no need to check other tags for this torrent
+			}
+		}
+	}
+
+	return filtered
+}
+
+// filterTorrentsByTrackers filters torrents by multiple trackers (OR logic)
+func (h *TorrentsHandler) filterTorrentsByTrackers(torrents []qbt.Torrent, trackers []string) []qbt.Torrent {
+	if len(trackers) == 0 {
+		return torrents
+	}
+
+	var filtered []qbt.Torrent
+
+	for _, torrent := range torrents {
+		for _, tracker := range trackers {
+			trackerFiltered := h.filterTorrentsByTracker([]qbt.Torrent{torrent}, tracker)
+			if len(trackerFiltered) > 0 {
+				filtered = append(filtered, torrent)
+				break // Found a match, no need to check other trackers for this torrent
+			}
 		}
 	}
 
