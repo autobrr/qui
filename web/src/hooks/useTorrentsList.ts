@@ -26,7 +26,7 @@ export function useTorrentsList(
   const [allTorrents, setAllTorrents] = useState<Torrent[]>([])
   const [hasLoadedAll, setHasLoadedAll] = useState(false)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
-  const limit = 500 // Load 500 at a time (backend default)
+  const limit = 500 // Load 500 at a time (good for bandwidth efficiency)
   
   const [serverState, setServerState] = useState<ServerState | null>(null)
   

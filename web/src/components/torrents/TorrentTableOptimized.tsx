@@ -422,8 +422,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const [columnSizing, setColumnSizing] = usePersistedColumnSizing(DEFAULT_COLUMN_SIZING)
   
   // Progressive loading state with async management  
-  const [loadedRows, setLoadedRows] = useState(50)
+  const [windowStart, setWindowStart] = useState(0) // Track which torrents to show in 200-item window
   const [virtualizeKey, setVirtualizeKey] = useState(0) // Force virtualizer recreation
+  const [scrollOffset, setScrollOffset] = useState(0) // Track scroll position for windowing
   
   // Query client for invalidating queries
   const queryClient = useQueryClient()
@@ -526,10 +527,17 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   // Memoize columns to avoid unnecessary recalculations
   const columns = useMemo(() => createColumns(incognitoMode), [incognitoMode])
   
-  // Limit the data going to the table based on loadedRows
+  // Limit table data to max 200 entries with sliding window
   const tableData = useMemo(() => {
-    return sortedTorrents.slice(0, loadedRows)
-  }, [sortedTorrents, loadedRows])
+    const maxTableSize = 200
+    if (sortedTorrents.length <= maxTableSize) {
+      return sortedTorrents
+    }
+    
+    // Sliding window: show 200 torrents starting from windowStart
+    const endIndex = Math.min(windowStart + maxTableSize, sortedTorrents.length)
+    return sortedTorrents.slice(windowStart, endIndex)
+  }, [sortedTorrents, windowStart])
   
   const table = useReactTable({
     data: tableData,
@@ -575,38 +583,30 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   // Virtualization setup with progressive loading
   const { rows } = table.getRowModel()
   const parentRef = useRef<HTMLDivElement>(null)
-  
-  // Load more rows as user scrolls (progressive loading)
-  const loadMore = useCallback((): void => {
-    // Check if we need to load more data from server
-    if (loadedRows >= sortedTorrents.length - 20 && !hasLoadedAll && !isLoadingMore) {
-      console.log('Triggering loadMoreTorrents - need more server data')
-      loadMoreTorrents()
-      return
-    }
-    
-    // Otherwise, just show more of the already loaded data progressively
-    const newLoadedRows = Math.min(loadedRows + 50, sortedTorrents.length)
-    setLoadedRows(newLoadedRows)
-  }, [loadedRows, sortedTorrents.length, hasLoadedAll, isLoadingMore, loadMoreTorrents])
 
   // useVirtualizer must be called at the top level, not inside useMemo
   const virtualizer = useVirtualizer({
-    count: Math.min(loadedRows, rows.length),
+    count: rows.length,
     getScrollElement: () => parentRef.current,
     estimateSize: () => 40,
-    // Reduce overscan for large datasets to minimize DOM nodes
-    overscan: sortedTorrents.length > 10000 ? 5 : 20,
-    // Use a debounced onChange to prevent excessive rendering
+    // Keep overscan reasonable
+    overscan: 20,
     onChange: (instance: any) => {
       const vRows = instance.getVirtualItems() as { index: number }[];
-      
-      // Check if we need to load more first (no need to wait for debounce)
       const lastItem = vRows.at(-1);
-      // Be more aggressive - trigger when we're within 20 rows of the loaded limit
-      if (lastItem && lastItem.index >= loadedRows - 20) {
-        console.log('Virtualizer triggering loadMore - lastItem.index:', lastItem.index, 'loadedRows:', loadedRows)
-        loadMore();
+      
+      if (lastItem) {
+        // Check if we need to slide the window forward
+        if (lastItem.index >= rows.length - 20 && windowStart + 200 < sortedTorrents.length) {
+          console.log('Sliding window forward - lastItem.index:', lastItem.index, 'windowStart:', windowStart)
+          setWindowStart((prev: number) => Math.min(prev + 50, sortedTorrents.length - 200))
+        }
+        
+        // Check if we need to load more from server
+        if (windowStart + lastItem.index >= sortedTorrents.length - 100 && !hasLoadedAll && !isLoadingMore) {
+          console.log('Loading more from server - need more data')
+          loadMoreTorrents();
+        }
       }
     },
   })
@@ -615,20 +615,20 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
   // Memoize minTableWidth to avoid recalculation on every row render
   const minTableWidth = useMemo(() => {
-    return table.getVisibleLeafColumns().reduce((width, col) => {
+    return table.getVisibleLeafColumns().reduce((width: number, col: any) => {
       return width + col.getSize()
     }, 0)
   }, [table, columnSizing, columnVisibility, columnOrder])
 
   // Derive hidden columns state from table API for accuracy
   const hasHiddenColumns = useMemo(() => {
-    return table.getAllLeafColumns().filter(c => c.getCanHide()).some(c => !c.getIsVisible())
+    return table.getAllLeafColumns().filter((c: any) => c.getCanHide()).some((c: any) => !c.getIsVisible())
   }, [table, columnVisibility])
 
   // Track previous length to detect when new data arrives
   const prevTorrentsLengthRef = useRef(0)
   
-  // Reset loaded rows when data changes
+  // Reset window when data changes or filters applied
   useEffect(() => {
     if (sortedTorrents.length > 0) {
       // Check if we have active filters
@@ -643,31 +643,24 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       const currentLength = sortedTorrents.length
       
       if (hasActiveFilters || effectiveSearch) {
-        // For filtered/searched data, show all available results
-        setLoadedRows(sortedTorrents.length)
-      } else if (loadedRows === 0) {
-        // Initial load, show first batch
-        setLoadedRows(Math.min(100, sortedTorrents.length))
-      } else if (currentLength < loadedRows) {
-        // Data decreased, adjust loaded rows
-        setLoadedRows(currentLength)
+        // For filtered/searched data, start from beginning
+        console.log('Filters/search active, resetting window to start')
+        setWindowStart(0)
       } else if (currentLength > prevLength) {
-        // New data arrived from server - always show it
-        // This happens when user scrolled and triggered server load
-        console.log('New server data arrived:', prevLength, '→', currentLength, 'updating loadedRows to:', currentLength)
-        setLoadedRows(currentLength)
+        // New data arrived from server - maintain current position 
+        console.log('New server data arrived:', prevLength, '→', currentLength)
       }
       
       // Update the ref for next time
       prevTorrentsLengthRef.current = currentLength
     }
-  }, [sortedTorrents.length, loadedRows, filters, effectiveSearch])
+  }, [sortedTorrents.length, windowStart, filters, effectiveSearch])
 
-  // Reset loaded rows when filters change
+  // Reset window when filters change
   useEffect(() => {
-    // When filters change, show all available filtered results initially
-    // instead of limiting to 100, since filtering typically reduces the dataset significantly
-    setLoadedRows(sortedTorrents.length)
+    // When filters change, start from beginning
+    console.log('Filters changed, resetting window to start')
+    setWindowStart(0)
     // Force virtualizer recreation by changing the key
     setVirtualizeKey((prev: number) => prev + 1)
     // Scroll to top and force virtualizer recalculation
@@ -730,7 +723,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
           exact: false
         })
         
-        queries.forEach((query) => {
+        queries.forEach((query: any) => {
           queryClient.setQueryData(query.queryKey, (oldData: {
             torrents?: Torrent[]
             total?: number
@@ -776,7 +769,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
           })
           
           // Optimistically update torrent states in all cached queries
-          queries.forEach((query) => {
+          queries.forEach((query: any) => {
             queryClient.setQueryData(query.queryKey, (oldData: {
               torrents?: Torrent[]
               total?: number
@@ -1569,8 +1562,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
               'No torrents found'
             ) : (
               <>
-                Showing {Math.min(loadedRows, totalCount)} of {totalCount} torrents
-                {loadedRows < totalCount && ' (scroll to load more)'}
+                Showing {Math.min(200, rows.length)} of {totalCount} torrents (window: {windowStart + 1}-{Math.min(windowStart + 200, sortedTorrents.length)})
+                {windowStart + 200 < sortedTorrents.length && ' (scroll for more)'}
                 {isLoadingMore && ' • Loading more...'}
               </>
             )}
