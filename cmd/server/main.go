@@ -89,12 +89,9 @@ func runServer() {
 		log.Fatal().Err(err).Msg("Failed to initialize instance store")
 	}
 
-	// Initialize qBittorrent client pool
-	clientPool, err := qbittorrent.NewClientPool(instanceStore)
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to initialize client pool")
-	}
-	defer clientPool.Close()
+	// Initialize qBittorrent client manager and sync manager
+	clientManager := qbittorrent.NewClientManager(instanceStore)
+	syncManager := qbittorrent.NewSyncManager(clientManager)
 
 	// Initialize web handler (for embedded frontend)
 	webHandler, err := web.NewHandler(Version, cfg.Config.BaseURL, webfs.DistDirFS)
@@ -145,7 +142,7 @@ func runServer() {
 		DB:                  db.Conn(),
 		AuthService:         authService,
 		InstanceStore:       instanceStore,
-		ClientPool:          clientPool,
+		SyncManager:         syncManager,
 		WebHandler:          webHandler,
 		ThemeLicenseService: themeLicenseService,
 	}

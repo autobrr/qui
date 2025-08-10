@@ -54,23 +54,18 @@ type TorrentCounts struct {
 }
 
 type TorrentsHandler struct {
-	clientPool *qbittorrent.ClientPool
+	syncManager *qbittorrent.SyncManager
 }
 
-func NewTorrentsHandler(clientPool *qbittorrent.ClientPool) *TorrentsHandler {
+func NewTorrentsHandler(syncManager *qbittorrent.SyncManager) *TorrentsHandler {
 	return &TorrentsHandler{
-		clientPool: clientPool,
+		syncManager: syncManager,
 	}
 }
 
-// getSyncManager helper method to get sync manager for an instance
-func (h *TorrentsHandler) getSyncManager(ctx context.Context, instanceID int) (*qbt.SyncManager, error) {
-	return h.clientPool.GetSyncManager(ctx, instanceID)
-}
-
 // getClient helper method to get client for an instance
-func (h *TorrentsHandler) getClient(instanceID int) (*qbittorrent.Client, error) {
-	return h.clientPool.GetClient(instanceID)
+func (h *TorrentsHandler) getClient(ctx context.Context, instanceID int) (*qbt.Client, error) {
+	return h.syncManager.GetClientManager().GetClient(ctx, instanceID)
 }
 
 // calculateStats calculates torrent statistics from a list of torrents
@@ -181,7 +176,7 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get client
-	client, err := h.getClient(instanceID)
+	client, err := h.getClient(r.Context(), instanceID)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client")
 		RespondError(w, http.StatusInternalServerError, "Failed to get client")
@@ -240,29 +235,21 @@ func (h *TorrentsHandler) SyncTorrents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get sync manager
-	syncMgr, err := h.getSyncManager(r.Context(), instanceID)
+	// Sync to get latest data using our sync manager
+	syncData, err := h.syncManager.Sync(r.Context(), instanceID)
 	if err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get sync manager")
-		RespondError(w, http.StatusInternalServerError, "Failed to get sync manager")
-		return
-	}
-
-	// Sync to get latest data
-	if err := syncMgr.Sync(r.Context()); err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to sync data")
 		RespondError(w, http.StatusInternalServerError, "Failed to sync data")
 		return
 	}
 
-	// Get main data
-	mainData := syncMgr.GetData()
-	if mainData == nil {
-		RespondError(w, http.StatusInternalServerError, "No main data available")
+	// Return the sync data
+	if syncData == nil {
+		RespondError(w, http.StatusInternalServerError, "No sync data available")
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, mainData)
+	RespondJSON(w, http.StatusOK, syncData)
 }
 
 // filterTorrentsBySearch filters torrents by search term
@@ -301,7 +288,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get client for direct operations
-	client, err := h.getClient(instanceID)
+	client, err := h.getClient(r.Context(), instanceID)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client")
 		RespondError(w, http.StatusInternalServerError, "Failed to get client")
@@ -421,7 +408,7 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get client for direct operations
-	client, err := h.getClient(instanceID)
+	client, err := h.getClient(r.Context(), instanceID)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client")
 		RespondError(w, http.StatusInternalServerError, "Failed to get client")
@@ -488,23 +475,16 @@ func (h *TorrentsHandler) GetCategories(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Get sync manager
-	syncMgr, err := h.getSyncManager(r.Context(), instanceID)
+	// Sync to get latest data using our sync manager
+	syncData, err := h.syncManager.Sync(r.Context(), instanceID)
 	if err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get sync manager")
-		RespondError(w, http.StatusInternalServerError, "Failed to get sync manager")
-		return
-	}
-
-	// Sync to get latest data
-	if err := syncMgr.Sync(r.Context()); err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to sync data")
 		RespondError(w, http.StatusInternalServerError, "Failed to sync data")
 		return
 	}
 
-	// Get categories
-	categories := syncMgr.GetCategories()
+	// Get categories from sync data
+	categories := syncData.Categories
 	RespondJSON(w, http.StatusOK, categories)
 }
 
@@ -516,23 +496,16 @@ func (h *TorrentsHandler) GetTags(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get sync manager
-	syncMgr, err := h.getSyncManager(r.Context(), instanceID)
+	// Sync to get latest data using our sync manager
+	syncData, err := h.syncManager.Sync(r.Context(), instanceID)
 	if err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get sync manager")
-		RespondError(w, http.StatusInternalServerError, "Failed to get sync manager")
-		return
-	}
-
-	// Sync to get latest data
-	if err := syncMgr.Sync(r.Context()); err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to sync data")
 		RespondError(w, http.StatusInternalServerError, "Failed to sync data")
 		return
 	}
 
-	// Get tags
-	tags := syncMgr.GetTags()
+	// Get tags from sync data
+	tags := syncData.Tags
 	RespondJSON(w, http.StatusOK, tags)
 }
 
@@ -562,7 +535,7 @@ func (h *TorrentsHandler) CreateCategory(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Get client for direct operations
-	client, err := h.getClient(instanceID)
+	client, err := h.getClient(r.Context(), instanceID)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client")
 		RespondError(w, http.StatusInternalServerError, "Failed to get client")
@@ -598,7 +571,7 @@ func (h *TorrentsHandler) EditCategory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get client for direct operations
-	client, err := h.getClient(instanceID)
+	client, err := h.getClient(r.Context(), instanceID)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client")
 		RespondError(w, http.StatusInternalServerError, "Failed to get client")
@@ -628,7 +601,7 @@ func (h *TorrentsHandler) GetFilteredTorrents(w http.ResponseWriter, r *http.Req
 	filter := r.URL.Query().Get("filter")
 	search := r.URL.Query().Get("search")
 
-	client, err := h.getClient(instanceID)
+	client, err := h.getClient(r.Context(), instanceID)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client")
 		RespondError(w, http.StatusInternalServerError, "Failed to get client")
@@ -675,7 +648,7 @@ func (h *TorrentsHandler) GetTorrentCounts(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	client, err := h.getClient(instanceID)
+	client, err := h.getClient(r.Context(), instanceID)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client")
 		RespondError(w, http.StatusInternalServerError, "Failed to get client")
@@ -709,7 +682,7 @@ func (h *TorrentsHandler) DeleteTorrent(w http.ResponseWriter, r *http.Request) 
 
 	deleteFiles := r.URL.Query().Get("deleteFiles") == "true"
 
-	client, err := h.getClient(instanceID)
+	client, err := h.getClient(r.Context(), instanceID)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client")
 		RespondError(w, http.StatusInternalServerError, "Failed to get client")
@@ -740,7 +713,7 @@ func (h *TorrentsHandler) PauseTorrent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client, err := h.getClient(instanceID)
+	client, err := h.getClient(r.Context(), instanceID)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client")
 		RespondError(w, http.StatusInternalServerError, "Failed to get client")
@@ -771,7 +744,7 @@ func (h *TorrentsHandler) ResumeTorrent(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	client, err := h.getClient(instanceID)
+	client, err := h.getClient(r.Context(), instanceID)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client")
 		RespondError(w, http.StatusInternalServerError, "Failed to get client")
@@ -802,7 +775,7 @@ func (h *TorrentsHandler) GetTorrentProperties(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	client, err := h.getClient(instanceID)
+	client, err := h.getClient(r.Context(), instanceID)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client")
 		RespondError(w, http.StatusInternalServerError, "Failed to get client")
@@ -833,7 +806,7 @@ func (h *TorrentsHandler) GetTorrentTrackers(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	client, err := h.getClient(instanceID)
+	client, err := h.getClient(r.Context(), instanceID)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client")
 		RespondError(w, http.StatusInternalServerError, "Failed to get client")
@@ -864,7 +837,7 @@ func (h *TorrentsHandler) GetTorrentFiles(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	client, err := h.getClient(instanceID)
+	client, err := h.getClient(r.Context(), instanceID)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client")
 		RespondError(w, http.StatusInternalServerError, "Failed to get client")
@@ -895,7 +868,7 @@ func (h *TorrentsHandler) GetTorrentWebSeeds(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	client, err := h.getClient(instanceID)
+	client, err := h.getClient(r.Context(), instanceID)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client")
 		RespondError(w, http.StatusInternalServerError, "Failed to get client")
@@ -933,7 +906,7 @@ func (h *TorrentsHandler) RemoveCategories(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	client, err := h.getClient(instanceID)
+	client, err := h.getClient(r.Context(), instanceID)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client")
 		RespondError(w, http.StatusInternalServerError, "Failed to get client")
@@ -971,7 +944,7 @@ func (h *TorrentsHandler) CreateTags(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client, err := h.getClient(instanceID)
+	client, err := h.getClient(r.Context(), instanceID)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client")
 		RespondError(w, http.StatusInternalServerError, "Failed to get client")
@@ -1009,7 +982,7 @@ func (h *TorrentsHandler) DeleteTags(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client, err := h.getClient(instanceID)
+	client, err := h.getClient(r.Context(), instanceID)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client")
 		RespondError(w, http.StatusInternalServerError, "Failed to get client")

@@ -26,7 +26,7 @@ type Dependencies struct {
 	DB                  *sql.DB
 	AuthService         *auth.Service
 	InstanceStore       *models.InstanceStore
-	ClientPool          *qbittorrent.ClientPool
+	SyncManager         *qbittorrent.SyncManager
 	WebHandler          *web.Handler
 	ThemeLicenseService *services.ThemeLicenseService
 }
@@ -51,8 +51,8 @@ func NewRouter(deps *Dependencies) *chi.Mux {
 
 	// Create handlers
 	authHandler := handlers.NewAuthHandler(deps.AuthService)
-	instancesHandler := handlers.NewInstancesHandler(deps.InstanceStore, deps.ClientPool)
-	torrentsHandler := handlers.NewTorrentsHandler(deps.ClientPool)
+	instancesHandler := handlers.NewInstancesHandler(deps.InstanceStore, deps.SyncManager.GetClientManager())
+	torrentsHandler := handlers.NewTorrentsHandler(deps.SyncManager)
 
 	// Theme license handler (optional, only if service is configured)
 	var themeLicenseHandler *handlers.ThemeLicenseHandler

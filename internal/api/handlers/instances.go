@@ -19,13 +19,13 @@ import (
 
 type InstancesHandler struct {
 	instanceStore *models.InstanceStore
-	clientPool    *internalqbittorrent.ClientPool
+	clientManager *internalqbittorrent.ClientManager
 }
 
-func NewInstancesHandler(instanceStore *models.InstanceStore, clientPool *internalqbittorrent.ClientPool) *InstancesHandler {
+func NewInstancesHandler(instanceStore *models.InstanceStore, clientManager *internalqbittorrent.ClientManager) *InstancesHandler {
 	return &InstancesHandler{
 		instanceStore: instanceStore,
-		clientPool:    clientPool,
+		clientManager: clientManager,
 	}
 }
 
@@ -143,7 +143,7 @@ func (h *InstancesHandler) CreateInstance(w http.ResponseWriter, r *http.Request
 	}
 
 	// Test connection
-	client, err := h.clientPool.GetClient(instance.ID)
+	client, err := h.clientManager.GetClient(context.Background(), instance.ID)
 	if err != nil {
 		log.Warn().Err(err).Int("instanceID", instance.ID).Msg("Failed to connect to new instance")
 		// Don't fail the creation, just warn
@@ -199,8 +199,8 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Remove old client from pool to force reconnection
-	h.clientPool.RemoveClient(instanceID)
+	// Client manager will handle reconnection automatically when needed
+	// No need to explicitly remove client
 
 	RespondJSON(w, http.StatusOK, map[string]interface{}{
 		"id":              instance.ID,
@@ -236,8 +236,8 @@ func (h *InstancesHandler) DeleteInstance(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Remove client from pool
-	h.clientPool.RemoveClient(instanceID)
+	// Client manager will handle cleanup automatically
+	// No need to explicitly remove client
 
 	RespondJSON(w, http.StatusOK, map[string]string{
 		"message": "Instance deleted successfully",
@@ -254,7 +254,7 @@ func (h *InstancesHandler) TestConnection(w http.ResponseWriter, r *http.Request
 	}
 
 	// Try to get client (this will create connection if needed)
-	client, err := h.clientPool.GetClient(instanceID)
+	client, err := h.clientManager.GetClient(r.Context(), instanceID)
 	if err != nil {
 		RespondJSON(w, http.StatusOK, map[string]interface{}{
 			"connected": false,
@@ -263,8 +263,8 @@ func (h *InstancesHandler) TestConnection(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Perform health check
-	if err := client.HealthCheck(r.Context()); err != nil {
+	// Perform health check by trying a simple API call
+	if _, err := client.GetWebAPIVersionCtx(r.Context()); err != nil {
 		RespondJSON(w, http.StatusOK, map[string]interface{}{
 			"connected": false,
 			"error":     err.Error(),
@@ -306,7 +306,7 @@ func (h *InstancesHandler) GetInstanceStats(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Get client
-	client, err := h.clientPool.GetClient(instanceID)
+	client, err := h.clientManager.GetClient(r.Context(), instanceID)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client")
 		// Return default stats instead of error
@@ -314,65 +314,63 @@ func (h *InstancesHandler) GetInstanceStats(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Update connected status
-	stats["connected"] = client.IsHealthy()
+	// Update connected status (test with simple API call)
+	stats["connected"] = true
+	if _, err := client.GetWebAPIVersionCtx(r.Context()); err != nil {
+		stats["connected"] = false
+	}
 
-	// Get stats from the sync manager which uses cached data
-	// This ensures the dashboard doesn't make slow direct API calls to qBittorrent
-	// Use a longer timeout for slow instances with 10k+ torrents
-	// 30 seconds should be enough for initial cold cache load
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	// Get basic stats from client
+	// For dashboard, we'll use a simpler approach - just get torrent count and basic server state
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	// Get sync manager for this instance
-	syncMgr, err := h.clientPool.GetSyncManager(ctx, instanceID)
-	if err != nil {
-		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to get sync manager for torrent counts")
-		// Return default stats instead of error
-		RespondJSON(w, http.StatusOK, stats)
-		return
-	}
+	// Get actual count by making a torrent query
+	allTorrents, err := client.GetTorrentsCtx(ctx, qbt.TorrentFilterOptions{})
+	if err == nil {
+		stats["torrents"] = map[string]interface{}{
+			"total":       len(allTorrents),
+			"downloading": h.countTorrentsByState(allTorrents, []string{"downloading", "metaDL", "forcedDL", "queuedDL", "stalledDL"}),
+			"seeding":     h.countTorrentsByState(allTorrents, []string{"uploading", "forcedUP", "queuedUP", "stalledUP"}),
+			"completed":   h.countCompletedTorrents(allTorrents),
+		}
 
-	torrents := syncMgr.GetTorrents()
-	
-	// Convert map to slice for calculation
-	torrentSlice := make([]qbt.Torrent, 0, len(torrents))
-	for _, torrent := range torrents {
-		torrentSlice = append(torrentSlice, torrent)
-	}
+		// Calculate speeds from the torrents
+		var totalDownloadSpeed, totalUploadSpeed int64
+		for _, torrent := range allTorrents {
+			totalDownloadSpeed += torrent.DlSpeed
+			totalUploadSpeed += torrent.UpSpeed
+		}
 
-	if len(torrentSlice) == 0 {
-		log.Warn().Int("instanceID", instanceID).Msg("No torrents found for stats")
-		// Return default stats
-		RespondJSON(w, http.StatusOK, stats)
-		return
-	}
-
-	// Calculate torrent counts from the torrents
-	torrentCounts := h.calculateTorrentCounts(torrentSlice)
-	
-	// Update stats with counts from cached data
-	stats["torrents"] = map[string]interface{}{
-		"total":       len(torrents),
-		"downloading": torrentCounts.Downloading,
-		"seeding":     torrentCounts.Seeding,
-		"paused":      torrentCounts.Paused,
-		"error":       torrentCounts.Error,
-		"completed":   torrentCounts.Completed,
-	}
-
-	// Calculate speeds from the torrents
-	var totalDownloadSpeed, totalUploadSpeed int64
-	for _, torrent := range torrentSlice {
-		totalDownloadSpeed += torrent.DlSpeed
-		totalUploadSpeed += torrent.UpSpeed
-	}
-
-	// Set calculated speeds
-	stats["speeds"] = map[string]interface{}{
-		"download": totalDownloadSpeed,
-		"upload":   totalUploadSpeed,
+		stats["speeds"] = map[string]interface{}{
+			"download": totalDownloadSpeed,
+			"upload":   totalUploadSpeed,
+		}
 	}
 
 	RespondJSON(w, http.StatusOK, stats)
+}
+
+// Helper functions for counting torrents by state
+func (h *InstancesHandler) countTorrentsByState(torrents []qbt.Torrent, states []string) int {
+	count := 0
+	for _, torrent := range torrents {
+		for _, state := range states {
+			if strings.EqualFold(string(torrent.State), state) {
+				count++
+				break
+			}
+		}
+	}
+	return count
+}
+
+func (h *InstancesHandler) countCompletedTorrents(torrents []qbt.Torrent) int {
+	count := 0
+	for _, torrent := range torrents {
+		if torrent.Progress >= 1.0 {
+			count++
+		}
+	}
+	return count
 }
