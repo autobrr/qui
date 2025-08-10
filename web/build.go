@@ -1,30 +1,59 @@
+// Package web web/build.go
 package web
 
 import (
 	"embed"
+	"fmt"
 	"io/fs"
+	"os"
+	"path/filepath"
 )
 
-//go:embed all:dist
-var Dist embed.FS
+var (
+	//go:embed all:dist
+	Dist embed.FS
 
-// DistDirFS creates a sub-filesystem rooted at the dist directory
-var DistDirFS = mustSubFS(Dist, "dist")
+	DistDirFS = MustSubFS(Dist, "dist")
+)
 
-// mustSubFS creates sub FS from current filesystem or panic on failure.
-// This is similar to autobrr's implementation.
-func mustSubFS(fsys fs.FS, dir string) fs.FS {
-	sub, err := fs.Sub(fsys, dir)
-	if err != nil {
-		// If dist doesn't exist (e.g., in development), return a dummy FS
-		return &dummyFS{}
-	}
-	return sub
+type defaultFS struct {
+	prefix string
+	fs     fs.FS
 }
 
-// dummyFS is a dummy filesystem that returns "not found" for all files
-type dummyFS struct{}
+func (fs defaultFS) Open(name string) (fs.File, error) {
+	if fs.fs == nil {
+		return os.Open(name)
+	}
+	return fs.fs.Open(name)
+}
 
-func (d *dummyFS) Open(name string) (fs.File, error) {
-	return nil, fs.ErrNotExist
+// MustSubFS creates sub FS from current filesystem or panic on failure.
+// Panic happens when `fsRoot` contains invalid path according to `fs.ValidPath` rules.
+//
+// MustSubFS is helpful when dealing with `embed.FS` because for example `//go:embed assets/images` embeds files with
+// paths including `assets/images` as their prefix. In that case use `fs := MustSubFS(fs, "rootDirectory") to
+// create sub fs which uses necessary prefix for directory path.
+func MustSubFS(currentFs fs.FS, fsRoot string) fs.FS {
+	subFs, err := subFS(currentFs, fsRoot)
+	if err != nil {
+		panic(fmt.Errorf("can not create sub FS, invalid root given, err: %w", err))
+	}
+	return subFs
+}
+
+func subFS(currentFs fs.FS, root string) (fs.FS, error) {
+	root = filepath.ToSlash(filepath.Clean(root)) // note: fs.FS operates only with slashes. `ToSlash` is necessary for Windows
+	if dFS, ok := currentFs.(*defaultFS); ok {
+		// we need to make exception for `defaultFS` instances as it interprets root prefix differently from fs.FS.
+		// fs.Fs.Open does not like relative paths ("./", "../") and absolute paths.
+		if !filepath.IsAbs(root) {
+			root = filepath.Join(dFS.prefix, root)
+		}
+		return &defaultFS{
+			prefix: root,
+			fs:     os.DirFS(root),
+		}, nil
+	}
+	return fs.Sub(currentFs, root)
 }

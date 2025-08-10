@@ -38,16 +38,9 @@ func NewHandler(version, baseURL string, embedFS fs.FS) (*Handler, error) {
 	}, nil
 }
 
-// isDummyFS checks if the filesystem is a dummy filesystem
-func isDummyFS(fsys fs.FS) bool {
-	// Try to open a common file that should exist in dist
-	_, err := fsys.Open("index.html")
-	return err != nil
-}
-
 func (h *Handler) RegisterRoutes(r chi.Router) {
-	if h.fs == nil || isDummyFS(h.fs) {
-		// No frontend available
+	if h.fs == nil {
+		// No frontend available - this should only happen in development
 		r.Get("/*", func(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Frontend not built. Run 'make frontend' to build the web UI.", http.StatusNotFound)
 		})
