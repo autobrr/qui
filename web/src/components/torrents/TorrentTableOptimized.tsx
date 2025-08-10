@@ -573,30 +573,17 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   
   // Load more rows as user scrolls (progressive loading)
   const loadMore = useCallback((): void => {
-    // If we have filters applied, show all available filtered results at once
-    // since filtered results are typically much smaller than the full dataset
-    const hasActiveFilters = filters && (
-      (filters.status && filters.status.length > 0) ||
-      (filters.categories && filters.categories.length > 0) ||
-      (filters.tags && filters.tags.length > 0) ||
-      (filters.trackers && filters.trackers.length > 0)
-    )
-    
-    if (hasActiveFilters || effectiveSearch) {
-      // For filtered/searched data, show all available results
-      setLoadedRows(sortedTorrents.length)
-    } else {
-      // For unfiltered data, use progressive loading
-      const newLoadedRows = Math.min(loadedRows + 100, sortedTorrents.length)
-      setLoadedRows(newLoadedRows)
-      // If we're near the end of loaded torrents and haven't loaded all from server
-      // Be more aggressive about loading - trigger when we're within 100 rows of the end
-      if (newLoadedRows >= sortedTorrents.length - 100 && !hasLoadedAll && !isLoadingMore) {
-        console.log('Triggering loadMoreTorrents - newLoadedRows:', newLoadedRows, 'sortedTorrents.length:', sortedTorrents.length, 'hasLoadedAll:', hasLoadedAll, 'isLoadingMore:', isLoadingMore)
-        loadMoreTorrents()
-      }
+    // Check if we need to load more data from server
+    if (loadedRows >= sortedTorrents.length - 50 && !hasLoadedAll && !isLoadingMore) {
+      console.log('Triggering loadMoreTorrents - need more server data')
+      loadMoreTorrents()
+      return
     }
-  }, [loadedRows, sortedTorrents.length, hasLoadedAll, isLoadingMore, loadMoreTorrents, filters, effectiveSearch])
+    
+    // Otherwise, just show more of the already loaded data progressively
+    const newLoadedRows = Math.min(loadedRows + 100, sortedTorrents.length)
+    setLoadedRows(newLoadedRows)
+  }, [loadedRows, sortedTorrents.length, hasLoadedAll, isLoadingMore, loadMoreTorrents])
 
   // useVirtualizer must be called at the top level, not inside useMemo
   const virtualizer = useVirtualizer({
@@ -648,22 +635,24 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         // For filtered/searched data, show all available results
         setLoadedRows(sortedTorrents.length)
       } else if (loadedRows === 0) {
-        // Initial load, show first batch - start with more rows
+        // Initial load, show first batch
         setLoadedRows(Math.min(200, sortedTorrents.length))
       } else if (sortedTorrents.length < loadedRows) {
         // Data decreased, adjust loaded rows
         setLoadedRows(sortedTorrents.length)
       } else if (sortedTorrents.length > loadedRows) {
-        // Data increased from server - always show all available data
-        // This fixes the pagination bug where new server data wasn't being displayed
-        setLoadedRows(sortedTorrents.length)
+        // Data increased from server - only show new data if user was near the end
+        // This prevents automatically showing all new data without user scroll
+        const wasNearEnd = loadedRows >= sortedTorrents.length - 100
+        if (wasNearEnd) {
+          // User was near the end, so show the new data
+          setLoadedRows(sortedTorrents.length)
+        }
+        // If user wasn't near the end, keep loadedRows as is
+        // The user will scroll to see more when they want to
       }
       
-      // If we have less than 600 torrents total and haven't loaded all from server, trigger load
-      if (sortedTorrents.length < 600 && !hasLoadedAll && !isLoadingMore && !hasActiveFilters && !effectiveSearch) {
-        console.log('Auto-triggering loadMoreTorrents due to low torrent count:', sortedTorrents.length)
-        loadMoreTorrents()
-      }
+      // Remove auto-trigger logic - let user scroll to load more
     }
   }, [sortedTorrents.length, loadedRows, filters, effectiveSearch, hasLoadedAll, isLoadingMore, loadMoreTorrents])
 
