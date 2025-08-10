@@ -37,6 +37,7 @@ const DEFAULT_COLUMN_VISIBILITY = {
   priority: false,
 }
 const DEFAULT_COLUMN_SIZING = {}
+const WINDOW_SIZE = 200 // Size of the sliding window for virtualization
 
 // Helper function to get default column order (module scope for stable reference)
 function getDefaultColumnOrder(): string[] {
@@ -421,8 +422,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   // Column sizing with persistence
   const [columnSizing, setColumnSizing] = usePersistedColumnSizing(DEFAULT_COLUMN_SIZING)
   
-  // Progressive loading state with async management
-  const [loadedRows, setLoadedRows] = useState(100)
+  // Progressive loading state with async management  
+  const [windowStart, setWindowStart] = useState(0) // Track which torrents to show in 200-item window
+  const [virtualizeKey, setVirtualizeKey] = useState(0) // Force virtualizer recreation
   
   // Query client for invalidating queries
   const queryClient = useQueryClient()
@@ -460,6 +462,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   } = useTorrentsList(instanceId, {
     search: effectiveSearch,
     filters,
+    sorting,
   })
   
   // Call the callback when filtered data updates
@@ -505,28 +508,26 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     return torrents
   }, [torrents])
 
-  // Sort torrents client-side
-  const sortedTorrents = useMemo(() => {
-    if (sorting.length === 0) return filteredTorrents
-    const sorted = [...filteredTorrents]
-    const sort = sorting[0]
-    sorted.sort((a, b) => {
-      const aValue = a[sort.id as keyof Torrent]
-      const bValue = b[sort.id as keyof Torrent]
-      if (aValue === null || aValue === undefined) return 1
-      if (bValue === null || bValue === undefined) return -1
-      if (aValue < bValue) return sort.desc ? 1 : -1
-      if (aValue > bValue) return sort.desc ? -1 : 1
-      return 0
-    })
-    return sorted
-  }, [filteredTorrents, sorting])
+  // Use torrents directly from backend (already sorted)
+  const sortedTorrents = filteredTorrents
 
   // Memoize columns to avoid unnecessary recalculations
   const columns = useMemo(() => createColumns(incognitoMode), [incognitoMode])
   
+  // Limit table data to max 200 entries with sliding window
+  const tableData = useMemo(() => {
+    const maxTableSize = 200
+    if (sortedTorrents.length <= maxTableSize) {
+      return sortedTorrents
+    }
+    
+    // Sliding window: show 200 torrents starting from windowStart
+    const endIndex = Math.min(windowStart + maxTableSize, sortedTorrents.length)
+    return sortedTorrents.slice(windowStart, endIndex)
+  }, [sortedTorrents, windowStart])
+  
   const table = useReactTable({
-    data: sortedTorrents,
+    data: tableData,
     columns,
     getCoreRowModel: getCoreRowModel(),
     // Use torrent hash as stable row ID
@@ -569,32 +570,57 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   // Virtualization setup with progressive loading
   const { rows } = table.getRowModel()
   const parentRef = useRef<HTMLDivElement>(null)
-  
-  // Load more rows as user scrolls (progressive loading)
-  const loadMore = useCallback((): void => {
-    const newLoadedRows = Math.min(loadedRows + 100, sortedTorrents.length)
-    setLoadedRows(newLoadedRows)
-    // If we're near the end of loaded torrents and haven't loaded all from server
-    if (newLoadedRows >= sortedTorrents.length - 50 && !hasLoadedAll && !isLoadingMore) {
-      loadMoreTorrents()
-    }
-  }, [loadedRows, sortedTorrents.length, hasLoadedAll, isLoadingMore, loadMoreTorrents])
 
+  // Add virtualizer key that changes when window moves or data loads to force recreation
+  const virtualizerKey = `${windowStart}-${totalCount - sortedTorrents.length}`
+  
   // useVirtualizer must be called at the top level, not inside useMemo
   const virtualizer = useVirtualizer({
-    count: Math.min(loadedRows, rows.length),
+    count: sortedTorrents.length, // Use TOTAL count, not just tableData length
     getScrollElement: () => parentRef.current,
     estimateSize: () => 40,
-    // Reduce overscan for large datasets to minimize DOM nodes
-    overscan: sortedTorrents.length > 10000 ? 5 : 20,
-    // Use a debounced onChange to prevent excessive rendering
+    overscan: 20,
     onChange: (instance: any) => {
       const vRows = instance.getVirtualItems() as { index: number }[];
+      if (vRows.length === 0) return;
       
-      // Check if we need to load more first (no need to wait for debounce)
-      const lastItem = vRows.at(-1);
-      if (lastItem && lastItem.index >= loadedRows - 50) {
-        loadMore();
+      const firstVisibleIndex = vRows[0].index;
+      const lastVisibleIndex = vRows[vRows.length - 1].index;
+      
+      // Only change window when we've scrolled significantly beyond current window boundaries
+      const currentWindowEnd = windowStart + WINDOW_SIZE;
+      let newWindowStart = windowStart;
+      
+      // Don't change windows if we're in the middle of a reset
+      if (isResettingRef.current) return;
+      
+      // Moving forward: only change window when we've scrolled well past the current window
+      if (firstVisibleIndex >= currentWindowEnd - 20) {
+        const targetWindow = Math.floor(firstVisibleIndex / WINDOW_SIZE) * WINDOW_SIZE;
+        // Only move forward, never backwards from user scrolling
+        if (targetWindow > windowStart) {
+          newWindowStart = targetWindow;
+        }
+      }
+      // Moving backward: only change when we've scrolled well before the current window
+      else if (lastVisibleIndex < windowStart + 20) {
+        const targetWindow = Math.max(0, Math.floor(lastVisibleIndex / WINDOW_SIZE) * WINDOW_SIZE);
+        // Only move backwards if we're significantly before current window
+        if (targetWindow < windowStart) {
+          newWindowStart = targetWindow;
+        }
+      }
+      
+      // Only update if we're actually changing windows and within bounds
+      if (newWindowStart !== windowStart && newWindowStart >= 0 && newWindowStart < sortedTorrents.length) {
+        console.log('Updating window from', windowStart, 'to', newWindowStart, 'based on visible range', firstVisibleIndex, '-', lastVisibleIndex);
+        setWindowStart(newWindowStart);
+      }
+      
+      // Load more from server when approaching end of ALL data
+      if (lastVisibleIndex >= sortedTorrents.length - 100 && !hasLoadedAll && !isLoadingMore) {
+        console.log('Loading more from server - approaching end');
+        loadMoreTorrents();
       }
     },
   })
@@ -603,37 +629,66 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
   // Memoize minTableWidth to avoid recalculation on every row render
   const minTableWidth = useMemo(() => {
-    return table.getVisibleLeafColumns().reduce((width, col) => {
+    return table.getVisibleLeafColumns().reduce((width: number, col: any) => {
       return width + col.getSize()
     }, 0)
   }, [table, columnSizing, columnVisibility, columnOrder])
 
   // Derive hidden columns state from table API for accuracy
   const hasHiddenColumns = useMemo(() => {
-    return table.getAllLeafColumns().filter(c => c.getCanHide()).some(c => !c.getIsVisible())
+    return table.getAllLeafColumns().filter((c: any) => c.getCanHide()).some((c: any) => !c.getIsVisible())
   }, [table, columnVisibility])
 
-  // Reset loaded rows when data changes
+  // Track previous length to detect when new data arrives
+  const prevTorrentsLengthRef = useRef(0)
+  const isResettingRef = useRef(false)
+  const prevFiltersRef = useRef(filters)
+  const prevSearchRef = useRef(effectiveSearch)
+  
+  // Reset window when filters change (consolidated logic)
   useEffect(() => {
-    if (sortedTorrents.length > 0) {
-      if (loadedRows === 0) {
-        setLoadedRows(Math.min(100, sortedTorrents.length))
-      } else if (sortedTorrents.length < loadedRows) {
-        setLoadedRows(sortedTorrents.length)
-      } else if (sortedTorrents.length > loadedRows && loadedRows < 100) {
-        setLoadedRows(Math.min(100, sortedTorrents.length))
+    const filtersChanged = JSON.stringify(prevFiltersRef.current) !== JSON.stringify(filters)
+    const searchChanged = prevSearchRef.current !== effectiveSearch
+    
+    if (filtersChanged || searchChanged) {
+      // Filters or search actually changed - reset to start
+      console.log('Filters/search changed, resetting window to start')
+      isResettingRef.current = true
+      setWindowStart(0)
+      setVirtualizeKey((prev: number) => prev + 1)
+      if (parentRef.current) {
+        parentRef.current.scrollTop = 0
       }
+      
+      // Update refs
+      prevFiltersRef.current = filters
+      prevSearchRef.current = effectiveSearch
+    } else if (sortedTorrents.length > 0) {
+      // Just data length changed (new data loaded) - maintain position
+      const prevLength = prevTorrentsLengthRef.current
+      const currentLength = sortedTorrents.length
+      
+      if (currentLength > prevLength && prevLength > 0) {
+        console.log('New server data arrived:', prevLength, '→', currentLength, '- maintaining window position')
+      }
+      
+      // Update the ref for next time
+      prevTorrentsLengthRef.current = currentLength
     }
-  }, [sortedTorrents.length, loadedRows])
+  }, [sortedTorrents.length, filters, effectiveSearch]) // Keep dependencies but handle them carefully
 
-  // Reset loaded rows when filters change
+  // Force virtualizer to recalculate when filters change (after virtualizer is created)
   useEffect(() => {
-    setLoadedRows(Math.min(100, sortedTorrents.length))
-    // Scroll to top and force virtualizer recalculation
-    if (parentRef.current) {
-      parentRef.current.scrollTop = 0
+    if (virtualizer && isResettingRef.current) {
+      // Reset the virtualizer's state when filters change
+      setTimeout(() => {
+        virtualizer.measure()
+        // Also scroll to top to ensure a clean start
+        virtualizer.scrollToIndex(0, { align: 'start' })
+        isResettingRef.current = false
+      }, 0)
     }
-  }, [filters, sortedTorrents.length])
+  }, [virtualizer, virtualizeKey])
 
 
   // Mutation for bulk actions
@@ -677,7 +732,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
           exact: false
         })
         
-        queries.forEach((query) => {
+        queries.forEach((query: any) => {
           queryClient.setQueryData(query.queryKey, (oldData: {
             torrents?: Torrent[]
             total?: number
@@ -723,7 +778,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
           })
           
           // Optimistically update torrent states in all cached queries
-          queries.forEach((query) => {
+          queries.forEach((query: any) => {
             queryClient.setQueryData(query.queryKey, (oldData: {
               torrents?: Torrent[]
               total?: number
@@ -1200,7 +1255,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
       {/* Table container */}
       <div className="rounded-md border flex flex-col flex-1 min-h-0 mt-2 sm:mt-3 overflow-hidden">
-        <div className="relative flex-1 overflow-auto scrollbar-thin" ref={parentRef}>
+        <div className="relative flex-1 overflow-auto scrollbar-thin" ref={parentRef} key={virtualizerKey}>
           <div style={{ position: 'relative', minWidth: 'min-content' }}>
             {/* Header */}
             <div className="sticky top-0 bg-background border-b" style={{ zIndex: 50 }}>
@@ -1251,6 +1306,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
             ) : (
               // Show virtual table
               <div
+                key={virtualizeKey} // Force recreation when filters change
                 style={{
                   height: `${virtualizer.getTotalSize()}px`,
                   width: '100%',
@@ -1258,8 +1314,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                 }}
               >
                 {virtualRows.map(virtualRow => {
-                  const row = rows[virtualRow.index]
-                  if (!row || !row.original) return null
+                  // Map virtual index to table row index within current window
+                  const tableRowIndex = virtualRow.index - windowStart
+                  const row = rows[tableRowIndex]
+                  if (!row || !row.original || tableRowIndex < 0 || tableRowIndex >= rows.length) return null
                   const torrent = row.original
                   const isSelected = selectedTorrent?.hash === torrent.hash
                   
@@ -1515,8 +1573,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
               'No torrents found'
             ) : (
               <>
-                Showing {Math.min(loadedRows, totalCount)} of {totalCount} torrents
-                {loadedRows < totalCount && ' (scroll to load more)'}
+                Showing {Math.min(200, rows.length)} of {totalCount} torrents (window: {windowStart + 1}-{Math.min(windowStart + 200, sortedTorrents.length)})
+                {windowStart + 200 < sortedTorrents.length && ' (scroll for more)'}
                 {isLoadingMore && ' • Loading more...'}
               </>
             )}

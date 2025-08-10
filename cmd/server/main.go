@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"strings"
@@ -24,6 +25,7 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services"
 	"github.com/autobrr/qui/internal/web"
+	webfs "github.com/autobrr/qui/web"
 )
 
 var (
@@ -87,18 +89,12 @@ func runServer() {
 		log.Fatal().Err(err).Msg("Failed to initialize instance store")
 	}
 
-	// Initialize qBittorrent client pool
-	clientPool, err := qbittorrent.NewClientPool(instanceStore)
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to initialize client pool")
-	}
-	defer clientPool.Close()
-
-	// Initialize sync manager
-	syncManager := qbittorrent.NewSyncManager(clientPool)
+	// Initialize qBittorrent client manager and sync manager
+	clientManager := qbittorrent.NewClientManager(instanceStore)
+	syncManager := qbittorrent.NewSyncManager(clientManager)
 
 	// Initialize web handler (for embedded frontend)
-	webHandler, err := web.NewHandler(Version, cfg.Config.BaseURL)
+	webHandler, err := web.NewHandler(Version, cfg.Config.BaseURL, webfs.DistDirFS)
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to initialize web handler")
 	}
@@ -146,7 +142,6 @@ func runServer() {
 		DB:                  db.Conn(),
 		AuthService:         authService,
 		InstanceStore:       instanceStore,
-		ClientPool:          clientPool,
 		SyncManager:         syncManager,
 		WebHandler:          webHandler,
 		ThemeLicenseService: themeLicenseService,
@@ -160,18 +155,18 @@ func runServer() {
 	if cfg.Config.BaseURL != "" && cfg.Config.BaseURL != "/" {
 		// Create a parent router and mount our app under the base URL
 		parentRouter := chi.NewRouter()
-		
+
 		// Strip trailing slash from base URL for mounting
 		mountPath := strings.TrimSuffix(cfg.Config.BaseURL, "/")
-		
+
 		// Mount the application under the base URL
 		parentRouter.Mount(mountPath, router)
-		
+
 		// Redirect root to base URL
 		parentRouter.Get("/", func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, cfg.Config.BaseURL, http.StatusMovedPermanently)
 		})
-		
+
 		handler = parentRouter
 	} else {
 		handler = router
@@ -195,6 +190,15 @@ func runServer() {
 
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatal().Err(err).Msg("Server failed")
+		}
+	}()
+
+	// Start profiling server
+	go func() {
+		log.Info().Msg("Starting pprof server on :6060")
+		log.Info().Msg("Access profiling at: http://localhost:6060/debug/pprof/")
+		if err := http.ListenAndServe(":6060", nil); err != nil {
+			log.Error().Err(err).Msg("Profiling server failed")
 		}
 	}()
 

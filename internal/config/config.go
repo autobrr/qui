@@ -67,6 +67,7 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("sessionSecret", sessionSecret)
 	c.viper.SetDefault("logLevel", "INFO")
 	c.viper.SetDefault("logPath", "")
+	c.viper.SetDefault("debug.enableProfiling", false)
 }
 
 func (c *AppConfig) load(configPath string) error {

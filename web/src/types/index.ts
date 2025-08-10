@@ -93,6 +93,7 @@ export interface TorrentResponse {
   counts?: TorrentCounts
   categories?: Record<string, Category>
   tags?: string[]
+  hasMore?: boolean
   cacheMetadata?: CacheMetadata
 }
 

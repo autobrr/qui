@@ -138,6 +138,7 @@ class ApiClient {
     instanceId: number,
     params: {
       page?: number
+      offset?: number
       limit?: number
       sort?: string
       order?: 'asc' | 'desc'
@@ -146,7 +147,12 @@ class ApiClient {
     }
   ): Promise<TorrentResponse> {
     const searchParams = new URLSearchParams()
-    if (params.page !== undefined) searchParams.set('page', params.page.toString())
+    // Prefer offset over page
+    if (params.offset !== undefined) {
+      searchParams.set('offset', params.offset.toString())
+    } else if (params.page !== undefined) {
+      searchParams.set('page', params.page.toString())
+    }
     if (params.limit !== undefined) searchParams.set('limit', params.limit.toString())
     if (params.sort) searchParams.set('sort', params.sort)
     if (params.order) searchParams.set('order', params.order)
