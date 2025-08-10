@@ -31,7 +31,7 @@ func TestAllEndpointsDocumented(t *testing.T) {
 		DB:                  nil, // DB can be nil since handlers won't execute
 		AuthService:         &auth.Service{},
 		InstanceStore:       &models.InstanceStore{},
-		ClientManager:       &qbittorrent.ClientManager{},
+		SyncManager:         &qbittorrent.SyncManager{},
 		WebHandler:          &web.Handler{},
 		ThemeLicenseService: &services.ThemeLicenseService{}, // Include theme service to get all routes
 	}
