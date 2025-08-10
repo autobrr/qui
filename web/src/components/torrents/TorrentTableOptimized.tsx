@@ -590,7 +590,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       const newLoadedRows = Math.min(loadedRows + 100, sortedTorrents.length)
       setLoadedRows(newLoadedRows)
       // If we're near the end of loaded torrents and haven't loaded all from server
-      if (newLoadedRows >= sortedTorrents.length - 50 && !hasLoadedAll && !isLoadingMore) {
+      // Be more aggressive about loading - trigger when we're within 100 rows of the end
+      if (newLoadedRows >= sortedTorrents.length - 100 && !hasLoadedAll && !isLoadingMore) {
+        console.log('Triggering loadMoreTorrents - newLoadedRows:', newLoadedRows, 'sortedTorrents.length:', sortedTorrents.length, 'hasLoadedAll:', hasLoadedAll, 'isLoadingMore:', isLoadingMore)
         loadMoreTorrents()
       }
     }
@@ -609,7 +611,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       
       // Check if we need to load more first (no need to wait for debounce)
       const lastItem = vRows.at(-1);
-      if (lastItem && lastItem.index >= loadedRows - 50) {
+      // Be more aggressive - trigger when we're within 20 rows of the loaded limit
+      if (lastItem && lastItem.index >= loadedRows - 20) {
+        console.log('Virtualizer triggering loadMore - lastItem.index:', lastItem.index, 'loadedRows:', loadedRows)
         loadMore();
       }
     },
@@ -644,17 +648,23 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         // For filtered/searched data, show all available results
         setLoadedRows(sortedTorrents.length)
       } else if (loadedRows === 0) {
-        // Initial load, show first batch
-        setLoadedRows(Math.min(100, sortedTorrents.length))
+        // Initial load, show first batch - start with more rows
+        setLoadedRows(Math.min(200, sortedTorrents.length))
       } else if (sortedTorrents.length < loadedRows) {
         // Data decreased, adjust loaded rows
         setLoadedRows(sortedTorrents.length)
-      } else if (sortedTorrents.length > loadedRows && loadedRows < 100) {
+      } else if (sortedTorrents.length > loadedRows && loadedRows < 200) {
         // Data increased but we haven't shown the initial batch yet
-        setLoadedRows(Math.min(100, sortedTorrents.length))
+        setLoadedRows(Math.min(200, sortedTorrents.length))
+      }
+      
+      // If we have less than 600 torrents total and haven't loaded all from server, trigger load
+      if (sortedTorrents.length < 600 && !hasLoadedAll && !isLoadingMore && !hasActiveFilters && !effectiveSearch) {
+        console.log('Auto-triggering loadMoreTorrents due to low torrent count:', sortedTorrents.length)
+        loadMoreTorrents()
       }
     }
-  }, [sortedTorrents.length, loadedRows, filters, effectiveSearch])
+  }, [sortedTorrents.length, loadedRows, filters, effectiveSearch, hasLoadedAll, isLoadingMore, loadMoreTorrents])
 
   // Reset loaded rows when filters change
   useEffect(() => {

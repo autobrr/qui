@@ -97,24 +97,33 @@ export function useTorrentsList(
         // Append to existing for pagination
         setAllTorrents(prev => {
           // Avoid duplicates by filtering out existing hashes
-          const existingHashes = new Set(prev.map(t => t.hash))
-          const newTorrents = data.torrents.filter(t => !existingHashes.has(t.hash))
+          const existingHashes = new Set(prev.map((t: any) => t.hash))
+          const newTorrents = data.torrents.filter((t: any) => !existingHashes.has(t.hash))
           return [...prev, ...newTorrents]
         })
-      }
-      
-      // Check if we've loaded all torrents
-      const totalLoaded = currentPage === 0 
-        ? data.torrents.length 
-        : allTorrents.length + data.torrents.length
-      
-      if (totalLoaded >= (data.total || 0) || data.torrents.length < pageSize) {
-        setHasLoadedAll(true)
       }
       
       setIsLoadingMore(false)
     }
   }, [data, currentPage, pageSize])
+
+  // Separate effect to check if all data is loaded
+  useEffect(() => {
+    if (data?.torrents) {
+      // Use the backend's hasMore flag if available, otherwise fall back to our logic
+      if (data.hasMore !== undefined) {
+        setHasLoadedAll(!data.hasMore)
+      } else {
+        // Fallback logic: check if we received fewer torrents than requested
+        const receivedCount = data.torrents.length
+        const isLastPage = receivedCount < pageSize
+        const totalFromServer = data.total || 0
+        const currentlyLoaded = allTorrents.length
+        
+        setHasLoadedAll(isLastPage || currentlyLoaded >= totalFromServer)
+      }
+    }
+  }, [data, allTorrents.length, pageSize])
   
   // Load more function for pagination
   const loadMore = () => {
