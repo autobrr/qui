@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: MIT
+ */
+
 // Get the base URL injected by the backend
 // Falls back to '/' if not set
 export function getBaseUrl(): string {

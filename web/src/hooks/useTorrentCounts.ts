@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: MIT
+ */
+
 import { useMemo } from 'react'
 import type { Torrent } from '@/types'
 import { matchesStatusFilter } from '@/lib/torrent-state-utils'

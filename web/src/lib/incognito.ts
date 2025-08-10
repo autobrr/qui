@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: MIT
+ */
+
 // Incognito mode utilities for disguising torrents as Linux ISOs
 
 import { useState, useEffect } from 'react'

@@ -1,9 +1,13 @@
+// Copyright (c) 2025, s0up and the autobrr contributors.
+// SPDX-License-Identifier: MIT
+
 package main
 
 import (
 	"context"
 	"fmt"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"strings"
@@ -233,6 +237,14 @@ func runServer() {
 		}
 	}()
 
+	// Start profiling server
+	go func() {
+		log.Info().Msg("Starting pprof server on :6060")
+		log.Info().Msg("Access profiling at: http://localhost:6060/debug/pprof/")
+		if err := http.ListenAndServe(":6060", nil); err != nil {
+			log.Error().Err(err).Msg("Profiling server failed")
+		}
+	}()
 	// Wait for interrupt signal to gracefully shutdown the server
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
