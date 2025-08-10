@@ -59,3 +59,5 @@ ai_docs/*
 output/*
 qui
 .claude/agents/*
+!.claude/agents/code-reviewer.md
+prd_final.md

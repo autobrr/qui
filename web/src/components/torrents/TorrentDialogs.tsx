@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: MIT
+ */
+
 import { memo, useState, useEffect, useRef, useCallback } from 'react'
 import type { ChangeEvent, KeyboardEvent } from 'react'
 import { Button } from '@/components/ui/button'

@@ -1,3 +1,6 @@
+// Copyright (c) 2025, s0up and the autobrr contributors.
+// SPDX-License-Identifier: MIT
+
 package qbittorrent
 
 // FilterOptions represents the filter options from the frontend

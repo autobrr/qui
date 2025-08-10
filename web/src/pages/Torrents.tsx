@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: MIT
+ */
+
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { TorrentTableResponsive } from '@/components/torrents/TorrentTableResponsive'
 import { FilterSidebar } from '@/components/torrents/FilterSidebar'
