@@ -570,8 +570,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const { rows } = table.getRowModel()
   const parentRef = useRef<HTMLDivElement>(null)
 
-  // Add virtualizer key that changes when window moves to force recreation
-  const virtualizerKey = `${windowStart}-${tableData.length}`
+  // Add virtualizer key that changes when window moves or data loads to force recreation
+  const virtualizerKey = `${windowStart}-${totalCount - sortedTorrents.length}`
   
   // useVirtualizer must be called at the top level, not inside useMemo
   const virtualizer = useVirtualizer({
@@ -1237,7 +1237,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
       {/* Table container */}
       <div className="rounded-md border flex flex-col flex-1 min-h-0 mt-2 sm:mt-3 overflow-hidden">
-        <div className="relative flex-1 overflow-auto scrollbar-thin" ref={parentRef}>
+        <div className="relative flex-1 overflow-auto scrollbar-thin" ref={parentRef} key={virtualizerKey}>
           <div style={{ position: 'relative', minWidth: 'min-content' }}>
             {/* Header */}
             <div className="sticky top-0 bg-background border-b" style={{ zIndex: 50 }}>
