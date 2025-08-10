@@ -423,6 +423,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   
   // Progressive loading state with async management
   const [loadedRows, setLoadedRows] = useState(100)
+  const [virtualizeKey, setVirtualizeKey] = useState(0) // Force virtualizer recreation
   
   // Query client for invalidating queries
   const queryClient = useQueryClient()
@@ -572,13 +573,28 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   
   // Load more rows as user scrolls (progressive loading)
   const loadMore = useCallback((): void => {
-    const newLoadedRows = Math.min(loadedRows + 100, sortedTorrents.length)
-    setLoadedRows(newLoadedRows)
-    // If we're near the end of loaded torrents and haven't loaded all from server
-    if (newLoadedRows >= sortedTorrents.length - 50 && !hasLoadedAll && !isLoadingMore) {
-      loadMoreTorrents()
+    // If we have filters applied, show all available filtered results at once
+    // since filtered results are typically much smaller than the full dataset
+    const hasActiveFilters = filters && (
+      (filters.status && filters.status.length > 0) ||
+      (filters.categories && filters.categories.length > 0) ||
+      (filters.tags && filters.tags.length > 0) ||
+      (filters.trackers && filters.trackers.length > 0)
+    )
+    
+    if (hasActiveFilters || effectiveSearch) {
+      // For filtered/searched data, show all available results
+      setLoadedRows(sortedTorrents.length)
+    } else {
+      // For unfiltered data, use progressive loading
+      const newLoadedRows = Math.min(loadedRows + 100, sortedTorrents.length)
+      setLoadedRows(newLoadedRows)
+      // If we're near the end of loaded torrents and haven't loaded all from server
+      if (newLoadedRows >= sortedTorrents.length - 50 && !hasLoadedAll && !isLoadingMore) {
+        loadMoreTorrents()
+      }
     }
-  }, [loadedRows, sortedTorrents.length, hasLoadedAll, isLoadingMore, loadMoreTorrents])
+  }, [loadedRows, sortedTorrents.length, hasLoadedAll, isLoadingMore, loadMoreTorrents, filters, effectiveSearch])
 
   // useVirtualizer must be called at the top level, not inside useMemo
   const virtualizer = useVirtualizer({
@@ -616,24 +632,54 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   // Reset loaded rows when data changes
   useEffect(() => {
     if (sortedTorrents.length > 0) {
-      if (loadedRows === 0) {
+      // Check if we have active filters
+      const hasActiveFilters = filters && (
+        (filters.status && filters.status.length > 0) ||
+        (filters.categories && filters.categories.length > 0) ||
+        (filters.tags && filters.tags.length > 0) ||
+        (filters.trackers && filters.trackers.length > 0)
+      )
+      
+      if (hasActiveFilters || effectiveSearch) {
+        // For filtered/searched data, show all available results
+        setLoadedRows(sortedTorrents.length)
+      } else if (loadedRows === 0) {
+        // Initial load, show first batch
         setLoadedRows(Math.min(100, sortedTorrents.length))
       } else if (sortedTorrents.length < loadedRows) {
+        // Data decreased, adjust loaded rows
         setLoadedRows(sortedTorrents.length)
       } else if (sortedTorrents.length > loadedRows && loadedRows < 100) {
+        // Data increased but we haven't shown the initial batch yet
         setLoadedRows(Math.min(100, sortedTorrents.length))
       }
     }
-  }, [sortedTorrents.length, loadedRows])
+  }, [sortedTorrents.length, loadedRows, filters, effectiveSearch])
 
   // Reset loaded rows when filters change
   useEffect(() => {
-    setLoadedRows(Math.min(100, sortedTorrents.length))
+    // When filters change, show all available filtered results initially
+    // instead of limiting to 100, since filtering typically reduces the dataset significantly
+    setLoadedRows(sortedTorrents.length)
+    // Force virtualizer recreation by changing the key
+    setVirtualizeKey(prev => prev + 1)
     // Scroll to top and force virtualizer recalculation
     if (parentRef.current) {
       parentRef.current.scrollTop = 0
     }
   }, [filters, sortedTorrents.length])
+
+  // Force virtualizer to recalculate when filters change (after virtualizer is created)
+  useEffect(() => {
+    if (virtualizer) {
+      // Reset the virtualizer's state when filters change
+      setTimeout(() => {
+        virtualizer.measure()
+        // Also scroll to top to ensure a clean start
+        virtualizer.scrollToIndex(0, { align: 'start' })
+      }, 0)
+    }
+  }, [filters, virtualizer])
 
 
   // Mutation for bulk actions
@@ -1251,6 +1297,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
             ) : (
               // Show virtual table
               <div
+                key={virtualizeKey} // Force recreation when filters change
                 style={{
                   height: `${virtualizer.getTotalSize()}px`,
                   width: '100%',
