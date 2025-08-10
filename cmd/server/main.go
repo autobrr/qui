@@ -24,6 +24,7 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services"
 	"github.com/autobrr/qui/internal/web"
+	webfs "github.com/autobrr/qui/web"
 )
 
 var (

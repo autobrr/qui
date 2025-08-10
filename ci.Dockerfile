@@ -30,9 +30,6 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Copy pre-built frontend (from GitHub Actions artifact)
-COPY internal/web/dist internal/web/dist
-
 # Set cross-compilation environment variables
 ENV GOOS=${TARGETOS} \
     GOARCH=${TARGETARCH}
