@@ -526,8 +526,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   // Memoize columns to avoid unnecessary recalculations
   const columns = useMemo(() => createColumns(incognitoMode), [incognitoMode])
   
+  // Limit the data going to the table based on loadedRows
+  const tableData = useMemo(() => {
+    return sortedTorrents.slice(0, loadedRows)
+  }, [sortedTorrents, loadedRows])
+  
   const table = useReactTable({
-    data: sortedTorrents,
+    data: tableData,
     columns,
     getCoreRowModel: getCoreRowModel(),
     // Use torrent hash as stable row ID
