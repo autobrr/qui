@@ -40,14 +40,25 @@ func NewSyncManager(clientManager *ClientManager) *SyncManager {
 
 // getOrCreateState gets or creates sync state for an instance
 func (sm *SyncManager) getOrCreateState(instanceID int) *SyncState {
+	sm.mu.RLock()
+	state, exists := sm.states[instanceID]
+	sm.mu.RUnlock()
+	
+	if exists {
+		return state
+	}
+	
+	// Only take write lock if we need to create
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
-
-	state, exists := sm.states[instanceID]
-	if !exists {
-		state = &SyncState{}
-		sm.states[instanceID] = state
+	
+	// Double-check after write lock
+	if state, exists := sm.states[instanceID]; exists {
+		return state
 	}
+	
+	state = &SyncState{}
+	sm.states[instanceID] = state
 	return state
 }
 
@@ -69,53 +80,82 @@ func (sm *SyncManager) needsSync(state *SyncState) bool {
 func (sm *SyncManager) GetMainData(ctx context.Context, instanceID int) (*qbt.MainData, error) {
 	state := sm.getOrCreateState(instanceID)
 
-	// Check if sync is needed
+	// Check if sync is needed without holding locks for long
 	if !sm.needsSync(state) {
 		state.mu.RLock()
-		defer state.mu.RUnlock()
-		if state.SyncManager != nil {
-			return state.SyncManager.GetData(), nil
+		syncManager := state.SyncManager
+		state.mu.RUnlock()
+		
+		if syncManager != nil {
+			return syncManager.GetData(), nil
 		}
 	}
 
-	// Get client
+	// Get client (this may involve network calls, so don't hold our locks)
 	client, err := sm.clientManager.GetClient(ctx, instanceID)
 	if err != nil {
+		// Only lock briefly to update error state
 		state.mu.Lock()
 		state.LastError = err
 		state.mu.Unlock()
 		return nil, err
 	}
 
-	// Perform sync
-	state.mu.Lock()
-	defer state.mu.Unlock()
+	// Check if we need to initialize or just sync
+	state.mu.RLock()
+	syncManager := state.SyncManager
+	hasInitialSync := state.HasInitialSync
+	state.mu.RUnlock()
 
-	// Initialize SyncManager if nil
-	if state.SyncManager == nil {
-		state.SyncManager = qbt.NewSyncManager(client)
-		err = state.SyncManager.Start(ctx)
+	var mainData *qbt.MainData
+
+	if syncManager == nil {
+		// Initialize new SyncManager (network operation - no locks held)
+		newSyncManager := qbt.NewSyncManager(client)
+		err = newSyncManager.Start(ctx)
 		if err != nil {
+			// Only lock briefly to update error state
+			state.mu.Lock()
 			state.LastError = err
+			state.mu.Unlock()
 			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to start sync manager")
 			return nil, err
 		}
+		
+		// Update state with new sync manager
+		state.mu.Lock()
+		state.SyncManager = newSyncManager
+		state.LastSync = time.Now()
+		state.LastError = nil
+		state.HasInitialSync = true
+		state.mu.Unlock()
+		
+		mainData = newSyncManager.GetData()
 	} else {
-		// Just sync if already initialized
-		err = state.SyncManager.Sync(ctx)
+		// Just sync existing manager (network operation - no locks held)
+		err = syncManager.Sync(ctx)
 		if err != nil {
+			// Only lock briefly to update error state
+			state.mu.Lock()
 			state.LastError = err
+			state.mu.Unlock()
 			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to sync data")
 			return nil, err
 		}
+		
+		// Update state
+		state.mu.Lock()
+		state.LastSync = time.Now()
+		state.LastError = nil
+		if !hasInitialSync {
+			state.HasInitialSync = true
+		}
+		state.mu.Unlock()
+		
+		mainData = syncManager.GetData()
 	}
 
-	// Update state
-	state.LastSync = time.Now()
-	state.LastError = nil
-	state.HasInitialSync = true
-
-	return state.SyncManager.GetData(), nil
+	return mainData, nil
 }
 
 // GetTorrents gets cached torrents or syncs if needed

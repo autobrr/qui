@@ -3,7 +3,7 @@ module github.com/autobrr/qui
 go 1.24.5
 
 require (
-	github.com/autobrr/go-qbittorrent v1.14.1-0.20250810030950-4464d9eb53ce
+	github.com/autobrr/go-qbittorrent v1.14.1-0.20250810040308-4c442a9af564
 	github.com/dgraph-io/ristretto v0.2.0
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-chi/chi/v5 v5.2.2
