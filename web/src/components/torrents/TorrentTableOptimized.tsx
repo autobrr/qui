@@ -583,29 +583,34 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const { rows } = table.getRowModel()
   const parentRef = useRef<HTMLDivElement>(null)
 
+  // Add virtualizer key that changes when window moves to force recreation
+  const virtualizerKey = `${windowStart}-${tableData.length}`
+  
   // useVirtualizer must be called at the top level, not inside useMemo
   const virtualizer = useVirtualizer({
-    count: rows.length,
+    count: sortedTorrents.length, // Use TOTAL count, not just tableData length
     getScrollElement: () => parentRef.current,
     estimateSize: () => 40,
-    // Keep overscan reasonable
     overscan: 20,
     onChange: (instance: any) => {
       const vRows = instance.getVirtualItems() as { index: number }[];
-      const lastItem = vRows.at(-1);
+      if (vRows.length === 0) return;
       
-      if (lastItem) {
-        // Check if we need to slide the window forward
-        if (lastItem.index >= rows.length - 20 && windowStart + 200 < sortedTorrents.length) {
-          console.log('Sliding window forward - lastItem.index:', lastItem.index, 'windowStart:', windowStart)
-          setWindowStart((prev: number) => Math.min(prev + 50, sortedTorrents.length - 200))
-        }
-        
-        // Check if we need to load more from server
-        if (windowStart + lastItem.index >= sortedTorrents.length - 100 && !hasLoadedAll && !isLoadingMore) {
-          console.log('Loading more from server - need more data')
-          loadMoreTorrents();
-        }
+      const firstVisibleIndex = vRows[0].index;
+      const lastVisibleIndex = vRows[vRows.length - 1].index;
+      
+      // Calculate which window of 200 we should show based on scroll position
+      const newWindowStart = Math.floor(firstVisibleIndex / 200) * 200;
+      
+      if (newWindowStart !== windowStart && newWindowStart >= 0 && newWindowStart < sortedTorrents.length) {
+        console.log('Updating window from', windowStart, 'to', newWindowStart, 'based on visible range', firstVisibleIndex, '-', lastVisibleIndex);
+        setWindowStart(newWindowStart);
+      }
+      
+      // Load more from server when approaching end of ALL data
+      if (lastVisibleIndex >= sortedTorrents.length - 100 && !hasLoadedAll && !isLoadingMore) {
+        console.log('Loading more from server - approaching end');
+        loadMoreTorrents();
       }
     },
   })
@@ -1304,8 +1309,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                 }}
               >
                 {virtualRows.map(virtualRow => {
-                  const row = rows[virtualRow.index]
-                  if (!row || !row.original) return null
+                  // Map virtual index to table row index within current window
+                  const tableRowIndex = virtualRow.index - windowStart
+                  const row = rows[tableRowIndex]
+                  if (!row || !row.original || tableRowIndex < 0 || tableRowIndex >= rows.length) return null
                   const torrent = row.original
                   const isSelected = selectedTorrent?.hash === torrent.hash
                   
