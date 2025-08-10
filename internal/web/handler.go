@@ -1,6 +1,7 @@
 package web
 
 import (
+	"embed"
 	"fmt"
 	"io"
 	"io/fs"
@@ -13,15 +14,8 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// Dummy embed for when dist doesn't exist
-type dummyFS struct{}
-
-func (d dummyFS) Open(name string) (fs.File, error) {
-	return nil, fs.ErrNotExist
-}
-
-// Use a variable that can be nil when dist doesn't exist
-var embedFS fs.FS = dummyFS{}
+//go:embed dist/*
+var embedFS embed.FS
 
 type Handler struct {
 	fs      fs.FS
@@ -41,10 +35,20 @@ func init() {
 }
 
 func NewHandler(version, baseURL string) (*Handler, error) {
-	// Since we don't have the dist files in development, return a handler that serves 404
-	log.Warn().Msg("Frontend dist directory not found, web UI will not be available")
+	// Get the dist subdirectory
+	distFS, err := fs.Sub(embedFS, "dist")
+	if err != nil {
+		// If dist doesn't exist yet (development), return a handler that serves 404
+		log.Warn().Msg("Frontend dist directory not found, web UI will not be available")
+		return &Handler{
+			fs:      nil,
+			baseURL: baseURL,
+			version: version,
+		}, nil
+	}
+
 	return &Handler{
-		fs:      nil,
+		fs:      distFS,
 		baseURL: baseURL,
 		version: version,
 	}, nil
