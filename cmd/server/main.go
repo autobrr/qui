@@ -99,7 +99,7 @@ func runServer() {
 	syncManager := qbittorrent.NewSyncManager(clientPool)
 
 	// Initialize web handler (for embedded frontend)
-	webHandler, err := web.NewHandler(Version, cfg.Config.BaseURL)
+	webHandler, err := web.NewHandler(Version, cfg.Config.BaseURL, webfs.DistDirFS)
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to initialize web handler")
 	}
