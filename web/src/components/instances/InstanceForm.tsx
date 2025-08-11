@@ -15,37 +15,37 @@ import type { Instance } from '@/types'
 import { api } from '@/lib/api'
 
 // URL validation schema
-const urlSchema = z.string()
+const urlSchema = z
+  .string()
   .min(1, 'URL is required')
   .transform((value) => {
     return value.includes('://') ? value : `http://${value}`
   })
-  .pipe(
-    z.string().url('Please enter a valid URL')
-      .refine((url) => {
-        const parsed = new URL(url)
-        return parsed.protocol === 'http:' || parsed.protocol === 'https:'
-      }, 'Only HTTP and HTTPS protocols are supported')
-      .refine((url) => {
-        const parsed = new URL(url)
-        const hostname = parsed.hostname
+  .refine((url) => {
+    try {
+      new URL(url)
+      return true
+    } catch {
+      return false
+    }
+  }, 'Please enter a valid URL')
+  .refine((url) => {
+    const parsed = new URL(url)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+  }, 'Only HTTP and HTTPS protocols are supported')
+  .refine((url) => {
+    const parsed = new URL(url)
+    const hostname = parsed.hostname
 
-        const isIPv4 = /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname) && 
-                      hostname.split('.').every(octet => {
-                        const num = parseInt(octet, 10)
-                        return num >= 0 && num <= 255
-                      })
-        
-        // IPv6 addresses are wrapped in brackets by URL parser
-        const isIPv6 = hostname.startsWith('[') && hostname.endsWith(']')
-        
-        if ((isIPv4 || isIPv6) && !parsed.port) {
-          return false
-        }
-        
-        return true
-      }, 'Port is required when using an IP address (e.g., :8080)')
-  )
+    const isIPv4 = /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname)
+    const isIPv6 = hostname.startsWith('[') && hostname.endsWith(']')
+
+    if ((isIPv4 || isIPv6) && !parsed.port) {
+      return false
+    }
+    
+    return true
+  }, 'Port is required when using an IP address (e.g., :8080)')
 
 interface InstanceFormData {
   name: string
