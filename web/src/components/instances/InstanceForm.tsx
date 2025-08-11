@@ -18,7 +18,6 @@ import { api } from '@/lib/api'
 const urlSchema = z.string()
   .min(1, 'URL is required')
   .transform((value) => {
-    // Add http:// if no protocol specified
     return value.includes('://') ? value : `http://${value}`
   })
   .pipe(
@@ -30,8 +29,7 @@ const urlSchema = z.string()
       .refine((url) => {
         const parsed = new URL(url)
         const hostname = parsed.hostname
-        
-        // Check if hostname is an IP address
+
         const isIPv4 = /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname) && 
                       hostname.split('.').every(octet => {
                         const num = parseInt(octet, 10)
@@ -41,11 +39,7 @@ const urlSchema = z.string()
         // IPv6 addresses are wrapped in brackets by URL parser
         const isIPv6 = hostname.startsWith('[') && hostname.endsWith(']')
         
-        // localhost doesn't require a port
-        const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1'
-        
-        // Require port for IP addresses (except localhost)
-        if ((isIPv4 || isIPv6) && !isLocalhost && !parsed.port) {
+        if ((isIPv4 || isIPv6) && !parsed.port) {
           return false
         }
         
