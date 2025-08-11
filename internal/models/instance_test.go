@@ -7,6 +7,8 @@ import (
 	"database/sql"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
 )
 
@@ -110,18 +112,11 @@ func TestURLValidation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := validateAndNormalizeURL(tt.input)
 			if tt.wantErr {
-				if err == nil {
-					t.Errorf("validateAndNormalizeURL() expected error for input %q", tt.input)
-				}
+				assert.Error(t, err, "expected error for input %q", tt.input)
 				return
 			}
-			if err != nil {
-				t.Errorf("validateAndNormalizeURL() unexpected error: %v", err)
-				return
-			}
-			if got != tt.expected {
-				t.Errorf("validateAndNormalizeURL() = %q, want %q", got, tt.expected)
-			}
+			require.NoError(t, err, "unexpected error for input %q", tt.input)
+			assert.Equal(t, tt.expected, got, "URL mismatch for input %q", tt.input)
 		})
 	}
 }
@@ -129,9 +124,7 @@ func TestURLValidation(t *testing.T) {
 func TestInstanceStoreWithURL(t *testing.T) {
 	// Create in-memory database for testing
 	db, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatalf("Failed to open test database: %v", err)
-	}
+	require.NoError(t, err, "Failed to open test database")
 	defer db.Close()
 
 	// Create test encryption key
@@ -142,9 +135,7 @@ func TestInstanceStoreWithURL(t *testing.T) {
 
 	// Create instance store
 	store, err := NewInstanceStore(db, encryptionKey)
-	if err != nil {
-		t.Fatalf("Failed to create instance store: %v", err)
-	}
+	require.NoError(t, err, "Failed to create instance store")
 
 	// Create new schema (with URL field)
 	_, err = db.Exec(`
@@ -162,37 +153,20 @@ func TestInstanceStoreWithURL(t *testing.T) {
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)
 	`)
-	if err != nil {
-		t.Fatalf("Failed to create test table: %v", err)
-	}
+	require.NoError(t, err, "Failed to create test table")
 
 	// Test creating an instance with URL
 	instance, err := store.Create("Test Instance", "http://localhost:8080", "testuser", "testpass", nil, nil)
-	if err != nil {
-		t.Fatalf("Failed to create instance: %v", err)
-	}
-
-	if instance.URL != "http://localhost:8080" {
-		t.Errorf("Expected URL http://localhost:8080, got %s", instance.URL)
-	}
+	require.NoError(t, err, "Failed to create instance")
+	assert.Equal(t, "http://localhost:8080", instance.URL, "URL should match")
 
 	// Test retrieving the instance
 	retrieved, err := store.Get(instance.ID)
-	if err != nil {
-		t.Fatalf("Failed to get instance: %v", err)
-	}
-
-	if retrieved.URL != "http://localhost:8080" {
-		t.Errorf("Expected URL http://localhost:8080, got %s", retrieved.URL)
-	}
+	require.NoError(t, err, "Failed to get instance")
+	assert.Equal(t, "http://localhost:8080", retrieved.URL, "Retrieved URL should match")
 
 	// Test updating the instance
 	updated, err := store.Update(instance.ID, "Updated Instance", "https://example.com:8443/qbittorrent", "newuser", "", nil, nil)
-	if err != nil {
-		t.Fatalf("Failed to update instance: %v", err)
-	}
-
-	if updated.URL != "https://example.com:8443/qbittorrent" {
-		t.Errorf("Expected URL https://example.com:8443/qbittorrent, got %s", updated.URL)
-	}
+	require.NoError(t, err, "Failed to update instance")
+	assert.Equal(t, "https://example.com:8443/qbittorrent", updated.URL, "Updated URL should match")
 }
