@@ -9,17 +9,22 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/autobrr/qui/internal/models"
 )
 
-func TestClientPool_BackoffLogic(t *testing.T) {
-	// Create a mock instance store (we only need it to not panic)
+// setupTestPool creates a new ClientPool for testing
+func setupTestPool(t *testing.T) *ClientPool {
 	instanceStore := &models.InstanceStore{}
-	
 	pool, err := NewClientPool(instanceStore)
-	if err != nil {
-		t.Fatalf("Failed to create client pool: %v", err)
-	}
+	require.NoError(t, err, "Failed to create client pool")
+	return pool
+}
+
+func TestClientPool_BackoffLogic(t *testing.T) {
+	pool := setupTestPool(t)
 	defer pool.Close()
 
 	instanceID := 1
@@ -74,49 +79,35 @@ func TestClientPool_BackoffLogic(t *testing.T) {
 			pool.resetFailureTracking(instanceID)
 
 			// Should not be in backoff initially
-			if pool.isInBackoff(instanceID) {
-				t.Error("Instance should not be in backoff initially")
-			}
+			assert.False(t, pool.isInBackoff(instanceID), "Instance should not be in backoff initially")
 
 			// Track failure
 			pool.trackFailure(instanceID, tt.err)
 
 			// Should now be in backoff
-			if !pool.isInBackoff(instanceID) {
-				t.Error("Instance should be in backoff after failure")
-			}
+			assert.True(t, pool.isInBackoff(instanceID), "Instance should be in backoff after failure")
 
 			// Check failure info
 			pool.mu.RLock()
 			info, exists := pool.failureTracker[instanceID]
 			pool.mu.RUnlock()
 
-			if !exists {
-				t.Fatal("Failure info should exist")
-			}
+			require.True(t, exists, "Failure info should exist")
 
 			// Check if this is a ban error (we can't directly check isBanned field anymore)
 			isBanError := pool.isBanError(tt.err)
-			if isBanError != tt.expectedBanned {
-				t.Errorf("Expected ban error=%v, got %v", tt.expectedBanned, isBanError)
-			}
+			assert.Equal(t, tt.expectedBanned, isBanError, "Ban error classification mismatch")
 
 			// Check backoff duration is in expected range
 			backoffDuration := time.Until(info.nextRetry)
-			if backoffDuration < tt.minBackoff || backoffDuration > tt.maxBackoff {
-				t.Errorf("Backoff duration %v not in range [%v, %v]", backoffDuration, tt.minBackoff, tt.maxBackoff)
-			}
+			assert.Truef(t, backoffDuration >= tt.minBackoff && backoffDuration <= tt.maxBackoff,
+				"Backoff duration %v not in range [%v, %v]", backoffDuration, tt.minBackoff, tt.maxBackoff)
 		})
 	}
 }
 
 func TestClientPool_BackoffEscalation(t *testing.T) {
-	instanceStore := &models.InstanceStore{}
-	
-	pool, err := NewClientPool(instanceStore)
-	if err != nil {
-		t.Fatalf("Failed to create client pool: %v", err)
-	}
+	pool := setupTestPool(t)
 	defer pool.Close()
 
 	instanceID := 1
@@ -133,33 +124,22 @@ func TestClientPool_BackoffEscalation(t *testing.T) {
 			info, exists := pool.failureTracker[instanceID]
 			pool.mu.RUnlock()
 
-			if !exists {
-				t.Fatal("Failure info should exist")
-			}
+			require.True(t, exists, "Failure info should exist")
 
-			if info.attempts != i+1 {
-				t.Errorf("Expected attempts=%d, got %d", i+1, info.attempts)
-			}
+			assert.Equal(t, i+1, info.attempts, "Attempt count mismatch")
 
 			backoffDuration := time.Until(info.nextRetry)
 			minExpected := time.Duration(expectedMin-1) * time.Minute
 			maxExpected := time.Duration(expectedMin+1) * time.Minute
 
-			if backoffDuration < minExpected || backoffDuration > maxExpected {
-				t.Errorf("Failure %d: backoff duration %v not in range [%v, %v]", 
-					i+1, backoffDuration, minExpected, maxExpected)
-			}
+			assert.Truef(t, backoffDuration >= minExpected && backoffDuration <= maxExpected,
+				"Failure %d: backoff duration %v not in range [%v, %v]", i+1, backoffDuration, minExpected, maxExpected)
 		})
 	}
 }
 
 func TestClientPool_ResetFailureTracking(t *testing.T) {
-	instanceStore := &models.InstanceStore{}
-	
-	pool, err := NewClientPool(instanceStore)
-	if err != nil {
-		t.Fatalf("Failed to create client pool: %v", err)
-	}
+	pool := setupTestPool(t)
 	defer pool.Close()
 
 	instanceID := 1
@@ -170,35 +150,24 @@ func TestClientPool_ResetFailureTracking(t *testing.T) {
 	pool.trackFailure(instanceID, banError)
 
 	// Should be in backoff
-	if !pool.isInBackoff(instanceID) {
-		t.Error("Instance should be in backoff after failures")
-	}
+	assert.True(t, pool.isInBackoff(instanceID), "Instance should be in backoff after failures")
 
 	// Reset failure tracking
 	pool.resetFailureTracking(instanceID)
 
 	// Should no longer be in backoff
-	if pool.isInBackoff(instanceID) {
-		t.Error("Instance should not be in backoff after reset")
-	}
+	assert.False(t, pool.isInBackoff(instanceID), "Instance should not be in backoff after reset")
 
 	// Failure info should be cleared
 	pool.mu.RLock()
 	_, exists := pool.failureTracker[instanceID]
 	pool.mu.RUnlock()
 
-	if exists {
-		t.Error("Failure info should be cleared after reset")
-	}
+	assert.False(t, exists, "Failure info should be cleared after reset")
 }
 
 func TestClientPool_IsBanError(t *testing.T) {
-	instanceStore := &models.InstanceStore{}
-	
-	pool, err := NewClientPool(instanceStore)
-	if err != nil {
-		t.Fatalf("Failed to create client pool: %v", err)
-	}
+	pool := setupTestPool(t)
 	defer pool.Close()
 
 	tests := []struct {
@@ -251,29 +220,22 @@ func TestClientPool_IsBanError(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := pool.isBanError(tt.err)
-			if result != tt.expected {
-				t.Errorf("Expected %v, got %v for error: %v", tt.expected, result, tt.err)
-			}
+			assert.Equal(t, tt.expected, result, "Ban error detection mismatch for error: %v", tt.err)
 		})
 	}
 }
 
 func TestClientPool_GetBackoffStatus(t *testing.T) {
-	instanceStore := &models.InstanceStore{}
-	
-	pool, err := NewClientPool(instanceStore)
-	if err != nil {
-		t.Fatalf("Failed to create client pool: %v", err)
-	}
+	pool := setupTestPool(t)
 	defer pool.Close()
 
 	instanceID := 1
 	
 	// Initially no backoff
 	inBackoff, nextRetry, attempts := pool.GetBackoffStatus(instanceID)
-	if inBackoff || !nextRetry.IsZero() || attempts != 0 {
-		t.Error("Initially should have no backoff status")
-	}
+	assert.False(t, inBackoff, "Initially should not be in backoff")
+	assert.True(t, nextRetry.IsZero(), "Initially nextRetry should be zero time")
+	assert.Equal(t, 0, attempts, "Initially should have zero attempts")
 	
 	// Track a ban error
 	banError := errors.New("User's IP is banned for too many failed login attempts")
@@ -281,17 +243,16 @@ func TestClientPool_GetBackoffStatus(t *testing.T) {
 	
 	// Should now have backoff status
 	inBackoff, nextRetry, attempts = pool.GetBackoffStatus(instanceID)
-	if !inBackoff || nextRetry.IsZero() || attempts != 1 {
-		t.Errorf("After ban error: inBackoff=%v, nextRetry=%v, attempts=%d", 
-			inBackoff, nextRetry, attempts)
-	}
+	assert.True(t, inBackoff, "After ban error should be in backoff")
+	assert.False(t, nextRetry.IsZero(), "After ban error nextRetry should not be zero")
+	assert.Equal(t, 1, attempts, "After ban error should have 1 attempt")
 	
 	// Reset tracking
 	pool.resetFailureTracking(instanceID)
 	
 	// Should be back to no backoff
 	inBackoff, nextRetry, attempts = pool.GetBackoffStatus(instanceID)
-	if inBackoff || !nextRetry.IsZero() || attempts != 0 {
-		t.Error("After reset should have no backoff status")
-	}
+	assert.False(t, inBackoff, "After reset should not be in backoff")
+	assert.True(t, nextRetry.IsZero(), "After reset nextRetry should be zero time")
+	assert.Equal(t, 0, attempts, "After reset should have zero attempts")
 }
