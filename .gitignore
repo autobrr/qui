@@ -60,4 +60,6 @@ output/*
 qui
 .claude/agents/*
 !.claude/agents/code-reviewer.md
+!.claude/agents/go-simple.md
+!.claude/agents/react-simple.md
 prd_final.md
