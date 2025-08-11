@@ -154,8 +154,13 @@ function calculateMinWidth(text: string, padding: number = 48): number {
   return Math.max(60, Math.ceil(text.length * charWidth) + padding + extraPadding)
 }
 
-const createColumns = (incognitoMode: boolean): ColumnDef<Torrent>[] => [
-  {
+const createColumns = (
+  incognitoMode: boolean,
+  selectionEnhancers?: {
+    shiftPressedRef: { current: boolean }
+    lastSelectedIndexRef: { current: number | null }
+  }
+): ColumnDef<Torrent>[] => [{
     id: 'select',
     header: ({ table }) => (
       <div className="flex items-center justify-center p-1 -m-1">
@@ -167,16 +172,50 @@ const createColumns = (incognitoMode: boolean): ColumnDef<Torrent>[] => [
         />
       </div>
     ),
-    cell: ({ row }) => (
+  cell: ({ row, table }) => {
+    return (
       <div className="flex items-center justify-center p-1 -m-1">
         <Checkbox
           checked={row.getIsSelected()}
-          onCheckedChange={(checked) => row.toggleSelected(!!checked)}
+          onPointerDown={(e) => {
+            if (selectionEnhancers) {
+              selectionEnhancers.shiftPressedRef.current = e.shiftKey
+            }
+          }}
+          onCheckedChange={(checked: boolean | 'indeterminate') => {
+            const isShift = selectionEnhancers?.shiftPressedRef.current === true
+            const allRows = table.getRowModel().rows
+            const currentIndex = allRows.findIndex(r => r.id === row.id)
+
+            if (isShift && selectionEnhancers?.lastSelectedIndexRef.current !== null) {
+              const start = Math.min(selectionEnhancers.lastSelectedIndexRef.current!, currentIndex)
+              const end = Math.max(selectionEnhancers.lastSelectedIndexRef.current!, currentIndex)
+
+              table.setRowSelection((prev: Record<string, boolean>) => {
+                const next: Record<string, boolean> = { ...prev }
+                for (let i = start; i <= end; i++) {
+                  const r = allRows[i]
+                  if (r) {
+                    next[r.id] = !!checked
+                  }
+                }
+                return next
+              })
+            } else {
+              row.toggleSelected(!!checked)
+            }
+
+            if (selectionEnhancers) {
+              selectionEnhancers.lastSelectedIndexRef.current = currentIndex
+              selectionEnhancers.shiftPressedRef.current = false
+            }
+          }}
           aria-label="Select row"
           className="hover:border-ring cursor-pointer transition-colors"
         />
       </div>
-    ),
+    )
+  },
     size: 40,
     enableResizing: false,
   },
@@ -415,6 +454,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
 
+  // State for range select capabilities for checkboxes
+  const shiftPressedRef = useRef<boolean>(false)
+  const lastSelectedIndexRef = useRef<number | null>(null)
+
   // These should be defined at module scope, not inside the component, to ensure stable references
   // (If not already, move them to the top of the file)
   // const DEFAULT_COLUMN_VISIBILITY, DEFAULT_COLUMN_ORDER, DEFAULT_COLUMN_SIZING
@@ -535,8 +578,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const sortedTorrents = torrents
 
   // Memoize columns to avoid unnecessary recalculations
-  const columns = useMemo(() => createColumns(incognitoMode), [incognitoMode])
-  
+  const columns = useMemo(
+    () => createColumns(incognitoMode, { shiftPressedRef, lastSelectedIndexRef }),
+    [incognitoMode]
+  )
+
   const table = useReactTable({
     data: sortedTorrents,
     columns,
