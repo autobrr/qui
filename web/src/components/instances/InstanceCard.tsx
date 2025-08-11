@@ -25,7 +25,7 @@ import {
   XCircle
 } from 'lucide-react'
 import { useInstances } from '@/hooks/useInstances'
-import { cn } from '@/lib/utils'
+import { cn, formatErrorMessage } from '@/lib/utils'
 
 interface InstanceCardProps {
   instance: InstanceResponse
@@ -50,21 +50,32 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
         })
       } else {
         toast.error('Test Connection Failed', {
-          description: result.message || 'Could not connect to qBittorrent instance'
+          description: result.message ? formatErrorMessage(result.message) : 'Could not connect to qBittorrent instance'
         })
       }
     } catch (error) {
       const message = 'Connection failed'
       setTestResult({ success: false, message })
       toast.error('Test Connection Failed', {
-        description: error instanceof Error ? error.message : message
+        description: error instanceof Error ? formatErrorMessage(error.message) : message
       })
     }
   }
 
   const handleDelete = () => {
     if (confirm(`Are you sure you want to delete "${instance.name}"?`)) {
-      deleteInstance({ id: instance.id, name: instance.name })
+      deleteInstance({ id: instance.id, name: instance.name }, {
+        onSuccess: () => {
+          toast.success('Instance Deleted', {
+            description: `Successfully deleted "${instance.name}"`
+          })
+        },
+        onError: (error) => {
+          toast.error('Delete Failed', {
+            description: error instanceof Error ? formatErrorMessage(error.message) : 'Failed to delete instance'
+          })
+        },
+      })
     }
   }
 
@@ -134,9 +145,16 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
         </div>
         
         {instance.connectionError && (
-          <div className="mt-4 flex items-center gap-2 text-sm text-destructive">
-            <XCircle className="h-4 w-4" />
-            <span>{instance.connectionError}</span>
+          <div className="mt-4 p-3 rounded-lg bg-destructive/10 border border-destructive/20">
+            <div className="flex items-start gap-2 text-sm text-destructive">
+              <XCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+              <div className="flex-1">
+                <div className="font-medium mb-1">Connection Error</div>
+                <div className="text-destructive/90">
+                  {formatErrorMessage(instance.connectionError)}
+                </div>
+              </div>
+            </div>
           </div>
         )}
         
@@ -150,7 +168,7 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
             ) : (
               <XCircle className="h-4 w-4" />
             )}
-            <span>{testResult.message}</span>
+            <span>{testResult.success ? testResult.message : formatErrorMessage(testResult.message)}</span>
           </div>
         )}
         

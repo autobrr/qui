@@ -4,7 +4,6 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import type { InstanceResponse } from '@/types'
 
@@ -25,22 +24,8 @@ export function useInstances() {
       username: string
       password: string
     }) => api.createInstance(data),
-    onSuccess: (data) => {
-      if (data.connected) {
-        toast.success('Instance Created', {
-          description: 'Instance created and connected successfully'
-        })
-      } else {
-        toast.warning('Instance Created with Connection Issue', {
-          description: data.connectionError || 'Instance created but could not connect'
-        })
-      }
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['instances'] })
-    },
-    onError: (error: Error) => {
-      toast.error('Create Failed', {
-        description: error.message || 'Failed to create instance'
-      })
     },
   })
 
@@ -55,37 +40,15 @@ export function useInstances() {
         password: string
       }>
     }) => api.updateInstance(id, data),
-    onSuccess: (data) => {
-      if (data.connected) {
-        toast.success('Instance Updated', {
-          description: 'Instance updated and connected successfully'
-        })
-      } else {
-        toast.warning('Instance Updated with Connection Issue', {
-          description: data.connectionError || 'Instance updated but could not connect'
-        })
-      }
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['instances'] })
-    },
-    onError: (error: Error) => {
-      toast.error('Update Failed', {
-        description: error.message || 'Failed to update instance'
-      })
     },
   })
 
   const deleteMutation = useMutation({
     mutationFn: ({ id }: { id: number; name: string }) => api.deleteInstance(id),
-    onSuccess: (_, variables) => {
-      toast.success('Instance Deleted', {
-        description: `Successfully deleted "${variables.name}"`
-      })
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['instances'] })
-    },
-    onError: (error: Error) => {
-      toast.error('Delete Failed', {
-        description: error.message || 'Failed to delete instance'
-      })
     },
   })
 
