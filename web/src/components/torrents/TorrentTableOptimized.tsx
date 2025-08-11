@@ -33,6 +33,73 @@ import { usePersistedColumnOrder } from '@/hooks/usePersistedColumnOrder'
 import { usePersistedColumnSizing } from '@/hooks/usePersistedColumnSizing'
 import { usePersistedColumnSorting } from '@/hooks/usePersistedColumnSorting'
 
+// Virtual scrolling and progressive loading constants
+const VIRTUAL_CONSTANTS = {
+  INITIAL_LOADED_ROWS: 100,
+  LOAD_MORE_BATCH_SIZE: 100,
+  LOAD_MORE_THRESHOLD: 50,
+  ROW_HEIGHT: 40,
+  OVERSCAN_SMALL: 20,
+  OVERSCAN_LARGE: 5,
+  LARGE_DATASET_THRESHOLD: 10000,
+  // No more manual reset constants - fully automatic virtual table
+} as const
+
+// Search and UI constants
+const UI_CONSTANTS = {
+  SEARCH_DEBOUNCE_MS: 200,
+  REFETCH_INDICATOR_DELAY_MS: 2000,
+  VIRTUALIZER_MEASURE_DELAY_MS: 0,
+} as const
+
+// Mutation timing constants
+const MUTATION_CONSTANTS = {
+  DELETE_REFETCH_DELAY_MS: 2000,
+  DELETE_FILES_REFETCH_DELAY_MS: 5000,
+  RESUME_DELAY_MS: 2000,
+  DEFAULT_OPERATION_DELAY_MS: 1000,
+  LOADING_FLAG_RESET_MS: 100,
+} as const
+
+// Mathematical constants
+const MATH_CONSTANTS = {
+  PERCENTAGE_MULTIPLIER: 100,
+  MILLISECONDS_PER_SECOND: 1000,
+  RATIO_PRECISION: 2,
+  RATIO_INFINITY_VALUE: -1,
+  PAD_LENGTH: 2,
+  PAD_CHAR: '0',
+} as const
+
+// Time formatting constants
+const TIME_CONSTANTS = {
+  INFINITY_SECONDS: 8640000,
+  SECONDS_PER_HOUR: 3600,
+  SECONDS_PER_MINUTE: 60,
+  HOURS_PER_DAY: 24,
+} as const
+
+// Column sizing constants
+const COLUMN_CONSTANTS = {
+  SELECT_COLUMN_WIDTH: 40,
+  PRIORITY_COLUMN_WIDTH: 45,
+  NAME_COLUMN_WIDTH: 200,
+  SIZE_COLUMN_WIDTH: 85,
+  PROGRESS_COLUMN_WIDTH: 120,
+  STATUS_COLUMN_WIDTH: 120,
+  ETA_COLUMN_WIDTH: 80,
+  RATIO_COLUMN_WIDTH: 80,
+  ADDED_COLUMN_WIDTH: 200,
+  CATEGORY_COLUMN_WIDTH: 150,
+  TAGS_COLUMN_WIDTH: 200,
+  SAVE_PATH_COLUMN_WIDTH: 250,
+  TRACKER_COLUMN_WIDTH: 150,
+  MIN_COLUMN_PADDING: 48,
+  CHAR_WIDTH_ESTIMATE: 7.5,
+  SORT_INDICATOR_PADDING: 20,
+  MIN_COLUMN_WIDTH: 60,
+} as const
+
 // Default values for persisted state hooks (module scope for stable references)
 const DEFAULT_COLUMN_VISIBILITY = {
   downloaded: false,
@@ -127,15 +194,15 @@ interface TorrentTableOptimizedProps {
 
 
 function formatEta(seconds: number): string {
-  if (seconds === 8640000) return '∞'
+  if (seconds === TIME_CONSTANTS.INFINITY_SECONDS) return '∞'
   if (seconds < 0) return ''
   
-  const hours = Math.floor(seconds / 3600)
-  const minutes = Math.floor((seconds % 3600) / 60)
+  const hours = Math.floor(seconds / TIME_CONSTANTS.SECONDS_PER_HOUR)
+  const minutes = Math.floor((seconds % TIME_CONSTANTS.SECONDS_PER_HOUR) / TIME_CONSTANTS.SECONDS_PER_MINUTE)
   
-  if (hours > 24) {
-    const days = Math.floor(hours / 24)
-    return `${days}d ${hours % 24}h`
+  if (hours > TIME_CONSTANTS.HOURS_PER_DAY) {
+    const days = Math.floor(hours / TIME_CONSTANTS.HOURS_PER_DAY)
+    return `${days}d ${hours % TIME_CONSTANTS.HOURS_PER_DAY}h`
   }
   
   if (hours > 0) {
@@ -146,12 +213,12 @@ function formatEta(seconds: number): string {
 }
 
 // Calculate minimum column width based on header text
-function calculateMinWidth(text: string, padding: number = 48): number {
+function calculateMinWidth(text: string, padding: number = COLUMN_CONSTANTS.MIN_COLUMN_PADDING): number {
   // Approximate character width in pixels for text-sm (14px) with font-medium
-  const charWidth = 7.5
+  const charWidth = COLUMN_CONSTANTS.CHAR_WIDTH_ESTIMATE
   // Add padding for sort indicator
-  const extraPadding = 20
-  return Math.max(60, Math.ceil(text.length * charWidth) + padding + extraPadding)
+  const extraPadding = COLUMN_CONSTANTS.SORT_INDICATOR_PADDING
+  return Math.max(COLUMN_CONSTANTS.MIN_COLUMN_WIDTH, Math.ceil(text.length * charWidth) + padding + extraPadding)
 }
 
 const createColumns = (incognitoMode: boolean): ColumnDef<Torrent>[] => [
@@ -177,7 +244,7 @@ const createColumns = (incognitoMode: boolean): ColumnDef<Torrent>[] => [
         />
       </div>
     ),
-    size: 40,
+    size: COLUMN_CONSTANTS.SELECT_COLUMN_WIDTH,
     enableResizing: false,
   },
   {
@@ -202,39 +269,40 @@ const createColumns = (incognitoMode: boolean): ColumnDef<Torrent>[] => [
       // In qBittorrent, 1 is highest priority, higher numbers are lower priority
       return <span className="text-sm font-medium text-center block">{priority}</span>
     },
-    size: 45,
+    size: COLUMN_CONSTANTS.PRIORITY_COLUMN_WIDTH,
   },
   {
     accessorKey: 'name',
     header: 'Name',
     cell: ({ row }) => {
       const displayName = incognitoMode ? getLinuxIsoName(row.original.hash) : row.original.name
+      const safeName = displayName || row.original.name || 'Unknown'
       return (
-        <div className="truncate text-sm" title={displayName}>
-          {displayName}
+        <div className="truncate text-sm" title={safeName}>
+          {safeName}
         </div>
       )
     },
-    size: 200,
+    size: COLUMN_CONSTANTS.NAME_COLUMN_WIDTH,
   },
   {
     accessorKey: 'size',
     header: 'Size',
     cell: ({ row }) => <span className="text-sm truncate">{formatBytes(row.original.size)}</span>,
-    size: 85,
+    size: COLUMN_CONSTANTS.SIZE_COLUMN_WIDTH,
   },
   {
     accessorKey: 'progress',
     header: 'Progress',
     cell: ({ row }) => (
       <div className="flex items-center gap-2">
-        <Progress value={row.original.progress * 100} className="w-20" />
+        <Progress value={row.original.progress * MATH_CONSTANTS.PERCENTAGE_MULTIPLIER} className="w-20" />
         <span className="text-xs text-muted-foreground">
-          {Math.round(row.original.progress * 100)}%
+          {Math.round(row.original.progress * MATH_CONSTANTS.PERCENTAGE_MULTIPLIER)}%
         </span>
       </div>
     ),
-    size: 120,
+    size: COLUMN_CONSTANTS.PROGRESS_COLUMN_WIDTH,
   },
   {
     accessorKey: 'state',
@@ -252,7 +320,7 @@ const createColumns = (incognitoMode: boolean): ColumnDef<Torrent>[] => [
       
       return <Badge variant={variant} className="text-xs">{state}</Badge>
     },
-    size: 120,
+    size: COLUMN_CONSTANTS.STATUS_COLUMN_WIDTH,
   },
   {
     accessorKey: 'dlspeed',
@@ -270,14 +338,14 @@ const createColumns = (incognitoMode: boolean): ColumnDef<Torrent>[] => [
     accessorKey: 'eta',
     header: 'ETA',
     cell: ({ row }) => <span className="text-sm truncate">{formatEta(row.original.eta)}</span>,
-    size: 80,
+    size: COLUMN_CONSTANTS.ETA_COLUMN_WIDTH,
   },
   {
     accessorKey: 'ratio',
     header: 'Ratio',
     cell: ({ row }) => {
       const ratio = incognitoMode ? getLinuxRatio(row.original.hash) : row.original.ratio
-      const displayRatio = ratio === -1 ? "∞" : ratio.toFixed(2)
+      const displayRatio = ratio === MATH_CONSTANTS.RATIO_INFINITY_VALUE ? "∞" : ratio.toFixed(MATH_CONSTANTS.RATIO_PRECISION)
       const colorVar = getRatioColor(ratio)
       
       return (
@@ -289,7 +357,7 @@ const createColumns = (incognitoMode: boolean): ColumnDef<Torrent>[] => [
         </span>
       )
     },
-    size: 80,
+    size: COLUMN_CONSTANTS.RATIO_COLUMN_WIDTH,
   },
   {
     accessorKey: 'added_on',
@@ -299,7 +367,7 @@ const createColumns = (incognitoMode: boolean): ColumnDef<Torrent>[] => [
       if (!addedOn || addedOn === 0) {
         return '-'
       }
-      const date = new Date(addedOn * 1000) // Convert from Unix timestamp
+      const date = new Date(addedOn * MATH_CONSTANTS.MILLISECONDS_PER_SECOND) // Convert from Unix timestamp
       
       // Format: M/D/YYYY, h:mm:ss AM/PM
       const month = date.getMonth() + 1 // getMonth() returns 0-11
@@ -313,11 +381,11 @@ const createColumns = (incognitoMode: boolean): ColumnDef<Torrent>[] => [
       
       return (
         <div className="whitespace-nowrap text-sm">
-          {month}/{day}/{year}, {displayHours}:{minutes.toString().padStart(2, '0')}:{seconds.toString().padStart(2, '0')} {ampm}
+          {month}/{day}/{year}, {displayHours}:{minutes.toString().padStart(MATH_CONSTANTS.PAD_LENGTH, MATH_CONSTANTS.PAD_CHAR)}:{seconds.toString().padStart(MATH_CONSTANTS.PAD_LENGTH, MATH_CONSTANTS.PAD_CHAR)} {ampm}
         </div>
       )
     },
-    size: 200,
+    size: COLUMN_CONSTANTS.ADDED_COLUMN_WIDTH,
   },
   {
     accessorKey: 'category',
@@ -330,7 +398,7 @@ const createColumns = (incognitoMode: boolean): ColumnDef<Torrent>[] => [
         </div>
       )
     },
-    size: 150,
+    size: COLUMN_CONSTANTS.CATEGORY_COLUMN_WIDTH,
   },
   {
     accessorKey: 'tags',
@@ -344,7 +412,7 @@ const createColumns = (incognitoMode: boolean): ColumnDef<Torrent>[] => [
         </div>
       )
     },
-    size: 200,
+    size: COLUMN_CONSTANTS.TAGS_COLUMN_WIDTH,
   },
   {
     accessorKey: 'downloaded',
@@ -369,7 +437,7 @@ const createColumns = (incognitoMode: boolean): ColumnDef<Torrent>[] => [
         </div>
       )
     },
-    size: 250,
+    size: COLUMN_CONSTANTS.SAVE_PATH_COLUMN_WIDTH,
   },
   {
     accessorKey: 'tracker',
@@ -392,7 +460,7 @@ const createColumns = (incognitoMode: boolean): ColumnDef<Torrent>[] => [
         </div>
       )
     },
-    size: 150,
+    size: COLUMN_CONSTANTS.TRACKER_COLUMN_WIDTH,
   },
 ]
 
@@ -427,7 +495,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const [columnSizing, setColumnSizing] = usePersistedColumnSizing(DEFAULT_COLUMN_SIZING)
   
   // Progressive loading state with async management
-  const [loadedRows, setLoadedRows] = useState(100)
+  const [loadedRows, setLoadedRows] = useState<number>(VIRTUAL_CONSTANTS.INITIAL_LOADED_ROWS)
   const [isLoadingMoreRows, setIsLoadingMoreRows] = useState(false)
   
   // Query client for invalidating queries
@@ -438,8 +506,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const availableTags = metadata?.tags || []
   const availableCategories = metadata?.categories || {}
 
-  // Debounce search to prevent excessive filtering (200ms delay for faster response)
-  const debouncedSearch = useDebounce(globalFilter, 200)
+  // Debounce search to prevent excessive filtering
+  const debouncedSearch = useDebounce(globalFilter, UI_CONSTANTS.SEARCH_DEBOUNCE_MS)
 
   // Use immediate search if available, otherwise use debounced search
   const effectiveSearch = immediateSearch || debouncedSearch
@@ -508,7 +576,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     if (isFetching && !isLoading && torrents.length > 0) {
       timeoutId = setTimeout(() => {
         setShowRefetchIndicator(true)
-      }, 2000)
+      }, UI_CONSTANTS.REFETCH_INDICATOR_DELAY_MS)
     } else {
       setShowRefetchIndicator(false)
     }
@@ -591,10 +659,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     
     // Use functional update to avoid stale closure
     setLoadedRows(prev => {
-      const newLoadedRows = Math.min(prev + 100, sortedTorrents.length)
+      const newLoadedRows = Math.min(prev + VIRTUAL_CONSTANTS.LOAD_MORE_BATCH_SIZE, sortedTorrents.length)
       
       // If we're near the end of loaded torrents and haven't loaded all from server
-      if (newLoadedRows >= sortedTorrents.length - 50 && !hasLoadedAll && !isLoadingMore) {
+      if (newLoadedRows >= sortedTorrents.length - VIRTUAL_CONSTANTS.LOAD_MORE_THRESHOLD && !hasLoadedAll && !isLoadingMore) {
         loadMoreTorrents()
       }
       
@@ -602,7 +670,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     })
     
     // Reset loading flag after a short delay
-    setTimeout(() => setIsLoadingMoreRows(false), 100)
+    setTimeout(() => setIsLoadingMoreRows(false), MUTATION_CONSTANTS.LOADING_FLAG_RESET_MS)
   }, [sortedTorrents.length, hasLoadedAll, isLoadingMore, loadMoreTorrents, isLoadingMoreRows])
 
   // Ensure loadedRows never exceeds actual data length
@@ -612,20 +680,22 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const virtualizer = useVirtualizer({
     count: safeLoadedRows,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 40,
+    estimateSize: () => VIRTUAL_CONSTANTS.ROW_HEIGHT,
     // Reduce overscan for large datasets to minimize DOM nodes
-    overscan: sortedTorrents.length > 10000 ? 5 : 20,
+    overscan: sortedTorrents.length > VIRTUAL_CONSTANTS.LARGE_DATASET_THRESHOLD ? VIRTUAL_CONSTANTS.OVERSCAN_LARGE : VIRTUAL_CONSTANTS.OVERSCAN_SMALL,
     // Provide a key to help with item tracking
     getItemKey: useCallback((index: number) => rows[index]?.id || `row-${index}`, [rows]),
     // Use a debounced onChange to prevent excessive rendering
-    onChange: (instance) => {
+    onChange: (instance: any) => {
       const vRows = instance.getVirtualItems();
       
-      // Check if we need to load more first (no need to wait for debounce)
+      // Only load more as user scrolls - no manual shrinking
       const lastItem = vRows.at(-1);
-      if (lastItem && lastItem.index >= safeLoadedRows - 50 && safeLoadedRows < rows.length) {
+      if (lastItem && lastItem.index >= safeLoadedRows - VIRTUAL_CONSTANTS.LOAD_MORE_THRESHOLD && safeLoadedRows < rows.length) {
         loadMore();
       }
+      
+      // Virtual table should be fully automatic - no manual position jumping
     },
   })
   
@@ -650,8 +720,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
   // Reset loaded rows when data changes significantly
   useEffect(() => {
-    // Always ensure loadedRows is at least 100 (or total length if less)
-    const targetRows = Math.min(100, sortedTorrents.length)
+    // Always ensure loadedRows is at least INITIAL_LOADED_ROWS (or total length if less)
+    const targetRows = Math.min(VIRTUAL_CONSTANTS.INITIAL_LOADED_ROWS, sortedTorrents.length)
     
     setLoadedRows(prev => {
       if (sortedTorrents.length === 0) {
@@ -661,10 +731,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         // Initial load
         return targetRows
       } else if (sortedTorrents.length < prev) {
-        // Data reduced, cap at new length
-        return sortedTorrents.length
+        // Data reduced significantly, reset to reasonable size
+        return Math.min(targetRows, sortedTorrents.length)
       } else if (prev < targetRows) {
-        // Not enough rows loaded, load at least 100
+        // Not enough rows loaded, load at least INITIAL_LOADED_ROWS
+        return targetRows
+      } else if (prev > sortedTorrents.length * 0.5 && targetRows <= VIRTUAL_CONSTANTS.INITIAL_LOADED_ROWS) {
+        // If we had loaded more than half the total items and now have few items, reset
+        // This handles cases where filters dramatically reduce the dataset
         return targetRows
       }
       return prev
@@ -676,7 +750,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
   // Reset when filters or search changes
   useEffect(() => {
-    const targetRows = Math.min(100, sortedTorrents.length || 0)
+    const targetRows = Math.min(VIRTUAL_CONSTANTS.INITIAL_LOADED_ROWS, sortedTorrents.length || 0)
     setLoadedRows(targetRows)
     setIsLoadingMoreRows(false)
     
@@ -754,7 +828,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         
         // Refetch later to sync with actual server state (don't invalidate!)
         // Longer delay when deleting files from disk
-        const refetchDelay = variables.deleteFiles ? 5000 : 2000
+        const refetchDelay = variables.deleteFiles ? MUTATION_CONSTANTS.DELETE_FILES_REFETCH_DELAY_MS : MUTATION_CONSTANTS.DELETE_REFETCH_DELAY_MS
         setTimeout(() => {
           // Use refetch instead of invalidate to keep showing data
           queryClient.refetchQueries({ 
@@ -816,7 +890,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         
         // For other operations, add delay to allow qBittorrent to process
         // Resume operations need more time for state transition
-        const delay = variables.action === 'resume' ? 2000 : 1000
+        const delay = variables.action === 'resume' ? MUTATION_CONSTANTS.RESUME_DELAY_MS : MUTATION_CONSTANTS.DEFAULT_OPERATION_DELAY_MS
         
         setTimeout(() => {
           // Use refetch instead of invalidate to avoid loading state
@@ -1573,8 +1647,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
             ) : (
               <>
                 {totalCount} torrent{totalCount !== 1 ? 's' : ''}
-                {safeLoadedRows < rows.length && ` • ${safeLoadedRows} loaded in viewport`}
-                {safeLoadedRows < rows.length && ' (scroll for more)'}
+                {safeLoadedRows < totalCount && ` • ${safeLoadedRows} loaded in viewport`}
+                {safeLoadedRows < totalCount && ' (scroll for more)'}
                 {isLoadingMore && ' • Loading more from server...'}
               </>
             )}
