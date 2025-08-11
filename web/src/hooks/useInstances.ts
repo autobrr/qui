@@ -19,7 +19,7 @@ export function useInstances() {
   const createMutation = useMutation({
     mutationFn: (data: {
       name: string
-      url: string
+      host: string
       username: string
       password: string
       basicUsername?: string
@@ -35,7 +35,7 @@ export function useInstances() {
       id: number
       data: Partial<{
         name: string
-        url: string
+        host: string
         username: string
         password: string
         basicUsername?: string

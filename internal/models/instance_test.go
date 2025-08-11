@@ -12,7 +12,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-func TestURLValidation(t *testing.T) {
+func TestHostValidation(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
@@ -110,18 +110,18 @@ func TestURLValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := validateAndNormalizeURL(tt.input)
+			got, err := validateAndNormalizeHost(tt.input)
 			if tt.wantErr {
 				assert.Error(t, err, "expected error for input %q", tt.input)
 				return
 			}
 			require.NoError(t, err, "unexpected error for input %q", tt.input)
-			assert.Equal(t, tt.expected, got, "URL mismatch for input %q", tt.input)
+			assert.Equal(t, tt.expected, got, "host mismatch for input %q", tt.input)
 		})
 	}
 }
 
-func TestInstanceStoreWithURL(t *testing.T) {
+func TestInstanceStoreWithHost(t *testing.T) {
 	// Create in-memory database for testing
 	db, err := sql.Open("sqlite", ":memory:")
 	require.NoError(t, err, "Failed to open test database")
@@ -137,12 +137,12 @@ func TestInstanceStoreWithURL(t *testing.T) {
 	store, err := NewInstanceStore(db, encryptionKey)
 	require.NoError(t, err, "Failed to create instance store")
 
-	// Create new schema (with URL field)
+	// Create new schema (with host field)
 	_, err = db.Exec(`
 		CREATE TABLE instances (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			name TEXT NOT NULL,
-			url TEXT NOT NULL,
+			host TEXT NOT NULL,
 			username TEXT NOT NULL,
 			password_encrypted TEXT NOT NULL,
 			basic_username TEXT,
@@ -155,18 +155,18 @@ func TestInstanceStoreWithURL(t *testing.T) {
 	`)
 	require.NoError(t, err, "Failed to create test table")
 
-	// Test creating an instance with URL
+	// Test creating an instance with host
 	instance, err := store.Create("Test Instance", "http://localhost:8080", "testuser", "testpass", nil, nil)
 	require.NoError(t, err, "Failed to create instance")
-	assert.Equal(t, "http://localhost:8080", instance.URL, "URL should match")
+	assert.Equal(t, "http://localhost:8080", instance.Host, "host should match")
 
 	// Test retrieving the instance
 	retrieved, err := store.Get(instance.ID)
 	require.NoError(t, err, "Failed to get instance")
-	assert.Equal(t, "http://localhost:8080", retrieved.URL, "Retrieved URL should match")
+	assert.Equal(t, "http://localhost:8080", retrieved.Host, "retrieved host should match")
 
 	// Test updating the instance
 	updated, err := store.Update(instance.ID, "Updated Instance", "https://example.com:8443/qbittorrent", "newuser", "", nil, nil)
 	require.NoError(t, err, "Failed to update instance")
-	assert.Equal(t, "https://example.com:8443/qbittorrent", updated.URL, "Updated URL should match")
+	assert.Equal(t, "https://example.com:8443/qbittorrent", updated.Host, "updated host should match")
 }

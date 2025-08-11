@@ -85,7 +85,7 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
             {instance.name}
           </CardTitle>
           <CardDescription className="text-sm">
-            {instance.url}
+            {instance.host}
           </CardDescription>
         </div>
         <div className="flex items-center gap-2">

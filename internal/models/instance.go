@@ -22,7 +22,7 @@ var ErrInstanceNotFound = errors.New("instance not found")
 type Instance struct {
 	ID                     int        `json:"id"`
 	Name                   string     `json:"name"`
-	URL                    string     `json:"url"`
+	Host                   string     `json:"host"`
 	Username               string     `json:"username"`
 	PasswordEncrypted      string     `json:"-"`
 	BasicUsername          *string    `json:"basic_username,omitempty"`
@@ -100,44 +100,44 @@ func (s *InstanceStore) decrypt(ciphertext string) (string, error) {
 	return string(plaintext), nil
 }
 
-// validateAndNormalizeURL validates and normalizes a qBittorrent instance URL
-func validateAndNormalizeURL(rawURL string) (string, error) {
+// validateAndNormalizeHost validates and normalizes a qBittorrent instance host URL
+func validateAndNormalizeHost(rawHost string) (string, error) {
 	// Trim whitespace
-	rawURL = strings.TrimSpace(rawURL)
+	rawHost = strings.TrimSpace(rawHost)
 	
-	// Check for empty URL
-	if rawURL == "" {
-		return "", errors.New("URL cannot be empty")
+	// Check for empty host
+	if rawHost == "" {
+		return "", errors.New("host cannot be empty")
 	}
 	
-	// Check if URL already has a scheme
-	if strings.Contains(rawURL, "://") {
-		// Has a scheme, validate it
-		if !strings.HasPrefix(rawURL, "http://") && !strings.HasPrefix(rawURL, "https://") {
-			return "", errors.New("URL scheme must be http or https")
-		}
-	} else {
+	// Check if host already has a valid scheme
+	if !strings.Contains(rawHost, "://") {
 		// No scheme, add http://
-		rawURL = "http://" + rawURL
+		rawHost = "http://" + rawHost
 	}
 	
 	// Parse the URL
-	u, err := url.Parse(rawURL)
+	u, err := url.Parse(rawHost)
 	if err != nil {
 		return "", err
 	}
 	
+	// Validate scheme
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return "", errors.New("host scheme must be http or https")
+	}
+	
 	// Validate host
 	if u.Host == "" {
-		return "", errors.New("URL must include a host")
+		return "", errors.New("host must include a host")
 	}
 	
 	return u.String(), nil
 }
 
-func (s *InstanceStore) Create(name, rawURL, username, password string, basicUsername, basicPassword *string) (*Instance, error) {
-	// Validate and normalize the URL
-	normalizedURL, err := validateAndNormalizeURL(rawURL)
+func (s *InstanceStore) Create(name, rawHost, username, password string, basicUsername, basicPassword *string) (*Instance, error) {
+	// Validate and normalize the host
+	normalizedHost, err := validateAndNormalizeHost(rawHost)
 	if err != nil {
 		return nil, err
 	}
@@ -158,16 +158,16 @@ func (s *InstanceStore) Create(name, rawURL, username, password string, basicUse
 	}
 
 	query := `
-		INSERT INTO instances (name, url, username, password_encrypted, basic_username, basic_password_encrypted) 
+		INSERT INTO instances (name, host, username, password_encrypted, basic_username, basic_password_encrypted) 
 		VALUES (?, ?, ?, ?, ?, ?)
-		RETURNING id, name, url, username, password_encrypted, basic_username, basic_password_encrypted, is_active, last_connected_at, created_at, updated_at
+		RETURNING id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, is_active, last_connected_at, created_at, updated_at
 	`
 
 	instance := &Instance{}
-	err = s.db.QueryRow(query, name, normalizedURL, username, encryptedPassword, basicUsername, encryptedBasicPassword).Scan(
+	err = s.db.QueryRow(query, name, normalizedHost, username, encryptedPassword, basicUsername, encryptedBasicPassword).Scan(
 		&instance.ID,
 		&instance.Name,
-		&instance.URL,
+		&instance.Host,
 		&instance.Username,
 		&instance.PasswordEncrypted,
 		&instance.BasicUsername,
@@ -187,7 +187,7 @@ func (s *InstanceStore) Create(name, rawURL, username, password string, basicUse
 
 func (s *InstanceStore) Get(id int) (*Instance, error) {
 	query := `
-		SELECT id, name, url, username, password_encrypted, basic_username, basic_password_encrypted, is_active, last_connected_at, created_at, updated_at 
+		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, is_active, last_connected_at, created_at, updated_at 
 		FROM instances 
 		WHERE id = ?
 	`
@@ -196,7 +196,7 @@ func (s *InstanceStore) Get(id int) (*Instance, error) {
 	err := s.db.QueryRow(query, id).Scan(
 		&instance.ID,
 		&instance.Name,
-		&instance.URL,
+		&instance.Host,
 		&instance.Username,
 		&instance.PasswordEncrypted,
 		&instance.BasicUsername,
@@ -219,7 +219,7 @@ func (s *InstanceStore) Get(id int) (*Instance, error) {
 
 func (s *InstanceStore) List(activeOnly bool) ([]*Instance, error) {
 	query := `
-		SELECT id, name, url, username, password_encrypted, basic_username, basic_password_encrypted, is_active, last_connected_at, created_at, updated_at 
+		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, is_active, last_connected_at, created_at, updated_at 
 		FROM instances
 	`
 
@@ -241,7 +241,7 @@ func (s *InstanceStore) List(activeOnly bool) ([]*Instance, error) {
 		err := rows.Scan(
 			&instance.ID,
 			&instance.Name,
-			&instance.URL,
+			&instance.Host,
 			&instance.Username,
 			&instance.PasswordEncrypted,
 			&instance.BasicUsername,
@@ -260,16 +260,16 @@ func (s *InstanceStore) List(activeOnly bool) ([]*Instance, error) {
 	return instances, rows.Err()
 }
 
-func (s *InstanceStore) Update(id int, name, rawURL, username, password string, basicUsername, basicPassword *string) (*Instance, error) {
-	// Validate and normalize the URL
-	normalizedURL, err := validateAndNormalizeURL(rawURL)
+func (s *InstanceStore) Update(id int, name, rawHost, username, password string, basicUsername, basicPassword *string) (*Instance, error) {
+	// Validate and normalize the host
+	normalizedHost, err := validateAndNormalizeHost(rawHost)
 	if err != nil {
 		return nil, err
 	}
 	
 	// Start building the update query
-	query := `UPDATE instances SET name = ?, url = ?, username = ?, basic_username = ?`
-	args := []interface{}{name, normalizedURL, username, basicUsername}
+	query := `UPDATE instances SET name = ?, host = ?, username = ?, basic_username = ?`
+	args := []interface{}{name, normalizedHost, username, basicUsername}
 
 	// Only update password if provided
 	if password != "" {

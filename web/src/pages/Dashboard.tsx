@@ -79,7 +79,7 @@ function InstanceCard({ instance }: { instance: any }) {
   const [showUrl, setShowUrl] = useState(false)
   
   // Create the display URL
-  const displayUrl = instance.url
+  const displayUrl = instance.host
   const shouldBlur = incognitoMode && !showUrl
   
   // Show loading only on first load

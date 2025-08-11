@@ -6,6 +6,7 @@
 import { useState } from 'react'
 import { useForm } from '@tanstack/react-form'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { z } from 'zod'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
@@ -13,9 +14,48 @@ import { Switch } from '@/components/ui/switch'
 import type { Instance } from '@/types'
 import { api } from '@/lib/api'
 
+// URL validation schema
+const urlSchema = z.string()
+  .min(1, 'URL is required')
+  .transform((value) => {
+    // Add http:// if no protocol specified
+    return value.includes('://') ? value : `http://${value}`
+  })
+  .pipe(
+    z.string().url('Please enter a valid URL')
+      .refine((url) => {
+        const parsed = new URL(url)
+        return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+      }, 'Only HTTP and HTTPS protocols are supported')
+      .refine((url) => {
+        const parsed = new URL(url)
+        const hostname = parsed.hostname
+        
+        // Check if hostname is an IP address
+        const isIPv4 = /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname) && 
+                      hostname.split('.').every(octet => {
+                        const num = parseInt(octet, 10)
+                        return num >= 0 && num <= 255
+                      })
+        
+        // IPv6 addresses are wrapped in brackets by URL parser
+        const isIPv6 = hostname.startsWith('[') && hostname.endsWith(']')
+        
+        // localhost doesn't require a port
+        const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1'
+        
+        // Require port for IP addresses (except localhost)
+        if ((isIPv4 || isIPv6) && !isLocalhost && !parsed.port) {
+          return false
+        }
+        
+        return true
+      }, 'Port is required when using an IP address (e.g., :8080)')
+  )
+
 interface InstanceFormData {
   name: string
-  url: string
+  host: string
   username: string
   password: string
   basicUsername?: string
@@ -45,7 +85,7 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
   const form = useForm({
     defaultValues: {
       name: instance?.name ?? '',
-      url: instance?.url ?? 'http://localhost:8080',
+      host: instance?.host ?? 'http://localhost:8080',
       username: instance?.username ?? 'admin',
       password: '',
       basicUsername: instance?.basicUsername ?? '',
@@ -97,52 +137,17 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
       </form.Field>
 
       <form.Field
-        name="url"
+        name="host"
         validators={{
           onChange: ({ value }) => {
-            if (!value) return 'URL is required'
-            
-            try {
-              // Parse URL, adding http:// if no protocol specified
-              const url = new URL(value.includes('://') ? value : `http://${value}`)
-              
-              // Validate protocol
-              if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-                return 'Only HTTP and HTTPS protocols are supported'
-              }
-              
-              // Check if hostname is an IP address
-              const hostname = url.hostname
-              
-              // Proper IPv4 validation - each octet must be 0-255
-              const isIPv4 = /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname) && 
-                            hostname.split('.').every(octet => {
-                              const num = parseInt(octet, 10)
-                              return num >= 0 && num <= 255
-                            })
-              
-              // IPv6 addresses are wrapped in brackets by URL parser
-              const isIPv6 = hostname.startsWith('[') && hostname.endsWith(']')
-              
-              // localhost doesn't require a port (qBittorrent default is 8080)
-              const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1'
-              
-              // Require port for IP addresses (except localhost)
-              // This helps prevent common mistakes where users forget the port
-              if ((isIPv4 || isIPv6) && !isLocalhost && !url.port) {
-                return 'Port is required when using an IP address (e.g., :8080)'
-              }
-              
-              return undefined
-            } catch {
-              return 'Please enter a valid URL'
-            }
+            const result = urlSchema.safeParse(value)
+            return result.success ? undefined : result.error.issues[0]?.message
           },
         }}
       >
         {(field) => (
           <div className="space-y-2">
-            <Label htmlFor={field.name}>Instance URL</Label>
+            <Label htmlFor={field.name}>URL</Label>
             <Input
               id={field.name}
               value={field.state.value}

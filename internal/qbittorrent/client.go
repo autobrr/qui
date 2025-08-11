@@ -6,7 +6,6 @@ package qbittorrent
 import (
 	"context"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -23,13 +22,10 @@ type Client struct {
 }
 
 // NewClient creates a new qBittorrent client wrapper
-func NewClient(instanceID int, instanceURL, username, password string, basicUsername, basicPassword *string) (*Client, error) {
-	// Clean up trailing slash if present
-	hostURL := strings.TrimSuffix(instanceURL, "/")
-
+func NewClient(instanceID int, instanceHost, username, password string, basicUsername, basicPassword *string) (*Client, error) {
 	// Create the base client
 	cfg := qbt.Config{
-		Host:     hostURL,
+		Host:     instanceHost,
 		Username: username,
 		Password: password,
 		Timeout:  30, // timeout in seconds

@@ -18,7 +18,7 @@ export interface AuthResponse {
 export interface Instance {
   id: number
   name: string
-  url: string
+  host: string
   username: string
   basicUsername?: string
   isActive: boolean

@@ -119,7 +119,7 @@ func (cp *ClientPool) createClient(instanceID int) (*Client, error) {
 	}
 
 	// Create new client
-	client, err := NewClient(instanceID, instance.URL, instance.Username, password, instance.BasicUsername, basicPassword)
+	client, err := NewClient(instanceID, instance.Host, instance.Username, password, instance.BasicUsername, basicPassword)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create client: %w", err)
 	}
