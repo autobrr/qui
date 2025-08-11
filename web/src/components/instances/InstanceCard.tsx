@@ -126,7 +126,8 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
         <div className="space-y-1 text-sm">
           <div className="flex justify-between">
             <span className="text-muted-foreground">Username:</span>
-            <span>{instance.username}</span>
+            {/* qBittorrent's default username is 'admin' */}
+            <span>{instance.username || 'admin'}</span>
           </div>
           {instance.basicUsername && (
             <div className="flex justify-between">

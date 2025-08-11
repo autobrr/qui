@@ -46,7 +46,7 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
     defaultValues: {
       name: instance?.name ?? '',
       url: instance?.url ?? 'http://localhost:8080',
-      username: instance?.username ?? '',
+      username: instance?.username ?? 'admin',
       password: '',
       basicUsername: instance?.basicUsername ?? '',
       basicPassword: '',
@@ -101,9 +101,38 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
         validators={{
           onChange: ({ value }) => {
             if (!value) return 'URL is required'
-            if (!value.match(/^https?:\/\//)) return 'URL must start with http:// or https://'
+            
             try {
-              new URL(value)
+              // Parse URL, adding http:// if no protocol specified
+              const url = new URL(value.includes('://') ? value : `http://${value}`)
+              
+              // Validate protocol
+              if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+                return 'Only HTTP and HTTPS protocols are supported'
+              }
+              
+              // Check if hostname is an IP address
+              const hostname = url.hostname
+              
+              // Proper IPv4 validation - each octet must be 0-255
+              const isIPv4 = /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname) && 
+                            hostname.split('.').every(octet => {
+                              const num = parseInt(octet, 10)
+                              return num >= 0 && num <= 255
+                            })
+              
+              // IPv6 addresses are wrapped in brackets by URL parser
+              const isIPv6 = hostname.startsWith('[') && hostname.endsWith(']')
+              
+              // localhost doesn't require a port (qBittorrent default is 8080)
+              const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1'
+              
+              // Require port for IP addresses (except localhost)
+              // This helps prevent common mistakes where users forget the port
+              if ((isIPv4 || isIPv6) && !isLocalhost && !url.port) {
+                return 'Port is required when using an IP address (e.g., :8080)'
+              }
+              
               return undefined
             } catch {
               return 'Please enter a valid URL'
@@ -119,7 +148,7 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
               value={field.state.value}
               onBlur={field.handleBlur}
               onChange={(e) => field.handleChange(e.target.value)}
-              placeholder="http://localhost:8080/qbittorrent"
+              placeholder="http://localhost:8080 or 192.168.1.100:8080"
             />
             {field.state.meta.isTouched && field.state.meta.errors[0] && (
               <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
