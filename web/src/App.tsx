@@ -10,8 +10,6 @@ import { useEffect } from 'react'
 import { initializeTheme } from '@/utils/theme'
 import { initializePWANativeTheme } from '@/utils/pwaNativeTheme'
 import { Toaster } from '@/components/ui/sonner'
-import { InstallPrompt } from '@/components/pwa/InstallPrompt'
-import { IOSInstallPrompt } from '@/components/pwa/IOSInstallPrompt'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -32,8 +30,6 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
       <Toaster />
-      <InstallPrompt />
-      <IOSInstallPrompt />
     </QueryClientProvider>
   )
 }
