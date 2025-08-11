@@ -41,11 +41,8 @@ const urlSchema = z.string()
         // IPv6 addresses are wrapped in brackets by URL parser
         const isIPv6 = hostname.startsWith('[') && hostname.endsWith(']')
         
-        // localhost doesn't require a port
-        const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1'
-        
-        // Require port for IP addresses (except localhost)
-        if ((isIPv4 || isIPv6) && !isLocalhost && !parsed.port) {
+        // Require port for IP addresses  
+        if ((isIPv4 || isIPv6) && !parsed.port) {
           return false
         }
         
