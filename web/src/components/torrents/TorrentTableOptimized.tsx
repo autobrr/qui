@@ -107,7 +107,7 @@ import {
   useIncognitoMode,
 } from '@/lib/incognito'
 import { formatBytes, formatSpeed, getRatioColor } from '@/lib/utils'
-import { applyOptimisticUpdates } from '@/lib/torrent-state-utils'
+import { applyOptimisticUpdates, getStateLabel } from '@/lib/torrent-state-utils'
 
 interface TorrentTableOptimizedProps {
   instanceId: number
@@ -241,6 +241,7 @@ const createColumns = (incognitoMode: boolean): ColumnDef<Torrent>[] => [
     header: 'Status',
     cell: ({ row }) => {
       const state = row.original.state
+      const label = getStateLabel(state)
       const variant = 
         state === 'downloading' ? 'default' :
         state === 'stalledDL' ? 'secondary' :
@@ -250,7 +251,7 @@ const createColumns = (incognitoMode: boolean): ColumnDef<Torrent>[] => [
         state === 'error' || state === 'missingFiles' ? 'destructive' :
         'outline'
       
-      return <Badge variant={variant} className="text-xs">{state}</Badge>
+      return <Badge variant={variant} className="text-xs">{label}</Badge>
     },
     size: 120,
   },
