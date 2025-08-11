@@ -20,8 +20,7 @@ var ErrInstanceNotFound = errors.New("instance not found")
 type Instance struct {
 	ID                     int        `json:"id"`
 	Name                   string     `json:"name"`
-	Host                   string     `json:"host"`
-	Port                   int        `json:"port"`
+	URL                    string     `json:"url"`
 	Username               string     `json:"username"`
 	PasswordEncrypted      string     `json:"-"`
 	BasicUsername          *string    `json:"basic_username,omitempty"`
@@ -99,7 +98,7 @@ func (s *InstanceStore) decrypt(ciphertext string) (string, error) {
 	return string(plaintext), nil
 }
 
-func (s *InstanceStore) Create(name, host string, port int, username, password string, basicUsername, basicPassword *string) (*Instance, error) {
+func (s *InstanceStore) Create(name, url, username, password string, basicUsername, basicPassword *string) (*Instance, error) {
 	// Encrypt the password
 	encryptedPassword, err := s.encrypt(password)
 	if err != nil {
@@ -117,17 +116,16 @@ func (s *InstanceStore) Create(name, host string, port int, username, password s
 	}
 
 	query := `
-		INSERT INTO instances (name, host, port, username, password_encrypted, basic_username, basic_password_encrypted) 
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-		RETURNING id, name, host, port, username, password_encrypted, basic_username, basic_password_encrypted, is_active, last_connected_at, created_at, updated_at
+		INSERT INTO instances (name, url, username, password_encrypted, basic_username, basic_password_encrypted) 
+		VALUES (?, ?, ?, ?, ?, ?)
+		RETURNING id, name, url, username, password_encrypted, basic_username, basic_password_encrypted, is_active, last_connected_at, created_at, updated_at
 	`
 
 	instance := &Instance{}
-	err = s.db.QueryRow(query, name, host, port, username, encryptedPassword, basicUsername, encryptedBasicPassword).Scan(
+	err = s.db.QueryRow(query, name, url, username, encryptedPassword, basicUsername, encryptedBasicPassword).Scan(
 		&instance.ID,
 		&instance.Name,
-		&instance.Host,
-		&instance.Port,
+		&instance.URL,
 		&instance.Username,
 		&instance.PasswordEncrypted,
 		&instance.BasicUsername,
@@ -147,7 +145,7 @@ func (s *InstanceStore) Create(name, host string, port int, username, password s
 
 func (s *InstanceStore) Get(id int) (*Instance, error) {
 	query := `
-		SELECT id, name, host, port, username, password_encrypted, basic_username, basic_password_encrypted, is_active, last_connected_at, created_at, updated_at 
+		SELECT id, name, url, username, password_encrypted, basic_username, basic_password_encrypted, is_active, last_connected_at, created_at, updated_at 
 		FROM instances 
 		WHERE id = ?
 	`
@@ -156,8 +154,7 @@ func (s *InstanceStore) Get(id int) (*Instance, error) {
 	err := s.db.QueryRow(query, id).Scan(
 		&instance.ID,
 		&instance.Name,
-		&instance.Host,
-		&instance.Port,
+		&instance.URL,
 		&instance.Username,
 		&instance.PasswordEncrypted,
 		&instance.BasicUsername,
@@ -180,7 +177,7 @@ func (s *InstanceStore) Get(id int) (*Instance, error) {
 
 func (s *InstanceStore) List(activeOnly bool) ([]*Instance, error) {
 	query := `
-		SELECT id, name, host, port, username, password_encrypted, basic_username, basic_password_encrypted, is_active, last_connected_at, created_at, updated_at 
+		SELECT id, name, url, username, password_encrypted, basic_username, basic_password_encrypted, is_active, last_connected_at, created_at, updated_at 
 		FROM instances
 	`
 
@@ -202,8 +199,7 @@ func (s *InstanceStore) List(activeOnly bool) ([]*Instance, error) {
 		err := rows.Scan(
 			&instance.ID,
 			&instance.Name,
-			&instance.Host,
-			&instance.Port,
+			&instance.URL,
 			&instance.Username,
 			&instance.PasswordEncrypted,
 			&instance.BasicUsername,
@@ -222,10 +218,10 @@ func (s *InstanceStore) List(activeOnly bool) ([]*Instance, error) {
 	return instances, rows.Err()
 }
 
-func (s *InstanceStore) Update(id int, name, host string, port int, username, password string, basicUsername, basicPassword *string) (*Instance, error) {
+func (s *InstanceStore) Update(id int, name, url, username, password string, basicUsername, basicPassword *string) (*Instance, error) {
 	// Start building the update query
-	query := `UPDATE instances SET name = ?, host = ?, port = ?, username = ?, basic_username = ?`
-	args := []interface{}{name, host, port, username, basicUsername}
+	query := `UPDATE instances SET name = ?, url = ?, username = ?, basic_username = ?`
+	args := []interface{}{name, url, username, basicUsername}
 
 	// Only update password if provided
 	if password != "" {

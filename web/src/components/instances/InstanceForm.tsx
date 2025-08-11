@@ -15,8 +15,7 @@ import { api } from '@/lib/api'
 
 interface InstanceFormData {
   name: string
-  host: string
-  port: number
+  url: string
   username: string
   password: string
   basicUsername?: string
@@ -46,8 +45,7 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
   const form = useForm({
     defaultValues: {
       name: instance?.name ?? '',
-      host: instance?.host ?? 'http://localhost',
-      port: instance?.port ?? 8080,
+      url: instance?.url ?? 'http://localhost:8080',
       username: instance?.username ?? '',
       password: '',
       basicUsername: instance?.basicUsername ?? '',
@@ -99,52 +97,29 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
       </form.Field>
 
       <form.Field
-        name="host"
+        name="url"
         validators={{
           onChange: ({ value }) => {
-            if (!value) return 'Host is required'
-            if (!value.match(/^https?:\/\//)) return 'Host must start with http:// or https://'
-            return undefined
+            if (!value) return 'URL is required'
+            if (!value.match(/^https?:\/\//)) return 'URL must start with http:// or https://'
+            try {
+              new URL(value)
+              return undefined
+            } catch {
+              return 'Please enter a valid URL'
+            }
           },
         }}
       >
         {(field) => (
           <div className="space-y-2">
-            <Label htmlFor={field.name}>Host URL</Label>
+            <Label htmlFor={field.name}>Instance URL</Label>
             <Input
               id={field.name}
               value={field.state.value}
               onBlur={field.handleBlur}
               onChange={(e) => field.handleChange(e.target.value)}
-              placeholder="http://localhost"
-            />
-            {field.state.meta.isTouched && field.state.meta.errors[0] && (
-              <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
-            )}
-          </div>
-        )}
-      </form.Field>
-
-      <form.Field
-        name="port"
-        validators={{
-          onChange: ({ value }) => {
-            if (!value || value < 1 || value > 65535) {
-              return 'Port must be between 1 and 65535'
-            }
-            return undefined
-          },
-        }}
-      >
-        {(field) => (
-          <div className="space-y-2">
-            <Label htmlFor={field.name}>Port</Label>
-            <Input
-              id={field.name}
-              type="number"
-              value={field.state.value}
-              onBlur={field.handleBlur}
-              onChange={(e) => field.handleChange(parseInt(e.target.value) || 0)}
+              placeholder="http://localhost:8080/qbittorrent"
             />
             {field.state.meta.isTouched && field.state.meta.errors[0] && (
               <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>

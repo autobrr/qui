@@ -73,8 +73,7 @@ class ApiClient {
 
   async createInstance(data: {
     name: string
-    host: string
-    port: number
+    url: string
     username: string
     password: string
     basicUsername?: string
@@ -90,8 +89,7 @@ class ApiClient {
     id: number,
     data: Partial<{
       name: string
-      host: string
-      port: number
+      url: string
       username: string
       password: string
       basicUsername?: string
