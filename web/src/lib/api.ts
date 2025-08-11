@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-import type { AuthResponse, Instance, InstanceResponse, TorrentResponse, MainData, User } from '@/types'
+import type { AuthResponse, InstanceResponse, TorrentResponse, MainData, User } from '@/types'
 import { getApiBaseUrl } from './base-url'
 
 const API_BASE = getApiBaseUrl()
