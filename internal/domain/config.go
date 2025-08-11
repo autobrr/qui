@@ -11,7 +11,7 @@ type Config struct {
 	SessionSecret string       `toml:"sessionSecret" mapstructure:"sessionSecret"`
 	LogLevel      string       `toml:"logLevel" mapstructure:"logLevel"`
 	LogPath       string       `toml:"logPath" mapstructure:"logPath"`
-	DatabasePath  string       `toml:"databasePath" mapstructure:"databasePath"`
+	DataDir       string       `toml:"dataDir" mapstructure:"dataDir"`
 	Polar         PolarConfig  `toml:"polar" mapstructure:"polar"`
 	HTTPTimeouts  HTTPTimeouts `toml:"httpTimeouts" mapstructure:"httpTimeouts"`
 }

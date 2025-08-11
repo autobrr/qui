@@ -76,7 +76,17 @@ QUI__LOG_LEVEL=INFO      # Options: ERROR, DEBUG, INFO, WARN, TRACE
 QUI__LOG_PATH=...        # Optional: log file path
 
 # Storage
-QUI__DATABASE_PATH=...   # Optional: custom database location (default: next to config)
+QUI__DATA_DIR=...        # Optional: custom data directory (default: next to config)
+```
+
+### Command Line Flags
+
+```bash
+# Specify config directory (config.toml will be created inside)
+./qui --config-dir /path/to/config/
+
+# Specify data directory for database and other data files
+./qui --data-dir /path/to/data/
 ```
 
 ## API

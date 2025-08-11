@@ -32,8 +32,8 @@ import (
 
 var (
 	Version = "dev"
-	cfgFile string
-	dbPath  string
+	configDir string
+	dataDir string
 	logPath string
 
 	// Publisher credentials - set during build via ldflags
@@ -55,8 +55,8 @@ multiple qBittorrent instances with support for 10k+ torrents.`,
 
 func init() {
 	cobra.OnInitialize(initConfig)
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is OS-specific: ~/.config/qui/config.toml or %APPDATA%\\qui\\config.toml)")
-	rootCmd.PersistentFlags().StringVar(&dbPath, "database", "", "database file path (default is next to config file)")
+	rootCmd.PersistentFlags().StringVar(&configDir, "config-dir", "", "config directory path (default is OS-specific: ~/.config/qui/ or %APPDATA%\\qui\\). For backward compatibility, can also be a direct path to a .toml file")
+	rootCmd.PersistentFlags().StringVar(&dataDir, "data-dir", "", "data directory for database and other files (default is next to config file)")
 	rootCmd.PersistentFlags().StringVar(&logPath, "log-path", "", "log file path (default is stdout)")
 	rootCmd.Version = Version
 }
@@ -72,16 +72,15 @@ func runServer() {
 	log.Info().Str("version", Version).Msg("Starting qBittorrent WebUI")
 
 	// Initialize configuration
-	cfg, err := config.New(cfgFile)
+	cfg, err := config.New(configDir)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize configuration")
 	}
 
 	// Override with CLI flags if provided
-	if dbPath != "" {
-		os.Setenv("QUI__DATABASE_PATH", dbPath)
-		cfg.Config.DatabasePath = dbPath
-		cfg.SetDatabasePath(dbPath)
+	if dataDir != "" {
+		os.Setenv("QUI__DATA_DIR", dataDir)
+		cfg.SetDataDir(dataDir)
 	}
 	if logPath != "" {
 		os.Setenv("QUI__LOG_PATH", logPath)
