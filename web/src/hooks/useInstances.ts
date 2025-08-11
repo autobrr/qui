@@ -4,8 +4,9 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { api } from '@/lib/api'
-import type { Instance } from '@/types'
+import type { InstanceResponse } from '@/types'
 
 export function useInstances() {
   const queryClient = useQueryClient()
@@ -13,7 +14,7 @@ export function useInstances() {
   const { data: instances, isLoading, error } = useQuery({
     queryKey: ['instances'],
     queryFn: () => api.getInstances(),
-    refetchInterval: 10000, // Refetch every 10 seconds to update status
+    refetchInterval: 30000, // Refetch every 30 seconds for a single-user app
   })
 
   const createMutation = useMutation({
@@ -24,8 +25,22 @@ export function useInstances() {
       username: string
       password: string
     }) => api.createInstance(data),
-    onSuccess: () => {
+    onSuccess: (data) => {
+      if (data.connected) {
+        toast.success('Instance Created', {
+          description: 'Instance created and connected successfully'
+        })
+      } else {
+        toast.warning('Instance Created with Connection Issue', {
+          description: data.connectionError || 'Instance created but could not connect'
+        })
+      }
       queryClient.invalidateQueries({ queryKey: ['instances'] })
+    },
+    onError: (error: Error) => {
+      toast.error('Create Failed', {
+        description: error.message || 'Failed to create instance'
+      })
     },
   })
 
@@ -40,15 +55,37 @@ export function useInstances() {
         password: string
       }>
     }) => api.updateInstance(id, data),
-    onSuccess: () => {
+    onSuccess: (data) => {
+      if (data.connected) {
+        toast.success('Instance Updated', {
+          description: 'Instance updated and connected successfully'
+        })
+      } else {
+        toast.warning('Instance Updated with Connection Issue', {
+          description: data.connectionError || 'Instance updated but could not connect'
+        })
+      }
       queryClient.invalidateQueries({ queryKey: ['instances'] })
+    },
+    onError: (error: Error) => {
+      toast.error('Update Failed', {
+        description: error.message || 'Failed to update instance'
+      })
     },
   })
 
   const deleteMutation = useMutation({
-    mutationFn: (id: number) => api.deleteInstance(id),
-    onSuccess: () => {
+    mutationFn: ({ id }: { id: number; name: string }) => api.deleteInstance(id),
+    onSuccess: (_, variables) => {
+      toast.success('Instance Deleted', {
+        description: `Successfully deleted "${variables.name}"`
+      })
       queryClient.invalidateQueries({ queryKey: ['instances'] })
+    },
+    onError: (error: Error) => {
+      toast.error('Delete Failed', {
+        description: error.message || 'Failed to delete instance'
+      })
     },
   })
 
@@ -57,7 +94,7 @@ export function useInstances() {
   })
 
   return {
-    instances: instances as Instance[] | undefined,
+    instances: instances as InstanceResponse[] | undefined,
     isLoading,
     error,
     createInstance: createMutation.mutate,

@@ -4,7 +4,7 @@
  */
 
 import { useState } from 'react'
-import type { Instance } from '@/types'
+import type { InstanceResponse } from '@/types'
 import { toast } from 'sonner'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -28,7 +28,7 @@ import { useInstances } from '@/hooks/useInstances'
 import { cn } from '@/lib/utils'
 
 interface InstanceCardProps {
-  instance: Instance
+  instance: InstanceResponse
   onEdit: () => void
 }
 
@@ -62,18 +62,9 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
     }
   }
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (confirm(`Are you sure you want to delete "${instance.name}"?`)) {
-      try {
-        await deleteInstance(instance.id)
-        toast.success('Instance Deleted', {
-          description: `Successfully deleted "${instance.name}"`
-        })
-      } catch (error) {
-        toast.error('Delete Failed', {
-          description: error instanceof Error ? error.message : 'Failed to delete instance'
-        })
-      }
+      deleteInstance({ id: instance.id, name: instance.name })
     }
   }
 
@@ -90,9 +81,9 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
         </div>
         <div className="flex items-center gap-2">
           <Badge 
-            variant="outline"
+            variant={instance.connected ? "default" : "destructive"}
           >
-            Configured
+            {instance.connected ? 'Connected' : 'Disconnected'}
           </Badge>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -141,6 +132,13 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
             </div>
           )}
         </div>
+        
+        {instance.connectionError && (
+          <div className="mt-4 flex items-center gap-2 text-sm text-destructive">
+            <XCircle className="h-4 w-4" />
+            <span>{instance.connectionError}</span>
+          </div>
+        )}
         
         {testResult && (
           <div className={cn(
