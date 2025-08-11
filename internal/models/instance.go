@@ -12,6 +12,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
+	"strings"
 	"time"
 )
 
@@ -98,7 +100,47 @@ func (s *InstanceStore) decrypt(ciphertext string) (string, error) {
 	return string(plaintext), nil
 }
 
-func (s *InstanceStore) Create(name, url, username, password string, basicUsername, basicPassword *string) (*Instance, error) {
+// validateAndNormalizeURL validates and normalizes a qBittorrent instance URL
+func validateAndNormalizeURL(rawURL string) (string, error) {
+	// Trim whitespace
+	rawURL = strings.TrimSpace(rawURL)
+	
+	// Check for empty URL
+	if rawURL == "" {
+		return "", errors.New("URL cannot be empty")
+	}
+	
+	// Check if URL already has a scheme
+	if strings.Contains(rawURL, "://") {
+		// Has a scheme, validate it
+		if !strings.HasPrefix(rawURL, "http://") && !strings.HasPrefix(rawURL, "https://") {
+			return "", errors.New("URL scheme must be http or https")
+		}
+	} else {
+		// No scheme, add http://
+		rawURL = "http://" + rawURL
+	}
+	
+	// Parse the URL
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return "", err
+	}
+	
+	// Validate host
+	if u.Host == "" {
+		return "", errors.New("URL must include a host")
+	}
+	
+	return u.String(), nil
+}
+
+func (s *InstanceStore) Create(name, rawURL, username, password string, basicUsername, basicPassword *string) (*Instance, error) {
+	// Validate and normalize the URL
+	normalizedURL, err := validateAndNormalizeURL(rawURL)
+	if err != nil {
+		return nil, err
+	}
 	// Encrypt the password
 	encryptedPassword, err := s.encrypt(password)
 	if err != nil {
@@ -122,7 +164,7 @@ func (s *InstanceStore) Create(name, url, username, password string, basicUserna
 	`
 
 	instance := &Instance{}
-	err = s.db.QueryRow(query, name, url, username, encryptedPassword, basicUsername, encryptedBasicPassword).Scan(
+	err = s.db.QueryRow(query, name, normalizedURL, username, encryptedPassword, basicUsername, encryptedBasicPassword).Scan(
 		&instance.ID,
 		&instance.Name,
 		&instance.URL,
@@ -218,10 +260,16 @@ func (s *InstanceStore) List(activeOnly bool) ([]*Instance, error) {
 	return instances, rows.Err()
 }
 
-func (s *InstanceStore) Update(id int, name, url, username, password string, basicUsername, basicPassword *string) (*Instance, error) {
+func (s *InstanceStore) Update(id int, name, rawURL, username, password string, basicUsername, basicPassword *string) (*Instance, error) {
+	// Validate and normalize the URL
+	normalizedURL, err := validateAndNormalizeURL(rawURL)
+	if err != nil {
+		return nil, err
+	}
+	
 	// Start building the update query
 	query := `UPDATE instances SET name = ?, url = ?, username = ?, basic_username = ?`
-	args := []interface{}{name, url, username, basicUsername}
+	args := []interface{}{name, normalizedURL, username, basicUsername}
 
 	// Only update password if provided
 	if password != "" {

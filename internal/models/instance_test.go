@@ -10,6 +10,122 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+func TestURLValidation(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+		wantErr  bool
+	}{
+		// Valid cases
+		{
+			name:     "HTTP URL with port",
+			input:    "http://localhost:8080",
+			expected: "http://localhost:8080",
+		},
+		{
+			name:     "HTTPS URL with port and path",
+			input:    "https://example.com:9091/qbittorrent",
+			expected: "https://example.com:9091/qbittorrent",
+		},
+		{
+			name:     "URL without protocol",
+			input:    "localhost:8080",
+			expected: "http://localhost:8080",
+		},
+		{
+			name:     "URL with trailing slash",
+			input:    "http://localhost:8080/",
+			expected: "http://localhost:8080/",
+		},
+		{
+			name:     "URL with whitespace",
+			input:    "  http://localhost:8080  ",
+			expected: "http://localhost:8080",
+		},
+		{
+			name:     "Private IP address",
+			input:    "192.168.1.100:9091",
+			expected: "http://192.168.1.100:9091",
+		},
+		{
+			name:     "Domain without protocol",
+			input:    "torrent.example.com",
+			expected: "http://torrent.example.com",
+		},
+		{
+			name:     "IPv6 address",
+			input:    "[2001:db8::1]:8080",
+			expected: "http://[2001:db8::1]:8080",
+		},
+		{
+			name:     "URL with query params",
+			input:    "http://localhost:8080?key=value",
+			expected: "http://localhost:8080?key=value",
+		},
+		{
+			name:     "URL with auth",
+			input:    "http://user:pass@localhost:8080",
+			expected: "http://user:pass@localhost:8080",
+		},
+		{
+			name:     "Loopback address",
+			input:    "127.0.0.1:8080",
+			expected: "http://127.0.0.1:8080",
+		},
+		{
+			name:     "Localhost",
+			input:    "localhost",
+			expected: "http://localhost",
+		},
+		// Invalid cases
+		{
+			name:    "Invalid URL scheme",
+			input:   "ftp://localhost:8080",
+			wantErr: true,
+		},
+		{
+			name:    "Empty URL",
+			input:   "",
+			wantErr: true,
+		},
+		{
+			name:    "Invalid URL format",
+			input:   "http://",
+			wantErr: true,
+		},
+		{
+			name:    "JavaScript scheme",
+			input:   "javascript:alert(1)",
+			wantErr: true,
+		},
+		{
+			name:    "Data URL",
+			input:   "data:text/html,<script>alert(1)</script>",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := validateAndNormalizeURL(tt.input)
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("validateAndNormalizeURL() expected error for input %q", tt.input)
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("validateAndNormalizeURL() unexpected error: %v", err)
+				return
+			}
+			if got != tt.expected {
+				t.Errorf("validateAndNormalizeURL() = %q, want %q", got, tt.expected)
+			}
+		})
+	}
+}
+
 func TestInstanceStoreWithURL(t *testing.T) {
 	// Create in-memory database for testing
 	db, err := sql.Open("sqlite", ":memory:")
