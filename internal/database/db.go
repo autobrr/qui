@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"time"
 
 	"github.com/rs/zerolog/log"
 	_ "modernc.org/sqlite"
@@ -24,7 +25,7 @@ type DB struct {
 
 func New(databasePath string) (*DB, error) {
 	log.Info().Msgf("Initializing database at: %s", databasePath)
-	
+
 	// Ensure the directory exists
 	dir := filepath.Dir(databasePath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -32,11 +33,17 @@ func New(databasePath string) (*DB, error) {
 	}
 	log.Debug().Msgf("Database directory ensured: %s", dir)
 
+	// Open connection for migrations with single connection only
+	// This prevents any connection pool issues during schema changes
 	conn, err := sql.Open("sqlite", databasePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database at %s: %w", databasePath, err)
 	}
-	log.Debug().Msg("Database connection opened")
+
+	// CRITICAL: Use only 1 connection during migrations to prevent stale schema issues
+	conn.SetMaxOpenConns(1)
+	conn.SetMaxIdleConns(1)
+	log.Debug().Msg("Database connection opened for migrations")
 
 	// Enable foreign keys and WAL mode for better performance
 	if _, err := conn.Exec("PRAGMA foreign_keys = ON"); err != nil {
@@ -49,7 +56,7 @@ func New(databasePath string) (*DB, error) {
 		return nil, fmt.Errorf("failed to enable WAL mode: %w", err)
 	}
 
-	// Set busy timeout to 10 seconds - this is the key fix
+	// Set busy timeout to 10 seconds
 	if _, err := conn.Exec("PRAGMA busy_timeout = 10000"); err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("failed to set busy timeout: %w", err)
@@ -59,11 +66,16 @@ func New(databasePath string) (*DB, error) {
 		conn: conn,
 	}
 
-	// Run migrations
+	// Run migrations with single connection
 	if err := db.migrate(); err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("failed to run migrations: %w", err)
 	}
+
+	// After migrations, allow connection pooling for normal operations
+	conn.SetMaxOpenConns(25)
+	conn.SetMaxIdleConns(25)
+	conn.SetConnMaxLifetime(5 * time.Minute)
 
 	// Verify database file was created
 	if _, err := os.Stat(databasePath); err != nil {
