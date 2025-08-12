@@ -375,7 +375,6 @@ export function TorrentCardsMobile({
     counts,
     categories,
     tags,
-    serverState,
     isLoadingMore,
     hasLoadedAll,
     loadMore: loadMoreTorrents,
@@ -627,23 +626,10 @@ export function TorrentCardsMobile({
         </div>
 
         {/* Stats bar */}
-        <div className="flex items-center justify-between text-xs mb-3">
-            <div className="flex items-center gap-1">
-            <span className="text-muted-foreground">All-time stats:</span>
-              <div className="flex items-center [color:var(--chart-2)]">
-                <ChevronDown className="h-3 w-3" />
-                <span className="font-medium">{formatBytes(serverState?.alltime_dl || 0)}</span>
-              </div>
-              <span className="text-muted-foreground">|</span>
-              <div className="flex items-center [color:var(--chart-3)]">
-                <ChevronUp className="h-3 w-3" />
-                <span className="font-medium">{formatBytes(serverState?.alltime_ul || 0)}</span>
-              </div>
-            </div>
+        <div className="flex items-center justify-center text-xs mb-3">
             <div className="flex items-center gap-1">
               <ChevronDown className="h-3 w-3" />
               <span className="font-medium">{formatSpeed(stats.totalDownloadSpeed || 0)}</span>
-              <span className="text-muted-foreground">|</span>
               <ChevronUp className="h-3 w-3" />
               <span className="font-medium">{formatSpeed(stats.totalUploadSpeed || 0)}</span>
             </div>
