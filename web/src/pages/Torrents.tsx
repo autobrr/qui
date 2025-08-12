@@ -3,15 +3,12 @@
  * SPDX-License-Identifier: MIT
  */
 
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { TorrentTableResponsive } from '@/components/torrents/TorrentTableResponsive'
 import { FilterSidebar } from '@/components/torrents/FilterSidebar'
 import { TorrentDetailsPanel } from '@/components/torrents/TorrentDetailsPanel'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { VisuallyHidden } from '@/components/ui/visually-hidden'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Filter } from 'lucide-react'
 import { usePersistedFilters } from '@/hooks/usePersistedFilters'
 import { usePersistedFilterSidebarState } from '@/hooks/usePersistedFilterSidebarState'
 import { useNavigate, useSearch } from '@tanstack/react-router'
@@ -22,7 +19,7 @@ interface TorrentsProps {
   instanceName: string
 }
 
-export function Torrents({ instanceId, instanceName }: TorrentsProps) {
+export function Torrents({ instanceId }: TorrentsProps) {
   const [filters, setFilters] = usePersistedFilters(instanceId)
   const [filterSidebarCollapsed, setFilterSidebarCollapsed] = usePersistedFilterSidebarState(false)
   const [selectedTorrent, setSelectedTorrent] = useState<Torrent | null>(null)
@@ -125,28 +122,14 @@ export function Torrents({ instanceId, instanceName }: TorrentsProps) {
   }, [])
 
   // Calculate total active filters for badge
-  const activeFilterCount = useMemo(() => {
-    return filters.status.length + 
-           filters.categories.length + 
-           filters.tags.length + 
-           filters.trackers.length
-  }, [filters])
+  // Count exists but badge is now handled in header (not used here)
 
-  // Create the filter toggle button for the table toolbar
-  const filterToggleButton = (
-    <Button
-      variant="outline"
-      size="icon"
-      onClick={() => setFilterSidebarCollapsed(!filterSidebarCollapsed)}
-      className="relative"
-      title={filterSidebarCollapsed ? "Show filters" : "Hide filters"}
-    >
-      <Filter className="h-4 w-4" />
-      {activeFilterCount > 0 && (
-        <span className="absolute -top-1 -right-1 h-2 w-2 bg-primary rounded-full" />
-      )}
-    </Button>
-  )
+  // Listen for header mobile filter button click
+  useEffect(() => {
+    const handler = () => setMobileFilterOpen(true)
+    window.addEventListener('qui-open-mobile-filters', handler)
+    return () => window.removeEventListener('qui-open-mobile-filters', handler)
+  }, [])
 
   return (
     <div className="flex h-full relative">
@@ -186,38 +169,9 @@ export function Torrents({ instanceId, instanceName }: TorrentsProps) {
       </Sheet>
       
       {/* Main content */}
-      <div className="flex-1 flex flex-col min-w-0">
-        <div className="p-4 sm:p-4 lg:p-6 flex flex-col h-full">
-          <div className="flex-shrink-0 mb-4 sm:mb-4 lg:mb-6">
-            <div className="flex items-center justify-between gap-2 sm:gap-4">
-              <div className="flex-1 min-w-0">
-                <h1 className="text-lg sm:text-xl lg:text-3xl font-bold truncate">{instanceName}</h1>
-                <p className="hidden sm:block text-muted-foreground mt-1 lg:mt-2 text-sm lg:text-base">
-                  Manage torrents for this qBittorrent instance
-                </p>
-              </div>
-              
-              {/* Mobile Filter Button */}
-              <Button 
-                variant="outline" 
-                size="icon"
-                className="relative xl:hidden flex-shrink-0 sm:w-auto sm:px-3"
-                onClick={() => setMobileFilterOpen(true)}
-              >
-                <Filter className="h-4 w-4" />
-                <span className="hidden sm:inline sm:ml-2">Filters</span>
-                {activeFilterCount > 0 && (
-                  <Badge 
-                    variant="secondary" 
-                    className="absolute -top-1 -right-1 h-4 min-w-[16px] px-0.5 text-[10px] sm:relative sm:top-0 sm:right-0 sm:ml-2 sm:h-5 sm:min-w-[20px] sm:px-1 sm:text-xs"
-                  >
-                    {activeFilterCount}
-                  </Badge>
-                )}
-              </Button>
-            </div>
-          </div>
-          <div className="flex-1 min-h-0">
+        <div className="flex-1 flex flex-col min-w-0">
+          <div className="px-4 sm:px-0 flex flex-col h-full">
+            <div className="flex-1 min-h-0">
             <TorrentTableResponsive 
               instanceId={instanceId} 
               filters={filters}
@@ -226,7 +180,6 @@ export function Torrents({ instanceId, instanceName }: TorrentsProps) {
               addTorrentModalOpen={isAddTorrentModalOpen}
               onAddTorrentModalChange={handleAddTorrentModalChange}
               onFilteredDataUpdate={handleFilteredDataUpdate}
-              filterButton={filterToggleButton}
             />
           </div>
         </div>
