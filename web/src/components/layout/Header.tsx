@@ -22,7 +22,7 @@ import {
 import { User, LogOut, Key, Search, Info, Filter, Plus } from 'lucide-react'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
 import { cn } from '@/lib/utils'
-import { Link, useLocation, useNavigate, useSearch } from '@tanstack/react-router'
+import { Link, useNavigate, useSearch, useRouterState } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
 import { useDebounce } from '@/hooks/useDebounce'
 import { usePersistedFilterSidebarState } from '@/hooks/usePersistedFilterSidebarState'
@@ -35,30 +35,31 @@ interface HeaderProps {
 
 export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
   const { user, logout } = useAuth()
-  const location = useLocation()
   const navigate = useNavigate()
   const routeSearch = useSearch({ strict: false }) as any
 
-  const isInstanceRoute = useMemo(() => location.pathname.includes('/instances/'), [location.pathname])
+  const instanceId = useRouterState({
+    select: (s) => s.matches.find((m) => m.routeId === '/_authenticated/instances/$instanceId')?.params?.instanceId as string | undefined,
+  })
+  const selectedInstanceId = useMemo(() => {
+    const parsed = instanceId ? parseInt(instanceId, 10) : NaN
+    return Number.isFinite(parsed) ? parsed : null
+  }, [instanceId])
+  const isInstanceRoute = selectedInstanceId !== null
   const [searchValue, setSearchValue] = useState<string>(routeSearch?.q || '')
   const debouncedSearch = useDebounce(searchValue, 1000)
   const { instances } = useInstances()
 
   const instanceName = useMemo(() => {
-    if (!isInstanceRoute) return null
-    const segments = location.pathname.split('/').filter(Boolean)
-    const instancesIndex = segments.indexOf('instances')
-    const idPart = instancesIndex >= 0 ? segments[instancesIndex + 1] : undefined
-    const id = idPart ? parseInt(idPart, 10) : NaN
-    if (!Number.isFinite(id) || !instances) return null
-    return instances.find(i => i.id === id)?.name ?? null
-  }, [isInstanceRoute, location.pathname, instances])
+    if (!isInstanceRoute || !instances || selectedInstanceId === null) return null
+    return instances.find(i => i.id === selectedInstanceId)?.name ?? null
+  }, [isInstanceRoute, instances, selectedInstanceId])
 
   // Keep local state in sync with URL when navigating between instances/routes
   useEffect(() => {
     setSearchValue(routeSearch?.q || '')
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.pathname])
+  }, [selectedInstanceId])
 
   // Update URL search param after debounce
   useEffect(() => {
@@ -108,6 +109,8 @@ export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
       {isInstanceRoute && (
         <div className="flex-1 max-w-xl mx-2">
           <div className="flex items-center gap-2">
+             {/* Slot to place actions directly to the left of the filter button (desktop only) */}
+             <span id="header-left-of-filter" className="hidden xl:inline-flex" />
             <Button
               variant="outline"
               size="icon"

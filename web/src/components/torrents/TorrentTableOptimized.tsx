@@ -720,14 +720,27 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
           )}          
           {/* Action buttons */}
           <div className="flex gap-1 sm:gap-2 flex-shrink-0">
-            {selectedHashes.length > 0 && (
-              <TorrentActions 
-                instanceId={instanceId} 
-                selectedHashes={selectedHashes}
-                selectedTorrents={selectedTorrents}
-                onComplete={() => setRowSelection({})}
-              />
-            )}
+            {(() => {
+              const actions = selectedHashes.length > 0 ? (
+                <TorrentActions 
+                  instanceId={instanceId} 
+                  selectedHashes={selectedHashes}
+                  selectedTorrents={selectedTorrents}
+                  onComplete={() => setRowSelection({})}
+                />
+              ) : null
+              const headerLeft = typeof document !== 'undefined' ? document.getElementById('header-left-of-filter') : null
+              return (
+                <>
+                  {/* Mobile/tablet inline (hidden on xl and up) */}
+                  <div className="xl:hidden">
+                    {actions}
+                  </div>
+                  {/* Desktop portal: render directly left of the filter button in header */}
+                  {headerLeft && actions ? createPortal(actions, headerLeft) : null}
+                </>
+              )
+            })()}
                         
             {/* Column visibility dropdown moved next to search via portal, with inline fallback */}
             {(() => {
