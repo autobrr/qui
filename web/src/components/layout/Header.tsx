@@ -39,16 +39,17 @@ export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
   const navigate = useNavigate()
   const routeSearch = useSearch({ strict: false }) as any
 
-  const isInstanceRoute = useMemo(() => location.pathname.startsWith('/instances/'), [location.pathname])
+  const isInstanceRoute = useMemo(() => location.pathname.includes('/instances/'), [location.pathname])
   const [searchValue, setSearchValue] = useState<string>(routeSearch?.q || '')
   const debouncedSearch = useDebounce(searchValue, 1000)
   const { instances } = useInstances()
 
   const instanceName = useMemo(() => {
     if (!isInstanceRoute) return null
-    const segments = location.pathname.split('/')
-    const idPart = segments[2]
-    const id = parseInt(idPart, 10)
+    const segments = location.pathname.split('/').filter(Boolean)
+    const instancesIndex = segments.indexOf('instances')
+    const idPart = instancesIndex >= 0 ? segments[instancesIndex + 1] : undefined
+    const id = idPart ? parseInt(idPart, 10) : NaN
     if (!Number.isFinite(id) || !instances) return null
     return instances.find(i => i.id === id)?.name ?? null
   }, [isInstanceRoute, location.pathname, instances])
