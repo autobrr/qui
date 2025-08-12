@@ -533,6 +533,10 @@ func (sm *SyncManager) GetTags(ctx context.Context, instanceID int) ([]string, e
 		return nil, fmt.Errorf("failed to get tags: %w", err)
 	}
 
+	sort.Slice(tags, func(i, j int) bool {
+		return strings.ToLower(tags[i]) < strings.ToLower(tags[j])
+	})
+
 	// Cache for 1 minute
 	sm.cache.SetWithTTL(cacheKey, tags, 1, 60*time.Second)
 
