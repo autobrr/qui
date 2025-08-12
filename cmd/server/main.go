@@ -108,9 +108,7 @@ func runServer() {
 	// Initialize Polar client and theme license service
 	var themeLicenseService *services.ThemeLicenseService
 
-	// Use ONLY the baked-in organization ID from build time
 	if PolarOrgID != "" {
-		// Production: Use baked-in organization ID (no access token needed)
 		log.Trace().
 			Msg("Initializing Polar client for license validation")
 
@@ -118,18 +116,14 @@ func runServer() {
 		polarClient.SetOrganizationID(PolarOrgID)
 
 		themeLicenseService = services.NewThemeLicenseService(db, polarClient)
-		log.Info().Msg("Theme licensing service initialized (production mode)")
+		log.Info().Msg("Theme licensing service initialized")
 	} else {
-		// No organization ID: Premium themes will not be available
 		log.Warn().Msg("No Polar organization ID configured - premium themes will be disabled")
 
-		// Create a client with empty organization ID
-		// All license validations will fail, which is the expected behavior
 		polarClient := polar.NewClient()
 		polarClient.SetOrganizationID("")
 
 		themeLicenseService = services.NewThemeLicenseService(db, polarClient)
-		log.Info().Msg("Theme licensing service initialized (no organization ID mode)")
 	}
 
 	// Create router dependencies

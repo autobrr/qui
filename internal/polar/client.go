@@ -15,6 +15,12 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+const (
+	polarAPIBaseURL  = "https://api.polar.sh/v1"
+	validateEndpoint = "/customer-portal/license-keys/validate"
+	activateEndpoint = "/customer-portal/license-keys/activate"
+)
+
 // Client wraps the Polar API for theme license management
 type Client struct {
 	organizationID string
@@ -72,7 +78,7 @@ func (c *Client) ValidateLicense(ctx context.Context, licenseKey string) (*Licen
 	}
 
 	// Make HTTP request to Polar API
-	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.polar.sh/v1/customer-portal/license-keys/validate", bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, "POST", polarAPIBaseURL+validateEndpoint, bytes.NewBuffer(jsonData))
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create validation request")
 		return &LicenseInfo{
@@ -210,7 +216,7 @@ func (c *Client) ActivateLicense(ctx context.Context, licenseKey string) (*Licen
 	}
 
 	// Make HTTP request to Polar API (no authentication needed)
-	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.polar.sh/v1/customer-portal/license-keys/activate", bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, "POST", polarAPIBaseURL+activateEndpoint, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return &LicenseInfo{
 			Key:          licenseKey,
