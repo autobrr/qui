@@ -27,11 +27,11 @@ const (
 	healthCheckInterval    = 30 * time.Second
 	healthCheckTimeout     = 10 * time.Second
 	minHealthCheckInterval = 20 * time.Second
-	
+
 	// Normal failure backoff durations
 	initialBackoff = 30 * time.Second
 	maxBackoff     = 10 * time.Minute
-	
+
 	// Ban-related backoff durations
 	banInitialBackoff = 5 * time.Minute
 	banMaxBackoff     = 1 * time.Hour
@@ -148,7 +148,7 @@ func (cp *ClientPool) createClient(instanceID int) (*Client, error) {
 	cp.clients[instanceID] = client
 
 	// Reset failure tracking on successful connection
-	cp.resetFailureTracking(instanceID)
+	cp.resetFailureTrackingLocked(instanceID)
 
 	// Update last connected timestamp
 	cp.dbMu.Lock()
@@ -250,7 +250,6 @@ func (cp *ClientPool) GetCache() *ristretto.Cache {
 	return cp.cache
 }
 
-
 // Close closes all clients and releases resources
 func (cp *ClientPool) Close() error {
 	cp.mu.Lock()
@@ -301,8 +300,8 @@ func (cp *ClientPool) Stats() map[string]interface{} {
 		"total_clients":   len(cp.clients),
 		"healthy_clients": healthyCount,
 		"backoff_clients": backoffCount,
-		"cache_hits":   cp.cache.Metrics.Hits(),
-		"cache_misses": cp.cache.Metrics.Misses(),
+		"cache_hits":      cp.cache.Metrics.Hits(),
+		"cache_misses":    cp.cache.Metrics.Misses(),
 	}
 }
 
@@ -361,7 +360,10 @@ func (cp *ClientPool) calculateBackoff(attempts int, initialDuration, maxDuratio
 func (cp *ClientPool) resetFailureTracking(instanceID int) {
 	cp.mu.Lock()
 	defer cp.mu.Unlock()
+	cp.resetFailureTrackingLocked(instanceID)
+}
 
+func (cp *ClientPool) resetFailureTrackingLocked(instanceID int) {
 	if _, exists := cp.failureTracker[instanceID]; exists {
 		delete(cp.failureTracker, instanceID)
 		log.Debug().Int("instanceID", instanceID).Msg("Reset failure tracking after successful connection")
@@ -375,7 +377,7 @@ func (cp *ClientPool) isBanError(err error) bool {
 	}
 
 	errorStr := strings.ToLower(err.Error())
-	
+
 	// Check for common ban-related error messages
 	return strings.Contains(errorStr, "ip is banned") ||
 		strings.Contains(errorStr, "too many failed login attempts") ||
