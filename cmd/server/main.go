@@ -35,9 +35,7 @@ var (
 	cfgFile string
 
 	// Publisher credentials - set during build via ldflags
-	PolarAccessToken = ""           // Set via: -X main.PolarAccessToken=your-token
-	PolarOrgID       = ""           // Set via: -X main.PolarOrgID=your-org-id
-	PolarEnvironment = "production" // Set via: -X main.PolarEnvironment=production
+	PolarOrgID = "" // Set via: -X main.PolarOrgID=your-org-id
 )
 
 var rootCmd = &cobra.Command{
@@ -110,38 +108,28 @@ func runServer() {
 	// Initialize Polar client and theme license service
 	var themeLicenseService *services.ThemeLicenseService
 
-	// Use ONLY the baked-in credentials from build time
-	if PolarAccessToken != "" && PolarOrgID != "" {
-		// Production: Use baked-in publisher credentials
+	// Use ONLY the baked-in organization ID from build time
+	if PolarOrgID != "" {
+		// Production: Use baked-in organization ID (no access token needed)
 		log.Trace().
-			Msg("Initializing Polar SDK")
+			Msg("Initializing Polar client for license validation")
 
-		polarClient := polar.NewClient(PolarAccessToken, PolarEnvironment)
+		polarClient := polar.NewClient()
 		polarClient.SetOrganizationID(PolarOrgID)
-
-		// Test the connection
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		if err := polarClient.ValidateConfiguration(ctx); err != nil {
-			log.Error().Err(err).Msg("Failed to validate Polar configuration")
-			// Continue with the configured client even if validation fails
-			// This allows the service to start but theme licensing will fail gracefully
-		}
 
 		themeLicenseService = services.NewThemeLicenseService(db, polarClient)
 		log.Info().Msg("Theme licensing service initialized (production mode)")
 	} else {
-		// No credentials: Premium themes will not be available
-		log.Warn().Msg("No Polar credentials configured - premium themes will be disabled")
+		// No organization ID: Premium themes will not be available
+		log.Warn().Msg("No Polar organization ID configured - premium themes will be disabled")
 
-		// Create a client with empty credentials
+		// Create a client with empty organization ID
 		// All license validations will fail, which is the expected behavior
-		polarClient := polar.NewClient("", "production")
+		polarClient := polar.NewClient()
 		polarClient.SetOrganizationID("")
 
 		themeLicenseService = services.NewThemeLicenseService(db, polarClient)
-		log.Info().Msg("Theme licensing service initialized (no credentials mode)")
+		log.Info().Msg("Theme licensing service initialized (no organization ID mode)")
 	}
 
 	// Create router dependencies
@@ -164,18 +152,18 @@ func runServer() {
 	if cfg.Config.BaseURL != "" && cfg.Config.BaseURL != "/" {
 		// Create a parent router and mount our app under the base URL
 		parentRouter := chi.NewRouter()
-		
+
 		// Strip trailing slash from base URL for mounting
 		mountPath := strings.TrimSuffix(cfg.Config.BaseURL, "/")
-		
+
 		// Mount the application under the base URL
 		parentRouter.Mount(mountPath, router)
-		
+
 		// Redirect root to base URL
 		parentRouter.Get("/", func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, cfg.Config.BaseURL, http.StatusMovedPermanently)
 		})
-		
+
 		handler = parentRouter
 	} else {
 		handler = router
@@ -185,7 +173,7 @@ func runServer() {
 	readTimeout := time.Duration(cfg.Config.HTTPTimeouts.ReadTimeout) * time.Second
 	writeTimeout := time.Duration(cfg.Config.HTTPTimeouts.WriteTimeout) * time.Second
 	idleTimeout := time.Duration(cfg.Config.HTTPTimeouts.IdleTimeout) * time.Second
-	
+
 	// Use defaults if not configured
 	if readTimeout == 0 {
 		readTimeout = 60 * time.Second
@@ -196,7 +184,7 @@ func runServer() {
 	if idleTimeout == 0 {
 		idleTimeout = 180 * time.Second
 	}
-	
+
 	srv := &http.Server{
 		Addr:         fmt.Sprintf("%s:%d", cfg.Config.Host, cfg.Config.Port),
 		Handler:      handler,

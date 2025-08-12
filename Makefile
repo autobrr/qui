@@ -14,7 +14,7 @@ WEB_DIR = web
 INTERNAL_WEB_DIR = internal/web
 
 # Go build flags with Polar credentials
-LDFLAGS = -ldflags "-X main.Version=$(VERSION) -X main.PolarAccessToken=$(POLAR_ACCESS_TOKEN) -X main.PolarOrgID=$(POLAR_ORG_ID) -X main.PolarEnvironment=$(POLAR_ENVIRONMENT)"
+LDFLAGS = -ldflags "-X main.Version=$(VERSION) -X main.PolarOrgID=$(POLAR_ORG_ID)"
 
 .PHONY: all build frontend backend dev dev-backend dev-frontend clean test help
 

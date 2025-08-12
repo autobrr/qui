@@ -5,7 +5,7 @@ tmp_dir = "tmp"
 [build]
   args_bin = []
   bin = "./tmp/main"
-  cmd = "go build -ldflags \"-X main.Version=dev -X main.PolarAccessToken=$POLAR_ACCESS_TOKEN -X main.PolarOrgID=$POLAR_ORG_ID -X main.PolarEnvironment=$POLAR_ENVIRONMENT\" -o ./tmp/main ./cmd/server"
+  cmd = "go build -ldflags \"-X main.Version=dev -X main.PolarOrgID=$POLAR_ORG_ID\" -o ./tmp/main ./cmd/server"
   delay = 1000
   exclude_dir = ["assets", "tmp", "vendor", "testdata", "web", "internal/web/dist"]
   exclude_file = []

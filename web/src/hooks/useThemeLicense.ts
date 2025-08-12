@@ -27,13 +27,11 @@ export const useValidateThemeLicense = () => {
     onSuccess: (data) => {
       if (data.valid) {
         const message = data.themeName === 'premium-access' 
-          ? 'Premium access activated! All premium themes are now unlocked.'
+          ? 'Premium access activated! Thank you!'
           : `License activated successfully!`
         toast.success(message)
         // Invalidate theme license queries to refresh the UI
         queryClient.invalidateQueries({ queryKey: ['theme-licenses'] })
-      } else {
-        toast.error(data.error || 'Invalid license key')
       }
     },
     onError: (error: Error) => {

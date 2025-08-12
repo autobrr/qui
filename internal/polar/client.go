@@ -4,20 +4,19 @@
 package polar
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"time"
 
-	polargo "github.com/polarsource/polar-go"
-	"github.com/polarsource/polar-go/models/components"
 	"github.com/rs/zerolog/log"
 )
 
-// Client wraps the Polar SDK for theme license management
+// Client wraps the Polar API for theme license management
 type Client struct {
-	polar          *polargo.Polar
-	accessToken    string
-	environment    string
 	organizationID string
 }
 
@@ -33,17 +32,8 @@ type LicenseInfo struct {
 }
 
 // NewClient creates a new Polar API client
-func NewClient(accessToken, environment string) *Client {
-	// Always use production environment
-	client := polargo.New(
-		polargo.WithSecurity(accessToken),
-	)
-
-	return &Client{
-		polar:       client,
-		accessToken: accessToken,
-		environment: environment,
-	}
+func NewClient() *Client {
+	return &Client{}
 }
 
 // SetOrganizationID sets the organization ID required for license operations
@@ -62,16 +52,40 @@ func (c *Client) ValidateLicense(ctx context.Context, licenseKey string) (*Licen
 	}
 
 	log.Debug().
-		Str("environment", c.environment).
 		Str("organizationId", c.organizationID).
 		Msg("Validating license key with Polar API")
 
-	// Use the validate endpoint for license keys
-	validateRes, err := c.polar.CustomerPortal.LicenseKeys.Validate(ctx, components.LicenseKeyValidate{
-		Key:            licenseKey,
-		OrganizationID: c.organizationID,
-	})
+	// Prepare request body
+	requestBody := map[string]string{
+		"key":             licenseKey,
+		"organization_id": c.organizationID,
+	}
 
+	jsonData, err := json.Marshal(requestBody)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to prepare validation request")
+		return &LicenseInfo{
+			Key:          licenseKey,
+			Valid:        false,
+			ErrorMessage: "Failed to validate license",
+		}, err
+	}
+
+	// Make HTTP request to Polar API
+	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.polar.sh/v1/customer-portal/license-keys/validate", bytes.NewBuffer(jsonData))
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to create validation request")
+		return &LicenseInfo{
+			Key:          licenseKey,
+			Valid:        false,
+			ErrorMessage: "Failed to validate license",
+		}, err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
 	if err != nil {
 		log.Error().
 			Err(err).
@@ -82,65 +96,84 @@ func (c *Client) ValidateLicense(ctx context.Context, licenseKey string) (*Licen
 		return &LicenseInfo{
 			Key:          licenseKey,
 			Valid:        false,
-			ErrorMessage: fmt.Sprintf("Failed to validate license: %v", err),
+			ErrorMessage: "Failed to validate license",
 		}, err
 	}
+	defer resp.Body.Close()
 
-	if validateRes.ValidatedLicenseKey == nil {
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to read validation response")
 		return &LicenseInfo{
 			Key:          licenseKey,
 			Valid:        false,
-			ErrorMessage: "Invalid response from Polar API",
+			ErrorMessage: "Failed to validate license",
+		}, err
+	}
+
+	// Check if request was successful
+	if resp.StatusCode != http.StatusOK {
+		log.Error().
+			Int("status", resp.StatusCode).
+			Str("response", string(body)).
+			Str("licenseKey", maskLicenseKey(licenseKey)).
+			Msg("License validation failed")
+
+		return &LicenseInfo{
+			Key:          licenseKey,
+			Valid:        false,
+			ErrorMessage: "Invalid license key",
 		}, nil
 	}
 
-	// Extract license info from validation response
-	licenseData := validateRes.ValidatedLicenseKey
+	// Parse response
+	var response struct {
+		ID               string     `json:"id"`
+		BenefitID        string     `json:"benefit_id"`
+		CustomerID       string     `json:"customer_id"`
+		Key              string     `json:"key"`
+		Status           string     `json:"status"`
+		ExpiresAt        *time.Time `json:"expires_at"`
+		LimitActivations int        `json:"limit_activations"`
+		Usage            int        `json:"usage"`
+		Validations      int        `json:"validations"`
+	}
+
+	if err := json.Unmarshal(body, &response); err != nil {
+		log.Error().Err(err).Msg("Failed to parse validation response")
+		return &LicenseInfo{
+			Key:          licenseKey,
+			Valid:        false,
+			ErrorMessage: "Invalid license response",
+		}, err
+	}
 
 	// Map benefit ID to theme name for our premium access model
 	themeName := "unknown"
-	if licenseData.BenefitID != "" {
+	if response.BenefitID != "" {
 		// For our one-time premium access model, any valid benefit should grant "premium-access"
 		// This unlocks ALL current and future premium themes
 		themeName = "premium-access"
 
 		log.Debug().
-			Str("benefitId", licenseData.BenefitID).
+			Str("benefitId", response.BenefitID).
 			Str("mappedTheme", themeName).
 			Msg("Mapped benefit ID to premium access")
 	}
 
-	// Extract customer ID
-	customerID := ""
-	if licenseData.CustomerID != "" {
-		customerID = licenseData.CustomerID
-	}
-
-	// Extract product ID from benefit ID
-	productID := ""
-	if licenseData.BenefitID != "" {
-		productID = licenseData.BenefitID
-	}
-
-	// Extract expiration date if available
-	var expiresAt *time.Time
-	if licenseData.ExpiresAt != nil {
-		expiresAt = licenseData.ExpiresAt
-	}
-
 	log.Info().
 		Str("themeName", themeName).
-		Str("customerID", maskID(customerID)).
-		Str("productID", maskID(productID)).
+		Str("customerID", maskID(response.CustomerID)).
+		Str("productID", maskID(response.BenefitID)).
 		Str("licenseKey", maskLicenseKey(licenseKey)).
 		Msg("License key validated successfully")
 
 	return &LicenseInfo{
 		Key:        licenseKey,
 		ThemeName:  themeName,
-		CustomerID: customerID,
-		ProductID:  productID,
-		ExpiresAt:  expiresAt,
+		CustomerID: response.CustomerID,
+		ProductID:  response.BenefitID,
+		ExpiresAt:  response.ExpiresAt,
 		Valid:      true,
 	}, nil
 }
@@ -156,17 +189,40 @@ func (c *Client) ActivateLicense(ctx context.Context, licenseKey string) (*Licen
 	}
 
 	log.Debug().
-		Str("environment", c.environment).
 		Str("organizationId", c.organizationID).
 		Msg("Activating license key with Polar API")
 
-	// Use the license key activation endpoint
-	res, err := c.polar.CustomerPortal.LicenseKeys.Activate(ctx, components.LicenseKeyActivate{
-		Key:            licenseKey,
-		OrganizationID: c.organizationID,
-		Label:          "qui Theme License",
-	})
+	// Prepare request body
+	requestBody := map[string]string{
+		"key":             licenseKey,
+		"organization_id": c.organizationID,
+		"label":           "qui Theme License",
+	}
 
+	jsonData, err := json.Marshal(requestBody)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to prepare validation request")
+		return &LicenseInfo{
+			Key:          licenseKey,
+			Valid:        false,
+			ErrorMessage: "Failed to validate license",
+		}, err
+	}
+
+	// Make HTTP request to Polar API (no authentication needed)
+	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.polar.sh/v1/customer-portal/license-keys/activate", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return &LicenseInfo{
+			Key:          licenseKey,
+			Valid:        false,
+			ErrorMessage: fmt.Sprintf("Failed to create request: %v", err),
+		}, err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
 	if err != nil {
 		log.Error().
 			Err(err).
@@ -179,69 +235,83 @@ func (c *Client) ActivateLicense(ctx context.Context, licenseKey string) (*Licen
 			ErrorMessage: fmt.Sprintf("Failed to activate license: %v", err),
 		}, err
 	}
+	defer resp.Body.Close()
 
-	if res.LicenseKeyActivationRead == nil {
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to read activation response")
 		return &LicenseInfo{
 			Key:          licenseKey,
 			Valid:        false,
-			ErrorMessage: "Invalid response from Polar API",
+			ErrorMessage: "Failed to activate license",
+		}, err
+	}
+
+	// Check if request was successful
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		log.Error().
+			Int("status", resp.StatusCode).
+			Str("response", string(body)).
+			Str("licenseKey", maskLicenseKey(licenseKey)).
+			Msg("License activation failed")
+
+		return &LicenseInfo{
+			Key:          licenseKey,
+			Valid:        false,
+			ErrorMessage: "Failed to activate license",
 		}, nil
 	}
 
-	licenseData := res.LicenseKeyActivationRead
+	// Parse response
+	var response struct {
+		LicenseKey struct {
+			ID               string     `json:"id"`
+			BenefitID        string     `json:"benefit_id"`
+			CustomerID       string     `json:"customer_id"`
+			Key              string     `json:"key"`
+			Status           string     `json:"status"`
+			ExpiresAt        *time.Time `json:"expires_at"`
+			LimitActivations int        `json:"limit_activations"`
+			Usage            int        `json:"usage"`
+		} `json:"license_key"`
+	}
 
-	// Extract information from the nested license key
-	var themeName, customerID, productID string
-	var expiresAt *time.Time
+	if err := json.Unmarshal(body, &response); err != nil {
+		log.Error().Err(err).Msg("Failed to parse validation response")
+		return &LicenseInfo{
+			Key:          licenseKey,
+			Valid:        false,
+			ErrorMessage: "Invalid license response",
+		}, err
+	}
 
 	// Map benefit ID to theme name for our premium access model
-	themeName = "unknown"
-	if licenseData.LicenseKey.BenefitID != "" {
+	themeName := "unknown"
+	if response.LicenseKey.BenefitID != "" {
 		// For our one-time premium access model, any valid benefit should grant "premium-access"
 		// This unlocks ALL current and future premium themes
 		themeName = "premium-access"
 
 		log.Debug().
-			Str("benefitId", licenseData.LicenseKey.BenefitID).
+			Str("benefitId", response.LicenseKey.BenefitID).
 			Str("mappedTheme", themeName).
 			Msg("Mapped benefit ID to premium access (activation)")
 	}
 
-	// Extract customer ID
-	if licenseData.LicenseKey.CustomerID != "" {
-		customerID = licenseData.LicenseKey.CustomerID
-	}
-
-	// Extract product ID from benefit ID (for now use benefit ID)
-	// TODO: Query products API using benefit ID to get actual product details
-	if licenseData.LicenseKey.BenefitID != "" {
-		productID = licenseData.LicenseKey.BenefitID
-	}
-
-	// Extract expiration date if available
-	if licenseData.LicenseKey.ExpiresAt != nil {
-		expiresAt = licenseData.LicenseKey.ExpiresAt
-	}
-
 	log.Info().
 		Str("themeName", themeName).
-		Str("customerID", maskID(customerID)).
-		Str("productID", maskID(productID)).
+		Str("customerID", maskID(response.LicenseKey.CustomerID)).
+		Str("productID", maskID(response.LicenseKey.BenefitID)).
 		Msg("License key activated successfully")
 
 	return &LicenseInfo{
 		Key:        licenseKey,
 		ThemeName:  themeName,
-		CustomerID: customerID,
-		ProductID:  productID,
-		ExpiresAt:  expiresAt,
+		CustomerID: response.LicenseKey.CustomerID,
+		ProductID:  response.LicenseKey.BenefitID,
+		ExpiresAt:  response.LicenseKey.ExpiresAt,
 		Valid:      true,
 	}, nil
-}
-
-// GetLicenseInfo retrieves license information without activating
-func (c *Client) GetLicenseInfo(ctx context.Context, licenseKey string) (*LicenseInfo, error) {
-	return c.ValidateLicense(ctx, licenseKey)
 }
 
 // Helper functions
@@ -264,26 +334,15 @@ func maskID(id string) string {
 
 // IsClientConfigured checks if the Polar client is properly configured
 func (c *Client) IsClientConfigured() bool {
-	return c.accessToken != "" && c.polar != nil && c.organizationID != ""
-}
-
-// GetEnvironment returns the current environment
-func (c *Client) GetEnvironment() string {
-	return c.environment
+	return c.organizationID != ""
 }
 
 // ValidateConfiguration validates the client configuration
 func (c *Client) ValidateConfiguration(ctx context.Context) error {
-	if c.accessToken == "" || c.polar == nil {
-		return fmt.Errorf("polar client not configured")
-	}
-
 	if c.organizationID == "" {
 		return fmt.Errorf("organization ID not configured")
 	}
 
-	// Test the connection with a simple API call (if needed)
-	// Note: We don't test here to avoid unnecessary API calls during initialization
-
+	// No authentication needed, so no connection test required
 	return nil
 }

@@ -54,7 +54,7 @@ func (s *ThemeLicenseService) ValidateAndStoreLicense(ctx context.Context, licen
 	}
 
 	if !licenseInfo.Valid {
-		return nil, fmt.Errorf("invalid license key: %s", licenseInfo.ErrorMessage)
+		return nil, fmt.Errorf("validation error: %s", licenseInfo.ErrorMessage)
 	}
 
 	// Create license record
