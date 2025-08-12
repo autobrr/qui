@@ -1154,9 +1154,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                 <div className="flex items-center gap-1">
                   <ChevronDown className="h-3 w-3 text-muted-foreground" />
                   <span className="font-medium">{formatBytes(serverState.alltime_dl || 0)}</span>
-                </div>
-                <span className="text-muted-foreground">|</span>
-                <div className="flex items-center gap-1">
                   <ChevronUp className="h-3 w-3 text-muted-foreground" />
                   <span className="font-medium">{formatBytes(serverState.alltime_ul || 0)}</span>
                 </div>
@@ -1167,9 +1164,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
           <div className="flex items-center gap-1">
             <ChevronDown className="h-3 w-3 text-muted-foreground" />
             <span className="font-medium">{formatSpeed(stats.totalDownloadSpeed || 0)}</span>
-          </div>
-          <span className="text-muted-foreground">|</span>
-          <div className="flex items-center gap-1">
             <ChevronUp className="h-3 w-3 text-muted-foreground" />
             <span className="font-medium">{formatSpeed(stats.totalUploadSpeed || 0)}</span>
           </div>
