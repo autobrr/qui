@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-import type { AuthResponse, Instance, TorrentResponse, MainData, User } from '@/types'
+import type { AuthResponse, InstanceResponse, TorrentResponse, MainData, User } from '@/types'
 import { getApiBaseUrl } from './base-url'
 
 const API_BASE = getApiBaseUrl()
@@ -67,8 +67,8 @@ class ApiClient {
   }
 
   // Instance endpoints
-  async getInstances(): Promise<Instance[]> {
-    return this.request<Instance[]>('/instances')
+  async getInstances(): Promise<InstanceResponse[]> {
+    return this.request<InstanceResponse[]>('/instances')
   }
 
   async createInstance(data: {
@@ -79,8 +79,8 @@ class ApiClient {
     password: string
     basicUsername?: string
     basicPassword?: string
-  }): Promise<Instance> {
-    return this.request<Instance>('/instances', {
+  }): Promise<InstanceResponse> {
+    return this.request<InstanceResponse>('/instances', {
       method: 'POST',
       body: JSON.stringify(data),
     })
@@ -97,8 +97,8 @@ class ApiClient {
       basicUsername?: string
       basicPassword?: string
     }>
-  ): Promise<Instance> {
-    return this.request<Instance>(`/instances/${id}`, {
+  ): Promise<InstanceResponse> {
+    return this.request<InstanceResponse>(`/instances/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     })

@@ -8,7 +8,6 @@ import {
   useReactTable,
   getCoreRowModel,
   flexRender,
-  type ColumnDef,
 } from '@tanstack/react-table'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import {
@@ -56,16 +55,7 @@ function getDefaultColumnOrder(): string[] {
 import { useInstanceMetadata } from '@/hooks/useInstanceMetadata'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import { Progress } from '@/components/ui/progress'
-import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -93,21 +83,19 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { AddTorrentDialog } from './AddTorrentDialog'
 import { TorrentActions } from './TorrentActions'
-import { Loader2, Play, Pause, Trash2, CheckCircle, Copy, Tag, Folder, Search, Info, Columns3, Radio, ArrowUp, ArrowDown, ChevronsUp, ChevronsDown, Eye, EyeOff, Plus, ChevronDown, ChevronUp, ListOrdered, Settings2, Sparkles } from 'lucide-react'
+import { Loader2, Play, Pause, Trash2, CheckCircle, Copy, Tag, Folder, Columns3, Radio, ArrowUp, ArrowDown, ChevronsUp, ChevronsDown, Eye, EyeOff, ChevronDown, ChevronUp, Settings2, Sparkles } from 'lucide-react'
+import { createPortal } from 'react-dom'
 import { SetTagsDialog, SetCategoryDialog, RemoveTagsDialog } from './TorrentDialogs'
 import { DraggableTableHeader } from './DraggableTableHeader'
 import type { Torrent, TorrentCounts, Category } from '@/types'
 import {
   getLinuxIsoName,
-  getLinuxCategory,
-  getLinuxTags,
-  getLinuxSavePath,
-  getLinuxTracker,
-  getLinuxRatio,
   useIncognitoMode,
 } from '@/lib/incognito'
-import { formatBytes, formatSpeed, getRatioColor } from '@/lib/utils'
+import { formatBytes, formatSpeed } from '@/lib/utils'
 import { applyOptimisticUpdates } from '@/lib/torrent-state-utils'
+import { useSearch } from '@tanstack/react-router'
+import { createColumns } from './TorrentTableColumns'
 
 interface TorrentTableOptimizedProps {
   instanceId: number
@@ -125,284 +113,13 @@ interface TorrentTableOptimizedProps {
   filterButton?: React.ReactNode
 }
 
-
-function formatEta(seconds: number): string {
-  if (seconds === 8640000) return '∞'
-  if (seconds < 0) return ''
-  
-  const hours = Math.floor(seconds / 3600)
-  const minutes = Math.floor((seconds % 3600) / 60)
-  
-  if (hours > 24) {
-    const days = Math.floor(hours / 24)
-    return `${days}d ${hours % 24}h`
-  }
-  
-  if (hours > 0) {
-    return `${hours}h ${minutes}m`
-  }
-  
-  return `${minutes}m`
-}
-
-// Calculate minimum column width based on header text
-function calculateMinWidth(text: string, padding: number = 48): number {
-  // Approximate character width in pixels for text-sm (14px) with font-medium
-  const charWidth = 7.5
-  // Add padding for sort indicator
-  const extraPadding = 20
-  return Math.max(60, Math.ceil(text.length * charWidth) + padding + extraPadding)
-}
-
-const createColumns = (incognitoMode: boolean): ColumnDef<Torrent>[] => [
-  {
-    id: 'select',
-    header: ({ table }) => (
-      <div className="flex items-center justify-center p-1 -m-1">
-        <Checkbox
-          checked={table.getIsAllPageRowsSelected()}
-          onCheckedChange={(checked) => table.toggleAllPageRowsSelected(!!checked)}
-          aria-label="Select all"
-          className="hover:border-ring cursor-pointer transition-colors"
-        />
-      </div>
-    ),
-    cell: ({ row }) => (
-      <div className="flex items-center justify-center p-1 -m-1">
-        <Checkbox
-          checked={row.getIsSelected()}
-          onCheckedChange={(checked) => row.toggleSelected(!!checked)}
-          aria-label="Select row"
-          className="hover:border-ring cursor-pointer transition-colors"
-        />
-      </div>
-    ),
-    size: 40,
-    enableResizing: false,
-  },
-  {
-    accessorKey: 'priority',
-    header: () => (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <div className="flex items-center justify-center">
-            <ListOrdered className="h-4 w-4" />
-          </div>
-        </TooltipTrigger>
-        <TooltipContent>Priority</TooltipContent>
-      </Tooltip>
-    ),
-    meta: {
-      headerString: 'Priority' // For the column visibility dropdown
-    },
-    cell: ({ row }) => {
-      const priority = row.original.priority
-      // Priority 0 means torrent is not queued/managed
-      if (priority === 0) return <span className="text-sm text-muted-foreground text-center block">-</span>
-      // In qBittorrent, 1 is highest priority, higher numbers are lower priority
-      return <span className="text-sm font-medium text-center block">{priority}</span>
-    },
-    size: 45,
-  },
-  {
-    accessorKey: 'name',
-    header: 'Name',
-    cell: ({ row }) => {
-      const displayName = incognitoMode ? getLinuxIsoName(row.original.hash) : row.original.name
-      return (
-        <div className="truncate text-sm" title={displayName}>
-          {displayName}
-        </div>
-      )
-    },
-    size: 200,
-  },
-  {
-    accessorKey: 'size',
-    header: 'Size',
-    cell: ({ row }) => <span className="text-sm truncate">{formatBytes(row.original.size)}</span>,
-    size: 85,
-  },
-  {
-    accessorKey: 'progress',
-    header: 'Progress',
-    cell: ({ row }) => (
-      <div className="flex items-center gap-2">
-        <Progress value={row.original.progress * 100} className="w-20" />
-        <span className="text-xs text-muted-foreground">
-          {Math.round(row.original.progress * 100)}%
-        </span>
-      </div>
-    ),
-    size: 120,
-  },
-  {
-    accessorKey: 'state',
-    header: 'Status',
-    cell: ({ row }) => {
-      const state = row.original.state
-      const variant = 
-        state === 'downloading' ? 'default' :
-        state === 'stalledDL' ? 'secondary' :
-        state === 'uploading' ? 'default' :
-        state === 'stalledUP' ? 'secondary' :
-        state === 'pausedDL' || state === 'pausedUP' ? 'secondary' :
-        state === 'error' || state === 'missingFiles' ? 'destructive' :
-        'outline'
-      
-      return <Badge variant={variant} className="text-xs">{state}</Badge>
-    },
-    size: 120,
-  },
-  {
-    accessorKey: 'dlspeed',
-    header: 'Down Speed',
-    cell: ({ row }) => <span className="text-sm truncate">{formatSpeed(row.original.dlspeed)}</span>,
-    size: calculateMinWidth('Down Speed'),
-  },
-  {
-    accessorKey: 'upspeed',
-    header: 'Up Speed',
-    cell: ({ row }) => <span className="text-sm truncate">{formatSpeed(row.original.upspeed)}</span>,
-    size: calculateMinWidth('Up Speed'),
-  },
-  {
-    accessorKey: 'eta',
-    header: 'ETA',
-    cell: ({ row }) => <span className="text-sm truncate">{formatEta(row.original.eta)}</span>,
-    size: 80,
-  },
-  {
-    accessorKey: 'ratio',
-    header: 'Ratio',
-    cell: ({ row }) => {
-      const ratio = incognitoMode ? getLinuxRatio(row.original.hash) : row.original.ratio
-      const displayRatio = ratio === -1 ? "∞" : ratio.toFixed(2)
-      const colorVar = getRatioColor(ratio)
-      
-      return (
-        <span 
-          className="text-sm font-medium" 
-          style={{ color: colorVar }}
-        >
-          {displayRatio}
-        </span>
-      )
-    },
-    size: 80,
-  },
-  {
-    accessorKey: 'added_on',
-    header: 'Added',
-    cell: ({ row }) => {
-      const addedOn = row.original.added_on
-      if (!addedOn || addedOn === 0) {
-        return '-'
-      }
-      const date = new Date(addedOn * 1000) // Convert from Unix timestamp
-      
-      // Format: M/D/YYYY, h:mm:ss AM/PM
-      const month = date.getMonth() + 1 // getMonth() returns 0-11
-      const day = date.getDate()
-      const year = date.getFullYear()
-      const hours = date.getHours()
-      const minutes = date.getMinutes()
-      const seconds = date.getSeconds()
-      const ampm = hours >= 12 ? 'PM' : 'AM'
-      const displayHours = hours % 12 || 12 // Convert to 12-hour format
-      
-      return (
-        <div className="whitespace-nowrap text-sm">
-          {month}/{day}/{year}, {displayHours}:{minutes.toString().padStart(2, '0')}:{seconds.toString().padStart(2, '0')} {ampm}
-        </div>
-      )
-    },
-    size: 200,
-  },
-  {
-    accessorKey: 'category',
-    header: 'Category',
-    cell: ({ row }) => {
-      const displayCategory = incognitoMode ? getLinuxCategory(row.original.hash) : row.original.category
-      return (
-        <div className="truncate text-sm" title={displayCategory || '-'}>
-          {displayCategory || '-'}
-        </div>
-      )
-    },
-    size: 150,
-  },
-  {
-    accessorKey: 'tags',
-    header: 'Tags',
-    cell: ({ row }) => {
-      const tags = incognitoMode ? getLinuxTags(row.original.hash) : row.original.tags
-      const displayTags = Array.isArray(tags) ? tags.join(', ') : tags || '-'
-      return (
-        <div className="truncate text-sm" title={displayTags}>
-          {displayTags}
-        </div>
-      )
-    },
-    size: 200,
-  },
-  {
-    accessorKey: 'downloaded',
-    header: 'Downloaded',
-    cell: ({ row }) => <span className="text-sm truncate">{formatBytes(row.original.downloaded)}</span>,
-    size: calculateMinWidth('Downloaded'),
-  },
-  {
-    accessorKey: 'uploaded',
-    header: 'Uploaded',
-    cell: ({ row }) => <span className="text-sm truncate">{formatBytes(row.original.uploaded)}</span>,
-    size: calculateMinWidth('Uploaded'),
-  },
-  {
-    accessorKey: 'save_path',
-    header: 'Save Path',
-    cell: ({ row }) => {
-      const displayPath = incognitoMode ? getLinuxSavePath(row.original.hash) : row.original.save_path
-      return (
-        <div className="truncate text-sm" title={displayPath}>
-          {displayPath}
-        </div>
-      )
-    },
-    size: 250,
-  },
-  {
-    accessorKey: 'tracker',
-    header: 'Tracker',
-    cell: ({ row }) => {
-      const tracker = incognitoMode ? getLinuxTracker(row.original.hash) : row.original.tracker
-      // Extract domain from tracker URL
-      let displayTracker = tracker
-      try {
-        if (tracker && tracker.includes('://')) {
-          const url = new URL(tracker)
-          displayTracker = url.hostname
-        }
-      } catch {
-        // If URL parsing fails, show as is
-      }
-      return (
-        <div className="truncate text-sm" title={tracker}>
-          {displayTracker || '-'}
-        </div>
-      )
-    },
-    size: 150,
-  },
-]
-
 export const TorrentTableOptimized = memo(function TorrentTableOptimized({ instanceId, filters, selectedTorrent, onTorrentSelect, addTorrentModalOpen, onAddTorrentModalChange, onFilteredDataUpdate, filterButton }: TorrentTableOptimizedProps) {
   // State management
   // Move default values outside the component for stable references
   // (This should be at module scope, not inside the component)
   const [sorting, setSorting] = usePersistedColumnSorting([])
   const [globalFilter, setGlobalFilter] = useState('')
-  const [immediateSearch, setImmediateSearch] = useState('')
+  const [immediateSearch] = useState('')
   const [rowSelection, setRowSelection] = useState({})
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [deleteFiles, setDeleteFiles] = useState(false)
@@ -414,6 +131,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const [showRefetchIndicator, setShowRefetchIndicator] = useState(false)
 
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
+
+  // State for range select capabilities for checkboxes
+  const shiftPressedRef = useRef<boolean>(false)
+  const lastSelectedIndexRef = useRef<number | null>(null)
 
   // These should be defined at module scope, not inside the component, to ensure stable references
   // (If not already, move them to the top of the file)
@@ -440,12 +161,19 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
   // Debounce search to prevent excessive filtering (200ms delay for faster response)
   const debouncedSearch = useDebounce(globalFilter, 200)
+  const routeSearch = useSearch({ strict: false }) as any
+  const searchFromRoute = (routeSearch?.q as string) || ''
 
-  // Use immediate search if available, otherwise use debounced search
-  const effectiveSearch = immediateSearch || debouncedSearch
+  // Use route search if present, otherwise fall back to local immediate/debounced search
+  const effectiveSearch = searchFromRoute || immediateSearch || debouncedSearch
 
-  // Check if search contains glob patterns
-  const isGlobSearch = !!globalFilter && /[*?[\]]/.test(globalFilter)
+  // Keep local input state in sync with route query so internal effects remain consistent
+  useEffect(() => {
+    if (searchFromRoute !== globalFilter) {
+      setGlobalFilter(searchFromRoute)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchFromRoute])
 
   // Map TanStack Table column IDs to backend field names
   const getBackendSortField = (columnId: string): string => {
@@ -516,27 +244,15 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     return () => clearTimeout(timeoutId)
   }, [isFetching, isLoading, torrents.length])
   
-  // Handle Enter key for immediate search
-  // Memoize handlers to avoid unnecessary re-renders
-  const handleSearchKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      setImmediateSearch(globalFilter)
-    }
-  }, [globalFilter]) 
-
-  const handleSearchChange = useCallback((value: string) => {
-    setGlobalFilter(value)
-    if (immediateSearch) {
-      setImmediateSearch('')
-    }
-  }, [immediateSearch]) 
-
   // Use torrents directly from backend (already sorted)
   const sortedTorrents = torrents
 
   // Memoize columns to avoid unnecessary recalculations
-  const columns = useMemo(() => createColumns(incognitoMode), [incognitoMode])
-  
+  const columns = useMemo(
+    () => createColumns(incognitoMode, { shiftPressedRef, lastSelectedIndexRef }),
+    [incognitoMode]
+  )
+
   const table = useReactTable({
     data: sortedTorrents,
     columns,
@@ -1002,112 +718,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
   return (
     <div className="h-full flex flex-col">
-      {/* Desktop Stats bar - shown at top on desktop */}
-      <div className="hidden sm:flex items-center justify-between gap-3 text-xs sm:text-sm flex-shrink-0">
-        {/* Torrent counts - more compact */}
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5">
-            <span className="text-muted-foreground">Total:</span>
-            <strong>{stats.total}</strong>
-          </div>
-          
-          {/* Show key stats with colors */}
-          <div className="flex items-center gap-3 text-xs">
-            {stats.downloading > 0 && (
-              <div className="flex items-center gap-1">
-                <div className="w-2 h-2 rounded-full bg-blue-500" />
-                <span>{stats.downloading}</span>
-              </div>
-            )}
-            {stats.seeding > 0 && (
-              <div className="flex items-center gap-1">
-                <div className="w-2 h-2 rounded-full bg-emerald-500" />
-                <span>{stats.seeding}</span>
-              </div>
-            )}
-            {stats.paused > 0 && (
-              <div className="flex items-center gap-1">
-                <div className="w-2 h-2 rounded-full bg-gray-500" />
-                <span>{stats.paused}</span>
-              </div>
-            )}
-            {stats.error > 0 && (
-              <div className="flex items-center gap-1">
-                <div className="w-2 h-2 rounded-full bg-red-500" />
-                <span className="text-destructive">{stats.error}</span>
-              </div>
-            )}
-          </div>
-        </div>
-        
-        {/* User statistics - more compact */}
-        {serverState && (
-          <div className="flex items-center gap-3">
-            {/* All-time stats */}
-            {serverState.alltime_dl !== undefined && (
-              <div className="flex items-center gap-2 text-xs">
-                <span className="text-muted-foreground">All-time stats:</span>
-                <div className="flex items-center gap-1">
-                  <ChevronDown className="h-3 w-3 text-muted-foreground" />
-                  <span className="font-medium">{formatBytes(serverState.alltime_dl || 0)}</span>
-                </div>
-                <span className="text-muted-foreground">|</span>
-                <div className="flex items-center gap-1">
-                  <ChevronUp className="h-3 w-3 text-muted-foreground" />
-                  <span className="font-medium">{formatBytes(serverState.alltime_ul || 0)}</span>
-                </div>
-              </div>
-            )}
-            
-            {/* Ratio with color coding */}
-            {(serverState.global_ratio !== undefined || (serverState.alltime_dl !== undefined && serverState.alltime_ul !== undefined)) && (() => {
-              let ratioValue = 0
-              let displayRatio = '0.00'
-              
-              if (serverState.global_ratio && serverState.global_ratio !== '') {
-                ratioValue = parseFloat(serverState.global_ratio)
-                displayRatio = serverState.global_ratio
-              } else if (serverState.alltime_dl && serverState.alltime_dl > 0 && serverState.alltime_ul !== undefined) {
-                ratioValue = (serverState.alltime_ul || 0) / serverState.alltime_dl
-                displayRatio = ratioValue.toFixed(2)
-              }
-              
-              const colorVar = getRatioColor(ratioValue)
-              
-              return (
-                <div className="flex items-center gap-1.5 text-xs">
-                  <span className="text-muted-foreground">Ratio:</span>
-                  <strong style={{ color: colorVar }}>{displayRatio}</strong>
-                </div>
-              )
-            })()}
-            
-            {/* Peers */}
-            {serverState.total_peer_connections !== undefined && (
-              <div className="flex items-center gap-1.5 text-xs">
-                <span className="text-muted-foreground">Peers:</span>
-                <span className="font-medium">{serverState.total_peer_connections || 0}</span>
-              </div>
-            )}
-          </div>
-        )}
-        
-        {/* Current speeds - right aligned */}
-        <div className="flex items-center gap-2 text-xs ml-auto">
-          <div className="flex items-center gap-1">
-            <ChevronDown className="h-3 w-3 text-muted-foreground" />
-            <span className="font-medium">{formatSpeed(stats.totalDownloadSpeed || 0)}</span>
-          </div>
-          <span className="text-muted-foreground">|</span>
-          <div className="flex items-center gap-1">
-            <ChevronUp className="h-3 w-3 text-muted-foreground" />
-            <span className="font-medium">{formatSpeed(stats.totalUploadSpeed || 0)}</span>
-          </div>
-        </div>
-      </div>
-
       {/* Search and Actions */}
-      <div className="flex flex-col gap-2 flex-shrink-0 sm:mt-3">
+      <div className="flex flex-col gap-2 flex-shrink-0">
         {/* Search bar row */}
         <div className="flex items-center gap-1 sm:gap-2">
           {/* Filter button - only on desktop */}
@@ -1115,136 +727,82 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
             <div className="hidden xl:block">
               {filterButton}
             </div>
-          )}
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-            <Input
-              placeholder={isGlobSearch ? "Glob pattern..." : "Search torrents..."}
-              value={globalFilter ?? ''}
-              onChange={event => handleSearchChange(event.target.value)}
-              onKeyDown={handleSearchKeyDown}
-              className={`w-full pl-9 pr-9 sm:pr-20 transition-all ${
-                effectiveSearch ? 'ring-1 ring-primary/50' : ''
-              } ${
-                isGlobSearch ? 'ring-1 ring-primary' : ''
-              }`}
-            />
-            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-              {isGlobSearch && (
-                <Badge variant="secondary" className="hidden sm:inline-flex text-[10px] px-1.5 py-0 h-5">
-                  GLOB
-                </Badge>
-              )}
-              {isLoading && (
-                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-              )}
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button 
-                    type="button"
-                    className="p-1 hover:bg-muted rounded-sm transition-colors hidden sm:block"
-                    onClick={(e) => e.preventDefault()}
-                  >
-                    <Info className="h-3.5 w-3.5 text-muted-foreground" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent className="max-w-xs">
-                  <div className="space-y-2 text-xs">
-                    <p className="font-semibold">Smart Search Features:</p>
-                    <ul className="space-y-1 ml-2">
-                      <li>• <strong>Glob patterns:</strong> *.mkv, *1080p*, S??E??</li>
-                      <li>• <strong>Fuzzy matching:</strong> "breaking bad" finds "Breaking.Bad"</li>
-                      <li>• Handles dots, underscores, and brackets</li>
-                      <li>• Searches name, category, and tags</li>
-                      <li>• Press Enter for instant search</li>
-                      <li>• Auto-searches after 1 second pause</li>
-                    </ul>
-                  </div>
-                </TooltipContent>
-              </Tooltip>
-            </div>
-          </div>
-          
+          )}          
           {/* Action buttons */}
           <div className="flex gap-1 sm:gap-2 flex-shrink-0">
-            {selectedHashes.length > 0 && (
-              <TorrentActions 
-                instanceId={instanceId} 
-                selectedHashes={selectedHashes}
-                selectedTorrents={selectedTorrents}
-                onComplete={() => setRowSelection({})}
-              />
-            )}
-            
-            {/* Add Torrent button */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => onAddTorrentModalChange?.(true)}
-                  className="sm:hidden"
-                >
-                  <Plus className="h-4 w-4" />
-                  <span className="sr-only">Add Torrent</span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Add Torrent</TooltipContent>
-            </Tooltip>
-            <Button
-              variant="outline"
-              onClick={() => onAddTorrentModalChange?.(true)}
-              className="hidden sm:inline-flex"
-            >
-              <Plus className="h-4 w-4 sm:mr-2" />
-              <span className="hidden sm:inline">Add Torrent</span>
-            </Button>
-            
-            {/* Column visibility dropdown */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="relative"
-                >
-                  <Columns3 className="h-4 w-4" />
-                {hasHiddenColumns && (
-                  <span className="absolute -top-1 -right-1 h-2 w-2 bg-primary rounded-full" />
-                )}
-                <span className="sr-only">Toggle columns</span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuLabel>Toggle columns</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {table
-                .getAllColumns()
-                .filter(
-                  (column) =>
-                    column.id !== 'select' && // Never show select in visibility options
-                    column.getCanHide()
-                )
-                .map((column) => {
-                  return (
-                    <DropdownMenuCheckboxItem
-                      key={column.id}
-                      className="capitalize"
-                      checked={column.getIsVisible()}
-                      onCheckedChange={(value) =>
-                        column.toggleVisibility(!!value)
-                      }
-                      onSelect={(e) => e.preventDefault()}
+            {(() => {
+              const actions = selectedHashes.length > 0 ? (
+                <TorrentActions 
+                  instanceId={instanceId} 
+                  selectedHashes={selectedHashes}
+                  selectedTorrents={selectedTorrents}
+                  onComplete={() => setRowSelection({})}
+                />
+              ) : null
+              const headerLeft = typeof document !== 'undefined' ? document.getElementById('header-left-of-filter') : null
+              return (
+                <>
+                  {/* Mobile/tablet inline (hidden on xl and up) */}
+                  <div className="xl:hidden">
+                    {actions}
+                  </div>
+                  {/* Desktop portal: render directly left of the filter button in header */}
+                  {headerLeft && actions ? createPortal(actions, headerLeft) : null}
+                </>
+              )
+            })()}
+                        
+            {/* Column visibility dropdown moved next to search via portal, with inline fallback */}
+            {(() => {
+              const container = typeof document !== 'undefined' ? document.getElementById('header-search-actions') : null
+              const dropdown = (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="relative"
                     >
-                      <span className="truncate">
-                        {(column.columnDef.meta as any)?.headerString || 
-                         (typeof column.columnDef.header === 'string' ? column.columnDef.header : column.id)}
-                      </span>
-                    </DropdownMenuCheckboxItem>
-                  )
-                })}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                      <Columns3 className="h-4 w-4" />
+                      {hasHiddenColumns && (
+                        <span className="absolute -top-1 -right-1 h-2 w-2 bg-primary rounded-full" />
+                      )}
+                      <span className="sr-only">Toggle columns</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48">
+                    <DropdownMenuLabel>Toggle columns</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {table
+                      .getAllColumns()
+                      .filter(
+                        (column) =>
+                          column.id !== 'select' && // Never show select in visibility options
+                          column.getCanHide()
+                      )
+                      .map((column) => {
+                        return (
+                          <DropdownMenuCheckboxItem
+                            key={column.id}
+                            className="capitalize"
+                            checked={column.getIsVisible()}
+                            onCheckedChange={(value) =>
+                              column.toggleVisibility(!!value)
+                            }
+                            onSelect={(e) => e.preventDefault()}
+                          >
+                            <span className="truncate">
+                              {(column.columnDef.meta as any)?.headerString || 
+                               (typeof column.columnDef.header === 'string' ? column.columnDef.header : column.id)}
+                            </span>
+                          </DropdownMenuCheckboxItem>
+                        )
+                      })}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )
+              return container ? createPortal(dropdown, container) : dropdown
+            })()}
           
           <AddTorrentDialog 
             instanceId={instanceId} 
@@ -1256,7 +814,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       </div>
 
       {/* Table container */}
-      <div className="rounded-md border flex flex-col flex-1 min-h-0 mt-2 sm:mt-3 overflow-hidden">
+      <div className="flex flex-col flex-1 min-h-0 mt-2 sm:mt-0 overflow-hidden">
         <div className="relative flex-1 overflow-auto scrollbar-thin" ref={parentRef}>
           <div style={{ position: 'relative', minWidth: 'min-content' }}>
             {/* Header */}
@@ -1598,6 +1156,30 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
               </span>
             )}
           </div>
+
+            {/* All-time stats */}
+            {serverState && serverState.alltime_dl !== undefined && (
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-muted-foreground">All-time stats:</span>
+                <div className="flex items-center gap-1">
+                  <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                  <span className="font-medium">{formatBytes(serverState.alltime_dl || 0)}</span>
+                  <ChevronUp className="h-3 w-3 text-muted-foreground" />
+                  <span className="font-medium">{formatBytes(serverState.alltime_ul || 0)}</span>
+                </div>
+              </div>
+            )}
+
+          <div className="flex items-center gap-2 text-xs">
+          <div className="flex items-center gap-1">
+            <ChevronDown className="h-3 w-3 text-muted-foreground" />
+            <span className="font-medium">{formatSpeed(stats.totalDownloadSpeed || 0)}</span>
+            <ChevronUp className="h-3 w-3 text-muted-foreground" />
+            <span className="font-medium">{formatSpeed(stats.totalUploadSpeed || 0)}</span>
+          </div>
+          </div>
+
+
           
           <div className="flex items-center gap-4">
             {/* Incognito mode toggle - barely visible */}
