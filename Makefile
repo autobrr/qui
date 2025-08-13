@@ -31,6 +31,7 @@ frontend:
 	@echo "Copying frontend assets..."
 	rm -rf $(INTERNAL_WEB_DIR)/dist
 	cp -r $(WEB_DIR)/dist $(INTERNAL_WEB_DIR)/
+	echo "" > $(WEB_DIR)/dist/.gitkeep
 
 # Build backend
 backend:

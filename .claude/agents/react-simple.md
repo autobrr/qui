@@ -3,6 +3,7 @@ name: react-simple
 description: TypeScript/React developer that writes extremely simple, readable code that satisfies strict code review standards. Use PROACTIVELY for creating or refactoring React components to be maximally simple and clear.
 tools: Read, Write, MultiEdit, Grep, Glob
 color: blue
+model: sonnet
 ---
 
 # Purpose

@@ -5,7 +5,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import type { Instance } from '@/types'
+import type { InstanceResponse } from '@/types'
 
 export function useInstances() {
   const queryClient = useQueryClient()
@@ -13,7 +13,7 @@ export function useInstances() {
   const { data: instances, isLoading, error } = useQuery({
     queryKey: ['instances'],
     queryFn: () => api.getInstances(),
-    refetchInterval: 10000, // Refetch every 10 seconds to update status
+    refetchInterval: 30000, // Refetch every 30 seconds for a single-user app
   })
 
   const createMutation = useMutation({
@@ -46,7 +46,7 @@ export function useInstances() {
   })
 
   const deleteMutation = useMutation({
-    mutationFn: (id: number) => api.deleteInstance(id),
+    mutationFn: ({ id }: { id: number; name: string }) => api.deleteInstance(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['instances'] })
     },
@@ -57,7 +57,7 @@ export function useInstances() {
   })
 
   return {
-    instances: instances as Instance[] | undefined,
+    instances: instances as InstanceResponse[] | undefined,
     isLoading,
     error,
     createInstance: createMutation.mutate,

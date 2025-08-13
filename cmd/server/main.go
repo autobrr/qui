@@ -28,11 +28,13 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services"
 	"github.com/autobrr/qui/internal/web"
+	webfs "github.com/autobrr/qui/web"
 )
 
 var (
-	Version = "dev"
-	cfgFile string
+	Version   = "dev"
+	cfgFile   string
+	pprofFlag bool
 
 	// Publisher credentials - set during build via ldflags
 	PolarOrgID = "" // Set via: -X main.PolarOrgID=your-org-id
@@ -52,6 +54,7 @@ multiple qBittorrent instances with support for 10k+ torrents.`,
 func init() {
 	cobra.OnInitialize(initConfig)
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is OS-specific: ~/.config/qui/config.toml or %APPDATA%\\qui\\config.toml)")
+	rootCmd.PersistentFlags().BoolVar(&pprofFlag, "pprof", false, "enable pprof server on :6060")
 	rootCmd.Version = Version
 }
 
@@ -69,6 +72,10 @@ func runServer() {
 	cfg, err := config.New(cfgFile)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize configuration")
+	}
+
+	if pprofFlag {
+		cfg.Config.PprofEnabled = true
 	}
 
 	cfg.ApplyLogConfig()
@@ -100,7 +107,7 @@ func runServer() {
 	syncManager := qbittorrent.NewSyncManager(clientPool)
 
 	// Initialize web handler (for embedded frontend)
-	webHandler, err := web.NewHandler(Version, cfg.Config.BaseURL)
+	webHandler, err := web.NewHandler(Version, cfg.Config.BaseURL, webfs.DistDirFS)
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to initialize web handler")
 	}
@@ -204,14 +211,16 @@ func runServer() {
 		}
 	}()
 
-	// Start profiling server
-	go func() {
-		log.Info().Msg("Starting pprof server on :6060")
-		log.Info().Msg("Access profiling at: http://localhost:6060/debug/pprof/")
-		if err := http.ListenAndServe(":6060", nil); err != nil {
-			log.Error().Err(err).Msg("Profiling server failed")
-		}
-	}()
+	// Start profiling server if enabled
+	if cfg.Config.PprofEnabled {
+		go func() {
+			log.Info().Msg("Starting pprof server on :6060")
+			log.Info().Msg("Access profiling at: http://localhost:6060/debug/pprof/")
+			if err := http.ListenAndServe(":6060", nil); err != nil {
+				log.Error().Err(err).Msg("Profiling server failed")
+			}
+		}()
+	}
 	// Wait for interrupt signal to gracefully shutdown the server
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
