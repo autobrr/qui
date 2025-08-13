@@ -39,7 +39,7 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
   const { deleteInstance, testConnection, isDeleting, isTesting } = useInstances()
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
-  const displayUrl = `${instance.host}:${instance.port}`
+  const displayUrl = instance.host
 
   const handleTest = async () => {
     setTestResult(null)
