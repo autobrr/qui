@@ -22,10 +22,13 @@ import {
   Trash2, 
   RefreshCw, 
   CheckCircle,
-  XCircle
+  XCircle,
+  Eye,
+  EyeOff
 } from 'lucide-react'
 import { useInstances } from '@/hooks/useInstances'
 import { cn, formatErrorMessage } from '@/lib/utils'
+import { useIncognitoMode } from '@/lib/incognito'
 
 interface InstanceCardProps {
   instance: InstanceResponse
@@ -35,6 +38,8 @@ interface InstanceCardProps {
 export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
   const { deleteInstance, testConnection, isDeleting, isTesting } = useInstances()
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
+  const [incognitoMode, setIncognitoMode] = useIncognitoMode()
+  const displayUrl = `${instance.host}:${instance.port}`
 
   const handleTest = async () => {
     setTestResult(null)
@@ -86,8 +91,20 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
           <CardTitle className="text-base font-medium">
             {instance.name}
           </CardTitle>
-          <CardDescription className="text-sm">
-            {instance.host}:{instance.port}
+          <CardDescription className="flex items-center gap-1 text-sm">
+            <span className={incognitoMode ? "blur-sm select-none" : ""}>{displayUrl}</span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-4 w-4 p-0 hover:bg-muted/50"
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                setIncognitoMode(!incognitoMode)
+              }}
+            >
+              {incognitoMode ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+            </Button>
           </CardDescription>
         </div>
         <div className="flex items-center gap-2">

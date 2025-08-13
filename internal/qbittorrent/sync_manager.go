@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/url"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -532,6 +533,10 @@ func (sm *SyncManager) GetTags(ctx context.Context, instanceID int) ([]string, e
 	if err != nil {
 		return nil, fmt.Errorf("failed to get tags: %w", err)
 	}
+
+	slices.SortFunc(tags, func(a, b string) int {
+		return strings.Compare(strings.ToLower(a), strings.ToLower(b))
+	})
 
 	// Cache for 1 minute
 	sm.cache.SetWithTTL(cacheKey, tags, 1, 60*time.Second)

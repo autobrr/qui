@@ -11,7 +11,7 @@ import { Progress } from '@/components/ui/progress'
 import { Button } from '@/components/ui/button'
 import { HardDrive, Download, Upload, AlertCircle, Activity, Plus, Zap, ChevronDown, ChevronUp, Eye, EyeOff } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { formatSpeed, formatBytes, getRatioColor } from '@/lib/utils'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
@@ -75,12 +75,8 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
     enabled: true, // Always fetch stats, regardless of isActive status
     pollingInterval: 5000 // Slower polling for dashboard
   })
-  const [incognitoMode] = useIncognitoMode()
-  const [showUrl, setShowUrl] = useState(false)
-  
-  // Create the display URL
+  const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const displayUrl = `${instance.host}:${instance.port}`
-  const shouldBlur = incognitoMode && !showUrl
   
   // Show loading only on first load
   if (isLoading && !stats) {
@@ -95,21 +91,19 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
               </Badge>
             </div>
             <CardDescription className="flex items-center gap-1">
-              <span className={shouldBlur ? "blur-sm select-none" : ""}>{displayUrl}</span>
-              {incognitoMode && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-5 w-5 p-0 hover:bg-muted/50"
-                  onClick={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    setShowUrl(!showUrl)
-                  }}
-                >
-                  {showUrl ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
-                </Button>
-              )}
+              <span className={incognitoMode ? "blur-sm select-none" : ""}>{displayUrl}</span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-5 w-5 p-0 hover:bg-muted/50"
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  setIncognitoMode(!incognitoMode)
+                }}
+              >
+                {incognitoMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+              </Button>
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -131,21 +125,19 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
               <Badge variant="destructive">Disconnected</Badge>
             </div>
             <CardDescription className="flex items-center gap-1">
-              <span className={shouldBlur ? "blur-sm select-none" : ""}>{displayUrl}</span>
-              {incognitoMode && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-5 w-5 p-0 hover:bg-muted/50"
-                  onClick={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    setShowUrl(!showUrl)
-                  }}
-                >
-                  {showUrl ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
-                </Button>
-              )}
+              <span className={incognitoMode ? "blur-sm select-none" : ""}>{displayUrl}</span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-5 w-5 p-0 hover:bg-muted/50"
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  setIncognitoMode(!incognitoMode)
+                }}
+              >
+                {incognitoMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+              </Button>
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -181,21 +173,19 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
               <Badge variant="destructive">Error</Badge>
             </div>
             <CardDescription className="flex items-center gap-1">
-              <span className={shouldBlur ? "blur-sm select-none" : ""}>{displayUrl}</span>
-              {incognitoMode && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-5 w-5 p-0 hover:bg-muted/50"
-                  onClick={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    setShowUrl(!showUrl)
-                  }}
-                >
-                  {showUrl ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
-                </Button>
-              )}
+              <span className={incognitoMode ? "blur-sm select-none" : ""}>{displayUrl}</span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-5 w-5 p-0 hover:bg-muted/50"
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  setIncognitoMode(!incognitoMode)
+                }}
+              >
+                {incognitoMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+              </Button>
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -219,21 +209,19 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
             </Badge>
           </div>
           <CardDescription className="flex items-center gap-1 text-xs">
-            <span className={shouldBlur ? "blur-sm select-none" : ""}>{displayUrl}</span>
-            {incognitoMode && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-4 w-4 p-0"
-                onClick={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  setShowUrl(!showUrl)
-                }}
-              >
-                {showUrl ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
-              </Button>
-            )}
+            <span className={incognitoMode ? "blur-sm select-none" : ""}>{displayUrl}</span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-4 w-4 p-0"
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                setIncognitoMode(!incognitoMode)
+              }}
+            >
+              {incognitoMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+            </Button>
           </CardDescription>
         </CardHeader>
         <CardContent>
