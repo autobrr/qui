@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-import { memo, useState, useEffect, useCallback } from 'react'
+import { memo, useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -67,10 +67,6 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
   if (!torrent) return null
 
-  const handleTabChange = useCallback((tab: string) => {
-    setActiveTab(tab)
-  }, [])
-
   return (
     <div className="h-full flex flex-col">
       <div className="flex items-center justify-between px-4 py-3 sm:px-6 border-b bg-muted/30">
@@ -79,7 +75,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
         </h3>
       </div>
 
-      <Tabs value={activeTab} onValueChange={handleTabChange} className="flex-1 flex flex-col">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
         <TabsList className="w-full justify-start rounded-none border-b h-10 bg-background px-4 sm:px-6 py-0">
           <TabsTrigger 
             value="general" 
@@ -101,11 +97,13 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
           </TabsTrigger>
         </TabsList>
 
-        <ScrollArea className="flex-1">
-          <TabsContent value="general" className="m-0 p-4 sm:p-6">
-            {loadingProperties ? (
-              <div className="flex items-center justify-center p-8">
-                <Loader2 className="h-6 w-6 animate-spin" />
+        <div className="flex-1 overflow-hidden">
+          <TabsContent value="general" className="m-0 h-full">
+            <ScrollArea className="h-full">
+              <div className="p-4 sm:p-6">
+                {loadingProperties ? (
+                  <div className="flex items-center justify-center p-8">
+                    <Loader2 className="h-6 w-6 animate-spin" />
               </div>
             ) : properties ? (
               <div className="space-y-4">
@@ -207,67 +205,84 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                 )}
               </div>
             ) : null}
+              </div>
+            </ScrollArea>
           </TabsContent>
 
-          <TabsContent value="trackers" className="m-0 p-4 sm:p-6">
-            {loadingTrackers ? (
-              <div className="flex items-center justify-center p-8">
-                <Loader2 className="h-6 w-6 animate-spin" />
-              </div>
-            ) : trackers && trackers.length > 0 ? (
-              <div className="space-y-2">
-                {trackers.map((tracker, index) => (
-                  <div key={index} className="border border-border/50 hover:border-border bg-card/50 hover:bg-card transition-all rounded-lg p-3 sm:p-4 space-y-2">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                      <span className="text-xs sm:text-sm font-mono break-all">{tracker.url}</span>
-                      {getTrackerStatusBadge(tracker.status)}
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-                      <div>Seeds: {tracker.num_seeds}</div>
-                      <div>Peers: {tracker.num_peers}</div>
-                      <div>Leechers: {tracker.num_leechers}</div>
-                      <div>Downloaded: {tracker.num_downloaded}</div>
-                    </div>
-                    {tracker.msg && (
-                      <div className="text-xs text-muted-foreground">{tracker.msg}</div>
-                    )}
+          <TabsContent value="trackers" className="m-0 h-full">
+            <ScrollArea className="h-full">
+              <div className="p-4 sm:p-6">
+                {loadingTrackers ? (
+                  <div className="flex items-center justify-center p-8">
+                    <Loader2 className="h-6 w-6 animate-spin" />
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-sm text-muted-foreground text-center p-4">
-                No trackers found
-              </div>
-            )}
-          </TabsContent>
-
-          <TabsContent value="content" className="m-0 p-4 sm:p-6">
-            {loadingFiles ? (
-              <div className="flex items-center justify-center p-8">
-                <Loader2 className="h-6 w-6 animate-spin" />
-              </div>
-            ) : files && files.length > 0 ? (
-              <div className="space-y-1">
-                {files.map((file, index) => (
-                  <div key={index} className="border border-border/50 hover:border-border bg-card/50 hover:bg-card transition-all rounded p-3 sm:p-2 space-y-2 sm:space-y-1">
-                    <div className="text-xs sm:text-sm font-mono break-all">{file.name}</div>
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 text-xs text-muted-foreground">
-                      <span>{formatBytes(file.size)}</span>
-                      <div className="flex items-center gap-2">
-                        <Progress value={file.progress * 100} className="w-20 h-2" />
-                        <span>{Math.round(file.progress * 100)}%</span>
+                ) : trackers && trackers.length > 0 ? (
+                  <div className="space-y-2">
+                    {trackers.map((tracker, index) => (
+                      <div key={index} className="border border-border/50 hover:border-border bg-card/50 hover:bg-card transition-all rounded-lg p-3 sm:p-4 space-y-2">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                          <span className="text-xs sm:text-sm font-mono break-all">{tracker.url}</span>
+                          {getTrackerStatusBadge(tracker.status)}
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                          <div>Seeds: {tracker.num_seeds}</div>
+                          <div>Peers: {tracker.num_peers}</div>
+                          <div>Leechers: {tracker.num_leechers}</div>
+                          <div>Downloaded: {tracker.num_downloaded}</div>
+                        </div>
+                        {tracker.msg && (
+                          <div className="text-xs text-muted-foreground">{tracker.msg}</div>
+                        )}
                       </div>
-                    </div>
+                    ))}
                   </div>
-                ))}
+                ) : (
+                  <div className="text-sm text-muted-foreground text-center p-4">
+                    No trackers found
+                  </div>
+                )}
               </div>
-            ) : (
-              <div className="text-sm text-muted-foreground text-center p-4">
-                No files found
-              </div>
-            )}
+            </ScrollArea>
           </TabsContent>
-        </ScrollArea>
+
+          <TabsContent value="content" className="m-0 h-full">
+            <ScrollArea className="h-full">
+              <div className="p-4 sm:p-6">
+                {loadingFiles ? (
+                  <div className="flex items-center justify-center p-8">
+                    <Loader2 className="h-6 w-6 animate-spin" />
+                  </div>
+                ) : files && files.length > 0 ? (
+                  <div className="space-y-1">
+                    {files.map((file, index) => (
+                      <div key={index} className="border border-border/50 hover:border-border bg-card/50 hover:bg-card transition-all rounded p-3 sm:p-2 space-y-2 sm:space-y-1">
+                        <div className="text-xs sm:text-sm font-mono break-all">{file.name}</div>
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 text-xs text-muted-foreground">
+                          <span>{formatBytes(file.size)}</span>
+                          <div className="flex items-center gap-2">
+                            {(() => {
+                              const progressPercent = file.progress * 100
+                              return (
+                                <>
+                                  <Progress value={progressPercent} className="w-20 h-2" />
+                                  <span>{Math.round(progressPercent)}%</span>
+                                </>
+                              )
+                            })()}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-sm text-muted-foreground text-center p-4">
+                    No files found
+                  </div>
+                )}
+              </div>
+            </ScrollArea>
+          </TabsContent>
+        </div>
       </Tabs>
     </div>
   )
