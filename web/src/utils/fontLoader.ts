@@ -1,7 +1,8 @@
 /*
  * Copyright (c) 2025, s0up and the autobrr contributors.
- * SPDX-License-Identifier: MIT
+ * SPDX-License-Identifier: GPL-2.0
  */
+
 
 // Map of font names to their Google Fonts URLs
 const FONT_MAP: Record<string, string> = {

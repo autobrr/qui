@@ -1,7 +1,8 @@
 /*
  * Copyright (c) 2025, s0up and the autobrr contributors.
- * SPDX-License-Identifier: MIT
+ * SPDX-License-Identifier: GPL-2.0
  */
+
 
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'

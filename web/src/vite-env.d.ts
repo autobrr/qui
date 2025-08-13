@@ -1,7 +1,8 @@
 /*
  * Copyright (c) 2025, s0up and the autobrr contributors.
- * SPDX-License-Identifier: MIT
+ * SPDX-License-Identifier: GPL-2.0
  */
+
 
 /// <reference types="vite/client" />
 /// <reference types="vite-plugin-pwa/client" />
