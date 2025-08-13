@@ -5,13 +5,14 @@
 
 import { useState } from 'react'
 import { useForm } from '@tanstack/react-form'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import type { Instance } from '@/types'
-import { api } from '@/lib/api'
+import { useInstances } from '@/hooks/useInstances'
+import { formatErrorMessage } from '@/lib/utils'
 
 interface InstanceFormData {
   name: string
@@ -30,18 +31,58 @@ interface InstanceFormProps {
 }
 
 export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProps) {
-  const queryClient = useQueryClient()
+  const { createInstance, updateInstance, isCreating, isUpdating } = useInstances()
   const [showBasicAuth, setShowBasicAuth] = useState(!!instance?.basicUsername)
   
-  const mutation = useMutation({
-    mutationFn: (data: InstanceFormData) => 
-      instance ? api.updateInstance(instance.id, data) : api.createInstance(data),
-    onSuccess: () => {
-      // Invalidate instances query to refresh the list
-      queryClient.invalidateQueries({ queryKey: ['instances'] })
-      onSuccess()
-    },
-  })
+  const handleSubmit = (data: InstanceFormData) => {
+    const submitData = showBasicAuth ? data : {
+      ...data,
+      basicUsername: undefined,
+      basicPassword: undefined,
+    }
+    
+    if (instance) {
+      updateInstance({ id: instance.id, data: submitData }, {
+        onSuccess: (data) => {
+          if (data.connected) {
+            toast.success('Instance Updated', {
+              description: 'Instance updated and connected successfully'
+            })
+          } else {
+            toast.warning('Instance Updated with Connection Issue', {
+              description: data.connectionError ? formatErrorMessage(data.connectionError) : 'Instance updated but could not connect'
+            })
+          }
+          onSuccess()
+        },
+        onError: (error) => {
+          toast.error('Update Failed', {
+            description: error instanceof Error ? formatErrorMessage(error.message) : 'Failed to update instance'
+          })
+        },
+      })
+    } else {
+      createInstance(submitData, {
+        onSuccess: (data) => {
+          if (data.connected) {
+            toast.success('Instance Created', {
+              description: 'Instance created and connected successfully'
+            })
+          } else {
+            toast.warning('Instance Created with Connection Issue', {
+              description: data.connectionError ? formatErrorMessage(data.connectionError) : 'Instance created but could not connect'
+            })
+          }
+          onSuccess()
+        },
+        onError: (error) => {
+          toast.error('Create Failed', {
+            description: error instanceof Error ? formatErrorMessage(error.message) : 'Failed to create instance'
+          })
+        },
+      })
+    }
+  }
 
   const form = useForm({
     defaultValues: {
@@ -53,14 +94,8 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
       basicUsername: instance?.basicUsername ?? '',
       basicPassword: '',
     },
-    onSubmit: async ({ value }) => {
-      // Clear basic auth fields if toggle is off
-      const submitData = showBasicAuth ? value : {
-        ...value,
-        basicUsername: undefined,
-        basicPassword: undefined,
-      }
-      await mutation.mutateAsync(submitData)
+    onSubmit: ({ value }) => {
+      handleSubmit(value)
     },
   })
 
@@ -252,11 +287,6 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
         )}
       </div>
 
-      {mutation.error && (
-        <p className="text-sm text-destructive">
-          {mutation.error.message || 'Failed to save instance'}
-        </p>
-      )}
 
       <div className="flex gap-2">
         <form.Subscribe
@@ -265,9 +295,9 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
           {([canSubmit, isSubmitting]) => (
             <Button 
               type="submit" 
-              disabled={!canSubmit || isSubmitting || mutation.isPending}
+              disabled={!canSubmit || isSubmitting || isCreating || isUpdating}
             >
-              {mutation.isPending ? 'Saving...' : instance ? 'Update Instance' : 'Add Instance'}
+              {(isCreating || isUpdating) ? 'Saving...' : instance ? 'Update Instance' : 'Add Instance'}
             </Button>
           )}
         </form.Subscribe>
