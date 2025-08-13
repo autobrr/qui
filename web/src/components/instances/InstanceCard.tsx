@@ -4,7 +4,7 @@
  */
 
 import { useState } from 'react'
-import type { Instance } from '@/types'
+import type { InstanceResponse } from '@/types'
 import { toast } from 'sonner'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -22,19 +22,24 @@ import {
   Trash2, 
   RefreshCw, 
   CheckCircle,
-  XCircle
+  XCircle,
+  Eye,
+  EyeOff
 } from 'lucide-react'
 import { useInstances } from '@/hooks/useInstances'
-import { cn } from '@/lib/utils'
+import { cn, formatErrorMessage } from '@/lib/utils'
+import { useIncognitoMode } from '@/lib/incognito'
 
 interface InstanceCardProps {
-  instance: Instance
+  instance: InstanceResponse
   onEdit: () => void
 }
 
 export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
   const { deleteInstance, testConnection, isDeleting, isTesting } = useInstances()
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
+  const [incognitoMode, setIncognitoMode] = useIncognitoMode()
+  const displayUrl = `${instance.host}:${instance.port}`
 
   const handleTest = async () => {
     setTestResult(null)
@@ -50,30 +55,32 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
         })
       } else {
         toast.error('Test Connection Failed', {
-          description: result.message || 'Could not connect to qBittorrent instance'
+          description: result.message ? formatErrorMessage(result.message) : 'Could not connect to qBittorrent instance'
         })
       }
     } catch (error) {
       const message = 'Connection failed'
       setTestResult({ success: false, message })
       toast.error('Test Connection Failed', {
-        description: error instanceof Error ? error.message : message
+        description: error instanceof Error ? formatErrorMessage(error.message) : message
       })
     }
   }
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (confirm(`Are you sure you want to delete "${instance.name}"?`)) {
-      try {
-        await deleteInstance(instance.id)
-        toast.success('Instance Deleted', {
-          description: `Successfully deleted "${instance.name}"`
-        })
-      } catch (error) {
-        toast.error('Delete Failed', {
-          description: error instanceof Error ? error.message : 'Failed to delete instance'
-        })
-      }
+      deleteInstance({ id: instance.id, name: instance.name }, {
+        onSuccess: () => {
+          toast.success('Instance Deleted', {
+            description: `Successfully deleted "${instance.name}"`
+          })
+        },
+        onError: (error) => {
+          toast.error('Delete Failed', {
+            description: error instanceof Error ? formatErrorMessage(error.message) : 'Failed to delete instance'
+          })
+        },
+      })
     }
   }
 
@@ -84,15 +91,27 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
           <CardTitle className="text-base font-medium">
             {instance.name}
           </CardTitle>
-          <CardDescription className="text-sm">
-            {instance.host}:{instance.port}
+          <CardDescription className="flex items-center gap-1 text-sm">
+            <span className={incognitoMode ? "blur-sm select-none" : ""}>{displayUrl}</span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-4 w-4 p-0 hover:bg-muted/50"
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                setIncognitoMode(!incognitoMode)
+              }}
+            >
+              {incognitoMode ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+            </Button>
           </CardDescription>
         </div>
         <div className="flex items-center gap-2">
           <Badge 
-            variant="outline"
+            variant={instance.connected ? "default" : "destructive"}
           >
-            Configured
+            {instance.connected ? 'Connected' : 'Disconnected'}
           </Badge>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -142,6 +161,20 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
           )}
         </div>
         
+        {instance.connectionError && (
+          <div className="mt-4 p-3 rounded-lg bg-destructive/10 border border-destructive/20">
+            <div className="flex items-start gap-2 text-sm text-destructive">
+              <XCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+              <div className="flex-1">
+                <div className="font-medium mb-1">Connection Error</div>
+                <div className="text-destructive/90">
+                  {formatErrorMessage(instance.connectionError)}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        
         {testResult && (
           <div className={cn(
             "mt-4 flex items-center gap-2 text-sm",
@@ -152,7 +185,7 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
             ) : (
               <XCircle className="h-4 w-4" />
             )}
-            <span>{testResult.message}</span>
+            <span>{testResult.success ? testResult.message : formatErrorMessage(testResult.message)}</span>
           </div>
         )}
         

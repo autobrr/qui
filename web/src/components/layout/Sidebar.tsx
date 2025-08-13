@@ -114,7 +114,10 @@ export function Sidebar({ onNavigate }: SidebarProps) {
                 <HardDrive className="h-4 w-4" />
                 <span className="truncate">{instance.name}</span>
                 <span
-                  className="ml-auto h-2 w-2 rounded-full bg-muted-foreground"
+                  className={cn(
+                    "ml-auto h-2 w-2 rounded-full",
+                    instance.connected ? "bg-green-500" : "bg-red-500"
+                  )}
                 />
               </Link>
             )

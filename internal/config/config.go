@@ -21,8 +21,8 @@ import (
 )
 
 type AppConfig struct {
-	Config       *domain.Config
-	viper        *viper.Viper
+	Config  *domain.Config
+	viper   *viper.Viper
 	dataDir string
 }
 
@@ -79,7 +79,8 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("logLevel", "INFO")
 	c.viper.SetDefault("logPath", "")
 	c.viper.SetDefault("dataDir", "") // Empty means auto-detect (next to config file)
-	
+	c.viper.SetDefault("pprofEnabled", false)
+
 	// HTTP timeout defaults - increased for large qBittorrent instances
 	c.viper.SetDefault("httpTimeouts.readTimeout", 60)   // 60 seconds
 	c.viper.SetDefault("httpTimeouts.writeTimeout", 120) // 120 seconds for large responses
@@ -143,7 +144,7 @@ func (c *AppConfig) load(configDirOrPath string) error {
 func (c *AppConfig) loadFromEnv() {
 	// DO NOT use AutomaticEnv() - it reads ALL env vars and causes conflicts with K8s
 	// Instead, explicitly bind only the environment variables we want
-	
+
 	// Use double underscore to avoid conflicts with K8s deployment_PORT patterns
 	c.viper.BindEnv("host", "QUI__HOST")
 	c.viper.BindEnv("port", "QUI__PORT")
@@ -152,7 +153,8 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("logLevel", "QUI__LOG_LEVEL")
 	c.viper.BindEnv("logPath", "QUI__LOG_PATH")
 	c.viper.BindEnv("dataDir", "QUI__DATA_DIR")
-	
+	c.viper.BindEnv("pprofEnabled", "QUI__PPROF_ENABLED")
+
 	// HTTP timeout environment variables
 	c.viper.BindEnv("httpTimeouts.readTimeout", "QUI__HTTP_READ_TIMEOUT")
 	c.viper.BindEnv("httpTimeouts.writeTimeout", "QUI__HTTP_WRITE_TIMEOUT")
@@ -253,7 +255,7 @@ logLevel = "{{ .logLevel }}"
 `
 
 	// Prepare template data
-	data := map[string]interface{}{
+	data := map[string]any{
 		"host":          c.viper.GetString("host"),
 		"port":          c.viper.GetInt("port"),
 		"sessionSecret": c.viper.GetString("sessionSecret"),

@@ -4,7 +4,6 @@
 package web
 
 import (
-	"embed"
 	"fmt"
 	"io"
 	"io/fs"
@@ -16,9 +15,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 )
-
-//go:embed dist/*
-var embedFS embed.FS
 
 type Handler struct {
 	fs      fs.FS
@@ -37,21 +33,9 @@ func init() {
 	mime.AddExtensionType(".woff2", "font/woff2")
 }
 
-func NewHandler(version, baseURL string) (*Handler, error) {
-	// Get the dist subdirectory
-	distFS, err := fs.Sub(embedFS, "dist")
-	if err != nil {
-		// If dist doesn't exist yet (development), return a handler that serves 404
-		log.Warn().Msg("Frontend dist directory not found, web UI will not be available")
-		return &Handler{
-			fs:      nil,
-			baseURL: baseURL,
-			version: version,
-		}, nil
-	}
-
+func NewHandler(version, baseURL string, embedFS fs.FS) (*Handler, error) {
 	return &Handler{
-		fs:      distFS,
+		fs:      embedFS,
 		baseURL: baseURL,
 		version: version,
 	}, nil
@@ -59,7 +43,7 @@ func NewHandler(version, baseURL string) (*Handler, error) {
 
 func (h *Handler) RegisterRoutes(r chi.Router) {
 	if h.fs == nil {
-		// No frontend available
+		// No frontend available - this should only happen in development
 		r.Get("/*", func(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Frontend not built. Run 'make frontend' to build the web UI.", http.StatusNotFound)
 		})

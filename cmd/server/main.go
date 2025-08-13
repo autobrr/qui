@@ -28,13 +28,15 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services"
 	"github.com/autobrr/qui/internal/web"
+	webfs "github.com/autobrr/qui/web"
 )
 
 var (
-	Version = "dev"
+	Version   = "dev"
 	configDir string
-	dataDir string
-	logPath string
+	dataDir   string
+	logPath   string
+	pprofFlag bool
 
 	// Publisher credentials - set during build via ldflags
 	PolarAccessToken = ""           // Set via: -X main.PolarAccessToken=your-token
@@ -58,6 +60,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&configDir, "config-dir", "", "config directory path (default is OS-specific: ~/.config/qui/ or %APPDATA%\\qui\\). For backward compatibility, can also be a direct path to a .toml file")
 	rootCmd.PersistentFlags().StringVar(&dataDir, "data-dir", "", "data directory for database and other files (default is next to config file)")
 	rootCmd.PersistentFlags().StringVar(&logPath, "log-path", "", "log file path (default is stdout)")
+	rootCmd.PersistentFlags().BoolVar(&pprofFlag, "pprof", false, "enable pprof server on :6060")
 	rootCmd.Version = Version
 }
 
@@ -85,6 +88,10 @@ func runServer() {
 	if logPath != "" {
 		os.Setenv("QUI__LOG_PATH", logPath)
 		cfg.Config.LogPath = logPath
+	}
+
+	if pprofFlag {
+		cfg.Config.PprofEnabled = true
 	}
 
 	cfg.ApplyLogConfig()
@@ -116,7 +123,7 @@ func runServer() {
 	syncManager := qbittorrent.NewSyncManager(clientPool)
 
 	// Initialize web handler (for embedded frontend)
-	webHandler, err := web.NewHandler(Version, cfg.Config.BaseURL)
+	webHandler, err := web.NewHandler(Version, cfg.Config.BaseURL, webfs.DistDirFS)
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to initialize web handler")
 	}
@@ -178,18 +185,18 @@ func runServer() {
 	if cfg.Config.BaseURL != "" && cfg.Config.BaseURL != "/" {
 		// Create a parent router and mount our app under the base URL
 		parentRouter := chi.NewRouter()
-		
+
 		// Strip trailing slash from base URL for mounting
 		mountPath := strings.TrimSuffix(cfg.Config.BaseURL, "/")
-		
+
 		// Mount the application under the base URL
 		parentRouter.Mount(mountPath, router)
-		
+
 		// Redirect root to base URL
 		parentRouter.Get("/", func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, cfg.Config.BaseURL, http.StatusMovedPermanently)
 		})
-		
+
 		handler = parentRouter
 	} else {
 		handler = router
@@ -199,7 +206,7 @@ func runServer() {
 	readTimeout := time.Duration(cfg.Config.HTTPTimeouts.ReadTimeout) * time.Second
 	writeTimeout := time.Duration(cfg.Config.HTTPTimeouts.WriteTimeout) * time.Second
 	idleTimeout := time.Duration(cfg.Config.HTTPTimeouts.IdleTimeout) * time.Second
-	
+
 	// Use defaults if not configured
 	if readTimeout == 0 {
 		readTimeout = 60 * time.Second
@@ -210,7 +217,7 @@ func runServer() {
 	if idleTimeout == 0 {
 		idleTimeout = 180 * time.Second
 	}
-	
+
 	srv := &http.Server{
 		Addr:         fmt.Sprintf("%s:%d", cfg.Config.Host, cfg.Config.Port),
 		Handler:      handler,
@@ -236,14 +243,16 @@ func runServer() {
 		}
 	}()
 
-	// Start profiling server
-	go func() {
-		log.Info().Msg("Starting pprof server on :6060")
-		log.Info().Msg("Access profiling at: http://localhost:6060/debug/pprof/")
-		if err := http.ListenAndServe(":6060", nil); err != nil {
-			log.Error().Err(err).Msg("Profiling server failed")
-		}
-	}()
+	// Start profiling server if enabled
+	if cfg.Config.PprofEnabled {
+		go func() {
+			log.Info().Msg("Starting pprof server on :6060")
+			log.Info().Msg("Access profiling at: http://localhost:6060/debug/pprof/")
+			if err := http.ListenAndServe(":6060", nil); err != nil {
+				log.Error().Err(err).Msg("Profiling server failed")
+			}
+		}()
+	}
 	// Wait for interrupt signal to gracefully shutdown the server
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)

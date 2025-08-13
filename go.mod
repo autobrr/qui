@@ -9,7 +9,6 @@ require (
 	github.com/go-chi/chi/v5 v5.2.2
 	github.com/gorilla/sessions v1.4.0
 	github.com/lithammer/fuzzysearch v1.1.8
-	github.com/panjf2000/ants/v2 v2.11.3
 	github.com/polarsource/polar-go v0.7.3
 	github.com/rs/zerolog v1.34.0
 	github.com/spf13/cobra v1.9.1
@@ -49,7 +48,6 @@ require (
 	go.uber.org/multierr v1.9.0 // indirect
 	golang.org/x/exp v0.0.0-20250620022241-b7579e27df2b // indirect
 	golang.org/x/net v0.39.0 // indirect
-	golang.org/x/sync v0.15.0 // indirect
 	golang.org/x/sys v0.34.0 // indirect
 	golang.org/x/text v0.24.0 // indirect
 	modernc.org/libc v1.66.3 // indirect

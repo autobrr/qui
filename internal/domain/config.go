@@ -12,6 +12,7 @@ type Config struct {
 	LogLevel      string       `toml:"logLevel" mapstructure:"logLevel"`
 	LogPath       string       `toml:"logPath" mapstructure:"logPath"`
 	DataDir       string       `toml:"dataDir" mapstructure:"dataDir"`
+	PprofEnabled  bool         `toml:"pprofEnabled" mapstructure:"pprofEnabled"`
 	Polar         PolarConfig  `toml:"polar" mapstructure:"polar"`
 	HTTPTimeouts  HTTPTimeouts `toml:"httpTimeouts" mapstructure:"httpTimeouts"`
 }
