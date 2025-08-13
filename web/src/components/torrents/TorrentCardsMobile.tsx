@@ -59,7 +59,7 @@ import {
   useIncognitoMode,
 } from '@/lib/incognito'
 import { formatBytes, formatSpeed, cn } from '@/lib/utils'
-import { applyOptimisticUpdates } from '@/lib/torrent-state-utils'
+import { applyOptimisticUpdates, getStateLabel } from '@/lib/torrent-state-utils'
 import { getCommonTags, getCommonCategory } from '@/lib/torrent-utils'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
@@ -293,7 +293,7 @@ function SwipeableCard({
           
           {/* State badge on the right */}
           <Badge variant={getStatusBadgeVariant(torrent.state)} className="text-xs">
-            {torrent.state}
+            {getStateLabel(torrent.state)}
           </Badge>
         </div>
         
