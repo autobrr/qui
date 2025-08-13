@@ -27,9 +27,15 @@ go test ./...
 # Run specific test
 go test -v -run TestFunctionName ./path/to/package
 
+# Run integration tests (requires qBittorrent instance)
+go test -v -tags=integration ./internal/qbittorrent
+
 # Run with coverage
 go test -coverprofile=coverage.out ./...
 go tool cover -html=coverage.out
+
+# Validate OpenAPI spec
+go test -v ./internal/web/swagger
 ```
 
 ### Frontend (React/TypeScript)
@@ -46,7 +52,7 @@ cd web && pnpm build
 # Lint frontend code
 cd web && pnpm lint
 
-# Type check (no test script defined yet)
+# Type check
 cd web && pnpm tsc -b
 ```
 
@@ -86,12 +92,14 @@ make clean
 - **Session Management**: gorilla/sessions with secure cookies
 - **Configuration**: Viper with TOML config and environment overrides
 - **Performance**: Ristretto cache, ants/v2 goroutine pool
+- **Logging**: zerolog with configurable levels
 
 Key patterns:
 - Frontend assets embedded using `go:embed` 
 - Single user authentication (no multi-tenancy)
 - Connection pooling for multiple qBittorrent instances
 - SyncMainData for efficient updates with 10k+ torrents
+- Cache-first architecture with coordinated invalidation
 
 ### Frontend Architecture
 - **Build**: Vite with React 19 and TypeScript
@@ -100,19 +108,21 @@ Key patterns:
 - **UI**: shadcn/ui components exclusively (no custom modifications)
 - **Tables**: TanStack Table v8 with TanStack Virtual for performance
 - **Styling**: Tailwind CSS v4 with CSS-first configuration
+- **State**: React hooks + TanStack Query (no global state library)
 
 #### Important: shadcn/ui Component Installation
 When installing shadcn/ui components, they MUST be installed in the correct location:
 - **Correct**: `web/src/components/ui/`
 - **Wrong**: `web/@/components/ui/`
 
-The components.json file should have been configured during setup to use `src/components/ui` as the component path. If components are installed in the wrong location, move them to `web/src/components/ui/`.
+The components.json file should have been configured during setup to use `src/components/ui` as the component path.
 
 Key patterns:
 - Server-side operations for large datasets
 - Virtual scrolling for performance
 - Incremental sync updates via SyncMainData
 - Progressive loading for initial render
+- Optimistic UI updates with delayed server invalidation
 
 ## Performance Considerations
 
@@ -161,6 +171,25 @@ Single-user design with encrypted instance credentials:
 - Frontend: React Testing Library for components
 - E2E: Playwright for critical user flows
 - Load testing: Simulate 10k+ torrents scenario
+
+### Running Tests
+
+```bash
+# Run all backend tests
+go test ./...
+
+# Run specific package tests
+go test -v ./internal/qbittorrent
+
+# Run integration tests
+go test -v -tags=integration ./internal/qbittorrent
+
+# Run with race detection
+go test -race ./...
+
+# Benchmark cache performance
+go test -bench=. ./internal/qbittorrent
+```
 
 ## Commit Guidelines
 
@@ -214,9 +243,9 @@ pnpm dlx shadcn@latest add <component-name>
 - **Route Guards**: Authentication checked in `_authenticated.tsx` layout
 - **Real-time Updates**: 
   - Dashboard uses 10-second polling for stats
-  - Torrent table uses SyncMainData (currently disabled in favor of paginated API)
+  - Torrent table uses paginated API with 5-second polling
 - **State Management**: 
-  - Server state: TanStack Query with 30s stale time
+  - Server state: TanStack Query with 5s stale time
   - UI state: React useState/useReducer
 - **Virtual Scrolling**: Progressive loading starting at 100 rows
 - **Column Resizing**: Persisted in component state (not localStorage)
