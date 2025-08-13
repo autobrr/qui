@@ -104,34 +104,34 @@ func (s *InstanceStore) decrypt(ciphertext string) (string, error) {
 func validateAndNormalizeHost(rawHost string) (string, error) {
 	// Trim whitespace
 	rawHost = strings.TrimSpace(rawHost)
-	
+
 	// Check for empty host
 	if rawHost == "" {
 		return "", errors.New("host cannot be empty")
 	}
-	
+
 	// Check if host already has a valid scheme
 	if !strings.Contains(rawHost, "://") {
 		// No scheme, add http://
 		rawHost = "http://" + rawHost
 	}
-	
+
 	// Parse the URL
 	u, err := url.Parse(rawHost)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("invalid URL format: %w", err)
 	}
-	
+
 	// Validate scheme
 	if u.Scheme != "http" && u.Scheme != "https" {
-		return "", errors.New("host scheme must be http or https")
+		return "", fmt.Errorf("unsupported scheme %q: must be http or https", u.Scheme)
 	}
-	
+
 	// Validate host
 	if u.Host == "" {
-		return "", errors.New("host must include a host")
+		return "", errors.New("URL must include a host")
 	}
-	
+
 	return u.String(), nil
 }
 
@@ -266,10 +266,10 @@ func (s *InstanceStore) Update(id int, name, rawHost, username, password string,
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Start building the update query
 	query := `UPDATE instances SET name = ?, host = ?, username = ?, basic_username = ?`
-	args := []interface{}{name, normalizedHost, username, basicUsername}
+	args := []any{name, normalizedHost, username, basicUsername}
 
 	// Only update password if provided
 	if password != "" {

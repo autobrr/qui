@@ -65,9 +65,9 @@ func (h *InstancesHandler) ListInstances(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Don't include encrypted passwords in response
-	response := make([]map[string]interface{}, len(instances))
+	response := make([]map[string]any, len(instances))
 	for i, instance := range instances {
-		response[i] = map[string]interface{}{
+		response[i] = map[string]any{
 			"id":              instance.ID,
 			"name":            instance.Name,
 			"host":            instance.Host,
@@ -115,7 +115,7 @@ func (h *InstancesHandler) CreateInstance(w http.ResponseWriter, r *http.Request
 		_ = client
 	}
 
-	RespondJSON(w, http.StatusCreated, map[string]interface{}{
+	RespondJSON(w, http.StatusCreated, map[string]any{
 		"id":              instance.ID,
 		"name":            instance.Name,
 		"host":            instance.Host,
@@ -164,7 +164,7 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 	// Remove old client from pool to force reconnection
 	h.clientPool.RemoveClient(instanceID)
 
-	RespondJSON(w, http.StatusOK, map[string]interface{}{
+	RespondJSON(w, http.StatusOK, map[string]any{
 		"id":              instance.ID,
 		"name":            instance.Name,
 		"host":            instance.Host,
@@ -217,7 +217,7 @@ func (h *InstancesHandler) TestConnection(w http.ResponseWriter, r *http.Request
 	// Try to get client (this will create connection if needed)
 	client, err := h.clientPool.GetClient(instanceID)
 	if err != nil {
-		RespondJSON(w, http.StatusOK, map[string]interface{}{
+		RespondJSON(w, http.StatusOK, map[string]any{
 			"connected": false,
 			"error":     err.Error(),
 		})
@@ -226,14 +226,14 @@ func (h *InstancesHandler) TestConnection(w http.ResponseWriter, r *http.Request
 
 	// Perform health check
 	if err := client.HealthCheck(r.Context()); err != nil {
-		RespondJSON(w, http.StatusOK, map[string]interface{}{
+		RespondJSON(w, http.StatusOK, map[string]any{
 			"connected": false,
 			"error":     err.Error(),
 		})
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]interface{}{
+	RespondJSON(w, http.StatusOK, map[string]any{
 		"connected": true,
 		"message":   "Connection successful",
 	})
@@ -249,10 +249,10 @@ func (h *InstancesHandler) GetInstanceStats(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Default stats for when connection fails
-	stats := map[string]interface{}{
+	stats := map[string]any{
 		"instanceId": instanceID,
 		"connected":  false,
-		"torrents": map[string]interface{}{
+		"torrents": map[string]any{
 			"total":       0,
 			"downloading": 0,
 			"seeding":     0,
@@ -260,7 +260,7 @@ func (h *InstancesHandler) GetInstanceStats(w http.ResponseWriter, r *http.Reque
 			"error":       0,
 			"completed":   0,
 		},
-		"speeds": map[string]interface{}{
+		"speeds": map[string]any{
 			"download": 0,
 			"upload":   0,
 		},
@@ -298,7 +298,7 @@ func (h *InstancesHandler) GetInstanceStats(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Update stats with counts from cached data
-	stats["torrents"] = map[string]interface{}{
+	stats["torrents"] = map[string]any{
 		"total":       torrentCounts.Total,
 		"downloading": torrentCounts.Status["downloading"],
 		"seeding":     torrentCounts.Status["seeding"],
@@ -317,13 +317,13 @@ func (h *InstancesHandler) GetInstanceStats(w http.ResponseWriter, r *http.Reque
 			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to get instance speeds")
 		}
 		// Set default speeds
-		stats["speeds"] = map[string]interface{}{
+		stats["speeds"] = map[string]any{
 			"download": 0,
 			"upload":   0,
 		}
 	} else {
 		// Use calculated speeds from cached torrent data
-		stats["speeds"] = map[string]interface{}{
+		stats["speeds"] = map[string]any{
 			"download": speeds.Download,
 			"upload":   speeds.Upload,
 		}
