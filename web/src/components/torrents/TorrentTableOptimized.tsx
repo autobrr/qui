@@ -88,7 +88,10 @@ import { createPortal } from 'react-dom'
 import { SetTagsDialog, SetCategoryDialog, RemoveTagsDialog } from './TorrentDialogs'
 import { DraggableTableHeader } from './DraggableTableHeader'
 import type { Torrent, TorrentCounts, Category } from '@/types'
-import { getLinuxIsoName, useIncognitoMode } from '@/lib/incognito'
+import {
+  getLinuxIsoName,
+  useIncognitoMode,
+} from '@/lib/incognito'
 import { formatBytes, formatSpeed } from '@/lib/utils'
 import { applyOptimisticUpdates } from '@/lib/torrent-state-utils'
 import { useSearch } from '@tanstack/react-router'
@@ -128,6 +131,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const [showRefetchIndicator, setShowRefetchIndicator] = useState(false)
 
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
+
+  // State for range select capabilities for checkboxes
+  const shiftPressedRef = useRef<boolean>(false)
+  const lastSelectedIndexRef = useRef<number | null>(null)
 
   // These should be defined at module scope, not inside the component, to ensure stable references
   // (If not already, move them to the top of the file)
@@ -241,8 +248,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const sortedTorrents = torrents
 
   // Memoize columns to avoid unnecessary recalculations
-  const columns = useMemo(() => createColumns(incognitoMode), [incognitoMode])
-  
+  const columns = useMemo(
+    () => createColumns(incognitoMode, { shiftPressedRef, lastSelectedIndexRef }),
+    [incognitoMode]
+  )
+
   const table = useReactTable({
     data: sortedTorrents,
     columns,

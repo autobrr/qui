@@ -5,6 +5,41 @@
 
 import type { Torrent } from '@/types'
 
+// Human-friendly labels for qBittorrent torrent states
+export const TORRENT_STATE_LABELS: Record<string, string> = {
+  // Downloading related
+  downloading: 'Downloading',
+  metaDL: 'Fetching Metadata',
+  allocating: 'Allocating',
+  stalledDL: 'Stalled',
+  queuedDL: 'Queued',
+  checkingDL: 'Checking',
+  forcedDL: '(F) Downloading',
+
+  // Uploading / Seeding related
+  uploading: 'Seeding',
+  stalledUP: 'Stalled',
+  queuedUP: 'Queued',
+  checkingUP: 'Checking',
+  forcedUP: '(F) Seeding',
+
+  // Paused / Stopped
+  pausedDL: 'Paused',
+  pausedUP: 'Paused',
+  stoppedDL: 'Stopped',
+  stoppedUP: 'Stopped',
+
+  // Other
+  error: 'Error',
+  missingFiles: 'Missing Files',
+  checkingResumeData: 'Checking Resume Data',
+  moving: 'Moving',
+}
+
+export function getStateLabel(state: string): string {
+  return TORRENT_STATE_LABELS[state] ?? state
+}
+
 // State groups for easier checking
 export const DOWNLOADING_STATES = [
   'downloading',

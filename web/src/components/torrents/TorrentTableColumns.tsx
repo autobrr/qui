@@ -50,7 +50,13 @@ function calculateMinWidth(text: string, padding: number = 48): number {
   return Math.max(60, Math.ceil(text.length * charWidth) + padding + extraPadding)
 }
 
-export const createColumns = (incognitoMode: boolean): ColumnDef<Torrent>[] => [
+export const createColumns = (
+  incognitoMode: boolean,
+  selectionEnhancers?: {
+    shiftPressedRef: { current: boolean }
+    lastSelectedIndexRef: { current: number | null }
+  }
+): ColumnDef<Torrent>[] => [
   {
     id: 'select',
     header: ({ table }) => (
@@ -59,20 +65,54 @@ export const createColumns = (incognitoMode: boolean): ColumnDef<Torrent>[] => [
           checked={table.getIsAllPageRowsSelected()}
           onCheckedChange={(checked) => table.toggleAllPageRowsSelected(!!checked)}
           aria-label="Select all"
-          className="hover;border-ring cursor-pointer transition-colors"
-        />
-      </div>
-    ),
-    cell: ({ row }) => (
-      <div className="flex items-center justify-center p-1 -m-1">
-        <Checkbox
-          checked={row.getIsSelected()}
-          onCheckedChange={(checked) => row.toggleSelected(!!checked)}
-          aria-label="Select row"
           className="hover:border-ring cursor-pointer transition-colors"
         />
       </div>
     ),
+    cell: ({ row, table }) => {
+      return (
+        <div className="flex items-center justify-center p-1 -m-1">
+          <Checkbox
+            checked={row.getIsSelected()}
+            onPointerDown={(e) => {
+              if (selectionEnhancers) {
+                selectionEnhancers.shiftPressedRef.current = e.shiftKey
+              }
+            }}
+            onCheckedChange={(checked: boolean | 'indeterminate') => {
+              const isShift = selectionEnhancers?.shiftPressedRef.current === true
+              const allRows = table.getRowModel().rows
+              const currentIndex = allRows.findIndex(r => r.id === row.id)
+
+              if (isShift && selectionEnhancers?.lastSelectedIndexRef.current !== null) {
+                const start = Math.min(selectionEnhancers.lastSelectedIndexRef.current!, currentIndex)
+                const end = Math.max(selectionEnhancers.lastSelectedIndexRef.current!, currentIndex)
+
+                table.setRowSelection((prev: Record<string, boolean>) => {
+                  const next: Record<string, boolean> = { ...prev }
+                  for (let i = start; i <= end; i++) {
+                    const r = allRows[i]
+                    if (r) {
+                      next[r.id] = !!checked
+                    }
+                  }
+                  return next
+                })
+              } else {
+                row.toggleSelected(!!checked)
+              }
+
+              if (selectionEnhancers) {
+                selectionEnhancers.lastSelectedIndexRef.current = currentIndex
+                selectionEnhancers.shiftPressedRef.current = false
+              }
+            }}
+            aria-label="Select row"
+            className="hover:border-ring cursor-pointer transition-colors"
+          />
+        </div>
+      )
+    },
     size: 40,
     enableResizing: false,
   },
