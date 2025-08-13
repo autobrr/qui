@@ -82,17 +82,11 @@ jobs:
         working-directory: web
         run: CI= pnpm run build
 
-      # Copy build to embed location
-      - name: Copy frontend build
-        run: |
-          rm -rf internal/web/dist
-          cp -r web/dist internal/web/
-
       - name: Upload web production build
         uses: actions/upload-artifact@v4
         with:
           name: web-dist
-          path: internal/web/dist
+          path: web/dist
 
   test:
     name: Run tests
@@ -106,7 +100,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: web-dist
-          path: internal/web/dist
+          path: web/dist
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -152,7 +146,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: web-dist
-          path: internal/web/dist
+          path: web/dist
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -223,7 +217,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: web-dist
-          path: internal/web/dist
+          path: web/dist
 
       - name: Extract metadata
         id: meta

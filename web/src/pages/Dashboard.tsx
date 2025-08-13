@@ -15,7 +15,7 @@ import { useMemo, useState } from 'react'
 import { formatSpeed, formatBytes, getRatioColor } from '@/lib/utils'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import type { ServerState } from '@/types'
+import type { ServerState, InstanceResponse } from '@/types'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -46,7 +46,7 @@ function useInstanceServerState(instanceId: number, enabled: boolean) {
 }
 
 // Custom hook to safely get all instance stats
-function useAllInstanceStats(instances: any[]) {
+function useAllInstanceStats(instances: InstanceResponse[]) {
   // Always call the same number of hooks by using a fixed array
   const maxInstances = 10 // Support up to 10 instances
   const fixedInstances = [...instances, ...Array(maxInstances - instances.length).fill(null)]
@@ -70,7 +70,7 @@ function useAllInstanceStats(instances: any[]) {
 }
 
 
-function InstanceCard({ instance }: { instance: any }) {
+function InstanceCard({ instance }: { instance: InstanceResponse }) {
   const { data: stats, isLoading, error } = useInstanceStats(instance.id, { 
     enabled: true, // Always fetch stats, regardless of isActive status
     pollingInterval: 5000 // Slower polling for dashboard

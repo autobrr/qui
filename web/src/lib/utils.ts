@@ -69,6 +69,11 @@ export function formatDuration(seconds: number): string {
   return parts.join(' ')
 }
 
+export function formatErrorMessage(error: string): string {
+  const cleaned = error.replace(/^(failed to create client: |failed to connect to qBittorrent instance: |connection failed: |error: )/i, '')
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1)
+}
+
 export function debounce<T extends (...args: any[]) => any>(
   func: T,
   wait: number
