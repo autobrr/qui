@@ -3,9 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0
  */
 
-
-
-
 // Theme constants
 const THEME_KEY = 'theme';
 const THEME_DARK = 'dark';

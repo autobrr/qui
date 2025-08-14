@@ -3,9 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0
  */
 
-
-
-
 import { parseThemeCSS, generateThemeId } from './themeParser';
 import type { Theme } from '@/config/themes';
 

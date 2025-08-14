@@ -3,9 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0
  */
 
-
-
-
 import { type ClassValue, clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 

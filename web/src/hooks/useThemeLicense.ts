@@ -3,9 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0
  */
 
-
-
-
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'

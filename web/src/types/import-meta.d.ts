@@ -3,9 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0
  */
 
-
-
-
 /// <reference types="vite/client" />
 
 // Extend ImportMeta to include 'glob' and 'env' for Vite

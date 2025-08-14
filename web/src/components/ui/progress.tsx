@@ -3,9 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0
  */
 
-
-
-
 import * as React from "react"
 import * as ProgressPrimitive from "@radix-ui/react-progress"
 

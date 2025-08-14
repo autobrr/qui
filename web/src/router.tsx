@@ -3,9 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0
  */
 
-
-
-
 import { createRouter } from '@tanstack/react-router'
 import { routeTree } from './routeTree.gen'
 import { getBaseUrl } from './lib/base-url'

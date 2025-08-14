@@ -3,9 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0
  */
 
-
-
-
 import { useEffect, useState } from 'react'
 import { TorrentTableOptimized } from './TorrentTableOptimized'
 import { TorrentCardsMobile } from './TorrentCardsMobile'

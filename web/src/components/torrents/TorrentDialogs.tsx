@@ -3,9 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0
  */
 
-
-
-
 import { memo, useState, useEffect, useRef, useCallback } from 'react'
 import type { ChangeEvent, KeyboardEvent } from 'react'
 import { Button } from '@/components/ui/button'

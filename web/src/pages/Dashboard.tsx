@@ -3,9 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0
  */
 
-
-
-
 import { useInstances } from '@/hooks/useInstances'
 import { useInstanceStats } from '@/hooks/useInstanceStats'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'

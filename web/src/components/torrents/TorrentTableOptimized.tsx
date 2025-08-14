@@ -3,9 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0
  */
 
-
-
-
 import React, { memo, useState, useMemo, useRef, useCallback, useEffect } from 'react'
 import {
   useReactTable,

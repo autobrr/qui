@@ -3,9 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0
  */
 
-
-
-
 import { useState } from 'react'
 import { Outlet } from '@tanstack/react-router'
 import { Sidebar } from '@/components/layout/Sidebar'

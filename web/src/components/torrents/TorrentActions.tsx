@@ -3,9 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0
  */
 
-
-
-
 import { memo, useState, useCallback } from 'react'
 import type { ChangeEvent } from 'react'
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'

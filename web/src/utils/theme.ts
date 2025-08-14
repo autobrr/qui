@@ -3,9 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0
  */
 
-
-
-
 import { themes, getThemeById, getDefaultTheme, type Theme } from '@/config/themes';
 import { loadThemeFonts } from './fontLoader';
 

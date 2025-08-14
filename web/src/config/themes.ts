@@ -3,9 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0
  */
 
-
-
-
 import { loadThemes } from '@/utils/themeLoader';
 
 export interface Theme {

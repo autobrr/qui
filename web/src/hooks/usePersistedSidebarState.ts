@@ -3,9 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0
  */
 
-
-
-
 import { useState, useEffect } from 'react'
 
 export function usePersistedSidebarState(defaultCollapsed: boolean = false) {

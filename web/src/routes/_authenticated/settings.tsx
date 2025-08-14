@@ -3,9 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0
  */
 
-
-
-
 import { createFileRoute } from '@tanstack/react-router'
 import { Settings } from '@/pages/Settings'
 

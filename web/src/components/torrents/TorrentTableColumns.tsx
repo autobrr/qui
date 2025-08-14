@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0
  */
 
-
 import type { ColumnDef } from '@tanstack/react-table'
 import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'

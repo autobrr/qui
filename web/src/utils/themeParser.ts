@@ -3,9 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0
  */
 
-
-
-
 export interface ThemeMetadata {
   name: string;
   description?: string;

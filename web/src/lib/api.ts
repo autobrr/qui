@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0
  */
 
-
 import type { AuthResponse, InstanceResponse, TorrentResponse, MainData, User } from '@/types'
 import { getApiBaseUrl } from './base-url'
 

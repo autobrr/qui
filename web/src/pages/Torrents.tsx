@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0
  */
 
-
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { TorrentTableResponsive } from '@/components/torrents/TorrentTableResponsive'
 import { FilterSidebar } from '@/components/torrents/FilterSidebar'

@@ -3,9 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0
  */
 
-
-
-
 // Incognito mode utilities for disguising torrents as Linux ISOs
 
 import { useState, useEffect } from 'react'

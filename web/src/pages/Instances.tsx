@@ -3,9 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0
  */
 
-
-
-
 import { useState, useEffect } from 'react'
 import { useInstances } from '@/hooks/useInstances'
 import { InstanceCard } from '@/components/instances/InstanceCard'
