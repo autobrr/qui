@@ -587,9 +587,9 @@ export function TorrentCardsMobile({
   }, [torrents, selectedHashes])
   
   return (
-    <div className="h-full flex flex-col relative overflow-hidden">
+    <div className="h-full flex flex-col relative">
       {/* Header with stats */}
-      <div className="flex-shrink-0 z-40 bg-background">
+      <div className="sticky top-0 z-40 bg-background">
         <div className="pb-3">
           <div className="flex items-center gap-2">
             <div className="text-lg font-semibold truncate max-w-[55%]">
@@ -663,10 +663,7 @@ export function TorrentCardsMobile({
       </div>
       
       {/* Torrent cards with virtual scrolling */}
-      <div 
-        ref={parentRef} 
-        className="flex-1 overflow-auto pb-20"
-      >
+      <div ref={parentRef} className="flex-1 overflow-auto" style={{ paddingBottom: 'calc(5rem + env(safe-area-inset-bottom))' }}>
         <div
           style={{
             height: `${virtualizer.getTotalSize()}px`,
