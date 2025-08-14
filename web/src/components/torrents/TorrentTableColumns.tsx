@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2025, s0up and the autobrr contributors.
- * SPDX-License-Identifier: MIT
+ * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 import type { ColumnDef } from '@tanstack/react-table'
@@ -23,6 +23,7 @@ import {
   getLinuxRatio,
 } from '@/lib/incognito'
 import { formatBytes, formatSpeed, getRatioColor } from '@/lib/utils'
+import { getStateLabel } from '@/lib/torrent-state-utils'
 
 function formatEta(seconds: number): string {
   if (seconds === 8640000) return '∞'
@@ -175,6 +176,7 @@ export const createColumns = (
     header: 'Status',
     cell: ({ row }) => {
       const state = row.original.state
+      const label = getStateLabel(state)
       const variant = 
         state === 'downloading' ? 'default' :
         state === 'stalledDL' ? 'secondary' :
@@ -184,7 +186,7 @@ export const createColumns = (
         state === 'error' || state === 'missingFiles' ? 'destructive' :
         'outline'
       
-      return <Badge variant={variant} className="text-xs">{state}</Badge>
+      return <Badge variant={variant} className="text-xs">{label}</Badge>
     },
     size: 120,
   },

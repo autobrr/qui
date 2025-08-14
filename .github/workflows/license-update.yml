@@ -35,13 +35,15 @@ jobs:
 
           2. If an existing PR branch exists:
              - Checkout that branch: git checkout <branch-name>
-             - Pull latest changes from main: git pull origin main --rebase
+             - **IMPORTANT:** Update branch with main (try rebase first, fall back to merge):
+               - First try: git pull origin main --rebase
+               - If rebase fails or has conflicts: git rebase --abort && git pull origin main --no-rebase
           
           3. If no existing PR branch:
              - Create a new branch: git checkout -b chore/missing-license-headers-$(date +%Y%m%d)
 
           4. Run the license update script:
-             - Run it: python3 update_headers.pyh
+             - Run it: python3 update-headers.pyh
              - Check the output to see if any files were updated
 
           5. If files were updated:

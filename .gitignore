@@ -62,4 +62,5 @@ qui
 !.claude/agents/code-reviewer.md
 !.claude/agents/go-simple.md
 !.claude/agents/react-simple.md
+!.claude/agents/git-commit-helper.md
 prd_final.md

@@ -193,14 +193,25 @@ go test -bench=. ./internal/qbittorrent
 
 ## Commit Guidelines
 
-Follow Conventional Commit format:
-- `feat:` New feature
-- `fix:` Bug fix
-- `docs:` Documentation only
-- `style:` Code style changes
-- `refactor:` Code refactoring
-- `test:` Test changes
-- `chore:` Build process or auxiliary tool changes
+Follow Conventional Commit format with package name as scope:
+- `feat(package):` New feature
+- `fix(package):` Bug fix
+- `docs(package):` Documentation only
+- `style(package):` Code style changes
+- `refactor(package):` Code refactoring
+- `test(package):` Test changes
+- `chore(package):` Build process or auxiliary tool changes
+
+Examples using Go package names as scopes:
+- `feat(metrics):` Add Prometheus metrics endpoint
+- `fix(qbittorrent):` Correct connection pooling
+- `refactor(api):` Simplify handler structure
+- `test(database):` Add migration tests
+- `chore(deps):` Update Go dependencies
+
+For frontend changes, use:
+- `feat(web):` Frontend changes
+- `fix(web):` Frontend bug fixes
 
 **CRITICAL**: Never reference Claude or Claude Code in any commit messages
 
