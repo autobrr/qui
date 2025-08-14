@@ -7,7 +7,6 @@ import { useState } from 'react'
 import { useForm } from '@tanstack/react-form'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import { withBasePath } from '@/lib/base-url'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -448,7 +447,7 @@ export function Settings() {
                   </CardDescription>
                 </div>
                 <a
-                  href={withBasePath('api/docs')}
+                  href="/api/docs"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
