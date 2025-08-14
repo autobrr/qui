@@ -44,12 +44,20 @@ def process_file(file_path):
         # Overwrite the file with the new content
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write(header_to_apply)
-            # Add a blank line after the header, unless it's a Go file
-            if not file_path.endswith(".go"):
+            
+            # Get the remaining content after removing header lines
+            remaining_lines = original_lines[lines_to_remove:]
+            
+            # For TS/TSX files, ensure exactly one blank line after header
+            if file_path.endswith((".ts", ".tsx")):
+                # Strip leading blank lines from remaining content
+                while remaining_lines and remaining_lines[0].strip() == '':
+                    remaining_lines.pop(0)
+                # Add exactly one blank line between header and content
                 f.write('\n')
             
             # Write back the rest of the original file
-            f.writelines(original_lines[lines_to_remove:])
+            f.writelines(remaining_lines)
 
         return 1
     except Exception as e:
@@ -58,6 +66,20 @@ def process_file(file_path):
 
 def main():
     """Finds and processes all relevant files."""
+    import sys
+    
+    # Check if a specific file was provided as argument
+    if len(sys.argv) > 1:
+        file_path = sys.argv[1]
+        print(f"Processing single file: {file_path}")
+        result = process_file(file_path)
+        if result:
+            print(f"✅ Successfully updated {file_path}")
+        else:
+            print(f"❌ No update needed for {file_path}")
+        return
+    
+    # Otherwise, process all files
     print("Starting header update process...")
     updated_count = 0
     
