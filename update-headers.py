@@ -1,8 +1,11 @@
 import os
+from datetime import datetime
 
 # --- Configuration ---
 COPYRIGHT_HOLDER = "s0up and the autobrr contributors"
-COPYRIGHT_YEAR = "2025"
+START_YEAR = 2025
+CURRENT_YEAR = datetime.now().year
+COPYRIGHT_YEAR = f"{START_YEAR}-{CURRENT_YEAR}" if CURRENT_YEAR > START_YEAR else str(START_YEAR)
 LICENSE = "GPL-2.0-or-later"
 
 # Excluded directories
