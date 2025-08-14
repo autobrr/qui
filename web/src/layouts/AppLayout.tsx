@@ -11,11 +11,10 @@ import { usePersistedSidebarState } from '@/hooks/usePersistedSidebarState'
 import { Menu } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { MobileScrollProvider, useMobileScroll } from '@/contexts/MobileScrollContext'
+import { MobileScrollProvider } from '@/contexts/MobileScrollContext'
 
 function AppLayoutContent() {
   const [sidebarCollapsed, setSidebarCollapsed] = usePersistedSidebarState(false) // Desktop: persisted state
-  const { isFooterVisible } = useMobileScroll()
 
   return (
       <div className="flex h-screen bg-background">
@@ -45,9 +44,8 @@ function AppLayoutContent() {
             </Button>
           </Header>
           <main className={cn(
-            "flex-1 overflow-y-auto transition-all duration-300",
-            "lg:pb-0",
-            isFooterVisible ? "pb-16" : "pb-0" // dynamic padding on mobile
+            "flex-1 overflow-y-auto",
+            "pb-16 lg:pb-0"
           )}>
             <Outlet />
           </main>

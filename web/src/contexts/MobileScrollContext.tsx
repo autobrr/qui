@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { createContext, useContext, useState, useEffect, useRef } from 'react'
+import { createContext, useState, useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 
 interface MobileScrollContextType {
@@ -59,12 +59,4 @@ export function MobileScrollProvider({ children }: { children: ReactNode }) {
       {children}
     </MobileScrollContext.Provider>
   )
-}
-
-export function useMobileScroll() {
-  const context = useContext(MobileScrollContext)
-  if (context === undefined) {
-    throw new Error('useMobileScroll must be used within a MobileScrollProvider')
-  }
-  return context
 }

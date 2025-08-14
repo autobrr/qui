@@ -61,7 +61,6 @@ import {
   useIncognitoMode,
 } from '@/lib/incognito'
 import { formatBytes, formatSpeed, cn } from '@/lib/utils'
-import { useMobileScroll } from '@/contexts/MobileScrollContext'
 import { applyOptimisticUpdates, getStateLabel } from '@/lib/torrent-state-utils'
 import { getCommonTags, getCommonCategory } from '@/lib/torrent-utils'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -340,7 +339,6 @@ export function TorrentCardsMobile({
   const [immediateSearch] = useState('')
   const [selectedHashes, setSelectedHashes] = useState<Set<string>>(new Set())
   const [selectionMode, setSelectionMode] = useState(false)
-  const { isFooterVisible, setScrollContainer } = useMobileScroll()
   const parentRef = useRef<HTMLDivElement>(null)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [deleteFiles, setDeleteFiles] = useState(false)
@@ -369,21 +367,6 @@ export function TorrentCardsMobile({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchFromRoute])
-  
-  // Use callback ref to register scroll container immediately
-  const scrollContainerRef = useCallback((node: HTMLDivElement | null) => {
-    if (node) {
-      parentRef.current = node
-      setScrollContainer(node)
-    } else {
-      setScrollContainer(null)
-    }
-  }, [setScrollContainer])
-  
-  // Clean up on unmount
-  useEffect(() => {
-    return () => setScrollContainer(null)
-  }, [setScrollContainer])
   
   // Fetch data
   const { 
@@ -681,13 +664,8 @@ export function TorrentCardsMobile({
       
       {/* Torrent cards with virtual scrolling */}
       <div 
-        ref={scrollContainerRef} 
-        className="flex-1 overflow-auto" 
-        style={{ 
-          paddingBottom: isFooterVisible 
-            ? 'calc(5rem + env(safe-area-inset-bottom))' 
-            : '1rem'
-        }}
+        ref={parentRef} 
+        className="flex-1 overflow-auto pb-20"
       >
         <div
           style={{

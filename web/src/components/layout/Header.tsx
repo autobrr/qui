@@ -135,7 +135,7 @@ export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
                     navigate({ search: next, replace: true })
                   }
                 }}
-                className={`w-full pl-9 pr-16 transition-all ${
+                className={`w-full pl-9 pr-16 transition-all text-xs ${
                   searchValue ? 'ring-1 ring-primary/50' : ''
                 } ${isGlobSearch ? 'ring-1 ring-primary' : ''}`}
               />

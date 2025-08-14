@@ -25,26 +25,11 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { useAuth } from '@/hooks/useAuth'
 import { Badge } from '@/components/ui/badge'
-import { useMobileScroll } from '@/contexts/MobileScrollContext'
 
-interface NavItem {
-  title: string
-  href: string
-  icon: React.ComponentType<{ className?: string }>
-}
-
-const navigation: NavItem[] = [
-  {
-    title: 'Dashboard',
-    href: '/dashboard',
-    icon: Home,
-  },
-]
 
 export function MobileFooterNav() {
   const location = useLocation()
   const { logout } = useAuth()
-  const { isFooterVisible } = useMobileScroll()
   
   const { data: instances } = useQuery({
     queryKey: ['instances'],
@@ -61,8 +46,8 @@ export function MobileFooterNav() {
   return (
     <nav 
       className={cn(
-        "fixed bottom-0 left-0 right-0 z-50 lg:hidden bg-background border-t transition-transform duration-300",
-        isFooterVisible ? "translate-y-0" : "translate-y-full"
+        "fixed bottom-0 left-0 right-0 z-50 lg:hidden",
+        "bg-background/80 backdrop-blur-md border-t border-border/50"
       )}
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
     >
