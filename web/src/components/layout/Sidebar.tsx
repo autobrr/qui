@@ -145,7 +145,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
         
         <div className="flex items-center justify-between px-3 pb-3">
           <p className="text-[10px] text-sidebar-foreground/40">
-            © {new Date().getFullYear()} autobrr • GPL-2.0
+            © {new Date().getFullYear()} autobrr • GPL-2.0-or-later
           </p>
           <Button
             variant="ghost"
