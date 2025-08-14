@@ -3,7 +3,7 @@ import os
 # --- Configuration ---
 COPYRIGHT_HOLDER = "s0up and the autobrr contributors"
 COPYRIGHT_YEAR = "2025"
-LICENSE = "GPL-2.0"
+LICENSE = "GPL-2.0-or-later"
 
 # Excluded directories
 EXCLUDED_DIRS = {'.git', 'node_modules', 'dist', 'build', 'vendor'}
