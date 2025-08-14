@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useRef } from 'react'
+import type { ReactNode } from 'react'
 
 interface MobileScrollContextType {
   isFooterVisible: boolean

@@ -29,7 +29,7 @@ function AppLayoutContent() {
           </div>
         </div>
         
-        <div className="flex flex-1 flex-col min-w-0">
+        <div className="flex flex-1 flex-col min-w-0 relative">
           <Header sidebarCollapsed={sidebarCollapsed}>
             {/* Desktop toggle button */}
             <Button
