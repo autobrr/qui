@@ -5,6 +5,7 @@
 
 
 
+
 // Get the base URL injected by the backend
 // Falls back to '/' if not set
 export function getBaseUrl(): string {
