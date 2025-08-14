@@ -6,6 +6,7 @@
 
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
+import { useSearch } from '@tanstack/react-router'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useTorrentsList } from '@/hooks/useTorrentsList'
 import { useDebounce } from '@/hooks/useDebounce'
@@ -13,7 +14,6 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -38,7 +38,6 @@ import {
   Pause, 
   Trash2, 
   Plus, 
-  Search, 
   X,
   Clock,
   CheckCircle2,
@@ -50,8 +49,11 @@ import {
   ChevronUp,
   Eye,
   EyeOff,
+  Filter,
 } from 'lucide-react'
 import { SetTagsDialog, SetCategoryDialog } from './TorrentDialogs'
+// import { createPortal } from 'react-dom'
+// Columns dropdown removed on mobile
 import type { Torrent } from '@/types'
 import {
   getLinuxIsoName,
@@ -61,10 +63,11 @@ import {
   useIncognitoMode,
 } from '@/lib/incognito'
 import { formatBytes, formatSpeed, cn } from '@/lib/utils'
-import { applyOptimisticUpdates } from '@/lib/torrent-state-utils'
+import { applyOptimisticUpdates, getStateLabel } from '@/lib/torrent-state-utils'
 import { getCommonTags, getCommonCategory } from '@/lib/torrent-utils'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
+import { useInstances } from '@/hooks/useInstances'
 
 interface TorrentCardsMobileProps {
   instanceId: number
@@ -295,7 +298,7 @@ function SwipeableCard({
           
           {/* State badge on the right */}
           <Badge variant={getStatusBadgeVariant(torrent.state)} className="text-xs">
-            {torrent.state}
+            {getStateLabel(torrent.state)}
           </Badge>
         </div>
         
@@ -335,7 +338,7 @@ export function TorrentCardsMobile({
 }: TorrentCardsMobileProps) {
   // State
   const [globalFilter, setGlobalFilter] = useState('')
-  const [immediateSearch, setImmediateSearch] = useState('')
+  const [immediateSearch] = useState('')
   const [selectedHashes, setSelectedHashes] = useState<Set<string>>(new Set())
   const [selectionMode, setSelectionMode] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
@@ -349,7 +352,22 @@ export function TorrentCardsMobile({
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const queryClient = useQueryClient()
   const debouncedSearch = useDebounce(globalFilter, 1000)
-  const effectiveSearch = immediateSearch || debouncedSearch
+  const routeSearch = useSearch({ strict: false }) as any
+  const searchFromRoute = (routeSearch?.q as string) || ''
+  const effectiveSearch = searchFromRoute || immediateSearch || debouncedSearch
+  const { instances } = useInstances()
+  const instanceName = useMemo(() => {
+    return instances?.find(i => i.id === instanceId)?.name ?? null
+  }, [instances, instanceId])
+
+  // Columns controls removed on mobile
+
+  useEffect(() => {
+    if (searchFromRoute !== globalFilter) {
+      setGlobalFilter(searchFromRoute)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchFromRoute])
   
   // Fetch data
   const { 
@@ -575,47 +593,11 @@ export function TorrentCardsMobile({
       {/* Header with stats */}
       <div className="sticky top-0 z-40 bg-background">
         <div className="pb-3">
-          {/* Stats bar */}
-          <div className="flex items-center justify-between text-xs mb-3">
-            <div className="flex items-center gap-2">
-              <span>Total: <strong>{stats.total}</strong></span>
-              <span className="text-muted-foreground">|</span>
-              <div className="flex items-center gap-0.5 [color:var(--chart-3)]">
-                <ChevronUp className="h-3 w-3" />
-                <span>{stats.seeding}</span>
-              </div>
-              <div className="flex items-center gap-0.5 [color:var(--chart-2)]">
-                <ChevronDown className="h-3 w-3" />
-                <span>{stats.downloading}</span>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <ChevronDown className="h-3 w-3" />
-              <span className="font-medium">{formatSpeed(stats.totalDownloadSpeed || 0)}</span>
-              <span className="text-muted-foreground">|</span>
-              <ChevronUp className="h-3 w-3" />
-              <span className="font-medium">{formatSpeed(stats.totalUploadSpeed || 0)}</span>
-            </div>
-          </div>
-          
-          {/* Search bar */}
           <div className="flex items-center gap-2">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-              <Input
-                type="text"
-                placeholder="Search torrents..."
-                value={globalFilter}
-                onChange={(e) => setGlobalFilter(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    setImmediateSearch(globalFilter)
-                  }
-                }}
-                className="pl-9 pr-3 h-9"
-              />
+            <div className="text-lg font-semibold truncate max-w-[55%]">
+              {instanceName ?? ''}
             </div>
-            
+            <div className="flex-1" />
             <Button
               size="icon"
               variant="ghost"
@@ -623,6 +605,16 @@ export function TorrentCardsMobile({
               title={incognitoMode ? "Disable incognito mode" : "Enable incognito mode"}
             >
               {incognitoMode ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </Button>
+            {/* Columns control hidden on mobile */}
+            {/* Filters button (opens mobile filters sheet) */}
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => window.dispatchEvent(new Event('qui-open-mobile-filters'))}
+              title="Filters"
+            >
+              <Filter className="h-4 w-4" />
             </Button>
             
             <Button
@@ -634,6 +626,16 @@ export function TorrentCardsMobile({
             </Button>
           </div>
         </div>
+
+        {/* Stats bar */}
+        <div className="flex items-center justify-center text-xs mb-3">
+            <div className="flex items-center gap-1">
+              <ChevronDown className="h-3 w-3" />
+              <span className="font-medium">{formatSpeed(stats.totalDownloadSpeed || 0)}</span>
+              <ChevronUp className="h-3 w-3" />
+              <span className="font-medium">{formatSpeed(stats.totalUploadSpeed || 0)}</span>
+            </div>
+          </div>
         
         {/* Selection mode header */}
         {selectionMode && (
