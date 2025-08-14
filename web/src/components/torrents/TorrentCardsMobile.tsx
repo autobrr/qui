@@ -61,6 +61,7 @@ import {
   useIncognitoMode,
 } from '@/lib/incognito'
 import { formatBytes, formatSpeed, cn } from '@/lib/utils'
+import { useMobileScroll } from '@/contexts/MobileScrollContext'
 import { applyOptimisticUpdates, getStateLabel } from '@/lib/torrent-state-utils'
 import { getCommonTags, getCommonCategory } from '@/lib/torrent-utils'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -339,6 +340,8 @@ export function TorrentCardsMobile({
   const [immediateSearch] = useState('')
   const [selectedHashes, setSelectedHashes] = useState<Set<string>>(new Set())
   const [selectionMode, setSelectionMode] = useState(false)
+  const { isFooterVisible, setScrollContainer } = useMobileScroll()
+  const parentRef = useRef<HTMLDivElement>(null)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [deleteFiles, setDeleteFiles] = useState(false)
   const [torrentToDelete, setTorrentToDelete] = useState<Torrent | null>(null)
@@ -366,6 +369,21 @@ export function TorrentCardsMobile({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchFromRoute])
+  
+  // Use callback ref to register scroll container immediately
+  const scrollContainerRef = useCallback((node: HTMLDivElement | null) => {
+    if (node) {
+      parentRef.current = node
+      setScrollContainer(node)
+    } else {
+      setScrollContainer(null)
+    }
+  }, [setScrollContainer])
+  
+  // Clean up on unmount
+  useEffect(() => {
+    return () => setScrollContainer(null)
+  }, [setScrollContainer])
   
   // Fetch data
   const { 
@@ -396,7 +414,6 @@ export function TorrentCardsMobile({
   const availableCategories = categories || {}
   
   // Virtual scrolling with consistent spacing
-  const parentRef = useRef<HTMLDivElement>(null)
   const rowVirtualizer = useVirtualizer({
     count: torrents.length,
     getScrollElement: () => parentRef.current,
@@ -587,9 +604,9 @@ export function TorrentCardsMobile({
   }, [torrents, selectedHashes])
   
   return (
-    <div className="h-full flex flex-col relative">
+    <div className="h-full flex flex-col relative overflow-hidden">
       {/* Header with stats */}
-      <div className="sticky top-0 z-40 bg-background">
+      <div className="flex-shrink-0 z-40 bg-background">
         <div className="pb-3">
           <div className="flex items-center gap-2">
             <div className="text-lg font-semibold truncate max-w-[55%]">
@@ -663,7 +680,15 @@ export function TorrentCardsMobile({
       </div>
       
       {/* Torrent cards with virtual scrolling */}
-      <div ref={parentRef} className="flex-1 overflow-auto" style={{ paddingBottom: 'calc(5rem + env(safe-area-inset-bottom))' }}>
+      <div 
+        ref={scrollContainerRef} 
+        className="flex-1 overflow-auto" 
+        style={{ 
+          paddingBottom: isFooterVisible 
+            ? 'calc(5rem + env(safe-area-inset-bottom))' 
+            : '1rem'
+        }}
+      >
         <div
           style={{
             height: `${virtualizer.getTotalSize()}px`,
