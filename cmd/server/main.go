@@ -23,6 +23,7 @@ import (
 	"github.com/autobrr/qui/internal/auth"
 	"github.com/autobrr/qui/internal/config"
 	"github.com/autobrr/qui/internal/database"
+	"github.com/autobrr/qui/internal/metrics"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/polar"
 	"github.com/autobrr/qui/internal/qbittorrent"
@@ -119,8 +120,9 @@ func runServer() {
 	}
 	defer clientPool.Close()
 
-	// Initialize sync manager
+	// Initialize managers
 	syncManager := qbittorrent.NewSyncManager(clientPool)
+	metricsManager := metrics.NewManager(syncManager, clientPool)
 
 	// Initialize web handler (for embedded frontend)
 	webHandler, err := web.NewHandler(Version, cfg.Config.BaseURL, webfs.DistDirFS)
@@ -175,6 +177,7 @@ func runServer() {
 		SyncManager:         syncManager,
 		WebHandler:          webHandler,
 		ThemeLicenseService: themeLicenseService,
+		MetricsManager:      metricsManager,
 	}
 
 	// Initialize router
