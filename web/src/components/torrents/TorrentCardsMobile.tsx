@@ -791,7 +791,7 @@ export function TorrentCardsMobile({
       
       {/* More actions sheet */}
       <Sheet open={showActionsSheet} onOpenChange={setShowActionsSheet}>
-        <SheetContent side="bottom" className="h-auto">
+        <SheetContent side="bottom" className="h-auto pb-8">
           <SheetHeader>
             <SheetTitle>Actions for {selectedHashes.size} torrent(s)</SheetTitle>
           </SheetHeader>
@@ -834,7 +834,7 @@ export function TorrentCardsMobile({
                 setShowDeleteDialog(true)
                 setShowActionsSheet(false)
               }}
-              className="justify-start"
+              className="justify-start !bg-destructive !text-destructive-foreground"
             >
               <Trash2 className="mr-2 h-4 w-4" />
               Delete
