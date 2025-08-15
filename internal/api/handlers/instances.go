@@ -51,12 +51,11 @@ func (h *InstancesHandler) testInstanceConnection(ctx context.Context, instanceI
 // buildInstanceResponse creates a consistent response for an instance
 func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *models.Instance) InstanceResponse {
 	connected, connectionError := h.testInstanceConnection(ctx, instance.ID)
-	
+
 	response := InstanceResponse{
 		ID:              instance.ID,
 		Name:            instance.Name,
 		Host:            instance.Host,
-		Port:            instance.Port,
 		Username:        instance.Username,
 		BasicUsername:   instance.BasicUsername,
 		IsActive:        instance.IsActive,
@@ -65,11 +64,11 @@ func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *
 		UpdatedAt:       instance.UpdatedAt,
 		Connected:       connected,
 	}
-	
+
 	if connectionError != "" {
 		response.ConnectionError = connectionError
 	}
-	
+
 	return response
 }
 
@@ -77,7 +76,6 @@ func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *
 type CreateInstanceRequest struct {
 	Name          string  `json:"name"`
 	Host          string  `json:"host"`
-	Port          int     `json:"port"`
 	Username      string  `json:"username"`
 	Password      string  `json:"password"`
 	BasicUsername *string `json:"basicUsername,omitempty"`
@@ -88,7 +86,6 @@ type CreateInstanceRequest struct {
 type UpdateInstanceRequest struct {
 	Name          string  `json:"name"`
 	Host          string  `json:"host"`
-	Port          int     `json:"port"`
 	Username      string  `json:"username"`
 	Password      string  `json:"password,omitempty"` // Optional for updates
 	BasicUsername *string `json:"basicUsername,omitempty"`
@@ -177,13 +174,13 @@ func (h *InstancesHandler) CreateInstance(w http.ResponseWriter, r *http.Request
 	}
 
 	// Validate input
-	if req.Name == "" || req.Host == "" || req.Port == 0 {
-		RespondError(w, http.StatusBadRequest, "Name, host, and port are required")
+	if req.Name == "" || req.Host == "" {
+		RespondError(w, http.StatusBadRequest, "Name and host are required")
 		return
 	}
 
 	// Create instance
-	instance, err := h.instanceStore.Create(req.Name, req.Host, req.Port, req.Username, req.Password, req.BasicUsername, req.BasicPassword)
+	instance, err := h.instanceStore.Create(req.Name, req.Host, req.Username, req.Password, req.BasicUsername, req.BasicPassword)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create instance")
 		RespondError(w, http.StatusInternalServerError, "Failed to create instance")
@@ -211,13 +208,13 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 	}
 
 	// Validate input
-	if req.Name == "" || req.Host == "" || req.Port == 0 {
-		RespondError(w, http.StatusBadRequest, "Name, host, and port are required")
+	if req.Name == "" || req.Host == "" {
+		RespondError(w, http.StatusBadRequest, "Name and host are required")
 		return
 	}
 
 	// Update instance
-	instance, err := h.instanceStore.Update(instanceID, req.Name, req.Host, req.Port, req.Username, req.Password, req.BasicUsername, req.BasicPassword)
+	instance, err := h.instanceStore.Update(instanceID, req.Name, req.Host, req.Username, req.Password, req.BasicUsername, req.BasicPassword)
 	if err != nil {
 		if errors.Is(err, models.ErrInstanceNotFound) {
 			RespondError(w, http.StatusNotFound, "Instance not found")

@@ -6,7 +6,6 @@ package qbittorrent
 import (
 	"context"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -23,47 +22,10 @@ type Client struct {
 }
 
 // NewClient creates a new qBittorrent client wrapper
-func NewClient(instanceID int, host string, port int, username, password string, basicUsername, basicPassword *string) (*Client, error) {
-	// Construct the host URL
-	// If the host already includes a port or path (like a reverse proxy URL), use it as-is
-	// Otherwise, append the port
-	var hostURL string
-	
-	// Remove trailing slash if present
-	if len(host) > 0 && host[len(host)-1] == '/' {
-		host = host[:len(host)-1]
-	}
-	
-	// Check if the host already contains a path (reverse proxy scenario)
-	// In this case, we don't append the port as it's already handled by the proxy
-	if strings.HasPrefix(host, "http://") || strings.HasPrefix(host, "https://") {
-		// Parse to see if there's already a path component after the domain
-		protocolEnd := 0
-		if strings.HasPrefix(host, "https://") {
-			protocolEnd = 8
-		} else {
-			protocolEnd = 7
-		}
-		
-		pathIdx := strings.IndexByte(host[protocolEnd:], '/')
-		if pathIdx != -1 {
-			// Has a path, use as-is (reverse proxy scenario)
-			hostURL = host
-		} else if port == 443 || port == 80 {
-			// Standard ports, don't append
-			hostURL = host
-		} else {
-			// Non-standard port, append it
-			hostURL = fmt.Sprintf("%s:%d", host, port)
-		}
-	} else {
-		// Fallback to original behavior
-		hostURL = fmt.Sprintf("%s:%d", host, port)
-	}
-	
+func NewClient(instanceID int, instanceHost, username, password string, basicUsername, basicPassword *string) (*Client, error) {
 	// Create the base client
 	cfg := qbt.Config{
-		Host:     hostURL,
+		Host:     instanceHost,
 		Username: username,
 		Password: password,
 		Timeout:  30, // timeout in seconds
@@ -136,7 +98,7 @@ func (c *Client) HealthCheck(ctx context.Context) error {
 			return fmt.Errorf("health check failed: api error: %w", err)
 		}
 	}
-	
+
 	c.SetHealthy(true)
 	return nil
 }

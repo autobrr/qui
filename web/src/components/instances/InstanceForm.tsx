@@ -6,6 +6,7 @@
 import { useState } from 'react'
 import { useForm } from '@tanstack/react-form'
 import { toast } from 'sonner'
+import { z } from 'zod'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
@@ -14,10 +15,42 @@ import type { Instance } from '@/types'
 import { useInstances } from '@/hooks/useInstances'
 import { formatErrorMessage } from '@/lib/utils'
 
+// URL validation schema
+const urlSchema = z
+  .string()
+  .min(1, 'URL is required')
+  .transform((value) => {
+    return value.includes('://') ? value : `http://${value}`
+  })
+  .refine((url) => {
+    try {
+      new URL(url)
+      return true
+    } catch {
+      return false
+    }
+  }, 'Please enter a valid URL')
+  .refine((url) => {
+    const parsed = new URL(url)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+  }, 'Only HTTP and HTTPS protocols are supported')
+  .refine((url) => {
+    const parsed = new URL(url)
+    const hostname = parsed.hostname
+
+    const isIPv4 = /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname)
+    const isIPv6 = hostname.startsWith('[') && hostname.endsWith(']')
+
+    if ((isIPv4 || isIPv6) && !parsed.port) {
+      return false
+    }
+    
+    return true
+  }, 'Port is required when using an IP address (e.g., :8080)')
+
 interface InstanceFormData {
   name: string
   host: string
-  port: number
   username: string
   password: string
   basicUsername?: string
@@ -87,9 +120,8 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
   const form = useForm({
     defaultValues: {
       name: instance?.name ?? '',
-      host: instance?.host ?? 'http://localhost',
-      port: instance?.port ?? 8080,
-      username: instance?.username ?? '',
+      host: instance?.host ?? 'http://localhost:8080',
+      username: instance?.username ?? 'admin',
       password: '',
       basicUsername: instance?.basicUsername ?? '',
       basicPassword: '',
@@ -137,49 +169,20 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
         name="host"
         validators={{
           onChange: ({ value }) => {
-            if (!value) return 'Host is required'
-            if (!value.match(/^https?:\/\//)) return 'Host must start with http:// or https://'
-            return undefined
+            const result = urlSchema.safeParse(value)
+            return result.success ? undefined : result.error.issues[0]?.message
           },
         }}
       >
         {(field) => (
           <div className="space-y-2">
-            <Label htmlFor={field.name}>Host URL</Label>
+            <Label htmlFor={field.name}>URL</Label>
             <Input
               id={field.name}
               value={field.state.value}
               onBlur={field.handleBlur}
               onChange={(e) => field.handleChange(e.target.value)}
-              placeholder="http://localhost"
-            />
-            {field.state.meta.isTouched && field.state.meta.errors[0] && (
-              <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
-            )}
-          </div>
-        )}
-      </form.Field>
-
-      <form.Field
-        name="port"
-        validators={{
-          onChange: ({ value }) => {
-            if (!value || value < 1 || value > 65535) {
-              return 'Port must be between 1 and 65535'
-            }
-            return undefined
-          },
-        }}
-      >
-        {(field) => (
-          <div className="space-y-2">
-            <Label htmlFor={field.name}>Port</Label>
-            <Input
-              id={field.name}
-              type="number"
-              value={field.state.value}
-              onBlur={field.handleBlur}
-              onChange={(e) => field.handleChange(parseInt(e.target.value) || 0)}
+              placeholder="http://localhost:8080 or 192.168.1.100:8080"
             />
             {field.state.meta.isTouched && field.state.meta.errors[0] && (
               <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>

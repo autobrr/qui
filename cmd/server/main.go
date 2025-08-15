@@ -33,7 +33,9 @@ import (
 
 var (
 	Version   = "dev"
-	cfgFile   string
+	configDir string
+	dataDir   string
+	logPath   string
 	pprofFlag bool
 
 	// Publisher credentials - set during build via ldflags
@@ -55,7 +57,9 @@ multiple qBittorrent instances with support for 10k+ torrents.`,
 
 func init() {
 	cobra.OnInitialize(initConfig)
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is OS-specific: ~/.config/qui/config.toml or %APPDATA%\\qui\\config.toml)")
+	rootCmd.PersistentFlags().StringVar(&configDir, "config-dir", "", "config directory path (default is OS-specific: ~/.config/qui/ or %APPDATA%\\qui\\). For backward compatibility, can also be a direct path to a .toml file")
+	rootCmd.PersistentFlags().StringVar(&dataDir, "data-dir", "", "data directory for database and other files (default is next to config file)")
+	rootCmd.PersistentFlags().StringVar(&logPath, "log-path", "", "log file path (default is stdout)")
 	rootCmd.PersistentFlags().BoolVar(&pprofFlag, "pprof", false, "enable pprof server on :6060")
 	rootCmd.Version = Version
 }
@@ -71,9 +75,19 @@ func runServer() {
 	log.Info().Str("version", Version).Msg("Starting qBittorrent WebUI")
 
 	// Initialize configuration
-	cfg, err := config.New(cfgFile)
+	cfg, err := config.New(configDir)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize configuration")
+	}
+
+	// Override with CLI flags if provided
+	if dataDir != "" {
+		os.Setenv("QUI__DATA_DIR", dataDir)
+		cfg.SetDataDir(dataDir)
+	}
+	if logPath != "" {
+		os.Setenv("QUI__LOG_PATH", logPath)
+		cfg.Config.LogPath = logPath
 	}
 
 	if pprofFlag {

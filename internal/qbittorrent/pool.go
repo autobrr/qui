@@ -139,7 +139,7 @@ func (cp *ClientPool) createClient(instanceID int) (*Client, error) {
 	}
 
 	// Create new client
-	client, err := NewClient(instanceID, instance.Host, instance.Port, instance.Username, password, instance.BasicUsername, basicPassword)
+	client, err := NewClient(instanceID, instance.Host, instance.Username, password, instance.BasicUsername, basicPassword)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create client: %w", err)
 	}
@@ -157,7 +157,6 @@ func (cp *ClientPool) createClient(instanceID int) (*Client, error) {
 	}
 	cp.dbMu.Unlock()
 
-	//log.Info().Int("instanceID", instanceID).Str("name", instance.Name).Msg("Created new qBittorrent client")
 	return client, nil
 }
 
