@@ -25,11 +25,13 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { useAuth } from '@/hooks/useAuth'
 import { Badge } from '@/components/ui/badge'
+import { useTorrentSelection } from '@/contexts/TorrentSelectionContext'
 
 
 export function MobileFooterNav() {
   const location = useLocation()
   const { logout } = useAuth()
+  const { isSelectionMode } = useTorrentSelection()
   
   const { data: instances } = useQuery({
     queryKey: ['instances'],
@@ -43,10 +45,15 @@ export function MobileFooterNav() {
     : null
   const currentInstance = instances?.find(i => i.id.toString() === currentInstanceId)
 
+  // Hide footer nav when selection mode is active
+  if (isSelectionMode) {
+    return null
+  }
+
   return (
     <nav 
       className={cn(
-        "fixed bottom-0 left-0 right-0 z-50 lg:hidden",
+        "fixed bottom-0 left-0 right-0 z-40 lg:hidden",
         "bg-background/80 backdrop-blur-md border-t border-border/50"
       )}
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}

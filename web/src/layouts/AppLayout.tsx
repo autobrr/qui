@@ -12,6 +12,7 @@ import { Menu } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { MobileScrollProvider } from '@/contexts/MobileScrollContext'
+import { TorrentSelectionProvider } from '@/contexts/TorrentSelectionContext'
 
 function AppLayoutContent() {
   const [sidebarCollapsed, setSidebarCollapsed] = usePersistedSidebarState(false) // Desktop: persisted state
@@ -59,8 +60,10 @@ function AppLayoutContent() {
 
 export function AppLayout() {
   return (
-    <MobileScrollProvider>
-      <AppLayoutContent />
-    </MobileScrollProvider>
+    <TorrentSelectionProvider>
+      <MobileScrollProvider>
+        <AppLayoutContent />
+      </MobileScrollProvider>
+    </TorrentSelectionProvider>
   )
 }
