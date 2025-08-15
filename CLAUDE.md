@@ -16,7 +16,7 @@ qBittorrent Alternative WebUI - a self-hosted, single-user web interface for man
 go mod download
 
 # Build backend
-go build -ldflags "-X main.Version=$(git describe --tags --always)" -o qui ./cmd/server
+go build -ldflags "-X main.Version=$(git describe --tags --always)" -o qui ./cmd/qui
 
 # Run backend in development
 air -c .air.toml  # Hot reload

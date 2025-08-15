@@ -40,7 +40,7 @@ builds:
         goarch: arm
       - goos: freebsd
         goarch: arm64
-    main: ./cmd/server
+    main: ./cmd/qui
     binary: qui
 
 archives:

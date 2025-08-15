@@ -36,7 +36,7 @@ frontend:
 # Build backend
 backend:
 	@echo "Building backend..."
-	go build $(LDFLAGS) -o $(BINARY_NAME) ./cmd/server
+	go build $(LDFLAGS) -o $(BINARY_NAME) ./cmd/qui
 
 # Development mode - run both frontend and backend
 dev:

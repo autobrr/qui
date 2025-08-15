@@ -1031,7 +1031,7 @@ frontend:
 	cp -r web/dist internal/web/
 
 backend:
-	go build -ldflags "-X main.Version=$(VERSION)" -o qui ./cmd/server
+	go build -ldflags "-X main.Version=$(VERSION)" -o qui ./cmd/qui
 
 dev-backend:
 	air -c .air.toml
@@ -1475,7 +1475,7 @@ logLevel = "INFO"
    RUN go mod download
    COPY . .
    COPY --from=frontend-builder /app/dist ./internal/web/dist
-   RUN go build -o qui ./cmd/server
+   RUN go build -o qui ./cmd/qui
 
    FROM alpine:latest
    RUN apk --no-cache add ca-certificates

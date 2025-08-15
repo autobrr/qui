@@ -51,7 +51,7 @@ RUN case "${TARGETARCH}" in \
 # Build the application
 RUN CGO_ENABLED=0 go build \
     -ldflags "-s -w -X main.Version=${VERSION} -X main.PolarOrgID=${POLAR_ORG_ID}" \
-    -o qui ./cmd/server
+    -o qui ./cmd/qui
 
 # Final stage
 FROM alpine:3.22
