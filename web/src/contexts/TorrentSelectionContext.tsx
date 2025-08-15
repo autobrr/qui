@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { createContext, useContext, useState, ReactNode } from 'react'
+import { createContext, useContext, useState } from 'react'
+import type { ReactNode } from 'react'
 
 interface TorrentSelectionContextType {
   isSelectionMode: boolean
