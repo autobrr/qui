@@ -20,6 +20,8 @@ import (
 	"github.com/autobrr/qui/internal/domain"
 )
 
+var envPrefix = "QUI__"
+
 type AppConfig struct {
 	Config  *domain.Config
 	viper   *viper.Viper
@@ -146,19 +148,19 @@ func (c *AppConfig) loadFromEnv() {
 	// Instead, explicitly bind only the environment variables we want
 
 	// Use double underscore to avoid conflicts with K8s deployment_PORT patterns
-	c.viper.BindEnv("host", "QUI__HOST")
-	c.viper.BindEnv("port", "QUI__PORT")
-	c.viper.BindEnv("baseUrl", "QUI__BASE_URL")
-	c.viper.BindEnv("sessionSecret", "QUI__SESSION_SECRET")
-	c.viper.BindEnv("logLevel", "QUI__LOG_LEVEL")
-	c.viper.BindEnv("logPath", "QUI__LOG_PATH")
-	c.viper.BindEnv("dataDir", "QUI__DATA_DIR")
-	c.viper.BindEnv("pprofEnabled", "QUI__PPROF_ENABLED")
+	c.viper.BindEnv("host", envPrefix+"HOST")
+	c.viper.BindEnv("port", envPrefix+"PORT")
+	c.viper.BindEnv("baseUrl", envPrefix+"BASE_URL")
+	c.viper.BindEnv("sessionSecret", envPrefix+"SESSION_SECRET")
+	c.viper.BindEnv("logLevel", envPrefix+"LOG_LEVEL")
+	c.viper.BindEnv("logPath", envPrefix+"LOG_PATH")
+	c.viper.BindEnv("dataDir", envPrefix+"DATA_DIR")
+	c.viper.BindEnv("pprofEnabled", envPrefix+"PPROF_ENABLED")
 
 	// HTTP timeout environment variables
-	c.viper.BindEnv("httpTimeouts.readTimeout", "QUI__HTTP_READ_TIMEOUT")
-	c.viper.BindEnv("httpTimeouts.writeTimeout", "QUI__HTTP_WRITE_TIMEOUT")
-	c.viper.BindEnv("httpTimeouts.idleTimeout", "QUI__HTTP_IDLE_TIMEOUT")
+	c.viper.BindEnv("httpTimeouts.readTimeout", envPrefix+"HTTP_READ_TIMEOUT")
+	c.viper.BindEnv("httpTimeouts.writeTimeout", envPrefix+"HTTP_WRITE_TIMEOUT")
+	c.viper.BindEnv("httpTimeouts.idleTimeout", envPrefix+"HTTP_IDLE_TIMEOUT")
 }
 
 func (c *AppConfig) watchConfig() {

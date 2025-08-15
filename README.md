@@ -46,7 +46,7 @@ Download the latest release for your platform from the [releases page](https://g
 chmod +x qui
 
 # Run
-./qui
+./qui serve
 ```
 
 The web interface will be available at http://localhost:8080
@@ -83,10 +83,10 @@ QUI__DATA_DIR=...        # Optional: custom data directory (default: next to con
 
 ```bash
 # Specify config directory (config.toml will be created inside)
-./qui --config-dir /path/to/config/
+./qui serve --config-dir /path/to/config/
 
 # Specify data directory for database and other data files
-./qui --data-dir /path/to/data/
+./qui serve --data-dir /path/to/data/
 ```
 
 ## API
@@ -197,4 +197,4 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
-MIT
+GPL-2.0-or-later

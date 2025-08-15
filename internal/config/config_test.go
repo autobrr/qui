@@ -59,8 +59,8 @@ dataDir = "/config/path"`,
 
 			// Set env var if specified
 			if tt.envVar != "" {
-				os.Setenv("QUI__DATA_DIR", tt.envVar)
-				defer os.Unsetenv("QUI__DATA_DIR")
+				os.Setenv(envPrefix+"DATA_DIR", tt.envVar)
+				defer os.Unsetenv(envPrefix + "DATA_DIR")
 			}
 
 			// Create config
@@ -114,8 +114,8 @@ dataDir = "/config/file/path"`
 	require.NoError(t, err)
 
 	// Env var should override config
-	os.Setenv("QUI__DATA_DIR", "/env/var/path")
-	defer os.Unsetenv("QUI__DATA_DIR")
+	os.Setenv(envPrefix+"DATA_DIR", "/env/var/path")
+	defer os.Unsetenv(envPrefix + "DATA_DIR")
 
 	cfg, err := New(configPath)
 	require.NoError(t, err)

@@ -3,7 +3,7 @@ testdata_dir = "testdata"
 tmp_dir = "tmp"
 
 [build]
-  args_bin = []
+  args_bin = ["serve"]
   bin = "./tmp/main"
   cmd = "go build -ldflags \"-X main.Version=dev -X main.PolarOrgID=$POLAR_ORG_ID\" -o ./tmp/main ./cmd/server"
   delay = 1000
