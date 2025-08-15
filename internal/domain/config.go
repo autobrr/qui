@@ -11,6 +11,7 @@ type Config struct {
 	SessionSecret string       `toml:"sessionSecret" mapstructure:"sessionSecret"`
 	LogLevel      string       `toml:"logLevel" mapstructure:"logLevel"`
 	LogPath       string       `toml:"logPath" mapstructure:"logPath"`
+	DataDir       string       `toml:"dataDir" mapstructure:"dataDir"`
 	PprofEnabled  bool         `toml:"pprofEnabled" mapstructure:"pprofEnabled"`
 	Polar         PolarConfig  `toml:"polar" mapstructure:"polar"`
 	HTTPTimeouts  HTTPTimeouts `toml:"httpTimeouts" mapstructure:"httpTimeouts"`
@@ -24,7 +25,6 @@ type HTTPTimeouts struct {
 }
 
 // PolarConfig represents user-configurable Polar settings
-// Publisher credentials (AccessToken, OrganizationID, Environment) are baked into the binary
 type PolarConfig struct {
 	LicenseValidationInterval string `toml:"licenseValidationInterval" mapstructure:"licenseValidationInterval"`
 	OfflineGracePeriod        string `toml:"offlineGracePeriod" mapstructure:"offlineGracePeriod"`

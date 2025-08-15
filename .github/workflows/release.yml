@@ -28,10 +28,7 @@ env:
   REGISTRY_IMAGE: ghcr.io/${{ github.repository }}
   GO_VERSION: "1.24"
   NODE_VERSION: "22.18.0"
-  # Polar credentials from GitHub secrets
-  POLAR_ACCESS_TOKEN: ${{ secrets.POLAR_ACCESS_TOKEN }}
   POLAR_ORG_ID: ${{ secrets.POLAR_ORG_ID }}
-  POLAR_ENVIRONMENT: ${{ secrets.POLAR_ENVIRONMENT || 'production' }}
 
 permissions:
   contents: write
@@ -253,9 +250,7 @@ jobs:
             REVISION=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.revision'] }}
             BUILDER=${{ github.actor }}@github-actions
             GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
-            POLAR_ACCESS_TOKEN=${{ secrets.POLAR_ACCESS_TOKEN }}
             POLAR_ORG_ID=${{ secrets.POLAR_ORG_ID }}
-            POLAR_ENVIRONMENT=${{ secrets.POLAR_ENVIRONMENT || 'production' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: false

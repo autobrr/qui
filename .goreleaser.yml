@@ -15,9 +15,7 @@ builds:
       - -X main.Version={{.Version}}
       - -X main.buildTime={{.Date}}
       - -X main.commit={{.Commit}}
-      - -X main.PolarAccessToken={{.Env.POLAR_ACCESS_TOKEN}}
       - -X main.PolarOrgID={{.Env.POLAR_ORG_ID}}
-      - -X main.PolarEnvironment={{.Env.POLAR_ENVIRONMENT}}
     tags:
       - nosmart
     goos:

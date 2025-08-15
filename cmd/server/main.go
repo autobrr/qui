@@ -33,13 +33,13 @@ import (
 
 var (
 	Version   = "dev"
-	cfgFile   string
+	configDir string
+	dataDir   string
+	logPath   string
 	pprofFlag bool
 
 	// Publisher credentials - set during build via ldflags
-	PolarAccessToken = ""           // Set via: -X main.PolarAccessToken=your-token
-	PolarOrgID       = ""           // Set via: -X main.PolarOrgID=your-org-id
-	PolarEnvironment = "production" // Set via: -X main.PolarEnvironment=production
+	PolarOrgID = "" // Set via: -X main.PolarOrgID=your-org-id
 )
 
 var rootCmd = &cobra.Command{
@@ -55,7 +55,9 @@ multiple qBittorrent instances with support for 10k+ torrents.`,
 
 func init() {
 	cobra.OnInitialize(initConfig)
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is OS-specific: ~/.config/qui/config.toml or %APPDATA%\\qui\\config.toml)")
+	rootCmd.PersistentFlags().StringVar(&configDir, "config-dir", "", "config directory path (default is OS-specific: ~/.config/qui/ or %APPDATA%\\qui\\). For backward compatibility, can also be a direct path to a .toml file")
+	rootCmd.PersistentFlags().StringVar(&dataDir, "data-dir", "", "data directory for database and other files (default is next to config file)")
+	rootCmd.PersistentFlags().StringVar(&logPath, "log-path", "", "log file path (default is stdout)")
 	rootCmd.PersistentFlags().BoolVar(&pprofFlag, "pprof", false, "enable pprof server on :6060")
 	rootCmd.Version = Version
 }
@@ -71,9 +73,19 @@ func runServer() {
 	log.Info().Str("version", Version).Msg("Starting qBittorrent WebUI")
 
 	// Initialize configuration
-	cfg, err := config.New(cfgFile)
+	cfg, err := config.New(configDir)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize configuration")
+	}
+
+	// Override with CLI flags if provided
+	if dataDir != "" {
+		os.Setenv("QUI__DATA_DIR", dataDir)
+		cfg.SetDataDir(dataDir)
+	}
+	if logPath != "" {
+		os.Setenv("QUI__LOG_PATH", logPath)
+		cfg.Config.LogPath = logPath
 	}
 
 	if pprofFlag {
@@ -117,38 +129,22 @@ func runServer() {
 	// Initialize Polar client and theme license service
 	var themeLicenseService *services.ThemeLicenseService
 
-	// Use ONLY the baked-in credentials from build time
-	if PolarAccessToken != "" && PolarOrgID != "" {
-		// Production: Use baked-in publisher credentials
+	if PolarOrgID != "" {
 		log.Trace().
-			Msg("Initializing Polar SDK")
+			Msg("Initializing Polar client for license validation")
 
-		polarClient := polar.NewClient(PolarAccessToken, PolarEnvironment)
+		polarClient := polar.NewClient()
 		polarClient.SetOrganizationID(PolarOrgID)
 
-		// Test the connection
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		if err := polarClient.ValidateConfiguration(ctx); err != nil {
-			log.Error().Err(err).Msg("Failed to validate Polar configuration")
-			// Continue with the configured client even if validation fails
-			// This allows the service to start but theme licensing will fail gracefully
-		}
-
 		themeLicenseService = services.NewThemeLicenseService(db, polarClient)
-		log.Info().Msg("Theme licensing service initialized (production mode)")
+		log.Info().Msg("Theme licensing service initialized")
 	} else {
-		// No credentials: Premium themes will not be available
-		log.Warn().Msg("No Polar credentials configured - premium themes will be disabled")
+		log.Warn().Msg("No Polar organization ID configured - premium themes will be disabled")
 
-		// Create a client with empty credentials
-		// All license validations will fail, which is the expected behavior
-		polarClient := polar.NewClient("", "production")
+		polarClient := polar.NewClient()
 		polarClient.SetOrganizationID("")
 
 		themeLicenseService = services.NewThemeLicenseService(db, polarClient)
-		log.Info().Msg("Theme licensing service initialized (no credentials mode)")
 	}
 
 	// Create router dependencies

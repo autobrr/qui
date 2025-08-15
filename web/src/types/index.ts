@@ -19,7 +19,6 @@ export interface Instance {
   id: number
   name: string
   host: string
-  port: number
   username: string
   basicUsername?: string
   isActive: boolean
