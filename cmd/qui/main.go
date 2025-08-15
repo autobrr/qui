@@ -33,27 +33,12 @@ import (
 
 var (
 	Version = "dev"
-	//configDir string
-	//dataDir   string
-	//logPath   string
-	//pprofFlag bool
 
-	// Publisher credentials - set during build via ldflags
+	// PolarOrgID Publisher credentials - set during build via ldflags
 	PolarOrgID = "" // Set via: -X main.PolarOrgID=your-org-id
 )
 
 func main() {
-	//var (
-	//	//Version   = "dev"
-	//	//configDir string
-	//	//dataDir   string
-	//	//logPath   string
-	//	//pprofFlag bool
-	//
-	//	// Publisher credentials - set during build via ldflags
-	//	//PolarOrgID = "" // Set via: -X main.PolarOrgID=your-org-id
-	//)
-
 	var rootCmd = &cobra.Command{
 		Use:   "qui",
 		Short: "A self-hosted qBittorrent WebUI alternative",
@@ -64,11 +49,6 @@ multiple qBittorrent instances with support for 10k+ torrents.`,
 	// Initialize logger
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
-	cobra.OnInitialize(initConfig)
-	//rootCmd.PersistentFlags().StringVar(&configDir, "config-dir", "", "config directory path (default is OS-specific: ~/.config/qui/ or %APPDATA%\\qui\\). For backward compatibility, can also be a direct path to a .toml file")
-	//rootCmd.PersistentFlags().StringVar(&dataDir, "data-dir", "", "data directory for database and other files (default is next to config file)")
-	//rootCmd.PersistentFlags().StringVar(&logPath, "log-path", "", "log file path (default is stdout)")
-	//rootCmd.PersistentFlags().BoolVar(&pprofFlag, "pprof", false, "enable pprof server on :6060")
 	rootCmd.Version = Version
 
 	rootCmd.AddCommand(RunServeCommand())
@@ -82,14 +62,10 @@ multiple qBittorrent instances with support for 10k+ torrents.`,
 
 func RunServeCommand() *cobra.Command {
 	var (
-		//Version   = "dev"
 		configDir string
 		dataDir   string
 		logPath   string
 		pprofFlag bool
-
-		// Publisher credentials - set during build via ldflags
-		//PolarOrgID = "" // Set via: -X main.PolarOrgID=your-org-id
 	)
 
 	var command = &cobra.Command{
@@ -103,7 +79,7 @@ func RunServeCommand() *cobra.Command {
 	command.Flags().BoolVar(&pprofFlag, "pprof", false, "enable pprof server on :6060")
 
 	command.Run = func(cmd *cobra.Command, args []string) {
-		app := NewApplication(Version, configDir, dataDir, logPath, pprofFlag)
+		app := NewApplication(Version, configDir, dataDir, logPath, pprofFlag, PolarOrgID)
 		app.runServer()
 	}
 
@@ -122,22 +98,6 @@ func RunVersionCommand(version string) *cobra.Command {
 	return command
 }
 
-//func init() {
-//	cobra.OnInitialize(initConfig)
-//	rootCmd.PersistentFlags().StringVar(&configDir, "config-dir", "", "config directory path (default is OS-specific: ~/.config/qui/ or %APPDATA%\\qui\\). For backward compatibility, can also be a direct path to a .toml file")
-//	rootCmd.PersistentFlags().StringVar(&dataDir, "data-dir", "", "data directory for database and other files (default is next to config file)")
-//	rootCmd.PersistentFlags().StringVar(&logPath, "log-path", "", "log file path (default is stdout)")
-//	rootCmd.PersistentFlags().BoolVar(&pprofFlag, "pprof", false, "enable pprof server on :6060")
-//	rootCmd.Version = Version
-//}
-
-func initConfig() {
-	// Initialize logger
-	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
-
-	// Config initialization will be implemented later
-}
-
 type Application struct {
 	version   string
 	configDir string
@@ -146,16 +106,17 @@ type Application struct {
 	pprofFlag bool
 
 	// Publisher credentials - set during build via ldflags
-	//PolarOrgID = "" // Set via: -X main.PolarOrgID=your-org-id
-	PolarOrgID string // Set via: -X main.PolarOrgID=your-org-id
+	polarOrgID string // Set via: -X main.PolarOrgID=your-org-id
 }
 
-func NewApplication(version, configDir, dataDir, logPath string, pprofFlag bool) *Application {
+func NewApplication(version, configDir, dataDir, logPath string, pprofFlag bool, polarOrgID string) *Application {
 	return &Application{
-		configDir: configDir,
-		dataDir:   dataDir,
-		logPath:   logPath,
-		pprofFlag: pprofFlag,
+		version:    version,
+		configDir:  configDir,
+		dataDir:    dataDir,
+		logPath:    logPath,
+		pprofFlag:  pprofFlag,
+		polarOrgID: polarOrgID,
 	}
 }
 
@@ -219,12 +180,12 @@ func (app *Application) runServer() {
 	// Initialize Polar client and theme license service
 	var themeLicenseService *services.ThemeLicenseService
 
-	if PolarOrgID != "" {
+	if app.polarOrgID != "" {
 		log.Trace().
 			Msg("Initializing Polar client for license validation")
 
 		polarClient := polar.NewClient()
-		polarClient.SetOrganizationID(PolarOrgID)
+		polarClient.SetOrganizationID(app.polarOrgID)
 
 		themeLicenseService = services.NewThemeLicenseService(db, polarClient)
 		log.Info().Msg("Theme licensing service initialized")
