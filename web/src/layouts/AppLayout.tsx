@@ -3,69 +3,67 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState } from 'react'
 import { Outlet } from '@tanstack/react-router'
 import { Sidebar } from '@/components/layout/Sidebar'
+import { MobileFooterNav } from '@/components/layout/MobileFooterNav'
 import { Header } from '@/components/layout/Header'
 import { usePersistedSidebarState } from '@/hooks/usePersistedSidebarState'
 import { Menu } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from '@/components/ui/sheet'
-import { VisuallyHidden } from '@/components/ui/visually-hidden'
 import { cn } from '@/lib/utils'
+import { MobileScrollProvider } from '@/contexts/MobileScrollContext'
+import { TorrentSelectionProvider } from '@/contexts/TorrentSelectionContext'
 
-export function AppLayout() {
-  const [sidebarOpen, setSidebarOpen] = useState(false) // Mobile: always starts closed
+function AppLayoutContent() {
   const [sidebarCollapsed, setSidebarCollapsed] = usePersistedSidebarState(false) // Desktop: persisted state
 
   return (
-    <div className="flex h-screen bg-background">
-      {/* Desktop Sidebar - Collapsible */}
-      <div className={cn(
-        "hidden lg:flex transition-all duration-300 ease-out overflow-hidden",
-        sidebarCollapsed ? "w-0 opacity-0" : "w-64 opacity-100"
-      )}>
-        <div className="w-64 flex-shrink-0">
-          <Sidebar />
+      <div className="flex h-screen bg-background">
+        {/* Desktop Sidebar - Collapsible */}
+        <div className={cn(
+          "hidden lg:flex transition-all duration-300 ease-out overflow-hidden",
+          sidebarCollapsed ? "w-0 opacity-0" : "w-64 opacity-100"
+        )}>
+          <div className="w-64 flex-shrink-0">
+            <Sidebar />
+          </div>
         </div>
+        
+        <div className="flex flex-1 flex-col min-w-0 relative">
+          <Header sidebarCollapsed={sidebarCollapsed}>
+            {/* Desktop toggle button */}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              className="hidden lg:flex transition-transform duration-200 hover:scale-110"
+            >
+              <Menu className={cn(
+                "h-5 w-5 transition-transform duration-300",
+                sidebarCollapsed && "rotate-90"
+              )} />
+            </Button>
+          </Header>
+          <main className={cn(
+            "flex-1 overflow-y-auto",
+            "pb-16 lg:pb-0"
+          )}>
+            <Outlet />
+          </main>
+        </div>
+        
+        {/* Mobile Footer Navigation */}
+        <MobileFooterNav />
       </div>
-      
-      <div className="flex flex-1 flex-col min-w-0">
-        <Header sidebarCollapsed={sidebarCollapsed}>
-          {/* Desktop toggle button */}
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="hidden lg:flex transition-transform duration-200 hover:scale-110"
-          >
-            <Menu className={cn(
-              "h-5 w-5 transition-transform duration-300",
-              sidebarCollapsed && "rotate-90"
-            )} />
-          </Button>
-          
-          {/* Mobile toggle button */}
-          <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
-            <SheetTrigger asChild className="lg:hidden">
-              <Button variant="ghost" size="icon">
-                <Menu className="h-5 w-5" />
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="left" className="p-0 w-64">
-              <SheetHeader>
-                <VisuallyHidden>
-                  <SheetTitle>Navigation Menu</SheetTitle>
-                </VisuallyHidden>
-              </SheetHeader>
-              <Sidebar onNavigate={() => setSidebarOpen(false)} />
-            </SheetContent>
-          </Sheet>
-        </Header>
-        <main className="flex-1 overflow-y-auto">
-          <Outlet />
-        </main>
-      </div>
-    </div>
+  )
+}
+
+export function AppLayout() {
+  return (
+    <TorrentSelectionProvider>
+      <MobileScrollProvider>
+        <AppLayoutContent />
+      </MobileScrollProvider>
+    </TorrentSelectionProvider>
   )
 }

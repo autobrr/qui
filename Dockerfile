@@ -30,11 +30,9 @@ RUN go mod download
 COPY . .
 COPY --from=frontend-builder /app/web/dist ./web/dist
 
-# Build arguments for baking in Polar credentials
+# Build arguments
 ARG VERSION=dev
-ARG POLAR_ACCESS_TOKEN=""
 ARG POLAR_ORG_ID=""
-ARG POLAR_ENVIRONMENT="production"
 
 # Set cross-compilation environment variables
 ENV GOOS=${TARGETOS} \
@@ -50,9 +48,9 @@ RUN case "${TARGETARCH}" in \
       ;; \
     esac
 
-# Build the application with baked-in credentials for target platform
+# Build the application
 RUN CGO_ENABLED=0 go build \
-    -ldflags "-s -w -X main.Version=${VERSION} -X main.PolarAccessToken=${POLAR_ACCESS_TOKEN} -X main.PolarOrgID=${POLAR_ORG_ID} -X main.PolarEnvironment=${POLAR_ENVIRONMENT}" \
+    -ldflags "-s -w -X main.Version=${VERSION} -X main.PolarOrgID=${POLAR_ORG_ID}" \
     -o qui ./cmd/server
 
 # Final stage

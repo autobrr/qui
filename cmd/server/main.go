@@ -39,9 +39,7 @@ var (
 	pprofFlag bool
 
 	// Publisher credentials - set during build via ldflags
-	PolarAccessToken = ""           // Set via: -X main.PolarAccessToken=your-token
-	PolarOrgID       = ""           // Set via: -X main.PolarOrgID=your-org-id
-	PolarEnvironment = "production" // Set via: -X main.PolarEnvironment=production
+	PolarOrgID = "" // Set via: -X main.PolarOrgID=your-org-id
 )
 
 var rootCmd = &cobra.Command{
@@ -131,38 +129,22 @@ func runServer() {
 	// Initialize Polar client and theme license service
 	var themeLicenseService *services.ThemeLicenseService
 
-	// Use ONLY the baked-in credentials from build time
-	if PolarAccessToken != "" && PolarOrgID != "" {
-		// Production: Use baked-in publisher credentials
+	if PolarOrgID != "" {
 		log.Trace().
-			Msg("Initializing Polar SDK")
+			Msg("Initializing Polar client for license validation")
 
-		polarClient := polar.NewClient(PolarAccessToken, PolarEnvironment)
+		polarClient := polar.NewClient()
 		polarClient.SetOrganizationID(PolarOrgID)
 
-		// Test the connection
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		if err := polarClient.ValidateConfiguration(ctx); err != nil {
-			log.Error().Err(err).Msg("Failed to validate Polar configuration")
-			// Continue with the configured client even if validation fails
-			// This allows the service to start but theme licensing will fail gracefully
-		}
-
 		themeLicenseService = services.NewThemeLicenseService(db, polarClient)
-		log.Info().Msg("Theme licensing service initialized (production mode)")
+		log.Info().Msg("Theme licensing service initialized")
 	} else {
-		// No credentials: Premium themes will not be available
-		log.Warn().Msg("No Polar credentials configured - premium themes will be disabled")
+		log.Warn().Msg("No Polar organization ID configured - premium themes will be disabled")
 
-		// Create a client with empty credentials
-		// All license validations will fail, which is the expected behavior
-		polarClient := polar.NewClient("", "production")
+		polarClient := polar.NewClient()
 		polarClient.SetOrganizationID("")
 
 		themeLicenseService = services.NewThemeLicenseService(db, polarClient)
-		log.Info().Msg("Theme licensing service initialized (no credentials mode)")
 	}
 
 	// Create router dependencies

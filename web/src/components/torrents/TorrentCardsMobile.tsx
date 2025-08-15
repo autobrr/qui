@@ -63,9 +63,9 @@ import {
 import { formatBytes, formatSpeed, cn } from '@/lib/utils'
 import { applyOptimisticUpdates, getStateLabel } from '@/lib/torrent-state-utils'
 import { getCommonTags, getCommonCategory } from '@/lib/torrent-utils'
-import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import { useInstances } from '@/hooks/useInstances'
+import { useTorrentSelection } from '@/contexts/TorrentSelectionContext'
 
 interface TorrentCardsMobileProps {
   instanceId: number
@@ -339,6 +339,8 @@ export function TorrentCardsMobile({
   const [immediateSearch] = useState('')
   const [selectedHashes, setSelectedHashes] = useState<Set<string>>(new Set())
   const [selectionMode, setSelectionMode] = useState(false)
+  const { setIsSelectionMode } = useTorrentSelection()
+  const parentRef = useRef<HTMLDivElement>(null)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [deleteFiles, setDeleteFiles] = useState(false)
   const [torrentToDelete, setTorrentToDelete] = useState<Torrent | null>(null)
@@ -396,7 +398,6 @@ export function TorrentCardsMobile({
   const availableCategories = categories || {}
   
   // Virtual scrolling with consistent spacing
-  const parentRef = useRef<HTMLDivElement>(null)
   const rowVirtualizer = useVirtualizer({
     count: torrents.length,
     getScrollElement: () => parentRef.current,
@@ -425,8 +426,21 @@ export function TorrentCardsMobile({
   useEffect(() => {
     if (selectionMode && selectedHashes.size === 0) {
       setSelectionMode(false)
+      setIsSelectionMode(false)
     }
-  }, [selectedHashes.size, selectionMode])
+  }, [selectedHashes.size, selectionMode, setIsSelectionMode])
+  
+  // Sync selection mode with context
+  useEffect(() => {
+    setIsSelectionMode(selectionMode && selectedHashes.size > 0)
+  }, [selectionMode, selectedHashes.size, setIsSelectionMode])
+  
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      setIsSelectionMode(false)
+    }
+  }, [setIsSelectionMode])
   
   // Mutations
   const mutation = useMutation({
@@ -540,8 +554,9 @@ export function TorrentCardsMobile({
     mutation.mutate({ action, hashes })
     setSelectedHashes(new Set())
     setSelectionMode(false)
+    setIsSelectionMode(false)
     setShowActionsSheet(false)
-  }, [selectedHashes, mutation])
+  }, [selectedHashes, mutation, setIsSelectionMode])
   
   const handleDelete = async () => {
     const hashes = torrentToDelete ? [torrentToDelete.hash] : Array.from(selectedHashes)
@@ -567,6 +582,7 @@ export function TorrentCardsMobile({
     setActionTorrents([])
     setSelectedHashes(new Set())
     setSelectionMode(false)
+    setIsSelectionMode(false)
   }
   
   const handleSetCategory = async (category: string) => {
@@ -580,6 +596,7 @@ export function TorrentCardsMobile({
     setActionTorrents([])
     setSelectedHashes(new Set())
     setSelectionMode(false)
+    setIsSelectionMode(false)
   }
   
   const getSelectedTorrents = useMemo(() => {
@@ -643,6 +660,7 @@ export function TorrentCardsMobile({
                 onClick={() => {
                   setSelectedHashes(new Set())
                   setSelectionMode(false)
+                  setIsSelectionMode(false)
                 }}
                 className="p-1"
               >
@@ -712,72 +730,68 @@ export function TorrentCardsMobile({
       </div>
       
       {/* Fixed bottom action bar - visible in selection mode */}
-      <AnimatePresence>
-        {selectionMode && selectedHashes.size > 0 && (
-          <motion.div
-            initial={{ y: 100 }}
-            animate={{ y: 0 }}
-            exit={{ y: 100 }}
-            className="fixed bottom-0 left-0 right-0 bg-background border-t z-50"
-            style={{ 
-              padding: '0.75rem',
-              paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))'
-            }}
-          >
-            <div className="flex items-center justify-around">
-              <button
-                onClick={() => handleBulkAction('resume')}
-                className="flex flex-col items-center gap-1 p-2"
-              >
-                <Play className="h-5 w-5" />
-                <span className="text-xs">Resume</span>
-              </button>
-              
-              <button
-                onClick={() => handleBulkAction('pause')}
-                className="flex flex-col items-center gap-1 p-2"
-              >
-                <Pause className="h-5 w-5" />
-                <span className="text-xs">Pause</span>
-              </button>
-              
-              <button
-                onClick={() => {
-                  setActionTorrents(getSelectedTorrents)
-                  setShowCategoryDialog(true)
-                }}
-                className="flex flex-col items-center gap-1 p-2"
-              >
-                <Folder className="h-5 w-5" />
-                <span className="text-xs">Category</span>
-              </button>
-              
-              <button
-                onClick={() => {
-                  setActionTorrents(getSelectedTorrents)
-                  setShowTagsDialog(true)
-                }}
-                className="flex flex-col items-center gap-1 p-2"
-              >
-                <Tag className="h-5 w-5" />
-                <span className="text-xs">Tags</span>
-              </button>
-              
-              <button
-                onClick={() => setShowActionsSheet(true)}
-                className="flex flex-col items-center gap-1 p-2"
-              >
-                <MoreVertical className="h-5 w-5" />
-                <span className="text-xs">More</span>
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {selectionMode && selectedHashes.size > 0 && (
+        <div
+          className={cn(
+            "fixed bottom-0 left-0 right-0 z-40 lg:hidden bg-background/80 backdrop-blur-md border-t border-border/50",
+            "transition-transform duration-200 ease-in-out",
+            selectionMode && selectedHashes.size > 0 ? "translate-y-0" : "translate-y-full"
+          )}
+          style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+        >
+          <div className="flex items-center justify-around h-16">
+            <button
+              onClick={() => handleBulkAction('resume')}
+              className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground"
+            >
+              <Play className="h-5 w-5" />
+              <span className="truncate">Resume</span>
+            </button>
+            
+            <button
+              onClick={() => handleBulkAction('pause')}
+              className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground"
+            >
+              <Pause className="h-5 w-5" />
+              <span className="truncate">Pause</span>
+            </button>
+            
+            <button
+              onClick={() => {
+                setActionTorrents(getSelectedTorrents)
+                setShowCategoryDialog(true)
+              }}
+              className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground"
+            >
+              <Folder className="h-5 w-5" />
+              <span className="truncate">Category</span>
+            </button>
+            
+            <button
+              onClick={() => {
+                setActionTorrents(getSelectedTorrents)
+                setShowTagsDialog(true)
+              }}
+              className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground"
+            >
+              <Tag className="h-5 w-5" />
+              <span className="truncate">Tags</span>
+            </button>
+            
+            <button
+              onClick={() => setShowActionsSheet(true)}
+              className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground"
+            >
+              <MoreVertical className="h-5 w-5" />
+              <span className="truncate">More</span>
+            </button>
+          </div>
+        </div>
+      )}
       
       {/* More actions sheet */}
       <Sheet open={showActionsSheet} onOpenChange={setShowActionsSheet}>
-        <SheetContent side="bottom" className="h-auto">
+        <SheetContent side="bottom" className="h-auto pb-8">
           <SheetHeader>
             <SheetTitle>Actions for {selectedHashes.size} torrent(s)</SheetTitle>
           </SheetHeader>
@@ -820,7 +834,7 @@ export function TorrentCardsMobile({
                 setShowDeleteDialog(true)
                 setShowActionsSheet(false)
               }}
-              className="justify-start"
+              className="justify-start !bg-destructive !text-destructive-foreground"
             >
               <Trash2 className="mr-2 h-4 w-4" />
               Delete

@@ -7,14 +7,12 @@ FROM --platform=$BUILDPLATFORM golang:1.24-alpine3.22 AS go-builder
 # Install build dependencies
 RUN apk add --no-cache git make
 
-# Build arguments for version info and Polar credentials
+# Build arguments
 ARG VERSION=dev
 ARG BUILDTIME
 ARG REVISION
 ARG BUILDER
-ARG POLAR_ACCESS_TOKEN=""
 ARG POLAR_ORG_ID=""
-ARG POLAR_ENVIRONMENT="production"
 
 # Cross-compilation arguments from Docker BuildKit
 ARG TARGETOS
@@ -50,9 +48,7 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="\
     -X main.Version=${VERSION} \
     -X main.buildTime=${BUILDTIME} \
     -X main.commit=${REVISION} \
-    -X main.PolarAccessToken=${POLAR_ACCESS_TOKEN} \
-    -X main.PolarOrgID=${POLAR_ORG_ID} \
-    -X main.PolarEnvironment=${POLAR_ENVIRONMENT}" \
+    -X main.PolarOrgID=${POLAR_ORG_ID}" \
     -o qui ./cmd/server
 
 # Final stage

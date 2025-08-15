@@ -46,6 +46,8 @@ export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
     return Number.isFinite(parsed) ? parsed : null
   }, [instanceId])
   const isInstanceRoute = selectedInstanceId !== null
+
+  const shouldShowQuiOnMobile = !isInstanceRoute
   const [searchValue, setSearchValue] = useState<string>(routeSearch?.q || '')
   const debouncedSearch = useDebounce(searchValue, 1000)
   const { instances } = useInstances()
@@ -80,8 +82,8 @@ export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
         {children}
         <h1 className={cn(
           "text-xl font-semibold transition-opacity duration-300",
-          "hidden", // Hidden by default
-          sidebarCollapsed && "sm:block" // Visible on screens >= sm when sidebar is collapsed
+          shouldShowQuiOnMobile ? "block sm:hidden pl-4" : "hidden", // Show 'qui' on mobile for non-instance routes
+          sidebarCollapsed && "sm:block"
         )}>{instanceName ? `qui - ${instanceName}` : 'qui'}</h1>
         {isInstanceRoute && (
           <div className="ml-2 hidden sm:block">
@@ -135,7 +137,7 @@ export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
                     navigate({ search: next, replace: true })
                   }
                 }}
-                className={`w-full pl-9 pr-16 transition-all ${
+                className={`w-full pl-9 pr-16 transition-all text-xs ${
                   searchValue ? 'ring-1 ring-primary/50' : ''
                 } ${isGlobSearch ? 'ring-1 ring-primary' : ''}`}
               />

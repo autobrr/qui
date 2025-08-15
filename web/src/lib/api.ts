@@ -23,8 +23,18 @@ class ApiClient {
     })
 
     if (!response.ok) {
-      const error = await response.text()
-      throw new Error(error || `HTTP error! status: ${response.status}`)
+      let errorMessage = `HTTP error! status: ${response.status}`
+      try {
+        const errorData = await response.json()
+        errorMessage = errorData.error || errorData.message || errorMessage
+      } catch {
+        try {
+          const errorText = await response.text()
+          errorMessage = errorText || errorMessage
+        } catch {
+        }
+      }
+      throw new Error(errorMessage)
     }
 
     return response.json()
@@ -197,8 +207,18 @@ class ApiClient {
     })
 
     if (!response.ok) {
-      const error = await response.text()
-      throw new Error(error || `HTTP error! status: ${response.status}`)
+      let errorMessage = `HTTP error! status: ${response.status}`
+      try {
+        const errorData = await response.json()
+        errorMessage = errorData.error || errorData.message || errorMessage
+      } catch {
+        try {
+          const errorText = await response.text()
+          errorMessage = errorText || errorMessage
+        } catch {
+        }
+      }
+      throw new Error(errorMessage)
     }
 
     return response.json()
