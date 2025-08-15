@@ -254,13 +254,24 @@ const addMediaQueryListener = (
 
 // Public API
 let validatedThemes: Set<string> | null = null;
+let isInitializing = true;
 
 export const setValidatedThemes = (themeIds: string[]): void => {
   validatedThemes = new Set(themeIds);
+  isInitializing = false;
 };
 
 const isThemeAccessible = (themeId: string): boolean => {
-  // During initialization, allow default theme
+  // During initialization (before license data loads), trust the stored theme
+  // This prevents the theme from resetting on hard refresh
+  if (isInitializing && !validatedThemes) {
+    // Allow the stored theme temporarily during initialization
+    // It will be validated once license data loads
+    return true;
+  }
+  
+  // If we haven't received validation data yet but initialization is complete,
+  // only allow non-premium themes
   if (!validatedThemes) {
     const theme = getThemeById(themeId);
     return !theme?.isPremium;
