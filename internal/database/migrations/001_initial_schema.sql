@@ -22,7 +22,6 @@ CREATE TABLE IF NOT EXISTS instances (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     host TEXT NOT NULL,
-    port INTEGER NOT NULL,
     username TEXT NOT NULL,
     password_encrypted TEXT NOT NULL,
     is_active BOOLEAN DEFAULT 1,

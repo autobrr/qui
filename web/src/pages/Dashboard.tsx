@@ -76,7 +76,7 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
     pollingInterval: 5000 // Slower polling for dashboard
   })
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
-  const displayUrl = `${instance.host}:${instance.port}`
+  const displayUrl = instance.host
   
   // Show loading only on first load
   if (isLoading && !stats) {

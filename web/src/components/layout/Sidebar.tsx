@@ -10,7 +10,8 @@ import {
   Server, 
   Settings, 
   LogOut,
-  HardDrive
+  HardDrive,
+  Github
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -130,7 +131,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
         </div>
       </nav>
       
-      <div className="border-t border-sidebar-border p-3">
+      <div className="mt-auto space-y-3 p-3">
         <Button
           variant="ghost"
           className="w-full justify-start"
@@ -139,6 +140,29 @@ export function Sidebar({ onNavigate }: SidebarProps) {
           <LogOut className="mr-2 h-4 w-4" />
           Logout
         </Button>
+        
+        <Separator className="mx-3 mb-3" />
+        
+        <div className="flex items-center justify-between px-3 pb-3">
+          <p className="text-[10px] text-sidebar-foreground/40">
+            © {new Date().getFullYear()} autobrr • GPL-2.0-or-later
+          </p>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 text-sidebar-foreground/40 hover:text-sidebar-foreground"
+            asChild
+          >
+            <a 
+              href="https://github.com/autobrr/qui" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              aria-label="View on GitHub"
+            >
+              <Github className="h-3.5 w-3.5" />
+            </a>
+          </Button>
+        </div>
       </div>
     </div>
   )

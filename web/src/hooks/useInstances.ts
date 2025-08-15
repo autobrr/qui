@@ -20,9 +20,10 @@ export function useInstances() {
     mutationFn: (data: {
       name: string
       host: string
-      port: number
       username: string
       password: string
+      basicUsername?: string
+      basicPassword?: string
     }) => api.createInstance(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['instances'] })
@@ -35,9 +36,10 @@ export function useInstances() {
       data: Partial<{
         name: string
         host: string
-        port: number
         username: string
         password: string
+        basicUsername?: string
+        basicPassword?: string
       }>
     }) => api.updateInstance(id, data),
     onSuccess: () => {

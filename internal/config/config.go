@@ -21,12 +21,12 @@ import (
 )
 
 type AppConfig struct {
-	Config       *domain.Config
-	viper        *viper.Viper
-	databasePath string
+	Config  *domain.Config
+	viper   *viper.Viper
+	dataDir string
 }
 
-func New(configPath string) (*AppConfig, error) {
+func New(configDirOrPath string) (*AppConfig, error) {
 	c := &AppConfig{
 		viper:  viper.New(),
 		Config: &domain.Config{},
@@ -36,7 +36,7 @@ func New(configPath string) (*AppConfig, error) {
 	c.defaults()
 
 	// Load from config file
-	if err := c.load(configPath); err != nil {
+	if err := c.load(configDirOrPath); err != nil {
 		return nil, err
 	}
 
@@ -47,6 +47,9 @@ func New(configPath string) (*AppConfig, error) {
 	if err := c.viper.Unmarshal(c.Config); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
+
+	// Resolve data directory after config is unmarshaled
+	c.resolveDataDir()
 
 	// Watch for config changes
 	c.watchConfig()
@@ -62,7 +65,12 @@ func (c *AppConfig) defaults() {
 	}
 
 	// Generate secure session secret if not provided
-	sessionSecret := generateSecureToken(32)
+	sessionSecret, err := generateSecureToken(encryptionKeySize)
+	if err != nil {
+		// Log error but continue with a fallback
+		log.Error().Err(err).Msg("Failed to generate secure session secret, using fallback")
+		sessionSecret = "change-me-" + fmt.Sprintf("%d", os.Getpid())
+	}
 
 	c.viper.SetDefault("host", host)
 	c.viper.SetDefault("port", 8080)
@@ -70,6 +78,7 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("sessionSecret", sessionSecret)
 	c.viper.SetDefault("logLevel", "INFO")
 	c.viper.SetDefault("logPath", "")
+	c.viper.SetDefault("dataDir", "") // Empty means auto-detect (next to config file)
 	c.viper.SetDefault("pprofEnabled", false)
 
 	// HTTP timeout defaults - increased for large qBittorrent instances
@@ -78,11 +87,12 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("httpTimeouts.idleTimeout", 180)  // 180 seconds
 }
 
-func (c *AppConfig) load(configPath string) error {
+func (c *AppConfig) load(configDirOrPath string) error {
 	c.viper.SetConfigType("toml")
 
-	if configPath != "" {
-		// Use provided config path from --config flag
+	if configDirOrPath != "" {
+		// Determine if this is a directory or file path
+		configPath := c.resolveConfigPath(configDirOrPath)
 		c.viper.SetConfigFile(configPath)
 
 		// Try to read the config
@@ -96,10 +106,6 @@ func (c *AppConfig) load(configPath string) error {
 				if err := c.viper.ReadInConfig(); err != nil {
 					return fmt.Errorf("failed to read newly created config: %w", err)
 				}
-				// Explicitly set database path for newly created config
-				configDir := filepath.Dir(configPath)
-				c.databasePath = filepath.Join(configDir, "qui.db")
-				log.Info().Msgf("Database path set to: %s (new config)", c.databasePath)
 				return nil
 			}
 			return fmt.Errorf("failed to read config: %w", err)
@@ -123,25 +129,13 @@ func (c *AppConfig) load(configPath string) error {
 				if err := c.viper.ReadInConfig(); err != nil {
 					return fmt.Errorf("failed to read newly created config: %w", err)
 				}
-				// Explicitly set database path for newly created config
+				// Explicitly set data directory for newly created config
 				configDir := filepath.Dir(defaultConfigPath)
-				c.databasePath = filepath.Join(configDir, "qui.db")
-				log.Info().Msgf("Database path set to: %s (new config)", c.databasePath)
+				c.dataDir = configDir
 				return nil
 			}
 			return fmt.Errorf("failed to read config: %w", err)
 		}
-	}
-
-	// Set database path to be next to the config file
-	if c.viper.ConfigFileUsed() != "" {
-		configDir := filepath.Dir(c.viper.ConfigFileUsed())
-		c.databasePath = filepath.Join(configDir, "qui.db")
-		log.Info().Msgf("Database path set to: %s (existing config)", c.databasePath)
-	} else {
-		// Fallback to current directory if no config file
-		c.databasePath = "qui.db"
-		log.Warn().Msg("No config file found, using current directory for database")
 	}
 
 	return nil
@@ -158,6 +152,7 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("sessionSecret", "QUI__SESSION_SECRET")
 	c.viper.BindEnv("logLevel", "QUI__LOG_LEVEL")
 	c.viper.BindEnv("logPath", "QUI__LOG_PATH")
+	c.viper.BindEnv("dataDir", "QUI__DATA_DIR")
 	c.viper.BindEnv("pprofEnabled", "QUI__PPROF_ENABLED")
 
 	// HTTP timeout environment variables
@@ -233,6 +228,10 @@ sessionSecret = "{{ .sessionSecret }}"
 # If not defined, logs to stdout
 # Optional
 #logPath = "log/qui.log"
+
+# Data directory (default: next to config file)
+# Database file (qui.db) will be created inside this directory
+#dataDir = "/var/db/qui"
 
 # Log level
 # Default: "INFO"
@@ -330,14 +329,12 @@ func detectContainer() bool {
 	return false
 }
 
-func generateSecureToken(length int) string {
+func generateSecureToken(length int) (string, error) {
 	bytes := make([]byte, length)
 	if _, err := rand.Read(bytes); err != nil {
-		// Fallback to a less secure method if crypto/rand fails
-		log.Warn().Err(err).Msg("Failed to generate secure token, using fallback")
-		return "change-me-" + fmt.Sprintf("%d", os.Getpid())
+		return "", fmt.Errorf("failed to generate secure token: %w", err)
 	}
-	return hex.EncodeToString(bytes)
+	return hex.EncodeToString(bytes), nil
 }
 
 func setLogLevel(level string) {
@@ -375,9 +372,47 @@ func setupLogFile(path string) error {
 	return nil
 }
 
+// resolveConfigPath determines the actual config file path from the provided directory or file path
+func (c *AppConfig) resolveConfigPath(configDirOrPath string) string {
+	// Check if it's a direct file path (ends with .toml) - backward compatibility
+	if strings.HasSuffix(strings.ToLower(configDirOrPath), ".toml") {
+		return configDirOrPath
+	}
+
+	// Check if the path points to an existing file (backward compatibility)
+	if info, err := os.Stat(configDirOrPath); err == nil && !info.IsDir() {
+		return configDirOrPath
+	}
+
+	// Treat as directory path and append config.toml
+	return filepath.Join(configDirOrPath, "config.toml")
+}
+
+// resolveDataDir sets the data directory based on configuration
+func (c *AppConfig) resolveDataDir() {
+	switch {
+	case c.Config.DataDir != "":
+		c.dataDir = c.Config.DataDir
+	case c.viper.ConfigFileUsed() != "":
+		c.dataDir = filepath.Dir(c.viper.ConfigFileUsed())
+	default:
+		c.dataDir = "."
+	}
+}
+
 // GetDatabasePath returns the path to the database file
 func (c *AppConfig) GetDatabasePath() string {
-	return c.databasePath
+	return filepath.Join(c.dataDir, "qui.db")
+}
+
+// GetDataDir returns the data directory path
+func (c *AppConfig) GetDataDir() string {
+	return c.dataDir
+}
+
+// SetDataDir sets the data directory (used by CLI flags)
+func (c *AppConfig) SetDataDir(dir string) {
+	c.dataDir = dir
 }
 
 // ApplyLogConfig applies the log level and log file configuration
@@ -393,17 +428,19 @@ func (c *AppConfig) ApplyLogConfig() {
 	}
 }
 
+const encryptionKeySize = 32
+
 // GetEncryptionKey derives a 32-byte encryption key from the session secret
 func (c *AppConfig) GetEncryptionKey() []byte {
 	// Use first 32 bytes of session secret as encryption key
 	// In production, you might want to derive this differently
 	secret := c.Config.SessionSecret
-	if len(secret) >= 32 {
-		return []byte(secret[:32])
+	if len(secret) >= encryptionKeySize {
+		return []byte(secret[:encryptionKeySize])
 	}
 
 	// Pad the secret if it's too short
-	padded := make([]byte, 32)
+	padded := make([]byte, encryptionKeySize)
 	copy(padded, []byte(secret))
 	return padded
 }
