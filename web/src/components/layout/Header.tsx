@@ -46,9 +46,7 @@ export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
     return Number.isFinite(parsed) ? parsed : null
   }, [instanceId])
   const isInstanceRoute = selectedInstanceId !== null
-  
-  // Check if we're NOT on an instance-specific route (where TorrentCardsMobile would be shown)
-  // Show "qui" on mobile for all routes except /instances/$instanceId
+
   const shouldShowQuiOnMobile = !isInstanceRoute
   const [searchValue, setSearchValue] = useState<string>(routeSearch?.q || '')
   const debouncedSearch = useDebounce(searchValue, 1000)
@@ -85,7 +83,7 @@ export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
         <h1 className={cn(
           "text-xl font-semibold transition-opacity duration-300",
           shouldShowQuiOnMobile ? "block sm:hidden pl-4" : "hidden", // Show 'qui' on mobile for non-instance routes
-          sidebarCollapsed && "sm:block" // Visible on desktop when sidebar is collapsed
+          sidebarCollapsed && "sm:block"
         )}>{instanceName ? `qui - ${instanceName}` : 'qui'}</h1>
         {isInstanceRoute && (
           <div className="ml-2 hidden sm:block">

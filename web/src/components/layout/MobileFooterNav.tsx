@@ -45,7 +45,6 @@ export function MobileFooterNav() {
     : null
   const currentInstance = instances?.find(i => i.id.toString() === currentInstanceId)
 
-  // Hide footer nav when selection mode is active
   if (isSelectionMode) {
     return null
   }
