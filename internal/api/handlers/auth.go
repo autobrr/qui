@@ -9,11 +9,12 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/autobrr/qui/internal/auth"
-	"github.com/autobrr/qui/internal/models"
 	"github.com/go-chi/chi/v5"
 	"github.com/gorilla/sessions"
 	"github.com/rs/zerolog/log"
+
+	"github.com/autobrr/qui/internal/auth"
+	"github.com/autobrr/qui/internal/models"
 )
 
 type AuthHandler struct {
@@ -86,16 +87,17 @@ func (h *AuthHandler) Setup(w http.ResponseWriter, r *http.Request) {
 	session.Values["username"] = user.Username
 
 	// Configure cookie security
+	isSecure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
+
 	session.Options = &sessions.Options{
 		Path:     "/",
 		MaxAge:   86400 * 7, // 7 days
 		HttpOnly: true,
+		Secure:   isSecure,
 		SameSite: http.SameSiteLaxMode,
 	}
 
-	// If behind reverse proxy with HTTPS, upgrade security
-	if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
-		session.Options.Secure = true
+	if isSecure {
 		session.Options.SameSite = http.SameSiteStrictMode
 	}
 
@@ -145,16 +147,17 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	session.Values["username"] = user.Username
 
 	// Configure cookie security
+	isSecure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
+
 	session.Options = &sessions.Options{
 		Path:     "/",
 		MaxAge:   86400 * 7, // 7 days
 		HttpOnly: true,
+		Secure:   isSecure,
 		SameSite: http.SameSiteLaxMode,
 	}
 
-	// If behind reverse proxy with HTTPS, upgrade security
-	if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
-		session.Options.Secure = true
+	if isSecure {
 		session.Options.SameSite = http.SameSiteStrictMode
 	}
 
