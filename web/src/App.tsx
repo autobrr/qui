@@ -10,6 +10,7 @@ import { useEffect } from 'react'
 import { initializeTheme } from '@/utils/theme'
 import { initializePWANativeTheme } from '@/utils/pwaNativeTheme'
 import { Toaster } from '@/components/ui/sonner'
+import { ThemeValidator } from '@/components/themes/ThemeValidator'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -28,6 +29,7 @@ function App() {
   
   return (
     <QueryClientProvider client={queryClient}>
+      <ThemeValidator />
       <RouterProvider router={router} />
       <Toaster />
     </QueryClientProvider>

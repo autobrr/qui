@@ -10,6 +10,7 @@ import { themes, isThemePremium, type Theme } from '@/config/themes'
 import { useHasPremiumAccess } from '@/hooks/useThemeLicense'
 import { useTheme } from '@/hooks/useTheme'
 import { Sparkles, Lock, Check, Palette } from 'lucide-react'
+import { toast } from 'sonner'
 
 interface ThemeCardProps {
   theme: Theme
@@ -131,6 +132,10 @@ export function ThemeSelector() {
   const handleThemeSelect = (themeId: string) => {
     if (isThemeLicensed(themeId)) {
       setTheme(themeId)
+    } else {
+      toast.error('This theme requires a premium license', {
+        description: 'Please purchase a license to access premium themes',
+      })
     }
   }
   
