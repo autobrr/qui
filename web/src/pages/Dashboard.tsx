@@ -226,16 +226,18 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs text-muted-foreground">Total</span>
-                <span className="text-xs text-muted-foreground">Active</span>
+            <div className="mb-4">
+              <div className="flex items-center justify-center mb-1">
+                <span className="flex-1 text-center text-xs text-muted-foreground">Active</span>
+                <span className="flex-1 text-center text-xs text-muted-foreground">Paused</span>
+                <span className="flex-1 text-center text-xs text-muted-foreground">Error</span>
+                <span className="flex-1 text-center text-xs text-muted-foreground">Total</span>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-lg font-semibold">{stats.torrents.total}</span>
-                <span className="text-lg font-semibold">
-                  {(stats.torrents.downloading || 0) + (stats.torrents.seeding || 0)}
-                </span>
+              <div className="flex items-center justify-center">
+                <span className="flex-1 text-center text-lg font-semibold">{(stats.torrents.downloading || 0) + (stats.torrents.seeding || 0)}</span>
+                <span className="flex-1 text-center text-lg font-semibold">{stats.torrents.paused}</span>
+                <span className="flex-1 text-center text-lg font-semibold">{stats.torrents.error}</span>
+                <span className="flex-1 text-center text-lg font-semibold">{stats.torrents.total}</span>
               </div>
             </div>
             
