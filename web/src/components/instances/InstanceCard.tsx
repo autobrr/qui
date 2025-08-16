@@ -86,61 +86,68 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-start justify-between space-y-0">
-        <div>
-          <CardTitle className="text-base font-medium">
-            {instance.name}
-          </CardTitle>
-          <CardDescription className="flex items-center gap-1 text-sm">
-            <span className={incognitoMode ? "blur-sm select-none" : ""}>{displayUrl}</span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-4 w-4 p-0 hover:bg-muted/50"
-              onClick={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                setIncognitoMode(!incognitoMode)
-              }}
+      <div>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
+          <div>
+            <CardTitle className="text-base font-medium">
+              {instance.name}
+            </CardTitle>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge 
+              variant={instance.connected ? "default" : "destructive"}
             >
-              {incognitoMode ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-            </Button>
-          </CardDescription>
-        </div>
-        <div className="flex items-center gap-2">
-          <Badge 
-            variant={instance.connected ? "default" : "destructive"}
+              {instance.connected ? 'Connected' : 'Disconnected'}
+            </Badge>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={onEdit}>
+                  <Edit className="mr-2 h-4 w-4" />
+                  Edit
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleTest} disabled={isTesting}>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Test Connection
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem 
+                  onClick={handleDelete} 
+                  disabled={isDeleting}
+                  className="text-destructive"
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </CardHeader>
+        <CardDescription className="flex items-center gap-1 text-sm pl-6 pr-8">
+          <span
+            className={incognitoMode ? "blur-sm select-none truncate" : "truncate"}
+            title={displayUrl}
           >
-            {instance.connected ? 'Connected' : 'Disconnected'}
-          </Badge>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                <MoreVertical className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={onEdit}>
-                <Edit className="mr-2 h-4 w-4" />
-                Edit
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleTest} disabled={isTesting}>
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Test Connection
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem 
-                onClick={handleDelete} 
-                disabled={isDeleting}
-                className="text-destructive"
-              >
-                <Trash2 className="mr-2 h-4 w-4" />
-                Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </CardHeader>
+            {displayUrl}
+          </span>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-4 w-4 hover:bg-muted/50"
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              setIncognitoMode(!incognitoMode)
+            }}
+          >
+            {incognitoMode ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+          </Button>
+        </CardDescription>
+      </div>
       <CardContent>
         <div className="space-y-1 text-sm">
           <div className="flex justify-between">
