@@ -4,6 +4,7 @@
 package models
 
 import (
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -135,7 +136,7 @@ func validateAndNormalizeHost(rawHost string) (string, error) {
 	return u.String(), nil
 }
 
-func (s *InstanceStore) Create(name, rawHost, username, password string, basicUsername, basicPassword *string) (*Instance, error) {
+func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, password string, basicUsername, basicPassword *string) (*Instance, error) {
 	// Validate and normalize the host
 	normalizedHost, err := validateAndNormalizeHost(rawHost)
 	if err != nil {
@@ -164,7 +165,7 @@ func (s *InstanceStore) Create(name, rawHost, username, password string, basicUs
 	`
 
 	instance := &Instance{}
-	err = s.db.QueryRow(query, name, normalizedHost, username, encryptedPassword, basicUsername, encryptedBasicPassword).Scan(
+	err = s.db.QueryRowContext(ctx, query, name, normalizedHost, username, encryptedPassword, basicUsername, encryptedBasicPassword).Scan(
 		&instance.ID,
 		&instance.Name,
 		&instance.Host,
@@ -185,7 +186,7 @@ func (s *InstanceStore) Create(name, rawHost, username, password string, basicUs
 	return instance, nil
 }
 
-func (s *InstanceStore) Get(id int) (*Instance, error) {
+func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 	query := `
 		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, is_active, last_connected_at, created_at, updated_at 
 		FROM instances 
@@ -193,7 +194,7 @@ func (s *InstanceStore) Get(id int) (*Instance, error) {
 	`
 
 	instance := &Instance{}
-	err := s.db.QueryRow(query, id).Scan(
+	err := s.db.QueryRowContext(ctx, query, id).Scan(
 		&instance.ID,
 		&instance.Name,
 		&instance.Host,
@@ -207,17 +208,17 @@ func (s *InstanceStore) Get(id int) (*Instance, error) {
 		&instance.UpdatedAt,
 	)
 
-	if err == sql.ErrNoRows {
-		return nil, ErrInstanceNotFound
-	}
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrInstanceNotFound
+		}
 		return nil, err
 	}
 
 	return instance, nil
 }
 
-func (s *InstanceStore) List(activeOnly bool) ([]*Instance, error) {
+func (s *InstanceStore) List(ctx context.Context, activeOnly bool) ([]*Instance, error) {
 	query := `
 		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, is_active, last_connected_at, created_at, updated_at 
 		FROM instances
@@ -229,7 +230,7 @@ func (s *InstanceStore) List(activeOnly bool) ([]*Instance, error) {
 
 	query += " ORDER BY name ASC"
 
-	rows, err := s.db.Query(query)
+	rows, err := s.db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -260,7 +261,7 @@ func (s *InstanceStore) List(activeOnly bool) ([]*Instance, error) {
 	return instances, rows.Err()
 }
 
-func (s *InstanceStore) Update(id int, name, rawHost, username, password string, basicUsername, basicPassword *string) (*Instance, error) {
+func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, username, password string, basicUsername, basicPassword *string) (*Instance, error) {
 	// Validate and normalize the host
 	normalizedHost, err := validateAndNormalizeHost(rawHost)
 	if err != nil {
@@ -297,7 +298,7 @@ func (s *InstanceStore) Update(id int, name, rawHost, username, password string,
 	query += " WHERE id = ?"
 	args = append(args, id)
 
-	result, err := s.db.Exec(query, args...)
+	result, err := s.db.ExecContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -311,13 +312,13 @@ func (s *InstanceStore) Update(id int, name, rawHost, username, password string,
 		return nil, ErrInstanceNotFound
 	}
 
-	return s.Get(id)
+	return s.Get(ctx, id)
 }
 
-func (s *InstanceStore) UpdateActive(id int, isActive bool) error {
+func (s *InstanceStore) UpdateActive(ctx context.Context, id int, isActive bool) error {
 	query := `UPDATE instances SET is_active = ? WHERE id = ?`
 
-	result, err := s.db.Exec(query, isActive, id)
+	result, err := s.db.ExecContext(ctx, query, isActive, id)
 	if err != nil {
 		return err
 	}
@@ -334,10 +335,10 @@ func (s *InstanceStore) UpdateActive(id int, isActive bool) error {
 	return nil
 }
 
-func (s *InstanceStore) UpdateLastConnected(id int) error {
+func (s *InstanceStore) UpdateLastConnected(ctx context.Context, id int) error {
 	query := `UPDATE instances SET last_connected_at = CURRENT_TIMESTAMP WHERE id = ?`
 
-	result, err := s.db.Exec(query, id)
+	result, err := s.db.ExecContext(ctx, query, id)
 	if err != nil {
 		return err
 	}
@@ -354,10 +355,10 @@ func (s *InstanceStore) UpdateLastConnected(id int) error {
 	return nil
 }
 
-func (s *InstanceStore) Delete(id int) error {
+func (s *InstanceStore) Delete(ctx context.Context, id int) error {
 	query := `DELETE FROM instances WHERE id = ?`
 
-	result, err := s.db.Exec(query, id)
+	result, err := s.db.ExecContext(ctx, query, id)
 	if err != nil {
 		return err
 	}

@@ -4,6 +4,7 @@
 package models
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
@@ -47,7 +48,7 @@ func HashAPIKey(key string) string {
 	return hex.EncodeToString(hash[:])
 }
 
-func (s *APIKeyStore) Create(name string) (string, *APIKey, error) {
+func (s *APIKeyStore) Create(ctx context.Context, name string) (string, *APIKey, error) {
 	// Generate new API key
 	rawKey, err := GenerateAPIKey()
 	if err != nil {
@@ -64,7 +65,7 @@ func (s *APIKeyStore) Create(name string) (string, *APIKey, error) {
 	`
 
 	apiKey := &APIKey{}
-	err = s.db.QueryRow(query, keyHash, name).Scan(
+	err = s.db.QueryRowContext(ctx, query, keyHash, name).Scan(
 		&apiKey.ID,
 		&apiKey.KeyHash,
 		&apiKey.Name,
@@ -80,7 +81,7 @@ func (s *APIKeyStore) Create(name string) (string, *APIKey, error) {
 	return rawKey, apiKey, nil
 }
 
-func (s *APIKeyStore) GetByHash(keyHash string) (*APIKey, error) {
+func (s *APIKeyStore) GetByHash(ctx context.Context, keyHash string) (*APIKey, error) {
 	query := `
 		SELECT id, key_hash, name, created_at, last_used_at 
 		FROM api_keys 
@@ -88,7 +89,7 @@ func (s *APIKeyStore) GetByHash(keyHash string) (*APIKey, error) {
 	`
 
 	apiKey := &APIKey{}
-	err := s.db.QueryRow(query, keyHash).Scan(
+	err := s.db.QueryRowContext(ctx, query, keyHash).Scan(
 		&apiKey.ID,
 		&apiKey.KeyHash,
 		&apiKey.Name,
@@ -96,24 +97,25 @@ func (s *APIKeyStore) GetByHash(keyHash string) (*APIKey, error) {
 		&apiKey.LastUsedAt,
 	)
 
-	if err == sql.ErrNoRows {
-		return nil, ErrAPIKeyNotFound
-	}
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrAPIKeyNotFound
+		}
+
 		return nil, err
 	}
 
 	return apiKey, nil
 }
 
-func (s *APIKeyStore) List() ([]*APIKey, error) {
+func (s *APIKeyStore) List(ctx context.Context) ([]*APIKey, error) {
 	query := `
 		SELECT id, key_hash, name, created_at, last_used_at 
 		FROM api_keys 
 		ORDER BY created_at DESC
 	`
 
-	rows, err := s.db.Query(query)
+	rows, err := s.db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -138,14 +140,14 @@ func (s *APIKeyStore) List() ([]*APIKey, error) {
 	return keys, rows.Err()
 }
 
-func (s *APIKeyStore) UpdateLastUsed(id int) error {
+func (s *APIKeyStore) UpdateLastUsed(ctx context.Context, id int) error {
 	query := `
 		UPDATE api_keys 
 		SET last_used_at = CURRENT_TIMESTAMP 
 		WHERE id = ?
 	`
 
-	result, err := s.db.Exec(query, id)
+	result, err := s.db.ExecContext(ctx, query, id)
 	if err != nil {
 		return err
 	}
@@ -162,10 +164,10 @@ func (s *APIKeyStore) UpdateLastUsed(id int) error {
 	return nil
 }
 
-func (s *APIKeyStore) Delete(id int) error {
+func (s *APIKeyStore) Delete(ctx context.Context, id int) error {
 	query := `DELETE FROM api_keys WHERE id = ?`
 
-	result, err := s.db.Exec(query, id)
+	result, err := s.db.ExecContext(ctx, query, id)
 	if err != nil {
 		return err
 	}
@@ -183,10 +185,10 @@ func (s *APIKeyStore) Delete(id int) error {
 }
 
 // ValidateAPIKey validates a raw API key and returns the associated APIKey if valid
-func (s *APIKeyStore) ValidateAPIKey(rawKey string) (*APIKey, error) {
+func (s *APIKeyStore) ValidateAPIKey(ctx context.Context, rawKey string) (*APIKey, error) {
 	keyHash := HashAPIKey(rawKey)
 
-	apiKey, err := s.GetByHash(keyHash)
+	apiKey, err := s.GetByHash(ctx, keyHash)
 	if err != nil {
 		if errors.Is(err, ErrAPIKeyNotFound) {
 			return nil, ErrInvalidAPIKey
@@ -196,7 +198,7 @@ func (s *APIKeyStore) ValidateAPIKey(rawKey string) (*APIKey, error) {
 
 	// Update last used timestamp asynchronously
 	go func() {
-		_ = s.UpdateLastUsed(apiKey.ID)
+		_ = s.UpdateLastUsed(ctx, apiKey.ID)
 	}()
 
 	return apiKey, nil

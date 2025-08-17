@@ -22,23 +22,23 @@ import (
 
 // CacheMetadata provides information about cache state
 type CacheMetadata struct {
-	Source  string    `json:"source"`  // "cache" or "fresh"
-	Age     int       `json:"age"`     // Age in seconds
-	IsStale bool      `json:"isStale"` // Whether data is stale
+	Source      string    `json:"source"`                // "cache" or "fresh"
+	Age         int       `json:"age"`                   // Age in seconds
+	IsStale     bool      `json:"isStale"`               // Whether data is stale
 	NextRefresh time.Time `json:"nextRefresh,omitempty"` // When next refresh will occur
 }
 
 // TorrentResponse represents a response containing torrents with stats and cache metadata
 type TorrentResponse struct {
-	Torrents []qbt.Torrent `json:"torrents"`
-	Total    int           `json:"total"`
-	Stats    *TorrentStats `json:"stats,omitempty"`
-	Counts   *TorrentCounts `json:"counts,omitempty"` // Include counts for sidebar
-	Categories map[string]qbt.Category `json:"categories,omitempty"` // Include categories for sidebar
-	Tags     []string `json:"tags,omitempty"` // Include tags for sidebar
-	CacheMetadata *CacheMetadata `json:"cacheMetadata,omitempty"` // Cache state information
-	HasMore  bool          `json:"hasMore"`    // Whether more pages are available
-	SessionID string       `json:"sessionId,omitempty"` // Optional session tracking
+	Torrents      []qbt.Torrent           `json:"torrents"`
+	Total         int                     `json:"total"`
+	Stats         *TorrentStats           `json:"stats,omitempty"`
+	Counts        *TorrentCounts          `json:"counts,omitempty"`        // Include counts for sidebar
+	Categories    map[string]qbt.Category `json:"categories,omitempty"`    // Include categories for sidebar
+	Tags          []string                `json:"tags,omitempty"`          // Include tags for sidebar
+	CacheMetadata *CacheMetadata          `json:"cacheMetadata,omitempty"` // Cache state information
+	HasMore       bool                    `json:"hasMore"`                 // Whether more pages are available
+	SessionID     string                  `json:"sessionId,omitempty"`     // Optional session tracking
 }
 
 // TorrentStats represents aggregated torrent statistics
@@ -84,7 +84,7 @@ func (sm *SyncManager) InitialLoad(ctx context.Context, instanceID int, limit, o
 	}
 
 	// Get client
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
@@ -192,7 +192,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	// No longer caching filtered results - always compute from all_torrents cache
 	// This ensures optimistic updates are always reflected
 	cacheKey := fmt.Sprintf("torrents:filtered:%d:%d:%d:%s:%s:%s:%+v", instanceID, offset, limit, sort, order, search, filters)
-	
+
 	// Always fetch from all_torrents cache and apply filters
 	// This uses the optimistically updated cache as the single source of truth
 	return sm.fetchFreshTorrentData(ctx, instanceID, limit, offset, sort, order, search, filters, cacheKey)
@@ -214,7 +214,7 @@ func (sm *SyncManager) fetchFreshTorrentData(ctx context.Context, instanceID int
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrents: %w", err)
 	}
-	
+
 	log.Debug().
 		Int("instanceID", instanceID).
 		Int("totalCount", len(allTorrents)).
@@ -224,12 +224,12 @@ func (sm *SyncManager) fetchFreshTorrentData(ctx context.Context, instanceID int
 	// Now we always have all torrents from getAllTorrentsForStats
 	// Just apply filters in-memory (this is fast and uses the smart cached data)
 	filteredTorrents = sm.applyFilters(allTorrents, filters)
-	
+
 	// Apply search filter if provided
 	if search != "" {
 		filteredTorrents = sm.filterTorrentsBySearch(filteredTorrents, search)
 	}
-	
+
 	log.Debug().
 		Int("instanceID", instanceID).
 		Int("filtered", len(filteredTorrents)).
@@ -277,18 +277,18 @@ func (sm *SyncManager) fetchFreshTorrentData(ctx context.Context, instanceID int
 	if isFromCache {
 		cacheSource = "cache"
 	}
-	
+
 	response := &TorrentResponse{
-		Torrents: paginatedTorrents,
-		Total:    len(filteredTorrents),
-		Stats:    stats,
-		Counts:   counts,  // Include counts for sidebar
+		Torrents:   paginatedTorrents,
+		Total:      len(filteredTorrents),
+		Stats:      stats,
+		Counts:     counts,     // Include counts for sidebar
 		Categories: categories, // Include categories for sidebar
-		Tags:     tags,     // Include tags for sidebar
-		HasMore:  hasMore,
+		Tags:       tags,       // Include tags for sidebar
+		HasMore:    hasMore,
 		CacheMetadata: &CacheMetadata{
 			Source:  cacheSource,
-			Age:     0, // TODO: Track actual cache age if needed
+			Age:     0,     // TODO: Track actual cache age if needed
 			IsStale: false, // With our current design, cached data is never stale
 		},
 	}
@@ -316,7 +316,7 @@ func (sm *SyncManager) GetUpdates(ctx context.Context, instanceID int) (*qbt.Mai
 	sm.mu.Unlock()
 
 	// Get client
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
@@ -360,7 +360,7 @@ func (sm *SyncManager) GetFilteredTorrents(ctx context.Context, instanceID int, 
 	}
 
 	// Get client
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
@@ -395,7 +395,7 @@ func (sm *SyncManager) GetFilteredTorrents(ctx context.Context, instanceID int, 
 // BulkAction performs bulk operations on torrents
 func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []string, action string) error {
 	// Get client
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to get client: %w", err)
 	}
@@ -452,7 +452,7 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 // AddTorrent adds a new torrent from file content
 func (sm *SyncManager) AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) error {
 	// Get client
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to get client: %w", err)
 	}
@@ -464,7 +464,7 @@ func (sm *SyncManager) AddTorrent(ctx context.Context, instanceID int, fileConte
 // AddTorrentFromURLs adds new torrents from URLs or magnet links
 func (sm *SyncManager) AddTorrentFromURLs(ctx context.Context, instanceID int, urls []string, options map[string]string) error {
 	// Get client
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to get client: %w", err)
 	}
@@ -475,12 +475,12 @@ func (sm *SyncManager) AddTorrentFromURLs(ctx context.Context, instanceID int, u
 		if url == "" {
 			continue
 		}
-		
+
 		if err := client.AddTorrentFromUrlCtx(ctx, url, options); err != nil {
 			return fmt.Errorf("failed to add torrent from URL %s: %w", url, err)
 		}
 	}
-	
+
 	return nil
 }
 
@@ -495,7 +495,7 @@ func (sm *SyncManager) GetCategories(ctx context.Context, instanceID int) (map[s
 	}
 
 	// Get client
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
@@ -523,7 +523,7 @@ func (sm *SyncManager) GetTags(ctx context.Context, instanceID int) ([]string, e
 	}
 
 	// Get client
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
@@ -555,7 +555,7 @@ func (sm *SyncManager) GetTorrentProperties(ctx context.Context, instanceID int,
 	}
 
 	// Get client
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
@@ -583,7 +583,7 @@ func (sm *SyncManager) GetTorrentTrackers(ctx context.Context, instanceID int, h
 	}
 
 	// Get client
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
@@ -611,7 +611,7 @@ func (sm *SyncManager) GetTorrentFiles(ctx context.Context, instanceID int, hash
 	}
 
 	// Get client
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
@@ -639,7 +639,7 @@ func (sm *SyncManager) GetTorrentWebSeeds(ctx context.Context, instanceID int, h
 	}
 
 	// Get client
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
@@ -751,16 +751,16 @@ func (sm *SyncManager) GetTorrentCounts(ctx context.Context, instanceID int) (*T
 	// IMPORTANT: We don't cache counts separately anymore
 	// Instead, we ALWAYS derive counts from the same cached torrent data that the table uses
 	// This ensures the sidebar and table are always in sync
-	
+
 	log.Debug().Int("instanceID", instanceID).Msg("GetTorrentCounts: fetching from getAllTorrentsForStats")
-	
+
 	// Get all torrents from the same cache the table uses
 	// This will use the dynamic TTL (2-60s based on instance speed)
 	allTorrents, err := sm.getAllTorrentsForStats(ctx, instanceID, "")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get all torrents for counts: %w", err)
 	}
-	
+
 	log.Debug().Int("instanceID", instanceID).Int("torrents", len(allTorrents)).Msg("GetTorrentCounts: got torrents from cache/API")
 
 	// Get categories and tags (cached for 60s)
@@ -881,31 +881,31 @@ func (sm *SyncManager) GetInstanceSpeeds(ctx context.Context, instanceID int) (*
 			return speeds, nil
 		}
 	}
-	
+
 	// Get client
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
-	
+
 	// Use GetTransferInfo - a lightweight API that returns just global speeds
 	// This doesn't fetch any torrents, making it perfect for dashboard stats
 	transferInfo, err := client.GetTransferInfoCtx(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get transfer info: %w", err)
 	}
-	
+
 	// Extract speeds from TransferInfo
 	speeds := &InstanceSpeeds{
 		Download: transferInfo.DlInfoSpeed,
 		Upload:   transferInfo.UpInfoSpeed,
 	}
-	
+
 	// Cache for 2 seconds (matches torrent data cache)
 	sm.cache.SetWithTTL(cacheKey, speeds, 1, 2*time.Second)
-	
+
 	log.Debug().Int("instanceID", instanceID).Int64("download", speeds.Download).Int64("upload", speeds.Upload).Msg("GetInstanceSpeeds: got from GetTransferInfo API")
-	
+
 	return speeds, nil
 }
 
@@ -921,7 +921,7 @@ func (sm *SyncManager) getTotalCount(ctx context.Context, instanceID int) int {
 	}
 
 	// Get client
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return 0
 	}
@@ -988,34 +988,34 @@ func (sm *SyncManager) InvalidateCache(instanceID int) {
 	// This prevents affecting other instances' caches
 	keysToDelete := []string{
 		// All torrents variations
-		fmt.Sprintf("all_torrents:%d:", instanceID), // Empty search
+		fmt.Sprintf("all_torrents:%d:", instanceID),  // Empty search
 		fmt.Sprintf("all_torrents:%d:*", instanceID), // With search
-		
+
 		// Paginated torrents
 		fmt.Sprintf("torrents:%d:", instanceID),
-		
+
 		// Filtered torrents
 		fmt.Sprintf("torrents:filtered:%d:", instanceID),
 		fmt.Sprintf("torrents:search:%d:", instanceID),
 		fmt.Sprintf("native_filtered:%d:", instanceID),
-		
+
 		// Metadata
 		fmt.Sprintf("categories:%d", instanceID),
 		fmt.Sprintf("tags:%d", instanceID),
-		
+
 		// Individual torrent data
 		fmt.Sprintf("torrent:properties:%d:", instanceID),
 		fmt.Sprintf("torrent:trackers:%d:", instanceID),
 		fmt.Sprintf("torrent:files:%d:", instanceID),
 		fmt.Sprintf("torrent:webseeds:%d:", instanceID),
 	}
-	
+
 	// Since Ristretto doesn't support wildcard/pattern deletion,
 	// we need to be more explicit about what we delete
 	for _, keyPrefix := range keysToDelete {
 		// Try to delete with common suffixes
 		sm.cache.Del(keyPrefix)
-		
+
 		// For paginated results, try to clear first few pages
 		if strings.Contains(keyPrefix, "torrents:") {
 			for page := 0; page < 10; page++ {
@@ -1025,15 +1025,15 @@ func (sm *SyncManager) InvalidateCache(instanceID int) {
 				}
 			}
 		}
-		
+
 		// For search results, we can't predict all search terms
 		// but we can clear common empty searches
 		if keyPrefix == fmt.Sprintf("all_torrents:%d:", instanceID) {
-			sm.cache.Del(keyPrefix) // Empty search
+			sm.cache.Del(keyPrefix)                                    // Empty search
 			sm.cache.Del(fmt.Sprintf("all_torrents:%d: ", instanceID)) // Space
 		}
 	}
-	
+
 	log.Debug().Int("instanceID", instanceID).Msg("Instance-specific cache invalidation completed")
 }
 
@@ -1063,7 +1063,7 @@ func (sm *SyncManager) applyOptimisticCacheUpdate(instanceID int, hashes []strin
 	// Get the cache key for all torrents
 	// Since we no longer cache filtered results, updating this cache affects all queries
 	cacheKey := fmt.Sprintf("all_torrents:%d:", instanceID)
-	
+
 	// Try to get cached torrents
 	if cached, found := sm.cache.Get(cacheKey); found {
 		if torrents, ok := cached.([]qbt.Torrent); ok {
@@ -1072,9 +1072,9 @@ func (sm *SyncManager) applyOptimisticCacheUpdate(instanceID int, hashes []strin
 			for _, hash := range hashes {
 				hashMap[strings.ToLower(hash)] = true
 			}
-			
+
 			var updatedTorrents []qbt.Torrent
-			
+
 			// Handle delete action - filter out deleted torrents
 			if action == "delete" {
 				for _, torrent := range torrents {
@@ -1099,7 +1099,7 @@ func (sm *SyncManager) applyOptimisticCacheUpdate(instanceID int, hashes []strin
 							// Clear speeds
 							torrent.DlSpeed = 0
 							torrent.UpSpeed = 0
-						
+
 						case "resume":
 							// Set to stalled state initially (will be corrected when real data comes)
 							if torrent.Progress < 1 {
@@ -1107,7 +1107,7 @@ func (sm *SyncManager) applyOptimisticCacheUpdate(instanceID int, hashes []strin
 							} else {
 								torrent.State = qbt.TorrentStateStalledUp
 							}
-						
+
 						case "recheck":
 							// Set to checking state
 							if torrent.Progress < 1 {
@@ -1118,12 +1118,12 @@ func (sm *SyncManager) applyOptimisticCacheUpdate(instanceID int, hashes []strin
 							// Clear speeds during checking
 							torrent.DlSpeed = 0
 							torrent.UpSpeed = 0
-						
+
 						case "setCategory":
 							if category, ok := payload["category"].(string); ok {
 								torrent.Category = category
 							}
-						
+
 						case "addTags":
 							if tags, ok := payload["tags"].(string); ok {
 								// Parse current tags
@@ -1141,7 +1141,7 @@ func (sm *SyncManager) applyOptimisticCacheUpdate(instanceID int, hashes []strin
 								}
 								torrent.Tags = strings.Join(currentTags, ", ")
 							}
-						
+
 						case "removeTags":
 							if tags, ok := payload["tags"].(string); ok {
 								// Parse current tags
@@ -1160,12 +1160,12 @@ func (sm *SyncManager) applyOptimisticCacheUpdate(instanceID int, hashes []strin
 								}
 								torrent.Tags = strings.Join(remainingTags, ", ")
 							}
-						
+
 						case "setTags":
 							if tags, ok := payload["tags"].(string); ok {
 								torrent.Tags = tags
 							}
-						
+
 						case "toggleAutoTMM":
 							// AutoTMM field might not be available in the Torrent struct
 							// Just log that we would update it
@@ -1179,7 +1179,7 @@ func (sm *SyncManager) applyOptimisticCacheUpdate(instanceID int, hashes []strin
 				}
 				log.Debug().Int("instanceID", instanceID).Int("updatedCount", len(hashes)).Str("action", action).Msg("Applied optimistic cache update")
 			}
-			
+
 			// Update cache with modified torrents
 			// Use a conservative 5 second TTL since we don't know the original TTL
 			sm.cache.SetWithTTL(cacheKey, updatedTorrents, 1, 5*time.Second)
@@ -1294,7 +1294,7 @@ func (sm *SyncManager) getNativeFilteredTorrents(ctx context.Context, instanceID
 	}
 
 	// Get client
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
@@ -1406,11 +1406,11 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 			return torrents, nil
 		}
 	}
-	
+
 	log.Debug().Int("instanceID", instanceID).Str("cacheKey", cacheKey).Msg("getAllTorrentsForStats: CACHE MISS")
 
 	// Get client
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
@@ -1419,7 +1419,7 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 	startTime := time.Now()
 
 	log.Debug().Int("instanceID", instanceID).Msg("getAllTorrentsForStats: Fetching from qBittorrent API")
-	
+
 	// Get all torrents
 	torrents, err := client.GetTorrentsCtx(ctx, qbt.TorrentFilterOptions{})
 	if err != nil {
@@ -1428,7 +1428,7 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 
 	// Calculate response time
 	responseTime := time.Since(startTime)
-	
+
 	log.Debug().Int("instanceID", instanceID).Int("torrents", len(torrents)).Dur("responseTime", responseTime).Msg("getAllTorrentsForStats: Fetched from qBittorrent")
 
 	// Dynamic cache TTL based on actual response time
@@ -1915,7 +1915,7 @@ func (sm *SyncManager) sortTorrents(torrents []qbt.Torrent, sortField, order str
 
 // AddTags adds tags to the specified torrents (keeps existing tags)
 func (sm *SyncManager) AddTags(ctx context.Context, instanceID int, hashes []string, tags string) error {
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to get client: %w", err)
 	}
@@ -1931,7 +1931,7 @@ func (sm *SyncManager) AddTags(ctx context.Context, instanceID int, hashes []str
 
 // RemoveTags removes specific tags from the specified torrents
 func (sm *SyncManager) RemoveTags(ctx context.Context, instanceID int, hashes []string, tags string) error {
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to get client: %w", err)
 	}
@@ -1948,7 +1948,7 @@ func (sm *SyncManager) RemoveTags(ctx context.Context, instanceID int, hashes []
 // SetTags sets tags on the specified torrents (replaces all existing tags)
 // This uses the new qBittorrent 5.1+ API if available, otherwise returns error
 func (sm *SyncManager) SetTags(ctx context.Context, instanceID int, hashes []string, tags string) error {
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to get client: %w", err)
 	}
@@ -1967,7 +1967,7 @@ func (sm *SyncManager) SetTags(ctx context.Context, instanceID int, hashes []str
 
 // SetCategory sets the category for the specified torrents
 func (sm *SyncManager) SetCategory(ctx context.Context, instanceID int, hashes []string, category string) error {
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to get client: %w", err)
 	}
@@ -1983,7 +1983,7 @@ func (sm *SyncManager) SetCategory(ctx context.Context, instanceID int, hashes [
 
 // SetAutoTMM sets the automatic torrent management for torrents
 func (sm *SyncManager) SetAutoTMM(ctx context.Context, instanceID int, hashes []string, enable bool) error {
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to get client: %w", err)
 	}
@@ -1999,7 +1999,7 @@ func (sm *SyncManager) SetAutoTMM(ctx context.Context, instanceID int, hashes []
 
 // CreateTags creates new tags
 func (sm *SyncManager) CreateTags(ctx context.Context, instanceID int, tags []string) error {
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to get client: %w", err)
 	}
@@ -2014,7 +2014,7 @@ func (sm *SyncManager) CreateTags(ctx context.Context, instanceID int, tags []st
 
 // DeleteTags deletes tags
 func (sm *SyncManager) DeleteTags(ctx context.Context, instanceID int, tags []string) error {
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to get client: %w", err)
 	}
@@ -2029,7 +2029,7 @@ func (sm *SyncManager) DeleteTags(ctx context.Context, instanceID int, tags []st
 
 // CreateCategory creates a new category
 func (sm *SyncManager) CreateCategory(ctx context.Context, instanceID int, name string, path string) error {
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to get client: %w", err)
 	}
@@ -2044,7 +2044,7 @@ func (sm *SyncManager) CreateCategory(ctx context.Context, instanceID int, name 
 
 // EditCategory edits an existing category
 func (sm *SyncManager) EditCategory(ctx context.Context, instanceID int, name string, path string) error {
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to get client: %w", err)
 	}
@@ -2059,7 +2059,7 @@ func (sm *SyncManager) EditCategory(ctx context.Context, instanceID int, name st
 
 // RemoveCategories removes categories
 func (sm *SyncManager) RemoveCategories(ctx context.Context, instanceID int, categories []string) error {
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to get client: %w", err)
 	}

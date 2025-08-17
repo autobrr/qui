@@ -84,7 +84,7 @@ func NewClientPool(instanceStore *models.InstanceStore) (*ClientPool, error) {
 }
 
 // GetClient returns a qBittorrent client for the given instance ID
-func (cp *ClientPool) GetClient(instanceID int) (*Client, error) {
+func (cp *ClientPool) GetClient(ctx context.Context, instanceID int) (*Client, error) {
 	cp.mu.RLock()
 	if cp.closed {
 		cp.mu.RUnlock()
@@ -99,11 +99,11 @@ func (cp *ClientPool) GetClient(instanceID int) (*Client, error) {
 	}
 
 	// Need to create or recreate the client
-	return cp.createClient(instanceID)
+	return cp.createClient(ctx, instanceID)
 }
 
 // createClient creates a new client connection
-func (cp *ClientPool) createClient(instanceID int) (*Client, error) {
+func (cp *ClientPool) createClient(ctx context.Context, instanceID int) (*Client, error) {
 	cp.mu.Lock()
 	defer cp.mu.Unlock()
 
@@ -118,7 +118,7 @@ func (cp *ClientPool) createClient(instanceID int) (*Client, error) {
 	}
 
 	// Get instance details
-	instance, err := cp.instanceStore.Get(instanceID)
+	instance, err := cp.instanceStore.Get(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get instance: %w", err)
 	}
@@ -152,7 +152,7 @@ func (cp *ClientPool) createClient(instanceID int) (*Client, error) {
 
 	// Update last connected timestamp
 	cp.dbMu.Lock()
-	if err := cp.instanceStore.UpdateLastConnected(instanceID); err != nil {
+	if err := cp.instanceStore.UpdateLastConnected(ctx, instanceID); err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to update last connected timestamp")
 	}
 	cp.dbMu.Unlock()
@@ -219,14 +219,14 @@ func (cp *ClientPool) performHealthChecks() {
 
 				// Mark as inactive in database (serialize DB updates)
 				cp.dbMu.Lock()
-				if err := cp.instanceStore.UpdateActive(instanceID, false); err != nil {
+				if err := cp.instanceStore.UpdateActive(ctx, instanceID, false); err != nil {
 					log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to update inactive status")
 				}
 				cp.dbMu.Unlock()
 
 				// Don't try to recreate if we're now in backoff
 				if !cp.isInBackoff(instanceID) {
-					if _, err := cp.createClient(instanceID); err != nil {
+					if _, err := cp.createClient(ctx, instanceID); err != nil {
 						log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to recreate client")
 					}
 				}
@@ -235,7 +235,7 @@ func (cp *ClientPool) performHealthChecks() {
 				cp.resetFailureTracking(instanceID)
 
 				cp.dbMu.Lock()
-				if err := cp.instanceStore.UpdateActive(instanceID, true); err != nil {
+				if err := cp.instanceStore.UpdateActive(ctx, instanceID, true); err != nil {
 					log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to update active status")
 				}
 				cp.dbMu.Unlock()

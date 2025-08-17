@@ -18,7 +18,7 @@ func IsAuthenticated(authService *auth.Service) func(http.Handler) http.Handler 
 			// Check for API key first
 			if apiKey := r.Header.Get("X-API-Key"); apiKey != "" {
 				// Validate API key
-				apiKeyModel, err := authService.ValidateAPIKey(apiKey)
+				apiKeyModel, err := authService.ValidateAPIKey(r.Context(), apiKey)
 				if err != nil {
 					log.Warn().Err(err).Msg("Invalid API key")
 					http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -54,7 +54,7 @@ func RequireSetup(authService *auth.Service) func(http.Handler) http.Handler {
 			}
 
 			// Check if setup is complete
-			complete, err := authService.IsSetupComplete()
+			complete, err := authService.IsSetupComplete(r.Context())
 			if err != nil {
 				log.Error().Err(err).Msg("Failed to check setup status")
 				http.Error(w, "Internal server error", http.StatusInternalServerError)
