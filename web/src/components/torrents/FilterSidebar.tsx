@@ -49,6 +49,7 @@ import {
   DeleteUnusedTagsDialog,
 } from './TagCategoryManagement'
 import { LINUX_CATEGORIES, LINUX_TAGS, LINUX_TRACKERS, useIncognitoMode } from '@/lib/incognito'
+import type { Category } from "@/types";
 
 interface FilterSidebarProps {
   instanceId: number
@@ -65,7 +66,7 @@ interface FilterSidebarProps {
     trackers: string[]
   }) => void
   torrentCounts?: Record<string, number>
-  categories?: Record<string, { name: string; savePath: string }>
+  categories?: Record<string, Category>
   tags?: string[]
   collapsed?: boolean
   onCollapsedChange?: (collapsed: boolean) => void

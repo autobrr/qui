@@ -12,7 +12,7 @@ import { VisuallyHidden } from '@/components/ui/visually-hidden'
 import { usePersistedFilters } from '@/hooks/usePersistedFilters'
 import { usePersistedFilterSidebarState } from '@/hooks/usePersistedFilterSidebarState'
 import { useNavigate, useSearch } from '@tanstack/react-router'
-import type { Torrent } from '@/types'
+import type { Category, Torrent, TorrentCounts } from '@/types'
 
 interface TorrentsProps {
   instanceId: number
@@ -26,7 +26,7 @@ export function Torrents({ instanceId }: TorrentsProps) {
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false)
   const navigate = useNavigate()
   const search = useSearch({ strict: false }) as any
-  
+
   // Debounced filter updates to prevent excessive API calls during rapid filter changes
   const filterTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const debouncedSetFilters = useCallback((newFilters: typeof filters) => {
@@ -37,30 +37,30 @@ export function Torrents({ instanceId }: TorrentsProps) {
       setFilters(newFilters)
     }, 150) // 150ms delay to batch rapid filter changes
   }, [setFilters])
-  
+
   // Check if add torrent modal should be open
   const isAddTorrentModalOpen = search?.modal === 'add-torrent'
-  
+
   const handleAddTorrentModalChange = (open: boolean) => {
     if (open) {
-      navigate({ 
+      navigate({
         search: { ...search, modal: 'add-torrent' },
-        replace: true 
+        replace: true
       })
     } else {
       const { modal, ...restSearch } = search || {}
-      navigate({ 
+      navigate({
         search: restSearch,
-        replace: true 
+        replace: true
       })
     }
   }
-  
+
   // Store counts from torrent response
   const [torrentCounts, setTorrentCounts] = useState<Record<string, number> | undefined>(undefined)
-  const [categories, setCategories] = useState<Record<string, { name: string; savePath: string }> | undefined>(undefined)
+  const [categories, setCategories] = useState<Record<string, Category> | undefined>(undefined)
   const [tags, setTags] = useState<string[] | undefined>(undefined)
-  
+
   const handleTorrentSelect = (torrent: Torrent | null) => {
     setSelectedTorrent(torrent)
   }
@@ -75,47 +75,39 @@ export function Torrents({ instanceId }: TorrentsProps) {
   }, [instanceId])
 
   // Callback when filtered data updates - now receives counts, categories, and tags from backend
-  const handleFilteredDataUpdate = useCallback((_torrents: Torrent[], _total: number, counts?: any, categoriesData?: any, tagsData?: string[]) => {
+  const handleFilteredDataUpdate = useCallback((_torrents: Torrent[], _total: number, counts?: TorrentCounts, categoriesData?: Record<string, Category>, tagsData?: string[]) => {
     if (counts) {
       // Transform backend counts to match the expected format for FilterSidebar
       const transformedCounts: Record<string, number> = {}
-      
+
       // Add status counts
       Object.entries(counts.status || {}).forEach(([status, count]) => {
         transformedCounts[`status:${status}`] = count as number
       })
-      
+
       // Add category counts
       Object.entries(counts.categories || {}).forEach(([category, count]) => {
         transformedCounts[`category:${category}`] = count as number
       })
-      
+
       // Add tag counts
       Object.entries(counts.tags || {}).forEach(([tag, count]) => {
         transformedCounts[`tag:${tag}`] = count as number
       })
-      
+
       // Add tracker counts
       Object.entries(counts.trackers || {}).forEach(([tracker, count]) => {
         transformedCounts[`tracker:${tracker}`] = count as number
       })
-      
+
       setTorrentCounts(transformedCounts)
     }
-    
+
     // Store categories and tags
     if (categoriesData) {
-      // Transform to match expected format: Record<string, { name: string; savePath: string }>
-      const transformedCategories: Record<string, { name: string; savePath: string }> = {}
-      Object.entries(categoriesData).forEach(([key, value]: [string, any]) => {
-        transformedCategories[key] = {
-          name: value.name || key,
-          savePath: value.save_path || value.savePath || ''
-        }
-      })
-      setCategories(transformedCategories)
+      setCategories(categoriesData)
     }
-    
+
     if (tagsData) {
       setTags(tagsData)
     }
@@ -147,7 +139,7 @@ export function Torrents({ instanceId }: TorrentsProps) {
           onCollapsedChange={setFilterSidebarCollapsed}
         />
       </div>
-      
+
       {/* Mobile Filter Sheet */}
       <Sheet open={mobileFilterOpen} onOpenChange={setMobileFilterOpen}>
         <SheetContent side="left" className="p-0 w-[280px] sm:w-[320px] xl:hidden flex flex-col max-h-[100dvh]">
@@ -167,13 +159,13 @@ export function Torrents({ instanceId }: TorrentsProps) {
           </div>
         </SheetContent>
       </Sheet>
-      
+
       {/* Main content */}
         <div className="flex-1 flex flex-col min-w-0">
           <div className="px-4 sm:px-0 flex flex-col h-full">
             <div className="flex-1 min-h-0">
-            <TorrentTableResponsive 
-              instanceId={instanceId} 
+            <TorrentTableResponsive
+              instanceId={instanceId}
               filters={filters}
               selectedTorrent={selectedTorrent}
               onTorrentSelect={handleTorrentSelect}
@@ -184,9 +176,9 @@ export function Torrents({ instanceId }: TorrentsProps) {
           </div>
         </div>
       </div>
-      
+
       <Sheet open={!!selectedTorrent} onOpenChange={(open) => !open && setSelectedTorrent(null)}>
-        <SheetContent 
+        <SheetContent
           side="right"
           className="w-full fixed inset-y-0 right-0 h-full sm:w-[480px] md:w-[540px] lg:w-[600px] xl:w-[640px] sm:max-w-[480px] md:max-w-[540px] lg:max-w-[600px] xl:max-w-[640px] p-0 z-[100] gap-0 !transition-none !duration-0 data-[state=open]:!animate-none data-[state=closed]:!animate-none data-[state=open]:!transition-none data-[state=closed]:!transition-none"
         >
