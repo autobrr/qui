@@ -19,7 +19,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { User, LogOut, Key, Search, Info, Filter, Plus } from 'lucide-react'
+import { User, LogOut, Key, Search, Info, Filter, Plus, X } from 'lucide-react'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
 import { cn } from '@/lib/utils'
 import { Link, useNavigate, useSearch, useRouterState } from '@tanstack/react-router'
@@ -142,6 +142,26 @@ export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
                 } ${isGlobSearch ? 'ring-1 ring-primary' : ''}`}
               />
               <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                {/* Clear search button */}
+                {searchValue && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        className="p-1 hover:bg-muted rounded-sm transition-colors hidden sm:block"
+                        onClick={() => {
+                          setSearchValue('')
+                          const next = { ...(routeSearch || {}) }
+                          delete next.q
+                          navigate({ search: next, replace: true })
+                        }}
+                      >
+                        <X className="h-3.5 w-3.5 text-muted-foreground" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>Clear search</TooltipContent>
+                  </Tooltip>
+                )}
                 {/* Slot for actions next to search (e.g., Toggle columns) */}
                 <Tooltip>
                   <TooltipTrigger asChild>
