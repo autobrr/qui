@@ -21,7 +21,7 @@ interface TorrentsProps {
 
 export function Torrents({ instanceId }: TorrentsProps) {
   const [filters, setFilters] = usePersistedFilters(instanceId)
-  const [filterSidebarCollapsed, setFilterSidebarCollapsed] = usePersistedFilterSidebarState(false)
+  const [filterSidebarCollapsed] = usePersistedFilterSidebarState(false)
   const [selectedTorrent, setSelectedTorrent] = useState<Torrent | null>(null)
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false)
   const navigate = useNavigate()
@@ -134,7 +134,9 @@ export function Torrents({ instanceId }: TorrentsProps) {
   return (
     <div className="flex h-full relative">
       {/* Desktop Sidebar - hidden on mobile, with slide animation */}
-      <div className={`hidden xl:block ${filterSidebarCollapsed ? 'w-0' : 'w-full xl:max-w-xs'} transition-all duration-300 ease-in-out overflow-hidden`}>
+      <div className={`hidden xl:block w-full xl:max-w-xs overflow-hidden ${
+        filterSidebarCollapsed ? '-ml-80' : 'ml-0' // animate left margin instead of width 
+      } transition-all duration-300 ease-in-out`}>
         <FilterSidebar
           key={`filter-sidebar-${instanceId}`}
           instanceId={instanceId}
@@ -143,8 +145,6 @@ export function Torrents({ instanceId }: TorrentsProps) {
           torrentCounts={torrentCounts}
           categories={categories}
           tags={tags}
-          collapsed={filterSidebarCollapsed}
-          onCollapsedChange={setFilterSidebarCollapsed}
         />
       </div>
       

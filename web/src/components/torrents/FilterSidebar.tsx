@@ -67,8 +67,6 @@ interface FilterSidebarProps {
   torrentCounts?: Record<string, number>
   categories?: Record<string, { name: string; savePath: string }>
   tags?: string[]
-  collapsed?: boolean
-  onCollapsedChange?: (collapsed: boolean) => void
   className?: string
 }
 
@@ -97,7 +95,6 @@ const FilterSidebarComponent = ({
   torrentCounts = {},
   categories: propsCategories,
   tags: propsTags,
-  collapsed = false,
   className = '',
 }: FilterSidebarProps) => {
   // Use incognito mode hook
@@ -296,9 +293,7 @@ const FilterSidebarComponent = ({
   // Simple slide animation - sidebar slides in/out from the left
   return (
     <div 
-      className={`${className} h-full w-full xl:max-w-xs flex flex-col xl:flex-shrink-0 xl:border-r xl:bg-muted/10 transition-transform duration-300 ease-in-out ${
-        collapsed ? '-translate-x-full' : 'translate-x-0'
-      }`}
+      className={`${className} h-full w-full xl:max-w-xs flex flex-col xl:flex-shrink-0 xl:border-r xl:bg-muted/10`}
     >
         <ScrollArea className="h-full flex-1 overscroll-contain">
           <div className="p-4">
@@ -665,7 +660,6 @@ export const FilterSidebar = memo(FilterSidebarComponent, (prevProps, nextProps)
   // Custom comparison function - only re-render if these props change
   return (
     prevProps.instanceId === nextProps.instanceId &&
-    prevProps.collapsed === nextProps.collapsed &&
     JSON.stringify(prevProps.selectedFilters) === JSON.stringify(nextProps.selectedFilters) &&
     JSON.stringify(prevProps.torrentCounts) === JSON.stringify(nextProps.torrentCounts) &&
     JSON.stringify(prevProps.categories) === JSON.stringify(nextProps.categories) &&
