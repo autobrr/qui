@@ -135,7 +135,7 @@ export function Torrents({ instanceId }: TorrentsProps) {
     <div className="flex h-full relative">
       {/* Desktop Sidebar - hidden on mobile, with slide animation */}
       <div className={`hidden xl:block w-full xl:max-w-xs overflow-hidden ${
-        filterSidebarCollapsed ? '-ml-80' : 'ml-0' // animate left margin instead of width 
+        filterSidebarCollapsed ? '-ml-80 opacity-0' : 'ml-0 opacity-100' // animate left margin instead of width
       } transition-all duration-300 ease-in-out`}>
         <FilterSidebar
           key={`filter-sidebar-${instanceId}`}
