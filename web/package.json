@@ -6,8 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "lint": "eslint \"src/**/*.{ts,tsx,js,jsx}\" \"*.{js,ts}\"",
+    "format": "eslint --fix \"src/**/*.{ts,tsx,js,jsx}\" \"*.{js,ts}\""
   },
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -57,6 +58,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.33.0",
+    "@stylistic/eslint-plugin": "^5.2.3",
     "@tailwindcss/vite": "^4.1.12",
     "@types/culori": "^4.0.0",
     "@types/node": "^24.3.0",
