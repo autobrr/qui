@@ -201,17 +201,15 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
   return (
     <Link to="/instances/$instanceId" params={{ instanceId: instance.id.toString() }}>
       <Card className="hover:shadow-lg transition-shadow cursor-pointer">
-        <div>
-          <CardHeader className='gap-0'>
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg">{instance.name}</CardTitle>
-              <Badge variant={stats.connected ? 'default' : 'destructive'}>
-                {stats.connected ? 'Connected' : 'Disconnected'}
-              </Badge>
-            </div>
-          </CardHeader>
-          <CardDescription className="flex items-center gap-1 text-xs px-6">
-            <span className={incognitoMode ? "blur-sm select-none truncate" : "truncate"}>{displayUrl}</span>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-lg">{instance.name}</CardTitle>
+            <Badge variant={stats.connected ? 'default' : 'destructive'}>
+              {stats.connected ? 'Connected' : 'Disconnected'}
+            </Badge>
+          </div>
+          <CardDescription className="flex items-center gap-1 text-xs">
+            <span className={incognitoMode ? "blur-sm select-none" : ""}>{displayUrl}</span>
             <Button
               variant="ghost"
               size="icon"
@@ -225,7 +223,7 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
               {incognitoMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
             </Button>
           </CardDescription>
-        </div>
+        </CardHeader>
         <CardContent>
           <div className="space-y-3">
             <div>
