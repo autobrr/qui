@@ -28,9 +28,7 @@ func TestCacheInvalidation_InvalidateCache(t *testing.T) {
 
 	// Create sync manager with test cache
 	sm := &SyncManager{
-		mainData:   make(map[int]*qbt.MainData),
-		ridTracker: make(map[int]int64),
-		cache:      cache,
+		cache: cache,
 	}
 
 	instanceID := 1
@@ -124,9 +122,7 @@ func TestCacheInvalidation_RealWorldScenario(t *testing.T) {
 
 	// Create sync manager with test cache
 	sm := &SyncManager{
-		mainData:   make(map[int]*qbt.MainData),
-		ridTracker: make(map[int]int64),
-		cache:      cache,
+		cache: cache,
 	}
 
 	// Simulate multiple instances with cached data
@@ -219,9 +215,7 @@ func TestCacheInvalidation_CoordinatedUpdates(t *testing.T) {
 
 	// Create sync manager
 	sm := &SyncManager{
-		mainData:   make(map[int]*qbt.MainData),
-		ridTracker: make(map[int]int64),
-		cache:      cache,
+		cache: cache,
 	}
 
 	instanceID := 1
@@ -306,9 +300,7 @@ func TestCacheInvalidation_MultipleInstances(t *testing.T) {
 
 	// Create sync manager
 	sm := &SyncManager{
-		mainData:   make(map[int]*qbt.MainData),
-		ridTracker: make(map[int]int64),
-		cache:      cache,
+		cache: cache,
 	}
 
 	// Setup multiple instances

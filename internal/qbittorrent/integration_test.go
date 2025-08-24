@@ -107,28 +107,6 @@ func TestSyncManager_CacheIntegration(t *testing.T) {
 		}
 	})
 
-	// Test ResetRID method
-	t.Run("ResetRID clears tracking data", func(t *testing.T) {
-		sm.ridTracker = make(map[int]int64)
-		sm.mainData = make(map[int]*qbt.MainData)
-
-		// Set some tracking data
-		sm.ridTracker[instanceID] = 12345
-		sm.mainData[instanceID] = &qbt.MainData{Rid: 12345}
-
-		// Verify data exists
-		assert.Equal(t, int64(12345), sm.ridTracker[instanceID])
-		assert.NotNil(t, sm.mainData[instanceID])
-
-		// Reset RID
-		sm.ResetRID(instanceID)
-
-		// Verify data is cleared
-		_, ridExists := sm.ridTracker[instanceID]
-		_, dataExists := sm.mainData[instanceID]
-		assert.False(t, ridExists, "RID should be cleared")
-		assert.False(t, dataExists, "Main data should be cleared")
-	})
 }
 
 // TestSyncManager_FilteringAndSorting tests the filtering and sorting logic
