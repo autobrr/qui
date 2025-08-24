@@ -270,18 +270,18 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
         </div>
         <CardContent>
           <div className="space-y-3">
-            <div className="mb-4">
+            <div className="mb-6">
               <div className="flex items-center justify-center mb-1">
+                <span className="flex-1 text-center text-xs text-muted-foreground">Downloading</span>
                 <span className="flex-1 text-center text-xs text-muted-foreground">Active</span>
-                <span className="flex-1 text-center text-xs text-muted-foreground">Paused</span>
                 <span className="flex-1 text-center text-xs text-muted-foreground">Error</span>
                 <span className="flex-1 text-center text-xs text-muted-foreground">Total</span>
               </div>
               <div className="flex items-center justify-center">
                 <span className="flex-1 text-center text-lg font-semibold">
-                  {torrentCounts?.status?.active || 0}
+                  {torrentCounts?.status?.downloading || 0}
                 </span>
-                <span className="flex-1 text-center text-lg font-semibold">{torrentCounts?.status?.paused || 0}</span>
+                <span className="flex-1 text-center text-lg font-semibold">{torrentCounts?.status?.active || 0}</span>
                 <span className={`flex-1 text-center text-lg font-semibold ${(torrentCounts?.status?.errored || 0) > 0 ? 'text-destructive' : ''}`}>
                   {torrentCounts?.status?.errored || 0}
                 </span>
