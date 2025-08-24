@@ -57,7 +57,6 @@ config.toml
 .claude/hooks/*
 ai_docs/*
 output/*
-qui
 .claude/agents/*
 !.claude/agents/code-reviewer.md
 !.claude/agents/go-simple.md

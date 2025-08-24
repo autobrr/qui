@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -90,11 +89,6 @@ func NewClient() *Client {
 			},
 		},
 	}
-}
-
-// SetOrganizationID sets the organization ID required for license operations
-func (c *Client) SetOrganizationID(orgID string) {
-	c.organizationID = orgID
 }
 
 // ValidateLicense validates a license key against Polar API
@@ -301,17 +295,12 @@ func maskID(id string) string {
 	return id[:8] + "***"
 }
 
+// SetOrganizationID sets the organization ID required for license operations
+func (c *Client) SetOrganizationID(orgID string) {
+	c.organizationID = orgID
+}
+
 // IsClientConfigured checks if the Polar client is properly configured
 func (c *Client) IsClientConfigured() bool {
 	return c.organizationID != ""
-}
-
-// ValidateConfiguration validates the client configuration
-func (c *Client) ValidateConfiguration(ctx context.Context) error {
-	if c.organizationID == "" {
-		return errors.New(orgIDNotConfigMsg)
-	}
-
-	// No authentication needed, so no connection test required
-	return nil
 }

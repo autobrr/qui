@@ -154,20 +154,3 @@ export function initializePWANativeTheme(): void {
 let themeChangeListener: (() => void) | null = null
 let themeObserver: MutationObserver | null = null
 
-/**
- * Clean up PWA native theme listeners
- */
-export function cleanupPWANativeTheme(): void {
-  if (themeChangeListener) {
-    window.removeEventListener('themechange', themeChangeListener)
-    themeChangeListener = null
-  }
-  
-  if (themeObserver) {
-    themeObserver.disconnect()
-    themeObserver = null
-  }
-}
-
-// For backwards compatibility, export the update function
-export { updateManifestThemeColor }

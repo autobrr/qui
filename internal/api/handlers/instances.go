@@ -97,7 +97,6 @@ type InstanceResponse struct {
 	ID              int        `json:"id"`
 	Name            string     `json:"name"`
 	Host            string     `json:"host"`
-	Port            int        `json:"port"`
 	Username        string     `json:"username"`
 	BasicUsername   *string    `json:"basicUsername,omitempty"`
 	IsActive        bool       `json:"isActive"`

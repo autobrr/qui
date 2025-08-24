@@ -69,37 +69,6 @@ func TestIsClientConfigured(t *testing.T) {
 	}
 }
 
-func TestValidateConfiguration(t *testing.T) {
-	tests := []struct {
-		name      string
-		orgID     string
-		wantError bool
-	}{
-		{
-			name:      "empty org ID returns error",
-			orgID:     "",
-			wantError: true,
-		},
-		{
-			name:      "valid org ID returns no error",
-			orgID:     "test-org",
-			wantError: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			client := NewClient()
-			client.SetOrganizationID(tt.orgID)
-
-			err := client.ValidateConfiguration(context.Background())
-			if (err != nil) != tt.wantError {
-				t.Errorf("ValidateConfiguration() error = %v, wantError %v", err, tt.wantError)
-			}
-		})
-	}
-}
-
 func TestValidateLicense_NoOrgID(t *testing.T) {
 	client := NewClient()
 	// Don't set organization ID

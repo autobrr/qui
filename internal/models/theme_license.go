@@ -26,7 +26,6 @@ type ThemeLicense struct {
 // LicenseStatus constants
 const (
 	LicenseStatusActive  = "active"
-	LicenseStatusExpired = "expired"
 	LicenseStatusInvalid = "invalid"
 )
 
@@ -42,17 +41,6 @@ func (tl *ThemeLicense) IsValid() bool {
 	}
 
 	return true
-}
-
-// IsValidOffline returns true if the license is valid for offline use
-// Allows 7 days grace period since last validation
-func (tl *ThemeLicense) IsValidOffline() bool {
-	if !tl.IsValid() {
-		return false
-	}
-
-	gracePeriod := 7 * 24 * time.Hour
-	return time.Since(tl.LastValidated) < gracePeriod
 }
 
 // Value implements driver.Valuer for database storage

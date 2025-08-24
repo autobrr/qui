@@ -7,18 +7,15 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"time"
 )
 
 var ErrUserNotFound = errors.New("user not found")
 var ErrUserAlreadyExists = errors.New("user already exists")
 
 type User struct {
-	ID           int       `json:"id"`
-	Username     string    `json:"username"`
-	PasswordHash string    `json:"-"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID           int    `json:"id"`
+	Username     string `json:"username"`
+	PasswordHash string `json:"-"`
 }
 
 type UserStore struct {
@@ -33,7 +30,7 @@ func (s *UserStore) Create(ctx context.Context, username, passwordHash string) (
 	query := `
 		INSERT INTO user (id, username, password_hash) 
 		VALUES (1, ?, ?)
-		RETURNING id, username, password_hash, created_at, updated_at
+		RETURNING id, username, password_hash
 	`
 
 	user := &User{}
@@ -41,8 +38,6 @@ func (s *UserStore) Create(ctx context.Context, username, passwordHash string) (
 		&user.ID,
 		&user.Username,
 		&user.PasswordHash,
-		&user.CreatedAt,
-		&user.UpdatedAt,
 	)
 
 	if err != nil {
@@ -60,7 +55,7 @@ func (s *UserStore) Create(ctx context.Context, username, passwordHash string) (
 
 func (s *UserStore) Get(ctx context.Context) (*User, error) {
 	query := `
-		SELECT id, username, password_hash, created_at, updated_at 
+		SELECT id, username, password_hash 
 		FROM user 
 		WHERE id = 1
 	`
@@ -70,8 +65,6 @@ func (s *UserStore) Get(ctx context.Context) (*User, error) {
 		&user.ID,
 		&user.Username,
 		&user.PasswordHash,
-		&user.CreatedAt,
-		&user.UpdatedAt,
 	)
 
 	if err == sql.ErrNoRows {
@@ -86,7 +79,7 @@ func (s *UserStore) Get(ctx context.Context) (*User, error) {
 
 func (s *UserStore) GetByUsername(ctx context.Context, username string) (*User, error) {
 	query := `
-		SELECT id, username, password_hash, created_at, updated_at 
+		SELECT id, username, password_hash 
 		FROM user 
 		WHERE username = ?
 	`
@@ -96,8 +89,6 @@ func (s *UserStore) GetByUsername(ctx context.Context, username string) (*User, 
 		&user.ID,
 		&user.Username,
 		&user.PasswordHash,
-		&user.CreatedAt,
-		&user.UpdatedAt,
 	)
 
 	if err == sql.ErrNoRows {

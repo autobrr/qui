@@ -79,13 +79,6 @@ export async function loadThemeFonts(theme: {
   await Promise.all(Array.from(fontsToLoad).map(loadFont));
 }
 
-// Clean up font loader links (optional, for cleanup)
-export function cleanupFontLoaderLinks(): void {
-  const links = document.querySelectorAll('link[data-font-loader]');
-  links.forEach(link => link.remove());
-  loadedFonts.clear();
-}
-
 // Preload common fonts on app start
 export async function preloadCommonFonts(): Promise<void> {
   // Load the most common fonts to improve initial load

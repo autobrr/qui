@@ -65,19 +65,18 @@ func (c *Client) GetInstanceID() int {
 	return c.instanceID
 }
 
+// GetLastHealthCheck returns the time of the last health check
+func (c *Client) GetLastHealthCheck() time.Time {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.lastHealthCheck
+}
+
 // IsHealthy returns whether the client connection is healthy
 func (c *Client) IsHealthy() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.isHealthy
-}
-
-// SetHealthy updates the health status of the client
-func (c *Client) SetHealthy(healthy bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.isHealthy = healthy
-	c.lastHealthCheck = time.Now()
 }
 
 // HealthCheck performs a health check on the qBittorrent connection
@@ -89,23 +88,26 @@ func (c *Client) HealthCheck(ctx context.Context) error {
 		// If the version check fails, it might be an auth issue
 		// Try to re-login once
 		if loginErr := c.Client.LoginCtx(ctx); loginErr != nil {
-			c.SetHealthy(false)
+			c.mu.Lock()
+			c.isHealthy = false
+			c.lastHealthCheck = time.Now()
+			c.mu.Unlock()
 			return fmt.Errorf("health check failed: login error: %w", loginErr)
 		}
 		// Retry the version check after login
 		if _, err = c.Client.GetWebAPIVersionCtx(ctx); err != nil {
-			c.SetHealthy(false)
+			c.mu.Lock()
+			c.isHealthy = false
+			c.lastHealthCheck = time.Now()
+			c.mu.Unlock()
 			return fmt.Errorf("health check failed: api error: %w", err)
 		}
 	}
 
-	c.SetHealthy(true)
+	c.mu.Lock()
+	c.isHealthy = true
+	c.lastHealthCheck = time.Now()
+	c.mu.Unlock()
 	return nil
 }
 
-// GetLastHealthCheck returns the time of the last health check
-func (c *Client) GetLastHealthCheck() time.Time {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.lastHealthCheck
-}
