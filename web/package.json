@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "lint": "eslint \"src/**/*.{ts,tsx,js,jsx}\" \"*.{js,ts}\"",
-    "lint:fix": "eslint --fix \"src/**/*.{ts,tsx,js,jsx}\" \"*.{js,ts}\""
+    "format": "eslint --fix \"src/**/*.{ts,tsx,js,jsx}\" \"*.{js,ts}\""
   },
   "pnpm": {
     "onlyBuiltDependencies": [
