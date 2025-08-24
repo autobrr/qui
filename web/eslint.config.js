@@ -24,13 +24,6 @@ export default tseslint.config([
       '@stylistic': stylistic
     },
     rules: {
-      ...stylistic.configs.customize({
-        indent: 2,
-        quotes: 'double',
-        semi: false,
-        jsx: true,
-        commaDangle: 'never',
-      }).rules,
       '@stylistic/quotes': ['warn', 'double'],
       '@stylistic/comma-dangle': ['warn', 'always'],
       '@stylistic/multiline-ternary': ['warn', 'never'],
