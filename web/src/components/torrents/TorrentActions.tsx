@@ -148,8 +148,6 @@ export const TorrentActions = memo(function TorrentActions({ instanceId, selecte
               }
             })
           })
-          
-          // Note: torrent-counts are handled server-side now, no need for optimistic updates
         }
         
         // For other operations, add delay to allow qBittorrent to process

@@ -14,9 +14,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
+
+	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
 type TorrentsHandler struct {
@@ -387,8 +388,6 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Note: We no longer invalidate cache here since optimistic updates are applied
-	// in the sync manager for supported actions (pause, resume, delete, recheck, category, tags)
 	log.Debug().Int("instanceID", instanceID).Str("action", req.Action).Msg("Bulk action completed with optimistic cache update")
 
 	RespondJSON(w, http.StatusOK, map[string]string{

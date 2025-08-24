@@ -109,7 +109,6 @@ export interface TorrentResponse {
 export interface MainData {
   rid: number
   serverState?: ServerState
-  // Note: server_state may come with underscore from API
   server_state?: ServerState
 }
 
