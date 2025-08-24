@@ -34,7 +34,7 @@ func NewInstancesHandler(instanceStore *models.InstanceStore, clientPool *intern
 
 // testInstanceConnection tests connection to an instance and returns status and error
 func (h *InstancesHandler) testInstanceConnection(ctx context.Context, instanceID int) (connected bool, connectionError string) {
-	client, err := h.clientPool.GetClient(instanceID)
+	client, err := h.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to connect to instance")
 		return false, err.Error()
@@ -149,7 +149,7 @@ func (h *InstancesHandler) ListInstances(w http.ResponseWriter, r *http.Request)
 	// Check if only active instances are requested
 	activeOnly := r.URL.Query().Get("active") == "true"
 
-	instances, err := h.instanceStore.List(activeOnly)
+	instances, err := h.instanceStore.List(r.Context(), activeOnly)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to list instances")
 		RespondError(w, http.StatusInternalServerError, "Failed to list instances")
@@ -180,7 +180,7 @@ func (h *InstancesHandler) CreateInstance(w http.ResponseWriter, r *http.Request
 	}
 
 	// Create instance
-	instance, err := h.instanceStore.Create(req.Name, req.Host, req.Username, req.Password, req.BasicUsername, req.BasicPassword)
+	instance, err := h.instanceStore.Create(r.Context(), req.Name, req.Host, req.Username, req.Password, req.BasicUsername, req.BasicPassword)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create instance")
 		RespondError(w, http.StatusInternalServerError, "Failed to create instance")
@@ -214,7 +214,7 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 	}
 
 	// Update instance
-	instance, err := h.instanceStore.Update(instanceID, req.Name, req.Host, req.Username, req.Password, req.BasicUsername, req.BasicPassword)
+	instance, err := h.instanceStore.Update(r.Context(), instanceID, req.Name, req.Host, req.Username, req.Password, req.BasicUsername, req.BasicPassword)
 	if err != nil {
 		if errors.Is(err, models.ErrInstanceNotFound) {
 			RespondError(w, http.StatusNotFound, "Instance not found")
@@ -243,7 +243,7 @@ func (h *InstancesHandler) DeleteInstance(w http.ResponseWriter, r *http.Request
 	}
 
 	// Delete instance
-	if err := h.instanceStore.Delete(instanceID); err != nil {
+	if err := h.instanceStore.Delete(r.Context(), instanceID); err != nil {
 		if errors.Is(err, models.ErrInstanceNotFound) {
 			RespondError(w, http.StatusNotFound, "Instance not found")
 			return
@@ -272,7 +272,7 @@ func (h *InstancesHandler) TestConnection(w http.ResponseWriter, r *http.Request
 	}
 
 	// Try to get client (this will create connection if needed)
-	client, err := h.clientPool.GetClient(instanceID)
+	client, err := h.clientPool.GetClient(r.Context(), instanceID)
 	if err != nil {
 		response := TestConnectionResponse{
 			Connected: false,
@@ -344,7 +344,7 @@ func (h *InstancesHandler) GetInstanceStats(w http.ResponseWriter, r *http.Reque
 	defaultStats := h.getDefaultStats(instanceID)
 
 	// Get client
-	client, err := h.clientPool.GetClient(instanceID)
+	client, err := h.clientPool.GetClient(r.Context(), instanceID)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client")
 		RespondJSON(w, http.StatusOK, defaultStats)

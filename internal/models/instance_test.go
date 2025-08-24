@@ -122,6 +122,8 @@ func TestHostValidation(t *testing.T) {
 }
 
 func TestInstanceStoreWithHost(t *testing.T) {
+	ctx := t.Context()
+
 	// Create in-memory database for testing
 	db, err := sql.Open("sqlite", ":memory:")
 	require.NoError(t, err, "Failed to open test database")
@@ -138,7 +140,7 @@ func TestInstanceStoreWithHost(t *testing.T) {
 	require.NoError(t, err, "Failed to create instance store")
 
 	// Create new schema (with host field)
-	_, err = db.Exec(`
+	_, err = db.ExecContext(ctx, `
 		CREATE TABLE instances (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			name TEXT NOT NULL,
@@ -156,17 +158,17 @@ func TestInstanceStoreWithHost(t *testing.T) {
 	require.NoError(t, err, "Failed to create test table")
 
 	// Test creating an instance with host
-	instance, err := store.Create("Test Instance", "http://localhost:8080", "testuser", "testpass", nil, nil)
+	instance, err := store.Create(ctx, "Test Instance", "http://localhost:8080", "testuser", "testpass", nil, nil)
 	require.NoError(t, err, "Failed to create instance")
 	assert.Equal(t, "http://localhost:8080", instance.Host, "host should match")
 
 	// Test retrieving the instance
-	retrieved, err := store.Get(instance.ID)
+	retrieved, err := store.Get(ctx, instance.ID)
 	require.NoError(t, err, "Failed to get instance")
 	assert.Equal(t, "http://localhost:8080", retrieved.Host, "retrieved host should match")
 
 	// Test updating the instance
-	updated, err := store.Update(instance.ID, "Updated Instance", "https://example.com:8443/qbittorrent", "newuser", "", nil, nil)
+	updated, err := store.Update(ctx, instance.ID, "Updated Instance", "https://example.com:8443/qbittorrent", "newuser", "", nil, nil)
 	require.NoError(t, err, "Failed to update instance")
 	assert.Equal(t, "https://example.com:8443/qbittorrent", updated.Host, "updated host should match")
 }

@@ -192,7 +192,7 @@ func (sm *SyncManager) fetchFreshTorrentData(ctx context.Context, instanceID int
 // GetServerStats gets server statistics using SyncMainData (for Dashboard)
 func (sm *SyncManager) GetServerStats(ctx context.Context, instanceID int) (*qbt.MainData, error) {
 	// Get client
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
@@ -214,7 +214,7 @@ func (sm *SyncManager) GetServerStats(ctx context.Context, instanceID int) (*qbt
 // BulkAction performs bulk operations on torrents
 func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []string, action string) error {
 	// Get client
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to get client: %w", err)
 	}
@@ -271,7 +271,7 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 // AddTorrent adds a new torrent from file content
 func (sm *SyncManager) AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) error {
 	// Get client
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to get client: %w", err)
 	}
@@ -283,7 +283,7 @@ func (sm *SyncManager) AddTorrent(ctx context.Context, instanceID int, fileConte
 // AddTorrentFromURLs adds new torrents from URLs or magnet links
 func (sm *SyncManager) AddTorrentFromURLs(ctx context.Context, instanceID int, urls []string, options map[string]string) error {
 	// Get client
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to get client: %w", err)
 	}
@@ -314,7 +314,7 @@ func (sm *SyncManager) GetCategories(ctx context.Context, instanceID int) (map[s
 	}
 
 	// Get client
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
@@ -342,7 +342,7 @@ func (sm *SyncManager) GetTags(ctx context.Context, instanceID int) ([]string, e
 	}
 
 	// Get client
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
@@ -374,7 +374,7 @@ func (sm *SyncManager) GetTorrentProperties(ctx context.Context, instanceID int,
 	}
 
 	// Get client
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
@@ -402,7 +402,7 @@ func (sm *SyncManager) GetTorrentTrackers(ctx context.Context, instanceID int, h
 	}
 
 	// Get client
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
@@ -430,7 +430,7 @@ func (sm *SyncManager) GetTorrentFiles(ctx context.Context, instanceID int, hash
 	}
 
 	// Get client
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
@@ -674,7 +674,7 @@ func (sm *SyncManager) GetInstanceSpeeds(ctx context.Context, instanceID int) (*
 	}
 
 	// Get client
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
@@ -936,7 +936,7 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 	log.Debug().Int("instanceID", instanceID).Str("cacheKey", cacheKey).Msg("getAllTorrentsForStats: CACHE MISS")
 
 	// Get client
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
@@ -1416,7 +1416,7 @@ func (sm *SyncManager) sortTorrents(torrents []qbt.Torrent, sortField, order str
 
 // AddTags adds tags to the specified torrents (keeps existing tags)
 func (sm *SyncManager) AddTags(ctx context.Context, instanceID int, hashes []string, tags string) error {
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to get client: %w", err)
 	}
@@ -1432,7 +1432,7 @@ func (sm *SyncManager) AddTags(ctx context.Context, instanceID int, hashes []str
 
 // RemoveTags removes specific tags from the specified torrents
 func (sm *SyncManager) RemoveTags(ctx context.Context, instanceID int, hashes []string, tags string) error {
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to get client: %w", err)
 	}
@@ -1449,7 +1449,7 @@ func (sm *SyncManager) RemoveTags(ctx context.Context, instanceID int, hashes []
 // SetTags sets tags on the specified torrents (replaces all existing tags)
 // This uses the new qBittorrent 5.1+ API if available, otherwise returns error
 func (sm *SyncManager) SetTags(ctx context.Context, instanceID int, hashes []string, tags string) error {
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to get client: %w", err)
 	}
@@ -1468,7 +1468,7 @@ func (sm *SyncManager) SetTags(ctx context.Context, instanceID int, hashes []str
 
 // SetCategory sets the category for the specified torrents
 func (sm *SyncManager) SetCategory(ctx context.Context, instanceID int, hashes []string, category string) error {
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to get client: %w", err)
 	}
@@ -1484,7 +1484,7 @@ func (sm *SyncManager) SetCategory(ctx context.Context, instanceID int, hashes [
 
 // SetAutoTMM sets the automatic torrent management for torrents
 func (sm *SyncManager) SetAutoTMM(ctx context.Context, instanceID int, hashes []string, enable bool) error {
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to get client: %w", err)
 	}
@@ -1500,7 +1500,7 @@ func (sm *SyncManager) SetAutoTMM(ctx context.Context, instanceID int, hashes []
 
 // CreateTags creates new tags
 func (sm *SyncManager) CreateTags(ctx context.Context, instanceID int, tags []string) error {
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to get client: %w", err)
 	}
@@ -1515,7 +1515,7 @@ func (sm *SyncManager) CreateTags(ctx context.Context, instanceID int, tags []st
 
 // DeleteTags deletes tags
 func (sm *SyncManager) DeleteTags(ctx context.Context, instanceID int, tags []string) error {
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to get client: %w", err)
 	}
@@ -1530,7 +1530,7 @@ func (sm *SyncManager) DeleteTags(ctx context.Context, instanceID int, tags []st
 
 // CreateCategory creates a new category
 func (sm *SyncManager) CreateCategory(ctx context.Context, instanceID int, name string, path string) error {
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to get client: %w", err)
 	}
@@ -1545,7 +1545,7 @@ func (sm *SyncManager) CreateCategory(ctx context.Context, instanceID int, name 
 
 // EditCategory edits an existing category
 func (sm *SyncManager) EditCategory(ctx context.Context, instanceID int, name string, path string) error {
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to get client: %w", err)
 	}
@@ -1560,7 +1560,7 @@ func (sm *SyncManager) EditCategory(ctx context.Context, instanceID int, name st
 
 // RemoveCategories removes categories
 func (sm *SyncManager) RemoveCategories(ctx context.Context, instanceID int, categories []string) error {
-	client, err := sm.clientPool.GetClient(instanceID)
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to get client: %w", err)
 	}

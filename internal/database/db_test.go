@@ -13,6 +13,8 @@ import (
 )
 
 func TestMigrationIdempotency(t *testing.T) {
+	ctx := t.Context()
+
 	// Create temp directory for test database
 	tmpDir, err := os.MkdirTemp("", "qui-test-idempotent-*")
 	require.NoError(t, err)
@@ -26,7 +28,7 @@ func TestMigrationIdempotency(t *testing.T) {
 
 	// Count migrations applied
 	var count1 int
-	err = db1.conn.QueryRow("SELECT COUNT(*) FROM migrations").Scan(&count1)
+	err = db1.conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM migrations").Scan(&count1)
 	require.NoError(t, err, "Failed to count migrations")
 	db1.Close()
 
@@ -37,7 +39,7 @@ func TestMigrationIdempotency(t *testing.T) {
 
 	// Count migrations applied again
 	var count2 int
-	err = db2.conn.QueryRow("SELECT COUNT(*) FROM migrations").Scan(&count2)
+	err = db2.conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM migrations").Scan(&count2)
 	require.NoError(t, err, "Failed to count migrations")
 
 	assert.Equal(t, count1, count2, "Migration count should be the same after re-initialization")

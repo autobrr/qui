@@ -4,6 +4,7 @@
 package database
 
 import (
+	"context"
 	"database/sql"
 	"embed"
 	"fmt"
@@ -97,8 +98,10 @@ func (db *DB) Conn() *sql.DB {
 }
 
 func (db *DB) migrate() error {
+	ctx := context.Background()
+
 	// Create migrations table if it doesn't exist
-	if _, err := db.conn.Exec(`
+	if _, err := db.conn.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS migrations (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			filename TEXT NOT NULL UNIQUE,
@@ -124,7 +127,7 @@ func (db *DB) migrate() error {
 	sort.Strings(files)
 
 	// Find pending migrations
-	pendingMigrations, err := db.findPendingMigrations(files)
+	pendingMigrations, err := db.findPendingMigrations(ctx, files)
 	if err != nil {
 		return fmt.Errorf("failed to find pending migrations: %w", err)
 	}
@@ -135,19 +138,19 @@ func (db *DB) migrate() error {
 	}
 
 	// Apply all pending migrations in a single transaction
-	if err := db.applyAllMigrations(pendingMigrations); err != nil {
+	if err := db.applyAllMigrations(ctx, pendingMigrations); err != nil {
 		return fmt.Errorf("failed to apply migrations: %w", err)
 	}
 
 	return nil
 }
 
-func (db *DB) findPendingMigrations(allFiles []string) ([]string, error) {
+func (db *DB) findPendingMigrations(ctx context.Context, allFiles []string) ([]string, error) {
 	var pendingMigrations []string
 
 	for _, filename := range allFiles {
 		var count int
-		err := db.conn.QueryRow("SELECT COUNT(*) FROM migrations WHERE filename = ?", filename).Scan(&count)
+		err := db.conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM migrations WHERE filename = ?", filename).Scan(&count)
 		if err != nil {
 			return nil, fmt.Errorf("failed to check migration status for %s: %w", filename, err)
 		}
@@ -160,7 +163,7 @@ func (db *DB) findPendingMigrations(allFiles []string) ([]string, error) {
 	return pendingMigrations, nil
 }
 
-func (db *DB) applyAllMigrations(migrations []string) error {
+func (db *DB) applyAllMigrations(ctx context.Context, migrations []string) error {
 	// Begin single transaction for all migrations
 	tx, err := db.conn.Begin()
 	if err != nil {
@@ -178,12 +181,12 @@ func (db *DB) applyAllMigrations(migrations []string) error {
 		}
 
 		// Execute migration
-		if _, err := tx.Exec(string(content)); err != nil {
+		if _, err := tx.ExecContext(ctx, string(content)); err != nil {
 			return fmt.Errorf("failed to execute migration %s: %w", filename, err)
 		}
 
 		// Record migration
-		if _, err := tx.Exec("INSERT INTO migrations (filename) VALUES (?)", filename); err != nil {
+		if _, err := tx.ExecContext(ctx, "INSERT INTO migrations (filename) VALUES (?)", filename); err != nil {
 			return fmt.Errorf("failed to record migration %s: %w", filename, err)
 		}
 
