@@ -38,6 +38,7 @@ import {
   RotateCw,
   MoveRight,
   Search,
+  X,
   type LucideIcon,
 } from 'lucide-react'
 import {
@@ -49,6 +50,29 @@ import {
   DeleteUnusedTagsDialog,
 } from './TagCategoryManagement'
 import { LINUX_CATEGORIES, LINUX_TAGS, LINUX_TRACKERS, useIncognitoMode } from '@/lib/incognito'
+import type { Category } from "@/types";
+
+interface FilterBadgeProps {
+  count: number
+  onClick: () => void
+}
+
+function FilterBadge({count, onClick}: FilterBadgeProps) {
+  return (
+      <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-xs">
+        <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onClick()
+            }}
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+        >
+          <X className="size-3"/>
+          {count}
+        </button>
+      </Badge>
+  )
+}
 
 interface FilterSidebarProps {
   instanceId: number
@@ -65,7 +89,7 @@ interface FilterSidebarProps {
     trackers: string[]
   }) => void
   torrentCounts?: Record<string, number>
-  categories?: Record<string, { name: string; savePath: string }>
+  categories?: Record<string, Category>
   tags?: string[]
   collapsed?: boolean
   onCollapsedChange?: (collapsed: boolean) => void
@@ -102,16 +126,16 @@ const FilterSidebarComponent = ({
 }: FilterSidebarProps) => {
   // Use incognito mode hook
   const [incognitoMode] = useIncognitoMode()
-  
+
   // Persist accordion state
   const [expandedItems, setExpandedItems] = usePersistedAccordion()
-  
+
   // Dialog states
   const [showCreateTagDialog, setShowCreateTagDialog] = useState(false)
   const [showDeleteTagDialog, setShowDeleteTagDialog] = useState(false)
   const [showDeleteUnusedTagsDialog, setShowDeleteUnusedTagsDialog] = useState(false)
   const [tagToDelete, setTagToDelete] = useState('')
-  
+
   const [showCreateCategoryDialog, setShowCreateCategoryDialog] = useState(false)
   const [showEditCategoryDialog, setShowEditCategoryDialog] = useState(false)
   const [showDeleteCategoryDialog, setShowDeleteCategoryDialog] = useState(false)
@@ -122,7 +146,7 @@ const FilterSidebarComponent = ({
   const [categorySearch, setCategorySearch] = useState('')
   const [tagSearch, setTagSearch] = useState('')
   const [trackerSearch, setTrackerSearch] = useState('')
-  
+
   // Debounce search terms for better performance
   const debouncedCategorySearch = useDebounce(categorySearch, 300)
   const debouncedTagSearch = useDebounce(tagSearch, 300)
@@ -132,20 +156,20 @@ const FilterSidebarComponent = ({
   const categories = useMemo(() => {
     return incognitoMode ? LINUX_CATEGORIES : (propsCategories || {})
   }, [incognitoMode, propsCategories])
-  
+
   const tags = useMemo(() => {
     return incognitoMode ? LINUX_TAGS : (propsTags || [])
   }, [incognitoMode, propsTags])
 
   // Extract unique trackers from torrentCounts (move this before filtered trackers)
-  const realTrackers = torrentCounts 
+  const realTrackers = torrentCounts
     ? Object.keys(torrentCounts)
         .filter(key => key.startsWith('tracker:'))
         .map(key => key.replace('tracker:', ''))
         .filter(tracker => torrentCounts[`tracker:${tracker}`] > 0)
         .sort()
     : []
-  
+
   // Use fake trackers if in incognito mode
   const trackers = useMemo(() => {
     return incognitoMode ? LINUX_TRACKERS : realTrackers
@@ -153,31 +177,31 @@ const FilterSidebarComponent = ({
 
   // Optimize large lists by limiting initial render and providing search
   const MAX_INITIAL_ITEMS = 200
-  
+
   // Filtered and limited categories for performance
   const filteredCategories = useMemo(() => {
     const categoryEntries = Object.entries(categories)
-    
+
     if (debouncedCategorySearch) {
       const searchLower = debouncedCategorySearch.toLowerCase()
-      return categoryEntries.filter(([name]) => 
+      return categoryEntries.filter(([name]) =>
         name.toLowerCase().includes(searchLower)
       )
     }
-    
+
     // Show selected categories first, then others up to limit
-    const selectedCategories = categoryEntries.filter(([name]) => 
+    const selectedCategories = categoryEntries.filter(([name]) =>
       selectedFilters.categories.includes(name)
     )
-    const unselectedCategories = categoryEntries.filter(([name]) => 
+    const unselectedCategories = categoryEntries.filter(([name]) =>
       !selectedFilters.categories.includes(name)
     )
-    
+
     if (categoryEntries.length > MAX_INITIAL_ITEMS) {
       const remainingSlots = Math.max(0, MAX_INITIAL_ITEMS - selectedCategories.length)
       return [...selectedCategories, ...unselectedCategories.slice(0, remainingSlots)]
     }
-    
+
     return categoryEntries
   }, [categories, debouncedCategorySearch, selectedFilters.categories])
 
@@ -185,24 +209,24 @@ const FilterSidebarComponent = ({
   const filteredTags = useMemo(() => {
     if (debouncedTagSearch) {
       const searchLower = debouncedTagSearch.toLowerCase()
-      return tags.filter(tag => 
+      return tags.filter(tag =>
         tag.toLowerCase().includes(searchLower)
       )
     }
-    
+
     // Show selected tags first, then others up to limit
-    const selectedTags = tags.filter(tag => 
+    const selectedTags = tags.filter(tag =>
       selectedFilters.tags.includes(tag)
     )
-    const unselectedTags = tags.filter(tag => 
+    const unselectedTags = tags.filter(tag =>
       !selectedFilters.tags.includes(tag)
     )
-    
+
     if (tags.length > MAX_INITIAL_ITEMS) {
       const remainingSlots = Math.max(0, MAX_INITIAL_ITEMS - selectedTags.length)
       return [...selectedTags, ...unselectedTags.slice(0, remainingSlots)]
     }
-    
+
     return tags
   }, [tags, debouncedTagSearch, selectedFilters.tags])
 
@@ -210,24 +234,24 @@ const FilterSidebarComponent = ({
   const filteredTrackers = useMemo(() => {
     if (debouncedTrackerSearch) {
       const searchLower = debouncedTrackerSearch.toLowerCase()
-      return trackers.filter(tracker => 
+      return trackers.filter(tracker =>
         tracker.toLowerCase().includes(searchLower)
       )
     }
-    
+
     // Show selected trackers first, then others up to limit
-    const selectedTrackers = trackers.filter(tracker => 
+    const selectedTrackers = trackers.filter(tracker =>
       selectedFilters.trackers.includes(tracker)
     )
-    const unselectedTrackers = trackers.filter(tracker => 
+    const unselectedTrackers = trackers.filter(tracker =>
       !selectedFilters.trackers.includes(tracker)
     )
-    
+
     if (trackers.length > MAX_INITIAL_ITEMS) {
       const remainingSlots = Math.max(0, MAX_INITIAL_ITEMS - selectedTrackers.length)
       return [...selectedTrackers, ...unselectedTrackers.slice(0, remainingSlots)]
     }
-    
+
     return trackers
   }, [trackers, debouncedTrackerSearch, selectedFilters.trackers])
 
@@ -236,7 +260,7 @@ const FilterSidebarComponent = ({
     const newStatus = selectedFilters.status.includes(status)
       ? selectedFilters.status.filter(s => s !== status)
       : [...selectedFilters.status, status]
-    
+
     onFilterChange({
       ...selectedFilters,
       status: newStatus,
@@ -247,7 +271,7 @@ const FilterSidebarComponent = ({
     const newCategories = selectedFilters.categories.includes(category)
       ? selectedFilters.categories.filter(c => c !== category)
       : [...selectedFilters.categories, category]
-    
+
     onFilterChange({
       ...selectedFilters,
       categories: newCategories,
@@ -258,7 +282,7 @@ const FilterSidebarComponent = ({
     const newTags = selectedFilters.tags.includes(tag)
       ? selectedFilters.tags.filter(t => t !== tag)
       : [...selectedFilters.tags, tag]
-    
+
     onFilterChange({
       ...selectedFilters,
       tags: newTags,
@@ -269,7 +293,7 @@ const FilterSidebarComponent = ({
     const newTrackers = selectedFilters.trackers.includes(tracker)
       ? selectedFilters.trackers.filter(t => t !== tracker)
       : [...selectedFilters.trackers, tracker]
-    
+
     onFilterChange({
       ...selectedFilters,
       trackers: newTrackers,
@@ -287,7 +311,19 @@ const FilterSidebarComponent = ({
     // setExpandedItems(['status', 'categories', 'tags'])
   }
 
-  const hasActiveFilters = 
+  const createClearFilter = (property: keyof typeof selectedFilters) => () => {
+    onFilterChange({
+      ...selectedFilters,
+      [property]: [],
+    })
+  }
+
+  const clearStatusFilter = createClearFilter('status')
+  const clearCategoriesFilter = createClearFilter('categories')
+  const clearTagsFilter = createClearFilter('tags')
+  const clearTrackersFilter = createClearFilter('trackers')
+
+  const hasActiveFilters =
     selectedFilters.status.length > 0 ||
     selectedFilters.categories.length > 0 ||
     selectedFilters.tags.length > 0 ||
@@ -295,7 +331,7 @@ const FilterSidebarComponent = ({
 
   // Simple slide animation - sidebar slides in/out from the left
   return (
-    <div 
+    <div
       className={`${className} h-full w-full xl:max-w-xs flex flex-col xl:flex-shrink-0 xl:border-r xl:bg-muted/10 transition-transform duration-300 ease-in-out ${
         collapsed ? '-translate-x-full' : 'translate-x-0'
       }`}
@@ -314,8 +350,8 @@ const FilterSidebarComponent = ({
               )}
             </div>
 
-          <Accordion 
-            type="multiple" 
+          <Accordion
+            type="multiple"
             value={expandedItems}
             onValueChange={setExpandedItems}
             className="space-y-2"
@@ -326,9 +362,10 @@ const FilterSidebarComponent = ({
                 <div className="flex items-center justify-between w-full">
                   <span className="text-sm font-medium">Status</span>
                   {selectedFilters.status.length > 0 && (
-                    <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-xs">
-                      {selectedFilters.status.length}
-                    </Badge>
+                    <FilterBadge
+                      count={selectedFilters.status.length}
+                      onClick={clearStatusFilter}
+                    />
                   )}
                 </div>
               </AccordionTrigger>
@@ -362,9 +399,10 @@ const FilterSidebarComponent = ({
                 <div className="flex items-center justify-between w-full">
                   <span className="text-sm font-medium">Categories</span>
                   {selectedFilters.categories.length > 0 && (
-                    <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-xs">
-                      {selectedFilters.categories.length}
-                    </Badge>
+                    <FilterBadge
+                      count={selectedFilters.categories.length}
+                      onClick={clearCategoriesFilter}
+                    />
                   )}
                 </div>
               </AccordionTrigger>
@@ -378,7 +416,7 @@ const FilterSidebarComponent = ({
                     <Plus className="h-3 w-3" />
                     Add category
                   </button>
-                  
+
                   {/* Search input for large category lists */}
                   {Object.keys(categories).length > 20 && (
                     <div className="relative mb-2">
@@ -391,7 +429,7 @@ const FilterSidebarComponent = ({
                       />
                     </div>
                   )}
-                  
+
                   {/* Uncategorized option */}
                   <label className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer">
                     <Checkbox
@@ -406,7 +444,7 @@ const FilterSidebarComponent = ({
                       {torrentCounts ? (torrentCounts['category:'] || 0) : '...'}
                     </span>
                   </label>
-                  
+
                   {/* Category list - use filtered categories for performance */}
                   {filteredCategories.map(([name, category]: [string, any]) => (
                     <ContextMenu key={name}>
@@ -458,9 +496,10 @@ const FilterSidebarComponent = ({
                 <div className="flex items-center justify-between w-full">
                   <span className="text-sm font-medium">Tags</span>
                   {selectedFilters.tags.length > 0 && (
-                    <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-xs">
-                      {selectedFilters.tags.length}
-                    </Badge>
+                    <FilterBadge
+                      count={selectedFilters.tags.length}
+                      onClick={clearTagsFilter}
+                    />
                   )}
                 </div>
               </AccordionTrigger>
@@ -474,7 +513,7 @@ const FilterSidebarComponent = ({
                     <Plus className="h-3 w-3" />
                     Add tag
                   </button>
-                  
+
                   {/* Search input for large tag lists */}
                   {tags.length > 20 && (
                     <div className="relative mb-2">
@@ -487,7 +526,7 @@ const FilterSidebarComponent = ({
                       />
                     </div>
                   )}
-                  
+
                   {/* Untagged option */}
                   <label className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer">
                     <Checkbox
@@ -502,7 +541,7 @@ const FilterSidebarComponent = ({
                       {torrentCounts ? (torrentCounts['tag:'] || 0) : '...'}
                     </span>
                   </label>
-                  
+
                   {/* Tag list - use filtered tags for performance */}
                   {filteredTags.map((tag: string) => (
                     <ContextMenu key={tag}>
@@ -552,9 +591,10 @@ const FilterSidebarComponent = ({
                 <div className="flex items-center justify-between w-full">
                   <span className="text-sm font-medium">Trackers</span>
                   {selectedFilters.trackers.length > 0 && (
-                    <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-xs">
-                      {selectedFilters.trackers.length}
-                    </Badge>
+                    <FilterBadge
+                      count={selectedFilters.trackers.length}
+                      onClick={clearTrackersFilter}
+                    />
                   )}
                 </div>
               </AccordionTrigger>
@@ -572,7 +612,7 @@ const FilterSidebarComponent = ({
                       />
                     </div>
                   )}
-                  
+
                   {/* No tracker option */}
                   <label className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer">
                     <Checkbox
@@ -587,11 +627,11 @@ const FilterSidebarComponent = ({
                       {torrentCounts ? (torrentCounts['tracker:'] || 0) : '...'}
                     </span>
                   </label>
-                  
+
                   {/* Tracker list - use filtered trackers for performance */}
                   {filteredTrackers.filter(tracker => tracker !== '').map((tracker) => (
-                    <label 
-                      key={tracker} 
+                    <label
+                      key={tracker}
                       className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer"
                     >
                       <Checkbox
@@ -612,27 +652,27 @@ const FilterSidebarComponent = ({
           </Accordion>
           </div>
         </ScrollArea>
-      
+
       {/* Dialogs */}
       <CreateTagDialog
         open={showCreateTagDialog}
         onOpenChange={setShowCreateTagDialog}
         instanceId={instanceId}
       />
-      
+
       <DeleteTagDialog
         open={showDeleteTagDialog}
         onOpenChange={setShowDeleteTagDialog}
         instanceId={instanceId}
         tag={tagToDelete}
       />
-      
+
       <CreateCategoryDialog
         open={showCreateCategoryDialog}
         onOpenChange={setShowCreateCategoryDialog}
         instanceId={instanceId}
       />
-      
+
       {categoryToEdit && (
         <EditCategoryDialog
           open={showEditCategoryDialog}
@@ -641,14 +681,14 @@ const FilterSidebarComponent = ({
           category={categoryToEdit}
         />
       )}
-      
+
       <DeleteCategoryDialog
         open={showDeleteCategoryDialog}
         onOpenChange={setShowDeleteCategoryDialog}
         instanceId={instanceId}
         categoryName={categoryToDelete}
       />
-      
+
       <DeleteUnusedTagsDialog
         open={showDeleteUnusedTagsDialog}
         onOpenChange={setShowDeleteUnusedTagsDialog}
