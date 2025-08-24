@@ -9,13 +9,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { Button } from '@/components/ui/button'
-import { HardDrive, Download, Upload, AlertCircle, Activity, Plus, Zap, ChevronDown, ChevronUp, Eye, EyeOff } from 'lucide-react'
+import { HardDrive, Download, Upload, Activity, Plus, Zap, ChevronDown, ChevronUp, Eye, EyeOff } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
 import { useMemo } from 'react'
 import { formatSpeed, formatBytes, getRatioColor } from '@/lib/utils'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueries } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import type { ServerState, InstanceResponse } from '@/types'
+import type { ServerState, InstanceResponse, TorrentCounts } from '@/types'
+
+type InstanceStats = Awaited<ReturnType<typeof api.getInstanceStats>>
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -26,46 +28,68 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { useIncognitoMode } from '@/lib/incognito'
 
-// Custom hook to fetch serverState for an instance
-function useInstanceServerState(instanceId: number, enabled: boolean) {
-  return useQuery({
-    queryKey: ['server-state', instanceId],
-    queryFn: async () => {
-      try {
-        const data = await api.syncMainData(instanceId, 0)
-        return (data as any).server_state || data.serverState || null
-      } catch (error) {
-        console.error('Error fetching server state for instance', instanceId, error)
-        return null
-      }
-    },
-    staleTime: 30000, // 30 seconds
-    refetchInterval: 30000, // Refetch every 30 seconds
-    enabled: enabled && !!instanceId,
-  })
-}
 
-// Custom hook to safely get all instance stats
+// Custom hook to get all instance stats using dynamic queries
 function useAllInstanceStats(instances: InstanceResponse[]) {
-  // Always call the same number of hooks by using a fixed array
-  const maxInstances = 10 // Support up to 10 instances
-  const fixedInstances = [...instances, ...Array(maxInstances - instances.length).fill(null)]
+  const statsQueries = useQueries({
+    queries: instances.map(instance => ({
+      queryKey: ['instance-stats', instance.id],
+      queryFn: () => api.getInstanceStats(instance.id),
+      enabled: true,
+      refetchInterval: 5000,
+      staleTime: 2000,
+      gcTime: 1800000,
+      placeholderData: (previousData: InstanceStats | undefined) => previousData,
+      retry: 1,
+      retryDelay: 1000,
+    }))
+  })
   
-  const statsQueries = fixedInstances.map((instance) => 
-    useInstanceStats(instance?.id || -1, { 
-      enabled: instance !== null, 
-      pollingInterval: 5000 
-    })
-  )
+  const serverStateQueries = useQueries({
+    queries: instances.map(instance => ({
+      queryKey: ['server-state', instance.id],
+      queryFn: async () => {
+        try {
+          const data = await api.syncMainData(instance.id, 0)
+          const syncData = data as { server_state?: ServerState; serverState?: ServerState }
+          return syncData.server_state || syncData.serverState || null
+        } catch (error) {
+          console.error('Error fetching server state for instance', instance.id, error)
+          return null
+        }
+      },
+      staleTime: 30000,
+      refetchInterval: 30000,
+      enabled: true,
+    }))
+  })
   
-  const serverStateQueries = fixedInstances.map((instance) =>
-    useInstanceServerState(instance?.id || -1, instance !== null)
-  )
+  const torrentCountsQueries = useQueries({
+    queries: instances.map(instance => ({
+      queryKey: ['torrent-counts', instance.id],
+      queryFn: async () => {
+        try {
+          const data = await api.getTorrents(instance.id, { 
+            page: 0, 
+            limit: 1 
+          })
+          return data.counts || null
+        } catch (error) {
+          console.error('Error fetching torrent counts for instance', instance.id, error)
+          return null
+        }
+      },
+      staleTime: 10000,
+      refetchInterval: 10000,
+      enabled: true,
+    }))
+  })
   
   return instances.map((instance, index) => ({
     instance,
     stats: statsQueries[index].data,
-    serverState: serverStateQueries[index].data as ServerState | null
+    serverState: serverStateQueries[index].data as ServerState | null,
+    torrentCounts: torrentCountsQueries[index].data
   }))
 }
 
@@ -74,6 +98,24 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
   const { data: stats, isLoading, error } = useInstanceStats(instance.id, { 
     enabled: true, // Always fetch stats, regardless of isActive status
     pollingInterval: 5000 // Slower polling for dashboard
+  })
+  const { data: torrentCounts } = useQuery({
+    queryKey: ['torrent-counts', instance.id],
+    queryFn: async () => {
+      try {
+        const data = await api.getTorrents(instance.id, { 
+          page: 0, 
+          limit: 1 
+        })
+        return data.counts || null
+      } catch (error) {
+        console.error('Error fetching torrent counts for instance', instance.id, error)
+        return null
+      }
+    },
+    staleTime: 10000,
+    refetchInterval: 10000,
+    enabled: true,
   })
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const displayUrl = instance.host
@@ -236,10 +278,14 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
                 <span className="flex-1 text-center text-xs text-muted-foreground">Total</span>
               </div>
               <div className="flex items-center justify-center">
-                <span className="flex-1 text-center text-lg font-semibold">{(stats.torrents.downloading || 0) + (stats.torrents.seeding || 0)}</span>
-                <span className="flex-1 text-center text-lg font-semibold">{stats.torrents.paused}</span>
-                <span className="flex-1 text-center text-lg font-semibold">{stats.torrents.error}</span>
-                <span className="flex-1 text-center text-lg font-semibold">{stats.torrents.total}</span>
+                <span className="flex-1 text-center text-lg font-semibold">
+                  {torrentCounts?.status?.active || 0}
+                </span>
+                <span className="flex-1 text-center text-lg font-semibold">{torrentCounts?.status?.paused || 0}</span>
+                <span className={`flex-1 text-center text-lg font-semibold ${(torrentCounts?.status?.errored || 0) > 0 ? 'text-destructive' : ''}`}>
+                  {torrentCounts?.status?.errored || 0}
+                </span>
+                <span className="flex-1 text-center text-lg font-semibold">{torrentCounts?.total || 0}</span>
               </div>
             </div>
             
@@ -254,13 +300,6 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
               <span className="text-muted-foreground">Upload</span>
               <span className="ml-auto font-medium">{formatSpeed(stats.speeds?.upload || 0)}</span>
             </div>
-            
-            {stats.torrents.error > 0 && (
-              <div className="flex items-center gap-1 text-destructive text-xs pt-2 border-t">
-                <AlertCircle className="h-3 w-3" />
-                <span>{stats.torrents.error} errors</span>
-              </div>
-            )}
           </div>
         </CardContent>
       </Card>
@@ -268,19 +307,19 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
   )
 }
 
-function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: any, stats: any, serverState: ServerState | null }> }) {
+function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: InstanceResponse, stats: InstanceStats | undefined, serverState: ServerState | null, torrentCounts: TorrentCounts | null | undefined }> }) {
   const globalStats = useMemo(() => {
     const connected = statsData.filter(({ stats }) => stats?.connected).length
-    const totalTorrents = statsData.reduce((sum, { stats }) => 
-      sum + (stats?.torrents?.total || 0), 0)
-    const activeTorrents = statsData.reduce((sum, { stats }) => 
-      sum + ((stats?.torrents?.downloading || 0) + (stats?.torrents?.seeding || 0)), 0)
+    const totalTorrents = statsData.reduce((sum, { torrentCounts }) => 
+      sum + (torrentCounts?.total || 0), 0)
+    const activeTorrents = statsData.reduce((sum, { torrentCounts }) => 
+      sum + (torrentCounts?.status?.active || 0), 0)
     const totalDownload = statsData.reduce((sum, { stats }) => 
       sum + (stats?.speeds?.download || 0), 0)
     const totalUpload = statsData.reduce((sum, { stats }) => 
       sum + (stats?.speeds?.upload || 0), 0)
-    const totalErrors = statsData.reduce((sum, { stats }) => 
-      sum + (stats?.torrents?.error || 0), 0)
+    const totalErrors = statsData.reduce((sum, { torrentCounts }) => 
+      sum + (torrentCounts?.status?.errored || 0), 0)
     
     // Calculate all-time stats
     const alltimeDl = statsData.reduce((sum, { serverState }) => 
@@ -340,12 +379,6 @@ function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: any, sta
           <p className="text-xs text-muted-foreground">
             {globalStats.activeTorrents} active
           </p>
-          {globalStats.totalTorrents > 0 && (
-            <Progress 
-              value={(globalStats.activeTorrents / globalStats.totalTorrents) * 100} 
-              className="mt-2 h-1"
-            />
-          )}
         </CardContent>
       </Card>
 
@@ -378,7 +411,7 @@ function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: any, sta
   )
 }
 
-function GlobalAllTimeStats({ statsData }: { statsData: Array<{ instance: any, stats: any, serverState: ServerState | null }> }) {
+function GlobalAllTimeStats({ statsData }: { statsData: Array<{ instance: InstanceResponse, stats: InstanceStats | undefined, serverState: ServerState | null }> }) {
   const globalStats = useMemo(() => {
     // Calculate all-time stats
     const alltimeDl = statsData.reduce((sum, { serverState }) => 
@@ -481,7 +514,7 @@ function GlobalAllTimeStats({ statsData }: { statsData: Array<{ instance: any, s
   )
 }
 
-function QuickActionsDropdown({ statsData }: { statsData: Array<{ instance: any, stats: any, serverState: ServerState | null }> }) {
+function QuickActionsDropdown({ statsData }: { statsData: Array<{ instance: InstanceResponse, stats: InstanceStats | undefined, serverState: ServerState | null }> }) {
   const connectedInstances = statsData
     .filter(({ stats }) => stats?.connected)
     .map(({ instance }) => instance)
