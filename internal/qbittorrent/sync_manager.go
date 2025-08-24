@@ -71,15 +71,6 @@ func NewSyncManager(clientPool *ClientPool) *SyncManager {
 func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID int, limit, offset int, sort, order, search string, filters FilterOptions) (*TorrentResponse, error) {
 	// No longer caching filtered results - always compute from all_torrents cache
 	// This ensures optimistic updates are always reflected
-	cacheKey := fmt.Sprintf("torrents:filtered:%d:%d:%d:%s:%s:%s:%+v", instanceID, offset, limit, sort, order, search, filters)
-
-	// Always fetch from all_torrents cache and apply filters
-	// This uses the optimistically updated cache as the single source of truth
-	return sm.fetchFreshTorrentData(ctx, instanceID, limit, offset, sort, order, search, filters, cacheKey)
-}
-
-// fetchFreshTorrentData fetches fresh torrent data from all_torrents cache and applies filters
-func (sm *SyncManager) fetchFreshTorrentData(ctx context.Context, instanceID int, limit, offset int, sort, order, search string, filters FilterOptions, _ string) (*TorrentResponse, error) {
 	var filteredTorrents []qbt.Torrent
 	var err error
 
@@ -188,6 +179,7 @@ func (sm *SyncManager) fetchFreshTorrentData(ctx context.Context, instanceID int
 
 	return response, nil
 }
+
 
 // GetServerStats gets server statistics using SyncMainData (for Dashboard)
 func (sm *SyncManager) GetServerStats(ctx context.Context, instanceID int) (*qbt.MainData, error) {
@@ -760,26 +752,8 @@ func (sm *SyncManager) InvalidateCache(instanceID int) {
 	log.Debug().Int("instanceID", instanceID).Msg("Instance-specific cache invalidation completed")
 }
 
-// invalidateTagsCache invalidates the tags cache for a specific instance
-func (sm *SyncManager) invalidateTagsCache(instanceID int) {
-	cacheKey := fmt.Sprintf("tags:%d", instanceID)
-	sm.cache.Del(cacheKey)
-	log.Debug().Int("instanceID", instanceID).Msg("Invalidated tags cache")
-}
 
-// invalidateCategoriesCache invalidates the categories cache for a specific instance
-func (sm *SyncManager) invalidateCategoriesCache(instanceID int) {
-	cacheKey := fmt.Sprintf("categories:%d", instanceID)
-	sm.cache.Del(cacheKey)
-	log.Debug().Int("instanceID", instanceID).Msg("Invalidated categories cache")
-}
 
-// shouldSkipCache returns true if we should skip caching (cache was recently cleared)
-func (sm *SyncManager) shouldSkipCache() bool {
-	// With optimistic updates, we no longer need to skip caching after actions
-	// The cache is kept updated with expected changes
-	return false
-}
 
 // applyOptimisticCacheUpdate applies optimistic updates to cached torrents
 func (sm *SyncManager) applyOptimisticCacheUpdate(instanceID int, hashes []string, action string, payload map[string]any) {
@@ -982,9 +956,7 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 		log.Debug().Dur("responseTime", responseTime).Int("torrents", len(torrents)).Msg("Ultra fast instance, using 2s cache")
 	}
 
-	if !sm.shouldSkipCache() {
-		sm.cache.SetWithTTL(cacheKey, torrents, 1, cacheTTL)
-	}
+	sm.cache.SetWithTTL(cacheKey, torrents, 1, cacheTTL)
 
 	return torrents, nil
 }
@@ -1001,12 +973,6 @@ func normalizeForSearch(text string) string {
 	return strings.Join(strings.Fields(normalized), " ")
 }
 
-// isGlobPattern checks if a search string contains glob pattern characters
-func isGlobPattern(search string) bool {
-	// Check for glob metacharacters: *, ?, [
-	// Note: We check for [ but not ] alone, as ] without [ is not a glob pattern
-	return strings.ContainsAny(search, "*?[")
-}
 
 // filterTorrentsBySearch filters torrents by search string with smart matching
 func (sm *SyncManager) filterTorrentsBySearch(torrents []qbt.Torrent, search string) []qbt.Torrent {
@@ -1015,7 +981,7 @@ func (sm *SyncManager) filterTorrentsBySearch(torrents []qbt.Torrent, search str
 	}
 
 	// Check if search contains glob patterns
-	if isGlobPattern(search) {
+	if strings.ContainsAny(search, "*?[") {
 		return sm.filterTorrentsByGlob(torrents, search)
 	}
 
@@ -1509,7 +1475,10 @@ func (sm *SyncManager) CreateTags(ctx context.Context, instanceID int, tags []st
 		return err
 	}
 
-	sm.invalidateTagsCache(instanceID)
+	// Invalidate tags cache
+	cacheKey := fmt.Sprintf("tags:%d", instanceID)
+	sm.cache.Del(cacheKey)
+	log.Debug().Int("instanceID", instanceID).Msg("Invalidated tags cache")
 	return nil
 }
 
@@ -1524,7 +1493,10 @@ func (sm *SyncManager) DeleteTags(ctx context.Context, instanceID int, tags []st
 		return err
 	}
 
-	sm.invalidateTagsCache(instanceID)
+	// Invalidate tags cache
+	cacheKey := fmt.Sprintf("tags:%d", instanceID)
+	sm.cache.Del(cacheKey)
+	log.Debug().Int("instanceID", instanceID).Msg("Invalidated tags cache")
 	return nil
 }
 
@@ -1539,7 +1511,10 @@ func (sm *SyncManager) CreateCategory(ctx context.Context, instanceID int, name 
 		return err
 	}
 
-	sm.invalidateCategoriesCache(instanceID)
+	// Invalidate categories cache
+	cacheKey := fmt.Sprintf("categories:%d", instanceID)
+	sm.cache.Del(cacheKey)
+	log.Debug().Int("instanceID", instanceID).Msg("Invalidated categories cache")
 	return nil
 }
 
@@ -1554,7 +1529,10 @@ func (sm *SyncManager) EditCategory(ctx context.Context, instanceID int, name st
 		return err
 	}
 
-	sm.invalidateCategoriesCache(instanceID)
+	// Invalidate categories cache
+	cacheKey := fmt.Sprintf("categories:%d", instanceID)
+	sm.cache.Del(cacheKey)
+	log.Debug().Int("instanceID", instanceID).Msg("Invalidated categories cache")
 	return nil
 }
 
@@ -1569,6 +1547,9 @@ func (sm *SyncManager) RemoveCategories(ctx context.Context, instanceID int, cat
 		return err
 	}
 
-	sm.invalidateCategoriesCache(instanceID)
+	// Invalidate categories cache
+	cacheKey := fmt.Sprintf("categories:%d", instanceID)
+	sm.cache.Del(cacheKey)
+	log.Debug().Int("instanceID", instanceID).Msg("Invalidated categories cache")
 	return nil
 }

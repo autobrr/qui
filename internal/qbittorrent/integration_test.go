@@ -5,6 +5,7 @@ package qbittorrent
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -279,7 +280,7 @@ func TestSyncManager_SearchFunctionality(t *testing.T) {
 		}
 
 		for _, tc := range testCases {
-			result := isGlobPattern(tc.input)
+			result := strings.ContainsAny(tc.input, "*?[")
 			assert.Equal(t, tc.expected, result,
 				"Pattern detection for '%s' should be %v, got %v",
 				tc.input, tc.expected, result)
