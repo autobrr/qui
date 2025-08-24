@@ -407,11 +407,6 @@ func (c *AppConfig) GetDatabasePath() string {
 	return filepath.Join(c.dataDir, "qui.db")
 }
 
-// GetDataDir returns the data directory path
-func (c *AppConfig) GetDataDir() string {
-	return c.dataDir
-}
-
 // SetDataDir sets the data directory (used by CLI flags)
 func (c *AppConfig) SetDataDir(dir string) {
 	c.dataDir = dir

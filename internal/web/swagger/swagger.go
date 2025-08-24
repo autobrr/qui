@@ -62,6 +62,7 @@ func (h *Handler) ServeSwaggerUI(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(html))
 }
 
+// GetOpenAPISpec returns the embedded OpenAPI spec for testing
 func GetOpenAPISpec() ([]byte, error) {
 	if len(openapiYAML) == 0 {
 		return nil, nil

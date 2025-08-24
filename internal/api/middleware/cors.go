@@ -5,14 +5,7 @@ package middleware
 
 import (
 	"net/http"
-
-	"github.com/go-chi/chi/v5/middleware"
 )
-
-// CORS returns a configured CORS middleware
-func CORS() func(next http.Handler) http.Handler {
-	return middleware.SetHeader("Access-Control-Allow-Origin", "*")
-}
 
 // CORSWithCredentials returns a CORS middleware that allows credentials
 func CORSWithCredentials(allowedOrigins []string) func(next http.Handler) http.Handler {

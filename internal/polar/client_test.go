@@ -91,27 +91,6 @@ func TestValidateLicense_NoOrgID(t *testing.T) {
 	}
 }
 
-func TestActivateLicense_NoOrgID(t *testing.T) {
-	client := NewClient()
-	// Don't set organization ID
-
-	result, err := client.ActivateLicense(context.Background(), "test-license")
-	if err != nil {
-		t.Errorf("ActivateLicense() error = %v, want nil", err)
-	}
-
-	if result == nil {
-		t.Fatal("ActivateLicense() returned nil result")
-	}
-
-	if result.Valid {
-		t.Error("License should be invalid when org ID not configured")
-	}
-
-	if result.ErrorMessage != orgIDNotConfigMsg {
-		t.Errorf("Error message = %v, want %v", result.ErrorMessage, orgIDNotConfigMsg)
-	}
-}
 
 func TestMapBenefitToTheme(t *testing.T) {
 	tests := []struct {

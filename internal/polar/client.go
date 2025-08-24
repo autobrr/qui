@@ -148,62 +148,6 @@ func (c *Client) ValidateLicense(ctx context.Context, licenseKey string) (*Licen
 	}, nil
 }
 
-// ActivateLicense activates a license key
-func (c *Client) ActivateLicense(ctx context.Context, licenseKey string) (*LicenseInfo, error) {
-	if c.organizationID == "" {
-		return &LicenseInfo{
-			Key:          licenseKey,
-			Valid:        false,
-			ErrorMessage: orgIDNotConfigMsg,
-		}, nil
-	}
-
-	log.Debug().
-		Str("organizationId", c.organizationID).
-		Msg("Activating license key with Polar API")
-
-	requestBody := map[string]string{
-		"key":             licenseKey,
-		"organization_id": c.organizationID,
-		"label":           defaultLabel,
-	}
-
-	body, err := c.makeHTTPRequest(ctx, activateEndpoint, requestBody, true)
-	if err != nil {
-		return &LicenseInfo{
-			Key:          licenseKey,
-			Valid:        false,
-			ErrorMessage: activateFailedMsg,
-		}, err
-	}
-
-	var response ActivationResponse
-	if err := json.Unmarshal(body, &response); err != nil {
-		log.Error().Err(err).Msg("Failed to parse activation response")
-		return &LicenseInfo{
-			Key:          licenseKey,
-			Valid:        false,
-			ErrorMessage: invalidRespMsg,
-		}, err
-	}
-
-	themeName := c.mapBenefitToTheme(response.LicenseKey.BenefitID, "activation")
-
-	log.Info().
-		Str("themeName", themeName).
-		Str("customerID", maskID(response.LicenseKey.CustomerID)).
-		Str("productID", maskID(response.LicenseKey.BenefitID)).
-		Msg("License key activated successfully")
-
-	return &LicenseInfo{
-		Key:        licenseKey,
-		ThemeName:  themeName,
-		CustomerID: response.LicenseKey.CustomerID,
-		ProductID:  response.LicenseKey.BenefitID,
-		ExpiresAt:  response.LicenseKey.ExpiresAt,
-		Valid:      true,
-	}, nil
-}
 
 // makeHTTPRequest handles common HTTP request logic for both endpoints
 func (c *Client) makeHTTPRequest(ctx context.Context, endpoint string, requestBody map[string]string, isActivation bool) ([]byte, error) {

@@ -4,7 +4,6 @@
 package models
 
 import (
-	"database/sql/driver"
 	"time"
 )
 
@@ -29,21 +28,3 @@ const (
 	LicenseStatusInvalid = "invalid"
 )
 
-// IsValid returns true if the license is currently valid
-func (tl *ThemeLicense) IsValid() bool {
-	if tl.Status != LicenseStatusActive {
-		return false
-	}
-
-	// Check expiration
-	if tl.ExpiresAt != nil && time.Now().After(*tl.ExpiresAt) {
-		return false
-	}
-
-	return true
-}
-
-// Value implements driver.Valuer for database storage
-func (tl *ThemeLicense) Value() (driver.Value, error) {
-	return tl.LicenseKey, nil
-}
