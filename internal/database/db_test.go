@@ -23,7 +23,7 @@ func TestMigrationIdempotency(t *testing.T) {
 	// Initialize database first time
 	db1, err := New(dbPath)
 	require.NoError(t, err, "Failed to initialize database first time")
-	
+
 	// Count migrations applied
 	var count1 int
 	err = db1.conn.QueryRow("SELECT COUNT(*) FROM migrations").Scan(&count1)
@@ -43,4 +43,3 @@ func TestMigrationIdempotency(t *testing.T) {
 	assert.Equal(t, count1, count2, "Migration count should be the same after re-initialization")
 	assert.Equal(t, 3, count2, "Should have exactly 3 migrations applied")
 }
-

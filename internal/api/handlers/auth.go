@@ -107,9 +107,9 @@ func (h *AuthHandler) Setup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusCreated, map[string]interface{}{
+	RespondJSON(w, http.StatusCreated, map[string]any{
 		"message": "Setup completed successfully",
-		"user": map[string]interface{}{
+		"user": map[string]any{
 			"id":       user.ID,
 			"username": user.Username,
 		},
@@ -167,9 +167,9 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]interface{}{
+	RespondJSON(w, http.StatusOK, map[string]any{
 		"message": "Login successful",
-		"user": map[string]interface{}{
+		"user": map[string]any{
 			"id":       user.ID,
 			"username": user.Username,
 		},
@@ -211,7 +211,7 @@ func (h *AuthHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]interface{}{
+	RespondJSON(w, http.StatusOK, map[string]any{
 		"id":       userID,
 		"username": username,
 	})
@@ -226,7 +226,7 @@ func (h *AuthHandler) CheckSetupRequired(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]interface{}{
+	RespondJSON(w, http.StatusOK, map[string]any{
 		"setupRequired": !complete,
 	})
 }
@@ -283,7 +283,7 @@ func (h *AuthHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusCreated, map[string]interface{}{
+	RespondJSON(w, http.StatusCreated, map[string]any{
 		"id":        apiKey.ID,
 		"name":      apiKey.Name,
 		"key":       rawKey, // Only shown once

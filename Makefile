@@ -90,6 +90,11 @@ lint:
 	golangci-lint run
 	cd $(WEB_DIR) && pnpm lint
 
+# Modernize Go code (interface{} -> any, etc)
+modern:
+	@echo "Modernizing Go code..."
+	go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -fix -test ./...
+
 # Install development dependencies
 deps:
 	@echo "Installing development dependencies..."
@@ -111,5 +116,6 @@ help:
 	@echo "  make test-openapi - Validate OpenAPI specification"
 	@echo "  make fmt          - Format code"
 	@echo "  make lint         - Lint code"
+	@echo "  make modern       - Modernize Go code (interface{} -> any, etc)"
 	@echo "  make deps         - Install dependencies"
 	@echo "  make help         - Show this help message"

@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -308,7 +309,7 @@ func (c *Client) IsClientConfigured() bool {
 // ValidateConfiguration validates the client configuration
 func (c *Client) ValidateConfiguration(ctx context.Context) error {
 	if c.organizationID == "" {
-		return fmt.Errorf(orgIDNotConfigMsg)
+		return errors.New(orgIDNotConfigMsg)
 	}
 
 	// No authentication needed, so no connection test required

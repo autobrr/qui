@@ -40,8 +40,8 @@ func TestSetOrganizationID(t *testing.T) {
 
 func TestIsClientConfigured(t *testing.T) {
 	tests := []struct {
-		name   string
-		orgID  string
+		name     string
+		orgID    string
 		expected bool
 	}{
 		{

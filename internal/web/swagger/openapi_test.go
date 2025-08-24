@@ -15,7 +15,7 @@ func TestOpenAPISpec(t *testing.T) {
 		t.Fatal("OpenAPI spec is empty")
 	}
 
-	var spec map[string]interface{}
+	var spec map[string]any
 	if err := yaml.Unmarshal(openapiYAML, &spec); err != nil {
 		t.Fatalf("Failed to parse OpenAPI spec: %v", err)
 	}
@@ -32,14 +32,14 @@ func TestOpenAPISpec(t *testing.T) {
 		t.Error("Missing 'paths' field")
 	}
 
-	paths, ok := spec["paths"].(map[string]interface{})
+	paths, ok := spec["paths"].(map[string]any)
 	if !ok {
 		t.Fatal("'paths' is not a map")
 	}
 
 	totalEndpoints := 0
 	for _, pathItem := range paths {
-		if methods, ok := pathItem.(map[string]interface{}); ok {
+		if methods, ok := pathItem.(map[string]any); ok {
 			for method := range methods {
 				// Skip non-HTTP methods like "parameters"
 				if method == "get" || method == "post" || method == "put" || method == "delete" || method == "patch" {
@@ -51,12 +51,12 @@ func TestOpenAPISpec(t *testing.T) {
 
 	t.Logf("OpenAPI spec documents %d endpoints", totalEndpoints)
 
-	components, ok := spec["components"].(map[string]interface{})
+	components, ok := spec["components"].(map[string]any)
 	if !ok {
 		t.Fatal("Missing or invalid 'components' section")
 	}
 
-	schemas, ok := components["schemas"].(map[string]interface{})
+	schemas, ok := components["schemas"].(map[string]any)
 	if !ok {
 		t.Fatal("Missing or invalid 'schemas' section")
 	}
@@ -83,17 +83,17 @@ func TestOpenAPISpec(t *testing.T) {
 
 // TestOpenAPISecuritySchemes validates that security schemes are properly defined
 func TestOpenAPISecuritySchemes(t *testing.T) {
-	var spec map[string]interface{}
+	var spec map[string]any
 	if err := yaml.Unmarshal(openapiYAML, &spec); err != nil {
 		t.Fatalf("Failed to parse OpenAPI spec: %v", err)
 	}
 
-	components, ok := spec["components"].(map[string]interface{})
+	components, ok := spec["components"].(map[string]any)
 	if !ok {
 		t.Fatal("Missing or invalid 'components' section")
 	}
 
-	securitySchemes, ok := components["securitySchemes"].(map[string]interface{})
+	securitySchemes, ok := components["securitySchemes"].(map[string]any)
 	if !ok {
 		t.Fatal("Missing or invalid 'securitySchemes' section")
 	}

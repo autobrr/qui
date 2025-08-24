@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -150,7 +151,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 	// With multiple files, we allow 60 seconds total (not per file)
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
-	
+
 	// Get instance ID from URL
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
@@ -179,7 +180,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 				defer file.Close()
-				
+
 				fileContent, err := io.ReadAll(file)
 				if err != nil {
 					log.Error().Err(err).Str("filename", fileHeader.Filename).Msg("Failed to read torrent file")
@@ -189,7 +190,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	
+
 	// Check for URLs/magnet links if no files
 	if len(torrentFiles) == 0 {
 		urlsParam := r.FormValue("urls")
@@ -216,7 +217,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 
 	if paused := r.FormValue("paused"); paused == "true" {
 		options["paused"] = "true"
-		options["stopped"] = "true"  // qBittorrent API requires both paused and stopped
+		options["stopped"] = "true" // qBittorrent API requires both paused and stopped
 	}
 
 	if skipChecking := r.FormValue("skip_checking"); skipChecking == "true" {
@@ -252,7 +253,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 				log.Warn().Int("instanceID", instanceID).Msg("Request cancelled, stopping torrent additions")
 				break
 			}
-			
+
 			if err := h.syncManager.AddTorrent(ctx, instanceID, fileContent, options); err != nil {
 				log.Error().Err(err).Int("instanceID", instanceID).Int("fileIndex", i).Msg("Failed to add torrent file")
 				failedCount++
@@ -270,7 +271,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 		}
 		addedCount = len(urls) // Assume all URLs succeeded for simplicity
 	}
-	
+
 	// Check if any torrents failed
 	if failedCount > 0 && addedCount == 0 {
 		// All failed
@@ -291,11 +292,11 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 	} else {
 		message = "Torrent added successfully"
 	}
-	
-	RespondJSON(w, http.StatusCreated, map[string]interface{}{
+
+	RespondJSON(w, http.StatusCreated, map[string]any{
 		"message": message,
-		"added": addedCount,
-		"failed": failedCount,
+		"added":   addedCount,
+		"failed":  failedCount,
 	})
 }
 
@@ -337,13 +338,7 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 		"toggleAutoTMM",
 	}
 
-	valid := false
-	for _, action := range validActions {
-		if req.Action == action {
-			valid = true
-			break
-		}
-	}
+	valid := slices.Contains(validActions, req.Action)
 
 	if !valid {
 		RespondError(w, http.StatusBadRequest, "Invalid action")
@@ -491,7 +486,6 @@ func (h *TorrentsHandler) ResumeTorrent(w http.ResponseWriter, r *http.Request) 
 		"message": "Torrent resumed successfully",
 	})
 }
-
 
 // GetCategories returns all categories
 func (h *TorrentsHandler) GetCategories(w http.ResponseWriter, r *http.Request) {
@@ -777,5 +771,3 @@ func (h *TorrentsHandler) GetTorrentFiles(w http.ResponseWriter, r *http.Request
 
 	RespondJSON(w, http.StatusOK, files)
 }
-
-

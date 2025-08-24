@@ -60,17 +60,17 @@ func TestAllEndpointsDocumented(t *testing.T) {
 		t.Fatalf("Failed to get OpenAPI spec: %v", err)
 	}
 
-	var openapiSpec map[string]interface{}
+	var openapiSpec map[string]any
 	if err := yaml.Unmarshal(spec, &openapiSpec); err != nil {
 		t.Fatalf("Failed to parse OpenAPI spec: %v", err)
 	}
 
 	// Get all documented paths from OpenAPI
 	documentedPaths := make(map[string]map[string]bool)
-	if paths, ok := openapiSpec["paths"].(map[string]interface{}); ok {
+	if paths, ok := openapiSpec["paths"].(map[string]any); ok {
 		for path, pathItem := range paths {
 			documentedPaths[path] = make(map[string]bool)
-			if methods, ok := pathItem.(map[string]interface{}); ok {
+			if methods, ok := pathItem.(map[string]any); ok {
 				for method := range methods {
 					if method == "get" || method == "post" || method == "put" || method == "delete" || method == "patch" {
 						documentedPaths[path][strings.ToUpper(method)] = true
@@ -83,7 +83,7 @@ func TestAllEndpointsDocumented(t *testing.T) {
 	// Check for undocumented routes
 	var undocumented []string
 	var nonAPIRoutes []string
-	
+
 	for _, route := range actualRoutes {
 		// Skip non-API routes (these are handled elsewhere)
 		if !strings.HasPrefix(route.Path, "/api/") {

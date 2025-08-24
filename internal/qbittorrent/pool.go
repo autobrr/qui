@@ -276,7 +276,7 @@ func (cp *ClientPool) Close() error {
 }
 
 // Stats returns statistics about the pool
-func (cp *ClientPool) Stats() map[string]interface{} {
+func (cp *ClientPool) Stats() map[string]any {
 	cp.mu.RLock()
 	defer cp.mu.RUnlock()
 
@@ -295,7 +295,7 @@ func (cp *ClientPool) Stats() map[string]interface{} {
 		}
 	}
 
-	return map[string]interface{}{
+	return map[string]any{
 		"total_clients":   len(cp.clients),
 		"healthy_clients": healthyCount,
 		"backoff_clients": backoffCount,
@@ -348,10 +348,7 @@ func (cp *ClientPool) trackFailure(instanceID int, err error) {
 
 // calculateBackoff returns exponential backoff duration with limits
 func (cp *ClientPool) calculateBackoff(attempts int, initialDuration, maxDuration time.Duration) time.Duration {
-	backoff := time.Duration(1<<(attempts-1)) * initialDuration
-	if backoff > maxDuration {
-		backoff = maxDuration
-	}
+	backoff := min(time.Duration(1<<(attempts-1))*initialDuration, maxDuration)
 	return backoff
 }
 

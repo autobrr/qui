@@ -37,23 +37,23 @@ func TestSyncManager_CacheIntegration(t *testing.T) {
 	t.Run("InvalidateCache clears all cache entries", func(t *testing.T) {
 		// Populate cache with entries that InvalidateCache explicitly deletes
 		// These keys are the ones that InvalidateCache actually tries to delete
-		testEntries := map[string]interface{}{
-			"all_torrents:1:":           createTestTorrents(50),  // Empty search
-			"all_torrents:1: ":          createTestTorrents(25),  // Space search
-			"categories:1":              map[string]interface{}{"movies": "test"},
-			"tags:1":                    []string{"action", "comedy"},
-			"torrents:1:":               createTestTorrents(100), // Base torrents key
-			"torrents:filtered:1:":      createTestTorrents(50),  // Filtered base
-			"torrents:search:1:":        createTestTorrents(30),  // Search base
-			"native_filtered:1:":        createTestTorrents(10),  // Native filtered base
-			"torrent:properties:1:":     map[string]string{"hash": "abc"}, // Properties base
-			"torrent:trackers:1:":       []string{"tracker1"},    // Trackers base
-			"torrent:files:1:":          []map[string]interface{}{{"name": "file.mkv"}}, // Files base
-			"torrent:webseeds:1:":       []string{"webseed1"},    // Webseeds base
+		testEntries := map[string]any{
+			"all_torrents:1:":       createTestTorrents(50), // Empty search
+			"all_torrents:1: ":      createTestTorrents(25), // Space search
+			"categories:1":          map[string]any{"movies": "test"},
+			"tags:1":                []string{"action", "comedy"},
+			"torrents:1:":           createTestTorrents(100),                // Base torrents key
+			"torrents:filtered:1:":  createTestTorrents(50),                 // Filtered base
+			"torrents:search:1:":    createTestTorrents(30),                 // Search base
+			"native_filtered:1:":    createTestTorrents(10),                 // Native filtered base
+			"torrent:properties:1:": map[string]string{"hash": "abc"},       // Properties base
+			"torrent:trackers:1:":   []string{"tracker1"},                   // Trackers base
+			"torrent:files:1:":      []map[string]any{{"name": "file.mkv"}}, // Files base
+			"torrent:webseeds:1:":   []string{"webseed1"},                   // Webseeds base
 		}
 
 		// Also add some paginated entries that should be deleted
-		for page := 0; page < 2; page++ {
+		for page := range 2 {
 			for _, limit := range []int{100, 200} {
 				key := fmt.Sprintf("torrents:1:%d:%d", page*limit, limit)
 				testEntries[key] = createTestTorrents(limit)
@@ -93,7 +93,7 @@ func TestSyncManager_CacheIntegration(t *testing.T) {
 		}
 
 		// Add paginated keys that should be deleted
-		for page := 0; page < 2; page++ {
+		for page := range 2 {
 			for _, limit := range []int{100, 200} {
 				key := fmt.Sprintf("torrents:1:%d:%d", page*limit, limit)
 				expectedDeleted[key] = true
@@ -328,8 +328,7 @@ func BenchmarkSyncManager_FilterTorrentsBySearch(b *testing.B) {
 	sm := &SyncManager{}
 	torrents := createTestTorrents(1000) // 1k torrents
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		results := sm.filterTorrentsBySearch(torrents, "test-torrent-5")
 		if len(results) == 0 {
 			b.Fatal("Should find at least one match")
@@ -345,8 +344,7 @@ func BenchmarkSyncManager_SortTorrents(b *testing.B) {
 
 	sm := &SyncManager{}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		torrents := createTestTorrents(1000) // Create fresh slice each time
 		sm.sortTorrents(torrents, "name", "asc")
 	}
@@ -361,8 +359,7 @@ func BenchmarkSyncManager_CalculateStats(b *testing.B) {
 	sm := &SyncManager{}
 	torrents := createTestTorrents(10000) // 10k torrents
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		stats := sm.calculateStats(torrents)
 		if stats.Total != 10000 {
 			b.Fatal("Stats calculation failed")
@@ -384,7 +381,7 @@ func BenchmarkSyncManager_CacheOperations(b *testing.B) {
 	defer cache.Close()
 
 	// Pre-populate with realistic data
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		key := fmt.Sprintf("torrents:%d:%d:50", i%5+1, i)
 		response := &TorrentResponse{
 			Torrents: createTestTorrents(50),
@@ -394,8 +391,7 @@ func BenchmarkSyncManager_CacheOperations(b *testing.B) {
 	}
 	cache.Wait()
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		// Simulate typical operations
 		instanceID := i%5 + 1
 
