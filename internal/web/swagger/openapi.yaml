@@ -486,53 +486,6 @@ paths:
                   server_state:
                     type: object
 
-  /api/instances/{instanceId}/torrents/filter:
-    get:
-      tags:
-        - Torrents
-      summary: Get filtered torrents
-      description: Get torrents with advanced filtering options
-      parameters:
-        - $ref: '#/components/parameters/instanceId'
-        - name: filter
-          in: query
-          schema:
-            type: string
-            enum: [all, downloading, seeding, completed, paused, active, inactive, resumed, stalled, stalled_uploading, stalled_downloading, errored]
-        - name: category
-          in: query
-          schema:
-            type: string
-        - name: tag
-          in: query
-          schema:
-            type: string
-        - name: sort
-          in: query
-          schema:
-            type: string
-        - name: reverse
-          in: query
-          schema:
-            type: boolean
-        - name: limit
-          in: query
-          schema:
-            type: integer
-        - name: offset
-          in: query
-          schema:
-            type: integer
-      responses:
-        '200':
-          description: Filtered torrent list
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Torrent'
-
   /api/instances/{instanceId}/torrents/bulk-action:
     post:
       tags:
@@ -663,68 +616,6 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/TorrentFile'
-
-  /api/instances/{instanceId}/torrents/{hash}/webseeds:
-    get:
-      tags:
-        - Torrent Details
-      summary: Get torrent webseeds
-      description: Get list of webseeds for a torrent
-      parameters:
-        - $ref: '#/components/parameters/instanceId'
-        - $ref: '#/components/parameters/hash'
-      responses:
-        '200':
-          description: List of webseeds
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  type: object
-                  properties:
-                    url:
-                      type: string
-
-  /api/instances/{instanceId}/torrents/counts:
-    get:
-      tags:
-        - Torrents
-      summary: Get torrent counts
-      description: Get counts of torrents by status, category, tag, and tracker
-      parameters:
-        - $ref: '#/components/parameters/instanceId'
-      responses:
-        '200':
-          description: Torrent counts by various criteria
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  total:
-                    type: integer
-                    description: Total number of torrents
-                  status:
-                    type: object
-                    description: Counts by torrent status
-                    additionalProperties:
-                      type: integer
-                  categories:
-                    type: object
-                    description: Counts by category
-                    additionalProperties:
-                      type: integer
-                  tags:
-                    type: object
-                    description: Counts by tag
-                    additionalProperties:
-                      type: integer
-                  trackers:
-                    type: object
-                    description: Counts by tracker domain
-                    additionalProperties:
-                      type: integer
 
   /api/instances/{instanceId}/categories:
     get:
@@ -997,6 +888,25 @@ paths:
                     type: integer
                   failed:
                     type: integer
+
+  /health:
+    get:
+      tags:
+        - System
+      summary: Health check
+      description: Check if the API is healthy and responding
+      security: []
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "ok"
 
 components:
   securitySchemes:
