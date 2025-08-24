@@ -53,11 +53,9 @@ type TorrentStats struct {
 	TotalUploadSpeed   int `json:"totalUploadSpeed"`
 }
 
-// SyncManager manages SyncMainData for efficient torrent updates
+// SyncManager manages torrent operations and caching
 type SyncManager struct {
 	clientPool   *ClientPool
-	mainData     map[int]*qbt.MainData
-	ridTracker   map[int]int64
 	mu           sync.RWMutex
 	cache        *ristretto.Cache
 	cacheCleared time.Time // Track when cache was last cleared to avoid re-caching stale data
@@ -67,8 +65,6 @@ type SyncManager struct {
 func NewSyncManager(clientPool *ClientPool) *SyncManager {
 	return &SyncManager{
 		clientPool: clientPool,
-		mainData:   make(map[int]*qbt.MainData),
-		ridTracker: make(map[int]int64),
 		cache:      clientPool.GetCache(),
 	}
 }
@@ -309,42 +305,24 @@ func (sm *SyncManager) fetchFreshTorrentData(ctx context.Context, instanceID int
 	return response, nil
 }
 
-// GetUpdates gets real-time updates using SyncMainData
-func (sm *SyncManager) GetUpdates(ctx context.Context, instanceID int) (*qbt.MainData, error) {
-	sm.mu.Lock()
-	rid := sm.ridTracker[instanceID]
-	sm.mu.Unlock()
-
+// GetServerStats gets server statistics using SyncMainData (for Dashboard)
+func (sm *SyncManager) GetServerStats(ctx context.Context, instanceID int) (*qbt.MainData, error) {
 	// Get client
 	client, err := sm.clientPool.GetClient(instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
 
-	// Get sync data
-	mainData, err := client.SyncMainDataCtx(ctx, rid)
+	// Get sync data with rid=0 to just fetch server state
+	// We only need server_state for Dashboard statistics
+	mainData, err := client.SyncMainDataCtx(ctx, 0)
 	if err != nil {
-		return nil, fmt.Errorf("failed to sync main data: %w", err)
+		return nil, fmt.Errorf("failed to get server stats: %w", err)
 	}
-
-	// Update RID for next request
-	sm.mu.Lock()
-	sm.ridTracker[instanceID] = mainData.Rid
-
-	// Merge updates into existing data
-	if existing, ok := sm.mainData[instanceID]; ok && !mainData.FullUpdate {
-		sm.mergeMainData(existing, mainData)
-		sm.mainData[instanceID] = existing
-	} else {
-		sm.mainData[instanceID] = mainData
-	}
-	sm.mu.Unlock()
 
 	log.Debug().
 		Int("instanceID", instanceID).
-		Int64("rid", mainData.Rid).
-		Bool("fullUpdate", mainData.FullUpdate).
-		Msg("Sync update completed")
+		Msg("Server stats fetched")
 
 	return mainData, nil
 }
@@ -943,41 +921,6 @@ func (sm *SyncManager) getTotalCount(ctx context.Context, instanceID int) int {
 	return count
 }
 
-func (sm *SyncManager) mergeMainData(existing, update *qbt.MainData) {
-	// Merge torrents
-	if existing.Torrents == nil {
-		existing.Torrents = make(map[string]qbt.Torrent)
-	}
-	for hash, torrent := range update.Torrents {
-		existing.Torrents[hash] = torrent
-	}
-
-	// Remove deleted torrents
-	for _, hash := range update.TorrentsRemoved {
-		delete(existing.Torrents, hash)
-	}
-
-	// Merge categories
-	if update.Categories != nil {
-		existing.Categories = update.Categories
-	}
-
-	// Merge tags
-	if update.Tags != nil {
-		existing.Tags = update.Tags
-	}
-
-	// Update server state (ServerState is a struct, not a pointer)
-	existing.ServerState = update.ServerState
-}
-
-// ResetRID resets the RID for an instance (useful after reconnection)
-func (sm *SyncManager) ResetRID(instanceID int) {
-	sm.mu.Lock()
-	defer sm.mu.Unlock()
-	delete(sm.ridTracker, instanceID)
-	delete(sm.mainData, instanceID)
-}
 
 // InvalidateCache clears all cached data for a specific instance
 // NOTE: With optimistic updates, this is rarely needed now

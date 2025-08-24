@@ -116,7 +116,7 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 	RespondJSON(w, http.StatusOK, response)
 }
 
-// SyncTorrents returns sync updates for an instance
+// SyncTorrents returns server statistics for an instance (used by Dashboard)
 func (h *TorrentsHandler) SyncTorrents(w http.ResponseWriter, r *http.Request) {
 	// Get instance ID from URL
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
@@ -125,11 +125,11 @@ func (h *TorrentsHandler) SyncTorrents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get sync updates
-	mainData, err := h.syncManager.GetUpdates(r.Context(), instanceID)
+	// Get server statistics
+	mainData, err := h.syncManager.GetServerStats(r.Context(), instanceID)
 	if err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to sync torrents")
-		RespondError(w, http.StatusInternalServerError, "Failed to sync torrents")
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get server stats")
+		RespondError(w, http.StatusInternalServerError, "Failed to get server stats")
 		return
 	}
 

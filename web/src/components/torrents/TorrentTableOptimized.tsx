@@ -92,7 +92,7 @@ import {
   getLinuxIsoName,
   useIncognitoMode,
 } from '@/lib/incognito'
-import { formatBytes, formatSpeed } from '@/lib/utils'
+import { formatSpeed } from '@/lib/utils'
 import { applyOptimisticUpdates } from '@/lib/torrent-state-utils'
 import { useSearch } from '@tanstack/react-router'
 import { createColumns } from './TorrentTableColumns'
@@ -206,7 +206,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     counts,
     categories,
     tags,
-    serverState, 
+ 
     isLoading,
     isFetching,
     isLoadingMore,
@@ -1157,18 +1157,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
             )}
           </div>
 
-            {/* All-time stats */}
-            {serverState && serverState.alltime_dl !== undefined && (
-              <div className="flex items-center gap-2 text-xs">
-                <span className="text-muted-foreground">All-time stats:</span>
-                <div className="flex items-center gap-1">
-                  <ChevronDown className="h-3 w-3 text-muted-foreground" />
-                  <span className="font-medium">{formatBytes(serverState.alltime_dl || 0)}</span>
-                  <ChevronUp className="h-3 w-3 text-muted-foreground" />
-                  <span className="font-medium">{formatBytes(serverState.alltime_ul || 0)}</span>
-                </div>
-              </div>
-            )}
 
           <div className="flex items-center gap-2 text-xs">
           <div className="flex items-center gap-1">

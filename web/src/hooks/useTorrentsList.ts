@@ -6,7 +6,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import type { Torrent, TorrentResponse, ServerState } from '@/types'
+import type { Torrent, TorrentResponse } from '@/types'
 
 interface UseTorrentsListOptions {
   enabled?: boolean
@@ -36,38 +36,6 @@ export function useTorrentsList(
   const [lastKnownTotal, setLastKnownTotal] = useState(0)
   const pageSize = 500 // Load 500 at a time (backend default)
   
-  const [serverState, setServerState] = useState<ServerState | null>(null)
-  
-  // Fetch server state (user statistics) using sync endpoint
-  const { data: syncData, error: syncError } = useQuery({
-    queryKey: ['server-state', instanceId],
-    queryFn: async () => {
-      try {
-        const data = await api.syncMainData(instanceId, 0)
-        console.log('Full sync response:', data)
-        // API returns server_state with underscore, not camelCase
-        return (data as any).server_state || data.serverState || null
-      } catch (error) {
-        console.error('Error fetching sync data:', error)
-        throw error
-      }
-    },
-    staleTime: 30000, // 30 seconds
-    refetchInterval: 30000, // Refetch every 30 seconds
-    enabled: enabled && !!instanceId,
-  })
-  
-  if (syncError) {
-    console.error('Sync query error:', syncError)
-  }
-  
-  // Update serverState when sync data changes
-  useEffect(() => {
-    if (syncData) {
-      console.log('ServerState data received:', syncData)
-      setServerState(syncData)
-    }
-  }, [syncData])
   
   // Reset state when instanceId, filters, search, or sort changes
   useEffect(() => {
@@ -177,7 +145,7 @@ export function useTorrentsList(
     counts: data?.counts, // Return counts from backend
     categories: data?.categories, // Return categories from backend
     tags: data?.tags, // Return tags from backend
-    serverState, // Include server state with user statistics
+    serverState: null, // Server state is fetched separately by Dashboard
     isLoading: isLoading && currentPage === 0,
     isFetching, // True when React Query is fetching (but we may have stale data)
     isLoadingMore,
