@@ -69,7 +69,7 @@ func NewSyncManager(clientPool *ClientPool) *SyncManager {
 	}
 }
 
-// InitialLoad performs initial paginated load of torrents
+// InitialLoad - UNUSED - can be removed
 func (sm *SyncManager) InitialLoad(ctx context.Context, instanceID int, limit, offset int) (*TorrentResponse, error) {
 	// Check cache first
 	cacheKey := fmt.Sprintf("torrents:%d:%d:%d", instanceID, offset, limit)
@@ -120,7 +120,7 @@ func (sm *SyncManager) InitialLoad(ctx context.Context, instanceID int, limit, o
 	return response, nil
 }
 
-// GetTorrentsWithSearch gets torrents with search, sorting, and pagination with stats
+// GetTorrentsWithSearch - UNUSED - can be removed
 func (sm *SyncManager) GetTorrentsWithSearch(ctx context.Context, instanceID int, limit, offset int, sort, order, search string) (*TorrentResponse, error) {
 	// Build cache key
 	cacheKey := fmt.Sprintf("torrents:search:%d:%d:%d:%s:%s:%s", instanceID, offset, limit, sort, order, search)
@@ -327,7 +327,7 @@ func (sm *SyncManager) GetServerStats(ctx context.Context, instanceID int) (*qbt
 	return mainData, nil
 }
 
-// GetFilteredTorrents gets torrents with filtering and pagination
+// GetFilteredTorrents - UNUSED - can be removed
 func (sm *SyncManager) GetFilteredTorrents(ctx context.Context, instanceID int, opts qbt.TorrentFilterOptions) (*TorrentResponse, error) {
 	// Build cache key based on filter options
 	cacheKey := fmt.Sprintf("torrents:filtered:%d:%+v", instanceID, opts)
@@ -606,7 +606,7 @@ func (sm *SyncManager) GetTorrentFiles(ctx context.Context, instanceID int, hash
 	return files, nil
 }
 
-// GetTorrentWebSeeds gets web seeds for a specific torrent
+// GetTorrentWebSeeds - UNUSED - can be removed
 func (sm *SyncManager) GetTorrentWebSeeds(ctx context.Context, instanceID int, hash string) ([]qbt.WebSeed, error) {
 	// Check cache
 	cacheKey := fmt.Sprintf("torrent:webseeds:%d:%s", instanceID, hash)

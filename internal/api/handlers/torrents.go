@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
@@ -493,67 +492,6 @@ func (h *TorrentsHandler) ResumeTorrent(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
-// GetFilteredTorrents returns filtered torrents
-func (h *TorrentsHandler) GetFilteredTorrents(w http.ResponseWriter, r *http.Request) {
-	// Get instance ID from URL
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
-		return
-	}
-
-	// Build filter options from query parameters
-	opts := qbt.TorrentFilterOptions{}
-
-	// Filter (convert string to TorrentFilter type)
-	if filter := r.URL.Query().Get("filter"); filter != "" {
-		opts.Filter = qbt.TorrentFilter(filter)
-	}
-
-	// Category
-	if category := r.URL.Query().Get("category"); category != "" {
-		opts.Category = category
-	}
-
-	// Tag
-	if tag := r.URL.Query().Get("tag"); tag != "" {
-		opts.Tag = tag
-	}
-
-	// Sort
-	if sort := r.URL.Query().Get("sort"); sort != "" {
-		opts.Sort = sort
-	}
-
-	// Reverse
-	if reverse := r.URL.Query().Get("reverse"); reverse == "true" {
-		opts.Reverse = true
-	}
-
-	// Limit
-	if l := r.URL.Query().Get("limit"); l != "" {
-		if limit, err := strconv.Atoi(l); err == nil && limit > 0 {
-			opts.Limit = limit
-		}
-	}
-
-	// Offset
-	if o := r.URL.Query().Get("offset"); o != "" {
-		if offset, err := strconv.Atoi(o); err == nil && offset >= 0 {
-			opts.Offset = offset
-		}
-	}
-
-	// Get filtered torrents
-	response, err := h.syncManager.GetFilteredTorrents(r.Context(), instanceID, opts)
-	if err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get filtered torrents")
-		RespondError(w, http.StatusInternalServerError, "Failed to get filtered torrents")
-		return
-	}
-
-	RespondJSON(w, http.StatusOK, response)
-}
 
 // GetCategories returns all categories
 func (h *TorrentsHandler) GetCategories(w http.ResponseWriter, r *http.Request) {
@@ -840,48 +778,4 @@ func (h *TorrentsHandler) GetTorrentFiles(w http.ResponseWriter, r *http.Request
 	RespondJSON(w, http.StatusOK, files)
 }
 
-// GetTorrentWebSeeds returns web seeds for a specific torrent
-func (h *TorrentsHandler) GetTorrentWebSeeds(w http.ResponseWriter, r *http.Request) {
-	// Get instance ID and hash from URL
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
-		return
-	}
 
-	hash := chi.URLParam(r, "hash")
-	if hash == "" {
-		RespondError(w, http.StatusBadRequest, "Torrent hash is required")
-		return
-	}
-
-	// Get web seeds
-	webSeeds, err := h.syncManager.GetTorrentWebSeeds(r.Context(), instanceID, hash)
-	if err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to get torrent web seeds")
-		RespondError(w, http.StatusInternalServerError, "Failed to get torrent web seeds")
-		return
-	}
-
-	RespondJSON(w, http.StatusOK, webSeeds)
-}
-
-// GetTorrentCounts returns torrent counts for filter sidebar
-func (h *TorrentsHandler) GetTorrentCounts(w http.ResponseWriter, r *http.Request) {
-	// Get instance ID from URL
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
-		return
-	}
-
-	// Get torrent counts
-	counts, err := h.syncManager.GetTorrentCounts(r.Context(), instanceID)
-	if err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get torrent counts")
-		RespondError(w, http.StatusInternalServerError, "Failed to get torrent counts")
-		return
-	}
-
-	RespondJSON(w, http.StatusOK, counts)
-}
