@@ -110,4 +110,3 @@ func (c *Client) HealthCheck(ctx context.Context) error {
 	c.mu.Unlock()
 	return nil
 }
-

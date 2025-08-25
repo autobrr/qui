@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { createFileRoute, Outlet } from '@tanstack/react-router'
+import { createFileRoute, Outlet, } from "@tanstack/react-router"
 
-export const Route = createFileRoute('/_authenticated/instances')({
+export const Route = createFileRoute("/_authenticated/instances",)({
   component: () => <Outlet />,
-})
+},)

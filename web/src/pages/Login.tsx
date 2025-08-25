@@ -3,38 +3,38 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useForm } from '@tanstack/react-form'
-import { useNavigate } from '@tanstack/react-router'
-import { useAuth } from '@/hooks/useAuth'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { useEffect } from 'react'
-import { api } from '@/lib/api'
+import { useForm, } from "@tanstack/react-form"
+import { useNavigate, } from "@tanstack/react-router"
+import { useAuth, } from "@/hooks/useAuth"
+import { Button, } from "@/components/ui/button"
+import { Input, } from "@/components/ui/input"
+import { Label, } from "@/components/ui/label"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, } from "@/components/ui/card"
+import { useEffect, } from "react"
+import { api, } from "@/lib/api"
 
 export function Login() {
   const navigate = useNavigate()
-  const { login, isLoggingIn, loginError } = useAuth()
+  const { login, isLoggingIn, loginError, } = useAuth()
 
   useEffect(() => {
     // Check if setup is needed
     api.checkSetupRequired().then(setupRequired => {
       if (setupRequired) {
-        navigate({ to: '/setup' })
+        navigate({ to: "/setup", },)
       }
-    })
-  }, [navigate])
+    },)
+  }, [navigate,],)
 
   const form = useForm({
     defaultValues: {
-      username: '',
-      password: '',
+      username: "",
+      password: "",
     },
-    onSubmit: async ({ value }) => {
-      login(value)
+    onSubmit: async ({ value, },) => {
+      login(value,)
     },
-  })
+  },)
 
   return (
     <div className="flex h-screen items-center justify-center">
@@ -47,7 +47,7 @@ export function Login() {
         </CardHeader>
         <CardContent>
           <form
-            onSubmit={(e) => {
+            onSubmit={(e,) => {
               e.preventDefault()
               form.handleSubmit()
             }}
@@ -56,10 +56,10 @@ export function Login() {
             <form.Field
               name="username"
               validators={{
-                onChange: ({ value }) => (!value ? 'Username is required' : undefined),
+                onChange: ({ value, },) => (!value ? "Username is required" : undefined),
               }}
             >
-              {(field) => (
+              {(field,) => (
                 <div className="space-y-2">
                   <Label htmlFor={field.name}>Username</Label>
                   <Input
@@ -67,7 +67,7 @@ export function Login() {
                     type="text"
                     value={field.state.value}
                     onBlur={field.handleBlur}
-                    onChange={(e) => field.handleChange(e.target.value)}
+                    onChange={(e,) => field.handleChange(e.target.value,)}
                     placeholder="Enter your username"
                   />
                   {field.state.meta.isTouched && field.state.meta.errors[0] && (
@@ -80,10 +80,10 @@ export function Login() {
             <form.Field
               name="password"
               validators={{
-                onChange: ({ value }) => (!value ? 'Password is required' : undefined),
+                onChange: ({ value, },) => (!value ? "Password is required" : undefined),
               }}
             >
-              {(field) => (
+              {(field,) => (
                 <div className="space-y-2">
                   <Label htmlFor={field.name}>Password</Label>
                   <Input
@@ -91,7 +91,7 @@ export function Login() {
                     type="password"
                     value={field.state.value}
                     onBlur={field.handleBlur}
-                    onChange={(e) => field.handleChange(e.target.value)}
+                    onChange={(e,) => field.handleChange(e.target.value,)}
                     placeholder="Enter your password"
                   />
                   {field.state.meta.isTouched && field.state.meta.errors[0] && (
@@ -103,24 +103,20 @@ export function Login() {
 
             {loginError && (
               <p className="text-sm text-destructive">
-                {typeof loginError === 'string' 
-                  ? loginError 
-                  : loginError.message?.includes('Invalid credentials') || loginError.message?.includes('401')
-                    ? 'Invalid username or password'
-                    : loginError.message || 'Login failed. Please try again.'}
+                {typeof loginError === "string"? loginError: loginError.message?.includes("Invalid credentials",) || loginError.message?.includes("401",)? "Invalid username or password": loginError.message || "Login failed. Please try again."}
               </p>
             )}
 
             <form.Subscribe
-              selector={(state) => [state.canSubmit, state.isSubmitting]}
+              selector={(state,) => [state.canSubmit, state.isSubmitting,]}
             >
-              {([canSubmit, isSubmitting]) => (
+              {([canSubmit, isSubmitting,],) => (
                 <Button
                   type="submit"
                   className="w-full"
                   disabled={!canSubmit || isSubmitting || isLoggingIn}
                 >
-                  {isLoggingIn ? 'Logging in...' : 'Login'}
+                  {isLoggingIn ? "Logging in..." : "Login"}
                 </Button>
               )}
             </form.Subscribe>

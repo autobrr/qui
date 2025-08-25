@@ -3,12 +3,12 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { api } from '@/lib/api'
-import { toast } from 'sonner'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { useState, } from "react"
+import { useMutation, useQueryClient, } from "@tanstack/react-query"
+import { api, } from "@/lib/api"
+import { toast, } from "sonner"
+import { Input, } from "@/components/ui/input"
+import { Label, } from "@/components/ui/label"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,7 +18,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
+} from "@/components/ui/alert-dialog"
 
 interface CreateTagDialogProps {
   open: boolean
@@ -26,30 +26,30 @@ interface CreateTagDialogProps {
   instanceId: number
 }
 
-export function CreateTagDialog({ open, onOpenChange, instanceId }: CreateTagDialogProps) {
-  const [newTag, setNewTag] = useState('')
+export function CreateTagDialog({ open, onOpenChange, instanceId, }: CreateTagDialogProps,) {
+  const [newTag, setNewTag,] = useState("",)
   const queryClient = useQueryClient()
 
   const mutation = useMutation({
-    mutationFn: (tags: string[]) => api.createTags(instanceId, tags),
+    mutationFn: (tags: string[],) => api.createTags(instanceId, tags,),
     onSuccess: () => {
       // Refetch instead of invalidate to keep showing stale data
-      queryClient.refetchQueries({ queryKey: ['tags', instanceId] })
-      queryClient.refetchQueries({ queryKey: ['instance-metadata', instanceId] })
-      toast.success('Tag created successfully')
-      setNewTag('')
-      onOpenChange(false)
+      queryClient.refetchQueries({ queryKey: ["tags", instanceId,], },)
+      queryClient.refetchQueries({ queryKey: ["instance-metadata", instanceId,], },)
+      toast.success("Tag created successfully",)
+      setNewTag("",)
+      onOpenChange(false,)
     },
-    onError: (error: Error) => {
-      toast.error('Failed to create tag', {
-        description: error.message
-      })
-    }
-  })
+    onError: (error: Error,) => {
+      toast.error("Failed to create tag", {
+        description: error.message,
+      },)
+    },
+  },)
 
   const handleCreate = () => {
     if (newTag.trim()) {
-      mutation.mutate([newTag.trim()])
+      mutation.mutate([newTag.trim(),],)
     }
   }
 
@@ -67,17 +67,17 @@ export function CreateTagDialog({ open, onOpenChange, instanceId }: CreateTagDia
           <Input
             id="newTag"
             value={newTag}
-            onChange={(e) => setNewTag(e.target.value)}
+            onChange={(e,) => setNewTag(e.target.value,)}
             placeholder="Enter tag name"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
+            onKeyDown={(e,) => {
+              if (e.key === "Enter") {
                 handleCreate()
               }
             }}
           />
         </div>
         <AlertDialogFooter>
-          <AlertDialogCancel onClick={() => setNewTag('')}>Cancel</AlertDialogCancel>
+          <AlertDialogCancel onClick={() => setNewTag("",)}>Cancel</AlertDialogCancel>
           <AlertDialogAction
             onClick={handleCreate}
             disabled={!newTag.trim() || mutation.isPending}
@@ -97,24 +97,24 @@ interface DeleteTagDialogProps {
   tag: string
 }
 
-export function DeleteTagDialog({ open, onOpenChange, instanceId, tag }: DeleteTagDialogProps) {
+export function DeleteTagDialog({ open, onOpenChange, instanceId, tag, }: DeleteTagDialogProps,) {
   const queryClient = useQueryClient()
 
   const mutation = useMutation({
-    mutationFn: () => api.deleteTags(instanceId, [tag]),
+    mutationFn: () => api.deleteTags(instanceId, [tag,],),
     onSuccess: () => {
       // Refetch instead of invalidate to keep showing stale data
-      queryClient.refetchQueries({ queryKey: ['tags', instanceId] })
-      queryClient.refetchQueries({ queryKey: ['instance-metadata', instanceId] })
-      toast.success('Tag deleted successfully')
-      onOpenChange(false)
+      queryClient.refetchQueries({ queryKey: ["tags", instanceId,], },)
+      queryClient.refetchQueries({ queryKey: ["instance-metadata", instanceId,], },)
+      toast.success("Tag deleted successfully",)
+      onOpenChange(false,)
     },
-    onError: (error: Error) => {
-      toast.error('Failed to delete tag', {
-        description: error.message
-      })
-    }
-  })
+    onError: (error: Error,) => {
+      toast.error("Failed to delete tag", {
+        description: error.message,
+      },)
+    },
+  },)
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -146,33 +146,33 @@ interface CreateCategoryDialogProps {
   instanceId: number
 }
 
-export function CreateCategoryDialog({ open, onOpenChange, instanceId }: CreateCategoryDialogProps) {
-  const [name, setName] = useState('')
-  const [savePath, setSavePath] = useState('')
+export function CreateCategoryDialog({ open, onOpenChange, instanceId, }: CreateCategoryDialogProps,) {
+  const [name, setName,] = useState("",)
+  const [savePath, setSavePath,] = useState("",)
   const queryClient = useQueryClient()
 
   const mutation = useMutation({
-    mutationFn: ({ name, savePath }: { name: string; savePath?: string }) => 
-      api.createCategory(instanceId, name, savePath),
+    mutationFn: ({ name, savePath, }: { name: string; savePath?: string },) => 
+      api.createCategory(instanceId, name, savePath,),
     onSuccess: () => {
       // Refetch instead of invalidate to keep showing stale data
-      queryClient.refetchQueries({ queryKey: ['categories', instanceId] })
-      queryClient.refetchQueries({ queryKey: ['instance-metadata', instanceId] })
-      toast.success('Category created successfully')
-      setName('')
-      setSavePath('')
-      onOpenChange(false)
+      queryClient.refetchQueries({ queryKey: ["categories", instanceId,], },)
+      queryClient.refetchQueries({ queryKey: ["instance-metadata", instanceId,], },)
+      toast.success("Category created successfully",)
+      setName("",)
+      setSavePath("",)
+      onOpenChange(false,)
     },
-    onError: (error: Error) => {
-      toast.error('Failed to create category', {
-        description: error.message
-      })
-    }
-  })
+    onError: (error: Error,) => {
+      toast.error("Failed to create category", {
+        description: error.message,
+      },)
+    },
+  },)
 
   const handleCreate = () => {
     if (name.trim()) {
-      mutation.mutate({ name: name.trim(), savePath: savePath.trim() || undefined })
+      mutation.mutate({ name: name.trim(), savePath: savePath.trim() || undefined, },)
     }
   }
 
@@ -191,7 +191,7 @@ export function CreateCategoryDialog({ open, onOpenChange, instanceId }: CreateC
             <Input
               id="categoryName"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e,) => setName(e.target.value,)}
               placeholder="Enter category name"
             />
           </div>
@@ -200,15 +200,15 @@ export function CreateCategoryDialog({ open, onOpenChange, instanceId }: CreateC
             <Input
               id="savePath"
               value={savePath}
-              onChange={(e) => setSavePath(e.target.value)}
+              onChange={(e,) => setSavePath(e.target.value,)}
               placeholder="e.g. /downloads/movies"
             />
           </div>
         </div>
         <AlertDialogFooter>
           <AlertDialogCancel onClick={() => {
-            setName('')
-            setSavePath('')
+            setName("",)
+            setSavePath("",)
           }}>Cancel</AlertDialogCancel>
           <AlertDialogAction
             onClick={handleCreate}
@@ -229,28 +229,28 @@ interface EditCategoryDialogProps {
   category: { name: string; savePath: string }
 }
 
-export function EditCategoryDialog({ open, onOpenChange, instanceId, category }: EditCategoryDialogProps) {
-  const [savePath, setSavePath] = useState(category.savePath)
+export function EditCategoryDialog({ open, onOpenChange, instanceId, category, }: EditCategoryDialogProps,) {
+  const [savePath, setSavePath,] = useState(category.savePath,)
   const queryClient = useQueryClient()
 
   const mutation = useMutation({
-    mutationFn: (savePath: string) => api.editCategory(instanceId, category.name, savePath),
+    mutationFn: (savePath: string,) => api.editCategory(instanceId, category.name, savePath,),
     onSuccess: () => {
       // Refetch instead of invalidate to keep showing stale data
-      queryClient.refetchQueries({ queryKey: ['categories', instanceId] })
-      queryClient.refetchQueries({ queryKey: ['instance-metadata', instanceId] })
-      toast.success('Category updated successfully')
-      onOpenChange(false)
+      queryClient.refetchQueries({ queryKey: ["categories", instanceId,], },)
+      queryClient.refetchQueries({ queryKey: ["instance-metadata", instanceId,], },)
+      toast.success("Category updated successfully",)
+      onOpenChange(false,)
     },
-    onError: (error: Error) => {
-      toast.error('Failed to update category', {
-        description: error.message
-      })
-    }
-  })
+    onError: (error: Error,) => {
+      toast.error("Failed to update category", {
+        description: error.message,
+      },)
+    },
+  },)
 
   const handleSave = () => {
-    mutation.mutate(savePath.trim())
+    mutation.mutate(savePath.trim(),)
   }
 
   return (
@@ -267,10 +267,10 @@ export function EditCategoryDialog({ open, onOpenChange, instanceId, category }:
           <Input
             id="editSavePath"
             value={savePath}
-            onChange={(e) => setSavePath(e.target.value)}
+            onChange={(e,) => setSavePath(e.target.value,)}
             placeholder="e.g. /downloads/movies"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
+            onKeyDown={(e,) => {
+              if (e.key === "Enter") {
                 handleSave()
               }
             }}
@@ -297,24 +297,24 @@ interface DeleteCategoryDialogProps {
   categoryName: string
 }
 
-export function DeleteCategoryDialog({ open, onOpenChange, instanceId, categoryName }: DeleteCategoryDialogProps) {
+export function DeleteCategoryDialog({ open, onOpenChange, instanceId, categoryName, }: DeleteCategoryDialogProps,) {
   const queryClient = useQueryClient()
 
   const mutation = useMutation({
-    mutationFn: () => api.removeCategories(instanceId, [categoryName]),
+    mutationFn: () => api.removeCategories(instanceId, [categoryName,],),
     onSuccess: () => {
       // Refetch instead of invalidate to keep showing stale data
-      queryClient.refetchQueries({ queryKey: ['categories', instanceId] })
-      queryClient.refetchQueries({ queryKey: ['instance-metadata', instanceId] })
-      toast.success('Category deleted successfully')
-      onOpenChange(false)
+      queryClient.refetchQueries({ queryKey: ["categories", instanceId,], },)
+      queryClient.refetchQueries({ queryKey: ["instance-metadata", instanceId,], },)
+      toast.success("Category deleted successfully",)
+      onOpenChange(false,)
     },
-    onError: (error: Error) => {
-      toast.error('Failed to delete category', {
-        description: error.message
-      })
-    }
-  })
+    onError: (error: Error,) => {
+      toast.error("Failed to delete category", {
+        description: error.message,
+      },)
+    },
+  },)
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -354,31 +354,31 @@ export function DeleteUnusedTagsDialog({
   onOpenChange, 
   instanceId, 
   tags,
-  torrentCounts = {}
-}: DeleteUnusedTagsDialogProps) {
+  torrentCounts = {},
+}: DeleteUnusedTagsDialogProps,) {
   const queryClient = useQueryClient()
   
   // Find unused tags (tags with 0 torrents)
   const unusedTags = tags.filter(tag => {
     const count = torrentCounts[`tag:${tag}`] || 0
     return count === 0
-  })
+  },)
 
   const mutation = useMutation({
-    mutationFn: () => api.deleteTags(instanceId, unusedTags),
+    mutationFn: () => api.deleteTags(instanceId, unusedTags,),
     onSuccess: () => {
       // Refetch instead of invalidate to keep showing stale data
-      queryClient.refetchQueries({ queryKey: ['tags', instanceId] })
-      queryClient.refetchQueries({ queryKey: ['instance-metadata', instanceId] })
-      toast.success(`Deleted ${unusedTags.length} unused tag${unusedTags.length !== 1 ? 's' : ''}`)
-      onOpenChange(false)
+      queryClient.refetchQueries({ queryKey: ["tags", instanceId,], },)
+      queryClient.refetchQueries({ queryKey: ["instance-metadata", instanceId,], },)
+      toast.success(`Deleted ${unusedTags.length} unused tag${unusedTags.length !== 1 ? "s" : ""}`,)
+      onOpenChange(false,)
     },
-    onError: (error: Error) => {
-      toast.error('Failed to delete unused tags', {
-        description: error.message
-      })
-    }
-  })
+    onError: (error: Error,) => {
+      toast.error("Failed to delete unused tags", {
+        description: error.message,
+      },)
+    },
+  },)
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -387,10 +387,10 @@ export function DeleteUnusedTagsDialog({
           <AlertDialogTitle>Delete Unused Tags</AlertDialogTitle>
           <AlertDialogDescription>
             {unusedTags.length === 0 ? (
-              'There are no unused tags to delete.'
+              "There are no unused tags to delete."
             ) : (
               <>
-                Are you sure you want to delete {unusedTags.length} unused tag{unusedTags.length !== 1 ? 's' : ''}? 
+                Are you sure you want to delete {unusedTags.length} unused tag{unusedTags.length !== 1 ? "s" : ""}? 
                 This action cannot be undone.
                 <div className="mt-3 max-h-40 overflow-y-auto">
                   <div className="text-sm space-y-1">
@@ -398,7 +398,7 @@ export function DeleteUnusedTagsDialog({
                       <div key={tag} className="text-muted-foreground">
                         • {tag}
                       </div>
-                    ))}
+                    ),)}
                   </div>
                 </div>
               </>
@@ -413,7 +413,7 @@ export function DeleteUnusedTagsDialog({
               disabled={mutation.isPending}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete {unusedTags.length} Tag{unusedTags.length !== 1 ? 's' : ''}
+              Delete {unusedTags.length} Tag{unusedTags.length !== 1 ? "s" : ""}
             </AlertDialogAction>
           )}
         </AlertDialogFooter>

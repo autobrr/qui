@@ -3,18 +3,18 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useSortable } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
-import { flexRender, type Header } from '@tanstack/react-table'
-import { ChevronUp, ChevronDown } from 'lucide-react'
-import type { Torrent } from '@/types'
+import { useSortable, } from "@dnd-kit/sortable"
+import { CSS, } from "@dnd-kit/utilities"
+import { flexRender, type Header, } from "@tanstack/react-table"
+import { ChevronUp, ChevronDown, } from "lucide-react"
+import type { Torrent, } from "@/types"
 
 interface DraggableTableHeaderProps {
   header: Header<Torrent, unknown>
 }
 
-export function DraggableTableHeader({ header }: DraggableTableHeaderProps) {
-  const { column } = header
+export function DraggableTableHeader({ header, }: DraggableTableHeaderProps,) {
+  const { column, } = header
   
   const {
     attributes,
@@ -25,14 +25,14 @@ export function DraggableTableHeader({ header }: DraggableTableHeaderProps) {
     isDragging,
   } = useSortable({
     id: column.id,
-    disabled: column.id === 'select',
-  })
+    disabled: column.id === "select",
+  },)
 
   const style = {
-    transform: CSS.Transform.toString(transform),
+    transform: CSS.Transform.toString(transform,),
     transition,
     opacity: isDragging ? 0.8 : 1,
-    position: 'relative' as const,
+    position: "relative" as const,
     width: header.getSize(),
     flexShrink: 0,
   }
@@ -45,28 +45,26 @@ export function DraggableTableHeader({ header }: DraggableTableHeaderProps) {
     >
       <div
         className={`px-3 h-10 text-left text-sm font-medium text-muted-foreground flex items-center ${
-          column.getCanSort() ? 'cursor-pointer select-none' : ''
+          column.getCanSort() ? "cursor-pointer select-none" : ""
         } ${
-          column.id !== 'select' ? 'cursor-grab active:cursor-grabbing' : ''
+          column.id !== "select" ? "cursor-grab active:cursor-grabbing" : ""
         }`}
-        onClick={column.id !== 'select' && column.getCanSort() ? column.getToggleSortingHandler() : undefined}
-        {...(column.id !== 'select' ? attributes : {})}
-        {...(column.id !== 'select' ? listeners : {})}
+        onClick={column.id !== "select" && column.getCanSort() ? column.getToggleSortingHandler() : undefined}
+        {...(column.id !== "select" ? attributes : {})}
+        {...(column.id !== "select" ? listeners : {})}
       >
         {/* Header content */}
         <div 
-          className={`flex items-center gap-1 flex-1 ${column.id === 'select' ? 'justify-center' : ''}`}
+          className={`flex items-center gap-1 flex-1 ${column.id === "select" ? "justify-center" : ""}`}
         >
-          <span className={`truncate ${column.id === 'select' ? 'flex items-center' : ''}`}>
-            {header.isPlaceholder
-              ? null
-              : flexRender(
-                  column.columnDef.header,
-                  header.getContext()
-                )}
+          <span className={`truncate ${column.id === "select" ? "flex items-center" : ""}`}>
+            {header.isPlaceholder? null: flexRender(
+              column.columnDef.header,
+              header.getContext(),
+            )}
           </span>
-          {column.id !== 'select' && column.getIsSorted() && (
-            column.getIsSorted() === 'asc' ? (
+          {column.id !== "select" && column.getIsSorted() && (
+            column.getIsSorted() === "asc" ? (
               <ChevronUp className="h-4 w-4 flex-shrink-0" />
             ) : (
               <ChevronDown className="h-4 w-4 flex-shrink-0" />
@@ -84,9 +82,7 @@ export function DraggableTableHeader({ header }: DraggableTableHeaderProps) {
         >
           <div 
             className={`h-full w-px ${
-              column.getIsResizing() 
-                ? 'bg-primary' 
-                : 'bg-border group-hover/resize:bg-primary/50'
+              column.getIsResizing()? "bg-primary": "bg-border group-hover/resize:bg-primary/50"
             }`}
           />
         </div>

@@ -3,21 +3,21 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { Link, useLocation } from '@tanstack/react-router'
-import { cn } from '@/lib/utils'
+import { Link, useLocation, } from "@tanstack/react-router"
+import { cn, } from "@/lib/utils"
 import { 
   Home, 
   Server, 
   Settings, 
   LogOut,
   HardDrive,
-  Github
-} from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Separator } from '@/components/ui/separator'
-import { useAuth } from '@/hooks/useAuth'
-import { useQuery } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+  Github,
+} from "lucide-react"
+import { Button, } from "@/components/ui/button"
+import { Separator, } from "@/components/ui/separator"
+import { useAuth, } from "@/hooks/useAuth"
+import { useQuery, } from "@tanstack/react-query"
+import { api, } from "@/lib/api"
 
 interface NavItem {
   title: string
@@ -27,30 +27,30 @@ interface NavItem {
 
 const navigation: NavItem[] = [
   {
-    title: 'Dashboard',
-    href: '/dashboard',
+    title: "Dashboard",
+    href: "/dashboard",
     icon: Home,
   },
   {
-    title: 'Instances',
-    href: '/instances',
+    title: "Instances",
+    href: "/instances",
     icon: Server,
   },
   {
-    title: 'Settings',
-    href: '/settings',
+    title: "Settings",
+    href: "/settings",
     icon: Settings,
   },
 ]
 
 export function Sidebar() {
   const location = useLocation()
-  const { logout } = useAuth()
+  const { logout, } = useAuth()
   
-  const { data: instances } = useQuery({
-    queryKey: ['instances'],
+  const { data: instances, } = useQuery({
+    queryKey: ["instances",],
     queryFn: () => api.getInstances(),
-  })
+  },)
 
   return (
     <div className="flex h-full w-64 flex-col border-r bg-sidebar border-sidebar-border">
@@ -59,7 +59,7 @@ export function Sidebar() {
       </div>
       
       <nav className="flex-1 space-y-1 px-3">
-        {navigation.map((item) => {
+        {navigation.map((item,) => {
           const Icon = item.icon
           const isActive = location.pathname === item.href
           
@@ -68,17 +68,15 @@ export function Sidebar() {
               key={item.href}
               to={item.href}
               className={cn(
-                'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-all duration-200 ease-out',
-                isActive
-                  ? 'bg-sidebar-primary text-sidebar-primary-foreground'
-                  : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+                "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-all duration-200 ease-out",
+                isActive? "bg-sidebar-primary text-sidebar-primary-foreground": "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
               )}
             >
               <Icon className="h-4 w-4" />
               {item.title}
             </Link>
           )
-        })}
+        },)}
         
         <Separator className="my-4" />
         
@@ -86,7 +84,7 @@ export function Sidebar() {
           <p className="px-3 text-xs font-semibold text-sidebar-foreground/70 uppercase tracking-wider">
             Instances
           </p>
-          {instances?.map((instance) => {
+          {instances?.map((instance,) => {
             const instancePath = `/instances/${instance.id}`
             const isActive = location.pathname === instancePath
             
@@ -94,12 +92,10 @@ export function Sidebar() {
               <Link
                 key={instance.id}
                 to="/instances/$instanceId"
-                params={{ instanceId: instance.id.toString() }}
+                params={{ instanceId: instance.id.toString(), }}
                 className={cn(
-                  'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-all duration-200 ease-out',
-                  isActive
-                    ? 'bg-sidebar-primary text-sidebar-primary-foreground'
-                    : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-all duration-200 ease-out",
+                  isActive? "bg-sidebar-primary text-sidebar-primary-foreground": "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                 )}
               >
                 <HardDrive className="h-4 w-4" />
@@ -107,12 +103,12 @@ export function Sidebar() {
                 <span
                   className={cn(
                     "ml-auto h-2 w-2 rounded-full",
-                    instance.connected ? "bg-green-500" : "bg-red-500"
+                    instance.connected ? "bg-green-500" : "bg-red-500",
                   )}
                 />
               </Link>
             )
-          })}
+          },)}
           {(!instances || instances.length === 0) && (
             <p className="px-3 py-2 text-sm text-sidebar-foreground/50">
               No instances configured

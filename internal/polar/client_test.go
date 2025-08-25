@@ -91,7 +91,6 @@ func TestValidateLicense_NoOrgID(t *testing.T) {
 	}
 }
 
-
 func TestMapBenefitToTheme(t *testing.T) {
 	tests := []struct {
 		name      string

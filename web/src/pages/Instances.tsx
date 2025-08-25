@@ -3,54 +3,54 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState, useEffect } from 'react'
-import { useInstances } from '@/hooks/useInstances'
-import { InstanceCard } from '@/components/instances/InstanceCard'
-import { InstanceForm } from '@/components/instances/InstanceForm'
-import { Button } from '@/components/ui/button'
+import { useState, useEffect, } from "react"
+import { useInstances, } from "@/hooks/useInstances"
+import { InstanceCard, } from "@/components/instances/InstanceCard"
+import { InstanceForm, } from "@/components/instances/InstanceForm"
+import { Button, } from "@/components/ui/button"
 import { 
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog'
-import { Plus } from 'lucide-react'
-import { useNavigate, useSearch } from '@tanstack/react-router'
-import type { Instance } from '@/types'
+} from "@/components/ui/dialog"
+import { Plus, } from "lucide-react"
+import { useNavigate, useSearch, } from "@tanstack/react-router"
+import type { Instance, } from "@/types"
 
 export function Instances() {
-  const { instances, isLoading } = useInstances()
+  const { instances, isLoading, } = useInstances()
   const navigate = useNavigate()
-  const search = useSearch({ strict: false }) as any
-  const [editingInstance, setEditingInstance] = useState<Instance | undefined>()
+  const search = useSearch({ strict: false, },) as any
+  const [editingInstance, setEditingInstance,] = useState<Instance | undefined>()
 
   // Check if modal should be open based on URL params
-  const isDialogOpen = search?.modal === 'add-instance'
+  const isDialogOpen = search?.modal === "add-instance"
 
-  const handleOpenDialog = (instance?: Instance) => {
-    setEditingInstance(instance)
+  const handleOpenDialog = (instance?: Instance,) => {
+    setEditingInstance(instance,)
     navigate({ 
-      search: { ...search, modal: 'add-instance' },
-      replace: true 
-    })
+      search: { ...search, modal: "add-instance", },
+      replace: true, 
+    },)
   }
 
   const handleCloseDialog = () => {
-    setEditingInstance(undefined)
+    setEditingInstance(undefined,)
     const { modal, ...restSearch } = search || {}
     navigate({ 
       search: restSearch,
-      replace: true 
-    })
+      replace: true, 
+    },)
   }
 
   // Open modal if URL has the parameter on mount
   useEffect(() => {
-    if (search?.modal === 'add-instance' && !editingInstance) {
+    if (search?.modal === "add-instance" && !editingInstance) {
       // Dialog is already open due to URL, no need to set additional state
     }
-  }, [search?.modal, editingInstance])
+  }, [search?.modal, editingInstance,],)
 
   if (isLoading) {
     return <div className="p-6">Loading instances...</div>
@@ -73,13 +73,13 @@ export function Instances() {
 
       {instances && instances.length > 0 ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {instances.map((instance) => (
+          {instances.map((instance,) => (
             <InstanceCard
               key={instance.id}
               instance={instance}
-              onEdit={() => handleOpenDialog(instance)}
+              onEdit={() => handleOpenDialog(instance,)}
             />
-          ))}
+          ),)}
         </div>
       ) : (
         <div className="rounded-lg border border-dashed p-12 text-center">
@@ -95,16 +95,14 @@ export function Instances() {
         </div>
       )}
 
-      <Dialog open={isDialogOpen} onOpenChange={(open) => open ? handleOpenDialog() : handleCloseDialog()}>
+      <Dialog open={isDialogOpen} onOpenChange={(open,) => open ? handleOpenDialog() : handleCloseDialog()}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle>
-              {editingInstance ? 'Edit Instance' : 'Add Instance'}
+              {editingInstance ? "Edit Instance" : "Add Instance"}
             </DialogTitle>
             <DialogDescription>
-              {editingInstance 
-                ? 'Update your qBittorrent instance configuration'
-                : 'Add a new qBittorrent instance to manage'
+              {editingInstance? "Update your qBittorrent instance configuration": "Add a new qBittorrent instance to manage"
               }
             </DialogDescription>
           </DialogHeader>

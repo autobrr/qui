@@ -3,10 +3,10 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState, useEffect, useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { api } from '@/lib/api'
-import type { Torrent, TorrentResponse } from '@/types'
+import { useState, useEffect, useMemo, } from "react"
+import { useQuery, } from "@tanstack/react-query"
+import { api, } from "@/lib/api"
+import type { Torrent, TorrentResponse, } from "@/types"
 
 interface UseTorrentsListOptions {
   enabled?: boolean
@@ -18,91 +18,89 @@ interface UseTorrentsListOptions {
     trackers: string[]
   }
   sort?: string
-  order?: 'asc' | 'desc'
+  order?: "asc" | "desc"
 }
 
 // Simplified hook that trusts the backend's stale-while-revalidate pattern
 // Backend handles all caching complexity and returns fresh or stale data immediately
 export function useTorrentsList(
   instanceId: number,
-  options: UseTorrentsListOptions = {}
+  options: UseTorrentsListOptions = {},
 ) {
-  const { enabled = true, search, filters, sort = 'added_on', order = 'desc' } = options
+  const { enabled = true, search, filters, sort = "added_on", order = "desc", } = options
   
-  const [currentPage, setCurrentPage] = useState(0)
-  const [allTorrents, setAllTorrents] = useState<Torrent[]>([])
-  const [hasLoadedAll, setHasLoadedAll] = useState(false)
-  const [isLoadingMore, setIsLoadingMore] = useState(false)
-  const [lastKnownTotal, setLastKnownTotal] = useState(0)
+  const [currentPage, setCurrentPage,] = useState(0,)
+  const [allTorrents, setAllTorrents,] = useState<Torrent[]>([],)
+  const [hasLoadedAll, setHasLoadedAll,] = useState(false,)
+  const [isLoadingMore, setIsLoadingMore,] = useState(false,)
+  const [lastKnownTotal, setLastKnownTotal,] = useState(0,)
   const pageSize = 500 // Load 500 at a time (backend default)
   
   
   // Reset state when instanceId, filters, search, or sort changes
   useEffect(() => {
-    setCurrentPage(0)
-    setAllTorrents([])
-    setHasLoadedAll(false)
-    setLastKnownTotal(0)
-  }, [instanceId, filters, search, sort, order])
+    setCurrentPage(0,)
+    setAllTorrents([],)
+    setHasLoadedAll(false,)
+    setLastKnownTotal(0,)
+  }, [instanceId, filters, search, sort, order,],)
   
   // Query for torrents - backend handles stale-while-revalidate
-  const { data, isLoading, isFetching } = useQuery<TorrentResponse>({
-    queryKey: ['torrents-list', instanceId, currentPage, filters, search, sort, order],
+  const { data, isLoading, isFetching, } = useQuery<TorrentResponse>({
+    queryKey: ["torrents-list", instanceId, currentPage, filters, search, sort, order,],
     queryFn: () => api.getTorrents(instanceId, { 
       page: currentPage, 
       limit: pageSize,
       sort,
       order,
       search,
-      filters
-    }),
+      filters,
+    },),
     // Trust backend cache - it returns immediately with stale data if needed
     staleTime: 0, // Always check with backend (it decides if cache is fresh)
     gcTime: 300000, // Keep in React Query cache for 5 minutes for navigation
     refetchInterval: 3000, // Poll every 3 seconds to trigger backend's stale check
     refetchIntervalInBackground: false, // Don't poll when tab is not active
     enabled,
-  })
+  },)
   
   // Update torrents when data arrives
   useEffect(() => {
     if (data?.torrents) {
       // Update last known total whenever we get data
       if (data.total !== undefined) {
-        setLastKnownTotal(data.total)
+        setLastKnownTotal(data.total,)
       }
       
       if (currentPage === 0) {
         // First page, replace all
-        setAllTorrents(data.torrents)
+        setAllTorrents(data.torrents,)
       } else {
         // Append to existing for pagination
         setAllTorrents(prev => {
           // Avoid duplicates by filtering out existing hashes
-          const existingHashes = new Set(prev.map(t => t.hash))
-          const newTorrents = data.torrents.filter(t => !existingHashes.has(t.hash))
-          return [...prev, ...newTorrents]
-        })
+          const existingHashes = new Set(prev.map(t => t.hash,),)
+          const newTorrents = data.torrents.filter(t => !existingHashes.has(t.hash,),)
+          return [...prev, ...newTorrents,]
+        },)
       }
       
       // Check if we've loaded all torrents
-      const totalLoaded = currentPage === 0 
-        ? data.torrents.length 
-        : allTorrents.length + data.torrents.length
+      const totalLoaded = currentPage === 0? data.torrents.length: allTorrents.length + data.torrents.length
       
       if (totalLoaded >= (data.total || 0) || data.torrents.length < pageSize) {
-        setHasLoadedAll(true)
+        setHasLoadedAll(true,)
       }
       
-      setIsLoadingMore(false)
+      setIsLoadingMore(false,)
     }
-  }, [data, currentPage, pageSize])
+  }, [data, currentPage, pageSize,],)
   
   // Load more function for pagination
   const loadMore = () => {
     if (!hasLoadedAll && !isLoadingMore && !isFetching) {
-      setIsLoadingMore(true)
-      setCurrentPage(prev => prev + 1)
+      setIsLoadingMore(true,)
+      setCurrentPage(prev => prev + 1,)
     }
   }
   
@@ -129,10 +127,10 @@ export function useTorrentsList(
       totalDownloadSpeed: 0,
       totalUploadSpeed: 0,
     }
-  }, [data])
+  }, [data,],)
   
   // Check if data is from cache or fresh (backend provides this info)
-  const isCachedData = data?.cacheMetadata?.source === 'cache'
+  const isCachedData = data?.cacheMetadata?.source === "cache"
   const isStaleData = data?.cacheMetadata?.isStale === true
   
   // Use lastKnownTotal when loading more pages to prevent flickering

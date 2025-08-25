@@ -148,7 +148,6 @@ func (c *Client) ValidateLicense(ctx context.Context, licenseKey string) (*Licen
 	}, nil
 }
 
-
 // makeHTTPRequest handles common HTTP request logic for both endpoints
 func (c *Client) makeHTTPRequest(ctx context.Context, endpoint string, requestBody map[string]string, isActivation bool) ([]byte, error) {
 	jsonData, err := json.Marshal(requestBody)

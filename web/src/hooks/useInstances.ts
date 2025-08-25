@@ -3,18 +3,18 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api } from '@/lib/api'
-import type { InstanceResponse } from '@/types'
+import { useQuery, useMutation, useQueryClient, } from "@tanstack/react-query"
+import { api, } from "@/lib/api"
+import type { InstanceResponse, } from "@/types"
 
 export function useInstances() {
   const queryClient = useQueryClient()
 
-  const { data: instances, isLoading, error } = useQuery({
-    queryKey: ['instances'],
+  const { data: instances, isLoading, error, } = useQuery({
+    queryKey: ["instances",],
     queryFn: () => api.getInstances(),
     refetchInterval: 30000, // Refetch every 30 seconds for a single-user app
-  })
+  },)
 
   const createMutation = useMutation({
     mutationFn: (data: {
@@ -24,14 +24,14 @@ export function useInstances() {
       password: string
       basicUsername?: string
       basicPassword?: string
-    }) => api.createInstance(data),
+    },) => api.createInstance(data,),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['instances'] })
+      queryClient.invalidateQueries({ queryKey: ["instances",], },)
     },
-  })
+  },)
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { 
+    mutationFn: ({ id, data, }: { 
       id: number
       data: Partial<{
         name: string
@@ -41,22 +41,22 @@ export function useInstances() {
         basicUsername?: string
         basicPassword?: string
       }>
-    }) => api.updateInstance(id, data),
+    },) => api.updateInstance(id, data,),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['instances'] })
+      queryClient.invalidateQueries({ queryKey: ["instances",], },)
     },
-  })
+  },)
 
   const deleteMutation = useMutation({
-    mutationFn: ({ id }: { id: number; name: string }) => api.deleteInstance(id),
+    mutationFn: ({ id, }: { id: number; name: string },) => api.deleteInstance(id,),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['instances'] })
+      queryClient.invalidateQueries({ queryKey: ["instances",], },)
     },
-  })
+  },)
 
   const testConnectionMutation = useMutation({
-    mutationFn: (id: number) => api.testConnection(id),
-  })
+    mutationFn: (id: number,) => api.testConnection(id,),
+  },)
 
   return {
     instances: instances as InstanceResponse[] | undefined,
