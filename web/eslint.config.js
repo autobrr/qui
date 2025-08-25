@@ -7,7 +7,7 @@ import { globalIgnores } from 'eslint/config'
 import stylistic from '@stylistic/eslint-plugin'
 
 export default tseslint.config([
-  globalIgnores(['dist', '@web/pnpm-lock.yaml']),
+  globalIgnores(['dist', '@web/pnpm-lock.yaml', 'vite.config.ts']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
@@ -25,7 +25,16 @@ export default tseslint.config([
     },
     rules: {
       '@stylistic/quotes': ['warn', 'double'],
-      '@stylistic/comma-dangle': ['warn', 'always'],
+      '@stylistic/comma-dangle': [
+        'warn',
+        {
+          arrays: 'always-multiline',
+          objects: 'always-multiline',
+          imports: 'never',
+          exports: 'always-multiline',
+          functions: 'never',
+        },
+      ],
       '@stylistic/multiline-ternary': ['warn', 'never'],
       '@stylistic/object-curly-spacing': ['error', 'always'],
       '@stylistic/indent': ['error', 2, { 'SwitchCase': 1 }],

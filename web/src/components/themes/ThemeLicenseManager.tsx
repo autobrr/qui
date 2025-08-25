@@ -3,37 +3,37 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState, } from "react"
-import { useForm, } from "@tanstack/react-form"
-import { toast, } from "sonner"
-import { Button, } from "@/components/ui/button"
-import { Input, } from "@/components/ui/input"
-import { Label, } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, } from "@/components/ui/card"
-import { Separator, } from "@/components/ui/separator"
+import { useState } from "react"
+import { useForm } from "@tanstack/react-form"
+import { toast } from "sonner"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Separator } from "@/components/ui/separator"
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
-  DialogTitle,
+  DialogTitle
 } from "@/components/ui/dialog"
 import { 
   useHasPremiumAccess, 
   useValidateThemeLicense, 
   useDeleteThemeLicense,
   useRefreshThemeLicenses,
-  useAllLicenses,
+  useAllLicenses
 } from "@/hooks/useThemeLicense"
-import { Key, Trash2, RefreshCw, Sparkles, Copy, } from "lucide-react"
+import { Key, Trash2, RefreshCw, Sparkles, Copy } from "lucide-react"
 
 export function ThemeLicenseManager() {
-  const [showAddLicense, setShowAddLicense,] = useState(false,)
-  const [selectedLicenseKey, setSelectedLicenseKey,] = useState<string | null>(null,)
+  const [showAddLicense, setShowAddLicense] = useState(false)
+  const [selectedLicenseKey, setSelectedLicenseKey] = useState<string | null>(null)
   
-  const { hasPremiumAccess, isLoading, } = useHasPremiumAccess()
-  const { data: licenses, } = useAllLicenses()
+  const { hasPremiumAccess, isLoading } = useHasPremiumAccess()
+  const { data: licenses } = useAllLicenses()
   const validateLicense = useValidateThemeLicense()
   const deleteLicense = useDeleteThemeLicense()
   const refreshLicenses = useRefreshThemeLicenses()
@@ -42,24 +42,24 @@ export function ThemeLicenseManager() {
     defaultValues: {
       licenseKey: "",
     },
-    onSubmit: async ({ value, },) => {
-      await validateLicense.mutateAsync(value.licenseKey,)
+    onSubmit: async ({ value }) => {
+      await validateLicense.mutateAsync(value.licenseKey)
       form.reset()
-      setShowAddLicense(false,)
+      setShowAddLicense(false)
     },
-  },)
+  })
 
-  const handleDeleteLicense = (licenseKey: string,) => {
-    setSelectedLicenseKey(licenseKey,)
+  const handleDeleteLicense = (licenseKey: string) => {
+    setSelectedLicenseKey(licenseKey)
   }
 
   const confirmDeleteLicense = () => {
     if (selectedLicenseKey) {
       deleteLicense.mutate(selectedLicenseKey, {
         onSuccess: () => {
-          setSelectedLicenseKey(null,)
+          setSelectedLicenseKey(null)
         },
-      },)
+      })
     }
   }
 
@@ -112,7 +112,7 @@ export function ThemeLicenseManager() {
               )}
               <Button
                 size="sm"
-                onClick={() => setShowAddLicense(!showAddLicense,)}
+                onClick={() => setShowAddLicense(!showAddLicense)}
                 className="text-xs sm:text-sm"
               >
                 <Key className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
@@ -132,7 +132,7 @@ export function ThemeLicenseManager() {
               </div>
             
               <form
-                onSubmit={(e,) => {
+                onSubmit={(e) => {
                   e.preventDefault()
                   form.handleSubmit()
                 }}
@@ -141,11 +141,11 @@ export function ThemeLicenseManager() {
                 <form.Field
                   name="licenseKey"
                   validators={{
-                    onChange: ({ value, },) => 
+                    onChange: ({ value }) => 
                       !value ? "License key is required" : undefined,
                   }}
                 >
-                  {(field,) => (
+                  {(field) => (
                     <div className="space-y-2">
                       <Label htmlFor="licenseKey">License Key</Label>
                       <Input
@@ -153,7 +153,7 @@ export function ThemeLicenseManager() {
                         placeholder="Enter your premium theme license key"
                         value={field.state.value}
                         onBlur={field.handleBlur}
-                        onChange={(e,) => field.handleChange(e.target.value,)}
+                        onChange={(e) => field.handleChange(e.target.value)}
                       />
                       {field.state.meta.isTouched && field.state.meta.errors[0] && (
                         <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
@@ -164,9 +164,9 @@ export function ThemeLicenseManager() {
 
                 <div className="flex flex-col sm:flex-row gap-2">
                   <form.Subscribe
-                    selector={(state,) => [state.canSubmit, state.isSubmitting,]}
+                    selector={(state) => [state.canSubmit, state.isSubmitting]}
                   >
-                    {([canSubmit, isSubmitting,],) => (
+                    {([canSubmit, isSubmitting]) => (
                       <Button
                         type="submit"
                         disabled={!canSubmit || isSubmitting || validateLicense.isPending}
@@ -179,7 +179,7 @@ export function ThemeLicenseManager() {
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => setShowAddLicense(false,)}
+                    onClick={() => setShowAddLicense(false)}
                     className="text-xs sm:text-sm"
                   >
                     Cancel
@@ -199,7 +199,7 @@ export function ThemeLicenseManager() {
                   Active Licenses
                 </h4>
                 <div className="space-y-2">
-                  {licenses.map((license,) => (
+                  {licenses.map((license) => (
                     <div key={license.licenseKey} className="p-3 bg-muted/30 rounded-lg">
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex-1 min-w-0 space-y-1.5">
@@ -207,20 +207,20 @@ export function ThemeLicenseManager() {
                             {license.licenseKey}
                           </div>
                           <div className="text-xs text-muted-foreground">
-                            {license.themeName} • Added {new Date(license.createdAt,).toLocaleDateString()}
+                            {license.themeName} • Added {new Date(license.createdAt).toLocaleDateString()}
                           </div>
                         </div>
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => handleDeleteLicense(license.licenseKey,)}
+                          onClick={() => handleDeleteLicense(license.licenseKey)}
                           className="text-destructive hover:text-destructive hover:bg-destructive/10 flex-shrink-0 h-8 w-8"
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
                     </div>
-                  ),)}
+                  ))}
                 </div>
               </div>
               <Separator />
@@ -252,7 +252,7 @@ export function ThemeLicenseManager() {
       </Card>
 
       {/* Delete License Confirmation Dialog */}
-      <Dialog open={!!selectedLicenseKey} onOpenChange={(open,) => !open && setSelectedLicenseKey(null,)}>
+      <Dialog open={!!selectedLicenseKey} onOpenChange={(open) => !open && setSelectedLicenseKey(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Release License Key</DialogTitle>
@@ -275,8 +275,8 @@ export function ThemeLicenseManager() {
                 size="sm"
                 className="w-full"
                 onClick={() => {
-                  navigator.clipboard.writeText(selectedLicenseKey,)
-                  toast.success("License key copied to clipboard",)
+                  navigator.clipboard.writeText(selectedLicenseKey)
+                  toast.success("License key copied to clipboard")
                 }}
               >
                 <Copy className="h-4 w-4 mr-2" />
@@ -290,7 +290,7 @@ export function ThemeLicenseManager() {
           )}
         
           <DialogFooter>
-            <Button variant="outline" onClick={() => setSelectedLicenseKey(null,)}>
+            <Button variant="outline" onClick={() => setSelectedLicenseKey(null)}>
               Cancel
             </Button>
             <Button
