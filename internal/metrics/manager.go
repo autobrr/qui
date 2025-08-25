@@ -5,7 +5,6 @@ package metrics
 
 import (
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/qbittorrent"
@@ -18,9 +17,6 @@ type Manager struct {
 
 func NewManager(syncManager *qbittorrent.SyncManager, clientPool *qbittorrent.ClientPool) *Manager {
 	registry := prometheus.NewRegistry()
-
-	registry.MustRegister(collectors.NewGoCollector())
-	registry.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 
 	torrentCollector := NewTorrentCollector(syncManager, clientPool)
 	registry.MustRegister(torrentCollector)

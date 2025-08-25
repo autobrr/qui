@@ -113,13 +113,12 @@ curl -H "X-API-Key: YOUR_API_KEY_HERE" \
 
 ## Metrics
 
-Prometheus metrics are exposed at `/metrics` for monitoring your qBittorrent instances. **Authentication required** via API key.
+Prometheus metrics are exposed at `/metrics` for monitoring your qBittorrent instances. **Authentication required** via session cookie or API key.
 
 ### Available Metrics
 - **Torrent counts** by status (downloading, seeding, paused, error)
 - **Transfer speeds** (upload/download bytes per second)  
 - **Instance connection status**
-- Standard Go runtime metrics
 
 ### Prometheus Configuration
 
