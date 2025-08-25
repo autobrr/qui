@@ -79,9 +79,11 @@ QUI__LOG_PATH=...        # Optional: log file path
 QUI__DATA_DIR=...        # Optional: custom data directory (default: next to config)
 ```
 
+## CLI Commands
+
 ### Generate Configuration File
 
-You can generate a default configuration file without starting the server:
+Create a default configuration file without starting the server:
 
 ```bash
 # Generate config in OS-specific default location
@@ -93,6 +95,30 @@ You can generate a default configuration file without starting the server:
 # Generate config with custom filename
 ./qui generate-config --config-dir /path/to/myconfig.toml
 ```
+
+### User Management
+
+Create and manage user accounts from the command line:
+
+```bash
+# Create initial user account
+./qui create-user --username admin --password mypassword
+
+# Create user with prompts (secure password input)
+./qui create-user --username admin
+
+# Change password for existing user
+./qui change-password --username admin
+
+# All commands support custom config/data directories
+./qui create-user --config-dir /path/to/config/ --username admin
+```
+
+**Notes:**
+- Only one user account is allowed in the system
+- Passwords must be at least 8 characters long
+- When passwords are not provided via flags, you'll be prompted securely (input is masked)
+- Commands will create the database if it doesn't exist
 
 **Default locations:**
 - Linux/macOS: `~/.config/qui/config.toml`
