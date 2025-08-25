@@ -1415,65 +1415,56 @@ func (sm *SyncManager) SetTags(ctx context.Context, instanceID int, hashes []str
 		return fmt.Errorf("failed to get client: %w", err)
 	}
 
-	// Try to use the new SetTags method (qBittorrent 5.1+)
-	if err := client.Client.SetTags(ctx, hashes, tags); err != nil {
-		// Check if this is a version-related error
-		if strings.Contains(err.Error(), "version too old") || strings.Contains(err.Error(), "WebAPI version") {
-			log.Debug().Msg("SetTags: qBittorrent version too old, falling back to RemoveTags + AddTags")
+	// Check version support before attempting API call
+	if client.SupportsSetTags() {
+		if err := client.Client.SetTags(ctx, hashes, tags); err != nil {
+			return err
+		}
+		log.Debug().Str("webAPIVersion", client.GetWebAPIVersion()).Msg("Used SetTags API directly")
+	} else {
+		log.Debug().
+			Str("webAPIVersion", client.GetWebAPIVersion()).
+			Msg("SetTags: qBittorrent version < 2.11.4, using fallback RemoveTags + AddTags")
 
-			// Fallback: use RemoveTags + AddTags for older versions
-			// First get current torrents to find existing tags
-			torrents, err := client.Client.GetTorrentsCtx(ctx, qbt.TorrentFilterOptions{
-				Hashes: hashes,
-			})
-			if err != nil {
-				return fmt.Errorf("failed to get torrents for fallback: %w", err)
-			}
+		torrents, err := client.Client.GetTorrentsCtx(ctx, qbt.TorrentFilterOptions{
+			Hashes: hashes,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to get torrents for fallback: %w", err)
+		}
 
-			// Collect all unique existing tags from all torrents
-			existingTagsSet := make(map[string]bool)
-			for _, torrent := range torrents {
-				if torrent.Tags != "" {
-					torrentTags := strings.SplitSeq(torrent.Tags, ", ")
-					for tag := range torrentTags {
-						if strings.TrimSpace(tag) != "" {
-							existingTagsSet[strings.TrimSpace(tag)] = true
-						}
+		existingTagsSet := make(map[string]bool)
+		for _, torrent := range torrents {
+			if torrent.Tags != "" {
+				torrentTags := strings.SplitSeq(torrent.Tags, ", ")
+				for tag := range torrentTags {
+					if strings.TrimSpace(tag) != "" {
+						existingTagsSet[strings.TrimSpace(tag)] = true
 					}
 				}
 			}
-
-			// Convert existing tags map to slice
-			var existingTags []string
-			for tag := range existingTagsSet {
-				existingTags = append(existingTags, tag)
-			}
-
-			// Remove all existing tags if any exist
-			if len(existingTags) > 0 {
-				existingTagsStr := strings.Join(existingTags, ",")
-				if err := client.Client.RemoveTagsCtx(ctx, hashes, existingTagsStr); err != nil {
-					return fmt.Errorf("failed to remove existing tags during fallback: %w", err)
-				}
-				log.Debug().Strs("removedTags", existingTags).Msg("SetTags fallback: removed existing tags")
-			}
-
-			// Add new tags if any specified
-			if tags != "" {
-				if err := client.Client.AddTagsCtx(ctx, hashes, tags); err != nil {
-					return fmt.Errorf("failed to add new tags during fallback: %w", err)
-				}
-				newTags := strings.Split(tags, ",")
-				log.Debug().Strs("addedTags", newTags).Msg("SetTags fallback: added new tags")
-			}
-
-			// Apply optimistic update to cache
-			sm.applyOptimisticCacheUpdate(instanceID, hashes, "setTags", map[string]any{"tags": tags})
-			return nil
 		}
 
-		// If it's not a version error, return the original error
-		return err
+		var existingTags []string
+		for tag := range existingTagsSet {
+			existingTags = append(existingTags, tag)
+		}
+
+		if len(existingTags) > 0 {
+			existingTagsStr := strings.Join(existingTags, ",")
+			if err := client.Client.RemoveTagsCtx(ctx, hashes, existingTagsStr); err != nil {
+				return fmt.Errorf("failed to remove existing tags during fallback: %w", err)
+			}
+			log.Debug().Strs("removedTags", existingTags).Msg("SetTags fallback: removed existing tags")
+		}
+
+		if tags != "" {
+			if err := client.Client.AddTagsCtx(ctx, hashes, tags); err != nil {
+				return fmt.Errorf("failed to add new tags during fallback: %w", err)
+			}
+			newTags := strings.Split(tags, ",")
+			log.Debug().Strs("addedTags", newTags).Msg("SetTags fallback: added new tags")
+		}
 	}
 
 	// Apply optimistic update to cache
