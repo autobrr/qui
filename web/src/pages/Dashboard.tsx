@@ -6,12 +6,13 @@
 import { useInstances } from "@/hooks/useInstances"
 import { useInstanceStats } from "@/hooks/useInstanceStats"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
-import { HardDrive, Download, Upload, Activity, Plus, Zap, ChevronDown, ChevronUp, Eye, EyeOff } from "lucide-react"
+import { HardDrive, Download, Upload, Activity, Plus, Zap, ChevronDown, ChevronUp, Eye, EyeOff, ChevronRight } from "lucide-react"
 import { Link } from "@tanstack/react-router"
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 import { formatSpeed, formatBytes, getRatioColor } from "@/lib/utils"
 import { useQuery, useQueries } from "@tanstack/react-query"
 import { api } from "@/lib/api"
@@ -321,7 +322,7 @@ function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: Instance
     const totalErrors = statsData.reduce((sum, { torrentCounts }) => 
       sum + (torrentCounts?.status?.errored || 0), 0)
     
-    // Calculate all-time stats
+    // Calculate server stats
     const alltimeDl = statsData.reduce((sum, { serverState }) => 
       sum + (serverState?.alltime_dl || 0), 0)
     const alltimeUl = statsData.reduce((sum, { serverState }) => 
@@ -412,8 +413,9 @@ function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: Instance
 }
 
 function GlobalAllTimeStats({ statsData }: { statsData: Array<{ instance: InstanceResponse, stats: InstanceStats | undefined, serverState: ServerState | null }> }) {
+  const [isExpanded, setIsExpanded] = useState(false)
   const globalStats = useMemo(() => {
-    // Calculate all-time stats
+    // Calculate server stats
     const alltimeDl = statsData.reduce((sum, { serverState }) => 
       sum + (serverState?.alltime_dl || 0), 0)
     const alltimeUl = statsData.reduce((sum, { serverState }) => 
@@ -444,72 +446,132 @@ function GlobalAllTimeStats({ statsData }: { statsData: Array<{ instance: Instan
   }
 
   return (
-    <div className="rounded-lg border bg-card p-4">
-      {/* Mobile layout */}
-      <div className="sm:hidden">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-medium text-muted-foreground">All-Time Statistics</h3>
-          <Badge variant="secondary" className="text-xs">combined</Badge>
-        </div>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-1.5">
-              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="text-sm font-semibold">{formatBytes(globalStats.alltimeDl)}</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="text-sm font-semibold">{formatBytes(globalStats.alltimeUl)}</span>
+    <div className="rounded-lg border bg-card">
+      {/* Combined Stats Header - Clickable */}
+      <div 
+        className="p-4 cursor-pointer hover:bg-muted/50 transition-colors"
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        {/* Mobile layout */}
+        <div className="sm:hidden">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <ChevronRight className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${isExpanded ? "rotate-90" : ""}`} />
+              <h3 className="text-sm font-medium text-muted-foreground">Server Statistics</h3>
             </div>
           </div>
-          <div className="flex items-center gap-4 text-sm">
-            <div>
-              <span className="text-xs text-muted-foreground">Ratio: </span>
-              <span className="font-semibold" style={{ color: ratioColor }}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-1.5">
+                <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="text-sm font-semibold">{formatBytes(globalStats.alltimeDl)}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="text-sm font-semibold">{formatBytes(globalStats.alltimeUl)}</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-4 text-sm">
+              <div>
+                <span className="text-xs text-muted-foreground">Ratio: </span>
+                <span className="font-semibold" style={{ color: ratioColor }}>
+                  {globalStats.globalRatio.toFixed(2)}
+                </span>
+              </div>
+              {globalStats.totalPeers > 0 && (
+                <div>
+                  <span className="text-xs text-muted-foreground">Peers: </span>
+                  <span className="font-semibold">{globalStats.totalPeers}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+        
+        {/* Desktop layout */}
+        <div className="hidden sm:flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${isExpanded ? "rotate-90" : ""}`} />
+            <h3 className="text-base font-medium">Server Statistics</h3>
+          </div>
+          <div className="flex flex-wrap items-center gap-6 text-sm">
+            <div className="flex items-center gap-2">
+              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+              <span className="text-lg font-semibold">{formatBytes(globalStats.alltimeDl)}</span>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <ChevronUp className="h-4 w-4 text-muted-foreground" />
+              <span className="text-lg font-semibold">{formatBytes(globalStats.alltimeUl)}</span>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground">Ratio:</span>
+              <span className="text-lg font-semibold" style={{ color: ratioColor }}>
                 {globalStats.globalRatio.toFixed(2)}
               </span>
             </div>
+            
             {globalStats.totalPeers > 0 && (
-              <div>
-                <span className="text-xs text-muted-foreground">Peers: </span>
-                <span className="font-semibold">{globalStats.totalPeers}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">Peers:</span>
+                <span className="text-lg font-semibold">{globalStats.totalPeers}</span>
               </div>
             )}
           </div>
         </div>
       </div>
-      
-      {/* Desktop layout - unchanged */}
-      <div className="hidden sm:flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div className="items-center">
-          <h3 className="text-base font-medium">All-Time Statistics <Badge variant="secondary" className="ml-1">combined</Badge></h3>
+
+      {/* Individual Instance Stats - Expandable Table */}
+      {isExpanded && (
+        <div className="border-t">
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent bg-muted/50">
+                <TableHead className="text-center">Instance</TableHead>
+                <TableHead className="text-center">
+                  <div className="flex items-center justify-center gap-1">
+                    <span>Downloaded</span>
+                  </div>
+                </TableHead>
+                <TableHead className="text-center">
+                  <div className="flex items-center justify-center gap-1">
+                    <span>Uploaded</span>
+                  </div>
+                </TableHead>
+                <TableHead className="text-center">Ratio</TableHead>
+                <TableHead className="text-center hidden sm:table-cell">Peers</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {statsData
+                .filter(({ serverState }) => serverState?.alltime_dl || serverState?.alltime_ul)
+                .map(({ instance, serverState }) => {
+                  const instanceRatio = serverState?.alltime_dl ? (serverState.alltime_ul || 0) / serverState.alltime_dl : 0
+                  const instanceRatioColor = getRatioColor(instanceRatio)
+                  
+                  return (
+                    <TableRow key={instance.id}>
+                      <TableCell className="text-center font-medium">{instance.name}</TableCell>
+                      <TableCell className="text-center font-semibold">
+                        {formatBytes(serverState?.alltime_dl || 0)}
+                      </TableCell>
+                      <TableCell className="text-center font-semibold">
+                        {formatBytes(serverState?.alltime_ul || 0)}
+                      </TableCell>
+                      <TableCell className="text-center font-semibold" style={{ color: instanceRatioColor }}>
+                        {instanceRatio.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="text-center font-semibold hidden sm:table-cell">
+                        {serverState?.total_peer_connections || "-"}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+            </TableBody>
+          </Table>
         </div>
-        <div className="flex flex-wrap items-center gap-6 text-sm">
-          <div className="flex items-center gap-2">
-            <ChevronDown className="h-4 w-4 text-muted-foreground" />
-            <span className="text-lg font-semibold">{formatBytes(globalStats.alltimeDl)}</span>
-          </div>
-          
-          <div className="flex items-center gap-2">
-            <ChevronUp className="h-4 w-4 text-muted-foreground" />
-            <span className="text-lg font-semibold">{formatBytes(globalStats.alltimeUl)}</span>
-          </div>
-          
-          <div className="flex items-center gap-2">
-            <span className="text-muted-foreground">Ratio:</span>
-            <span className="text-lg font-semibold" style={{ color: ratioColor }}>
-              {globalStats.globalRatio.toFixed(2)}
-            </span>
-          </div>
-          
-          {globalStats.totalPeers > 0 && (
-            <div className="flex items-center gap-2">
-              <span className="text-muted-foreground">Peers:</span>
-              <span className="text-lg font-semibold">{globalStats.totalPeers}</span>
-            </div>
-          )}
-        </div>
-      </div>
+      )}
     </div>
   )
 }
@@ -601,7 +663,7 @@ export function Dashboard() {
       
       {instances && instances.length > 0 ? (
         <div className="space-y-6">
-          {/* All-Time Stats Bar */}
+          {/* Stats Bar */}
           <GlobalAllTimeStats statsData={statsData} />
           
           {/* Global Stats */}
