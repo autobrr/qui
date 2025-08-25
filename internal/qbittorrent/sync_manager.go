@@ -1338,33 +1338,51 @@ func (sm *SyncManager) sortTorrents(torrents []qbt.Torrent, sortField, order str
 
 	sort.Slice(torrents, func(i, j int) bool {
 		var less bool
+		var equal bool
 
 		switch sortField {
 		case "name":
 			less = strings.ToLower(torrents[i].Name) < strings.ToLower(torrents[j].Name)
+			equal = strings.EqualFold(torrents[i].Name, torrents[j].Name)
 		case "size":
 			less = torrents[i].Size < torrents[j].Size
+			equal = torrents[i].Size == torrents[j].Size
 		case "progress":
 			less = torrents[i].Progress < torrents[j].Progress
+			equal = torrents[i].Progress == torrents[j].Progress
 		case "dlspeed":
 			less = torrents[i].DlSpeed < torrents[j].DlSpeed
+			equal = torrents[i].DlSpeed == torrents[j].DlSpeed
 		case "upspeed":
 			less = torrents[i].UpSpeed < torrents[j].UpSpeed
+			equal = torrents[i].UpSpeed == torrents[j].UpSpeed
 		case "eta":
 			less = torrents[i].ETA < torrents[j].ETA
+			equal = torrents[i].ETA == torrents[j].ETA
 		case "ratio":
 			less = torrents[i].Ratio < torrents[j].Ratio
+			equal = torrents[i].Ratio == torrents[j].Ratio
 		case "category":
 			less = strings.ToLower(torrents[i].Category) < strings.ToLower(torrents[j].Category)
+			equal = strings.EqualFold(torrents[i].Category, torrents[j].Category)
 		case "tags":
 			less = strings.ToLower(torrents[i].Tags) < strings.ToLower(torrents[j].Tags)
+			equal = strings.EqualFold(torrents[i].Tags, torrents[j].Tags)
 		case "added_on", "addedOn":
 			less = torrents[i].AddedOn < torrents[j].AddedOn
+			equal = torrents[i].AddedOn == torrents[j].AddedOn
 		case "state":
 			less = torrents[i].State < torrents[j].State
+			equal = torrents[i].State == torrents[j].State
 		default:
 			// Default to sorting by added date (newest first)
 			less = torrents[i].AddedOn < torrents[j].AddedOn
+			equal = torrents[i].AddedOn == torrents[j].AddedOn
+		}
+
+		// Use hash as tiebreaker for stable sorting when primary values are equal
+		if equal {
+			less = torrents[i].Hash < torrents[j].Hash
 		}
 
 		// Reverse for descending order
