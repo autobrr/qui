@@ -393,6 +393,5 @@ The `/metrics` endpoint exposes Prometheus metrics for monitoring. Implementatio
 - `qbittorrent_torrents_*` - Torrent counts by status (downloading, seeding, paused, error, checking)
 - `qbittorrent_*_speed_bytes_per_second` - Upload/download speeds
 - `qbittorrent_instance_connection_status` - Instance health (1=connected, 0=disconnected)
-- Standard Go runtime metrics (memory, goroutines, etc.)
 
 All metrics labeled with `instance_id` and `instance_name` for multi-instance monitoring.

@@ -17,7 +17,6 @@ type TorrentCollector struct {
 	syncManager *qbittorrent.SyncManager
 	clientPool  *qbittorrent.ClientPool
 
-	torrentsTotalDesc            *prometheus.Desc
 	torrentsDownloadingDesc      *prometheus.Desc
 	torrentsSeedingDesc          *prometheus.Desc
 	torrentsPausedDesc           *prometheus.Desc
@@ -26,6 +25,7 @@ type TorrentCollector struct {
 	downloadSpeedDesc            *prometheus.Desc
 	uploadSpeedDesc              *prometheus.Desc
 	instanceConnectionStatusDesc *prometheus.Desc
+	scrapeErrorsDesc             *prometheus.Desc
 }
 
 func NewTorrentCollector(syncManager *qbittorrent.SyncManager, clientPool *qbittorrent.ClientPool) *TorrentCollector {
@@ -33,12 +33,6 @@ func NewTorrentCollector(syncManager *qbittorrent.SyncManager, clientPool *qbitt
 		syncManager: syncManager,
 		clientPool:  clientPool,
 
-		torrentsTotalDesc: prometheus.NewDesc(
-			"qbittorrent_torrents_total",
-			"Total number of torrents by instance and status",
-			[]string{"instance_id", "instance_name", "status"},
-			nil,
-		),
 		torrentsDownloadingDesc: prometheus.NewDesc(
 			"qbittorrent_torrents_downloading",
 			"Number of downloading torrents by instance",
@@ -87,11 +81,16 @@ func NewTorrentCollector(syncManager *qbittorrent.SyncManager, clientPool *qbitt
 			[]string{"instance_id", "instance_name"},
 			nil,
 		),
+		scrapeErrorsDesc: prometheus.NewDesc(
+			"qbittorrent_scrape_errors_total",
+			"Total number of scrape errors by instance",
+			[]string{"instance_id", "instance_name", "type"},
+			nil,
+		),
 	}
 }
 
 func (c *TorrentCollector) Describe(ch chan<- *prometheus.Desc) {
-	ch <- c.torrentsTotalDesc
 	ch <- c.torrentsDownloadingDesc
 	ch <- c.torrentsSeedingDesc
 	ch <- c.torrentsPausedDesc
@@ -100,6 +99,18 @@ func (c *TorrentCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.downloadSpeedDesc
 	ch <- c.uploadSpeedDesc
 	ch <- c.instanceConnectionStatusDesc
+	ch <- c.scrapeErrorsDesc
+}
+
+func (c *TorrentCollector) reportError(ch chan<- prometheus.Metric, instanceIDStr, instanceName, errorType string) {
+	ch <- prometheus.MustNewConstMetric(
+		c.scrapeErrorsDesc,
+		prometheus.CounterValue,
+		1,
+		instanceIDStr,
+		instanceName,
+		errorType,
+	)
 }
 
 func (c *TorrentCollector) Collect(ch chan<- prometheus.Metric) {
@@ -111,7 +122,7 @@ func (c *TorrentCollector) Collect(ch chan<- prometheus.Metric) {
 		return
 	}
 
-	instances := c.clientPool.GetAllInstances()
+	instances := c.clientPool.GetAllInstances(ctx)
 
 	log.Debug().Int("instances", len(instances)).Msg("Collecting metrics for instances")
 
@@ -154,21 +165,11 @@ func (c *TorrentCollector) Collect(ch chan<- prometheus.Metric) {
 				Int("instanceID", instance.ID).
 				Str("instanceName", instanceName).
 				Msg("Failed to get torrent counts for metrics")
+			c.reportError(ch, instanceIDStr, instanceName, "torrent_counts")
 			continue
 		}
 
 		if counts != nil && counts.Status != nil {
-			if total, ok := counts.Status["all"]; ok {
-				ch <- prometheus.MustNewConstMetric(
-					c.torrentsTotalDesc,
-					prometheus.GaugeValue,
-					float64(total),
-					instanceIDStr,
-					instanceName,
-					"all",
-				)
-			}
-
 			if downloading, ok := counts.Status["downloading"]; ok {
 				ch <- prometheus.MustNewConstMetric(
 					c.torrentsDownloadingDesc,
@@ -227,6 +228,7 @@ func (c *TorrentCollector) Collect(ch chan<- prometheus.Metric) {
 				Int("instanceID", instance.ID).
 				Str("instanceName", instanceName).
 				Msg("Failed to get instance speeds for metrics")
+			c.reportError(ch, instanceIDStr, instanceName, "instance_speeds")
 		} else if speeds != nil {
 			ch <- prometheus.MustNewConstMetric(
 				c.downloadSpeedDesc,

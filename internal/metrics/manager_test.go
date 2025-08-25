@@ -80,3 +80,80 @@ func TestManager_MetricsCanBeScraped(t *testing.T) {
 	metricCount := testutil.CollectAndCount(registry)
 	assert.Equal(t, 0, metricCount, "Should collect 0 metrics with nil dependencies")
 }
+
+func TestTorrentCollector_Describe(t *testing.T) {
+	// Test that collector properly describes all metrics
+	collector := NewTorrentCollector(nil, nil)
+
+	descChan := make(chan *prometheus.Desc, 20)
+	collector.Describe(descChan)
+	close(descChan)
+
+	var descs []*prometheus.Desc
+	for desc := range descChan {
+		descs = append(descs, desc)
+	}
+
+	// Should have all expected metrics descriptors
+	assert.Len(t, descs, 9, "Should have 9 metric descriptors")
+}
+
+func TestTorrentCollector_CollectWithNilDependencies(t *testing.T) {
+	// Test that collector handles nil dependencies gracefully
+	collector := NewTorrentCollector(nil, nil)
+
+	registry := prometheus.NewRegistry()
+	registry.MustRegister(collector)
+
+	// Should not panic and should collect 0 metrics
+	metricCount := testutil.CollectAndCount(registry)
+	assert.Equal(t, 0, metricCount, "Should collect 0 metrics with nil dependencies")
+}
+
+func TestInstanceInfo_IDString(t *testing.T) {
+	// Test the IDString method optimization
+	instance := &qbittorrent.InstanceInfo{
+		ID:   123,
+		Name: "test",
+	}
+
+	result := instance.IDString()
+	assert.Equal(t, "123", result, "Should convert ID to string correctly")
+}
+
+func BenchmarkTorrentCollector_Describe(b *testing.B) {
+	collector := NewTorrentCollector(nil, nil)
+	descChan := make(chan *prometheus.Desc, 20)
+
+	for b.Loop() {
+		collector.Describe(descChan)
+		// Drain channel
+		for len(descChan) > 0 {
+			<-descChan
+		}
+	}
+}
+
+func BenchmarkTorrentCollector_CollectWithNilDeps(b *testing.B) {
+	collector := NewTorrentCollector(nil, nil)
+	metricChan := make(chan prometheus.Metric, 100)
+
+	for b.Loop() {
+		collector.Collect(metricChan)
+		// Drain channel
+		for len(metricChan) > 0 {
+			<-metricChan
+		}
+	}
+}
+
+func BenchmarkInstanceInfo_IDString(b *testing.B) {
+	instance := &qbittorrent.InstanceInfo{
+		ID:   123456,
+		Name: "benchmark-instance",
+	}
+
+	for b.Loop() {
+		_ = instance.IDString()
+	}
+}
