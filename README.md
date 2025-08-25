@@ -126,26 +126,14 @@ First, create an API key in Settings → API Keys, then configure Prometheus:
 
 ```yaml
 scrape_configs:
-  - job_name: 'qbitweb'
+  - job_name: 'qui'
     static_configs:
       - targets: ['localhost:8080']
     metrics_path: /metrics
     scrape_interval: 30s
-    authorization:
-      type: 'Bearer'
-      credentials: 'YOUR_API_KEY_HERE'
-```
-
-Alternatively, use the custom header approach:
-```yaml
-scrape_configs:
-  - job_name: 'qbitweb'
-    static_configs:
-      - targets: ['localhost:8080']
-    metrics_path: /metrics
-    scrape_interval: 30s
-    headers:
-      X-API-Key: ['YOUR_API_KEY_HERE']
+    http_headers:
+      X-API-Key:
+        values: ['YOUR_API_KEY_HERE']
 ```
 
 All metrics are labeled with `instance_id` and `instance_name` for multi-instance monitoring.
