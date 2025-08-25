@@ -23,15 +23,15 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
       
-      - name: Set up Node.js
+      - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
       
-      - name: Install pnpm
+      - name: Set up pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 8
+          version: latest
       
       - name: Install frontend dependencies
         run: cd web && pnpm install
