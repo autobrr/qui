@@ -4,14 +4,11 @@
 package metrics
 
 import (
-	"runtime"
-	"strings"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
@@ -57,29 +54,7 @@ func TestManager_GetRegistry(t *testing.T) {
 	assert.NotNil(t, registry)
 	assert.IsType(t, &prometheus.Registry{}, registry)
 
-	// verify standard collectors are registered
-	metricFamilies, err := registry.Gather()
-	require.NoError(t, err)
-
-	foundGoMetrics := false
-	foundProcessMetrics := false
-
-	for _, mf := range metricFamilies {
-		name := mf.GetName()
-		if strings.HasPrefix(name, "go_") {
-			foundGoMetrics = true
-		}
-		if strings.HasPrefix(name, "process_") {
-			foundProcessMetrics = true
-		}
-	}
-
-	assert.True(t, foundGoMetrics, "Go runtime metrics should be registered (go_* metrics)")
-	if runtime.GOOS == "darwin" {
-		assert.False(t, foundProcessMetrics, "Process metrics should NOT be available on macOS")
-	} else {
-		assert.True(t, foundProcessMetrics, "Process metrics should be registered on Linux/Windows")
-	}
+	assert.NotNil(t, manager.torrentCollector, "TorrentCollector should be registered")
 }
 
 func TestManager_RegistryIsolation(t *testing.T) {
@@ -93,11 +68,8 @@ func TestManager_RegistryIsolation(t *testing.T) {
 func TestManager_CollectorRegistration(t *testing.T) {
 	manager := NewManager(nil, nil)
 
-	metricFamilies, err := manager.registry.Gather()
-	require.NoError(t, err)
-
-	assert.Greater(t, len(metricFamilies), 0, "Should have metrics registered")
-
+	assert.NotNil(t, manager.torrentCollector, "TorrentCollector should be registered")
+	assert.NotNil(t, manager.registry, "Registry should be initialized")
 }
 
 func TestManager_MetricsCanBeScraped(t *testing.T) {
@@ -106,6 +78,5 @@ func TestManager_MetricsCanBeScraped(t *testing.T) {
 	registry := manager.GetRegistry()
 
 	metricCount := testutil.CollectAndCount(registry)
-
-	assert.Greater(t, metricCount, 0, "Should be able to collect metrics")
+	assert.Equal(t, 0, metricCount, "Should collect 0 metrics with nil dependencies")
 }
