@@ -20,8 +20,8 @@ export function useInstances() {
     mutationFn: (data: {
       name: string
       host: string
-      username: string
-      password: string
+      username?: string
+      password?: string
       basicUsername?: string
       basicPassword?: string
     }) => api.createInstance(data),
@@ -36,8 +36,8 @@ export function useInstances() {
       data: Partial<{
         name: string
         host: string
-        username: string
-        password: string
+        username?: string
+        password?: string
         basicUsername?: string
         basicPassword?: string
       }>

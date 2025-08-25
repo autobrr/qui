@@ -85,8 +85,8 @@ class ApiClient {
   async createInstance(data: {
     name: string
     host: string
-    username: string
-    password: string
+    username?: string
+    password?: string
     basicUsername?: string
     basicPassword?: string
   }): Promise<InstanceResponse> {
@@ -101,8 +101,8 @@ class ApiClient {
     data: Partial<{
       name: string
       host: string
-      username: string
-      password: string
+      username?: string
+      password?: string
       basicUsername?: string
       basicPassword?: string
     }>
