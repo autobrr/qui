@@ -10,6 +10,7 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -53,6 +54,7 @@ multiple qBittorrent instances with support for 10k+ torrents.`,
 
 	rootCmd.AddCommand(RunServeCommand())
 	rootCmd.AddCommand(RunVersionCommand(Version))
+	rootCmd.AddCommand(RunGenerateConfigCommand())
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -94,6 +96,57 @@ func RunVersionCommand(version string) *cobra.Command {
 			fmt.Println(version)
 		},
 	}
+
+	return command
+}
+
+func RunGenerateConfigCommand() *cobra.Command {
+	var configDir string
+
+	command := &cobra.Command{
+		Use:   "generate-config",
+		Short: "Generate a default configuration file",
+		Long: `Generate a default configuration file without starting the server.
+
+If no --config-dir is specified, uses the OS-specific default location:
+- Linux/macOS: ~/.config/qui/config.toml  
+- Windows: %APPDATA%\qui\config.toml
+
+You can specify either a directory path or a direct file path:
+- Directory: qui generate-config --config-dir /path/to/config/
+- File: qui generate-config --config-dir /path/to/myconfig.toml`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var configPath string
+			if configDir != "" {
+				if strings.HasSuffix(strings.ToLower(configDir), ".toml") {
+					configPath = configDir
+				} else if info, err := os.Stat(configDir); err == nil && !info.IsDir() {
+					configPath = configDir
+				} else {
+					configPath = filepath.Join(configDir, "config.toml")
+				}
+			} else {
+				defaultDir := config.GetDefaultConfigDir()
+				configPath = filepath.Join(defaultDir, "config.toml")
+			}
+
+			if _, err := os.Stat(configPath); err == nil {
+				cmd.Printf("Configuration file already exists at: %s\n", configPath)
+				cmd.Println("Skipping generation to avoid overwriting existing configuration.")
+				return nil
+			}
+
+			if err := config.WriteDefaultConfig(configPath); err != nil {
+				return fmt.Errorf("failed to create configuration file: %w", err)
+			}
+
+			cmd.Printf("Configuration file created successfully at: %s\n", configPath)
+			return nil
+		},
+	}
+
+	command.Flags().StringVar(&configDir, "config-dir", "",
+		"config directory or file path (defaults to OS-specific location)")
 
 	return command
 }
