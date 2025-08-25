@@ -322,7 +322,7 @@ function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: Instance
     const totalErrors = statsData.reduce((sum, { torrentCounts }) => 
       sum + (torrentCounts?.status?.errored || 0), 0)
     
-    // Calculate all-time stats
+    // Calculate server stats
     const alltimeDl = statsData.reduce((sum, { serverState }) => 
       sum + (serverState?.alltime_dl || 0), 0)
     const alltimeUl = statsData.reduce((sum, { serverState }) => 
@@ -415,7 +415,7 @@ function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: Instance
 function GlobalAllTimeStats({ statsData }: { statsData: Array<{ instance: InstanceResponse, stats: InstanceStats | undefined, serverState: ServerState | null }> }) {
   const [isExpanded, setIsExpanded] = useState(false)
   const globalStats = useMemo(() => {
-    // Calculate all-time stats
+    // Calculate server stats
     const alltimeDl = statsData.reduce((sum, { serverState }) => 
       sum + (serverState?.alltime_dl || 0), 0)
     const alltimeUl = statsData.reduce((sum, { serverState }) => 
@@ -456,9 +456,9 @@ function GlobalAllTimeStats({ statsData }: { statsData: Array<{ instance: Instan
         <div className="sm:hidden">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <h3 className="text-sm font-medium text-muted-foreground">All-Time Statistics</h3>
+              <ChevronRight className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${isExpanded ? "rotate-90" : ""}`} />
+              <h3 className="text-sm font-medium text-muted-foreground">Server Statistics</h3>
             </div>
-            <Badge variant="secondary" className="text-xs">combined</Badge>
           </div>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
@@ -492,7 +492,7 @@ function GlobalAllTimeStats({ statsData }: { statsData: Array<{ instance: Instan
         <div className="hidden sm:flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-2">
             <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${isExpanded ? "rotate-90" : ""}`} />
-            <h3 className="text-base font-medium">All-Time Statistics <Badge variant="secondary" className="ml-1">combined</Badge></h3>
+            <h3 className="text-base font-medium">Server Statistics</h3>
           </div>
           <div className="flex flex-wrap items-center gap-6 text-sm">
             <div className="flex items-center gap-2">
@@ -524,23 +524,23 @@ function GlobalAllTimeStats({ statsData }: { statsData: Array<{ instance: Instan
 
       {/* Individual Instance Stats - Expandable Table */}
       {isExpanded && (
-        <div className="border-t px-4">
+        <div className="border-t">
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead className="w-[200px]">Instance</TableHead>
-                <TableHead className="text-right">
-                  <div className="flex items-center justify-end gap-1">
+              <TableRow className="hover:bg-transparent bg-muted/50">
+                <TableHead className="text-center">Instance</TableHead>
+                <TableHead className="text-center">
+                  <div className="flex items-center justify-center gap-1">
                     <span>Downloaded</span>
                   </div>
                 </TableHead>
-                <TableHead className="text-right">
-                  <div className="flex items-center justify-end gap-1">
+                <TableHead className="text-center">
+                  <div className="flex items-center justify-center gap-1">
                     <span>Uploaded</span>
                   </div>
                 </TableHead>
-                <TableHead className="text-right">Ratio</TableHead>
-                <TableHead className="text-right">Peers</TableHead>
+                <TableHead className="text-center">Ratio</TableHead>
+                <TableHead className="text-center hidden sm:table-cell">Peers</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -552,17 +552,17 @@ function GlobalAllTimeStats({ statsData }: { statsData: Array<{ instance: Instan
                   
                   return (
                     <TableRow key={instance.id}>
-                      <TableCell className="font-medium">{instance.name}</TableCell>
-                      <TableCell className="text-right font-semibold">
+                      <TableCell className="text-center font-medium">{instance.name}</TableCell>
+                      <TableCell className="text-center font-semibold">
                         {formatBytes(serverState?.alltime_dl || 0)}
                       </TableCell>
-                      <TableCell className="text-right font-semibold">
+                      <TableCell className="text-center font-semibold">
                         {formatBytes(serverState?.alltime_ul || 0)}
                       </TableCell>
-                      <TableCell className="text-right font-semibold" style={{ color: instanceRatioColor }}>
+                      <TableCell className="text-center font-semibold" style={{ color: instanceRatioColor }}>
                         {instanceRatio.toFixed(2)}
                       </TableCell>
-                      <TableCell className="text-right font-semibold">
+                      <TableCell className="text-center font-semibold hidden sm:table-cell">
                         {serverState?.total_peer_connections || "-"}
                       </TableCell>
                     </TableRow>
@@ -663,7 +663,7 @@ export function Dashboard() {
       
       {instances && instances.length > 0 ? (
         <div className="space-y-6">
-          {/* All-Time Stats Bar */}
+          {/* Stats Bar */}
           <GlobalAllTimeStats statsData={statsData} />
           
           {/* Global Stats */}
