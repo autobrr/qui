@@ -3,18 +3,18 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useSortable, } from "@dnd-kit/sortable"
-import { CSS, } from "@dnd-kit/utilities"
-import { flexRender, type Header, } from "@tanstack/react-table"
-import { ChevronUp, ChevronDown, } from "lucide-react"
-import type { Torrent, } from "@/types"
+import { useSortable } from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
+import { flexRender, type Header } from "@tanstack/react-table"
+import { ChevronUp, ChevronDown } from "lucide-react"
+import type { Torrent } from "@/types"
 
 interface DraggableTableHeaderProps {
   header: Header<Torrent, unknown>
 }
 
-export function DraggableTableHeader({ header, }: DraggableTableHeaderProps,) {
-  const { column, } = header
+export function DraggableTableHeader({ header }: DraggableTableHeaderProps) {
+  const { column } = header
   
   const {
     attributes,
@@ -26,10 +26,10 @@ export function DraggableTableHeader({ header, }: DraggableTableHeaderProps,) {
   } = useSortable({
     id: column.id,
     disabled: column.id === "select",
-  },)
+  })
 
   const style = {
-    transform: CSS.Transform.toString(transform,),
+    transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.8 : 1,
     position: "relative" as const,
@@ -60,7 +60,7 @@ export function DraggableTableHeader({ header, }: DraggableTableHeaderProps,) {
           <span className={`truncate ${column.id === "select" ? "flex items-center" : ""}`}>
             {header.isPlaceholder? null: flexRender(
               column.columnDef.header,
-              header.getContext(),
+              header.getContext()
             )}
           </span>
           {column.id !== "select" && column.getIsSorted() && (
