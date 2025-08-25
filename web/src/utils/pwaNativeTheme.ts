@@ -3,83 +3,83 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { converter, formatHex } from 'culori'
+import { converter, formatHex, } from "culori"
 
 /**
  * Converts OKLCH color string to hex using proper culori library
  * Handles the OKLCH CSS function format: oklch(L C H)
  */
-function oklchToHex(oklchValue: string): string {
+function oklchToHex(oklchValue: string,): string {
   // Parse OKLCH string like "oklch(0.1450 0 0)" or "oklch(0.7 0.15 240)"
-  const match = oklchValue.match(/oklch\(\s*([^)]+)\s*\)/)
-  if (!match) return '#000000'
+  const match = oklchValue.match(/oklch\(\s*([^)]+)\s*\)/,)
+  if (!match) return "#000000"
 
-  const parts = match[1].trim().split(/\s+/)
-  if (parts.length < 3) return '#000000'
+  const parts = match[1].trim().split(/\s+/,)
+  if (parts.length < 3) return "#000000"
 
-  const [lightness, chroma, hue] = parts.map(v => parseFloat(v.trim()))
+  const [lightness, chroma, hue,] = parts.map(v => parseFloat(v.trim(),),)
   
   try {
     // Create OKLCH color object with proper type
     const oklchColor = { 
-      mode: 'oklch' as const, 
+      mode: "oklch" as const, 
       l: lightness, 
       c: chroma, 
-      h: hue || 0 
+      h: hue || 0, 
     }
 
     // Create converter function for OKLCH to RGB
-    const toRgb = converter('rgb')
+    const toRgb = converter("rgb",)
     
     // Convert OKLCH to RGB
-    const rgbColor = toRgb(oklchColor)
-    if (!rgbColor) return '#000000'
+    const rgbColor = toRgb(oklchColor,)
+    if (!rgbColor) return "#000000"
     
     // Convert RGB to hex
-    const hexColor = formatHex(rgbColor)
-    return hexColor || '#000000'
+    const hexColor = formatHex(rgbColor,)
+    return hexColor || "#000000"
   } catch (error) {
-    console.warn('Failed to convert OKLCH to hex:', oklchValue, error)
-    return '#000000'
+    console.warn("Failed to convert OKLCH to hex:", oklchValue, error,)
+    return "#000000"
   }
 }
 
 /**
  * Update the PWA manifest theme-color meta tag
  */
-function updateManifestThemeColor(color: string): void {
+function updateManifestThemeColor(color: string,): void {
   // Update theme-color meta tag
-  let themeColorMeta = document.querySelector('meta[name="theme-color"]')
+  let themeColorMeta = document.querySelector("meta[name=\"theme-color\"]",)
   if (!themeColorMeta) {
-    themeColorMeta = document.createElement('meta')
-    themeColorMeta.setAttribute('name', 'theme-color')
-    document.head.appendChild(themeColorMeta)
+    themeColorMeta = document.createElement("meta",)
+    themeColorMeta.setAttribute("name", "theme-color",)
+    document.head.appendChild(themeColorMeta,)
   }
-  themeColorMeta.setAttribute('content', color)
+  themeColorMeta.setAttribute("content", color,)
 
   // Also update Apple-specific meta tags for better iOS support
-  let appleStatusBarMeta = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]')
+  let appleStatusBarMeta = document.querySelector("meta[name=\"apple-mobile-web-app-status-bar-style\"]",)
   if (!appleStatusBarMeta) {
-    appleStatusBarMeta = document.createElement('meta')
-    appleStatusBarMeta.setAttribute('name', 'apple-mobile-web-app-status-bar-style')
-    document.head.appendChild(appleStatusBarMeta)
+    appleStatusBarMeta = document.createElement("meta",)
+    appleStatusBarMeta.setAttribute("name", "apple-mobile-web-app-status-bar-style",)
+    document.head.appendChild(appleStatusBarMeta,)
   }
   
   // Determine if we should use light or dark status bar content
   // For dark theme colors, use light content; for light theme colors, use dark content
-  const isDarkColor = isColorDark(color)
-  appleStatusBarMeta.setAttribute('content', isDarkColor ? 'light-content' : 'dark-content')
+  const isDarkColor = isColorDark(color,)
+  appleStatusBarMeta.setAttribute("content", isDarkColor ? "light-content" : "dark-content",)
 }
 
 /**
  * Check if a color is dark (for determining status bar content style)
  */
-function isColorDark(color: string): boolean {
+function isColorDark(color: string,): boolean {
   // Convert hex to RGB and calculate luminance
-  const hex = color.replace('#', '')
-  const r = parseInt(hex.substr(0, 2), 16)
-  const g = parseInt(hex.substr(2, 2), 16)
-  const b = parseInt(hex.substr(4, 2), 16)
+  const hex = color.replace("#", "",)
+  const r = parseInt(hex.substr(0, 2,), 16,)
+  const g = parseInt(hex.substr(2, 2,), 16,)
+  const b = parseInt(hex.substr(4, 2,), 16,)
   
   // Calculate luminance using sRGB formula
   const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
@@ -96,32 +96,32 @@ export function initializePWANativeTheme(): void {
   const updatePWATheme = () => {
     try {
       // Get current theme from DOM data attribute
-      const currentThemeId = document.documentElement.getAttribute('data-theme')
+      const currentThemeId = document.documentElement.getAttribute("data-theme",)
       if (!currentThemeId) return
       
       // Determine if we're in dark mode
-      const isDark = document.documentElement.classList.contains('dark')
+      const isDark = document.documentElement.classList.contains("dark",)
       
       // Get computed CSS variables from the root element
-      const rootStyles = getComputedStyle(document.documentElement)
-      const backgroundColor = rootStyles.getPropertyValue('--background').trim()
+      const rootStyles = getComputedStyle(document.documentElement,)
+      const backgroundColor = rootStyles.getPropertyValue("--background",).trim()
       
       // Use background color for seamless status bar
       let themeColor = backgroundColor
       
       // Convert OKLCH to hex if needed
-      if (themeColor.includes('oklch')) {
-        themeColor = oklchToHex(themeColor)
+      if (themeColor.includes("oklch",)) {
+        themeColor = oklchToHex(themeColor,)
       }
       
       // Apply a default if we couldn't get a color
-      if (!themeColor || themeColor === '') {
-        themeColor = isDark ? '#0f172a' : '#ffffff'
+      if (!themeColor || themeColor === "") {
+        themeColor = isDark ? "#0f172a" : "#ffffff"
       }
       
-      updateManifestThemeColor(themeColor)
+      updateManifestThemeColor(themeColor,)
     } catch (error) {
-      console.warn('Failed to update PWA theme color:', error)
+      console.warn("Failed to update PWA theme color:", error,)
     }
   }
   
@@ -129,25 +129,25 @@ export function initializePWANativeTheme(): void {
   themeChangeListener = updatePWATheme
   
   // Listen for theme change events
-  window.addEventListener('themechange', themeChangeListener)
+  window.addEventListener("themechange", themeChangeListener,)
   
   // Also listen for class changes on documentElement (for dark mode toggles)
-  themeObserver = new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
-      if (mutation.type === 'attributes' && 
-          (mutation.attributeName === 'class' || mutation.attributeName === 'data-theme')) {
+  themeObserver = new MutationObserver((mutations,) => {
+    mutations.forEach((mutation,) => {
+      if (mutation.type === "attributes" && 
+          (mutation.attributeName === "class" || mutation.attributeName === "data-theme")) {
         updatePWATheme()
       }
-    })
-  })
+    },)
+  },)
   
   themeObserver.observe(document.documentElement, {
     attributes: true,
-    attributeFilter: ['class', 'data-theme']
-  })
+    attributeFilter: ["class", "data-theme",],
+  },)
   
   // Apply initial theme after a short delay to ensure CSS variables are loaded
-  setTimeout(updatePWATheme, 100)
+  setTimeout(updatePWATheme, 100,)
 }
 
 // Store references for cleanup

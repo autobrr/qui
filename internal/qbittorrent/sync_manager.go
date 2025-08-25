@@ -180,7 +180,6 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	return response, nil
 }
 
-
 // GetServerStats gets server statistics using SyncMainData (for Dashboard)
 func (sm *SyncManager) GetServerStats(ctx context.Context, instanceID int) (*qbt.MainData, error) {
 	// Get client
@@ -752,9 +751,6 @@ func (sm *SyncManager) InvalidateCache(instanceID int) {
 	log.Debug().Int("instanceID", instanceID).Msg("Instance-specific cache invalidation completed")
 }
 
-
-
-
 // applyOptimisticCacheUpdate applies optimistic updates to cached torrents
 func (sm *SyncManager) applyOptimisticCacheUpdate(instanceID int, hashes []string, action string, payload map[string]any) {
 	// Get the cache key for all torrents
@@ -972,7 +968,6 @@ func normalizeForSearch(text string) string {
 	// Collapse multiple spaces
 	return strings.Join(strings.Fields(normalized), " ")
 }
-
 
 // filterTorrentsBySearch filters torrents by search string with smart matching
 func (sm *SyncManager) filterTorrentsBySearch(torrents []qbt.Torrent, search string) []qbt.Torrent {

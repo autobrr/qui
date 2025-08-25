@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { createFileRoute } from '@tanstack/react-router'
-import { Settings } from '@/pages/Settings'
+import { createFileRoute, } from "@tanstack/react-router"
+import { Settings, } from "@/pages/Settings"
 
-export const Route = createFileRoute('/_authenticated/settings')({
+export const Route = createFileRoute("/_authenticated/settings",)({
   component: Settings,
-})
+},)

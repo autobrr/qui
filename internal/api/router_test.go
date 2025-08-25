@@ -131,27 +131,27 @@ func TestAllEndpointsDocumented(t *testing.T) {
 	// Check for documented routes that don't exist in code
 	var phantom []string
 	actualRouteSet := make(map[string]bool)
-	
+
 	for _, route := range actualRoutes {
 		// Skip non-API routes
 		if !strings.HasPrefix(route.Path, "/api/") && route.Path != "/health" {
 			continue
 		}
-		
+
 		// Skip special routes that shouldn't be documented
 		if route.Path == "/api/docs" || route.Path == "/api/openapi.json" {
 			continue
 		}
-		
+
 		// Normalize path for comparison
 		normalizedPath := route.Path
 		normalizedPath = strings.TrimSuffix(normalizedPath, "/")
 		normalizedPath = strings.ReplaceAll(normalizedPath, "{instanceID}", "{instanceId}")
 		normalizedPath = strings.ReplaceAll(normalizedPath, "{licenseKey}", "{licenseKey}")
-		
+
 		actualRouteSet[route.Method+" "+normalizedPath] = true
 	}
-	
+
 	// Check each documented endpoint
 	for path, methods := range documentedPaths {
 		for method := range methods {
@@ -161,7 +161,7 @@ func TestAllEndpointsDocumented(t *testing.T) {
 			}
 		}
 	}
-	
+
 	// Report any phantom routes (documented but not implemented)
 	if len(phantom) > 0 {
 		t.Errorf("Found %d documented endpoints that don't exist in code:", len(phantom))

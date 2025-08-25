@@ -81,7 +81,7 @@ export interface TorrentStats {
 }
 
 export interface CacheMetadata {
-  source: 'cache' | 'fresh'
+  source: "cache" | "fresh"
   age: number
   isStale: boolean
   nextRefresh?: string

@@ -275,7 +275,6 @@ func (cp *ClientPool) Close() error {
 	return nil
 }
 
-
 // isInBackoff checks if an instance is in backoff period
 func (cp *ClientPool) isInBackoff(instanceID int) bool {
 	cp.mu.RLock()
@@ -354,4 +353,3 @@ func (cp *ClientPool) isBanError(err error) bool {
 		strings.Contains(errorStr, "403") ||
 		strings.Contains(errorStr, "forbidden")
 }
-

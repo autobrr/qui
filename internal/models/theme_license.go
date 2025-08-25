@@ -27,4 +27,3 @@ const (
 	LicenseStatusActive  = "active"
 	LicenseStatusInvalid = "invalid"
 )
-

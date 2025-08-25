@@ -3,22 +3,22 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState } from 'react'
-import { useForm } from '@tanstack/react-form'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { api } from '@/lib/api'
-import { withBasePath } from '@/lib/base-url'
-import { toast } from 'sonner'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Badge } from '@/components/ui/badge'
-import { Copy, Plus, Trash2, ExternalLink } from 'lucide-react'
-import { ThemeLicenseManager } from '@/components/themes/ThemeLicenseManager'
-import { ThemeSelector } from '@/components/themes/ThemeSelector'
-import { useSearch } from '@tanstack/react-router'
+import { useState, } from "react"
+import { useForm, } from "@tanstack/react-form"
+import { useMutation, useQuery, useQueryClient, } from "@tanstack/react-query"
+import { api, } from "@/lib/api"
+import { withBasePath, } from "@/lib/base-url"
+import { toast, } from "sonner"
+import { Button, } from "@/components/ui/button"
+import { Input, } from "@/components/ui/input"
+import { Label, } from "@/components/ui/label"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, } from "@/components/ui/card"
+import { Tabs, TabsContent, TabsList, TabsTrigger, } from "@/components/ui/tabs"
+import { Badge, } from "@/components/ui/badge"
+import { Copy, Plus, Trash2, ExternalLink, } from "lucide-react"
+import { ThemeLicenseManager, } from "@/components/themes/ThemeLicenseManager"
+import { ThemeSelector, } from "@/components/themes/ThemeSelector"
+import { useSearch, } from "@tanstack/react-router"
 import {
   Dialog,
   DialogContent,
@@ -26,7 +26,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '@/components/ui/dialog'
+} from "@/components/ui/dialog"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -36,39 +36,39 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
+} from "@/components/ui/alert-dialog"
 
 function ChangePasswordForm() {
   const mutation = useMutation({
-    mutationFn: async (data: { currentPassword: string; newPassword: string }) => {
-      return api.changePassword(data.currentPassword, data.newPassword)
+    mutationFn: async (data: { currentPassword: string; newPassword: string },) => {
+      return api.changePassword(data.currentPassword, data.newPassword,)
     },
     onSuccess: () => {
-      toast.success('Password changed successfully')
+      toast.success("Password changed successfully",)
       form.reset()
     },
     onError: () => {
-      toast.error('Failed to change password. Please check your current password.')
+      toast.error("Failed to change password. Please check your current password.",)
     },
-  })
+  },)
 
   const form = useForm({
     defaultValues: {
-      currentPassword: '',
-      newPassword: '',
-      confirmPassword: '',
+      currentPassword: "",
+      newPassword: "",
+      confirmPassword: "",
     },
-    onSubmit: async ({ value }) => {
+    onSubmit: async ({ value, },) => {
       await mutation.mutateAsync({
         currentPassword: value.currentPassword,
         newPassword: value.newPassword,
-      })
+      },)
     },
-  })
+  },)
 
   return (
     <form
-      onSubmit={(e) => {
+      onSubmit={(e,) => {
         e.preventDefault()
         form.handleSubmit()
       }}
@@ -77,10 +77,10 @@ function ChangePasswordForm() {
       <form.Field
         name="currentPassword"
         validators={{
-          onChange: ({ value }) => !value ? 'Current password is required' : undefined,
+          onChange: ({ value, },) => !value ? "Current password is required" : undefined,
         }}
       >
-        {(field) => (
+        {(field,) => (
           <div className="space-y-2">
             <Label htmlFor="currentPassword">Current Password</Label>
             <Input
@@ -88,7 +88,7 @@ function ChangePasswordForm() {
               type="password"
               value={field.state.value}
               onBlur={field.handleBlur}
-              onChange={(e) => field.handleChange(e.target.value)}
+              onChange={(e,) => field.handleChange(e.target.value,)}
             />
             {field.state.meta.isTouched && field.state.meta.errors[0] && (
               <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
@@ -100,14 +100,14 @@ function ChangePasswordForm() {
       <form.Field
         name="newPassword"
         validators={{
-          onChange: ({ value }) => {
-            if (!value) return 'New password is required'
-            if (value.length < 8) return 'Password must be at least 8 characters'
+          onChange: ({ value, },) => {
+            if (!value) return "New password is required"
+            if (value.length < 8) return "Password must be at least 8 characters"
             return undefined
           },
         }}
       >
-        {(field) => (
+        {(field,) => (
           <div className="space-y-2">
             <Label htmlFor="newPassword">New Password</Label>
             <Input
@@ -115,7 +115,7 @@ function ChangePasswordForm() {
               type="password"
               value={field.state.value}
               onBlur={field.handleBlur}
-              onChange={(e) => field.handleChange(e.target.value)}
+              onChange={(e,) => field.handleChange(e.target.value,)}
             />
             {field.state.meta.isTouched && field.state.meta.errors[0] && (
               <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
@@ -127,15 +127,15 @@ function ChangePasswordForm() {
       <form.Field
         name="confirmPassword"
         validators={{
-          onChange: ({ value, fieldApi }) => {
-            const newPassword = fieldApi.form.getFieldValue('newPassword')
-            if (!value) return 'Please confirm your password'
-            if (value !== newPassword) return 'Passwords do not match'
+          onChange: ({ value, fieldApi, },) => {
+            const newPassword = fieldApi.form.getFieldValue("newPassword",)
+            if (!value) return "Please confirm your password"
+            if (value !== newPassword) return "Passwords do not match"
             return undefined
           },
         }}
       >
-        {(field) => (
+        {(field,) => (
           <div className="space-y-2">
             <Label htmlFor="confirmPassword">Confirm New Password</Label>
             <Input
@@ -143,7 +143,7 @@ function ChangePasswordForm() {
               type="password"
               value={field.state.value}
               onBlur={field.handleBlur}
-              onChange={(e) => field.handleChange(e.target.value)}
+              onChange={(e,) => field.handleChange(e.target.value,)}
             />
             {field.state.meta.isTouched && field.state.meta.errors[0] && (
               <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
@@ -153,14 +153,14 @@ function ChangePasswordForm() {
       </form.Field>
 
       <form.Subscribe
-        selector={(state) => [state.canSubmit, state.isSubmitting]}
+        selector={(state,) => [state.canSubmit, state.isSubmitting,]}
       >
-        {([canSubmit, isSubmitting]) => (
+        {([canSubmit, isSubmitting,],) => (
           <Button
             type="submit"
             disabled={!canSubmit || isSubmitting || mutation.isPending}
           >
-            {isSubmitting || mutation.isPending ? 'Changing...' : 'Change Password'}
+            {isSubmitting || mutation.isPending ? "Changing..." : "Change Password"}
           </Button>
         )}
       </form.Subscribe>
@@ -169,58 +169,58 @@ function ChangePasswordForm() {
 }
 
 function ApiKeysManager() {
-  const [showCreateDialog, setShowCreateDialog] = useState(false)
-  const [deleteKeyId, setDeleteKeyId] = useState<number | null>(null)
-  const [newKey, setNewKey] = useState<{ name: string; key: string } | null>(null)
+  const [showCreateDialog, setShowCreateDialog,] = useState(false,)
+  const [deleteKeyId, setDeleteKeyId,] = useState<number | null>(null,)
+  const [newKey, setNewKey,] = useState<{ name: string; key: string } | null>(null,)
   const queryClient = useQueryClient()
 
   // Fetch API keys from backend
-  const { data: apiKeys, isLoading } = useQuery({
-    queryKey: ['apiKeys'],
+  const { data: apiKeys, isLoading, } = useQuery({
+    queryKey: ["apiKeys",],
     queryFn: () => api.getApiKeys(),
     staleTime: 30 * 1000, // 30 seconds
-  })
+  },)
   
   // Ensure apiKeys is always an array
   const keys = apiKeys || []
 
   const createMutation = useMutation({
-    mutationFn: async (name: string) => {
-      return api.createApiKey(name)
+    mutationFn: async (name: string,) => {
+      return api.createApiKey(name,)
     },
-    onSuccess: (data) => {
-      setNewKey(data)
-      queryClient.invalidateQueries({ queryKey: ['apiKeys'] })
-      toast.success('API key created successfully')
+    onSuccess: (data,) => {
+      setNewKey(data,)
+      queryClient.invalidateQueries({ queryKey: ["apiKeys",], },)
+      toast.success("API key created successfully",)
     },
     onError: () => {
-      toast.error('Failed to create API key')
+      toast.error("Failed to create API key",)
     },
-  })
+  },)
 
   const deleteMutation = useMutation({
-    mutationFn: async (id: number) => {
-      return api.deleteApiKey(id)
+    mutationFn: async (id: number,) => {
+      return api.deleteApiKey(id,)
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['apiKeys'] })
-      setDeleteKeyId(null)
-      toast.success('API key deleted successfully')
+      queryClient.invalidateQueries({ queryKey: ["apiKeys",], },)
+      setDeleteKeyId(null,)
+      toast.success("API key deleted successfully",)
     },
     onError: () => {
-      toast.error('Failed to delete API key')
+      toast.error("Failed to delete API key",)
     },
-  })
+  },)
 
   const form = useForm({
     defaultValues: {
-      name: '',
+      name: "",
     },
-    onSubmit: async ({ value }) => {
-      await createMutation.mutateAsync(value.name)
+    onSubmit: async ({ value, },) => {
+      await createMutation.mutateAsync(value.name,)
       form.reset()
     },
-  })
+  },)
 
   return (
     <div className="space-y-4">
@@ -255,8 +255,8 @@ function ApiKeysManager() {
                       size="icon"
                       variant="outline"
                       onClick={() => {
-                        navigator.clipboard.writeText(newKey.key)
-                        toast.success('API key copied to clipboard')
+                        navigator.clipboard.writeText(newKey.key,)
+                        toast.success("API key copied to clipboard",)
                       }}
                     >
                       <Copy className="h-4 w-4" />
@@ -268,8 +268,8 @@ function ApiKeysManager() {
                 </div>
                 <Button
                   onClick={() => {
-                    setNewKey(null)
-                    setShowCreateDialog(false)
+                    setNewKey(null,)
+                    setShowCreateDialog(false,)
                   }}
                   className="w-full"
                 >
@@ -278,7 +278,7 @@ function ApiKeysManager() {
               </div>
             ) : (
               <form
-                onSubmit={(e) => {
+                onSubmit={(e,) => {
                   e.preventDefault()
                   form.handleSubmit()
                 }}
@@ -287,10 +287,10 @@ function ApiKeysManager() {
                 <form.Field
                   name="name"
                   validators={{
-                    onChange: ({ value }) => !value ? 'Name is required' : undefined,
+                    onChange: ({ value, },) => !value ? "Name is required" : undefined,
                   }}
                 >
-                  {(field) => (
+                  {(field,) => (
                     <div className="space-y-2">
                       <Label htmlFor="name">Name</Label>
                       <Input
@@ -298,7 +298,7 @@ function ApiKeysManager() {
                         placeholder="e.g., Automation Script"
                         value={field.state.value}
                         onBlur={field.handleBlur}
-                        onChange={(e) => field.handleChange(e.target.value)}
+                        onChange={(e,) => field.handleChange(e.target.value,)}
                         data-1p-ignore
                         autoComplete='off'
                       />
@@ -310,15 +310,15 @@ function ApiKeysManager() {
                 </form.Field>
                 
                 <form.Subscribe
-                  selector={(state) => [state.canSubmit, state.isSubmitting]}
+                  selector={(state,) => [state.canSubmit, state.isSubmitting,]}
                 >
-                  {([canSubmit, isSubmitting]) => (
+                  {([canSubmit, isSubmitting,],) => (
                     <Button
                       type="submit"
                       disabled={!canSubmit || isSubmitting || createMutation.isPending}
                       className="w-full"
                     >
-                      {isSubmitting || createMutation.isPending ? 'Creating...' : 'Create API Key'}
+                      {isSubmitting || createMutation.isPending ? "Creating..." : "Create API Key"}
                     </Button>
                   )}
                 </form.Subscribe>
@@ -335,7 +335,7 @@ function ApiKeysManager() {
           </p>
         ) : (
           <>
-            {keys.map((key) => (
+            {keys.map((key,) => (
               <div
                 key={key.id}
                 className="flex items-center justify-between rounded-lg border p-4"
@@ -348,21 +348,21 @@ function ApiKeysManager() {
                     </Badge>
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    Created: {new Date(key.createdAt).toLocaleDateString()}
+                    Created: {new Date(key.createdAt,).toLocaleDateString()}
                     {key.lastUsedAt && (
-                      <> • Last used: {new Date(key.lastUsedAt).toLocaleDateString()}</>
+                      <> • Last used: {new Date(key.lastUsedAt,).toLocaleDateString()}</>
                     )}
                   </p>
                 </div>
                 <Button
                   size="icon"
                   variant="ghost"
-                  onClick={() => setDeleteKeyId(key.id)}
+                  onClick={() => setDeleteKeyId(key.id,)}
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
-            ))}
+            ),)}
             
             {keys.length === 0 && (
               <p className="text-center text-sm text-muted-foreground py-8">
@@ -373,7 +373,7 @@ function ApiKeysManager() {
         )}
       </div>
 
-      <AlertDialog open={!!deleteKeyId} onOpenChange={() => setDeleteKeyId(null)}>
+      <AlertDialog open={!!deleteKeyId} onOpenChange={() => setDeleteKeyId(null,)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete API Key?</AlertDialogTitle>
@@ -384,7 +384,7 @@ function ApiKeysManager() {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => deleteKeyId && deleteMutation.mutate(deleteKeyId)}
+              onClick={() => deleteKeyId && deleteMutation.mutate(deleteKeyId,)}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Delete
@@ -397,8 +397,8 @@ function ApiKeysManager() {
 }
 
 export function Settings() {
-  const search = useSearch({ from: '/_authenticated/settings' })
-  const defaultTab = (search as any)?.tab || 'security'
+  const search = useSearch({ from: "/_authenticated/settings", },)
+  const defaultTab = (search as any)?.tab || "security"
   
   return (
     <div className="container mx-auto p-4 sm:p-6 max-w-4xl">
@@ -448,7 +448,7 @@ export function Settings() {
                   </CardDescription>
                 </div>
                 <a
-                  href={withBasePath('api/docs')}
+                  href={withBasePath("api/docs",)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"

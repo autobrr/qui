@@ -224,4 +224,3 @@ func TestClientPool_IsBanError(t *testing.T) {
 		})
 	}
 }
-

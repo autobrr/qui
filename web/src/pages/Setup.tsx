@@ -3,40 +3,40 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useForm } from '@tanstack/react-form'
-import { useNavigate } from '@tanstack/react-router'
-import { useAuth } from '@/hooks/useAuth'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { useEffect } from 'react'
-import { api } from '@/lib/api'
+import { useForm, } from "@tanstack/react-form"
+import { useNavigate, } from "@tanstack/react-router"
+import { useAuth, } from "@/hooks/useAuth"
+import { Button, } from "@/components/ui/button"
+import { Input, } from "@/components/ui/input"
+import { Label, } from "@/components/ui/label"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, } from "@/components/ui/card"
+import { useEffect, } from "react"
+import { api, } from "@/lib/api"
 
 export function Setup() {
   const navigate = useNavigate()
-  const { setup, isSettingUp, setupError } = useAuth()
+  const { setup, isSettingUp, setupError, } = useAuth()
 
   useEffect(() => {
     // Check if user already exists
     api.checkAuth().then(() => {
-      navigate({ to: '/login' })
-    }).catch(() => {
+      navigate({ to: "/login", },)
+    },).catch(() => {
       // No user exists, stay on setup page
-    })
-  }, [navigate])
+    },)
+  }, [navigate,],)
 
   const form = useForm({
     defaultValues: {
-      username: '',
-      password: '',
-      confirmPassword: '',
+      username: "",
+      password: "",
+      confirmPassword: "",
     },
-    onSubmit: async ({ value }) => {
-      const { username, password } = value
-      setup({ username, password })
+    onSubmit: async ({ value, },) => {
+      const { username, password, } = value
+      setup({ username, password, },)
     },
-  })
+  },)
 
   return (
     <div className="flex h-screen items-center justify-center">
@@ -49,7 +49,7 @@ export function Setup() {
         </CardHeader>
         <CardContent>
           <form
-            onSubmit={(e) => {
+            onSubmit={(e,) => {
               e.preventDefault()
               form.handleSubmit()
             }}
@@ -58,14 +58,14 @@ export function Setup() {
             <form.Field
               name="username"
               validators={{
-                onChange: ({ value }) => {
-                  if (!value) return 'Username is required'
-                  if (value.length < 3) return 'Username must be at least 3 characters'
+                onChange: ({ value, },) => {
+                  if (!value) return "Username is required"
+                  if (value.length < 3) return "Username must be at least 3 characters"
                   return undefined
                 },
               }}
             >
-              {(field) => (
+              {(field,) => (
                 <div className="space-y-2">
                   <Label htmlFor={field.name}>Username</Label>
                   <Input
@@ -73,7 +73,7 @@ export function Setup() {
                     type="text"
                     value={field.state.value}
                     onBlur={field.handleBlur}
-                    onChange={(e) => field.handleChange(e.target.value)}
+                    onChange={(e,) => field.handleChange(e.target.value,)}
                     placeholder="Choose a username"
                   />
                   {field.state.meta.isTouched && field.state.meta.errors[0] && (
@@ -86,14 +86,14 @@ export function Setup() {
             <form.Field
               name="password"
               validators={{
-                onChange: ({ value }) => {
-                  if (!value) return 'Password is required'
-                  if (value.length < 8) return 'Password must be at least 8 characters'
+                onChange: ({ value, },) => {
+                  if (!value) return "Password is required"
+                  if (value.length < 8) return "Password must be at least 8 characters"
                   return undefined
                 },
               }}
             >
-              {(field) => (
+              {(field,) => (
                 <div className="space-y-2">
                   <Label htmlFor={field.name}>Password</Label>
                   <Input
@@ -101,7 +101,7 @@ export function Setup() {
                     type="password"
                     value={field.state.value}
                     onBlur={field.handleBlur}
-                    onChange={(e) => field.handleChange(e.target.value)}
+                    onChange={(e,) => field.handleChange(e.target.value,)}
                     placeholder="Choose a strong password"
                   />
                   {field.state.meta.isTouched && field.state.meta.errors[0] && (
@@ -114,15 +114,15 @@ export function Setup() {
             <form.Field
               name="confirmPassword"
               validators={{
-                onChange: ({ value, fieldApi }) => {
-                  const password = fieldApi.form.getFieldValue('password')
-                  if (!value) return 'Please confirm your password'
-                  if (value !== password) return 'Passwords do not match'
+                onChange: ({ value, fieldApi, },) => {
+                  const password = fieldApi.form.getFieldValue("password",)
+                  if (!value) return "Please confirm your password"
+                  if (value !== password) return "Passwords do not match"
                   return undefined
                 },
               }}
             >
-              {(field) => (
+              {(field,) => (
                 <div className="space-y-2">
                   <Label htmlFor={field.name}>Confirm Password</Label>
                   <Input
@@ -130,7 +130,7 @@ export function Setup() {
                     type="password"
                     value={field.state.value}
                     onBlur={field.handleBlur}
-                    onChange={(e) => field.handleChange(e.target.value)}
+                    onChange={(e,) => field.handleChange(e.target.value,)}
                     placeholder="Confirm your password"
                   />
                   {field.state.meta.isTouched && field.state.meta.errors[0] && (
@@ -142,20 +142,20 @@ export function Setup() {
 
             {setupError && (
               <p className="text-sm text-destructive">
-                {setupError.message || 'Failed to create user'}
+                {setupError.message || "Failed to create user"}
               </p>
             )}
 
             <form.Subscribe
-              selector={(state) => [state.canSubmit, state.isSubmitting]}
+              selector={(state,) => [state.canSubmit, state.isSubmitting,]}
             >
-              {([canSubmit, isSubmitting]) => (
+              {([canSubmit, isSubmitting,],) => (
                 <Button
                   type="submit"
                   className="w-full"
                   disabled={!canSubmit || isSubmitting || isSettingUp}
                 >
-                  {isSettingUp ? 'Creating account...' : 'Create Account'}
+                  {isSettingUp ? "Creating account..." : "Create Account"}
                 </Button>
               )}
             </form.Subscribe>
