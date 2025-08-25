@@ -60,7 +60,7 @@ The web interface will be available at http://localhost:8080
 
 ## Configuration
 
-Configuration is stored in `config.toml` (created on first run). You can also use environment variables:
+Configuration is stored in `config.toml` (created automatically on first run, or manually with `qui generate-config`). You can also use environment variables:
 
 ```bash
 # Server
@@ -78,6 +78,25 @@ QUI__LOG_PATH=...        # Optional: log file path
 # Storage
 QUI__DATA_DIR=...        # Optional: custom data directory (default: next to config)
 ```
+
+### Generate Configuration File
+
+You can generate a default configuration file without starting the server:
+
+```bash
+# Generate config in OS-specific default location
+./qui generate-config
+
+# Generate config in custom directory
+./qui generate-config --config-dir /path/to/config/
+
+# Generate config with custom filename
+./qui generate-config --config-dir /path/to/myconfig.toml
+```
+
+**Default locations:**
+- Linux/macOS: `~/.config/qui/config.toml`
+- Windows: `%APPDATA%\qui\config.toml`
 
 ### Command Line Flags
 
