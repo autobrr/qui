@@ -329,7 +329,7 @@ export const TorrentActions = memo(function TorrentActions({ instanceId, selecte
             disabled={mutation.isPending}
           >
             <Tag className="mr-2 h-4 w-4" />
-            Set Tags
+            Manage Tags
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() => setShowCategoryDialog(true)}

@@ -65,12 +65,10 @@ export const SetTagsDialog = memo(function SetTagsDialog({
     if (newTag.trim() && !allTags.includes(newTag.trim())) {
       allTags.push(newTag.trim())
     }
-    if (allTags.length > 0) {
-      onConfirm(allTags)
-      setSelectedTags([])
-      setNewTag("")
-    }
-  }, [selectedTags, newTag, onConfirm])
+    onConfirm(allTags,)
+    setSelectedTags([],)
+    setNewTag("",)
+  }, [selectedTags, newTag, onConfirm,],) // empty array will clear all tags
 
   const handleCancel = useCallback((): void => {
     setSelectedTags([])
@@ -82,16 +80,27 @@ export const SetTagsDialog = memo(function SetTagsDialog({
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent className="max-w-md">
         <AlertDialogHeader>
-          <AlertDialogTitle>Set Tags for {hashCount} torrent(s)</AlertDialogTitle>
+          <AlertDialogTitle>Manage Tags for {hashCount} torrent(s)</AlertDialogTitle>
           <AlertDialogDescription>
-            Select tags from the list or add a new one. Selected tags will replace all existing tags on the torrents.
+            Select tags from the list or add a new one. Selected tags will replace all existing tags on the torrents. Leave all unchecked to remove all tags.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <div className="py-4 space-y-4">
           {/* Existing tags */}
           {availableTags && availableTags.length > 0 && (
             <div className="space-y-2">
-              <Label>Available Tags</Label>
+              <div className="flex items-center justify-between">
+                <Label>Available Tags</Label>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setSelectedTags([],)}
+                  disabled={selectedTags.length === 0}
+                >
+                  Deselect All
+                </Button>
+              </div>
               <ScrollArea className="h-48 border rounded-md p-3">
                 <div className="space-y-2">
                   {availableTags.map((tag) => (
@@ -167,9 +176,9 @@ export const SetTagsDialog = memo(function SetTagsDialog({
           <AlertDialogCancel onClick={handleCancel}>Cancel</AlertDialogCancel>
           <AlertDialogAction
             onClick={handleConfirm}
-            disabled={(selectedTags.length === 0 && !newTag.trim()) || isPending}
+            disabled={isPending}
           >
-            Set Tags
+            Update Tags
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -180,7 +189,7 @@ export const SetTagsDialog = memo(function SetTagsDialog({
 interface SetCategoryDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  availableCategories: Record<string, any>
+  availableCategories: Record<string, unknown>
   hashCount: number
   onConfirm: (category: string) => void
   isPending?: boolean

@@ -1022,7 +1022,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                           disabled={mutation.isPending}
                         >
                           <Tag className="mr-2 h-4 w-4" />
-                          Set Tags {row.getIsSelected() && selectedHashes.length > 1 ? `(${selectedHashes.length})` : ""}
+                          Manage Tags {row.getIsSelected() && selectedHashes.length > 1 ? `(${selectedHashes.length})` : ""}
                         </ContextMenuItem>
                         <ContextMenuItem 
                           onClick={() => {
