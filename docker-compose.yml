@@ -6,7 +6,7 @@ services:
     container_name: qui
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "7476:7476"
     volumes:
       - ./qui:/config
     environment:
@@ -15,8 +15,8 @@ services:
       #QUI__HOST: "0.0.0.0"
       
       # Port to listen on
-      # Default: 8080
-      #QUI__PORT: "8080"
+      # Default: 7476
+      #QUI__PORT: "7476"
       
       # Base URL for serving from subdirectory
       # Example: /qui/ to serve at http://domain.com/qui/

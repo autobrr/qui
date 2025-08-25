@@ -49,11 +49,11 @@ chmod +x qui
 ./qui serve
 ```
 
-The web interface will be available at http://localhost:8080
+The web interface will be available at http://localhost:7476
 
 ### First Setup
 
-1. Open your browser to http://localhost:8080
+1. Open your browser to http://localhost:7476
 2. Create your admin account
 3. Add your qBittorrent instance(s)
 4. Start managing your torrents
@@ -65,7 +65,7 @@ Configuration is stored in `config.toml` (created on first run). You can also us
 ```bash
 # Server
 QUI__HOST=0.0.0.0        # Listen address
-QUI__PORT=8080           # Port number
+QUI__PORT=7476           # Port number
 QUI__BASE_URL=/qui/      # Optional: serve from subdirectory
 
 # Security
@@ -103,7 +103,7 @@ Include your API key in the `X-API-Key` header:
 
 ```bash
 curl -H "X-API-Key: YOUR_API_KEY_HERE" \
-  http://localhost:8080/api/instances
+  http://localhost:7476/api/instances
 ```
 
 **Security Notes:**
@@ -119,7 +119,7 @@ docker compose up -d
 
 # Or standalone
 docker run -d \
-  -p 8080:8080 \
+  -p 7476:7476 \
   -v $(pwd)/config:/config \
   ghcr.io/autobrr/qui:latest
 ```
@@ -147,7 +147,7 @@ location = /qui {
 }
 
 location /qui/ {
-    proxy_pass http://localhost:8080/qui/;
+    proxy_pass http://localhost:7476/qui/;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
