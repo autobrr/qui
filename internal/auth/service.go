@@ -4,6 +4,7 @@
 package auth
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -49,9 +50,9 @@ func NewService(db *sql.DB, sessionSecret string) *Service {
 }
 
 // SetupUser creates the initial user account
-func (s *Service) SetupUser(username, password string) (*models.User, error) {
+func (s *Service) SetupUser(ctx context.Context, username, password string) (*models.User, error) {
 	// Check if user already exists
-	exists, err := s.userStore.Exists()
+	exists, err := s.userStore.Exists(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check user existence: %w", err)
 	}
@@ -71,7 +72,7 @@ func (s *Service) SetupUser(username, password string) (*models.User, error) {
 	}
 
 	// Create user
-	user, err := s.userStore.Create(username, hashedPassword)
+	user, err := s.userStore.Create(ctx, username, hashedPassword)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create user: %w", err)
 	}
@@ -81,9 +82,9 @@ func (s *Service) SetupUser(username, password string) (*models.User, error) {
 }
 
 // Login validates credentials and returns the user
-func (s *Service) Login(username, password string) (*models.User, error) {
+func (s *Service) Login(ctx context.Context, username, password string) (*models.User, error) {
 	// Check if setup is complete
-	exists, err := s.userStore.Exists()
+	exists, err := s.userStore.Exists(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check user existence: %w", err)
 	}
@@ -92,7 +93,7 @@ func (s *Service) Login(username, password string) (*models.User, error) {
 	}
 
 	// Get user by username
-	user, err := s.userStore.GetByUsername(username)
+	user, err := s.userStore.GetByUsername(ctx, username)
 	if err != nil {
 		if errors.Is(err, models.ErrUserNotFound) {
 			return nil, ErrInvalidCredentials
@@ -113,9 +114,9 @@ func (s *Service) Login(username, password string) (*models.User, error) {
 }
 
 // ChangePassword updates the user's password
-func (s *Service) ChangePassword(oldPassword, newPassword string) error {
+func (s *Service) ChangePassword(ctx context.Context, oldPassword, newPassword string) error {
 	// Get the current user
-	user, err := s.userStore.Get()
+	user, err := s.userStore.Get(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get user: %w", err)
 	}
@@ -141,7 +142,7 @@ func (s *Service) ChangePassword(oldPassword, newPassword string) error {
 	}
 
 	// Update password
-	if err := s.userStore.UpdatePassword(hashedPassword); err != nil {
+	if err := s.userStore.UpdatePassword(ctx, hashedPassword); err != nil {
 		return fmt.Errorf("failed to update password: %w", err)
 	}
 
@@ -152,28 +153,28 @@ func (s *Service) ChangePassword(oldPassword, newPassword string) error {
 // API Key Management
 
 // CreateAPIKey generates a new API key
-func (s *Service) CreateAPIKey(name string) (string, *models.APIKey, error) {
-	return s.apiKeyStore.Create(name)
+func (s *Service) CreateAPIKey(ctx context.Context, name string) (string, *models.APIKey, error) {
+	return s.apiKeyStore.Create(ctx, name)
 }
 
 // ValidateAPIKey checks if an API key is valid
-func (s *Service) ValidateAPIKey(key string) (*models.APIKey, error) {
-	return s.apiKeyStore.ValidateAPIKey(key)
+func (s *Service) ValidateAPIKey(ctx context.Context, key string) (*models.APIKey, error) {
+	return s.apiKeyStore.ValidateAPIKey(ctx, key)
 }
 
 // ListAPIKeys returns all API keys
-func (s *Service) ListAPIKeys() ([]*models.APIKey, error) {
-	return s.apiKeyStore.List()
+func (s *Service) ListAPIKeys(ctx context.Context) ([]*models.APIKey, error) {
+	return s.apiKeyStore.List(ctx)
 }
 
 // DeleteAPIKey removes an API key
-func (s *Service) DeleteAPIKey(id int) error {
-	return s.apiKeyStore.Delete(id)
+func (s *Service) DeleteAPIKey(ctx context.Context, id int) error {
+	return s.apiKeyStore.Delete(ctx, id)
 }
 
 // IsSetupComplete checks if initial setup has been completed
-func (s *Service) IsSetupComplete() (bool, error) {
-	return s.userStore.Exists()
+func (s *Service) IsSetupComplete(ctx context.Context) (bool, error) {
+	return s.userStore.Exists(ctx)
 }
 
 // GetSessionStore returns the session store for use in middleware

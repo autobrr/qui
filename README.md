@@ -46,7 +46,7 @@ Download the latest release for your platform from the [releases page](https://g
 chmod +x qui
 
 # Run
-./qui
+./qui serve
 ```
 
 The web interface will be available at http://localhost:8080
@@ -73,6 +73,20 @@ QUI__SESSION_SECRET=...  # Auto-generated if not set
 
 # Logging
 QUI__LOG_LEVEL=INFO      # Options: ERROR, DEBUG, INFO, WARN, TRACE
+QUI__LOG_PATH=...        # Optional: log file path
+
+# Storage
+QUI__DATA_DIR=...        # Optional: custom data directory (default: next to config)
+```
+
+### Command Line Flags
+
+```bash
+# Specify config directory (config.toml will be created inside)
+./qui serve --config-dir /path/to/config/
+
+# Specify data directory for database and other data files
+./qui serve --data-dir /path/to/data/
 ```
 
 ## API
@@ -223,4 +237,4 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
-MIT
+GPL-2.0-or-later

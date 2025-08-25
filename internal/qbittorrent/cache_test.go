@@ -116,7 +116,7 @@ func TestCache_HighCapacity(t *testing.T) {
 
 	// Test storing many items (simulate torrent cache entries)
 	numItems := 10000
-	for i := 0; i < numItems; i++ {
+	for i := range numItems {
 		key := fmt.Sprintf("torrents:%d:0:50", i)
 		value := &TorrentResponse{
 			Torrents: createTestTorrents(50),
@@ -129,7 +129,7 @@ func TestCache_HighCapacity(t *testing.T) {
 	// Verify a good portion of items are stored
 	// (some may be evicted due to cache policies)
 	storedCount := 0
-	for i := 0; i < numItems; i++ {
+	for i := range numItems {
 		key := fmt.Sprintf("torrents:%d:0:50", i)
 		if _, found := cache.Get(key); found {
 			storedCount++
@@ -157,10 +157,10 @@ func TestCache_ConcurrentAccess(t *testing.T) {
 
 	// Concurrent writes
 	done := make(chan bool, numGoroutines)
-	for g := 0; g < numGoroutines; g++ {
+	for g := range numGoroutines {
 		go func(goroutineID int) {
 			defer func() { done <- true }()
-			for i := 0; i < itemsPerGoroutine; i++ {
+			for i := range itemsPerGoroutine {
 				key := fmt.Sprintf("goroutine_%d_item_%d", goroutineID, i)
 				value := fmt.Sprintf("value_%d_%d", goroutineID, i)
 				cache.SetWithTTL(key, value, 1, time.Minute)
@@ -169,16 +169,16 @@ func TestCache_ConcurrentAccess(t *testing.T) {
 	}
 
 	// Wait for all writes to complete
-	for i := 0; i < numGoroutines; i++ {
+	for range numGoroutines {
 		<-done
 	}
 	cache.Wait()
 
 	// Concurrent reads
-	for g := 0; g < numGoroutines; g++ {
+	for g := range numGoroutines {
 		go func(goroutineID int) {
 			defer func() { done <- true }()
-			for i := 0; i < itemsPerGoroutine; i++ {
+			for i := range itemsPerGoroutine {
 				key := fmt.Sprintf("goroutine_%d_item_%d", goroutineID, i)
 				if cached, found := cache.Get(key); found {
 					expectedValue := fmt.Sprintf("value_%d_%d", goroutineID, i)
@@ -189,7 +189,7 @@ func TestCache_ConcurrentAccess(t *testing.T) {
 	}
 
 	// Wait for all reads to complete
-	for i := 0; i < numGoroutines; i++ {
+	for range numGoroutines {
 		<-done
 	}
 }
@@ -211,7 +211,7 @@ func TestCache_Metrics(t *testing.T) {
 	cache.Wait()
 
 	// Generate more cache activity to ensure metrics are tracked
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		// Mix of hits and misses
 		if i%2 == 0 {
 			cached, found := cache.Get(key)
@@ -386,7 +386,7 @@ func TestCache_KeyPatterns(t *testing.T) {
 	defer cache.Close()
 
 	// Test different key patterns from the system
-	keyPatterns := map[string]interface{}{
+	keyPatterns := map[string]any{
 		// Basic torrent lists
 		"torrents:1:0:50":  createTestTorrents(50),
 		"torrents:2:50:50": createTestTorrents(25),
@@ -466,7 +466,7 @@ func TestCache_KeyPatterns(t *testing.T) {
 // Helper function to create test torrents
 func createTestTorrents(count int) []qbt.Torrent {
 	torrents := make([]qbt.Torrent, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		torrents[i] = qbt.Torrent{
 			Hash:     fmt.Sprintf("hash%d", i),
 			Name:     fmt.Sprintf("test-torrent-%d", i),
@@ -501,8 +501,7 @@ func BenchmarkCache_Set(b *testing.B) {
 		Total:    1000,
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		key := fmt.Sprintf("torrents:%d:0:50", i%1000)
 		cache.SetWithTTL(key, response, 1, 2*time.Second)
 	}
@@ -524,14 +523,13 @@ func BenchmarkCache_Get(b *testing.B) {
 		Total:    1000,
 	}
 
-	for i := 0; i < numKeys; i++ {
+	for i := range numKeys {
 		key := fmt.Sprintf("torrents:%d:0:50", i)
 		cache.SetWithTTL(key, response, 1, time.Minute)
 	}
 	cache.Wait()
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		key := fmt.Sprintf("torrents:%d:0:50", i%numKeys)
 		cache.Get(key)
 	}
@@ -551,8 +549,7 @@ func BenchmarkCache_SetAndGet_Mixed(b *testing.B) {
 		Total:    1000,
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		key := fmt.Sprintf("torrents:%d:0:50", i%1000)
 
 		if i%3 == 0 {
@@ -579,10 +576,9 @@ func BenchmarkCache_ClearAll(b *testing.B) {
 		Total:    100,
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		// Populate cache
-		for j := 0; j < 100; j++ {
+		for j := range 100 {
 			key := fmt.Sprintf("torrents:%d:%d:10", i, j)
 			cache.SetWithTTL(key, response, 1, time.Minute)
 		}

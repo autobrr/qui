@@ -9,14 +9,15 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
-	qbt "github.com/autobrr/go-qbittorrent"
-	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
+
+	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
 type TorrentsHandler struct {
@@ -116,7 +117,7 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 	RespondJSON(w, http.StatusOK, response)
 }
 
-// SyncTorrents returns sync updates for an instance
+// SyncTorrents returns server statistics for an instance (used by Dashboard)
 func (h *TorrentsHandler) SyncTorrents(w http.ResponseWriter, r *http.Request) {
 	// Get instance ID from URL
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
@@ -125,11 +126,11 @@ func (h *TorrentsHandler) SyncTorrents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get sync updates
-	mainData, err := h.syncManager.GetUpdates(r.Context(), instanceID)
+	// Get server statistics
+	mainData, err := h.syncManager.GetServerStats(r.Context(), instanceID)
 	if err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to sync torrents")
-		RespondError(w, http.StatusInternalServerError, "Failed to sync torrents")
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get server stats")
+		RespondError(w, http.StatusInternalServerError, "Failed to get server stats")
 		return
 	}
 
@@ -151,7 +152,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 	// With multiple files, we allow 60 seconds total (not per file)
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
-	
+
 	// Get instance ID from URL
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
@@ -180,7 +181,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 				defer file.Close()
-				
+
 				fileContent, err := io.ReadAll(file)
 				if err != nil {
 					log.Error().Err(err).Str("filename", fileHeader.Filename).Msg("Failed to read torrent file")
@@ -190,7 +191,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	
+
 	// Check for URLs/magnet links if no files
 	if len(torrentFiles) == 0 {
 		urlsParam := r.FormValue("urls")
@@ -217,7 +218,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 
 	if paused := r.FormValue("paused"); paused == "true" {
 		options["paused"] = "true"
-		options["stopped"] = "true"  // qBittorrent API requires both paused and stopped
+		options["stopped"] = "true" // qBittorrent API requires both paused and stopped
 	}
 
 	if skipChecking := r.FormValue("skip_checking"); skipChecking == "true" {
@@ -253,7 +254,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 				log.Warn().Int("instanceID", instanceID).Msg("Request cancelled, stopping torrent additions")
 				break
 			}
-			
+
 			if err := h.syncManager.AddTorrent(ctx, instanceID, fileContent, options); err != nil {
 				log.Error().Err(err).Int("instanceID", instanceID).Int("fileIndex", i).Msg("Failed to add torrent file")
 				failedCount++
@@ -271,7 +272,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 		}
 		addedCount = len(urls) // Assume all URLs succeeded for simplicity
 	}
-	
+
 	// Check if any torrents failed
 	if failedCount > 0 && addedCount == 0 {
 		// All failed
@@ -292,11 +293,11 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 	} else {
 		message = "Torrent added successfully"
 	}
-	
-	RespondJSON(w, http.StatusCreated, map[string]interface{}{
+
+	RespondJSON(w, http.StatusCreated, map[string]any{
 		"message": message,
-		"added": addedCount,
-		"failed": failedCount,
+		"added":   addedCount,
+		"failed":  failedCount,
 	})
 }
 
@@ -338,13 +339,7 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 		"toggleAutoTMM",
 	}
 
-	valid := false
-	for _, action := range validActions {
-		if req.Action == action {
-			valid = true
-			break
-		}
-	}
+	valid := slices.Contains(validActions, req.Action)
 
 	if !valid {
 		RespondError(w, http.StatusBadRequest, "Invalid action")
@@ -393,8 +388,6 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Note: We no longer invalidate cache here since optimistic updates are applied
-	// in the sync manager for supported actions (pause, resume, delete, recheck, category, tags)
 	log.Debug().Int("instanceID", instanceID).Str("action", req.Action).Msg("Bulk action completed with optimistic cache update")
 
 	RespondJSON(w, http.StatusOK, map[string]string{
@@ -491,68 +484,6 @@ func (h *TorrentsHandler) ResumeTorrent(w http.ResponseWriter, r *http.Request) 
 	RespondJSON(w, http.StatusOK, map[string]string{
 		"message": "Torrent resumed successfully",
 	})
-}
-
-// GetFilteredTorrents returns filtered torrents
-func (h *TorrentsHandler) GetFilteredTorrents(w http.ResponseWriter, r *http.Request) {
-	// Get instance ID from URL
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
-		return
-	}
-
-	// Build filter options from query parameters
-	opts := qbt.TorrentFilterOptions{}
-
-	// Filter (convert string to TorrentFilter type)
-	if filter := r.URL.Query().Get("filter"); filter != "" {
-		opts.Filter = qbt.TorrentFilter(filter)
-	}
-
-	// Category
-	if category := r.URL.Query().Get("category"); category != "" {
-		opts.Category = category
-	}
-
-	// Tag
-	if tag := r.URL.Query().Get("tag"); tag != "" {
-		opts.Tag = tag
-	}
-
-	// Sort
-	if sort := r.URL.Query().Get("sort"); sort != "" {
-		opts.Sort = sort
-	}
-
-	// Reverse
-	if reverse := r.URL.Query().Get("reverse"); reverse == "true" {
-		opts.Reverse = true
-	}
-
-	// Limit
-	if l := r.URL.Query().Get("limit"); l != "" {
-		if limit, err := strconv.Atoi(l); err == nil && limit > 0 {
-			opts.Limit = limit
-		}
-	}
-
-	// Offset
-	if o := r.URL.Query().Get("offset"); o != "" {
-		if offset, err := strconv.Atoi(o); err == nil && offset >= 0 {
-			opts.Offset = offset
-		}
-	}
-
-	// Get filtered torrents
-	response, err := h.syncManager.GetFilteredTorrents(r.Context(), instanceID, opts)
-	if err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get filtered torrents")
-		RespondError(w, http.StatusInternalServerError, "Failed to get filtered torrents")
-		return
-	}
-
-	RespondJSON(w, http.StatusOK, response)
 }
 
 // GetCategories returns all categories
@@ -838,50 +769,4 @@ func (h *TorrentsHandler) GetTorrentFiles(w http.ResponseWriter, r *http.Request
 	}
 
 	RespondJSON(w, http.StatusOK, files)
-}
-
-// GetTorrentWebSeeds returns web seeds for a specific torrent
-func (h *TorrentsHandler) GetTorrentWebSeeds(w http.ResponseWriter, r *http.Request) {
-	// Get instance ID and hash from URL
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
-		return
-	}
-
-	hash := chi.URLParam(r, "hash")
-	if hash == "" {
-		RespondError(w, http.StatusBadRequest, "Torrent hash is required")
-		return
-	}
-
-	// Get web seeds
-	webSeeds, err := h.syncManager.GetTorrentWebSeeds(r.Context(), instanceID, hash)
-	if err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to get torrent web seeds")
-		RespondError(w, http.StatusInternalServerError, "Failed to get torrent web seeds")
-		return
-	}
-
-	RespondJSON(w, http.StatusOK, webSeeds)
-}
-
-// GetTorrentCounts returns torrent counts for filter sidebar
-func (h *TorrentsHandler) GetTorrentCounts(w http.ResponseWriter, r *http.Request) {
-	// Get instance ID from URL
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
-		return
-	}
-
-	// Get torrent counts
-	counts, err := h.syncManager.GetTorrentCounts(r.Context(), instanceID)
-	if err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get torrent counts")
-		RespondError(w, http.StatusInternalServerError, "Failed to get torrent counts")
-		return
-	}
-
-	RespondJSON(w, http.StatusOK, counts)
 }

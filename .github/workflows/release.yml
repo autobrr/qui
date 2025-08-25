@@ -26,12 +26,8 @@ on:
 env:
   REGISTRY: ghcr.io
   REGISTRY_IMAGE: ghcr.io/${{ github.repository }}
-  GO_VERSION: "1.24"
   NODE_VERSION: "22.18.0"
-  # Polar credentials from GitHub secrets
-  POLAR_ACCESS_TOKEN: ${{ secrets.POLAR_ACCESS_TOKEN }}
   POLAR_ORG_ID: ${{ secrets.POLAR_ORG_ID }}
-  POLAR_ENVIRONMENT: ${{ secrets.POLAR_ENVIRONMENT || 'production' }}
 
 permissions:
   contents: write
@@ -43,7 +39,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -94,10 +90,10 @@ jobs:
     needs: [web]
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Download web production build
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: web-dist
           path: web/dist
@@ -105,7 +101,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version-file: go.mod
           cache: true
 
       - name: Cache Go modules
@@ -138,12 +134,12 @@ jobs:
     needs: [test, web]
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Download web production build
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: web-dist
           path: web/dist
@@ -151,7 +147,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version-file: 'go.mod'
           cache: true
 
       - name: Run GoReleaser build
@@ -202,7 +198,7 @@ jobs:
           - linux/arm64
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -214,7 +210,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download web production build
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: web-dist
           path: web/dist
@@ -253,9 +249,7 @@ jobs:
             REVISION=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.revision'] }}
             BUILDER=${{ github.actor }}@github-actions
             GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
-            POLAR_ACCESS_TOKEN=${{ secrets.POLAR_ACCESS_TOKEN }}
             POLAR_ORG_ID=${{ secrets.POLAR_ORG_ID }}
-            POLAR_ENVIRONMENT=${{ secrets.POLAR_ENVIRONMENT || 'production' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: false
@@ -283,7 +277,7 @@ jobs:
     needs: [docker]
     steps:
       - name: Download image digests
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           path: /tmp/digests
           pattern: docker-digests-*

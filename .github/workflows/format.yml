@@ -1,0 +1,82 @@
+name: Format Code
+
+on:
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: "22.18.0"
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+      
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+      
+      - name: Install frontend dependencies
+        run: cd web && pnpm install
+      
+      - name: Format code
+        run: make fmt || true
+      
+      - name: Commit and create PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Check if there are any changes to commit
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "Setting up git configuration..."
+            git config --local user.email "action@github.com"
+            git config --local user.name "GitHub Action"
+            
+            # Check if PR already exists
+            EXISTING_PR=$(gh pr list --head chore/auto-format --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
+            
+            if [ -n "$EXISTING_PR" ]; then
+              echo "Existing PR #$EXISTING_PR found, updating it..."
+              git fetch origin chore/auto-format || true
+              git checkout -B chore/auto-format
+            else
+              echo "Creating new branch and PR..."
+              git checkout -b chore/auto-format
+            fi
+            
+            # Stage changes and exclude lockfile
+            git add .
+            git reset HEAD web/pnpm-lock.yaml 2>/dev/null || true
+            git commit -m "chore(fmt): auto-format code"
+            
+            # Force push to ensure clean state (removes any unwanted previous commits)
+            git push --force-with-lease origin chore/auto-format
+            
+            if [ -z "$EXISTING_PR" ]; then
+              echo "Creating pull request..."
+              gh pr create \
+                --title "chore(fmt): Auto-format code" \
+                --body "Auto-generated PR to format code using \`make fmt\` via \`.github/workflows/format.yml\`"
+            else
+              echo "Pull request #$EXISTING_PR updated successfully"
+            fi
+          else
+            echo "No formatting changes needed"
+          fi

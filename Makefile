@@ -14,9 +14,9 @@ WEB_DIR = web
 INTERNAL_WEB_DIR = internal/web
 
 # Go build flags with Polar credentials
-LDFLAGS = -ldflags "-X main.Version=$(VERSION) -X main.PolarAccessToken=$(POLAR_ACCESS_TOKEN) -X main.PolarOrgID=$(POLAR_ORG_ID) -X main.PolarEnvironment=$(POLAR_ENVIRONMENT)"
+LDFLAGS = -ldflags "-X main.Version=$(VERSION) -X main.PolarOrgID=$(POLAR_ORG_ID)"
 
-.PHONY: all build frontend backend dev dev-backend dev-frontend clean test help
+.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test help
 
 # Default target
 all: build
@@ -36,7 +36,7 @@ frontend:
 # Build backend
 backend:
 	@echo "Building backend..."
-	go build $(LDFLAGS) -o $(BINARY_NAME) ./cmd/server
+	go build $(LDFLAGS) -o $(BINARY_NAME) ./cmd/qui
 
 # Development mode - run both frontend and backend
 dev:
@@ -52,6 +52,16 @@ dev-backend:
 dev-frontend:
 	@echo "Starting frontend development server..."
 	cd $(WEB_DIR) && pnpm dev
+
+# Development mode with frontend exposed on 0.0.0.0
+dev-expose:
+	@echo "Starting development mode with frontend exposed on 0.0.0.0..."
+	@make -j 2 dev-backend dev-frontend-expose
+
+# Run frontend development server exposed on 0.0.0.0
+dev-frontend-expose:
+	@echo "Starting frontend development server (exposed on 0.0.0.0)..."
+	cd $(WEB_DIR) && pnpm dev --host
 
 # Clean build artifacts
 clean:
@@ -80,6 +90,11 @@ lint:
 	golangci-lint run
 	cd $(WEB_DIR) && pnpm lint
 
+# Modernize Go code (interface{} -> any, etc)
+modern:
+	@echo "Modernizing Go code..."
+	go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -fix -test ./...
+
 # Install development dependencies
 deps:
 	@echo "Installing development dependencies..."
@@ -95,10 +110,12 @@ help:
 	@echo "  make dev          - Run development servers"
 	@echo "  make dev-backend  - Run backend with hot reload"
 	@echo "  make dev-frontend - Run frontend development server"
+	@echo "  make dev-expose   - Run frontend dev server exposed on 0.0.0.0"
 	@echo "  make clean        - Clean build artifacts"
 	@echo "  make test         - Run all tests"
 	@echo "  make test-openapi - Validate OpenAPI specification"
 	@echo "  make fmt          - Format code"
 	@echo "  make lint         - Lint code"
+	@echo "  make modern       - Modernize Go code (interface{} -> any, etc)"
 	@echo "  make deps         - Install dependencies"
 	@echo "  make help         - Show this help message"

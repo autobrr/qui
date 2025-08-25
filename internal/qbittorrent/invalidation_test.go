@@ -28,9 +28,7 @@ func TestCacheInvalidation_InvalidateCache(t *testing.T) {
 
 	// Create sync manager with test cache
 	sm := &SyncManager{
-		mainData:   make(map[int]*qbt.MainData),
-		ridTracker: make(map[int]int64),
-		cache:      cache,
+		cache: cache,
 	}
 
 	instanceID := 1
@@ -39,7 +37,7 @@ func TestCacheInvalidation_InvalidateCache(t *testing.T) {
 	// These should be deleted by InvalidateCache
 	deletableKeys := []string{
 		fmt.Sprintf("all_torrents:%d:", instanceID),  // Empty search
-		fmt.Sprintf("all_torrents:%d: ", instanceID),  // Space search
+		fmt.Sprintf("all_torrents:%d: ", instanceID), // Space search
 		fmt.Sprintf("categories:%d", instanceID),
 		fmt.Sprintf("tags:%d", instanceID),
 		fmt.Sprintf("torrents:%d:", instanceID),           // Base key
@@ -53,7 +51,7 @@ func TestCacheInvalidation_InvalidateCache(t *testing.T) {
 	}
 
 	// Add paginated entries that should be deleted
-	for page := 0; page < 2; page++ {
+	for page := range 2 {
 		for _, limit := range []int{100, 200} {
 			key := fmt.Sprintf("torrents:%d:%d:%d", instanceID, page*limit, limit)
 			deletableKeys = append(deletableKeys, key)
@@ -73,7 +71,7 @@ func TestCacheInvalidation_InvalidateCache(t *testing.T) {
 		value := fmt.Sprintf("test-data-deletable-%d", i)
 		sm.cache.SetWithTTL(key, value, 1, time.Minute)
 	}
-	
+
 	// Populate cache with preserved keys
 	for i, key := range preservedKeys {
 		value := fmt.Sprintf("test-data-preserved-%d", i)
@@ -102,7 +100,7 @@ func TestCacheInvalidation_InvalidateCache(t *testing.T) {
 		_, found := sm.cache.Get(key)
 		assert.False(t, found, "Cache key should be cleared: %s", key)
 	}
-	
+
 	// Verify preserved keys (other instance) are NOT cleared
 	for _, key := range preservedKeys {
 		_, found := sm.cache.Get(key)
@@ -124,9 +122,7 @@ func TestCacheInvalidation_RealWorldScenario(t *testing.T) {
 
 	// Create sync manager with test cache
 	sm := &SyncManager{
-		mainData:   make(map[int]*qbt.MainData),
-		ridTracker: make(map[int]int64),
-		cache:      cache,
+		cache: cache,
 	}
 
 	// Simulate multiple instances with cached data
@@ -134,7 +130,7 @@ func TestCacheInvalidation_RealWorldScenario(t *testing.T) {
 	otherInstanceID := 3
 
 	// Pre-populate cache with data that SHOULD be deleted for target instance
-	deletableKeys := map[string]interface{}{
+	deletableKeys := map[string]any{
 		fmt.Sprintf("all_torrents:%d:", targetInstanceID):       createTestTorrents(100),
 		fmt.Sprintf("all_torrents:%d: ", targetInstanceID):      createTestTorrents(50),
 		fmt.Sprintf("categories:%d", targetInstanceID):          map[string]qbt.Category{"movies": {Name: "movies"}},
@@ -145,12 +141,12 @@ func TestCacheInvalidation_RealWorldScenario(t *testing.T) {
 		fmt.Sprintf("native_filtered:%d:", targetInstanceID):    &TorrentResponse{Torrents: createTestTorrents(15), Total: 30},
 		fmt.Sprintf("torrent:properties:%d:", targetInstanceID): &qbt.TorrentProperties{Hash: "test"},
 		fmt.Sprintf("torrent:trackers:%d:", targetInstanceID):   []qbt.TorrentTracker{{Url: "http://tracker.example.com"}},
-		fmt.Sprintf("torrent:files:%d:", targetInstanceID):      []map[string]interface{}{{"name": "file.mkv"}},
+		fmt.Sprintf("torrent:files:%d:", targetInstanceID):      []map[string]any{{"name": "file.mkv"}},
 		fmt.Sprintf("torrent:webseeds:%d:", targetInstanceID):   []string{"webseed1"},
 	}
 
 	// Add paginated entries that should be deleted
-	for page := 0; page < 2; page++ {
+	for page := range 2 {
 		for _, limit := range []int{100, 200} {
 			key := fmt.Sprintf("torrents:%d:%d:%d", targetInstanceID, page*limit, limit)
 			deletableKeys[key] = &TorrentResponse{Torrents: createTestTorrents(limit), Total: 1000}
@@ -158,11 +154,11 @@ func TestCacheInvalidation_RealWorldScenario(t *testing.T) {
 	}
 
 	// Pre-populate cache with data that should NOT be deleted (other instance)
-	preservedKeys := map[string]interface{}{
-		fmt.Sprintf("all_torrents:%d:", otherInstanceID):      createTestTorrents(100),
-		fmt.Sprintf("categories:%d", otherInstanceID):         map[string]qbt.Category{"tv": {Name: "tv"}},
-		fmt.Sprintf("tags:%d", otherInstanceID):               []string{"tag3", "tag4"},
-		fmt.Sprintf("torrents:%d:0:50", otherInstanceID):      &TorrentResponse{Torrents: createTestTorrents(50), Total: 200},
+	preservedKeys := map[string]any{
+		fmt.Sprintf("all_torrents:%d:", otherInstanceID):          createTestTorrents(100),
+		fmt.Sprintf("categories:%d", otherInstanceID):             map[string]qbt.Category{"tv": {Name: "tv"}},
+		fmt.Sprintf("tags:%d", otherInstanceID):                   []string{"tag3", "tag4"},
+		fmt.Sprintf("torrents:%d:0:50", otherInstanceID):          &TorrentResponse{Torrents: createTestTorrents(50), Total: 200},
 		fmt.Sprintf("torrent:properties:%d:xyz", otherInstanceID): &qbt.TorrentProperties{Hash: "xyz"},
 	}
 
@@ -219,9 +215,7 @@ func TestCacheInvalidation_CoordinatedUpdates(t *testing.T) {
 
 	// Create sync manager
 	sm := &SyncManager{
-		mainData:   make(map[int]*qbt.MainData),
-		ridTracker: make(map[int]int64),
-		cache:      cache,
+		cache: cache,
 	}
 
 	instanceID := 1
@@ -233,10 +227,10 @@ func TestCacheInvalidation_CoordinatedUpdates(t *testing.T) {
 
 	// Phase 1: Initial cache population (simulating normal operation)
 	// Use keys that InvalidateCache actually deletes
-	paginatedKey := fmt.Sprintf("torrents:%d:0:100", instanceID) // This will be deleted (matches pagination pattern)
-	baseKey := fmt.Sprintf("torrents:%d:", instanceID)           // This will be deleted (base key)
+	paginatedKey := fmt.Sprintf("torrents:%d:0:100", instanceID)  // This will be deleted (matches pagination pattern)
+	baseKey := fmt.Sprintf("torrents:%d:", instanceID)            // This will be deleted (base key)
 	allTorrentsKey := fmt.Sprintf("all_torrents:%d:", instanceID) // This will be deleted
-	
+
 	initialTorrents := &TorrentResponse{
 		Torrents: createTestTorrents(50),
 		Total:    100,
@@ -253,10 +247,10 @@ func TestCacheInvalidation_CoordinatedUpdates(t *testing.T) {
 	require.True(t, found, "Initial paginated data should be cached")
 	response := cached.(*TorrentResponse)
 	assert.Equal(t, 100, response.Total)
-	
+
 	_, found = sm.cache.Get(baseKey)
 	assert.True(t, found, "Initial base key should be cached")
-	
+
 	_, found = sm.cache.Get(allTorrentsKey)
 	assert.True(t, found, "Initial all torrents key should be cached")
 
@@ -268,10 +262,10 @@ func TestCacheInvalidation_CoordinatedUpdates(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 	_, found = sm.cache.Get(paginatedKey)
 	assert.False(t, found, "Paginated cache should be cleared immediately after action")
-	
+
 	_, found = sm.cache.Get(baseKey)
 	assert.False(t, found, "Base cache should be cleared immediately after action")
-	
+
 	_, found = sm.cache.Get(allTorrentsKey)
 	assert.False(t, found, "All torrents cache should be cleared immediately after action")
 
@@ -306,9 +300,7 @@ func TestCacheInvalidation_MultipleInstances(t *testing.T) {
 
 	// Create sync manager
 	sm := &SyncManager{
-		mainData:   make(map[int]*qbt.MainData),
-		ridTracker: make(map[int]int64),
-		cache:      cache,
+		cache: cache,
 	}
 
 	// Setup multiple instances
@@ -320,9 +312,9 @@ func TestCacheInvalidation_MultipleInstances(t *testing.T) {
 
 	// Populate cache for all instances with keys that match what InvalidateCache deletes
 	targetInstance := 2
-	
+
 	// Data for target instance that WILL be deleted
-	targetKeys := map[string]interface{}{
+	targetKeys := map[string]any{
 		fmt.Sprintf("all_torrents:%d:", targetInstance):       createTestTorrents(100),
 		fmt.Sprintf("categories:%d", targetInstance):          map[string]qbt.Category{"movies": {Name: "movies"}},
 		fmt.Sprintf("tags:%d", targetInstance):                []string{"tag1", "tag2"},
@@ -331,9 +323,9 @@ func TestCacheInvalidation_MultipleInstances(t *testing.T) {
 		fmt.Sprintf("torrents:filtered:%d:", targetInstance):  &TorrentResponse{Torrents: createTestTorrents(30), Total: 60},
 		fmt.Sprintf("torrent:properties:%d:", targetInstance): &qbt.TorrentProperties{Hash: "test"},
 	}
-	
+
 	// Data for other instances that should NOT be deleted
-	otherKeys := map[string]interface{}{}
+	otherKeys := map[string]any{}
 	for instanceID, name := range instances {
 		if instanceID == targetInstance {
 			continue
@@ -471,7 +463,7 @@ func BenchmarkCacheInvalidation_Clear(b *testing.B) {
 	defer cache.Close()
 
 	// Pre-populate cache with many entries
-	for i := 0; i < 10000; i++ {
+	for i := range 10000 {
 		key := fmt.Sprintf("torrents:%d:%d:50", i%5+1, i)
 		value := &TorrentResponse{
 			Torrents: createTestTorrents(50),
@@ -481,14 +473,13 @@ func BenchmarkCacheInvalidation_Clear(b *testing.B) {
 	}
 	cache.Wait()
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		// Call Clear directly to avoid logging during benchmarks
 		cache.Clear()
 
 		// Re-populate for next iteration
 		if i < b.N-1 {
-			for j := 0; j < 100; j++ { // Smaller repopulation for speed
+			for j := range 100 { // Smaller repopulation for speed
 				key := fmt.Sprintf("torrents:%d:%d:50", j%5+1, j)
 				value := &TorrentResponse{
 					Torrents: createTestTorrents(10),

@@ -7,14 +7,12 @@ FROM --platform=$BUILDPLATFORM golang:1.24-alpine3.22 AS go-builder
 # Install build dependencies
 RUN apk add --no-cache git make
 
-# Build arguments for version info and Polar credentials
+# Build arguments
 ARG VERSION=dev
 ARG BUILDTIME
 ARG REVISION
 ARG BUILDER
-ARG POLAR_ACCESS_TOKEN=""
 ARG POLAR_ORG_ID=""
-ARG POLAR_ENVIRONMENT="production"
 
 # Cross-compilation arguments from Docker BuildKit
 ARG TARGETOS
@@ -50,10 +48,8 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="\
     -X main.Version=${VERSION} \
     -X main.buildTime=${BUILDTIME} \
     -X main.commit=${REVISION} \
-    -X main.PolarAccessToken=${POLAR_ACCESS_TOKEN} \
-    -X main.PolarOrgID=${POLAR_ORG_ID} \
-    -X main.PolarEnvironment=${POLAR_ENVIRONMENT}" \
-    -o qui ./cmd/server
+    -X main.PolarOrgID=${POLAR_ORG_ID}" \
+    -o qui ./cmd/qui
 
 # Final stage
 FROM alpine:3.22
@@ -83,3 +79,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
 
 ENTRYPOINT ["/usr/local/bin/qui"]
+CMD ["serve"]

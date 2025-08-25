@@ -9,11 +9,12 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/autobrr/qui/internal/auth"
-	"github.com/autobrr/qui/internal/models"
 	"github.com/go-chi/chi/v5"
 	"github.com/gorilla/sessions"
 	"github.com/rs/zerolog/log"
+
+	"github.com/autobrr/qui/internal/auth"
+	"github.com/autobrr/qui/internal/models"
 )
 
 type AuthHandler struct {
@@ -47,7 +48,7 @@ type ChangePasswordRequest struct {
 // Setup handles initial user setup
 func (h *AuthHandler) Setup(w http.ResponseWriter, r *http.Request) {
 	// Check if setup is already complete
-	complete, err := h.authService.IsSetupComplete()
+	complete, err := h.authService.IsSetupComplete(r.Context())
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to check setup status")
 		RespondError(w, http.StatusInternalServerError, "Failed to check setup status")
@@ -72,7 +73,7 @@ func (h *AuthHandler) Setup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create user
-	user, err := h.authService.SetupUser(req.Username, req.Password)
+	user, err := h.authService.SetupUser(r.Context(), req.Username, req.Password)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create user")
 		RespondError(w, http.StatusInternalServerError, "Failed to create user")
@@ -86,16 +87,17 @@ func (h *AuthHandler) Setup(w http.ResponseWriter, r *http.Request) {
 	session.Values["username"] = user.Username
 
 	// Configure cookie security
+	isSecure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
+
 	session.Options = &sessions.Options{
 		Path:     "/",
 		MaxAge:   86400 * 7, // 7 days
 		HttpOnly: true,
+		Secure:   isSecure,
 		SameSite: http.SameSiteLaxMode,
 	}
 
-	// If behind reverse proxy with HTTPS, upgrade security
-	if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
-		session.Options.Secure = true
+	if isSecure {
 		session.Options.SameSite = http.SameSiteStrictMode
 	}
 
@@ -105,9 +107,9 @@ func (h *AuthHandler) Setup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusCreated, map[string]interface{}{
+	RespondJSON(w, http.StatusCreated, map[string]any{
 		"message": "Setup completed successfully",
-		"user": map[string]interface{}{
+		"user": map[string]any{
 			"id":       user.ID,
 			"username": user.Username,
 		},
@@ -123,7 +125,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate credentials
-	user, err := h.authService.Login(req.Username, req.Password)
+	user, err := h.authService.Login(r.Context(), req.Username, req.Password)
 	if err != nil {
 		if errors.Is(err, auth.ErrInvalidCredentials) {
 			RespondError(w, http.StatusUnauthorized, "Invalid credentials")
@@ -145,16 +147,17 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	session.Values["username"] = user.Username
 
 	// Configure cookie security
+	isSecure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
+
 	session.Options = &sessions.Options{
 		Path:     "/",
 		MaxAge:   86400 * 7, // 7 days
 		HttpOnly: true,
+		Secure:   isSecure,
 		SameSite: http.SameSiteLaxMode,
 	}
 
-	// If behind reverse proxy with HTTPS, upgrade security
-	if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
-		session.Options.Secure = true
+	if isSecure {
 		session.Options.SameSite = http.SameSiteStrictMode
 	}
 
@@ -164,9 +167,9 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]interface{}{
+	RespondJSON(w, http.StatusOK, map[string]any{
 		"message": "Login successful",
-		"user": map[string]interface{}{
+		"user": map[string]any{
 			"id":       user.ID,
 			"username": user.Username,
 		},
@@ -208,7 +211,7 @@ func (h *AuthHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]interface{}{
+	RespondJSON(w, http.StatusOK, map[string]any{
 		"id":       userID,
 		"username": username,
 	})
@@ -216,14 +219,14 @@ func (h *AuthHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 
 // CheckSetupRequired checks if initial setup is required
 func (h *AuthHandler) CheckSetupRequired(w http.ResponseWriter, r *http.Request) {
-	complete, err := h.authService.IsSetupComplete()
+	complete, err := h.authService.IsSetupComplete(r.Context())
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to check setup status")
 		RespondError(w, http.StatusInternalServerError, "Failed to check setup status")
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]interface{}{
+	RespondJSON(w, http.StatusOK, map[string]any{
 		"setupRequired": !complete,
 	})
 }
@@ -237,7 +240,7 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Change password
-	if err := h.authService.ChangePassword(req.CurrentPassword, req.NewPassword); err != nil {
+	if err := h.authService.ChangePassword(r.Context(), req.CurrentPassword, req.NewPassword); err != nil {
 		if errors.Is(err, auth.ErrInvalidCredentials) {
 			RespondError(w, http.StatusUnauthorized, "Invalid current password")
 			return
@@ -273,14 +276,14 @@ func (h *AuthHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create API key
-	rawKey, apiKey, err := h.authService.CreateAPIKey(req.Name)
+	rawKey, apiKey, err := h.authService.CreateAPIKey(r.Context(), req.Name)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create API key")
 		RespondError(w, http.StatusInternalServerError, "Failed to create API key")
 		return
 	}
 
-	RespondJSON(w, http.StatusCreated, map[string]interface{}{
+	RespondJSON(w, http.StatusCreated, map[string]any{
 		"id":        apiKey.ID,
 		"name":      apiKey.Name,
 		"key":       rawKey, // Only shown once
@@ -291,7 +294,7 @@ func (h *AuthHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 
 // ListAPIKeys returns all API keys
 func (h *AuthHandler) ListAPIKeys(w http.ResponseWriter, r *http.Request) {
-	keys, err := h.authService.ListAPIKeys()
+	keys, err := h.authService.ListAPIKeys(r.Context())
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to list API keys")
 		RespondError(w, http.StatusInternalServerError, "Failed to list API keys")
@@ -316,7 +319,7 @@ func (h *AuthHandler) DeleteAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.authService.DeleteAPIKey(id); err != nil {
+	if err := h.authService.DeleteAPIKey(r.Context(), id); err != nil {
 		if errors.Is(err, models.ErrAPIKeyNotFound) {
 			RespondError(w, http.StatusNotFound, "API key not found")
 			return

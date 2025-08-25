@@ -23,41 +23,68 @@ GO_HEADER = f"""// Copyright (c) {COPYRIGHT_YEAR}, {COPYRIGHT_HOLDER}.
 // SPDX-License-Identifier: {LICENSE}
 """
 
+def has_copyright_header(lines, is_typescript=False):
+    """Check if file already has a copyright header."""
+    if not lines:
+        return False
+    
+    if is_typescript:
+        # Check for TypeScript/TSX copyright header (/* ... */)
+        if len(lines) >= 4:
+            return (lines[0].strip().startswith("/*") and 
+                    any("Copyright" in line or "copyright" in line for line in lines[:4]) and
+                    any("*/" in line for line in lines[:4]))
+    else:
+        # Check for Go copyright header (// Copyright ...)
+        if len(lines) >= 2:
+            return any("Copyright" in line or "copyright" in line for line in lines[:2])
+    
+    return False
+
 def process_file(file_path):
     """Determines the correct header and overwrites the file."""
     header_to_apply = ""
     lines_to_remove = 0
+    is_typescript = False
 
     if file_path.endswith((".ts", ".tsx")):
         header_to_apply = TS_HEADER
         lines_to_remove = 4
+        is_typescript = True
     elif file_path.endswith(".go"):
         header_to_apply = GO_HEADER
         lines_to_remove = 2
+        is_typescript = False
     else:
         return # Not a file we need to process
 
-    print(f"UPDATING: {file_path}")
+    print(f"CHECKING: {file_path}")
 
     try:
         # Read the original content first
         with open(file_path, 'r', encoding='utf-8') as f:
             original_lines = f.readlines()
 
+        # Check if file already has a copyright header
+        if has_copyright_header(original_lines, is_typescript):
+            print(f"  UPDATING HEADER: {file_path}")
+            # Remove old header
+            remaining_lines = original_lines[lines_to_remove:]
+        else:
+            print(f"  ADDING HEADER: {file_path}")
+            # Keep all original content
+            remaining_lines = original_lines
+
         # Overwrite the file with the new content
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write(header_to_apply)
             
-            # Get the remaining content after removing header lines
-            remaining_lines = original_lines[lines_to_remove:]
+            # Strip leading blank lines from remaining content
+            while remaining_lines and remaining_lines[0].strip() == '':
+                remaining_lines.pop(0)
             
-            # For TS/TSX files, ensure exactly one blank line after header
-            if file_path.endswith((".ts", ".tsx")):
-                # Strip leading blank lines from remaining content
-                while remaining_lines and remaining_lines[0].strip() == '':
-                    remaining_lines.pop(0)
-                # Add exactly one blank line between header and content
-                f.write('\n')
+            # Add exactly one blank line between header and content
+            f.write('\n')
             
             # Write back the rest of the original file
             f.writelines(remaining_lines)

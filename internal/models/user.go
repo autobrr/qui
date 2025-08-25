@@ -4,20 +4,18 @@
 package models
 
 import (
+	"context"
 	"database/sql"
 	"errors"
-	"time"
 )
 
 var ErrUserNotFound = errors.New("user not found")
 var ErrUserAlreadyExists = errors.New("user already exists")
 
 type User struct {
-	ID           int       `json:"id"`
-	Username     string    `json:"username"`
-	PasswordHash string    `json:"-"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID           int    `json:"id"`
+	Username     string `json:"username"`
+	PasswordHash string `json:"-"`
 }
 
 type UserStore struct {
@@ -28,20 +26,18 @@ func NewUserStore(db *sql.DB) *UserStore {
 	return &UserStore{db: db}
 }
 
-func (s *UserStore) Create(username, passwordHash string) (*User, error) {
+func (s *UserStore) Create(ctx context.Context, username, passwordHash string) (*User, error) {
 	query := `
 		INSERT INTO user (id, username, password_hash) 
 		VALUES (1, ?, ?)
-		RETURNING id, username, password_hash, created_at, updated_at
+		RETURNING id, username, password_hash
 	`
 
 	user := &User{}
-	err := s.db.QueryRow(query, username, passwordHash).Scan(
+	err := s.db.QueryRowContext(ctx, query, username, passwordHash).Scan(
 		&user.ID,
 		&user.Username,
 		&user.PasswordHash,
-		&user.CreatedAt,
-		&user.UpdatedAt,
 	)
 
 	if err != nil {
@@ -57,20 +53,18 @@ func (s *UserStore) Create(username, passwordHash string) (*User, error) {
 	return user, nil
 }
 
-func (s *UserStore) Get() (*User, error) {
+func (s *UserStore) Get(ctx context.Context) (*User, error) {
 	query := `
-		SELECT id, username, password_hash, created_at, updated_at 
+		SELECT id, username, password_hash 
 		FROM user 
 		WHERE id = 1
 	`
 
 	user := &User{}
-	err := s.db.QueryRow(query).Scan(
+	err := s.db.QueryRowContext(ctx, query).Scan(
 		&user.ID,
 		&user.Username,
 		&user.PasswordHash,
-		&user.CreatedAt,
-		&user.UpdatedAt,
 	)
 
 	if err == sql.ErrNoRows {
@@ -83,20 +77,18 @@ func (s *UserStore) Get() (*User, error) {
 	return user, nil
 }
 
-func (s *UserStore) GetByUsername(username string) (*User, error) {
+func (s *UserStore) GetByUsername(ctx context.Context, username string) (*User, error) {
 	query := `
-		SELECT id, username, password_hash, created_at, updated_at 
+		SELECT id, username, password_hash 
 		FROM user 
 		WHERE username = ?
 	`
 
 	user := &User{}
-	err := s.db.QueryRow(query, username).Scan(
+	err := s.db.QueryRowContext(ctx, query, username).Scan(
 		&user.ID,
 		&user.Username,
 		&user.PasswordHash,
-		&user.CreatedAt,
-		&user.UpdatedAt,
 	)
 
 	if err == sql.ErrNoRows {
@@ -109,14 +101,14 @@ func (s *UserStore) GetByUsername(username string) (*User, error) {
 	return user, nil
 }
 
-func (s *UserStore) UpdatePassword(passwordHash string) error {
+func (s *UserStore) UpdatePassword(ctx context.Context, passwordHash string) error {
 	query := `
 		UPDATE user 
 		SET password_hash = ? 
 		WHERE id = 1
 	`
 
-	result, err := s.db.Exec(query, passwordHash)
+	result, err := s.db.ExecContext(ctx, query, passwordHash)
 	if err != nil {
 		return err
 	}
@@ -133,9 +125,9 @@ func (s *UserStore) UpdatePassword(passwordHash string) error {
 	return nil
 }
 
-func (s *UserStore) Exists() (bool, error) {
+func (s *UserStore) Exists(ctx context.Context) (bool, error) {
 	var count int
-	err := s.db.QueryRow("SELECT COUNT(*) FROM user").Scan(&count)
+	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM user").Scan(&count)
 	if err != nil {
 		return false, err
 	}

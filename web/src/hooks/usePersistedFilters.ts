@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, } from "react"
 
 interface Filters {
   status: string[]
@@ -12,36 +12,36 @@ interface Filters {
   trackers: string[]
 }
 
-export function usePersistedFilters(instanceId: number) {
-  const [filters, setFilters] = useState<Filters>({
+export function usePersistedFilters(instanceId: number,) {
+  const [filters, setFilters,] = useState<Filters>({
     status: [],
     categories: [],
     tags: [],
     trackers: [],
-  })
+  },)
   
   // Load filters when instanceId changes
   useEffect(() => {
-    const global = JSON.parse(localStorage.getItem('qui-filters-global') || '{}')
-    const instance = JSON.parse(localStorage.getItem(`qui-filters-${instanceId}`) || '{}')
+    const global = JSON.parse(localStorage.getItem("qui-filters-global",) || "{}",)
+    const instance = JSON.parse(localStorage.getItem(`qui-filters-${instanceId}`,) || "{}",)
     
     setFilters({
       status: global.status || [],
       categories: instance.categories || [],
       tags: instance.tags || [],
       trackers: instance.trackers || [],
-    })
-  }, [instanceId])
+    },)
+  }, [instanceId,],)
   
   // Save filters when they change
   useEffect(() => {
-    localStorage.setItem('qui-filters-global', JSON.stringify({ status: filters.status }))
+    localStorage.setItem("qui-filters-global", JSON.stringify({ status: filters.status, },),)
     localStorage.setItem(`qui-filters-${instanceId}`, JSON.stringify({
       categories: filters.categories,
       tags: filters.tags,
       trackers: filters.trackers,
-    }))
-  }, [filters, instanceId])
+    },),)
+  }, [filters, instanceId,],)
   
-  return [filters, setFilters] as const
+  return [filters, setFilters,] as const
 }

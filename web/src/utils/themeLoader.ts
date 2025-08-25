@@ -3,15 +3,15 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { parseThemeCSS, generateThemeId } from './themeParser';
-import type { Theme } from '@/config/themes';
+import { parseThemeCSS, generateThemeId, } from "./themeParser";
+import type { Theme, } from "@/config/themes";
 
 // Import all theme CSS files from the themes directory
-const themeModules = import.meta.glob('/src/themes/*.css', { 
-  query: '?raw',
-  import: 'default',
-  eager: true 
-});
+const themeModules = import.meta.glob("/src/themes/*.css", { 
+  query: "?raw",
+  import: "default",
+  eager: true, 
+},);
 
 /**
  * Load all themes from the themes directory
@@ -20,47 +20,47 @@ export function loadThemes(): Theme[] {
   const themes: Theme[] = [];
   
   // Process each theme file
-  for (const [path, cssContent] of Object.entries(themeModules)) {
-    if (typeof cssContent !== 'string') {
-      console.warn(`Invalid theme file: ${path}`);
+  for (const [path, cssContent,] of Object.entries(themeModules,)) {
+    if (typeof cssContent !== "string") {
+      console.warn(`Invalid theme file: ${path}`,);
       continue;
     }
     
-    const parsedTheme = parseThemeCSS(cssContent);
+    const parsedTheme = parseThemeCSS(cssContent,);
     if (!parsedTheme) {
-      console.warn(`Failed to parse theme: ${path}`);
+      console.warn(`Failed to parse theme: ${path}`,);
       continue;
     }
     
     // Extract filename without extension for fallback ID
-    const filename = path.split('/').pop()?.replace('.css', '') || 'unknown';
+    const filename = path.split("/",).pop()?.replace(".css", "",) || "unknown";
     
     const theme: Theme = {
-      id: generateThemeId(parsedTheme.metadata.name) || filename,
+      id: generateThemeId(parsedTheme.metadata.name,) || filename,
       name: parsedTheme.metadata.name,
       description: parsedTheme.metadata.description,
       isPremium: parsedTheme.metadata.isPremium,
       cssVars: parsedTheme.cssVars,
     };
     
-    themes.push(theme);
+    themes.push(theme,);
   }
   
   // Add default theme if no themes are loaded
   if (themes.length === 0) {
-    themes.push(getDefaultTheme());
+    themes.push(getDefaultTheme(),);
   }
   
   // Sort themes to ensure "minimal" is first
-  themes.sort((a, b) => {
-    if (a.id === 'minimal') return -1;
-    if (b.id === 'minimal') return 1;
-    return a.name.localeCompare(b.name);
-  });
+  themes.sort((a, b,) => {
+    if (a.id === "minimal") return -1;
+    if (b.id === "minimal") return 1;
+    return a.name.localeCompare(b.name,);
+  },);
   
   // Debug log in development
   if (import.meta.env.DEV) {
-    console.log('Loaded themes:', themes.map(t => ({ id: t.id, name: t.name })));
+    console.log("Loaded themes:", themes.map(t => ({ id: t.id, name: t.name, }),),);
   }
   
   return themes;
@@ -170,7 +170,7 @@ function getDefaultTheme(): Theme {
         "--shadow-2xl": "0 1px 3px 0px hsl(0 0% 0% / 0.25)",
         "--tracking-normal": "0em",
         "--spacing": "0.25rem",
-      }
-    }
+      },
+    },
   };
 }

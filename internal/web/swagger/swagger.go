@@ -6,6 +6,7 @@ package swagger
 import (
 	_ "embed"
 	"encoding/json"
+	"maps"
 	"net/http"
 	"strings"
 
@@ -20,7 +21,7 @@ var openapiYAML []byte
 var swaggerHTML string
 
 type Handler struct {
-	spec    map[string]interface{}
+	spec    map[string]any
 	baseURL string
 }
 
@@ -29,7 +30,7 @@ func NewHandler(baseURL string) (*Handler, error) {
 		return nil, nil // Return nil handler if no spec embedded
 	}
 
-	var spec map[string]interface{}
+	var spec map[string]any
 	if err := yaml.Unmarshal(openapiYAML, &spec); err != nil {
 		return nil, err
 	}
@@ -61,6 +62,7 @@ func (h *Handler) ServeSwaggerUI(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(html))
 }
 
+// GetOpenAPISpec returns the embedded OpenAPI spec for testing
 func GetOpenAPISpec() ([]byte, error) {
 	if len(openapiYAML) == 0 {
 		return nil, nil
@@ -72,10 +74,8 @@ func (h *Handler) ServeOpenAPISpec(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	// Create a copy of the spec to modify
-	spec := make(map[string]interface{})
-	for k, v := range h.spec {
-		spec[k] = v
-	}
+	spec := make(map[string]any)
+	maps.Copy(spec, h.spec)
 
 	if h.baseURL != "" {
 		scheme := "http"
@@ -84,7 +84,7 @@ func (h *Handler) ServeOpenAPISpec(w http.ResponseWriter, r *http.Request) {
 		}
 		host := r.Host
 
-		servers := []map[string]interface{}{
+		servers := []map[string]any{
 			{
 				"url":         scheme + "://" + host + h.baseURL,
 				"description": "Current server with base URL",
@@ -92,9 +92,9 @@ func (h *Handler) ServeOpenAPISpec(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Keep existing servers as fallback
-		if existingServers, ok := spec["servers"].([]interface{}); ok {
+		if existingServers, ok := spec["servers"].([]any); ok {
 			for _, s := range existingServers {
-				if server, ok := s.(map[string]interface{}); ok {
+				if server, ok := s.(map[string]any); ok {
 					servers = append(servers, server)
 				}
 			}

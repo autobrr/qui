@@ -19,7 +19,6 @@ export interface Instance {
   id: number
   name: string
   host: string
-  port: number
   username: string
   basicUsername?: string
   isActive: boolean
@@ -82,7 +81,7 @@ export interface TorrentStats {
 }
 
 export interface CacheMetadata {
-  source: 'cache' | 'fresh'
+  source: "cache" | "fresh"
   age: number
   isStale: boolean
   nextRefresh?: string
@@ -106,16 +105,11 @@ export interface TorrentResponse {
   cacheMetadata?: CacheMetadata
 }
 
+// Simplified MainData - only used for Dashboard server stats
 export interface MainData {
   rid: number
-  fullUpdate: boolean
-  torrents?: Record<string, Torrent>
-  torrentsRemoved?: string[]
-  categories?: Record<string, Category>
-  categoriesRemoved?: string[]
-  tags?: string[]
-  tagsRemoved?: string[]
   serverState?: ServerState
+  server_state?: ServerState
 }
 
 export interface Category {

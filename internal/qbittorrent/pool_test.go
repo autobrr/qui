@@ -224,35 +224,3 @@ func TestClientPool_IsBanError(t *testing.T) {
 		})
 	}
 }
-
-func TestClientPool_GetBackoffStatus(t *testing.T) {
-	pool := setupTestPool(t)
-	defer pool.Close()
-
-	instanceID := 1
-	
-	// Initially no backoff
-	inBackoff, nextRetry, attempts := pool.GetBackoffStatus(instanceID)
-	assert.False(t, inBackoff, "Initially should not be in backoff")
-	assert.True(t, nextRetry.IsZero(), "Initially nextRetry should be zero time")
-	assert.Equal(t, 0, attempts, "Initially should have zero attempts")
-	
-	// Track a ban error
-	banError := errors.New("User's IP is banned for too many failed login attempts")
-	pool.trackFailure(instanceID, banError)
-	
-	// Should now have backoff status
-	inBackoff, nextRetry, attempts = pool.GetBackoffStatus(instanceID)
-	assert.True(t, inBackoff, "After ban error should be in backoff")
-	assert.False(t, nextRetry.IsZero(), "After ban error nextRetry should not be zero")
-	assert.Equal(t, 1, attempts, "After ban error should have 1 attempt")
-	
-	// Reset tracking
-	pool.resetFailureTracking(instanceID)
-	
-	// Should be back to no backoff
-	inBackoff, nextRetry, attempts = pool.GetBackoffStatus(instanceID)
-	assert.False(t, inBackoff, "After reset should not be in backoff")
-	assert.True(t, nextRetry.IsZero(), "After reset nextRetry should be zero time")
-	assert.Equal(t, 0, attempts, "After reset should have zero attempts")
-}

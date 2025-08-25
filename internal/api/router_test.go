@@ -60,17 +60,17 @@ func TestAllEndpointsDocumented(t *testing.T) {
 		t.Fatalf("Failed to get OpenAPI spec: %v", err)
 	}
 
-	var openapiSpec map[string]interface{}
+	var openapiSpec map[string]any
 	if err := yaml.Unmarshal(spec, &openapiSpec); err != nil {
 		t.Fatalf("Failed to parse OpenAPI spec: %v", err)
 	}
 
 	// Get all documented paths from OpenAPI
 	documentedPaths := make(map[string]map[string]bool)
-	if paths, ok := openapiSpec["paths"].(map[string]interface{}); ok {
+	if paths, ok := openapiSpec["paths"].(map[string]any); ok {
 		for path, pathItem := range paths {
 			documentedPaths[path] = make(map[string]bool)
-			if methods, ok := pathItem.(map[string]interface{}); ok {
+			if methods, ok := pathItem.(map[string]any); ok {
 				for method := range methods {
 					if method == "get" || method == "post" || method == "put" || method == "delete" || method == "patch" {
 						documentedPaths[path][strings.ToUpper(method)] = true
@@ -83,11 +83,11 @@ func TestAllEndpointsDocumented(t *testing.T) {
 	// Check for undocumented routes
 	var undocumented []string
 	var nonAPIRoutes []string
-	
+
 	for _, route := range actualRoutes {
 		// Skip non-API routes (these are handled elsewhere)
-		if !strings.HasPrefix(route.Path, "/api/") {
-			if route.Path != "/" && route.Path != "/*" && route.Path != "/health" {
+		if !strings.HasPrefix(route.Path, "/api/") && route.Path != "/health" {
+			if route.Path != "/" && route.Path != "/*" {
 				nonAPIRoutes = append(nonAPIRoutes, route.Method+" "+route.Path)
 			}
 			continue
@@ -126,6 +126,49 @@ func TestAllEndpointsDocumented(t *testing.T) {
 			t.Errorf("  - %s", route)
 		}
 		t.Error("Please add these endpoints to internal/web/swagger/openapi.yaml")
+	}
+
+	// Check for documented routes that don't exist in code
+	var phantom []string
+	actualRouteSet := make(map[string]bool)
+
+	for _, route := range actualRoutes {
+		// Skip non-API routes
+		if !strings.HasPrefix(route.Path, "/api/") && route.Path != "/health" {
+			continue
+		}
+
+		// Skip special routes that shouldn't be documented
+		if route.Path == "/api/docs" || route.Path == "/api/openapi.json" {
+			continue
+		}
+
+		// Normalize path for comparison
+		normalizedPath := route.Path
+		normalizedPath = strings.TrimSuffix(normalizedPath, "/")
+		normalizedPath = strings.ReplaceAll(normalizedPath, "{instanceID}", "{instanceId}")
+		normalizedPath = strings.ReplaceAll(normalizedPath, "{licenseKey}", "{licenseKey}")
+
+		actualRouteSet[route.Method+" "+normalizedPath] = true
+	}
+
+	// Check each documented endpoint
+	for path, methods := range documentedPaths {
+		for method := range methods {
+			routeKey := strings.ToUpper(method) + " " + path
+			if !actualRouteSet[routeKey] {
+				phantom = append(phantom, routeKey)
+			}
+		}
+	}
+
+	// Report any phantom routes (documented but not implemented)
+	if len(phantom) > 0 {
+		t.Errorf("Found %d documented endpoints that don't exist in code:", len(phantom))
+		for _, route := range phantom {
+			t.Errorf("  - %s", route)
+		}
+		t.Error("Please remove these endpoints from internal/web/swagger/openapi.yaml or implement them")
 	}
 
 	// Log summary

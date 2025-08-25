@@ -4,7 +4,6 @@
 package models
 
 import (
-	"database/sql/driver"
 	"time"
 )
 
@@ -26,36 +25,5 @@ type ThemeLicense struct {
 // LicenseStatus constants
 const (
 	LicenseStatusActive  = "active"
-	LicenseStatusExpired = "expired"
 	LicenseStatusInvalid = "invalid"
 )
-
-// IsValid returns true if the license is currently valid
-func (tl *ThemeLicense) IsValid() bool {
-	if tl.Status != LicenseStatusActive {
-		return false
-	}
-
-	// Check expiration
-	if tl.ExpiresAt != nil && time.Now().After(*tl.ExpiresAt) {
-		return false
-	}
-
-	return true
-}
-
-// IsValidOffline returns true if the license is valid for offline use
-// Allows 7 days grace period since last validation
-func (tl *ThemeLicense) IsValidOffline() bool {
-	if !tl.IsValid() {
-		return false
-	}
-
-	gracePeriod := 7 * 24 * time.Hour
-	return time.Since(tl.LastValidated) < gracePeriod
-}
-
-// Value implements driver.Valuer for database storage
-func (tl *ThemeLicense) Value() (driver.Value, error) {
-	return tl.LicenseKey, nil
-}

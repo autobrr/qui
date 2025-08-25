@@ -4,21 +4,66 @@
 package polar
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"time"
 
-	polargo "github.com/polarsource/polar-go"
-	"github.com/polarsource/polar-go/models/components"
 	"github.com/rs/zerolog/log"
 )
 
-// Client wraps the Polar SDK for theme license management
+const (
+	polarAPIBaseURL   = "https://api.polar.sh/v1"
+	validateEndpoint  = "/customer-portal/license-keys/validate"
+	activateEndpoint  = "/customer-portal/license-keys/activate"
+	premiumThemeName  = "premium-access"
+	defaultLabel      = "qui Theme License"
+	unknownThemeName  = "unknown"
+	requestTimeout    = 30 * time.Second
+	contentTypeJSON   = "application/json"
+	orgIDNotConfigMsg = "Organization ID not configured"
+	licenseFailedMsg  = "Failed to validate license"
+	activateFailedMsg = "Failed to activate license"
+	invalidRespMsg    = "Invalid license response"
+)
+
+// ValidationResponse represents the response from the validate endpoint
+type ValidationResponse struct {
+	ID               string     `json:"id"`
+	BenefitID        string     `json:"benefit_id"`
+	CustomerID       string     `json:"customer_id"`
+	Key              string     `json:"key"`
+	Status           string     `json:"status"`
+	ExpiresAt        *time.Time `json:"expires_at"`
+	LimitActivations int        `json:"limit_activations"`
+	Usage            int        `json:"usage"`
+	Validations      int        `json:"validations"`
+}
+
+// ActivationResponse represents the response from the activate endpoint
+type ActivationResponse struct {
+	LicenseKey LicenseKeyData `json:"license_key"`
+}
+
+// LicenseKeyData represents the nested license key data in activation response
+type LicenseKeyData struct {
+	ID               string     `json:"id"`
+	BenefitID        string     `json:"benefit_id"`
+	CustomerID       string     `json:"customer_id"`
+	Key              string     `json:"key"`
+	Status           string     `json:"status"`
+	ExpiresAt        *time.Time `json:"expires_at"`
+	LimitActivations int        `json:"limit_activations"`
+	Usage            int        `json:"usage"`
+}
+
+// Client wraps the Polar API for theme license management
 type Client struct {
-	polar          *polargo.Polar
-	accessToken    string
-	environment    string
 	organizationID string
+	httpClient     *http.Client
 }
 
 // LicenseInfo contains license validation information
@@ -32,23 +77,18 @@ type LicenseInfo struct {
 	ErrorMessage string     `json:"errorMessage,omitempty"`
 }
 
-// NewClient creates a new Polar API client
-func NewClient(accessToken, environment string) *Client {
-	// Always use production environment
-	client := polargo.New(
-		polargo.WithSecurity(accessToken),
-	)
-
+// NewClient creates a new Polar API client with configured HTTP client
+func NewClient() *Client {
 	return &Client{
-		polar:       client,
-		accessToken: accessToken,
-		environment: environment,
+		httpClient: &http.Client{
+			Timeout: requestTimeout,
+			Transport: &http.Transport{
+				MaxIdleConns:        10,
+				MaxIdleConnsPerHost: 10,
+				IdleConnTimeout:     30 * time.Second,
+			},
+		},
 	}
-}
-
-// SetOrganizationID sets the organization ID required for license operations
-func (c *Client) SetOrganizationID(orgID string) {
-	c.organizationID = orgID
 }
 
 // ValidateLicense validates a license key against Polar API
@@ -57,191 +97,127 @@ func (c *Client) ValidateLicense(ctx context.Context, licenseKey string) (*Licen
 		return &LicenseInfo{
 			Key:          licenseKey,
 			Valid:        false,
-			ErrorMessage: "Organization ID not configured",
+			ErrorMessage: orgIDNotConfigMsg,
 		}, nil
 	}
 
 	log.Debug().
-		Str("environment", c.environment).
 		Str("organizationId", c.organizationID).
 		Msg("Validating license key with Polar API")
 
-	// Use the validate endpoint for license keys
-	validateRes, err := c.polar.CustomerPortal.LicenseKeys.Validate(ctx, components.LicenseKeyValidate{
-		Key:            licenseKey,
-		OrganizationID: c.organizationID,
-	})
+	requestBody := map[string]string{
+		"key":             licenseKey,
+		"organization_id": c.organizationID,
+	}
 
+	body, err := c.makeHTTPRequest(ctx, validateEndpoint, requestBody, false)
 	if err != nil {
-		log.Error().
-			Err(err).
-			Str("licenseKey", maskLicenseKey(licenseKey)).
-			Str("orgId", c.organizationID).
-			Msg("Failed to validate license key with Polar API")
-
 		return &LicenseInfo{
 			Key:          licenseKey,
 			Valid:        false,
-			ErrorMessage: fmt.Sprintf("Failed to validate license: %v", err),
+			ErrorMessage: licenseFailedMsg,
 		}, err
 	}
 
-	if validateRes.ValidatedLicenseKey == nil {
+	var response ValidationResponse
+	if err := json.Unmarshal(body, &response); err != nil {
+		log.Error().Err(err).Msg("Failed to parse validation response")
 		return &LicenseInfo{
 			Key:          licenseKey,
 			Valid:        false,
-			ErrorMessage: "Invalid response from Polar API",
-		}, nil
+			ErrorMessage: invalidRespMsg,
+		}, err
 	}
 
-	// Extract license info from validation response
-	licenseData := validateRes.ValidatedLicenseKey
-
-	// Map benefit ID to theme name for our premium access model
-	themeName := "unknown"
-	if licenseData.BenefitID != "" {
-		// For our one-time premium access model, any valid benefit should grant "premium-access"
-		// This unlocks ALL current and future premium themes
-		themeName = "premium-access"
-
-		log.Debug().
-			Str("benefitId", licenseData.BenefitID).
-			Str("mappedTheme", themeName).
-			Msg("Mapped benefit ID to premium access")
-	}
-
-	// Extract customer ID
-	customerID := ""
-	if licenseData.CustomerID != "" {
-		customerID = licenseData.CustomerID
-	}
-
-	// Extract product ID from benefit ID
-	productID := ""
-	if licenseData.BenefitID != "" {
-		productID = licenseData.BenefitID
-	}
-
-	// Extract expiration date if available
-	var expiresAt *time.Time
-	if licenseData.ExpiresAt != nil {
-		expiresAt = licenseData.ExpiresAt
-	}
+	themeName := c.mapBenefitToTheme(response.BenefitID, "validation")
 
 	log.Info().
 		Str("themeName", themeName).
-		Str("customerID", maskID(customerID)).
-		Str("productID", maskID(productID)).
+		Str("customerID", maskID(response.CustomerID)).
+		Str("productID", maskID(response.BenefitID)).
 		Str("licenseKey", maskLicenseKey(licenseKey)).
 		Msg("License key validated successfully")
 
 	return &LicenseInfo{
 		Key:        licenseKey,
 		ThemeName:  themeName,
-		CustomerID: customerID,
-		ProductID:  productID,
-		ExpiresAt:  expiresAt,
+		CustomerID: response.CustomerID,
+		ProductID:  response.BenefitID,
+		ExpiresAt:  response.ExpiresAt,
 		Valid:      true,
 	}, nil
 }
 
-// ActivateLicense activates a license key
-func (c *Client) ActivateLicense(ctx context.Context, licenseKey string) (*LicenseInfo, error) {
-	if c.organizationID == "" {
-		return &LicenseInfo{
-			Key:          licenseKey,
-			Valid:        false,
-			ErrorMessage: "Organization ID not configured",
-		}, nil
+// makeHTTPRequest handles common HTTP request logic for both endpoints
+func (c *Client) makeHTTPRequest(ctx context.Context, endpoint string, requestBody map[string]string, isActivation bool) ([]byte, error) {
+	jsonData, err := json.Marshal(requestBody)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to marshal request body")
+		return nil, fmt.Errorf("failed to prepare request: %w", err)
 	}
 
-	log.Debug().
-		Str("environment", c.environment).
-		Str("organizationId", c.organizationID).
-		Msg("Activating license key with Polar API")
+	req, err := http.NewRequestWithContext(ctx, "POST", polarAPIBaseURL+endpoint, bytes.NewBuffer(jsonData))
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to create HTTP request")
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
 
-	// Use the license key activation endpoint
-	res, err := c.polar.CustomerPortal.LicenseKeys.Activate(ctx, components.LicenseKeyActivate{
-		Key:            licenseKey,
-		OrganizationID: c.organizationID,
-		Label:          "qui Theme License",
-	})
+	req.Header.Set("Content-Type", contentTypeJSON)
 
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		log.Error().
 			Err(err).
-			Str("licenseKey", maskLicenseKey(licenseKey)).
-			Msg("Failed to activate license key with Polar API")
+			Str("licenseKey", maskLicenseKey(requestBody["key"])).
+			Str("orgId", c.organizationID).
+			Msg("HTTP request to Polar API failed")
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
 
-		return &LicenseInfo{
-			Key:          licenseKey,
-			Valid:        false,
-			ErrorMessage: fmt.Sprintf("Failed to activate license: %v", err),
-		}, err
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to read response body")
+		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
-	if res.LicenseKeyActivationRead == nil {
-		return &LicenseInfo{
-			Key:          licenseKey,
-			Valid:        false,
-			ErrorMessage: "Invalid response from Polar API",
-		}, nil
+	// Check for successful status codes
+	var isSuccess bool
+	if isActivation {
+		isSuccess = resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated
+	} else {
+		isSuccess = resp.StatusCode == http.StatusOK
 	}
 
-	licenseData := res.LicenseKeyActivationRead
-
-	// Extract information from the nested license key
-	var themeName, customerID, productID string
-	var expiresAt *time.Time
-
-	// Map benefit ID to theme name for our premium access model
-	themeName = "unknown"
-	if licenseData.LicenseKey.BenefitID != "" {
-		// For our one-time premium access model, any valid benefit should grant "premium-access"
-		// This unlocks ALL current and future premium themes
-		themeName = "premium-access"
-
-		log.Debug().
-			Str("benefitId", licenseData.LicenseKey.BenefitID).
-			Str("mappedTheme", themeName).
-			Msg("Mapped benefit ID to premium access (activation)")
+	if !isSuccess {
+		log.Error().
+			Int("status", resp.StatusCode).
+			Str("response", string(body)).
+			Str("licenseKey", maskLicenseKey(requestBody["key"])).
+			Msg("API request failed")
+		return nil, fmt.Errorf("API returned status %d", resp.StatusCode)
 	}
 
-	// Extract customer ID
-	if licenseData.LicenseKey.CustomerID != "" {
-		customerID = licenseData.LicenseKey.CustomerID
-	}
-
-	// Extract product ID from benefit ID (for now use benefit ID)
-	// TODO: Query products API using benefit ID to get actual product details
-	if licenseData.LicenseKey.BenefitID != "" {
-		productID = licenseData.LicenseKey.BenefitID
-	}
-
-	// Extract expiration date if available
-	if licenseData.LicenseKey.ExpiresAt != nil {
-		expiresAt = licenseData.LicenseKey.ExpiresAt
-	}
-
-	log.Info().
-		Str("themeName", themeName).
-		Str("customerID", maskID(customerID)).
-		Str("productID", maskID(productID)).
-		Msg("License key activated successfully")
-
-	return &LicenseInfo{
-		Key:        licenseKey,
-		ThemeName:  themeName,
-		CustomerID: customerID,
-		ProductID:  productID,
-		ExpiresAt:  expiresAt,
-		Valid:      true,
-	}, nil
+	return body, nil
 }
 
-// GetLicenseInfo retrieves license information without activating
-func (c *Client) GetLicenseInfo(ctx context.Context, licenseKey string) (*LicenseInfo, error) {
-	return c.ValidateLicense(ctx, licenseKey)
+// mapBenefitToTheme maps a benefit ID to theme name
+func (c *Client) mapBenefitToTheme(benefitID, operation string) string {
+	if benefitID == "" {
+		return unknownThemeName
+	}
+
+	// For our one-time premium access model, any valid benefit should grant premium access
+	// This unlocks ALL current and future premium themes
+	themeName := premiumThemeName
+
+	log.Debug().
+		Str("benefitId", benefitID).
+		Str("mappedTheme", themeName).
+		Str("operation", operation).
+		Msg("Mapped benefit ID to premium access")
+
+	return themeName
 }
 
 // Helper functions
@@ -262,28 +238,12 @@ func maskID(id string) string {
 	return id[:8] + "***"
 }
 
+// SetOrganizationID sets the organization ID required for license operations
+func (c *Client) SetOrganizationID(orgID string) {
+	c.organizationID = orgID
+}
+
 // IsClientConfigured checks if the Polar client is properly configured
 func (c *Client) IsClientConfigured() bool {
-	return c.accessToken != "" && c.polar != nil && c.organizationID != ""
-}
-
-// GetEnvironment returns the current environment
-func (c *Client) GetEnvironment() string {
-	return c.environment
-}
-
-// ValidateConfiguration validates the client configuration
-func (c *Client) ValidateConfiguration(ctx context.Context) error {
-	if c.accessToken == "" || c.polar == nil {
-		return fmt.Errorf("polar client not configured")
-	}
-
-	if c.organizationID == "" {
-		return fmt.Errorf("organization ID not configured")
-	}
-
-	// Test the connection with a simple API call (if needed)
-	// Note: We don't test here to avoid unnecessary API calls during initialization
-
-	return nil
+	return c.organizationID != ""
 }
