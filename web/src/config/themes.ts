@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { loadThemes, } from "@/utils/themeLoader";
+import { loadThemes } from "@/utils/themeLoader";
 
 export interface Theme {
   id: string;
@@ -20,17 +20,17 @@ export interface Theme {
 export const themes: Theme[] = loadThemes();
 
 // Helper functions
-export function getThemeById(id: string,): Theme | undefined {
-  return themes.find(theme => theme.id === id,);
+export function getThemeById(id: string): Theme | undefined {
+  return themes.find(theme => theme.id === id);
 }
 
 export function getDefaultTheme(): Theme {
-  return themes.find(theme => theme.id === "minimal",) || themes[0];
+  return themes.find(theme => theme.id === "minimal") || themes[0];
 }
 
-export function isThemePremium(themeId: string,): boolean {
-  const theme = getThemeById(themeId,);
+export function isThemePremium(themeId: string): boolean {
+  const theme = getThemeById(themeId);
   return theme?.isPremium ?? false;
 }
 
-export { themes as default, };
+export { themes as default };

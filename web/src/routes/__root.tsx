@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { createRootRoute, Outlet, } from "@tanstack/react-router"
+import { createRootRoute, Outlet } from "@tanstack/react-router"
 
 export const Route = createRootRoute({
   component: () => (
@@ -11,4 +11,4 @@ export const Route = createRootRoute({
       <Outlet />
     </>
   ),
-},)
+})
