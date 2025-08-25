@@ -3,28 +3,28 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { defineConfig, } from "vite"
+import { defineConfig } from "vite"
 import react from "@vitejs/plugin-react"
 import tailwindcss from "@tailwindcss/vite"
-import { VitePWA, } from "vite-plugin-pwa"
+import { VitePWA } from "vite-plugin-pwa"
 import path from "node:path"
-import { fileURLToPath, } from "node:url"
+import { fileURLToPath } from "node:url"
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url,),)
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // https://vite.dev/config/
-export default defineConfig(({ mode, },) => ({
+export default defineConfig(({ mode }) => ({
   plugins: [
     react({
       // React 19 requires the new JSX transform
       jsxRuntime: "automatic",
-    },),
+    }),
     tailwindcss(),
     ...(mode === "production" ? [
       VitePWA({
         registerType: "autoUpdate",
         workbox: {
-          globPatterns: ["**/*.{js,css,html,ico,png,svg,webp}",],
+          globPatterns: ["**/*.{js,css,html,ico,png,svg,webp}"],
           runtimeCaching: [
             {
               urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
@@ -51,7 +51,7 @@ export default defineConfig(({ mode, },) => ({
             },
           ],
         },
-        includeAssets: ["favicon.png", "apple-touch-icon.png",],
+        includeAssets: ["favicon.png", "apple-touch-icon.png"],
         manifest: {
           name: "qui",
           short_name: "qui",
@@ -61,7 +61,7 @@ export default defineConfig(({ mode, },) => ({
           display: "standalone",
           scope: "/",
           start_url: "/",
-          categories: ["utilities", "productivity",],
+          categories: ["utilities", "productivity"],
           icons: [
             {
               src: "pwa-192x192.png",
@@ -83,12 +83,12 @@ export default defineConfig(({ mode, },) => ({
             },
           ],
         },
-      },),
+      }),
     ] : []),
   ],
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "./src",),
+      "@": path.resolve(__dirname, "./src"),
     },
   },
   server: {
@@ -103,9 +103,9 @@ export default defineConfig(({ mode, },) => ({
     rollupOptions: {
       output: {
         manualChunks: {
-          "react-vendor": ["react", "react-dom", "react-hook-form",],
-          "tanstack": ["@tanstack/react-router", "@tanstack/react-query", "@tanstack/react-table", "@tanstack/react-virtual",],
-          "ui-vendor": ["@radix-ui/react-dialog", "@radix-ui/react-dropdown-menu", "lucide-react",],
+          "react-vendor": ["react", "react-dom", "react-hook-form"],
+          "tanstack": ["@tanstack/react-router", "@tanstack/react-query", "@tanstack/react-table", "@tanstack/react-virtual"],
+          "ui-vendor": ["@radix-ui/react-dialog", "@radix-ui/react-dropdown-menu", "lucide-react"],
         },
       },
     },
@@ -113,4 +113,4 @@ export default defineConfig(({ mode, },) => ({
     minify: false,
     sourcemap: true,
   },
-}),);
+}));

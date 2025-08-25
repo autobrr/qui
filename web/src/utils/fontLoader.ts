@@ -26,30 +26,30 @@ const FONT_MAP: Record<string, string> = {
 const loadedFonts = new Set<string>();
 
 // Extract font name from font family string
-function extractFontName(fontFamily: string,): string {
+function extractFontName(fontFamily: string): string {
   // Remove fallback fonts and quotes
-  const match = fontFamily.match(/^["']?([^,"']+)/,);
+  const match = fontFamily.match(/^["']?([^,"']+)/);
   return match ? match[1].trim() : "";
 }
 
 // Load a single font
-async function loadFont(fontName: string,): Promise<void> {
+async function loadFont(fontName: string): Promise<void> {
   const googleFontId = FONT_MAP[fontName];
   
   // Skip if it's a system font or already loaded
-  if (!googleFontId || loadedFonts.has(fontName,)) {
+  if (!googleFontId || loadedFonts.has(fontName)) {
     return;
   }
   
   // Create link element
-  const link = document.createElement("link",);
+  const link = document.createElement("link");
   link.rel = "stylesheet";
   link.href = `https://fonts.googleapis.com/css2?family=${googleFontId}&display=swap`;
   link.dataset.fontLoader = fontName;
   
   // Add to head
-  document.head.appendChild(link,);
-  loadedFonts.add(fontName,);
+  document.head.appendChild(link);
+  loadedFonts.add(fontName);
 }
 
 // Load fonts for a theme
@@ -58,30 +58,30 @@ export async function loadThemeFonts(theme: {
     light: Record<string, string>;
     dark: Record<string, string>;
   };
-},): Promise<void> {
+}): Promise<void> {
   const fontsToLoad = new Set<string>();
   
   // Extract fonts from both light and dark modes
-  ["light", "dark",].forEach((mode,) => {
+  ["light", "dark"].forEach((mode) => {
     const vars = theme.cssVars[mode as "light" | "dark"];
     
-    ["--font-sans", "--font-serif", "--font-mono",].forEach((key,) => {
+    ["--font-sans", "--font-serif", "--font-mono"].forEach((key) => {
       if (vars[key]) {
-        const fontName = extractFontName(vars[key],);
+        const fontName = extractFontName(vars[key]);
         if (fontName) {
-          fontsToLoad.add(fontName,);
+          fontsToLoad.add(fontName);
         }
       }
-    },);
-  },);
+    });
+  });
   
   // Load all fonts
-  await Promise.all(Array.from(fontsToLoad,).map(loadFont,),);
+  await Promise.all(Array.from(fontsToLoad).map(loadFont));
 }
 
 // Preload common fonts on app start
 export async function preloadCommonFonts(): Promise<void> {
   // Load the most common fonts to improve initial load
-  const commonFonts = ["Inter", "JetBrains Mono",];
-  await Promise.all(commonFonts.map(loadFont,),);
+  const commonFonts = ["Inter", "JetBrains Mono"];
+  await Promise.all(commonFonts.map(loadFont));
 }
