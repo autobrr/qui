@@ -97,16 +97,16 @@ func (c *Client) IsHealthy() bool {
 }
 
 func (c *Client) HealthCheck(ctx context.Context) error {
-	_, err := c.Client.GetWebAPIVersionCtx(ctx)
+	_, err := c.GetWebAPIVersionCtx(ctx)
 	if err != nil {
-		if loginErr := c.Client.LoginCtx(ctx); loginErr != nil {
+		if loginErr := c.LoginCtx(ctx); loginErr != nil {
 			c.mu.Lock()
 			c.isHealthy = false
 			c.lastHealthCheck = time.Now()
 			c.mu.Unlock()
 			return fmt.Errorf("health check failed: login error: %w", loginErr)
 		}
-		if _, err = c.Client.GetWebAPIVersionCtx(ctx); err != nil {
+		if _, err = c.GetWebAPIVersionCtx(ctx); err != nil {
 			c.mu.Lock()
 			c.isHealthy = false
 			c.lastHealthCheck = time.Now()
