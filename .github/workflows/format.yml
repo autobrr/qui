@@ -1,0 +1,62 @@
+name: Format Code
+
+on:
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: "22.18.0"
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 8
+      
+      - name: Install frontend dependencies
+        run: cd web && pnpm install
+      
+      - name: Format code
+        run: make fmt
+      
+      - name: Commit and create PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Check if there are any changes to commit
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "Creating branch and committing changes..."
+            git config --local user.email "action@github.com"
+            git config --local user.name "GitHub Action"
+            git checkout -b chore/auto-format
+            git add .
+            git commit -m "chore(fmt): auto-format code"
+            git push origin chore/auto-format
+            
+            echo "Creating pull request..."
+            gh pr create \
+              --title "chore(fmt): Auto-format code" \
+              --body "Auto-generated PR to format code using \`make fmt\` via \`.github/workflows/format.yml\`"
+          else
+            echo "No formatting changes needed"
+          fi
