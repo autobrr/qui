@@ -1,6 +1,6 @@
 module github.com/autobrr/qui
 
-go 1.24.5
+go 1.24
 
 require (
 	github.com/autobrr/go-qbittorrent v1.14.0
