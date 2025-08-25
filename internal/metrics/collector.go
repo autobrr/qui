@@ -119,7 +119,7 @@ func (c *TorrentCollector) Collect(ch chan<- prometheus.Metric) {
 		instanceIDStr := instance.IDString()
 		instanceName := instance.Name
 
-		_, err := c.clientPool.GetClient(instance.ID)
+		_, err := c.clientPool.GetClient(ctx, instance.ID)
 		connected := 0.0
 		if err == nil && c.clientPool.IsHealthy(instance.ID) {
 			connected = 1.0

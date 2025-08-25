@@ -4,6 +4,7 @@
 package qbittorrent
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/rs/zerolog/log"
@@ -19,7 +20,7 @@ func (i *InstanceInfo) IDString() string {
 }
 
 func (cp *ClientPool) GetAllInstances() []*InstanceInfo {
-	instances, err := cp.instanceStore.List(false)
+	instances, err := cp.instanceStore.List(context.Background(), false)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get instances for metrics")
 		return nil
