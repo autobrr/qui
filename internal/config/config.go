@@ -75,7 +75,7 @@ func (c *AppConfig) defaults() {
 	}
 
 	c.viper.SetDefault("host", host)
-	c.viper.SetDefault("port", 8080)
+	c.viper.SetDefault("port", 7476)
 	c.viper.SetDefault("baseUrl", "")
 	c.viper.SetDefault("sessionSecret", sessionSecret)
 	c.viper.SetDefault("logLevel", "INFO")
@@ -213,7 +213,7 @@ func (c *AppConfig) writeDefaultConfig(path string) error {
 host = "{{ .host }}"
 
 # Port
-# Default: 8080
+# Default: 7476
 port = {{ .port }}
 
 # Base URL

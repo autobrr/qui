@@ -1371,7 +1371,7 @@ type Config struct {
 func (c *AppConfig) defaults() {
     c.Config = &domain.Config{
         Host:         "localhost",
-        Port:         8080,
+        Port:         7476,
         LogLevel:     "INFO",
         DatabasePath: "./data/qui.db",
         SessionSecret: api.GenerateSecureToken(16),
@@ -1401,7 +1401,7 @@ func detectContainer() bool {
 # All environment variables use qui__ prefix (double underscore)
 # Server configuration
 qui__HOST=0.0.0.0
-qui__PORT=8080
+qui__PORT=7476
 qui__BASE_URL=/
 
 # Session secret (auto-generated if not set)
@@ -1424,8 +1424,8 @@ qui__LOG_PATH=/path/to/qui.log  # If not set, logs to stdout
 host = "{{ .host }}"
 
 # Port
-# Default: 8080
-port = 8080
+# Default: 7476
+port = 7476
 
 # Base URL
 # Set custom baseUrl eg /qui/ to serve in subdirectory.
@@ -1480,7 +1480,7 @@ logLevel = "INFO"
    FROM alpine:latest
    RUN apk --no-cache add ca-certificates
    COPY --from=backend-builder /app/qui /qui
-   EXPOSE 8080
+   EXPOSE 7476
    CMD ["/qui"]
    ```
 
