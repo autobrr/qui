@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-qBittorrent Alternative WebUI - a self-hosted, single-user web interface for managing multiple qBittorrent instances. Built with Go backend and React frontend, optimized for handling 10k+ torrents.
+qui - a self-hosted, single-user web interface for managing multiple qBittorrent instances. Built with Go backend and React frontend.
 
 **Important**: See `prd_final.md` for the complete implementation plan, architecture details, and technical specifications.
 
@@ -34,6 +34,12 @@ go test -v -tags=integration ./internal/qbittorrent
 go test -coverprofile=coverage.out ./...
 go tool cover -html=coverage.out
 
+# Run with race detection
+go test -race ./...
+
+# Benchmark tests
+go test -bench=. ./internal/qbittorrent
+
 # Validate OpenAPI spec
 go test -v ./internal/web/swagger
 ```
@@ -51,6 +57,9 @@ cd web && pnpm build
 
 # Lint frontend code
 cd web && pnpm lint
+
+# Format frontend code
+cd web && pnpm format
 
 # Type check
 cd web && pnpm tsc -b
@@ -76,6 +85,12 @@ make fmt
 # Lint code
 make lint
 
+# Modernize Go code (interface{} -> any, etc)
+make modern
+
+# Validate OpenAPI specification
+make test-openapi
+
 # Install all dependencies
 make deps
 
@@ -98,7 +113,6 @@ Key patterns:
 - Frontend assets embedded using `go:embed` 
 - Single user authentication (no multi-tenancy)
 - Connection pooling for multiple qBittorrent instances
-- SyncMainData for efficient updates with 10k+ torrents
 - Cache-first architecture with coordinated invalidation
 
 ### Frontend Architecture
@@ -111,11 +125,10 @@ Key patterns:
 - **State**: React hooks + TanStack Query (no global state library)
 
 #### Important: shadcn/ui Component Installation
-When installing shadcn/ui components, they MUST be installed in the correct location:
-- **Correct**: `web/src/components/ui/`
-- **Wrong**: `web/@/components/ui/`
-
-The components.json file should have been configured during setup to use `src/components/ui` as the component path.
+The project is already configured for shadcn/ui components:
+- **Location**: Components are installed in `web/src/components/ui/`
+- **Configuration**: `components.json` is configured to use `src/components/ui`
+- **Installation**: Use `cd web && pnpm dlx shadcn@latest add <component-name>`
 
 Key patterns:
 - Server-side operations for large datasets
@@ -123,15 +136,8 @@ Key patterns:
 - Incremental sync updates via SyncMainData
 - Progressive loading for initial render
 - Optimistic UI updates with delayed server invalidation
-
-## Performance Considerations
-
-When handling 10k+ torrents:
-1. Use SyncMainData API for incremental updates (2-second polling)
-2. Initial load limited to 100-200 torrents with pagination
-3. Virtual scrolling with progressive loading
-4. Server-side filtering/sorting/pagination
-5. Aggressive caching with Ristretto
+- PWA support with service worker (production builds only)
+- Theme system with CSS-based configuration
 
 ## Configuration
 
@@ -170,7 +176,6 @@ Single-user design with encrypted instance credentials:
 - Backend: Table-driven tests for handlers
 - Frontend: React Testing Library for components
 - E2E: Playwright for critical user flows
-- Load testing: Simulate 10k+ torrents scenario
 
 ### Running Tests
 
@@ -232,7 +237,8 @@ For frontend changes, use:
 ```bash
 cd web
 pnpm dlx shadcn@latest add <component-name>
-# Components will be installed in web/src/components/ui/
+# Components are installed in web/src/components/ui/
+# The project is pre-configured with components.json
 ```
 
 ### Debugging Performance Issues
@@ -272,6 +278,27 @@ pnpm dlx shadcn@latest add <component-name>
 - `web/src/components/torrents/TorrentDetailsPanel.tsx` - Torrent details panel with tabs
 - `internal/api/handlers/torrents.go` - Backend filtering and pagination logic
 
+## Docker Deployment
+
+The application can be deployed using Docker:
+
+```bash
+# Using Docker Compose (recommended)
+docker compose up -d
+
+# Or standalone
+docker run -d \
+  -v $(pwd)/config:/config \
+  ghcr.io/autobrr/qui:latest
+```
+
+### Environment Variables for Docker
+- `QUI__HOST`: Listen address (default: 0.0.0.0 in containers)
+- `QUI__PORT`: Port number (default: 8080)
+- `QUI__BASE_URL`: Serve from subdirectory (e.g., "/qui/")
+- `QUI__SESSION_SECRET`: Cookie encryption secret
+- `QUI__LOG_LEVEL`: Logging level (ERROR, DEBUG, INFO, WARN, TRACE)
+
 ## Base URL Configuration
 
 When serving the application from a subdirectory (e.g., `/qui/`), set the `baseUrl` in config:
@@ -294,6 +321,27 @@ location /qui/ {
     proxy_set_header X-Real-IP $remote_addr;
 }
 ```
+
+## Theme System
+
+### Theme Configuration
+- **Theme Files**: Located in `web/src/themes/`
+- **Theme Selection**: Available in Settings → Appearance
+- **License Validation**: Some themes require license validation
+- **Custom Themes**: CSS-based theme system with CSS variables
+
+### Available Themes
+Multiple built-in themes including minimal, cyberpunk, catppuccin, and more.
+
+## PWA Configuration
+
+### Progressive Web App Features
+- **Service Worker**: Enabled in production builds only
+- **Caching Strategy**: 
+  - NetworkFirst for API calls (5-minute cache)
+  - CacheFirst for fonts (1-year cache)
+- **Offline Support**: Basic offline functionality with cached resources
+- **Installation**: Can be installed as a native app on supported devices
 
 ## Known Issues and Workarounds
 - SyncMainData implementation exists but is currently unused due to complexity
