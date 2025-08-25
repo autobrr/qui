@@ -156,7 +156,6 @@ func TestRunChangePasswordCommand(t *testing.T) {
 			args: []string{
 				"--config-dir", "test-config",
 				"--username", "testuser",
-				"--old-password", "oldpassword123",
 				"--new-password", "newpassword456",
 			},
 			validateOutput: func(t *testing.T, output string) {
@@ -170,7 +169,6 @@ func TestRunChangePasswordCommand(t *testing.T) {
 				"--config-dir", "test-config",
 				"--data-dir", "custom-data",
 				"--username", "testuser",
-				"--old-password", "oldpassword123",
 				"--new-password", "newpassword789",
 			},
 			validateOutput: func(t *testing.T, output string) {
@@ -184,23 +182,11 @@ func TestRunChangePasswordCommand(t *testing.T) {
 			expectedError: true,
 		},
 		{
-			name:      "wrong_old_password",
-			setupUser: true,
-			args: []string{
-				"--config-dir", "test-config",
-				"--username", "testuser",
-				"--old-password", "wrongpassword",
-				"--new-password", "newpassword456",
-			},
-			expectedError: true,
-		},
-		{
 			name:      "new_password_too_short",
 			setupUser: true,
 			args: []string{
 				"--config-dir", "test-config",
 				"--username", "testuser",
-				"--old-password", "oldpassword123",
 				"--new-password", "short",
 			},
 			expectedError: true,
@@ -211,7 +197,6 @@ func TestRunChangePasswordCommand(t *testing.T) {
 			args: []string{
 				"--config-dir", "test-config",
 				"--username", "nonexistentuser",
-				"--old-password", "oldpassword123",
 				"--new-password", "newpassword456",
 			},
 			expectedError: true,
@@ -318,7 +303,6 @@ func TestChangePasswordCommandHelp(t *testing.T) {
 	assert.Contains(t, helpOutput, "--config-dir")
 	assert.Contains(t, helpOutput, "--data-dir")
 	assert.Contains(t, helpOutput, "--username")
-	assert.Contains(t, helpOutput, "--old-password")
 	assert.Contains(t, helpOutput, "--new-password")
 }
 
@@ -368,9 +352,9 @@ func TestUserCommandValidation(t *testing.T) {
 			expectedError: "flag needs an argument",
 		},
 		{
-			name:          "change_password_invalid_username_flag",
+			name:          "change_password_invalid_new_password_flag",
 			cmdFunc:       RunChangePasswordCommand,
-			args:          []string{"--username"},
+			args:          []string{"--new-password"},
 			expectedError: "flag needs an argument",
 		},
 	}

@@ -107,18 +107,29 @@ Create and manage user accounts from the command line:
 # Create user with prompts (secure password input)
 ./qui create-user --username admin
 
-# Change password for existing user
+# Change password for existing user (no old password required)
+./qui change-password --username admin --new-password mynewpassword
+
+# Change password with secure prompt
 ./qui change-password --username admin
+
+# Pipe passwords for scripting (works with both commands)
+echo "mypassword" | ./qui create-user --username admin
+echo "newpassword" | ./qui change-password --username admin
+printf "password" | ./qui change-password --username admin
+./qui change-password --username admin < password.txt
 
 # All commands support custom config/data directories
 ./qui create-user --config-dir /path/to/config/ --username admin
 ```
 
 **Notes:**
-- Only one user account is allowed in the system
+- Only one user account is allowed in the system  
 - Passwords must be at least 8 characters long
-- When passwords are not provided via flags, you'll be prompted securely (input is masked)
+- Interactive prompts use secure input (passwords are masked)
+- Supports piped input for automation and scripting
 - Commands will create the database if it doesn't exist
+- No password confirmation required - perfect for automation
 
 **Default locations:**
 - Linux/macOS: `~/.config/qui/config.toml`

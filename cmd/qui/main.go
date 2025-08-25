@@ -155,13 +155,22 @@ You can specify either a directory path or a direct file path:
 }
 
 func readPassword(prompt string) (string, error) {
-	fmt.Print(prompt)
-	password, err := term.ReadPassword(int(os.Stdin.Fd()))
-	fmt.Println()
-	if err != nil {
-		return "", fmt.Errorf("failed to read password: %w", err)
+	if term.IsTerminal(int(os.Stdin.Fd())) {
+		fmt.Print(prompt)
+		password, err := term.ReadPassword(int(os.Stdin.Fd()))
+		fmt.Println()
+		if err != nil {
+			return "", fmt.Errorf("failed to read password: %w", err)
+		}
+		return string(password), nil
+	} else {
+		fmt.Fprint(os.Stderr, prompt)
+		var password string
+		if _, err := fmt.Scanln(&password); err != nil {
+			return "", fmt.Errorf("failed to read password from stdin: %w", err)
+		}
+		return password, nil
 	}
-	return string(password), nil
 }
 
 func RunCreateUserCommand() *cobra.Command {
@@ -225,15 +234,6 @@ If no --config-dir is specified, uses the OS-specific default location:
 				if err != nil {
 					return err
 				}
-
-				confirmPassword, err := readPassword("Confirm password: ")
-				if err != nil {
-					return err
-				}
-
-				if password != confirmPassword {
-					return fmt.Errorf("passwords do not match")
-				}
 			}
 
 			if len(password) < 8 {
@@ -263,7 +263,7 @@ If no --config-dir is specified, uses the OS-specific default location:
 }
 
 func RunChangePasswordCommand() *cobra.Command {
-	var configDir, dataDir, username, oldPassword, newPassword string
+	var configDir, dataDir, username, newPassword string
 
 	command := &cobra.Command{
 		Use:   "change-password",
@@ -271,7 +271,6 @@ func RunChangePasswordCommand() *cobra.Command {
 		Long: `Change the password for the existing user account.
 
 This command allows you to change the password for the existing user account.
-You must provide the current password to authenticate the change.
 
 If no --config-dir is specified, uses the OS-specific default location:
 - Linux/macOS: ~/.config/qui/config.toml  
@@ -324,28 +323,11 @@ If no --config-dir is specified, uses the OS-specific default location:
 				return fmt.Errorf("failed to verify username: %w", err)
 			}
 
-			if oldPassword == "" {
-				var err error
-				oldPassword, err = readPassword("Enter current password: ")
-				if err != nil {
-					return err
-				}
-			}
-
 			if newPassword == "" {
 				var err error
 				newPassword, err = readPassword("Enter new password: ")
 				if err != nil {
 					return err
-				}
-
-				confirmPassword, err := readPassword("Confirm new password: ")
-				if err != nil {
-					return err
-				}
-
-				if newPassword != confirmPassword {
-					return fmt.Errorf("passwords do not match")
 				}
 			}
 
@@ -353,11 +335,14 @@ If no --config-dir is specified, uses the OS-specific default location:
 				return fmt.Errorf("password must be at least 8 characters long")
 			}
 
-			if err := authService.ChangePassword(ctx, oldPassword, newPassword); err != nil {
-				if err == auth.ErrInvalidCredentials {
-					return fmt.Errorf("current password is incorrect")
-				}
-				return fmt.Errorf("failed to change password: %w", err)
+			hashedPassword, err := auth.HashPassword(newPassword)
+			if err != nil {
+				return fmt.Errorf("failed to hash password: %w", err)
+			}
+
+			userStore = models.NewUserStore(db.Conn())
+			if err = userStore.UpdatePassword(ctx, hashedPassword); err != nil {
+				return fmt.Errorf("failed to update password: %w", err)
 			}
 
 			cmd.Printf("Password changed successfully for user '%s'\n", user.Username)
@@ -371,8 +356,6 @@ If no --config-dir is specified, uses the OS-specific default location:
 		"data directory path (defaults to next to config file)")
 	command.Flags().StringVar(&username, "username", "",
 		"username to verify identity")
-	command.Flags().StringVar(&oldPassword, "old-password", "",
-		"current password (will prompt if not provided)")
 	command.Flags().StringVar(&newPassword, "new-password", "",
 		"new password (will prompt if not provided)")
 
