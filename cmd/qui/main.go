@@ -10,6 +10,7 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -18,6 +19,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"github.com/autobrr/qui/internal/api"
 	"github.com/autobrr/qui/internal/auth"
@@ -53,6 +55,9 @@ multiple qBittorrent instances with support for 10k+ torrents.`,
 
 	rootCmd.AddCommand(RunServeCommand())
 	rootCmd.AddCommand(RunVersionCommand(Version))
+	rootCmd.AddCommand(RunGenerateConfigCommand())
+	rootCmd.AddCommand(RunCreateUserCommand())
+	rootCmd.AddCommand(RunChangePasswordCommand())
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -94,6 +99,265 @@ func RunVersionCommand(version string) *cobra.Command {
 			fmt.Println(version)
 		},
 	}
+
+	return command
+}
+
+func RunGenerateConfigCommand() *cobra.Command {
+	var configDir string
+
+	command := &cobra.Command{
+		Use:   "generate-config",
+		Short: "Generate a default configuration file",
+		Long: `Generate a default configuration file without starting the server.
+
+If no --config-dir is specified, uses the OS-specific default location:
+- Linux/macOS: ~/.config/qui/config.toml  
+- Windows: %APPDATA%\qui\config.toml
+
+You can specify either a directory path or a direct file path:
+- Directory: qui generate-config --config-dir /path/to/config/
+- File: qui generate-config --config-dir /path/to/myconfig.toml`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var configPath string
+			if configDir != "" {
+				if strings.HasSuffix(strings.ToLower(configDir), ".toml") {
+					configPath = configDir
+				} else if info, err := os.Stat(configDir); err == nil && !info.IsDir() {
+					configPath = configDir
+				} else {
+					configPath = filepath.Join(configDir, "config.toml")
+				}
+			} else {
+				defaultDir := config.GetDefaultConfigDir()
+				configPath = filepath.Join(defaultDir, "config.toml")
+			}
+
+			if _, err := os.Stat(configPath); err == nil {
+				cmd.Printf("Configuration file already exists at: %s\n", configPath)
+				cmd.Println("Skipping generation to avoid overwriting existing configuration.")
+				return nil
+			}
+
+			if err := config.WriteDefaultConfig(configPath); err != nil {
+				return fmt.Errorf("failed to create configuration file: %w", err)
+			}
+
+			cmd.Printf("Configuration file created successfully at: %s\n", configPath)
+			return nil
+		},
+	}
+
+	command.Flags().StringVar(&configDir, "config-dir", "",
+		"config directory or file path (defaults to OS-specific location)")
+
+	return command
+}
+
+func readPassword(prompt string) (string, error) {
+	if term.IsTerminal(int(os.Stdin.Fd())) {
+		fmt.Print(prompt)
+		password, err := term.ReadPassword(int(os.Stdin.Fd()))
+		fmt.Println()
+		if err != nil {
+			return "", fmt.Errorf("failed to read password: %w", err)
+		}
+		return string(password), nil
+	} else {
+		fmt.Fprint(os.Stderr, prompt)
+		var password string
+		if _, err := fmt.Scanln(&password); err != nil {
+			return "", fmt.Errorf("failed to read password from stdin: %w", err)
+		}
+		return password, nil
+	}
+}
+
+func RunCreateUserCommand() *cobra.Command {
+	var configDir, dataDir, username, password string
+
+	command := &cobra.Command{
+		Use:   "create-user",
+		Short: "Create the initial user account",
+		Long: `Create the initial user account without starting the server.
+
+This command allows you to create the initial user account that is required
+for authentication. Only one user account can exist in the system.
+
+If no --config-dir is specified, uses the OS-specific default location:
+- Linux/macOS: ~/.config/qui/config.toml  
+- Windows: %APPDATA%\qui\config.toml`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Initialize configuration
+			cfg, err := config.New(configDir)
+			if err != nil {
+				return fmt.Errorf("failed to initialize configuration: %w", err)
+			}
+
+			// Override data directory if provided
+			if dataDir != "" {
+				cfg.SetDataDir(dataDir)
+			}
+
+			db, err := database.New(cfg.GetDatabasePath())
+			if err != nil {
+				return fmt.Errorf("failed to initialize database: %w", err)
+			}
+			defer db.Close()
+
+			authService := auth.NewService(db.Conn(), cfg.Config.SessionSecret)
+
+			exists, err := authService.IsSetupComplete(context.Background())
+			if err != nil {
+				return fmt.Errorf("failed to check setup status: %w", err)
+			}
+			if exists {
+				cmd.Println("User account already exists. Only one user account is allowed.")
+				return nil
+			}
+
+			if username == "" {
+				fmt.Print("Enter username: ")
+				if _, err := fmt.Scanln(&username); err != nil {
+					return fmt.Errorf("failed to read username: %w", err)
+				}
+			}
+
+			if strings.TrimSpace(username) == "" {
+				return fmt.Errorf("username cannot be empty")
+			}
+			username = strings.TrimSpace(username)
+
+			if password == "" {
+				var err error
+				password, err = readPassword("Enter password: ")
+				if err != nil {
+					return err
+				}
+			}
+
+			if len(password) < 8 {
+				return fmt.Errorf("password must be at least 8 characters long")
+			}
+
+			user, err := authService.SetupUser(context.Background(), username, password)
+			if err != nil {
+				return fmt.Errorf("failed to create user: %w", err)
+			}
+
+			cmd.Printf("User '%s' created successfully with ID: %d\n", user.Username, user.ID)
+			return nil
+		},
+	}
+
+	command.Flags().StringVar(&configDir, "config-dir", "",
+		"config directory or file path (defaults to OS-specific location)")
+	command.Flags().StringVar(&dataDir, "data-dir", "",
+		"data directory path (defaults to next to config file)")
+	command.Flags().StringVar(&username, "username", "",
+		"username for the new account")
+	command.Flags().StringVar(&password, "password", "",
+		"password for the new account (will prompt if not provided)")
+
+	return command
+}
+
+func RunChangePasswordCommand() *cobra.Command {
+	var configDir, dataDir, username, newPassword string
+
+	command := &cobra.Command{
+		Use:   "change-password",
+		Short: "Change the password for the existing user",
+		Long: `Change the password for the existing user account.
+
+This command allows you to change the password for the existing user account.
+
+If no --config-dir is specified, uses the OS-specific default location:
+- Linux/macOS: ~/.config/qui/config.toml  
+- Windows: %APPDATA%\qui\config.toml`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := config.New(configDir)
+			if err != nil {
+				return fmt.Errorf("failed to initialize configuration: %w", err)
+			}
+
+			if dataDir != "" {
+				cfg.SetDataDir(dataDir)
+			}
+
+			dbPath := cfg.GetDatabasePath()
+			if _, err := os.Stat(dbPath); os.IsNotExist(err) {
+				return fmt.Errorf("database not found at %s. Create a user first with 'create-user' command", dbPath)
+			}
+
+			db, err := database.New(dbPath)
+			if err != nil {
+				return fmt.Errorf("failed to initialize database: %w", err)
+			}
+			defer db.Close()
+
+			authService := auth.NewService(db.Conn(), cfg.Config.SessionSecret)
+
+			exists, err := authService.IsSetupComplete(context.Background())
+			if err != nil {
+				return fmt.Errorf("failed to check setup status: %w", err)
+			}
+			if !exists {
+				return fmt.Errorf("no user account found. Create a user first with 'create-user' command")
+			}
+
+			if username == "" {
+				fmt.Print("Enter username: ")
+				if _, err := fmt.Scanln(&username); err != nil {
+					return fmt.Errorf("failed to read username: %w", err)
+				}
+			}
+
+			ctx := context.Background()
+			userStore := models.NewUserStore(db.Conn())
+			user, err := userStore.GetByUsername(ctx, username)
+			if err != nil {
+				if err == models.ErrUserNotFound {
+					return fmt.Errorf("username '%s' not found", username)
+				}
+				return fmt.Errorf("failed to verify username: %w", err)
+			}
+
+			if newPassword == "" {
+				var err error
+				newPassword, err = readPassword("Enter new password: ")
+				if err != nil {
+					return err
+				}
+			}
+
+			if len(newPassword) < 8 {
+				return fmt.Errorf("password must be at least 8 characters long")
+			}
+
+			hashedPassword, err := auth.HashPassword(newPassword)
+			if err != nil {
+				return fmt.Errorf("failed to hash password: %w", err)
+			}
+
+			userStore = models.NewUserStore(db.Conn())
+			if err = userStore.UpdatePassword(ctx, hashedPassword); err != nil {
+				return fmt.Errorf("failed to update password: %w", err)
+			}
+
+			cmd.Printf("Password changed successfully for user '%s'\n", user.Username)
+			return nil
+		},
+	}
+
+	command.Flags().StringVar(&configDir, "config-dir", "",
+		"config directory or file path (defaults to OS-specific location)")
+	command.Flags().StringVar(&dataDir, "data-dir", "",
+		"data directory path (defaults to next to config file)")
+	command.Flags().StringVar(&username, "username", "",
+		"username to verify identity")
+	command.Flags().StringVar(&newPassword, "new-password", "",
+		"new password (will prompt if not provided)")
 
 	return command
 }

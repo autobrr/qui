@@ -116,13 +116,13 @@ func (c *AppConfig) load(configDirOrPath string) error {
 		// Search for config in standard locations
 		c.viper.SetConfigName("config")
 		c.viper.AddConfigPath(".")                   // Current directory
-		c.viper.AddConfigPath(getDefaultConfigDir()) // OS-specific config directory
+		c.viper.AddConfigPath(GetDefaultConfigDir()) // OS-specific config directory
 
 		// Try to read existing config
 		if err := c.viper.ReadInConfig(); err != nil {
 			if _, ok := err.(viper.ConfigFileNotFoundError); ok {
 				// No config found, create in OS-specific location
-				defaultConfigPath := filepath.Join(getDefaultConfigDir(), "config.toml")
+				defaultConfigPath := filepath.Join(GetDefaultConfigDir(), "config.toml")
 				if err := c.writeDefaultConfig(defaultConfigPath); err != nil {
 					return err
 				}
@@ -287,8 +287,8 @@ logLevel = "{{ .logLevel }}"
 
 // Helper functions
 
-// getDefaultConfigDir returns the OS-specific config directory
-func getDefaultConfigDir() string {
+// GetDefaultConfigDir returns the OS-specific config directory
+func GetDefaultConfigDir() string {
 	// First check if XDG_CONFIG_HOME is set (Docker containers set this to /config)
 	if xdgConfig := os.Getenv("XDG_CONFIG_HOME"); xdgConfig != "" {
 		// If XDG_CONFIG_HOME is /config (Docker), use it directly
@@ -426,6 +426,16 @@ func (c *AppConfig) ApplyLogConfig() {
 }
 
 const encryptionKeySize = 32
+
+func WriteDefaultConfig(path string) error {
+	c := &AppConfig{
+		viper: viper.New(),
+	}
+
+	c.defaults()
+
+	return c.writeDefaultConfig(path)
+}
 
 // GetEncryptionKey derives a 32-byte encryption key from the session secret
 func (c *AppConfig) GetEncryptionKey() []byte {
