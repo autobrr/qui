@@ -5,7 +5,7 @@
 
 // Incognito mode utilities for disguising torrents as Linux ISOs
 
-import { useState, useEffect, } from "react"
+import { useState, useEffect } from "react"
 
 // Linux ISO names for incognito mode
 const linuxIsoNames = [
@@ -59,13 +59,13 @@ const linuxIsoNames = [
 
 // Linux-themed categories for incognito mode
 export const LINUX_CATEGORIES = {
-  "distributions": { savePath: "/home/downloads/distributions", },
-  "documentation": { savePath: "/home/downloads/docs", },
-  "source-code": { savePath: "/home/downloads/source", },
-  "live-usb": { savePath: "/home/downloads/live", },
-  "server-editions": { savePath: "/home/downloads/server", },
-  "desktop-environments": { savePath: "/home/downloads/desktop", },
-  "arm-builds": { savePath: "/home/downloads/arm", },
+  "distributions": { savePath: "/home/downloads/distributions" },
+  "documentation": { savePath: "/home/downloads/docs" },
+  "source-code": { savePath: "/home/downloads/source" },
+  "live-usb": { savePath: "/home/downloads/live" },
+  "server-editions": { savePath: "/home/downloads/server" },
+  "desktop-environments": { savePath: "/home/downloads/desktop" },
+  "arm-builds": { savePath: "/home/downloads/arm" },
 }
 
 const LINUX_CATEGORIES_ARRAY = [
@@ -130,20 +130,20 @@ const LINUX_SAVE_PATHS = [
 ]
 
 // Generate a deterministic but seemingly random Linux ISO name based on hash
-export function getLinuxIsoName(hash: string,): string {
+export function getLinuxIsoName(hash: string): string {
   // Use hash to deterministically select an ISO name
   let hashSum = 0
   for (let i = 0; i < hash.length; i++) {
-    hashSum += hash.charCodeAt(i,)
+    hashSum += hash.charCodeAt(i)
   }
   return linuxIsoNames[hashSum % linuxIsoNames.length]
 }
 
 // Generate deterministic Linux category based on hash
-export function getLinuxCategory(hash: string,): string {
+export function getLinuxCategory(hash: string): string {
   let hashSum = 0
-  for (let i = 0; i < Math.min(10, hash.length,); i++) {
-    hashSum += hash.charCodeAt(i,) * (i + 1)
+  for (let i = 0; i < Math.min(10, hash.length); i++) {
+    hashSum += hash.charCodeAt(i) * (i + 1)
   }
   // 30% chance of no category
   if (hashSum % 10 < 3) return ""
@@ -151,10 +151,10 @@ export function getLinuxCategory(hash: string,): string {
 }
 
 // Generate deterministic Linux tags based on hash
-export function getLinuxTags(hash: string,): string {
+export function getLinuxTags(hash: string): string {
   let hashSum = 0
-  for (let i = 0; i < Math.min(15, hash.length,); i++) {
-    hashSum += hash.charCodeAt(i,) * (i + 2)
+  for (let i = 0; i < Math.min(15, hash.length); i++) {
+    hashSum += hash.charCodeAt(i) * (i + 2)
   }
   
   // 20% chance of no tags
@@ -166,50 +166,50 @@ export function getLinuxTags(hash: string,): string {
   
   for (let i = 0; i < numTags; i++) {
     const tagIndex = (hashSum + i * 7) % LINUX_TAGS.length
-    if (!tags.includes(LINUX_TAGS[tagIndex],)) {
-      tags.push(LINUX_TAGS[tagIndex],)
+    if (!tags.includes(LINUX_TAGS[tagIndex])) {
+      tags.push(LINUX_TAGS[tagIndex])
     }
   }
   
-  return tags.join(", ",)
+  return tags.join(", ")
 }
 
 // Generate deterministic Linux save path based on hash
-export function getLinuxSavePath(hash: string,): string {
+export function getLinuxSavePath(hash: string): string {
   let hashSum = 0
-  for (let i = 0; i < Math.min(8, hash.length,); i++) {
-    hashSum += hash.charCodeAt(i,) * (i + 3)
+  for (let i = 0; i < Math.min(8, hash.length); i++) {
+    hashSum += hash.charCodeAt(i) * (i + 3)
   }
   return LINUX_SAVE_PATHS[hashSum % LINUX_SAVE_PATHS.length]
 }
 
 // Generate deterministic Linux tracker based on hash
-export function getLinuxTracker(hash: string,): string {
+export function getLinuxTracker(hash: string): string {
   let hashSum = 0
-  for (let i = 0; i < Math.min(12, hash.length,); i++) {
-    hashSum += hash.charCodeAt(i,) * (i + 4)
+  for (let i = 0; i < Math.min(12, hash.length); i++) {
+    hashSum += hash.charCodeAt(i) * (i + 4)
   }
   return `https://${LINUX_TRACKERS[hashSum % LINUX_TRACKERS.length]}/announce`
 }
 
 // Generate deterministic ratio value based on hash
-export function getLinuxRatio(hash: string,): number {
+export function getLinuxRatio(hash: string): number {
   let hashSum = 0
-  for (let i = 0; i < Math.min(10, hash.length,); i++) {
-    hashSum += hash.charCodeAt(i,) * (i + 5)
+  for (let i = 0; i < Math.min(10, hash.length); i++) {
+    hashSum += hash.charCodeAt(i) * (i + 5)
   }
   
   // Generate ratios between 0.1 and 10.0 with some clustering around good values
   const ratioRanges = [
-    { min: 0.1, max: 0.5, weight: 15, },   // Poor ratio
-    { min: 0.5, max: 1.0, weight: 20, },   // Below 1.0
-    { min: 1.0, max: 2.0, weight: 30, },   // Good ratio (most common)
-    { min: 2.0, max: 5.0, weight: 25, },   // Very good ratio
-    { min: 5.0, max: 10.0, weight: 10, },  // Excellent ratio
+    { min: 0.1, max: 0.5, weight: 15 },   // Poor ratio
+    { min: 0.5, max: 1.0, weight: 20 },   // Below 1.0
+    { min: 1.0, max: 2.0, weight: 30 },   // Good ratio (most common)
+    { min: 2.0, max: 5.0, weight: 25 },   // Very good ratio
+    { min: 5.0, max: 10.0, weight: 10 },  // Excellent ratio
   ]
   
   // Use weighted distribution
-  const totalWeight = ratioRanges.reduce((sum, r,) => sum + r.weight, 0,)
+  const totalWeight = ratioRanges.reduce((sum, r) => sum + r.weight, 0)
   let weightPosition = hashSum % totalWeight
   
   for (const range of ratioRanges) {
@@ -229,35 +229,35 @@ export function getLinuxRatio(hash: string,): number {
 const INCOGNITO_STORAGE_KEY = "qui-incognito-mode"
 
 // Custom hook for managing incognito mode state with localStorage persistence
-export function useIncognitoMode(): [boolean, (value: boolean) => void,] {
-  const [incognitoMode, setIncognitoModeState,] = useState(() => {
-    const stored = localStorage.getItem(INCOGNITO_STORAGE_KEY,)
+export function useIncognitoMode(): [boolean, (value: boolean) => void] {
+  const [incognitoMode, setIncognitoModeState] = useState(() => {
+    const stored = localStorage.getItem(INCOGNITO_STORAGE_KEY)
     return stored === "true"
-  },)
+  })
   
   // Listen for storage changes to sync incognito mode across components
   useEffect(() => {
     const handleStorageChange = () => {
-      const stored = localStorage.getItem(INCOGNITO_STORAGE_KEY,)
-      setIncognitoModeState(stored === "true",)
+      const stored = localStorage.getItem(INCOGNITO_STORAGE_KEY)
+      setIncognitoModeState(stored === "true")
     }
     
     // Listen for both storage events (cross-tab) and custom events (same-tab)
-    window.addEventListener("storage", handleStorageChange,)
-    window.addEventListener("incognito-mode-changed", handleStorageChange,)
+    window.addEventListener("storage", handleStorageChange)
+    window.addEventListener("incognito-mode-changed", handleStorageChange)
     
     return () => {
-      window.removeEventListener("storage", handleStorageChange,)
-      window.removeEventListener("incognito-mode-changed", handleStorageChange,)
+      window.removeEventListener("storage", handleStorageChange)
+      window.removeEventListener("incognito-mode-changed", handleStorageChange)
     }
-  }, [],)
+  }, [])
   
-  const setIncognitoMode = (value: boolean,) => {
-    setIncognitoModeState(value,)
-    localStorage.setItem(INCOGNITO_STORAGE_KEY, String(value,),)
+  const setIncognitoMode = (value: boolean) => {
+    setIncognitoModeState(value)
+    localStorage.setItem(INCOGNITO_STORAGE_KEY, String(value))
     // Dispatch custom event for same-tab updates
-    window.dispatchEvent(new Event("incognito-mode-changed",),)
+    window.dispatchEvent(new Event("incognito-mode-changed"))
   }
   
-  return [incognitoMode, setIncognitoMode,]
+  return [incognitoMode, setIncognitoMode]
 }
