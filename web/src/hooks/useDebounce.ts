@@ -3,20 +3,20 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState, useEffect, } from "react"
+import { useState, useEffect } from "react"
 
-export function useDebounce<T,>(value: T, delay: number,): T {
-  const [debouncedValue, setDebouncedValue,] = useState<T>(value,)
+export function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value)
 
   useEffect(() => {
     const handler = setTimeout(() => {
-      setDebouncedValue(value,)
-    }, delay,)
+      setDebouncedValue(value)
+    }, delay)
 
     return () => {
-      clearTimeout(handler,)
+      clearTimeout(handler)
     }
-  }, [value, delay,],)
+  }, [value, delay])
 
   return debouncedValue
 }

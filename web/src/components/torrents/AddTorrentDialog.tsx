@@ -3,32 +3,32 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState, } from "react"
-import { useForm, } from "@tanstack/react-form"
-import { useMutation, useQueryClient, } from "@tanstack/react-query"
-import { api, } from "@/lib/api"
-import { Button, } from "@/components/ui/button"
-import { Input, } from "@/components/ui/input"
-import { Label, } from "@/components/ui/label"
-import { Textarea, } from "@/components/ui/textarea"
-import { Switch, } from "@/components/ui/switch"
+import { useState } from "react"
+import { useForm } from "@tanstack/react-form"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { api } from "@/lib/api"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { Switch } from "@/components/ui/switch"
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
+  DialogTrigger
 } from "@/components/ui/dialog"
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
+  SelectValue
 } from "@/components/ui/select"
-import { Plus, Upload, Link, } from "lucide-react"
-import { useQuery, } from "@tanstack/react-query"
+import { Plus, Upload, Link } from "lucide-react"
+import { useQuery } from "@tanstack/react-query"
 
 interface AddTorrentDialogProps {
   instanceId: number
@@ -48,9 +48,9 @@ interface FormData {
   skipHashCheck: boolean
 }
 
-export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChange, }: AddTorrentDialogProps,) {
-  const [internalOpen, setInternalOpen,] = useState(false,)
-  const [activeTab, setActiveTab,] = useState<TabValue>("file",)
+export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChange }: AddTorrentDialogProps) {
+  const [internalOpen, setInternalOpen] = useState(false)
+  const [activeTab, setActiveTab] = useState<TabValue>("file")
   const queryClient = useQueryClient()
   
   // Use controlled state if provided, otherwise use internal state
@@ -58,51 +58,51 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
   const setOpen = onOpenChange || setInternalOpen
 
   // Fetch categories for the dropdown
-  const { data: categories, } = useQuery({
-    queryKey: ["categories", instanceId,],
-    queryFn: () => api.getCategories(instanceId,),
+  const { data: categories } = useQuery({
+    queryKey: ["categories", instanceId],
+    queryFn: () => api.getCategories(instanceId),
     enabled: open,
-  },)
+  })
 
   const mutation = useMutation({
     retry: false, // Don't retry - could cause duplicate torrent additions
-    mutationFn: async (data: FormData,) => {
+    mutationFn: async (data: FormData) => {
       const submitData: Parameters<typeof api.addTorrent>[1] = {
         startPaused: data.startPaused,
         savePath: data.savePath || undefined,
         category: data.category === "__none__" ? undefined : data.category || undefined,
-        tags: data.tags ? data.tags.split(",",).map(t => t.trim(),).filter(Boolean,) : undefined,
+        tags: data.tags ? data.tags.split(",").map(t => t.trim()).filter(Boolean) : undefined,
         skipHashCheck: data.skipHashCheck,
       }
 
       if (activeTab === "file" && data.torrentFiles && data.torrentFiles.length > 0) {
         submitData.torrentFiles = data.torrentFiles
       } else if (activeTab === "url" && data.urls) {
-        submitData.urls = data.urls.split("\n",).map(u => u.trim(),).filter(Boolean,)
+        submitData.urls = data.urls.split("\n").map(u => u.trim()).filter(Boolean)
       }
 
-      return api.addTorrent(instanceId, submitData,)
+      return api.addTorrent(instanceId, submitData)
     },
     onSuccess: () => {
       // Add small delay to allow qBittorrent to process the new torrent
       setTimeout(() => {
         // Use refetch instead of invalidate to avoid loading state
         queryClient.refetchQueries({ 
-          queryKey: ["torrents-list", instanceId,],
+          queryKey: ["torrents-list", instanceId],
           exact: false,
           type: "active",
-        },)
+        })
         // Also refetch the metadata (categories, tags, counts)
         queryClient.refetchQueries({ 
-          queryKey: ["instance-metadata", instanceId,],
+          queryKey: ["instance-metadata", instanceId],
           exact: false,
           type: "active",
-        },)
-      }, 500,) // Give qBittorrent time to process
-      setOpen(false,)
+        })
+      }, 500) // Give qBittorrent time to process
+      setOpen(false)
       form.reset()
     },
-  },)
+  })
 
   const form = useForm({
     defaultValues: {
@@ -114,10 +114,10 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
       savePath: "",
       skipHashCheck: false,
     },
-    onSubmit: async ({ value, },) => {
-      await mutation.mutateAsync(value,)
+    onSubmit: async ({ value }) => {
+      await mutation.mutateAsync(value)
     },
-  },)
+  })
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -138,7 +138,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
         </DialogHeader>
 
         <form
-          onSubmit={(e,) => {
+          onSubmit={(e) => {
             e.preventDefault()
             form.handleSubmit()
           }}
@@ -148,7 +148,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
           <div className="flex rounded-md bg-muted p-1">
             <button
               type="button"
-              onClick={() => setActiveTab("file",)}
+              onClick={() => setActiveTab("file")}
               className={`flex-1 rounded-sm px-3 py-1.5 text-sm font-medium transition-colors ${
                 activeTab === "file"? "bg-accent text-accent-foreground shadow-sm": "text-muted-foreground hover:text-foreground hover:bg-accent/50"
               }`}
@@ -158,7 +158,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
             </button>
             <button
               type="button"
-              onClick={() => setActiveTab("url",)}
+              onClick={() => setActiveTab("url")}
               className={`flex-1 rounded-sm px-3 py-1.5 text-sm font-medium transition-colors ${
                 activeTab === "url"? "bg-accent text-accent-foreground shadow-sm": "text-muted-foreground hover:text-foreground hover:bg-accent/50"
               }`}
@@ -173,7 +173,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
             <form.Field
               name="torrentFiles"
               validators={{
-                onChange: ({ value, },) => {
+                onChange: ({ value }) => {
                   if ((!value || value.length === 0) && activeTab === "file") {
                     return "Please select at least one torrent file"
                   }
@@ -181,7 +181,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                 },
               }}
             >
-              {(field,) => (
+              {(field) => (
                 <div className="space-y-2">
                   <Label htmlFor="torrentFiles">Torrent Files</Label>
                   <Input
@@ -189,9 +189,9 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                     type="file"
                     accept=".torrent"
                     multiple
-                    onChange={(e,) => {
-                      const files = e.target.files ? Array.from(e.target.files,) : null
-                      field.handleChange(files,)
+                    onChange={(e) => {
+                      const files = e.target.files ? Array.from(e.target.files) : null
+                      field.handleChange(files)
                     }}
                   />
                   {field.state.value && field.state.value.length > 0 && (
@@ -209,7 +209,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
             <form.Field
               name="urls"
               validators={{
-                onChange: ({ value, },) => {
+                onChange: ({ value }) => {
                   if (!value && activeTab === "url") {
                     return "Please enter at least one URL or magnet link"
                   }
@@ -217,7 +217,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                 },
               }}
             >
-              {(field,) => (
+              {(field) => (
                 <div className="space-y-2">
                   <Label htmlFor="urls">URLs / Magnet Links</Label>
                   <Textarea
@@ -226,7 +226,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                     rows={4}
                     value={field.state.value}
                     onBlur={field.handleBlur}
-                    onChange={(e,) => field.handleChange(e.target.value,)}
+                    onChange={(e) => field.handleChange(e.target.value)}
                   />
                   {field.state.meta.isTouched && field.state.meta.errors[0] && (
                     <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
@@ -238,7 +238,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
 
           {/* Category */}
           <form.Field name="category">
-            {(field,) => (
+            {(field) => (
               <div className="space-y-2">
                 <Label htmlFor="category">Category</Label>
                 <Select
@@ -250,11 +250,11 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__none__">No category</SelectItem>
-                    {categories && Object.entries(categories,).map(([key, cat,],) => (
+                    {categories && Object.entries(categories).map(([key, cat]) => (
                       <SelectItem key={key} value={cat.name}>
                         {cat.name}
                       </SelectItem>
-                    ),)}
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -263,7 +263,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
 
           {/* Tags */}
           <form.Field name="tags">
-            {(field,) => (
+            {(field) => (
               <div className="space-y-2">
                 <Label htmlFor="tags">Tags</Label>
                 <Input
@@ -271,7 +271,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                   placeholder="Enter tags separated by commas"
                   value={field.state.value}
                   onBlur={field.handleBlur}
-                  onChange={(e,) => field.handleChange(e.target.value,)}
+                  onChange={(e) => field.handleChange(e.target.value)}
                 />
               </div>
             )}
@@ -279,7 +279,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
 
           {/* Save Path */}
           <form.Field name="savePath">
-            {(field,) => (
+            {(field) => (
               <div className="space-y-2">
                 <Label htmlFor="savePath">Save Path</Label>
                 <Input
@@ -287,7 +287,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                   placeholder="Leave empty for default"
                   value={field.state.value}
                   onBlur={field.handleBlur}
-                  onChange={(e,) => field.handleChange(e.target.value,)}
+                  onChange={(e) => field.handleChange(e.target.value)}
                 />
               </div>
             )}
@@ -295,7 +295,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
 
           {/* Start Paused */}
           <form.Field name="startPaused">
-            {(field,) => (
+            {(field) => (
               <div className="flex items-center space-x-2">
                 <Switch
                   id="startPaused"
@@ -309,7 +309,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
 
           {/* Skip Hash Check */}
           <form.Field name="skipHashCheck">
-            {(field,) => (
+            {(field) => (
               <div className="flex items-center space-x-2">
                 <Switch
                   id="skipHashCheck"
@@ -324,9 +324,9 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
           {/* Submit buttons */}
           <div className="flex gap-2 pt-4">
             <form.Subscribe
-              selector={(state,) => [state.canSubmit, state.isSubmitting,]}
+              selector={(state) => [state.canSubmit, state.isSubmitting]}
             >
-              {([canSubmit, isSubmitting,],) => (
+              {([canSubmit, isSubmitting]) => (
                 <Button
                   type="submit"
                   disabled={!canSubmit || isSubmitting || mutation.isPending}
@@ -339,7 +339,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
             <Button
               type="button"
               variant="outline"
-              onClick={() => setOpen(false,)}
+              onClick={() => setOpen(false)}
             >
               Cancel
             </Button>
