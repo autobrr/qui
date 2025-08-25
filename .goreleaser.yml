@@ -16,8 +16,6 @@ builds:
       - -X main.buildTime={{.Date}}
       - -X main.commit={{.Commit}}
       - -X main.PolarOrgID={{.Env.POLAR_ORG_ID}}
-    tags:
-      - nosmart
     goos:
       - linux
       - windows
