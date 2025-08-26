@@ -9,6 +9,7 @@ import { toast } from "sonner"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { InstanceErrorDisplay } from "@/components/instances/InstanceErrorDisplay"
 import { 
   DropdownMenu,
   DropdownMenuContent,
@@ -41,12 +42,6 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const displayUrl = instance.host
 
-  // Helper to check if connection error is decryption-related
-  const isDecryptionError = (error: string) => {
-    const errorLower = error.toLowerCase()
-    return errorLower.includes("decrypt") && 
-           (errorLower.includes("password") || errorLower.includes("cipher"))
-  }
 
   const handleTest = async () => {
     setTestResult(null)
@@ -176,41 +171,7 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
           )}
         </div>
         
-        {instance.hasDecryptionError && (
-          <div className="mt-4 p-3 rounded-lg bg-muted border border-border">
-            <div className="flex items-start gap-2 text-sm text-foreground">
-              <XCircle className="h-4 w-4 mt-0.5 flex-shrink-0 text-destructive" />
-              <div className="flex-1">
-                <div className="font-medium mb-1 text-destructive">Password Required</div>
-                <div className="text-muted-foreground mb-2">
-                  Unable to decrypt saved password. This usually happens when the session secret has changed.
-                </div>
-                <Button 
-                  onClick={onEdit}
-                  size="sm" 
-                  variant="outline"
-                >
-                  <Edit className="mr-2 h-3 w-3" />
-                  Re-enter Password
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {instance.connectionError && !(instance.hasDecryptionError && isDecryptionError(instance.connectionError)) && (
-          <div className="mt-4 p-3 rounded-lg bg-destructive/10 border border-destructive/20">
-            <div className="flex items-start gap-2 text-sm text-destructive">
-              <XCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-              <div className="flex-1">
-                <div className="font-medium mb-1">Connection Error</div>
-                <div className="text-destructive/90">
-                  {formatErrorMessage(instance.connectionError)}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        <InstanceErrorDisplay instance={instance} onEdit={onEdit} showEditButton={true} />
         
         {testResult && (
           <div className={cn(
