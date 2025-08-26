@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
-import { HardDrive, Download, Upload, Activity, Plus, Zap, ChevronDown, ChevronUp, Eye, EyeOff, ChevronRight } from "lucide-react"
+import { HardDrive, Download, Upload, Activity, Plus, Minus, Zap, ChevronDown, ChevronUp, Eye, EyeOff } from "lucide-react"
 import { Link } from "@tanstack/react-router"
 import { useMemo, useState } from "react"
 import { formatSpeed, formatBytes, getRatioColor } from "@/lib/utils"
@@ -456,7 +456,11 @@ function GlobalAllTimeStats({ statsData }: { statsData: Array<{ instance: Instan
         <div className="sm:hidden">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <ChevronRight className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${isExpanded ? "rotate-90" : ""}`} />
+              {isExpanded ? (
+                <Minus className="h-3.5 w-3.5 text-muted-foreground" />
+              ) : (
+                <Plus className="h-3.5 w-3.5 text-muted-foreground" />
+              )}
               <h3 className="text-sm font-medium text-muted-foreground">Server Statistics</h3>
             </div>
           </div>
@@ -491,7 +495,11 @@ function GlobalAllTimeStats({ statsData }: { statsData: Array<{ instance: Instan
         {/* Desktop layout */}
         <div className="hidden sm:flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-2">
-            <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${isExpanded ? "rotate-90" : ""}`} />
+            {isExpanded ? (
+              <Minus className="h-4 w-4 text-muted-foreground" />
+            ) : (
+              <Plus className="h-4 w-4 text-muted-foreground" />
+            )}
             <h3 className="text-base font-medium">Server Statistics</h3>
           </div>
           <div className="flex flex-wrap items-center gap-6 text-sm">
