@@ -30,6 +30,7 @@ export interface Instance {
 export interface InstanceResponse extends Instance {
   connected: boolean
   connectionError?: string
+  hasDecryptionError: boolean
 }
 
 export interface Torrent {

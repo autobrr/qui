@@ -224,6 +224,8 @@ port = {{ .port }}
 
 # Session secret
 # Auto-generated if not provided
+# WARNING: Changing this value will break decryption of existing instance passwords!
+# If changed, you'll need to re-enter passwords for all existing qBittorrent instances in the UI.
 sessionSecret = "{{ .sessionSecret }}"
 
 # Log file path

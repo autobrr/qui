@@ -8,7 +8,9 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -32,11 +34,23 @@ func NewInstancesHandler(instanceStore *models.InstanceStore, clientPool *intern
 	}
 }
 
+func (h *InstancesHandler) isDecryptionError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	errorStr := strings.ToLower(err.Error())
+	return strings.Contains(errorStr, "decrypt") &&
+		(strings.Contains(errorStr, "password") || strings.Contains(errorStr, "cipher"))
+}
+
 // testInstanceConnection tests connection to an instance and returns status and error
 func (h *InstancesHandler) testInstanceConnection(ctx context.Context, instanceID int) (connected bool, connectionError string) {
 	client, err := h.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
-		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to connect to instance")
+		if !h.isDecryptionError(err) { // Only log if it's not a decryption error (those are already logged in pool)
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to connect to instance")
+		}
 		return false, err.Error()
 	}
 
@@ -52,17 +66,21 @@ func (h *InstancesHandler) testInstanceConnection(ctx context.Context, instanceI
 func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *models.Instance) InstanceResponse {
 	connected, connectionError := h.testInstanceConnection(ctx, instance.ID)
 
+	decryptionErrorInstances := h.clientPool.GetInstancesWithDecryptionErrors()
+	hasDecryptionError := slices.Contains(decryptionErrorInstances, instance.ID)
+
 	response := InstanceResponse{
-		ID:              instance.ID,
-		Name:            instance.Name,
-		Host:            instance.Host,
-		Username:        instance.Username,
-		BasicUsername:   instance.BasicUsername,
-		IsActive:        instance.IsActive,
-		LastConnectedAt: instance.LastConnectedAt,
-		CreatedAt:       instance.CreatedAt,
-		UpdatedAt:       instance.UpdatedAt,
-		Connected:       connected,
+		ID:                 instance.ID,
+		Name:               instance.Name,
+		Host:               instance.Host,
+		Username:           instance.Username,
+		BasicUsername:      instance.BasicUsername,
+		IsActive:           instance.IsActive,
+		LastConnectedAt:    instance.LastConnectedAt,
+		CreatedAt:          instance.CreatedAt,
+		UpdatedAt:          instance.UpdatedAt,
+		Connected:          connected,
+		HasDecryptionError: hasDecryptionError,
 	}
 
 	if connectionError != "" {
@@ -94,17 +112,18 @@ type UpdateInstanceRequest struct {
 
 // InstanceResponse represents an instance in API responses
 type InstanceResponse struct {
-	ID              int        `json:"id"`
-	Name            string     `json:"name"`
-	Host            string     `json:"host"`
-	Username        string     `json:"username"`
-	BasicUsername   *string    `json:"basicUsername,omitempty"`
-	IsActive        bool       `json:"isActive"`
-	LastConnectedAt *time.Time `json:"lastConnectedAt,omitempty"`
-	CreatedAt       time.Time  `json:"createdAt"`
-	UpdatedAt       time.Time  `json:"updatedAt"`
-	Connected       bool       `json:"connected"`
-	ConnectionError string     `json:"connectionError,omitempty"`
+	ID                 int        `json:"id"`
+	Name               string     `json:"name"`
+	Host               string     `json:"host"`
+	Username           string     `json:"username"`
+	BasicUsername      *string    `json:"basicUsername,omitempty"`
+	IsActive           bool       `json:"isActive"`
+	LastConnectedAt    *time.Time `json:"lastConnectedAt,omitempty"`
+	CreatedAt          time.Time  `json:"createdAt"`
+	UpdatedAt          time.Time  `json:"updatedAt"`
+	Connected          bool       `json:"connected"`
+	ConnectionError    string     `json:"connectionError,omitempty"`
+	HasDecryptionError bool       `json:"hasDecryptionError"`
 }
 
 // TestConnectionResponse represents connection test results
@@ -345,7 +364,9 @@ func (h *InstancesHandler) GetInstanceStats(w http.ResponseWriter, r *http.Reque
 	// Get client
 	client, err := h.clientPool.GetClient(r.Context(), instanceID)
 	if err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client")
+		if !h.isDecryptionError(err) { // Only log if it's not a decryption error (those are already logged in pool)
+			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client")
+		}
 		RespondJSON(w, http.StatusOK, defaultStats)
 		return
 	}
