@@ -50,7 +50,7 @@ export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
 
   const shouldShowQuiOnMobile = !isInstanceRoute
   const [searchValue, setSearchValue] = useState<string>(routeSearch?.q || "")
-  const debouncedSearch = useDebounce(searchValue, 1000)
+  const debouncedSearch = useDebounce(searchValue, 500)
   const { instances } = useInstances()
 
   const instanceName = useMemo(() => {
@@ -202,7 +202,7 @@ export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
                         <li>• Handles dots, underscores, and brackets</li>
                         <li>• Searches name, category, and tags</li>
                         <li>• Press Enter for instant search</li>
-                        <li>• Auto-searches after 1 second pause</li>
+                        <li>• Auto-searches after 500ms pause</li>
                       </ul>
                     </div>
                   </TooltipContent>
