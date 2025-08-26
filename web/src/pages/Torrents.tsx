@@ -177,10 +177,17 @@ export function Torrents({ instanceId }: TorrentsProps) {
         </div>
       </div>
 
-      <Sheet open={!!selectedTorrent} onOpenChange={(open) => !open && setSelectedTorrent(null)}>
+      <Sheet 
+        open={!!selectedTorrent} 
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedTorrent(null)
+          }
+        }}
+      >
         <SheetContent
           side="right"
-          className="w-full fixed inset-y-0 right-0 h-full sm:w-[480px] md:w-[540px] lg:w-[600px] xl:w-[640px] sm:max-w-[480px] md:max-w-[540px] lg:max-w-[600px] xl:max-w-[640px] p-0 z-[100] gap-0 !transition-none !duration-0 data-[state=open]:!animate-none data-[state=closed]:!animate-none data-[state=open]:!transition-none data-[state=closed]:!transition-none"
+          className="w-full sm:w-[480px] md:w-[540px] lg:w-[600px] xl:w-[640px] p-0 gap-0"
         >
           <SheetHeader className="sr-only">
             <VisuallyHidden>

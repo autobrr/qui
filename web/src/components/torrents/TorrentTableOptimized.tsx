@@ -55,6 +55,7 @@ function getDefaultColumnOrder(): string[] {
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import {
   ContextMenu,
@@ -161,8 +162,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
   // Debounce search to prevent excessive filtering (200ms delay for faster response)
   const debouncedSearch = useDebounce(globalFilter, 200)
-  const routeSearch = useSearch({ strict: false }) as any
-  const searchFromRoute = (routeSearch?.q as string) || ""
+  const routeSearch = useSearch({ strict: false }) as { q?: string }
+  const searchFromRoute = routeSearch?.q || ""
 
   // Use route search if present, otherwise fall back to local immediate/debounced search
   const effectiveSearch = searchFromRoute || immediateSearch || debouncedSearch
@@ -357,12 +358,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     return table.getVisibleLeafColumns().reduce((width, col) => {
       return width + col.getSize()
     }, 0)
-  }, [table, columnSizing, columnVisibility, columnOrder])
+  }, [table])
 
   // Derive hidden columns state from table API for accuracy
   const hasHiddenColumns = useMemo(() => {
     return table.getAllLeafColumns().filter(c => c.getCanHide()).some(c => !c.getIsVisible())
-  }, [table, columnVisibility])
+  }, [table])
 
   // Reset loaded rows when data changes significantly
   useEffect(() => {
@@ -406,7 +407,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       virtualizer.scrollToOffset(0)
       virtualizer.measure()
     }, 0)
-  }, [filters, effectiveSearch, instanceId, virtualizer])
+  }, [filters, effectiveSearch, instanceId, virtualizer, sortedTorrents.length])
 
 
   // Mutation for bulk actions
@@ -614,8 +615,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     mutation.mutate({ action, hashes, enable })
   }, [mutation]) 
 
-  const copyToClipboard = useCallback((text: string) => {
-    navigator.clipboard.writeText(text)
+  const copyToClipboard = useCallback(async (text: string, type: "name" | "hash") => {
+    try {
+      await navigator.clipboard.writeText(text)
+      const message = type === "name" ? "Torrent name copied!" : "Torrent hash copied!"
+      toast.success(message)
+    } catch {
+      toast.error("Failed to copy to clipboard")
+    }
   }, []) 
   
   // Synchronous version for immediate use (backwards compatibility)
@@ -792,7 +799,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                             onSelect={(e) => e.preventDefault()}
                           >
                             <span className="truncate">
-                              {(column.columnDef.meta as any)?.headerString || 
+                              {(column.columnDef.meta as { headerString?: string })?.headerString || 
                                (typeof column.columnDef.header === "string" ? column.columnDef.header : column.id)}
                             </span>
                           </DropdownMenuCheckboxItem>
@@ -1087,11 +1094,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                           )
                         })()}
                         <ContextMenuSeparator />
-                        <ContextMenuItem onClick={() => copyToClipboard(incognitoMode ? getLinuxIsoName(torrent.hash) : torrent.name)}>
+                        <ContextMenuItem onClick={() => copyToClipboard(incognitoMode ? getLinuxIsoName(torrent.hash) : torrent.name, "name")}>
                           <Copy className="mr-2 h-4 w-4" />
                           Copy Name
                         </ContextMenuItem>
-                        <ContextMenuItem onClick={() => copyToClipboard(torrent.hash)}>
+                        <ContextMenuItem onClick={() => copyToClipboard(torrent.hash, "hash")}>
                           <Copy className="mr-2 h-4 w-4" />
                           Copy Hash
                         </ContextMenuItem>
