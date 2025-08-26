@@ -23,10 +23,11 @@ import { User, LogOut, Key, Search, Info, Filter, Plus, X } from "lucide-react"
 import { ThemeToggle } from "@/components/ui/ThemeToggle"
 import { cn } from "@/lib/utils"
 import { Link, useNavigate, useSearch, useRouterState } from "@tanstack/react-router"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, useRef } from "react"
 import { useDebounce } from "@/hooks/useDebounce"
 import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSidebarState"
 import { useInstances } from "@/hooks/useInstances"
+import { useHotkeys } from "react-hotkeys-hook"
 
 interface HeaderProps {
   children?: React.ReactNode
@@ -36,7 +37,7 @@ interface HeaderProps {
 export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
-  const routeSearch = useSearch({ strict: false }) as any
+  const routeSearch = useSearch({ strict: false }) as { q?: string; modal?: string; [key: string]: unknown }
 
   const instanceId = useRouterState({
     select: (s) => s.matches.find((m) => m.routeId === "/_authenticated/instances/$instanceId")?.params?.instanceId as string | undefined,
@@ -69,12 +70,31 @@ export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
     const next = { ...(routeSearch || {}) }
     if (debouncedSearch) next.q = debouncedSearch
     else delete next.q
-    navigate({ search: next, replace: true })
+    navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedSearch, isInstanceRoute])
 
-  const isGlobSearch = !!searchValue && /[*?\[\]]/.test(searchValue)
+  const isGlobSearch = !!searchValue && /[*?[\]]/.test(searchValue)
   const [filterSidebarCollapsed, setFilterSidebarCollapsed] = usePersistedFilterSidebarState(false)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+
+  // Detect platform for appropriate key display
+  const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.userAgent)
+  const shortcutKey = isMac ? "⌘K" : "Ctrl+K"
+
+  // Global keyboard shortcut to focus search
+  useHotkeys(
+    "meta+k, ctrl+k",
+    (event) => {
+      event.preventDefault()
+      searchInputRef.current?.focus()
+    },
+    {
+      preventDefault: true,
+      enableOnFormTags: ["input", "textarea", "select"],
+    },
+    [isInstanceRoute]
+  )
 
   return (
     <header className="sticky top-0 z-50 flex h-16 items-center justify-between sm:border-b bg-background pl-1 pr-4 sm:pr-6 lg:static">
@@ -94,7 +114,7 @@ export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
                   size="sm"
                   onClick={() => {
                     const next = { ...(routeSearch || {}), modal: "add-torrent" }
-                    navigate({ search: next, replace: true })
+                    navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
                   }}
                 >
                   <Plus className="h-4 w-4 sm:mr-2" />
@@ -126,7 +146,8 @@ export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
               <Input
-                placeholder={isGlobSearch ? "Glob pattern..." : "Search torrents..."}
+                ref={searchInputRef}
+                placeholder={isGlobSearch ? "Glob pattern..." : `Search torrents... (${shortcutKey})`}
                 value={searchValue}
                 onChange={(e) => setSearchValue(e.target.value)}
                 onKeyDown={(e) => {
@@ -134,7 +155,7 @@ export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
                     const next = { ...(routeSearch || {}) }
                     if (searchValue) next.q = searchValue
                     else delete next.q
-                    navigate({ search: next, replace: true })
+                    navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
                   }
                 }}
                 className={`w-full pl-9 pr-16 transition-all text-xs ${
@@ -153,7 +174,7 @@ export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
                           setSearchValue("")
                           const next = { ...(routeSearch || {}) }
                           delete next.q
-                          navigate({ search: next, replace: true })
+                          navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
                         }}
                       >
                         <X className="h-3.5 w-3.5 text-muted-foreground" />
