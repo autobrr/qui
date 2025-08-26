@@ -83,6 +83,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger
+} from "@/components/ui/tooltip"
 import { AddTorrentDialog } from "./AddTorrentDialog"
 import { TorrentActions } from "./TorrentActions"
 import { Loader2, Play, Pause, Trash2, CheckCircle, Copy, Tag, Folder, Columns3, Radio, ArrowUp, ArrowDown, ChevronsUp, ChevronsDown, Eye, EyeOff, ChevronDown, ChevronUp, Settings2, Sparkles } from "lucide-react"
@@ -766,17 +771,22 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
               const dropdown = (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="relative"
-                    >
-                      <Columns3 className="h-4 w-4" />
-                      {hasHiddenColumns && (
-                        <span className="absolute -top-1 -right-1 h-2 w-2 bg-primary rounded-full" />
-                      )}
-                      <span className="sr-only">Toggle columns</span>
-                    </Button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="relative"
+                        >
+                          <Columns3 className="h-4 w-4" />
+                          {hasHiddenColumns && (
+                            <span className="absolute -top-1 -right-1 h-2 w-2 bg-primary rounded-full" />
+                          )}
+                          <span className="sr-only">Toggle columns</span>
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Toggle columns</TooltipContent>
+                    </Tooltip>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-48">
                     <DropdownMenuLabel>Toggle columns</DropdownMenuLabel>

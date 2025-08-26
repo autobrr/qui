@@ -107,22 +107,17 @@ export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
         )}>{instanceName ? `qui - ${instanceName}` : "qui"}</h1>
         {isInstanceRoute && (
           <div className="ml-2 hidden sm:block">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    const next = { ...(routeSearch || {}), modal: "add-torrent" }
-                    navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
-                  }}
-                >
-                  <Plus className="h-4 w-4 sm:mr-2" />
-                  <span className="hidden sm:inline">Add Torrent</span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Add Torrent</TooltipContent>
-            </Tooltip>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const next = { ...(routeSearch || {}), modal: "add-torrent" }
+                navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
+              }}
+            >
+              <Plus className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Add Torrent</span>
+            </Button>
           </div>
         )}
       </div>
@@ -133,15 +128,19 @@ export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
           <div className="flex items-center gap-2">
             {/* Slot to place actions directly to the left of the filter button (desktop only) */}
             <span id="header-left-of-filter" className="hidden xl:inline-flex" />
-            <Button
-              variant="outline"
-              size="icon"
-              className="hidden xl:inline-flex"
-              onClick={() => setFilterSidebarCollapsed(!filterSidebarCollapsed)}
-              title={filterSidebarCollapsed ? "Show filters" : "Hide filters"}
-            >
-              <Filter className="h-4 w-4" />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="hidden xl:inline-flex"
+                  onClick={() => setFilterSidebarCollapsed(!filterSidebarCollapsed)}
+                >
+                  <Filter className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{filterSidebarCollapsed ? "Show filters" : "Hide filters"}</TooltipContent>
+            </Tooltip>
             {/* Mobile filter button moved to card/table toolbars */}
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
