@@ -3,18 +3,19 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState, } from "react"
-import type { InstanceResponse, } from "@/types"
-import { toast, } from "sonner"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, } from "@/components/ui/card"
-import { Button, } from "@/components/ui/button"
-import { Badge, } from "@/components/ui/badge"
+import { useState } from "react"
+import type { InstanceResponse } from "@/types"
+import { toast } from "sonner"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { InstanceErrorDisplay } from "@/components/instances/InstanceErrorDisplay"
 import { 
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  DropdownMenuTrigger,
+  DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 import { 
   MoreVertical, 
@@ -24,76 +25,77 @@ import {
   CheckCircle,
   XCircle,
   Eye,
-  EyeOff,
+  EyeOff
 } from "lucide-react"
-import { useInstances, } from "@/hooks/useInstances"
-import { cn, formatErrorMessage, } from "@/lib/utils"
-import { useIncognitoMode, } from "@/lib/incognito"
+import { useInstances } from "@/hooks/useInstances"
+import { cn, formatErrorMessage } from "@/lib/utils"
+import { useIncognitoMode } from "@/lib/incognito"
 
 interface InstanceCardProps {
   instance: InstanceResponse
   onEdit: () => void
 }
 
-export function InstanceCard({ instance, onEdit, }: InstanceCardProps,) {
-  const { deleteInstance, testConnection, isDeleting, isTesting, } = useInstances()
-  const [testResult, setTestResult,] = useState<{ success: boolean; message: string } | null>(null,)
-  const [incognitoMode, setIncognitoMode,] = useIncognitoMode()
+export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
+  const { deleteInstance, testConnection, isDeleting, isTesting } = useInstances()
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
+  const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const displayUrl = instance.host
 
+
   const handleTest = async () => {
-    setTestResult(null,)
+    setTestResult(null)
     try {
-      const result = await testConnection(instance.id,)
+      const result = await testConnection(instance.id)
       // Convert connected to success for consistency with component state
-      const testResult = { success: result.connected, message: result.message, }
-      setTestResult(testResult,)
+      const testResult = { success: result.connected, message: result.message }
+      setTestResult(testResult)
       
       if (result.connected) {
         toast.success("Test Connection Successful", {
           description: result.message || "Successfully connected to qBittorrent instance",
-        },)
+        })
       } else {
         toast.error("Test Connection Failed", {
-          description: result.message ? formatErrorMessage(result.message,) : "Could not connect to qBittorrent instance",
-        },)
+          description: result.message ? formatErrorMessage(result.message) : "Could not connect to qBittorrent instance",
+        })
       }
     } catch (error) {
       const message = "Connection failed"
-      setTestResult({ success: false, message, },)
+      setTestResult({ success: false, message })
       toast.error("Test Connection Failed", {
-        description: error instanceof Error ? formatErrorMessage(error.message,) : message,
-      },)
+        description: error instanceof Error ? formatErrorMessage(error.message) : message,
+      })
     }
   }
 
   const handleDelete = () => {
-    if (confirm(`Are you sure you want to delete "${instance.name}"?`,)) {
-      deleteInstance({ id: instance.id, name: instance.name, }, {
+    if (confirm(`Are you sure you want to delete "${instance.name}"?`)) {
+      deleteInstance({ id: instance.id, name: instance.name }, {
         onSuccess: () => {
           toast.success("Instance Deleted", {
             description: `Successfully deleted "${instance.name}"`,
-          },)
+          })
         },
-        onError: (error,) => {
+        onError: (error) => {
           toast.error("Delete Failed", {
-            description: error instanceof Error ? formatErrorMessage(error.message,) : "Failed to delete instance",
-          },)
+            description: error instanceof Error ? formatErrorMessage(error.message) : "Failed to delete instance",
+          })
         },
-      },)
+      })
     }
   }
 
   return (
     <Card>
       <div>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0">
+        <CardHeader className="flex flex-row items-center justify-between pr-2 space-y-0">
           <div>
             <CardTitle className="text-base font-medium">
               {instance.name}
             </CardTitle>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             <Badge 
               variant={instance.connected ? "default" : "destructive"}
             >
@@ -138,10 +140,10 @@ export function InstanceCard({ instance, onEdit, }: InstanceCardProps,) {
             variant="ghost"
             size="icon"
             className="h-4 w-4 hover:bg-muted/50"
-            onClick={(e,) => {
+            onClick={(e) => {
               e.preventDefault()
               e.stopPropagation()
-              setIncognitoMode(!incognitoMode,)
+              setIncognitoMode(!incognitoMode)
             }}
           >
             {incognitoMode ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
@@ -164,36 +166,24 @@ export function InstanceCard({ instance, onEdit, }: InstanceCardProps,) {
           {instance.lastConnectedAt && (
             <div className="flex justify-between">
               <span className="text-muted-foreground">Last connected:</span>
-              <span>{new Date(instance.lastConnectedAt,).toLocaleString()}</span>
+              <span>{new Date(instance.lastConnectedAt).toLocaleString()}</span>
             </div>
           )}
         </div>
         
-        {instance.connectionError && (
-          <div className="mt-4 p-3 rounded-lg bg-destructive/10 border border-destructive/20">
-            <div className="flex items-start gap-2 text-sm text-destructive">
-              <XCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-              <div className="flex-1">
-                <div className="font-medium mb-1">Connection Error</div>
-                <div className="text-destructive/90">
-                  {formatErrorMessage(instance.connectionError,)}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        <InstanceErrorDisplay instance={instance} onEdit={onEdit} showEditButton={true} />
         
         {testResult && (
           <div className={cn(
             "mt-4 flex items-center gap-2 text-sm",
-            testResult.success ? "text-primary" : "text-destructive",
+            testResult.success ? "text-primary" : "text-destructive"
           )}>
             {testResult.success ? (
               <CheckCircle className="h-4 w-4" />
             ) : (
               <XCircle className="h-4 w-4" />
             )}
-            <span>{testResult.success ? testResult.message : formatErrorMessage(testResult.message,)}</span>
+            <span>{testResult.success ? testResult.message : formatErrorMessage(testResult.message)}</span>
           </div>
         )}
         

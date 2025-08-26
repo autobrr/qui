@@ -3,14 +3,14 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, } from "@/components/ui/card"
-import { Badge, } from "@/components/ui/badge"
-import { Separator, } from "@/components/ui/separator"
-import { themes, isThemePremium, type Theme, } from "@/config/themes"
-import { useHasPremiumAccess, } from "@/hooks/useThemeLicense"
-import { useTheme, } from "@/hooks/useTheme"
-import { Sparkles, Lock, Check, Palette, } from "lucide-react"
-import { toast, } from "sonner"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Separator } from "@/components/ui/separator"
+import { themes, isThemePremium, type Theme } from "@/config/themes"
+import { useHasPremiumAccess } from "@/hooks/useThemeLicense"
+import { useTheme } from "@/hooks/useTheme"
+import { Sparkles, Lock, Check, Palette } from "lucide-react"
+import { toast } from "sonner"
 
 interface ThemeCardProps {
   theme: Theme
@@ -20,9 +20,9 @@ interface ThemeCardProps {
 }
 
 // Helper to extract color preview from theme
-function getThemeColors(theme: Theme,) {
+function getThemeColors(theme: Theme) {
   // Check if dark mode is active by looking at the document element
-  const isDark = document.documentElement.classList.contains("dark",)
+  const isDark = document.documentElement.classList.contains("dark")
   const cssVars = isDark ? theme.cssVars.dark : theme.cssVars.light
   
   // Extract the actual color values from the theme
@@ -30,11 +30,11 @@ function getThemeColors(theme: Theme,) {
   const secondary = cssVars["--secondary"] 
   const accent = cssVars["--accent"]
   
-  return { primary, secondary, accent, }
+  return { primary, secondary, accent }
 }
 
-function ThemeCard({ theme, isSelected, isLocked, onSelect, }: ThemeCardProps,) {
-  const colors = getThemeColors(theme,)
+function ThemeCard({ theme, isSelected, isLocked, onSelect }: ThemeCardProps) {
+  const colors = getThemeColors(theme)
   
   return (
     <Card 
@@ -118,24 +118,24 @@ function ThemeCard({ theme, isSelected, isLocked, onSelect, }: ThemeCardProps,) 
 }
 
 export function ThemeSelector() {
-  const { theme: currentTheme, setTheme, } = useTheme()
-  const { hasPremiumAccess, isLoading, } = useHasPremiumAccess()
+  const { theme: currentTheme, setTheme } = useTheme()
+  const { hasPremiumAccess, isLoading } = useHasPremiumAccess()
   
-  const isThemeLicensed = (themeId: string,) => {
-    if (!isThemePremium(themeId,)) return true // Free themes are always available
+  const isThemeLicensed = (themeId: string) => {
+    if (!isThemePremium(themeId)) return true // Free themes are always available
     return hasPremiumAccess // Premium themes require premium access
   }
   
-  const freeThemes = themes.filter(theme => !theme.isPremium,)
-  const premiumThemes = themes.filter(theme => theme.isPremium,)
+  const freeThemes = themes.filter(theme => !theme.isPremium)
+  const premiumThemes = themes.filter(theme => theme.isPremium)
   
-  const handleThemeSelect = (themeId: string,) => {
-    if (isThemeLicensed(themeId,)) {
-      setTheme(themeId,)
+  const handleThemeSelect = (themeId: string) => {
+    if (isThemeLicensed(themeId)) {
+      setTheme(themeId)
     } else {
       toast.error("This theme requires a premium license", {
         description: "Please purchase a license to access premium themes",
-      },)
+      })
     }
   }
   
@@ -152,9 +152,9 @@ export function ThemeSelector() {
         <CardContent>
           <div className="animate-pulse space-y-3">
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {[...Array(6,),].map((_, i,) => (
+              {[...Array(6)].map((_, i) => (
                 <div key={i} className="h-24 bg-muted rounded"></div>
-              ),)}
+              ))}
             </div>
           </div>
         </CardContent>
@@ -181,15 +181,15 @@ export function ThemeSelector() {
             Free Themes
           </h4>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-2 sm:gap-3">
-            {freeThemes.map((theme,) => (
+            {freeThemes.map((theme) => (
               <ThemeCard
                 key={theme.id}
                 theme={theme}
                 isSelected={currentTheme === theme.id}
                 isLocked={false}
-                onSelect={() => handleThemeSelect(theme.id,)}
+                onSelect={() => handleThemeSelect(theme.id)}
               />
-            ),)}
+            ))}
           </div>
         </div>
         
@@ -211,18 +211,18 @@ export function ThemeSelector() {
             </p>
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 gap-2 sm:gap-3">
-              {premiumThemes.map((theme,) => {
-                const isLicensed = isThemeLicensed(theme.id,)
+              {premiumThemes.map((theme) => {
+                const isLicensed = isThemeLicensed(theme.id)
                 return (
                   <ThemeCard
                     key={theme.id}
                     theme={theme}
                     isSelected={currentTheme === theme.id}
                     isLocked={!isLicensed}
-                    onSelect={() => handleThemeSelect(theme.id,)}
+                    onSelect={() => handleThemeSelect(theme.id)}
                   />
                 )
-              },)}
+              })}
             </div>
           )}
         </div>
@@ -231,7 +231,7 @@ export function ThemeSelector() {
         {/* Current theme info */}
         <div className="text-center">
           <p className="text-sm text-muted-foreground">
-            Current theme: <span className="font-medium">{themes.find(t => t.id === currentTheme,)?.name || "Unknown"}</span>
+            Current theme: <span className="font-medium">{themes.find(t => t.id === currentTheme)?.name || "Unknown"}</span>
           </p>
         </div>
       </CardContent>
