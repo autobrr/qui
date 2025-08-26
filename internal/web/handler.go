@@ -135,8 +135,42 @@ func (h *Handler) serveAssets(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	}
 
-	// Serve the file
-	http.ServeContent(w, r, path, stat.ModTime(), file.(io.ReadSeeker))
+	// For specific files that need dynamic path modification when using baseURL
+	needsModification := h.baseURL != "" && h.baseURL != "/" &&
+		(path == "registerSW.js" || path == "sw.js" || path == "manifest.webmanifest")
+
+	if needsModification {
+		// Read the file content for modification
+		content, err := io.ReadAll(file)
+		if err != nil {
+			http.Error(w, "Internal error", http.StatusInternalServerError)
+			return
+		}
+
+		modifiedContent := string(content)
+		basePrefix := strings.TrimSuffix(h.baseURL, "/")
+
+		// Modify service worker files to use correct base URL
+		if path == "registerSW.js" {
+			// Fix service worker registration paths
+			modifiedContent = strings.ReplaceAll(modifiedContent, `'/sw.js'`, `'`+basePrefix+`/sw.js'`)
+			modifiedContent = strings.ReplaceAll(modifiedContent, `"/sw.js"`, `"`+basePrefix+`/sw.js"`)
+			modifiedContent = strings.ReplaceAll(modifiedContent, `scope: '/'`, `scope: '`+basePrefix+`/'`)
+		} else if path == "manifest.webmanifest" {
+			// Fix manifest paths (icons, start_url, etc.)
+			modifiedContent = strings.ReplaceAll(modifiedContent, `"start_url":"/"`, `"start_url":"`+basePrefix+`/"`)
+			modifiedContent = strings.ReplaceAll(modifiedContent, `"start_url": "/"`, `"start_url": "`+basePrefix+`/"`)
+			modifiedContent = strings.ReplaceAll(modifiedContent, `"scope":"/"`, `"scope":"`+basePrefix+`/"`)
+			modifiedContent = strings.ReplaceAll(modifiedContent, `"scope": "/"`, `"scope": "`+basePrefix+`/"`)
+			modifiedContent = strings.ReplaceAll(modifiedContent, `"src":"pwa-`, `"src":"`+basePrefix+`/pwa-`)
+			modifiedContent = strings.ReplaceAll(modifiedContent, `"src": "pwa-`, `"src": "`+basePrefix+`/pwa-`)
+		}
+
+		w.Write([]byte(modifiedContent))
+	} else {
+		// Serve the file normally
+		http.ServeContent(w, r, path, stat.ModTime(), file.(io.ReadSeeker))
+	}
 }
 
 func (h *Handler) serveSPA(w http.ResponseWriter, r *http.Request) {
@@ -180,9 +214,24 @@ func (h *Handler) serveSPA(w http.ResponseWriter, r *http.Request) {
 
 	// If we have a base URL other than /, we need to fix asset paths
 	if baseURL != "/" {
-		modifiedContent = strings.ReplaceAll(modifiedContent, `src="/assets/`, `src="`+strings.TrimSuffix(baseURL, "/")+`/assets/`)
-		modifiedContent = strings.ReplaceAll(modifiedContent, `href="/assets/`, `href="`+strings.TrimSuffix(baseURL, "/")+`/assets/`)
-		modifiedContent = strings.ReplaceAll(modifiedContent, `href="/qui.png"`, `href="`+strings.TrimSuffix(baseURL, "/")+`/qui.png"`)
+		basePrefix := strings.TrimSuffix(baseURL, "/")
+
+		// Fix asset paths
+		modifiedContent = strings.ReplaceAll(modifiedContent, `src="/assets/`, `src="`+basePrefix+`/assets/`)
+		modifiedContent = strings.ReplaceAll(modifiedContent, `href="/assets/`, `href="`+basePrefix+`/assets/`)
+
+		// Fix favicon and app icons
+		modifiedContent = strings.ReplaceAll(modifiedContent, `href="/favicon.png"`, `href="`+basePrefix+`/favicon.png"`)
+		modifiedContent = strings.ReplaceAll(modifiedContent, `href="/apple-touch-icon.png"`, `href="`+basePrefix+`/apple-touch-icon.png"`)
+		modifiedContent = strings.ReplaceAll(modifiedContent, `href="/qui.png"`, `href="`+basePrefix+`/qui.png"`)
+
+		// Fix PWA files
+		modifiedContent = strings.ReplaceAll(modifiedContent, `src="/registerSW.js"`, `src="`+basePrefix+`/registerSW.js"`)
+		modifiedContent = strings.ReplaceAll(modifiedContent, `href="/manifest.webmanifest"`, `href="`+basePrefix+`/manifest.webmanifest"`)
+
+		// Fix PWA icons (if they exist in the HTML)
+		modifiedContent = strings.ReplaceAll(modifiedContent, `href="/pwa-192x192.png"`, `href="`+basePrefix+`/pwa-192x192.png"`)
+		modifiedContent = strings.ReplaceAll(modifiedContent, `href="/pwa-512x512.png"`, `href="`+basePrefix+`/pwa-512x512.png"`)
 	}
 
 	// Set content type and write response
