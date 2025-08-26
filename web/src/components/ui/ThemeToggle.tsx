@@ -99,7 +99,7 @@ export const ThemeToggle: React.FC = () => {
           variant="ghost"
           size="icon"
           className={cn(
-            "text-muted-foreground hover:text-foreground transition-transform duration-300",
+            "transition-transform duration-300",
             isTransitioning && "animate-spin-slow"
           )}
         >

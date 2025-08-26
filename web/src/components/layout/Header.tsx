@@ -15,11 +15,10 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
-import { User, LogOut, Key, Search, Info, Filter, Plus, X } from "lucide-react"
+import { Menu, LogOut, Settings, Search, Info, Filter, Plus, X, Home, Server, HardDrive } from "lucide-react"
 import { ThemeToggle } from "@/components/ui/ThemeToggle"
 import { cn } from "@/lib/utils"
 import { Link, useNavigate, useSearch, useRouterState } from "@tanstack/react-router"
@@ -32,10 +31,11 @@ import { useHotkeys } from "react-hotkeys-hook"
 interface HeaderProps {
   children?: React.ReactNode
   sidebarCollapsed?: boolean
+  onSidebarToggle?: () => void
 }
 
-export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
-  const { user, logout } = useAuth()
+export function Header({ children, sidebarCollapsed = false, onSidebarToggle }: HeaderProps) {
+  const { logout } = useAuth()
   const navigate = useNavigate()
   const routeSearch = useSearch({ strict: false }) as { q?: string; modal?: string; [key: string]: unknown }
 
@@ -52,6 +52,7 @@ export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
   const [searchValue, setSearchValue] = useState<string>(routeSearch?.q || "")
   const debouncedSearch = useDebounce(searchValue, 500)
   const { instances } = useInstances()
+
 
   const instanceName = useMemo(() => {
     if (!isInstanceRoute || !instances || selectedInstanceId === null) return null
@@ -214,31 +215,92 @@ export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
         </div>
       )}
 
-      <div className="flex items-center gap-3">
+      <div className="grid grid-cols-[auto_auto] items-center gap-3 transition-all duration-300 ease-out">
         <ThemeToggle />
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="gap-2">
-              <User className="h-4 w-4" />
-              <span className="hidden sm:inline">{user?.username}</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel>My Account</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link to="/settings" search={{ tab: "api" }} className="flex cursor-pointer">
-                <Key className="mr-2 h-4 w-4" />
-                API Keys
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => logout()}>
-              <LogOut className="mr-2 h-4 w-4" />
-              Logout
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <div className={cn(
+          "transition-all duration-300 ease-out overflow-hidden",
+          sidebarCollapsed ? "w-10 opacity-100" : "w-0 opacity-0"
+        )}>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="hover:bg-muted hover:text-foreground transition-colors">
+                <Menu className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-52">
+              <DropdownMenuItem asChild>
+                <Link 
+                  to="/dashboard" 
+                  className="flex cursor-pointer"
+                  onClick={() => {
+                    if (sidebarCollapsed && onSidebarToggle) {
+                      onSidebarToggle()
+                    }
+                  }}
+                >
+                  <Home className="mr-2 h-4 w-4" />
+                  Dashboard
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link 
+                  to="/instances" 
+                  className="flex cursor-pointer"
+                  onClick={() => {
+                    if (sidebarCollapsed && onSidebarToggle) {
+                      onSidebarToggle()
+                    }
+                  }}
+                >
+                  <Server className="mr-2 h-4 w-4" />
+                  Instances
+                </Link>
+              </DropdownMenuItem>
+              {instances && instances.length > 0 && (
+                <>
+                  {instances.map((instance) => (
+                    <DropdownMenuItem key={instance.id} asChild>
+                      <Link 
+                        to="/instances/$instanceId" 
+                        params={{ instanceId: instance.id.toString() }}
+                        className="flex cursor-pointer pl-6"
+                      >
+                        <HardDrive className="mr-2 h-4 w-4" />
+                        <span className="truncate">{instance.name}</span>
+                        <span
+                          className={cn(
+                            "ml-auto h-2 w-2 rounded-full flex-shrink-0",
+                            instance.connected ? "bg-green-500" : "bg-red-500"
+                          )}
+                        />
+                      </Link>
+                    </DropdownMenuItem>
+                  ))}
+                </>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <Link 
+                  to="/settings" 
+                  className="flex cursor-pointer"
+                  onClick={() => {
+                    if (sidebarCollapsed && onSidebarToggle) {
+                      onSidebarToggle()
+                    }
+                  }}
+                >
+                  <Settings className="mr-2 h-4 w-4" />
+                  Settings
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => logout()}>
+                <LogOut className="mr-2 h-4 w-4" />
+                Logout
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
     </header>
   )

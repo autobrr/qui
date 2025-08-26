@@ -401,10 +401,10 @@ export function Settings() {
   const defaultTab = (search as any)?.tab || "security"
   
   return (
-    <div className="container mx-auto p-4 sm:p-6 max-w-4xl">
-      <div className="mb-4 sm:mb-6">
-        <h1 className="text-2xl sm:text-3xl font-bold">Settings</h1>
-        <p className="text-muted-foreground mt-1 sm:mt-2 text-sm sm:text-base">
+    <div className="container mx-auto p-6">
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold">Settings</h1>
+        <p className="text-muted-foreground mt-2">
           Manage your application preferences and security
         </p>
       </div>
@@ -412,9 +412,9 @@ export function Settings() {
       <Tabs defaultValue={defaultTab} className="space-y-4">
         <div className="w-full overflow-x-auto">
           <TabsList className="inline-flex h-auto min-w-full sm:grid sm:grid-cols-3">
-            <TabsTrigger value="security" className="text-xs px-3 py-2 min-w-fit">Security</TabsTrigger>
-            <TabsTrigger value="themes" className="text-xs px-3 py-2 min-w-fit">Themes</TabsTrigger>
-            <TabsTrigger value="api" className="text-xs px-3 py-2 min-w-fit whitespace-nowrap">API Keys</TabsTrigger>
+            <TabsTrigger value="security" className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 py-2 min-w-fit cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform">Security</TabsTrigger>
+            <TabsTrigger value="themes" className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 py-2 min-w-fit cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform">Themes</TabsTrigger>
+            <TabsTrigger value="api" className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 py-2 min-w-fit whitespace-nowrap cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform">API Keys</TabsTrigger>
           </TabsList>
         </div>
 
