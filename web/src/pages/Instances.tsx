@@ -7,6 +7,7 @@ import { useState, useEffect } from "react"
 import { useInstances } from "@/hooks/useInstances"
 import { InstanceCard } from "@/components/instances/InstanceCard"
 import { InstanceForm } from "@/components/instances/InstanceForm"
+import { PasswordIssuesBanner } from "@/components/instances/PasswordIssuesBanner"
 import { Button } from "@/components/ui/button"
 import { 
   Dialog,
@@ -15,8 +16,7 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Plus, AlertTriangle } from "lucide-react"
+import { Plus } from "lucide-react"
 import { useNavigate, useSearch } from "@tanstack/react-router"
 import type { Instance } from "@/types"
 
@@ -74,16 +74,7 @@ export function Instances() {
       </div>
 
       {/* Show banner if any instances have decryption errors */}
-      {instances && instances.some(instance => instance.hasDecryptionError) && (
-        <Alert className="mb-6">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Password Issues Detected</AlertTitle>
-          <AlertDescription>
-            Some instances cannot decrypt their saved passwords, likely due to a configuration change. 
-            Click "Re-enter Password" on the affected instances below to resolve this issue.
-          </AlertDescription>
-        </Alert>
-      )}
+      <PasswordIssuesBanner instances={instances || []} />
 
       {instances && instances.length > 0 ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 items-start">
