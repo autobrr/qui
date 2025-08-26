@@ -65,10 +65,10 @@ export const SetTagsDialog = memo(function SetTagsDialog({
     if (newTag.trim() && !allTags.includes(newTag.trim())) {
       allTags.push(newTag.trim())
     }
-    onConfirm(allTags,)
-    setSelectedTags([],)
-    setNewTag("",)
-  }, [selectedTags, newTag, onConfirm,],) // empty array will clear all tags
+    onConfirm(allTags)
+    setSelectedTags([])
+    setNewTag("")
+  }, [selectedTags, newTag, onConfirm]) // empty array will clear all tags
 
   const handleCancel = useCallback((): void => {
     setSelectedTags([])
@@ -95,7 +95,7 @@ export const SetTagsDialog = memo(function SetTagsDialog({
                   type="button"
                   size="sm"
                   variant="outline"
-                  onClick={() => setSelectedTags([],)}
+                  onClick={() => setSelectedTags([])}
                   disabled={selectedTags.length === 0}
                 >
                   Deselect All
