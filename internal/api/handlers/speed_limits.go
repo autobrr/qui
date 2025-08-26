@@ -42,6 +42,21 @@ type ToggleResponse struct {
 	Message                       string `json:"message,omitempty"`
 }
 
+// SetSpeedLimitsRequest represents a request to set custom speed limits
+type SetSpeedLimitsRequest struct {
+	DownloadLimit                 *int64 `json:"downloadLimit,omitempty"`                 // Global download limit (0 = unlimited)
+	UploadLimit                   *int64 `json:"uploadLimit,omitempty"`                   // Global upload limit (0 = unlimited)
+	AlternativeDownloadLimit      *int64 `json:"altDownloadLimit,omitempty"`              // Alternative download limit
+	AlternativeUploadLimit        *int64 `json:"altUploadLimit,omitempty"`                // Alternative upload limit
+	AlternativeSpeedLimitsEnabled *bool  `json:"alternativeSpeedLimitsEnabled,omitempty"` // Enable/disable alternative limits
+}
+
+// SetSpeedLimitsResponse represents the response after setting speed limits
+type SetSpeedLimitsResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message,omitempty"`
+}
+
 // GetSpeedLimitsStatus godoc
 // @Summary Get speed limits status for an instance
 // @Description Get current speed limits status including alternative speed limits and current/alternative limits
@@ -189,6 +204,121 @@ func (h *SpeedLimitsHandler) ToggleSpeedLimits(w http.ResponseWriter, r *http.Re
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		log.Error().Err(err).Msg("Failed to encode toggle response")
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+}
+
+// SetSpeedLimits godoc
+// @Summary Set custom speed limits for an instance
+// @Description Set custom global and/or alternative speed limits for a qBittorrent instance
+// @Tags instances
+// @Accept json
+// @Produce json
+// @Param instanceID path int true "Instance ID"
+// @Param request body SetSpeedLimitsRequest true "Speed limits configuration"
+// @Success 200 {object} SetSpeedLimitsResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /api/instances/{instanceID}/speed-limits [put]
+func (h *SpeedLimitsHandler) SetSpeedLimits(w http.ResponseWriter, r *http.Request) {
+	instanceIDStr := chi.URLParam(r, "instanceID")
+	instanceID, err := strconv.Atoi(instanceIDStr)
+	if err != nil {
+		log.Error().Err(err).Str("instanceID", instanceIDStr).Msg("Invalid instance ID")
+		http.Error(w, "Invalid instance ID", http.StatusBadRequest)
+		return
+	}
+
+	var req SetSpeedLimitsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Invalid request body")
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	ctx := r.Context()
+	client, err := h.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client")
+		http.Error(w, "Failed to connect to instance", http.StatusNotFound)
+		return
+	}
+
+	// Set global download limit if provided
+	if req.DownloadLimit != nil {
+		err = client.SetGlobalDownloadLimitCtx(ctx, *req.DownloadLimit)
+		if err != nil {
+			log.Error().Err(err).Int("instanceID", instanceID).Int64("limit", *req.DownloadLimit).Msg("Failed to set global download limit")
+			http.Error(w, "Failed to set download limit", http.StatusInternalServerError)
+			return
+		}
+		log.Info().Int("instanceID", instanceID).Int64("limit", *req.DownloadLimit).Msg("Set global download limit")
+	}
+
+	// Set global upload limit if provided
+	if req.UploadLimit != nil {
+		err = client.SetGlobalUploadLimitCtx(ctx, *req.UploadLimit)
+		if err != nil {
+			log.Error().Err(err).Int("instanceID", instanceID).Int64("limit", *req.UploadLimit).Msg("Failed to set global upload limit")
+			http.Error(w, "Failed to set upload limit", http.StatusInternalServerError)
+			return
+		}
+		log.Info().Int("instanceID", instanceID).Int64("limit", *req.UploadLimit).Msg("Set global upload limit")
+	}
+
+	// Set alternative limits if provided
+	if req.AlternativeDownloadLimit != nil || req.AlternativeUploadLimit != nil {
+		prefsMap := make(map[string]any)
+
+		if req.AlternativeDownloadLimit != nil {
+			prefsMap["alt_dl_limit"] = int(*req.AlternativeDownloadLimit)
+			log.Info().Int("instanceID", instanceID).Int64("limit", *req.AlternativeDownloadLimit).Msg("Setting alternative download limit")
+		}
+
+		if req.AlternativeUploadLimit != nil {
+			prefsMap["alt_up_limit"] = int(*req.AlternativeUploadLimit)
+			log.Info().Int("instanceID", instanceID).Int64("limit", *req.AlternativeUploadLimit).Msg("Setting alternative upload limit")
+		}
+
+		err = client.SetPreferencesCtx(ctx, prefsMap)
+		if err != nil {
+			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to set alternative speed limits")
+			http.Error(w, "Failed to set alternative speed limits", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// Toggle alternative speed limits mode if provided
+	if req.AlternativeSpeedLimitsEnabled != nil {
+		currentMode, err := client.GetAlternativeSpeedLimitsModeCtx(ctx)
+		if err != nil {
+			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get current alternative speed limits mode")
+			http.Error(w, "Failed to get current mode", http.StatusInternalServerError)
+			return
+		}
+
+		// Only toggle if the requested state is different from current state
+		if *req.AlternativeSpeedLimitsEnabled != currentMode {
+			err = client.ToggleAlternativeSpeedLimitsCtx(ctx)
+			if err != nil {
+				log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to toggle alternative speed limits")
+				http.Error(w, "Failed to toggle alternative speed limits", http.StatusInternalServerError)
+				return
+			}
+			log.Info().Int("instanceID", instanceID).Bool("enabled", *req.AlternativeSpeedLimitsEnabled).Msg("Toggled alternative speed limits")
+		}
+	}
+
+	response := SetSpeedLimitsResponse{
+		Success: true,
+		Message: "Speed limits updated successfully",
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Error().Err(err).Msg("Failed to encode set speed limits response")
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}

@@ -139,6 +139,7 @@ func NewRouter(deps *Dependencies) *chi.Mux {
 					// Speed limits
 					r.Get("/speed-limits", speedLimitsHandler.GetSpeedLimitsStatus)
 					r.Post("/speed-limits/toggle", speedLimitsHandler.ToggleSpeedLimits)
+					r.Put("/speed-limits", speedLimitsHandler.SetSpeedLimits)
 				})
 			})
 

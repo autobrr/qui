@@ -5,7 +5,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
-import type { SpeedLimitsStatus } from "@/types"
+import type { SpeedLimitsStatus, SetSpeedLimitsRequest } from "@/types"
 
 export function useSpeedLimitsStatus(instanceId: number, options?: {
   enabled?: boolean
@@ -52,6 +52,21 @@ export function useToggleSpeedLimits(instanceId: number) {
     },
     onSuccess: () => {
       // Invalidate and refetch after successful toggle
+      queryClient.invalidateQueries({ queryKey: ["speed-limits-status", instanceId] })
+      
+      // Also invalidate server state queries since they include speed limit info
+      queryClient.invalidateQueries({ queryKey: ["server-state", instanceId] })
+    },
+  })
+}
+
+export function useSetSpeedLimits(instanceId: number) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (request: SetSpeedLimitsRequest) => api.setSpeedLimits(instanceId, request),
+    onSuccess: () => {
+      // Invalidate and refetch speed limits status
       queryClient.invalidateQueries({ queryKey: ["speed-limits-status", instanceId] })
       
       // Also invalidate server state queries since they include speed limit info

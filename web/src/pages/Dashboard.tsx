@@ -241,72 +241,72 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
   
   const hasErrors = instance.hasDecryptionError || instance.connectionError
   return (
-    <Link to={hasErrors ? "/instances" : "/instances/$instanceId"} params={hasErrors ? {} : { instanceId: instance.id.toString() }}>
-      <Card className="hover:shadow-lg transition-shadow cursor-pointer">
-        <CardHeader className='gap-0'>
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-lg">{instance.name}</CardTitle>
-            <div className="flex items-center gap-2">
-              <SpeedLimitsToggle instanceId={instance.id} connected={stats.connected} />
-              <Badge variant={stats.connected ? "default" : "destructive"}>
-                {stats.connected ? "Connected" : "Disconnected"}
-              </Badge>
+    <Card className="hover:shadow-lg transition-shadow">
+      <CardHeader className='gap-0'>
+        <div className="flex items-center justify-between">
+          <Link to={hasErrors ? "/instances" : "/instances/$instanceId"} params={hasErrors ? {} : { instanceId: instance.id.toString() }}>
+            <CardTitle className="text-lg hover:text-primary cursor-pointer transition-colors">{instance.name}</CardTitle>
+          </Link>
+          <div className="flex items-center gap-2">
+            <SpeedLimitsToggle instanceId={instance.id} instanceName={instance.name} connected={stats.connected} />
+            <Badge variant={stats.connected ? "default" : "destructive"}>
+              {stats.connected ? "Connected" : "Disconnected"}
+            </Badge>
+          </div>
+        </div>
+        <CardDescription className="flex items-center gap-1 text-xs">
+          <span className={incognitoMode ? "blur-sm select-none truncate" : "truncate"}>{displayUrl}</span>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-4 w-4 p-0"
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              setIncognitoMode(!incognitoMode)
+            }}
+          >
+            {incognitoMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+          </Button>
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-3">
+          <div className="mb-6">
+            <div className="flex items-center justify-center mb-1">
+              <span className="flex-1 text-center text-xs text-muted-foreground">Downloading</span>
+              <span className="flex-1 text-center text-xs text-muted-foreground">Active</span>
+              <span className="flex-1 text-center text-xs text-muted-foreground">Error</span>
+              <span className="flex-1 text-center text-xs text-muted-foreground">Total</span>
+            </div>
+            <div className="flex items-center justify-center">
+              <span className="flex-1 text-center text-lg font-semibold">
+                {torrentCounts?.status?.downloading || 0}
+              </span>
+              <span className="flex-1 text-center text-lg font-semibold">{torrentCounts?.status?.active || 0}</span>
+              <span className={`flex-1 text-center text-lg font-semibold ${(torrentCounts?.status?.errored || 0) > 0 ? "text-destructive" : ""}`}>
+                {torrentCounts?.status?.errored || 0}
+              </span>
+              <span className="flex-1 text-center text-lg font-semibold">{torrentCounts?.total || 0}</span>
             </div>
           </div>
-          <CardDescription className="flex items-center gap-1 text-xs">
-            <span className={incognitoMode ? "blur-sm select-none truncate" : "truncate"}>{displayUrl}</span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-4 w-4 p-0"
-              onClick={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                setIncognitoMode(!incognitoMode)
-              }}
-            >
-              {incognitoMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-            </Button>
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            <div className="mb-6">
-              <div className="flex items-center justify-center mb-1">
-                <span className="flex-1 text-center text-xs text-muted-foreground">Downloading</span>
-                <span className="flex-1 text-center text-xs text-muted-foreground">Active</span>
-                <span className="flex-1 text-center text-xs text-muted-foreground">Error</span>
-                <span className="flex-1 text-center text-xs text-muted-foreground">Total</span>
-              </div>
-              <div className="flex items-center justify-center">
-                <span className="flex-1 text-center text-lg font-semibold">
-                  {torrentCounts?.status?.downloading || 0}
-                </span>
-                <span className="flex-1 text-center text-lg font-semibold">{torrentCounts?.status?.active || 0}</span>
-                <span className={`flex-1 text-center text-lg font-semibold ${(torrentCounts?.status?.errored || 0) > 0 ? "text-destructive" : ""}`}>
-                  {torrentCounts?.status?.errored || 0}
-                </span>
-                <span className="flex-1 text-center text-lg font-semibold">{torrentCounts?.total || 0}</span>
-              </div>
-            </div>
             
-            <div className="flex items-center gap-2 text-xs">
-              <Download className="h-3 w-3 text-muted-foreground" />
-              <span className="text-muted-foreground">Download</span>
-              <span className="ml-auto font-medium">{formatSpeed(stats.speeds?.download || 0)}</span>
-            </div>
-            
-            <div className="flex items-center gap-2 text-xs">
-              <Upload className="h-3 w-3 text-muted-foreground" />
-              <span className="text-muted-foreground">Upload</span>
-              <span className="ml-auto font-medium">{formatSpeed(stats.speeds?.upload || 0)}</span>
-            </div>
+          <div className="flex items-center gap-2 text-xs">
+            <Download className="h-3 w-3 text-muted-foreground" />
+            <span className="text-muted-foreground">Download</span>
+            <span className="ml-auto font-medium">{formatSpeed(stats.speeds?.download || 0)}</span>
           </div>
+            
+          <div className="flex items-center gap-2 text-xs">
+            <Upload className="h-3 w-3 text-muted-foreground" />
+            <span className="text-muted-foreground">Upload</span>
+            <span className="ml-auto font-medium">{formatSpeed(stats.speeds?.upload || 0)}</span>
+          </div>
+        </div>
           
-          <InstanceErrorDisplay instance={instance} />
-        </CardContent>
-      </Card>
-    </Link>
+        <InstanceErrorDisplay instance={instance} />
+      </CardContent>
+    </Card>
   )
 }
 

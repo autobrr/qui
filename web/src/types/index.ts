@@ -151,3 +151,16 @@ export interface SpeedLimitsToggleResponse {
   alternativeSpeedLimitsEnabled: boolean
   message?: string
 }
+
+export interface SetSpeedLimitsRequest {
+  downloadLimit?: number
+  uploadLimit?: number
+  altDownloadLimit?: number
+  altUploadLimit?: number
+  alternativeSpeedLimitsEnabled?: boolean
+}
+
+export interface SetSpeedLimitsResponse {
+  success: boolean
+  message?: string
+}
