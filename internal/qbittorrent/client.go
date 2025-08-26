@@ -6,6 +6,10 @@ package qbittorrent
 import (
 	"context"
 	"fmt"
+	"io"
+	stdlog "log"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -22,6 +26,35 @@ type Client struct {
 	lastHealthCheck time.Time
 	isHealthy       bool
 	mu              sync.RWMutex
+}
+
+// filteredWriter wraps stderr to filter out HTTP "unsolicited response" errors.
+//
+// qBittorrent occasionally sends extra HTTP responses after the main request completes,
+// which causes Go's HTTP client to log "Unsolicited response received on idle HTTP channel"
+// errors to stderr. While these don't affect functionality, they create noise in the logs.
+//
+// Since the go-qbittorrent library doesn't expose HTTP client configuration, we filter
+// these specific messages at the standard library log level to keep logs clean.
+type filteredWriter struct {
+	writer io.Writer
+}
+
+func (fw *filteredWriter) Write(p []byte) (n int, err error) {
+	s := string(p)
+	// Filter out the specific HTTP error we want to suppress - this is cosmetic
+	// and doesn't affect the actual speed limit functionality which works correctly
+	if strings.Contains(s, "Unsolicited response received on idle HTTP channel") {
+		return len(p), nil // Pretend we wrote it successfully but drop the message
+	}
+	return fw.writer.Write(p)
+}
+
+func init() {
+	// Set up filtered stderr to suppress HTTP "unsolicited response" errors from qBittorrent.
+	// These occur due to qBittorrent's HTTP response behavior but don't impact functionality.
+	filteredStderr := &filteredWriter{writer: os.Stderr}
+	stdlog.SetOutput(filteredStderr)
 }
 
 func NewClient(instanceID int, instanceHost, username, password string, basicUsername, basicPassword *string) (*Client, error) {
