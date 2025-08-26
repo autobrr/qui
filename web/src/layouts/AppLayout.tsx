@@ -10,6 +10,7 @@ import { Header } from "@/components/layout/Header"
 import { usePersistedSidebarState } from "@/hooks/usePersistedSidebarState"
 import { Menu } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import { MobileScrollProvider } from "@/contexts/MobileScrollContext"
 import { TorrentSelectionProvider } from "@/contexts/TorrentSelectionContext"
@@ -35,17 +36,24 @@ function AppLayoutContent() {
           onSidebarToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
         >
           {/* Desktop toggle button */}
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="hidden lg:flex transition-transform duration-200 hover:scale-110"
-          >
-            <Menu className={cn(
-              "h-5 w-5 transition-transform duration-300",
-              sidebarCollapsed && "rotate-90"
-            )} />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                className="hidden lg:flex transition-transform duration-200 hover:scale-110"
+              >
+                <Menu className={cn(
+                  "h-5 w-5 transition-transform duration-300",
+                  sidebarCollapsed && "rotate-90"
+                )} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+            </TooltipContent>
+          </Tooltip>
         </Header>
         <main className={cn(
           "flex-1 overflow-y-auto",

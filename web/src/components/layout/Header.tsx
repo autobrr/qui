@@ -129,7 +129,7 @@ export function Header({ children, sidebarCollapsed = false, onSidebarToggle }: 
           <div className="flex items-center gap-2">
             {/* Slot to place actions directly to the left of the filter button (desktop only) */}
             <span id="header-left-of-filter" className="hidden xl:inline-flex" />
-            <Tooltip>
+            <Tooltip >
               <TooltipTrigger asChild>
                 <Button
                   variant="outline"
@@ -165,7 +165,7 @@ export function Header({ children, sidebarCollapsed = false, onSidebarToggle }: 
               <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
                 {/* Clear search button */}
                 {searchValue && (
-                  <Tooltip>
+                  <Tooltip >
                     <TooltipTrigger asChild>
                       <button
                         type="button"
@@ -184,7 +184,7 @@ export function Header({ children, sidebarCollapsed = false, onSidebarToggle }: 
                   </Tooltip>
                 )}
                 {/* Slot for actions next to search (e.g., Toggle columns) */}
-                <Tooltip>
+                <Tooltip >
                   <TooltipTrigger asChild>
                     <button
                       type="button"
