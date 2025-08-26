@@ -36,9 +36,19 @@ interface TorrentActionsProps {
   selectedHashes: string[]
   selectedTorrents?: any[] // Torrent type from parent
   onComplete?: () => void
+  isAllSelected?: boolean
+  totalSelectionCount?: number
+  filters?: {
+    status: string[]
+    categories: string[]
+    tags: string[]
+    trackers: string[]
+  }
+  search?: string
+  excludeHashes?: string[]
 }
 
-export const TorrentActions = memo(function TorrentActions({ instanceId, selectedHashes, selectedTorrents = [], onComplete }: TorrentActionsProps) {
+export const TorrentActions = memo(function TorrentActions({ instanceId, selectedHashes, selectedTorrents = [], onComplete, isAllSelected = false, totalSelectionCount, filters, search, excludeHashes }: TorrentActionsProps) {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [deleteFiles, setDeleteFiles] = useState(false)
   const [showTagsDialog, setShowTagsDialog] = useState(false)
@@ -68,12 +78,16 @@ export const TorrentActions = memo(function TorrentActions({ instanceId, selecte
       enable?: boolean
     }) => {
       return api.bulkAction(instanceId, {
-        hashes: selectedHashes,
+        hashes: isAllSelected ? [] : selectedHashes,  // Empty hashes when selectAll is true
         action: data.action,
         deleteFiles: data.deleteFiles,
         tags: data.tags,
         category: data.category,
         enable: data.enable,
+        selectAll: isAllSelected,
+        filters: isAllSelected ? filters : undefined,
+        search: isAllSelected ? search : undefined,
+        excludeHashes: isAllSelected ? excludeHashes : undefined,
       })
     },
     onSuccess: async (_: unknown, variables: any) => {
@@ -169,7 +183,7 @@ export const TorrentActions = memo(function TorrentActions({ instanceId, selecte
       }
       
       // Show success toast
-      const count = selectedHashes.length
+      const count = totalSelectionCount || selectedHashes.length
       const torrentText = count === 1 ? "torrent" : "torrents"
       
       switch (variables.action) {
@@ -218,7 +232,7 @@ export const TorrentActions = memo(function TorrentActions({ instanceId, selecte
       }
     },
     onError: (error: any, variables: any) => {
-      const count = selectedHashes.length
+      const count = totalSelectionCount || selectedHashes.length
       const torrentText = count === 1 ? "torrent" : "torrents"
       const actionText = variables.action === "recheck" ? "recheck" : variables.action
       
@@ -260,8 +274,8 @@ export const TorrentActions = memo(function TorrentActions({ instanceId, selecte
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" disabled={selectedHashes.length === 0}>
-            Actions ({selectedHashes.length})
+          <Button variant="outline" disabled={selectedHashes.length === 0 && !isAllSelected}>
+            Actions ({totalSelectionCount || selectedHashes.length})
             <ChevronDown className="ml-2 h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
@@ -401,7 +415,7 @@ export const TorrentActions = memo(function TorrentActions({ instanceId, selecte
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete {selectedHashes.length} torrent(s)?</AlertDialogTitle>
+            <AlertDialogTitle>Delete {totalSelectionCount || selectedHashes.length} torrent(s)?</AlertDialogTitle>
             <AlertDialogDescription>
               This action cannot be undone. The torrents will be removed from qBittorrent.
             </AlertDialogDescription>
@@ -435,7 +449,7 @@ export const TorrentActions = memo(function TorrentActions({ instanceId, selecte
         open={showTagsDialog}
         onOpenChange={setShowTagsDialog}
         availableTags={availableTags}
-        hashCount={selectedHashes.length}
+        hashCount={totalSelectionCount || selectedHashes.length}
         onConfirm={handleSetTags}
         isPending={mutation.isPending}
         initialTags={getCommonTags(selectedTorrents)}
@@ -446,7 +460,7 @@ export const TorrentActions = memo(function TorrentActions({ instanceId, selecte
         open={showCategoryDialog}
         onOpenChange={setShowCategoryDialog}
         availableCategories={availableCategories}
-        hashCount={selectedHashes.length}
+        hashCount={totalSelectionCount || selectedHashes.length}
         onConfirm={handleSetCategory}
         isPending={mutation.isPending}
         initialCategory={getCommonCategory(selectedTorrents)}

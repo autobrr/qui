@@ -260,6 +260,15 @@ class ApiClient {
       category?: string
       tags?: string  // Comma-separated tags string
       enable?: boolean  // For toggleAutoTMM
+      selectAll?: boolean  // When true, apply to all torrents matching filters
+      filters?: {
+        status: string[]
+        categories: string[]
+        tags: string[]
+        trackers: string[]
+      }
+      search?: string  // Search query when selectAll is true
+      excludeHashes?: string[]  // Hashes to exclude when selectAll is true
     }
   ): Promise<void> {
     return this.request(`/instances/${instanceId}/torrents/bulk-action`, {

@@ -136,6 +136,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const [showCategoryDialog, setShowCategoryDialog] = useState(false)
   const [showRemoveTagsDialog, setShowRemoveTagsDialog] = useState(false)
   const [showRefetchIndicator, setShowRefetchIndicator] = useState(false)
+  
+  // Custom "select all" state for handling large datasets
+  const [isAllSelected, setIsAllSelected] = useState(false)
+  const [excludedFromSelectAll, setExcludedFromSelectAll] = useState<Set<string>>(new Set())
 
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
 
@@ -254,10 +258,74 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   // Use torrents directly from backend (already sorted)
   const sortedTorrents = torrents
 
+  // Custom selection handlers for "select all" functionality
+  const handleSelectAll = useCallback((checked: boolean) => {
+    if (checked) {
+      // Select all mode - clear regular selections and set isAllSelected
+      setIsAllSelected(true)
+      setExcludedFromSelectAll(new Set())
+      setRowSelection({})
+    } else {
+      // Deselect all mode
+      setIsAllSelected(false)
+      setExcludedFromSelectAll(new Set())
+      setRowSelection({})
+    }
+  }, [setRowSelection])
+
+  const handleRowSelection = useCallback((hash: string, checked: boolean) => {
+    if (isAllSelected) {
+      if (!checked) {
+        // When deselecting a row in "select all" mode, add to exclusions
+        setExcludedFromSelectAll(prev => new Set(prev).add(hash))
+      } else {
+        // When selecting a row that was excluded, remove from exclusions
+        setExcludedFromSelectAll(prev => {
+          const newSet = new Set(prev)
+          newSet.delete(hash)
+          return newSet
+        })
+      }
+    } else {
+      // Regular selection mode - use table's built-in selection
+      setRowSelection(prev => ({
+        ...prev,
+        [hash]: checked,
+      }))
+    }
+  }, [isAllSelected, setRowSelection])
+
+  // Calculate these after we have selectedHashes
+  const isSelectAllChecked = useMemo(() => {
+    if (isAllSelected) return true
+    const regularSelectionCount = Object.keys(rowSelection)
+      .filter((key: string) => (rowSelection as Record<string, boolean>)[key]).length
+    return regularSelectionCount === sortedTorrents.length && sortedTorrents.length > 0
+  }, [isAllSelected, rowSelection, sortedTorrents.length])
+  
+  const isSelectAllIndeterminate = useMemo(() => {
+    if (isAllSelected) return false
+    const regularSelectionCount = Object.keys(rowSelection)
+      .filter((key: string) => (rowSelection as Record<string, boolean>)[key]).length
+    return regularSelectionCount > 0 && regularSelectionCount < sortedTorrents.length
+  }, [isAllSelected, rowSelection, sortedTorrents.length])
+
   // Memoize columns to avoid unnecessary recalculations
   const columns = useMemo(
-    () => createColumns(incognitoMode, { shiftPressedRef, lastSelectedIndexRef }),
-    [incognitoMode]
+    () => createColumns(incognitoMode, { 
+      shiftPressedRef, 
+      lastSelectedIndexRef,
+      // Pass custom selection handlers
+      customSelectAll: {
+        onSelectAll: handleSelectAll,
+        isAllSelected: isSelectAllChecked,
+        isIndeterminate: isSelectAllIndeterminate,
+      },
+      onRowSelection: handleRowSelection,
+      isAllSelected,
+      excludedFromSelectAll,
+    }),
+    [incognitoMode, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, isAllSelected, excludedFromSelectAll]
   )
 
   const table = useReactTable({
@@ -288,18 +356,45 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     columnResizeMode: "onChange" as const,
   })
 
-  // Get selected torrent hashes
+  // Get selected torrent hashes - handle both regular selection and "select all" mode
   const selectedHashes = useMemo((): string[] => {
-    return Object.keys(rowSelection)
-      .filter((key: string) => (rowSelection as Record<string, boolean>)[key])
-  }, [rowSelection])
+    if (isAllSelected) {
+      // When all are selected, return all currently loaded hashes minus exclusions
+      // This is needed for actions to work properly
+      return sortedTorrents
+        .map(t => t.hash)
+        .filter(hash => !excludedFromSelectAll.has(hash))
+    } else {
+      // Regular selection mode
+      return Object.keys(rowSelection)
+        .filter((key: string) => (rowSelection as Record<string, boolean>)[key])
+    }
+  }, [rowSelection, isAllSelected, excludedFromSelectAll, sortedTorrents])
+
+  // Calculate the effective selection count for display
+  const effectiveSelectionCount = useMemo(() => {
+    if (isAllSelected) {
+      // When all selected, count is total minus exclusions
+      return Math.max(0, totalCount - excludedFromSelectAll.size)
+    } else {
+      // Regular selection mode - use the computed selectedHashes length
+      return Object.keys(rowSelection)
+        .filter((key: string) => (rowSelection as Record<string, boolean>)[key]).length
+    }
+  }, [isAllSelected, totalCount, excludedFromSelectAll.size, rowSelection])
   
   // Get selected torrents
   const selectedTorrents = useMemo((): Torrent[] => {
-    return selectedHashes
-      .map((hash: string) => sortedTorrents.find((t: Torrent) => t.hash === hash))
-      .filter(Boolean) as Torrent[]
-  }, [selectedHashes, sortedTorrents])
+    if (isAllSelected) {
+      // When all are selected, return all torrents minus exclusions
+      return sortedTorrents.filter(t => !excludedFromSelectAll.has(t.hash))
+    } else {
+      // Regular selection mode
+      return selectedHashes
+        .map((hash: string) => sortedTorrents.find((t: Torrent) => t.hash === hash))
+        .filter(Boolean) as Torrent[]
+    }
+  }, [selectedHashes, sortedTorrents, isAllSelected, excludedFromSelectAll])
 
   // Virtualization setup with progressive loading
   const { rows } = table.getRowModel()
@@ -403,6 +498,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     setLoadedRows(targetRows)
     setIsLoadingMoreRows(false)
     
+    // Clear selection state when data changes
+    setIsAllSelected(false)
+    setExcludedFromSelectAll(new Set())
+    setRowSelection({})
+    
     // Scroll to top and force virtualizer recalculation
     if (parentRef.current) {
       parentRef.current.scrollTop = 0
@@ -413,7 +513,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       virtualizer.scrollToOffset(0)
       virtualizer.measure()
     }, 0)
-  }, [filters, effectiveSearch, instanceId, virtualizer, sortedTorrents.length])
+  }, [filters, effectiveSearch, instanceId, virtualizer, sortedTorrents.length, setRowSelection])
 
 
   // Mutation for bulk actions
@@ -744,12 +844,21 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
           {/* Action buttons */}
           <div className="flex gap-1 sm:gap-2 flex-shrink-0">
             {(() => {
-              const actions = selectedHashes.length > 0 ? (
+              const actions = effectiveSelectionCount > 0 ? (
                 <TorrentActions 
                   instanceId={instanceId} 
                   selectedHashes={selectedHashes}
                   selectedTorrents={selectedTorrents}
-                  onComplete={() => setRowSelection({})}
+                  onComplete={() => {
+                    setRowSelection({})
+                    setIsAllSelected(false)
+                    setExcludedFromSelectAll(new Set())
+                  }}
+                  isAllSelected={isAllSelected}
+                  totalSelectionCount={effectiveSelectionCount}
+                  filters={filters}
+                  search={effectiveSearch}
+                  excludeHashes={Array.from(excludedFromSelectAll)}
                 />
               ) : null
               const headerLeft = typeof document !== "undefined" ? document.getElementById("header-left-of-filter") : null
@@ -1160,13 +1269,17 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                 {isLoadingMore && " • Loading more from server..."}
               </>
             )}
-            {selectedHashes.length > 0 && (
+            {effectiveSelectionCount > 0 && (
               <>
                 <span className="ml-2">
-                  ({selectedHashes.length} selected)
+                  ({isAllSelected ? `All ${effectiveSelectionCount}` : effectiveSelectionCount} selected)
                 </span>
                 <button
-                  onClick={() => setRowSelection({})}
+                  onClick={() => {
+                    setRowSelection({})
+                    setIsAllSelected(false)
+                    setExcludedFromSelectAll(new Set())
+                  }}
                   className="ml-2 text-xs text-primary hover:text-foreground transition-colors underline-offset-4 hover:underline"
                 >
                   Clear selection

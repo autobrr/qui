@@ -56,6 +56,14 @@ export const createColumns = (
   selectionEnhancers?: {
     shiftPressedRef: { current: boolean }
     lastSelectedIndexRef: { current: number | null }
+    customSelectAll?: {
+      onSelectAll: (checked: boolean) => void
+      isAllSelected: boolean
+      isIndeterminate: boolean
+    }
+    onRowSelection?: (hash: string, checked: boolean) => void
+    isAllSelected?: boolean
+    excludedFromSelectAll?: Set<string>
   }
 ): ColumnDef<Torrent>[] => [
   {
@@ -63,18 +71,39 @@ export const createColumns = (
     header: ({ table }) => (
       <div className="flex items-center justify-center p-1 -m-1">
         <Checkbox
-          checked={table.getIsAllPageRowsSelected()}
-          onCheckedChange={(checked) => table.toggleAllPageRowsSelected(!!checked)}
+          checked={selectionEnhancers?.customSelectAll?.isIndeterminate ? "indeterminate" : selectionEnhancers?.customSelectAll?.isAllSelected || false}
+          onCheckedChange={(checked) => {
+            if (selectionEnhancers?.customSelectAll?.onSelectAll) {
+              selectionEnhancers.customSelectAll.onSelectAll(!!checked)
+            } else {
+              // Fallback to default behavior
+              table.toggleAllPageRowsSelected(!!checked)
+            }
+          }}
           aria-label="Select all"
           className="hover:border-ring cursor-pointer transition-colors"
         />
       </div>
     ),
     cell: ({ row, table }) => {
+      const torrent = row.original
+      const hash = torrent.hash
+      
+      // Determine if row is selected based on custom logic
+      const isRowSelected = (() => {
+        if (selectionEnhancers?.isAllSelected) {
+          // In "select all" mode, row is selected unless excluded
+          return !selectionEnhancers.excludedFromSelectAll?.has(hash)
+        } else {
+          // Regular mode, use table's selection state
+          return row.getIsSelected()
+        }
+      })()
+      
       return (
         <div className="flex items-center justify-center p-1 -m-1">
           <Checkbox
-            checked={row.getIsSelected()}
+            checked={isRowSelected}
             onPointerDown={(e) => {
               if (selectionEnhancers) {
                 selectionEnhancers.shiftPressedRef.current = e.shiftKey
@@ -89,18 +118,34 @@ export const createColumns = (
                 const start = Math.min(selectionEnhancers.lastSelectedIndexRef.current!, currentIndex)
                 const end = Math.max(selectionEnhancers.lastSelectedIndexRef.current!, currentIndex)
 
-                table.setRowSelection((prev: Record<string, boolean>) => {
-                  const next: Record<string, boolean> = { ...prev }
+                // For shift selection, use custom handler if available, otherwise fallback
+                if (selectionEnhancers?.onRowSelection) {
                   for (let i = start; i <= end; i++) {
                     const r = allRows[i]
                     if (r) {
-                      next[r.id] = !!checked
+                      const rTorrent = r.original as Torrent
+                      selectionEnhancers.onRowSelection(rTorrent.hash, !!checked)
                     }
                   }
-                  return next
-                })
+                } else {
+                  table.setRowSelection((prev: Record<string, boolean>) => {
+                    const next: Record<string, boolean> = { ...prev }
+                    for (let i = start; i <= end; i++) {
+                      const r = allRows[i]
+                      if (r) {
+                        next[r.id] = !!checked
+                      }
+                    }
+                    return next
+                  })
+                }
               } else {
-                row.toggleSelected(!!checked)
+                // Single row selection
+                if (selectionEnhancers?.onRowSelection) {
+                  selectionEnhancers.onRowSelection(hash, !!checked)
+                } else {
+                  row.toggleSelected(!!checked)
+                }
               }
 
               if (selectionEnhancers) {
