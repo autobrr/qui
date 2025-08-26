@@ -31,6 +31,7 @@ import { usePersistedColumnVisibility } from "@/hooks/usePersistedColumnVisibili
 import { usePersistedColumnOrder } from "@/hooks/usePersistedColumnOrder"
 import { usePersistedColumnSizing } from "@/hooks/usePersistedColumnSizing"
 import { usePersistedColumnSorting } from "@/hooks/usePersistedColumnSorting"
+import { usePersistedDeleteFiles } from "@/hooks/usePersistedDeleteFiles"
 
 // Default values for persisted state hooks (module scope for stable references)
 const DEFAULT_COLUMN_VISIBILITY = {
@@ -123,7 +124,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const [immediateSearch] = useState("")
   const [rowSelection, setRowSelection] = useState({})
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
-  const [deleteFiles, setDeleteFiles] = useState(false)
+  const [deleteFiles, setDeleteFiles] = usePersistedDeleteFiles()
   const [contextMenuHashes, setContextMenuHashes] = useState<string[]>([])
   const [contextMenuTorrents, setContextMenuTorrents] = useState<Torrent[]>([])
   const [showTagsDialog, setShowTagsDialog] = useState(false)
