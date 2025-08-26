@@ -23,7 +23,7 @@ import type { Instance } from "@/types"
 export function Instances() {
   const { instances, isLoading } = useInstances()
   const navigate = useNavigate()
-  const search = useSearch({ strict: false }) as any
+  const search = useSearch({ strict: false }) as Record<string, unknown>
   const [editingInstance, setEditingInstance] = useState<Instance | undefined>()
 
   // Check if modal should be open based on URL params
@@ -32,16 +32,17 @@ export function Instances() {
   const handleOpenDialog = (instance?: Instance) => {
     setEditingInstance(instance)
     navigate({ 
-      search: { ...search, modal: "add-instance" },
+      to: "/instances",
+      search: { modal: "add-instance" },
       replace: true, 
     })
   }
 
   const handleCloseDialog = () => {
     setEditingInstance(undefined)
-    const { modal, ...restSearch } = search || {}
     navigate({ 
-      search: restSearch,
+      to: "/instances",
+      search: {},
       replace: true, 
     })
   }
