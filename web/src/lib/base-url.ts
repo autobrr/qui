@@ -6,7 +6,7 @@
 // Get the base URL injected by the backend
 // Falls back to '/' if not set
 export function getBaseUrl(): string {
-  // @ts-ignore - This is injected by the backend
+  // @ts-expect-error - This is injected by the backend
   const baseUrl = window.__QUI_BASE_URL__ || "/"
   
   // Ensure it ends with /

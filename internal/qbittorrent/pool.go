@@ -43,17 +43,23 @@ type failureInfo struct {
 	attempts  int
 }
 
+type decryptionErrorInfo struct {
+	logged    bool
+	lastError time.Time
+}
+
 // ClientPool manages multiple qBittorrent client connections
 type ClientPool struct {
-	clients        map[int]*Client
-	instanceStore  *models.InstanceStore
-	cache          *ristretto.Cache
-	mu             sync.RWMutex
-	dbMu           sync.Mutex // Serialize database updates
-	closed         bool
-	healthTicker   *time.Ticker
-	stopHealth     chan struct{}
-	failureTracker map[int]*failureInfo // Track failure state per instance
+	clients           map[int]*Client
+	instanceStore     *models.InstanceStore
+	cache             *ristretto.Cache
+	mu                sync.RWMutex
+	dbMu              sync.Mutex // Serialize database updates
+	closed            bool
+	healthTicker      *time.Ticker
+	stopHealth        chan struct{}
+	failureTracker    map[int]*failureInfo
+	decryptionTracker map[int]*decryptionErrorInfo
 }
 
 // NewClientPool creates a new client pool
@@ -69,12 +75,13 @@ func NewClientPool(instanceStore *models.InstanceStore) (*ClientPool, error) {
 	}
 
 	cp := &ClientPool{
-		clients:        make(map[int]*Client),
-		instanceStore:  instanceStore,
-		cache:          cache,
-		healthTicker:   time.NewTicker(healthCheckInterval),
-		stopHealth:     make(chan struct{}),
-		failureTracker: make(map[int]*failureInfo),
+		clients:           make(map[int]*Client),
+		instanceStore:     instanceStore,
+		cache:             cache,
+		healthTicker:      time.NewTicker(healthCheckInterval),
+		stopHealth:        make(chan struct{}),
+		failureTracker:    make(map[int]*failureInfo),
+		decryptionTracker: make(map[int]*decryptionErrorInfo),
 	}
 
 	// Start health check routine
@@ -126,6 +133,10 @@ func (cp *ClientPool) createClient(ctx context.Context, instanceID int) (*Client
 	// Decrypt password
 	password, err := cp.instanceStore.GetDecryptedPassword(instance)
 	if err != nil {
+		if cp.isDecryptionError(err) && cp.shouldLogDecryptionError(instanceID) {
+			log.Error().Err(err).Int("instanceID", instanceID).Str("instanceName", instance.Name).
+				Msg("Failed to decrypt password - likely due to sessionSecret change. Instance will be unavailable until password is re-entered via web UI")
+		}
 		return nil, fmt.Errorf("failed to decrypt password: %w", err)
 	}
 
@@ -134,6 +145,10 @@ func (cp *ClientPool) createClient(ctx context.Context, instanceID int) (*Client
 	if instance.BasicPasswordEncrypted != nil {
 		basicPassword, err = cp.instanceStore.GetDecryptedBasicPassword(instance)
 		if err != nil {
+			if cp.isDecryptionError(err) && cp.shouldLogDecryptionError(instanceID) {
+				log.Error().Err(err).Int("instanceID", instanceID).Str("instanceName", instance.Name).
+					Msg("Failed to decrypt basic auth password - likely due to sessionSecret change. Instance will be unavailable until password is re-entered via web UI")
+			}
 			return nil, fmt.Errorf("failed to decrypt basic auth password: %w", err)
 		}
 	}
@@ -335,6 +350,12 @@ func (cp *ClientPool) resetFailureTrackingLocked(instanceID int) {
 		delete(cp.failureTracker, instanceID)
 		log.Debug().Int("instanceID", instanceID).Msg("Reset failure tracking after successful connection")
 	}
+
+	// Also reset decryption error tracking on successful connection
+	if _, exists := cp.decryptionTracker[instanceID]; exists {
+		delete(cp.decryptionTracker, instanceID)
+		log.Debug().Int("instanceID", instanceID).Msg("Reset decryption error tracking after successful connection")
+	}
 }
 
 // isBanError checks if the error indicates an IP ban
@@ -352,4 +373,46 @@ func (cp *ClientPool) isBanError(err error) bool {
 		strings.Contains(errorStr, "rate limit") ||
 		strings.Contains(errorStr, "403") ||
 		strings.Contains(errorStr, "forbidden")
+}
+
+// shouldLogDecryptionError checks if we should log this decryption error for an instance
+// Returns true only if this is the first time we're seeing a decryption error for this instance
+func (cp *ClientPool) shouldLogDecryptionError(instanceID int) bool {
+	// Check if we've already logged this error
+	if info, exists := cp.decryptionTracker[instanceID]; exists {
+		return !info.logged
+	}
+
+	// First time seeing this instance, should log
+	cp.decryptionTracker[instanceID] = &decryptionErrorInfo{
+		logged:    true,
+		lastError: time.Now(),
+	}
+	return true
+}
+
+// isDecryptionError checks if the error is related to password decryption
+func (cp *ClientPool) isDecryptionError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	errorStr := strings.ToLower(err.Error())
+	return strings.Contains(errorStr, "cipher: message authentication failed") ||
+		strings.Contains(errorStr, "failed to decrypt password")
+}
+
+// GetInstancesWithDecryptionErrors returns a list of instance IDs that have decryption errors
+func (cp *ClientPool) GetInstancesWithDecryptionErrors() []int {
+	cp.mu.RLock()
+	defer cp.mu.RUnlock()
+
+	var instanceIDs []int
+	for id, info := range cp.decryptionTracker {
+		if info.logged {
+			instanceIDs = append(instanceIDs, id)
+		}
+	}
+
+	return instanceIDs
 }
