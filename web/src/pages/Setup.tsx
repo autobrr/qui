@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { useEffect } from "react"
 import { api } from "@/lib/api"
+import { Footer } from "@/components/Footer"
 
 export function Setup() {
   const navigate = useNavigate()
@@ -39,15 +40,17 @@ export function Setup() {
   })
 
   return (
-    <div className="flex h-screen items-center justify-center">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle>Initial Setup</CardTitle>
-          <CardDescription>
-            Create your account to get started with qui
+    <div className="flex h-screen items-center justify-center bg-background px-4 sm:px-6">
+      <Card className="w-full max-w-md shadow-xl">
+        <CardHeader className="text-center">
+          <CardTitle className="text-3xl font-bold pointer-events-none select-none">
+            qui
+          </CardTitle>
+          <CardDescription className="pointer-events-none select-none">
+            Create your account to get started
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="pt-6">
           <form
             onSubmit={(e) => {
               e.preventDefault()
@@ -141,9 +144,9 @@ export function Setup() {
             </form.Field>
 
             {setupError && (
-              <p className="text-sm text-destructive">
+              <div className="bg-destructive/10 border border-destructive/20 text-destructive px-4 py-3 rounded-md text-sm">
                 {setupError.message || "Failed to create user"}
-              </p>
+              </div>
             )}
 
             <form.Subscribe
@@ -153,6 +156,7 @@ export function Setup() {
                 <Button
                   type="submit"
                   className="w-full"
+                  size="lg"
                   disabled={!canSubmit || isSubmitting || isSettingUp}
                 >
                   {isSettingUp ? "Creating account..." : "Create Account"}
@@ -160,6 +164,7 @@ export function Setup() {
               )}
             </form.Subscribe>
           </form>
+          <Footer />
         </CardContent>
       </Card>
     </div>
