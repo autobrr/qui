@@ -143,7 +143,7 @@ Key patterns:
 
 Environment variables use `qui__` prefix:
 - `qui__HOST` (default: localhost or 0.0.0.0 in containers)
-- `qui__PORT` (default: 8080)
+- `qui__PORT` (default: 7476)
 - `qui__BASE_URL` (serve app under subdirectory, e.g., "/qui/")
 - `qui__SESSION_SECRET` (auto-generated if not set)
 - `qui__LOG_LEVEL` (ERROR, DEBUG, INFO, WARN, TRACE)
@@ -316,7 +316,7 @@ This configuration:
 Example nginx proxy configuration:
 ```nginx
 location /qui/ {
-    proxy_pass http://localhost:8080/qui/;
+    proxy_pass http://localhost:7476/qui/;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
 }

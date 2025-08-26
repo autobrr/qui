@@ -41,6 +41,13 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const displayUrl = instance.host
 
+  // Helper to check if connection error is decryption-related
+  const isDecryptionError = (error: string) => {
+    const errorLower = error.toLowerCase()
+    return errorLower.includes("decrypt") && 
+           (errorLower.includes("password") || errorLower.includes("cipher"))
+  }
+
   const handleTest = async () => {
     setTestResult(null)
     try {
@@ -87,13 +94,13 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
   return (
     <Card>
       <div>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0">
+        <CardHeader className="flex flex-row items-center justify-between pr-2 space-y-0">
           <div>
             <CardTitle className="text-base font-medium">
               {instance.name}
             </CardTitle>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             <Badge 
               variant={instance.connected ? "default" : "destructive"}
             >
@@ -169,7 +176,29 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
           )}
         </div>
         
-        {instance.connectionError && (
+        {instance.hasDecryptionError && (
+          <div className="mt-4 p-3 rounded-lg bg-muted border border-border">
+            <div className="flex items-start gap-2 text-sm text-foreground">
+              <XCircle className="h-4 w-4 mt-0.5 flex-shrink-0 text-destructive" />
+              <div className="flex-1">
+                <div className="font-medium mb-1 text-destructive">Password Required</div>
+                <div className="text-muted-foreground mb-2">
+                  Unable to decrypt saved password. This usually happens when the session secret has changed.
+                </div>
+                <Button 
+                  onClick={onEdit}
+                  size="sm" 
+                  variant="outline"
+                >
+                  <Edit className="mr-2 h-3 w-3" />
+                  Re-enter Password
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {instance.connectionError && !(instance.hasDecryptionError && isDecryptionError(instance.connectionError)) && (
           <div className="mt-4 p-3 rounded-lg bg-destructive/10 border border-destructive/20">
             <div className="flex items-start gap-2 text-sm text-destructive">
               <XCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />

@@ -15,14 +15,15 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog"
-import { Plus } from "lucide-react"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Plus, AlertTriangle } from "lucide-react"
 import { useNavigate, useSearch } from "@tanstack/react-router"
 import type { Instance } from "@/types"
 
 export function Instances() {
   const { instances, isLoading } = useInstances()
   const navigate = useNavigate()
-  const search = useSearch({ strict: false }) as any
+  const search = useSearch({ strict: false }) as Record<string, unknown>
   const [editingInstance, setEditingInstance] = useState<Instance | undefined>()
 
   // Check if modal should be open based on URL params
@@ -31,16 +32,17 @@ export function Instances() {
   const handleOpenDialog = (instance?: Instance) => {
     setEditingInstance(instance)
     navigate({ 
-      search: { ...search, modal: "add-instance" },
+      to: "/instances",
+      search: { modal: "add-instance" },
       replace: true, 
     })
   }
 
   const handleCloseDialog = () => {
     setEditingInstance(undefined)
-    const { modal, ...restSearch } = search || {}
     navigate({ 
-      search: restSearch,
+      to: "/instances",
+      search: {},
       replace: true, 
     })
   }
@@ -71,8 +73,20 @@ export function Instances() {
         </Button>
       </div>
 
+      {/* Show banner if any instances have decryption errors */}
+      {instances && instances.some(instance => instance.hasDecryptionError) && (
+        <Alert className="mb-6">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Password Issues Detected</AlertTitle>
+          <AlertDescription>
+            Some instances cannot decrypt their saved passwords, likely due to a configuration change. 
+            Click "Re-enter Password" on the affected instances below to resolve this issue.
+          </AlertDescription>
+        </Alert>
+      )}
+
       {instances && instances.length > 0 ? (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 items-start">
           {instances.map((instance) => (
             <InstanceCard
               key={instance.id}
