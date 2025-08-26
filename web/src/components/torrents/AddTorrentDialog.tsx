@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
@@ -12,6 +12,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
+import { Checkbox } from "@/components/ui/checkbox"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Dialog,
   DialogContent,
@@ -42,7 +44,7 @@ interface FormData {
   torrentFiles: File[] | null
   urls: string
   category: string
-  tags: string
+  tags: string[]
   startPaused: boolean
   savePath: string
   skipHashCheck: boolean
@@ -51,6 +53,8 @@ interface FormData {
 export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChange }: AddTorrentDialogProps) {
   const [internalOpen, setInternalOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<TabValue>("file")
+  const [selectedTags, setSelectedTags] = useState<string[]>([])
+  const [newTag, setNewTag] = useState("")
   const queryClient = useQueryClient()
   
   // Use controlled state if provided, otherwise use internal state
@@ -64,6 +68,24 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
     enabled: open,
   })
 
+  // Fetch available tags for selection
+  const { data: availableTags } = useQuery({
+    queryKey: ["tags", instanceId],
+    queryFn: () => api.getTags(instanceId),
+    enabled: open,
+  })
+
+  // Reset tag state when dialog closes
+  useEffect(() => {
+    if (!open) {
+      setSelectedTags([])
+      setNewTag("")
+    }
+  }, [open])
+
+  // Combine API tags with temporarily added new tags and sort alphabetically
+  const allAvailableTags = [...(availableTags || []), ...selectedTags.filter(tag => !availableTags?.includes(tag))].sort()
+
   const mutation = useMutation({
     retry: false, // Don't retry - could cause duplicate torrent additions
     mutationFn: async (data: FormData) => {
@@ -71,7 +93,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
         startPaused: data.startPaused,
         savePath: data.savePath || undefined,
         category: data.category === "__none__" ? undefined : data.category || undefined,
-        tags: data.tags ? data.tags.split(",").map(t => t.trim()).filter(Boolean) : undefined,
+        tags: data.tags.length > 0 ? data.tags : undefined,
         skipHashCheck: data.skipHashCheck,
       }
 
@@ -101,6 +123,8 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
       }, 500) // Give qBittorrent time to process
       setOpen(false)
       form.reset()
+      setSelectedTags([])
+      setNewTag("")
     },
   })
 
@@ -109,13 +133,18 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
       torrentFiles: null as File[] | null,
       urls: "",
       category: "",
-      tags: "",
+      tags: [] as string[],
       startPaused: false,
       savePath: "",
       skipHashCheck: false,
     },
     onSubmit: async ({ value }) => {
-      await mutation.mutateAsync(value)
+      // Combine selected tags with any new tag
+      const allTags = [...selectedTags]
+      if (newTag.trim() && !allTags.includes(newTag.trim())) {
+        allTags.push(newTag.trim())
+      }
+      await mutation.mutateAsync({ ...value, tags: allTags })
     },
   })
 
@@ -262,20 +291,93 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
           </form.Field>
 
           {/* Tags */}
-          <form.Field name="tags">
-            {(field) => (
+          <div className="space-y-4">
+            {/* Existing tags */}
+            {allAvailableTags && allAvailableTags.length > 0 && (
               <div className="space-y-2">
-                <Label htmlFor="tags">Tags</Label>
-                <Input
-                  id="tags"
-                  placeholder="Enter tags separated by commas"
-                  value={field.state.value}
-                  onBlur={field.handleBlur}
-                  onChange={(e) => field.handleChange(e.target.value)}
-                />
+                <div className="flex items-center justify-between">
+                  <Label>Available Tags</Label>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setSelectedTags([])}
+                    disabled={selectedTags.length === 0}
+                  >
+                    Deselect All
+                  </Button>
+                </div>
+                <ScrollArea className="h-32 border rounded-md p-3">
+                  <div className="space-y-2">
+                    {allAvailableTags.map((tag) => (
+                      <div key={tag} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`tag-${tag}`}
+                          checked={selectedTags.includes(tag)}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              setSelectedTags([...selectedTags, tag])
+                            } else {
+                              setSelectedTags(selectedTags.filter((t) => t !== tag))
+                            }
+                          }}
+                        />
+                        <label
+                          htmlFor={`tag-${tag}`}
+                          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer flex items-center gap-1"
+                        >
+                          {tag}
+                          {!availableTags?.includes(tag) && (
+                            <span className="text-xs text-muted-foreground">(new)</span>
+                          )}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
               </div>
             )}
-          </form.Field>
+            
+            {/* Add new tag */}
+            <div className="space-y-2">
+              <Label htmlFor="newTag">Add New Tag</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="newTag"
+                  value={newTag}
+                  onChange={(e) => setNewTag(e.target.value)}
+                  placeholder="Enter new tag"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && newTag.trim()) {
+                      e.preventDefault()
+                      if (!selectedTags.includes(newTag.trim())) {
+                        setSelectedTags([...selectedTags, newTag.trim()])
+                        setNewTag("")
+                      }
+                    }
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    if (newTag.trim() && !selectedTags.includes(newTag.trim())) {
+                      setSelectedTags([...selectedTags, newTag.trim()])
+                      setNewTag("")
+                    }
+                  }}
+                  disabled={!newTag.trim() || selectedTags.includes(newTag.trim())}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+            
+            {/* Selected tags summary */}
+            <div className="text-sm text-muted-foreground min-h-5">
+              {selectedTags.length > 0 ? `Selected: ${selectedTags.join(", ")}` : "No tags selected"}
+            </div>
+          </div>
 
           {/* Save Path */}
           <form.Field name="savePath">
