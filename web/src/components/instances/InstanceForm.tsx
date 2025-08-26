@@ -11,16 +11,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
-import { 
-  AlertDialog, 
-  AlertDialogAction, 
-  AlertDialogCancel, 
-  AlertDialogContent, 
-  AlertDialogDescription, 
-  AlertDialogFooter, 
-  AlertDialogHeader, 
-  AlertDialogTitle
-} from "@/components/ui/alert-dialog"
 import type { Instance } from "@/types"
 import { useInstances } from "@/hooks/useInstances"
 import { formatErrorMessage } from "@/lib/utils"
@@ -77,34 +67,8 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
   const { createInstance, updateInstance, isCreating, isUpdating } = useInstances()
   const [showBasicAuth, setShowBasicAuth] = useState(!!instance?.basicUsername)
   const [authBypass, setAuthBypass] = useState(false)
-  const [showConfirmDialog, setShowConfirmDialog] = useState(false)
-  const [pendingFormData, setPendingFormData] = useState<InstanceFormData | null>(null)
   
   const handleSubmit = (data: InstanceFormData) => {
-    // If auth bypass is enabled and no username/password provided, show confirmation dialog
-    if (authBypass && !instance && (!data.username || !data.password)) {
-      setPendingFormData(data)
-      setShowConfirmDialog(true)
-      return
-    }
-    
-    proceedWithSubmit(data)
-  }
-  
-  const handleConfirmBypass = () => {
-    if (pendingFormData) {
-      proceedWithSubmit(pendingFormData)
-      setPendingFormData(null)
-      setShowConfirmDialog(false)
-    }
-  }
-  
-  const handleCancelBypass = () => {
-    setPendingFormData(null)
-    setShowConfirmDialog(false)
-  }
-  
-  const proceedWithSubmit = (data: InstanceFormData) => {
     const submitData = showBasicAuth ? data : {
       ...data,
       basicUsername: undefined,
@@ -369,26 +333,6 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
         </div>
       </form>
 
-      <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirm Authentication Bypass</AlertDialogTitle>
-            <AlertDialogDescription>
-              You're creating an instance without authentication credentials. This should only be done when:
-              <br /><br />
-              • qBittorrent has authentication disabled for local connections
-              <br />
-              • qBittorrent has authentication disabled for whitelisted IPs
-              <br /><br />
-              Are you sure you want to continue?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={handleCancelBypass}>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmBypass}>Add Instance</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </>
   )
 }
