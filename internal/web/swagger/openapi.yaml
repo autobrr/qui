@@ -351,6 +351,66 @@ paths:
               schema:
                 $ref: '#/components/schemas/InstanceStats'
 
+  /api/instances/{instanceId}/speed-limits:
+    get:
+      tags:
+        - Speed Limits
+      summary: Get speed limits status
+      description: Get current speed limit settings for an instance
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+      responses:
+        '200':
+          description: Speed limits status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpeedLimitsStatus'
+        '404':
+          description: Instance not found
+    put:
+      tags:
+        - Speed Limits
+      summary: Set speed limits
+      description: Configure speed limit settings for an instance
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetSpeedLimitsRequest'
+      responses:
+        '200':
+          description: Speed limits updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SetSpeedLimitsResponse'
+        '400':
+          description: Invalid request
+        '404':
+          description: Instance not found
+
+  /api/instances/{instanceId}/speed-limits/toggle:
+    post:
+      tags:
+        - Speed Limits
+      summary: Toggle speed limits mode
+      description: Toggle between global and alternative speed limits
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+      responses:
+        '200':
+          description: Speed limits toggled successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpeedLimitsToggleResponse'
+        '404':
+          description: Instance not found
+
   /api/instances/{instanceId}/torrents:
     get:
       tags:
@@ -1007,6 +1067,78 @@ components:
               type: integer
             freeSpace:
               type: integer
+
+    SpeedLimitsStatus:
+      type: object
+      properties:
+        alternativeSpeedLimitsEnabled:
+          type: boolean
+          description: Whether alternative speed limits are currently active
+        downloadLimit:
+          type: integer
+          description: Global download speed limit in bytes/second (0 = unlimited)
+        uploadLimit:
+          type: integer
+          description: Global upload speed limit in bytes/second (0 = unlimited)
+        altDownloadLimit:
+          type: integer
+          description: Alternative download speed limit in bytes/second (0 = unlimited)
+        altUploadLimit:
+          type: integer
+          description: Alternative upload speed limit in bytes/second (0 = unlimited)
+      required:
+        - alternativeSpeedLimitsEnabled
+        - downloadLimit
+        - uploadLimit
+        - altDownloadLimit
+        - altUploadLimit
+
+    SpeedLimitsToggleResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          description: Whether the operation was successful
+        alternativeSpeedLimitsEnabled:
+          type: boolean
+          description: Current state after toggle
+        message:
+          type: string
+          description: Optional message
+      required:
+        - success
+        - alternativeSpeedLimitsEnabled
+
+    SetSpeedLimitsRequest:
+      type: object
+      properties:
+        downloadLimit:
+          type: integer
+          description: Global download speed limit in bytes/second (0 = unlimited)
+        uploadLimit:
+          type: integer
+          description: Global upload speed limit in bytes/second (0 = unlimited)
+        altDownloadLimit:
+          type: integer
+          description: Alternative download speed limit in bytes/second (0 = unlimited)
+        altUploadLimit:
+          type: integer
+          description: Alternative upload speed limit in bytes/second (0 = unlimited)
+        alternativeSpeedLimitsEnabled:
+          type: boolean
+          description: Whether to enable alternative speed limits
+
+    SetSpeedLimitsResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          description: Whether the operation was successful
+        message:
+          type: string
+          description: Optional message
+      required:
+        - success
 
     Torrent:
       type: object
