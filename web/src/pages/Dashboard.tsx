@@ -9,6 +9,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
+import { PasswordIssuesBanner } from "@/components/instances/PasswordIssuesBanner"
+import { InstanceErrorDisplay } from "@/components/instances/InstanceErrorDisplay"
 import { HardDrive, Download, Upload, Activity, Plus, Zap, ChevronDown, ChevronUp, Eye, EyeOff } from "lucide-react"
 import { Link } from "@tanstack/react-router"
 import { useMemo } from "react"
@@ -158,8 +160,9 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
   
   // If we have stats but instance is not connected, show with zero values
   if (stats && !stats.connected) {
+    const hasErrors = instance.hasDecryptionError || instance.connectionError
     return (
-      <Link to="/instances/$instanceId" params={{ instanceId: instance.id.toString() }}>
+      <Link to={hasErrors ? "/instances" : "/instances/$instanceId"} params={hasErrors ? {} : { instanceId: instance.id.toString() }}>
         <Card className="hover:shadow-lg transition-shadow cursor-pointer">
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -183,21 +186,11 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p className="text-muted-foreground">Total</p>
-                  <p className="font-semibold">0</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Active</p>
-                  <p className="font-semibold">0</p>
-                </div>
-              </div>
-              <p className="text-sm text-muted-foreground text-center">
-                Instance is disconnected
-              </p>
-            </div>
+            <p className="text-sm text-muted-foreground text-center">
+              Instance is disconnected
+            </p>
+            
+            <InstanceErrorDisplay instance={instance} />
           </CardContent>
         </Card>
       </Link>
@@ -206,8 +199,9 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
   
   // If we have an error or no stats data, show error state
   if (error || !stats || !stats.torrents) {
+    const hasErrors = instance.hasDecryptionError || instance.connectionError
     return (
-      <Link to="/instances/$instanceId" params={{ instanceId: instance.id.toString() }}>
+      <Link to={hasErrors ? "/instances" : "/instances/$instanceId"} params={hasErrors ? {} : { instanceId: instance.id.toString() }}>
         <Card className="hover:shadow-lg transition-shadow cursor-pointer opacity-60">
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -234,25 +228,26 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
             <p className="text-sm text-muted-foreground">
               Failed to load stats
             </p>
+            
+            <InstanceErrorDisplay instance={instance} />
           </CardContent>
         </Card>
       </Link>
     )
   }
   
+  const hasErrors = instance.hasDecryptionError || instance.connectionError
   return (
-    <Link to="/instances/$instanceId" params={{ instanceId: instance.id.toString() }}>
+    <Link to={hasErrors ? "/instances" : "/instances/$instanceId"} params={hasErrors ? {} : { instanceId: instance.id.toString() }}>
       <Card className="hover:shadow-lg transition-shadow cursor-pointer">
-        <div>
-          <CardHeader className='gap-0'>
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg">{instance.name}</CardTitle>
-              <Badge variant={stats.connected ? "default" : "destructive"}>
-                {stats.connected ? "Connected" : "Disconnected"}
-              </Badge>
-            </div>
-          </CardHeader>
-          <CardDescription className="flex items-center gap-1 text-xs px-6">
+        <CardHeader className='gap-0'>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-lg">{instance.name}</CardTitle>
+            <Badge variant={stats.connected ? "default" : "destructive"}>
+              {stats.connected ? "Connected" : "Disconnected"}
+            </Badge>
+          </div>
+          <CardDescription className="flex items-center gap-1 text-xs">
             <span className={incognitoMode ? "blur-sm select-none truncate" : "truncate"}>{displayUrl}</span>
             <Button
               variant="ghost"
@@ -267,7 +262,7 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
               {incognitoMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
             </Button>
           </CardDescription>
-        </div>
+        </CardHeader>
         <CardContent>
           <div className="space-y-3">
             <div className="mb-6">
@@ -301,6 +296,8 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
               <span className="ml-auto font-medium">{formatSpeed(stats.speeds?.upload || 0)}</span>
             </div>
           </div>
+          
+          <InstanceErrorDisplay instance={instance} />
         </CardContent>
       </Card>
     </Link>
@@ -598,6 +595,9 @@ export function Dashboard() {
           )}
         </div>
       </div>
+      
+      {/* Show banner if any instances have decryption errors */}
+      <PasswordIssuesBanner instances={instances || []} />
       
       {instances && instances.length > 0 ? (
         <div className="space-y-6">
