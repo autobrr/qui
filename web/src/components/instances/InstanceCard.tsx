@@ -94,13 +94,13 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
   return (
     <Card>
       <div>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0">
+        <CardHeader className="flex flex-row items-center justify-between pr-2 space-y-0">
           <div>
             <CardTitle className="text-base font-medium">
               {instance.name}
             </CardTitle>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             <Badge 
               variant={instance.connected ? "default" : "destructive"}
             >
