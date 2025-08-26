@@ -137,3 +137,17 @@ export interface ServerState {
   global_ratio?: string
   total_peer_connections?: number
 }
+
+export interface SpeedLimitsStatus {
+  alternativeSpeedLimitsEnabled: boolean
+  downloadLimit: number
+  uploadLimit: number
+  altDownloadLimit: number
+  altUploadLimit: number
+}
+
+export interface SpeedLimitsToggleResponse {
+  success: boolean
+  alternativeSpeedLimitsEnabled: boolean
+  message?: string
+}

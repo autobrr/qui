@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import type { AuthResponse, InstanceResponse, TorrentResponse, MainData, User } from "@/types"
+import type { AuthResponse, InstanceResponse, TorrentResponse, MainData, User, SpeedLimitsStatus, SpeedLimitsToggleResponse } from "@/types"
 import { getApiBaseUrl } from "./base-url"
 
 const API_BASE = getApiBaseUrl()
@@ -145,6 +145,16 @@ class ApiClient {
     }
   }> {
     return this.request(`/instances/${id}/stats`)
+  }
+
+  async getSpeedLimitsStatus(id: number): Promise<SpeedLimitsStatus> {
+    return this.request(`/instances/${id}/speed-limits`)
+  }
+
+  async toggleSpeedLimits(id: number): Promise<SpeedLimitsToggleResponse> {
+    return this.request(`/instances/${id}/speed-limits/toggle`, {
+      method: "POST",
+    })
   }
 
   // Torrent endpoints

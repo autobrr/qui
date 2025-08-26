@@ -57,6 +57,7 @@ func NewRouter(deps *Dependencies) *chi.Mux {
 	authHandler := handlers.NewAuthHandler(deps.AuthService)
 	instancesHandler := handlers.NewInstancesHandler(deps.InstanceStore, deps.ClientPool, deps.SyncManager)
 	torrentsHandler := handlers.NewTorrentsHandler(deps.SyncManager)
+	speedLimitsHandler := handlers.NewSpeedLimitsHandler(deps.ClientPool, deps.SyncManager)
 
 	// Theme license handler (optional, only if service is configured)
 	var themeLicenseHandler *handlers.ThemeLicenseHandler
@@ -134,6 +135,10 @@ func NewRouter(deps *Dependencies) *chi.Mux {
 					r.Get("/tags", torrentsHandler.GetTags)
 					r.Post("/tags", torrentsHandler.CreateTags)
 					r.Delete("/tags", torrentsHandler.DeleteTags)
+
+					// Speed limits
+					r.Get("/speed-limits", speedLimitsHandler.GetSpeedLimitsStatus)
+					r.Post("/speed-limits/toggle", speedLimitsHandler.ToggleSpeedLimits)
 				})
 			})
 

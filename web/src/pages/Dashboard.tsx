@@ -20,6 +20,7 @@ import { formatSpeed, formatBytes, getRatioColor } from "@/lib/utils"
 import { useQuery, useQueries } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import type { ServerState, InstanceResponse, TorrentCounts } from "@/types"
+import { SpeedLimitsToggle } from "@/components/instances/SpeedLimitsToggle"
 
 type InstanceStats = Awaited<ReturnType<typeof api.getInstanceStats>>
 import {
@@ -245,9 +246,12 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
         <CardHeader className='gap-0'>
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg">{instance.name}</CardTitle>
-            <Badge variant={stats.connected ? "default" : "destructive"}>
-              {stats.connected ? "Connected" : "Disconnected"}
-            </Badge>
+            <div className="flex items-center gap-2">
+              <SpeedLimitsToggle instanceId={instance.id} connected={stats.connected} />
+              <Badge variant={stats.connected ? "default" : "destructive"}>
+                {stats.connected ? "Connected" : "Disconnected"}
+              </Badge>
+            </div>
           </div>
           <CardDescription className="flex items-center gap-1 text-xs">
             <span className={incognitoMode ? "blur-sm select-none truncate" : "truncate"}>{displayUrl}</span>
