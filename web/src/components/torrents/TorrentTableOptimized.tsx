@@ -770,9 +770,15 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
               const container = typeof document !== "undefined" ? document.getElementById("header-search-actions") : null
               const dropdown = (
                 <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
+                  <Tooltip disableHoverableContent={true}>
+                    <TooltipTrigger 
+                      asChild
+                      onFocus={(e) => {
+                        // Prevent tooltip from showing on focus - only show on hover
+                        e.preventDefault()
+                      }}
+                    >
+                      <DropdownMenuTrigger asChild>
                         <Button
                           variant="outline"
                           size="icon"
@@ -784,10 +790,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                           )}
                           <span className="sr-only">Toggle columns</span>
                         </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Toggle columns</TooltipContent>
-                    </Tooltip>
-                  </DropdownMenuTrigger>
+                      </DropdownMenuTrigger>
+                    </TooltipTrigger>
+                    <TooltipContent>Toggle columns</TooltipContent>
+                  </Tooltip>
                   <DropdownMenuContent align="end" className="w-48">
                     <DropdownMenuLabel>Toggle columns</DropdownMenuLabel>
                     <DropdownMenuSeparator />
