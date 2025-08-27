@@ -137,3 +137,73 @@ export interface ServerState {
   global_ratio?: string
   total_peer_connections?: number
 }
+
+export interface AppPreferences {
+  // Core limits and speeds
+  dl_limit: number
+  up_limit: number
+  alt_dl_limit: number
+  alt_up_limit: number
+  
+  // Queue management  
+  queueing_enabled: boolean
+  max_active_downloads: number
+  max_active_torrents: number
+  max_active_uploads: number
+  max_active_checking_torrents: number
+  
+  // Network settings
+  listen_port: number
+  random_port: boolean
+  upnp: boolean
+  
+  // Connection limits
+  max_connec: number
+  max_connec_per_torrent: number
+  max_uploads: number
+  max_uploads_per_torrent: number
+  
+  // Seeding limits
+  max_ratio_enabled: boolean
+  max_ratio: number
+  max_seeding_time_enabled: boolean
+  max_seeding_time: number
+  
+  // Paths and file management
+  save_path: string
+  temp_path: string
+  temp_path_enabled: boolean
+  auto_tmm_enabled: boolean
+  
+  // Startup behavior
+  start_paused_enabled: boolean
+  
+  // BitTorrent protocol
+  dht: boolean
+  pex: boolean
+  lsd: boolean
+  encryption: number
+  anonymous_mode: boolean
+  
+  // Scheduler
+  scheduler_enabled: boolean
+  schedule_from_hour: number
+  schedule_from_min: number
+  schedule_to_hour: number
+  schedule_to_min: number
+  scheduler_days: number
+  
+  // Web UI (read-only reference)
+  web_ui_port: number
+  web_ui_username: string
+  use_https: boolean
+  
+  // Additional commonly used fields
+  add_trackers_enabled: boolean
+  add_trackers: string
+  announce_to_all_tiers: boolean
+  announce_to_all_trackers: boolean
+  
+  // Add catch-all for any additional fields from the API
+  [key: string]: unknown
+}

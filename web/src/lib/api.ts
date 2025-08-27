@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import type { AuthResponse, InstanceResponse, TorrentResponse, MainData, User } from "@/types"
+import type { AuthResponse, InstanceResponse, TorrentResponse, MainData, User, AppPreferences } from "@/types"
 import { getApiBaseUrl } from "./base-url"
 
 const API_BASE = getApiBaseUrl()
@@ -389,6 +389,21 @@ class ApiClient {
 
   async refreshThemeLicenses(): Promise<{ message: string }> {
     return this.request("/themes/license/refresh", { method: "POST" })
+  }
+
+  // Preferences endpoints
+  async getInstancePreferences(instanceId: number): Promise<AppPreferences> {
+    return this.request<AppPreferences>(`/instances/${instanceId}/preferences`)
+  }
+
+  async updateInstancePreferences(
+    instanceId: number, 
+    preferences: Partial<AppPreferences>
+  ): Promise<AppPreferences> {
+    return this.request<AppPreferences>(`/instances/${instanceId}/preferences`, {
+      method: "PATCH",
+      body: JSON.stringify(preferences),
+    })
   }
 }
 

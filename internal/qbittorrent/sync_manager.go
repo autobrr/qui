@@ -1611,3 +1611,48 @@ func (sm *SyncManager) RemoveCategories(ctx context.Context, instanceID int, cat
 	log.Debug().Int("instanceID", instanceID).Msg("Invalidated categories cache")
 	return nil
 }
+
+// GetAppPreferences fetches and caches app preferences for an instance
+func (sm *SyncManager) GetAppPreferences(ctx context.Context, instanceID int) (qbt.AppPreferences, error) {
+	// Check cache with 60-second TTL (same as categories/tags)
+	cacheKey := fmt.Sprintf("app_preferences:%d", instanceID)
+	if cached, found := sm.cache.Get(cacheKey); found {
+		if prefs, ok := cached.(qbt.AppPreferences); ok {
+			return prefs, nil
+		}
+	}
+
+	// Get client and fetch preferences
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return qbt.AppPreferences{}, fmt.Errorf("failed to get client: %w", err)
+	}
+
+	prefs, err := client.GetAppPreferencesCtx(ctx)
+	if err != nil {
+		return qbt.AppPreferences{}, fmt.Errorf("failed to get app preferences: %w", err)
+	}
+
+	// Cache for 60 seconds
+	sm.cache.SetWithTTL(cacheKey, prefs, 1, 60*time.Second)
+
+	return prefs, nil
+}
+
+// SetAppPreferences updates app preferences and invalidates cache
+func (sm *SyncManager) SetAppPreferences(ctx context.Context, instanceID int, prefs map[string]interface{}) error {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	if err := client.SetPreferencesCtx(ctx, prefs); err != nil {
+		return fmt.Errorf("failed to set preferences: %w", err)
+	}
+
+	// Invalidate cache
+	cacheKey := fmt.Sprintf("app_preferences:%d", instanceID)
+	sm.cache.Del(cacheKey)
+
+	return nil
+}
