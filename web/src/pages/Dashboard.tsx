@@ -14,6 +14,7 @@ import { PasswordIssuesBanner } from "@/components/instances/PasswordIssuesBanne
 import { InstanceErrorDisplay } from "@/components/instances/InstanceErrorDisplay"
 import { InstanceActionsDropdown } from "@/components/instances/InstanceActionsDropdown"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { HardDrive, Download, Upload, Activity, Plus, Minus, Zap, ChevronDown, ChevronUp, Eye, EyeOff, ExternalLink, Rabbit, Turtle } from "lucide-react"
 import { Link } from "@tanstack/react-router"
 import { useMemo } from "react"
@@ -286,24 +287,30 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
             </Link>
             <div className="flex items-center gap-2">
               {stats.connected && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    toggleAltSpeed()
-                  }}
-                  disabled={isToggling}
-                  className="h-8 w-8 p-0"
-                  title={`Alternative speed limits ${altSpeedEnabled ? "enabled (turtle mode)" : "disabled (normal mode)"} - Click to toggle`}
-                >
-                  {altSpeedEnabled ? (
-                    <Turtle className="h-4 w-4 text-orange-600" />
-                  ) : (
-                    <Rabbit className="h-4 w-4 text-green-600" />
-                  )}
-                </Button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        toggleAltSpeed()
+                      }}
+                      disabled={isToggling}
+                      className="h-8 w-8 p-0 !hover:bg-transparent"
+                    >
+                      {altSpeedEnabled ? (
+                        <Turtle className="h-4 w-4 text-orange-600" />
+                      ) : (
+                        <Rabbit className="h-4 w-4 text-green-600" />
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Alternative speed limits {altSpeedEnabled ? "enabled (turtle mode)" : "disabled (normal mode)"} - Click to toggle
+                  </TooltipContent>
+                </Tooltip>
               )}
               <Badge variant={stats.connected ? "default" : "destructive"}>
                 {stats.connected ? "Connected" : "Disconnected"}
