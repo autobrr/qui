@@ -15,7 +15,7 @@ import { PasswordIssuesBanner } from "@/components/instances/PasswordIssuesBanne
 import { InstanceErrorDisplay } from "@/components/instances/InstanceErrorDisplay"
 import { InstanceActionsDropdown } from "@/components/instances/InstanceActionsDropdown"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
-import { HardDrive, Download, Upload, Activity, Plus, Minus, Zap, ChevronDown, ChevronUp, Eye, EyeOff } from "lucide-react"
+import { HardDrive, Download, Upload, Activity, Plus, Minus, Zap, ChevronDown, ChevronUp, Eye, EyeOff, ExternalLink } from "lucide-react"
 import { Link } from "@tanstack/react-router"
 import { useMemo } from "react"
 import { formatSpeed, formatBytes, getRatioColor } from "@/lib/utils"
@@ -131,176 +131,27 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
   if (isLoading && !stats) {
     return (
       <>
-        <Link to="/instances/$instanceId" params={{ instanceId: instance.id.toString() }}>
-          <Card className="hover:shadow-lg transition-shadow cursor-pointer opacity-60">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg">{instance.name}</CardTitle>
-                <Badge variant="secondary">
-                  Loading...
-                </Badge>
-              </div>
-              <CardDescription className="flex items-center gap-1">
-                <span className={incognitoMode ? "blur-sm select-none" : ""}>{displayUrl}</span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-5 w-5 p-0 hover:bg-muted/50"
-                  onClick={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    setIncognitoMode(!incognitoMode)
-                  }}
-                >
-                  {incognitoMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                </Button>
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">Loading stats...</p>
-            </CardContent>
-          </Card>
-        </Link>
-      </>
-    )
-  }
-  
-  // If we have stats but instance is not connected, show with zero values
-  if (stats && !stats.connected) {
-    const hasErrors = instance.hasDecryptionError || instance.connectionError
-    return (
-      <>
-        <Link to={hasErrors ? "/instances" : "/instances/$instanceId"} params={hasErrors ? {} : { instanceId: instance.id.toString() }}>
-          <Card className="hover:shadow-lg transition-shadow cursor-pointer">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg">{instance.name}</CardTitle>
-                <div className="flex items-center gap-2">
-                  <Badge variant="destructive">Disconnected</Badge>
-                  {!hasErrors && (
-                    <InstanceActionsDropdown
-                      instanceId={instance.id}
-                      instanceName={instance.name}
-                      onClick={(e) => {
-                        e.preventDefault()
-                        e.stopPropagation()
-                      }}
-                    />
-                  )}
-                </div>
-              </div>
-              <CardDescription className="flex items-center gap-1">
-                <span className={incognitoMode ? "blur-sm select-none" : ""}>{displayUrl}</span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-5 w-5 p-0 hover:bg-muted/50"
-                  onClick={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    setIncognitoMode(!incognitoMode)
-                  }}
-                >
-                  {incognitoMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                </Button>
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground text-center">
-                Instance is disconnected
-              </p>
-              
-              <InstanceErrorDisplay instance={instance} />
-            </CardContent>
-          </Card>
-        </Link>
-      </>
-    )
-  }
-  
-  // If we have an error or no stats data, show error state
-  if (error || !stats || !stats.torrents) {
-    const hasErrors = instance.hasDecryptionError || instance.connectionError
-    return (
-      <>
-        <Link to={hasErrors ? "/instances" : "/instances/$instanceId"} params={hasErrors ? {} : { instanceId: instance.id.toString() }}>
-          <Card className="hover:shadow-lg transition-shadow cursor-pointer opacity-60">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg">{instance.name}</CardTitle>
-                <div className="flex items-center gap-2">
-                  <Badge variant="destructive">Error</Badge>
-                  {!hasErrors && (
-                    <InstanceActionsDropdown
-                      instanceId={instance.id}
-                      instanceName={instance.name}
-                      onClick={(e) => {
-                        e.preventDefault()
-                        e.stopPropagation()
-                      }}
-                    />
-                  )}
-                </div>
-              </div>
-              <CardDescription className="flex items-center gap-1">
-                <span className={incognitoMode ? "blur-sm select-none" : ""}>{displayUrl}</span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-5 w-5 p-0 hover:bg-muted/50"
-                  onClick={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    setIncognitoMode(!incognitoMode)
-                  }}
-                >
-                  {incognitoMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                </Button>
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">
-                Failed to load stats
-              </p>
-              
-              <InstanceErrorDisplay instance={instance} />
-            </CardContent>
-          </Card>
-        </Link>
-      </>
-    )
-  }
-  
-  const hasErrors = instance.hasDecryptionError || instance.connectionError
-  return (
-    <>
-      <Link to={hasErrors ? "/instances" : "/instances/$instanceId"} params={hasErrors ? {} : { instanceId: instance.id.toString() }}>
-        <Card className="hover:shadow-lg transition-shadow cursor-pointer">
-          <CardHeader className='gap-0'>
+        <Card className="hover:shadow-lg transition-shadow opacity-60">
+          <CardHeader>
             <div className="flex items-center justify-between">
-              <CardTitle className="text-lg">{instance.name}</CardTitle>
-              <div className="flex items-center gap-2">
-                <Badge variant={stats.connected ? "default" : "destructive"}>
-                  {stats.connected ? "Connected" : "Disconnected"}
-                </Badge>
-                {stats.connected && (
-                  <InstanceActionsDropdown
-                    instanceId={instance.id}
-                    instanceName={instance.name}
-                    onClick={(e) => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                    }}
-                  />
-                )}
-              </div>
+              <Link 
+                to="/instances/$instanceId" 
+                params={{ instanceId: instance.id.toString() }}
+                className="flex items-center gap-2 hover:underline"
+              >
+                <CardTitle className="text-lg">{instance.name}</CardTitle>
+                <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+              </Link>
+              <Badge variant="secondary">
+                Loading...
+              </Badge>
             </div>
-            <CardDescription className="flex items-center gap-1 text-xs">
-              <span className={incognitoMode ? "blur-sm select-none truncate" : "truncate"}>{displayUrl}</span>
+            <CardDescription className="flex items-center gap-1">
+              <span className={incognitoMode ? "blur-sm select-none" : ""}>{displayUrl}</span>
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-4 w-4 p-0"
+                className="h-5 w-5 p-0 hover:bg-muted/50"
                 onClick={(e) => {
                   e.preventDefault()
                   e.stopPropagation()
@@ -312,70 +163,215 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              <div className="mb-6">
-                <div className="flex items-center justify-center mb-1">
-                  <span className="flex-1 text-center text-xs text-muted-foreground">Downloading</span>
-                  <span className="flex-1 text-center text-xs text-muted-foreground">Active</span>
-                  <span className="flex-1 text-center text-xs text-muted-foreground">Error</span>
-                  <span className="flex-1 text-center text-xs text-muted-foreground">Total</span>
-                </div>
-                <div className="flex items-center justify-center">
-                  <span className="flex-1 text-center text-lg font-semibold">
-                    {torrentCounts?.status?.downloading || 0}
-                  </span>
-                  <span className="flex-1 text-center text-lg font-semibold">{torrentCounts?.status?.active || 0}</span>
-                  <span className={`flex-1 text-center text-lg font-semibold ${(torrentCounts?.status?.errored || 0) > 0 ? "text-destructive" : ""}`}>
-                    {torrentCounts?.status?.errored || 0}
-                  </span>
-                  <span className="flex-1 text-center text-lg font-semibold">{torrentCounts?.total || 0}</span>
-                </div>
+            <p className="text-sm text-muted-foreground">Loading stats...</p>
+          </CardContent>
+        </Card>
+      </>
+    )
+  }
+  
+  // If we have stats but instance is not connected, show with zero values
+  if (stats && !stats.connected) {
+    const hasErrors = instance.hasDecryptionError || instance.connectionError
+    return (
+      <>
+        <Card className="hover:shadow-lg transition-shadow">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <Link 
+                to={hasErrors ? "/instances" : "/instances/$instanceId"} 
+                params={hasErrors ? {} : { instanceId: instance.id.toString() }}
+                className="flex items-center gap-2 hover:underline"
+              >
+                <CardTitle className="text-lg">{instance.name}</CardTitle>
+                <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+              </Link>
+              <div className="flex items-center gap-2">
+                <Badge variant="destructive">Disconnected</Badge>
+                {!hasErrors && (
+                  <InstanceActionsDropdown
+                    instanceId={instance.id}
+                    instanceName={instance.name}
+                  />
+                )}
               </div>
-              
-              <div className="flex items-center gap-2 text-xs">
-                <Download className="h-3 w-3 text-muted-foreground" />
-                <span className="text-muted-foreground">Download</span>
-                <span className="ml-auto font-medium">{formatSpeed(stats.speeds?.download || 0)}</span>
-              </div>
-              
-              <div className="flex items-center gap-2 text-xs">
-                <Upload className="h-3 w-3 text-muted-foreground" />
-                <span className="text-muted-foreground">Upload</span>
-                <span className="ml-auto font-medium">{formatSpeed(stats.speeds?.upload || 0)}</span>
-              </div>
-              
-              {/* Queue status - only show if queueing is enabled */}
-              {metadata?.preferences?.queueing_enabled && (
-                <div className="pt-2 border-t border-border/50">
-                  <div className="flex items-center gap-2 text-xs">
-                    <Activity className="h-3 w-3 text-orange-500" />
-                    <span className="text-muted-foreground">Queue</span>
-                    <div className="ml-auto flex items-center gap-3 text-xs">
-                      {metadata.preferences.max_active_downloads > 0 && (
-                        <span>
-                          DL: {torrentCounts?.status?.downloading || 0}/{metadata.preferences.max_active_downloads}
-                        </span>
-                      )}
-                      {metadata.preferences.max_active_uploads > 0 && (
-                        <span>
-                          UP: {torrentCounts?.status?.seeding || 0}/{metadata.preferences.max_active_uploads}
-                        </span>
-                      )}
-                      {metadata.preferences.max_active_torrents > 0 && (
-                        <span className="font-medium">
-                          Total: {(torrentCounts?.status?.downloading || 0) + (torrentCounts?.status?.seeding || 0)}/{metadata.preferences.max_active_torrents}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
+            <CardDescription className="flex items-center gap-1">
+              <span className={incognitoMode ? "blur-sm select-none" : ""}>{displayUrl}</span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-5 w-5 p-0 hover:bg-muted/50"
+                onClick={() => setIncognitoMode(!incognitoMode)}
+              >
+                {incognitoMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+              </Button>
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground text-center">
+              Instance is disconnected
+            </p>
             
             <InstanceErrorDisplay instance={instance} />
           </CardContent>
         </Card>
-      </Link>
+      </>
+    )
+  }
+  
+  // If we have an error or no stats data, show error state
+  if (error || !stats || !stats.torrents) {
+    const hasErrors = instance.hasDecryptionError || instance.connectionError
+    return (
+      <>
+        <Card className="hover:shadow-lg transition-shadow opacity-60">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <Link 
+                to={hasErrors ? "/instances" : "/instances/$instanceId"} 
+                params={hasErrors ? {} : { instanceId: instance.id.toString() }}
+                className="flex items-center gap-2 hover:underline"
+              >
+                <CardTitle className="text-lg">{instance.name}</CardTitle>
+                <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+              </Link>
+              <div className="flex items-center gap-2">
+                <Badge variant="destructive">Error</Badge>
+                {!hasErrors && (
+                  <InstanceActionsDropdown
+                    instanceId={instance.id}
+                    instanceName={instance.name}
+                  />
+                )}
+              </div>
+            </div>
+            <CardDescription className="flex items-center gap-1">
+              <span className={incognitoMode ? "blur-sm select-none" : ""}>{displayUrl}</span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-5 w-5 p-0 hover:bg-muted/50"
+                onClick={() => setIncognitoMode(!incognitoMode)}
+              >
+                {incognitoMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+              </Button>
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground">
+              Failed to load stats
+            </p>
+            
+            <InstanceErrorDisplay instance={instance} />
+          </CardContent>
+        </Card>
+      </>
+    )
+  }
+  
+  const hasErrors = instance.hasDecryptionError || instance.connectionError
+  return (
+    <>
+      <Card className="hover:shadow-lg transition-shadow">
+        <CardHeader className='gap-0'>
+          <div className="flex items-center justify-between">
+            <Link 
+              to={hasErrors ? "/instances" : "/instances/$instanceId"} 
+              params={hasErrors ? {} : { instanceId: instance.id.toString() }}
+              className="flex items-center gap-2 hover:underline"
+            >
+              <CardTitle className="text-lg">{instance.name}</CardTitle>
+              <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+            </Link>
+            <div className="flex items-center gap-2">
+              <Badge variant={stats.connected ? "default" : "destructive"}>
+                {stats.connected ? "Connected" : "Disconnected"}
+              </Badge>
+              {stats.connected && (
+                <InstanceActionsDropdown
+                  instanceId={instance.id}
+                  instanceName={instance.name}
+                />
+              )}
+            </div>
+          </div>
+          <CardDescription className="flex items-center gap-1 text-xs">
+            <span className={incognitoMode ? "blur-sm select-none truncate" : "truncate"}>{displayUrl}</span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-4 w-4 p-0"
+              onClick={() => setIncognitoMode(!incognitoMode)}
+            >
+              {incognitoMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+            </Button>
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            <div className="mb-6">
+              <div className="flex items-center justify-center mb-1">
+                <span className="flex-1 text-center text-xs text-muted-foreground">Downloading</span>
+                <span className="flex-1 text-center text-xs text-muted-foreground">Active</span>
+                <span className="flex-1 text-center text-xs text-muted-foreground">Error</span>
+                <span className="flex-1 text-center text-xs text-muted-foreground">Total</span>
+              </div>
+              <div className="flex items-center justify-center">
+                <span className="flex-1 text-center text-lg font-semibold">
+                  {torrentCounts?.status?.downloading || 0}
+                </span>
+                <span className="flex-1 text-center text-lg font-semibold">{torrentCounts?.status?.active || 0}</span>
+                <span className={`flex-1 text-center text-lg font-semibold ${(torrentCounts?.status?.errored || 0) > 0 ? "text-destructive" : ""}`}>
+                  {torrentCounts?.status?.errored || 0}
+                </span>
+                <span className="flex-1 text-center text-lg font-semibold">{torrentCounts?.total || 0}</span>
+              </div>
+            </div>
+              
+            <div className="flex items-center gap-2 text-xs">
+              <Download className="h-3 w-3 text-muted-foreground" />
+              <span className="text-muted-foreground">Download</span>
+              <span className="ml-auto font-medium">{formatSpeed(stats.speeds?.download || 0)}</span>
+            </div>
+              
+            <div className="flex items-center gap-2 text-xs">
+              <Upload className="h-3 w-3 text-muted-foreground" />
+              <span className="text-muted-foreground">Upload</span>
+              <span className="ml-auto font-medium">{formatSpeed(stats.speeds?.upload || 0)}</span>
+            </div>
+              
+            {/* Queue status - only show if queueing is enabled */}
+            {metadata?.preferences?.queueing_enabled && (
+              <div className="pt-2 border-t border-border/50">
+                <div className="flex items-center gap-2 text-xs">
+                  <Activity className="h-3 w-3 text-orange-500" />
+                  <span className="text-muted-foreground">Queue</span>
+                  <div className="ml-auto flex items-center gap-3 text-xs">
+                    {metadata.preferences.max_active_downloads > 0 && (
+                      <span>
+                        DL: {torrentCounts?.status?.downloading || 0}/{metadata.preferences.max_active_downloads}
+                      </span>
+                    )}
+                    {metadata.preferences.max_active_uploads > 0 && (
+                      <span>
+                        UP: {torrentCounts?.status?.seeding || 0}/{metadata.preferences.max_active_uploads}
+                      </span>
+                    )}
+                    {metadata.preferences.max_active_torrents > 0 && (
+                      <span className="font-medium">
+                        Total: {(torrentCounts?.status?.downloading || 0) + (torrentCounts?.status?.seeding || 0)}/{metadata.preferences.max_active_torrents}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+            
+          <InstanceErrorDisplay instance={instance} />
+        </CardContent>
+      </Card>
     </>
   )
 }
