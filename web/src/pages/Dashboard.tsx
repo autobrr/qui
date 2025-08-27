@@ -12,11 +12,11 @@ import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
 import { PasswordIssuesBanner } from "@/components/instances/PasswordIssuesBanner"
 import { InstanceErrorDisplay } from "@/components/instances/InstanceErrorDisplay"
-import { InstancePreferencesDialog } from "@/components/instances/InstancePreferencesDialog"
+import { InstanceActionsDropdown } from "@/components/instances/InstanceActionsDropdown"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
-import { HardDrive, Download, Upload, Activity, Plus, Minus, Zap, ChevronDown, ChevronUp, Eye, EyeOff, Settings } from "lucide-react"
+import { HardDrive, Download, Upload, Activity, Plus, Minus, Zap, ChevronDown, ChevronUp, Eye, EyeOff } from "lucide-react"
 import { Link } from "@tanstack/react-router"
-import { useMemo, useState } from "react"
+import { useMemo } from "react"
 import { formatSpeed, formatBytes, getRatioColor } from "@/lib/utils"
 import { useQuery, useQueries } from "@tanstack/react-query"
 import { api } from "@/lib/api"
@@ -32,7 +32,6 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 import { useIncognitoMode } from "@/lib/incognito"
-import { DashboardSpeedLimits } from "@/components/dashboard/DashboardSpeedLimits"
 
 
 // Custom hook to get all instance stats using dynamic queries
@@ -124,7 +123,6 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
     enabled: true,
   })
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
-  const [preferencesOpen, setPreferencesOpen] = useState(false)
   const displayUrl = instance.host
   
   // Show loading only on first load
@@ -161,12 +159,6 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
             </CardContent>
           </Card>
         </Link>
-        <InstancePreferencesDialog
-          open={preferencesOpen}
-          onOpenChange={setPreferencesOpen}
-          instanceId={instance.id}
-          instanceName={instance.name}
-        />
       </>
     )
   }
@@ -184,19 +176,14 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
                 <div className="flex items-center gap-2">
                   <Badge variant="destructive">Disconnected</Badge>
                   {!hasErrors && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 p-0"
+                    <InstanceActionsDropdown
+                      instanceId={instance.id}
+                      instanceName={instance.name}
                       onClick={(e) => {
                         e.preventDefault()
                         e.stopPropagation()
-                        setPreferencesOpen(true)
                       }}
-                      title="Instance Preferences"
-                    >
-                      <Settings className="h-3.5 w-3.5" />
-                    </Button>
+                    />
                   )}
                 </div>
               </div>
@@ -225,12 +212,6 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
             </CardContent>
           </Card>
         </Link>
-        <InstancePreferencesDialog
-          open={preferencesOpen}
-          onOpenChange={setPreferencesOpen}
-          instanceId={instance.id}
-          instanceName={instance.name}
-        />
       </>
     )
   }
@@ -248,19 +229,14 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
                 <div className="flex items-center gap-2">
                   <Badge variant="destructive">Error</Badge>
                   {!hasErrors && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 p-0"
+                    <InstanceActionsDropdown
+                      instanceId={instance.id}
+                      instanceName={instance.name}
                       onClick={(e) => {
                         e.preventDefault()
                         e.stopPropagation()
-                        setPreferencesOpen(true)
                       }}
-                      title="Instance Preferences"
-                    >
-                      <Settings className="h-3.5 w-3.5" />
-                    </Button>
+                    />
                   )}
                 </div>
               </div>
@@ -289,12 +265,6 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
             </CardContent>
           </Card>
         </Link>
-        <InstancePreferencesDialog
-          open={preferencesOpen}
-          onOpenChange={setPreferencesOpen}
-          instanceId={instance.id}
-          instanceName={instance.name}
-        />
       </>
     )
   }
@@ -312,19 +282,14 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
                   {stats.connected ? "Connected" : "Disconnected"}
                 </Badge>
                 {stats.connected && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6 p-0"
+                  <InstanceActionsDropdown
+                    instanceId={instance.id}
+                    instanceName={instance.name}
                     onClick={(e) => {
                       e.preventDefault()
                       e.stopPropagation()
-                      setPreferencesOpen(true)
                     }}
-                    title="Instance Preferences"
-                  >
-                    <Settings className="h-3.5 w-3.5" />
-                  </Button>
+                  />
                 )}
               </div>
             </div>
@@ -382,12 +347,6 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
           </CardContent>
         </Card>
       </Link>
-      <InstancePreferencesDialog
-        open={preferencesOpen}
-        onOpenChange={setPreferencesOpen}
-        instanceId={instance.id}
-        instanceName={instance.name}
-      />
     </>
   )
 }

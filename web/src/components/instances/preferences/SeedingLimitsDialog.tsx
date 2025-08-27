@@ -4,32 +4,39 @@
  */
 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { InstancePreferencesForm } from "@/components/settings/InstancePreferencesForm"
+import { SeedingLimitsForm } from "./SeedingLimitsForm"
+import { Upload } from "lucide-react"
 
-interface InstancePreferencesDialogProps {
+interface SeedingLimitsDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   instanceId: number
   instanceName: string
 }
 
-export function InstancePreferencesDialog({
+export function SeedingLimitsDialog({
   open,
   onOpenChange,
   instanceId,
   instanceName,
-}: InstancePreferencesDialogProps) {
+}: SeedingLimitsDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Instance Preferences - {instanceName}</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            <Upload className="h-5 w-5" />
+            Seeding Limits - {instanceName}
+          </DialogTitle>
           <DialogDescription>
-            Configure qBittorrent preferences for this instance
+            Configure share ratio and seeding time limits
           </DialogDescription>
         </DialogHeader>
         
-        <InstancePreferencesForm instanceId={instanceId} />
+        <SeedingLimitsForm 
+          instanceId={instanceId} 
+          onSuccess={() => onOpenChange(false)} 
+        />
       </DialogContent>
     </Dialog>
   )
