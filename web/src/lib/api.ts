@@ -187,6 +187,14 @@ class ApiClient {
       savePath?: string
       autoTMM?: boolean
       skipHashCheck?: boolean
+      sequentialDownload?: boolean
+      firstLastPiecePrio?: boolean
+      limitUploadSpeed?: number
+      limitDownloadSpeed?: number
+      limitRatio?: number
+      limitSeedTime?: number
+      contentLayout?: string
+      rename?: string
     }
   ): Promise<{ success: boolean; message?: string }> {
     const formData = new FormData()
@@ -200,6 +208,14 @@ class ApiClient {
     if (data.startPaused !== undefined) formData.append("paused", data.startPaused.toString())
     if (data.autoTMM !== undefined) formData.append("autoTMM", data.autoTMM.toString())
     if (data.skipHashCheck !== undefined) formData.append("skip_checking", data.skipHashCheck.toString())
+    if (data.sequentialDownload !== undefined) formData.append("sequentialDownload", data.sequentialDownload.toString())
+    if (data.firstLastPiecePrio !== undefined) formData.append("firstLastPiecePrio", data.firstLastPiecePrio.toString())
+    if (data.limitUploadSpeed !== undefined && data.limitUploadSpeed > 0) formData.append("upLimit", data.limitUploadSpeed.toString())
+    if (data.limitDownloadSpeed !== undefined && data.limitDownloadSpeed > 0) formData.append("dlLimit", data.limitDownloadSpeed.toString())
+    if (data.limitRatio !== undefined && data.limitRatio > 0) formData.append("ratioLimit", data.limitRatio.toString())
+    if (data.limitSeedTime !== undefined && data.limitSeedTime > 0) formData.append("seedingTimeLimit", data.limitSeedTime.toString())
+    if (data.contentLayout) formData.append("contentLayout", data.contentLayout)
+    if (data.rename) formData.append("rename", data.rename)
     // Only send savePath if autoTMM is false or undefined
     if (data.savePath && !data.autoTMM) formData.append("savepath", data.savePath)
 

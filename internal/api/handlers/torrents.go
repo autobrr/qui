@@ -257,6 +257,38 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 		options["skip_checking"] = "true"
 	}
 
+	if sequentialDownload := r.FormValue("sequentialDownload"); sequentialDownload == "true" {
+		options["sequentialDownload"] = "true"
+	}
+
+	if firstLastPiecePrio := r.FormValue("firstLastPiecePrio"); firstLastPiecePrio == "true" {
+		options["firstLastPiecePrio"] = "true"
+	}
+
+	if upLimit := r.FormValue("upLimit"); upLimit != "" {
+		options["upLimit"] = upLimit
+	}
+
+	if dlLimit := r.FormValue("dlLimit"); dlLimit != "" {
+		options["dlLimit"] = dlLimit
+	}
+
+	if ratioLimit := r.FormValue("ratioLimit"); ratioLimit != "" {
+		options["ratioLimit"] = ratioLimit
+	}
+
+	if seedingTimeLimit := r.FormValue("seedingTimeLimit"); seedingTimeLimit != "" {
+		options["seedingTimeLimit"] = seedingTimeLimit
+	}
+
+	if contentLayout := r.FormValue("contentLayout"); contentLayout != "" {
+		options["contentLayout"] = contentLayout
+	}
+
+	if rename := r.FormValue("rename"); rename != "" {
+		options["rename"] = rename
+	}
+
 	if savePath := r.FormValue("savepath"); savePath != "" {
 		options["savepath"] = savePath
 		// When savepath is provided, disable autoTMM

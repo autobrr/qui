@@ -204,6 +204,18 @@ export interface AppPreferences {
   announce_to_all_tiers: boolean
   announce_to_all_trackers: boolean
   
+  // File management and content layout
+  torrent_content_layout: string
+  incomplete_files_ext: boolean
+  preallocate_all: boolean
+  excluded_file_names_enabled: boolean
+  excluded_file_names: string
+  
+  // Category behavior
+  category_changed_tmm_enabled: boolean
+  save_path_changed_tmm_enabled: boolean
+  use_category_paths_in_manual_mode: boolean
+  
   // Add catch-all for any additional fields from the API
   [key: string]: unknown
 }
