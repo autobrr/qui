@@ -121,10 +121,14 @@ function SwitchSetting({
   )
 }
 
-export function InstancePreferencesForm() {
-  const [selectedInstanceId, setSelectedInstanceId] = useState<number | undefined>(undefined)
+interface InstancePreferencesFormProps {
+  instanceId?: number // Optional for backward compatibility with Settings page
+}
+
+export function InstancePreferencesForm({ instanceId }: InstancePreferencesFormProps = {}) {
+  const [selectedInstanceId, setSelectedInstanceId] = useState<number | undefined>(instanceId)
   const { instances } = useInstances()
-  const { preferences, isLoading, updatePreferences, isUpdating } = useInstancePreferences(selectedInstanceId)
+  const { preferences, isLoading, updatePreferences, isUpdating } = useInstancePreferences(selectedInstanceId || instanceId)
 
   const connectedInstances = instances?.filter((instance: InstanceResponse) => instance.connected) || []
 
@@ -148,7 +152,8 @@ export function InstancePreferencesForm() {
       max_seeding_time: 1440,
     },
     onSubmit: async ({ value }) => {
-      if (!selectedInstanceId) return
+      const targetInstanceId = selectedInstanceId || instanceId
+      if (!targetInstanceId) return
       try {
         updatePreferences(value)
         toast.success("Preferences updated successfully")
@@ -157,6 +162,13 @@ export function InstancePreferencesForm() {
       }
     },
   })
+
+  // Initialize selectedInstanceId when instanceId prop is provided
+  React.useEffect(() => {
+    if (instanceId && !selectedInstanceId) {
+      setSelectedInstanceId(instanceId)
+    }
+  }, [instanceId, selectedInstanceId])
 
   // Reset form when preferences change (instance selection or data load)
   React.useEffect(() => {
@@ -198,27 +210,29 @@ export function InstancePreferencesForm() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Instance Selector */}
-        <div className="space-y-2">
-          <Label className="text-sm font-medium">qBittorrent Instance</Label>
-          <Select
-            value={selectedInstanceId?.toString()}
-            onValueChange={(value) => setSelectedInstanceId(parseInt(value))}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select an instance to configure" />
-            </SelectTrigger>
-            <SelectContent>
-              {connectedInstances.map((instance: InstanceResponse) => (
-                <SelectItem key={instance.id} value={instance.id.toString()}>
-                  {instance.name} ({instance.host})
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        {/* Instance Selector - only show when instanceId is not provided */}
+        {!instanceId && (
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">qBittorrent Instance</Label>
+            <Select
+              value={selectedInstanceId?.toString()}
+              onValueChange={(value) => setSelectedInstanceId(parseInt(value))}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select an instance to configure" />
+              </SelectTrigger>
+              <SelectContent>
+                {connectedInstances.map((instance: InstanceResponse) => (
+                  <SelectItem key={instance.id} value={instance.id.toString()}>
+                    {instance.name} ({instance.host})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
 
-        {selectedInstanceId && (
+        {(selectedInstanceId || instanceId) && (
           <>
             {isLoading ? (
               <div className="text-center py-8">

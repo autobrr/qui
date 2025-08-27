@@ -12,10 +12,11 @@ import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
 import { PasswordIssuesBanner } from "@/components/instances/PasswordIssuesBanner"
 import { InstanceErrorDisplay } from "@/components/instances/InstanceErrorDisplay"
+import { InstancePreferencesDialog } from "@/components/instances/InstancePreferencesDialog"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
-import { HardDrive, Download, Upload, Activity, Plus, Minus, Zap, ChevronDown, ChevronUp, Eye, EyeOff } from "lucide-react"
+import { HardDrive, Download, Upload, Activity, Plus, Minus, Zap, ChevronDown, ChevronUp, Eye, EyeOff, Settings } from "lucide-react"
 import { Link } from "@tanstack/react-router"
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 import { formatSpeed, formatBytes, getRatioColor } from "@/lib/utils"
 import { useQuery, useQueries } from "@tanstack/react-query"
 import { api } from "@/lib/api"
@@ -123,41 +124,50 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
     enabled: true,
   })
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
+  const [preferencesOpen, setPreferencesOpen] = useState(false)
   const displayUrl = instance.host
   
   // Show loading only on first load
   if (isLoading && !stats) {
     return (
-      <Link to="/instances/$instanceId" params={{ instanceId: instance.id.toString() }}>
-        <Card className="hover:shadow-lg transition-shadow cursor-pointer opacity-60">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg">{instance.name}</CardTitle>
-              <Badge variant="secondary">
-                Loading...
-              </Badge>
-            </div>
-            <CardDescription className="flex items-center gap-1">
-              <span className={incognitoMode ? "blur-sm select-none" : ""}>{displayUrl}</span>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-5 w-5 p-0 hover:bg-muted/50"
-                onClick={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  setIncognitoMode(!incognitoMode)
-                }}
-              >
-                {incognitoMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-              </Button>
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">Loading stats...</p>
-          </CardContent>
-        </Card>
-      </Link>
+      <>
+        <Link to="/instances/$instanceId" params={{ instanceId: instance.id.toString() }}>
+          <Card className="hover:shadow-lg transition-shadow cursor-pointer opacity-60">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg">{instance.name}</CardTitle>
+                <Badge variant="secondary">
+                  Loading...
+                </Badge>
+              </div>
+              <CardDescription className="flex items-center gap-1">
+                <span className={incognitoMode ? "blur-sm select-none" : ""}>{displayUrl}</span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-5 w-5 p-0 hover:bg-muted/50"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    setIncognitoMode(!incognitoMode)
+                  }}
+                >
+                  {incognitoMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                </Button>
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">Loading stats...</p>
+            </CardContent>
+          </Card>
+        </Link>
+        <InstancePreferencesDialog
+          open={preferencesOpen}
+          onOpenChange={setPreferencesOpen}
+          instanceId={instance.id}
+          instanceName={instance.name}
+        />
+      </>
     )
   }
   
@@ -165,38 +175,63 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
   if (stats && !stats.connected) {
     const hasErrors = instance.hasDecryptionError || instance.connectionError
     return (
-      <Link to={hasErrors ? "/instances" : "/instances/$instanceId"} params={hasErrors ? {} : { instanceId: instance.id.toString() }}>
-        <Card className="hover:shadow-lg transition-shadow cursor-pointer">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg">{instance.name}</CardTitle>
-              <Badge variant="destructive">Disconnected</Badge>
-            </div>
-            <CardDescription className="flex items-center gap-1">
-              <span className={incognitoMode ? "blur-sm select-none" : ""}>{displayUrl}</span>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-5 w-5 p-0 hover:bg-muted/50"
-                onClick={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  setIncognitoMode(!incognitoMode)
-                }}
-              >
-                {incognitoMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-              </Button>
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground text-center">
-              Instance is disconnected
-            </p>
-            
-            <InstanceErrorDisplay instance={instance} />
-          </CardContent>
-        </Card>
-      </Link>
+      <>
+        <Link to={hasErrors ? "/instances" : "/instances/$instanceId"} params={hasErrors ? {} : { instanceId: instance.id.toString() }}>
+          <Card className="hover:shadow-lg transition-shadow cursor-pointer">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg">{instance.name}</CardTitle>
+                <div className="flex items-center gap-2">
+                  <Badge variant="destructive">Disconnected</Badge>
+                  {!hasErrors && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 p-0"
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        setPreferencesOpen(true)
+                      }}
+                      title="Instance Preferences"
+                    >
+                      <Settings className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+              <CardDescription className="flex items-center gap-1">
+                <span className={incognitoMode ? "blur-sm select-none" : ""}>{displayUrl}</span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-5 w-5 p-0 hover:bg-muted/50"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    setIncognitoMode(!incognitoMode)
+                  }}
+                >
+                  {incognitoMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                </Button>
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground text-center">
+                Instance is disconnected
+              </p>
+              
+              <InstanceErrorDisplay instance={instance} />
+            </CardContent>
+          </Card>
+        </Link>
+        <InstancePreferencesDialog
+          open={preferencesOpen}
+          onOpenChange={setPreferencesOpen}
+          instanceId={instance.id}
+          instanceName={instance.name}
+        />
+      </>
     )
   }
   
@@ -204,19 +239,101 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
   if (error || !stats || !stats.torrents) {
     const hasErrors = instance.hasDecryptionError || instance.connectionError
     return (
+      <>
+        <Link to={hasErrors ? "/instances" : "/instances/$instanceId"} params={hasErrors ? {} : { instanceId: instance.id.toString() }}>
+          <Card className="hover:shadow-lg transition-shadow cursor-pointer opacity-60">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg">{instance.name}</CardTitle>
+                <div className="flex items-center gap-2">
+                  <Badge variant="destructive">Error</Badge>
+                  {!hasErrors && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 p-0"
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        setPreferencesOpen(true)
+                      }}
+                      title="Instance Preferences"
+                    >
+                      <Settings className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+              <CardDescription className="flex items-center gap-1">
+                <span className={incognitoMode ? "blur-sm select-none" : ""}>{displayUrl}</span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-5 w-5 p-0 hover:bg-muted/50"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    setIncognitoMode(!incognitoMode)
+                  }}
+                >
+                  {incognitoMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                </Button>
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">
+                Failed to load stats
+              </p>
+              
+              <InstanceErrorDisplay instance={instance} />
+            </CardContent>
+          </Card>
+        </Link>
+        <InstancePreferencesDialog
+          open={preferencesOpen}
+          onOpenChange={setPreferencesOpen}
+          instanceId={instance.id}
+          instanceName={instance.name}
+        />
+      </>
+    )
+  }
+  
+  const hasErrors = instance.hasDecryptionError || instance.connectionError
+  return (
+    <>
       <Link to={hasErrors ? "/instances" : "/instances/$instanceId"} params={hasErrors ? {} : { instanceId: instance.id.toString() }}>
-        <Card className="hover:shadow-lg transition-shadow cursor-pointer opacity-60">
-          <CardHeader>
+        <Card className="hover:shadow-lg transition-shadow cursor-pointer">
+          <CardHeader className='gap-0'>
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg">{instance.name}</CardTitle>
-              <Badge variant="destructive">Error</Badge>
+              <div className="flex items-center gap-2">
+                <Badge variant={stats.connected ? "default" : "destructive"}>
+                  {stats.connected ? "Connected" : "Disconnected"}
+                </Badge>
+                {stats.connected && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 p-0"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      setPreferencesOpen(true)
+                    }}
+                    title="Instance Preferences"
+                  >
+                    <Settings className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+              </div>
             </div>
-            <CardDescription className="flex items-center gap-1">
-              <span className={incognitoMode ? "blur-sm select-none" : ""}>{displayUrl}</span>
+            <CardDescription className="flex items-center gap-1 text-xs">
+              <span className={incognitoMode ? "blur-sm select-none truncate" : "truncate"}>{displayUrl}</span>
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-5 w-5 p-0 hover:bg-muted/50"
+                className="h-4 w-4 p-0"
                 onClick={(e) => {
                   e.preventDefault()
                   e.stopPropagation()
@@ -228,82 +345,50 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-muted-foreground">
-              Failed to load stats
-            </p>
+            <div className="space-y-3">
+              <div className="mb-6">
+                <div className="flex items-center justify-center mb-1">
+                  <span className="flex-1 text-center text-xs text-muted-foreground">Downloading</span>
+                  <span className="flex-1 text-center text-xs text-muted-foreground">Active</span>
+                  <span className="flex-1 text-center text-xs text-muted-foreground">Error</span>
+                  <span className="flex-1 text-center text-xs text-muted-foreground">Total</span>
+                </div>
+                <div className="flex items-center justify-center">
+                  <span className="flex-1 text-center text-lg font-semibold">
+                    {torrentCounts?.status?.downloading || 0}
+                  </span>
+                  <span className="flex-1 text-center text-lg font-semibold">{torrentCounts?.status?.active || 0}</span>
+                  <span className={`flex-1 text-center text-lg font-semibold ${(torrentCounts?.status?.errored || 0) > 0 ? "text-destructive" : ""}`}>
+                    {torrentCounts?.status?.errored || 0}
+                  </span>
+                  <span className="flex-1 text-center text-lg font-semibold">{torrentCounts?.total || 0}</span>
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-2 text-xs">
+                <Download className="h-3 w-3 text-muted-foreground" />
+                <span className="text-muted-foreground">Download</span>
+                <span className="ml-auto font-medium">{formatSpeed(stats.speeds?.download || 0)}</span>
+              </div>
+              
+              <div className="flex items-center gap-2 text-xs">
+                <Upload className="h-3 w-3 text-muted-foreground" />
+                <span className="text-muted-foreground">Upload</span>
+                <span className="ml-auto font-medium">{formatSpeed(stats.speeds?.upload || 0)}</span>
+              </div>
+            </div>
             
             <InstanceErrorDisplay instance={instance} />
           </CardContent>
         </Card>
       </Link>
-    )
-  }
-  
-  const hasErrors = instance.hasDecryptionError || instance.connectionError
-  return (
-    <Link to={hasErrors ? "/instances" : "/instances/$instanceId"} params={hasErrors ? {} : { instanceId: instance.id.toString() }}>
-      <Card className="hover:shadow-lg transition-shadow cursor-pointer">
-        <CardHeader className='gap-0'>
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-lg">{instance.name}</CardTitle>
-            <Badge variant={stats.connected ? "default" : "destructive"}>
-              {stats.connected ? "Connected" : "Disconnected"}
-            </Badge>
-          </div>
-          <CardDescription className="flex items-center gap-1 text-xs">
-            <span className={incognitoMode ? "blur-sm select-none truncate" : "truncate"}>{displayUrl}</span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-4 w-4 p-0"
-              onClick={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                setIncognitoMode(!incognitoMode)
-              }}
-            >
-              {incognitoMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-            </Button>
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            <div className="mb-6">
-              <div className="flex items-center justify-center mb-1">
-                <span className="flex-1 text-center text-xs text-muted-foreground">Downloading</span>
-                <span className="flex-1 text-center text-xs text-muted-foreground">Active</span>
-                <span className="flex-1 text-center text-xs text-muted-foreground">Error</span>
-                <span className="flex-1 text-center text-xs text-muted-foreground">Total</span>
-              </div>
-              <div className="flex items-center justify-center">
-                <span className="flex-1 text-center text-lg font-semibold">
-                  {torrentCounts?.status?.downloading || 0}
-                </span>
-                <span className="flex-1 text-center text-lg font-semibold">{torrentCounts?.status?.active || 0}</span>
-                <span className={`flex-1 text-center text-lg font-semibold ${(torrentCounts?.status?.errored || 0) > 0 ? "text-destructive" : ""}`}>
-                  {torrentCounts?.status?.errored || 0}
-                </span>
-                <span className="flex-1 text-center text-lg font-semibold">{torrentCounts?.total || 0}</span>
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-2 text-xs">
-              <Download className="h-3 w-3 text-muted-foreground" />
-              <span className="text-muted-foreground">Download</span>
-              <span className="ml-auto font-medium">{formatSpeed(stats.speeds?.download || 0)}</span>
-            </div>
-            
-            <div className="flex items-center gap-2 text-xs">
-              <Upload className="h-3 w-3 text-muted-foreground" />
-              <span className="text-muted-foreground">Upload</span>
-              <span className="ml-auto font-medium">{formatSpeed(stats.speeds?.upload || 0)}</span>
-            </div>
-          </div>
-          
-          <InstanceErrorDisplay instance={instance} />
-        </CardContent>
-      </Card>
-    </Link>
+      <InstancePreferencesDialog
+        open={preferencesOpen}
+        onOpenChange={setPreferencesOpen}
+        instanceId={instance.id}
+        instanceName={instance.name}
+      />
+    </>
   )
 }
 
@@ -668,27 +753,6 @@ export function Dashboard() {
             <GlobalStatsCards statsData={statsData} />
           </div>
           
-          {/* Speed Limits for Connected Instances */}
-          {statsData.filter(({ stats }) => stats?.connected).length > 0 && (
-            <div>
-              <h2 className="text-xl font-semibold mb-4">Speed Limits</h2>
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {statsData
-                  .filter(({ stats }) => stats?.connected)
-                  .map(({ instance, stats }) => (
-                    <div key={instance.id} className="space-y-2">
-                      <h3 className="text-sm font-medium text-muted-foreground">{instance.name}</h3>
-                      <DashboardSpeedLimits
-                        instanceId={instance.id}
-                        currentDownloadSpeed={stats?.speeds?.download || 0}
-                        currentUploadSpeed={stats?.speeds?.upload || 0}
-                      />
-                    </div>
-                  ))
-                }
-              </div>
-            </div>
-          )}
           
           {/* Instance Cards */}
           {allInstances.length > 0 && (
