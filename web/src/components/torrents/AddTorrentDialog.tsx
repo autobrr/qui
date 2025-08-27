@@ -30,7 +30,7 @@ import {
   SelectValue
 } from "@/components/ui/select"
 import { Plus, Upload, Link } from "lucide-react"
-import { useQuery } from "@tanstack/react-query"
+import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 
 interface AddTorrentDialogProps {
   instanceId: number
@@ -61,19 +61,11 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
   const open = controlledOpen !== undefined ? controlledOpen : internalOpen
   const setOpen = onOpenChange || setInternalOpen
 
-  // Fetch categories for the dropdown
-  const { data: categories } = useQuery({
-    queryKey: ["categories", instanceId],
-    queryFn: () => api.getCategories(instanceId),
-    enabled: open,
-  })
-
-  // Fetch available tags for selection
-  const { data: availableTags } = useQuery({
-    queryKey: ["tags", instanceId],
-    queryFn: () => api.getTags(instanceId),
-    enabled: open,
-  })
+  // Fetch metadata (categories, tags, preferences) with single API call
+  const { data: metadata } = useInstanceMetadata(instanceId)
+  const categories = metadata?.categories
+  const availableTags = metadata?.tags
+  const preferences = metadata?.preferences
 
   // Reset tag state when dialog closes
   useEffect(() => {
@@ -134,8 +126,8 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
       urls: "",
       category: "",
       tags: [] as string[],
-      startPaused: false,
-      savePath: "",
+      startPaused: preferences?.start_paused_enabled ?? false,
+      savePath: preferences?.save_path || "",
       skipHashCheck: false,
     },
     onSubmit: async ({ value }) => {
@@ -379,21 +371,38 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
             </div>
           </div>
 
-          {/* Save Path */}
-          <form.Field name="savePath">
-            {(field) => (
-              <div className="space-y-2">
-                <Label htmlFor="savePath">Save Path</Label>
-                <Input
-                  id="savePath"
-                  placeholder="Leave empty for default"
-                  value={field.state.value}
-                  onBlur={field.handleBlur}
-                  onChange={(e) => field.handleChange(e.target.value)}
-                />
+          {/* Save Path - only show when auto TMM is disabled */}
+          {!preferences?.auto_tmm_enabled && (
+            <form.Field name="savePath">
+              {(field) => (
+                <div className="space-y-2">
+                  <Label htmlFor="savePath">Save Path</Label>
+                  <Input
+                    id="savePath"
+                    placeholder={preferences?.save_path || "Leave empty for default"}
+                    value={field.state.value}
+                    onBlur={field.handleBlur}
+                    onChange={(e) => field.handleChange(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Automatic Torrent Management is disabled for this instance
+                  </p>
+                </div>
+              )}
+            </form.Field>
+          )}
+          
+          {/* Auto TMM info when enabled */}
+          {preferences?.auto_tmm_enabled && (
+            <div className="space-y-2">
+              <Label>Save Path</Label>
+              <div className="px-3 py-2 bg-muted rounded-md">
+                <p className="text-sm text-muted-foreground">
+                  Automatic Torrent Management is enabled. Save path will be determined by category settings.
+                </p>
               </div>
-            )}
-          </form.Field>
+            </div>
+          )}
 
           {/* Start Paused */}
           <form.Field name="startPaused">

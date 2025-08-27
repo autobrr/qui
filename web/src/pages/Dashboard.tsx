@@ -31,6 +31,7 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 import { useIncognitoMode } from "@/lib/incognito"
+import { DashboardSpeedLimits } from "@/components/dashboard/DashboardSpeedLimits"
 
 
 // Custom hook to get all instance stats using dynamic queries
@@ -666,6 +667,28 @@ export function Dashboard() {
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <GlobalStatsCards statsData={statsData} />
           </div>
+          
+          {/* Speed Limits for Connected Instances */}
+          {statsData.filter(({ stats }) => stats?.connected).length > 0 && (
+            <div>
+              <h2 className="text-xl font-semibold mb-4">Speed Limits</h2>
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {statsData
+                  .filter(({ stats }) => stats?.connected)
+                  .map(({ instance, stats }) => (
+                    <div key={instance.id} className="space-y-2">
+                      <h3 className="text-sm font-medium text-muted-foreground">{instance.name}</h3>
+                      <DashboardSpeedLimits
+                        instanceId={instance.id}
+                        currentDownloadSpeed={stats?.speeds?.download || 0}
+                        currentUploadSpeed={stats?.speeds?.upload || 0}
+                      />
+                    </div>
+                  ))
+                }
+              </div>
+            </div>
+          )}
           
           {/* Instance Cards */}
           {allInstances.length > 0 && (
