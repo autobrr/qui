@@ -1640,7 +1640,7 @@ func (sm *SyncManager) GetAppPreferences(ctx context.Context, instanceID int) (q
 }
 
 // SetAppPreferences updates app preferences and invalidates cache
-func (sm *SyncManager) SetAppPreferences(ctx context.Context, instanceID int, prefs map[string]interface{}) error {
+func (sm *SyncManager) SetAppPreferences(ctx context.Context, instanceID int, prefs map[string]any) error {
 	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to get client: %w", err)

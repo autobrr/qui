@@ -57,7 +57,7 @@ func (h *PreferencesHandler) UpdatePreferences(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	var prefs map[string]interface{}
+	var prefs map[string]any
 	if err := json.NewDecoder(r.Body).Decode(&prefs); err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Invalid request body")
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
