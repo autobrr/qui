@@ -266,11 +266,17 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if upLimit := r.FormValue("upLimit"); upLimit != "" {
-		options["upLimit"] = upLimit
+		// Convert from KB/s to bytes/s (qBittorrent API expects bytes/s)
+		if upLimitInt, err := strconv.ParseInt(upLimit, 10, 64); err == nil && upLimitInt > 0 {
+			options["upLimit"] = strconv.FormatInt(upLimitInt*1024, 10)
+		}
 	}
 
 	if dlLimit := r.FormValue("dlLimit"); dlLimit != "" {
-		options["dlLimit"] = dlLimit
+		// Convert from KB/s to bytes/s (qBittorrent API expects bytes/s)
+		if dlLimitInt, err := strconv.ParseInt(dlLimit, 10, 64); err == nil && dlLimitInt > 0 {
+			options["dlLimit"] = strconv.FormatInt(dlLimitInt*1024, 10)
+		}
 	}
 
 	if ratioLimit := r.FormValue("ratioLimit"); ratioLimit != "" {
