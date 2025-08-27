@@ -19,6 +19,7 @@ function NumberInput({
   min = 0,
   max = 999999,
   description,
+  allowUnlimited = false,
 }: {
   label: string
   value: number
@@ -26,23 +27,41 @@ function NumberInput({
   min?: number
   max?: number
   description?: string
+  allowUnlimited?: boolean
 }) {
   return (
     <div className="space-y-2">
       <div className="space-y-1">
         <Label className="text-sm font-medium">{label}</Label>
         {description && (
-          <p className="text-xs text-muted-foreground">{description}</p>
+          <p className="text-xs text-muted-foreground">
+            {description}
+            {allowUnlimited && " (-1 for unlimited)"}
+          </p>
         )}
       </div>
       <Input
         type="number"
         value={value}
         onChange={(e) => {
-          const num = parseInt(e.target.value) || 0
+          const inputValue = e.target.value
+          if (inputValue === "" || inputValue === "-") {
+            return // Allow temporary empty or negative sign state
+          }
+          
+          const num = parseInt(inputValue)
+          if (isNaN(num)) return
+          
+          // Allow -1 for unlimited if allowUnlimited is true
+          if (allowUnlimited && num === -1) {
+            onChange(-1)
+            return
+          }
+          
+          // Otherwise enforce min/max bounds
           onChange(Math.max(min, Math.min(max, num)))
         }}
-        min={min}
+        min={allowUnlimited ? -1 : min}
         max={max}
         className="w-full"
       />
@@ -95,7 +114,7 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
         updatePreferences(value)
         toast.success("Queue settings updated successfully")
         onSuccess?.()
-      } catch (error) {
+      } catch {
         toast.error("Failed to update queue settings")
       }
     },
@@ -157,6 +176,7 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
                 onChange={field.handleChange}
                 max={999}
                 description="Maximum number of downloading torrents"
+                allowUnlimited={true}
               />
             )}
           </form.Field>
@@ -169,6 +189,7 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
                 onChange={field.handleChange}
                 max={999}
                 description="Maximum number of uploading torrents"
+                allowUnlimited={true}
               />
             )}
           </form.Field>
@@ -181,6 +202,7 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
                 onChange={field.handleChange}
                 max={999}
                 description="Total maximum active torrents"
+                allowUnlimited={true}
               />
             )}
           </form.Field>
@@ -193,6 +215,7 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
                 onChange={field.handleChange}
                 max={999}
                 description="Maximum torrents checking simultaneously"
+                allowUnlimited={true}
               />
             )}
           </form.Field>
