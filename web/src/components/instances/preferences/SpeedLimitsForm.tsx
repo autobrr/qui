@@ -7,47 +7,57 @@ import React from "react"
 import { useForm } from "@tanstack/react-form"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
-import { Slider } from "@/components/ui/slider"
+import { Input } from "@/components/ui/input"
 import { Download, Upload } from "lucide-react"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { toast } from "sonner"
-import { formatSpeed } from "@/lib/utils"
 
-function formatSpeedLimit(kbps: number) {
-  return kbps === 0 ? "Unlimited" : formatSpeed(kbps * 1024) // Convert KB/s to B/s for formatSpeed
+// Convert bytes/s to MiB/s for display
+function bytesToMiB(bytes: number): number {
+  return bytes === 0 ? 0 : bytes / (1024 * 1024)
 }
 
-function SpeedLimitSlider({
+// Convert MiB/s to bytes/s for API
+function mibToBytes(mib: number): number {
+  return mib === 0 ? 0 : Math.round(mib * 1024 * 1024)
+}
+
+function SpeedLimitInput({
   label,
   value,
   onChange,
   icon: Icon,
-  max = 100000,
 }: {
   label: string
   value: number
   onChange: (value: number) => void
   icon: React.ComponentType<{ className?: string }>
-  max?: number
 }) {
+  const displayValue = bytesToMiB(value)
+  
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Icon className="h-4 w-4 text-muted-foreground" />
-          <Label className="text-sm font-medium">{label}</Label>
-        </div>
-        <span className="text-sm text-muted-foreground">
-          {formatSpeedLimit(value)}
-        </span>
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <Icon className="h-4 w-4 text-muted-foreground" />
+        <Label className="text-sm font-medium">{label}</Label>
       </div>
-      <Slider
-        value={[value]}
-        onValueChange={(values) => onChange(values[0])}
-        max={max}
-        step={value < 1000 ? 50 : 1000}
-        className="w-full"
-      />
+      <div className="flex items-center gap-2">
+        <Input
+          type="number"
+          min="0"
+          step="0.1"
+          value={displayValue === 0 ? "" : displayValue.toFixed(1)}
+          onChange={(e) => {
+            const mibValue = e.target.value === "" ? 0 : parseFloat(e.target.value)
+            if (!isNaN(mibValue) && mibValue >= 0) {
+              onChange(mibToBytes(mibValue))
+            }
+          }}
+          placeholder="0 (Unlimited)"
+          className="flex-1"
+        />
+        <span className="text-sm text-muted-foreground min-w-12">MiB/s</span>
+      </div>
     </div>
   )
 }
@@ -66,10 +76,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
   
   // Memoize preferences to prevent unnecessary form resets
   const memoizedPreferences = React.useMemo(() => preferences, [
-    preferences?.dl_limit,
-    preferences?.up_limit,
-    preferences?.alt_dl_limit,
-    preferences?.alt_up_limit,
+    preferences,
   ])
 
   const form = useForm({
@@ -85,7 +92,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
         setIsFormDirty(false) // Reset dirty flag after successful save
         toast.success("Speed limits updated successfully")
         onSuccess?.()
-      } catch (error) {
+      } catch {
         toast.error("Failed to update speed limits")
       }
     },
@@ -129,7 +136,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
       <div className="space-y-6">
         <form.Field name="dl_limit">
           {(field) => (
-            <SpeedLimitSlider
+            <SpeedLimitInput
               label="Download Limit"
               value={(field.state.value as number) ?? 0}
               onChange={(value) => {
@@ -143,7 +150,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
         
         <form.Field name="up_limit">
           {(field) => (
-            <SpeedLimitSlider
+            <SpeedLimitInput
               label="Upload Limit"
               value={(field.state.value as number) ?? 0}
               onChange={(value) => {
@@ -157,7 +164,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
         
         <form.Field name="alt_dl_limit">
           {(field) => (
-            <SpeedLimitSlider
+            <SpeedLimitInput
               label="Alternative Download Limit"
               value={(field.state.value as number) ?? 0}
               onChange={(value) => {
@@ -171,7 +178,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
         
         <form.Field name="alt_up_limit">
           {(field) => (
-            <SpeedLimitSlider
+            <SpeedLimitInput
               label="Alternative Upload Limit"
               value={(field.state.value as number) ?? 0}
               onChange={(value) => {

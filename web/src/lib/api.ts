@@ -405,6 +405,16 @@ class ApiClient {
       body: JSON.stringify(preferences),
     })
   }
+  
+  async getAlternativeSpeedLimitsMode(instanceId: number): Promise<{ enabled: boolean }> {
+    return this.request<{ enabled: boolean }>(`/instances/${instanceId}/alternative-speed-limits`)
+  }
+  
+  async toggleAlternativeSpeedLimits(instanceId: number): Promise<{ enabled: boolean }> {
+    return this.request<{ enabled: boolean }>(`/instances/${instanceId}/alternative-speed-limits/toggle`, {
+      method: "POST",
+    })
+  }
 }
 
 export const api = new ApiClient()

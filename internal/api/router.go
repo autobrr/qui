@@ -139,6 +139,10 @@ func NewRouter(deps *Dependencies) *chi.Mux {
 					// Preferences
 					r.Get("/preferences", preferencesHandler.GetPreferences)
 					r.Patch("/preferences", preferencesHandler.UpdatePreferences)
+
+					// Alternative speed limits
+					r.Get("/alternative-speed-limits", preferencesHandler.GetAlternativeSpeedLimitsMode)
+					r.Post("/alternative-speed-limits/toggle", preferencesHandler.ToggleAlternativeSpeedLimits)
 				})
 			})
 

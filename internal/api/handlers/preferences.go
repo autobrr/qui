@@ -85,3 +85,58 @@ func (h *PreferencesHandler) UpdatePreferences(w http.ResponseWriter, r *http.Re
 		return
 	}
 }
+
+// GetAlternativeSpeedLimitsMode returns the current alternative speed limits mode
+func (h *PreferencesHandler) GetAlternativeSpeedLimitsMode(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		log.Error().Err(err).Msg("Invalid instance ID")
+		http.Error(w, "Invalid instance ID", http.StatusBadRequest)
+		return
+	}
+
+	enabled, err := h.syncManager.GetAlternativeSpeedLimitsMode(r.Context(), instanceID)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get alternative speed limits mode")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(map[string]bool{"enabled": enabled}); err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to encode alternative speed limits mode response")
+		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		return
+	}
+}
+
+// ToggleAlternativeSpeedLimits toggles alternative speed limits on/off
+func (h *PreferencesHandler) ToggleAlternativeSpeedLimits(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		log.Error().Err(err).Msg("Invalid instance ID")
+		http.Error(w, "Invalid instance ID", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.syncManager.ToggleAlternativeSpeedLimits(r.Context(), instanceID); err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to toggle alternative speed limits")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Return the new state
+	enabled, err := h.syncManager.GetAlternativeSpeedLimitsMode(r.Context(), instanceID)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get updated alternative speed limits mode")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(map[string]bool{"enabled": enabled}); err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to encode toggle response")
+		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		return
+	}
+}

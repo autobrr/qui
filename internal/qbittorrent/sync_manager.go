@@ -1656,3 +1656,32 @@ func (sm *SyncManager) SetAppPreferences(ctx context.Context, instanceID int, pr
 
 	return nil
 }
+
+// GetAlternativeSpeedLimitsMode gets whether alternative speed limits are currently active
+func (sm *SyncManager) GetAlternativeSpeedLimitsMode(ctx context.Context, instanceID int) (bool, error) {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return false, fmt.Errorf("failed to get client: %w", err)
+	}
+
+	enabled, err := client.GetAlternativeSpeedLimitsModeCtx(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to get alternative speed limits mode: %w", err)
+	}
+
+	return enabled, nil
+}
+
+// ToggleAlternativeSpeedLimits toggles alternative speed limits on/off
+func (sm *SyncManager) ToggleAlternativeSpeedLimits(ctx context.Context, instanceID int) error {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	if err := client.ToggleAlternativeSpeedLimitsCtx(ctx); err != nil {
+		return fmt.Errorf("failed to toggle alternative speed limits: %w", err)
+	}
+
+	return nil
+}

@@ -15,7 +15,7 @@ import { PasswordIssuesBanner } from "@/components/instances/PasswordIssuesBanne
 import { InstanceErrorDisplay } from "@/components/instances/InstanceErrorDisplay"
 import { InstanceActionsDropdown } from "@/components/instances/InstanceActionsDropdown"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
-import { HardDrive, Download, Upload, Activity, Plus, Minus, Zap, ChevronDown, ChevronUp, Eye, EyeOff, ExternalLink } from "lucide-react"
+import { HardDrive, Download, Upload, Activity, Plus, Minus, Zap, ChevronDown, ChevronUp, Eye, EyeOff, ExternalLink, Rabbit, Turtle } from "lucide-react"
 import { Link } from "@tanstack/react-router"
 import { useMemo } from "react"
 import { formatSpeed, formatBytes, getRatioColor } from "@/lib/utils"
@@ -33,6 +33,7 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 import { useIncognitoMode } from "@/lib/incognito"
+import { useAlternativeSpeedLimits } from "@/hooks/useAlternativeSpeedLimits"
 
 
 // Custom hook to get all instance stats using dynamic queries
@@ -106,6 +107,7 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
     pollingInterval: 5000, // Slower polling for dashboard
   })
   const { preferences } = useInstancePreferences(instance.id)
+  const { enabled: altSpeedEnabled, toggle: toggleAltSpeed, isToggling } = useAlternativeSpeedLimits(instance.id)
   const { data: torrentCounts } = useQuery({
     queryKey: ["torrent-counts", instance.id],
     queryFn: async () => {
@@ -285,6 +287,26 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
               <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
             </Link>
             <div className="flex items-center gap-2">
+              {stats.connected && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    toggleAltSpeed()
+                  }}
+                  disabled={isToggling}
+                  className="h-8 w-8 p-0"
+                  title={`Alternative speed limits ${altSpeedEnabled ? "enabled (turtle mode)" : "disabled (normal mode)"} - Click to toggle`}
+                >
+                  {altSpeedEnabled ? (
+                    <Turtle className="h-4 w-4 text-orange-600" />
+                  ) : (
+                    <Rabbit className="h-4 w-4 text-green-600" />
+                  )}
+                </Button>
+              )}
               <Badge variant={stats.connected ? "default" : "destructive"}>
                 {stats.connected ? "Connected" : "Disconnected"}
               </Badge>
