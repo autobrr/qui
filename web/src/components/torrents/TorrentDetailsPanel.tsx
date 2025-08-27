@@ -5,6 +5,7 @@
 
 import { memo, useState, useEffect } from "react"
 import { useQuery } from "@tanstack/react-query"
+import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
@@ -38,6 +39,7 @@ function getTrackerStatusBadge(status: number) {
 
 export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceId, torrent }: TorrentDetailsPanelProps) {
   const [activeTab, setActiveTab] = useState("general")
+  const { data: metadata } = useInstanceMetadata(instanceId)
 
   // Reset tab when torrent changes
   useEffect(() => {
@@ -152,6 +154,43 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                         <span className="ml-2 text-sm">{formatSpeed(properties.up_speed || 0)} (avg: {formatSpeed(properties.up_speed_avg || 0)})</span>
                       </div>
                     </div>
+
+                    {/* Queue Information */}
+                    {metadata?.preferences?.queueing_enabled && (
+                      <div className="space-y-2">
+                        <div>
+                          <span className="text-sm text-muted-foreground">Priority:</span>
+                          <span className="ml-2 text-sm">
+                            {torrent?.priority > 0 ? (
+                              <>
+                                {torrent.priority}
+                                {(torrent.state === "queuedDL" || torrent.state === "queuedUP") && (
+                                  <Badge variant="secondary" className="ml-2 text-xs">
+                                    Queued {torrent.state === "queuedDL" ? "DL" : "UP"}
+                                  </Badge>
+                                )}
+                              </>
+                            ) : (
+                              "Normal"
+                            )}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-sm text-muted-foreground">Queue Limits:</span>
+                          <div className="ml-2 text-sm space-y-1">
+                            {metadata.preferences.max_active_downloads > 0 && (
+                              <div>Max Active Downloads: {metadata.preferences.max_active_downloads}</div>
+                            )}
+                            {metadata.preferences.max_active_uploads > 0 && (
+                              <div>Max Active Uploads: {metadata.preferences.max_active_uploads}</div>
+                            )}
+                            {metadata.preferences.max_active_torrents > 0 && (
+                              <div>Max Active Total: {metadata.preferences.max_active_torrents}</div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     <div className="space-y-2">
                       <div>

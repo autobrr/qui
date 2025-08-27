@@ -39,7 +39,7 @@ const DEFAULT_COLUMN_VISIBILITY = {
   uploaded: false,
   save_path: false, // Fixed: was 'saveLocation', should match column accessorKey
   tracker: false,
-  priority: false,
+  priority: true,
 }
 const DEFAULT_COLUMN_SIZING = {}
 

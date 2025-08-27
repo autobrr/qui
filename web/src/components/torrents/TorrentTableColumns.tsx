@@ -134,10 +134,29 @@ export const createColumns = (
     },
     cell: ({ row }) => {
       const priority = row.original.priority
-      if (priority === 0) return <span className="text-sm text-muted-foreground text-center block">-</span>
+      const state = row.original.state
+      const isQueued = state === "queuedDL" || state === "queuedUP"
+      
+      if (priority === 0 && !isQueued) {
+        return <span className="text-sm text-muted-foreground text-center block">-</span>
+      }
+      
+      if (isQueued) {
+        const queueType = state === "queuedDL" ? "DL" : "UP"
+        const badgeVariant = state === "queuedDL" ? "secondary" : "outline"
+        return (
+          <div className="flex items-center justify-center gap-1">
+            <Badge variant={badgeVariant} className="text-xs px-1 py-0">
+              Q{priority || "?"}
+            </Badge>
+            <span className="text-xs text-muted-foreground">{queueType}</span>
+          </div>
+        )
+      }
+      
       return <span className="text-sm font-medium text-center block">{priority}</span>
     },
-    size: 45,
+    size: 65,
   },
   {
     accessorKey: "name",
@@ -176,13 +195,27 @@ export const createColumns = (
     header: "Status",
     cell: ({ row }) => {
       const state = row.original.state
+      const priority = row.original.priority
       const label = getStateLabel(state)
+      const isQueued = state === "queuedDL" || state === "queuedUP"
+      
       const variant = 
-        state === "downloading" ? "default" :state === "stalledDL" ? "secondary" :state === "uploading" ? "default" :state === "stalledUP" ? "secondary" :state === "pausedDL" || state === "pausedUP" ? "secondary" :state === "error" || state === "missingFiles" ? "destructive" :"outline"
+        state === "downloading" ? "default" :state === "stalledDL" ? "secondary" :state === "uploading" ? "default" :state === "stalledUP" ? "secondary" :state === "pausedDL" || state === "pausedUP" ? "secondary" :state === "queuedDL" || state === "queuedUP" ? "secondary" :state === "error" || state === "missingFiles" ? "destructive" :"outline"
+      
+      if (isQueued && priority > 0) {
+        return (
+          <div className="flex items-center gap-1">
+            <Badge variant={variant} className="text-xs">
+              {label}
+            </Badge>
+            <span className="text-xs text-muted-foreground">#{priority}</span>
+          </div>
+        )
+      }
       
       return <Badge variant={variant} className="text-xs">{label}</Badge>
     },
-    size: 120,
+    size: 130,
   },
   {
     accessorKey: "dlspeed",

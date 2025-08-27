@@ -5,6 +5,7 @@
 
 import { useInstances } from "@/hooks/useInstances"
 import { useInstanceStats } from "@/hooks/useInstanceStats"
+import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
@@ -104,6 +105,7 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
     enabled: true, // Always fetch stats, regardless of isActive status
     pollingInterval: 5000, // Slower polling for dashboard
   })
+  const { data: metadata } = useInstanceMetadata(instance.id)
   const { data: torrentCounts } = useQuery({
     queryKey: ["torrent-counts", instance.id],
     queryFn: async () => {
@@ -341,6 +343,33 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
                 <span className="text-muted-foreground">Upload</span>
                 <span className="ml-auto font-medium">{formatSpeed(stats.speeds?.upload || 0)}</span>
               </div>
+              
+              {/* Queue status - only show if queueing is enabled */}
+              {metadata?.preferences?.queueing_enabled && (
+                <div className="pt-2 border-t border-border/50">
+                  <div className="flex items-center gap-2 text-xs">
+                    <Activity className="h-3 w-3 text-orange-500" />
+                    <span className="text-muted-foreground">Queue</span>
+                    <div className="ml-auto flex items-center gap-3 text-xs">
+                      {metadata.preferences.max_active_downloads > 0 && (
+                        <span>
+                          DL: {torrentCounts?.status?.downloading || 0}/{metadata.preferences.max_active_downloads}
+                        </span>
+                      )}
+                      {metadata.preferences.max_active_uploads > 0 && (
+                        <span>
+                          UP: {torrentCounts?.status?.seeding || 0}/{metadata.preferences.max_active_uploads}
+                        </span>
+                      )}
+                      {metadata.preferences.max_active_torrents > 0 && (
+                        <span className="font-medium">
+                          Total: {(torrentCounts?.status?.downloading || 0) + (torrentCounts?.status?.seeding || 0)}/{metadata.preferences.max_active_torrents}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
             
             <InstanceErrorDisplay instance={instance} />
