@@ -59,6 +59,18 @@ interface SpeedLimitsFormProps {
 
 export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps) {
   const { preferences, isLoading, updatePreferences, isUpdating } = useInstancePreferences(instanceId)
+  
+  
+  // Track if form is being actively edited
+  const [isFormDirty, setIsFormDirty] = React.useState(false)
+  
+  // Memoize preferences to prevent unnecessary form resets
+  const memoizedPreferences = React.useMemo(() => preferences, [
+    preferences?.dl_limit,
+    preferences?.up_limit,
+    preferences?.alt_dl_limit,
+    preferences?.alt_up_limit,
+  ])
 
   const form = useForm({
     defaultValues: {
@@ -70,6 +82,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
     onSubmit: async ({ value }) => {
       try {
         updatePreferences(value)
+        setIsFormDirty(false) // Reset dirty flag after successful save
         toast.success("Speed limits updated successfully")
         onSuccess?.()
       } catch (error) {
@@ -78,17 +91,16 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
     },
   })
 
-  // Reset form when preferences change
+
+  // Update form when preferences change (but only if form is not being actively edited)
   React.useEffect(() => {
-    if (preferences) {
-      form.reset({
-        dl_limit: preferences.dl_limit || 0,
-        up_limit: preferences.up_limit || 0,
-        alt_dl_limit: preferences.alt_dl_limit || 0,
-        alt_up_limit: preferences.alt_up_limit || 0,
-      })
+    if (memoizedPreferences && !isFormDirty) {
+      form.setFieldValue("dl_limit", memoizedPreferences.dl_limit ?? 0)
+      form.setFieldValue("up_limit", memoizedPreferences.up_limit ?? 0)
+      form.setFieldValue("alt_dl_limit", memoizedPreferences.alt_dl_limit ?? 0)
+      form.setFieldValue("alt_up_limit", memoizedPreferences.alt_up_limit ?? 0)
     }
-  }, [preferences, form])
+  }, [memoizedPreferences, form, isFormDirty])
 
   if (isLoading) {
     return (
@@ -98,7 +110,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
     )
   }
 
-  if (!preferences) {
+  if (!memoizedPreferences) {
     return (
       <div className="text-center py-8">
         <p className="text-sm text-muted-foreground">Failed to load preferences</p>
@@ -120,7 +132,10 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
             <SpeedLimitSlider
               label="Download Limit"
               value={(field.state.value as number) ?? 0}
-              onChange={field.handleChange}
+              onChange={(value) => {
+                setIsFormDirty(true)
+                field.handleChange(value)
+              }}
               icon={Download}
             />
           )}
@@ -131,7 +146,10 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
             <SpeedLimitSlider
               label="Upload Limit"
               value={(field.state.value as number) ?? 0}
-              onChange={field.handleChange}
+              onChange={(value) => {
+                setIsFormDirty(true)
+                field.handleChange(value)
+              }}
               icon={Upload}
             />
           )}
@@ -142,7 +160,10 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
             <SpeedLimitSlider
               label="Alternative Download Limit"
               value={(field.state.value as number) ?? 0}
-              onChange={field.handleChange}
+              onChange={(value) => {
+                setIsFormDirty(true)
+                field.handleChange(value)
+              }}
               icon={Download}
             />
           )}
@@ -153,7 +174,10 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
             <SpeedLimitSlider
               label="Alternative Upload Limit"
               value={(field.state.value as number) ?? 0}
-              onChange={field.handleChange}
+              onChange={(value) => {
+                setIsFormDirty(true)
+                field.handleChange(value)
+              }}
               icon={Upload}
             />
           )}

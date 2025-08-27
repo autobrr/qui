@@ -6,7 +6,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Download, Upload } from "lucide-react"
 import { formatSpeed } from "@/lib/utils"
-import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
+import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 
 interface DashboardSpeedLimitsProps {
   instanceId: number
@@ -19,8 +19,7 @@ export function DashboardSpeedLimits({
   currentDownloadSpeed, 
   currentUploadSpeed, 
 }: DashboardSpeedLimitsProps) {
-  const { data: metadata } = useInstanceMetadata(instanceId)
-  const preferences = metadata?.preferences
+  const { preferences } = useInstancePreferences(instanceId)
 
   const formatLimit = (limit: number) => limit === 0 ? "Unlimited" : formatSpeed(limit * 1024) // API returns KB/s, formatSpeed expects B/s
 

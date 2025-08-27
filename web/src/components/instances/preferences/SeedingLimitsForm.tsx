@@ -100,15 +100,13 @@ export function SeedingLimitsForm({ instanceId, onSuccess }: SeedingLimitsFormPr
     },
   })
 
-  // Reset form when preferences change
+  // Update form when preferences change
   React.useEffect(() => {
     if (preferences) {
-      form.reset({
-        max_ratio_enabled: preferences.max_ratio_enabled || false,
-        max_ratio: preferences.max_ratio || 2.0,
-        max_seeding_time_enabled: preferences.max_seeding_time_enabled || false,
-        max_seeding_time: preferences.max_seeding_time || 1440,
-      })
+      form.setFieldValue("max_ratio_enabled", preferences.max_ratio_enabled ?? false)
+      form.setFieldValue("max_ratio", preferences.max_ratio ?? 2.0)
+      form.setFieldValue("max_seeding_time_enabled", preferences.max_seeding_time_enabled ?? false)
+      form.setFieldValue("max_seeding_time", preferences.max_seeding_time ?? 1440)
     }
   }, [preferences, form])
 

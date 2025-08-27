@@ -61,14 +61,12 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
     },
   })
 
-  // Reset form when preferences change
+  // Update form when preferences change
   React.useEffect(() => {
     if (preferences) {
-      form.reset({
-        auto_tmm_enabled: preferences.auto_tmm_enabled || false,
-        start_paused_enabled: preferences.start_paused_enabled || false,
-        save_path: preferences.save_path || "",
-      })
+      form.setFieldValue("auto_tmm_enabled", preferences.auto_tmm_enabled ?? false)
+      form.setFieldValue("start_paused_enabled", preferences.start_paused_enabled ?? false)
+      form.setFieldValue("save_path", preferences.save_path ?? "")
     }
   }, [preferences, form])
 

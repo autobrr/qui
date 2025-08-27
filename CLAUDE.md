@@ -139,6 +139,20 @@ Key patterns:
 - PWA support with service worker (production builds only)
 - Theme system with CSS-based configuration
 
+#### TanStack Form Best Practices
+- **Avoid `form.reset()`**: Use individual `form.setFieldValue(field, value)` calls for updating form values
+- **Use nullish coalescing (`??`) not logical OR (`||`)**: Prevents `0`, `false`, and `""` from being replaced with fallbacks
+- **Example**:
+  ```typescript
+  // ❌ Problematic - reset() doesn't work reliably, || treats 0 as falsy
+  form.reset({ 
+    max_downloads: preferences.max_downloads || 3 
+  })
+  
+  // ✅ Correct - setFieldValue works reliably, ?? only fallbacks null/undefined
+  form.setFieldValue("max_downloads", preferences.max_downloads ?? 3)
+  ```
+
 ## Configuration
 
 Environment variables use `qui__` prefix:
@@ -347,6 +361,7 @@ Multiple built-in themes including minimal, cyberpunk, catppuccin, and more.
 - SyncMainData implementation exists but is currently unused due to complexity
 - Tags can be either string[] or comma-separated string from API
 - Instance status requires periodic health checks due to connection drops
+- **TanStack Form `form.reset()` Issue**: `form.reset()` does not reliably update form field values. Use individual `form.setFieldValue(field, value)` calls instead
 
 ## Cache Management and Real-time Updates
 

@@ -101,16 +101,14 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
     },
   })
 
-  // Reset form when preferences change
+  // Update form when preferences change
   React.useEffect(() => {
     if (preferences) {
-      form.reset({
-        queueing_enabled: preferences.queueing_enabled || false,
-        max_active_downloads: preferences.max_active_downloads || 3,
-        max_active_uploads: preferences.max_active_uploads || 3,
-        max_active_torrents: preferences.max_active_torrents || 5,
-        max_active_checking_torrents: preferences.max_active_checking_torrents || 1,
-      })
+      form.setFieldValue("queueing_enabled", preferences.queueing_enabled ?? false)
+      form.setFieldValue("max_active_downloads", preferences.max_active_downloads ?? 3)
+      form.setFieldValue("max_active_uploads", preferences.max_active_uploads ?? 3)
+      form.setFieldValue("max_active_torrents", preferences.max_active_torrents ?? 5)
+      form.setFieldValue("max_active_checking_torrents", preferences.max_active_checking_torrents ?? 1)
     }
   }, [preferences, form])
 
