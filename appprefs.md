@@ -690,7 +690,7 @@ export interface AppPreferences {
    - ✅ Determined not needed - current useInstanceMetadata pattern is efficient and sufficient
    - ✅ Preferences already accessible in all components that need them
 
-**Phase 6 Status**: ✅ **COMPLETED** (commit `TBD`)
+**Phase 6 Status**: ✅ **COMPLETED** (commit `5f848eb`)
 - Full queue status visualization throughout the UI
 - Priority column shows queue badges for queued torrents
 - State column displays queue position (#1, #2, etc.)
