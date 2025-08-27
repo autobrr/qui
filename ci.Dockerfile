@@ -62,7 +62,7 @@ ENV HOME="/config" \
     XDG_DATA_HOME="/config"
 
 # Install runtime dependencies
-RUN apk --no-cache add ca-certificates tzdata
+RUN apk --no-cache add ca-certificates tzdata curl
 
 WORKDIR /config
 
@@ -76,7 +76,7 @@ EXPOSE 7476
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:7476/health || exit 1
+    CMD curl -f http://localhost:7476/health || exit 1
 
 ENTRYPOINT ["/usr/local/bin/qui"]
 CMD ["serve"]
