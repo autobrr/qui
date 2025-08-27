@@ -6,68 +6,12 @@
 import React from "react"
 import { useForm } from "@tanstack/react-form"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { toast } from "sonner"
+import { NumberInputWithUnlimited } from "@/components/forms/NumberInputWithUnlimited"
 
-function NumberInput({
-  label,
-  value,
-  onChange,
-  min = 0,
-  max = 999999,
-  description,
-  allowUnlimited = false,
-}: {
-  label: string
-  value: number
-  onChange: (value: number) => void
-  min?: number
-  max?: number
-  description?: string
-  allowUnlimited?: boolean
-}) {
-  return (
-    <div className="space-y-2">
-      <div className="space-y-1">
-        <Label className="text-sm font-medium">{label}</Label>
-        {description && (
-          <p className="text-xs text-muted-foreground">
-            {description}
-            {allowUnlimited && " (-1 for unlimited)"}
-          </p>
-        )}
-      </div>
-      <Input
-        type="number"
-        value={value}
-        onChange={(e) => {
-          const inputValue = e.target.value
-          if (inputValue === "" || inputValue === "-") {
-            return // Allow temporary empty or negative sign state
-          }
-          
-          const num = parseInt(inputValue)
-          if (isNaN(num)) return
-          
-          // Allow -1 for unlimited if allowUnlimited is true
-          if (allowUnlimited && num === -1) {
-            onChange(-1)
-            return
-          }
-          
-          // Otherwise enforce min/max bounds
-          onChange(Math.max(min, Math.min(max, num)))
-        }}
-        min={allowUnlimited ? -1 : min}
-        max={max}
-        className="w-full"
-      />
-    </div>
-  )
-}
 
 function SwitchSetting({
   label,
@@ -170,7 +114,7 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <form.Field name="max_active_downloads">
             {(field) => (
-              <NumberInput
+              <NumberInputWithUnlimited
                 label="Max Active Downloads"
                 value={(field.state.value as number) ?? 3}
                 onChange={field.handleChange}
@@ -183,7 +127,7 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
 
           <form.Field name="max_active_uploads">
             {(field) => (
-              <NumberInput
+              <NumberInputWithUnlimited
                 label="Max Active Uploads"
                 value={(field.state.value as number) ?? 3}
                 onChange={field.handleChange}
@@ -196,7 +140,7 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
 
           <form.Field name="max_active_torrents">
             {(field) => (
-              <NumberInput
+              <NumberInputWithUnlimited
                 label="Max Active Torrents"
                 value={(field.state.value as number) ?? 5}
                 onChange={field.handleChange}
@@ -209,7 +153,7 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
 
           <form.Field name="max_active_checking_torrents">
             {(field) => (
-              <NumberInput
+              <NumberInputWithUnlimited
                 label="Max Checking Torrents"
                 value={(field.state.value as number) ?? 1}
                 onChange={field.handleChange}

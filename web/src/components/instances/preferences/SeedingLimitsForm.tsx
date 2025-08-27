@@ -6,49 +6,12 @@
 import React from "react"
 import { useForm } from "@tanstack/react-form"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { toast } from "sonner"
+import { NumberInputWithUnlimited } from "@/components/forms/NumberInputWithUnlimited"
 
-function NumberInput({
-  label,
-  value,
-  onChange,
-  min = 0,
-  max = 999999,
-  description,
-}: {
-  label: string
-  value: number
-  onChange: (value: number) => void
-  min?: number
-  max?: number
-  description?: string
-}) {
-  return (
-    <div className="space-y-2">
-      <div className="space-y-1">
-        <Label className="text-sm font-medium">{label}</Label>
-        {description && (
-          <p className="text-xs text-muted-foreground">{description}</p>
-        )}
-      </div>
-      <Input
-        type="number"
-        value={value}
-        onChange={(e) => {
-          const num = parseInt(e.target.value) || 0
-          onChange(Math.max(min, Math.min(max, num)))
-        }}
-        min={min}
-        max={max}
-        className="w-full"
-      />
-    </div>
-  )
-}
 
 function SwitchSetting({
   label,
@@ -94,7 +57,7 @@ export function SeedingLimitsForm({ instanceId, onSuccess }: SeedingLimitsFormPr
         updatePreferences(value)
         toast.success("Seeding limits updated successfully")
         onSuccess?.()
-      } catch (error) {
+      } catch {
         toast.error("Failed to update seeding limits")
       }
     },
@@ -146,22 +109,23 @@ export function SeedingLimitsForm({ instanceId, onSuccess }: SeedingLimitsFormPr
           )}
         </form.Field>
 
-        <form.Field name="max_ratio">
-          {(field) => (
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Maximum Share Ratio</Label>
-              <p className="text-xs text-muted-foreground">
-                Stop seeding at this upload/download ratio
-              </p>
-              <Input
-                type="number"
-                step="0.1"
-                min="0"
-                max="10"
-                value={(field.state.value as number) ?? 2.0}
-                onChange={(e) => field.handleChange(parseFloat(e.target.value) || 2.0)}
-              />
-            </div>
+        <form.Field name="max_ratio_enabled">
+          {(enabledField) => (
+            <form.Field name="max_ratio">
+              {(field) => (
+                <NumberInputWithUnlimited
+                  label="Maximum Share Ratio"
+                  value={(field.state.value as number) ?? 2.0}
+                  onChange={field.handleChange}
+                  min={0.1}
+                  max={10}
+                  step="0.1"
+                  description="Stop seeding at this upload/download ratio"
+                  allowUnlimited={true}
+                  disabled={!(enabledField.state.value as boolean)}
+                />
+              )}
+            </form.Field>
           )}
         </form.Field>
 
@@ -176,16 +140,22 @@ export function SeedingLimitsForm({ instanceId, onSuccess }: SeedingLimitsFormPr
           )}
         </form.Field>
 
-        <form.Field name="max_seeding_time">
-          {(field) => (
-            <NumberInput
-              label="Maximum Seeding Time (minutes)"
-              value={(field.state.value as number) ?? 1440}
-              onChange={field.handleChange}
-              min={1}
-              max={525600} // 1 year in minutes
-              description="Stop seeding after this many minutes"
-            />
+        <form.Field name="max_seeding_time_enabled">
+          {(enabledField) => (
+            <form.Field name="max_seeding_time">
+              {(field) => (
+                <NumberInputWithUnlimited
+                  label="Maximum Seeding Time (minutes)"
+                  value={(field.state.value as number) ?? 1440}
+                  onChange={field.handleChange}
+                  min={1}
+                  max={525600} // 1 year in minutes
+                  description="Stop seeding after this many minutes"
+                  allowUnlimited={true}
+                  disabled={!(enabledField.state.value as boolean)}
+                />
+              )}
+            </form.Field>
           )}
         </form.Field>
       </div>
