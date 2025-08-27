@@ -1685,3 +1685,60 @@ func (sm *SyncManager) ToggleAlternativeSpeedLimits(ctx context.Context, instanc
 
 	return nil
 }
+
+// SetTorrentShareLimit sets share limits (ratio, seeding time) for torrents
+func (sm *SyncManager) SetTorrentShareLimit(ctx context.Context, instanceID int, hashes []string, ratioLimit float64, seedingTimeLimit, inactiveSeedingTimeLimit int64) error {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	if err := client.SetTorrentShareLimitCtx(ctx, hashes, ratioLimit, seedingTimeLimit, inactiveSeedingTimeLimit); err != nil {
+		return fmt.Errorf("failed to set torrent share limit: %w", err)
+	}
+
+	// Invalidate torrent cache to reflect the changes
+	sm.InvalidateCache(instanceID)
+
+	return nil
+}
+
+// SetTorrentUploadLimit sets upload speed limit for torrents
+func (sm *SyncManager) SetTorrentUploadLimit(ctx context.Context, instanceID int, hashes []string, limitKBs int64) error {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	// Convert KB/s to bytes/s (qBittorrent API expects bytes/s)
+	limitBytes := limitKBs * 1024
+
+	if err := client.SetTorrentUploadLimitCtx(ctx, hashes, limitBytes); err != nil {
+		return fmt.Errorf("failed to set torrent upload limit: %w", err)
+	}
+
+	// Invalidate torrent cache to reflect the changes
+	sm.InvalidateCache(instanceID)
+
+	return nil
+}
+
+// SetTorrentDownloadLimit sets download speed limit for torrents
+func (sm *SyncManager) SetTorrentDownloadLimit(ctx context.Context, instanceID int, hashes []string, limitKBs int64) error {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	// Convert KB/s to bytes/s (qBittorrent API expects bytes/s)
+	limitBytes := limitKBs * 1024
+
+	if err := client.SetTorrentDownloadLimitCtx(ctx, hashes, limitBytes); err != nil {
+		return fmt.Errorf("failed to set torrent download limit: %w", err)
+	}
+
+	// Invalidate torrent cache to reflect the changes
+	sm.InvalidateCache(instanceID)
+
+	return nil
+}

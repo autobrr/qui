@@ -271,11 +271,16 @@ class ApiClient {
     instanceId: number,
     data: {
       hashes: string[]
-      action: "pause" | "resume" | "delete" | "recheck" | "reannounce" | "increasePriority" | "decreasePriority" | "topPriority" | "bottomPriority" | "setCategory" | "addTags" | "removeTags" | "setTags" | "toggleAutoTMM"
+      action: "pause" | "resume" | "delete" | "recheck" | "reannounce" | "increasePriority" | "decreasePriority" | "topPriority" | "bottomPriority" | "setCategory" | "addTags" | "removeTags" | "setTags" | "toggleAutoTMM" | "setShareLimit" | "setUploadLimit" | "setDownloadLimit"
       deleteFiles?: boolean
       category?: string
       tags?: string  // Comma-separated tags string
       enable?: boolean  // For toggleAutoTMM
+      ratioLimit?: number  // For setShareLimit action
+      seedingTimeLimit?: number  // For setShareLimit action (minutes)
+      inactiveSeedingTimeLimit?: number  // For setShareLimit action (minutes)
+      uploadLimit?: number  // For setUploadLimit action (KB/s)
+      downloadLimit?: number  // For setDownloadLimit action (KB/s)
     }
   ): Promise<void> {
     return this.request(`/instances/${instanceId}/torrents/bulk-action`, {

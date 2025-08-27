@@ -373,12 +373,17 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 
 // BulkActionRequest represents a bulk action request
 type BulkActionRequest struct {
-	Hashes      []string `json:"hashes"`
-	Action      string   `json:"action"`
-	DeleteFiles bool     `json:"deleteFiles,omitempty"` // For delete action
-	Tags        string   `json:"tags,omitempty"`        // For tag operations (comma-separated)
-	Category    string   `json:"category,omitempty"`    // For category operations
-	Enable      bool     `json:"enable,omitempty"`      // For toggleAutoTMM action
+	Hashes                   []string `json:"hashes"`
+	Action                   string   `json:"action"`
+	DeleteFiles              bool     `json:"deleteFiles,omitempty"`              // For delete action
+	Tags                     string   `json:"tags,omitempty"`                     // For tag operations (comma-separated)
+	Category                 string   `json:"category,omitempty"`                 // For category operations
+	Enable                   bool     `json:"enable,omitempty"`                   // For toggleAutoTMM action
+	RatioLimit               float64  `json:"ratioLimit,omitempty"`               // For setShareLimit action
+	SeedingTimeLimit         int64    `json:"seedingTimeLimit,omitempty"`         // For setShareLimit action
+	InactiveSeedingTimeLimit int64    `json:"inactiveSeedingTimeLimit,omitempty"` // For setShareLimit action
+	UploadLimit              int64    `json:"uploadLimit,omitempty"`              // For setUploadLimit action (KB/s)
+	DownloadLimit            int64    `json:"downloadLimit,omitempty"`            // For setDownloadLimit action (KB/s)
 }
 
 // BulkAction performs bulk operations on torrents
@@ -406,7 +411,7 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 		"pause", "resume", "delete", "deleteWithFiles",
 		"recheck", "reannounce", "increasePriority", "decreasePriority",
 		"topPriority", "bottomPriority", "addTags", "removeTags", "setTags", "setCategory",
-		"toggleAutoTMM",
+		"toggleAutoTMM", "setShareLimit", "setUploadLimit", "setDownloadLimit",
 	}
 
 	valid := slices.Contains(validActions, req.Action)
@@ -437,6 +442,12 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 		err = h.syncManager.SetCategory(r.Context(), instanceID, req.Hashes, req.Category)
 	case "toggleAutoTMM":
 		err = h.syncManager.SetAutoTMM(r.Context(), instanceID, req.Hashes, req.Enable)
+	case "setShareLimit":
+		err = h.syncManager.SetTorrentShareLimit(r.Context(), instanceID, req.Hashes, req.RatioLimit, req.SeedingTimeLimit, req.InactiveSeedingTimeLimit)
+	case "setUploadLimit":
+		err = h.syncManager.SetTorrentUploadLimit(r.Context(), instanceID, req.Hashes, req.UploadLimit)
+	case "setDownloadLimit":
+		err = h.syncManager.SetTorrentDownloadLimit(r.Context(), instanceID, req.Hashes, req.DownloadLimit)
 	case "delete":
 		// Handle delete with deleteFiles parameter
 		action := req.Action

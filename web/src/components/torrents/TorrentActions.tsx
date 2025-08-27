@@ -28,8 +28,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from "@/components/ui/alert-dialog"
-import { ChevronDown, Play, Pause, Trash2, CheckCircle, Tag, Folder, Radio, ArrowUp, ArrowDown, ChevronsUp, ChevronsDown, Settings2, Sparkles } from "lucide-react"
+import { ChevronDown, Play, Pause, Trash2, CheckCircle, Tag, Folder, Radio, Settings2, Sparkles } from "lucide-react"
 import { SetTagsDialog, SetCategoryDialog } from "./TorrentDialogs"
+import { ShareLimitSubmenu, SpeedLimitsSubmenu } from "./TorrentLimitSubmenus"
+import { QueueSubmenu } from "./QueueSubmenu"
 
 interface TorrentActionsProps {
   instanceId: number
@@ -61,11 +63,16 @@ export const TorrentActions = memo(function TorrentActions({ instanceId, selecte
 
   const mutation = useMutation({
     mutationFn: (data: {
-      action: "pause" | "resume" | "delete" | "recheck" | "reannounce" | "increasePriority" | "decreasePriority" | "topPriority" | "bottomPriority" | "addTags" | "removeTags" | "setTags" | "setCategory" | "toggleAutoTMM"
+      action: "pause" | "resume" | "delete" | "recheck" | "reannounce" | "increasePriority" | "decreasePriority" | "topPriority" | "bottomPriority" | "addTags" | "removeTags" | "setTags" | "setCategory" | "toggleAutoTMM" | "setShareLimit" | "setUploadLimit" | "setDownloadLimit"
       deleteFiles?: boolean
       tags?: string
       category?: string
       enable?: boolean
+      ratioLimit?: number
+      seedingTimeLimit?: number
+      inactiveSeedingTimeLimit?: number
+      uploadLimit?: number
+      downloadLimit?: number
     }) => {
       return api.bulkAction(instanceId, {
         hashes: selectedHashes,
@@ -74,6 +81,11 @@ export const TorrentActions = memo(function TorrentActions({ instanceId, selecte
         tags: data.tags,
         category: data.category,
         enable: data.enable,
+        ratioLimit: data.ratioLimit,
+        seedingTimeLimit: data.seedingTimeLimit,
+        inactiveSeedingTimeLimit: data.inactiveSeedingTimeLimit,
+        uploadLimit: data.uploadLimit,
+        downloadLimit: data.downloadLimit,
       })
     },
     onSuccess: async (_: unknown, variables: any) => {
@@ -215,6 +227,15 @@ export const TorrentActions = memo(function TorrentActions({ instanceId, selecte
         case "toggleAutoTMM":
           toast.success(`${variables.enable ? "Enabled" : "Disabled"} Auto TMM for ${count} ${torrentText}`)
           break
+        case "setShareLimit":
+          toast.success(`Set share limits for ${count} ${torrentText}`)
+          break
+        case "setUploadLimit":
+          toast.success(`Set upload limit for ${count} ${torrentText}`)
+          break
+        case "setDownloadLimit":
+          toast.success(`Set download limit for ${count} ${torrentText}`)
+          break
       }
     },
     onError: (error: any, variables: any) => {
@@ -256,6 +277,30 @@ export const TorrentActions = memo(function TorrentActions({ instanceId, selecte
     setShowCategoryDialog(false)
   }, [mutation])
 
+  const handleSetShareLimit = useCallback(async (ratioLimit: number, seedingTimeLimit: number, inactiveSeedingTimeLimit: number) => {
+    await mutation.mutateAsync({ 
+      action: "setShareLimit", 
+      ratioLimit, 
+      seedingTimeLimit, 
+      inactiveSeedingTimeLimit, 
+    })
+  }, [mutation])
+
+  const handleSetSpeedLimits = useCallback(async (uploadLimit: number, downloadLimit: number) => {
+    // Set upload and download limits separately since they are different actions
+    const promises = []
+    if (uploadLimit >= 0) {
+      promises.push(mutation.mutateAsync({ action: "setUploadLimit", uploadLimit }))
+    }
+    if (downloadLimit >= 0) {
+      promises.push(mutation.mutateAsync({ action: "setDownloadLimit", downloadLimit }))
+    }
+    
+    if (promises.length > 0) {
+      await Promise.all(promises)
+    }
+  }, [mutation])
+
   return (
     <>
       <DropdownMenu>
@@ -295,34 +340,12 @@ export const TorrentActions = memo(function TorrentActions({ instanceId, selecte
             Reannounce
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onClick={() => mutation.mutate({ action: "topPriority" })}
-            disabled={mutation.isPending}
-          >
-            <ChevronsUp className="mr-2 h-4 w-4" />
-            Top Priority
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => mutation.mutate({ action: "increasePriority" })}
-            disabled={mutation.isPending}
-          >
-            <ArrowUp className="mr-2 h-4 w-4" />
-            Increase Priority
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => mutation.mutate({ action: "decreasePriority" })}
-            disabled={mutation.isPending}
-          >
-            <ArrowDown className="mr-2 h-4 w-4" />
-            Decrease Priority
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => mutation.mutate({ action: "bottomPriority" })}
-            disabled={mutation.isPending}
-          >
-            <ChevronsDown className="mr-2 h-4 w-4" />
-            Bottom Priority
-          </DropdownMenuItem>
+          <QueueSubmenu
+            type="dropdown"
+            hashCount={selectedHashes.length}
+            onQueueAction={(action) => mutation.mutate({ action })}
+            isPending={mutation.isPending}
+          />
           <DropdownMenuSeparator />
           <DropdownMenuItem
             onClick={() => setShowTagsDialog(true)}
@@ -338,6 +361,19 @@ export const TorrentActions = memo(function TorrentActions({ instanceId, selecte
             <Folder className="mr-2 h-4 w-4" />
             Set Category
           </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <ShareLimitSubmenu
+            type="dropdown"
+            hashCount={selectedHashes.length}
+            onConfirm={handleSetShareLimit}
+            isPending={mutation.isPending}
+          />
+          <SpeedLimitsSubmenu
+            type="dropdown"
+            hashCount={selectedHashes.length}
+            onConfirm={handleSetSpeedLimits}
+            isPending={mutation.isPending}
+          />
           <DropdownMenuSeparator />
           {(() => {
             // Check TMM state across selected torrents
@@ -451,6 +487,7 @@ export const TorrentActions = memo(function TorrentActions({ instanceId, selecte
         isPending={mutation.isPending}
         initialCategory={getCommonCategory(selectedTorrents)}
       />
+
     </>
   )
 })
