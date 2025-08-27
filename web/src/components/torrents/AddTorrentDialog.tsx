@@ -99,9 +99,14 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
   const mutation = useMutation({
     retry: false, // Don't retry - could cause duplicate torrent additions
     mutationFn: async (data: FormData) => {
+      // Determine autoTMM setting: use instance preference unless user provided custom save path
+      const hasCustomSavePath = data.savePath && data.savePath !== (preferences?.save_path || "")
+      const autoTMM = hasCustomSavePath ? false : (preferences?.auto_tmm_enabled ?? true)
+      
       const submitData: Parameters<typeof api.addTorrent>[1] = {
         startPaused: data.startPaused,
-        savePath: data.savePath || undefined,
+        savePath: hasCustomSavePath ? data.savePath : undefined,
+        autoTMM: autoTMM,
         category: data.category === "__none__" ? undefined : data.category || undefined,
         tags: data.tags.length > 0 ? data.tags : undefined,
         skipHashCheck: data.skipHashCheck,
