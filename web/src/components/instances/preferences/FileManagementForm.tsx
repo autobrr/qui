@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
+import { usePersistedStartPaused } from "@/hooks/usePersistedStartPaused"
 import { toast } from "sonner"
 
 function SwitchSetting({
@@ -43,6 +44,7 @@ interface FileManagementFormProps {
 
 export function FileManagementForm({ instanceId, onSuccess }: FileManagementFormProps) {
   const { preferences, isLoading, updatePreferences, isUpdating } = useInstancePreferences(instanceId)
+  const [startPausedEnabled, setStartPausedEnabled] = usePersistedStartPaused(instanceId, false)
 
   const form = useForm({
     defaultValues: {
@@ -52,10 +54,19 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
     },
     onSubmit: async ({ value }) => {
       try {
-        updatePreferences(value)
+        // NOTE: Save start_paused_enabled to localStorage instead of qBittorrent
+        // This is a workaround because qBittorrent's API rejects this preference
+        setStartPausedEnabled(value.start_paused_enabled)
+        
+        // Update other preferences to qBittorrent (excluding start_paused_enabled)
+        const qbittorrentPrefs = {
+          auto_tmm_enabled: value.auto_tmm_enabled,
+          save_path: value.save_path,
+        }
+        updatePreferences(qbittorrentPrefs)
         toast.success("File management settings updated successfully")
         onSuccess?.()
-      } catch (error) {
+      } catch {
         toast.error("Failed to update file management settings")
       }
     },
@@ -65,10 +76,14 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
   React.useEffect(() => {
     if (preferences) {
       form.setFieldValue("auto_tmm_enabled", preferences.auto_tmm_enabled ?? false)
-      form.setFieldValue("start_paused_enabled", preferences.start_paused_enabled ?? false)
       form.setFieldValue("save_path", preferences.save_path ?? "")
     }
   }, [preferences, form])
+
+  // Update form when localStorage start_paused_enabled changes
+  React.useEffect(() => {
+    form.setFieldValue("start_paused_enabled", startPausedEnabled)
+  }, [startPausedEnabled, form])
 
   if (isLoading) {
     return (

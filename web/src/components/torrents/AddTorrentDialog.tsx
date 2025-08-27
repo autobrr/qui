@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/select"
 import { Plus, Upload, Link } from "lucide-react"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
+import { usePersistedStartPaused } from "@/hooks/usePersistedStartPaused"
 
 interface AddTorrentDialogProps {
   instanceId: number
@@ -56,6 +57,9 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [newTag, setNewTag] = useState("")
   const queryClient = useQueryClient()
+  // NOTE: Use localStorage-persisted preference instead of qBittorrent's preference
+  // This works around qBittorrent API not supporting start_paused_enabled setting
+  const [startPausedEnabled] = usePersistedStartPaused(instanceId, false)
   
   // Use controlled state if provided, otherwise use internal state
   const open = controlledOpen !== undefined ? controlledOpen : internalOpen
@@ -126,7 +130,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
       urls: "",
       category: "",
       tags: [] as string[],
-      startPaused: preferences?.start_paused_enabled ?? false,
+      startPaused: startPausedEnabled,
       savePath: preferences?.save_path || "",
       skipHashCheck: false,
     },
