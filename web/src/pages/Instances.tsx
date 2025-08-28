@@ -64,7 +64,7 @@ export function Instances() {
         <div>
           <h1 className="text-3xl font-bold">Instances</h1>
           <p className="text-muted-foreground mt-2">
-            Manage your qBittorrent instances
+            Manage your qBittorrent connection settings
           </p>
         </div>
         <Button onClick={() => handleOpenDialog()}>

@@ -13,11 +13,17 @@ interface Filters {
 }
 
 export function usePersistedFilters(instanceId: number) {
-  const [filters, setFilters] = useState<Filters>({
-    status: [],
-    categories: [],
-    tags: [],
-    trackers: [],
+  // Initialize state with persisted values immediately
+  const [filters, setFilters] = useState<Filters>(() => {
+    const global = JSON.parse(localStorage.getItem("qui-filters-global") || "{}")
+    const instance = JSON.parse(localStorage.getItem(`qui-filters-${instanceId}`) || "{}")
+    
+    return {
+      status: global.status || [],
+      categories: instance.categories || [],
+      tags: instance.tags || [],
+      trackers: instance.trackers || [],
+    }
   })
   
   // Load filters when instanceId changes

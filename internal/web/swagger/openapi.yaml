@@ -768,6 +768,80 @@ paths:
         '200':
           description: Tags deleted
 
+  /api/instances/{instanceId}/preferences:
+    get:
+      tags:
+        - Instances
+      summary: Get instance preferences
+      description: Get qBittorrent instance preferences/settings
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+      responses:
+        '200':
+          description: Instance preferences
+          content:
+            application/json:
+              schema:
+                type: object
+                description: qBittorrent preferences object with various settings
+    patch:
+      tags:
+        - Instances
+      summary: Update instance preferences
+      description: Update qBittorrent instance preferences/settings
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Partial preferences object with settings to update
+      responses:
+        '200':
+          description: Preferences updated successfully
+
+  /api/instances/{instanceId}/alternative-speed-limits:
+    get:
+      tags:
+        - Instances
+      summary: Get alternative speed limits status
+      description: Get current status of alternative speed limits (turtle mode)
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+      responses:
+        '200':
+          description: Alternative speed limits status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled:
+                    type: boolean
+                    description: Whether alternative speed limits are currently enabled
+
+  /api/instances/{instanceId}/alternative-speed-limits/toggle:
+    post:
+      tags:
+        - Instances
+      summary: Toggle alternative speed limits
+      description: Toggle alternative speed limits (turtle mode) on/off
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+      responses:
+        '200':
+          description: Alternative speed limits toggled successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled:
+                    type: boolean
+                    description: New status of alternative speed limits
+
   /api/themes/license/validate:
     post:
       tags:

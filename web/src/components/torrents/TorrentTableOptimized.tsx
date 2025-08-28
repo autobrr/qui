@@ -31,6 +31,7 @@ import { usePersistedColumnVisibility } from "@/hooks/usePersistedColumnVisibili
 import { usePersistedColumnOrder } from "@/hooks/usePersistedColumnOrder"
 import { usePersistedColumnSizing } from "@/hooks/usePersistedColumnSizing"
 import { usePersistedColumnSorting } from "@/hooks/usePersistedColumnSorting"
+import { usePersistedDeleteFiles } from "@/hooks/usePersistedDeleteFiles"
 
 // Default values for persisted state hooks (module scope for stable references)
 const DEFAULT_COLUMN_VISIBILITY = {
@@ -38,7 +39,7 @@ const DEFAULT_COLUMN_VISIBILITY = {
   uploaded: false,
   save_path: false, // Fixed: was 'saveLocation', should match column accessorKey
   tracker: false,
-  priority: false,
+  priority: true,
 }
 const DEFAULT_COLUMN_SIZING = {}
 
@@ -55,6 +56,7 @@ function getDefaultColumnOrder(): string[] {
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import {
   ContextMenu,
@@ -81,11 +83,18 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger
+} from "@/components/ui/tooltip"
 import { AddTorrentDialog } from "./AddTorrentDialog"
 import { TorrentActions } from "./TorrentActions"
-import { Loader2, Play, Pause, Trash2, CheckCircle, Copy, Tag, Folder, Columns3, Radio, ArrowUp, ArrowDown, ChevronsUp, ChevronsDown, Eye, EyeOff, ChevronDown, ChevronUp, Settings2, Sparkles } from "lucide-react"
+import { Loader2, Play, Pause, Trash2, CheckCircle, Copy, Tag, Folder, Columns3, Radio, Eye, EyeOff, ChevronDown, ChevronUp, Settings2, Sparkles } from "lucide-react"
 import { createPortal } from "react-dom"
 import { SetTagsDialog, SetCategoryDialog, RemoveTagsDialog } from "./TorrentDialogs"
+import { ShareLimitSubmenu, SpeedLimitsSubmenu } from "./TorrentLimitSubmenus"
+import { QueueSubmenu } from "./QueueSubmenu"
 import { DraggableTableHeader } from "./DraggableTableHeader"
 import type { Torrent, TorrentCounts, Category } from "@/types"
 import {
@@ -122,7 +131,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const [immediateSearch] = useState("")
   const [rowSelection, setRowSelection] = useState({})
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
-  const [deleteFiles, setDeleteFiles] = useState(false)
+  const [deleteFiles, setDeleteFiles] = usePersistedDeleteFiles()
   const [contextMenuHashes, setContextMenuHashes] = useState<string[]>([])
   const [contextMenuTorrents, setContextMenuTorrents] = useState<Torrent[]>([])
   const [showTagsDialog, setShowTagsDialog] = useState(false)
@@ -161,8 +170,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
   // Debounce search to prevent excessive filtering (200ms delay for faster response)
   const debouncedSearch = useDebounce(globalFilter, 200)
-  const routeSearch = useSearch({ strict: false }) as any
-  const searchFromRoute = (routeSearch?.q as string) || ""
+  const routeSearch = useSearch({ strict: false }) as { q?: string }
+  const searchFromRoute = routeSearch?.q || ""
 
   // Use route search if present, otherwise fall back to local immediate/debounced search
   const effectiveSearch = searchFromRoute || immediateSearch || debouncedSearch
@@ -357,12 +366,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     return table.getVisibleLeafColumns().reduce((width, col) => {
       return width + col.getSize()
     }, 0)
-  }, [table, columnSizing, columnVisibility, columnOrder])
+  }, [table])
 
   // Derive hidden columns state from table API for accuracy
   const hasHiddenColumns = useMemo(() => {
     return table.getAllLeafColumns().filter(c => c.getCanHide()).some(c => !c.getIsVisible())
-  }, [table, columnVisibility])
+  }, [table])
 
   // Reset loaded rows when data changes significantly
   useEffect(() => {
@@ -406,18 +415,23 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       virtualizer.scrollToOffset(0)
       virtualizer.measure()
     }, 0)
-  }, [filters, effectiveSearch, instanceId, virtualizer])
+  }, [filters, effectiveSearch, instanceId, virtualizer, sortedTorrents.length])
 
 
   // Mutation for bulk actions
   const mutation = useMutation({
     mutationFn: (data: {
-      action: "pause" | "resume" | "delete" | "recheck" | "reannounce" | "increasePriority" | "decreasePriority" | "topPriority" | "bottomPriority" | "addTags" | "removeTags" | "setTags" | "setCategory" | "toggleAutoTMM"
+      action: "pause" | "resume" | "delete" | "recheck" | "reannounce" | "increasePriority" | "decreasePriority" | "topPriority" | "bottomPriority" | "addTags" | "removeTags" | "setTags" | "setCategory" | "toggleAutoTMM" | "setShareLimit" | "setUploadLimit" | "setDownloadLimit"
       deleteFiles?: boolean
       hashes: string[]
       tags?: string
       category?: string
       enable?: boolean
+      ratioLimit?: number
+      seedingTimeLimit?: number
+      inactiveSeedingTimeLimit?: number
+      uploadLimit?: number
+      downloadLimit?: number
     }) => {
       return api.bulkAction(instanceId, {
         hashes: data.hashes,
@@ -426,15 +440,25 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         tags: data.tags,
         category: data.category,
         enable: data.enable,
+        ratioLimit: data.ratioLimit,
+        seedingTimeLimit: data.seedingTimeLimit,
+        inactiveSeedingTimeLimit: data.inactiveSeedingTimeLimit,
+        uploadLimit: data.uploadLimit,
+        downloadLimit: data.downloadLimit,
       })
     },
     onSuccess: async (_: unknown, variables: {
-      action: "pause" | "resume" | "delete" | "recheck" | "reannounce" | "increasePriority" | "decreasePriority" | "topPriority" | "bottomPriority" | "addTags" | "removeTags" | "setTags" | "setCategory" | "toggleAutoTMM"
+      action: "pause" | "resume" | "delete" | "recheck" | "reannounce" | "increasePriority" | "decreasePriority" | "topPriority" | "bottomPriority" | "addTags" | "removeTags" | "setTags" | "setCategory" | "toggleAutoTMM" | "setShareLimit" | "setUploadLimit" | "setDownloadLimit"
       hashes: string[]
       deleteFiles?: boolean
       tags?: string
       category?: string
       enable?: boolean
+      ratioLimit?: number
+      seedingTimeLimit?: number
+      inactiveSeedingTimeLimit?: number
+      uploadLimit?: number
+      downloadLimit?: number
     }) => {
       // For delete operations, optimistically remove from UI immediately
       if (variables.action === "delete") {
@@ -609,13 +633,49 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     setContextMenuHashes([])
   }
 
+  const handleSetShareLimit = async (ratioLimit: number, seedingTimeLimit: number, inactiveSeedingTimeLimit: number, hashes?: string[]) => {
+    const targetHashes = hashes || contextMenuHashes
+    await mutation.mutateAsync({ 
+      action: "setShareLimit", 
+      hashes: targetHashes,
+      ratioLimit, 
+      seedingTimeLimit, 
+      inactiveSeedingTimeLimit, 
+    })
+    setContextMenuHashes([])
+  }
+
+  const handleSetSpeedLimits = async (uploadLimit: number, downloadLimit: number, hashes?: string[]) => {
+    const targetHashes = hashes || contextMenuHashes
+    // Set upload and download limits separately since they are different actions
+    const promises = []
+    if (uploadLimit >= 0) {
+      promises.push(mutation.mutateAsync({ action: "setUploadLimit", hashes: targetHashes, uploadLimit }))
+    }
+    if (downloadLimit >= 0) {
+      promises.push(mutation.mutateAsync({ action: "setDownloadLimit", hashes: targetHashes, downloadLimit }))
+    }
+    
+    if (promises.length > 0) {
+      await Promise.all(promises)
+    }
+    
+    setContextMenuHashes([])
+  }
+
   const handleContextMenuAction = useCallback((action: "pause" | "resume" | "recheck" | "reannounce" | "increasePriority" | "decreasePriority" | "topPriority" | "bottomPriority" | "toggleAutoTMM", hashes: string[], enable?: boolean) => {
     setContextMenuHashes(hashes)
     mutation.mutate({ action, hashes, enable })
   }, [mutation]) 
 
-  const copyToClipboard = useCallback((text: string) => {
-    navigator.clipboard.writeText(text)
+  const copyToClipboard = useCallback(async (text: string, type: "name" | "hash") => {
+    try {
+      await navigator.clipboard.writeText(text)
+      const message = type === "name" ? "Torrent name copied!" : "Torrent hash copied!"
+      toast.success(message)
+    } catch {
+      toast.error("Failed to copy to clipboard")
+    }
   }, []) 
   
   // Synchronous version for immediate use (backwards compatibility)
@@ -757,19 +817,30 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
               const container = typeof document !== "undefined" ? document.getElementById("header-search-actions") : null
               const dropdown = (
                 <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="relative"
+                  <Tooltip disableHoverableContent={true}>
+                    <TooltipTrigger 
+                      asChild
+                      onFocus={(e) => {
+                        // Prevent tooltip from showing on focus - only show on hover
+                        e.preventDefault()
+                      }}
                     >
-                      <Columns3 className="h-4 w-4" />
-                      {hasHiddenColumns && (
-                        <span className="absolute -top-1 -right-1 h-2 w-2 bg-primary rounded-full" />
-                      )}
-                      <span className="sr-only">Toggle columns</span>
-                    </Button>
-                  </DropdownMenuTrigger>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="relative"
+                        >
+                          <Columns3 className="h-4 w-4" />
+                          {hasHiddenColumns && (
+                            <span className="absolute -top-1 -right-1 h-2 w-2 bg-primary rounded-full" />
+                          )}
+                          <span className="sr-only">Toggle columns</span>
+                        </Button>
+                      </DropdownMenuTrigger>
+                    </TooltipTrigger>
+                    <TooltipContent>Toggle columns</TooltipContent>
+                  </Tooltip>
                   <DropdownMenuContent align="end" className="w-48">
                     <DropdownMenuLabel>Toggle columns</DropdownMenuLabel>
                     <DropdownMenuSeparator />
@@ -792,7 +863,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                             onSelect={(e) => e.preventDefault()}
                           >
                             <span className="truncate">
-                              {(column.columnDef.meta as any)?.headerString || 
+                              {(column.columnDef.meta as { headerString?: string })?.headerString || 
                                (typeof column.columnDef.header === "string" ? column.columnDef.header : column.id)}
                             </span>
                           </DropdownMenuCheckboxItem>
@@ -970,46 +1041,23 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                           Reannounce {row.getIsSelected() && selectedHashes.length > 1 ? `(${selectedHashes.length})` : ""}
                         </ContextMenuItem>
                         <ContextMenuSeparator />
-                        <ContextMenuItem 
-                          onClick={() => {
-                            const hashes = row.getIsSelected() ? selectedHashes : [torrent.hash]
-                            handleContextMenuAction("increasePriority", hashes)
-                          }}
-                          disabled={mutation.isPending}
-                        >
-                          <ArrowUp className="mr-2 h-4 w-4" />
-                          Increase Priority {row.getIsSelected() && selectedHashes.length > 1 ? `(${selectedHashes.length})` : ""}
-                        </ContextMenuItem>
-                        <ContextMenuItem 
-                          onClick={() => {
-                            const hashes = row.getIsSelected() ? selectedHashes : [torrent.hash]
-                            handleContextMenuAction("decreasePriority", hashes)
-                          }}
-                          disabled={mutation.isPending}
-                        >
-                          <ArrowDown className="mr-2 h-4 w-4" />
-                          Decrease Priority {row.getIsSelected() && selectedHashes.length > 1 ? `(${selectedHashes.length})` : ""}
-                        </ContextMenuItem>
-                        <ContextMenuItem 
-                          onClick={() => {
-                            const hashes = row.getIsSelected() ? selectedHashes : [torrent.hash]
-                            handleContextMenuAction("topPriority", hashes)
-                          }}
-                          disabled={mutation.isPending}
-                        >
-                          <ChevronsUp className="mr-2 h-4 w-4" />
-                          Top Priority {row.getIsSelected() && selectedHashes.length > 1 ? `(${selectedHashes.length})` : ""}
-                        </ContextMenuItem>
-                        <ContextMenuItem 
-                          onClick={() => {
-                            const hashes = row.getIsSelected() ? selectedHashes : [torrent.hash]
-                            handleContextMenuAction("bottomPriority", hashes)
-                          }}
-                          disabled={mutation.isPending}
-                        >
-                          <ChevronsDown className="mr-2 h-4 w-4" />
-                          Bottom Priority {row.getIsSelected() && selectedHashes.length > 1 ? `(${selectedHashes.length})` : ""}
-                        </ContextMenuItem>
+                        {(() => {
+                          const hashes = row.getIsSelected() ? selectedHashes : [torrent.hash]
+                          const hashCount = hashes.length
+                          
+                          const handleQueueAction = (action: "topPriority" | "increasePriority" | "decreasePriority" | "bottomPriority") => {
+                            handleContextMenuAction(action, hashes)
+                          }
+                          
+                          return (
+                            <QueueSubmenu
+                              type="context"
+                              hashCount={hashCount}
+                              onQueueAction={handleQueueAction}
+                              isPending={mutation.isPending}
+                            />
+                          )
+                        })()}
                         <ContextMenuSeparator />
                         <ContextMenuItem 
                           onClick={() => {
@@ -1037,6 +1085,37 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                           <Folder className="mr-2 h-4 w-4" />
                           Set Category {row.getIsSelected() && selectedHashes.length > 1 ? `(${selectedHashes.length})` : ""}
                         </ContextMenuItem>
+                        <ContextMenuSeparator />
+                        {(() => {
+                          const hashes = row.getIsSelected() ? selectedHashes : [torrent.hash]
+                          const hashCount = hashes.length
+                          
+                          // Create wrapped handlers that pass hashes directly
+                          const handleSetShareLimitWrapper = (ratioLimit: number, seedingTimeLimit: number, inactiveSeedingTimeLimit: number) => {
+                            handleSetShareLimit(ratioLimit, seedingTimeLimit, inactiveSeedingTimeLimit, hashes)
+                          }
+                          
+                          const handleSetSpeedLimitsWrapper = (uploadLimit: number, downloadLimit: number) => {
+                            handleSetSpeedLimits(uploadLimit, downloadLimit, hashes)
+                          }
+                          
+                          return (
+                            <>
+                              <ShareLimitSubmenu
+                                type="context"
+                                hashCount={hashCount}
+                                onConfirm={handleSetShareLimitWrapper}
+                                isPending={mutation.isPending}
+                              />
+                              <SpeedLimitsSubmenu
+                                type="context"
+                                hashCount={hashCount}
+                                onConfirm={handleSetSpeedLimitsWrapper}
+                                isPending={mutation.isPending}
+                              />
+                            </>
+                          )
+                        })()}
                         <ContextMenuSeparator />
                         {(() => {
                           const hashes = row.getIsSelected() ? selectedHashes : [torrent.hash]
@@ -1087,11 +1166,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                           )
                         })()}
                         <ContextMenuSeparator />
-                        <ContextMenuItem onClick={() => copyToClipboard(incognitoMode ? getLinuxIsoName(torrent.hash) : torrent.name)}>
+                        <ContextMenuItem onClick={() => copyToClipboard(incognitoMode ? getLinuxIsoName(torrent.hash) : torrent.name, "name")}>
                           <Copy className="mr-2 h-4 w-4" />
                           Copy Name
                         </ContextMenuItem>
-                        <ContextMenuItem onClick={() => copyToClipboard(torrent.hash)}>
+                        <ContextMenuItem onClick={() => copyToClipboard(torrent.hash, "hash")}>
                           <Copy className="mr-2 h-4 w-4" />
                           Copy Hash
                         </ContextMenuItem>

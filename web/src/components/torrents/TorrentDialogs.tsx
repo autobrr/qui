@@ -18,6 +18,14 @@ import {
   SelectValue
 } from "@/components/ui/select"
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from "@/components/ui/dialog"
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -77,14 +85,14 @@ export const SetTagsDialog = memo(function SetTagsDialog({
   }, [onOpenChange])
 
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent className="max-w-md">
-        <AlertDialogHeader>
-          <AlertDialogTitle>Manage Tags for {hashCount} torrent(s)</AlertDialogTitle>
-          <AlertDialogDescription>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Manage Tags for {hashCount} torrent(s)</DialogTitle>
+          <DialogDescription>
             Select tags from the list or add a new one. Selected tags will replace all existing tags on the torrents. Leave all unchecked to remove all tags.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
+          </DialogDescription>
+        </DialogHeader>
         <div className="py-4 space-y-4">
           {/* Existing tags */}
           {availableTags && availableTags.length > 0 && (
@@ -172,17 +180,17 @@ export const SetTagsDialog = memo(function SetTagsDialog({
             </div>
           )}
         </div>
-        <AlertDialogFooter>
-          <AlertDialogCancel onClick={handleCancel}>Cancel</AlertDialogCancel>
-          <AlertDialogAction
+        <DialogFooter>
+          <Button variant="outline" onClick={handleCancel}>Cancel</Button>
+          <Button
             onClick={handleConfirm}
             disabled={isPending}
           >
             Update Tags
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 })
 
@@ -227,14 +235,14 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
   }, [onOpenChange])
 
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Set Category for {hashCount} torrent(s)</AlertDialogTitle>
-          <AlertDialogDescription>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Set Category for {hashCount} torrent(s)</DialogTitle>
+          <DialogDescription>
             Select a category from the list or create a new one
-          </AlertDialogDescription>
-        </AlertDialogHeader>
+          </DialogDescription>
+        </DialogHeader>
         <div className="py-4 space-y-4">
           <div className="space-y-2">
             <Label>Category</Label>
@@ -271,17 +279,17 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
             />
           </div>
         </div>
-        <AlertDialogFooter>
-          <AlertDialogCancel onClick={handleCancel}>Cancel</AlertDialogCancel>
-          <AlertDialogAction
+        <DialogFooter>
+          <Button variant="outline" onClick={handleCancel}>Cancel</Button>
+          <Button
             onClick={handleConfirm}
             disabled={isPending}
           >
             Set Category
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 })
 

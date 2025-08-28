@@ -131,7 +131,7 @@ export function Sidebar() {
         
         <div className="flex items-center justify-between px-3 pb-3">
           <p className="text-[10px] text-sidebar-foreground/40">
-            © {new Date().getFullYear()} autobrr • GPL-2.0-or-later
+            © {new Date().getFullYear() > 2025 ? `2025-${new Date().getFullYear()}` : new Date().getFullYear()} autobrr • GPL-2.0-or-later
           </p>
           <Button
             variant="ghost"

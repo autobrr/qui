@@ -216,13 +216,83 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 		options["tags"] = tags
 	}
 
-	if paused := r.FormValue("paused"); paused == "true" {
-		options["paused"] = "true"
-		options["stopped"] = "true" // qBittorrent API requires both paused and stopped
+	// NOTE: qBittorrent's API does not properly support the start_paused_enabled preference
+	// (it gets rejected/ignored when set via app/setPreferences). As a workaround, the frontend
+	// now stores this preference in localStorage and applies it when adding torrents.
+	// This complex logic attempts to respect qBittorrent's global preference, but since the
+	// preference cannot be set via API, this is effectively unused in the current implementation.
+	if pausedStr := r.FormValue("paused"); pausedStr != "" {
+		requestedPaused := pausedStr == "true"
+
+		// Get current preferences to check start_paused_enabled
+		prefs, err := h.syncManager.GetAppPreferences(ctx, instanceID)
+		if err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to get preferences for paused check, defaulting to explicit paused setting")
+			// If we can't get preferences, apply the requested paused state explicitly
+			if requestedPaused {
+				options["paused"] = "true"
+				options["stopped"] = "true"
+			} else {
+				options["paused"] = "false"
+				options["stopped"] = "false"
+			}
+		} else {
+			// Only set paused options if the requested state differs from the global preference
+			globalStartPaused := prefs.StartPausedEnabled
+			if requestedPaused != globalStartPaused {
+				if requestedPaused {
+					options["paused"] = "true"
+					options["stopped"] = "true"
+				} else {
+					options["paused"] = "false"
+					options["stopped"] = "false"
+				}
+			}
+			// If requestedPaused == globalStartPaused, don't set paused options
+			// This allows qBittorrent's global preference to take effect
+		}
 	}
 
 	if skipChecking := r.FormValue("skip_checking"); skipChecking == "true" {
 		options["skip_checking"] = "true"
+	}
+
+	if sequentialDownload := r.FormValue("sequentialDownload"); sequentialDownload == "true" {
+		options["sequentialDownload"] = "true"
+	}
+
+	if firstLastPiecePrio := r.FormValue("firstLastPiecePrio"); firstLastPiecePrio == "true" {
+		options["firstLastPiecePrio"] = "true"
+	}
+
+	if upLimit := r.FormValue("upLimit"); upLimit != "" {
+		// Convert from KB/s to bytes/s (qBittorrent API expects bytes/s)
+		if upLimitInt, err := strconv.ParseInt(upLimit, 10, 64); err == nil && upLimitInt > 0 {
+			options["upLimit"] = strconv.FormatInt(upLimitInt*1024, 10)
+		}
+	}
+
+	if dlLimit := r.FormValue("dlLimit"); dlLimit != "" {
+		// Convert from KB/s to bytes/s (qBittorrent API expects bytes/s)
+		if dlLimitInt, err := strconv.ParseInt(dlLimit, 10, 64); err == nil && dlLimitInt > 0 {
+			options["dlLimit"] = strconv.FormatInt(dlLimitInt*1024, 10)
+		}
+	}
+
+	if ratioLimit := r.FormValue("ratioLimit"); ratioLimit != "" {
+		options["ratioLimit"] = ratioLimit
+	}
+
+	if seedingTimeLimit := r.FormValue("seedingTimeLimit"); seedingTimeLimit != "" {
+		options["seedingTimeLimit"] = seedingTimeLimit
+	}
+
+	if contentLayout := r.FormValue("contentLayout"); contentLayout != "" {
+		options["contentLayout"] = contentLayout
+	}
+
+	if rename := r.FormValue("rename"); rename != "" {
+		options["rename"] = rename
 	}
 
 	if savePath := r.FormValue("savepath"); savePath != "" {
@@ -303,12 +373,17 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 
 // BulkActionRequest represents a bulk action request
 type BulkActionRequest struct {
-	Hashes      []string `json:"hashes"`
-	Action      string   `json:"action"`
-	DeleteFiles bool     `json:"deleteFiles,omitempty"` // For delete action
-	Tags        string   `json:"tags,omitempty"`        // For tag operations (comma-separated)
-	Category    string   `json:"category,omitempty"`    // For category operations
-	Enable      bool     `json:"enable,omitempty"`      // For toggleAutoTMM action
+	Hashes                   []string `json:"hashes"`
+	Action                   string   `json:"action"`
+	DeleteFiles              bool     `json:"deleteFiles,omitempty"`              // For delete action
+	Tags                     string   `json:"tags,omitempty"`                     // For tag operations (comma-separated)
+	Category                 string   `json:"category,omitempty"`                 // For category operations
+	Enable                   bool     `json:"enable,omitempty"`                   // For toggleAutoTMM action
+	RatioLimit               float64  `json:"ratioLimit,omitempty"`               // For setShareLimit action
+	SeedingTimeLimit         int64    `json:"seedingTimeLimit,omitempty"`         // For setShareLimit action
+	InactiveSeedingTimeLimit int64    `json:"inactiveSeedingTimeLimit,omitempty"` // For setShareLimit action
+	UploadLimit              int64    `json:"uploadLimit,omitempty"`              // For setUploadLimit action (KB/s)
+	DownloadLimit            int64    `json:"downloadLimit,omitempty"`            // For setDownloadLimit action (KB/s)
 }
 
 // BulkAction performs bulk operations on torrents
@@ -336,7 +411,7 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 		"pause", "resume", "delete", "deleteWithFiles",
 		"recheck", "reannounce", "increasePriority", "decreasePriority",
 		"topPriority", "bottomPriority", "addTags", "removeTags", "setTags", "setCategory",
-		"toggleAutoTMM",
+		"toggleAutoTMM", "setShareLimit", "setUploadLimit", "setDownloadLimit",
 	}
 
 	valid := slices.Contains(validActions, req.Action)
@@ -367,6 +442,12 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 		err = h.syncManager.SetCategory(r.Context(), instanceID, req.Hashes, req.Category)
 	case "toggleAutoTMM":
 		err = h.syncManager.SetAutoTMM(r.Context(), instanceID, req.Hashes, req.Enable)
+	case "setShareLimit":
+		err = h.syncManager.SetTorrentShareLimit(r.Context(), instanceID, req.Hashes, req.RatioLimit, req.SeedingTimeLimit, req.InactiveSeedingTimeLimit)
+	case "setUploadLimit":
+		err = h.syncManager.SetTorrentUploadLimit(r.Context(), instanceID, req.Hashes, req.UploadLimit)
+	case "setDownloadLimit":
+		err = h.syncManager.SetTorrentDownloadLimit(r.Context(), instanceID, req.Hashes, req.DownloadLimit)
 	case "delete":
 		// Handle delete with deleteFiles parameter
 		action := req.Action

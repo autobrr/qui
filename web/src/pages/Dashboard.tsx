@@ -5,6 +5,7 @@
 
 import { useInstances } from "@/hooks/useInstances"
 import { useInstanceStats } from "@/hooks/useInstanceStats"
+import { usePersistedAccordionState } from "@/hooks/usePersistedAccordionState"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
@@ -12,9 +13,12 @@ import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
 import { PasswordIssuesBanner } from "@/components/instances/PasswordIssuesBanner"
 import { InstanceErrorDisplay } from "@/components/instances/InstanceErrorDisplay"
-import { HardDrive, Download, Upload, Activity, Plus, Minus, Zap, ChevronDown, ChevronUp, Eye, EyeOff } from "lucide-react"
+import { InstanceSettingsButton } from "@/components/instances/InstanceSettingsButton"
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { HardDrive, Download, Upload, Activity, Plus, Minus, Zap, ChevronDown, ChevronUp, Eye, EyeOff, ExternalLink, Rabbit, Turtle } from "lucide-react"
 import { Link } from "@tanstack/react-router"
-import { useMemo, useState } from "react"
+import { useMemo } from "react"
 import { formatSpeed, formatBytes, getRatioColor } from "@/lib/utils"
 import { useQuery, useQueries } from "@tanstack/react-query"
 import { api } from "@/lib/api"
@@ -30,6 +34,7 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 import { useIncognitoMode } from "@/lib/incognito"
+import { useAlternativeSpeedLimits } from "@/hooks/useAlternativeSpeedLimits"
 
 
 // Custom hook to get all instance stats using dynamic queries
@@ -102,6 +107,7 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
     enabled: true, // Always fetch stats, regardless of isActive status
     pollingInterval: 5000, // Slower polling for dashboard
   })
+  const { enabled: altSpeedEnabled, toggle: toggleAltSpeed, isToggling } = useAlternativeSpeedLimits(instance.id)
   const { data: torrentCounts } = useQuery({
     queryKey: ["torrent-counts", instance.id],
     queryFn: async () => {
@@ -126,11 +132,18 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
   // Show loading only on first load
   if (isLoading && !stats) {
     return (
-      <Link to="/instances/$instanceId" params={{ instanceId: instance.id.toString() }}>
-        <Card className="hover:shadow-lg transition-shadow cursor-pointer opacity-60">
+      <>
+        <Card className="hover:shadow-lg transition-shadow opacity-60">
           <CardHeader>
             <div className="flex items-center justify-between">
-              <CardTitle className="text-lg">{instance.name}</CardTitle>
+              <Link 
+                to="/instances/$instanceId" 
+                params={{ instanceId: instance.id.toString() }}
+                className="flex items-center gap-2 hover:underline"
+              >
+                <CardTitle className="text-lg">{instance.name}</CardTitle>
+                <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+              </Link>
               <Badge variant="secondary">
                 Loading...
               </Badge>
@@ -155,7 +168,7 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
             <p className="text-sm text-muted-foreground">Loading stats...</p>
           </CardContent>
         </Card>
-      </Link>
+      </>
     )
   }
   
@@ -163,12 +176,27 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
   if (stats && !stats.connected) {
     const hasErrors = instance.hasDecryptionError || instance.connectionError
     return (
-      <Link to={hasErrors ? "/instances" : "/instances/$instanceId"} params={hasErrors ? {} : { instanceId: instance.id.toString() }}>
-        <Card className="hover:shadow-lg transition-shadow cursor-pointer">
+      <>
+        <Card className="hover:shadow-lg transition-shadow">
           <CardHeader>
             <div className="flex items-center justify-between">
-              <CardTitle className="text-lg">{instance.name}</CardTitle>
-              <Badge variant="destructive">Disconnected</Badge>
+              <Link 
+                to={hasErrors ? "/instances" : "/instances/$instanceId"} 
+                params={hasErrors ? {} : { instanceId: instance.id.toString() }}
+                className="flex items-center gap-2 hover:underline"
+              >
+                <CardTitle className="text-lg">{instance.name}</CardTitle>
+                <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+              </Link>
+              <div className="flex items-center gap-2">
+                {!hasErrors && (
+                  <InstanceSettingsButton
+                    instanceId={instance.id}
+                    instanceName={instance.name}
+                  />
+                )}
+                <Badge variant="destructive">Disconnected</Badge>
+              </div>
             </div>
             <CardDescription className="flex items-center gap-1">
               <span className={incognitoMode ? "blur-sm select-none" : ""}>{displayUrl}</span>
@@ -176,11 +204,7 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
                 variant="ghost"
                 size="icon"
                 className="h-5 w-5 p-0 hover:bg-muted/50"
-                onClick={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  setIncognitoMode(!incognitoMode)
-                }}
+                onClick={() => setIncognitoMode(!incognitoMode)}
               >
                 {incognitoMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
               </Button>
@@ -194,7 +218,7 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
             <InstanceErrorDisplay instance={instance} />
           </CardContent>
         </Card>
-      </Link>
+      </>
     )
   }
   
@@ -202,12 +226,27 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
   if (error || !stats || !stats.torrents) {
     const hasErrors = instance.hasDecryptionError || instance.connectionError
     return (
-      <Link to={hasErrors ? "/instances" : "/instances/$instanceId"} params={hasErrors ? {} : { instanceId: instance.id.toString() }}>
-        <Card className="hover:shadow-lg transition-shadow cursor-pointer opacity-60">
+      <>
+        <Card className="hover:shadow-lg transition-shadow opacity-60">
           <CardHeader>
             <div className="flex items-center justify-between">
-              <CardTitle className="text-lg">{instance.name}</CardTitle>
-              <Badge variant="destructive">Error</Badge>
+              <Link 
+                to={hasErrors ? "/instances" : "/instances/$instanceId"} 
+                params={hasErrors ? {} : { instanceId: instance.id.toString() }}
+                className="flex items-center gap-2 hover:underline"
+              >
+                <CardTitle className="text-lg">{instance.name}</CardTitle>
+                <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+              </Link>
+              <div className="flex items-center gap-2">
+                {!hasErrors && (
+                  <InstanceSettingsButton
+                    instanceId={instance.id}
+                    instanceName={instance.name}
+                  />
+                )}
+                <Badge variant="destructive">Error</Badge>
+              </div>
             </div>
             <CardDescription className="flex items-center gap-1">
               <span className={incognitoMode ? "blur-sm select-none" : ""}>{displayUrl}</span>
@@ -215,11 +254,7 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
                 variant="ghost"
                 size="icon"
                 className="h-5 w-5 p-0 hover:bg-muted/50"
-                onClick={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  setIncognitoMode(!incognitoMode)
-                }}
+                onClick={() => setIncognitoMode(!incognitoMode)}
               >
                 {incognitoMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
               </Button>
@@ -233,20 +268,61 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
             <InstanceErrorDisplay instance={instance} />
           </CardContent>
         </Card>
-      </Link>
+      </>
     )
   }
   
   const hasErrors = instance.hasDecryptionError || instance.connectionError
   return (
-    <Link to={hasErrors ? "/instances" : "/instances/$instanceId"} params={hasErrors ? {} : { instanceId: instance.id.toString() }}>
-      <Card className="hover:shadow-lg transition-shadow cursor-pointer">
+    <>
+      <Card className="hover:shadow-lg transition-shadow">
         <CardHeader className='gap-0'>
           <div className="flex items-center justify-between">
-            <CardTitle className="text-lg">{instance.name}</CardTitle>
-            <Badge variant={stats.connected ? "default" : "destructive"}>
-              {stats.connected ? "Connected" : "Disconnected"}
-            </Badge>
+            <Link 
+              to={hasErrors ? "/instances" : "/instances/$instanceId"} 
+              params={hasErrors ? {} : { instanceId: instance.id.toString() }}
+              className="flex items-center gap-2 hover:underline"
+            >
+              <CardTitle className="text-lg">{instance.name}</CardTitle>
+              <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+            </Link>
+            <div className="flex items-center gap-2">
+              {stats.connected && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        toggleAltSpeed()
+                      }}
+                      disabled={isToggling}
+                      className="h-8 w-8 p-0 !hover:bg-transparent"
+                    >
+                      {altSpeedEnabled ? (
+                        <Turtle className="h-4 w-4 text-orange-600" />
+                      ) : (
+                        <Rabbit className="h-4 w-4 text-green-600" />
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Alternative speed limits {altSpeedEnabled ? "enabled (turtle mode)" : "disabled (normal mode)"} - Click to toggle
+                  </TooltipContent>
+                </Tooltip>
+              )}
+              {stats.connected && (
+                <InstanceSettingsButton
+                  instanceId={instance.id}
+                  instanceName={instance.name}
+                />
+              )}
+              <Badge variant={stats.connected ? "default" : "destructive"}>
+                {stats.connected ? "Connected" : "Disconnected"}
+              </Badge>
+            </div>
           </div>
           <CardDescription className="flex items-center gap-1 text-xs">
             <span className={incognitoMode ? "blur-sm select-none truncate" : "truncate"}>{displayUrl}</span>
@@ -254,11 +330,7 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
               variant="ghost"
               size="icon"
               className="h-4 w-4 p-0"
-              onClick={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                setIncognitoMode(!incognitoMode)
-              }}
+              onClick={() => setIncognitoMode(!incognitoMode)}
             >
               {incognitoMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
             </Button>
@@ -284,24 +356,24 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
                 <span className="flex-1 text-center text-lg font-semibold">{torrentCounts?.total || 0}</span>
               </div>
             </div>
-            
+              
             <div className="flex items-center gap-2 text-xs">
               <Download className="h-3 w-3 text-muted-foreground" />
               <span className="text-muted-foreground">Download</span>
               <span className="ml-auto font-medium">{formatSpeed(stats.speeds?.download || 0)}</span>
             </div>
-            
+              
             <div className="flex items-center gap-2 text-xs">
               <Upload className="h-3 w-3 text-muted-foreground" />
               <span className="text-muted-foreground">Upload</span>
               <span className="ml-auto font-medium">{formatSpeed(stats.speeds?.upload || 0)}</span>
             </div>
           </div>
-          
+            
           <InstanceErrorDisplay instance={instance} />
         </CardContent>
       </Card>
-    </Link>
+    </>
   )
 }
 
@@ -410,7 +482,8 @@ function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: Instance
 }
 
 function GlobalAllTimeStats({ statsData }: { statsData: Array<{ instance: InstanceResponse, stats: InstanceStats | undefined, serverState: ServerState | null }> }) {
-  const [isExpanded, setIsExpanded] = useState(false)
+  const [accordionValue, setAccordionValue] = usePersistedAccordionState("qui-global-stats-accordion")
+  
   const globalStats = useMemo(() => {
     // Calculate server stats
     const alltimeDl = statsData.reduce((sum, { serverState }) => 
@@ -443,96 +516,84 @@ function GlobalAllTimeStats({ statsData }: { statsData: Array<{ instance: Instan
   }
 
   return (
-    <div className="rounded-lg border bg-card">
-      {/* Combined Stats Header - Clickable */}
-      <div 
-        className="p-4 cursor-pointer hover:bg-muted/50 transition-colors"
-        onClick={() => setIsExpanded(!isExpanded)}
-      >
-        {/* Mobile layout */}
-        <div className="sm:hidden">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              {isExpanded ? (
-                <Minus className="h-3.5 w-3.5 text-muted-foreground" />
-              ) : (
-                <Plus className="h-3.5 w-3.5 text-muted-foreground" />
-              )}
-              <h3 className="text-sm font-medium text-muted-foreground">Server Statistics</h3>
+    <Accordion type="single" collapsible className="rounded-lg border bg-card" value={accordionValue} onValueChange={setAccordionValue}>
+      <AccordionItem value="server-stats" className="border-0">
+        <AccordionTrigger className="px-4 py-4 hover:no-underline hover:bg-muted/50 transition-colors [&>svg]:hidden group">
+          {/* Mobile layout */}
+          <div className="sm:hidden w-full">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Plus className="h-3.5 w-3.5 text-muted-foreground group-data-[state=open]:hidden" />
+                <Minus className="h-3.5 w-3.5 text-muted-foreground group-data-[state=closed]:hidden" />
+                <h3 className="text-sm font-medium text-muted-foreground">Server Statistics</h3>
+              </div>
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-1.5">
+                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-sm font-semibold">{formatBytes(globalStats.alltimeDl)}</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-sm font-semibold">{formatBytes(globalStats.alltimeUl)}</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-4 text-sm">
+                <div>
+                  <span className="text-xs text-muted-foreground">Ratio: </span>
+                  <span className="font-semibold" style={{ color: ratioColor }}>
+                    {globalStats.globalRatio.toFixed(2)}
+                  </span>
+                </div>
+                {globalStats.totalPeers > 0 && (
+                  <div>
+                    <span className="text-xs text-muted-foreground">Peers: </span>
+                    <span className="font-semibold">{globalStats.totalPeers}</span>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-1.5">
-                <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-                <span className="text-sm font-semibold">{formatBytes(globalStats.alltimeDl)}</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" />
-                <span className="text-sm font-semibold">{formatBytes(globalStats.alltimeUl)}</span>
-              </div>
+          
+          {/* Desktop layout */}
+          <div className="hidden sm:flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 w-full">
+            <div className="flex items-center gap-2">
+              <Plus className="h-4 w-4 text-muted-foreground group-data-[state=open]:hidden" />
+              <Minus className="h-4 w-4 text-muted-foreground group-data-[state=closed]:hidden" />
+              <h3 className="text-base font-medium">Server Statistics</h3>
             </div>
-            <div className="flex items-center gap-4 text-sm">
-              <div>
-                <span className="text-xs text-muted-foreground">Ratio: </span>
-                <span className="font-semibold" style={{ color: ratioColor }}>
+            <div className="flex flex-wrap items-center gap-6 text-sm">
+              <div className="flex items-center gap-2">
+                <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                <span className="text-lg font-semibold">{formatBytes(globalStats.alltimeDl)}</span>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                <span className="text-lg font-semibold">{formatBytes(globalStats.alltimeUl)}</span>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">Ratio:</span>
+                <span className="text-lg font-semibold" style={{ color: ratioColor }}>
                   {globalStats.globalRatio.toFixed(2)}
                 </span>
               </div>
+              
               {globalStats.totalPeers > 0 && (
-                <div>
-                  <span className="text-xs text-muted-foreground">Peers: </span>
-                  <span className="font-semibold">{globalStats.totalPeers}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">Peers:</span>
+                  <span className="text-lg font-semibold">{globalStats.totalPeers}</span>
                 </div>
               )}
             </div>
           </div>
-        </div>
-        
-        {/* Desktop layout */}
-        <div className="hidden sm:flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div className="flex items-center gap-2">
-            {isExpanded ? (
-              <Minus className="h-4 w-4 text-muted-foreground" />
-            ) : (
-              <Plus className="h-4 w-4 text-muted-foreground" />
-            )}
-            <h3 className="text-base font-medium">Server Statistics</h3>
-          </div>
-          <div className="flex flex-wrap items-center gap-6 text-sm">
-            <div className="flex items-center gap-2">
-              <ChevronDown className="h-4 w-4 text-muted-foreground" />
-              <span className="text-lg font-semibold">{formatBytes(globalStats.alltimeDl)}</span>
-            </div>
-            
-            <div className="flex items-center gap-2">
-              <ChevronUp className="h-4 w-4 text-muted-foreground" />
-              <span className="text-lg font-semibold">{formatBytes(globalStats.alltimeUl)}</span>
-            </div>
-            
-            <div className="flex items-center gap-2">
-              <span className="text-muted-foreground">Ratio:</span>
-              <span className="text-lg font-semibold" style={{ color: ratioColor }}>
-                {globalStats.globalRatio.toFixed(2)}
-              </span>
-            </div>
-            
-            {globalStats.totalPeers > 0 && (
-              <div className="flex items-center gap-2">
-                <span className="text-muted-foreground">Peers:</span>
-                <span className="text-lg font-semibold">{globalStats.totalPeers}</span>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Individual Instance Stats - Expandable Table */}
-      {isExpanded && (
-        <div className="border-t">
+        </AccordionTrigger>
+        <AccordionContent className="px-0 pb-0">
           <Table>
             <TableHeader>
-              <TableRow className="hover:bg-transparent bg-muted/50">
+              <TableRow className="bg-muted/50">
                 <TableHead className="text-center">Instance</TableHead>
                 <TableHead className="text-center">
                   <div className="flex items-center justify-center gap-1">
@@ -575,9 +636,9 @@ function GlobalAllTimeStats({ statsData }: { statsData: Array<{ instance: Instan
                 })}
             </TableBody>
           </Table>
-        </div>
-      )}
-    </div>
+        </AccordionContent>
+      </AccordionItem>
+    </Accordion>
   )
 }
 
@@ -678,6 +739,7 @@ export function Dashboard() {
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <GlobalStatsCards statsData={statsData} />
           </div>
+          
           
           {/* Instance Cards */}
           {allInstances.length > 0 && (

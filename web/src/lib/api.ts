@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import type { AuthResponse, InstanceResponse, TorrentResponse, MainData, User } from "@/types"
+import type { AuthResponse, InstanceResponse, TorrentResponse, MainData, User, AppPreferences } from "@/types"
 import { getApiBaseUrl } from "./base-url"
 
 const API_BASE = getApiBaseUrl()
@@ -187,6 +187,14 @@ class ApiClient {
       savePath?: string
       autoTMM?: boolean
       skipHashCheck?: boolean
+      sequentialDownload?: boolean
+      firstLastPiecePrio?: boolean
+      limitUploadSpeed?: number
+      limitDownloadSpeed?: number
+      limitRatio?: number
+      limitSeedTime?: number
+      contentLayout?: string
+      rename?: string
     }
   ): Promise<{ success: boolean; message?: string }> {
     const formData = new FormData()
@@ -200,6 +208,14 @@ class ApiClient {
     if (data.startPaused !== undefined) formData.append("paused", data.startPaused.toString())
     if (data.autoTMM !== undefined) formData.append("autoTMM", data.autoTMM.toString())
     if (data.skipHashCheck !== undefined) formData.append("skip_checking", data.skipHashCheck.toString())
+    if (data.sequentialDownload !== undefined) formData.append("sequentialDownload", data.sequentialDownload.toString())
+    if (data.firstLastPiecePrio !== undefined) formData.append("firstLastPiecePrio", data.firstLastPiecePrio.toString())
+    if (data.limitUploadSpeed !== undefined && data.limitUploadSpeed > 0) formData.append("upLimit", data.limitUploadSpeed.toString())
+    if (data.limitDownloadSpeed !== undefined && data.limitDownloadSpeed > 0) formData.append("dlLimit", data.limitDownloadSpeed.toString())
+    if (data.limitRatio !== undefined && data.limitRatio > 0) formData.append("ratioLimit", data.limitRatio.toString())
+    if (data.limitSeedTime !== undefined && data.limitSeedTime > 0) formData.append("seedingTimeLimit", data.limitSeedTime.toString())
+    if (data.contentLayout) formData.append("contentLayout", data.contentLayout)
+    if (data.rename) formData.append("rename", data.rename)
     // Only send savePath if autoTMM is false or undefined
     if (data.savePath && !data.autoTMM) formData.append("savepath", data.savePath)
 
@@ -255,11 +271,16 @@ class ApiClient {
     instanceId: number,
     data: {
       hashes: string[]
-      action: "pause" | "resume" | "delete" | "recheck" | "reannounce" | "increasePriority" | "decreasePriority" | "topPriority" | "bottomPriority" | "setCategory" | "addTags" | "removeTags" | "setTags" | "toggleAutoTMM"
+      action: "pause" | "resume" | "delete" | "recheck" | "reannounce" | "increasePriority" | "decreasePriority" | "topPriority" | "bottomPriority" | "setCategory" | "addTags" | "removeTags" | "setTags" | "toggleAutoTMM" | "setShareLimit" | "setUploadLimit" | "setDownloadLimit"
       deleteFiles?: boolean
       category?: string
       tags?: string  // Comma-separated tags string
       enable?: boolean  // For toggleAutoTMM
+      ratioLimit?: number  // For setShareLimit action
+      seedingTimeLimit?: number  // For setShareLimit action (minutes)
+      inactiveSeedingTimeLimit?: number  // For setShareLimit action (minutes)
+      uploadLimit?: number  // For setUploadLimit action (KB/s)
+      downloadLimit?: number  // For setDownloadLimit action (KB/s)
     }
   ): Promise<void> {
     return this.request(`/instances/${instanceId}/torrents/bulk-action`, {
@@ -389,6 +410,31 @@ class ApiClient {
 
   async refreshThemeLicenses(): Promise<{ message: string }> {
     return this.request("/themes/license/refresh", { method: "POST" })
+  }
+
+  // Preferences endpoints
+  async getInstancePreferences(instanceId: number): Promise<AppPreferences> {
+    return this.request<AppPreferences>(`/instances/${instanceId}/preferences`)
+  }
+
+  async updateInstancePreferences(
+    instanceId: number, 
+    preferences: Partial<AppPreferences>
+  ): Promise<AppPreferences> {
+    return this.request<AppPreferences>(`/instances/${instanceId}/preferences`, {
+      method: "PATCH",
+      body: JSON.stringify(preferences),
+    })
+  }
+  
+  async getAlternativeSpeedLimitsMode(instanceId: number): Promise<{ enabled: boolean }> {
+    return this.request<{ enabled: boolean }>(`/instances/${instanceId}/alternative-speed-limits`)
+  }
+  
+  async toggleAlternativeSpeedLimits(instanceId: number): Promise<{ enabled: boolean }> {
+    return this.request<{ enabled: boolean }>(`/instances/${instanceId}/alternative-speed-limits/toggle`, {
+      method: "POST",
+    })
   }
 }
 

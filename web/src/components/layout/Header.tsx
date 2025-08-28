@@ -15,28 +15,29 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
-import { User, LogOut, Key, Search, Info, Filter, Plus, X } from "lucide-react"
+import { Menu, LogOut, Settings, Search, Info, Filter, Plus, X, Home, Server, HardDrive } from "lucide-react"
 import { ThemeToggle } from "@/components/ui/ThemeToggle"
 import { cn } from "@/lib/utils"
 import { Link, useNavigate, useSearch, useRouterState } from "@tanstack/react-router"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, useRef } from "react"
 import { useDebounce } from "@/hooks/useDebounce"
 import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSidebarState"
 import { useInstances } from "@/hooks/useInstances"
+import { useHotkeys } from "react-hotkeys-hook"
 
 interface HeaderProps {
   children?: React.ReactNode
   sidebarCollapsed?: boolean
+  onSidebarToggle?: () => void
 }
 
-export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
-  const { user, logout } = useAuth()
+export function Header({ children, sidebarCollapsed = false, onSidebarToggle }: HeaderProps) {
+  const { logout } = useAuth()
   const navigate = useNavigate()
-  const routeSearch = useSearch({ strict: false }) as any
+  const routeSearch = useSearch({ strict: false }) as { q?: string; modal?: string; [key: string]: unknown }
 
   const instanceId = useRouterState({
     select: (s) => s.matches.find((m) => m.routeId === "/_authenticated/instances/$instanceId")?.params?.instanceId as string | undefined,
@@ -49,8 +50,9 @@ export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
 
   const shouldShowQuiOnMobile = !isInstanceRoute
   const [searchValue, setSearchValue] = useState<string>(routeSearch?.q || "")
-  const debouncedSearch = useDebounce(searchValue, 1000)
+  const debouncedSearch = useDebounce(searchValue, 500)
   const { instances } = useInstances()
+
 
   const instanceName = useMemo(() => {
     if (!isInstanceRoute || !instances || selectedInstanceId === null) return null
@@ -69,12 +71,31 @@ export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
     const next = { ...(routeSearch || {}) }
     if (debouncedSearch) next.q = debouncedSearch
     else delete next.q
-    navigate({ search: next, replace: true })
+    navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedSearch, isInstanceRoute])
 
-  const isGlobSearch = !!searchValue && /[*?\[\]]/.test(searchValue)
+  const isGlobSearch = !!searchValue && /[*?[\]]/.test(searchValue)
   const [filterSidebarCollapsed, setFilterSidebarCollapsed] = usePersistedFilterSidebarState(false)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+
+  // Detect platform for appropriate key display
+  const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.userAgent)
+  const shortcutKey = isMac ? "⌘K" : "Ctrl+K"
+
+  // Global keyboard shortcut to focus search
+  useHotkeys(
+    "meta+k, ctrl+k",
+    (event) => {
+      event.preventDefault()
+      searchInputRef.current?.focus()
+    },
+    {
+      preventDefault: true,
+      enableOnFormTags: ["input", "textarea", "select"],
+    },
+    [isInstanceRoute]
+  )
 
   return (
     <header className="sticky top-0 z-50 flex h-16 items-center justify-between sm:border-b bg-background pl-1 pr-4 sm:pr-6 lg:static">
@@ -87,22 +108,17 @@ export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
         )}>{instanceName ? `qui - ${instanceName}` : "qui"}</h1>
         {isInstanceRoute && (
           <div className="ml-2 hidden sm:block">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    const next = { ...(routeSearch || {}), modal: "add-torrent" }
-                    navigate({ search: next, replace: true })
-                  }}
-                >
-                  <Plus className="h-4 w-4 sm:mr-2" />
-                  <span className="hidden sm:inline">Add Torrent</span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Add Torrent</TooltipContent>
-            </Tooltip>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const next = { ...(routeSearch || {}), modal: "add-torrent" }
+                navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
+              }}
+            >
+              <Plus className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Add Torrent</span>
+            </Button>
           </div>
         )}
       </div>
@@ -113,20 +129,25 @@ export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
           <div className="flex items-center gap-2">
             {/* Slot to place actions directly to the left of the filter button (desktop only) */}
             <span id="header-left-of-filter" className="hidden xl:inline-flex" />
-            <Button
-              variant="outline"
-              size="icon"
-              className="hidden xl:inline-flex"
-              onClick={() => setFilterSidebarCollapsed(!filterSidebarCollapsed)}
-              title={filterSidebarCollapsed ? "Show filters" : "Hide filters"}
-            >
-              <Filter className="h-4 w-4" />
-            </Button>
+            <Tooltip >
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="hidden xl:inline-flex"
+                  onClick={() => setFilterSidebarCollapsed(!filterSidebarCollapsed)}
+                >
+                  <Filter className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{filterSidebarCollapsed ? "Show filters" : "Hide filters"}</TooltipContent>
+            </Tooltip>
             {/* Mobile filter button moved to card/table toolbars */}
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
               <Input
-                placeholder={isGlobSearch ? "Glob pattern..." : "Search torrents..."}
+                ref={searchInputRef}
+                placeholder={isGlobSearch ? "Glob pattern..." : `Search torrents... (${shortcutKey})`}
                 value={searchValue}
                 onChange={(e) => setSearchValue(e.target.value)}
                 onKeyDown={(e) => {
@@ -134,7 +155,7 @@ export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
                     const next = { ...(routeSearch || {}) }
                     if (searchValue) next.q = searchValue
                     else delete next.q
-                    navigate({ search: next, replace: true })
+                    navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
                   }
                 }}
                 className={`w-full pl-9 pr-16 transition-all text-xs ${
@@ -144,7 +165,7 @@ export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
               <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
                 {/* Clear search button */}
                 {searchValue && (
-                  <Tooltip>
+                  <Tooltip >
                     <TooltipTrigger asChild>
                       <button
                         type="button"
@@ -153,7 +174,7 @@ export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
                           setSearchValue("")
                           const next = { ...(routeSearch || {}) }
                           delete next.q
-                          navigate({ search: next, replace: true })
+                          navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
                         }}
                       >
                         <X className="h-3.5 w-3.5 text-muted-foreground" />
@@ -163,7 +184,7 @@ export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
                   </Tooltip>
                 )}
                 {/* Slot for actions next to search (e.g., Toggle columns) */}
-                <Tooltip>
+                <Tooltip >
                   <TooltipTrigger asChild>
                     <button
                       type="button"
@@ -182,7 +203,7 @@ export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
                         <li>• Handles dots, underscores, and brackets</li>
                         <li>• Searches name, category, and tags</li>
                         <li>• Press Enter for instant search</li>
-                        <li>• Auto-searches after 1 second pause</li>
+                        <li>• Auto-searches after 500ms pause</li>
                       </ul>
                     </div>
                   </TooltipContent>
@@ -194,31 +215,92 @@ export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
         </div>
       )}
 
-      <div className="flex items-center gap-3">
+      <div className="grid grid-cols-[auto_auto] items-center gap-3 transition-all duration-300 ease-out">
         <ThemeToggle />
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="gap-2">
-              <User className="h-4 w-4" />
-              <span className="hidden sm:inline">{user?.username}</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel>My Account</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link to="/settings" search={{ tab: "api" }} className="flex cursor-pointer">
-                <Key className="mr-2 h-4 w-4" />
-                API Keys
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => logout()}>
-              <LogOut className="mr-2 h-4 w-4" />
-              Logout
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <div className={cn(
+          "transition-all duration-300 ease-out overflow-hidden",
+          sidebarCollapsed ? "w-10 opacity-100" : "w-0 opacity-0"
+        )}>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="hover:bg-muted hover:text-foreground transition-colors">
+                <Menu className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-52">
+              <DropdownMenuItem asChild>
+                <Link 
+                  to="/dashboard" 
+                  className="flex cursor-pointer"
+                  onClick={() => {
+                    if (sidebarCollapsed && onSidebarToggle) {
+                      onSidebarToggle()
+                    }
+                  }}
+                >
+                  <Home className="mr-2 h-4 w-4" />
+                  Dashboard
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link 
+                  to="/instances" 
+                  className="flex cursor-pointer"
+                  onClick={() => {
+                    if (sidebarCollapsed && onSidebarToggle) {
+                      onSidebarToggle()
+                    }
+                  }}
+                >
+                  <Server className="mr-2 h-4 w-4" />
+                  Instances
+                </Link>
+              </DropdownMenuItem>
+              {instances && instances.length > 0 && (
+                <>
+                  {instances.map((instance) => (
+                    <DropdownMenuItem key={instance.id} asChild>
+                      <Link 
+                        to="/instances/$instanceId" 
+                        params={{ instanceId: instance.id.toString() }}
+                        className="flex cursor-pointer pl-6"
+                      >
+                        <HardDrive className="mr-2 h-4 w-4" />
+                        <span className="truncate">{instance.name}</span>
+                        <span
+                          className={cn(
+                            "ml-auto h-2 w-2 rounded-full flex-shrink-0",
+                            instance.connected ? "bg-green-500" : "bg-red-500"
+                          )}
+                        />
+                      </Link>
+                    </DropdownMenuItem>
+                  ))}
+                </>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <Link 
+                  to="/settings" 
+                  className="flex cursor-pointer"
+                  onClick={() => {
+                    if (sidebarCollapsed && onSidebarToggle) {
+                      onSidebarToggle()
+                    }
+                  }}
+                >
+                  <Settings className="mr-2 h-4 w-4" />
+                  Settings
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => logout()}>
+                <LogOut className="mr-2 h-4 w-4" />
+                Logout
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
     </header>
   )
