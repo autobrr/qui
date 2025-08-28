@@ -209,7 +209,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
       }}
       className="space-y-6"
     >
-      <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <form.Field name="dl_limit">
           {(field) => (
             <SpeedLimitInput
@@ -272,10 +272,6 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
         <form.Field name="scheduler_enabled">
           {(field) => (
             <div className="flex items-center gap-3">
-              <Clock className="h-4 w-4 text-muted-foreground" />
-              <Label className="text-sm font-medium">
-                Schedule the use of alternative rate limits
-              </Label>
               <Switch
                 checked={field.state.value as boolean}
                 onCheckedChange={(checked) => {
@@ -283,6 +279,12 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
                   field.handleChange(checked)
                 }}
               />
+              <div className="flex items-center gap-2">
+                <Clock className="h-4 w-4 text-muted-foreground" />
+                <Label className="text-sm font-medium">
+                  Schedule the use of alternative rate limits
+                </Label>
+              </div>
             </div>
           )}
         </form.Field>
