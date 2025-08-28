@@ -186,8 +186,47 @@ Key patterns:
   }
   ```
 
+#### Component Form Patterns
+The project uses focused, purpose-specific dialog patterns for better UX:
+
+**Focused Dialogs Pattern**:
+- **Principle**: Small, focused dialogs instead of large multi-section forms
+- **Implementation**: Each dialog handles one specific area (e.g., Speed Limits, Queue Management)
+- **Access Pattern**: Dropdown menus provide direct access to specific settings
+
+**Dialog Component Structure**:
+```typescript
+// Example: SpeedLimitsDialog
+function SpeedLimitsDialog({ instanceId, open, onOpenChange }: DialogProps) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Speed Limits</DialogTitle>
+        </DialogHeader>
+        <SpeedLimitsForm instanceId={instanceId} onClose={() => onOpenChange(false)} />
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// Corresponding focused form component
+function SpeedLimitsForm({ instanceId, onClose }: FormProps) {
+  const { preferences, updatePreferences } = useInstancePreferences(instanceId)
+  // Form implementation focused on speed limits only
+}
+```
+
+**Benefits**:
+- Smaller, less overwhelming interfaces
+- Better mobile experience
+- Faster loading and rendering
+- Clear separation of concerns
+- Reduced cognitive load for users
+
 ## Configuration
 
+### Environment Variables
 Environment variables use `qui__` prefix:
 - `qui__HOST` (default: localhost or 0.0.0.0 in containers)
 - `qui__PORT` (default: 7476)
@@ -210,6 +249,8 @@ Protected routes require authentication via session cookie or API key header (`X
 - `GET /api/instances/{id}/torrents/sync` - SyncMainData endpoint
 - `POST /api/instances/{id}/torrents` - Add torrent
 - `POST /api/instances/{id}/torrents/bulk-action` - Bulk operations
+- `GET /api/instances/{id}/preferences` - Get instance preferences
+- `PATCH /api/instances/{id}/preferences` - Update instance preferences
 - `GET /metrics` - Prometheus metrics endpoint (requires API key)
 
 ## Database Schema
@@ -476,6 +517,47 @@ Cache metrics are exposed in the client pool stats:
 - `cache_misses`: Number of cache misses requiring qBittorrent API calls
 - Monitor these to ensure qBittorrent instances aren't being overwhelmed
 
+### Performance Monitoring and Debugging
+The application includes several performance monitoring tools:
+
+**Cache Metrics Monitoring**:
+```bash
+# Enable debug logging to see cache hit/miss ratios
+QUI__LOG_LEVEL=DEBUG ./qui serve
+
+# Monitor cache performance in logs
+tail -f qui.log | grep "cache"
+```
+
+**Goroutine Pool Monitoring**:
+- Uses `ants/v2` goroutine pool for connection management
+- Pool stats available via debugging endpoints
+- Monitor for pool exhaustion under high load
+
+**Connection Health Monitoring**:
+- Instance connections health-checked every 30 seconds
+- Failed connections marked offline in dashboard
+- Automatic reconnection attempts with exponential backoff
+
+**Frontend Performance**:
+- Virtual scrolling enabled for >100 torrents
+- React Query stale time: 5 seconds
+- TanStack Virtual for efficient large list rendering
+- Progressive loading prevents initial render blocking
+
+**Debug Commands**:
+```bash
+# Enable verbose qBittorrent client logging
+QUI__LOG_LEVEL=TRACE ./qui serve
+
+# Monitor SQL query performance
+QUI__LOG_LEVEL=DEBUG ./qui serve | grep "sql"
+
+# Check goroutine and memory usage
+go tool pprof http://localhost:7476/debug/pprof/goroutine
+go tool pprof http://localhost:7476/debug/pprof/heap
+```
+
 ## Prometheus Metrics
 
 The `/metrics` endpoint exposes Prometheus metrics for monitoring. Implementation details:
@@ -492,3 +574,70 @@ The `/metrics` endpoint exposes Prometheus metrics for monitoring. Implementatio
 - `qbittorrent_instance_connection_status` - Instance health (1=connected, 0=disconnected)
 
 All metrics labeled with `instance_id` and `instance_name` for multi-instance monitoring.
+
+## Instance Preferences System
+
+The application includes a comprehensive instance preferences system for managing qBittorrent settings.
+
+### Backend Architecture
+**SyncManager Integration** (`internal/qbittorrent/sync_manager.go`):
+- `GetAppPreferences(instanceID)` - Cached preference retrieval (60s TTL)
+- `SetAppPreferences(instanceID, prefs)` - Updates with cache invalidation
+- Same caching strategy as categories/tags for consistency
+
+**API Handler** (`internal/api/handlers/preferences.go`):
+- `GET /api/instances/{id}/preferences` - Retrieve preferences
+- `PATCH /api/instances/{id}/preferences` - Partial updates support
+- Returns updated preferences after successful modification
+
+### Frontend Integration
+**React Hook** (`web/src/hooks/useInstancePreferences.ts`):
+```typescript
+const { preferences, updatePreferences, isLoading } = useInstancePreferences(instanceId)
+
+// Optimistic updates with error rollback
+updatePreferences({ dl_limit: 1000 })
+```
+
+**Smart Defaults in Components**:
+- **AddTorrentDialog**: Uses `save_path`, `start_paused_enabled`, `auto_tmm_enabled` from preferences
+- **Dashboard**: Shows per-instance speed limits alongside current speeds
+- **Settings Integration**: Focused dialogs for specific preference areas
+
+### Focused Dialog Pattern
+Instance preferences use focused, purpose-specific dialogs accessed from Dashboard instance cards:
+
+**Available Dialogs**:
+- **Speed Limits**: Download/upload limits and alternative speeds
+- **Queue Management**: Active torrent limits and queue settings
+- **File Management**: Save paths and automatic torrent management
+- **Seeding Limits**: Ratio and time-based seeding controls
+
+**Access Pattern**:
+1. Dashboard instance card → More menu (⋮) → Specific preference area
+2. Small, focused dialog opens with relevant settings only
+3. Real-time updates with optimistic UI feedback
+
+**Benefits**:
+- Reduced cognitive load with focused interfaces
+- Better mobile experience with smaller dialogs
+- Direct access to specific settings without navigation
+- Consistent with existing component patterns
+
+### Usage Examples
+```typescript
+// Reading preferences in components
+const { preferences } = useInstancePreferences(instanceId)
+const downloadLimit = preferences?.dl_limit || 0
+
+// Smart defaults in forms
+const defaultSavePath = preferences?.save_path || "/downloads"
+const useAutoTMM = preferences?.auto_tmm_enabled ?? true
+
+// Conditional UI based on preferences
+{preferences?.queueing_enabled && (
+  <QueueStatusBadge position={torrent.priority} />
+)}
+```
+
+The system provides type-safe preference management with comprehensive caching and real-time updates across the entire application.
