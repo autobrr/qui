@@ -76,6 +76,14 @@ import {
   AlertDialogTitle
 } from "@/components/ui/alert-dialog"
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from "@/components/ui/dialog"
+import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
@@ -138,6 +146,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const [showTagsDialog, setShowTagsDialog] = useState(false)
   const [showCategoryDialog, setShowCategoryDialog] = useState(false)
   const [showRemoveTagsDialog, setShowRemoveTagsDialog] = useState(false)
+  const [showRecheckDialog, setShowRecheckDialog] = useState(false)
+  const [showReannounceDialog, setShowReannounceDialog] = useState(false)
   const [showRefetchIndicator, setShowRefetchIndicator] = useState(false)
   
   // Custom "select all" state for handling large datasets
@@ -823,7 +833,53 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const handleContextMenuAction = useCallback((action: "pause" | "resume" | "recheck" | "reannounce" | "increasePriority" | "decreasePriority" | "topPriority" | "bottomPriority" | "toggleAutoTMM", hashes: string[], enable?: boolean) => {
     setContextMenuHashes(hashes)
     mutation.mutate({ action, hashes, enable })
-  }, [mutation]) 
+  }, [mutation])
+
+  const handleRecheck = useCallback(async () => {
+    await mutation.mutateAsync({ 
+      action: "recheck",
+      hashes: isAllSelected ? [] : contextMenuHashes,
+      selectAll: isAllSelected,
+      filters: isAllSelected ? filters : undefined,
+      search: isAllSelected ? effectiveSearch : undefined,
+      excludeHashes: isAllSelected ? Array.from(excludedFromSelectAll) : undefined,
+    })
+    setShowRecheckDialog(false)
+    setContextMenuHashes([])
+  }, [mutation, isAllSelected, contextMenuHashes, filters, effectiveSearch, excludedFromSelectAll])
+
+  const handleReannounce = useCallback(async () => {
+    await mutation.mutateAsync({ 
+      action: "reannounce",
+      hashes: isAllSelected ? [] : contextMenuHashes,
+      selectAll: isAllSelected,
+      filters: isAllSelected ? filters : undefined,
+      search: isAllSelected ? effectiveSearch : undefined,
+      excludeHashes: isAllSelected ? Array.from(excludedFromSelectAll) : undefined,
+    })
+    setShowReannounceDialog(false)
+    setContextMenuHashes([])
+  }, [mutation, isAllSelected, contextMenuHashes, filters, effectiveSearch, excludedFromSelectAll])
+
+  const handleRecheckClick = useCallback((hashes: string[]) => {
+    const count = isAllSelected ? effectiveSelectionCount : hashes.length
+    if (count > 1) {
+      setContextMenuHashes(hashes)
+      setShowRecheckDialog(true)
+    } else {
+      handleContextMenuAction("recheck", hashes)
+    }
+  }, [isAllSelected, effectiveSelectionCount, handleContextMenuAction])
+
+  const handleReannounceClick = useCallback((hashes: string[]) => {
+    const count = isAllSelected ? effectiveSelectionCount : hashes.length
+    if (count > 1) {
+      setContextMenuHashes(hashes)
+      setShowReannounceDialog(true)
+    } else {
+      handleContextMenuAction("reannounce", hashes)
+    }
+  }, [isAllSelected, effectiveSelectionCount, handleContextMenuAction]) 
 
   const copyToClipboard = useCallback(async (text: string, type: "name" | "hash") => {
     try {
@@ -1195,7 +1251,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                             // Use selected torrents if this row is part of selection, or just this torrent
                             const useSelection = row.getIsSelected() || isAllSelected
                             const hashes = useSelection ? selectedHashes : [torrent.hash]
-                            handleContextMenuAction("recheck", hashes)
+                            handleRecheckClick(hashes)
                           }}
                           disabled={mutation.isPending}
                         >
@@ -1207,7 +1263,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                             // Use selected torrents if this row is part of selection, or just this torrent
                             const useSelection = row.getIsSelected() || isAllSelected
                             const hashes = useSelection ? selectedHashes : [torrent.hash]
-                            handleContextMenuAction("reannounce", hashes)
+                            handleReannounceClick(hashes)
                           }}
                           disabled={mutation.isPending}
                         >
@@ -1550,6 +1606,46 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         isPending={mutation.isPending}
         currentTags={getCommonTagsSync(contextMenuTorrents)}
       />
+
+      {/* Force Recheck Confirmation Dialog */}
+      <Dialog open={showRecheckDialog} onOpenChange={setShowRecheckDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Force Recheck {isAllSelected ? effectiveSelectionCount : contextMenuHashes.length} torrent(s)?</DialogTitle>
+            <DialogDescription>
+              This will force qBittorrent to recheck all pieces of the selected torrents. This process may take some time and will temporarily pause the torrents.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowRecheckDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleRecheck} disabled={mutation.isPending}>
+              Force Recheck
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reannounce Confirmation Dialog */}
+      <Dialog open={showReannounceDialog} onOpenChange={setShowReannounceDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reannounce {isAllSelected ? effectiveSelectionCount : contextMenuHashes.length} torrent(s)?</DialogTitle>
+            <DialogDescription>
+              This will force the selected torrents to reannounce to all their trackers. This is useful when trackers are not responding or you want to refresh your connection.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowReannounceDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleReannounce} disabled={mutation.isPending}>
+              Reannounce
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 });

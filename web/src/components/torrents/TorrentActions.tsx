@@ -28,6 +28,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from "@/components/ui/alert-dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from "@/components/ui/dialog"
 import { ChevronDown, Play, Pause, Trash2, CheckCircle, Tag, Folder, Radio, Settings2, Sparkles } from "lucide-react"
 import { AddTagsDialog, SetTagsDialog, SetCategoryDialog } from "./TorrentDialogs"
 import { ShareLimitSubmenu, SpeedLimitsSubmenu } from "./TorrentLimitSubmenus"
@@ -70,6 +78,8 @@ export const TorrentActions = memo(function TorrentActions({ instanceId, selecte
   const [showAddTagsDialog, setShowAddTagsDialog] = useState(false)
   const [showTagsDialog, setShowTagsDialog] = useState(false)
   const [showCategoryDialog, setShowCategoryDialog] = useState(false)
+  const [showRecheckDialog, setShowRecheckDialog] = useState(false)
+  const [showReannounceDialog, setShowReannounceDialog] = useState(false)
   const queryClient = useQueryClient()
 
   // Fetch available tags
@@ -336,6 +346,34 @@ export const TorrentActions = memo(function TorrentActions({ instanceId, selecte
     }
   }, [mutation])
 
+  const handleRecheck = useCallback(async () => {
+    await mutation.mutateAsync({ action: "recheck" })
+    setShowRecheckDialog(false)
+  }, [mutation])
+
+  const handleReannounce = useCallback(async () => {
+    await mutation.mutateAsync({ action: "reannounce" })
+    setShowReannounceDialog(false)
+  }, [mutation])
+
+  const handleRecheckClick = useCallback(() => {
+    const count = totalSelectionCount || selectedHashes.length
+    if (count > 1) {
+      setShowRecheckDialog(true)
+    } else {
+      mutation.mutate({ action: "recheck" })
+    }
+  }, [totalSelectionCount, selectedHashes.length, mutation])
+
+  const handleReannounceClick = useCallback(() => {
+    const count = totalSelectionCount || selectedHashes.length
+    if (count > 1) {
+      setShowReannounceDialog(true)
+    } else {
+      mutation.mutate({ action: "reannounce" })
+    }
+  }, [totalSelectionCount, selectedHashes.length, mutation])
+
   return (
     <>
       <DropdownMenu>
@@ -361,14 +399,14 @@ export const TorrentActions = memo(function TorrentActions({ instanceId, selecte
             Pause
           </DropdownMenuItem>
           <DropdownMenuItem
-            onClick={() => mutation.mutate({ action: "recheck" })}
+            onClick={handleRecheckClick}
             disabled={mutation.isPending}
           >
             <CheckCircle className="mr-2 h-4 w-4" />
             Force Recheck
           </DropdownMenuItem>
           <DropdownMenuItem
-            onClick={() => mutation.mutate({ action: "reannounce" })}
+            onClick={handleReannounceClick}
             disabled={mutation.isPending}
           >
             <Radio className="mr-2 h-4 w-4" />
@@ -539,6 +577,46 @@ export const TorrentActions = memo(function TorrentActions({ instanceId, selecte
         isPending={mutation.isPending}
         initialCategory={getCommonCategory(selectedTorrents)}
       />
+
+      {/* Force Recheck Confirmation Dialog */}
+      <Dialog open={showRecheckDialog} onOpenChange={setShowRecheckDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Force Recheck {totalSelectionCount || selectedHashes.length} torrent(s)?</DialogTitle>
+            <DialogDescription>
+              This will force qBittorrent to recheck all pieces of the selected torrents. This process may take some time and will temporarily pause the torrents.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowRecheckDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleRecheck} disabled={mutation.isPending}>
+              Force Recheck
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reannounce Confirmation Dialog */}
+      <Dialog open={showReannounceDialog} onOpenChange={setShowReannounceDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reannounce {totalSelectionCount || selectedHashes.length} torrent(s)?</DialogTitle>
+            <DialogDescription>
+              This will force the selected torrents to reannounce to all their trackers. This is useful when trackers are not responding or you want to refresh your connection.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowReannounceDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleReannounce} disabled={mutation.isPending}>
+              Reannounce
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
     </>
   )
