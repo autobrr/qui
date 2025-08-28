@@ -5,6 +5,7 @@
 
 import { useInstances } from "@/hooks/useInstances"
 import { useInstanceStats } from "@/hooks/useInstanceStats"
+import { usePersistedAccordionState } from "@/hooks/usePersistedAccordionState"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
@@ -481,6 +482,8 @@ function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: Instance
 }
 
 function GlobalAllTimeStats({ statsData }: { statsData: Array<{ instance: InstanceResponse, stats: InstanceStats | undefined, serverState: ServerState | null }> }) {
+  const [accordionValue, setAccordionValue] = usePersistedAccordionState("qui-global-stats-accordion")
+  
   const globalStats = useMemo(() => {
     // Calculate server stats
     const alltimeDl = statsData.reduce((sum, { serverState }) => 
@@ -513,7 +516,7 @@ function GlobalAllTimeStats({ statsData }: { statsData: Array<{ instance: Instan
   }
 
   return (
-    <Accordion type="single" collapsible className="rounded-lg border bg-card">
+    <Accordion type="single" collapsible className="rounded-lg border bg-card" value={accordionValue} onValueChange={setAccordionValue}>
       <AccordionItem value="server-stats" className="border-0">
         <AccordionTrigger className="px-4 py-4 hover:no-underline hover:bg-muted/50 transition-colors [&>svg]:hidden group">
           {/* Mobile layout */}
