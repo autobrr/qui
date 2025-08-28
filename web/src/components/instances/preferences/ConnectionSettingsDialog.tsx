@@ -7,9 +7,9 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ConnectionSettingsForm } from "./ConnectionSettingsForm"
 import { NetworkDiscoveryForm } from "./NetworkDiscoveryForm"
-import { ProxySettingsForm } from "./ProxySettingsForm"
+{/*import { ProxySettingsForm } from "./ProxySettingsForm" */}
 import { AdvancedNetworkForm } from "./AdvancedNetworkForm"
-import { Wifi, Radar, Shield, Settings } from "lucide-react"
+import { Wifi, Radar, Settings } from "lucide-react"
 
 interface ConnectionSettingsDialogProps {
   open: boolean
@@ -31,7 +31,7 @@ export function ConnectionSettingsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-6xl max-h-[90vh] overflow-y-auto top-[5%] left-[50%] translate-x-[-50%] translate-y-0">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Wifi className="h-5 w-5" />
@@ -43,7 +43,7 @@ export function ConnectionSettingsDialog({
         </DialogHeader>
 
         <Tabs defaultValue="connection" className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="connection" className="flex items-center gap-2">
               <Wifi className="h-4 w-4" />
               <span className="hidden sm:inline">Connection</span>
@@ -52,10 +52,12 @@ export function ConnectionSettingsDialog({
               <Radar className="h-4 w-4" />
               <span className="hidden sm:inline">Discovery</span>
             </TabsTrigger>
+            {/* 
             <TabsTrigger value="proxy" className="flex items-center gap-2">
               <Shield className="h-4 w-4" />
               <span className="hidden sm:inline">Proxy</span>
             </TabsTrigger>
+            */}
             <TabsTrigger value="advanced" className="flex items-center gap-2">
               <Settings className="h-4 w-4" />
               <span className="hidden sm:inline">Advanced</span>
@@ -82,6 +84,7 @@ export function ConnectionSettingsDialog({
             <NetworkDiscoveryForm instanceId={instanceId} onSuccess={handleSuccess} />
           </TabsContent>
 
+          {/* 
           <TabsContent value="proxy" className="space-y-4">
             <div className="space-y-2">
               <h3 className="text-lg font-medium">Proxy Settings</h3>
@@ -91,6 +94,7 @@ export function ConnectionSettingsDialog({
             </div>
             <ProxySettingsForm instanceId={instanceId} onSuccess={handleSuccess} />
           </TabsContent>
+          */}
 
           <TabsContent value="advanced" className="space-y-4">
             <div className="space-y-2">
