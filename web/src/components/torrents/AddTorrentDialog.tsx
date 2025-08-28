@@ -33,7 +33,7 @@ import {
   TabsList,
   TabsTrigger
 } from "@/components/ui/tabs"
-import { Plus, Upload, Link, X } from "lucide-react"
+import { Plus, Upload, Link } from "lucide-react"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { usePersistedStartPaused } from "@/hooks/usePersistedStartPaused"
 import { Badge } from "@/components/ui/badge"
@@ -391,48 +391,18 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
 
                 {/* Category */}
                 <div className="space-y-3">
-                  <Label>Category</Label>
-                  
                   <form.Field name="category">
                     {(field) => (
                       <>
-                        {/* Available categories */}
-                        {categories && Object.entries(categories).length > 0 && (
-                          <div className="space-y-2">
-                            <Label className="text-xs text-muted-foreground">
-                              Available Categories (click to select) {categorySearch && `- filtering: "${categorySearch}"`}
-                            </Label>
-                            <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto">
-                              {Object.entries(categories)
-                                // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                                .filter(([_key, cat]) => categorySearch === "" || cat.name.toLowerCase().includes(categorySearch.toLowerCase()))
-                                // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                                .map(([_key, cat]) => (
-                                  <Badge
-                                    key={cat.name}
-                                    variant={field.state.value === cat.name ? "secondary" : "outline"}
-                                    className="text-xs py-0.5 px-2 cursor-pointer hover:bg-accent"
-                                    onClick={() => field.handleChange(field.state.value === cat.name ? "__none__" : cat.name)}
-                                  >
-                                    {cat.name}
-                                  </Badge>
-                                ))}
-                            </div>
-                            {/* eslint-disable-next-line @typescript-eslint/no-unused-vars */}
-                            {categorySearch && Object.entries(categories).filter(([_key, cat]) => cat.name.toLowerCase().includes(categorySearch.toLowerCase())).length === 0 && (
-                              <p className="text-xs text-muted-foreground">No categories match "{categorySearch}"</p>
-                            )}
-                          </div>
-                        )}
-                        
-                        {/* Search categories */}
-                        <div className="flex gap-2">
+                        {/* Header with search */}
+                        <div className="flex items-center gap-2 w-full">
+                          <Label className="shrink-0">Category</Label>
                           <Input
                             id="categorySearch"
                             value={categorySearch}
                             onChange={(e) => setCategorySearch(e.target.value)}
                             placeholder="Search categories..."
-                            className="h-8 text-sm"
+                            className="h-8 text-sm flex-1 min-w-0"
                             onKeyDown={(e) => {
                               if (e.key === "Enter" && categorySearch.trim()) {
                                 e.preventDefault()
@@ -453,82 +423,52 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                             }}
                           />
                         </div>
+                        
+                        {/* Available categories */}
+                        {categories && Object.entries(categories).length > 0 && (
+                          <div className="space-y-2">
+                            <Label className="text-xs text-muted-foreground">
+                              Available Categories (click to select) {categorySearch && `- filtering: "${categorySearch}"`}
+                            </Label>
+                            <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto">
+                              {[
+                                // Selected category first (if it matches search)
+                                ...(field.state.value && field.state.value !== "__none__" && 
+                                    (categorySearch === "" || field.state.value.toLowerCase().includes(categorySearch.toLowerCase()))? [{ name: field.state.value, isSelected: true }]: []),
+                                // Then unselected categories
+                                ...Object.entries(categories)
+                                  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                                  .filter(([_key, cat]) => cat.name !== field.state.value)
+                                  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                                  .filter(([_key, cat]) => categorySearch === "" || cat.name.toLowerCase().includes(categorySearch.toLowerCase()))
+                                  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                                  .map(([_key, cat]) => ({ name: cat.name, isSelected: false })),
+                              ].map((cat) => (
+                                <Badge
+                                  key={cat.name}
+                                  variant={field.state.value === cat.name ? "secondary" : "outline"}
+                                  className="text-xs py-0.5 px-2 cursor-pointer hover:bg-accent"
+                                  onClick={() => field.handleChange(field.state.value === cat.name ? "__none__" : cat.name)}
+                                >
+                                  {cat.name}
+                                </Badge>
+                              ))}
+                            </div>
+                            {/* eslint-disable-next-line @typescript-eslint/no-unused-vars */}
+                            {categorySearch && Object.entries(categories).filter(([_key, cat]) => cat.name.toLowerCase().includes(categorySearch.toLowerCase())).length === 0 && (
+                              <p className="text-xs text-muted-foreground">No categories match "{categorySearch}"</p>
+                            )}
+                          </div>
+                        )}
                       </>
                     )}
                   </form.Field>
                 </div>
 
                 {/* Tags */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <Label>Tags</Label>
-                    {selectedTags.length > 0 && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setSelectedTags([])}
-                        className="h-7 px-2 text-xs"
-                      >
-                        Clear All
-                      </Button>
-                    )}
-                  </div>
-                  
-                  {/* Selected tags */}
-                  {selectedTags.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5">
-                      {selectedTags.map((tag) => (
-                        <Badge
-                          key={tag}
-                          variant="secondary"
-                          className="text-xs py-0.5 px-2 flex items-center gap-1"
-                        >
-                          {tag}
-                          {!availableTags?.includes(tag) && (
-                            <span className="text-[10px] opacity-70">(new)</span>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => setSelectedTags(selectedTags.filter((t) => t !== tag))}
-                            className="ml-1 hover:text-destructive"
-                          >
-                            <X className="h-2.5 w-2.5" />
-                          </button>
-                        </Badge>
-                      ))}
-                    </div>
-                  )}
-                  
-                  {/* Available tags */}
-                  {allAvailableTags && allAvailableTags.length > 0 && (
-                    <div className="space-y-2">
-                      <Label className="text-xs text-muted-foreground">
-                        Available Tags (click to add) {tagSearch && `- filtering: "${tagSearch}"`}
-                      </Label>
-                      <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto">
-                        {allAvailableTags
-                          .filter(tag => !selectedTags.includes(tag))
-                          .filter(tag => tagSearch === "" || tag.toLowerCase().includes(tagSearch.toLowerCase()))
-                          .map((tag) => (
-                            <Badge
-                              key={tag}
-                              variant="outline"
-                              className="text-xs py-0.5 px-2 cursor-pointer hover:bg-accent"
-                              onClick={() => setSelectedTags([...selectedTags, tag])}
-                            >
-                              {tag}
-                            </Badge>
-                          ))}
-                      </div>
-                      {tagSearch && allAvailableTags.filter(tag => !selectedTags.includes(tag) && tag.toLowerCase().includes(tagSearch.toLowerCase())).length === 0 && (
-                        <p className="text-xs text-muted-foreground">No tags match "{tagSearch}"</p>
-                      )}
-                    </div>
-                  )}
-                  
-                  {/* Add new tag */}
-                  <div className="flex gap-2">
+                <div className="space-y-3 pt-2">
+                  <div className="flex items-center gap-2 w-full">
+                    <Label className="shrink-0">Tags</Label>
                     <Input
                       id="newTag"
                       value={newTag}
@@ -538,7 +478,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                         setTagSearch(value) // Update search filter
                       }}
                       placeholder="Create new tag or search available tags..."
-                      className="h-8 text-sm"
+                      className="h-8 text-sm flex-1 min-w-0"
                       onKeyDown={(e) => {
                         if (e.key === "Enter" && newTag.trim()) {
                           e.preventDefault()
@@ -582,7 +522,58 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                     >
                       <Plus className="h-3 w-3" />
                     </Button>
+                    {selectedTags.length > 0 && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setSelectedTags([])}
+                        className="h-8 px-2 text-xs"
+                      >
+                        Clear All
+                      </Button>
+                    )}
                   </div>
+                  
+                  {/* Available tags */}
+                  {allAvailableTags && allAvailableTags.length > 0 && (
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">
+                        Available Tags (click to select/deselect) {tagSearch && `- filtering: "${tagSearch}"`}
+                      </Label>
+                      <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto">
+                        {[...selectedTags.filter(tag => tagSearch === "" || tag.toLowerCase().includes(tagSearch.toLowerCase())), 
+                          ...allAvailableTags
+                            .filter(tag => !selectedTags.includes(tag))
+                            .filter(tag => tagSearch === "" || tag.toLowerCase().includes(tagSearch.toLowerCase()))]
+                          .map((tag) => (
+                            <Badge
+                              key={tag}
+                              variant={selectedTags.includes(tag) ? "secondary" : "outline"}
+                              className="text-xs py-0.5 px-2 cursor-pointer hover:bg-accent"
+                              onClick={() => {
+                                if (selectedTags.includes(tag)) {
+                                  setSelectedTags(selectedTags.filter(t => t !== tag))
+                                } else {
+                                  setSelectedTags([...selectedTags, tag])
+                                }
+                              }}
+                            >
+                              {tag}
+                              {!allAvailableTags.includes(tag) && (
+                                <span className="ml-1 text-[10px] opacity-70">(new)</span>
+                              )}
+                            </Badge>
+                          ))}
+                      </div>
+                      {tagSearch && 
+                        [...selectedTags, ...allAvailableTags]
+                          .filter(tag => tagSearch === "" || tag.toLowerCase().includes(tagSearch.toLowerCase()))
+                          .length === 0 && (
+                        <p className="text-xs text-muted-foreground">No tags match "{tagSearch}"</p>
+                      )}
+                    </div>
+                  )}
                 </div>
               </TabsContent>
               
