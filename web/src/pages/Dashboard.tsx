@@ -12,7 +12,7 @@ import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
 import { PasswordIssuesBanner } from "@/components/instances/PasswordIssuesBanner"
 import { InstanceErrorDisplay } from "@/components/instances/InstanceErrorDisplay"
-import { InstanceActionsDropdown } from "@/components/instances/InstanceActionsDropdown"
+import { InstanceSettingsButton } from "@/components/instances/InstanceSettingsButton"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { HardDrive, Download, Upload, Activity, Plus, Minus, Zap, ChevronDown, ChevronUp, Eye, EyeOff, ExternalLink, Rabbit, Turtle } from "lucide-react"
@@ -189,7 +189,7 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
               </Link>
               <div className="flex items-center gap-2">
                 {!hasErrors && (
-                  <InstanceActionsDropdown
+                  <InstanceSettingsButton
                     instanceId={instance.id}
                     instanceName={instance.name}
                   />
@@ -239,7 +239,7 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
               </Link>
               <div className="flex items-center gap-2">
                 {!hasErrors && (
-                  <InstanceActionsDropdown
+                  <InstanceSettingsButton
                     instanceId={instance.id}
                     instanceName={instance.name}
                   />
@@ -313,7 +313,7 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
                 </Tooltip>
               )}
               {stats.connected && (
-                <InstanceActionsDropdown
+                <InstanceSettingsButton
                   instanceId={instance.id}
                   instanceName={instance.name}
                 />

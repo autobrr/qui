@@ -8,17 +8,17 @@ import { Button } from "@/components/ui/button"
 import { InstancePreferencesDialog } from "./preferences/InstancePreferencesDialog"
 import { Cog } from "lucide-react"
 
-interface InstanceActionsDropdownProps {
+interface InstanceSettingsButtonProps {
   instanceId: number
   instanceName: string
   onClick?: (e: React.MouseEvent) => void
 }
 
-export function InstanceActionsDropdown({
+export function InstanceSettingsButton({
   instanceId,
   instanceName,
   onClick,
-}: InstanceActionsDropdownProps) {
+}: InstanceSettingsButtonProps) {
   const [preferencesOpen, setPreferencesOpen] = useState(false)
 
   const handleClick = (e: React.MouseEvent) => {
