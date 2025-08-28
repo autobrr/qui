@@ -12,13 +12,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
-import { Checkbox } from "@/components/ui/checkbox"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger
-} from "@/components/ui/collapsible"
 import {
   Dialog,
   DialogContent,
@@ -34,9 +27,21 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select"
-import { Plus, Upload, Link, ChevronDown } from "lucide-react"
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger
+} from "@/components/ui/tabs"
+import { Plus, Upload, Link, X } from "lucide-react"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { usePersistedStartPaused } from "@/hooks/usePersistedStartPaused"
+import { Badge } from "@/components/ui/badge"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger
+} from "@/components/ui/tooltip"
 
 interface AddTorrentDialogProps {
   instanceId: number
@@ -70,7 +75,9 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
   const [activeTab, setActiveTab] = useState<TabValue>("file")
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [newTag, setNewTag] = useState("")
-  const [advancedOpen, setAdvancedOpen] = useState(false)
+  const [showFileList, setShowFileList] = useState(false)
+  const [categorySearch, setCategorySearch] = useState("")
+  const [tagSearch, setTagSearch] = useState("")
   const fileInputRef = useRef<HTMLInputElement>(null)
   const queryClient = useQueryClient()
   // NOTE: Use localStorage-persisted preference instead of qBittorrent's preference
@@ -95,15 +102,6 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
     }
   }, [open])
 
-  // Auto-collapse advanced options on mobile
-  useEffect(() => {
-    if (open && typeof window !== "undefined") {
-      const isMobile = window.innerWidth < 640
-      if (isMobile) {
-        setAdvancedOpen(false)
-      }
-    }
-  }, [open])
 
   // Combine API tags with temporarily added new tags and sort alphabetically
   const allAvailableTags = [...(availableTags || []), ...selectedTags.filter(tag => !availableTags?.includes(tag))].sort()
@@ -201,7 +199,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
           </Button>
         </DialogTrigger>
       )}
-      <DialogContent className="flex flex-col w-full max-w-[95vw] sm:max-w-md md:max-w-lg lg:max-w-xl xl:max-w-2xl max-h-[90vh] sm:max-h-[85vh] p-0">
+      <DialogContent className="flex flex-col w-full max-w-[95vw] sm:max-w-lg md:max-w-xl lg:max-w-2xl max-h-[90vh] sm:max-h-[85vh] p-0 !translate-y-0 !top-[5vh] sm:!top-[7.5vh]">
         <DialogHeader className="px-6 pt-6 pb-4 flex-shrink-0">
           <DialogTitle>Add New Torrent</DialogTitle>
           <DialogDescription>
@@ -215,14 +213,14 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
               e.preventDefault()
               form.handleSubmit()
             }}
-            className="space-y-4 pb-4"
+            className="space-y-4 pb-2"
           >
             {/* Tab selection */}
             <div className="flex rounded-md bg-muted p-1">
               <button
                 type="button"
                 onClick={() => setActiveTab("file")}
-                className={`flex-1 rounded-sm px-3 py-2 text-sm font-medium min-h-[44px] transition-colors flex items-center justify-center ${
+                className={`flex-1 rounded-sm px-3 py-1.5 text-sm font-medium transition-colors flex items-center justify-center ${
                   activeTab === "file"? "bg-accent text-accent-foreground shadow-sm": "text-muted-foreground hover:text-foreground hover:bg-accent/50"
                 }`}
               >
@@ -232,7 +230,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
               <button
                 type="button"
                 onClick={() => setActiveTab("url")}
-                className={`flex-1 rounded-sm px-3 py-2 text-sm font-medium min-h-[44px] transition-colors flex items-center justify-center ${
+                className={`flex-1 rounded-sm px-3 py-1.5 text-sm font-medium transition-colors flex items-center justify-center ${
                   activeTab === "url"? "bg-accent text-accent-foreground shadow-sm": "text-muted-foreground hover:text-foreground hover:bg-accent/50"
                 }`}
               >
@@ -241,439 +239,559 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
               </button>
             </div>
 
-            {/* File upload or URL input */}
-            {activeTab === "file" ? (
-              <form.Field
-                name="torrentFiles"
-                validators={{
-                  onChange: ({ value }) => {
-                    if ((!value || value.length === 0) && activeTab === "file") {
-                      return "Please select at least one torrent file"
-                    }
-                    return undefined
-                  },
-                }}
-              >
-                {(field) => (
-                  <div className="space-y-2">
-                    <Label htmlFor="torrentFiles">Torrent Files</Label>
+            {/* Main Content Tabs */}
+            <Tabs defaultValue="basic" className="w-full">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="basic">Basic</TabsTrigger>
+                <TabsTrigger value="advanced">Advanced</TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="basic" className="space-y-4 mt-4">
+                {/* File upload or URL input */}
+                {activeTab === "file" ? (
+                  <form.Field
+                    name="torrentFiles"
+                    validators={{
+                      onChange: ({ value }) => {
+                        if ((!value || value.length === 0) && activeTab === "file") {
+                          return "Please select at least one torrent file"
+                        }
+                        return undefined
+                      },
+                    }}
+                  >
+                    {(field) => (
+                      <div className="space-y-2">
+                        <Label htmlFor="torrentFiles">Torrent Files</Label>
+                        <Input
+                          ref={fileInputRef}
+                          id="torrentFiles"
+                          type="file"
+                          accept=".torrent"
+                          multiple
+                          className="sr-only"
+                          onChange={(e) => {
+                            const files = e.target.files ? Array.from(e.target.files) : null
+                            field.handleChange(files)
+                          }}
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="w-full"
+                        >
+                          <Upload className="mr-2 h-4 w-4" />
+                          Browse for Torrent Files
+                        </Button>
+                        {field.state.value && field.state.value.length > 0 && (
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <span>
+                              {field.state.value.length} file{field.state.value.length > 1 ? "s" : ""} selected
+                            </span>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  type="button"
+                                  className="text-xs underline hover:text-foreground"
+                                  onClick={() => setShowFileList(!showFileList)}
+                                >
+                                  {showFileList ? "Hide" : "Show"} files
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <div className="max-w-xs">
+                                  {field.state.value.slice(0, 3).map((file, index) => (
+                                    <div key={index} className="text-xs truncate">• {file.name}</div>
+                                  ))}
+                                  {field.state.value.length > 3 && (
+                                    <div className="text-xs">... and {field.state.value.length - 3} more</div>
+                                  )}
+                                </div>
+                              </TooltipContent>
+                            </Tooltip>
+                          </div>
+                        )}
+                        {showFileList && field.state.value && field.state.value.length > 0 && (
+                          <div className="max-h-24 overflow-y-auto border rounded-md p-2">
+                            <div className="text-xs text-muted-foreground space-y-0.5">
+                              {field.state.value.map((file, index) => (
+                                <div key={index} className="break-all">• {file.name}</div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {field.state.meta.isTouched && field.state.meta.errors[0] && (
+                          <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
+                        )}
+                      </div>
+                    )}
+                  </form.Field>
+                ) : (
+                  <form.Field
+                    name="urls"
+                    validators={{
+                      onChange: ({ value }) => {
+                        if (!value && activeTab === "url") {
+                          return "Please enter at least one URL or magnet link"
+                        }
+                        return undefined
+                      },
+                    }}
+                  >
+                    {(field) => (
+                      <div className="space-y-2">
+                        <Label htmlFor="urls">URLs / Magnet Links</Label>
+                        <Textarea
+                          id="urls"
+                          placeholder="Enter URLs or magnet links (one per line)"
+                          rows={4}
+                          value={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.value)}
+                        />
+                        {field.state.meta.isTouched && field.state.meta.errors[0] && (
+                          <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
+                        )}
+                      </div>
+                    )}
+                  </form.Field>
+                )}
+
+                {/* Basic Toggles */}
+                <div className="flex items-center justify-center gap-8">
+                  <form.Field name="startPaused">
+                    {(field) => (
+                      <div className="flex items-center space-x-2">
+                        <Switch
+                          id="startPaused-left"
+                          checked={field.state.value}
+                          onCheckedChange={field.handleChange}
+                        />
+                        <Label htmlFor="startPaused-left">Start paused</Label>
+                      </div>
+                    )}
+                  </form.Field>
+                  
+                  <div className="w-px h-6 bg-border" />
+
+                  <form.Field name="skipHashCheck">
+                    {(field) => (
+                      <div className="flex items-center space-x-2">
+                        <Switch
+                          id="skipHashCheck-left"
+                          checked={field.state.value}
+                          onCheckedChange={field.handleChange}
+                        />
+                        <Label htmlFor="skipHashCheck-left">Skip hash check</Label>
+                      </div>
+                    )}
+                  </form.Field>
+                </div>
+
+                {/* Category */}
+                <div className="space-y-3">
+                  <Label>Category</Label>
+                  
+                  <form.Field name="category">
+                    {(field) => (
+                      <>
+                        {/* Available categories */}
+                        {categories && Object.entries(categories).length > 0 && (
+                          <div className="space-y-2">
+                            <Label className="text-xs text-muted-foreground">
+                              Available Categories (click to select) {categorySearch && `- filtering: "${categorySearch}"`}
+                            </Label>
+                            <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto">
+                              {Object.entries(categories)
+                                // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                                .filter(([_key, cat]) => categorySearch === "" || cat.name.toLowerCase().includes(categorySearch.toLowerCase()))
+                                // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                                .map(([_key, cat]) => (
+                                  <Badge
+                                    key={cat.name}
+                                    variant={field.state.value === cat.name ? "secondary" : "outline"}
+                                    className="text-xs py-0.5 px-2 cursor-pointer hover:bg-accent"
+                                    onClick={() => field.handleChange(field.state.value === cat.name ? "__none__" : cat.name)}
+                                  >
+                                    {cat.name}
+                                  </Badge>
+                                ))}
+                            </div>
+                            {/* eslint-disable-next-line @typescript-eslint/no-unused-vars */}
+                            {categorySearch && Object.entries(categories).filter(([_key, cat]) => cat.name.toLowerCase().includes(categorySearch.toLowerCase())).length === 0 && (
+                              <p className="text-xs text-muted-foreground">No categories match "{categorySearch}"</p>
+                            )}
+                          </div>
+                        )}
+                        
+                        {/* Search categories */}
+                        <div className="flex gap-2">
+                          <Input
+                            id="categorySearch"
+                            value={categorySearch}
+                            onChange={(e) => setCategorySearch(e.target.value)}
+                            placeholder="Search categories..."
+                            className="h-8 text-sm"
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && categorySearch.trim()) {
+                                e.preventDefault()
+                                // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                                const filtered = Object.entries(categories || {}).filter(([_key, cat]) => 
+                                  cat.name.toLowerCase().includes(categorySearch.toLowerCase())
+                                )
+                                
+                                // If there's exactly one filtered category, select it
+                                if (filtered.length === 1) {
+                                  field.handleChange(filtered[0][1].name)
+                                  setCategorySearch("")
+                                }
+                              }
+                              if (e.key === "Escape") {
+                                setCategorySearch("")
+                              }
+                            }}
+                          />
+                        </div>
+                      </>
+                    )}
+                  </form.Field>
+                </div>
+
+                {/* Tags */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label>Tags</Label>
+                    {selectedTags.length > 0 && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setSelectedTags([])}
+                        className="h-7 px-2 text-xs"
+                      >
+                        Clear All
+                      </Button>
+                    )}
+                  </div>
+                  
+                  {/* Selected tags */}
+                  {selectedTags.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {selectedTags.map((tag) => (
+                        <Badge
+                          key={tag}
+                          variant="secondary"
+                          className="text-xs py-0.5 px-2 flex items-center gap-1"
+                        >
+                          {tag}
+                          {!availableTags?.includes(tag) && (
+                            <span className="text-[10px] opacity-70">(new)</span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setSelectedTags(selectedTags.filter((t) => t !== tag))}
+                            className="ml-1 hover:text-destructive"
+                          >
+                            <X className="h-2.5 w-2.5" />
+                          </button>
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                  
+                  {/* Available tags */}
+                  {allAvailableTags && allAvailableTags.length > 0 && (
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">
+                        Available Tags (click to add) {tagSearch && `- filtering: "${tagSearch}"`}
+                      </Label>
+                      <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto">
+                        {allAvailableTags
+                          .filter(tag => !selectedTags.includes(tag))
+                          .filter(tag => tagSearch === "" || tag.toLowerCase().includes(tagSearch.toLowerCase()))
+                          .map((tag) => (
+                            <Badge
+                              key={tag}
+                              variant="outline"
+                              className="text-xs py-0.5 px-2 cursor-pointer hover:bg-accent"
+                              onClick={() => setSelectedTags([...selectedTags, tag])}
+                            >
+                              {tag}
+                            </Badge>
+                          ))}
+                      </div>
+                      {tagSearch && allAvailableTags.filter(tag => !selectedTags.includes(tag) && tag.toLowerCase().includes(tagSearch.toLowerCase())).length === 0 && (
+                        <p className="text-xs text-muted-foreground">No tags match "{tagSearch}"</p>
+                      )}
+                    </div>
+                  )}
+                  
+                  {/* Add new tag */}
+                  <div className="flex gap-2">
                     <Input
-                      ref={fileInputRef}
-                      id="torrentFiles"
-                      type="file"
-                      accept=".torrent"
-                      multiple
-                      className="sr-only"
+                      id="newTag"
+                      value={newTag}
                       onChange={(e) => {
-                        const files = e.target.files ? Array.from(e.target.files) : null
-                        field.handleChange(files)
+                        const value = e.target.value
+                        setNewTag(value)
+                        setTagSearch(value) // Update search filter
+                      }}
+                      placeholder="Create new tag or search available tags..."
+                      className="h-8 text-sm"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && newTag.trim()) {
+                          e.preventDefault()
+                          const filteredAvailable = allAvailableTags?.filter(tag => 
+                            !selectedTags.includes(tag) && 
+                            tag.toLowerCase().includes(newTag.toLowerCase())
+                          ) || []
+                          
+                          // If there's exactly one filtered tag, add it
+                          if (filteredAvailable.length === 1) {
+                            setSelectedTags([...selectedTags, filteredAvailable[0]])
+                            setNewTag("")
+                            setTagSearch("")
+                          }
+                          // Otherwise, create new tag
+                          else if (!selectedTags.includes(newTag.trim())) {
+                            setSelectedTags([...selectedTags, newTag.trim()])
+                            setNewTag("")
+                            setTagSearch("")
+                          }
+                        }
+                        if (e.key === "Escape") {
+                          setNewTag("")
+                          setTagSearch("")
+                        }
                       }}
                     />
                     <Button
                       type="button"
                       variant="outline"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="w-full"
-                    >
-                      <Upload className="mr-2 h-4 w-4" />
-                      Browse for Torrent Files
-                    </Button>
-                    {field.state.value && field.state.value.length > 0 && (
-                      <div className="space-y-1">
-                        <p className="text-sm text-muted-foreground">
-                          {field.state.value.length} file{field.state.value.length > 1 ? "s" : ""} selected:
-                        </p>
-                        <div className="max-h-32 overflow-y-auto border rounded-md p-3">
-                          <div className="text-xs text-muted-foreground space-y-1">
-                            {field.state.value.map((file, index) => (
-                              <div key={index} className="break-all">• {file.name}</div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                    {field.state.meta.isTouched && field.state.meta.errors[0] && (
-                      <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
-                    )}
-                  </div>
-                )}
-              </form.Field>
-            ) : (
-              <form.Field
-                name="urls"
-                validators={{
-                  onChange: ({ value }) => {
-                    if (!value && activeTab === "url") {
-                      return "Please enter at least one URL or magnet link"
-                    }
-                    return undefined
-                  },
-                }}
-              >
-                {(field) => (
-                  <div className="space-y-2">
-                    <Label htmlFor="urls">URLs / Magnet Links</Label>
-                    <Textarea
-                      id="urls"
-                      placeholder="Enter URLs or magnet links (one per line)"
-                      rows={4}
-                      value={field.state.value}
-                      onBlur={field.handleBlur}
-                      onChange={(e) => field.handleChange(e.target.value)}
-                    />
-                    {field.state.meta.isTouched && field.state.meta.errors[0] && (
-                      <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
-                    )}
-                  </div>
-                )}
-              </form.Field>
-            )}
-
-            {/* Category */}
-            <form.Field name="category">
-              {(field) => (
-                <div className="space-y-2">
-                  <Label>Category</Label>
-                  <Select
-                    value={field.state.value}
-                    onValueChange={field.handleChange}
-                  >
-                    <SelectTrigger id="category">
-                      <SelectValue placeholder="Select a category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">No category</SelectItem>
-                      {categories && Object.entries(categories).map(([key, cat]) => (
-                        <SelectItem key={key} value={cat.name}>
-                          {cat.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-            </form.Field>
-
-            {/* Tags */}
-            <div className="space-y-4">
-              {/* Existing tags */}
-              {allAvailableTags && allAvailableTags.length > 0 && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label>Available Tags</Label>
-                    <Button
-                      type="button"
                       size="sm"
-                      variant="outline"
-                      onClick={() => setSelectedTags([])}
-                      disabled={selectedTags.length === 0}
-                    >
-                      Deselect All
-                    </Button>
-                  </div>
-                  <ScrollArea className="h-24 sm:h-32 border rounded-md p-2 sm:p-3">
-                    <div className="space-y-2">
-                      {allAvailableTags.map((tag) => (
-                        <div key={tag} className="flex items-center space-x-2">
-                          <Checkbox
-                            id={`tag-${tag}`}
-                            checked={selectedTags.includes(tag)}
-                            onCheckedChange={(checked) => {
-                              if (checked) {
-                                setSelectedTags([...selectedTags, tag])
-                              } else {
-                                setSelectedTags(selectedTags.filter((t) => t !== tag))
-                              }
-                            }}
-                          />
-                          <label
-                            htmlFor={`tag-${tag}`}
-                            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer flex items-center gap-1"
-                          >
-                            {tag}
-                            {!availableTags?.includes(tag) && (
-                              <span className="text-xs text-muted-foreground">(new)</span>
-                            )}
-                          </label>
-                        </div>
-                      ))}
-                    </div>
-                  </ScrollArea>
-                </div>
-              )}
-            
-              {/* Add new tag */}
-              <div className="space-y-2">
-                <Label>Add New Tag</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="newTag"
-                    value={newTag}
-                    onChange={(e) => setNewTag(e.target.value)}
-                    placeholder="Enter new tag"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && newTag.trim()) {
-                        e.preventDefault()
-                        if (!selectedTags.includes(newTag.trim())) {
+                      onClick={() => {
+                        if (newTag.trim() && !selectedTags.includes(newTag.trim())) {
                           setSelectedTags([...selectedTags, newTag.trim()])
                           setNewTag("")
+                          setTagSearch("")
                         }
-                      }
-                    }}
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      if (newTag.trim() && !selectedTags.includes(newTag.trim())) {
-                        setSelectedTags([...selectedTags, newTag.trim()])
-                        setNewTag("")
-                      }
-                    }}
-                    disabled={!newTag.trim() || selectedTags.includes(newTag.trim())}
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
+                      }}
+                      disabled={!newTag.trim() || selectedTags.includes(newTag.trim())}
+                      className="h-8 px-2"
+                    >
+                      <Plus className="h-3 w-3" />
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            
-              {/* Selected tags summary */}
-              <div className="text-sm text-muted-foreground min-h-5">
-                {selectedTags.length > 0 ? `Selected: ${selectedTags.join(", ")}` : "No tags selected"}
-              </div>
-            </div>
+              </TabsContent>
+              
+              <TabsContent value="advanced" className="space-y-4 mt-4">
 
-            {/* Automatic Torrent Management */}
-            <form.Field name="autoTMM">
-              {(field) => (
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    id="autoTMM"
-                    checked={field.state.value}
-                    onCheckedChange={field.handleChange}
-                  />
-                  <Label htmlFor="autoTMM">Automatic Torrent Management</Label>
-                </div>
-              )}
-            </form.Field>
+                {/* Automatic Torrent Management */}
+                <form.Field name="autoTMM">
+                  {(field) => (
+                    <div className="flex items-center space-x-2">
+                      <Switch
+                        id="autoTMM"
+                        checked={field.state.value}
+                        onCheckedChange={field.handleChange}
+                      />
+                      <Label htmlFor="autoTMM">Automatic Torrent Management</Label>
+                    </div>
+                  )}
+                </form.Field>
 
-            {/* Save Path - show based on TMM toggle */}
-            <form.Field name="autoTMM">
-              {(autoTMMField) => (
-                <>
-                  {!autoTMMField.state.value ? (
-                    <form.Field name="savePath">
-                      {(field) => (
+                {/* Save Path - show based on TMM toggle */}
+                <form.Field name="autoTMM">
+                  {(autoTMMField) => (
+                    <>
+                      {!autoTMMField.state.value ? (
+                        <form.Field name="savePath">
+                          {(field) => (
+                            <div className="space-y-2">
+                              <Label htmlFor="savePath">Save Path</Label>
+                              <Input
+                                id="savePath"
+                                placeholder={preferences?.save_path || "Leave empty for default"}
+                                value={field.state.value}
+                                onBlur={field.handleBlur}
+                                onChange={(e) => field.handleChange(e.target.value)}
+                              />
+                              <p className="text-xs text-muted-foreground">
+                                Manual save path (TMM disabled)
+                              </p>
+                            </div>
+                          )}
+                        </form.Field>
+                      ) : (
                         <div className="space-y-2">
-                          <Label htmlFor="savePath">Save Path</Label>
-                          <Input
-                            id="savePath"
-                            placeholder={preferences?.save_path || "Leave empty for default"}
-                            value={field.state.value}
-                            onBlur={field.handleBlur}
-                            onChange={(e) => field.handleChange(e.target.value)}
+                          <Label>Save Path</Label>
+                          <div className="px-3 py-2 bg-muted rounded-md">
+                            <p className="text-sm text-muted-foreground">
+                              Automatic Torrent Management is enabled. Save path will be determined by category settings.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </form.Field>
+
+
+                {/* Advanced Options */}
+                <div className="space-y-4">
+                  <Label className="text-sm font-medium">Advanced Options</Label>
+                  {/* Sequential Download & First/Last Piece Priority */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <form.Field name="sequentialDownload">
+                      {(field) => (
+                        <div className="flex items-center space-x-2">
+                          <Switch
+                            id="sequentialDownload"
+                            checked={field.state.value}
+                            onCheckedChange={field.handleChange}
                           />
-                          <p className="text-xs text-muted-foreground">
-                            Manual save path (TMM disabled)
-                          </p>
+                          <Label htmlFor="sequentialDownload">Sequential download</Label>
+                          <span className="text-xs text-muted-foreground ml-2">
+                            (useful for media files)
+                          </span>
                         </div>
                       )}
                     </form.Field>
-                  ) : (
-                    <div className="space-y-2">
-                      <Label>Save Path</Label>
-                      <div className="px-3 py-2 bg-muted rounded-md">
-                        <p className="text-sm text-muted-foreground">
-                          Automatic Torrent Management is enabled. Save path will be determined by category settings.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-            </form.Field>
 
-            {/* Start Paused */}
-            <form.Field name="startPaused">
-              {(field) => (
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    id="startPaused"
-                    checked={field.state.value}
-                    onCheckedChange={field.handleChange}
-                  />
-                  <Label htmlFor="startPaused">Start paused</Label>
+                    {/* First/Last Piece Priority */}
+                    <form.Field name="firstLastPiecePrio">
+                      {(field) => (
+                        <div className="flex items-center space-x-2">
+                          <Switch
+                            id="firstLastPiecePrio"
+                            checked={field.state.value}
+                            onCheckedChange={field.handleChange}
+                          />
+                          <Label htmlFor="firstLastPiecePrio">First/last piece priority</Label>
+                          <span className="text-xs text-muted-foreground ml-2">
+                            (start playback faster)
+                          </span>
+                        </div>
+                      )}
+                    </form.Field>
+
+                  </div>
+
+                  {/* Speed Limits */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <form.Field name="limitDownloadSpeed">
+                      {(field) => (
+                        <div className="space-y-2">
+                          <Label htmlFor="limitDownloadSpeed">Download limit (KB/s)</Label>
+                          <Input
+                            id="limitDownloadSpeed"
+                            type="number"
+                            min="0"
+                            placeholder="0 = unlimited"
+                            value={field.state.value || ""}
+                            onChange={(e) => field.handleChange(parseInt(e.target.value) || 0)}
+                          />
+                        </div>
+                      )}
+                    </form.Field>
+
+                    <form.Field name="limitUploadSpeed">
+                      {(field) => (
+                        <div className="space-y-2">
+                          <Label htmlFor="limitUploadSpeed">Upload limit (KB/s)</Label>
+                          <Input
+                            id="limitUploadSpeed"
+                            type="number"
+                            min="0"
+                            placeholder="0 = unlimited"
+                            value={field.state.value || ""}
+                            onChange={(e) => field.handleChange(parseInt(e.target.value) || 0)}
+                          />
+                        </div>
+                      )}
+                    </form.Field>
+                  </div>
+
+                  {/* Seeding Limits */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <form.Field name="limitRatio">
+                      {(field) => (
+                        <div className="space-y-2">
+                          <Label htmlFor="limitRatio">Ratio limit</Label>
+                          <Input
+                            id="limitRatio"
+                            type="number"
+                            min="0"
+                            step="0.1"
+                            placeholder="0 = use global"
+                            value={field.state.value || ""}
+                            onChange={(e) => field.handleChange(parseFloat(e.target.value) || 0)}
+                          />
+                        </div>
+                      )}
+                    </form.Field>
+
+                    <form.Field name="limitSeedTime">
+                      {(field) => (
+                        <div className="space-y-2">
+                          <Label htmlFor="limitSeedTime">Seed time limit (minutes)</Label>
+                          <Input
+                            id="limitSeedTime"
+                            type="number"
+                            min="0"
+                            placeholder="0 = use global"
+                            value={field.state.value || ""}
+                            onChange={(e) => field.handleChange(parseInt(e.target.value) || 0)}
+                          />
+                        </div>
+                      )}
+                    </form.Field>
+                  </div>
+
+                  {/* Content Layout & Rename - available regardless of TMM */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <form.Field name="contentLayout">
+                      {(field) => (
+                        <div className="space-y-2">
+                          <Label>Content layout</Label>
+                          <Select
+                            value={field.state.value}
+                            onValueChange={field.handleChange}
+                          >
+                            <SelectTrigger id="contentLayout">
+                              <SelectValue placeholder="Use global setting" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="__global__">Use global setting</SelectItem>
+                              <SelectItem value="Original">Original</SelectItem>
+                              <SelectItem value="Subfolder">Create subfolder</SelectItem>
+                              <SelectItem value="NoSubfolder">Don't create subfolder</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                    </form.Field>
+
+                    {/* Rename Torrent */}
+                    <form.Field name="rename">
+                      {(field) => (
+                        <div className="space-y-2">
+                          <Label htmlFor="rename">Rename torrent</Label>
+                          <Input
+                            id="rename"
+                            placeholder="Leave empty to use original name"
+                            value={field.state.value}
+                            onChange={(e) => field.handleChange(e.target.value)}
+                          />
+                        </div>
+                      )}
+                    </form.Field>
+                  </div>
                 </div>
-              )}
-            </form.Field>
-
-            {/* Skip Hash Check */}
-            <form.Field name="skipHashCheck">
-              {(field) => (
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    id="skipHashCheck"
-                    checked={field.state.value}
-                    onCheckedChange={field.handleChange}
-                  />
-                  <Label htmlFor="skipHashCheck">Skip hash check</Label>
-                </div>
-              )}
-            </form.Field>
-
-            {/* Advanced Options */}
-            <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
-              <CollapsibleTrigger className="flex w-full items-center justify-between rounded-md bg-muted px-4 py-3 text-sm font-medium hover:bg-muted/80 transition-colors min-h-[44px]">
-                Advanced Options
-                <ChevronDown 
-                  className={`h-4 w-4 transition-transform duration-200 ${advancedOpen ? "rotate-180" : ""}`} 
-                />
-              </CollapsibleTrigger>
-              <CollapsibleContent className="space-y-4 pt-4">
-                {/* Sequential Download */}
-                <form.Field name="sequentialDownload">
-                  {(field) => (
-                    <div className="flex items-center space-x-2">
-                      <Switch
-                        id="sequentialDownload"
-                        checked={field.state.value}
-                        onCheckedChange={field.handleChange}
-                      />
-                      <Label htmlFor="sequentialDownload">Sequential download</Label>
-                      <span className="text-xs text-muted-foreground ml-2">
-                        (useful for media files)
-                      </span>
-                    </div>
-                  )}
-                </form.Field>
-
-                {/* First/Last Piece Priority */}
-                <form.Field name="firstLastPiecePrio">
-                  {(field) => (
-                    <div className="flex items-center space-x-2">
-                      <Switch
-                        id="firstLastPiecePrio"
-                        checked={field.state.value}
-                        onCheckedChange={field.handleChange}
-                      />
-                      <Label htmlFor="firstLastPiecePrio">First/last piece priority</Label>
-                      <span className="text-xs text-muted-foreground ml-2">
-                        (start playback faster)
-                      </span>
-                    </div>
-                  )}
-                </form.Field>
-
-                {/* Speed Limits */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <form.Field name="limitDownloadSpeed">
-                    {(field) => (
-                      <div className="space-y-2">
-                        <Label htmlFor="limitDownloadSpeed">Download limit (KB/s)</Label>
-                        <Input
-                          id="limitDownloadSpeed"
-                          type="number"
-                          min="0"
-                          placeholder="0 = unlimited"
-                          value={field.state.value || ""}
-                          onChange={(e) => field.handleChange(parseInt(e.target.value) || 0)}
-                        />
-                      </div>
-                    )}
-                  </form.Field>
-
-                  <form.Field name="limitUploadSpeed">
-                    {(field) => (
-                      <div className="space-y-2">
-                        <Label htmlFor="limitUploadSpeed">Upload limit (KB/s)</Label>
-                        <Input
-                          id="limitUploadSpeed"
-                          type="number"
-                          min="0"
-                          placeholder="0 = unlimited"
-                          value={field.state.value || ""}
-                          onChange={(e) => field.handleChange(parseInt(e.target.value) || 0)}
-                        />
-                      </div>
-                    )}
-                  </form.Field>
-                </div>
-
-                {/* Seeding Limits */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <form.Field name="limitRatio">
-                    {(field) => (
-                      <div className="space-y-2">
-                        <Label htmlFor="limitRatio">Ratio limit</Label>
-                        <Input
-                          id="limitRatio"
-                          type="number"
-                          min="0"
-                          step="0.1"
-                          placeholder="0 = use global"
-                          value={field.state.value || ""}
-                          onChange={(e) => field.handleChange(parseFloat(e.target.value) || 0)}
-                        />
-                      </div>
-                    )}
-                  </form.Field>
-
-                  <form.Field name="limitSeedTime">
-                    {(field) => (
-                      <div className="space-y-2">
-                        <Label htmlFor="limitSeedTime">Seed time limit (minutes)</Label>
-                        <Input
-                          id="limitSeedTime"
-                          type="number"
-                          min="0"
-                          placeholder="0 = use global"
-                          value={field.state.value || ""}
-                          onChange={(e) => field.handleChange(parseInt(e.target.value) || 0)}
-                        />
-                      </div>
-                    )}
-                  </form.Field>
-                </div>
-
-                {/* Content Layout - available regardless of TMM */}
-                <form.Field name="contentLayout">
-                  {(field) => (
-                    <div className="space-y-2">
-                      <Label>Content layout</Label>
-                      <Select
-                        value={field.state.value}
-                        onValueChange={field.handleChange}
-                      >
-                        <SelectTrigger id="contentLayout">
-                          <SelectValue placeholder="Use global setting" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__global__">Use global setting</SelectItem>
-                          <SelectItem value="Original">Original</SelectItem>
-                          <SelectItem value="Subfolder">Create subfolder</SelectItem>
-                          <SelectItem value="NoSubfolder">Don't create subfolder</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-                </form.Field>
-
-                {/* Rename Torrent */}
-                <form.Field name="rename">
-                  {(field) => (
-                    <div className="space-y-2">
-                      <Label htmlFor="rename">Rename torrent</Label>
-                      <Input
-                        id="rename"
-                        placeholder="Leave empty to use original name"
-                        value={field.state.value}
-                        onChange={(e) => field.handleChange(e.target.value)}
-                      />
-                    </div>
-                  )}
-                </form.Field>
-              </CollapsibleContent>
-            </Collapsible>
+              </TabsContent>
+            </Tabs>
 
             {/* Auto-applied Settings Info - Compact */}
             {(preferences?.add_trackers_enabled && preferences?.add_trackers) || preferences?.excluded_file_names_enabled ? (
@@ -694,7 +812,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
         </div>
 
         {/* Fixed footer with submit buttons */}
-        <div className="flex-shrink-0 px-6 py-4 border-t bg-background">
+        <div className="flex-shrink-0 px-6 py-3 border-t bg-background">
           <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
             <form.Subscribe
               selector={(state) => [state.canSubmit, state.isSubmitting]}
