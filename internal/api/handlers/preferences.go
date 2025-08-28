@@ -25,6 +25,12 @@ func NewPreferencesHandler(syncManager *qbittorrent.SyncManager) *PreferencesHan
 }
 
 // GetPreferences returns app preferences for an instance
+// TODO: The go-qbittorrent library is missing network interface list endpoints:
+// - /api/v2/app/networkInterfaceList (to get available network interfaces)
+// - /api/v2/app/networkInterfaceAddressList (to get addresses for an interface)
+// These are needed to properly populate network interface dropdowns like the official WebUI.
+// For now, current_network_interface and current_interface_address show actual values but
+// cannot be configured with proper dropdown selections.
 func (h *PreferencesHandler) GetPreferences(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {

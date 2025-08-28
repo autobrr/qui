@@ -48,10 +48,10 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
   const form = useForm({
     defaultValues: {
       queueing_enabled: false,
-      max_active_downloads: 3,
-      max_active_uploads: 3,
-      max_active_torrents: 5,
-      max_active_checking_torrents: 1,
+      max_active_downloads: 0,
+      max_active_uploads: 0,
+      max_active_torrents: 0,
+      max_active_checking_torrents: 0,
     },
     onSubmit: async ({ value }) => {
       try {
@@ -67,15 +67,15 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
   // Update form when preferences change
   React.useEffect(() => {
     if (preferences) {
-      form.setFieldValue("queueing_enabled", preferences.queueing_enabled ?? false)
-      form.setFieldValue("max_active_downloads", preferences.max_active_downloads ?? 3)
-      form.setFieldValue("max_active_uploads", preferences.max_active_uploads ?? 3)
-      form.setFieldValue("max_active_torrents", preferences.max_active_torrents ?? 5)
-      form.setFieldValue("max_active_checking_torrents", preferences.max_active_checking_torrents ?? 1)
+      form.setFieldValue("queueing_enabled", preferences.queueing_enabled)
+      form.setFieldValue("max_active_downloads", preferences.max_active_downloads)
+      form.setFieldValue("max_active_uploads", preferences.max_active_uploads)
+      form.setFieldValue("max_active_torrents", preferences.max_active_torrents)
+      form.setFieldValue("max_active_checking_torrents", preferences.max_active_checking_torrents)
     }
   }, [preferences, form])
 
-  if (isLoading) {
+  if (isLoading || !preferences) {
     return (
       <div className="text-center py-8">
         <p className="text-sm text-muted-foreground">Loading queue settings...</p>

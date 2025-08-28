@@ -15,7 +15,8 @@ import { SpeedLimitsDialog } from "./preferences/SpeedLimitsDialog"
 import { QueueManagementDialog } from "./preferences/QueueManagementDialog"
 import { FileManagementDialog } from "./preferences/FileManagementDialog"
 import { SeedingLimitsDialog } from "./preferences/SeedingLimitsDialog"
-import { MoreVertical, Download, Clock, Folder, Upload } from "lucide-react"
+import { ConnectionSettingsDialog } from "./preferences/ConnectionSettingsDialog"
+import { MoreVertical, Download, Clock, Folder, Upload, Wifi } from "lucide-react"
 
 interface InstanceActionsDropdownProps {
   instanceId: number
@@ -32,6 +33,7 @@ export function InstanceActionsDropdown({
   const [queueManagementOpen, setQueueManagementOpen] = useState(false)
   const [fileManagementOpen, setFileManagementOpen] = useState(false)
   const [seedingLimitsOpen, setSeedingLimitsOpen] = useState(false)
+  const [connectionSettingsOpen, setConnectionSettingsOpen] = useState(false)
 
   const handleMenuItemClick = (e: React.MouseEvent, action: () => void) => {
     e.preventDefault()
@@ -54,6 +56,13 @@ export function InstanceActionsDropdown({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          <DropdownMenuItem
+            onClick={(e) => handleMenuItemClick(e, () => setConnectionSettingsOpen(true))}
+            className="flex items-center gap-2"
+          >
+            <Wifi className="h-4 w-4" />
+            Connection Settings
+          </DropdownMenuItem>
           <DropdownMenuItem
             onClick={(e) => handleMenuItemClick(e, () => setSpeedLimitsOpen(true))}
             className="flex items-center gap-2"
@@ -109,6 +118,13 @@ export function InstanceActionsDropdown({
       <SeedingLimitsDialog
         open={seedingLimitsOpen}
         onOpenChange={setSeedingLimitsOpen}
+        instanceId={instanceId}
+        instanceName={instanceName}
+      />
+
+      <ConnectionSettingsDialog
+        open={connectionSettingsOpen}
+        onOpenChange={setConnectionSettingsOpen}
         instanceId={instanceId}
         instanceName={instanceName}
       />

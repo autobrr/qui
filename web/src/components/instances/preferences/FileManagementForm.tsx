@@ -75,8 +75,8 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
   // Update form when preferences change
   React.useEffect(() => {
     if (preferences) {
-      form.setFieldValue("auto_tmm_enabled", preferences.auto_tmm_enabled ?? false)
-      form.setFieldValue("save_path", preferences.save_path ?? "")
+      form.setFieldValue("auto_tmm_enabled", preferences.auto_tmm_enabled)
+      form.setFieldValue("save_path", preferences.save_path)
     }
   }, [preferences, form])
 
@@ -114,7 +114,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
           {(field) => (
             <SwitchSetting
               label="Automatic Torrent Management"
-              checked={(field.state.value as boolean) ?? false}
+              checked={field.state.value as boolean}
               onCheckedChange={field.handleChange}
               description="Use category-based paths for downloads"
             />
@@ -125,7 +125,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
           {(field) => (
             <SwitchSetting
               label="Start Torrents Paused"
-              checked={(field.state.value as boolean) ?? false}
+              checked={field.state.value as boolean}
               onCheckedChange={field.handleChange}
               description="New torrents start in paused state"
             />
@@ -140,7 +140,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
                 Default directory for downloading files
               </p>
               <Input
-                value={(field.state.value as string) ?? ""}
+                value={field.state.value as string}
                 onChange={(e) => field.handleChange(e.target.value)}
                 placeholder="/downloads"
               />

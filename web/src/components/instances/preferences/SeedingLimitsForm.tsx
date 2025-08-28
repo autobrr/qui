@@ -48,9 +48,9 @@ export function SeedingLimitsForm({ instanceId, onSuccess }: SeedingLimitsFormPr
   const form = useForm({
     defaultValues: {
       max_ratio_enabled: false,
-      max_ratio: 2.0,
+      max_ratio: 0,
       max_seeding_time_enabled: false,
-      max_seeding_time: 1440,
+      max_seeding_time: 0,
     },
     onSubmit: async ({ value }) => {
       try {
@@ -66,14 +66,14 @@ export function SeedingLimitsForm({ instanceId, onSuccess }: SeedingLimitsFormPr
   // Update form when preferences change
   React.useEffect(() => {
     if (preferences) {
-      form.setFieldValue("max_ratio_enabled", preferences.max_ratio_enabled ?? false)
-      form.setFieldValue("max_ratio", preferences.max_ratio ?? 2.0)
-      form.setFieldValue("max_seeding_time_enabled", preferences.max_seeding_time_enabled ?? false)
-      form.setFieldValue("max_seeding_time", preferences.max_seeding_time ?? 1440)
+      form.setFieldValue("max_ratio_enabled", preferences.max_ratio_enabled)
+      form.setFieldValue("max_ratio", preferences.max_ratio)
+      form.setFieldValue("max_seeding_time_enabled", preferences.max_seeding_time_enabled)
+      form.setFieldValue("max_seeding_time", preferences.max_seeding_time)
     }
   }, [preferences, form])
 
-  if (isLoading) {
+  if (isLoading || !preferences) {
     return (
       <div className="text-center py-8">
         <p className="text-sm text-muted-foreground">Loading seeding limits...</p>
