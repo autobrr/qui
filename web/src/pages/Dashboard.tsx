@@ -188,13 +188,13 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
                 <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
               </Link>
               <div className="flex items-center gap-2">
-                <Badge variant="destructive">Disconnected</Badge>
                 {!hasErrors && (
                   <InstanceActionsDropdown
                     instanceId={instance.id}
                     instanceName={instance.name}
                   />
                 )}
+                <Badge variant="destructive">Disconnected</Badge>
               </div>
             </div>
             <CardDescription className="flex items-center gap-1">
@@ -238,13 +238,13 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
                 <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
               </Link>
               <div className="flex items-center gap-2">
-                <Badge variant="destructive">Error</Badge>
                 {!hasErrors && (
                   <InstanceActionsDropdown
                     instanceId={instance.id}
                     instanceName={instance.name}
                   />
                 )}
+                <Badge variant="destructive">Error</Badge>
               </div>
             </div>
             <CardDescription className="flex items-center gap-1">
@@ -312,15 +312,15 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
                   </TooltipContent>
                 </Tooltip>
               )}
-              <Badge variant={stats.connected ? "default" : "destructive"}>
-                {stats.connected ? "Connected" : "Disconnected"}
-              </Badge>
               {stats.connected && (
                 <InstanceActionsDropdown
                   instanceId={instance.id}
                   instanceName={instance.name}
                 />
               )}
+              <Badge variant={stats.connected ? "default" : "destructive"}>
+                {stats.connected ? "Connected" : "Disconnected"}
+              </Badge>
             </div>
           </div>
           <CardDescription className="flex items-center gap-1 text-xs">

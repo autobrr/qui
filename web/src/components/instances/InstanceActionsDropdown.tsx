@@ -5,14 +5,8 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger
-} from "@/components/ui/dropdown-menu"
 import { InstancePreferencesDialog } from "./preferences/InstancePreferencesDialog"
-import { MoreVertical, Cog } from "lucide-react"
+import { Cog } from "lucide-react"
 
 interface InstanceActionsDropdownProps {
   instanceId: number
@@ -27,36 +21,24 @@ export function InstanceActionsDropdown({
 }: InstanceActionsDropdownProps) {
   const [preferencesOpen, setPreferencesOpen] = useState(false)
 
-  const handleMenuItemClick = (e: React.MouseEvent, action: () => void) => {
+  const handleClick = (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    action()
+    onClick?.(e)
+    setPreferencesOpen(true)
   }
 
   return (
     <>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6 p-0"
-            onClick={onClick}
-            title="Instance Settings"
-          >
-            <MoreVertical className="h-4 w-4" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem
-            onClick={(e) => handleMenuItemClick(e, () => setPreferencesOpen(true))}
-            className="flex items-center gap-2"
-          >
-            <Cog className="h-4 w-4" />
-            Preferences
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-6 w-6 p-0"
+        onClick={handleClick}
+        title="Instance Settings"
+      >
+        <Cog className="h-4 w-4" />
+      </Button>
 
       <InstancePreferencesDialog
         open={preferencesOpen}
