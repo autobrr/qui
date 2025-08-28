@@ -432,6 +432,7 @@ export function Settings() {
           </Card>
         </TabsContent>
 
+
         <TabsContent value="themes" className="space-y-4">
           <ThemeSelector />
           <ThemeLicenseManager />

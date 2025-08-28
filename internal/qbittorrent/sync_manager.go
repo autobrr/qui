@@ -1611,3 +1611,134 @@ func (sm *SyncManager) RemoveCategories(ctx context.Context, instanceID int, cat
 	log.Debug().Int("instanceID", instanceID).Msg("Invalidated categories cache")
 	return nil
 }
+
+// GetAppPreferences fetches and caches app preferences for an instance
+func (sm *SyncManager) GetAppPreferences(ctx context.Context, instanceID int) (qbt.AppPreferences, error) {
+	// Check cache with 60-second TTL (same as categories/tags)
+	cacheKey := fmt.Sprintf("app_preferences:%d", instanceID)
+	if cached, found := sm.cache.Get(cacheKey); found {
+		if prefs, ok := cached.(qbt.AppPreferences); ok {
+			return prefs, nil
+		}
+	}
+
+	// Get client and fetch preferences
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return qbt.AppPreferences{}, fmt.Errorf("failed to get client: %w", err)
+	}
+
+	prefs, err := client.GetAppPreferencesCtx(ctx)
+	if err != nil {
+		return qbt.AppPreferences{}, fmt.Errorf("failed to get app preferences: %w", err)
+	}
+
+	// Cache for 60 seconds
+	sm.cache.SetWithTTL(cacheKey, prefs, 1, 60*time.Second)
+
+	return prefs, nil
+}
+
+// SetAppPreferences updates app preferences and invalidates cache
+func (sm *SyncManager) SetAppPreferences(ctx context.Context, instanceID int, prefs map[string]any) error {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	if err := client.SetPreferencesCtx(ctx, prefs); err != nil {
+		return fmt.Errorf("failed to set preferences: %w", err)
+	}
+
+	// Invalidate cache
+	cacheKey := fmt.Sprintf("app_preferences:%d", instanceID)
+	sm.cache.Del(cacheKey)
+
+	return nil
+}
+
+// GetAlternativeSpeedLimitsMode gets whether alternative speed limits are currently active
+func (sm *SyncManager) GetAlternativeSpeedLimitsMode(ctx context.Context, instanceID int) (bool, error) {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return false, fmt.Errorf("failed to get client: %w", err)
+	}
+
+	enabled, err := client.GetAlternativeSpeedLimitsModeCtx(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to get alternative speed limits mode: %w", err)
+	}
+
+	return enabled, nil
+}
+
+// ToggleAlternativeSpeedLimits toggles alternative speed limits on/off
+func (sm *SyncManager) ToggleAlternativeSpeedLimits(ctx context.Context, instanceID int) error {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	if err := client.ToggleAlternativeSpeedLimitsCtx(ctx); err != nil {
+		return fmt.Errorf("failed to toggle alternative speed limits: %w", err)
+	}
+
+	return nil
+}
+
+// SetTorrentShareLimit sets share limits (ratio, seeding time) for torrents
+func (sm *SyncManager) SetTorrentShareLimit(ctx context.Context, instanceID int, hashes []string, ratioLimit float64, seedingTimeLimit, inactiveSeedingTimeLimit int64) error {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	if err := client.SetTorrentShareLimitCtx(ctx, hashes, ratioLimit, seedingTimeLimit, inactiveSeedingTimeLimit); err != nil {
+		return fmt.Errorf("failed to set torrent share limit: %w", err)
+	}
+
+	// Invalidate torrent cache to reflect the changes
+	sm.InvalidateCache(instanceID)
+
+	return nil
+}
+
+// SetTorrentUploadLimit sets upload speed limit for torrents
+func (sm *SyncManager) SetTorrentUploadLimit(ctx context.Context, instanceID int, hashes []string, limitKBs int64) error {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	// Convert KB/s to bytes/s (qBittorrent API expects bytes/s)
+	limitBytes := limitKBs * 1024
+
+	if err := client.SetTorrentUploadLimitCtx(ctx, hashes, limitBytes); err != nil {
+		return fmt.Errorf("failed to set torrent upload limit: %w", err)
+	}
+
+	// Invalidate torrent cache to reflect the changes
+	sm.InvalidateCache(instanceID)
+
+	return nil
+}
+
+// SetTorrentDownloadLimit sets download speed limit for torrents
+func (sm *SyncManager) SetTorrentDownloadLimit(ctx context.Context, instanceID int, hashes []string, limitKBs int64) error {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	// Convert KB/s to bytes/s (qBittorrent API expects bytes/s)
+	limitBytes := limitKBs * 1024
+
+	if err := client.SetTorrentDownloadLimitCtx(ctx, hashes, limitBytes); err != nil {
+		return fmt.Errorf("failed to set torrent download limit: %w", err)
+	}
+
+	// Invalidate torrent cache to reflect the changes
+	sm.InvalidateCache(instanceID)
+
+	return nil
+}

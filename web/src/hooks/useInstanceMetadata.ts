@@ -5,14 +5,16 @@
 
 import { useQuery } from "@tanstack/react-query"
 import { api } from "@/lib/api"
+import type { AppPreferences } from "@/types"
 
 interface InstanceMetadata {
   categories: Record<string, { name: string; savePath: string }>
   tags: string[]
+  preferences: AppPreferences
 }
 
 /**
- * Shared hook for fetching instance metadata (categories, tags)
+ * Shared hook for fetching instance metadata (categories, tags, preferences)
  * This prevents duplicate API calls when multiple components need the same data
  * Note: Counts are now included in the torrents response, so we don't fetch them separately
  */
@@ -21,13 +23,13 @@ export function useInstanceMetadata(instanceId: number) {
     queryKey: ["instance-metadata", instanceId],
     queryFn: async () => {
       // Fetch metadata in parallel for efficiency
-      const [categories, tags] = await Promise.all([
+      const [categories, tags, preferences] = await Promise.all([
         api.getCategories(instanceId),
         api.getTags(instanceId),
-        // Counts are now included in torrents response, no separate fetch needed
+        api.getInstancePreferences(instanceId),
       ])
       
-      return { categories, tags }
+      return { categories, tags, preferences }
     },
     staleTime: 60000, // 1 minute - metadata doesn't change often
     gcTime: 1800000, // Keep in cache for 30 minutes to support cross-instance navigation
