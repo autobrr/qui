@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
@@ -52,6 +52,7 @@ interface FormData {
   category: string
   tags: string[]
   startPaused: boolean
+  autoTMM: boolean
   savePath: string
   skipHashCheck: boolean
   sequentialDownload: boolean
@@ -70,6 +71,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [newTag, setNewTag] = useState("")
   const [advancedOpen, setAdvancedOpen] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const queryClient = useQueryClient()
   // NOTE: Use localStorage-persisted preference instead of qBittorrent's preference
   // This works around qBittorrent API not supporting start_paused_enabled setting
@@ -99,13 +101,12 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
   const mutation = useMutation({
     retry: false, // Don't retry - could cause duplicate torrent additions
     mutationFn: async (data: FormData) => {
-      // Determine autoTMM setting: use instance preference unless user provided custom save path
-      const hasCustomSavePath = data.savePath && data.savePath !== (preferences?.save_path || "")
-      const autoTMM = hasCustomSavePath ? false : (preferences?.auto_tmm_enabled ?? true)
+      // Use the user's explicit TMM choice
+      const autoTMM = data.autoTMM
       
       const submitData: Parameters<typeof api.addTorrent>[1] = {
         startPaused: data.startPaused,
-        savePath: hasCustomSavePath ? data.savePath : undefined,
+        savePath: !autoTMM && data.savePath ? data.savePath : undefined,
         autoTMM: autoTMM,
         category: data.category === "__none__" ? undefined : data.category || undefined,
         tags: data.tags.length > 0 ? data.tags : undefined,
@@ -116,7 +117,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
         limitDownloadSpeed: data.limitDownloadSpeed > 0 ? data.limitDownloadSpeed : undefined,
         limitRatio: data.limitRatio > 0 ? data.limitRatio : undefined,
         limitSeedTime: data.limitSeedTime > 0 ? data.limitSeedTime : undefined,
-        contentLayout: data.contentLayout || undefined,
+        contentLayout: data.contentLayout === "__global__" ? undefined : data.contentLayout || undefined,
         rename: data.rename || undefined,
       }
 
@@ -158,6 +159,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
       category: "",
       tags: [] as string[],
       startPaused: startPausedEnabled,
+      autoTMM: preferences?.auto_tmm_enabled ?? true,
       savePath: preferences?.save_path || "",
       skipHashCheck: false,
       sequentialDownload: false,
@@ -245,19 +247,37 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                 <div className="space-y-2">
                   <Label htmlFor="torrentFiles">Torrent Files</Label>
                   <Input
+                    ref={fileInputRef}
                     id="torrentFiles"
                     type="file"
                     accept=".torrent"
                     multiple
+                    className="sr-only"
                     onChange={(e) => {
                       const files = e.target.files ? Array.from(e.target.files) : null
                       field.handleChange(files)
                     }}
                   />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full"
+                  >
+                    <Upload className="mr-2 h-4 w-4" />
+                    Browse for Torrent Files
+                  </Button>
                   {field.state.value && field.state.value.length > 0 && (
-                    <p className="text-sm text-muted-foreground">
-                      {field.state.value.length} file{field.state.value.length > 1 ? "s" : ""} selected
-                    </p>
+                    <div className="space-y-1">
+                      <p className="text-sm text-muted-foreground">
+                        {field.state.value.length} file{field.state.value.length > 1 ? "s" : ""} selected:
+                      </p>
+                      <div className="text-xs text-muted-foreground pl-4">
+                        {field.state.value.map((file, index) => (
+                          <div key={index}>• {file.name}</div>
+                        ))}
+                      </div>
+                    </div>
                   )}
                   {field.state.meta.isTouched && field.state.meta.errors[0] && (
                     <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
@@ -300,7 +320,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
           <form.Field name="category">
             {(field) => (
               <div className="space-y-2">
-                <Label htmlFor="category">Category</Label>
+                <Label>Category</Label>
                 <Select
                   value={field.state.value}
                   onValueChange={field.handleChange}
@@ -371,7 +391,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
             
             {/* Add new tag */}
             <div className="space-y-2">
-              <Label htmlFor="newTag">Add New Tag</Label>
+              <Label>Add New Tag</Label>
               <div className="flex gap-2">
                 <Input
                   id="newTag"
@@ -410,38 +430,41 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
             </div>
           </div>
 
-          {/* Save Path - only show when auto TMM is disabled */}
-          {!preferences?.auto_tmm_enabled && (
-            <form.Field name="savePath">
-              {(field) => (
-                <div className="space-y-2">
-                  <Label htmlFor="savePath">Save Path</Label>
-                  <Input
-                    id="savePath"
-                    placeholder={preferences?.save_path || "Leave empty for default"}
-                    value={field.state.value}
-                    onBlur={field.handleBlur}
-                    onChange={(e) => field.handleChange(e.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Automatic Torrent Management is disabled for this instance
-                  </p>
-                </div>
-              )}
-            </form.Field>
-          )}
-          
-          {/* Auto TMM info when enabled */}
-          {preferences?.auto_tmm_enabled && (
-            <div className="space-y-2">
-              <Label>Save Path</Label>
-              <div className="px-3 py-2 bg-muted rounded-md">
-                <p className="text-sm text-muted-foreground">
-                  Automatic Torrent Management is enabled. Save path will be determined by category settings.
-                </p>
-              </div>
-            </div>
-          )}
+          {/* Save Path - show based on TMM toggle */}
+          <form.Field name="autoTMM">
+            {(autoTMMField) => (
+              <>
+                {!autoTMMField.state.value ? (
+                  <form.Field name="savePath">
+                    {(field) => (
+                      <div className="space-y-2">
+                        <Label htmlFor="savePath">Save Path</Label>
+                        <Input
+                          id="savePath"
+                          placeholder={preferences?.save_path || "Leave empty for default"}
+                          value={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.value)}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Manual save path (TMM disabled)
+                        </p>
+                      </div>
+                    )}
+                  </form.Field>
+                ) : (
+                  <div className="space-y-2">
+                    <Label>Save Path</Label>
+                    <div className="px-3 py-2 bg-muted rounded-md">
+                      <p className="text-sm text-muted-foreground">
+                        Automatic Torrent Management is enabled. Save path will be determined by category settings.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </form.Field>
 
           {/* Start Paused */}
           <form.Field name="startPaused">
@@ -453,6 +476,20 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                   onCheckedChange={field.handleChange}
                 />
                 <Label htmlFor="startPaused">Start paused</Label>
+              </div>
+            )}
+          </form.Field>
+
+          {/* Automatic Torrent Management */}
+          <form.Field name="autoTMM">
+            {(field) => (
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="autoTMM"
+                  checked={field.state.value}
+                  onCheckedChange={field.handleChange}
+                />
+                <Label htmlFor="autoTMM">Automatic Torrent Management</Label>
               </div>
             )}
           </form.Field>
@@ -585,30 +622,28 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                 </form.Field>
               </div>
 
-              {/* Content Layout */}
-              {!preferences?.auto_tmm_enabled && (
-                <form.Field name="contentLayout">
-                  {(field) => (
-                    <div className="space-y-2">
-                      <Label htmlFor="contentLayout">Content layout</Label>
-                      <Select
-                        value={field.state.value}
-                        onValueChange={field.handleChange}
-                      >
-                        <SelectTrigger id="contentLayout">
-                          <SelectValue placeholder="Use global setting" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="">Use global setting</SelectItem>
-                          <SelectItem value="Original">Original</SelectItem>
-                          <SelectItem value="Subfolder">Create subfolder</SelectItem>
-                          <SelectItem value="NoSubfolder">Don't create subfolder</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-                </form.Field>
-              )}
+              {/* Content Layout - available regardless of TMM */}
+              <form.Field name="contentLayout">
+                {(field) => (
+                  <div className="space-y-2">
+                    <Label>Content layout</Label>
+                    <Select
+                      value={field.state.value}
+                      onValueChange={field.handleChange}
+                    >
+                      <SelectTrigger id="contentLayout">
+                        <SelectValue placeholder="Use global setting" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__global__">Use global setting</SelectItem>
+                        <SelectItem value="Original">Original</SelectItem>
+                        <SelectItem value="Subfolder">Create subfolder</SelectItem>
+                        <SelectItem value="NoSubfolder">Don't create subfolder</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </form.Field>
 
               {/* Rename Torrent */}
               <form.Field name="rename">

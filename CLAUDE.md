@@ -177,6 +177,7 @@ Protected routes require authentication via session cookie or API key header (`X
 - `GET /api/instances/{id}/torrents/sync` - SyncMainData endpoint
 - `POST /api/instances/{id}/torrents` - Add torrent
 - `POST /api/instances/{id}/torrents/bulk-action` - Bulk operations
+- `GET /metrics` - Prometheus metrics endpoint (requires API key)
 
 ## Database Schema
 
@@ -440,3 +441,20 @@ Cache metrics are exposed in the client pool stats:
 - `cache_hits`: Number of successful cache lookups
 - `cache_misses`: Number of cache misses requiring qBittorrent API calls
 - Monitor these to ensure qBittorrent instances aren't being overwhelmed
+
+## Prometheus Metrics
+
+The `/metrics` endpoint exposes Prometheus metrics for monitoring. Implementation details:
+
+### Metrics Architecture
+- **Custom Collector**: Implements `prometheus.Collector` interface in `internal/metrics/collector.go`
+- **Proactive Connection**: Establishes connections when scraped (no UI required)
+- **On-demand Calculation**: Metrics computed during scrape, not pre-stored
+- **API Key Required**: Uses existing API key authentication system
+
+### Available Metrics
+- `qbittorrent_torrents_*` - Torrent counts by status (downloading, seeding, paused, error, checking)
+- `qbittorrent_*_speed_bytes_per_second` - Upload/download speeds
+- `qbittorrent_instance_connection_status` - Instance health (1=connected, 0=disconnected)
+
+All metrics labeled with `instance_id` and `instance_name` for multi-instance monitoring.

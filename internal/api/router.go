@@ -16,6 +16,7 @@ import (
 	apimiddleware "github.com/autobrr/qui/internal/api/middleware"
 	"github.com/autobrr/qui/internal/auth"
 	"github.com/autobrr/qui/internal/config"
+	"github.com/autobrr/qui/internal/metrics"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services"
@@ -33,6 +34,7 @@ type Dependencies struct {
 	SyncManager         *qbittorrent.SyncManager
 	WebHandler          *web.Handler
 	ThemeLicenseService *services.ThemeLicenseService
+	MetricsManager      *metrics.Manager
 }
 
 // NewRouter creates and configures the main application router
@@ -160,14 +162,17 @@ func NewRouter(deps *Dependencies) *chi.Mux {
 		swaggerHandler.RegisterRoutes(r)
 	}
 
-	// Health check endpoint
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status":"ok"}`))
 	})
 
-	// Web UI routes (handled by the embedded frontend)
+	if deps.MetricsManager != nil {
+		metricsHandler := handlers.NewMetricsHandler(deps.MetricsManager)
+		r.With(apimiddleware.IsAuthenticated(deps.AuthService)).Get("/metrics", metricsHandler.ServeMetrics)
+	}
+
 	if deps.WebHandler != nil {
 		deps.WebHandler.RegisterRoutes(r)
 	}

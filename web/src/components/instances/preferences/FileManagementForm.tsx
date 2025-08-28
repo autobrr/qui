@@ -9,6 +9,13 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { usePersistedStartPaused } from "@/hooks/usePersistedStartPaused"
 import { toast } from "sonner"
@@ -51,6 +58,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
       auto_tmm_enabled: false,
       start_paused_enabled: false,
       save_path: "",
+      torrent_content_layout: "Original",
     },
     onSubmit: async ({ value }) => {
       try {
@@ -62,6 +70,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
         const qbittorrentPrefs = {
           auto_tmm_enabled: value.auto_tmm_enabled,
           save_path: value.save_path,
+          torrent_content_layout: value.torrent_content_layout ?? "Original",
         }
         updatePreferences(qbittorrentPrefs)
         toast.success("File management settings updated successfully")
@@ -77,6 +86,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
     if (preferences) {
       form.setFieldValue("auto_tmm_enabled", preferences.auto_tmm_enabled)
       form.setFieldValue("save_path", preferences.save_path)
+      form.setFieldValue("torrent_content_layout", preferences.torrent_content_layout ?? "Original")
     }
   }, [preferences, form])
 
@@ -144,6 +154,30 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
                 onChange={(e) => field.handleChange(e.target.value)}
                 placeholder="/downloads"
               />
+            </div>
+          )}
+        </form.Field>
+
+        <form.Field name="torrent_content_layout">
+          {(field) => (
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Default Content Layout</Label>
+              <p className="text-xs text-muted-foreground">
+                How torrent files are organized within the save directory
+              </p>
+              <Select
+                value={field.state.value as string}
+                onValueChange={field.handleChange}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select content layout" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Original">Original</SelectItem>
+                  <SelectItem value="Subfolder">Create subfolder</SelectItem>
+                  <SelectItem value="NoSubfolder">Don't create subfolder</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           )}
         </form.Field>

@@ -5,6 +5,7 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
 import { InstancePreferencesDialog } from "./preferences/InstancePreferencesDialog"
 import { Cog } from "lucide-react"
 
@@ -30,15 +31,21 @@ export function InstanceSettingsButton({
 
   return (
     <>
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-6 w-6 p-0"
-        onClick={handleClick}
-        title="Instance Settings"
-      >
-        <Cog className="h-4 w-4" />
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 p-0"
+            onClick={handleClick}
+          >
+            <Cog className="h-4 w-4" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          Instance Settings
+        </TooltipContent>
+      </Tooltip>
 
       <InstancePreferencesDialog
         open={preferencesOpen}

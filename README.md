@@ -167,6 +167,33 @@ curl -H "X-API-Key: YOUR_API_KEY_HERE" \
 - Each key can be individually revoked without affecting others
 - Keys have the same permissions as the main user account
 
+## Metrics
+
+Prometheus metrics are exposed at `/metrics` for monitoring your qBittorrent instances. **Authentication required** via session cookie or API key.
+
+### Available Metrics
+- **Torrent counts** by status (downloading, seeding, paused, error)
+- **Transfer speeds** (upload/download bytes per second)  
+- **Instance connection status**
+
+### Prometheus Configuration
+
+First, create an API key in Settings → API Keys, then configure Prometheus:
+
+```yaml
+scrape_configs:
+  - job_name: 'qui'
+    static_configs:
+      - targets: ['localhost:8080']
+    metrics_path: /metrics
+    scrape_interval: 30s
+    http_headers:
+      X-API-Key:
+        values: ['YOUR_API_KEY_HERE']
+```
+
+All metrics are labeled with `instance_id` and `instance_name` for multi-instance monitoring.
+
 ## Docker
 
 ```bash
