@@ -11,21 +11,21 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { VisuallyHidden } from "@/components/ui/visually-hidden"
 import { usePersistedFilters } from "@/hooks/usePersistedFilters"
 import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSidebarState"
-import { useNavigate, useSearch } from "@tanstack/react-router"
 import type { Category, Torrent, TorrentCounts } from "@/types"
 
 interface TorrentsProps {
   instanceId: number
   instanceName: string
+  search: { modal?: "add-torrent" | undefined }
+  onSearchChange: (search: { modal?: "add-torrent" | undefined }) => void
 }
 
-export function Torrents({ instanceId }: TorrentsProps) {
+export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) {
   const [filters, setFilters] = usePersistedFilters(instanceId)
   const [filterSidebarCollapsed] = usePersistedFilterSidebarState(false)
   const [selectedTorrent, setSelectedTorrent] = useState<Torrent | null>(null)
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false)
-  const navigate = useNavigate()
-  const search = useSearch({ strict: false }) as any
+  // Navigation is handled by parent component via onSearchChange prop
 
   // Debounced filter updates to prevent excessive API calls during rapid filter changes
   const filterTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -43,16 +43,12 @@ export function Torrents({ instanceId }: TorrentsProps) {
 
   const handleAddTorrentModalChange = (open: boolean) => {
     if (open) {
-      navigate({
-        search: { ...search, modal: "add-torrent" },
-        replace: true,
-      })
+      onSearchChange({ ...search, modal: "add-torrent" })
     } else {
-      const { modal, ...restSearch } = search || {}
-      navigate({
-        search: restSearch,
-        replace: true,
-      })
+      const rest = Object.fromEntries(
+        Object.entries(search).filter(([key]) => key !== "modal")
+      )
+      onSearchChange(rest)
     }
   }
 

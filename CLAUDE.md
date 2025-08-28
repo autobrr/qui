@@ -153,6 +153,39 @@ Key patterns:
   form.setFieldValue("max_downloads", preferences.max_downloads ?? 3)
   ```
 
+#### TanStack Router Search Parameter Best Practices
+- **Zod is available**: The project includes `zod` v4 for validation - import with `import { z } from "zod"`
+- **Direct Zod validation**: Use Zod schemas directly with `validateSearch: zodSchema` (no `@tanstack/zod-adapter` needed)
+- **Always define search schemas**: Use `validateSearch` with Zod in route definitions for type safety
+- **Avoid `useSearch({ strict: false })`**: Only use when route context is unavailable; prefer typed search
+- **Never use `any` type assertions**: Use proper search parameter schemas instead
+- **Handle navigation in route components**: Use `Route.useNavigate()` where the schema is defined
+- **Pass search state as props**: When components need search state, pass from route component
+- **Example**:
+  ```typescript
+  // ✅ Route definition with search schema
+  import { z } from "zod"
+  
+  const searchSchema = z.object({
+    modal: z.enum(["add-torrent"]).optional(),
+  })
+  
+  export const Route = createFileRoute("/path")({ 
+    validateSearch: searchSchema,
+    component: Component 
+  })
+  
+  // ✅ Type-safe navigation in route component
+  function Component() {
+    const search = Route.useSearch() // Fully typed
+    const navigate = Route.useNavigate() // Route-aware
+    
+    const updateSearch = (newSearch) => {
+      navigate({ search: newSearch, replace: true })
+    }
+  }
+  ```
+
 ## Configuration
 
 Environment variables use `qui__` prefix:
@@ -363,6 +396,7 @@ Multiple built-in themes including minimal, cyberpunk, catppuccin, and more.
 - Tags can be either string[] or comma-separated string from API
 - Instance status requires periodic health checks due to connection drops
 - **TanStack Form `form.reset()` Issue**: `form.reset()` does not reliably update form field values. Use individual `form.setFieldValue(field, value)` calls instead
+- **TanStack Router Search Parameters**: Always define search schemas in route definitions. Avoid `useSearch({ strict: false })` and `any` type assertions. Handle navigation in route components where schemas are defined.
 
 ## Cache Management and Real-time Updates
 

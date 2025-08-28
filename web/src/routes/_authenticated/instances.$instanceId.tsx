@@ -6,14 +6,29 @@
 import { createFileRoute, Navigate } from "@tanstack/react-router"
 import { Torrents } from "@/pages/Torrents"
 import { useInstances } from "@/hooks/useInstances"
+import { z } from "zod"
+
+const instanceSearchSchema = z.object({
+  modal: z.enum(["add-torrent"]).optional(),
+})
 
 export const Route = createFileRoute("/_authenticated/instances/$instanceId")({
+  validateSearch: instanceSearchSchema,
   component: InstanceTorrents,
 })
 
 function InstanceTorrents() {
   const { instanceId } = Route.useParams()
+  const search = Route.useSearch()
+  const navigate = Route.useNavigate()
   const { instances, isLoading } = useInstances()
+  
+  const handleSearchChange = (newSearch: { modal?: "add-torrent" | undefined }) => {
+    navigate({
+      search: newSearch,
+      replace: true,
+    })
+  }
   
   if (isLoading) {
     return <div>Loading instances...</div>
@@ -32,5 +47,12 @@ function InstanceTorrents() {
     )
   }
   
-  return <Torrents instanceId={parseInt(instanceId)} instanceName={instance.name} />
+  return (
+    <Torrents 
+      instanceId={parseInt(instanceId)} 
+      instanceName={instance.name} 
+      search={search}
+      onSearchChange={handleSearchChange}
+    />
+  )
 }
