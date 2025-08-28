@@ -110,7 +110,7 @@ export function ProxySettingsForm({ instanceId, onSuccess }: ProxySettingsFormPr
 
   React.useEffect(() => {
     if (preferences) {
-      form.setFieldValue("proxy_type", preferences.proxy_type)
+      form.setFieldValue("proxy_type", typeof preferences.proxy_type === "string" ? parseInt(preferences.proxy_type) : preferences.proxy_type)
       form.setFieldValue("proxy_ip", preferences.proxy_ip)
       form.setFieldValue("proxy_port", preferences.proxy_port)
       form.setFieldValue("proxy_username", preferences.proxy_username)
