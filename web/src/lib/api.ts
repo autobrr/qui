@@ -3,7 +3,15 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import type { AuthResponse, InstanceResponse, TorrentResponse, MainData, User, AppPreferences } from "@/types"
+import type {
+  AppPreferences,
+  AuthResponse,
+  InstanceFormData,
+  InstanceResponse,
+  MainData,
+  TorrentResponse,
+  User
+} from "@/types"
 import { getApiBaseUrl } from "./base-url"
 
 const API_BASE = getApiBaseUrl()
@@ -82,14 +90,7 @@ class ApiClient {
     return this.request<InstanceResponse[]>("/instances")
   }
 
-  async createInstance(data: {
-    name: string
-    host: string
-    username?: string
-    password?: string
-    basicUsername?: string
-    basicPassword?: string
-  }): Promise<InstanceResponse> {
+  async createInstance(data: InstanceFormData): Promise<InstanceResponse> {
     return this.request<InstanceResponse>("/instances", {
       method: "POST",
       body: JSON.stringify(data),
@@ -98,14 +99,7 @@ class ApiClient {
 
   async updateInstance(
     id: number,
-    data: Partial<{
-      name: string
-      host: string
-      username?: string
-      password?: string
-      basicUsername?: string
-      basicPassword?: string
-    }>
+    data: Partial<InstanceFormData>
   ): Promise<InstanceResponse> {
     return this.request<InstanceResponse>(`/instances/${id}`, {
       method: "PUT",
@@ -427,7 +421,7 @@ class ApiClient {
   }
 
   async updateInstancePreferences(
-    instanceId: number, 
+    instanceId: number,
     preferences: Partial<AppPreferences>
   ): Promise<AppPreferences> {
     return this.request<AppPreferences>(`/instances/${instanceId}/preferences`, {
@@ -435,11 +429,11 @@ class ApiClient {
       body: JSON.stringify(preferences),
     })
   }
-  
+
   async getAlternativeSpeedLimitsMode(instanceId: number): Promise<{ enabled: boolean }> {
     return this.request<{ enabled: boolean }>(`/instances/${instanceId}/alternative-speed-limits`)
   }
-  
+
   async toggleAlternativeSpeedLimits(instanceId: number): Promise<{ enabled: boolean }> {
     return this.request<{ enabled: boolean }>(`/instances/${instanceId}/alternative-speed-limits/toggle`, {
       method: "POST",

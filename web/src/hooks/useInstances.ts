@@ -5,7 +5,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
-import type { InstanceResponse } from "@/types"
+import type { InstanceFormData, InstanceResponse } from "@/types"
 
 export function useInstances() {
   const queryClient = useQueryClient()
@@ -17,14 +17,7 @@ export function useInstances() {
   })
 
   const createMutation = useMutation({
-    mutationFn: (data: {
-      name: string
-      host: string
-      username?: string
-      password?: string
-      basicUsername?: string
-      basicPassword?: string
-    }) => api.createInstance(data),
+    mutationFn: (data: InstanceFormData) => api.createInstance(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["instances"] })
     },
@@ -33,14 +26,7 @@ export function useInstances() {
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { 
       id: number
-      data: Partial<{
-        name: string
-        host: string
-        username?: string
-        password?: string
-        basicUsername?: string
-        basicPassword?: string
-      }>
+      data: Partial<InstanceFormData>
     }) => api.updateInstance(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["instances"] })
