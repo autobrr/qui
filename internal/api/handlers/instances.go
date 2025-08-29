@@ -61,7 +61,8 @@ func (h *InstancesHandler) testInstanceConnection(ctx context.Context, instanceI
 		}
 	}
 
-	client, err := h.clientPool.GetClient(ctx, instanceID)
+	// Use shorter timeout for UI operations to prevent hanging
+	client, err := h.clientPool.GetClientWithTimeout(ctx, instanceID, 5*time.Second)
 	if err != nil {
 		status := connectionStatus{connected: false, error: err.Error()}
 		cache.SetWithTTL(cacheKey, status, 1, 5*time.Second)
@@ -243,7 +244,12 @@ func (h *InstancesHandler) CreateInstance(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	response := h.buildInstanceResponse(r.Context(), instance)
+	// Return quickly without testing connection
+	response := h.buildQuickInstanceResponse(instance)
+
+	// Test connection asynchronously
+	go h.testConnectionAsync(instance.ID)
+
 	RespondJSON(w, http.StatusCreated, response)
 }
 
@@ -278,7 +284,12 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 
 	h.clientPool.RemoveClient(instanceID)
 
-	response := h.buildInstanceResponse(r.Context(), instance)
+	// Return quickly without testing connection
+	response := h.buildQuickInstanceResponse(instance)
+
+	// Test connection asynchronously
+	go h.testConnectionAsync(instance.ID)
+
 	RespondJSON(w, http.StatusOK, response)
 }
 
@@ -452,4 +463,62 @@ func (h *InstancesHandler) populateInstanceStats(ctx context.Context, instanceID
 			return
 		}
 	}
+}
+
+// buildQuickInstanceResponse creates a response without testing connection
+func (h *InstancesHandler) buildQuickInstanceResponse(instance *models.Instance) InstanceResponse {
+	return InstanceResponse{
+		ID:                 instance.ID,
+		Name:               instance.Name,
+		Host:               instance.Host,
+		Username:           instance.Username,
+		BasicUsername:      instance.BasicUsername,
+		IsActive:           instance.IsActive,
+		LastConnectedAt:    instance.LastConnectedAt,
+		CreatedAt:          instance.CreatedAt,
+		UpdatedAt:          instance.UpdatedAt,
+		Connected:          false, // Will be updated asynchronously
+		ConnectionError:    "",
+		HasDecryptionError: false,
+	}
+}
+
+// testConnectionAsync tests connection in background and updates cache
+func (h *InstancesHandler) testConnectionAsync(instanceID int) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	log.Debug().Int("instanceID", instanceID).Msg("Testing connection asynchronously")
+
+	// Use shorter timeout for UI operations
+	client, err := h.clientPool.GetClientWithTimeout(ctx, instanceID, 5*time.Second)
+	if err != nil {
+		log.Debug().Err(err).Int("instanceID", instanceID).Msg("Async connection test failed")
+
+		// Cache the failure result
+		cacheKey := fmt.Sprintf("connection:status:%d", instanceID)
+		status := connectionStatus{connected: false, error: err.Error()}
+		cache := h.clientPool.GetCache()
+		cache.SetWithTTL(cacheKey, status, 1, 5*time.Second)
+		return
+	}
+
+	if err := client.HealthCheck(ctx); err != nil {
+		log.Debug().Err(err).Int("instanceID", instanceID).Msg("Async health check failed")
+
+		// Cache the failure result
+		cacheKey := fmt.Sprintf("connection:status:%d", instanceID)
+		status := connectionStatus{connected: false, error: err.Error()}
+		cache := h.clientPool.GetCache()
+		cache.SetWithTTL(cacheKey, status, 1, 5*time.Second)
+		return
+	}
+
+	log.Debug().Int("instanceID", instanceID).Msg("Async connection test succeeded")
+
+	// Cache the success result
+	cacheKey := fmt.Sprintf("connection:status:%d", instanceID)
+	status := connectionStatus{connected: true, error: ""}
+	cache := h.clientPool.GetCache()
+	cache.SetWithTTL(cacheKey, status, 1, 5*time.Second)
 }

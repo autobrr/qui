@@ -25,11 +25,15 @@ type Client struct {
 }
 
 func NewClient(instanceID int, instanceHost, username, password string, basicUsername, basicPassword *string) (*Client, error) {
+	return NewClientWithTimeout(instanceID, instanceHost, username, password, basicUsername, basicPassword, 30*time.Second)
+}
+
+func NewClientWithTimeout(instanceID int, instanceHost, username, password string, basicUsername, basicPassword *string, timeout time.Duration) (*Client, error) {
 	cfg := qbt.Config{
 		Host:     instanceHost,
 		Username: username,
 		Password: password,
-		Timeout:  30,
+		Timeout:  int(timeout.Seconds()),
 	}
 
 	if basicUsername != nil && *basicUsername != "" {
@@ -41,7 +45,7 @@ func NewClient(instanceID int, instanceHost, username, password string, basicUse
 
 	qbtClient := qbt.NewClient(cfg)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	if err := qbtClient.LoginCtx(ctx); err != nil {

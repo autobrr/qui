@@ -90,8 +90,13 @@ func NewClientPool(instanceStore *models.InstanceStore) (*ClientPool, error) {
 	return cp, nil
 }
 
-// GetClient returns a qBittorrent client for the given instance ID
+// GetClient returns a qBittorrent client for the given instance ID with default timeout
 func (cp *ClientPool) GetClient(ctx context.Context, instanceID int) (*Client, error) {
+	return cp.GetClientWithTimeout(ctx, instanceID, 30*time.Second)
+}
+
+// GetClientWithTimeout returns a qBittorrent client for the given instance ID with custom timeout
+func (cp *ClientPool) GetClientWithTimeout(ctx context.Context, instanceID int, timeout time.Duration) (*Client, error) {
 	cp.mu.RLock()
 	if cp.closed {
 		cp.mu.RUnlock()
@@ -106,11 +111,16 @@ func (cp *ClientPool) GetClient(ctx context.Context, instanceID int) (*Client, e
 	}
 
 	// Need to create or recreate the client
-	return cp.createClient(ctx, instanceID)
+	return cp.createClientWithTimeout(ctx, instanceID, timeout)
 }
 
-// createClient creates a new client connection
+// createClient creates a new client connection with default timeout
 func (cp *ClientPool) createClient(ctx context.Context, instanceID int) (*Client, error) {
+	return cp.createClientWithTimeout(ctx, instanceID, 30*time.Second)
+}
+
+// createClientWithTimeout creates a new client connection with custom timeout
+func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID int, timeout time.Duration) (*Client, error) {
 	cp.mu.Lock()
 	defer cp.mu.Unlock()
 
@@ -153,8 +163,8 @@ func (cp *ClientPool) createClient(ctx context.Context, instanceID int) (*Client
 		}
 	}
 
-	// Create new client
-	client, err := NewClient(instanceID, instance.Host, instance.Username, password, instance.BasicUsername, basicPassword)
+	// Create new client with custom timeout
+	client, err := NewClientWithTimeout(instanceID, instance.Host, instance.Username, password, instance.BasicUsername, basicPassword, timeout)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create client: %w", err)
 	}
