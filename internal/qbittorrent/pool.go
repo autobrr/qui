@@ -54,7 +54,9 @@ type ClientPool struct {
 	instanceStore     *models.InstanceStore
 	cache             *ristretto.Cache
 	mu                sync.RWMutex
-	dbMu              sync.Mutex // Serialize database updates
+	dbMu              sync.Mutex          // Serialize database updates
+	creationMu        sync.Mutex          // Serialize client creation operations
+	creationLocks     map[int]*sync.Mutex // Per-instance creation locks
 	closed            bool
 	healthTicker      *time.Ticker
 	stopHealth        chan struct{}
@@ -78,6 +80,7 @@ func NewClientPool(instanceStore *models.InstanceStore) (*ClientPool, error) {
 		clients:           make(map[int]*Client),
 		instanceStore:     instanceStore,
 		cache:             cache,
+		creationLocks:     make(map[int]*sync.Mutex),
 		healthTicker:      time.NewTicker(healthCheckInterval),
 		stopHealth:        make(chan struct{}),
 		failureTracker:    make(map[int]*failureInfo),
@@ -88,6 +91,20 @@ func NewClientPool(instanceStore *models.InstanceStore) (*ClientPool, error) {
 	go cp.healthCheckLoop()
 
 	return cp, nil
+}
+
+// getInstanceLock gets or creates a per-instance creation lock
+func (cp *ClientPool) getInstanceLock(instanceID int) *sync.Mutex {
+	cp.creationMu.Lock()
+	defer cp.creationMu.Unlock()
+
+	if lock, exists := cp.creationLocks[instanceID]; exists {
+		return lock
+	}
+
+	lock := &sync.Mutex{}
+	cp.creationLocks[instanceID] = lock
+	return lock
 }
 
 // GetClient returns a qBittorrent client for the given instance ID with default timeout
@@ -121,18 +138,27 @@ func (cp *ClientPool) createClient(ctx context.Context, instanceID int) (*Client
 
 // createClientWithTimeout creates a new client connection with custom timeout
 func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID int, timeout time.Duration) (*Client, error) {
-	cp.mu.Lock()
-	defer cp.mu.Unlock()
+	// Use per-instance lock to prevent blocking other instances
+	instanceLock := cp.getInstanceLock(instanceID)
+	instanceLock.Lock()
+	defer instanceLock.Unlock()
 
-	// Check if instance is in backoff period
-	if cp.isInBackoffLocked(instanceID) {
+	// Check if instance is in backoff period (need to acquire read lock for this)
+	cp.mu.RLock()
+	inBackoff := cp.isInBackoffLocked(instanceID)
+	cp.mu.RUnlock()
+
+	if inBackoff {
 		return nil, fmt.Errorf("instance %d is in backoff period, will retry later", instanceID)
 	}
 
-	// Double-check after acquiring write lock
+	// Double-check if client was created while we were waiting for the lock
+	cp.mu.RLock()
 	if client, exists := cp.clients[instanceID]; exists && client.IsHealthy() {
+		cp.mu.RUnlock()
 		return client, nil
 	}
+	cp.mu.RUnlock()
 
 	// Get instance details
 	instance, err := cp.instanceStore.Get(ctx, instanceID)
@@ -169,11 +195,12 @@ func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID in
 		return nil, fmt.Errorf("failed to create client: %w", err)
 	}
 
-	// Store in pool
+	// Store in pool (need write lock for this)
+	cp.mu.Lock()
 	cp.clients[instanceID] = client
-
 	// Reset failure tracking on successful connection
 	cp.resetFailureTrackingLocked(instanceID)
+	cp.mu.Unlock()
 
 	// Update last connected timestamp
 	cp.dbMu.Lock()
@@ -188,9 +215,14 @@ func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID in
 // RemoveClient removes a client from the pool
 func (cp *ClientPool) RemoveClient(instanceID int) {
 	cp.mu.Lock()
-	defer cp.mu.Unlock()
-
 	delete(cp.clients, instanceID)
+	cp.mu.Unlock()
+
+	// Also clean up the per-instance lock to prevent memory leaks
+	cp.creationMu.Lock()
+	delete(cp.creationLocks, instanceID)
+	cp.creationMu.Unlock()
+
 	log.Info().Int("instanceID", instanceID).Msg("Removed client from pool")
 }
 
