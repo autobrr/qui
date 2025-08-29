@@ -66,6 +66,20 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pnpm-store-
 
+      - name: Fetch premium themes
+        run: |
+          if [ -n "${{ secrets.THEMES_REPO_TOKEN }}" ]; then
+            git clone --depth=1 --sparse \
+              https://${{ secrets.THEMES_REPO_TOKEN }}@github.com/autobrr/qui-premium-themes.git .themes-temp
+            cd .themes-temp && git sparse-checkout set themes
+            mkdir -p web/src/themes/premium
+            cp themes/*.css web/src/themes/premium/ 2>/dev/null || true
+            rm -rf .themes-temp
+            echo "Premium themes fetched successfully"
+          else
+            echo "THEMES_REPO_TOKEN not set, skipping premium themes"
+          fi
+
       - name: Install dependencies
         working-directory: web
         run: pnpm install --frozen-lockfile
