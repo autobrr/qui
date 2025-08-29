@@ -9,12 +9,12 @@ const FONT_MAP: Record<string, string> = {
   "Inter": "Inter:wght@300;400;500;600;700",
   "Montserrat": "Montserrat:wght@300;400;500;600;700",
   "Poppins": "Poppins:wght@300;400;500;600;700",
-  
+
   // Serif fonts
   "Georgia": "", // System font, no need to load
   "Source Serif 4": "Source+Serif+4:wght@300;400;500;600;700",
   "Lora": "Lora:wght@400;500;600;700",
-  
+
   // Mono fonts
   "JetBrains Mono": "JetBrains+Mono:wght@300;400;500;600;700",
   "Fira Code": "Fira+Code:wght@300;400;500;600;700",
@@ -35,18 +35,18 @@ function extractFontName(fontFamily: string): string {
 // Load a single font
 async function loadFont(fontName: string): Promise<void> {
   const googleFontId = FONT_MAP[fontName];
-  
+
   // Skip if it's a system font or already loaded
   if (!googleFontId || loadedFonts.has(fontName)) {
     return;
   }
-  
+
   // Create link element
   const link = document.createElement("link");
   link.rel = "stylesheet";
   link.href = `https://fonts.googleapis.com/css2?family=${googleFontId}&display=swap`;
   link.dataset.fontLoader = fontName;
-  
+
   // Add to head
   document.head.appendChild(link);
   loadedFonts.add(fontName);
@@ -60,11 +60,11 @@ export async function loadThemeFonts(theme: {
   };
 }): Promise<void> {
   const fontsToLoad = new Set<string>();
-  
+
   // Extract fonts from both light and dark modes
   ["light", "dark"].forEach((mode) => {
     const vars = theme.cssVars[mode as "light" | "dark"];
-    
+
     ["--font-sans", "--font-serif", "--font-mono"].forEach((key) => {
       if (vars[key]) {
         const fontName = extractFontName(vars[key]);
@@ -74,7 +74,7 @@ export async function loadThemeFonts(theme: {
       }
     });
   });
-  
+
   // Load all fonts
   await Promise.all(Array.from(fontsToLoad).map(loadFont));
 }

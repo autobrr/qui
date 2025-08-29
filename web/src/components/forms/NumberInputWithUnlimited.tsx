@@ -33,7 +33,7 @@ export function NumberInputWithUnlimited({
 }: NumberInputWithUnlimitedProps) {
   // Display value: show empty string for -1 when unlimited is allowed
   const displayValue = allowUnlimited && value === -1 ? "" : value.toString()
-  
+
   // Default placeholder based on unlimited support
   const defaultPlaceholder = allowUnlimited ? "Unlimited" : undefined
   const actualPlaceholder = placeholder ?? defaultPlaceholder
@@ -54,7 +54,7 @@ export function NumberInputWithUnlimited({
         value={displayValue}
         onChange={(e) => {
           const inputValue = e.target.value
-          
+
           // Allow temporary empty or negative sign state
           if (inputValue === "" || inputValue === "-") {
             if (allowUnlimited) {
@@ -65,16 +65,16 @@ export function NumberInputWithUnlimited({
             }
             return
           }
-          
+
           const num = parseFloat(inputValue)
           if (isNaN(num)) return
-          
+
           // Allow -1 for unlimited if allowUnlimited is true
           if (allowUnlimited && num === -1) {
             onChange(-1)
             return
           }
-          
+
           // Otherwise enforce min/max bounds
           onChange(Math.max(min, Math.min(max, num)))
         }}

@@ -84,7 +84,7 @@ function NumberInput({
 
 export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSettingsFormProps) {
   const { preferences, isLoading, updatePreferences, isUpdating } = useInstancePreferences(instanceId)
-  
+
   const form = useForm({
     defaultValues: {
       listen_port: 0,
@@ -173,7 +173,7 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
           <Server className="h-4 w-4" />
           <h3 className="text-lg font-medium">Listening Port</h3>
         </div>
-        
+
         <div className="space-y-4">
           <form.Field name="listen_port">
             {(field) => (
@@ -408,7 +408,7 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
       {/* Outgoing Ports Section */}
       <div className="space-y-4">
         <h3 className="text-lg font-medium">Outgoing Ports</h3>
-        
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <form.Field name="outgoing_ports_min">
             {(field) => (

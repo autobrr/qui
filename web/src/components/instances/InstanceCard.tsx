@@ -10,18 +10,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { InstanceErrorDisplay } from "@/components/instances/InstanceErrorDisplay"
-import { 
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
-import { 
-  MoreVertical, 
-  Edit, 
-  Trash2, 
-  RefreshCw, 
+import {
+  MoreVertical,
+  Edit,
+  Trash2,
+  RefreshCw,
   CheckCircle,
   XCircle,
   Eye,
@@ -50,7 +50,7 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
       // Convert connected to success for consistency with component state
       const testResult = { success: result.connected, message: result.message }
       setTestResult(testResult)
-      
+
       if (result.connected) {
         toast.success("Test Connection Successful", {
           description: result.message || "Successfully connected to qBittorrent instance",
@@ -96,7 +96,7 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
             </CardTitle>
           </div>
           <div className="flex items-center gap-1">
-            <Badge 
+            <Badge
               variant={instance.connected ? "default" : "destructive"}
             >
               {instance.connected ? "Connected" : "Disconnected"}
@@ -117,8 +117,8 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
                   Test Connection
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem 
-                  onClick={handleDelete} 
+                <DropdownMenuItem
+                  onClick={handleDelete}
                   disabled={isDeleting}
                   className="text-destructive"
                 >
@@ -170,9 +170,9 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
             </div>
           )}
         </div>
-        
+
         <InstanceErrorDisplay instance={instance} onEdit={onEdit} showEditButton={true} />
-        
+
         {testResult && (
           <div className={cn(
             "mt-4 flex items-center gap-2 text-sm",
@@ -186,7 +186,7 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
             <span>{testResult.success ? testResult.message : formatErrorMessage(testResult.message)}</span>
           </div>
         )}
-        
+
         {isTesting && (
           <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
             <RefreshCw className="h-4 w-4 animate-spin" />

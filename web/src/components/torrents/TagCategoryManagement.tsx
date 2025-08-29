@@ -152,7 +152,7 @@ export function CreateCategoryDialog({ open, onOpenChange, instanceId }: CreateC
   const queryClient = useQueryClient()
 
   const mutation = useMutation({
-    mutationFn: ({ name, savePath }: { name: string; savePath?: string }) => 
+    mutationFn: ({ name, savePath }: { name: string; savePath?: string }) =>
       api.createCategory(instanceId, name, savePath),
     onSuccess: () => {
       // Refetch instead of invalidate to keep showing stale data
@@ -322,7 +322,7 @@ export function DeleteCategoryDialog({ open, onOpenChange, instanceId, categoryN
         <AlertDialogHeader>
           <AlertDialogTitle>Delete Category</AlertDialogTitle>
           <AlertDialogDescription>
-            Are you sure you want to delete the category "{categoryName}"? 
+            Are you sure you want to delete the category "{categoryName}"?
             Torrents in this category will become uncategorized.
           </AlertDialogDescription>
         </AlertDialogHeader>
@@ -349,15 +349,15 @@ interface DeleteUnusedTagsDialogProps {
   torrentCounts?: Record<string, number>
 }
 
-export function DeleteUnusedTagsDialog({ 
-  open, 
-  onOpenChange, 
-  instanceId, 
+export function DeleteUnusedTagsDialog({
+  open,
+  onOpenChange,
+  instanceId,
   tags,
   torrentCounts = {},
 }: DeleteUnusedTagsDialogProps) {
   const queryClient = useQueryClient()
-  
+
   // Find unused tags (tags with 0 torrents)
   const unusedTags = tags.filter(tag => {
     const count = torrentCounts[`tag:${tag}`] || 0
@@ -390,7 +390,7 @@ export function DeleteUnusedTagsDialog({
               "There are no unused tags to delete."
             ) : (
               <>
-                Are you sure you want to delete {unusedTags.length} unused tag{unusedTags.length !== 1 ? "s" : ""}? 
+                Are you sure you want to delete {unusedTags.length} unused tag{unusedTags.length !== 1 ? "s" : ""}?
                 This action cannot be undone.
                 <div className="mt-3 max-h-40 overflow-y-auto">
                   <div className="text-sm space-y-1">

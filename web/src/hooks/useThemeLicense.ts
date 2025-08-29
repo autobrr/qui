@@ -21,7 +21,7 @@ export const useLicensedThemes = () => {
 // Hook to validate a theme license
 export const useValidateThemeLicense = () => {
   const queryClient = useQueryClient()
-  
+
   return useMutation({
     mutationFn: (licenseKey: string) => api.validateThemeLicense(licenseKey),
     onSuccess: (data) => {
@@ -41,7 +41,7 @@ export const useValidateThemeLicense = () => {
 // Hook to delete a theme license
 export const useDeleteThemeLicense = () => {
   const queryClient = useQueryClient()
-  
+
   return useMutation({
     mutationFn: (licenseKey: string) => api.deleteThemeLicense(licenseKey),
     onSuccess: () => {
@@ -59,7 +59,7 @@ export const useDeleteThemeLicense = () => {
 // Hook to refresh all theme licenses
 export const useRefreshThemeLicenses = () => {
   const queryClient = useQueryClient()
-  
+
   return useMutation({
     mutationFn: () => api.refreshThemeLicenses(),
     onSuccess: () => {
@@ -77,7 +77,7 @@ export const useRefreshThemeLicenses = () => {
 // Helper hook to check if user has premium access
 export const useHasPremiumAccess = () => {
   const { data, isLoading } = useLicensedThemes()
-  
+
   return {
     hasPremiumAccess: data?.hasPremiumAccess ?? false,
     isLoading,

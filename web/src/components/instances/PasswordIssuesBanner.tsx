@@ -23,7 +23,7 @@ export function PasswordIssuesBanner({ instances }: PasswordIssuesBannerProps) {
       <AlertTriangle className="h-4 w-4" />
       <AlertTitle>Password Issues Detected</AlertTitle>
       <AlertDescription>
-        Some instances cannot decrypt their saved passwords, likely due to a configuration change. 
+        Some instances cannot decrypt their saved passwords, likely due to a configuration change.
         Check the affected instances below to resolve this issue.
       </AlertDescription>
     </Alert>

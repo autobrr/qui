@@ -15,7 +15,7 @@ interface DraggableTableHeaderProps {
 
 export function DraggableTableHeader({ header }: DraggableTableHeaderProps) {
   const { column } = header
-  
+
   const {
     attributes,
     listeners,
@@ -54,7 +54,7 @@ export function DraggableTableHeader({ header }: DraggableTableHeaderProps) {
         {...(column.id !== "select" ? listeners : {})}
       >
         {/* Header content */}
-        <div 
+        <div
           className={`flex items-center gap-1 flex-1 ${column.id === "select" ? "justify-center" : ""}`}
         >
           <span className={`truncate ${column.id === "select" ? "flex items-center" : ""}`}>
@@ -72,7 +72,7 @@ export function DraggableTableHeader({ header }: DraggableTableHeaderProps) {
           )}
         </div>
       </div>
-      
+
       {/* Resize handle */}
       {column.getCanResize() && (
         <div
@@ -80,7 +80,7 @@ export function DraggableTableHeader({ header }: DraggableTableHeaderProps) {
           onTouchStart={header.getResizeHandler()}
           className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none group/resize flex justify-center"
         >
-          <div 
+          <div
             className={`h-full w-px ${
               column.getIsResizing()? "bg-primary": "bg-border group-hover/resize:bg-primary/50"
             }`}

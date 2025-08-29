@@ -16,10 +16,10 @@ export function usePersistedAccordionState(storageKey: string, defaultValue: str
     } catch (error) {
       console.error(`Failed to load accordion state from localStorage (${storageKey}):`, error)
     }
-    
+
     return defaultValue
   })
-  
+
   // Persist to localStorage whenever state changes
   useEffect(() => {
     try {
@@ -28,6 +28,6 @@ export function usePersistedAccordionState(storageKey: string, defaultValue: str
       console.error(`Failed to save accordion state to localStorage (${storageKey}):`, error)
     }
   }, [storageKey, value])
-  
+
   return [value, setValue] as const
 }

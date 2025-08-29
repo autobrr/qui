@@ -26,7 +26,7 @@ function App() {
     initializeTheme().catch(console.error)
     initializePWANativeTheme()
   }, [])
-  
+
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeValidator />

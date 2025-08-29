@@ -35,9 +35,10 @@ export default tseslint.config([
           functions: 'never',
         },
       ],
-      '@stylistic/multiline-ternary': ['warn', 'never'],
-      '@stylistic/object-curly-spacing': ['error', 'always'],
       '@stylistic/indent': ['error', 2, { 'SwitchCase': 1 }],
+      '@stylistic/multiline-ternary': ['warn', 'never'],
+      '@stylistic/no-trailing-spaces': ['warn'],
+      '@stylistic/object-curly-spacing': ['error', 'always'],
       '@typescript-eslint/no-unused-vars': ['warn'],
       'linebreak-style': ['error', 'unix'],
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }]

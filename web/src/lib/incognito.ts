@@ -70,7 +70,7 @@ export const LINUX_CATEGORIES = {
 
 const LINUX_CATEGORIES_ARRAY = [
   "distributions",
-  "documentation", 
+  "documentation",
   "source-code",
   "live-usb",
   "server-editions",
@@ -156,21 +156,21 @@ export function getLinuxTags(hash: string): string {
   for (let i = 0; i < Math.min(15, hash.length); i++) {
     hashSum += hash.charCodeAt(i) * (i + 2)
   }
-  
+
   // 20% chance of no tags
   if (hashSum % 10 < 2) return ""
-  
+
   // Generate 1-3 tags
   const numTags = (hashSum % 3) + 1
   const tags: string[] = []
-  
+
   for (let i = 0; i < numTags; i++) {
     const tagIndex = (hashSum + i * 7) % LINUX_TAGS.length
     if (!tags.includes(LINUX_TAGS[tagIndex])) {
       tags.push(LINUX_TAGS[tagIndex])
     }
   }
-  
+
   return tags.join(", ")
 }
 
@@ -198,7 +198,7 @@ export function getLinuxRatio(hash: string): number {
   for (let i = 0; i < Math.min(10, hash.length); i++) {
     hashSum += hash.charCodeAt(i) * (i + 5)
   }
-  
+
   // Generate ratios between 0.1 and 10.0 with some clustering around good values
   const ratioRanges = [
     { min: 0.1, max: 0.5, weight: 15 },   // Poor ratio
@@ -207,11 +207,11 @@ export function getLinuxRatio(hash: string): number {
     { min: 2.0, max: 5.0, weight: 25 },   // Very good ratio
     { min: 5.0, max: 10.0, weight: 10 },  // Excellent ratio
   ]
-  
+
   // Use weighted distribution
   const totalWeight = ratioRanges.reduce((sum, r) => sum + r.weight, 0)
   let weightPosition = hashSum % totalWeight
-  
+
   for (const range of ratioRanges) {
     if (weightPosition < range.weight) {
       // Generate value within this range
@@ -221,7 +221,7 @@ export function getLinuxRatio(hash: string): number {
     }
     weightPosition -= range.weight
   }
-  
+
   return 1.5 // Default fallback
 }
 
@@ -234,30 +234,30 @@ export function useIncognitoMode(): [boolean, (value: boolean) => void] {
     const stored = localStorage.getItem(INCOGNITO_STORAGE_KEY)
     return stored === "true"
   })
-  
+
   // Listen for storage changes to sync incognito mode across components
   useEffect(() => {
     const handleStorageChange = () => {
       const stored = localStorage.getItem(INCOGNITO_STORAGE_KEY)
       setIncognitoModeState(stored === "true")
     }
-    
+
     // Listen for both storage events (cross-tab) and custom events (same-tab)
     window.addEventListener("storage", handleStorageChange)
     window.addEventListener("incognito-mode-changed", handleStorageChange)
-    
+
     return () => {
       window.removeEventListener("storage", handleStorageChange)
       window.removeEventListener("incognito-mode-changed", handleStorageChange)
     }
   }, [])
-  
+
   const setIncognitoMode = (value: boolean) => {
     setIncognitoModeState(value)
     localStorage.setItem(INCOGNITO_STORAGE_KEY, String(value))
     // Dispatch custom event for same-tab updates
     window.dispatchEvent(new Event("incognito-mode-changed"))
   }
-  
+
   return [incognitoMode, setIncognitoMode]
 }

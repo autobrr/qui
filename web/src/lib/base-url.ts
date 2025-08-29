@@ -8,7 +8,7 @@
 export function getBaseUrl(): string {
   // @ts-expect-error - This is injected by the backend
   const baseUrl = window.__QUI_BASE_URL__ || "/"
-  
+
   // Ensure it ends with /
   return baseUrl.endsWith("/") ? baseUrl : baseUrl + "/"
 }

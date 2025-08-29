@@ -18,7 +18,7 @@ export function InstanceErrorDisplay({ instance, onEdit, showEditButton = false 
   // Helper to check if connection error is decryption-related
   const isDecryptionError = (error: string) => {
     const errorLower = error.toLowerCase()
-    return errorLower.includes("decrypt") && 
+    return errorLower.includes("decrypt") &&
            (errorLower.includes("password") || errorLower.includes("cipher"))
   }
 
@@ -34,9 +34,9 @@ export function InstanceErrorDisplay({ instance, onEdit, showEditButton = false 
                 Unable to decrypt saved password. This usually happens when the session secret has changed.
               </div>
               {showEditButton && onEdit && (
-                <Button 
+                <Button
                   onClick={onEdit}
-                  size="sm" 
+                  size="sm"
                   variant="outline"
                 >
                   <Edit className="mr-2 h-3 w-3" />

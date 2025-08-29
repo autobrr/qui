@@ -140,7 +140,7 @@ export const TorrentActions = memo(function TorrentActions({ instanceId, selecte
           queryKey: ["torrent-counts", instanceId],
           exact: false,
         })
-        
+
         // Then trigger a refetch
         await queryClient.refetchQueries({
           queryKey: ["torrents-list", instanceId],
@@ -154,7 +154,7 @@ export const TorrentActions = memo(function TorrentActions({ instanceId, selecte
       } else {
         // Apply optimistic updates for actions that change visible state
         const optimisticActions = ["pause", "resume", "delete", "deleteWithFiles", "recheck", "setCategory", "addTags", "removeTags", "setTags", "toggleAutoTMM"]
-        
+
         if (optimisticActions.includes(variables.action)) {
           // Get all cached queries for this instance
           const cache = queryClient.getQueryCache()
@@ -162,7 +162,7 @@ export const TorrentActions = memo(function TorrentActions({ instanceId, selecte
             queryKey: ["torrents-list", instanceId],
             exact: false,
           })
-          
+
           // Build payload for the action
           const payload = {
             category: variables.category,
@@ -170,18 +170,18 @@ export const TorrentActions = memo(function TorrentActions({ instanceId, selecte
             enable: variables.enable,
             deleteFiles: variables.deleteFiles,
           }
-          
+
           // Optimistically update torrent states in all cached queries
           queries.forEach((query: Query) => {
             queryClient.setQueryData(query.queryKey, (oldData: TorrentResponse | undefined) => {
               if (!oldData?.torrents) return oldData
-              
+
               // Check if this query has a status filter in its key
               // Query key structure: ['torrents-list', instanceId, currentPage, filters, search]
               const queryKey = query.queryKey as readonly unknown[]
               const filters = queryKey[3] as { status?: string[] } | undefined // filters is at index 3
               const statusFilters = filters?.status || []
-              
+
               // Apply optimistic updates using our utility function
               const { torrents: updatedTorrents } = applyOptimisticUpdates(
                 oldData.torrents,
@@ -190,7 +190,7 @@ export const TorrentActions = memo(function TorrentActions({ instanceId, selecte
                 statusFilters,
                 payload
               )
-              
+
               return {
                 ...oldData,
                 torrents: updatedTorrents,
@@ -200,29 +200,29 @@ export const TorrentActions = memo(function TorrentActions({ instanceId, selecte
             })
           })
         }
-        
+
         // For other operations, add delay to allow qBittorrent to process
         // Resume operations need more time for state transition
         const delay = variables.action === "resume" ? 2000 : 1000
-        
+
         setTimeout(() => {
           // Always invalidate to get the real state from server
-          queryClient.invalidateQueries({ 
+          queryClient.invalidateQueries({
             queryKey: ["torrents-list", instanceId],
-            exact: false, 
+            exact: false,
           })
-          queryClient.invalidateQueries({ 
+          queryClient.invalidateQueries({
             queryKey: ["torrent-counts", instanceId],
-            exact: false, 
+            exact: false,
           })
         }, delay)
         onComplete?.()
       }
-      
+
       // Show success toast
       const count = totalSelectionCount || selectedHashes.length
       const torrentText = count === 1 ? "torrent" : "torrents"
-      
+
       switch (variables.action) {
         case "resume":
           toast.success(`Resumed ${count} ${torrentText}`)
@@ -281,7 +281,7 @@ export const TorrentActions = memo(function TorrentActions({ instanceId, selecte
       const count = totalSelectionCount || selectedHashes.length
       const torrentText = count === 1 ? "torrent" : "torrents"
       const actionText = variables.action === "recheck" ? "recheck" : variables.action
-      
+
       toast.error(`Failed to ${actionText} ${count} ${torrentText}`, {
         description: error.message || "An unexpected error occurred",
       })
@@ -313,7 +313,7 @@ export const TorrentActions = memo(function TorrentActions({ instanceId, selecte
         throw err
       }
     }
-    
+
     setShowTagsDialog(false)
   }, [mutation])
 
@@ -323,11 +323,11 @@ export const TorrentActions = memo(function TorrentActions({ instanceId, selecte
   }, [mutation])
 
   const handleSetShareLimit = useCallback(async (ratioLimit: number, seedingTimeLimit: number, inactiveSeedingTimeLimit: number) => {
-    await mutation.mutateAsync({ 
-      action: "setShareLimit", 
-      ratioLimit, 
-      seedingTimeLimit, 
-      inactiveSeedingTimeLimit, 
+    await mutation.mutateAsync({
+      action: "setShareLimit",
+      ratioLimit,
+      seedingTimeLimit,
+      inactiveSeedingTimeLimit,
     })
   }, [mutation])
 
@@ -340,7 +340,7 @@ export const TorrentActions = memo(function TorrentActions({ instanceId, selecte
     if (downloadLimit >= 0) {
       promises.push(mutation.mutateAsync({ action: "setDownloadLimit", downloadLimit }))
     }
-    
+
     if (promises.length > 0) {
       await Promise.all(promises)
     }
@@ -461,7 +461,7 @@ export const TorrentActions = memo(function TorrentActions({ instanceId, selecte
             const allEnabled = tmmStates.length > 0 && tmmStates.every(state => state === true)
             const allDisabled = tmmStates.length > 0 && tmmStates.every(state => state === false)
             const mixed = tmmStates.length > 0 && !allEnabled && !allDisabled
-            
+
             if (mixed) {
               return (
                 <>
@@ -482,7 +482,7 @@ export const TorrentActions = memo(function TorrentActions({ instanceId, selecte
                 </>
               )
             }
-            
+
             return (
               <DropdownMenuItem
                 onClick={() => mutation.mutate({ action: "toggleAutoTMM", enable: !allEnabled })}

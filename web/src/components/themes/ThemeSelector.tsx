@@ -24,20 +24,20 @@ function getThemeColors(theme: Theme) {
   // Check if dark mode is active by looking at the document element
   const isDark = document.documentElement.classList.contains("dark")
   const cssVars = isDark ? theme.cssVars.dark : theme.cssVars.light
-  
+
   // Extract the actual color values from the theme
   const primary = cssVars["--primary"]
-  const secondary = cssVars["--secondary"] 
+  const secondary = cssVars["--secondary"]
   const accent = cssVars["--accent"]
-  
+
   return { primary, secondary, accent }
 }
 
 function ThemeCard({ theme, isSelected, isLocked, onSelect }: ThemeCardProps) {
   const colors = getThemeColors(theme)
-  
+
   return (
-    <Card 
+    <Card
       className={`cursor-pointer transition-all duration-200 hover:shadow-md h-full ${
         isSelected ? "ring-2 ring-primary" : ""
       } ${isLocked ? "opacity-60" : ""}`}
@@ -64,32 +64,32 @@ function ThemeCard({ theme, isSelected, isLocked, onSelect }: ThemeCardProps) {
       <CardContent className="pt-0 space-y-2 sm:space-y-3">
         {/* Theme preview colors */}
         <div className="flex gap-1">
-          <div 
+          <div
             className="w-3 h-3 sm:w-4 sm:h-4 rounded-full ring-1 ring-black/10 dark:ring-white/10"
-            style={{ 
+            style={{
               backgroundColor: colors.primary,
               backgroundImage: "none",
               background: colors.primary + " !important",
             }}
           />
-          <div 
+          <div
             className="w-3 h-3 sm:w-4 sm:h-4 rounded-full ring-1 ring-black/10 dark:ring-white/10"
-            style={{ 
+            style={{
               backgroundColor: colors.secondary,
               backgroundImage: "none",
               background: colors.secondary + " !important",
             }}
           />
-          <div 
+          <div
             className="w-3 h-3 sm:w-4 sm:h-4 rounded-full ring-1 ring-black/10 dark:ring-white/10"
-            style={{ 
+            style={{
               backgroundColor: colors.accent,
               backgroundImage: "none",
               background: colors.accent + " !important",
             }}
           />
         </div>
-        
+
         {/* Badges */}
         <div className="flex items-center gap-1 sm:gap-2">
           {theme.isPremium ? (
@@ -103,7 +103,7 @@ function ThemeCard({ theme, isSelected, isLocked, onSelect }: ThemeCardProps) {
               Free
             </Badge>
           )}
-          
+
           {isLocked && (
             <Badge variant="destructive" className="text-xs px-1.5 sm:px-2">
               <Lock className="h-2.5 w-2.5 sm:h-3 sm:w-3 mr-0.5 sm:mr-1" />
@@ -120,15 +120,15 @@ function ThemeCard({ theme, isSelected, isLocked, onSelect }: ThemeCardProps) {
 export function ThemeSelector() {
   const { theme: currentTheme, setTheme } = useTheme()
   const { hasPremiumAccess, isLoading } = useHasPremiumAccess()
-  
+
   const isThemeLicensed = (themeId: string) => {
     if (!isThemePremium(themeId)) return true // Free themes are always available
     return hasPremiumAccess // Premium themes require premium access
   }
-  
+
   const freeThemes = themes.filter(theme => !theme.isPremium)
   const premiumThemes = themes.filter(theme => theme.isPremium)
-  
+
   const handleThemeSelect = (themeId: string) => {
     if (isThemeLicensed(themeId)) {
       setTheme(themeId)
@@ -138,7 +138,7 @@ export function ThemeSelector() {
       })
     }
   }
-  
+
   if (isLoading) {
     return (
       <Card>
@@ -161,7 +161,7 @@ export function ThemeSelector() {
       </Card>
     )
   }
-  
+
   return (
     <Card>
       <CardHeader>
@@ -192,9 +192,9 @@ export function ThemeSelector() {
             ))}
           </div>
         </div>
-        
+
         <Separator />
-        
+
         {/* Premium Themes */}
         <div>
           <h4 className="font-medium mb-3 flex items-center gap-2">
@@ -204,7 +204,7 @@ export function ThemeSelector() {
             </Badge>
             Premium Themes
           </h4>
-          
+
           {premiumThemes.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-8">
               No premium themes available yet. Check back later for new themes!
@@ -226,8 +226,8 @@ export function ThemeSelector() {
             </div>
           )}
         </div>
-        
-        
+
+
         {/* Current theme info */}
         <div className="text-center">
           <p className="text-sm text-muted-foreground">

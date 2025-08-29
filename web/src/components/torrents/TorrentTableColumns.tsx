@@ -88,7 +88,7 @@ export const createColumns = (
     cell: ({ row, table }) => {
       const torrent = row.original
       const hash = torrent.hash
-      
+
       // Determine if row is selected based on custom logic
       const isRowSelected = (() => {
         if (selectionEnhancers?.isAllSelected) {
@@ -99,7 +99,7 @@ export const createColumns = (
           return row.getIsSelected()
         }
       })()
-      
+
       return (
         <div className="flex items-center justify-center p-1 -m-1">
           <Checkbox
@@ -181,11 +181,11 @@ export const createColumns = (
       const priority = row.original.priority
       const state = row.original.state
       const isQueued = state === "queuedDL" || state === "queuedUP"
-      
+
       if (priority === 0 && !isQueued) {
         return <span className="text-sm text-muted-foreground text-center block">-</span>
       }
-      
+
       if (isQueued) {
         const queueType = state === "queuedDL" ? "DL" : "UP"
         const badgeVariant = state === "queuedDL" ? "secondary" : "outline"
@@ -198,7 +198,7 @@ export const createColumns = (
           </div>
         )
       }
-      
+
       return <span className="text-sm font-medium text-center block">{priority}</span>
     },
     size: 65,
@@ -243,10 +243,10 @@ export const createColumns = (
       const priority = row.original.priority
       const label = getStateLabel(state)
       const isQueued = state === "queuedDL" || state === "queuedUP"
-      
-      const variant = 
+
+      const variant =
         state === "downloading" ? "default" :state === "stalledDL" ? "secondary" :state === "uploading" ? "default" :state === "stalledUP" ? "secondary" :state === "pausedDL" || state === "pausedUP" ? "secondary" :state === "queuedDL" || state === "queuedUP" ? "secondary" :state === "error" || state === "missingFiles" ? "destructive" :"outline"
-      
+
       if (isQueued && priority > 0) {
         return (
           <div className="flex items-center gap-1">
@@ -257,7 +257,7 @@ export const createColumns = (
           </div>
         )
       }
-      
+
       return <Badge variant={variant} className="text-xs">{label}</Badge>
     },
     size: 130,
@@ -287,10 +287,10 @@ export const createColumns = (
       const ratio = incognitoMode ? getLinuxRatio(row.original.hash) : row.original.ratio
       const displayRatio = ratio === -1 ? "∞" : ratio.toFixed(2)
       const colorVar = getRatioColor(ratio)
-      
+
       return (
-        <span 
-          className="text-sm font-medium" 
+        <span
+          className="text-sm font-medium"
           style={{ color: colorVar }}
         >
           {displayRatio}
@@ -316,7 +316,7 @@ export const createColumns = (
       const seconds = date.getSeconds()
       const ampm = hours >= 12 ? "PM" : "AM"
       const displayHours = hours % 12 || 12
-      
+
       return (
         <div className="whitespace-nowrap text-sm">
           {month}/{day}/{year}, {displayHours}:{minutes.toString().padStart(2, "0")}:{seconds.toString().padStart(2, "0")} {ampm}

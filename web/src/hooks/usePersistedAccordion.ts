@@ -10,10 +10,10 @@ export function usePersistedAccordion() {
     const stored = localStorage.getItem("qui-accordion")
     return stored ? JSON.parse(stored) : ["status", "categories", "tags", "trackers"]
   })
-  
+
   useEffect(() => {
     localStorage.setItem("qui-accordion", JSON.stringify(expandedItems))
   }, [expandedItems])
-  
+
   return [expandedItems, setExpandedItems] as const
 }

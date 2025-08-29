@@ -70,7 +70,7 @@ export const AddTagsDialog = memo(function AddTagsDialog({
   const [newTag, setNewTag] = useState("")
   const [temporaryTags, setTemporaryTags] = useState<string[]>([])
   const wasOpen = useRef(false)
-  
+
   // Initialize selected tags only when dialog transitions from closed to open
   useEffect(() => {
     if (open && !wasOpen.current) {
@@ -172,7 +172,7 @@ export const AddTagsDialog = memo(function AddTagsDialog({
               </ScrollArea>
             </div>
           )}
-          
+
           {/* Add new tag */}
           <div className="space-y-2">
             <Label htmlFor="newTag">Create New Tag</Label>
@@ -200,7 +200,7 @@ export const AddTagsDialog = memo(function AddTagsDialog({
               </Button>
             </div>
           </div>
-          
+
           {/* Selected tags summary */}
           {selectedTags.length > 0 && (
             <div className="text-sm text-muted-foreground">
@@ -235,7 +235,7 @@ export const SetTagsDialog = memo(function SetTagsDialog({
   const [newTag, setNewTag] = useState("")
   const [temporaryTags, setTemporaryTags] = useState<string[]>([]) // New state for temporarily created tags
   const wasOpen = useRef(false)
-  
+
   // Initialize selected tags only when dialog transitions from closed to open
   useEffect(() => {
     if (open && !wasOpen.current) {
@@ -337,7 +337,7 @@ export const SetTagsDialog = memo(function SetTagsDialog({
               </ScrollArea>
             </div>
           )}
-          
+
           {/* Add new tag */}
           <div className="space-y-2">
             <Label htmlFor="newTag">Add New Tag</Label>
@@ -365,7 +365,7 @@ export const SetTagsDialog = memo(function SetTagsDialog({
               </Button>
             </div>
           </div>
-          
+
           {/* Selected tags summary */}
           {selectedTags.length > 0 && (
             <div className="text-sm text-muted-foreground">
@@ -408,7 +408,7 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
 }: SetCategoryDialogProps) {
   const [categoryInput, setCategoryInput] = useState("")
   const wasOpen = useRef(false)
-  
+
   // Initialize category only when dialog transitions from closed to open
   useEffect(() => {
     if (open && !wasOpen.current) {
@@ -455,7 +455,7 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
               </SelectContent>
             </Select>
           </div>
-          
+
           {/* Option to enter new category */}
           <div className="space-y-2">
             <Label htmlFor="newCategory">Or create new category</Label>
@@ -507,7 +507,7 @@ export const RemoveTagsDialog = memo(function RemoveTagsDialog({
 }: RemoveTagsDialogProps) {
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const wasOpen = useRef(false)
-  
+
   // Initialize with current tags when dialog opens
   useEffect(() => {
     if (open && !wasOpen.current) {
@@ -576,7 +576,7 @@ export const RemoveTagsDialog = memo(function RemoveTagsDialog({
               No tags found on the selected torrents.
             </div>
           )}
-          
+
           {/* Selected tags summary */}
           {selectedTags.length > 0 && (
             <div className="text-sm text-muted-foreground">

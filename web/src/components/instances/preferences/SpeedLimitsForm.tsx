@@ -50,7 +50,7 @@ function SpeedLimitInput({
   icon: React.ComponentType<{ className?: string }>
 }) {
   const displayValue = bytesToMiB(value)
-  
+
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
@@ -133,11 +133,11 @@ interface SpeedLimitsFormProps {
 
 export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps) {
   const { preferences, isLoading, updatePreferences, isUpdating } = useInstancePreferences(instanceId)
-  
-  
+
+
   // Track if form is being actively edited
   const [isFormDirty, setIsFormDirty] = React.useState(false)
-  
+
   // Memoize preferences to prevent unnecessary form resets
   const memoizedPreferences = React.useMemo(() => preferences, [
     preferences,
@@ -223,7 +223,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
             />
           )}
         </form.Field>
-        
+
         <form.Field name="up_limit">
           {(field) => (
             <SpeedLimitInput
@@ -237,7 +237,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
             />
           )}
         </form.Field>
-        
+
         <form.Field name="alt_dl_limit">
           {(field) => (
             <SpeedLimitInput
@@ -251,7 +251,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
             />
           )}
         </form.Field>
-        
+
         <form.Field name="alt_up_limit">
           {(field) => (
             <SpeedLimitInput

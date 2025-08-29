@@ -18,9 +18,9 @@ export const Footer = () => {
         className="h-5 w-5 text-muted-foreground/60 hover:text-muted-foreground"
         asChild
       >
-        <a 
-          href="https://github.com/autobrr/qui" 
-          target="_blank" 
+        <a
+          href="https://github.com/autobrr/qui"
+          target="_blank"
           rel="noopener noreferrer"
           aria-label="View on GitHub"
         >

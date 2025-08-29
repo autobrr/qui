@@ -269,14 +269,14 @@ const isThemeAccessible = (themeId: string): boolean => {
     // It will be validated once license data loads
     return true;
   }
-  
+
   // If we haven't received validation data yet but initialization is complete,
   // only allow non-premium themes
   if (!validatedThemes) {
     const theme = getThemeById(themeId);
     return !theme?.isPremium;
   }
-  
+
   // Check if theme is in validated list
   return validatedThemes.has(themeId);
 };
@@ -303,34 +303,34 @@ export const getCurrentThemeMode = (): ThemeMode => {
 
 export const setTheme = async (themeId: string, mode?: ThemeMode): Promise<void> => {
   const theme = getThemeById(themeId);
-  
+
   // Validate theme access before applying
   if (!theme || !isThemeAccessible(theme.id)) {
     // Fall back to default theme if not accessible
     const defaultTheme = getDefaultTheme();
     const currentMode = mode || getCurrentThemeMode();
-    
+
     setStoredThemeId(defaultTheme.id);
     if (mode) {
       setStoredMode(mode);
     }
 
-    const isDark = currentMode === THEME_DARK || 
+    const isDark = currentMode === THEME_DARK ||
       (currentMode === THEME_AUTO && getSystemPreference().matches);
 
     await applyTheme(defaultTheme, isDark, true);
     dispatchThemeChange(currentMode, defaultTheme, false);
     return;
   }
-  
+
   const currentMode = mode || getCurrentThemeMode();
-  
+
   setStoredThemeId(theme.id);
   if (mode) {
     setStoredMode(mode);
   }
 
-  const isDark = currentMode === THEME_DARK || 
+  const isDark = currentMode === THEME_DARK ||
     (currentMode === THEME_AUTO && getSystemPreference().matches);
 
   await applyTheme(theme, isDark, true);
@@ -341,7 +341,7 @@ export const setThemeMode = async (mode: ThemeMode): Promise<void> => {
   const theme = getCurrentTheme();
   setStoredMode(mode);
 
-  const isDark = mode === THEME_DARK || 
+  const isDark = mode === THEME_DARK ||
     (mode === THEME_AUTO && getSystemPreference().matches);
 
   await applyTheme(theme, isDark, true);

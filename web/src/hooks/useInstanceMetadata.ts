@@ -28,7 +28,7 @@ export function useInstanceMetadata(instanceId: number) {
         api.getTags(instanceId),
         api.getInstancePreferences(instanceId),
       ])
-      
+
       return { categories, tags, preferences }
     },
     staleTime: 60000, // 1 minute - metadata doesn't change often
@@ -38,6 +38,6 @@ export function useInstanceMetadata(instanceId: number) {
     // IMPORTANT: Keep showing previous data while fetching new data
     placeholderData: (previousData) => previousData,
   })
-  
+
   return query
 }

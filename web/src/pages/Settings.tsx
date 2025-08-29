@@ -180,7 +180,7 @@ function ApiKeysManager() {
     queryFn: () => api.getApiKeys(),
     staleTime: 30 * 1000, // 30 seconds
   })
-  
+
   // Ensure apiKeys is always an array
   const keys = apiKeys || []
 
@@ -242,7 +242,7 @@ function ApiKeysManager() {
                 Give your API key a descriptive name to remember its purpose.
               </DialogDescription>
             </DialogHeader>
-            
+
             {newKey ? (
               <div className="space-y-4">
                 <div>
@@ -308,7 +308,7 @@ function ApiKeysManager() {
                     </div>
                   )}
                 </form.Field>
-                
+
                 <form.Subscribe
                   selector={(state) => [state.canSubmit, state.isSubmitting]}
                 >
@@ -363,7 +363,7 @@ function ApiKeysManager() {
                 </Button>
               </div>
             ))}
-            
+
             {keys.length === 0 && (
               <p className="text-center text-sm text-muted-foreground py-8">
                 No API keys created yet
@@ -399,7 +399,7 @@ function ApiKeysManager() {
 export function Settings() {
   const search = useSearch({ from: "/_authenticated/settings" })
   const defaultTab = (search as any)?.tab || "security"
-  
+
   return (
     <div className="container mx-auto p-6">
       <div className="mb-6">

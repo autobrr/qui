@@ -7,7 +7,7 @@ import { useState, useEffect } from "react"
 
 export function usePersistedFilterSidebarState(defaultCollapsed: boolean = false) {
   const storageKey = "qui-filter-sidebar-collapsed"
-  
+
   // Initialize state from localStorage or default value
   const [filterSidebarCollapsed, setFilterSidebarCollapsedState] = useState<boolean>(() => {
     try {
@@ -18,10 +18,10 @@ export function usePersistedFilterSidebarState(defaultCollapsed: boolean = false
     } catch (error) {
       console.error("Failed to load filter sidebar state from localStorage:", error)
     }
-    
+
     return defaultCollapsed
   })
-  
+
   // Persist to localStorage whenever state changes
   useEffect(() => {
     try {
@@ -57,6 +57,6 @@ export function usePersistedFilterSidebarState(defaultCollapsed: boolean = false
       return value
     })
   }
-  
+
   return [filterSidebarCollapsed, setFilterSidebarCollapsed] as const
 }

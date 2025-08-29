@@ -28,15 +28,15 @@ export function useTorrentsList(
   options: UseTorrentsListOptions = {}
 ) {
   const { enabled = true, search, filters, sort = "added_on", order = "desc" } = options
-  
+
   const [currentPage, setCurrentPage] = useState(0)
   const [allTorrents, setAllTorrents] = useState<Torrent[]>([])
   const [hasLoadedAll, setHasLoadedAll] = useState(false)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [lastKnownTotal, setLastKnownTotal] = useState(0)
   const pageSize = 500 // Load 500 at a time (backend default)
-  
-  
+
+
   // Reset state when instanceId, filters, search, or sort changes
   useEffect(() => {
     setCurrentPage(0)
@@ -44,12 +44,12 @@ export function useTorrentsList(
     setHasLoadedAll(false)
     setLastKnownTotal(0)
   }, [instanceId, filters, search, sort, order])
-  
+
   // Query for torrents - backend handles stale-while-revalidate
   const { data, isLoading, isFetching } = useQuery<TorrentResponse>({
     queryKey: ["torrents-list", instanceId, currentPage, filters, search, sort, order],
-    queryFn: () => api.getTorrents(instanceId, { 
-      page: currentPage, 
+    queryFn: () => api.getTorrents(instanceId, {
+      page: currentPage,
       limit: pageSize,
       sort,
       order,
@@ -63,7 +63,7 @@ export function useTorrentsList(
     refetchIntervalInBackground: false, // Don't poll when tab is not active
     enabled,
   })
-  
+
   // Update torrents when data arrives
   useEffect(() => {
     if (data?.torrents) {
@@ -71,7 +71,7 @@ export function useTorrentsList(
       if (data.total !== undefined) {
         setLastKnownTotal(data.total)
       }
-      
+
       if (currentPage === 0) {
         // First page, replace all
         setAllTorrents(data.torrents)
@@ -84,18 +84,18 @@ export function useTorrentsList(
           return [...prev, ...newTorrents]
         })
       }
-      
+
       // Check if we've loaded all torrents
       const totalLoaded = currentPage === 0? data.torrents.length: allTorrents.length + data.torrents.length
-      
+
       if (totalLoaded >= (data.total || 0) || data.torrents.length < pageSize) {
         setHasLoadedAll(true)
       }
-      
+
       setIsLoadingMore(false)
     }
   }, [data, currentPage, pageSize])
-  
+
   // Load more function for pagination
   const loadMore = () => {
     if (!hasLoadedAll && !isLoadingMore && !isFetching) {
@@ -103,7 +103,7 @@ export function useTorrentsList(
       setCurrentPage(prev => prev + 1)
     }
   }
-  
+
   // Extract stats from response or calculate defaults
   const stats = useMemo(() => {
     if (data?.stats) {
@@ -117,7 +117,7 @@ export function useTorrentsList(
         totalUploadSpeed: data.stats.totalUploadSpeed || 0,
       }
     }
-    
+
     return {
       total: data?.total || 0,
       downloading: 0,
@@ -128,14 +128,14 @@ export function useTorrentsList(
       totalUploadSpeed: 0,
     }
   }, [data])
-  
+
   // Check if data is from cache or fresh (backend provides this info)
   const isCachedData = data?.cacheMetadata?.source === "cache"
   const isStaleData = data?.cacheMetadata?.isStale === true
-  
+
   // Use lastKnownTotal when loading more pages to prevent flickering
   const effectiveTotalCount = currentPage > 0 && !data?.total ? lastKnownTotal : (data?.total ?? 0)
-  
+
   return {
     torrents: allTorrents,
     totalCount: effectiveTotalCount,

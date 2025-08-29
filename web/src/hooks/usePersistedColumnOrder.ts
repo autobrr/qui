@@ -11,7 +11,7 @@ export function usePersistedColumnOrder(
 ) {
   // Global key shared across all instances
   const storageKey = "qui-column-order"
-  
+
   // Initialize state from localStorage or default values
   const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(() => {
     try {
@@ -26,10 +26,10 @@ export function usePersistedColumnOrder(
     } catch (error) {
       console.error("Failed to load column order from localStorage:", error)
     }
-    
+
     return defaultOrder
   })
-  
+
   // Persist to localStorage whenever state changes
   useEffect(() => {
     try {
@@ -38,6 +38,6 @@ export function usePersistedColumnOrder(
       console.error("Failed to save column order to localStorage:", error)
     }
   }, [columnOrder, storageKey])
-  
+
   return [columnOrder, setColumnOrder] as const
 }

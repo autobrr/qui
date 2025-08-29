@@ -173,8 +173,8 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
         </div>
       </div>
 
-      <Sheet 
-        open={!!selectedTorrent} 
+      <Sheet
+        open={!!selectedTorrent}
         onOpenChange={(open) => {
           if (!open) {
             setSelectedTorrent(null)

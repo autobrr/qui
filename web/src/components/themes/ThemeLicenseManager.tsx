@@ -19,9 +19,9 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog"
-import { 
-  useHasPremiumAccess, 
-  useValidateThemeLicense, 
+import {
+  useHasPremiumAccess,
+  useValidateThemeLicense,
   useDeleteThemeLicense,
   useRefreshThemeLicenses,
   useAllLicenses
@@ -31,7 +31,7 @@ import { Key, Trash2, RefreshCw, Sparkles, Copy } from "lucide-react"
 export function ThemeLicenseManager() {
   const [showAddLicense, setShowAddLicense] = useState(false)
   const [selectedLicenseKey, setSelectedLicenseKey] = useState<string | null>(null)
-  
+
   const { hasPremiumAccess, isLoading } = useHasPremiumAccess()
   const { data: licenses } = useAllLicenses()
   const validateLicense = useValidateThemeLicense()
@@ -130,7 +130,7 @@ export function ThemeLicenseManager() {
                   Enter your premium theme license key to unlock additional themes.
                 </p>
               </div>
-            
+
               <form
                 onSubmit={(e) => {
                   e.preventDefault()
@@ -141,7 +141,7 @@ export function ThemeLicenseManager() {
                 <form.Field
                   name="licenseKey"
                   validators={{
-                    onChange: ({ value }) => 
+                    onChange: ({ value }) =>
                       !value ? "License key is required" : undefined,
                   }}
                 >
@@ -260,7 +260,7 @@ export function ThemeLicenseManager() {
               Are you sure you want to release this license? This will remove it from your account and allow it to be used elsewhere.
             </DialogDescription>
           </DialogHeader>
-        
+
           {selectedLicenseKey && (
             <div className="my-4 space-y-3">
               <div>
@@ -269,7 +269,7 @@ export function ThemeLicenseManager() {
                   {selectedLicenseKey}
                 </div>
               </div>
-            
+
               <Button
                 variant="outline"
                 size="sm"
@@ -282,13 +282,13 @@ export function ThemeLicenseManager() {
                 <Copy className="h-4 w-4 mr-2" />
                 Copy License Key
               </Button>
-            
+
               <div className="text-sm text-muted-foreground">
                 <strong>Important:</strong> Make sure to copy this license key before releasing it. Once released, you won't be able to see it again.
               </div>
             </div>
           )}
-        
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setSelectedLicenseKey(null)}>
               Cancel

@@ -39,7 +39,7 @@ export function formatTimestamp(timestamp: number): string {
  */
 export function getRatioColor(ratio: number): string {
   if (ratio < 0) return ""
-  
+
   if (ratio < 0.5) {
     return "var(--chart-5)" // very bad - lowest/darkest
   } else if (ratio < 1.0) {
@@ -59,13 +59,13 @@ export function formatDuration(seconds: number): string {
   const hours = Math.floor((seconds % 86400) / 3600)
   const minutes = Math.floor((seconds % 3600) / 60)
   const secs = seconds % 60
-  
+
   const parts = []
   if (days > 0) parts.push(`${days}d`)
   if (hours > 0) parts.push(`${hours}h`)
   if (minutes > 0) parts.push(`${minutes}m`)
   if (secs > 0) parts.push(`${secs}s`)
-  
+
   return parts.join(" ")
 }
 

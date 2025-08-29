@@ -8,7 +8,7 @@ import { api } from "@/lib/api"
 
 export function useAlternativeSpeedLimits(instanceId: number | undefined) {
   const queryClient = useQueryClient()
-  
+
   const { data, isLoading, error } = useQuery({
     queryKey: ["alternative-speed-limits", instanceId],
     queryFn: () => instanceId ? api.getAlternativeSpeedLimitsMode(instanceId) : null,
@@ -17,7 +17,7 @@ export function useAlternativeSpeedLimits(instanceId: number | undefined) {
     refetchInterval: 30000, // Refetch every 30 seconds
     placeholderData: (previousData) => previousData,
   })
-  
+
   const toggleMutation = useMutation({
     mutationFn: () => {
       if (!instanceId) throw new Error("No instance ID")
@@ -25,15 +25,15 @@ export function useAlternativeSpeedLimits(instanceId: number | undefined) {
     },
     onMutate: async () => {
       // Cancel outgoing refetches
-      await queryClient.cancelQueries({ 
-        queryKey: ["alternative-speed-limits", instanceId], 
+      await queryClient.cancelQueries({
+        queryKey: ["alternative-speed-limits", instanceId],
       })
-      
+
       // Snapshot previous value
       const previousData = queryClient.getQueryData<{ enabled: boolean }>(
         ["alternative-speed-limits", instanceId]
       )
-      
+
       // Optimistically update
       if (previousData) {
         queryClient.setQueryData(
@@ -41,7 +41,7 @@ export function useAlternativeSpeedLimits(instanceId: number | undefined) {
           { enabled: !previousData.enabled }
         )
       }
-      
+
       return { previousData }
     },
     onError: (_err, _variables, context) => {
@@ -55,12 +55,12 @@ export function useAlternativeSpeedLimits(instanceId: number | undefined) {
     },
     onSuccess: () => {
       // Invalidate and refetch
-      queryClient.invalidateQueries({ 
-        queryKey: ["alternative-speed-limits", instanceId], 
+      queryClient.invalidateQueries({
+        queryKey: ["alternative-speed-limits", instanceId],
       })
     },
   })
-  
+
   return {
     enabled: data?.enabled ?? false,
     isLoading,

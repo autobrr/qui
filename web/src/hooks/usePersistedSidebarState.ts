@@ -7,7 +7,7 @@ import { useState, useEffect } from "react"
 
 export function usePersistedSidebarState(defaultCollapsed: boolean = false) {
   const storageKey = "qui-sidebar-collapsed"
-  
+
   // Initialize state from localStorage or default value
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
     try {
@@ -18,10 +18,10 @@ export function usePersistedSidebarState(defaultCollapsed: boolean = false) {
     } catch (error) {
       console.error("Failed to load sidebar state from localStorage:", error)
     }
-    
+
     return defaultCollapsed
   })
-  
+
   // Persist to localStorage whenever state changes
   useEffect(() => {
     try {
@@ -30,6 +30,6 @@ export function usePersistedSidebarState(defaultCollapsed: boolean = false) {
       console.error("Failed to save sidebar state to localStorage:", error)
     }
   }, [sidebarCollapsed])
-  
+
   return [sidebarCollapsed, setSidebarCollapsed] as const
 }

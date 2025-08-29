@@ -83,7 +83,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
   // NOTE: Use localStorage-persisted preference instead of qBittorrent's preference
   // This works around qBittorrent API not supporting start_paused_enabled setting
   const [startPausedEnabled] = usePersistedStartPaused(instanceId, false)
-  
+
   // Use controlled state if provided, otherwise use internal state
   const open = controlledOpen !== undefined ? controlledOpen : internalOpen
   const setOpen = onOpenChange || setInternalOpen
@@ -111,7 +111,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
     mutationFn: async (data: FormData) => {
       // Use the user's explicit TMM choice
       const autoTMM = data.autoTMM
-      
+
       const submitData: Parameters<typeof api.addTorrent>[1] = {
         startPaused: data.startPaused,
         savePath: !autoTMM && data.savePath ? data.savePath : undefined,
@@ -141,13 +141,13 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
       // Add small delay to allow qBittorrent to process the new torrent
       setTimeout(() => {
         // Use refetch instead of invalidate to avoid loading state
-        queryClient.refetchQueries({ 
+        queryClient.refetchQueries({
           queryKey: ["torrents-list", instanceId],
           exact: false,
           type: "active",
         })
         // Also refetch the metadata (categories, tags, counts)
-        queryClient.refetchQueries({ 
+        queryClient.refetchQueries({
           queryKey: ["instance-metadata", instanceId],
           exact: false,
           type: "active",
@@ -245,7 +245,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                 <TabsTrigger value="basic">Basic</TabsTrigger>
                 <TabsTrigger value="advanced">Advanced</TabsTrigger>
               </TabsList>
-              
+
               <TabsContent value="basic" className="space-y-4 mt-4">
                 {/* File upload or URL input */}
                 {activeTab === "file" ? (
@@ -372,7 +372,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                       </div>
                     )}
                   </form.Field>
-                  
+
                   <div className="w-px h-6 bg-border" />
 
                   <form.Field name="skipHashCheck">
@@ -407,10 +407,10 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                               if (e.key === "Enter" && categorySearch.trim()) {
                                 e.preventDefault()
                                 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                                const filtered = Object.entries(categories || {}).filter(([_key, cat]) => 
+                                const filtered = Object.entries(categories || {}).filter(([_key, cat]) =>
                                   cat.name.toLowerCase().includes(categorySearch.toLowerCase())
                                 )
-                                
+
                                 // If there's exactly one filtered category, select it
                                 if (filtered.length === 1) {
                                   field.handleChange(filtered[0][1].name)
@@ -423,7 +423,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                             }}
                           />
                         </div>
-                        
+
                         {/* Available categories */}
                         {categories && Object.entries(categories).length > 0 && (
                           <div className="space-y-2">
@@ -433,7 +433,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                             <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto">
                               {[
                                 // Selected category first (if it matches search)
-                                ...(field.state.value && field.state.value !== "__none__" && 
+                                ...(field.state.value && field.state.value !== "__none__" &&
                                     (categorySearch === "" || field.state.value.toLowerCase().includes(categorySearch.toLowerCase()))? [{ name: field.state.value, isSelected: true }]: []),
                                 // Then unselected categories
                                 ...Object.entries(categories)
@@ -482,11 +482,11 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                       onKeyDown={(e) => {
                         if (e.key === "Enter" && newTag.trim()) {
                           e.preventDefault()
-                          const filteredAvailable = allAvailableTags?.filter(tag => 
-                            !selectedTags.includes(tag) && 
+                          const filteredAvailable = allAvailableTags?.filter(tag =>
+                            !selectedTags.includes(tag) &&
                             tag.toLowerCase().includes(newTag.toLowerCase())
                           ) || []
-                          
+
                           // If there's exactly one filtered tag, add it
                           if (filteredAvailable.length === 1) {
                             setSelectedTags([...selectedTags, filteredAvailable[0]])
@@ -534,7 +534,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                       </Button>
                     )}
                   </div>
-                  
+
                   {/* Available tags */}
                   {allAvailableTags && allAvailableTags.length > 0 && (
                     <div className="space-y-2">
@@ -542,7 +542,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                         Available Tags (click to select/deselect) {tagSearch && `- filtering: "${tagSearch}"`}
                       </Label>
                       <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto">
-                        {[...selectedTags.filter(tag => tagSearch === "" || tag.toLowerCase().includes(tagSearch.toLowerCase())), 
+                        {[...selectedTags.filter(tag => tagSearch === "" || tag.toLowerCase().includes(tagSearch.toLowerCase())),
                           ...allAvailableTags
                             .filter(tag => !selectedTags.includes(tag))
                             .filter(tag => tagSearch === "" || tag.toLowerCase().includes(tagSearch.toLowerCase()))]
@@ -566,7 +566,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                             </Badge>
                           ))}
                       </div>
-                      {tagSearch && 
+                      {tagSearch &&
                         [...selectedTags, ...allAvailableTags]
                           .filter(tag => tagSearch === "" || tag.toLowerCase().includes(tagSearch.toLowerCase()))
                           .length === 0 && (
@@ -576,7 +576,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                   )}
                 </div>
               </TabsContent>
-              
+
               <TabsContent value="advanced" className="space-y-4 mt-4">
 
                 {/* Automatic Torrent Management */}

@@ -14,7 +14,7 @@ import { setValidatedThemes, setTheme } from "@/utils/theme"
  */
 export function ThemeValidator() {
   const { data, isLoading, isError } = useLicensedThemes()
-  
+
   useEffect(() => {
     // Don't do anything while loading - let the stored theme persist
     if (isLoading) return
@@ -34,7 +34,7 @@ export function ThemeValidator() {
     }
 
     const accessibleThemes: string[] = []
-    
+
     themes.forEach(theme => {
       if (!isThemePremium(theme.id)) {
         accessibleThemes.push(theme.id)
@@ -49,7 +49,7 @@ export function ThemeValidator() {
     // Now validate the current theme after we've set the accessible themes
     const validateCurrentTheme = () => {
       const storedThemeId = localStorage.getItem("color-theme")
-      
+
       // Only reset if the stored theme is premium and user doesn't have access
       // This ensures we don't unnecessarily reset the theme
       if (storedThemeId && isThemePremium(storedThemeId) && !data?.hasPremiumAccess) {
@@ -57,15 +57,15 @@ export function ThemeValidator() {
         setTheme(getDefaultTheme().id)
       }
     }
-    
+
     validateCurrentTheme()
   }, [data, isLoading, isError])
-  
+
   // Set up periodic validation and storage event listener
   useEffect(() => {
     // Skip if still loading or no data
     if (isLoading || !data) return
-    
+
     const validateStoredTheme = () => {
       const storedThemeId = localStorage.getItem("color-theme")
       // Only validate and reset if we have confirmed the user doesn't have access
@@ -86,14 +86,14 @@ export function ThemeValidator() {
         }
       }
     }
-    
+
     window.addEventListener("storage", handleStorageChange)
-    
+
     return () => {
       clearInterval(interval)
       window.removeEventListener("storage", handleStorageChange)
     }
   }, [data, isLoading])
-  
+
   return null
 }

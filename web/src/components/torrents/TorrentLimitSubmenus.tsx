@@ -70,7 +70,7 @@ export const ShareLimitSubmenu = memo(function ShareLimitSubmenu({
           <div className="text-sm font-medium text-foreground mb-3">
             Share Limits for {hashCount} torrent(s)
           </div>
-          
+
           {/* Ratio Limit */}
           <div className="space-y-2">
             <div className="flex items-center space-x-2">
@@ -156,8 +156,8 @@ export const ShareLimitSubmenu = memo(function ShareLimitSubmenu({
             )}
           </div>
 
-          <Button 
-            onClick={handleConfirm} 
+          <Button
+            onClick={handleConfirm}
             disabled={isPending}
             size="sm"
             className="w-full h-7"
@@ -208,7 +208,7 @@ export const SpeedLimitsSubmenu = memo(function SpeedLimitsSubmenu({
           <div className="text-sm font-medium text-foreground mb-3">
             Speed Limits for {hashCount} torrent(s)
           </div>
-          
+
           {/* Download Limit */}
           <div className="space-y-2">
             <Label htmlFor="downloadLimit" className="flex items-center gap-2 text-xs">
@@ -243,8 +243,8 @@ export const SpeedLimitsSubmenu = memo(function SpeedLimitsSubmenu({
             />
           </div>
 
-          <Button 
-            onClick={handleConfirm} 
+          <Button
+            onClick={handleConfirm}
             disabled={isPending}
             size="sm"
             className="w-full h-7"

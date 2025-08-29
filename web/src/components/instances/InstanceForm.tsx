@@ -44,7 +44,7 @@ const urlSchema = z
     if ((isIPv4 || isIPv6) && !parsed.port) {
       return false
     }
-    
+
     return true
   }, "Port is required when using an IP address (e.g., :8080)")
 
@@ -67,14 +67,14 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
   const { createInstance, updateInstance, isCreating, isUpdating } = useInstances()
   const [showBasicAuth, setShowBasicAuth] = useState(!!instance?.basicUsername)
   const [authBypass, setAuthBypass] = useState(false)
-  
+
   const handleSubmit = (data: InstanceFormData) => {
     const submitData = showBasicAuth ? data : {
       ...data,
       basicUsername: undefined,
       basicPassword: undefined,
     }
-    
+
     if (instance) {
       updateInstance({ id: instance.id, data: submitData }, {
         onSuccess: (data) => {
@@ -144,7 +144,7 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
         <form.Field
           name="name"
           validators={{
-            onChange: ({ value }) => 
+            onChange: ({ value }) =>
               !value ? "Instance name is required" : undefined,
           }}
         >
@@ -314,15 +314,15 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
             selector={(state) => [state.canSubmit, state.isSubmitting]}
           >
             {([canSubmit, isSubmitting]) => (
-              <Button 
-                type="submit" 
+              <Button
+                type="submit"
                 disabled={!canSubmit || isSubmitting || isCreating || isUpdating}
               >
                 {(isCreating || isUpdating) ? "Saving..." : instance ? "Update Instance" : "Add Instance"}
               </Button>
             )}
           </form.Subscribe>
-        
+
           <Button
             type="button"
             variant="outline"

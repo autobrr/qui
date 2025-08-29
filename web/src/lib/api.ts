@@ -427,7 +427,7 @@ class ApiClient {
   }
 
   async updateInstancePreferences(
-    instanceId: number, 
+    instanceId: number,
     preferences: Partial<AppPreferences>
   ): Promise<AppPreferences> {
     return this.request<AppPreferences>(`/instances/${instanceId}/preferences`, {
@@ -435,11 +435,11 @@ class ApiClient {
       body: JSON.stringify(preferences),
     })
   }
-  
+
   async getAlternativeSpeedLimitsMode(instanceId: number): Promise<{ enabled: boolean }> {
     return this.request<{ enabled: boolean }>(`/instances/${instanceId}/alternative-speed-limits`)
   }
-  
+
   async toggleAlternativeSpeedLimits(instanceId: number): Promise<{ enabled: boolean }> {
     return this.request<{ enabled: boolean }>(`/instances/${instanceId}/alternative-speed-limits/toggle`, {
       method: "POST",

@@ -52,7 +52,7 @@ function useAllInstanceStats(instances: InstanceResponse[]) {
       retryDelay: 1000,
     })),
   })
-  
+
   const serverStateQueries = useQueries({
     queries: instances.map(instance => ({
       queryKey: ["server-state", instance.id],
@@ -71,15 +71,15 @@ function useAllInstanceStats(instances: InstanceResponse[]) {
       enabled: true,
     })),
   })
-  
+
   const torrentCountsQueries = useQueries({
     queries: instances.map(instance => ({
       queryKey: ["torrent-counts", instance.id],
       queryFn: async () => {
         try {
-          const data = await api.getTorrents(instance.id, { 
-            page: 0, 
-            limit: 1, 
+          const data = await api.getTorrents(instance.id, {
+            page: 0,
+            limit: 1,
           })
           return data.counts || null
         } catch (error) {
@@ -92,7 +92,7 @@ function useAllInstanceStats(instances: InstanceResponse[]) {
       enabled: true,
     })),
   })
-  
+
   return instances.map((instance, index) => ({
     instance,
     stats: statsQueries[index].data,
@@ -103,7 +103,7 @@ function useAllInstanceStats(instances: InstanceResponse[]) {
 
 
 function InstanceCard({ instance }: { instance: InstanceResponse }) {
-  const { data: stats, isLoading, error } = useInstanceStats(instance.id, { 
+  const { data: stats, isLoading, error } = useInstanceStats(instance.id, {
     enabled: true, // Always fetch stats, regardless of isActive status
     pollingInterval: 5000, // Slower polling for dashboard
   })
@@ -112,9 +112,9 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
     queryKey: ["torrent-counts", instance.id],
     queryFn: async () => {
       try {
-        const data = await api.getTorrents(instance.id, { 
-          page: 0, 
-          limit: 1, 
+        const data = await api.getTorrents(instance.id, {
+          page: 0,
+          limit: 1,
         })
         return data.counts || null
       } catch (error) {
@@ -128,7 +128,7 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
   })
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const displayUrl = instance.host
-  
+
   // Show loading only on first load
   if (isLoading && !stats) {
     return (
@@ -136,8 +136,8 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
         <Card className="hover:shadow-lg transition-shadow opacity-60">
           <CardHeader>
             <div className="flex items-center justify-between">
-              <Link 
-                to="/instances/$instanceId" 
+              <Link
+                to="/instances/$instanceId"
                 params={{ instanceId: instance.id.toString() }}
                 className="flex items-center gap-2 hover:underline"
               >
@@ -171,7 +171,7 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
       </>
     )
   }
-  
+
   // If we have stats but instance is not connected, show with zero values
   if (stats && !stats.connected) {
     const hasErrors = instance.hasDecryptionError || instance.connectionError
@@ -180,8 +180,8 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
         <Card className="hover:shadow-lg transition-shadow">
           <CardHeader>
             <div className="flex items-center justify-between">
-              <Link 
-                to={hasErrors ? "/instances" : "/instances/$instanceId"} 
+              <Link
+                to={hasErrors ? "/instances" : "/instances/$instanceId"}
                 params={hasErrors ? {} : { instanceId: instance.id.toString() }}
                 className="flex items-center gap-2 hover:underline"
               >
@@ -214,14 +214,14 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
             <p className="text-sm text-muted-foreground text-center">
               Instance is disconnected
             </p>
-            
+
             <InstanceErrorDisplay instance={instance} />
           </CardContent>
         </Card>
       </>
     )
   }
-  
+
   // If we have an error or no stats data, show error state
   if (error || !stats || !stats.torrents) {
     const hasErrors = instance.hasDecryptionError || instance.connectionError
@@ -230,8 +230,8 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
         <Card className="hover:shadow-lg transition-shadow opacity-60">
           <CardHeader>
             <div className="flex items-center justify-between">
-              <Link 
-                to={hasErrors ? "/instances" : "/instances/$instanceId"} 
+              <Link
+                to={hasErrors ? "/instances" : "/instances/$instanceId"}
                 params={hasErrors ? {} : { instanceId: instance.id.toString() }}
                 className="flex items-center gap-2 hover:underline"
               >
@@ -264,22 +264,22 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
             <p className="text-sm text-muted-foreground">
               Failed to load stats
             </p>
-            
+
             <InstanceErrorDisplay instance={instance} />
           </CardContent>
         </Card>
       </>
     )
   }
-  
+
   const hasErrors = instance.hasDecryptionError || instance.connectionError
   return (
     <>
       <Card className="hover:shadow-lg transition-shadow">
         <CardHeader className='gap-0'>
           <div className="flex items-center justify-between">
-            <Link 
-              to={hasErrors ? "/instances" : "/instances/$instanceId"} 
+            <Link
+              to={hasErrors ? "/instances" : "/instances/$instanceId"}
               params={hasErrors ? {} : { instanceId: instance.id.toString() }}
               className="flex items-center gap-2 hover:underline"
             >
@@ -356,20 +356,20 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
                 <span className="flex-1 text-center text-lg font-semibold">{torrentCounts?.total || 0}</span>
               </div>
             </div>
-              
+
             <div className="flex items-center gap-2 text-xs">
               <Download className="h-3 w-3 text-muted-foreground" />
               <span className="text-muted-foreground">Download</span>
               <span className="ml-auto font-medium">{formatSpeed(stats.speeds?.download || 0)}</span>
             </div>
-              
+
             <div className="flex items-center gap-2 text-xs">
               <Upload className="h-3 w-3 text-muted-foreground" />
               <span className="text-muted-foreground">Upload</span>
               <span className="ml-auto font-medium">{formatSpeed(stats.speeds?.upload || 0)}</span>
             </div>
           </div>
-            
+
           <InstanceErrorDisplay instance={instance} />
         </CardContent>
       </Card>
@@ -380,25 +380,25 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
 function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: InstanceResponse, stats: InstanceStats | undefined, serverState: ServerState | null, torrentCounts: TorrentCounts | null | undefined }> }) {
   const globalStats = useMemo(() => {
     const connected = statsData.filter(({ stats }) => stats?.connected).length
-    const totalTorrents = statsData.reduce((sum, { torrentCounts }) => 
+    const totalTorrents = statsData.reduce((sum, { torrentCounts }) =>
       sum + (torrentCounts?.total || 0), 0)
-    const activeTorrents = statsData.reduce((sum, { torrentCounts }) => 
+    const activeTorrents = statsData.reduce((sum, { torrentCounts }) =>
       sum + (torrentCounts?.status?.active || 0), 0)
-    const totalDownload = statsData.reduce((sum, { stats }) => 
+    const totalDownload = statsData.reduce((sum, { stats }) =>
       sum + (stats?.speeds?.download || 0), 0)
-    const totalUpload = statsData.reduce((sum, { stats }) => 
+    const totalUpload = statsData.reduce((sum, { stats }) =>
       sum + (stats?.speeds?.upload || 0), 0)
-    const totalErrors = statsData.reduce((sum, { torrentCounts }) => 
+    const totalErrors = statsData.reduce((sum, { torrentCounts }) =>
       sum + (torrentCounts?.status?.errored || 0), 0)
-    
+
     // Calculate server stats
-    const alltimeDl = statsData.reduce((sum, { serverState }) => 
+    const alltimeDl = statsData.reduce((sum, { serverState }) =>
       sum + (serverState?.alltime_dl || 0), 0)
-    const alltimeUl = statsData.reduce((sum, { serverState }) => 
+    const alltimeUl = statsData.reduce((sum, { serverState }) =>
       sum + (serverState?.alltime_ul || 0), 0)
-    const totalPeers = statsData.reduce((sum, { serverState }) => 
+    const totalPeers = statsData.reduce((sum, { serverState }) =>
       sum + (serverState?.total_peer_connections || 0), 0)
-    
+
     // Calculate global ratio
     let globalRatio = 0
     if (alltimeDl > 0) {
@@ -432,8 +432,8 @@ function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: Instance
           <p className="text-xs text-muted-foreground">
             Connected instances
           </p>
-          <Progress 
-            value={(globalStats.connected / globalStats.total) * 100} 
+          <Progress
+            value={(globalStats.connected / globalStats.total) * 100}
             className="mt-2 h-1"
           />
         </CardContent>
@@ -483,16 +483,16 @@ function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: Instance
 
 function GlobalAllTimeStats({ statsData }: { statsData: Array<{ instance: InstanceResponse, stats: InstanceStats | undefined, serverState: ServerState | null }> }) {
   const [accordionValue, setAccordionValue] = usePersistedAccordionState("qui-global-stats-accordion")
-  
+
   const globalStats = useMemo(() => {
     // Calculate server stats
-    const alltimeDl = statsData.reduce((sum, { serverState }) => 
+    const alltimeDl = statsData.reduce((sum, { serverState }) =>
       sum + (serverState?.alltime_dl || 0), 0)
-    const alltimeUl = statsData.reduce((sum, { serverState }) => 
+    const alltimeUl = statsData.reduce((sum, { serverState }) =>
       sum + (serverState?.alltime_ul || 0), 0)
-    const totalPeers = statsData.reduce((sum, { serverState }) => 
+    const totalPeers = statsData.reduce((sum, { serverState }) =>
       sum + (serverState?.total_peer_connections || 0), 0)
-    
+
     // Calculate global ratio
     let globalRatio = 0
     if (alltimeDl > 0) {
@@ -555,7 +555,7 @@ function GlobalAllTimeStats({ statsData }: { statsData: Array<{ instance: Instan
               </div>
             </div>
           </div>
-          
+
           {/* Desktop layout */}
           <div className="hidden sm:flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 w-full">
             <div className="flex items-center gap-2">
@@ -568,19 +568,19 @@ function GlobalAllTimeStats({ statsData }: { statsData: Array<{ instance: Instan
                 <ChevronDown className="h-4 w-4 text-muted-foreground" />
                 <span className="text-lg font-semibold">{formatBytes(globalStats.alltimeDl)}</span>
               </div>
-              
+
               <div className="flex items-center gap-2">
                 <ChevronUp className="h-4 w-4 text-muted-foreground" />
                 <span className="text-lg font-semibold">{formatBytes(globalStats.alltimeUl)}</span>
               </div>
-              
+
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground">Ratio:</span>
                 <span className="text-lg font-semibold" style={{ color: ratioColor }}>
                   {globalStats.globalRatio.toFixed(2)}
                 </span>
               </div>
-              
+
               {globalStats.totalPeers > 0 && (
                 <div className="flex items-center gap-2">
                   <span className="text-muted-foreground">Peers:</span>
@@ -615,7 +615,7 @@ function GlobalAllTimeStats({ statsData }: { statsData: Array<{ instance: Instan
                 .map(({ instance, serverState }) => {
                   const instanceRatio = serverState?.alltime_dl ? (serverState.alltime_ul || 0) / serverState.alltime_dl : 0
                   const instanceRatioColor = getRatioColor(instanceRatio)
-                  
+
                   return (
                     <TableRow key={instance.id}>
                       <TableCell className="text-center font-medium">{instance.name}</TableCell>
@@ -664,9 +664,9 @@ function QuickActionsDropdown({ statsData }: { statsData: Array<{ instance: Inst
         <DropdownMenuLabel>Add Torrent</DropdownMenuLabel>
         <DropdownMenuSeparator />
         {connectedInstances.map(instance => (
-          <Link 
-            key={instance.id} 
-            to="/instances/$instanceId" 
+          <Link
+            key={instance.id}
+            to="/instances/$instanceId"
             params={{ instanceId: instance.id.toString() }}
             search={{ modal: "add-torrent" }}
           >
@@ -684,10 +684,10 @@ function QuickActionsDropdown({ statsData }: { statsData: Array<{ instance: Inst
 export function Dashboard() {
   const { instances, isLoading } = useInstances()
   const allInstances = instances || []
-  
+
   // Use safe hook that always calls the same number of hooks
   const statsData = useAllInstanceStats(allInstances)
-  
+
   if (isLoading) {
     return (
       <div className="container mx-auto p-4 sm:p-6">
@@ -703,7 +703,7 @@ export function Dashboard() {
       </div>
     )
   }
-  
+
   return (
     <div className="container mx-auto p-4 sm:p-6">
       {/* Header with Actions */}
@@ -726,21 +726,21 @@ export function Dashboard() {
           )}
         </div>
       </div>
-      
+
       {/* Show banner if any instances have decryption errors */}
       <PasswordIssuesBanner instances={instances || []} />
-      
+
       {instances && instances.length > 0 ? (
         <div className="space-y-6">
           {/* Stats Bar */}
           <GlobalAllTimeStats statsData={statsData} />
-          
+
           {/* Global Stats */}
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <GlobalStatsCards statsData={statsData} />
           </div>
-          
-          
+
+
           {/* Instance Cards */}
           {allInstances.length > 0 && (
             <div>

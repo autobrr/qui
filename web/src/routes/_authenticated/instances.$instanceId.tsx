@@ -22,20 +22,20 @@ function InstanceTorrents() {
   const search = Route.useSearch()
   const navigate = Route.useNavigate()
   const { instances, isLoading } = useInstances()
-  
+
   const handleSearchChange = (newSearch: { modal?: "add-torrent" | undefined }) => {
     navigate({
       search: newSearch,
       replace: true,
     })
   }
-  
+
   if (isLoading) {
     return <div>Loading instances...</div>
   }
-  
+
   const instance = instances?.find(i => i.id === parseInt(instanceId))
-  
+
   if (!instance) {
     return (
       <div className="p-6">
@@ -46,11 +46,11 @@ function InstanceTorrents() {
       </div>
     )
   }
-  
+
   return (
-    <Torrents 
-      instanceId={parseInt(instanceId)} 
-      instanceName={instance.name} 
+    <Torrents
+      instanceId={parseInt(instanceId)}
+      instanceName={instance.name}
       search={search}
       onSearchChange={handleSearchChange}
     />

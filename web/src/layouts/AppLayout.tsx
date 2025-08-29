@@ -29,9 +29,9 @@ function AppLayoutContent() {
           <Sidebar />
         </div>
       </div>
-        
+
       <div className="flex flex-1 flex-col min-w-0 relative">
-        <Header 
+        <Header
           sidebarCollapsed={sidebarCollapsed}
           onSidebarToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
         >
@@ -62,7 +62,7 @@ function AppLayoutContent() {
           <Outlet />
         </main>
       </div>
-        
+
       {/* Mobile Footer Navigation */}
       <MobileFooterNav />
     </div>

@@ -11,7 +11,7 @@ export function usePersistedColumnSizing(
 ) {
   // Global key shared across all instances
   const storageKey = "qui-column-sizing"
-  
+
   // Initialize state from localStorage or default values
   const [columnSizing, setColumnSizing] = useState<ColumnSizingState>(() => {
     try {
@@ -29,10 +29,10 @@ export function usePersistedColumnSizing(
     } catch (error) {
       console.error("Failed to load column sizing from localStorage:", error)
     }
-    
+
     return defaultSizing
   })
-  
+
   // Persist to localStorage whenever state changes
   useEffect(() => {
     try {
@@ -41,6 +41,6 @@ export function usePersistedColumnSizing(
       console.error("Failed to save column sizing to localStorage:", error)
     }
   }, [columnSizing, storageKey])
-  
+
   return [columnSizing, setColumnSizing] as const
 }

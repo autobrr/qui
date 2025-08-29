@@ -11,7 +11,7 @@ export function usePersistedColumnSorting(
 ) {
   // Global key shared across all instances
   const storageKey = "qui-column-sorting"
-  
+
   // Initialize state from localStorage or default values
   const [sorting, setSorting] = useState<SortingState>(() => {
     try {
@@ -22,10 +22,10 @@ export function usePersistedColumnSorting(
     } catch (error) {
       console.error("Failed to load column sorting from localStorage:", error)
     }
-    
+
     return defaultSorting
   })
-  
+
   // Persist to localStorage whenever state changes
   useEffect(() => {
     try {
@@ -34,6 +34,6 @@ export function usePersistedColumnSorting(
       console.error("Failed to save column sorting to localStorage:", error)
     }
   }, [sorting, storageKey])
-  
+
   return [sorting, setSorting] as const
 }

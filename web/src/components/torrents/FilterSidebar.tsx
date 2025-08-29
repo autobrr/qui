@@ -318,7 +318,7 @@ const FilterSidebarComponent = ({
 
   // Simple slide animation - sidebar slides in/out from the left
   return (
-    <div 
+    <div
       className={`${className} h-full w-full xl:max-w-xs flex flex-col xl:flex-shrink-0 xl:border-r xl:bg-muted/10`}
     >
       <ScrollArea className="h-full flex-1 overscroll-contain">

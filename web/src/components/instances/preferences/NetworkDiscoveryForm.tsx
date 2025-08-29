@@ -44,7 +44,7 @@ function SwitchSetting({
 
 export function NetworkDiscoveryForm({ instanceId, onSuccess }: NetworkDiscoveryFormProps) {
   const { preferences, isLoading, updatePreferences, isUpdating } = useInstancePreferences(instanceId)
-  
+
   const form = useForm({
     defaultValues: {
       dht: false,
@@ -108,7 +108,7 @@ export function NetworkDiscoveryForm({ instanceId, onSuccess }: NetworkDiscovery
           <Radar className="h-4 w-4" />
           <h3 className="text-lg font-medium">Peer Discovery</h3>
         </div>
-        
+
         <div className="space-y-4">
           <form.Field name="dht">
             {(field) => (

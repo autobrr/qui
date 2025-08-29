@@ -11,7 +11,7 @@ import { getBaseUrl } from "./lib/base-url"
 // Remove trailing slash for TanStack Router
 const basepath = getBaseUrl().slice(0, -1) || undefined
 
-export const router = createRouter({ 
+export const router = createRouter({
   routeTree,
   basepath,
   defaultPreload: "intent",

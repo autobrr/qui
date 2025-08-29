@@ -83,7 +83,7 @@ function NumberInput({
 
 export function ProxySettingsForm({ instanceId, onSuccess }: ProxySettingsFormProps) {
   const { preferences, isLoading, updatePreferences, isUpdating } = useInstancePreferences(instanceId)
-  
+
   const form = useForm({
     defaultValues: {
       proxy_type: 0,
@@ -166,7 +166,7 @@ export function ProxySettingsForm({ instanceId, onSuccess }: ProxySettingsFormPr
           <Shield className="h-4 w-4" />
           <h3 className="text-lg font-medium">Proxy Configuration</h3>
         </div>
-        
+
         <form.Field name="proxy_type">
           {(field) => (
             <div className="space-y-2">

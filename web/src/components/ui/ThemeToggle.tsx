@@ -34,7 +34,7 @@ function getThemePrimaryColor(theme: typeof themes[0]) {
   // Check if dark mode is active by looking at the document element
   const isDark = document.documentElement.classList.contains("dark");
   const cssVars = isDark ? theme.cssVars.dark : theme.cssVars.light;
-  
+
   // Extract the primary color value from the theme
   return cssVars["--primary"] || "";
 }
@@ -72,7 +72,7 @@ export const ThemeToggle: React.FC = () => {
     setIsTransitioning(true);
     await setThemeMode(mode);
     setTimeout(() => setIsTransitioning(false), 400);
-    
+
     const modeNames = { light: "Light", dark: "Dark", auto: "System" };
     toast.success(`Switched to ${modeNames[mode]} mode`);
   }, []);
@@ -87,7 +87,7 @@ export const ThemeToggle: React.FC = () => {
     setIsTransitioning(true);
     await setTheme(themeId);
     setTimeout(() => setIsTransitioning(false), 400);
-    
+
     const theme = themes.find(t => t.id === themeId);
     toast.success(`Switched to ${theme?.name || themeId} theme`);
   }, [hasPremiumAccess]);
@@ -113,7 +113,7 @@ export const ThemeToggle: React.FC = () => {
       <DropdownMenuContent align="end" className="w-64">
         <DropdownMenuLabel>Appearance</DropdownMenuLabel>
         <DropdownMenuSeparator />
-        
+
         {/* Mode Selection */}
         <div className="px-2 py-1.5 text-sm font-medium">Mode</div>
         <DropdownMenuItem
@@ -140,9 +140,9 @@ export const ThemeToggle: React.FC = () => {
           <span className="flex-1">System</span>
           {currentMode === "auto" && <Check className="h-4 w-4" />}
         </DropdownMenuItem>
-        
+
         <DropdownMenuSeparator />
-        
+
         {/* Theme Selection */}
         <div className="px-2 py-1.5 text-sm font-medium">Theme</div>
         {themes
@@ -157,7 +157,7 @@ export const ThemeToggle: React.FC = () => {
           .map((theme) => {
             const isPremium = isThemePremium(theme.id);
             const isLocked = isPremium && !hasPremiumAccess;
-          
+
             return (
               <DropdownMenuItem
                 key={theme.id}
@@ -171,7 +171,7 @@ export const ThemeToggle: React.FC = () => {
                 <div className="flex items-center gap-2 flex-1">
                   <div
                     className="h-4 w-4 rounded-full ring-1 ring-black/10 dark:ring-white/10 transition-all duration-300 ease-out"
-                    style={{ 
+                    style={{
                       backgroundColor: getThemePrimaryColor(theme),
                       backgroundImage: "none",
                       background: getThemePrimaryColor(theme) + " !important",

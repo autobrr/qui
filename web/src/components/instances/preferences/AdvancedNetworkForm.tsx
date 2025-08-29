@@ -88,12 +88,12 @@ function NumberInput({
 
 export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFormProps) {
   const { preferences, isLoading, updatePreferences, isUpdating } = useInstancePreferences(instanceId)
-  
+
   const form = useForm({
     defaultValues: {
       // Tracker settings
       announce_ip: "",
-      
+
       // Performance settings
       limit_lan_peers: false,
       limit_tcp_overhead: false,
@@ -106,7 +106,7 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
       max_concurrent_http_announces: 0,
       request_queue_size: 0,
       stop_tracker_timeout: 0,
-      
+
       // Disk I/O settings
       async_io_threads: 0,
       hashing_threads: 0,
@@ -120,12 +120,12 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
       checking_memory_use: 0,
       memory_working_set_limit: 0,
       enable_coalesce_read_write: false,
-      
+
       // Peer behavior
       peer_turnover: 0,
       peer_turnover_cutoff: 0,
       peer_turnover_interval: 0,
-      
+
       // Security & filtering
       ip_filter_enabled: false,
       ip_filter_path: "",
@@ -149,7 +149,7 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
     if (preferences) {
       // Tracker settings
       form.setFieldValue("announce_ip", preferences.announce_ip)
-      
+
       // Performance settings
       form.setFieldValue("limit_lan_peers", preferences.limit_lan_peers)
       form.setFieldValue("limit_tcp_overhead", preferences.limit_tcp_overhead)
@@ -162,7 +162,7 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
       form.setFieldValue("max_concurrent_http_announces", preferences.max_concurrent_http_announces)
       form.setFieldValue("request_queue_size", preferences.request_queue_size)
       form.setFieldValue("stop_tracker_timeout", preferences.stop_tracker_timeout)
-      
+
       // Disk I/O settings
       form.setFieldValue("async_io_threads", preferences.async_io_threads)
       form.setFieldValue("hashing_threads", preferences.hashing_threads)
@@ -176,12 +176,12 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
       form.setFieldValue("checking_memory_use", preferences.checking_memory_use)
       form.setFieldValue("memory_working_set_limit", preferences.memory_working_set_limit)
       form.setFieldValue("enable_coalesce_read_write", preferences.enable_coalesce_read_write)
-      
+
       // Peer behavior
       form.setFieldValue("peer_turnover", preferences.peer_turnover)
       form.setFieldValue("peer_turnover_cutoff", preferences.peer_turnover_cutoff)
       form.setFieldValue("peer_turnover_interval", preferences.peer_turnover_interval)
-      
+
       // Security & filtering
       form.setFieldValue("ip_filter_enabled", preferences.ip_filter_enabled)
       form.setFieldValue("ip_filter_path", preferences.ip_filter_path)
@@ -209,7 +209,7 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
           <Radio className="h-4 w-4" />
           <h3 className="text-lg font-medium">Tracker Settings</h3>
         </div>
-        
+
         <div className="space-y-4">
           <form.Field name="announce_ip">
             {(field) => (
@@ -236,7 +236,7 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
           <Zap className="h-4 w-4" />
           <h3 className="text-lg font-medium">Performance Optimization</h3>
         </div>
-        
+
         <div className="space-y-4">
           <form.Field name="limit_lan_peers">
             {(field) => (

@@ -14,10 +14,10 @@ interface DashboardSpeedLimitsProps {
   currentUploadSpeed: number
 }
 
-export function DashboardSpeedLimits({ 
-  instanceId, 
-  currentDownloadSpeed, 
-  currentUploadSpeed, 
+export function DashboardSpeedLimits({
+  instanceId,
+  currentDownloadSpeed,
+  currentUploadSpeed,
 }: DashboardSpeedLimitsProps) {
   const { preferences } = useInstancePreferences(instanceId)
 

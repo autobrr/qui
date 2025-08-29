@@ -11,7 +11,7 @@ import {
   TooltipContent,
   TooltipTrigger
 } from "@/components/ui/tooltip"
-import { 
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -229,8 +229,8 @@ export function Header({ children, sidebarCollapsed = false, onSidebarToggle }: 
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52">
               <DropdownMenuItem asChild>
-                <Link 
-                  to="/dashboard" 
+                <Link
+                  to="/dashboard"
                   className="flex cursor-pointer"
                   onClick={() => {
                     if (sidebarCollapsed && onSidebarToggle) {
@@ -243,8 +243,8 @@ export function Header({ children, sidebarCollapsed = false, onSidebarToggle }: 
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
-                <Link 
-                  to="/instances" 
+                <Link
+                  to="/instances"
                   className="flex cursor-pointer"
                   onClick={() => {
                     if (sidebarCollapsed && onSidebarToggle) {
@@ -260,8 +260,8 @@ export function Header({ children, sidebarCollapsed = false, onSidebarToggle }: 
                 <>
                   {instances.map((instance) => (
                     <DropdownMenuItem key={instance.id} asChild>
-                      <Link 
-                        to="/instances/$instanceId" 
+                      <Link
+                        to="/instances/$instanceId"
                         params={{ instanceId: instance.id.toString() }}
                         className="flex cursor-pointer pl-6"
                       >
@@ -280,8 +280,8 @@ export function Header({ children, sidebarCollapsed = false, onSidebarToggle }: 
               )}
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
-                <Link 
-                  to="/settings" 
+                <Link
+                  to="/settings"
                   className="flex cursor-pointer"
                   onClick={() => {
                     if (sidebarCollapsed && onSidebarToggle) {

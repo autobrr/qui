@@ -11,7 +11,7 @@ export function usePersistedColumnVisibility(
 ) {
   // Global key shared across all instances
   const storageKey = "qui-column-visibility"
-  
+
   // Initialize state from localStorage or default values
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(() => {
     try {
@@ -22,10 +22,10 @@ export function usePersistedColumnVisibility(
     } catch (error) {
       console.error("Failed to load column visibility from localStorage:", error)
     }
-    
+
     return defaultVisibility
   })
-  
+
   // Persist to localStorage whenever state changes
   useEffect(() => {
     try {
@@ -34,6 +34,6 @@ export function usePersistedColumnVisibility(
       console.error("Failed to save column visibility to localStorage:", error)
     }
   }, [columnVisibility, storageKey])
-  
+
   return [columnVisibility, setColumnVisibility] as const
 }

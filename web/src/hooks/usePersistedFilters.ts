@@ -17,7 +17,7 @@ export function usePersistedFilters(instanceId: number) {
   const [filters, setFilters] = useState<Filters>(() => {
     const global = JSON.parse(localStorage.getItem("qui-filters-global") || "{}")
     const instance = JSON.parse(localStorage.getItem(`qui-filters-${instanceId}`) || "{}")
-    
+
     return {
       status: global.status || [],
       categories: instance.categories || [],
@@ -25,12 +25,12 @@ export function usePersistedFilters(instanceId: number) {
       trackers: instance.trackers || [],
     }
   })
-  
+
   // Load filters when instanceId changes
   useEffect(() => {
     const global = JSON.parse(localStorage.getItem("qui-filters-global") || "{}")
     const instance = JSON.parse(localStorage.getItem(`qui-filters-${instanceId}`) || "{}")
-    
+
     setFilters({
       status: global.status || [],
       categories: instance.categories || [],
@@ -38,7 +38,7 @@ export function usePersistedFilters(instanceId: number) {
       trackers: instance.trackers || [],
     })
   }, [instanceId])
-  
+
   // Save filters when they change
   useEffect(() => {
     localStorage.setItem("qui-filters-global", JSON.stringify({ status: filters.status }))
@@ -48,6 +48,6 @@ export function usePersistedFilters(instanceId: number) {
       trackers: filters.trackers,
     }))
   }, [filters, instanceId])
-  
+
   return [filters, setFilters] as const
 }

@@ -8,7 +8,7 @@ import { api } from "@/lib/api"
 
 export function useInstanceStats(instanceId: number, options?: { enabled?: boolean; pollingInterval?: number }) {
   const { enabled = true, pollingInterval = 5000 } = options || {}
-  
+
   return useQuery({
     queryKey: ["instance-stats", instanceId],
     queryFn: () => api.getInstanceStats(instanceId),

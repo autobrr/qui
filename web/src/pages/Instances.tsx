@@ -9,7 +9,7 @@ import { InstanceCard } from "@/components/instances/InstanceCard"
 import { InstanceForm } from "@/components/instances/InstanceForm"
 import { PasswordIssuesBanner } from "@/components/instances/PasswordIssuesBanner"
 import { Button } from "@/components/ui/button"
-import { 
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -31,19 +31,19 @@ export function Instances() {
 
   const handleOpenDialog = (instance?: Instance) => {
     setEditingInstance(instance)
-    navigate({ 
+    navigate({
       to: "/instances",
       search: { modal: "add-instance" },
-      replace: true, 
+      replace: true,
     })
   }
 
   const handleCloseDialog = () => {
     setEditingInstance(undefined)
-    navigate({ 
+    navigate({
       to: "/instances",
       search: {},
-      replace: true, 
+      replace: true,
     })
   }
 
@@ -89,8 +89,8 @@ export function Instances() {
       ) : (
         <div className="rounded-lg border border-dashed p-12 text-center">
           <p className="text-muted-foreground">No instances configured</p>
-          <Button 
-            onClick={() => handleOpenDialog()} 
+          <Button
+            onClick={() => handleOpenDialog()}
             className="mt-4"
             variant="outline"
           >

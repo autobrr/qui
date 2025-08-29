@@ -43,7 +43,7 @@ export function getStateLabel(state: string): string {
 // State groups for easier checking
 const DOWNLOADING_STATES = [
   "downloading",
-  "stalledDL", 
+  "stalledDL",
   "metaDL",
   "queuedDL",
   "allocating",
@@ -112,10 +112,10 @@ function isChecking(state: string): boolean {
 // Determine the appropriate paused state for a torrent
 function getPausedState(torrent: Torrent | any): string {
   // Use stoppedDL/stoppedUP (what qBittorrent actually uses for pause action)
-  const isIncomplete = torrent.progress < 1 || 
-    torrent.state.includes("DL") || 
+  const isIncomplete = torrent.progress < 1 ||
+    torrent.state.includes("DL") ||
     isDownloading(torrent.state)
-  
+
   return isIncomplete ? "stoppedDL" : "stoppedUP"
 }
 
@@ -128,7 +128,7 @@ function getResumedState(torrent: Torrent | any): string {
 // Check if a torrent matches a status filter
 function matchesStatusFilter(torrent: Torrent | any, statusFilter: string): boolean {
   const state = torrent.state
-  
+
   switch (statusFilter) {
     case "all":
       return true
@@ -177,13 +177,13 @@ function getOptimisticTorrentState(
         dlspeed: 0,
         upspeed: 0,
       }
-    
+
     case "resume":
       return {
         ...torrent,
         state: getResumedState(torrent),
       }
-    
+
     case "recheck":
       // Set to checking state
       return {
@@ -192,13 +192,13 @@ function getOptimisticTorrentState(
         dlspeed: 0,
         upspeed: 0,
       }
-    
+
     case "setCategory":
       return {
         ...torrent,
         category: payload?.category || "",
       }
-    
+
     case "addTags":
       // Add tags to existing tags
       const currentTags = torrent.tags ? torrent.tags.split(", ").filter(Boolean) : []
@@ -208,7 +208,7 @@ function getOptimisticTorrentState(
         ...torrent,
         tags: combinedTags.join(", "),
       }
-    
+
     case "removeTags":
       // Remove tags from existing tags
       const existingTags = torrent.tags ? torrent.tags.split(", ").filter(Boolean) : []
@@ -218,20 +218,20 @@ function getOptimisticTorrentState(
         ...torrent,
         tags: remainingTags.join(", "),
       }
-    
+
     case "setTags":
       // Replace all tags
       return {
         ...torrent,
         tags: payload?.tags || "",
       }
-    
+
     case "toggleAutoTMM":
       return {
         ...torrent,
         auto_tmm: payload?.enable || false,
       }
-    
+
     default:
       return torrent
   }
@@ -246,14 +246,14 @@ function shouldRemainVisible(
 ): boolean {
   // If not a target of the action, always remain visible
   if (!isActionTarget) return true
-  
+
   // If no status filter, always remain visible
   if (statusFilters.length === 0) return true
-  
+
   // Get the new state after the action
   const newState = action === "pause" ? getPausedState(torrent) : getResumedState(torrent)
   const updatedTorrent = { ...torrent, state: newState }
-  
+
   // Check if the torrent still matches any of the active filters
   return statusFilters.some(filter => matchesStatusFilter(updatedTorrent, filter))
 }
@@ -267,7 +267,7 @@ export function applyOptimisticUpdates(
   payload?: any
 ): { torrents: any[], removedCount: number } {
   let removedCount = 0
-  
+
   // For delete action, just filter out the torrents
   if (action === "delete" || action === "deleteWithFiles") {
     const filteredTorrents = torrents.filter(torrent => {
@@ -280,7 +280,7 @@ export function applyOptimisticUpdates(
     })
     return { torrents: filteredTorrents, removedCount }
   }
-  
+
   const updatedTorrents = torrents
     .map(torrent => {
       const isTarget = targetHashes.includes(torrent.hash)
@@ -301,7 +301,7 @@ export function applyOptimisticUpdates(
       }
       return true
     })
-  
+
   return { torrents: updatedTorrents, removedCount }
 }
 

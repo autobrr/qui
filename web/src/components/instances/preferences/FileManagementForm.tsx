@@ -65,7 +65,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
         // NOTE: Save start_paused_enabled to localStorage instead of qBittorrent
         // This is a workaround because qBittorrent's API rejects this preference
         setStartPausedEnabled(value.start_paused_enabled)
-        
+
         // Update other preferences to qBittorrent (excluding start_paused_enabled)
         const qbittorrentPrefs = {
           auto_tmm_enabled: value.auto_tmm_enabled,

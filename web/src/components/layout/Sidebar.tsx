@@ -5,10 +5,10 @@
 
 import { Link, useLocation } from "@tanstack/react-router"
 import { cn } from "@/lib/utils"
-import { 
-  Home, 
-  Server, 
-  Settings, 
+import {
+  Home,
+  Server,
+  Settings,
   LogOut,
   HardDrive,
   Github
@@ -46,7 +46,7 @@ const navigation: NavItem[] = [
 export function Sidebar() {
   const location = useLocation()
   const { logout } = useAuth()
-  
+
   const { data: instances } = useQuery({
     queryKey: ["instances"],
     queryFn: () => api.getInstances(),
@@ -57,12 +57,12 @@ export function Sidebar() {
       <div className="p-6">
         <h2 className="text-lg font-semibold text-sidebar-foreground">qui</h2>
       </div>
-      
+
       <nav className="flex-1 space-y-1 px-3">
         {navigation.map((item) => {
           const Icon = item.icon
           const isActive = location.pathname === item.href
-          
+
           return (
             <Link
               key={item.href}
@@ -77,9 +77,9 @@ export function Sidebar() {
             </Link>
           )
         })}
-        
+
         <Separator className="my-4" />
-        
+
         <div className="space-y-1">
           <p className="px-3 text-xs font-semibold text-sidebar-foreground/70 uppercase tracking-wider">
             Instances
@@ -87,7 +87,7 @@ export function Sidebar() {
           {instances?.map((instance) => {
             const instancePath = `/instances/${instance.id}`
             const isActive = location.pathname === instancePath
-            
+
             return (
               <Link
                 key={instance.id}
@@ -116,7 +116,7 @@ export function Sidebar() {
           )}
         </div>
       </nav>
-      
+
       <div className="mt-auto space-y-3 p-3">
         <Button
           variant="ghost"
@@ -126,9 +126,9 @@ export function Sidebar() {
           <LogOut className="mr-2 h-4 w-4" />
           Logout
         </Button>
-        
+
         <Separator className="mx-3 mb-3" />
-        
+
         <div className="flex items-center justify-between px-3 pb-3">
           <p className="text-[10px] text-sidebar-foreground/40">
             © {new Date().getFullYear() > 2025 ? `2025-${new Date().getFullYear()}` : new Date().getFullYear()} autobrr • GPL-2.0-or-later
@@ -139,9 +139,9 @@ export function Sidebar() {
             className="h-6 w-6 text-sidebar-foreground/40 hover:text-sidebar-foreground"
             asChild
           >
-            <a 
-              href="https://github.com/autobrr/qui" 
-              target="_blank" 
+            <a
+              href="https://github.com/autobrr/qui"
+              target="_blank"
               rel="noopener noreferrer"
               aria-label="View on GitHub"
             >

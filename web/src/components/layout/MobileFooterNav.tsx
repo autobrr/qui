@@ -5,8 +5,8 @@
 
 import { Link, useLocation } from "@tanstack/react-router"
 import { cn } from "@/lib/utils"
-import { 
-  Home, 
+import {
+  Home,
   Settings,
   HardDrive,
   Server,
@@ -32,7 +32,7 @@ export function MobileFooterNav() {
   const location = useLocation()
   const { logout } = useAuth()
   const { isSelectionMode } = useTorrentSelection()
-  
+
   const { data: instances } = useQuery({
     queryKey: ["instances"],
     queryFn: () => api.getInstances(),
@@ -48,7 +48,7 @@ export function MobileFooterNav() {
   }
 
   return (
-    <nav 
+    <nav
       className={cn(
         "fixed bottom-0 left-0 right-0 z-40 lg:hidden",
         "bg-background/80 backdrop-blur-md border-t border-border/50"
@@ -86,7 +86,7 @@ export function MobileFooterNav() {
                   isOnInstancePage && "text-primary"
                 )} />
                 {activeInstances.length > 0 && (
-                  <Badge 
+                  <Badge
                     className="absolute -top-1 -right-2 h-4 w-4 p-0 flex items-center justify-center text-[9px]"
                     variant="default"
                   >
@@ -146,7 +146,7 @@ export function MobileFooterNav() {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" side="top" className="mb-2">
             <DropdownMenuItem asChild>
-              <Link 
+              <Link
                 to="/settings"
                 className="flex items-center gap-2"
               >
@@ -155,7 +155,7 @@ export function MobileFooterNav() {
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
-              <Link 
+              <Link
                 to="/instances"
                 className="flex items-center gap-2"
               >
@@ -164,9 +164,9 @@ export function MobileFooterNav() {
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
-              <a 
-                href="https://github.com/autobrr/qui" 
-                target="_blank" 
+              <a
+                href="https://github.com/autobrr/qui"
+                target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-2"
               >
@@ -175,7 +175,7 @@ export function MobileFooterNav() {
               </a>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem 
+            <DropdownMenuItem
               onClick={() => logout()}
               className="text-destructive focus:text-destructive flex items-center gap-2"
             >

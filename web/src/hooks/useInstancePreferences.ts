@@ -9,7 +9,7 @@ import type { AppPreferences } from "@/types"
 
 export function useInstancePreferences(instanceId: number | undefined) {
   const queryClient = useQueryClient()
-  
+
   const { data: preferences, isLoading, error } = useQuery({
     queryKey: ["instance-preferences", instanceId],
     queryFn: () => instanceId ? api.getInstancePreferences(instanceId) : null,
@@ -18,7 +18,7 @@ export function useInstancePreferences(instanceId: number | undefined) {
     refetchInterval: 60000, // Refetch every minute
     placeholderData: (previousData) => previousData,
   })
-  
+
   const updateMutation = useMutation({
     mutationFn: (preferences: Partial<AppPreferences>) => {
       if (!instanceId) throw new Error("No instance ID")
@@ -26,15 +26,15 @@ export function useInstancePreferences(instanceId: number | undefined) {
     },
     onMutate: async (newPreferences) => {
       // Cancel outgoing refetches
-      await queryClient.cancelQueries({ 
-        queryKey: ["instance-preferences", instanceId], 
+      await queryClient.cancelQueries({
+        queryKey: ["instance-preferences", instanceId],
       })
-      
+
       // Snapshot previous value
       const previousPreferences = queryClient.getQueryData<AppPreferences>(
         ["instance-preferences", instanceId]
       )
-      
+
       // Optimistically update
       if (previousPreferences) {
         queryClient.setQueryData(
@@ -42,7 +42,7 @@ export function useInstancePreferences(instanceId: number | undefined) {
           { ...previousPreferences, ...newPreferences }
         )
       }
-      
+
       return { previousPreferences }
     },
     onError: (_err, _newPreferences, context) => {
@@ -56,12 +56,12 @@ export function useInstancePreferences(instanceId: number | undefined) {
     },
     onSuccess: () => {
       // Invalidate and refetch
-      queryClient.invalidateQueries({ 
-        queryKey: ["instance-preferences", instanceId], 
+      queryClient.invalidateQueries({
+        queryKey: ["instance-preferences", instanceId],
       })
     },
   })
-  
+
   return {
     preferences,
     isLoading,

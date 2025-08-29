@@ -7,7 +7,7 @@ import { useState, useEffect } from "react"
 
 export function usePersistedDeleteFiles(defaultValue: boolean = false) {
   const storageKey = "qui-delete-files-default"
-  
+
   // Initialize state from localStorage or default value
   const [deleteFiles, setDeleteFiles] = useState<boolean>(() => {
     try {
@@ -18,10 +18,10 @@ export function usePersistedDeleteFiles(defaultValue: boolean = false) {
     } catch (error) {
       console.error("Failed to load delete files preference from localStorage:", error)
     }
-    
+
     return defaultValue
   })
-  
+
   // Persist to localStorage whenever state changes
   useEffect(() => {
     try {
@@ -30,6 +30,6 @@ export function usePersistedDeleteFiles(defaultValue: boolean = false) {
       console.error("Failed to save delete files preference to localStorage:", error)
     }
   }, [deleteFiles, storageKey])
-  
+
   return [deleteFiles, setDeleteFiles] as const
 }
