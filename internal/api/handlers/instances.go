@@ -120,7 +120,17 @@ func (h *InstancesHandler) buildInstanceResponsesParallel(ctx context.Context, i
 }
 
 func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *models.Instance) InstanceResponse {
-	connected, connectionError := h.testInstanceConnection(ctx, instance.ID)
+	// Use cached connection status only, do not test connection synchronously
+	cacheKey := fmt.Sprintf("connection:status:%d", instance.ID)
+	cache := h.clientPool.GetCache()
+	var connected bool
+	var connectionError string
+	if cached, found := cache.Get(cacheKey); found {
+		if status, ok := cached.(connectionStatus); ok {
+			connected = status.connected
+			connectionError = status.error
+		}
+	}
 
 	decryptionErrorInstances := h.clientPool.GetInstancesWithDecryptionErrors()
 	hasDecryptionError := slices.Contains(decryptionErrorInstances, instance.ID)
