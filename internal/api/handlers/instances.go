@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"slices"
 	"strconv"
@@ -24,6 +25,11 @@ type InstancesHandler struct {
 	instanceStore *models.InstanceStore
 	clientPool    *internalqbittorrent.ClientPool
 	syncManager   *internalqbittorrent.SyncManager
+}
+
+type connectionStatus struct {
+	connected bool
+	error     string
 }
 
 func NewInstancesHandler(instanceStore *models.InstanceStore, clientPool *internalqbittorrent.ClientPool, syncManager *internalqbittorrent.SyncManager) *InstancesHandler {
@@ -44,10 +50,23 @@ func (h *InstancesHandler) isDecryptionError(err error) bool {
 		(strings.Contains(errorStr, "password") || strings.Contains(errorStr, "cipher"))
 }
 
-// testInstanceConnection tests connection to an instance and returns status and error
 func (h *InstancesHandler) testInstanceConnection(ctx context.Context, instanceID int) (connected bool, connectionError string) {
-	client, err := h.clientPool.GetClient(ctx, instanceID)
+	cacheKey := fmt.Sprintf("connection:status:%d", instanceID)
+	cache := h.clientPool.GetCache()
+
+	if cached, found := cache.Get(cacheKey); found {
+		if status, ok := cached.(connectionStatus); ok {
+			log.Debug().Int("instanceID", instanceID).Bool("connected", status.connected).Msg("Using cached connection status")
+			return status.connected, status.error
+		}
+	}
+
+	// Use shorter timeout for UI operations to prevent hanging
+	client, err := h.clientPool.GetClientWithTimeout(ctx, instanceID, 5*time.Second)
 	if err != nil {
+		status := connectionStatus{connected: false, error: err.Error()}
+		cache.SetWithTTL(cacheKey, status, 1, 5*time.Second)
+
 		if !h.isDecryptionError(err) { // Only log if it's not a decryption error (those are already logged in pool)
 			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to connect to instance")
 		}
@@ -55,14 +74,51 @@ func (h *InstancesHandler) testInstanceConnection(ctx context.Context, instanceI
 	}
 
 	if err := client.HealthCheck(ctx); err != nil {
+		status := connectionStatus{connected: false, error: err.Error()}
+		cache.SetWithTTL(cacheKey, status, 1, 5*time.Second)
+
 		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Health check failed for instance")
 		return false, err.Error()
 	}
 
+	status := connectionStatus{connected: true, error: ""}
+	cache.SetWithTTL(cacheKey, status, 1, 5*time.Second)
+
 	return true, ""
 }
 
-// buildInstanceResponse creates a consistent response for an instance
+func (h *InstancesHandler) buildInstanceResponsesParallel(ctx context.Context, instances []*models.Instance) []InstanceResponse {
+	if len(instances) == 0 {
+		return []InstanceResponse{}
+	}
+
+	type result struct {
+		index    int
+		response InstanceResponse
+	}
+	resultCh := make(chan result, len(instances))
+
+	for i, instance := range instances {
+		go func(index int, inst *models.Instance) {
+			response := h.buildInstanceResponse(ctx, inst)
+			resultCh <- result{index: index, response: response}
+		}(i, instance)
+	}
+
+	responses := make([]InstanceResponse, len(instances))
+	for i := range len(instances) {
+		select {
+		case res := <-resultCh:
+			responses[res.index] = res.response
+		case <-ctx.Done():
+			log.Warn().Err(ctx.Err()).Msg("Context cancelled while building instance responses")
+			return responses[:i]
+		}
+	}
+
+	return responses
+}
+
 func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *models.Instance) InstanceResponse {
 	connected, connectionError := h.testInstanceConnection(ctx, instance.ID)
 
@@ -90,7 +146,6 @@ func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *
 	return response
 }
 
-// CreateInstanceRequest represents a request to create a new instance
 type CreateInstanceRequest struct {
 	Name          string  `json:"name"`
 	Host          string  `json:"host"`
@@ -100,7 +155,6 @@ type CreateInstanceRequest struct {
 	BasicPassword *string `json:"basicPassword,omitempty"`
 }
 
-// UpdateInstanceRequest represents a request to update an instance
 type UpdateInstanceRequest struct {
 	Name          string  `json:"name"`
 	Host          string  `json:"host"`
@@ -110,7 +164,6 @@ type UpdateInstanceRequest struct {
 	BasicPassword *string `json:"basicPassword,omitempty"`
 }
 
-// InstanceResponse represents an instance in API responses
 type InstanceResponse struct {
 	ID                 int        `json:"id"`
 	Name               string     `json:"name"`
@@ -126,19 +179,16 @@ type InstanceResponse struct {
 	HasDecryptionError bool       `json:"hasDecryptionError"`
 }
 
-// TestConnectionResponse represents connection test results
 type TestConnectionResponse struct {
 	Connected bool   `json:"connected"`
 	Message   string `json:"message,omitempty"`
 	Error     string `json:"error,omitempty"`
 }
 
-// DeleteInstanceResponse represents delete operation result
 type DeleteInstanceResponse struct {
 	Message string `json:"message"`
 }
 
-// InstanceStatsResponse represents statistics for an instance
 type InstanceStatsResponse struct {
 	InstanceID int          `json:"instanceId"`
 	Connected  bool         `json:"connected"`
@@ -146,7 +196,6 @@ type InstanceStatsResponse struct {
 	Speeds     SpeedStats   `json:"speeds"`
 }
 
-// TorrentStats represents torrent count statistics
 type TorrentStats struct {
 	Total       int `json:"total"`
 	Downloading int `json:"downloading"`
@@ -156,15 +205,12 @@ type TorrentStats struct {
 	Completed   int `json:"completed"`
 }
 
-// SpeedStats represents download/upload speed statistics
 type SpeedStats struct {
 	Download int64 `json:"download"`
 	Upload   int64 `json:"upload"`
 }
 
-// ListInstances returns all instances
 func (h *InstancesHandler) ListInstances(w http.ResponseWriter, r *http.Request) {
-	// Check if only active instances are requested
 	activeOnly := r.URL.Query().Get("active") == "true"
 
 	instances, err := h.instanceStore.List(r.Context(), activeOnly)
@@ -174,16 +220,11 @@ func (h *InstancesHandler) ListInstances(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Build response with connection status for each instance
-	response := make([]InstanceResponse, 0, len(instances))
-	for _, instance := range instances {
-		response = append(response, h.buildInstanceResponse(r.Context(), instance))
-	}
+	response := h.buildInstanceResponsesParallel(r.Context(), instances)
 
 	RespondJSON(w, http.StatusOK, response)
 }
 
-// CreateInstance creates a new instance
 func (h *InstancesHandler) CreateInstance(w http.ResponseWriter, r *http.Request) {
 	var req CreateInstanceRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -191,13 +232,11 @@ func (h *InstancesHandler) CreateInstance(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Validate input
 	if req.Name == "" || req.Host == "" {
 		RespondError(w, http.StatusBadRequest, "Name and host are required")
 		return
 	}
 
-	// Create instance
 	instance, err := h.instanceStore.Create(r.Context(), req.Name, req.Host, req.Username, req.Password, req.BasicUsername, req.BasicPassword)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create instance")
@@ -205,14 +244,16 @@ func (h *InstancesHandler) CreateInstance(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Build response with connection status
-	response := h.buildInstanceResponse(r.Context(), instance)
+	// Return quickly without testing connection
+	response := h.buildQuickInstanceResponse(instance)
+
+	// Test connection asynchronously
+	go h.testConnectionAsync(instance.ID)
+
 	RespondJSON(w, http.StatusCreated, response)
 }
 
-// UpdateInstance updates an existing instance
 func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request) {
-	// Get instance ID from URL
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
@@ -225,13 +266,11 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Validate input
 	if req.Name == "" || req.Host == "" {
 		RespondError(w, http.StatusBadRequest, "Name and host are required")
 		return
 	}
 
-	// Update instance
 	instance, err := h.instanceStore.Update(r.Context(), instanceID, req.Name, req.Host, req.Username, req.Password, req.BasicUsername, req.BasicPassword)
 	if err != nil {
 		if errors.Is(err, models.ErrInstanceNotFound) {
@@ -243,24 +282,24 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Remove old client from pool to force reconnection
 	h.clientPool.RemoveClient(instanceID)
 
-	// Build response with new connection status
-	response := h.buildInstanceResponse(r.Context(), instance)
+	// Return quickly without testing connection
+	response := h.buildQuickInstanceResponse(instance)
+
+	// Test connection asynchronously
+	go h.testConnectionAsync(instance.ID)
+
 	RespondJSON(w, http.StatusOK, response)
 }
 
-// DeleteInstance deletes an instance
 func (h *InstancesHandler) DeleteInstance(w http.ResponseWriter, r *http.Request) {
-	// Get instance ID from URL
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
 		return
 	}
 
-	// Delete instance
 	if err := h.instanceStore.Delete(r.Context(), instanceID); err != nil {
 		if errors.Is(err, models.ErrInstanceNotFound) {
 			RespondError(w, http.StatusNotFound, "Instance not found")
@@ -271,7 +310,6 @@ func (h *InstancesHandler) DeleteInstance(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Remove client from pool
 	h.clientPool.RemoveClient(instanceID)
 
 	response := DeleteInstanceResponse{
@@ -280,16 +318,13 @@ func (h *InstancesHandler) DeleteInstance(w http.ResponseWriter, r *http.Request
 	RespondJSON(w, http.StatusOK, response)
 }
 
-// TestConnection tests the connection to an instance
 func (h *InstancesHandler) TestConnection(w http.ResponseWriter, r *http.Request) {
-	// Get instance ID from URL
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
 		return
 	}
 
-	// Try to get client (this will create connection if needed)
 	client, err := h.clientPool.GetClient(r.Context(), instanceID)
 	if err != nil {
 		response := TestConnectionResponse{
@@ -300,7 +335,6 @@ func (h *InstancesHandler) TestConnection(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Perform health check
 	if err := client.HealthCheck(r.Context()); err != nil {
 		response := TestConnectionResponse{
 			Connected: false,
@@ -317,7 +351,6 @@ func (h *InstancesHandler) TestConnection(w http.ResponseWriter, r *http.Request
 	RespondJSON(w, http.StatusOK, response)
 }
 
-// getDefaultStats returns default stats for when connection fails
 func (h *InstancesHandler) getDefaultStats(instanceID int) InstanceStatsResponse {
 	return InstanceStatsResponse{
 		InstanceID: instanceID,
@@ -337,7 +370,6 @@ func (h *InstancesHandler) getDefaultStats(instanceID int) InstanceStatsResponse
 	}
 }
 
-// buildStatsFromCounts builds torrent stats from cached counts
 func (h *InstancesHandler) buildStatsFromCounts(torrentCounts *internalqbittorrent.TorrentCounts) TorrentStats {
 	return TorrentStats{
 		Total:       torrentCounts.Total,
@@ -349,19 +381,15 @@ func (h *InstancesHandler) buildStatsFromCounts(torrentCounts *internalqbittorre
 	}
 }
 
-// GetInstanceStats returns statistics for an instance
 func (h *InstancesHandler) GetInstanceStats(w http.ResponseWriter, r *http.Request) {
-	// Get instance ID from URL
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
 		return
 	}
 
-	// Get default stats for error cases
 	defaultStats := h.getDefaultStats(instanceID)
 
-	// Get client
 	client, err := h.clientPool.GetClient(r.Context(), instanceID)
 	if err != nil {
 		if !h.isDecryptionError(err) { // Only log if it's not a decryption error (those are already logged in pool)
@@ -371,47 +399,126 @@ func (h *InstancesHandler) GetInstanceStats(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Build response with connection status
 	stats := defaultStats
 	stats.Connected = client.IsHealthy()
 
-	// Get torrent and speed statistics
 	h.populateInstanceStats(r.Context(), instanceID, &stats)
 	RespondJSON(w, http.StatusOK, stats)
 }
 
-// populateInstanceStats fills stats with torrent counts and speeds
 func (h *InstancesHandler) populateInstanceStats(ctx context.Context, instanceID int, stats *InstanceStatsResponse) {
-	// Use longer timeout for slow instances with 10k+ torrents
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	// Get torrent counts from cached data
-	torrentCounts, err := h.syncManager.GetTorrentCounts(ctx, instanceID)
-	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
-			log.Warn().Int("instanceID", instanceID).Msg("Timeout getting torrent counts")
-		} else {
-			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get torrent counts")
-		}
-		return // Keep default stats
+	type countsResult struct {
+		counts *internalqbittorrent.TorrentCounts
+		err    error
+	}
+	type speedsResult struct {
+		speeds *internalqbittorrent.InstanceSpeeds
+		err    error
 	}
 
-	// Update stats with counts from cached data
-	stats.Torrents = h.buildStatsFromCounts(torrentCounts)
+	countsCh := make(chan countsResult, 1)
+	speedsCh := make(chan speedsResult, 1)
 
-	// Get speeds from cached torrents
-	speeds, err := h.syncManager.GetInstanceSpeeds(ctx, instanceID)
-	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
-			log.Warn().Int("instanceID", instanceID).Msg("Timeout getting instance speeds")
-		} else {
-			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to get instance speeds")
+	go func() {
+		torrentCounts, err := h.syncManager.GetTorrentCounts(ctx, instanceID)
+		countsCh <- countsResult{counts: torrentCounts, err: err}
+	}()
+
+	go func() {
+		speeds, err := h.syncManager.GetInstanceSpeeds(ctx, instanceID)
+		speedsCh <- speedsResult{speeds: speeds, err: err}
+	}()
+
+	var countsRes countsResult
+	var speedsRes speedsResult
+
+	for range 2 {
+		select {
+		case countsRes = <-countsCh:
+			if countsRes.err != nil {
+				if errors.Is(countsRes.err, context.DeadlineExceeded) {
+					log.Warn().Int("instanceID", instanceID).Msg("Timeout getting torrent counts")
+				} else {
+					log.Error().Err(countsRes.err).Int("instanceID", instanceID).Msg("Failed to get torrent counts")
+				}
+			} else {
+				stats.Torrents = h.buildStatsFromCounts(countsRes.counts)
+			}
+		case speedsRes = <-speedsCh:
+			if speedsRes.err != nil {
+				if errors.Is(speedsRes.err, context.DeadlineExceeded) {
+					log.Warn().Int("instanceID", instanceID).Msg("Timeout getting instance speeds")
+				} else {
+					log.Warn().Err(speedsRes.err).Int("instanceID", instanceID).Msg("Failed to get instance speeds")
+				}
+			} else {
+				stats.Speeds.Download = speedsRes.speeds.Download
+				stats.Speeds.Upload = speedsRes.speeds.Upload
+			}
+		case <-ctx.Done():
+			log.Warn().Err(ctx.Err()).Int("instanceID", instanceID).Msg("Context cancelled while populating instance stats")
+			return
 		}
-		return // Keep default speeds
+	}
+}
+
+// buildQuickInstanceResponse creates a response without testing connection
+func (h *InstancesHandler) buildQuickInstanceResponse(instance *models.Instance) InstanceResponse {
+	return InstanceResponse{
+		ID:                 instance.ID,
+		Name:               instance.Name,
+		Host:               instance.Host,
+		Username:           instance.Username,
+		BasicUsername:      instance.BasicUsername,
+		IsActive:           instance.IsActive,
+		LastConnectedAt:    instance.LastConnectedAt,
+		CreatedAt:          instance.CreatedAt,
+		UpdatedAt:          instance.UpdatedAt,
+		Connected:          false, // Will be updated asynchronously
+		ConnectionError:    "",
+		HasDecryptionError: false,
+	}
+}
+
+// testConnectionAsync tests connection in background and updates cache
+func (h *InstancesHandler) testConnectionAsync(instanceID int) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	log.Debug().Int("instanceID", instanceID).Msg("Testing connection asynchronously")
+
+	// Use shorter timeout for UI operations
+	client, err := h.clientPool.GetClientWithTimeout(ctx, instanceID, 5*time.Second)
+	if err != nil {
+		log.Debug().Err(err).Int("instanceID", instanceID).Msg("Async connection test failed")
+
+		// Cache the failure result
+		cacheKey := fmt.Sprintf("connection:status:%d", instanceID)
+		status := connectionStatus{connected: false, error: err.Error()}
+		cache := h.clientPool.GetCache()
+		cache.SetWithTTL(cacheKey, status, 1, 5*time.Second)
+		return
 	}
 
-	// Update stats with calculated speeds
-	stats.Speeds.Download = speeds.Download
-	stats.Speeds.Upload = speeds.Upload
+	if err := client.HealthCheck(ctx); err != nil {
+		log.Debug().Err(err).Int("instanceID", instanceID).Msg("Async health check failed")
+
+		// Cache the failure result
+		cacheKey := fmt.Sprintf("connection:status:%d", instanceID)
+		status := connectionStatus{connected: false, error: err.Error()}
+		cache := h.clientPool.GetCache()
+		cache.SetWithTTL(cacheKey, status, 1, 5*time.Second)
+		return
+	}
+
+	log.Debug().Int("instanceID", instanceID).Msg("Async connection test succeeded")
+
+	// Cache the success result
+	cacheKey := fmt.Sprintf("connection:status:%d", instanceID)
+	status := connectionStatus{connected: true, error: ""}
+	cache := h.clientPool.GetCache()
+	cache.SetWithTTL(cacheKey, status, 1, 5*time.Second)
 }

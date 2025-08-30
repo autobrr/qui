@@ -211,11 +211,10 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-muted-foreground text-center">
-              Instance is disconnected
-            </p>
-
-            <InstanceErrorDisplay instance={instance} />
+            <div className="text-sm text-muted-foreground text-center">
+              <p>Instance is disconnected</p>
+              <InstanceErrorDisplay instance={instance} compact />
+            </div>
           </CardContent>
         </Card>
       </>
@@ -261,11 +260,10 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-muted-foreground">
-              Failed to load stats
-            </p>
-
-            <InstanceErrorDisplay instance={instance} />
+            <div className="text-sm text-muted-foreground text-center">
+              <p>Failed to load stats</p>
+              <InstanceErrorDisplay instance={instance} compact />
+            </div>
           </CardContent>
         </Card>
       </>
@@ -370,7 +368,7 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
             </div>
           </div>
 
-          <InstanceErrorDisplay instance={instance} />
+          <InstanceErrorDisplay instance={instance} compact />
         </CardContent>
       </Card>
     </>

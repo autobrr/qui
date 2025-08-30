@@ -171,7 +171,7 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
           )}
         </div>
 
-        <InstanceErrorDisplay instance={instance} onEdit={onEdit} showEditButton={true} />
+        <InstanceErrorDisplay instance={instance} onEdit={onEdit} showEditButton={true} compact />
 
         {testResult && (
           <div className={cn(
