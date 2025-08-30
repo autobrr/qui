@@ -137,6 +137,7 @@ export function ClientApiKeysManager() {
   })
 
   const commonClientNames = [
+    "autobrr",
     "Sonarr",
     "Radarr",
     "Lidarr",
@@ -149,7 +150,7 @@ export function ClientApiKeysManager() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          Client API keys allow external applications like Sonarr/Radarr to connect through qui to your qBittorrent instances.
+          Client API keys allow external applications like autobrr and Sonarr/Radarr to connect through qui to your qBittorrent instances.
         </p>
         <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
           <DialogTrigger asChild>
