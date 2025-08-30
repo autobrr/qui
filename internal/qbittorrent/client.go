@@ -102,7 +102,7 @@ func (c *Client) IsHealthy() bool {
 }
 
 func (c *Client) HealthCheck(ctx context.Context) error {
-	if time.Now().Add(-minHealthCheckInterval).Before(c.GetLastHealthCheck()) {
+	if c.isHealthy && time.Now().Add(-minHealthCheckInterval).Before(c.GetLastHealthCheck()) {
 		return nil
 	}
 
