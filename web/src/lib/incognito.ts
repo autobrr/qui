@@ -57,50 +57,265 @@ const linuxIsoNames = [
   "pfsense-ce-2.7.2-amd64.iso",
 ]
 
-// Linux-themed categories for incognito mode
-export const LINUX_CATEGORIES = {
-  "distributions": { savePath: "/home/downloads/distributions" },
-  "documentation": { savePath: "/home/downloads/docs" },
-  "source-code": { savePath: "/home/downloads/source" },
-  "live-usb": { savePath: "/home/downloads/live" },
-  "server-editions": { savePath: "/home/downloads/server" },
-  "desktop-environments": { savePath: "/home/downloads/desktop" },
-  "arm-builds": { savePath: "/home/downloads/arm" },
+// Generate 1000+ Linux-themed categories for testing virtual scrolling
+const generateLinuxCategories = (): Record<string, { save_path: string }> => {
+  const baseCategories = [
+    "distributions", "documentation", "source-code", "live-usb", "server-editions",
+    "desktop-environments", "arm-builds", "container-images", "virtual-machines",
+    "development-tools", "security-tools", "multimedia", "gaming", "education",
+    "scientific", "embedded", "iot", "cloud", "backup", "recovery",
+  ]
+
+  const distros = [
+    "ubuntu", "debian", "fedora", "arch", "centos", "rhel", "opensuse", "manjaro", "mint",
+    "elementary", "zorin", "pop", "endeavour", "garuda", "artix", "void", "alpine", "gentoo",
+    "nixos", "slackware", "kali", "parrot", "rocky", "alma", "mx", "solus", "deepin", "tails",
+    "qubes", "proxmox", "truenas", "opnsense", "pfsense", "freebsd", "openbsd", "netbsd",
+  ]
+
+  const purposes = [
+    "workstation", "server", "development", "gaming", "multimedia", "education", "scientific",
+    "security", "privacy", "forensics", "penetration-testing", "network-admin", "database",
+    "web-server", "mail-server", "dns-server", "firewall", "router", "nas", "htpc", "backup",
+    "monitoring", "virtualization", "container", "cloud", "devops", "ci-cd", "testing",
+  ]
+
+  const architectures = [
+    "x86_64", "i386", "arm", "arm64", "armhf", "armel", "mips", "mipsel", "powerpc",
+    "s390x", "riscv64", "sparc64", "alpha", "hppa", "ia64", "m68k", "sh4",
+  ]
+
+  const versions = Array.from({ length: 50 }, (_, i) => `v${i + 1}`).concat(
+    Array.from({ length: 30 }, (_, i) => `20${18 + Math.floor(i/10)}.${(i % 10) + 1}`),
+    Array.from({ length: 20 }, (_, i) => `${i + 15}.04`),
+    Array.from({ length: 20 }, (_, i) => `${i + 15}.10`)
+  )
+
+  const environments = [
+    "gnome", "kde", "xfce", "lxde", "lxqt", "mate", "cinnamon", "budgie", "pantheon", "unity",
+    "i3", "awesome", "bspwm", "dwm", "qtile", "herbstluftwm", "openbox", "fluxbox", "enlightenment",
+    "sway", "hyprland", "river", "wayfire", "labwc", "cosmic",
+  ]
+
+  const categories = new Map<string, { save_path: string }>()
+
+  // Add base categories
+  baseCategories.forEach(category => {
+    categories.set(category, { save_path: `/home/downloads/${category}` })
+  })
+
+  // Generate distro-based categories
+  distros.forEach(distro => {
+    categories.set(distro, { save_path: `/home/downloads/distros/${distro}` })
+
+    // Add version combinations
+    versions.slice(0, 3).forEach(version => {
+      categories.set(`${distro}-${version}`, { save_path: `/home/downloads/distros/${distro}/${version}` })
+    })
+
+    // Add architecture combinations
+    architectures.slice(0, 4).forEach(arch => {
+      categories.set(`${distro}-${arch}`, { save_path: `/home/downloads/distros/${distro}/${arch}` })
+    })
+
+    // Add purpose combinations
+    purposes.slice(0, 5).forEach(purpose => {
+      categories.set(`${distro}-${purpose}`, { save_path: `/home/downloads/${purpose}/${distro}` })
+    })
+
+    // Add environment combinations
+    environments.slice(0, 3).forEach(env => {
+      categories.set(`${distro}-${env}`, { save_path: `/home/downloads/desktop/${distro}-${env}` })
+    })
+  })
+
+  // Generate purpose-based categories
+  purposes.forEach(purpose => {
+    categories.set(purpose, { save_path: `/home/downloads/${purpose}` })
+
+    architectures.slice(0, 3).forEach(arch => {
+      categories.set(`${purpose}-${arch}`, { save_path: `/home/downloads/${purpose}/${arch}` })
+    })
+
+    versions.slice(0, 2).forEach(version => {
+      categories.set(`${purpose}-${version}`, { save_path: `/home/downloads/${purpose}/${version}` })
+    })
+  })
+
+  // Generate architecture-based categories
+  architectures.forEach(arch => {
+    categories.set(arch, { save_path: `/home/downloads/arch/${arch}` })
+
+    environments.slice(0, 2).forEach(env => {
+      categories.set(`${arch}-${env}`, { save_path: `/home/downloads/arch/${arch}/${env}` })
+    })
+  })
+
+  // Generate environment-based categories
+  environments.forEach(env => {
+    categories.set(env, { save_path: `/home/downloads/desktop/${env}` })
+
+    versions.slice(0, 2).forEach(version => {
+      categories.set(`${env}-${version}`, { save_path: `/home/downloads/desktop/${env}/${version}` })
+    })
+  })
+
+  // Add year-based categories
+  for (let year = 2015; year <= 2024; year++) {
+    categories.set(`${year}`, { save_path: `/home/downloads/releases/${year}` })
+
+    for (let month = 1; month <= 12; month++) {
+      if (categories.size < 1200) { // Don't go crazy
+        const monthStr = month.toString().padStart(2, "0")
+        categories.set(`${year}.${monthStr}`, { save_path: `/home/downloads/releases/${year}/${monthStr}` })
+      }
+    }
+  }
+
+  // Add some specialty categories
+  const specialties = [
+    "kernel-sources", "firmware", "drivers", "patches", "themes", "icons", "wallpapers",
+    "fonts", "codecs", "plugins", "extensions", "addons", "scripts", "configs", "dotfiles",
+    "benchmarks", "stress-tests", "monitoring-tools", "diagnostic-tools", "recovery-tools",
+    "forensic-tools", "penetration-tools", "network-tools", "system-tools", "admin-tools",
+  ]
+
+  specialties.forEach(specialty => {
+    categories.set(specialty, { save_path: `/home/downloads/tools/${specialty}` })
+
+    distros.slice(0, 5).forEach(distro => {
+      categories.set(`${specialty}-${distro}`, { save_path: `/home/downloads/tools/${specialty}/${distro}` })
+    })
+  })
+
+  return Object.fromEntries(categories)
 }
 
-const LINUX_CATEGORIES_ARRAY = [
-  "distributions",
-  "documentation",
-  "source-code",
-  "live-usb",
-  "server-editions",
-  "desktop-environments",
-  "arm-builds",
-]
+// Linux-themed categories for incognito mode (1000+ for testing virtual scrolling)
+export const LINUX_CATEGORIES = generateLinuxCategories()
 
-// Linux-themed tags for incognito mode
-export const LINUX_TAGS = [
-  "stable",
-  "lts",
-  "bleeding-edge",
-  "minimal",
-  "gnome",
-  "kde",
-  "xfce",
-  "server",
-  "desktop",
-  "arm64",
-  "x86_64",
-  "enterprise",
-  "community",
-  "official",
-  "beta",
-  "rc",
-  "nightly",
-  "security-focused",
-  "lightweight",
-  "rolling-release",
-]
+const LINUX_CATEGORIES_ARRAY = Object.keys(LINUX_CATEGORIES)
+
+// Generate 1000+ Linux-themed tags for testing virtual scrolling
+const generateLinuxTags = (): string[] => {
+  const baseTags = [
+    "stable", "lts", "bleeding-edge", "minimal", "gnome", "kde", "xfce", "server", "desktop",
+    "arm64", "x86_64", "enterprise", "community", "official", "beta", "rc", "nightly",
+    "security-focused", "lightweight", "rolling-release",
+  ]
+
+  const distros = [
+    "ubuntu", "debian", "fedora", "arch", "centos", "rhel", "opensuse", "manjaro", "mint",
+    "elementary", "zorin", "pop", "endeavour", "garuda", "artix", "void", "alpine", "gentoo",
+    "nixos", "slackware", "kali", "parrot", "rocky", "alma", "mx", "solus", "deepin", "tails",
+  ]
+
+  const versions = Array.from({ length: 50 }, (_, i) => `v${i + 1}`).concat(
+    Array.from({ length: 30 }, (_, i) => `20${18 + Math.floor(i/10)}.${(i % 10) + 1}`),
+    Array.from({ length: 20 }, (_, i) => `${i + 15}.04`),
+    Array.from({ length: 20 }, (_, i) => `${i + 15}.10`)
+  )
+
+  const architectures = [
+    "i386", "amd64", "arm", "arm64", "armhf", "armel", "mips", "mipsel", "powerpc", "s390x",
+    "riscv64", "sparc64", "alpha", "hppa", "ia64", "m68k", "sh4",
+  ]
+
+  const desktops = [
+    "gnome", "kde", "xfce", "lxde", "lxqt", "mate", "cinnamon", "budgie", "pantheon", "unity",
+    "i3", "awesome", "bspwm", "dwm", "qtile", "herbstluftwm", "openbox", "fluxbox", "enlightenment",
+  ]
+
+  const features = [
+    "docker", "kubernetes", "systemd", "sysvinit", "openrc", "runit", "s6", "wayland", "x11",
+    "pipewire", "pulseaudio", "alsa", "jack", "firefox", "chromium", "libreoffice", "gimp",
+    "blender", "obs", "steam", "wine", "flatpak", "snap", "appimage", "python", "nodejs",
+    "rust", "go", "java", "php", "ruby", "perl", "lua", "bash", "zsh", "fish", "tmux", "screen",
+    "vim", "emacs", "nano", "vscode", "atom", "sublime", "jetbrains", "eclipse",
+  ]
+
+  const purposes = [
+    "gaming", "workstation", "development", "multimedia", "education", "scientific", "medical",
+    "financial", "embedded", "iot", "cloud", "container", "virtualization", "security", "privacy",
+    "forensics", "penetration-testing", "reverse-engineering", "malware-analysis", "network-admin",
+    "database", "web-server", "mail-server", "dns-server", "firewall", "router", "nas", "htpc",
+  ]
+
+  const statuses = [
+    "stable", "testing", "unstable", "experimental", "deprecated", "legacy", "maintained",
+    "unmaintained", "discontinued", "alpha", "beta", "rc", "release-candidate", "final",
+    "patched", "updated", "latest", "current", "previous", "old", "ancient", "vintage",
+  ]
+
+  const tags = new Set<string>()
+
+  // Add base tags
+  baseTags.forEach(tag => tags.add(tag))
+
+  // Generate combinations
+  distros.forEach(distro => {
+    tags.add(distro)
+    versions.slice(0, 5).forEach(version => {
+      tags.add(`${distro}-${version}`)
+    })
+    architectures.slice(0, 3).forEach(arch => {
+      tags.add(`${distro}-${arch}`)
+    })
+    desktops.slice(0, 5).forEach(desktop => {
+      tags.add(`${distro}-${desktop}`)
+    })
+    purposes.slice(0, 3).forEach(purpose => {
+      tags.add(`${distro}-${purpose}`)
+    })
+  })
+
+  // Add architecture tags
+  architectures.forEach(arch => {
+    tags.add(arch)
+    statuses.slice(0, 3).forEach(status => {
+      tags.add(`${arch}-${status}`)
+    })
+  })
+
+  // Add desktop environment tags
+  desktops.forEach(desktop => {
+    tags.add(desktop)
+    versions.slice(0, 3).forEach(version => {
+      tags.add(`${desktop}-${version}`)
+    })
+  })
+
+  // Add feature tags
+  features.forEach(feature => {
+    tags.add(feature)
+    statuses.slice(0, 2).forEach(status => {
+      tags.add(`${feature}-${status}`)
+    })
+  })
+
+  // Add purpose tags
+  purposes.forEach(purpose => {
+    tags.add(purpose)
+    statuses.slice(0, 2).forEach(status => {
+      tags.add(`${purpose}-${status}`)
+    })
+  })
+
+  // Add year-based tags
+  for (let year = 2010; year <= 2024; year++) {
+    tags.add(`${year}`)
+    for (let month = 1; month <= 12; month++) {
+      if (tags.size < 1500) { // Don't go crazy
+        tags.add(`${year}.${month.toString().padStart(2, "0")}`)
+      }
+    }
+  }
+
+  return Array.from(tags).sort()
+}
+
+// Linux-themed tags for incognito mode (1000+ for testing virtual scrolling)
+export const LINUX_TAGS = generateLinuxTags()
 
 // Linux-themed trackers for incognito mode
 export const LINUX_TRACKERS = [
@@ -190,6 +405,15 @@ export function getLinuxTracker(hash: string): string {
     hashSum += hash.charCodeAt(i) * (i + 4)
   }
   return `https://${LINUX_TRACKERS[hashSum % LINUX_TRACKERS.length]}/announce`
+}
+
+// Generate deterministic count value based on name for UI display
+export function getLinuxCount(name: string, max: number = 50): number {
+  let hashSum = 0
+  for (let i = 0; i < Math.min(8, name.length); i++) {
+    hashSum += name.charCodeAt(i) * (i + 1)
+  }
+  return (hashSum % max) + 1
 }
 
 // Generate deterministic ratio value based on hash
