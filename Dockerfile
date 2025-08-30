@@ -1,7 +1,29 @@
 # Build stage
 FROM node:22.18-alpine AS frontend-builder
 
+# Install git for cloning
+RUN apk add --no-cache git
+
+# Build arguments for premium themes
+ARG THEMES_REPO_TOKEN=""
+ARG GITHUB_REPOSITORY_OWNER="autobrr"
+
 WORKDIR /app/web
+
+# Fetch premium themes if token is provided
+RUN if [ -n "$THEMES_REPO_TOKEN" ]; then \
+      git clone --depth=1 --sparse \
+        https://${THEMES_REPO_TOKEN}@github.com/${GITHUB_REPOSITORY_OWNER}/qui-premium-themes.git /tmp/themes && \
+      cd /tmp/themes && \
+      git sparse-checkout set themes && \
+      mkdir -p /app/web/src/themes/premium && \
+      cp themes/*.css /app/web/src/themes/premium/ 2>/dev/null || true && \
+      rm -rf /tmp/themes && \
+      echo "Premium themes fetched successfully"; \
+    else \
+      echo "THEMES_REPO_TOKEN not set, skipping premium themes"; \
+    fi
+
 COPY web/package*.json ./
 RUN npm ci
 

@@ -9,7 +9,7 @@ import { Separator } from "@/components/ui/separator"
 import { themes, isThemePremium, type Theme } from "@/config/themes"
 import { useHasPremiumAccess } from "@/hooks/useThemeLicense"
 import { useTheme } from "@/hooks/useTheme"
-import { Sparkles, Lock, Check, Palette } from "lucide-react"
+import { Sparkles, Lock, Check, Palette, AlertTriangle } from "lucide-react"
 import { toast } from "sonner"
 
 interface ThemeCardProps {
@@ -206,9 +206,16 @@ export function ThemeSelector() {
           </h4>
 
           {premiumThemes.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-8">
-              No premium themes available yet. Check back later for new themes!
-            </p>
+            <div className="flex flex-col items-center py-8 space-y-3">
+              <Badge variant="outline" className="text-orange-600 border-orange-200 bg-orange-50 dark:text-orange-400 dark:border-orange-800 dark:bg-orange-950/20">
+                <AlertTriangle className="h-3 w-3 mr-1" />
+                Premium themes not loaded
+              </Badge>
+              <p className="text-sm text-muted-foreground text-center max-w-sm">
+                Configure <code className="text-xs bg-muted px-1 py-0.5 rounded">THEMES_REPO_TOKEN</code> and run{" "}
+                <code className="text-xs bg-muted px-1 py-0.5 rounded">make themes-fetch</code>.{" "}
+              </p>
+            </div>
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 gap-2 sm:gap-3">
               {premiumThemes.map((theme) => {
@@ -225,14 +232,6 @@ export function ThemeSelector() {
               })}
             </div>
           )}
-        </div>
-
-
-        {/* Current theme info */}
-        <div className="text-center">
-          <p className="text-sm text-muted-foreground">
-            Current theme: <span className="font-medium">{themes.find(t => t.id === currentTheme)?.name || "Unknown"}</span>
-          </p>
         </div>
       </CardContent>
     </Card>
