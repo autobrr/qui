@@ -113,6 +113,7 @@ export interface TorrentResponse {
   categories?: Record<string, Category>
   tags?: string[]
   cacheMetadata?: CacheMetadata
+  hasMore?: boolean
 }
 
 // Simplified MainData - only used for Dashboard server stats

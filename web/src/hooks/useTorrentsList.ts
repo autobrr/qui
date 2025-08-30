@@ -33,17 +33,22 @@ export function useTorrentsList(
   const [allTorrents, setAllTorrents] = useState<Torrent[]>([])
   const [hasLoadedAll, setHasLoadedAll] = useState(false)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const [lastRequestTime, setLastRequestTime] = useState(0)
   const [lastKnownTotal, setLastKnownTotal] = useState(0)
   const pageSize = 500 // Load 500 at a time (backend default)
 
 
   // Reset state when instanceId, filters, search, or sort changes
+  // Use JSON.stringify to avoid resetting on every object reference change during polling
+  const filterKey = JSON.stringify(filters)
+  const searchKey = search || ""
+
   useEffect(() => {
     setCurrentPage(0)
     setAllTorrents([])
     setHasLoadedAll(false)
     setLastKnownTotal(0)
-  }, [instanceId, filters, search, sort, order])
+  }, [instanceId, filterKey, searchKey, sort, order])
 
   // Query for torrents - backend handles stale-while-revalidate
   const { data, isLoading, isFetching } = useQuery<TorrentResponse>({
@@ -59,7 +64,8 @@ export function useTorrentsList(
     // Trust backend cache - it returns immediately with stale data if needed
     staleTime: 0, // Always check with backend (it decides if cache is fresh)
     gcTime: 300000, // Keep in React Query cache for 5 minutes for navigation
-    refetchInterval: 3000, // Poll every 3 seconds to trigger backend's stale check
+    // Only poll the first page to get fresh data - don't poll pagination pages
+    refetchInterval: currentPage === 0 ? 3000 : false,
     refetchIntervalInBackground: false, // Don't poll when tab is not active
     enabled,
   })
@@ -75,21 +81,23 @@ export function useTorrentsList(
       if (currentPage === 0) {
         // First page, replace all
         setAllTorrents(data.torrents)
+        // Use backend's HasMore field for accurate pagination
+        setHasLoadedAll(data.hasMore === false)
       } else {
         // Append to existing for pagination
         setAllTorrents(prev => {
           // Avoid duplicates by filtering out existing hashes
           const existingHashes = new Set(prev.map(t => t.hash))
           const newTorrents = data.torrents.filter(t => !existingHashes.has(t.hash))
-          return [...prev, ...newTorrents]
+          const updatedTorrents = [...prev, ...newTorrents]
+
+          // Use backend's HasMore field for accurate pagination
+          if (data.hasMore === false) {
+            setHasLoadedAll(true)
+          }
+
+          return updatedTorrents
         })
-      }
-
-      // Check if we've loaded all torrents
-      const totalLoaded = currentPage === 0? data.torrents.length: allTorrents.length + data.torrents.length
-
-      if (totalLoaded >= (data.total || 0) || data.torrents.length < pageSize) {
-        setHasLoadedAll(true)
       }
 
       setIsLoadingMore(false)
@@ -98,7 +106,15 @@ export function useTorrentsList(
 
   // Load more function for pagination
   const loadMore = () => {
+    const now = Date.now()
+
+    // Prevent duplicate requests within 500ms
+    if (now - lastRequestTime < 500) {
+      return
+    }
+
     if (!hasLoadedAll && !isLoadingMore && !isFetching) {
+      setLastRequestTime(now)
       setIsLoadingMore(true)
       setCurrentPage(prev => prev + 1)
     }
