@@ -11,6 +11,7 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 )
 
@@ -101,28 +102,20 @@ func (c *Client) IsHealthy() bool {
 }
 
 func (c *Client) HealthCheck(ctx context.Context) error {
-	_, err := c.GetWebAPIVersionCtx(ctx)
-	if err != nil {
-		if loginErr := c.LoginCtx(ctx); loginErr != nil {
-			c.mu.Lock()
-			c.isHealthy = false
-			c.lastHealthCheck = time.Now()
-			c.mu.Unlock()
-			return fmt.Errorf("health check failed: login error: %w", loginErr)
-		}
-		if _, err = c.GetWebAPIVersionCtx(ctx); err != nil {
-			c.mu.Lock()
-			c.isHealthy = false
-			c.lastHealthCheck = time.Now()
-			c.mu.Unlock()
-			return fmt.Errorf("health check failed: api error: %w", err)
-		}
+	if time.Now().Add(-minHealthCheckInterval).Before(c.GetLastHealthCheck()) {
+		return nil
 	}
 
+	_, err := c.GetWebAPIVersionCtx(ctx)
 	c.mu.Lock()
-	c.isHealthy = true
+	defer c.mu.Unlock()
 	c.lastHealthCheck = time.Now()
-	c.mu.Unlock()
+	c.isHealthy = err != nil
+
+	if err != nil {
+		return errors.Wrap(err, "health check failed")
+	}
+
 	return nil
 }
 

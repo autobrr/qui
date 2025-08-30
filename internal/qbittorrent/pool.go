@@ -5,13 +5,13 @@ package qbittorrent
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/dgraph-io/ristretto"
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
@@ -29,8 +29,8 @@ const (
 	minHealthCheckInterval = 20 * time.Second
 
 	// Normal failure backoff durations
-	initialBackoff = 30 * time.Second
-	maxBackoff     = 10 * time.Minute
+	initialBackoff = 10 * time.Second
+	maxBackoff     = 1 * time.Minute
 
 	// Ban-related backoff durations
 	banInitialBackoff = 5 * time.Minute
@@ -123,11 +123,19 @@ func (cp *ClientPool) GetClientWithTimeout(ctx context.Context, instanceID int, 
 	client, exists := cp.clients[instanceID]
 	cp.mu.RUnlock()
 
-	if exists && client.IsHealthy() {
+	if exists {
+		if client.IsHealthy() {
+			return client, nil
+		}
+
+		if err := client.HealthCheck(ctx); err != nil {
+			// Healthcheck failed, just return nil
+			return nil, errors.Wrap(err, "client healthcheck failed")
+		}
+		// Healthcheck succeeded, return client
 		return client, nil
 	}
-
-	// Need to create or recreate the client
+	// Only create client if it does not exist
 	return cp.createClientWithTimeout(ctx, instanceID, timeout)
 }
 
@@ -281,12 +289,7 @@ func (cp *ClientPool) performHealthChecks() {
 				}
 				cp.dbMu.Unlock()
 
-				// Don't try to recreate if we're now in backoff
-				if !cp.isInBackoff(instanceID) {
-					if _, err := cp.createClient(ctx, instanceID); err != nil {
-						log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to recreate client")
-					}
-				}
+				// Do not recreate client if unhealthy; just log and return
 			} else {
 				// Health check succeeded, reset failure tracking and ensure marked as active
 				cp.resetFailureTracking(instanceID)
