@@ -194,9 +194,9 @@ scrape_configs:
 
 All metrics are labeled with `instance_id` and `instance_name` for multi-instance monitoring.
 
-## Reverse Proxy for *arr Applications
+## Reverse Proxy for External Applications
 
-qui includes a built-in reverse proxy that allows applications like Sonarr, Radarr, and other *arr applications to connect to your qBittorrent instances **without needing qBittorrent credentials**. qui handles authentication transparently, making integration seamless.
+qui includes a built-in reverse proxy that allows external applications like autobrr, Sonarr, Radarr, and other tools to connect to your qBittorrent instances **without needing qBittorrent credentials**. qui handles authentication transparently, making integration seamless.
 
 ### How It Works
 
@@ -217,11 +217,11 @@ The reverse proxy feature:
 5. Enter a name (e.g., "Sonarr")
 6. **Copy the generated key immediately** - it's only shown once
 
-#### 2. Configure Your *arr Application
+#### 2. Configure Your External Application
 
 Use qui as the qBittorrent host with the special proxy URL format:
 
-**Example for Sonarr:**
+**Example for Sonarr or autobrr:**
 - **Host**: `your-qui-server` (e.g., `localhost` or `192.168.1.100`)
 - **Port**: `7476` (or your qui port)
 - **Username**: *Leave empty*
@@ -235,7 +235,7 @@ http://localhost:7476/proxy/abc123def456ghi789jkl012mno345pqr678stu901vwx234yz
 
 #### 3. Test the Connection
 
-Your *arr application should now be able to:
+Your external application should now be able to:
 - Connect successfully to qBittorrent through qui
 - Add torrents, check status, and manage downloads
 - Work without any qBittorrent credentials
@@ -243,6 +243,7 @@ Your *arr application should now be able to:
 ### Supported Applications
 
 This reverse proxy works with any application that supports qBittorrent's Web API:
+- **autobrr** - Automatic torrent downloading
 - **Sonarr** - Automatic TV show downloads
 - **Radarr** - Automatic movie downloads  
 - **Lidarr** - Automatic music downloads
@@ -261,7 +262,7 @@ This reverse proxy works with any application that supports qBittorrent's Web AP
 
 **Connection Refused Error:**
 - Ensure qui is listening on all interfaces: `QUI__HOST=0.0.0.0 ./qui serve`
-- Check that the port is accessible from your *arr application
+- Check that the port is accessible from your external application
 
 **Authentication Errors:**  
 - Verify the Client API Key is correct and hasn't been deleted
