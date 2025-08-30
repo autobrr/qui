@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge"
 import { Copy, Plus, Trash2, ExternalLink } from "lucide-react"
 import { ThemeLicenseManager } from "@/components/themes/ThemeLicenseManager"
 import { ThemeSelector } from "@/components/themes/ThemeSelector"
+import { ClientApiKeysManager } from "@/components/settings/ClientApiKeysManager"
 import { useSearch } from "@tanstack/react-router"
 import {
   Dialog,
@@ -411,10 +412,11 @@ export function Settings() {
 
       <Tabs defaultValue={defaultTab} className="space-y-4">
         <div className="w-full overflow-x-auto">
-          <TabsList className="inline-flex h-auto min-w-full sm:grid sm:grid-cols-3">
+          <TabsList className="inline-flex h-auto min-w-full sm:grid sm:grid-cols-4">
             <TabsTrigger value="security" className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 py-2 min-w-fit cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform">Security</TabsTrigger>
             <TabsTrigger value="themes" className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 py-2 min-w-fit cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform">Themes</TabsTrigger>
             <TabsTrigger value="api" className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 py-2 min-w-fit whitespace-nowrap cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform">API Keys</TabsTrigger>
+            <TabsTrigger value="client-api" className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 py-2 min-w-fit whitespace-nowrap cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform">Client Proxy</TabsTrigger>
           </TabsList>
         </div>
 
@@ -462,6 +464,20 @@ export function Settings() {
             </CardHeader>
             <CardContent>
               <ApiKeysManager />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="client-api" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Client Proxy API Keys</CardTitle>
+              <CardDescription>
+                Manage API keys for external applications to connect to qBittorrent instances through qui
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ClientApiKeysManager />
             </CardContent>
           </Card>
         </TabsContent>

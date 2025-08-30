@@ -426,6 +426,8 @@ func (app *Application) runServer() {
 		log.Fatal().Err(err).Msg("Failed to initialize instance store")
 	}
 
+	clientAPIKeyStore := models.NewClientAPIKeyStore(db.Conn())
+
 	// Initialize qBittorrent client pool
 	clientPool, err := qbittorrent.NewClientPool(instanceStore)
 	if err != nil {
@@ -470,6 +472,7 @@ func (app *Application) runServer() {
 		DB:                  db.Conn(),
 		AuthService:         authService,
 		InstanceStore:       instanceStore,
+		ClientAPIKeyStore:   clientAPIKeyStore,
 		ClientPool:          clientPool,
 		SyncManager:         syncManager,
 		WebHandler:          webHandler,

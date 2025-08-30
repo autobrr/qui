@@ -641,3 +641,111 @@ const useAutoTMM = preferences?.auto_tmm_enabled ?? true
 ```
 
 The system provides type-safe preference management with comprehensive caching and real-time updates across the entire application.
+
+## Reverse Proxy System
+
+The application includes a reverse proxy system that allows external applications (like Sonarr, Radarr) to connect to qBittorrent instances through qui without requiring qBittorrent credentials.
+
+### Architecture Overview
+
+The reverse proxy provides transparent authentication by:
+1. **Client API Key Authentication**: Each external client gets a unique API key mapped to a specific qBittorrent instance
+2. **Cookie Jar Forwarding**: Uses qui's authenticated HTTP client cookie jar to forward session cookies
+3. **Transparent Proxying**: External clients see qui as if it were qBittorrent directly
+
+### Key Components
+
+#### Database Schema
+- **client_api_keys table**: Stores API keys with instance mapping and usage tracking
+- **Migration**: `004_add_client_api_keys.sql` adds the necessary schema
+
+#### Backend Implementation
+- **Handler**: `internal/proxy/handler.go` - Main reverse proxy logic
+- **Middleware**: `internal/proxy/middleware.go` - Client API key validation  
+- **Buffer Pool**: `internal/proxy/buffer_pool.go` - Optimized memory management
+- **Models**: `internal/models/client_api_key.go` - API key data structures
+- **API Handler**: `internal/api/handlers/client_api_keys.go` - CRUD operations for keys
+
+#### Frontend Integration  
+- **Manager Component**: `web/src/components/settings/ClientApiKeysManager.tsx` - UI for key management
+- **Settings Page**: Integrated into main Settings page
+- **API Client**: Methods in `web/src/lib/api.ts` for key operations
+
+### Authentication Flow
+
+1. **Client Request**: External client sends request to `/proxy/{api-key}/api/v2/...`
+2. **API Key Validation**: Middleware validates the key and extracts instance ID
+3. **Cookie Jar Access**: Handler gets authenticated HTTP client from qui's pool
+4. **Cookie Forwarding**: Extracts cookies using `client.GetHTTPClient().Jar.Cookies(url)`
+5. **Request Proxying**: Forwards request to qBittorrent with qui's session cookies
+6. **Response Passthrough**: Returns qBittorrent's response to client
+
+### Cookie Jar Implementation
+
+**Current Implementation (Temporary)**:
+```go
+// GetHTTPClient uses reflection to access go-qbittorrent's private HTTP client
+func (c *Client) GetHTTPClient() *http.Client {
+    // Uses reflection to access private 'http' field
+    clientValue := reflect.ValueOf(c.Client).Elem()
+    httpField := clientValue.FieldByName("http")
+    // Returns HTTP client with cookie jar
+}
+```
+
+**TODO: Future Migration**:
+When `github.com/autobrr/go-qbittorrent` merges the `GetHTTPClient()` method:
+1. Remove reflection-based method from `internal/qbittorrent/client.go`
+2. Update proxy handler: `client.GetHTTPClient()` → `client.Client.GetHTTPClient()`
+3. Remove `reflect` and `unsafe` imports
+4. Update go.mod to use new go-qbittorrent version
+
+### Security Features
+
+- **Instance Isolation**: API keys are scoped to specific qBittorrent instances
+- **Usage Tracking**: Last used timestamps and activity monitoring
+- **Key Revocation**: Instant access removal by deleting keys
+- **No Credential Exposure**: qBittorrent credentials never leave qui
+
+### Route Configuration
+
+Routes are registered in `internal/api/router.go`:
+- **Proxy Routes**: `proxyHandler.Routes(r)` registers `/proxy/{api-key}/*` 
+- **Client API Key Routes**: Standard CRUD endpoints under `/api/client-api-keys`
+- **Unauthenticated**: Proxy routes don't require qui session authentication
+
+### Performance Considerations
+
+- **Buffer Pool**: Reuses HTTP request/response buffers for efficiency
+- **Connection Pooling**: Leverages qui's existing qBittorrent connection pool
+- **Cookie Caching**: HTTP client cookie jars provide efficient cookie management
+- **Minimal Overhead**: Direct proxy with minimal request transformation
+
+### Troubleshooting
+
+**Common Issues**:
+- **Connection Refused**: qui must bind to external interface (`QUI__HOST=0.0.0.0`)
+- **Version Parsing Errors**: Fixed by using cookie jar instead of manual cookie extraction
+- **Authentication Failures**: Ensure Client API key exists and maps to correct instance
+
+**Debug Logging**:
+```bash
+QUI__LOG_LEVEL=DEBUG ./qui serve
+# Shows: "Added cookies from HTTP client jar to proxy request"
+```
+
+### Files Reference
+
+**Backend**:
+- `internal/proxy/handler.go` - Main proxy logic with cookie jar access
+- `internal/proxy/middleware.go` - Client API key validation
+- `internal/qbittorrent/client.go` - GetHTTPClient() implementation (temporary)
+- `internal/models/client_api_key.go` - Data models
+- `internal/api/handlers/client_api_keys.go` - API endpoints
+
+**Frontend**:
+- `web/src/components/settings/ClientApiKeysManager.tsx` - Key management UI
+- `web/src/lib/api.ts` - API client methods
+
+**Database**:
+- `internal/database/migrations/004_add_client_api_keys.sql` - Schema migration
