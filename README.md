@@ -77,6 +77,9 @@ QUI__LOG_PATH=...        # Optional: log file path
 
 # Storage
 QUI__DATA_DIR=...        # Optional: custom data directory (default: next to config)
+
+# Metrics
+QUI__METRICS_ENABLED=true   # Optional: enable Prometheus metrics (default: false)
 ```
 
 ## CLI Commands
@@ -169,7 +172,21 @@ curl -H "X-API-Key: YOUR_API_KEY_HERE" \
 
 ## Metrics
 
-Prometheus metrics are exposed at `/metrics` for monitoring your qBittorrent instances. **Authentication required** via session cookie or API key.
+Prometheus metrics can be enabled to monitor your qBittorrent instances. When enabled, metrics are exposed at `/metrics` with **authentication required** via session cookie or API key.
+
+### Enable Metrics
+
+Metrics are **disabled by default**. Enable them via configuration file or environment variable:
+
+**Config file (`config.toml`):**
+```toml
+metricsEnabled = true
+```
+
+**Environment variable:**
+```bash
+QUI__METRICS_ENABLED=true
+```
 
 ### Available Metrics
 - **Torrent counts** by status (downloading, seeding, paused, error)
@@ -184,7 +201,7 @@ First, create an API key in Settings → API Keys, then configure Prometheus:
 scrape_configs:
   - job_name: 'qui'
     static_configs:
-      - targets: ['localhost:8080']
+      - targets: ['localhost:7476']
     metrics_path: /metrics
     scrape_interval: 30s
     http_headers:

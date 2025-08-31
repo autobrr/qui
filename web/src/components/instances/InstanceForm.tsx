@@ -68,16 +68,10 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
 
     if (instance) {
       updateInstance({ id: instance.id, data: submitData }, {
-        onSuccess: (data) => {
-          if (data.connected) {
-            toast.success("Instance Updated", {
-              description: "Instance updated and connected successfully",
-            })
-          } else {
-            toast.warning("Instance Updated with Connection Issue", {
-              description: data.connectionError ? formatErrorMessage(data.connectionError) : "Instance updated but could not connect",
-            })
-          }
+        onSuccess: () => {
+          toast.success("Instance Updated", {
+            description: "Instance updated successfully. Connection testing in background...",
+          })
           onSuccess()
         },
         onError: (error) => {
@@ -88,16 +82,10 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
       })
     } else {
       createInstance(submitData, {
-        onSuccess: (data) => {
-          if (data.connected) {
-            toast.success("Instance Created", {
-              description: "Instance created and connected successfully",
-            })
-          } else {
-            toast.warning("Instance Created with Connection Issue", {
-              description: data.connectionError ? formatErrorMessage(data.connectionError) : "Instance created but could not connect",
-            })
-          }
+        onSuccess: () => {
+          toast.success("Instance Created", {
+            description: "Instance created successfully. Connection testing in background...",
+          })
           onSuccess()
         },
         onError: (error) => {

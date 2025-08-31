@@ -3,8 +3,14 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { XCircle, Edit } from "lucide-react"
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger
+} from "@/components/ui/collapsible"
+import { XCircle, Edit, AlertCircle, ChevronDown } from "lucide-react"
 import type { InstanceResponse } from "@/types"
 import { formatErrorMessage } from "@/lib/utils"
 
@@ -12,9 +18,13 @@ interface InstanceErrorDisplayProps {
   instance: InstanceResponse
   onEdit?: () => void
   showEditButton?: boolean
+  compact?: boolean
 }
 
-export function InstanceErrorDisplay({ instance, onEdit, showEditButton = false }: InstanceErrorDisplayProps) {
+export function InstanceErrorDisplay({ instance, onEdit, showEditButton = false, compact = false }: InstanceErrorDisplayProps) {
+  const [isDecryptionOpen, setIsDecryptionOpen] = useState(false)
+  const [isConnectionOpen, setIsConnectionOpen] = useState(false)
+
   // Helper to check if connection error is decryption-related
   const isDecryptionError = (error: string) => {
     const errorLower = error.toLowerCase()
@@ -22,6 +32,65 @@ export function InstanceErrorDisplay({ instance, onEdit, showEditButton = false 
            (errorLower.includes("password") || errorLower.includes("cipher"))
   }
 
+  // Compact mode shows expandable error cards
+  if (compact) {
+    return (
+      <>
+        {instance.hasDecryptionError && (
+          <Collapsible open={isDecryptionOpen} onOpenChange={setIsDecryptionOpen} className="mt-2">
+            <div className="rounded-lg border border-destructive/20 bg-destructive/10">
+              <CollapsibleTrigger className="flex w-full items-center justify-between p-3 text-left hover:bg-destructive/20 transition-colors">
+                <div className="flex items-center gap-2">
+                  <XCircle className="h-4 w-4 text-destructive flex-shrink-0" />
+                  <span className="text-sm font-medium text-destructive">Password Required</span>
+                </div>
+                <ChevronDown className={`h-4 w-4 text-destructive transition-transform duration-200 ${isDecryptionOpen ? "rotate-180" : ""}`} />
+              </CollapsibleTrigger>
+
+              <CollapsibleContent className="px-3 pb-3">
+                <div className="text-sm text-destructive/90 mt-2 mb-3">
+                  Unable to decrypt saved password. This usually happens when the session secret has changed.
+                </div>
+                {showEditButton && onEdit && (
+                  <Button
+                    onClick={onEdit}
+                    size="sm"
+                    variant="outline"
+                    className="h-7 px-3 text-xs"
+                  >
+                    <Edit className="mr-1 h-3 w-3" />
+                    Re-enter Password
+                  </Button>
+                )}
+              </CollapsibleContent>
+            </div>
+          </Collapsible>
+        )}
+
+        {instance.connectionError && !(instance.hasDecryptionError && isDecryptionError(instance.connectionError)) && (
+          <Collapsible open={isConnectionOpen} onOpenChange={setIsConnectionOpen} className="mt-2">
+            <div className="rounded-lg border border-destructive/20 bg-destructive/10">
+              <CollapsibleTrigger className="flex w-full items-center justify-between p-3 text-left hover:bg-destructive/20 transition-colors">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 text-destructive flex-shrink-0" />
+                  <span className="text-sm font-medium text-destructive">Connection Error</span>
+                </div>
+                <ChevronDown className={`h-4 w-4 text-destructive transition-transform duration-200 ${isConnectionOpen ? "rotate-180" : ""}`} />
+              </CollapsibleTrigger>
+
+              <CollapsibleContent className="px-3 pb-3">
+                <div className="text-sm text-destructive/90 mt-2 font-mono leading-relaxed">
+                  {formatErrorMessage(instance.connectionError)}
+                </div>
+              </CollapsibleContent>
+            </div>
+          </Collapsible>
+        )}
+      </>
+    )
+  }
+
+  // Full mode shows expanded error messages (for dedicated pages)
   return (
     <>
       {instance.hasDecryptionError && (

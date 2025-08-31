@@ -82,6 +82,7 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("logPath", "")
 	c.viper.SetDefault("dataDir", "") // Empty means auto-detect (next to config file)
 	c.viper.SetDefault("pprofEnabled", false)
+	c.viper.SetDefault("metricsEnabled", false)
 
 	// HTTP timeout defaults - increased for large qBittorrent instances
 	c.viper.SetDefault("httpTimeouts.readTimeout", 60)   // 60 seconds
@@ -156,6 +157,7 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("logPath", envPrefix+"LOG_PATH")
 	c.viper.BindEnv("dataDir", envPrefix+"DATA_DIR")
 	c.viper.BindEnv("pprofEnabled", envPrefix+"PPROF_ENABLED")
+	c.viper.BindEnv("metricsEnabled", envPrefix+"METRICS_ENABLED")
 
 	// HTTP timeout environment variables
 	c.viper.BindEnv("httpTimeouts.readTimeout", envPrefix+"HTTP_READ_TIMEOUT")
@@ -241,6 +243,11 @@ sessionSecret = "{{ .sessionSecret }}"
 # Default: "INFO"
 # Options: "ERROR", "DEBUG", "INFO", "WARN", "TRACE"
 logLevel = "{{ .logLevel }}"
+
+# Prometheus Metrics
+# Enable Prometheus metrics endpoint at /metrics
+# Default: false
+#metricsEnabled = false
 
 # HTTP Timeouts (for large qBittorrent instances)
 # Increase these values if you experience timeouts with 10k+ torrents
