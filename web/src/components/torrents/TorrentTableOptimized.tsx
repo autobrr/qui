@@ -533,8 +533,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const mutation = useMutation({
     mutationFn: (data: {
       action: "pause" | "resume" | "delete" | "recheck" | "reannounce" | "increasePriority" | "decreasePriority" | "topPriority" | "bottomPriority" | "addTags" | "removeTags" | "setTags" | "setCategory" | "toggleAutoTMM" | "setShareLimit" | "setUploadLimit" | "setDownloadLimit"
-      deleteFiles?: boolean
       hashes: string[]
+      deleteFiles?: boolean
       tags?: string
       category?: string
       enable?: boolean
@@ -571,28 +571,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         excludeHashes: data.excludeHashes,
       })
     },
-    onSuccess: async (_: unknown, variables: {
-      action: "pause" | "resume" | "delete" | "recheck" | "reannounce" | "increasePriority" | "decreasePriority" | "topPriority" | "bottomPriority" | "addTags" | "removeTags" | "setTags" | "setCategory" | "toggleAutoTMM" | "setShareLimit" | "setUploadLimit" | "setDownloadLimit"
-      hashes: string[]
-      deleteFiles?: boolean
-      tags?: string
-      category?: string
-      enable?: boolean
-      ratioLimit?: number
-      seedingTimeLimit?: number
-      inactiveSeedingTimeLimit?: number
-      uploadLimit?: number
-      downloadLimit?: number
-      selectAll?: boolean
-      filters?: {
-        status: string[]
-        categories: string[]
-        tags: string[]
-        trackers: string[]
-      }
-      search?: string
-      excludeHashes?: string[]
-    }) => {
+    onSuccess: async (_, variables) => {
       // For delete operations, optimistically remove from UI immediately
       if (variables.action === "delete") {
         // Clear selection and context menu immediately
@@ -628,6 +607,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         // Refetch later to sync with actual server state (don't invalidate!)
         // Longer delay when deleting files from disk
         const refetchDelay = variables.deleteFiles ? 5000 : 2000
+
         setTimeout(() => {
           // Use refetch instead of invalidate to keep showing data
           queryClient.refetchQueries({
@@ -689,7 +669,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
         // For other operations, add delay to allow qBittorrent to process
         // Resume operations need more time for state transition
-        const delay = variables.action === "resume" ? 2000 : 1000
+        const refetchDelay = variables.action === "resume" ? 2000 : 1000
 
         setTimeout(() => {
           // Use refetch instead of invalidate to avoid loading state
@@ -703,7 +683,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
             exact: false,
             type: "active",
           })
-        }, delay)
+        }, refetchDelay)
         setContextMenuHashes([])
       }
     },

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState, useRef, useCallback, useEffect, useMemo } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useSearch } from "@tanstack/react-router"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { useTorrentsList } from "@/hooks/useTorrentsList"
@@ -14,12 +14,7 @@ import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle
-} from "@/components/ui/sheet"
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -32,40 +27,35 @@ import {
 } from "@/components/ui/alert-dialog"
 import { AddTorrentDialog } from "./AddTorrentDialog"
 import {
-  Play,
-  Pause,
-  Trash2,
-  Plus,
-  X,
-  Clock,
   CheckCircle2,
-  MoreVertical,
-  Tag,
-  Folder,
-  Radio,
   ChevronDown,
   ChevronUp,
+  Clock,
   Eye,
   EyeOff,
-  Filter
+  Filter,
+  Folder,
+  MoreVertical,
+  Pause,
+  Play,
+  Plus,
+  Radio,
+  Tag,
+  Trash2,
+  X
 } from "lucide-react"
-import { SetTagsDialog, SetCategoryDialog } from "./TorrentDialogs"
+import { SetCategoryDialog, SetTagsDialog } from "./TorrentDialogs"
 // import { createPortal } from 'react-dom'
 // Columns dropdown removed on mobile
 import type { Torrent } from "@/types"
-import {
-  getLinuxIsoName,
-  getLinuxCategory,
-  getLinuxTags,
-  getLinuxRatio,
-  useIncognitoMode
-} from "@/lib/incognito"
-import { formatBytes, formatSpeed, cn } from "@/lib/utils"
+import { getLinuxCategory, getLinuxIsoName, getLinuxRatio, getLinuxTags, useIncognitoMode } from "@/lib/incognito"
+import { cn, formatBytes, formatSpeed } from "@/lib/utils"
 import { applyOptimisticUpdates, getStateLabel } from "@/lib/torrent-state-utils"
-import { getCommonTags, getCommonCategory } from "@/lib/torrent-utils"
+import { getCommonCategory, getCommonTags } from "@/lib/torrent-utils"
 import { toast } from "sonner"
 import { useInstances } from "@/hooks/useInstances"
 import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
+import { useInstanceMetadata } from "@/hooks/useInstanceMetadata.ts";
 
 interface TorrentCardsMobileProps {
   instanceId: number
@@ -102,7 +92,7 @@ function formatEta(seconds: number): string {
 }
 
 function getStatusBadgeVariant(state: string): "default" | "secondary" | "destructive" | "outline" {
-  switch(state) {
+  switch (state) {
     case "downloading":
       return "default"
     case "stalledDL":
@@ -217,7 +207,7 @@ function SwipeableCard({
     >
       {/* Inner selection ring */}
       {isSelected && (
-        <div className="absolute inset-0 rounded-lg ring-2 ring-primary ring-inset pointer-events-none" />
+        <div className="absolute inset-0 rounded-lg ring-2 ring-primary ring-inset pointer-events-none"/>
       )}
       {/* Selection checkbox - visible in selection mode */}
       {selectionMode && (
@@ -251,7 +241,7 @@ function SwipeableCard({
             {/* ETA */}
             {torrent.eta > 0 && torrent.eta !== 8640000 && (
               <div className="flex items-center gap-1">
-                <Clock className="h-3 w-3 text-muted-foreground" />
+                <Clock className="h-3 w-3 text-muted-foreground"/>
                 <span className="text-xs text-muted-foreground">{formatEta(torrent.eta)}</span>
               </div>
             )}
@@ -260,7 +250,7 @@ function SwipeableCard({
             </span>
           </div>
         </div>
-        <Progress value={torrent.progress * 100} className="h-2" />
+        <Progress value={torrent.progress * 100} className="h-2"/>
       </div>
 
       {/* Speed, Ratio and State row */}
@@ -280,7 +270,7 @@ function SwipeableCard({
           {/* Download speed */}
           {torrent.dlspeed > 0 && (
             <div className="flex items-center gap-1">
-              <ChevronDown className="h-3 w-3 [color:var(--chart-2)]" />
+              <ChevronDown className="h-3 w-3 [color:var(--chart-2)]"/>
               <span className="font-medium">{formatSpeed(torrent.dlspeed)}</span>
             </div>
           )}
@@ -288,7 +278,7 @@ function SwipeableCard({
           {/* Upload speed */}
           {torrent.upspeed > 0 && (
             <div className="flex items-center gap-1">
-              <ChevronUp className="h-3 w-3 [color:var(--chart-3)]" />
+              <ChevronUp className="h-3 w-3 [color:var(--chart-3)]"/>
               <span className="font-medium">{formatSpeed(torrent.upspeed)}</span>
             </div>
           )}
@@ -305,7 +295,7 @@ function SwipeableCard({
         {/* Category */}
         {displayCategory && (
           <div className="flex items-center gap-1 flex-shrink-0">
-            <Folder className="h-3 w-3 text-muted-foreground" />
+            <Folder className="h-3 w-3 text-muted-foreground"/>
             <span className="text-xs text-muted-foreground">{displayCategory}</span>
           </div>
         )}
@@ -313,7 +303,7 @@ function SwipeableCard({
         {/* Tags - aligned to the right */}
         {displayTags && (
           <div className="flex items-center gap-1 flex-wrap justify-end ml-auto">
-            <Tag className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+            <Tag className="h-3 w-3 text-muted-foreground flex-shrink-0"/>
             {(Array.isArray(displayTags) ? displayTags : displayTags.split(",")).map((tag, i) => (
               <Badge key={i} variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
                 {tag.trim()}
@@ -340,6 +330,7 @@ export function TorrentCardsMobile({
   const [selectedHashes, setSelectedHashes] = useState<Set<string>>(new Set())
   const [selectionMode, setSelectionMode] = useState(false)
   const { setIsSelectionMode } = useTorrentSelection()
+
   const parentRef = useRef<HTMLDivElement>(null)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [deleteFiles, setDeleteFiles] = useState(false)
@@ -349,12 +340,24 @@ export function TorrentCardsMobile({
   const [showCategoryDialog, setShowCategoryDialog] = useState(false)
   const [actionTorrents, setActionTorrents] = useState<Torrent[]>([]);
 
+  // Custom "select all" state for handling large datasets
+  const [isAllSelected, setIsAllSelected] = useState(false)
+  const [excludedFromSelectAll, setExcludedFromSelectAll] = useState<Set<string>>(new Set())
+
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
+
   const queryClient = useQueryClient()
+
+  const { data: metadata } = useInstanceMetadata(instanceId)
+  const availableTags = metadata?.tags || []
+  const availableCategories = metadata?.categories || {}
+
   const debouncedSearch = useDebounce(globalFilter, 1000)
-  const routeSearch = useSearch({ strict: false }) as any
-  const searchFromRoute = (routeSearch?.q as string) || ""
+  const routeSearch = useSearch({ strict: false }) as { q?: string }
+  const searchFromRoute = routeSearch?.q || ""
+
   const effectiveSearch = searchFromRoute || immediateSearch || debouncedSearch
+
   const { instances } = useInstances()
   const instanceName = useMemo(() => {
     return instances?.find(i => i.id === instanceId)?.name ?? null
@@ -377,10 +380,11 @@ export function TorrentCardsMobile({
     counts,
     categories,
     tags,
+
+    isLoading,
     isLoadingMore,
     hasLoadedAll,
     loadMore: loadMoreTorrents,
-    isFreshData,
   } = useTorrentsList(instanceId, {
     search: effectiveSearch,
     filters,
@@ -388,17 +392,25 @@ export function TorrentCardsMobile({
 
   // Call the callback when filtered data updates
   useEffect(() => {
-    if (onFilteredDataUpdate && isFreshData && torrents && totalCount !== undefined) {
+    if (onFilteredDataUpdate && torrents && totalCount !== undefined && !isLoading) {
       onFilteredDataUpdate(torrents, totalCount, counts, categories, tags)
     }
-  }, [totalCount, isFreshData, torrents.length, counts, categories, tags, onFilteredDataUpdate]) // Update when data changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [totalCount, isLoading, torrents.length, counts, categories, tags, onFilteredDataUpdate]) // Update when data changes
 
-  // Use tags and categories from the main data fetch
-  const availableTags = tags || []
-  const availableCategories = categories || {}
+  // Calculate the effective selection count for display
+  const effectiveSelectionCount = useMemo(() => {
+    if (isAllSelected) {
+      // When all selected, count is total minus exclusions
+      return Math.max(0, totalCount - excludedFromSelectAll.size)
+    } else {
+      // Regular selection mode - use the selectedHashes size
+      return selectedHashes.size
+    }
+  }, [isAllSelected, totalCount, excludedFromSelectAll.size, selectedHashes.size])
 
   // Virtual scrolling with consistent spacing
-  const rowVirtualizer = useVirtualizer({
+  const virtualizer = useVirtualizer({
     count: torrents.length,
     getScrollElement: () => parentRef.current,
     estimateSize: () => 180, // Default estimate for card height
@@ -418,22 +430,20 @@ export function TorrentCardsMobile({
     },
   })
 
-  const virtualizer = rowVirtualizer
-
   const virtualItems = virtualizer.getVirtualItems()
 
   // Exit selection mode when no items selected
   useEffect(() => {
-    if (selectionMode && selectedHashes.size === 0) {
+    if (selectionMode && effectiveSelectionCount === 0) {
       setSelectionMode(false)
       setIsSelectionMode(false)
     }
-  }, [selectedHashes.size, selectionMode, setIsSelectionMode])
+  }, [effectiveSelectionCount, selectionMode, setIsSelectionMode])
 
   // Sync selection mode with context
   useEffect(() => {
-    setIsSelectionMode(selectionMode && selectedHashes.size > 0)
-  }, [selectionMode, selectedHashes.size, setIsSelectionMode])
+    setIsSelectionMode(selectionMode && effectiveSelectionCount > 0)
+  }, [selectionMode, effectiveSelectionCount, setIsSelectionMode])
 
   // Cleanup on unmount
   useEffect(() => {
@@ -441,6 +451,26 @@ export function TorrentCardsMobile({
       setIsSelectionMode(false)
     }
   }, [setIsSelectionMode])
+
+  // Reset selection when filters or search changes
+  useEffect(() => {
+    setSelectedHashes(new Set())
+    setSelectionMode(false)
+    setIsSelectionMode(false)
+    setIsAllSelected(false)
+    setExcludedFromSelectAll(new Set())
+
+    // Scroll to top and force virtualizer recalculation
+    if (parentRef.current) {
+      parentRef.current.scrollTop = 0
+    }
+
+    // Force virtualizer to recalculate after a micro-task
+    setTimeout(() => {
+      virtualizer.scrollToOffset(0)
+      virtualizer.measure()
+    }, 0)
+  }, [filters, effectiveSearch, instanceId, virtualizer, setIsSelectionMode])
 
   // Mutations
   const mutation = useMutation({
@@ -451,13 +481,35 @@ export function TorrentCardsMobile({
       tags?: string
       category?: string
       enable?: boolean
+      selectAll?: boolean
+      filters?: {
+        status: string[]
+        categories: string[]
+        tags: string[]
+        trackers: string[]
+      }
+      search?: string
+      excludeHashes?: string[]
     }) => {
-      return api.bulkAction(instanceId, data)
+      return api.bulkAction(instanceId, {
+        action: data.action,
+        hashes: data.hashes,
+        deleteFiles: data.deleteFiles,
+        tags: data.tags,
+        category: data.category,
+        enable: data.enable,
+        selectAll: data.selectAll,
+        filters: data.filters,
+        search: data.search,
+        excludeHashes: data.excludeHashes,
+      })
     },
     onSuccess: async (_, variables) => {
       if (variables.action === "delete") {
         setSelectedHashes(new Set())
         setSelectionMode(false)
+        setIsAllSelected(false)
+        setExcludedFromSelectAll(new Set())
 
         // Optimistically remove from cache
         const cache = queryClient.getQueryCache()
@@ -467,7 +519,11 @@ export function TorrentCardsMobile({
         })
 
         queries.forEach(query => {
-          queryClient.setQueryData(query.queryKey, (oldData: any) => {
+          queryClient.setQueryData(query.queryKey, (oldData: {
+            torrents?: Torrent[]
+            total?: number
+            totalCount?: number
+          }) => {
             if (!oldData) return oldData
             return {
               ...oldData,
@@ -475,16 +531,28 @@ export function TorrentCardsMobile({
                 !variables.hashes.includes(t.hash)
               ) || [],
               total: Math.max(0, (oldData.total || 0) - variables.hashes.length),
+              totalCount: Math.max(0, (oldData.totalCount || oldData.total || 0) - variables.hashes.length),
             }
           })
         })
 
+        // For other operations, add delay to allow qBittorrent to process
+        // Resume operations need more time for state transition
+        const refetchDelay = variables.deleteFiles ? 5000 : 2000
+
         setTimeout(() => {
-          queryClient.invalidateQueries({
+          queryClient.refetchQueries({
             queryKey: ["torrents-list", instanceId],
             exact: false,
+            type: "active",
           })
-        }, variables.deleteFiles ? 5000 : 2000)
+          // Also refetch the counts query
+          queryClient.refetchQueries({
+            queryKey: ["torrent-counts", instanceId],
+            exact: false,
+            type: "active",
+          })
+        }, refetchDelay)
       } else {
         // Handle pause/resume optimistically
         if (variables.action === "pause" || variables.action === "resume") {
@@ -495,7 +563,11 @@ export function TorrentCardsMobile({
           })
 
           queries.forEach(query => {
-            queryClient.setQueryData(query.queryKey, (oldData: any) => {
+            queryClient.setQueryData(query.queryKey, (oldData: {
+              torrents?: Torrent[]
+              total?: number
+              totalCount?: number
+            }) => {
               if (!oldData?.torrents) return oldData
 
               const { torrents: updatedTorrents } = applyOptimisticUpdates(
@@ -508,17 +580,29 @@ export function TorrentCardsMobile({
               return {
                 ...oldData,
                 torrents: updatedTorrents,
+                total: updatedTorrents.length,
+                totalCount: updatedTorrents.length,
               }
             })
           })
         }
 
+        // For other operations, add delay to allow qBittorrent to process
+        // Resume operations need more time for state transition
+        const refetchDelay = variables.action === "resume" ? 2000 : 1000
+
         setTimeout(() => {
-          queryClient.invalidateQueries({
+          queryClient.refetchQueries({
             queryKey: ["torrents-list", instanceId],
             exact: false,
+            type: "active",
           })
-        }, variables.action === "resume" ? 2000 : 1000)
+          queryClient.refetchQueries({
+            queryKey: ["torrent-counts", instanceId],
+            exact: false,
+            type: "active",
+          })
+        }, refetchDelay)
       }
     },
   })
@@ -530,78 +614,158 @@ export function TorrentCardsMobile({
   }, [])
 
   const handleSelect = useCallback((hash: string, selected: boolean) => {
-    setSelectedHashes(prev => {
-      const next = new Set(prev)
-      if (selected) {
-        next.add(hash)
+    if (isAllSelected) {
+      if (!selected) {
+        // When deselecting in "select all" mode, add to exclusions
+        setExcludedFromSelectAll(prev => new Set(prev).add(hash))
       } else {
-        next.delete(hash)
+        // When selecting a row that was excluded, remove from exclusions
+        setExcludedFromSelectAll(prev => {
+          const newSet = new Set(prev)
+          newSet.delete(hash)
+          return newSet
+        })
       }
-      return next
-    })
-  }, [])
+    } else {
+      // Regular selection mode
+      setSelectedHashes(prev => {
+        const next = new Set(prev)
+        if (selected) {
+          next.add(hash)
+        } else {
+          next.delete(hash)
+        }
+        return next
+      })
+    }
+  }, [isAllSelected])
 
   const handleSelectAll = useCallback(() => {
-    if (selectedHashes.size === torrents.length) {
+    const currentlySelectedCount = isAllSelected ? effectiveSelectionCount : selectedHashes.size
+    const loadedTorrentsCount = torrents.length
+
+    if (currentlySelectedCount === totalCount || (currentlySelectedCount === loadedTorrentsCount && currentlySelectedCount < totalCount)) {
+      // Deselect all
+      setIsAllSelected(false)
+      setExcludedFromSelectAll(new Set())
       setSelectedHashes(new Set())
-    } else {
+    } else if (loadedTorrentsCount >= totalCount) {
+      // All torrents are loaded, use regular selection
       setSelectedHashes(new Set(torrents.map(t => t.hash)))
+      setIsAllSelected(false)
+      setExcludedFromSelectAll(new Set())
+    } else {
+      // Not all torrents are loaded, use "select all" mode
+      setIsAllSelected(true)
+      setExcludedFromSelectAll(new Set())
+      setSelectedHashes(new Set())
     }
-  }, [selectedHashes.size, torrents])
+  }, [isAllSelected, effectiveSelectionCount, selectedHashes.size, torrents, totalCount])
 
   const handleBulkAction = useCallback((action: "pause" | "resume" | "delete" | "recheck" | "reannounce" | "increasePriority" | "decreasePriority" | "topPriority" | "bottomPriority") => {
-    const hashes = Array.from(selectedHashes)
-    mutation.mutate({ action, hashes })
+    const hashes = isAllSelected ? [] : Array.from(selectedHashes)
+    mutation.mutate({
+      action,
+      hashes,
+      selectAll: isAllSelected,
+      filters: isAllSelected ? filters : undefined,
+      search: isAllSelected ? effectiveSearch : undefined,
+      excludeHashes: isAllSelected ? Array.from(excludedFromSelectAll) : undefined,
+    })
     setSelectedHashes(new Set())
     setSelectionMode(false)
     setIsSelectionMode(false)
+    setIsAllSelected(false)
+    setExcludedFromSelectAll(new Set())
     setShowActionsSheet(false)
-  }, [selectedHashes, mutation, setIsSelectionMode])
+  }, [selectedHashes, mutation, setIsSelectionMode, isAllSelected, filters, effectiveSearch, excludedFromSelectAll])
 
   const handleDelete = async () => {
-    const hashes = torrentToDelete ? [torrentToDelete.hash] : Array.from(selectedHashes)
+    const hashes = torrentToDelete ? [torrentToDelete.hash] : (isAllSelected ? [] : Array.from(selectedHashes))
+    const deleteCount = torrentToDelete ? 1 : effectiveSelectionCount
+
     await mutation.mutateAsync({
       action: "delete",
-      deleteFiles,
       hashes,
+      deleteFiles,
+      selectAll: !torrentToDelete && isAllSelected,
+      filters: !torrentToDelete && isAllSelected ? filters : undefined,
+      search: !torrentToDelete && isAllSelected ? effectiveSearch : undefined,
+      excludeHashes: !torrentToDelete && isAllSelected ? Array.from(excludedFromSelectAll) : undefined,
     })
     setShowDeleteDialog(false)
     setDeleteFiles(false)
     setTorrentToDelete(null)
-    toast.success(`${hashes.length} torrent(s) deleted`)
+    toast.success(`${deleteCount} torrent(s) deleted`)
   }
 
   const handleSetTags = async (tags: string[]) => {
-    const hashes = actionTorrents.map(t => t.hash)
-    await mutation.mutateAsync({
-      action: "setTags",
-      tags: tags.join(","),
-      hashes,
-    })
+    const hashes = isAllSelected ? [] : actionTorrents.map(t => t.hash)
+
+    try {
+      await mutation.mutateAsync({
+        action: "setTags",
+        hashes,
+        tags: tags.join(","),
+        selectAll: isAllSelected,
+        filters: isAllSelected ? filters : undefined,
+        search: isAllSelected ? effectiveSearch : undefined,
+        excludeHashes: isAllSelected ? Array.from(excludedFromSelectAll) : undefined,
+      })
+    } catch (error) {
+      if ((error as Error).message?.includes("requires qBittorrent")) {
+        await mutation.mutateAsync({
+          action: "addTags",
+          hashes,
+          tags: tags.join(","),
+          selectAll: isAllSelected,
+          filters: isAllSelected ? filters : undefined,
+          search: isAllSelected ? effectiveSearch : undefined,
+          excludeHashes: isAllSelected ? Array.from(excludedFromSelectAll) : undefined,
+        })
+      } else {
+        throw error
+      }
+    }
+
     setShowTagsDialog(false)
     setActionTorrents([])
     setSelectedHashes(new Set())
     setSelectionMode(false)
     setIsSelectionMode(false)
+    setIsAllSelected(false)
+    setExcludedFromSelectAll(new Set())
   }
 
   const handleSetCategory = async (category: string) => {
-    const hashes = actionTorrents.map(t => t.hash)
+    const hashes = isAllSelected ? [] : actionTorrents.map(t => t.hash)
     await mutation.mutateAsync({
       action: "setCategory",
-      category,
       hashes,
+      category,
+      selectAll: isAllSelected,
+      filters: isAllSelected ? filters : undefined,
+      search: isAllSelected ? effectiveSearch : undefined,
+      excludeHashes: isAllSelected ? Array.from(excludedFromSelectAll) : undefined,
     })
     setShowCategoryDialog(false)
     setActionTorrents([])
     setSelectedHashes(new Set())
     setSelectionMode(false)
     setIsSelectionMode(false)
+    setIsAllSelected(false)
+    setExcludedFromSelectAll(new Set())
   }
 
   const getSelectedTorrents = useMemo(() => {
-    return torrents.filter(t => selectedHashes.has(t.hash))
-  }, [torrents, selectedHashes])
+    if (isAllSelected) {
+      // When all are selected, return all torrents minus exclusions
+      return torrents.filter(t => !excludedFromSelectAll.has(t.hash))
+    } else {
+      // Regular selection mode
+      return torrents.filter(t => selectedHashes.has(t.hash))
+    }
+  }, [torrents, selectedHashes, isAllSelected, excludedFromSelectAll])
 
   return (
     <div className="h-full flex flex-col relative">
@@ -612,14 +776,14 @@ export function TorrentCardsMobile({
             <div className="text-lg font-semibold truncate max-w-[55%]">
               {instanceName ?? ""}
             </div>
-            <div className="flex-1" />
+            <div className="flex-1"/>
             <Button
               size="icon"
               variant="ghost"
               onClick={() => setIncognitoMode(!incognitoMode)}
               title={incognitoMode ? "Disable incognito mode" : "Enable incognito mode"}
             >
-              {incognitoMode ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              {incognitoMode ? <EyeOff className="h-4 w-4"/> : <Eye className="h-4 w-4"/>}
             </Button>
             {/* Columns control hidden on mobile */}
             {/* Filters button (opens mobile filters sheet) */}
@@ -629,7 +793,7 @@ export function TorrentCardsMobile({
               onClick={() => window.dispatchEvent(new Event("qui-open-mobile-filters"))}
               title="Filters"
             >
-              <Filter className="h-4 w-4" />
+              <Filter className="h-4 w-4"/>
             </Button>
 
             <Button
@@ -637,7 +801,7 @@ export function TorrentCardsMobile({
               variant="outline"
               onClick={() => onAddTorrentModalChange?.(true)}
             >
-              <Plus className="h-4 w-4" />
+              <Plus className="h-4 w-4"/>
             </Button>
           </div>
         </div>
@@ -645,9 +809,9 @@ export function TorrentCardsMobile({
         {/* Stats bar */}
         <div className="flex items-center justify-center text-xs mb-3">
           <div className="flex items-center gap-1">
-            <ChevronDown className="h-3 w-3" />
+            <ChevronDown className="h-3 w-3"/>
             <span className="font-medium">{formatSpeed(stats.totalDownloadSpeed || 0)}</span>
-            <ChevronUp className="h-3 w-3" />
+            <ChevronUp className="h-3 w-3"/>
             <span className="font-medium">{formatSpeed(stats.totalUploadSpeed || 0)}</span>
           </div>
         </div>
@@ -661,27 +825,30 @@ export function TorrentCardsMobile({
                   setSelectedHashes(new Set())
                   setSelectionMode(false)
                   setIsSelectionMode(false)
+                  setIsAllSelected(false)
+                  setExcludedFromSelectAll(new Set())
                 }}
                 className="p-1"
               >
-                <X className="h-4 w-4" />
+                <X className="h-4 w-4"/>
               </button>
               <span className="text-sm font-medium">
-                {selectedHashes.size} selected
+                {isAllSelected ? `All ${effectiveSelectionCount}` : effectiveSelectionCount} selected
               </span>
             </div>
             <button
               onClick={handleSelectAll}
               className="text-sm font-medium"
             >
-              {selectedHashes.size === torrents.length ? "Deselect All" : "Select All"}
+              {effectiveSelectionCount === totalCount ? "Deselect All" : "Select All"}
             </button>
           </div>
         )}
       </div>
 
       {/* Torrent cards with virtual scrolling */}
-      <div ref={parentRef} className="flex-1 overflow-auto" style={{ paddingBottom: "calc(5rem + env(safe-area-inset-bottom))" }}>
+      <div ref={parentRef} className="flex-1 overflow-auto"
+        style={{ paddingBottom: "calc(5rem + env(safe-area-inset-bottom))" }}>
         <div
           style={{
             height: `${virtualizer.getTotalSize()}px`,
@@ -691,7 +858,7 @@ export function TorrentCardsMobile({
         >
           {virtualItems.map(virtualItem => {
             const torrent = torrents[virtualItem.index]
-            const isSelected = selectedHashes.has(torrent.hash)
+            const isSelected = isAllSelected ? !excludedFromSelectAll.has(torrent.hash) : selectedHashes.has(torrent.hash)
 
             return (
               <div
@@ -730,12 +897,12 @@ export function TorrentCardsMobile({
       </div>
 
       {/* Fixed bottom action bar - visible in selection mode */}
-      {selectionMode && selectedHashes.size > 0 && (
+      {selectionMode && effectiveSelectionCount > 0 && (
         <div
           className={cn(
             "fixed bottom-0 left-0 right-0 z-40 lg:hidden bg-background/80 backdrop-blur-md border-t border-border/50",
             "transition-transform duration-200 ease-in-out",
-            selectionMode && selectedHashes.size > 0 ? "translate-y-0" : "translate-y-full"
+            selectionMode && effectiveSelectionCount > 0 ? "translate-y-0" : "translate-y-full"
           )}
           style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
         >
@@ -744,7 +911,7 @@ export function TorrentCardsMobile({
               onClick={() => handleBulkAction("resume")}
               className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground"
             >
-              <Play className="h-5 w-5" />
+              <Play className="h-5 w-5"/>
               <span className="truncate">Resume</span>
             </button>
 
@@ -752,7 +919,7 @@ export function TorrentCardsMobile({
               onClick={() => handleBulkAction("pause")}
               className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground"
             >
-              <Pause className="h-5 w-5" />
+              <Pause className="h-5 w-5"/>
               <span className="truncate">Pause</span>
             </button>
 
@@ -763,7 +930,7 @@ export function TorrentCardsMobile({
               }}
               className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground"
             >
-              <Folder className="h-5 w-5" />
+              <Folder className="h-5 w-5"/>
               <span className="truncate">Category</span>
             </button>
 
@@ -774,7 +941,7 @@ export function TorrentCardsMobile({
               }}
               className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground"
             >
-              <Tag className="h-5 w-5" />
+              <Tag className="h-5 w-5"/>
               <span className="truncate">Tags</span>
             </button>
 
@@ -782,7 +949,7 @@ export function TorrentCardsMobile({
               onClick={() => setShowActionsSheet(true)}
               className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground"
             >
-              <MoreVertical className="h-5 w-5" />
+              <MoreVertical className="h-5 w-5"/>
               <span className="truncate">More</span>
             </button>
           </div>
@@ -793,7 +960,8 @@ export function TorrentCardsMobile({
       <Sheet open={showActionsSheet} onOpenChange={setShowActionsSheet}>
         <SheetContent side="bottom" className="h-auto pb-8">
           <SheetHeader>
-            <SheetTitle>Actions for {selectedHashes.size} torrent(s)</SheetTitle>
+            <SheetTitle>Actions
+              for {isAllSelected ? `all ${effectiveSelectionCount}` : effectiveSelectionCount} torrent(s)</SheetTitle>
           </SheetHeader>
           <div className="grid gap-2 py-4 px-4">
             <Button
@@ -801,7 +969,7 @@ export function TorrentCardsMobile({
               onClick={() => handleBulkAction("recheck")}
               className="justify-start"
             >
-              <CheckCircle2 className="mr-2 h-4 w-4" />
+              <CheckCircle2 className="mr-2 h-4 w-4"/>
               Force Recheck
             </Button>
             <Button
@@ -809,7 +977,7 @@ export function TorrentCardsMobile({
               onClick={() => handleBulkAction("reannounce")}
               className="justify-start"
             >
-              <Radio className="mr-2 h-4 w-4" />
+              <Radio className="mr-2 h-4 w-4"/>
               Reannounce
             </Button>
             <Button
@@ -817,7 +985,7 @@ export function TorrentCardsMobile({
               onClick={() => handleBulkAction("topPriority")}
               className="justify-start"
             >
-              <ChevronUp className="mr-2 h-4 w-4" />
+              <ChevronUp className="mr-2 h-4 w-4"/>
               Top Priority
             </Button>
             <Button
@@ -825,7 +993,7 @@ export function TorrentCardsMobile({
               onClick={() => handleBulkAction("bottomPriority")}
               className="justify-start"
             >
-              <ChevronDown className="mr-2 h-4 w-4" />
+              <ChevronDown className="mr-2 h-4 w-4"/>
               Bottom Priority
             </Button>
             <Button
@@ -836,7 +1004,7 @@ export function TorrentCardsMobile({
               }}
               className="justify-start !bg-destructive !text-destructive-foreground"
             >
-              <Trash2 className="mr-2 h-4 w-4" />
+              <Trash2 className="mr-2 h-4 w-4"/>
               Delete
             </Button>
           </div>
@@ -848,7 +1016,7 @@ export function TorrentCardsMobile({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              Delete {torrentToDelete ? "1" : selectedHashes.size} torrent(s)?
+              Delete {torrentToDelete ? "1" : (isAllSelected ? `all ${effectiveSelectionCount}` : effectiveSelectionCount)} torrent(s)?
             </AlertDialogTitle>
             <AlertDialogDescription>
               This action cannot be undone.
