@@ -110,7 +110,7 @@ func (c *Client) HealthCheck(ctx context.Context) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.lastHealthCheck = time.Now()
-	c.isHealthy = err != nil
+	c.isHealthy = err == nil
 
 	if err != nil {
 		return errors.Wrap(err, "health check failed")
