@@ -974,10 +974,6 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 	torrentsMap := syncManager.GetTorrents()
 	torrents := make([]qbt.Torrent, 0, len(torrentsMap))
 	for _, torrent := range torrentsMap {
-		// Fix Hash field if it's empty - use InfohashV1 as fallback
-		if torrent.Hash == "" && torrent.InfohashV1 != "" {
-			torrent.Hash = torrent.InfohashV1
-		}
 		torrents = append(torrents, torrent)
 	}
 
@@ -1508,13 +1504,6 @@ func (sm *SyncManager) SetTags(ctx context.Context, instanceID int, hashes []str
 		})
 		if err != nil {
 			return fmt.Errorf("failed to get torrents for fallback: %w", err)
-		}
-
-		// Fix Hash field if it's empty - use InfohashV1 as fallback
-		for i := range torrents {
-			if torrents[i].Hash == "" && torrents[i].InfohashV1 != "" {
-				torrents[i].Hash = torrents[i].InfohashV1
-			}
 		}
 
 		existingTagsSet := make(map[string]bool)
