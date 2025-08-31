@@ -204,7 +204,6 @@ type DeleteInstanceResponse struct {
 // InstanceStatsResponse represents statistics for an instance
 type InstanceStatsResponse struct {
 	InstanceID int          `json:"instanceId"`
-	Connected  bool         `json:"connected"`
 	Torrents   TorrentStats `json:"torrents"`
 	Speeds     SpeedStats   `json:"speeds"`
 }
@@ -388,7 +387,6 @@ func (h *InstancesHandler) TestConnection(w http.ResponseWriter, r *http.Request
 func (h *InstancesHandler) getDefaultStats(instanceID int) InstanceStatsResponse {
 	return InstanceStatsResponse{
 		InstanceID: instanceID,
-		Connected:  false,
 		Torrents: TorrentStats{
 			Total:       0,
 			Downloading: 0,
@@ -428,19 +426,8 @@ func (h *InstancesHandler) GetInstanceStats(w http.ResponseWriter, r *http.Reque
 	// Get default stats for error cases
 	defaultStats := h.getDefaultStats(instanceID)
 
-	// Get client
-	client, err := h.clientPool.GetClient(r.Context(), instanceID)
-	if err != nil {
-		if !h.isDecryptionError(err) { // Only log if it's not a decryption error (those are already logged in pool)
-			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client")
-		}
-		RespondJSON(w, http.StatusOK, defaultStats)
-		return
-	}
-
-	// Build response with connection status
+	// Build response with stats only
 	stats := defaultStats
-	stats.Connected = client.IsHealthy()
 
 	// Get torrent and speed statistics
 	h.populateInstanceStats(r.Context(), instanceID, &stats)
