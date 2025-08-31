@@ -10,12 +10,15 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/autobrr/qui/internal/domain"
 )
 
 var ErrInstanceNotFound = errors.New("instance not found")
@@ -32,6 +35,84 @@ type Instance struct {
 	LastConnectedAt        *time.Time `json:"last_connected_at,omitempty"`
 	CreatedAt              time.Time  `json:"created_at"`
 	UpdatedAt              time.Time  `json:"updated_at"`
+}
+
+func (i Instance) MarshalJSON() ([]byte, error) {
+	// Create the JSON structure with redacted password fields
+	return json.Marshal(&struct {
+		ID              int        `json:"id"`
+		Name            string     `json:"name"`
+		Host            string     `json:"host"`
+		Username        string     `json:"username"`
+		Password        string     `json:"password,omitempty"`
+		BasicUsername   *string    `json:"basic_username,omitempty"`
+		BasicPassword   string     `json:"basic_password,omitempty"`
+		IsActive        bool       `json:"is_active"`
+		LastConnectedAt *time.Time `json:"last_connected_at,omitempty"`
+		CreatedAt       time.Time  `json:"created_at"`
+		UpdatedAt       time.Time  `json:"updated_at"`
+	}{
+		ID:            i.ID,
+		Name:          i.Name,
+		Host:          i.Host,
+		Username:      i.Username,
+		Password:      domain.RedactString(i.PasswordEncrypted),
+		BasicUsername: i.BasicUsername,
+		BasicPassword: func() string {
+			if i.BasicPasswordEncrypted != nil {
+				return domain.RedactString(*i.BasicPasswordEncrypted)
+			}
+			return ""
+		}(),
+		IsActive:        i.IsActive,
+		LastConnectedAt: i.LastConnectedAt,
+		CreatedAt:       i.CreatedAt,
+		UpdatedAt:       i.UpdatedAt,
+	})
+}
+
+func (i *Instance) UnmarshalJSON(data []byte) error {
+	// Temporary struct for unmarshaling
+	var temp struct {
+		ID              int        `json:"id"`
+		Name            string     `json:"name"`
+		Host            string     `json:"host"`
+		Username        string     `json:"username"`
+		Password        string     `json:"password,omitempty"`
+		BasicUsername   *string    `json:"basic_username,omitempty"`
+		BasicPassword   string     `json:"basic_password,omitempty"`
+		IsActive        bool       `json:"is_active"`
+		LastConnectedAt *time.Time `json:"last_connected_at,omitempty"`
+		CreatedAt       time.Time  `json:"created_at"`
+		UpdatedAt       time.Time  `json:"updated_at"`
+	}
+
+	if err := json.Unmarshal(data, &temp); err != nil {
+		return err
+	}
+
+	// Copy non-secret fields
+	i.ID = temp.ID
+	i.Name = temp.Name
+	i.Host = temp.Host
+	i.Username = temp.Username
+	i.BasicUsername = temp.BasicUsername
+	i.IsActive = temp.IsActive
+	i.LastConnectedAt = temp.LastConnectedAt
+	i.CreatedAt = temp.CreatedAt
+	i.UpdatedAt = temp.UpdatedAt
+
+	// Handle password - don't overwrite if redacted
+	if temp.Password != "" && !domain.IsRedactedValue(temp.Password) {
+		i.PasswordEncrypted = temp.Password
+	}
+
+	// Handle basic password - don't overwrite if redacted
+	if temp.BasicPassword != "" && !domain.IsRedactedValue(temp.BasicPassword) {
+		i.BasicPasswordEncrypted = &temp.BasicPassword
+	}
+
+	return nil
 }
 
 type InstanceStore struct {
