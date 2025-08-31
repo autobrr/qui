@@ -38,7 +38,7 @@ interface InstanceCardProps {
 
 export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
   const { deleteInstance, testConnection, isDeleting, isTesting } = useInstances()
-  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string | undefined } | null>(null)
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const displayUrl = instance.host
 
