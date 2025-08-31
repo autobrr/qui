@@ -126,7 +126,7 @@ func (cp *ClientPool) GetClientOffline(ctx context.Context, instanceID int) (*Cl
 
 // GetClient returns a qBittorrent client for the given instance ID with default timeout
 func (cp *ClientPool) GetClient(ctx context.Context, instanceID int) (*Client, error) {
-	return cp.GetClientWithTimeout(ctx, instanceID, 30*time.Second)
+	return cp.GetClientWithTimeout(ctx, instanceID, 60*time.Second)
 }
 
 // GetClientWithTimeout returns a qBittorrent client for the given instance ID with custom timeout
@@ -158,7 +158,7 @@ func (cp *ClientPool) GetClientWithTimeout(ctx context.Context, instanceID int, 
 
 // createClient creates a new client connection with default timeout
 func (cp *ClientPool) createClient(ctx context.Context, instanceID int) (*Client, error) {
-	return cp.createClientWithTimeout(ctx, instanceID, 30*time.Second)
+	return cp.createClientWithTimeout(ctx, instanceID, 60*time.Second)
 }
 
 // createClientWithTimeout creates a new client connection with custom timeout
