@@ -41,6 +41,8 @@ paths:
                 password:
                   type: string
                   minLength: 8
+                  writeOnly: true
+                  description: Password will be hashed and never returned in responses
       responses:
         '201':
           description: Setup completed successfully
@@ -77,6 +79,8 @@ paths:
                   type: string
                 password:
                   type: string
+                  writeOnly: true
+                  description: Password will be hashed and never returned in responses
       responses:
         '200':
           description: Login successful
@@ -152,9 +156,13 @@ paths:
               properties:
                 currentPassword:
                   type: string
+                  writeOnly: true
+                  description: Current password for verification
                 newPassword:
                   type: string
                   minLength: 8
+                  writeOnly: true
+                  description: New password will be hashed and never returned in responses
       responses:
         '200':
           description: Password changed successfully
@@ -260,19 +268,30 @@ paths:
               type: object
               required:
                 - name
-                - url
+                - host
                 - username
                 - password
               properties:
                 name:
                   type: string
-                url:
+                host:
                   type: string
                   format: uri
                 username:
                   type: string
                 password:
                   type: string
+                  writeOnly: true
+                  description: Password for qBittorrent instance. Will be encrypted and never returned in responses.
+                basicUsername:
+                  type: string
+                  nullable: true
+                  description: Optional basic auth username
+                basicPassword:
+                  type: string
+                  nullable: true
+                  writeOnly: true
+                  description: Optional basic auth password. Will be encrypted and never returned in responses.
       responses:
         '201':
           description: Instance created
@@ -298,13 +317,24 @@ paths:
               properties:
                 name:
                   type: string
-                url:
+                host:
                   type: string
                   format: uri
                 username:
                   type: string
                 password:
                   type: string
+                  writeOnly: true
+                  description: Password for qBittorrent instance. Optional for updates - only updates if provided and not masked.
+                basicUsername:
+                  type: string
+                  nullable: true
+                  description: Optional basic auth username
+                basicPassword:
+                  type: string
+                  nullable: true
+                  writeOnly: true
+                  description: Optional basic auth password. Optional for updates - only updates if provided and not masked.
       responses:
         '200':
           description: Instance updated
@@ -1042,17 +1072,44 @@ components:
           type: integer
         name:
           type: string
-        url:
+        host:
           type: string
           format: uri
-        isDefault:
-          type: boolean
-        status:
+        username:
           type: string
-          enum: [online, offline, error]
-        lastChecked:
+        password:
+          type: string
+          description: Always masked with asterisks in responses. Only used for input.
+          readOnly: true
+        basic_username:
+          type: string
+          nullable: true
+        basic_password:
+          type: string
+          description: Always masked with asterisks in responses. Only used for input.
+          readOnly: true
+          nullable: true
+        is_active:
+          type: boolean
+        last_connected_at:
           type: string
           format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        connected:
+          type: boolean
+          description: Current connection status
+        connectionError:
+          type: string
+          description: Error message if connection failed
+        hasDecryptionError:
+          type: boolean
+          description: Whether there's a password decryption error
 
     InstanceStats:
       type: object
