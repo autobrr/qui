@@ -435,7 +435,12 @@ func (app *Application) runServer() {
 
 	// Initialize managers
 	syncManager := qbittorrent.NewSyncManager(clientPool)
-	metricsManager := metrics.NewManager(syncManager, clientPool)
+
+	var metricsManager *metrics.Manager
+	if cfg.Config.MetricsEnabled {
+		metricsManager = metrics.NewManager(syncManager, clientPool)
+		log.Info().Msg("Prometheus metrics enabled at /metrics endpoint")
+	}
 
 	// Initialize web handler (for embedded frontend)
 	webHandler, err := web.NewHandler(Version, cfg.Config.BaseURL, webfs.DistDirFS)
