@@ -430,11 +430,12 @@ func (app *Application) runServer() {
 	// Initialize session manager
 	sessionManager := scs.New()
 	sessionManager.Store = sqlite3store.New(db.Conn())
-	sessionManager.Lifetime = 24 * time.Hour * 7 // 7 days
-	sessionManager.Cookie.Name = "qui_session"
+	sessionManager.Lifetime = 24 * time.Hour * 30 // 30 days
+	sessionManager.Cookie.Name = "qui_user_session"
 	sessionManager.Cookie.HttpOnly = true
 	sessionManager.Cookie.SameSite = http.SameSiteLaxMode
 	sessionManager.Cookie.Secure = false // Will be set to true when HTTPS is detected
+	sessionManager.Cookie.Persist = false
 
 	// Initialize services
 	authService := auth.NewService(db.Conn(), sessionManager)

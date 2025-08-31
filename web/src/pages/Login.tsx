@@ -32,7 +32,7 @@ export function Login() {
     defaultValues: {
       username: "",
       password: "",
-      rememberMe: false,
+      rememberMe: true,
     },
     onSubmit: async ({ value }) => {
       login(value)
