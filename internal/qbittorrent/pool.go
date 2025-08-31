@@ -107,6 +107,23 @@ func (cp *ClientPool) getInstanceLock(instanceID int) *sync.Mutex {
 	return lock
 }
 
+// GetClientOffline returns a qBittorrent client for the given instance ID if it exists in the pool, without attempting to create a new one
+func (cp *ClientPool) GetClientOffline(ctx context.Context, instanceID int) (*Client, error) {
+	cp.mu.RLock()
+	defer cp.mu.RUnlock()
+
+	if cp.closed {
+		return nil, ErrPoolClosed
+	}
+
+	client, exists := cp.clients[instanceID]
+	if !exists {
+		return nil, ErrClientNotFound
+	}
+
+	return client, nil
+}
+
 // GetClient returns a qBittorrent client for the given instance ID with default timeout
 func (cp *ClientPool) GetClient(ctx context.Context, instanceID int) (*Client, error) {
 	return cp.GetClientWithTimeout(ctx, instanceID, 30*time.Second)
