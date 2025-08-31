@@ -1,3 +1,6 @@
+// Copyright (c) 2021 - 2025, Ludvig Lundgren and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package sqlite3store
 
 import (
@@ -47,22 +50,24 @@ func New(db SqlDB, opts ...OptFunc) *SQLite3Store {
 
 	if p.cleanupInterval > 0 {
 		p.stopCleanup = make(chan bool)
-		go p.startCleanup()
+		go p.startCleanup(p.cleanupInterval)
 	}
 
 	return p
 }
 
-// Find returns the data for a session token from the SQLite3 database. If the
-// session token is not found or is expired, the found return value will be false.
-func (p *SQLite3Store) Find(token string) (b []byte, found bool, err error) {
+// Find returns the data for a given session token from the SQLite3Store instance.
+// If the session token is not found or is expired, the returned exists flag will
+// be set to false.
+func (p *SQLite3Store) Find(token string) (b []byte, exists bool, err error) {
 	return p.FindCtx(context.Background(), token)
 }
 
-// FindCtx returns the data for a session token from the SQLite3 database. If the
-// session token is not found or is expired, the found return value will be false.
-func (p *SQLite3Store) FindCtx(ctx context.Context, token string) (b []byte, found bool, err error) {
-	row := p.db.QueryRowContext(ctx, "SELECT data FROM sessions WHERE token = ? AND expiry > ?", token, time.Now().Unix())
+// FindCtx returns the data for a given session token from the SQLite3Store instance.
+// If the session token is not found or is expired, the returned exists flag will
+// be set to false.
+func (p *SQLite3Store) FindCtx(ctx context.Context, token string) (b []byte, exists bool, err error) {
+	row := p.db.QueryRowContext(ctx, "SELECT data FROM sessions WHERE token = $1 AND julianday('now') < expiry", token)
 	err = row.Scan(&b)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -70,43 +75,51 @@ func (p *SQLite3Store) FindCtx(ctx context.Context, token string) (b []byte, fou
 		}
 		return nil, false, err
 	}
+
 	return b, true, nil
 }
 
-// Commit adds a session token and data to the SQLite3 database with the given expiry
-// time. If the session token already exists, then the data and expiry time are updated.
+// Commit adds a session token and data to the SQLite3Store instance with the
+// given expiry time. If the session token already exists, then the data and expiry
+// time are updated.
 func (p *SQLite3Store) Commit(token string, b []byte, expiry time.Time) error {
 	return p.CommitCtx(context.Background(), token, b, expiry)
 }
 
-// CommitCtx adds a session token and data to the SQLite3 database with the given
-// expiry time. If the session token already exists, then the data and expiry time are updated.
+// CommitCtx adds a session token and data to the SQLite3Store instance with the
+// given expiry time. If the session token already exists, then the data and expiry
+// time are updated.
 func (p *SQLite3Store) CommitCtx(ctx context.Context, token string, b []byte, expiry time.Time) error {
-	_, err := p.db.ExecContext(ctx, "INSERT OR REPLACE INTO sessions (token, data, expiry) VALUES (?, ?, ?)", token, b, expiry.Unix())
-	return err
+	_, err := p.db.ExecContext(ctx, "REPLACE INTO sessions (token, data, expiry) VALUES ($1, $2, julianday($3))", token, b, expiry.UTC().Format("2006-01-02T15:04:05.999"))
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
-// Delete removes a session token and corresponding data from the SQLite3 database.
+// Delete removes a session token and corresponding data from the SQLite3Store
+// instance.
 func (p *SQLite3Store) Delete(token string) error {
 	return p.DeleteCtx(context.Background(), token)
 }
 
-// DeleteCtx removes a session token and corresponding data from the SQLite3 database.
+// DeleteCtx removes a session token and corresponding data from the SQLite3Store
+// instance.
 func (p *SQLite3Store) DeleteCtx(ctx context.Context, token string) error {
-	_, err := p.db.ExecContext(ctx, "DELETE FROM sessions WHERE token = ?", token)
+	_, err := p.db.ExecContext(ctx, "DELETE FROM sessions WHERE token = $1", token)
 	return err
 }
 
-// All returns a map containing data for all active sessions. The map key is the
-// session token and the map value is the session data.
+// All returns a map containing the token and data for all active (i.e.
+// not expired) sessions in the SQLite3Store instance.
 func (p *SQLite3Store) All() (map[string][]byte, error) {
 	return p.AllCtx(context.Background())
 }
 
-// AllCtx returns a map containing data for all active sessions. The map key is the
-// session token and the map value is the session data.
+// AllCtx returns a map containing the token and data for all active (i.e.
+// not expired) sessions in the SQLite3Store instance.
 func (p *SQLite3Store) AllCtx(ctx context.Context) (map[string][]byte, error) {
-	rows, err := p.db.QueryContext(ctx, "SELECT token, data FROM sessions WHERE expiry > ?", time.Now().Unix())
+	rows, err := p.db.QueryContext(ctx, "SELECT token, data FROM sessions WHERE julianday('now') < expiry")
 	if err != nil {
 		return nil, err
 	}
@@ -115,10 +128,12 @@ func (p *SQLite3Store) AllCtx(ctx context.Context) (map[string][]byte, error) {
 	sessions := make(map[string][]byte)
 
 	for rows.Next() {
-		var token string
-		var data []byte
+		var (
+			token string
+			data  []byte
+		)
 
-		err := rows.Scan(&token, &data)
+		err = rows.Scan(&token, &data)
 		if err != nil {
 			return nil, err
 		}
@@ -134,24 +149,14 @@ func (p *SQLite3Store) AllCtx(ctx context.Context) (map[string][]byte, error) {
 	return sessions, nil
 }
 
-// StopCleanup terminates the background cleanup goroutine for the SQLite3Store
-// instance. StopCleanup is intended to be called before shutting down your
-// application.
-func (p *SQLite3Store) StopCleanup() {
-	if p.stopCleanup != nil {
-		p.stopCleanup <- true
-	}
-}
-
-// startCleanup runs a background goroutine to delete expired session data.
-func (p *SQLite3Store) startCleanup() {
-	ticker := time.NewTicker(p.cleanupInterval)
+func (p *SQLite3Store) startCleanup(interval time.Duration) {
+	ticker := time.NewTicker(interval)
 	for {
 		select {
 		case <-ticker.C:
-			err := p.deleteExpired()
+			err := p.deleteExpired(context.Background())
 			if err != nil {
-				log.Printf("sqlite3store: unable to delete expired session data: %v", err)
+				log.Println(err)
 			}
 		case <-p.stopCleanup:
 			ticker.Stop()
@@ -160,8 +165,23 @@ func (p *SQLite3Store) startCleanup() {
 	}
 }
 
-// deleteExpired deletes expired session data from the SQLite3 database.
-func (p *SQLite3Store) deleteExpired() error {
-	_, err := p.db.ExecContext(context.Background(), "DELETE FROM sessions WHERE expiry <= ?", time.Now().Unix())
+// StopCleanup terminates the background cleanup goroutine for the SQLite3Store
+// instance. It's rare to terminate this; generally SQLite3Store instances and
+// their cleanup goroutines are intended to be long-lived and run for the lifetime
+// of your application.
+//
+// There may be occasions though when your use of the SQLite3Store is transient.
+// An example is creating a new SQLite3Store instance in a test function. In this
+// scenario, the cleanup goroutine (which will run forever) will prevent the
+// SQLite3Store object from being garbage collected even after the test function
+// has finished. You can prevent this by manually calling StopCleanup.
+func (p *SQLite3Store) StopCleanup() {
+	if p.stopCleanup != nil {
+		p.stopCleanup <- true
+	}
+}
+
+func (p *SQLite3Store) deleteExpired(ctx context.Context) error {
+	_, err := p.db.ExecContext(ctx, "DELETE FROM sessions WHERE expiry < julianday('now')")
 	return err
 }
