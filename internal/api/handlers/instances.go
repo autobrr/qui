@@ -16,6 +16,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
 	internalqbittorrent "github.com/autobrr/qui/internal/qbittorrent"
 )
@@ -100,6 +101,25 @@ type CreateInstanceRequest struct {
 	BasicPassword *string `json:"basicPassword,omitempty"`
 }
 
+func (c CreateInstanceRequest) MarshalJSON() ([]byte, error) {
+	type Alias CreateInstanceRequest
+	return json.Marshal(&struct {
+		*Alias
+		Password      string  `json:"password"`
+		BasicPassword *string `json:"basicPassword,omitempty"`
+	}{
+		Password: domain.RedactString(c.Password),
+		BasicPassword: func() *string {
+			if c.BasicPassword != nil {
+				redacted := domain.RedactString(*c.BasicPassword)
+				return &redacted
+			}
+			return nil
+		}(),
+		Alias: (*Alias)(&c),
+	})
+}
+
 // UpdateInstanceRequest represents a request to update an instance
 type UpdateInstanceRequest struct {
 	Name          string  `json:"name"`
@@ -108,6 +128,25 @@ type UpdateInstanceRequest struct {
 	Password      string  `json:"password,omitempty"` // Optional for updates
 	BasicUsername *string `json:"basicUsername,omitempty"`
 	BasicPassword *string `json:"basicPassword,omitempty"`
+}
+
+func (u UpdateInstanceRequest) MarshalJSON() ([]byte, error) {
+	type Alias UpdateInstanceRequest
+	return json.Marshal(&struct {
+		*Alias
+		Password      string  `json:"password,omitempty"`
+		BasicPassword *string `json:"basicPassword,omitempty"`
+	}{
+		Password: domain.RedactString(u.Password),
+		BasicPassword: func() *string {
+			if u.BasicPassword != nil {
+				redacted := domain.RedactString(*u.BasicPassword)
+				return &redacted
+			}
+			return nil
+		}(),
+		Alias: (*Alias)(&u),
+	})
 }
 
 // InstanceResponse represents an instance in API responses
