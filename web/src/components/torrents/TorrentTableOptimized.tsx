@@ -156,9 +156,16 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
 
+  // Track user-initiated actions to differentiate from automatic data updates
+  const [lastUserAction, setLastUserAction] = useState<{ type: string; timestamp: number } | null>(null)
+  const previousFiltersRef = useRef(filters)
+  const previousInstanceIdRef = useRef(instanceId)
+  const previousSearchRef = useRef("")
+
   // State for range select capabilities for checkboxes
   const shiftPressedRef = useRef<boolean>(false)
   const lastSelectedIndexRef = useRef<number | null>(null)
+  const lastServerRequestRef = useRef<number>(0)
 
   // These should be defined at module scope, not inside the component, to ensure stable references
   // (If not already, move them to the top of the file)
@@ -198,6 +205,25 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchFromRoute])
+
+  // Detect user-initiated changes
+  useEffect(() => {
+    const filtersChanged = JSON.stringify(previousFiltersRef.current) !== JSON.stringify(filters)
+    const instanceChanged = previousInstanceIdRef.current !== instanceId
+    const searchChanged = previousSearchRef.current !== effectiveSearch
+
+    if (filtersChanged || instanceChanged || searchChanged) {
+      setLastUserAction({
+        type: instanceChanged ? "instance" : filtersChanged ? "filter" : "search",
+        timestamp: Date.now(),
+      })
+
+      // Update refs
+      previousFiltersRef.current = filters
+      previousInstanceIdRef.current = instanceId
+      previousSearchRef.current = effectiveSearch
+    }
+  }, [filters, instanceId, effectiveSearch])
 
   // Map TanStack Table column IDs to backend field names
   const getBackendSortField = (columnId: string): string => {
@@ -367,6 +393,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     // Enable column resizing
     enableColumnResizing: true,
     columnResizeMode: "onChange" as const,
+    // Prevent automatic state resets during data updates
+    autoResetPageIndex: false,
+    autoResetExpanded: false,
   })
 
   // Get selected torrent hashes - handle both regular selection and "select all" mode
@@ -426,7 +455,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
       // If we're near the end of loaded torrents and haven't loaded all from server
       if (newLoadedRows >= sortedTorrents.length - 50 && !hasLoadedAll && !isLoadingMore) {
-        loadMoreTorrents()
+        const now = Date.now()
+        if (now - lastServerRequestRef.current > 500) {
+          lastServerRequestRef.current = now
+          loadMoreTorrents()
+        }
       }
 
       return newLoadedRows
@@ -439,6 +472,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   // Ensure loadedRows never exceeds actual data length
   const safeLoadedRows = Math.min(loadedRows, rows.length)
 
+  // Also keep loadedRows in sync with actual data to prevent status display issues
+  useEffect(() => {
+    if (loadedRows > rows.length && rows.length > 0) {
+      setLoadedRows(rows.length)
+    }
+  }, [loadedRows, rows.length])
+
   // useVirtualizer must be called at the top level, not inside useMemo
   const virtualizer = useVirtualizer({
     count: safeLoadedRows,
@@ -446,8 +486,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     estimateSize: () => 40,
     // Reduce overscan for large datasets to minimize DOM nodes
     overscan: sortedTorrents.length > 10000 ? 5 : 20,
-    // Provide a key to help with item tracking
-    getItemKey: useCallback((index: number) => rows[index]?.id || `row-${index}`, [rows]),
+    // Provide a key to help with item tracking - use torrent hash for stability
+    getItemKey: useCallback((index: number) => {
+      const row = rows[index]
+      return row?.original?.hash || `loading-${index}`
+    }, [rows]),
     // Use a debounced onChange to prevent excessive rendering
     onChange: (instance) => {
       const vRows = instance.getVirtualItems();
@@ -491,13 +534,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       } else if (prev === 0) {
         // Initial load
         return targetRows
-      } else if (sortedTorrents.length < prev) {
-        // Data reduced, cap at new length
-        return sortedTorrents.length
       } else if (prev < targetRows) {
         // Not enough rows loaded, load at least 100
         return targetRows
       }
+      // Don't reset loadedRows backward due to temporary server data fluctuations
+      // Progressive loading should be independent of server data variations
       return prev
     })
 
@@ -507,26 +549,34 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
   // Reset when filters or search changes
   useEffect(() => {
-    const targetRows = Math.min(100, sortedTorrents.length || 0)
-    setLoadedRows(targetRows)
-    setIsLoadingMoreRows(false)
+    // Only reset loadedRows for user-initiated changes, not data updates
+    const isRecentUserAction = lastUserAction && (Date.now() - lastUserAction.timestamp < 1000)
 
-    // Clear selection state when data changes
-    setIsAllSelected(false)
-    setExcludedFromSelectAll(new Set())
-    setRowSelection({})
+    if (isRecentUserAction) {
+      const targetRows = Math.min(100, sortedTorrents.length || 0)
+      setLoadedRows(targetRows)
+      setIsLoadingMoreRows(false)
 
-    // Scroll to top and force virtualizer recalculation
-    if (parentRef.current) {
-      parentRef.current.scrollTop = 0
+      // Clear selection state when data changes
+      setIsAllSelected(false)
+      setExcludedFromSelectAll(new Set())
+      setRowSelection({})
+
+      // User-initiated change: scroll to top
+      if (parentRef.current) {
+        parentRef.current.scrollTop = 0
+        setTimeout(() => {
+          virtualizer.scrollToOffset(0)
+          virtualizer.measure()
+        }, 0)
+      }
+    } else {
+      // Data update only: just remeasure without resetting loadedRows
+      setTimeout(() => {
+        virtualizer.measure()
+      }, 0)
     }
-
-    // Force virtualizer to recalculate after a micro-task
-    setTimeout(() => {
-      virtualizer.scrollToOffset(0)
-      virtualizer.measure()
-    }, 0)
-  }, [filters, effectiveSearch, instanceId, virtualizer, sortedTorrents.length, setRowSelection])
+  }, [filters, effectiveSearch, instanceId, virtualizer, sortedTorrents.length, setRowSelection, lastUserAction])
 
 
   // Mutation for bulk actions
@@ -1453,7 +1503,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
             ) : (
               <>
                 {totalCount} torrent{totalCount !== 1 ? "s" : ""}
-                {safeLoadedRows < rows.length && ` • ${safeLoadedRows} loaded in viewport`}
+                {safeLoadedRows < rows.length && ` • ${safeLoadedRows} loaded`}
                 {safeLoadedRows < rows.length && " (scroll for more)"}
                 {isLoadingMore && " • Loading more from server..."}
               </>

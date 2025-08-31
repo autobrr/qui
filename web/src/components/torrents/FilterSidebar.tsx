@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState, useMemo, memo, useCallback } from "react"
+import { useState, useMemo, memo, useCallback, useRef } from "react"
+import { useVirtualizer } from "@tanstack/react-virtual"
 import {
   Accordion,
   AccordionContent,
@@ -13,7 +14,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Input } from "@/components/ui/input"
+import { SearchInput } from "@/components/ui/SearchInput"
 import {
   ContextMenu,
   ContextMenuContent,
@@ -37,7 +38,6 @@ import {
   Trash2,
   RotateCw,
   MoveRight,
-  Search,
   X,
   type LucideIcon
 } from "lucide-react"
@@ -49,7 +49,7 @@ import {
   DeleteCategoryDialog,
   DeleteUnusedTagsDialog
 } from "./TagCategoryManagement"
-import { LINUX_CATEGORIES, LINUX_TAGS, LINUX_TRACKERS, useIncognitoMode } from "@/lib/incognito"
+import { LINUX_CATEGORIES, LINUX_TAGS, LINUX_TRACKERS, useIncognitoMode, getLinuxCount } from "@/lib/incognito"
 import type { Category } from "@/types";
 
 interface FilterBadgeProps {
@@ -158,22 +158,29 @@ const FilterSidebarComponent = ({
     return incognitoMode ? LINUX_TAGS : (propsTags || [])
   }, [incognitoMode, propsTags])
 
-  // Extract unique trackers from torrentCounts (move this before filtered trackers)
-  const realTrackers = torrentCounts? Object.keys(torrentCounts)
-    .filter(key => key.startsWith("tracker:"))
-    .map(key => key.replace("tracker:", ""))
-    .filter(tracker => torrentCounts[`tracker:${tracker}`] > 0)
-    .sort(): []
-
-  // Use fake trackers if in incognito mode
+  // Use fake trackers if in incognito mode or extract from torrentCounts
   const trackers = useMemo(() => {
-    return incognitoMode ? LINUX_TRACKERS : realTrackers
-  }, [incognitoMode, realTrackers])
+    if (incognitoMode) return LINUX_TRACKERS
 
-  // Optimize large lists by limiting initial render and providing search
-  const MAX_INITIAL_ITEMS = 200
+    // Extract unique trackers from torrentCounts
+    const realTrackers = torrentCounts ? Object.keys(torrentCounts)
+      .filter(key => key.startsWith("tracker:"))
+      .map(key => key.replace("tracker:", ""))
+      .filter(tracker => torrentCounts[`tracker:${tracker}`] > 0)
+      .sort() : []
 
-  // Filtered and limited categories for performance
+    return realTrackers
+  }, [incognitoMode, torrentCounts])
+
+  // Use virtual scrolling for large lists to handle performance efficiently
+  const VIRTUAL_THRESHOLD = 100 // Use virtual scrolling for lists > 100 items
+
+  // Refs for virtual scrolling
+  const categoryListRef = useRef<HTMLDivElement>(null)
+  const tagListRef = useRef<HTMLDivElement>(null)
+  const trackerListRef = useRef<HTMLDivElement>(null)
+
+  // Filtered categories for performance
   const filteredCategories = useMemo(() => {
     const categoryEntries = Object.entries(categories)
 
@@ -184,7 +191,7 @@ const FilterSidebarComponent = ({
       )
     }
 
-    // Show selected categories first, then others up to limit
+    // Show selected categories first, then others
     const selectedCategories = categoryEntries.filter(([name]) =>
       selectedFilters.categories.includes(name)
     )
@@ -192,15 +199,10 @@ const FilterSidebarComponent = ({
       !selectedFilters.categories.includes(name)
     )
 
-    if (categoryEntries.length > MAX_INITIAL_ITEMS) {
-      const remainingSlots = Math.max(0, MAX_INITIAL_ITEMS - selectedCategories.length)
-      return [...selectedCategories, ...unselectedCategories.slice(0, remainingSlots)]
-    }
-
-    return categoryEntries
+    return [...selectedCategories, ...unselectedCategories]
   }, [categories, debouncedCategorySearch, selectedFilters.categories])
 
-  // Filtered and limited tags for performance
+  // Filtered tags for performance
   const filteredTags = useMemo(() => {
     if (debouncedTagSearch) {
       const searchLower = debouncedTagSearch.toLowerCase()
@@ -209,7 +211,7 @@ const FilterSidebarComponent = ({
       )
     }
 
-    // Show selected tags first, then others up to limit
+    // Show selected tags first, then others
     const selectedTags = tags.filter(tag =>
       selectedFilters.tags.includes(tag)
     )
@@ -217,15 +219,10 @@ const FilterSidebarComponent = ({
       !selectedFilters.tags.includes(tag)
     )
 
-    if (tags.length > MAX_INITIAL_ITEMS) {
-      const remainingSlots = Math.max(0, MAX_INITIAL_ITEMS - selectedTags.length)
-      return [...selectedTags, ...unselectedTags.slice(0, remainingSlots)]
-    }
-
-    return tags
+    return [...selectedTags, ...unselectedTags]
   }, [tags, debouncedTagSearch, selectedFilters.tags])
 
-  // Filtered and limited trackers for performance
+  // Filtered trackers for performance
   const filteredTrackers = useMemo(() => {
     if (debouncedTrackerSearch) {
       const searchLower = debouncedTrackerSearch.toLowerCase()
@@ -234,7 +231,7 @@ const FilterSidebarComponent = ({
       )
     }
 
-    // Show selected trackers first, then others up to limit
+    // Show selected trackers first, then others
     const selectedTrackers = trackers.filter(tracker =>
       selectedFilters.trackers.includes(tracker)
     )
@@ -242,14 +239,32 @@ const FilterSidebarComponent = ({
       !selectedFilters.trackers.includes(tracker)
     )
 
-    if (trackers.length > MAX_INITIAL_ITEMS) {
-      const remainingSlots = Math.max(0, MAX_INITIAL_ITEMS - selectedTrackers.length)
-      return [...selectedTrackers, ...unselectedTrackers.slice(0, remainingSlots)]
-    }
-
-    return trackers
+    return [...selectedTrackers, ...unselectedTrackers]
   }, [trackers, debouncedTrackerSearch, selectedFilters.trackers])
 
+  // Virtual scrolling for categories
+  const categoryVirtualizer = useVirtualizer({
+    count: filteredCategories.length,
+    getScrollElement: () => categoryListRef.current,
+    estimateSize: () => 36, // Approximate height of each category item
+    overscan: 10,
+  })
+
+  // Virtual scrolling for tags
+  const tagVirtualizer = useVirtualizer({
+    count: filteredTags.length,
+    getScrollElement: () => tagListRef.current,
+    estimateSize: () => 36, // Approximate height of each tag item
+    overscan: 10,
+  })
+
+  // Virtual scrolling for trackers
+  const trackerVirtualizer = useVirtualizer({
+    count: filteredTrackers.filter(tracker => tracker !== "").length,
+    getScrollElement: () => trackerListRef.current,
+    estimateSize: () => 36, // Approximate height of each tracker item
+    overscan: 10,
+  })
 
   const handleStatusToggle = useCallback((status: string) => {
     const newStatus = selectedFilters.status.includes(status)? selectedFilters.status.filter(s => s !== status): [...selectedFilters.status, status]
@@ -402,18 +417,16 @@ const FilterSidebarComponent = ({
                     Add category
                   </button>
 
-                  {/* Search input for large category lists */}
-                  {Object.keys(categories).length > 20 && (
-                    <div className="relative mb-2">
-                      <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
-                      <Input
-                        placeholder="Search categories..."
-                        value={categorySearch}
-                        onChange={(e) => setCategorySearch(e.target.value)}
-                        className="pl-7 h-7 text-xs"
-                      />
-                    </div>
-                  )}
+                  {/* Search input for categories */}
+                  <div className="mb-2">
+                    <SearchInput
+                      placeholder="Search categories..."
+                      value={categorySearch}
+                      onChange={(e) => setCategorySearch(e.target.value)}
+                      onClear={() => setCategorySearch("")}
+                      className="h-7 text-xs"
+                    />
+                  </div>
 
                   {/* Uncategorized option */}
                   <label className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer">
@@ -430,47 +443,123 @@ const FilterSidebarComponent = ({
                     </span>
                   </label>
 
-                  {/* Category list - use filtered categories for performance */}
-                  {filteredCategories.map(([name, category]: [string, any]) => (
-                    <ContextMenu key={name}>
-                      <ContextMenuTrigger asChild>
-                        <label className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer">
-                          <Checkbox
-                            checked={selectedFilters.categories.includes(name)}
-                            onCheckedChange={() => handleCategoryToggle(name)}
-                          />
-                          <span className="text-sm flex-1 truncate w-8" title={name}>
-                            {name}
-                          </span>
-                          <span className="text-xs text-muted-foreground">
-                            {incognitoMode ? Math.floor(Math.random() * 50) + 1 : (torrentCounts ? (torrentCounts[`category:${name}`] || 0) : "...")}
-                          </span>
-                        </label>
-                      </ContextMenuTrigger>
-                      <ContextMenuContent>
-                        <ContextMenuItem
-                          onClick={() => {
-                            setCategoryToEdit({ name, savePath: category.savePath })
-                            setShowEditCategoryDialog(true)
-                          }}
-                        >
-                          <Edit className="mr-2 h-4 w-4" />
-                          Edit Category
-                        </ContextMenuItem>
-                        <ContextMenuSeparator />
-                        <ContextMenuItem
-                          onClick={() => {
-                            setCategoryToDelete(name)
-                            setShowDeleteCategoryDialog(true)
-                          }}
-                          className="text-destructive"
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Delete Category
-                        </ContextMenuItem>
-                      </ContextMenuContent>
-                    </ContextMenu>
-                  ))}
+
+                  {/* No results message for categories */}
+                  {debouncedCategorySearch && filteredCategories.length === 0 && (
+                    <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
+                      No categories found matching "{debouncedCategorySearch}"
+                    </div>
+                  )}
+
+                  {/* Category list - use filtered categories for performance or virtual scrolling for large lists */}
+                  {Object.keys(categories).length > VIRTUAL_THRESHOLD ? (
+                    <div ref={categoryListRef} className="max-h-96 overflow-auto">
+                      <div
+                        className="relative"
+                        style={{ height: `${categoryVirtualizer.getTotalSize()}px` }}
+                      >
+                        {categoryVirtualizer.getVirtualItems().map((virtualRow) => {
+                          const [name, category] = filteredCategories[virtualRow.index] || ["", {}]
+                          if (!name) return null
+
+                          return (
+                            <div
+                              key={virtualRow.key}
+                              data-index={virtualRow.index}
+                              ref={categoryVirtualizer.measureElement}
+                              style={{
+                                position: "absolute",
+                                top: 0,
+                                left: 0,
+                                width: "100%",
+                                transform: `translateY(${virtualRow.start}px)`,
+                              }}
+                            >
+                              <ContextMenu>
+                                <ContextMenuTrigger asChild>
+                                  <label className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer">
+                                    <Checkbox
+                                      checked={selectedFilters.categories.includes(name)}
+                                      onCheckedChange={() => handleCategoryToggle(name)}
+                                    />
+                                    <span className="text-sm flex-1 truncate w-8" title={name}>
+                                      {name}
+                                    </span>
+                                    <span className="text-xs text-muted-foreground">
+                                      {incognitoMode ? getLinuxCount(name, 50) : (torrentCounts ? (torrentCounts[`category:${name}`] || 0) : "...")}
+                                    </span>
+                                  </label>
+                                </ContextMenuTrigger>
+                                <ContextMenuContent>
+                                  <ContextMenuItem
+                                    onClick={() => {
+                                      setCategoryToEdit({ name, savePath: (category as Category).save_path })
+                                      setShowEditCategoryDialog(true)
+                                    }}
+                                  >
+                                    <Edit className="mr-2 h-4 w-4" />
+                                    Edit Category
+                                  </ContextMenuItem>
+                                  <ContextMenuSeparator />
+                                  <ContextMenuItem
+                                    onClick={() => {
+                                      setCategoryToDelete(name)
+                                      setShowDeleteCategoryDialog(true)
+                                    }}
+                                    className="text-destructive"
+                                  >
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    Delete Category
+                                  </ContextMenuItem>
+                                </ContextMenuContent>
+                              </ContextMenu>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ) : (
+                    filteredCategories.map(([name, category]: [string, { save_path: string }]) => (
+                      <ContextMenu key={name}>
+                        <ContextMenuTrigger asChild>
+                          <label className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer">
+                            <Checkbox
+                              checked={selectedFilters.categories.includes(name)}
+                              onCheckedChange={() => handleCategoryToggle(name)}
+                            />
+                            <span className="text-sm flex-1 truncate w-8" title={name}>
+                              {name}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              {incognitoMode ? getLinuxCount(name, 50) : (torrentCounts ? (torrentCounts[`category:${name}`] || 0) : "...")}
+                            </span>
+                          </label>
+                        </ContextMenuTrigger>
+                        <ContextMenuContent>
+                          <ContextMenuItem
+                            onClick={() => {
+                              setCategoryToEdit({ name, savePath: category.save_path })
+                              setShowEditCategoryDialog(true)
+                            }}
+                          >
+                            <Edit className="mr-2 h-4 w-4" />
+                            Edit Category
+                          </ContextMenuItem>
+                          <ContextMenuSeparator />
+                          <ContextMenuItem
+                            onClick={() => {
+                              setCategoryToDelete(name)
+                              setShowDeleteCategoryDialog(true)
+                            }}
+                            className="text-destructive"
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Delete Category
+                          </ContextMenuItem>
+                        </ContextMenuContent>
+                      </ContextMenu>
+                    ))
+                  )}
                 </div>
               </AccordionContent>
             </AccordionItem>
@@ -499,18 +588,16 @@ const FilterSidebarComponent = ({
                     Add tag
                   </button>
 
-                  {/* Search input for large tag lists */}
-                  {tags.length > 20 && (
-                    <div className="relative mb-2">
-                      <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
-                      <Input
-                        placeholder="Search tags..."
-                        value={tagSearch}
-                        onChange={(e) => setTagSearch(e.target.value)}
-                        className="pl-7 h-7 text-xs"
-                      />
-                    </div>
-                  )}
+                  {/* Search input for tags */}
+                  <div className="mb-2">
+                    <SearchInput
+                      placeholder="Search tags..."
+                      value={tagSearch}
+                      onChange={(e) => setTagSearch(e.target.value)}
+                      onClear={() => setTagSearch("")}
+                      className="h-7 text-xs"
+                    />
+                  </div>
 
                   {/* Untagged option */}
                   <label className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer">
@@ -527,45 +614,119 @@ const FilterSidebarComponent = ({
                     </span>
                   </label>
 
-                  {/* Tag list - use filtered tags for performance */}
-                  {filteredTags.map((tag: string) => (
-                    <ContextMenu key={tag}>
-                      <ContextMenuTrigger asChild>
-                        <label className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer">
-                          <Checkbox
-                            checked={selectedFilters.tags.includes(tag)}
-                            onCheckedChange={() => handleTagToggle(tag)}
-                          />
-                          <span className="text-sm flex-1 truncate w-8" title={tag}>
-                            {tag}
-                          </span>
-                          <span className="text-xs text-muted-foreground">
-                            {incognitoMode ? Math.floor(Math.random() * 30) + 1 : (torrentCounts ? (torrentCounts[`tag:${tag}`] || 0) : "...")}
-                          </span>
-                        </label>
-                      </ContextMenuTrigger>
-                      <ContextMenuContent>
-                        <ContextMenuItem
-                          onClick={() => {
-                            setTagToDelete(tag)
-                            setShowDeleteTagDialog(true)
-                          }}
-                          className="text-destructive"
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Delete Tag
-                        </ContextMenuItem>
-                        <ContextMenuSeparator />
-                        <ContextMenuItem
-                          onClick={() => setShowDeleteUnusedTagsDialog(true)}
-                          className="text-destructive"
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Delete All Unused Tags
-                        </ContextMenuItem>
-                      </ContextMenuContent>
-                    </ContextMenu>
-                  ))}
+
+                  {/* No results message for tags */}
+                  {debouncedTagSearch && filteredTags.length === 0 && (
+                    <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
+                      No tags found matching "{debouncedTagSearch}"
+                    </div>
+                  )}
+
+                  {/* Tag list - use filtered tags for performance or virtual scrolling for large lists */}
+                  {tags.length > VIRTUAL_THRESHOLD ? (
+                    <div ref={tagListRef} className="max-h-96 overflow-auto">
+                      <div
+                        className="relative"
+                        style={{ height: `${tagVirtualizer.getTotalSize()}px` }}
+                      >
+                        {tagVirtualizer.getVirtualItems().map((virtualRow) => {
+                          const tag = filteredTags[virtualRow.index]
+                          if (!tag) return null
+
+                          return (
+                            <div
+                              key={virtualRow.key}
+                              data-index={virtualRow.index}
+                              ref={tagVirtualizer.measureElement}
+                              style={{
+                                position: "absolute",
+                                top: 0,
+                                left: 0,
+                                width: "100%",
+                                transform: `translateY(${virtualRow.start}px)`,
+                              }}
+                            >
+                              <ContextMenu>
+                                <ContextMenuTrigger asChild>
+                                  <label className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer">
+                                    <Checkbox
+                                      checked={selectedFilters.tags.includes(tag)}
+                                      onCheckedChange={() => handleTagToggle(tag)}
+                                    />
+                                    <span className="text-sm flex-1 truncate w-8" title={tag}>
+                                      {tag}
+                                    </span>
+                                    <span className="text-xs text-muted-foreground">
+                                      {incognitoMode ? getLinuxCount(tag, 30) : (torrentCounts ? (torrentCounts[`tag:${tag}`] || 0) : "...")}
+                                    </span>
+                                  </label>
+                                </ContextMenuTrigger>
+                                <ContextMenuContent>
+                                  <ContextMenuItem
+                                    onClick={() => {
+                                      setTagToDelete(tag)
+                                      setShowDeleteTagDialog(true)
+                                    }}
+                                    className="text-destructive"
+                                  >
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    Delete Tag
+                                  </ContextMenuItem>
+                                  <ContextMenuSeparator />
+                                  <ContextMenuItem
+                                    onClick={() => setShowDeleteUnusedTagsDialog(true)}
+                                    className="text-destructive"
+                                  >
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    Delete All Unused Tags
+                                  </ContextMenuItem>
+                                </ContextMenuContent>
+                              </ContextMenu>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ) : (
+                    filteredTags.map((tag: string) => (
+                      <ContextMenu key={tag}>
+                        <ContextMenuTrigger asChild>
+                          <label className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer">
+                            <Checkbox
+                              checked={selectedFilters.tags.includes(tag)}
+                              onCheckedChange={() => handleTagToggle(tag)}
+                            />
+                            <span className="text-sm flex-1 truncate w-8" title={tag}>
+                              {tag}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              {incognitoMode ? getLinuxCount(tag, 30) : (torrentCounts ? (torrentCounts[`tag:${tag}`] || 0) : "...")}
+                            </span>
+                          </label>
+                        </ContextMenuTrigger>
+                        <ContextMenuContent>
+                          <ContextMenuItem
+                            onClick={() => {
+                              setTagToDelete(tag)
+                              setShowDeleteTagDialog(true)
+                            }}
+                            className="text-destructive"
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Delete Tag
+                          </ContextMenuItem>
+                          <ContextMenuSeparator />
+                          <ContextMenuItem
+                            onClick={() => setShowDeleteUnusedTagsDialog(true)}
+                            className="text-destructive"
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Delete All Unused Tags
+                          </ContextMenuItem>
+                        </ContextMenuContent>
+                      </ContextMenu>
+                    ))
+                  )}
                 </div>
               </AccordionContent>
             </AccordionItem>
@@ -585,18 +746,16 @@ const FilterSidebarComponent = ({
               </AccordionTrigger>
               <AccordionContent className="px-3 pb-2">
                 <div className="space-y-1">
-                  {/* Search input for large tracker lists */}
-                  {trackers.length > 20 && (
-                    <div className="relative mb-2">
-                      <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
-                      <Input
-                        placeholder="Search trackers..."
-                        value={trackerSearch}
-                        onChange={(e) => setTrackerSearch(e.target.value)}
-                        className="pl-7 h-7 text-xs"
-                      />
-                    </div>
-                  )}
+                  {/* Search input for trackers */}
+                  <div className="mb-2">
+                    <SearchInput
+                      placeholder="Search trackers..."
+                      value={trackerSearch}
+                      onChange={(e) => setTrackerSearch(e.target.value)}
+                      onClear={() => setTrackerSearch("")}
+                      className="h-7 text-xs"
+                    />
+                  </div>
 
                   {/* No tracker option */}
                   <label className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer">
@@ -613,24 +772,74 @@ const FilterSidebarComponent = ({
                     </span>
                   </label>
 
-                  {/* Tracker list - use filtered trackers for performance */}
-                  {filteredTrackers.filter(tracker => tracker !== "").map((tracker) => (
-                    <label
-                      key={tracker}
-                      className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer"
-                    >
-                      <Checkbox
-                        checked={selectedFilters.trackers.includes(tracker)}
-                        onCheckedChange={() => handleTrackerToggle(tracker)}
-                      />
-                      <span className="text-sm flex-1 truncate w-8" title={tracker}>
-                        {tracker}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        {incognitoMode ? Math.floor(Math.random() * 100) + 10 : (torrentCounts ? (torrentCounts[`tracker:${tracker}`] || 0) : "...")}
-                      </span>
-                    </label>
-                  ))}
+
+                  {/* No results message for trackers */}
+                  {debouncedTrackerSearch && filteredTrackers.filter(tracker => tracker !== "").length === 0 && (
+                    <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
+                      No trackers found matching "{debouncedTrackerSearch}"
+                    </div>
+                  )}
+
+                  {/* Tracker list - use filtered trackers for performance or virtual scrolling for large lists */}
+                  {trackers.length > VIRTUAL_THRESHOLD ? (
+                    <div ref={trackerListRef} className="max-h-96 overflow-auto">
+                      <div
+                        className="relative"
+                        style={{ height: `${trackerVirtualizer.getTotalSize()}px` }}
+                      >
+                        {trackerVirtualizer.getVirtualItems().map((virtualRow) => {
+                          const tracker = filteredTrackers.filter(t => t !== "")[virtualRow.index]
+                          if (!tracker) return null
+
+                          return (
+                            <div
+                              key={virtualRow.key}
+                              data-index={virtualRow.index}
+                              ref={trackerVirtualizer.measureElement}
+                              style={{
+                                position: "absolute",
+                                top: 0,
+                                left: 0,
+                                width: "100%",
+                                transform: `translateY(${virtualRow.start}px)`,
+                              }}
+                            >
+                              <label className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer">
+                                <Checkbox
+                                  checked={selectedFilters.trackers.includes(tracker)}
+                                  onCheckedChange={() => handleTrackerToggle(tracker)}
+                                />
+                                <span className="text-sm flex-1 truncate w-8" title={tracker}>
+                                  {tracker}
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                  {incognitoMode ? getLinuxCount(tracker, 100) : (torrentCounts ? (torrentCounts[`tracker:${tracker}`] || 0) : "...")}
+                                </span>
+                              </label>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ) : (
+                    filteredTrackers.filter(tracker => tracker !== "").map((tracker) => (
+                      <label
+                        key={tracker}
+                        className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer"
+                      >
+                        <Checkbox
+                          checked={selectedFilters.trackers.includes(tracker)}
+                          onCheckedChange={() => handleTrackerToggle(tracker)}
+                        />
+                        <span className="text-sm flex-1 truncate w-8" title={tracker}>
+                          {tracker}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {incognitoMode ? getLinuxCount(tracker, 100) : (torrentCounts ? (torrentCounts[`tracker:${tracker}`] || 0) : "...")}
+                        </span>
+                      </label>
+                    ))
+                  )}
                 </div>
               </AccordionContent>
             </AccordionItem>
