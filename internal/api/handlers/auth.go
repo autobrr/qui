@@ -14,6 +14,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/auth"
+	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
 )
 
@@ -33,16 +34,51 @@ type SetupRequest struct {
 	Password string `json:"password"`
 }
 
+func (s SetupRequest) MarshalJSON() ([]byte, error) {
+	type Alias SetupRequest
+	return json.Marshal(&struct {
+		*Alias
+		Password string `json:"password"`
+	}{
+		Password: domain.RedactString(s.Password),
+		Alias:    (*Alias)(&s),
+	})
+}
+
 // LoginRequest represents a login request
 type LoginRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 }
 
+func (l LoginRequest) MarshalJSON() ([]byte, error) {
+	type Alias LoginRequest
+	return json.Marshal(&struct {
+		*Alias
+		Password string `json:"password"`
+	}{
+		Password: domain.RedactString(l.Password),
+		Alias:    (*Alias)(&l),
+	})
+}
+
 // ChangePasswordRequest represents a password change request
 type ChangePasswordRequest struct {
 	CurrentPassword string `json:"currentPassword"`
 	NewPassword     string `json:"newPassword"`
+}
+
+func (c ChangePasswordRequest) MarshalJSON() ([]byte, error) {
+	type Alias ChangePasswordRequest
+	return json.Marshal(&struct {
+		*Alias
+		CurrentPassword string `json:"currentPassword"`
+		NewPassword     string `json:"newPassword"`
+	}{
+		CurrentPassword: domain.RedactString(c.CurrentPassword),
+		NewPassword:     domain.RedactString(c.NewPassword),
+		Alias:           (*Alias)(&c),
+	})
 }
 
 // Setup handles initial user setup
