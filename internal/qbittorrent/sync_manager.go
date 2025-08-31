@@ -180,7 +180,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	return response, nil
 }
 
-// GetServerStats gets server statistics using SyncMainData (for Dashboard)
+// GetServerStats gets server statistics using sync manager (for Dashboard)
 func (sm *SyncManager) GetServerStats(ctx context.Context, instanceID int) (*qbt.MainData, error) {
 	// Get client
 	client, err := sm.clientPool.GetClient(ctx, instanceID)
@@ -188,16 +188,18 @@ func (sm *SyncManager) GetServerStats(ctx context.Context, instanceID int) (*qbt
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
 
-	// Get sync data with rid=0 to just fetch server state
-	// We only need server_state for Dashboard statistics
-	mainData, err := client.SyncMainDataCtx(ctx, 0)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get server stats: %w", err)
+	// Get sync manager
+	syncManager := client.GetSyncManager()
+	if syncManager == nil {
+		return nil, fmt.Errorf("sync manager not initialized")
 	}
+
+	// Get main data from sync manager
+	mainData := syncManager.GetData()
 
 	log.Debug().
 		Int("instanceID", instanceID).
-		Msg("Server stats fetched")
+		Msg("Server stats fetched from sync manager")
 
 	return mainData, nil
 }
@@ -216,26 +218,66 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 		err = client.PauseCtx(ctx, hashes)
 		if err == nil {
 			sm.applyOptimisticCacheUpdate(instanceID, hashes, action, nil)
+			// Trigger sync to get updated state
+			if syncManager := client.GetSyncManager(); syncManager != nil {
+				go func() {
+					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					defer cancel()
+					syncManager.Sync(ctx)
+				}()
+			}
 		}
 	case "resume":
 		err = client.ResumeCtx(ctx, hashes)
 		if err == nil {
 			sm.applyOptimisticCacheUpdate(instanceID, hashes, action, nil)
+			// Trigger sync to get updated state
+			if syncManager := client.GetSyncManager(); syncManager != nil {
+				go func() {
+					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					defer cancel()
+					syncManager.Sync(ctx)
+				}()
+			}
 		}
 	case "delete":
 		err = client.DeleteTorrentsCtx(ctx, hashes, false)
 		if err == nil {
 			sm.applyOptimisticCacheUpdate(instanceID, hashes, action, nil)
+			// Trigger sync to get updated state
+			if syncManager := client.GetSyncManager(); syncManager != nil {
+				go func() {
+					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					defer cancel()
+					syncManager.Sync(ctx)
+				}()
+			}
 		}
 	case "deleteWithFiles":
 		err = client.DeleteTorrentsCtx(ctx, hashes, true)
 		if err == nil {
 			sm.applyOptimisticCacheUpdate(instanceID, hashes, "delete", nil)
+			// Trigger sync to get updated state
+			if syncManager := client.GetSyncManager(); syncManager != nil {
+				go func() {
+					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					defer cancel()
+					syncManager.Sync(ctx)
+				}()
+			}
 		}
 	case "recheck":
 		err = client.RecheckCtx(ctx, hashes)
 		if err == nil {
 			sm.applyOptimisticCacheUpdate(instanceID, hashes, action, nil)
+			// Trigger sync to get updated state
+			if syncManager := client.GetSyncManager(); syncManager != nil {
+				go func() {
+					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					defer cancel()
+					syncManager.Sync(ctx)
+				}()
+			}
 		}
 	case "reannounce":
 		// No cache update needed - no visible state change
@@ -310,11 +352,14 @@ func (sm *SyncManager) GetCategories(ctx context.Context, instanceID int) (map[s
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
 
-	// Get categories
-	categories, err := client.GetCategoriesCtx(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get categories: %w", err)
+	// Get sync manager
+	syncManager := client.GetSyncManager()
+	if syncManager == nil {
+		return nil, fmt.Errorf("sync manager not initialized")
 	}
+
+	// Get categories from sync manager
+	categories := syncManager.GetCategories()
 
 	// Cache for 1 minute
 	sm.cache.SetWithTTL(cacheKey, categories, 1, 60*time.Second)
@@ -338,11 +383,14 @@ func (sm *SyncManager) GetTags(ctx context.Context, instanceID int) ([]string, e
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
 
-	// Get tags
-	tags, err := client.GetTagsCtx(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get tags: %w", err)
+	// Get sync manager
+	syncManager := client.GetSyncManager()
+	if syncManager == nil {
+		return nil, fmt.Errorf("sync manager not initialized")
 	}
+
+	// Get tags from sync manager
+	tags := syncManager.GetTags()
 
 	slices.SortFunc(tags, func(a, b string) int {
 		return strings.Compare(strings.ToLower(a), strings.ToLower(b))
@@ -911,21 +959,28 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
 
+	// Get sync manager
+	syncManager := client.GetSyncManager()
+	if syncManager == nil {
+		return nil, fmt.Errorf("sync manager not initialized")
+	}
+
 	// Measure response time to dynamically adjust cache TTL
 	startTime := time.Now()
 
-	log.Debug().Int("instanceID", instanceID).Msg("getAllTorrentsForStats: Fetching from qBittorrent API")
+	log.Debug().Int("instanceID", instanceID).Msg("getAllTorrentsForStats: Fetching from sync manager")
 
-	// Get all torrents
-	torrents, err := client.GetTorrentsCtx(ctx, qbt.TorrentFilterOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get all torrents: %w", err)
+	// Get all torrents from sync manager
+	torrentsMap := syncManager.GetTorrents()
+	torrents := make([]qbt.Torrent, 0, len(torrentsMap))
+	for _, torrent := range torrentsMap {
+		torrents = append(torrents, torrent)
 	}
 
 	// Calculate response time
 	responseTime := time.Since(startTime)
 
-	log.Debug().Int("instanceID", instanceID).Int("torrents", len(torrents)).Dur("responseTime", responseTime).Msg("getAllTorrentsForStats: Fetched from qBittorrent")
+	log.Debug().Int("instanceID", instanceID).Int("torrents", len(torrents)).Dur("responseTime", responseTime).Msg("getAllTorrentsForStats: Fetched from sync manager")
 
 	// Dynamic cache TTL based on actual response time
 	// Fast instances: shorter cache for responsiveness

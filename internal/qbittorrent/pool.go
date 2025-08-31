@@ -227,6 +227,12 @@ func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID in
 	cp.resetFailureTrackingLocked(instanceID)
 	cp.mu.Unlock()
 
+	// Start the sync manager
+	if err := client.StartSyncManager(ctx); err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to start sync manager")
+		// Don't fail client creation for sync manager issues
+	}
+
 	// Update last connected timestamp
 	cp.dbMu.Lock()
 	if err := cp.instanceStore.UpdateLastConnected(ctx, instanceID); err != nil {

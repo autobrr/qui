@@ -22,6 +22,7 @@ type Client struct {
 	supportsSetTags bool
 	lastHealthCheck time.Time
 	isHealthy       bool
+	syncManager     *qbt.SyncManager
 	mu              sync.RWMutex
 }
 
@@ -74,6 +75,12 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 		lastHealthCheck: time.Now(),
 		isHealthy:       true,
 	}
+
+	// Initialize sync manager with default options
+	syncOpts := qbt.DefaultSyncOptions()
+	syncOpts.AutoSync = true
+	syncOpts.DynamicSync = true
+	client.syncManager = qbtClient.NewSyncManager(syncOpts)
 
 	log.Debug().
 		Int("instanceID", instanceID).
@@ -129,4 +136,19 @@ func (c *Client) GetWebAPIVersion() string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.webAPIVersion
+}
+
+func (c *Client) GetSyncManager() *qbt.SyncManager {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.syncManager
+}
+
+func (c *Client) StartSyncManager(ctx context.Context) error {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.syncManager == nil {
+		return fmt.Errorf("sync manager not initialized")
+	}
+	return c.syncManager.Start(ctx)
 }
