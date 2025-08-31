@@ -10,7 +10,6 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/gorilla/sessions"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/auth"
@@ -35,8 +34,9 @@ type SetupRequest struct {
 
 // LoginRequest represents a login request
 type LoginRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
+	Username   string `json:"username"`
+	Password   string `json:"password"`
+	RememberMe bool   `json:"remember_me"`
 }
 
 // ChangePasswordRequest represents a password change request
@@ -80,32 +80,17 @@ func (h *AuthHandler) Setup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create session
-	session, _ := h.authService.GetSessionStore().Get(r, auth.SessionName)
-	session.Values["authenticated"] = true
-	session.Values["user_id"] = user.ID
-	session.Values["username"] = user.Username
+	// Create session using SCS
+	sessionManager := h.authService.GetSessionManager()
 
-	// Configure cookie security
-	isSecure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
-
-	session.Options = &sessions.Options{
-		Path:     "/",
-		MaxAge:   86400 * 7, // 7 days
-		HttpOnly: true,
-		Secure:   isSecure,
-		SameSite: http.SameSiteLaxMode,
+	// Renew token to prevent session fixation attacks
+	if err := sessionManager.RenewToken(r.Context()); err != nil {
+		log.Error().Err(err).Msg("Failed to renew session token")
 	}
 
-	if isSecure {
-		session.Options.SameSite = http.SameSiteStrictMode
-	}
-
-	if err := session.Save(r, w); err != nil {
-		log.Error().Err(err).Msg("Failed to save session")
-		RespondError(w, http.StatusInternalServerError, "Failed to create session")
-		return
-	}
+	sessionManager.Put(r.Context(), "authenticated", true)
+	sessionManager.Put(r.Context(), "user_id", user.ID)
+	sessionManager.Put(r.Context(), "username", user.Username)
 
 	RespondJSON(w, http.StatusCreated, map[string]any{
 		"message": "Setup completed successfully",
@@ -140,32 +125,20 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create session
-	session, _ := h.authService.GetSessionStore().Get(r, auth.SessionName)
-	session.Values["authenticated"] = true
-	session.Values["user_id"] = user.ID
-	session.Values["username"] = user.Username
+	// Create session using SCS
+	sessionManager := h.authService.GetSessionManager()
 
-	// Configure cookie security
-	isSecure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
-
-	session.Options = &sessions.Options{
-		Path:     "/",
-		MaxAge:   86400 * 7, // 7 days
-		HttpOnly: true,
-		Secure:   isSecure,
-		SameSite: http.SameSiteLaxMode,
+	// Renew token to prevent session fixation attacks
+	if err := sessionManager.RenewToken(r.Context()); err != nil {
+		log.Error().Err(err).Msg("Failed to renew session token")
 	}
 
-	if isSecure {
-		session.Options.SameSite = http.SameSiteStrictMode
-	}
+	sessionManager.Put(r.Context(), "authenticated", true)
+	sessionManager.Put(r.Context(), "user_id", user.ID)
+	sessionManager.Put(r.Context(), "username", user.Username)
 
-	if err := session.Save(r, w); err != nil {
-		log.Error().Err(err).Msg("Failed to save session")
-		RespondError(w, http.StatusInternalServerError, "Failed to create session")
-		return
-	}
+	// Handle remember_me functionality
+	sessionManager.RememberMe(r.Context(), req.RememberMe)
 
 	RespondJSON(w, http.StatusOK, map[string]any{
 		"message": "Login successful",
@@ -178,14 +151,11 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 // Logout handles user logout
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
-	session, _ := h.authService.GetSessionStore().Get(r, auth.SessionName)
+	sessionManager := h.authService.GetSessionManager()
 
-	// Clear session values
-	session.Values["authenticated"] = false
-	session.Options.MaxAge = -1
-
-	if err := session.Save(r, w); err != nil {
-		log.Error().Err(err).Msg("Failed to clear session")
+	// Destroy the session
+	if err := sessionManager.Destroy(r.Context()); err != nil {
+		log.Error().Err(err).Msg("Failed to destroy session")
 		RespondError(w, http.StatusInternalServerError, "Failed to logout")
 		return
 	}
@@ -197,16 +167,16 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 
 // GetCurrentUser returns the current user information
 func (h *AuthHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
-	session, _ := h.authService.GetSessionStore().Get(r, auth.SessionName)
+	sessionManager := h.authService.GetSessionManager()
 
-	userID, ok := session.Values["user_id"].(int)
-	if !ok {
+	userID := sessionManager.GetInt(r.Context(), "user_id")
+	if userID == 0 {
 		RespondError(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
 
-	username, ok := session.Values["username"].(string)
-	if !ok {
+	username := sessionManager.GetString(r.Context(), "username")
+	if username == "" {
 		RespondError(w, http.StatusInternalServerError, "Invalid session data")
 		return
 	}

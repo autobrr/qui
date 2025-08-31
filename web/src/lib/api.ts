@@ -74,10 +74,10 @@ class ApiClient {
     })
   }
 
-  async login(username: string, password: string): Promise<AuthResponse> {
+  async login(username: string, password: string, rememberMe = false): Promise<AuthResponse> {
     return this.request<AuthResponse>("/auth/login", {
       method: "POST",
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username, password, remember_me: rememberMe }),
     })
   }
 

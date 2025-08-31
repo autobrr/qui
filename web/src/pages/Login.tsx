@@ -9,6 +9,7 @@ import { useAuth } from "@/hooks/useAuth"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { useEffect } from "react"
 import { api } from "@/lib/api"
@@ -31,6 +32,7 @@ export function Login() {
     defaultValues: {
       username: "",
       password: "",
+      rememberMe: false,
     },
     onSubmit: async ({ value }) => {
       login(value)
@@ -100,6 +102,24 @@ export function Login() {
                   {field.state.meta.isTouched && field.state.meta.errors[0] && (
                     <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
                   )}
+                </div>
+              )}
+            </form.Field>
+
+            <form.Field name="rememberMe">
+              {(field) => (
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id={field.name}
+                    checked={field.state.value}
+                    onCheckedChange={(checked) => field.handleChange(checked === true)}
+                  />
+                  <Label
+                    htmlFor={field.name}
+                    className="text-sm font-normal leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                  >
+                    Remember me
+                  </Label>
                 </div>
               )}
             </form.Field>

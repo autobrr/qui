@@ -20,8 +20,8 @@ export function useAuth() {
   })
 
   const loginMutation = useMutation({
-    mutationFn: ({ username, password }: { username: string; password: string }) =>
-      api.login(username, password),
+    mutationFn: ({ username, password, rememberMe = false }: { username: string; password: string; rememberMe?: boolean }) =>
+      api.login(username, password, rememberMe),
     onSuccess: (data) => {
       queryClient.setQueryData(["auth", "user"], data.user)
       navigate({ to: "/dashboard" })

@@ -4,11 +4,11 @@ go 1.24
 
 require (
 	github.com/Masterminds/semver/v3 v3.4.0
+	github.com/alexedwards/scs/v2 v2.9.0
 	github.com/autobrr/go-qbittorrent v1.14.0
 	github.com/dgraph-io/ristretto v0.2.0
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-chi/chi/v5 v5.2.2
-	github.com/gorilla/sessions v1.4.0
 	github.com/lithammer/fuzzysearch v1.1.8
 	github.com/prometheus/client_golang v1.20.5
 	github.com/rs/zerolog v1.34.0
@@ -30,7 +30,6 @@ require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/go-viper/mapstructure/v2 v2.2.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/gorilla/securecookie v1.1.2 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/klauspost/compress v1.17.9 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect

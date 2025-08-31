@@ -55,6 +55,9 @@ func NewRouter(deps *Dependencies) *chi.Mux {
 	}
 	r.Use(apimiddleware.CORSWithCredentials(allowedOrigins))
 
+	// Session middleware - must be added before any session-dependent middleware
+	r.Use(deps.AuthService.GetSessionManager().LoadAndSave)
+
 	// Create handlers
 	authHandler := handlers.NewAuthHandler(deps.AuthService)
 	instancesHandler := handlers.NewInstancesHandler(deps.InstanceStore, deps.ClientPool, deps.SyncManager)

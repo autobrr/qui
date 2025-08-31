@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/alexedwards/scs/v2"
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -31,6 +32,7 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services"
 	"github.com/autobrr/qui/internal/web"
+	"github.com/autobrr/qui/pkg/sqlite3store"
 	webfs "github.com/autobrr/qui/web"
 )
 
@@ -206,7 +208,11 @@ If no --config-dir is specified, uses the OS-specific default location:
 			}
 			defer db.Close()
 
-			authService := auth.NewService(db.Conn(), cfg.Config.SessionSecret)
+			// Create minimal session manager for CLI command
+			sessionManager := scs.New()
+			sessionManager.Store = sqlite3store.New(db.Conn())
+
+			authService := auth.NewService(db.Conn(), sessionManager)
 
 			exists, err := authService.IsSetupComplete(context.Background())
 			if err != nil {
@@ -297,7 +303,11 @@ If no --config-dir is specified, uses the OS-specific default location:
 			}
 			defer db.Close()
 
-			authService := auth.NewService(db.Conn(), cfg.Config.SessionSecret)
+			// Create minimal session manager for CLI command
+			sessionManager := scs.New()
+			sessionManager.Store = sqlite3store.New(db.Conn())
+
+			authService := auth.NewService(db.Conn(), sessionManager)
 
 			exists, err := authService.IsSetupComplete(context.Background())
 			if err != nil {
@@ -417,8 +427,17 @@ func (app *Application) runServer() {
 	}
 	defer db.Close()
 
+	// Initialize session manager
+	sessionManager := scs.New()
+	sessionManager.Store = sqlite3store.New(db.Conn())
+	sessionManager.Lifetime = 24 * time.Hour * 7 // 7 days
+	sessionManager.Cookie.Name = "qui_session"
+	sessionManager.Cookie.HttpOnly = true
+	sessionManager.Cookie.SameSite = http.SameSiteLaxMode
+	sessionManager.Cookie.Secure = false // Will be set to true when HTTPS is detected
+
 	// Initialize services
-	authService := auth.NewService(db.Conn(), cfg.Config.SessionSecret)
+	authService := auth.NewService(db.Conn(), sessionManager)
 
 	// Initialize stores
 	instanceStore, err := models.NewInstanceStore(db.Conn(), cfg.GetEncryptionKey())

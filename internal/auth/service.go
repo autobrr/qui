@@ -8,9 +8,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"net/http"
 
-	"github.com/gorilla/sessions"
+	"github.com/alexedwards/scs/v2"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
@@ -26,26 +25,16 @@ var (
 )
 
 type Service struct {
-	userStore   *models.UserStore
-	apiKeyStore *models.APIKeyStore
-	store       sessions.Store
+	userStore      *models.UserStore
+	apiKeyStore    *models.APIKeyStore
+	sessionManager *scs.SessionManager
 }
 
-func NewService(db *sql.DB, sessionSecret string) *Service {
-	store := sessions.NewCookieStore([]byte(sessionSecret))
-
-	// Configure session options
-	store.Options = &sessions.Options{
-		Path:     "/",
-		MaxAge:   86400 * 7, // 7 days
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-	}
-
+func NewService(db *sql.DB, sessionManager *scs.SessionManager) *Service {
 	return &Service{
-		userStore:   models.NewUserStore(db),
-		apiKeyStore: models.NewAPIKeyStore(db),
-		store:       store,
+		userStore:      models.NewUserStore(db),
+		apiKeyStore:    models.NewAPIKeyStore(db),
+		sessionManager: sessionManager,
 	}
 }
 
@@ -177,7 +166,7 @@ func (s *Service) IsSetupComplete(ctx context.Context) (bool, error) {
 	return s.userStore.Exists(ctx)
 }
 
-// GetSessionStore returns the session store for use in middleware
-func (s *Service) GetSessionStore() sessions.Store {
-	return s.store
+// GetSessionManager returns the session manager for use in middleware
+func (s *Service) GetSessionManager() *scs.SessionManager {
+	return s.sessionManager
 }
