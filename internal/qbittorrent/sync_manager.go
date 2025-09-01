@@ -58,10 +58,10 @@ type SyncManager struct {
 
 // OptimisticTorrentUpdate represents a temporary optimistic update to a torrent
 type OptimisticTorrentUpdate struct {
-	State        qbt.TorrentState `json:"state"`
+	State         qbt.TorrentState `json:"state"`
 	OriginalState qbt.TorrentState `json:"originalState"`
-	UpdatedAt    time.Time        `json:"updatedAt"`
-	Action       string           `json:"action"`
+	UpdatedAt     time.Time        `json:"updatedAt"`
+	Action        string           `json:"action"`
 }
 
 // NewSyncManager creates a new sync manager
@@ -1134,19 +1134,39 @@ var actionSuccessCategories = map[string]string{
 
 // shouldClearOptimisticUpdate checks if an optimistic update should be cleared based on the action and current state
 func (sm *SyncManager) shouldClearOptimisticUpdate(currentState qbt.TorrentState, originalState qbt.TorrentState, optimisticState qbt.TorrentState, action string) bool {
-	// Clear the optimistic update if the current state is different from the original state
-	// This indicates that the backend has acknowledged and processed the operation
-	if currentState != originalState {
-		log.Debug().
-			Str("currentState", string(currentState)).
-			Str("originalState", string(originalState)).
-			Str("optimisticState", string(optimisticState)).
-			Str("action", action).
-			Msg("Clearing optimistic update - backend state changed from original")
-		return true
+	// Check if originalState is set (not zero value)
+	var zeroState qbt.TorrentState
+	if originalState != zeroState {
+		// Clear the optimistic update if the current state is different from the original state
+		// This indicates that the backend has acknowledged and processed the operation
+		if currentState != originalState {
+			log.Debug().
+				Str("currentState", string(currentState)).
+				Str("originalState", string(originalState)).
+				Str("optimisticState", string(optimisticState)).
+				Str("action", action).
+				Msg("Clearing optimistic update - backend state changed from original")
+			return true
+		}
+	} else {
+		// Fallback to category-based logic if originalState is not set
+		if successCategory, exists := actionSuccessCategories[action]; exists {
+			if categoryStates, categoryExists := torrentStateCategories[successCategory]; categoryExists {
+				if slices.Contains(categoryStates, currentState) {
+					log.Debug().
+						Str("currentState", string(currentState)).
+						Str("originalState", string(originalState)).
+						Str("optimisticState", string(optimisticState)).
+						Str("action", action).
+						Str("successCategory", successCategory).
+						Msg("Clearing optimistic update - current state in success category")
+					return true
+				}
+			}
+		}
 	}
 
-	// For other actions, use exact state match as fallback
+	// Final fallback: use exact state match
 	return currentState == optimisticState
 }
 
