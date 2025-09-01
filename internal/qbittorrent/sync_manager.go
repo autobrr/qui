@@ -20,22 +20,23 @@ import (
 
 // CacheMetadata provides information about cache state
 type CacheMetadata struct {
-	Source      string    `json:"source"`      // "cache" or "fresh"
-	Age         int       `json:"age"`         // Age in seconds
-	IsStale     bool      `json:"isStale"`     // Whether data is stale
-	NextRefresh time.Time `json:"nextRefresh"` // When next refresh will occur
+	Source      string `json:"source"`      // "cache" or "fresh"
+	Age         int    `json:"age"`         // Age in seconds
+	IsStale     bool   `json:"isStale"`     // Whether data is stale
+	NextRefresh string `json:"nextRefresh"` // When next refresh will occur (ISO 8601 string)
 }
 
 // TorrentResponse represents a response containing torrents with stats
 type TorrentResponse struct {
-	Torrents   []qbt.Torrent           `json:"torrents"`
-	Total      int                     `json:"total"`
-	Stats      *TorrentStats           `json:"stats,omitempty"`
-	Counts     *TorrentCounts          `json:"counts,omitempty"`     // Include counts for sidebar
-	Categories map[string]qbt.Category `json:"categories,omitempty"` // Include categories for sidebar
-	Tags       []string                `json:"tags,omitempty"`       // Include tags for sidebar
-	HasMore    bool                    `json:"hasMore"`              // Whether more pages are available
-	SessionID  string                  `json:"sessionId,omitempty"`  // Optional session tracking
+	Torrents      []qbt.Torrent           `json:"torrents"`
+	Total         int                     `json:"total"`
+	Stats         *TorrentStats           `json:"stats,omitempty"`
+	Counts        *TorrentCounts          `json:"counts,omitempty"`     // Include counts for sidebar
+	Categories    map[string]qbt.Category `json:"categories,omitempty"` // Include categories for sidebar
+	Tags          []string                `json:"tags,omitempty"`       // Include tags for sidebar
+	HasMore       bool                    `json:"hasMore"`              // Whether more pages are available
+	SessionID     string                  `json:"sessionId,omitempty"`  // Optional session tracking
+	CacheMetadata *CacheMetadata          `json:"cacheMetadata,omitempty"`
 }
 
 // TorrentStats represents aggregated torrent statistics
@@ -131,16 +132,42 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		tags = []string{}
 	}
 
+	// Determine cache metadata based on last sync update time
+	var cacheMetadata *CacheMetadata
+	client, clientErr := sm.clientPool.GetClient(ctx, instanceID)
+	if clientErr == nil {
+		syncManager := client.GetSyncManager()
+		if syncManager != nil {
+			lastSyncTime := syncManager.LastSyncTime()
+			now := time.Now()
+			age := int(now.Sub(lastSyncTime).Seconds())
+			isFresh := age <= 1 // Fresh if updated within the last second
+
+			source := "cache"
+			if isFresh {
+				source = "fresh"
+			}
+
+			cacheMetadata = &CacheMetadata{
+				Source:      source,
+				Age:         age,
+				IsStale:     !isFresh,
+				NextRefresh: now.Add(time.Second).Format(time.RFC3339),
+			}
+		}
+	}
+
 	// Data is always fresh from sync manager
 
 	response := &TorrentResponse{
-		Torrents:   paginatedTorrents,
-		Total:      len(filteredTorrents),
-		Stats:      stats,
-		Counts:     counts,     // Include counts for sidebar
-		Categories: categories, // Include categories for sidebar
-		Tags:       tags,       // Include tags for sidebar
-		HasMore:    hasMore,
+		Torrents:      paginatedTorrents,
+		Total:         len(filteredTorrents),
+		Stats:         stats,
+		Counts:        counts,     // Include counts for sidebar
+		Categories:    categories, // Include categories for sidebar
+		Tags:          tags,       // Include tags for sidebar
+		HasMore:       hasMore,
+		CacheMetadata: cacheMetadata,
 	}
 
 	// Always compute from fresh all_torrents data

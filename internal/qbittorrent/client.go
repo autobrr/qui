@@ -23,6 +23,7 @@ type Client struct {
 	lastHealthCheck time.Time
 	isHealthy       bool
 	syncManager     *qbt.SyncManager
+	lastSyncUpdate  time.Time
 	mu              sync.RWMutex
 }
 
@@ -74,23 +75,25 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 		supportsSetTags: supportsSetTags,
 		lastHealthCheck: time.Now(),
 		isHealthy:       true,
+		lastSyncUpdate:  time.Now(),
 	}
 
 	// Initialize sync manager with default options
 	syncOpts := qbt.DefaultSyncOptions()
 	syncOpts.DynamicSync = true
-	
+
 	// Set up health check callbacks
 	syncOpts.OnUpdate = func(data *qbt.MainData) {
 		client.updateHealthStatus(true)
+		client.lastSyncUpdate = time.Now()
 		log.Debug().Int("instanceID", instanceID).Msg("Sync manager update received, marking client as healthy")
 	}
-	
+
 	syncOpts.OnError = func(err error) {
 		client.updateHealthStatus(false)
 		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Sync manager error received, marking client as unhealthy")
 	}
-	
+
 	client.syncManager = qbtClient.NewSyncManager(syncOpts)
 
 	log.Debug().
@@ -111,6 +114,12 @@ func (c *Client) GetLastHealthCheck() time.Time {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.lastHealthCheck
+}
+
+func (c *Client) GetLastSyncUpdate() time.Time {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.lastSyncUpdate
 }
 
 func (c *Client) updateHealthStatus(healthy bool) {
