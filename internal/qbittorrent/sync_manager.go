@@ -220,11 +220,9 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 			sm.applyOptimisticCacheUpdate(instanceID, hashes, action, nil)
 			// Trigger sync to get updated state
 			if syncManager := client.GetSyncManager(); syncManager != nil {
-				go func() {
-					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-					defer cancel()
-					syncManager.Sync(ctx)
-				}()
+				if syncErr := syncManager.Sync(ctx); syncErr != nil {
+					log.Warn().Err(syncErr).Int("instanceID", instanceID).Msg("Failed to sync after pause")
+				}
 			}
 		}
 	case "resume":
@@ -233,11 +231,9 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 			sm.applyOptimisticCacheUpdate(instanceID, hashes, action, nil)
 			// Trigger sync to get updated state
 			if syncManager := client.GetSyncManager(); syncManager != nil {
-				go func() {
-					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-					defer cancel()
-					syncManager.Sync(ctx)
-				}()
+				if syncErr := syncManager.Sync(ctx); syncErr != nil {
+					log.Warn().Err(syncErr).Int("instanceID", instanceID).Msg("Failed to sync after resume")
+				}
 			}
 		}
 	case "delete":
@@ -246,11 +242,9 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 			sm.applyOptimisticCacheUpdate(instanceID, hashes, action, nil)
 			// Trigger sync to get updated state
 			if syncManager := client.GetSyncManager(); syncManager != nil {
-				go func() {
-					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-					defer cancel()
-					syncManager.Sync(ctx)
-				}()
+				if syncErr := syncManager.Sync(ctx); syncErr != nil {
+					log.Warn().Err(syncErr).Int("instanceID", instanceID).Msg("Failed to sync after delete")
+				}
 			}
 		}
 	case "deleteWithFiles":
@@ -259,11 +253,9 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 			sm.applyOptimisticCacheUpdate(instanceID, hashes, "delete", nil)
 			// Trigger sync to get updated state
 			if syncManager := client.GetSyncManager(); syncManager != nil {
-				go func() {
-					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-					defer cancel()
-					syncManager.Sync(ctx)
-				}()
+				if syncErr := syncManager.Sync(ctx); syncErr != nil {
+					log.Warn().Err(syncErr).Int("instanceID", instanceID).Msg("Failed to sync after delete with files")
+				}
 			}
 		}
 	case "recheck":
@@ -272,11 +264,9 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 			sm.applyOptimisticCacheUpdate(instanceID, hashes, action, nil)
 			// Trigger sync to get updated state
 			if syncManager := client.GetSyncManager(); syncManager != nil {
-				go func() {
-					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-					defer cancel()
-					syncManager.Sync(ctx)
-				}()
+				if syncErr := syncManager.Sync(ctx); syncErr != nil {
+					log.Warn().Err(syncErr).Int("instanceID", instanceID).Msg("Failed to sync after recheck")
+				}
 			}
 		}
 	case "reannounce":
@@ -310,7 +300,19 @@ func (sm *SyncManager) AddTorrent(ctx context.Context, instanceID int, fileConte
 	}
 
 	// Use AddTorrentFromMemoryCtx which accepts byte array
-	return client.AddTorrentFromMemoryCtx(ctx, fileContent, options)
+	if err := client.AddTorrentFromMemoryCtx(ctx, fileContent, options); err != nil {
+		return err
+	}
+
+	// Get sync manager and force refresh to pick up new torrent
+	syncManager := client.GetSyncManager()
+	if syncManager != nil {
+		if err := syncManager.Sync(ctx); err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to sync after adding torrent")
+		}
+	}
+
+	return nil
 }
 
 // AddTorrentFromURLs adds new torrents from URLs or magnet links
@@ -330,6 +332,14 @@ func (sm *SyncManager) AddTorrentFromURLs(ctx context.Context, instanceID int, u
 
 		if err := client.AddTorrentFromUrlCtx(ctx, url, options); err != nil {
 			return fmt.Errorf("failed to add torrent from URL %s: %w", url, err)
+		}
+	}
+
+	// Get sync manager and force refresh to pick up new torrents
+	syncManager := client.GetSyncManager()
+	if syncManager != nil {
+		if err := syncManager.Sync(ctx); err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to sync after adding torrents from URLs")
 		}
 	}
 
@@ -1542,6 +1552,15 @@ func (sm *SyncManager) SetTags(ctx context.Context, instanceID int, hashes []str
 
 	// Apply optimistic update to cache
 	sm.applyOptimisticCacheUpdate(instanceID, hashes, "setTags", map[string]any{"tags": tags})
+
+	// Get sync manager and force refresh
+	syncManager := client.GetSyncManager()
+	if syncManager != nil {
+		if err := syncManager.Sync(ctx); err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to sync after setting tags")
+		}
+	}
+
 	return nil
 }
 
@@ -1558,6 +1577,15 @@ func (sm *SyncManager) SetCategory(ctx context.Context, instanceID int, hashes [
 
 	// Apply optimistic update to cache
 	sm.applyOptimisticCacheUpdate(instanceID, hashes, "setCategory", map[string]any{"category": category})
+
+	// Get sync manager and force refresh
+	syncManager := client.GetSyncManager()
+	if syncManager != nil {
+		if err := syncManager.Sync(ctx); err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to sync after setting category")
+		}
+	}
+
 	return nil
 }
 
@@ -1574,6 +1602,15 @@ func (sm *SyncManager) SetAutoTMM(ctx context.Context, instanceID int, hashes []
 
 	// Apply optimistic update to cache
 	sm.applyOptimisticCacheUpdate(instanceID, hashes, "toggleAutoTMM", map[string]any{"enable": enable})
+
+	// Get sync manager and force refresh
+	syncManager := client.GetSyncManager()
+	if syncManager != nil {
+		if err := syncManager.Sync(ctx); err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to sync after setting auto TMM")
+		}
+	}
+
 	return nil
 }
 
@@ -1792,6 +1829,14 @@ func (sm *SyncManager) SetTorrentShareLimit(ctx context.Context, instanceID int,
 		return fmt.Errorf("failed to set torrent share limit: %w", err)
 	}
 
+	// Get sync manager and force refresh
+	syncManager := client.GetSyncManager()
+	if syncManager != nil {
+		if err := syncManager.Sync(ctx); err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to sync after setting share limit")
+		}
+	}
+
 	// Invalidate torrent cache to reflect the changes
 	sm.InvalidateCache(instanceID)
 
@@ -1812,6 +1857,14 @@ func (sm *SyncManager) SetTorrentUploadLimit(ctx context.Context, instanceID int
 		return fmt.Errorf("failed to set torrent upload limit: %w", err)
 	}
 
+	// Get sync manager and force refresh
+	syncManager := client.GetSyncManager()
+	if syncManager != nil {
+		if err := syncManager.Sync(ctx); err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to sync after setting upload limit")
+		}
+	}
+
 	// Invalidate torrent cache to reflect the changes
 	sm.InvalidateCache(instanceID)
 
@@ -1830,6 +1883,14 @@ func (sm *SyncManager) SetTorrentDownloadLimit(ctx context.Context, instanceID i
 
 	if err := client.SetTorrentDownloadLimitCtx(ctx, hashes, limitBytes); err != nil {
 		return fmt.Errorf("failed to set torrent download limit: %w", err)
+	}
+
+	// Get sync manager and force refresh
+	syncManager := client.GetSyncManager()
+	if syncManager != nil {
+		if err := syncManager.Sync(ctx); err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to sync after setting download limit")
+		}
 	}
 
 	// Invalidate torrent cache to reflect the changes
