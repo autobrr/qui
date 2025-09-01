@@ -218,6 +218,8 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 		err = client.PauseCtx(ctx, hashes)
 		if err == nil {
 			sm.applyOptimisticCacheUpdate(instanceID, hashes, action, nil)
+			// Small delay to let qBittorrent process the command before syncing
+			time.Sleep(200 * time.Millisecond)
 			// Trigger sync to get updated state
 			if syncManager := client.GetSyncManager(); syncManager != nil {
 				if syncErr := syncManager.Sync(ctx); syncErr != nil {
@@ -229,6 +231,8 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 		err = client.ResumeCtx(ctx, hashes)
 		if err == nil {
 			sm.applyOptimisticCacheUpdate(instanceID, hashes, action, nil)
+			// Small delay to let qBittorrent process the command before syncing
+			time.Sleep(200 * time.Millisecond)
 			// Trigger sync to get updated state
 			if syncManager := client.GetSyncManager(); syncManager != nil {
 				if syncErr := syncManager.Sync(ctx); syncErr != nil {
@@ -262,6 +266,8 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 		err = client.RecheckCtx(ctx, hashes)
 		if err == nil {
 			sm.applyOptimisticCacheUpdate(instanceID, hashes, action, nil)
+			// Small delay to let qBittorrent process the command before syncing
+			time.Sleep(200 * time.Millisecond)
 			// Trigger sync to get updated state
 			if syncManager := client.GetSyncManager(); syncManager != nil {
 				if syncErr := syncManager.Sync(ctx); syncErr != nil {
