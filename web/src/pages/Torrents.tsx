@@ -59,7 +59,12 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
   const [lastInstanceId, setLastInstanceId] = useState<number | null>(null)
 
   const handleTorrentSelect = (torrent: Torrent | null) => {
-    setSelectedTorrent(torrent)
+    // Toggle selection: if the same torrent is clicked, deselect it
+    if (torrent && selectedTorrent?.hash === torrent.hash) {
+      setSelectedTorrent(null)
+    } else {
+      setSelectedTorrent(torrent)
+    }
   }
 
   // Clear selected torrent and mark data as potentially stale when instance changes

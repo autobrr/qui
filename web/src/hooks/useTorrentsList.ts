@@ -73,19 +73,25 @@ export function useTorrentsList(
     enabled,
   })
 
-  // Update torrents when data arrives
+  // Update torrents when data arrives or changes (including optimistic updates)
   useEffect(() => {
-    if (data?.torrents && currentPage !== lastProcessedPage) {
-      // Mark this page as processed
-      setLastProcessedPage(currentPage)
+    if (data?.torrents) {
+      // Check if this is a new page load or data update for current page
+      const isNewPageLoad = currentPage !== lastProcessedPage
+      const isDataUpdate = !isNewPageLoad // Same page, but data changed (optimistic updates)
+
+      if (isNewPageLoad) {
+        // Mark this page as processed
+        setLastProcessedPage(currentPage)
+      }
 
       // Update last known total whenever we get data
       if (data.total !== undefined) {
         setLastKnownTotal(data.total)
       }
 
-      if (currentPage === 0) {
-        // First page, replace all
+      if (currentPage === 0 || isDataUpdate) {
+        // First page OR data update (optimistic updates): replace all
         setAllTorrents(data.torrents)
         // Use backend's HasMore field for accurate pagination
         setHasLoadedAll(!data.hasMore)

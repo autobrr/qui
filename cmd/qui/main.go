@@ -45,7 +45,7 @@ func main() {
 	var rootCmd = &cobra.Command{
 		Use:   "qui",
 		Short: "A self-hosted qBittorrent WebUI alternative",
-		Long: `qBittorrent WebUI - A modern, self-hosted web interface for managing 
+		Long: `qui - A modern, self-hosted web interface for managing 
 multiple qBittorrent instances with support for 10k+ torrents.`,
 	}
 

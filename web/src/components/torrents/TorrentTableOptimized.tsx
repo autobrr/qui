@@ -318,7 +318,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     }
   }, [setRowSelection])
 
-  const handleRowSelection = useCallback((hash: string, checked: boolean) => {
+  const handleRowSelection = useCallback((hash: string, checked: boolean, rowId?: string) => {
     if (isAllSelected) {
       if (!checked) {
         // When deselecting a row in "select all" mode, add to exclusions
@@ -332,10 +332,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         })
       }
     } else {
-      // Regular selection mode - use table's built-in selection
+      // Regular selection mode - use table's built-in selection with correct row ID
+      const keyToUse = rowId || hash // Use rowId if provided, fallback to hash for backward compatibility
       setRowSelection(prev => ({
         ...prev,
-        [hash]: checked,
+        [keyToUse]: checked,
       }))
     }
   }, [isAllSelected, setRowSelection])
@@ -413,11 +414,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         .map(t => t.hash)
         .filter(hash => !excludedFromSelectAll.has(hash))
     } else {
-      // Regular selection mode
-      return Object.keys(rowSelection)
-        .filter((key: string) => (rowSelection as Record<string, boolean>)[key])
+      // Regular selection mode - get hashes from selected torrents directly
+      const tableRows = table.getRowModel().rows
+      return tableRows
+        .filter(row => (rowSelection as Record<string, boolean>)[row.id])
+        .map(row => row.original.hash)
     }
-  }, [rowSelection, isAllSelected, excludedFromSelectAll, sortedTorrents])
+  }, [rowSelection, isAllSelected, excludedFromSelectAll, sortedTorrents, table])
 
   // Calculate the effective selection count for display
   const effectiveSelectionCount = useMemo(() => {
@@ -698,10 +701,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
               if (!oldData?.torrents) return oldData
 
               // Check if this query has a status filter in its key
-              // Query key structure: ['torrents-list', instanceId, currentPage, filters, search]
+              // Query key structure: ['torrents-list', instanceId, currentPage, filters, search, sort, order]
               const queryKey = query.queryKey as unknown[]
-              const filters = queryKey[3] as { status?: string[] } | undefined // filters is at index 3
-              const statusFilters = filters?.status || []
+              const filtersObj = queryKey[3] as { status?: string[] } | undefined // filters is at index 3
+              const statusFilters = filtersObj?.status || []
 
               // Apply optimistic updates using our utility function
               const { torrents: updatedTorrents } = applyOptimisticUpdates(
@@ -714,8 +717,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
               return {
                 ...oldData,
                 torrents: updatedTorrents,
-                total: updatedTorrents.length,
-                totalCount: updatedTorrents.length,
+                // Keep original total/totalCount - don't change pagination counts
+                total: oldData.total,
+                totalCount: oldData.totalCount,
               }
             })
           })
