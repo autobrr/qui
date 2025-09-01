@@ -25,6 +25,7 @@ require (
 )
 
 require (
+	github.com/CAFxX/httpcompression v0.0.9 // indirect
 	github.com/Masterminds/semver v1.5.0 // indirect
 	github.com/avast/retry-go v3.0.0+incompatible // indirect
 	github.com/beorn7/perks v1.0.1 // indirect

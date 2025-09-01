@@ -88,13 +88,6 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("httpTimeouts.readTimeout", 60)   // 60 seconds
 	c.viper.SetDefault("httpTimeouts.writeTimeout", 120) // 120 seconds for large responses
 	c.viper.SetDefault("httpTimeouts.idleTimeout", 180)  // 180 seconds
-
-	// Compression defaults - optimized for performance
-	c.viper.SetDefault("compression.enabled", true)
-	c.viper.SetDefault("compression.level", 4)           // Balanced compression level
-	c.viper.SetDefault("compression.minSize", 512)       // 512B minimum to compress (compresses most text responses)
-	c.viper.SetDefault("compression.preferZstd", true)   // Prefer Zstd for speed
-	c.viper.SetDefault("compression.preferBrotli", true) // Prefer Brotli for compression ratio
 }
 
 func (c *AppConfig) load(configDirOrPath string) error {

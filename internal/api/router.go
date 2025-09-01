@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/CAFxX/httpcompression"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/rs/zerolog/log"
@@ -47,14 +48,12 @@ func NewRouter(deps *Dependencies) *chi.Mux {
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RealIP)
 
-	// Selective compression - only compress responses above minimum size
-	if deps.Config.Config.Compression.Enabled {
-		r.Use(apimiddleware.SelectiveCompress(
-			deps.Config.Config.Compression.MinSize,
-			deps.Config.Config.Compression.Level,
-			deps.Config.Config.Compression.PreferZstd,
-			deps.Config.Config.Compression.PreferBrotli,
-		))
+	// HTTP compression - handles gzip, brotli, zstd, deflate automatically
+	compressor, err := httpcompression.DefaultAdapter()
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to create HTTP compression adapter")
+	} else {
+		r.Use(compressor)
 	}
 
 	// CORS - configure based on your needs
