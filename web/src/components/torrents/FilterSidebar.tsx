@@ -171,17 +171,33 @@ const FilterSidebarComponent = ({
   const debouncedTrackerSearch = useDebounce(trackerSearch, 300)
 
   // Use fake data if in incognito mode, otherwise use props
+  // When loading or showing stale data, show empty data to prevent stale data from previous instance
   const categories = useMemo(() => {
-    return incognitoMode ? LINUX_CATEGORIES : (propsCategories || {})
-  }, [incognitoMode, propsCategories])
+    if (incognitoMode) return LINUX_CATEGORIES
+    if (isLoading || isStaleData) return {}  // Clear categories during loading or when stale
+    return propsCategories || {}
+  }, [incognitoMode, propsCategories, isLoading, isStaleData])
 
   const tags = useMemo(() => {
-    return incognitoMode ? LINUX_TAGS : (propsTags || [])
-  }, [incognitoMode, propsTags])
+    if (incognitoMode) return LINUX_TAGS
+    if (isLoading || isStaleData) return []  // Clear tags during loading or when stale
+    return propsTags || []
+  }, [incognitoMode, propsTags, isLoading, isStaleData])
+
+  // Helper function to check if we have received data from the server
+  const hasReceivedData = useCallback((data: Record<string, Category> | string[] | Record<string, number> | undefined) => {
+    return !incognitoMode && !isLoading && !isStaleData && data !== undefined
+  }, [incognitoMode, isLoading, isStaleData])
+
+  const hasReceivedCategoriesData = hasReceivedData(propsCategories)
+  const hasReceivedTagsData = hasReceivedData(propsTags)
+  const hasReceivedTrackersData = hasReceivedData(torrentCounts)
 
   // Use fake trackers if in incognito mode or extract from torrentCounts
+  // When loading or showing stale data, show empty data to prevent stale data from previous instance
   const trackers = useMemo(() => {
     if (incognitoMode) return LINUX_TRACKERS
+    if (isLoading || isStaleData) return []  // Clear trackers during loading or when stale
 
     // Extract unique trackers from torrentCounts
     const realTrackers = torrentCounts ? Object.keys(torrentCounts)
@@ -191,7 +207,7 @@ const FilterSidebarComponent = ({
       .sort() : []
 
     return realTrackers
-  }, [incognitoMode, torrentCounts])
+  }, [incognitoMode, torrentCounts, isLoading, isStaleData])
 
   // Use virtual scrolling for large lists to handle performance efficiently
   const VIRTUAL_THRESHOLD = 100 // Use virtual scrolling for lists > 100 items
@@ -471,11 +487,24 @@ const FilterSidebarComponent = ({
                     </span>
                   </label>
 
+                  {/* Loading message for categories */}
+                  {!hasReceivedCategoriesData && (
+                    <div className="text-xs text-muted-foreground px-2 py-3 text-center italic animate-pulse">
+                      Loading categories...
+                    </div>
+                  )}
 
                   {/* No results message for categories */}
-                  {debouncedCategorySearch && filteredCategories.length === 0 && (
+                  {hasReceivedCategoriesData && debouncedCategorySearch && filteredCategories.length === 0 && (
                     <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
                       No categories found matching "{debouncedCategorySearch}"
+                    </div>
+                  )}
+
+                  {/* Empty categories message */}
+                  {hasReceivedCategoriesData && !debouncedCategorySearch && Object.keys(categories).length === 0 && (
+                    <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
+                      No categories available
                     </div>
                   )}
 
@@ -642,11 +671,24 @@ const FilterSidebarComponent = ({
                     </span>
                   </label>
 
+                  {/* Loading message for tags */}
+                  {!hasReceivedTagsData && (
+                    <div className="text-xs text-muted-foreground px-2 py-3 text-center italic animate-pulse">
+                      Loading tags...
+                    </div>
+                  )}
 
                   {/* No results message for tags */}
-                  {debouncedTagSearch && filteredTags.length === 0 && (
+                  {hasReceivedTagsData && debouncedTagSearch && filteredTags.length === 0 && (
                     <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
                       No tags found matching "{debouncedTagSearch}"
+                    </div>
+                  )}
+
+                  {/* Empty tags message */}
+                  {hasReceivedTagsData && !debouncedTagSearch && tags.length === 0 && (
+                    <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
+                      No tags available
                     </div>
                   )}
 
@@ -800,9 +842,15 @@ const FilterSidebarComponent = ({
                     </span>
                   </label>
 
+                  {/* Loading/Empty message for trackers */}
+                  {(!hasReceivedTrackersData || (!debouncedTrackerSearch && trackers.length === 0)) && !incognitoMode && (
+                    <div className="text-xs text-muted-foreground px-2 py-3 text-center italic animate-pulse">
+                      Loading trackers...
+                    </div>
+                  )}
 
                   {/* No results message for trackers */}
-                  {debouncedTrackerSearch && filteredTrackers.filter(tracker => tracker !== "").length === 0 && (
+                  {hasReceivedTrackersData && debouncedTrackerSearch && filteredTrackers.filter(tracker => tracker !== "").length === 0 && (
                     <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
                       No trackers found matching "{debouncedTrackerSearch}"
                     </div>
