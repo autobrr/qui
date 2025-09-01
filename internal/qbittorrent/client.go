@@ -23,8 +23,10 @@ type Client struct {
 	lastHealthCheck time.Time
 	isHealthy       bool
 	syncManager     *qbt.SyncManager
-	mu              sync.RWMutex
-	healthMu        sync.RWMutex
+	// optimisticUpdates stores temporary optimistic state changes for this instance
+	optimisticUpdates map[string]*OptimisticTorrentUpdate
+	mu                sync.RWMutex
+	healthMu          sync.RWMutex
 }
 
 func NewClient(instanceID int, instanceHost, username, password string, basicUsername, basicPassword *string) (*Client, error) {
@@ -69,12 +71,13 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 	}
 
 	client := &Client{
-		Client:          qbtClient,
-		instanceID:      instanceID,
-		webAPIVersion:   webAPIVersion,
-		supportsSetTags: supportsSetTags,
-		lastHealthCheck: time.Now(),
-		isHealthy:       true,
+		Client:            qbtClient,
+		instanceID:        instanceID,
+		webAPIVersion:     webAPIVersion,
+		supportsSetTags:   supportsSetTags,
+		lastHealthCheck:   time.Now(),
+		isHealthy:         true,
+		optimisticUpdates: make(map[string]*OptimisticTorrentUpdate),
 	}
 
 	// Initialize sync manager with default options
@@ -176,4 +179,101 @@ func (c *Client) StartSyncManager(ctx context.Context) error {
 		return fmt.Errorf("sync manager not initialized")
 	}
 	return c.syncManager.Start(ctx)
+}
+
+// applyOptimisticCacheUpdate applies optimistic updates for the given hashes and action
+func (c *Client) applyOptimisticCacheUpdate(hashes []string, action string, payload map[string]any) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	log.Debug().Int("instanceID", c.instanceID).Str("action", action).Int("hashCount", len(hashes)).Msg("Starting optimistic cache update")
+
+	// Apply optimistic updates based on action
+	switch action {
+	case "resume":
+		// For resume, change paused torrents to downloading state
+		for _, hash := range hashes {
+			c.optimisticUpdates[hash] = &OptimisticTorrentUpdate{
+				State:     qbt.TorrentStateDownloading, // Assume it will start downloading
+				UpdatedAt: time.Now(),
+				Action:    action,
+			}
+			log.Debug().Int("instanceID", c.instanceID).Str("hash", hash).Str("action", action).Msg("Created optimistic update for resume")
+		}
+	case "pause":
+		// For pause, change active torrents to paused state
+		for _, hash := range hashes {
+			c.optimisticUpdates[hash] = &OptimisticTorrentUpdate{
+				State:     qbt.TorrentStatePausedDl, // Assume download pause
+				UpdatedAt: time.Now(),
+				Action:    action,
+			}
+			log.Debug().Int("instanceID", c.instanceID).Str("hash", hash).Str("action", action).Msg("Created optimistic update for pause")
+		}
+	case "recheck":
+		// For recheck, change torrents to checking state
+		for _, hash := range hashes {
+			c.optimisticUpdates[hash] = &OptimisticTorrentUpdate{
+				State:     qbt.TorrentStateCheckingDl, // Assume checking download
+				UpdatedAt: time.Now(),
+				Action:    action,
+			}
+			log.Debug().Int("instanceID", c.instanceID).Str("hash", hash).Str("action", action).Msg("Created optimistic update for recheck")
+		}
+	}
+
+	log.Debug().Int("instanceID", c.instanceID).Str("action", action).Int("hashCount", len(hashes)).Int("totalOptimistic", len(c.optimisticUpdates)).Msg("Completed optimistic cache update")
+}
+
+// getOptimisticUpdates returns a copy of the current optimistic updates
+func (c *Client) getOptimisticUpdates() map[string]*OptimisticTorrentUpdate {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	// Return a copy to prevent external modification
+	updates := make(map[string]*OptimisticTorrentUpdate, len(c.optimisticUpdates))
+	for hash, update := range c.optimisticUpdates {
+		updates[hash] = update
+	}
+	return updates
+}
+
+// clearOptimisticUpdate removes an optimistic update for a specific torrent
+func (c *Client) clearOptimisticUpdate(hash string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.optimisticUpdates, hash)
+	log.Debug().Int("instanceID", c.instanceID).Str("hash", hash).Msg("Cleared optimistic update")
+}
+
+// clearStaleOptimisticUpdates removes optimistic updates that are older than the specified duration
+func (c *Client) clearStaleOptimisticUpdates(maxAge time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	now := time.Now()
+	removed := 0
+
+	for hash, update := range c.optimisticUpdates {
+		if now.Sub(update.UpdatedAt) > maxAge {
+			delete(c.optimisticUpdates, hash)
+			removed++
+		}
+	}
+
+	if removed > 0 {
+		log.Debug().Int("instanceID", c.instanceID).Int("removed", removed).Msg("Cleared stale optimistic updates")
+	}
+}
+
+// clearAllOptimisticUpdates removes all optimistic updates for this instance
+func (c *Client) clearAllOptimisticUpdates() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	count := len(c.optimisticUpdates)
+	if count > 0 {
+		c.optimisticUpdates = make(map[string]*OptimisticTorrentUpdate)
+		log.Debug().Int("instanceID", c.instanceID).Int("cleared", count).Msg("Cleared all optimistic updates")
+	}
 }

@@ -54,23 +54,19 @@ type TorrentStats struct {
 // SyncManager manages torrent operations
 type SyncManager struct {
 	clientPool *ClientPool
-	// optimisticUpdates stores temporary optimistic state changes
-	// Key: instanceID, Value: map of hash -> optimistic torrent data
-	optimisticUpdates map[int]map[string]*OptimisticTorrentUpdate
 }
 
 // OptimisticTorrentUpdate represents a temporary optimistic update to a torrent
 type OptimisticTorrentUpdate struct {
-	State      qbt.TorrentState `json:"state"`
-	UpdatedAt  time.Time        `json:"updatedAt"`
-	Action     string           `json:"action"`
+	State     qbt.TorrentState `json:"state"`
+	UpdatedAt time.Time        `json:"updatedAt"`
+	Action    string           `json:"action"`
 }
 
 // NewSyncManager creates a new sync manager
 func NewSyncManager(clientPool *ClientPool) *SyncManager {
 	return &SyncManager{
-		clientPool:        clientPool,
-		optimisticUpdates: make(map[int]map[string]*OptimisticTorrentUpdate),
+		clientPool: clientPool,
 	}
 }
 
@@ -229,33 +225,21 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 		return fmt.Errorf("failed to get client: %w", err)
 	}
 
+	// Apply optimistic update immediately for instant UI feedback
+	sm.applyOptimisticCacheUpdate(instanceID, hashes, action, nil)
+
 	// Perform action based on type
 	switch action {
 	case "pause":
 		err = client.PauseCtx(ctx, hashes)
-		if err == nil {
-			sm.applyOptimisticCacheUpdate(instanceID, hashes, action, nil)
-		}
 	case "resume":
 		err = client.ResumeCtx(ctx, hashes)
-		if err == nil {
-			sm.applyOptimisticCacheUpdate(instanceID, hashes, action, nil)
-		}
 	case "delete":
 		err = client.DeleteTorrentsCtx(ctx, hashes, false)
-		if err == nil {
-			sm.applyOptimisticCacheUpdate(instanceID, hashes, action, nil)
-		}
 	case "deleteWithFiles":
 		err = client.DeleteTorrentsCtx(ctx, hashes, true)
-		if err == nil {
-			sm.applyOptimisticCacheUpdate(instanceID, hashes, "delete", nil)
-		}
 	case "recheck":
 		err = client.RecheckCtx(ctx, hashes)
-		if err == nil {
-			sm.applyOptimisticCacheUpdate(instanceID, hashes, action, nil)
-		}
 	case "reannounce":
 		// No cache update needed - no visible state change
 		err = client.ReAnnounceTorrentsCtx(ctx, hashes)
@@ -668,52 +652,17 @@ func (sm *SyncManager) GetInstanceSpeeds(ctx context.Context, instanceID int) (*
 
 // Helper methods
 
+// applyOptimisticCacheUpdate applies optimistic updates for the given instance and hashes
 func (sm *SyncManager) applyOptimisticCacheUpdate(instanceID int, hashes []string, action string, payload map[string]any) {
-	// Initialize optimistic updates map for this instance if it doesn't exist
-	if sm.optimisticUpdates[instanceID] == nil {
-		sm.optimisticUpdates[instanceID] = make(map[string]*OptimisticTorrentUpdate)
+	// Get client for this instance
+	client, err := sm.clientPool.GetClient(context.Background(), instanceID)
+	if err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to get client for optimistic update")
+		return
 	}
 
-	// Apply optimistic updates based on action
-	switch action {
-	case "resume":
-		// For resume, change paused torrents to downloading state
-		for _, hash := range hashes {
-			sm.optimisticUpdates[instanceID][hash] = &OptimisticTorrentUpdate{
-				State:     qbt.TorrentStateDownloading, // Assume it will start downloading
-				UpdatedAt: time.Now(),
-				Action:    action,
-			}
-		}
-	case "pause":
-		// For pause, change active torrents to paused state
-		for _, hash := range hashes {
-			sm.optimisticUpdates[instanceID][hash] = &OptimisticTorrentUpdate{
-				State:     qbt.TorrentStatePausedDl, // Assume download pause
-				UpdatedAt: time.Now(),
-				Action:    action,
-			}
-		}
-	case "recheck":
-		// For recheck, change torrents to checking state
-		for _, hash := range hashes {
-			sm.optimisticUpdates[instanceID][hash] = &OptimisticTorrentUpdate{
-				State:     qbt.TorrentStateCheckingDl, // Assume checking download
-				UpdatedAt: time.Now(),
-				Action:    action,
-			}
-		}
-		// Note: Other actions like delete, etc. are harder to optimistically update
-		// since they might not have immediate visible state changes
-	}
-
-	log.Debug().Int("instanceID", instanceID).Str("action", action).Int("hashCount", len(hashes)).Msg("Applied optimistic cache update")
-
-	// Still trigger sync for actions that modify torrent state
-	if action == "pause" || action == "resume" || action == "recheck" || action == "delete" ||
-		action == "setTags" || action == "setCategory" || action == "addTags" || action == "removeTags" || action == "toggleAutoTMM" {
-		sm.syncAfterModification(instanceID, nil, action)
-	}
+	// Delegate to client's optimistic update method
+	client.applyOptimisticCacheUpdate(hashes, action, payload)
 }
 
 // syncAfterModification performs a background sync after a modification operation
@@ -769,37 +718,51 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 	}
 
 	// Apply optimistic updates
-	if instanceUpdates, exists := sm.optimisticUpdates[instanceID]; exists && len(instanceUpdates) > 0 {
+	if instanceUpdates := client.getOptimisticUpdates(); len(instanceUpdates) > 0 {
 		// Get the last sync time to detect if backend has responded since our optimistic update
 		// This provides much more accurate clearing than a fixed timeout
 		lastSyncTime := syncManager.LastSyncTime()
-		
+
 		optimisticCount := 0
 		removedCount := 0
-		
+
 		for i := range torrents {
 			if optimisticUpdate, hasUpdate := instanceUpdates[torrents[i].Hash]; hasUpdate {
 				shouldClear := false
-				
-				// Clear if backend has synced since our optimistic update
-				if lastSyncTime.After(optimisticUpdate.UpdatedAt) {
+				timeSinceUpdate := time.Since(optimisticUpdate.UpdatedAt)
+
+				// Clear if backend state matches the optimistic state (confirmed by backend)
+				if torrents[i].State == optimisticUpdate.State {
 					shouldClear = true
+					log.Debug().
+						Str("hash", torrents[i].Hash).
+						Str("state", string(torrents[i].State)).
+						Time("optimisticAt", optimisticUpdate.UpdatedAt).
+						Dur("timeSinceUpdate", timeSinceUpdate).
+						Msg("Clearing optimistic update - backend returned expected state")
+				} else if timeSinceUpdate > 60*time.Second {
+					// Safety net: still clear after 60 seconds if something went wrong
+					shouldClear = true
+					log.Debug().
+						Str("hash", torrents[i].Hash).
+						Time("optimisticAt", optimisticUpdate.UpdatedAt).
+						Dur("timeSinceUpdate", timeSinceUpdate).
+						Msg("Clearing stale optimistic update (safety net)")
+				} else {
+					// Debug: show why we're not clearing yet
 					log.Debug().
 						Str("hash", torrents[i].Hash).
 						Time("optimisticAt", optimisticUpdate.UpdatedAt).
 						Time("lastSyncAt", lastSyncTime).
-						Msg("Clearing optimistic update - backend has responded")
-				} else if time.Since(optimisticUpdate.UpdatedAt) > 30*time.Second {
-					// Also clear if it's been too long (safety net)
-					shouldClear = true
-					log.Debug().
-						Str("hash", torrents[i].Hash).
-						Time("optimisticAt", optimisticUpdate.UpdatedAt).
-						Msg("Clearing stale optimistic update")
+						Dur("timeSinceUpdate", timeSinceUpdate).
+						Bool("syncAfterUpdate", lastSyncTime.After(optimisticUpdate.UpdatedAt)).
+						Str("backendState", string(torrents[i].State)).
+						Str("optimisticState", string(optimisticUpdate.State)).
+						Msg("Keeping optimistic update - conditions not met")
 				}
-				
+
 				if shouldClear {
-					delete(instanceUpdates, torrents[i].Hash)
+					client.clearOptimisticUpdate(torrents[i].Hash)
 					removedCount++
 				} else {
 					// Apply the optimistic state change
@@ -809,7 +772,7 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 						Str("newState", string(optimisticUpdate.State)).
 						Str("action", optimisticUpdate.Action).
 						Msg("Applying optimistic update")
-					
+
 					torrents[i].State = optimisticUpdate.State
 					optimisticCount++
 				}
@@ -819,14 +782,9 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 		if optimisticCount > 0 {
 			log.Debug().Int("instanceID", instanceID).Int("optimisticCount", optimisticCount).Msg("Applied optimistic updates to torrent data")
 		}
-		
+
 		if removedCount > 0 {
 			log.Debug().Int("instanceID", instanceID).Int("removedCount", removedCount).Msg("Cleared optimistic updates")
-		}
-
-		// Clean up empty instance maps
-		if len(instanceUpdates) == 0 {
-			delete(sm.optimisticUpdates, instanceID)
 		}
 	}
 
@@ -837,44 +795,32 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 
 // clearOptimisticUpdate removes an optimistic update for a specific torrent
 func (sm *SyncManager) clearOptimisticUpdate(instanceID int, hash string) {
-	if instanceUpdates, exists := sm.optimisticUpdates[instanceID]; exists {
-		delete(instanceUpdates, hash)
-		if len(instanceUpdates) == 0 {
-			delete(sm.optimisticUpdates, instanceID)
-		}
-		log.Debug().Int("instanceID", instanceID).Str("hash", hash).Msg("Cleared optimistic update")
+	client, err := sm.clientPool.GetClient(context.Background(), instanceID)
+	if err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to get client for clearing optimistic update")
+		return
 	}
+	client.clearOptimisticUpdate(hash)
 }
 
 // clearStaleOptimisticUpdates removes optimistic updates that are older than the specified duration
 func (sm *SyncManager) clearStaleOptimisticUpdates(maxAge time.Duration) {
-	now := time.Now()
-	removed := 0
+	// This method is no longer needed since each client manages its own optimistic updates
+	// But we can iterate through all clients if needed
+	log.Debug().Dur("maxAge", maxAge).Msg("Clearing stale optimistic updates across all instances")
 
-	for instanceID, instanceUpdates := range sm.optimisticUpdates {
-		for hash, update := range instanceUpdates {
-			if now.Sub(update.UpdatedAt) > maxAge {
-				delete(instanceUpdates, hash)
-				removed++
-			}
-		}
-		if len(instanceUpdates) == 0 {
-			delete(sm.optimisticUpdates, instanceID)
-		}
-	}
-
-	if removed > 0 {
-		log.Debug().Int("removed", removed).Msg("Cleared stale optimistic updates")
-	}
+	// Note: This would require iterating through all clients in the pool
+	// For now, we'll rely on the per-client clearing in getAllTorrentsForStats
 }
 
 // clearAllOptimisticUpdatesForInstance removes all optimistic updates for a specific instance
 func (sm *SyncManager) clearAllOptimisticUpdatesForInstance(instanceID int) {
-	if instanceUpdates, exists := sm.optimisticUpdates[instanceID]; exists {
-		count := len(instanceUpdates)
-		delete(sm.optimisticUpdates, instanceID)
-		log.Debug().Int("instanceID", instanceID).Int("cleared", count).Msg("Cleared all optimistic updates for instance")
+	client, err := sm.clientPool.GetClient(context.Background(), instanceID)
+	if err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to get client for clearing all optimistic updates")
+		return
 	}
+	client.clearAllOptimisticUpdates()
 }
 func normalizeForSearch(text string) string {
 	// Replace common torrent separators with spaces
