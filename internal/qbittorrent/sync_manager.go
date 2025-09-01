@@ -693,7 +693,7 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 	log.Debug().Int("instanceID", instanceID).Int("torrents", len(torrents)).Msg("getAllTorrentsForStats: Fetched from sync manager GetData()")
 
 	return torrents, nil
-}// normalizeForSearch normalizes text for searching by replacing common separators
+} // normalizeForSearch normalizes text for searching by replacing common separators
 func normalizeForSearch(text string) string {
 	// Replace common torrent separators with spaces
 	replacers := []string{".", "_", "-", "[", "]", "(", ")", "{", "}"}
@@ -992,98 +992,31 @@ var torrentStateCategories = map[string][]string{
 	"errored":     {"error", "missingFiles"},
 }
 
-// Fast state lookup maps for O(1) checks
-var (
-	downloadingStates = make(map[string]bool)
-	seedingStates     = make(map[string]bool)
-	pausedStates      = make(map[string]bool)
-	activeStates      = make(map[string]bool)
-	inactiveStates    = make(map[string]bool)
-	resumedStates     = make(map[string]bool)
-	stalledStates     = make(map[string]bool)
-	checkingStates    = make(map[string]bool)
-	erroredStates     = make(map[string]bool)
-)
-
-func init() {
-	// Initialize fast lookup maps
-	for _, state := range torrentStateCategories["downloading"] {
-		downloadingStates[state] = true
-	}
-	for _, state := range torrentStateCategories["seeding"] {
-		seedingStates[state] = true
-	}
-	for _, state := range torrentStateCategories["paused"] {
-		pausedStates[state] = true
-	}
-	for _, state := range torrentStateCategories["active"] {
-		activeStates[state] = true
-	}
-	for _, state := range torrentStateCategories["stalled"] {
-		stalledStates[state] = true
-	}
-	for _, state := range torrentStateCategories["checking"] {
-		checkingStates[state] = true
-	}
-	for _, state := range torrentStateCategories["errored"] {
-		erroredStates[state] = true
-	}
-
-	// Initialize inactive and resumed states (inverse of active/paused)
-	allStates := []string{
-		"downloading", "uploading", "forcedDL", "forcedUP", "pausedDL", "pausedUP",
-		"stoppedDL", "stoppedUP", "stalledDL", "stalledUP", "metaDL", "queuedDL",
-		"allocating", "checkingDL", "checkingUP", "checkingResumeData", "error", "missingFiles", "moving",
-	}
-	for _, state := range allStates {
-		if !activeStates[state] {
-			inactiveStates[state] = true
-		}
-		if !pausedStates[state] {
-			resumedStates[state] = true
-		}
-	}
-}
-
 // matchTorrentStatus checks if a torrent matches a specific status filter
-// Optimized version using pre-computed state mappings for O(1) performance
 func (sm *SyncManager) matchTorrentStatus(torrent qbt.Torrent, status string) bool {
 	state := string(torrent.State)
 
-	// Fast path for common cases using pre-computed maps
+	// Handle special cases first
 	switch status {
 	case "all":
 		return true
 	case "completed":
 		return torrent.Progress == 1
-	case "downloading":
-		return downloadingStates[state]
-	case "seeding":
-		return seedingStates[state]
-	case "paused":
-		return pausedStates[state]
-	case "active":
-		return activeStates[state]
 	case "inactive":
-		return inactiveStates[state]
+		// Inactive is the inverse of active
+		return !slices.Contains(torrentStateCategories["active"], state)
 	case "resumed":
-		return resumedStates[state]
-	case "stalled":
-		return stalledStates[state]
-	case "stalled_uploading":
-		return state == "stalledUP"
-	case "stalled_downloading":
-		return state == "stalledDL"
-	case "errored":
-		return erroredStates[state]
-	case "checking":
-		return checkingStates[state]
-	case "moving":
-		return state == "moving"
-	default:
-		// For specific states, match exactly
-		return state == status
+		// Resumed is the inverse of paused
+		return !slices.Contains(torrentStateCategories["paused"], state)
 	}
+
+	// For grouped status categories, check if state is in the category
+	if category, exists := torrentStateCategories[status]; exists {
+		return slices.Contains(category, state)
+	}
+
+	// For everything else, just do direct equality
+	return state == status
 }
 
 // calculateStats calculates torrent statistics from a list of torrents
