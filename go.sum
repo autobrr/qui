@@ -4,6 +4,8 @@ github.com/Masterminds/semver/v3 v3.4.0 h1:Zog+i5UMtVoCU8oKka5P7i9q9HgrJeGzI9SA1
 github.com/Masterminds/semver/v3 v3.4.0/go.mod h1:4V+yj/TJE1HU9XfppCwVMZq3I84lprf4nC11bSS5beM=
 github.com/autobrr/go-qbittorrent v1.14.1-0.20250901202703-37c09d8519e9 h1:oqB0vRd/eXDhYzPSF0CQ0kt/aCpOFnJ3PmxljrNkoy4=
 github.com/autobrr/go-qbittorrent v1.14.1-0.20250901202703-37c09d8519e9/go.mod h1:GY9yW+L45etf6xobkKz4hODqL/EfSw/CWPC9SzS2q8U=
+github.com/autobrr/go-qbittorrent v1.14.1-0.20250901231229-798f4abe95e9 h1:R76CBPVgGbEls9XCc9vUyEFZOcgo736Br0TdT1hFFPg=
+github.com/autobrr/go-qbittorrent v1.14.1-0.20250901231229-798f4abe95e9/go.mod h1:GY9yW+L45etf6xobkKz4hODqL/EfSw/CWPC9SzS2q8U=
 github.com/avast/retry-go v3.0.0+incompatible h1:4SOWQ7Qs+oroOTQOYnAHqelpCO0biHSxpiH9JdtuBj0=
 github.com/avast/retry-go v3.0.0+incompatible/go.mod h1:XtSnn+n/sHqQIpZ10K1qAevBhOOCWBLXXy3hyiqqBrY=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=

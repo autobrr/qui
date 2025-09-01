@@ -101,9 +101,13 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		case "all":
 			torrentFilterOptions.Filter = qbt.TorrentFilterAll
 		case "active":
-			torrentFilterOptions.Filter = qbt.TorrentFilterActive
+			// Use manual filtering for consistency with other status filters
+			manualStatusFilter = status
+			torrentFilterOptions.Filter = qbt.TorrentFilterAll
 		case "inactive":
-			torrentFilterOptions.Filter = qbt.TorrentFilterInactive
+			// Use manual filtering for consistency with active
+			manualStatusFilter = status
+			torrentFilterOptions.Filter = qbt.TorrentFilterAll
 		case "completed":
 			torrentFilterOptions.Filter = qbt.TorrentFilterCompleted
 		case "resumed":

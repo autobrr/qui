@@ -101,9 +101,9 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 		case "all":
 			torrentFilterOptions.Filter = qbt.TorrentFilterAll
 		case "active":
-			torrentFilterOptions.Filter = qbt.TorrentFilterActive
+			// Use manual filtering for consistency
 		case "inactive":
-			torrentFilterOptions.Filter = qbt.TorrentFilterInactive
+			// Use manual filtering for consistency
 		case "completed":
 			torrentFilterOptions.Filter = qbt.TorrentFilterCompleted
 		case "resumed":
