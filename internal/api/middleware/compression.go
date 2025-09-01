@@ -4,6 +4,7 @@
 package middleware
 
 import (
+	"compress/flate"
 	"compress/gzip"
 	"io"
 	"net/http"
@@ -21,6 +22,7 @@ const (
 	AlgorithmGzip
 	AlgorithmBrotli
 	AlgorithmZstd
+	AlgorithmDeflate
 )
 
 // compressionWriter wraps an http.ResponseWriter to handle different compression algorithms
@@ -145,6 +147,10 @@ func (w *compressionWriter) initCompression() error {
 		if err != nil {
 			return err
 		}
+
+	case AlgorithmDeflate:
+		w.Header().Set("Content-Encoding", "deflate")
+		w.writer, _ = flate.NewWriter(w.ResponseWriter, level)
 	}
 
 	w.compressionInitialized = true
@@ -189,7 +195,7 @@ func negotiateAlgorithm(acceptEncoding string, preferZstd, preferBrotli bool) Co
 	// Parse quality values from Accept-Encoding header
 	encodings := parseAcceptEncoding(acceptEncoding)
 
-	// Priority order based on server preferences and client support
+	// Priority order: Zstd > Brotli > Gzip > Deflate > None
 	if preferZstd && encodings["zstd"] > 0 {
 		return AlgorithmZstd
 	}
@@ -199,8 +205,8 @@ func negotiateAlgorithm(acceptEncoding string, preferZstd, preferBrotli bool) Co
 	if encodings["gzip"] > 0 {
 		return AlgorithmGzip
 	}
-	if encodings["deflate"] > 0 { // Fallback to gzip for deflate
-		return AlgorithmGzip
+	if encodings["deflate"] > 0 {
+		return AlgorithmDeflate
 	}
 
 	return AlgorithmNone
@@ -243,9 +249,10 @@ func parseAcceptEncoding(acceptEncoding string) map[string]float64 {
 			encodings["gzip"] = 1.0
 			encodings["br"] = 1.0
 			encodings["zstd"] = 1.0
+			encodings["deflate"] = 1.0
 		case "deflate":
-			// Map deflate to gzip
-			encodings["gzip"] = qvalue
+			// Handle deflate separately from gzip
+			encodings["deflate"] = qvalue
 		default:
 			encodings[encoding] = qvalue
 		}
