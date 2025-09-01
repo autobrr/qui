@@ -73,27 +73,32 @@ func NewSyncManager(clientPool *ClientPool) *SyncManager {
 
 // GetTorrentsWithFilters gets torrents with filters, search and sorting
 // Always fetches fresh data from sync manager for real-time updates
-func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID int, sort, order, search string, filters FilterOptions) (*TorrentResponse, error) {
-	// Always get fresh data from sync manager for real-time updates
-	var filteredTorrents []qbt.Torrent
-	var err error
+func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID int, sort, order, search string, filters qbt.TorrentFilterOptions) (*TorrentResponse, error) {
+	// Set sorting in the filter options
+	filters.Sort = sort
+	filters.Reverse = (order == "desc")
 
-	// Always get fresh data from sync manager for real-time updates
-	allTorrents, err := sm.getAllTorrentsForStats(ctx, instanceID, "")
+	// Get client
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get torrents: %w", err)
+		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
+
+	// Get sync manager
+	syncManager := client.GetSyncManager()
+	if syncManager == nil {
+		return nil, fmt.Errorf("sync manager not initialized")
+	}
+
+	// Use library filtering and sorting
+	filteredTorrents := syncManager.GetTorrents(filters)
 
 	log.Debug().
 		Int("instanceID", instanceID).
-		Int("totalCount", len(allTorrents)).
-		Msg("Using fresh data from sync manager")
+		Int("totalCount", len(filteredTorrents)).
+		Msg("Using filtered and sorted data from sync manager")
 
-	// Now we always have all torrents from getAllTorrentsForStats
-	// Just apply filters in-memory (this is fast and uses the smart cached data)
-	filteredTorrents = sm.applyFilters(allTorrents, filters)
-
-	// Apply search filter if provided
+	// Apply search filter if provided (library doesn't support search)
 	if search != "" {
 		filteredTorrents = sm.filterTorrentsBySearch(filteredTorrents, search)
 	}
@@ -101,16 +106,14 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	log.Debug().
 		Int("instanceID", instanceID).
 		Int("filtered", len(filteredTorrents)).
-		Msg("Applied in-memory filtering")
+		Msg("Applied search filtering")
 
 	// Calculate stats from filtered torrents
 	stats := sm.calculateStats(filteredTorrents)
 
-	// Sort torrents
-	sm.sortTorrents(filteredTorrents, sort, order)
-
-	// Calculate counts from ALL torrents (not filtered) for sidebar
-	// This uses the same cached data, so it's very fast
+	// No need for manual sorting since library handles it
+	// Get all torrents for sidebar counts (without filters)
+	allTorrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{})
 	counts := sm.calculateCountsFromTorrents(allTorrents)
 
 	// Fetch categories and tags (cached separately for 60s)
@@ -1044,108 +1047,6 @@ func (sm *SyncManager) filterTorrentsByGlob(torrents []qbt.Torrent, pattern stri
 		Int("totalTorrents", len(torrents)).
 		Int("matchedTorrents", len(filtered)).
 		Msg("Glob pattern search completed")
-
-	return filtered
-}
-
-// applyFilters applies multiple filters to torrents
-func (sm *SyncManager) applyFilters(torrents []qbt.Torrent, filters FilterOptions) []qbt.Torrent {
-	// If no filters are applied, return all torrents
-	if len(filters.Status) == 0 && len(filters.Categories) == 0 && len(filters.Tags) == 0 && len(filters.Trackers) == 0 {
-		return torrents
-	}
-
-	// Log filter application
-	log.Debug().
-		Interface("filters", filters).
-		Int("totalTorrents", len(torrents)).
-		Msg("Applying filters to torrents")
-
-	// Pre-compute filter sets for O(1) lookup
-	categorySet := make(map[string]bool, len(filters.Categories))
-	for _, cat := range filters.Categories {
-		categorySet[cat] = true
-	}
-
-	tagSet := make(map[string]bool, len(filters.Tags))
-	for _, tag := range filters.Tags {
-		tagSet[tag] = true
-	}
-
-	trackerSet := make(map[string]bool, len(filters.Trackers))
-	for _, tracker := range filters.Trackers {
-		trackerSet[tracker] = true
-	}
-
-	var filtered []qbt.Torrent
-	for _, torrent := range torrents {
-		// Check status filter
-		if len(filters.Status) > 0 {
-			statusMatch := false
-			for _, status := range filters.Status {
-				if sm.matchTorrentStatus(torrent, status) {
-					statusMatch = true
-					break
-				}
-			}
-			if !statusMatch {
-				continue
-			}
-		}
-
-		// Check category filter
-		if len(filters.Categories) > 0 {
-			if !categorySet[torrent.Category] {
-				continue
-			}
-		}
-
-		// Check tags filter
-		if len(filters.Tags) > 0 {
-			tagMatch := false
-			if len(filters.Tags) == 1 && filters.Tags[0] == "" && torrent.Tags == "" {
-				// Handle "Untagged" filter
-				tagMatch = true
-			} else {
-				torrentTags := strings.SplitSeq(torrent.Tags, ", ")
-				for torrentTag := range torrentTags {
-					if tagSet[torrentTag] {
-						tagMatch = true
-						break
-					}
-				}
-			}
-			if !tagMatch {
-				continue
-			}
-		}
-
-		// Check tracker filter
-		if len(filters.Trackers) > 0 {
-			trackerMatch := false
-			if len(filters.Trackers) == 1 && filters.Trackers[0] == "" && torrent.Tracker == "" {
-				// Handle "No tracker" filter
-				trackerMatch = true
-			} else if torrent.Tracker != "" {
-				// Extract hostname from tracker URL for comparison
-				if trackerURL, err := url.Parse(torrent.Tracker); err == nil {
-					if trackerSet[trackerURL.Hostname()] {
-						trackerMatch = true
-					}
-				}
-			}
-			if !trackerMatch {
-				continue
-			}
-		}
-
-		filtered = append(filtered, torrent)
-	}
-
-	log.Debug().
-		Int("filteredCount", len(filtered)).
-		Interface("appliedFilters", filters).
-		Msg("Filters applied, returning filtered torrents")
 
 	return filtered
 }
