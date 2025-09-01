@@ -364,8 +364,8 @@ const FilterSidebarComponent = ({
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <h3 className="font-semibold">Filters</h3>
-              {isStaleData && (
-                <div className="w-2 h-2 bg-amber-500 rounded-full animate-pulse" />
+              {(isLoading || isStaleData) && (
+                <span className="text-xs text-muted-foreground animate-pulse">Loading...</span>
               )}
             </div>
             {hasActiveFilters && (
