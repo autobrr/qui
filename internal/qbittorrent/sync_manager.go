@@ -1588,6 +1588,14 @@ func (sm *SyncManager) CreateTags(ctx context.Context, instanceID int, tags []st
 		return err
 	}
 
+	// Get sync manager and force refresh
+	syncManager := client.GetSyncManager()
+	if syncManager != nil {
+		if err := syncManager.Sync(ctx); err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to sync after tag creation")
+		}
+	}
+
 	// Invalidate tags cache
 	cacheKey := fmt.Sprintf("tags:%d", instanceID)
 	sm.cache.Del(cacheKey)
@@ -1604,6 +1612,14 @@ func (sm *SyncManager) DeleteTags(ctx context.Context, instanceID int, tags []st
 
 	if err := client.DeleteTagsCtx(ctx, tags); err != nil {
 		return err
+	}
+
+	// Get sync manager and force refresh
+	syncManager := client.GetSyncManager()
+	if syncManager != nil {
+		if err := syncManager.Sync(ctx); err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to sync after tag deletion")
+		}
 	}
 
 	// Invalidate tags cache
@@ -1624,6 +1640,14 @@ func (sm *SyncManager) CreateCategory(ctx context.Context, instanceID int, name 
 		return err
 	}
 
+	// Get sync manager and force refresh
+	syncManager := client.GetSyncManager()
+	if syncManager != nil {
+		if err := syncManager.Sync(ctx); err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to sync after category creation")
+		}
+	}
+
 	// Invalidate categories cache
 	cacheKey := fmt.Sprintf("categories:%d", instanceID)
 	sm.cache.Del(cacheKey)
@@ -1642,6 +1666,14 @@ func (sm *SyncManager) EditCategory(ctx context.Context, instanceID int, name st
 		return err
 	}
 
+	// Get sync manager and force refresh
+	syncManager := client.GetSyncManager()
+	if syncManager != nil {
+		if err := syncManager.Sync(ctx); err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to sync after category edit")
+		}
+	}
+
 	// Invalidate categories cache
 	cacheKey := fmt.Sprintf("categories:%d", instanceID)
 	sm.cache.Del(cacheKey)
@@ -1658,6 +1690,14 @@ func (sm *SyncManager) RemoveCategories(ctx context.Context, instanceID int, cat
 
 	if err := client.RemoveCategoriesCtx(ctx, categories); err != nil {
 		return err
+	}
+
+	// Get sync manager and force refresh
+	syncManager := client.GetSyncManager()
+	if syncManager != nil {
+		if err := syncManager.Sync(ctx); err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to sync after category removal")
+		}
 	}
 
 	// Invalidate categories cache
