@@ -79,6 +79,18 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 	// Initialize sync manager with default options
 	syncOpts := qbt.DefaultSyncOptions()
 	syncOpts.DynamicSync = true
+	
+	// Set up health check callbacks
+	syncOpts.OnUpdate = func(data *qbt.MainData) {
+		client.updateHealthStatus(true)
+		log.Debug().Int("instanceID", instanceID).Msg("Sync manager update received, marking client as healthy")
+	}
+	
+	syncOpts.OnError = func(err error) {
+		client.updateHealthStatus(false)
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Sync manager error received, marking client as unhealthy")
+	}
+	
 	client.syncManager = qbtClient.NewSyncManager(syncOpts)
 
 	log.Debug().
@@ -101,6 +113,13 @@ func (c *Client) GetLastHealthCheck() time.Time {
 	return c.lastHealthCheck
 }
 
+func (c *Client) updateHealthStatus(healthy bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.isHealthy = healthy
+	c.lastHealthCheck = time.Now()
+}
+
 func (c *Client) IsHealthy() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -113,10 +132,7 @@ func (c *Client) HealthCheck(ctx context.Context) error {
 	}
 
 	_, err := c.GetWebAPIVersionCtx(ctx)
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.lastHealthCheck = time.Now()
-	c.isHealthy = err == nil
+	c.updateHealthStatus(err == nil)
 
 	if err != nil {
 		return errors.Wrap(err, "health check failed")
