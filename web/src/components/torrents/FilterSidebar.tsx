@@ -92,6 +92,7 @@ interface FilterSidebarProps {
   categories?: Record<string, Category>
   tags?: string[]
   className?: string
+  isStaleData?: boolean
 }
 
 
@@ -120,6 +121,7 @@ const FilterSidebarComponent = ({
   categories: propsCategories,
   tags: propsTags,
   className = "",
+  isStaleData = false,
 }: FilterSidebarProps) => {
   // Use incognito mode hook
   const [incognitoMode] = useIncognitoMode()
@@ -334,7 +336,9 @@ const FilterSidebarComponent = ({
   // Simple slide animation - sidebar slides in/out from the left
   return (
     <div
-      className={`${className} h-full w-full xl:max-w-xs flex flex-col xl:flex-shrink-0 xl:border-r xl:bg-muted/10`}
+      className={`${className} h-full w-full xl:max-w-xs flex flex-col xl:flex-shrink-0 xl:border-r xl:bg-muted/10 ${
+        isStaleData ? "opacity-75 transition-opacity duration-200" : ""
+      }`}
     >
       <ScrollArea className="h-full flex-1 overscroll-contain">
         <div className="p-4">

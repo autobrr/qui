@@ -274,7 +274,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   // Call the callback when filtered data updates
   useEffect(() => {
     if (onFilteredDataUpdate && torrents && totalCount !== undefined && !isLoading) {
-      onFilteredDataUpdate(torrents, totalCount, counts, categories, tags)
+      // Only skip callback if ALL metadata is undefined (indicates incomplete initial load during instance switch)
+      // If any metadata exists, or if torrents list is non-empty, proceed with callback
+      const hasAnyMetadata = counts !== undefined || categories !== undefined || tags !== undefined
+      const hasExistingTorrents = torrents.length > 0
+
+      if (hasAnyMetadata || hasExistingTorrents) {
+        onFilteredDataUpdate(torrents, totalCount, counts, categories, tags)
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [totalCount, isLoading, torrents.length, counts, categories, tags, onFilteredDataUpdate]) // Use torrents.length to avoid unnecessary calls when content updates

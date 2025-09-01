@@ -56,22 +56,25 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
   const [torrentCounts, setTorrentCounts] = useState<Record<string, number> | undefined>(undefined)
   const [categories, setCategories] = useState<Record<string, Category> | undefined>(undefined)
   const [tags, setTags] = useState<string[] | undefined>(undefined)
+  const [lastInstanceId, setLastInstanceId] = useState<number | null>(null)
 
   const handleTorrentSelect = (torrent: Torrent | null) => {
     setSelectedTorrent(torrent)
   }
 
-  // Clear filter data when instance changes to prevent showing stale data
+  // Clear selected torrent and mark data as potentially stale when instance changes
+  // Don't immediately clear torrentCounts/categories/tags to prevent showing 0 values
   useEffect(() => {
-    setTorrentCounts(undefined)
-    setCategories(undefined)
-    setTags(undefined)
-    setSelectedTorrent(null) // Also clear selected torrent
-    // Note: We don't clear filters here as they are persisted per user preference
+    setSelectedTorrent(null) // Clear selected torrent immediately
+    // Note: We keep torrentCounts/categories/tags until new data arrives to prevent flickering zeros
+    // The TorrentTableOptimized callback will only update when complete data is available
   }, [instanceId])
 
   // Callback when filtered data updates - now receives counts, categories, and tags from backend
   const handleFilteredDataUpdate = useCallback((_torrents: Torrent[], _total: number, counts?: TorrentCounts, categoriesData?: Record<string, Category>, tagsData?: string[]) => {
+    // Update the last instance ID when we receive new data
+    setLastInstanceId(instanceId)
+
     if (counts) {
       // Transform backend counts to match the expected format for FilterSidebar
       const transformedCounts: Record<string, number> = {}
@@ -107,7 +110,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
     if (tagsData) {
       setTags(tagsData)
     }
-  }, [])
+  }, [instanceId])
 
   // Calculate total active filters for badge
   // Count exists but badge is now handled in header (not used here)
@@ -133,6 +136,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
           torrentCounts={torrentCounts}
           categories={categories}
           tags={tags}
+          isStaleData={lastInstanceId !== null && lastInstanceId !== instanceId}
         />
       </div>
 
@@ -151,6 +155,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
               torrentCounts={torrentCounts}
               categories={categories}
               tags={tags}
+              isStaleData={lastInstanceId !== null && lastInstanceId !== instanceId}
             />
           </div>
         </SheetContent>

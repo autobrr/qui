@@ -71,9 +71,9 @@ func NewSyncManager(clientPool *ClientPool) *SyncManager {
 	}
 }
 
-// GetTorrentsWithFilters gets torrents with filters, search, sorting, and pagination
+// GetTorrentsWithFilters gets torrents with filters, search and sorting
 // Always fetches fresh data from sync manager for real-time updates
-func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID int, limit, offset int, sort, order, search string, filters FilterOptions) (*TorrentResponse, error) {
+func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID int, sort, order, search string, filters FilterOptions) (*TorrentResponse, error) {
 	// Always get fresh data from sync manager for real-time updates
 	var filteredTorrents []qbt.Torrent
 	var err error
@@ -106,22 +106,8 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	// Calculate stats from filtered torrents
 	stats := sm.calculateStats(filteredTorrents)
 
-	// Sort torrents before pagination
+	// Sort torrents
 	sm.sortTorrents(filteredTorrents, sort, order)
-
-	// Apply pagination to filtered results
-	var paginatedTorrents []qbt.Torrent
-	start := offset
-	end := offset + limit
-	if start < len(filteredTorrents) {
-		if end > len(filteredTorrents) {
-			end = len(filteredTorrents)
-		}
-		paginatedTorrents = filteredTorrents[start:end]
-	}
-
-	// Check if there are more pages
-	hasMore := end < len(filteredTorrents)
 
 	// Calculate counts from ALL torrents (not filtered) for sidebar
 	// This uses the same cached data, so it's very fast
@@ -168,13 +154,13 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	// Data is always fresh from sync manager
 
 	response := &TorrentResponse{
-		Torrents:      paginatedTorrents,
+		Torrents:      filteredTorrents,
 		Total:         len(filteredTorrents),
 		Stats:         stats,
 		Counts:        counts,     // Include counts for sidebar
 		Categories:    categories, // Include categories for sidebar
 		Tags:          tags,       // Include tags for sidebar
-		HasMore:       hasMore,
+		HasMore:       false,      // No pagination - frontend handles virtual scrolling
 		CacheMetadata: cacheMetadata,
 	}
 
@@ -184,12 +170,11 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 	log.Debug().
 		Int("instanceID", instanceID).
-		Int("count", len(paginatedTorrents)).
+		Int("count", len(filteredTorrents)).
 		Int("total", len(filteredTorrents)).
 		Str("search", search).
 		Interface("filters", filters).
-		Bool("hasMore", hasMore).
-		Msg("Fresh torrent data fetched and cached")
+		Msg("Fresh torrent data fetched and returned")
 
 	return response, nil
 }
@@ -744,8 +729,6 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 	if syncManager == nil {
 		return nil, fmt.Errorf("sync manager not initialized")
 	}
-
-	log.Debug().Int("instanceID", instanceID).Msg("getAllTorrentsForStats: Fetching from sync manager GetTorrents()")
 
 	// Get all torrents from sync manager
 	torrentMap := syncManager.GetTorrents()
