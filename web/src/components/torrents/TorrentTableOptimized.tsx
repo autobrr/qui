@@ -260,6 +260,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     isFetching,
     isCachedData,
     isStaleData,
+    isLoadingMore,
+    hasLoadedAll,
+    loadMore: backendLoadMore,
   } = useTorrentsList(instanceId, {
     search: effectiveSearch,
     filters,
@@ -374,8 +377,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     data: sortedTorrents,
     columns,
     getCoreRowModel: getCoreRowModel(),
-    // Use torrent hash as stable row ID
-    getRowId: (row: Torrent) => row.hash,
+    // Use torrent hash with index as unique row ID to handle duplicates
+    getRowId: (row: Torrent, index: number) => `${row.hash}-${index}`,
     // State management
     state: {
       sorting,
@@ -445,25 +448,29 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const { rows } = table.getRowModel()
   const parentRef = useRef<HTMLDivElement>(null)
 
-  // Load more rows as user scrolls (progressive loading)
+  // Load more rows as user scrolls (progressive loading + backend pagination)
   const loadMore = useCallback((): void => {
-    // Prevent concurrent loads
-    if (isLoadingMoreRows) return
+    // First, try to load more from virtual scrolling if we have more local data
+    if (loadedRows < sortedTorrents.length) {
+      // Prevent concurrent loads
+      if (isLoadingMoreRows) {
+        return
+      }
 
-    setIsLoadingMoreRows(true)
+      setIsLoadingMoreRows(true)
 
-    // Use functional update to avoid stale closure
-    setLoadedRows(prev => {
-      const newLoadedRows = Math.min(prev + 100, sortedTorrents.length)
+      setLoadedRows(prev => {
+        const newLoadedRows = Math.min(prev + 100, sortedTorrents.length)
+        return newLoadedRows
+      })
 
-      // Backend returns all data, so no need for pagination
-
-      return newLoadedRows
-    })
-
-    // Reset loading flag after a short delay
-    setTimeout(() => setIsLoadingMoreRows(false), 100)
-  }, [sortedTorrents.length, isLoadingMoreRows])
+      // Reset loading flag after a short delay
+      setTimeout(() => setIsLoadingMoreRows(false), 100)
+    } else if (!hasLoadedAll && !isLoadingMore && backendLoadMore) {
+      // If we've displayed all local data but there's more on backend, load next page
+      backendLoadMore()
+    }
+  }, [sortedTorrents.length, isLoadingMoreRows, loadedRows, hasLoadedAll, isLoadingMore, backendLoadMore])
 
   // Ensure loadedRows never exceeds actual data length
   const safeLoadedRows = Math.min(loadedRows, rows.length)
@@ -482,10 +489,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     estimateSize: () => 40,
     // Reduce overscan for large datasets to minimize DOM nodes
     overscan: sortedTorrents.length > 10000 ? 5 : 20,
-    // Provide a key to help with item tracking - use torrent hash for stability
+    // Provide a key to help with item tracking - use hash with index for uniqueness
     getItemKey: useCallback((index: number) => {
       const row = rows[index]
-      return row?.original?.hash || `loading-${index}`
+      return row?.original?.hash ? `${row.original.hash}-${index}` : `loading-${index}`
     }, [rows]),
     // Use a debounced onChange to prevent excessive rendering
     onChange: (instance) => {
@@ -493,8 +500,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
       // Check if we need to load more first (no need to wait for debounce)
       const lastItem = vRows.at(-1);
-      if (lastItem && lastItem.index >= safeLoadedRows - 50 && safeLoadedRows < rows.length) {
-        loadMore();
+      if (lastItem && lastItem.index >= safeLoadedRows - 50) {
+        // Load more if we're near the end of virtual rows OR if we might need more data from backend
+        if (safeLoadedRows < rows.length || (!hasLoadedAll && !isLoadingMore)) {
+          loadMore();
+        }
       }
     },
   })
@@ -1199,7 +1209,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
                   // Use memoized minTableWidth
                   return (
-                    <ContextMenu key={torrent.hash}>
+                    <ContextMenu key={`${torrent.hash}-${virtualRow.index}`}>
                       <ContextMenuTrigger asChild>
                         <div
                           className={`flex border-b cursor-pointer hover:bg-muted/50 ${row.getIsSelected() ? "bg-muted/50" : ""} ${isSelected ? "bg-accent" : ""}`}
@@ -1498,9 +1508,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
               "No torrents found"
             ) : (
               <>
-                {totalCount} torrent{totalCount !== 1 ? "s" : ""}
-                {safeLoadedRows < rows.length && ` • ${safeLoadedRows} loaded`}
-                {safeLoadedRows < rows.length && " (scroll for more)"}
+                {hasLoadedAll ? (
+                  `${torrents.length} torrent${torrents.length !== 1 ? "s" : ""}`
+                ) : isLoadingMore ? (
+                  "Loading more torrents..."
+                ) : (
+                  `${torrents.length} of ${totalCount} torrents loaded • Scroll to load more`
+                )}
+                {hasLoadedAll && safeLoadedRows < rows.length && " (scroll for more)"}
               </>
             )}
             {effectiveSelectionCount > 0 && (

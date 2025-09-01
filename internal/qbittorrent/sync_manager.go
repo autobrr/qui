@@ -71,12 +71,12 @@ func NewSyncManager(clientPool *ClientPool) *SyncManager {
 	}
 }
 
-// GetTorrentsWithFilters gets torrents with filters, search and sorting
+// GetTorrentsWithFilters gets torrents with filters, search, sorting, and pagination
 // Always fetches fresh data from sync manager for real-time updates
-func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID int, sort, order, search string, filters qbt.TorrentFilterOptions) (*TorrentResponse, error) {
-	// Set sorting in the filter options
-	filters.Sort = sort
-	filters.Reverse = (order == "desc")
+func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID int, limit, offset int, sort, order, search string, filters FilterOptions) (*TorrentResponse, error) {
+	// Always get fresh data from sync manager for real-time updates
+	var filteredTorrents []qbt.Torrent
+	var err error
 
 	// Get client
 	client, err := sm.clientPool.GetClient(ctx, instanceID)
@@ -90,8 +90,61 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		return nil, fmt.Errorf("sync manager not initialized")
 	}
 
+	// Convert custom filters to library format
+	var torrentFilterOptions qbt.TorrentFilterOptions
+
+	// Handle status filter - take first status if multiple provided
+	if len(filters.Status) > 0 {
+		status := filters.Status[0]
+		switch status {
+		case "all":
+			torrentFilterOptions.Filter = qbt.TorrentFilterAll
+		case "active":
+			torrentFilterOptions.Filter = qbt.TorrentFilterActive
+		case "inactive":
+			torrentFilterOptions.Filter = qbt.TorrentFilterInactive
+		case "completed":
+			torrentFilterOptions.Filter = qbt.TorrentFilterCompleted
+		case "resumed":
+			torrentFilterOptions.Filter = qbt.TorrentFilterResumed
+		case "paused":
+			torrentFilterOptions.Filter = qbt.TorrentFilterPaused
+		case "stopped":
+			torrentFilterOptions.Filter = qbt.TorrentFilterStopped
+		case "stalled":
+			torrentFilterOptions.Filter = qbt.TorrentFilterStalled
+		case "uploading", "seeding":
+			torrentFilterOptions.Filter = qbt.TorrentFilterUploading
+		case "stalled_uploading", "stalled_seeding":
+			torrentFilterOptions.Filter = qbt.TorrentFilterStalledUploading
+		case "downloading":
+			torrentFilterOptions.Filter = qbt.TorrentFilterDownloading
+		case "stalled_downloading":
+			torrentFilterOptions.Filter = qbt.TorrentFilterStalledDownloading
+		case "errored", "error":
+			torrentFilterOptions.Filter = qbt.TorrentFilterError
+		default:
+			// Default to all if unknown status
+			torrentFilterOptions.Filter = qbt.TorrentFilterAll
+		}
+	}
+
+	// Handle category filter - take first category if multiple provided
+	if len(filters.Categories) > 0 {
+		torrentFilterOptions.Category = filters.Categories[0]
+	}
+
+	// Handle tag filter - take first tag if multiple provided
+	if len(filters.Tags) > 0 {
+		torrentFilterOptions.Tag = filters.Tags[0]
+	}
+
+	// Set sorting in the filter options (library handles sorting)
+	torrentFilterOptions.Sort = sort
+	torrentFilterOptions.Reverse = (order == "desc")
+
 	// Use library filtering and sorting
-	filteredTorrents := syncManager.GetTorrents(filters)
+	filteredTorrents = syncManager.GetTorrents(torrentFilterOptions)
 
 	log.Debug().
 		Int("instanceID", instanceID).
@@ -111,8 +164,22 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	// Calculate stats from filtered torrents
 	stats := sm.calculateStats(filteredTorrents)
 
-	// Manual sorting is applied as fallback above
-	// Get all torrents for sidebar counts (without filters)
+	// Apply pagination to filtered results
+	var paginatedTorrents []qbt.Torrent
+	start := offset
+	end := offset + limit
+	if start < len(filteredTorrents) {
+		if end > len(filteredTorrents) {
+			end = len(filteredTorrents)
+		}
+		paginatedTorrents = filteredTorrents[start:end]
+	}
+
+	// Check if there are more pages
+	hasMore := end < len(filteredTorrents)
+
+	// Calculate counts from ALL torrents (not filtered) for sidebar
+	// This uses the same cached data, so it's very fast
 	allTorrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{})
 	counts := sm.calculateCountsFromTorrents(allTorrents)
 
@@ -157,13 +224,13 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	// Data is always fresh from sync manager
 
 	response := &TorrentResponse{
-		Torrents:      filteredTorrents,
+		Torrents:      paginatedTorrents,
 		Total:         len(filteredTorrents),
 		Stats:         stats,
 		Counts:        counts,     // Include counts for sidebar
 		Categories:    categories, // Include categories for sidebar
 		Tags:          tags,       // Include tags for sidebar
-		HasMore:       false,      // No pagination - frontend handles virtual scrolling
+		HasMore:       hasMore,
 		CacheMetadata: cacheMetadata,
 	}
 
@@ -173,11 +240,12 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 	log.Debug().
 		Int("instanceID", instanceID).
-		Int("count", len(filteredTorrents)).
+		Int("count", len(paginatedTorrents)).
 		Int("total", len(filteredTorrents)).
 		Str("search", search).
 		Interface("filters", filters).
-		Msg("Fresh torrent data fetched and returned")
+		Bool("hasMore", hasMore).
+		Msg("Fresh torrent data fetched and cached")
 
 	return response, nil
 }
