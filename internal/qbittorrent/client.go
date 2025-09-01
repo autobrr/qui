@@ -189,92 +189,27 @@ func (c *Client) applyOptimisticCacheUpdate(hashes []string, action string, payl
 	log.Debug().Int("instanceID", c.instanceID).Str("action", action).Int("hashCount", len(hashes)).Msg("Starting optimistic cache update")
 
 	mainData := c.syncManager.GetData()
+	now := time.Now()
 
 	// Apply optimistic updates based on action
-	switch action {
-	case "resume":
-		// For resume, change paused torrents to downloading/uploading state
-		for _, hash := range hashes {
-			state := qbt.TorrentStateQueuedDl
-			var originalState qbt.TorrentState
-			if mainData != nil && mainData.Torrents != nil {
-				if torrent, exists := mainData.Torrents[hash]; exists {
-					originalState = torrent.State
-					if torrent.Progress == 1.0 {
-						state = qbt.TorrentStateQueuedUp
-					}
-				}
+	for _, hash := range hashes {
+		var originalState qbt.TorrentState
+		var progress float64
+		if mainData != nil && mainData.Torrents != nil {
+			if torrent, exists := mainData.Torrents[hash]; exists {
+				originalState = torrent.State
+				progress = torrent.Progress
 			}
-			c.optimisticUpdates[hash] = &OptimisticTorrentUpdate{
-				State:         state,
-				OriginalState: originalState,
-				UpdatedAt:     time.Now(),
-				Action:        action,
-			}
-			log.Debug().Int("instanceID", c.instanceID).Str("hash", hash).Str("action", action).Msg("Created optimistic update for resume")
 		}
-	case "force_resume":
-		// For force resume, change torrents to forced download/upload state
-		for _, hash := range hashes {
-			state := qbt.TorrentStateForcedDl
-			var originalState qbt.TorrentState
-			if mainData != nil && mainData.Torrents != nil {
-				if torrent, exists := mainData.Torrents[hash]; exists {
-					originalState = torrent.State
-					if torrent.Progress == 1.0 {
-						state = qbt.TorrentStateForcedUp
-					}
-				}
-			}
+		state := getTargetState(action, progress)
+		if state != "" && state != originalState {
 			c.optimisticUpdates[hash] = &OptimisticTorrentUpdate{
 				State:         state,
 				OriginalState: originalState,
-				UpdatedAt:     time.Now(),
+				UpdatedAt:     now,
 				Action:        action,
 			}
-			log.Debug().Int("instanceID", c.instanceID).Str("hash", hash).Str("action", action).Msg("Created optimistic update for force_resume")
-		}
-	case "pause":
-		// For pause, change active torrents to paused download/upload state
-		for _, hash := range hashes {
-			state := qbt.TorrentStatePausedDl
-			var originalState qbt.TorrentState
-			if mainData != nil && mainData.Torrents != nil {
-				if torrent, exists := mainData.Torrents[hash]; exists {
-					originalState = torrent.State
-					if torrent.Progress == 1.0 {
-						state = qbt.TorrentStatePausedUp
-					}
-				}
-			}
-			c.optimisticUpdates[hash] = &OptimisticTorrentUpdate{
-				State:         state,
-				OriginalState: originalState,
-				UpdatedAt:     time.Now(),
-				Action:        action,
-			}
-			log.Debug().Int("instanceID", c.instanceID).Str("hash", hash).Str("action", action).Msg("Created optimistic update for pause")
-		}
-	case "recheck":
-		// For recheck, change torrents to checking download/upload state
-		for _, hash := range hashes {
-			state := qbt.TorrentStateCheckingDl
-			var originalState qbt.TorrentState
-			if mainData != nil && mainData.Torrents != nil {
-				if torrent, exists := mainData.Torrents[hash]; exists {
-					originalState = torrent.State
-					if torrent.Progress == 1.0 {
-						state = qbt.TorrentStateCheckingUp
-					}
-				}
-			}
-			c.optimisticUpdates[hash] = &OptimisticTorrentUpdate{
-				State:         state,
-				OriginalState: originalState,
-				UpdatedAt:     time.Now(),
-				Action:        action,
-			}
-			log.Debug().Int("instanceID", c.instanceID).Str("hash", hash).Str("action", action).Msg("Created optimistic update for recheck")
+			log.Debug().Int("instanceID", c.instanceID).Str("hash", hash).Str("action", action).Msg("Created optimistic update for " + action)
 		}
 	}
 
@@ -331,5 +266,33 @@ func (c *Client) clearAllOptimisticUpdates() {
 	if count > 0 {
 		c.optimisticUpdates = make(map[string]*OptimisticTorrentUpdate)
 		log.Debug().Int("instanceID", c.instanceID).Int("cleared", count).Msg("Cleared all optimistic updates")
+	}
+}
+
+// getTargetState returns the target state for the given action and progress
+func getTargetState(action string, progress float64) qbt.TorrentState {
+	switch action {
+	case "resume":
+		if progress == 1.0 {
+			return qbt.TorrentStateQueuedUp
+		}
+		return qbt.TorrentStateQueuedDl
+	case "force_resume":
+		if progress == 1.0 {
+			return qbt.TorrentStateForcedUp
+		}
+		return qbt.TorrentStateForcedDl
+	case "pause":
+		if progress == 1.0 {
+			return qbt.TorrentStatePausedUp
+		}
+		return qbt.TorrentStatePausedDl
+	case "recheck":
+		if progress == 1.0 {
+			return qbt.TorrentStateCheckingUp
+		}
+		return qbt.TorrentStateCheckingDl
+	default:
+		return ""
 	}
 }
