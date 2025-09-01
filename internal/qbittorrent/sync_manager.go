@@ -1122,8 +1122,8 @@ func (sm *SyncManager) applyFilters(torrents []qbt.Torrent, filters FilterOption
 				// Handle "Untagged" filter
 				tagMatch = true
 			} else {
-				torrentTags := strings.Split(torrent.Tags, ", ")
-				for _, torrentTag := range torrentTags {
+				torrentTags := strings.SplitSeq(torrent.Tags, ", ")
+				for torrentTag := range torrentTags {
 					if tagSet[torrentTag] {
 						tagMatch = true
 						break

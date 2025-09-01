@@ -6,6 +6,7 @@ package qbittorrent
 import (
 	"context"
 	"fmt"
+	"maps"
 	"sync"
 	"time"
 
@@ -280,9 +281,7 @@ func (c *Client) getOptimisticUpdates() map[string]*OptimisticTorrentUpdate {
 
 	// Return a copy to prevent external modification
 	updates := make(map[string]*OptimisticTorrentUpdate, len(c.optimisticUpdates))
-	for hash, update := range c.optimisticUpdates {
-		updates[hash] = update
-	}
+	maps.Copy(updates, c.optimisticUpdates)
 	return updates
 }
 
