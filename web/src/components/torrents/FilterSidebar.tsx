@@ -488,7 +488,7 @@ const FilterSidebarComponent = ({
                   </label>
 
                   {/* Loading message for categories */}
-                  {!hasReceivedCategoriesData && (
+                  {!hasReceivedCategoriesData && !incognitoMode && (
                     <div className="text-xs text-muted-foreground px-2 py-3 text-center italic animate-pulse">
                       Loading categories...
                     </div>
@@ -672,7 +672,7 @@ const FilterSidebarComponent = ({
                   </label>
 
                   {/* Loading message for tags */}
-                  {!hasReceivedTagsData && (
+                  {!hasReceivedTagsData && !incognitoMode && (
                     <div className="text-xs text-muted-foreground px-2 py-3 text-center italic animate-pulse">
                       Loading tags...
                     </div>
@@ -842,8 +842,8 @@ const FilterSidebarComponent = ({
                     </span>
                   </label>
 
-                  {/* Loading/Empty message for trackers */}
-                  {(!hasReceivedTrackersData || (!debouncedTrackerSearch && trackers.length === 0)) && !incognitoMode && (
+                  {/* Loading message for trackers */}
+                  {!hasReceivedTrackersData && !incognitoMode && (
                     <div className="text-xs text-muted-foreground px-2 py-3 text-center italic animate-pulse">
                       Loading trackers...
                     </div>
