@@ -731,15 +731,17 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 				shouldClear := false
 				timeSinceUpdate := time.Since(optimisticUpdate.UpdatedAt)
 
-				// Clear if backend state matches the optimistic state (confirmed by backend)
-				if torrents[i].State == optimisticUpdate.State {
+				// Clear if backend state indicates the operation was successful
+				if sm.shouldClearOptimisticUpdate(torrents[i].State, optimisticUpdate.State, optimisticUpdate.Action) {
 					shouldClear = true
 					log.Debug().
 						Str("hash", torrents[i].Hash).
 						Str("state", string(torrents[i].State)).
+						Str("optimisticState", string(optimisticUpdate.State)).
+						Str("action", optimisticUpdate.Action).
 						Time("optimisticAt", optimisticUpdate.UpdatedAt).
 						Dur("timeSinceUpdate", timeSinceUpdate).
-						Msg("Clearing optimistic update - backend returned expected state")
+						Msg("Clearing optimistic update - backend state indicates operation success")
 				} else if timeSinceUpdate > 60*time.Second {
 					// Safety net: still clear after 60 seconds if something went wrong
 					shouldClear = true
@@ -1118,6 +1120,29 @@ var torrentStateCategories = map[string][]string{
 	"stalled":     {"stalledDL", "stalledUP"},
 	"checking":    {"checkingDL", "checkingUP", "checkingResumeData"},
 	"errored":     {"error", "missingFiles"},
+}
+
+// Action state categories for optimistic update clearing
+var actionSuccessCategories = map[string]string{
+	"resume":       "active",
+	"force_resume": "active",
+	"pause":        "paused",
+	"recheck":      "checking",
+}
+
+// shouldClearOptimisticUpdate checks if an optimistic update should be cleared based on the action and current state
+func (sm *SyncManager) shouldClearOptimisticUpdate(currentState qbt.TorrentState, optimisticState qbt.TorrentState, action string) bool {
+	stateStr := string(currentState)
+
+	// Check if this action has a success category defined
+	if successCategory, exists := actionSuccessCategories[action]; exists {
+		if categoryStates, categoryExists := torrentStateCategories[successCategory]; categoryExists {
+			return slices.Contains(categoryStates, stateStr)
+		}
+	}
+
+	// For other actions, use exact state match
+	return currentState == optimisticState
 }
 
 // matchTorrentStatus checks if a torrent matches a specific status filter

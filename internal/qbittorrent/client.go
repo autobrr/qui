@@ -195,10 +195,10 @@ func (c *Client) applyOptimisticCacheUpdate(hashes []string, action string, payl
 	case "resume":
 		// For resume, change paused torrents to downloading/uploading state
 		for _, hash := range hashes {
-			state := qbt.TorrentStateDownloading
+			state := qbt.TorrentStateStalledDl
 			if mainData != nil && mainData.Torrents != nil {
 				if torrent, exists := mainData.Torrents[hash]; exists && torrent.Progress == 1.0 {
-					state = qbt.TorrentStateUploading
+					state = qbt.TorrentStateStalledUp
 				}
 			}
 			c.optimisticUpdates[hash] = &OptimisticTorrentUpdate{
