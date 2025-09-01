@@ -88,8 +88,9 @@ func (w *compressionWriter) WriteHeader(code int) {
 	}
 	w.wroteHeader = true
 
-	// Don't set Content-Length if we might compress
-	if w.size == 0 { // Haven't written anything yet
+	// Always remove Content-Length when compression might be applied
+	// since compressed size will be different from original size
+	if w.algorithm != AlgorithmNone {
 		w.Header().Del("Content-Length")
 	}
 
@@ -298,6 +299,123 @@ func parseQualityValue(s string) (float64, error) {
 	}
 }
 
+// responseSniffer captures the response to determine if it should be compressed
+type responseSniffer struct {
+	http.ResponseWriter
+	minSize     int
+	algorithm   CompressionAlgorithm
+	level       int
+	buffer      []byte
+	statusCode  int
+	wroteHeader bool
+}
+
+func (s *responseSniffer) Write(data []byte) (int, error) {
+	if !s.wroteHeader {
+		s.WriteHeader(http.StatusOK)
+	}
+	s.buffer = append(s.buffer, data...)
+	return len(data), nil
+}
+
+func (s *responseSniffer) WriteHeader(code int) {
+	if s.wroteHeader {
+		return
+	}
+	s.wroteHeader = true
+	s.statusCode = code
+}
+
+func (s *responseSniffer) shouldCompressResponse() bool {
+	// Check if response is large enough
+	if len(s.buffer) < s.minSize {
+		return false
+	}
+
+	// Check if content type is compressible
+	contentType := s.Header().Get("Content-Type")
+	return strings.Contains(contentType, "text/") ||
+		strings.Contains(contentType, "application/json") ||
+		strings.Contains(contentType, "application/xml") ||
+		strings.Contains(contentType, "application/javascript")
+}
+
+func (s *responseSniffer) writeCompressedResponse() error {
+	// Set the appropriate Content-Encoding header
+	switch s.algorithm {
+	case AlgorithmZstd:
+		s.Header().Set("Content-Encoding", "zstd")
+	case AlgorithmBrotli:
+		s.Header().Set("Content-Encoding", "br")
+	case AlgorithmGzip:
+		s.Header().Set("Content-Encoding", "gzip")
+	case AlgorithmDeflate:
+		s.Header().Set("Content-Encoding", "deflate")
+	}
+
+	// Remove Content-Length since compressed size will be different
+	s.Header().Del("Content-Length")
+
+	// Write the status code
+	s.ResponseWriter.WriteHeader(s.statusCode)
+
+	// Create compressed writer
+	var writer io.Writer
+	var err error
+
+	switch s.algorithm {
+	case AlgorithmZstd:
+		zstdLevel := s.level * 2
+		if zstdLevel < 1 {
+			zstdLevel = 1
+		}
+		if zstdLevel > 22 {
+			zstdLevel = 22
+		}
+		encoder, encErr := zstd.NewWriter(s.ResponseWriter, zstd.WithEncoderLevel(zstd.EncoderLevelFromZstd(zstdLevel)))
+		if encErr != nil {
+			return encErr
+		}
+		writer = &zstdWriter{writer: encoder}
+		defer encoder.Close()
+
+	case AlgorithmBrotli:
+		writer = brotli.NewWriterLevel(s.ResponseWriter, s.level)
+		defer writer.(io.Closer).Close()
+
+	case AlgorithmGzip:
+		writer, err = gzip.NewWriterLevel(s.ResponseWriter, s.level)
+		if err != nil {
+			return err
+		}
+		defer writer.(io.Closer).Close()
+
+	case AlgorithmDeflate:
+		flateLevel := s.level - 1
+		if flateLevel < -2 {
+			flateLevel = -2
+		}
+		writer, err = flate.NewWriter(s.ResponseWriter, flateLevel)
+		if err != nil {
+			return err
+		}
+		defer writer.(io.Closer).Close()
+	}
+
+	// Write the compressed data
+	_, err = writer.Write(s.buffer)
+	return err
+}
+
+func (s *responseSniffer) writeUncompressedResponse() error {
+	// Write the status code
+	s.ResponseWriter.WriteHeader(s.statusCode)
+
+	// Write the uncompressed data
+	_, err := s.ResponseWriter.Write(s.buffer)
+	return err
+}
+
 // SelectiveCompress returns a middleware that compresses responses above a minimum size
 // using the best available algorithm based on client preferences
 func SelectiveCompress(minSize, level int, preferZstd, preferBrotli bool) func(http.Handler) http.Handler {
@@ -321,22 +439,46 @@ func SelectiveCompress(minSize, level int, preferZstd, preferBrotli bool) func(h
 				return
 			}
 
-			// Wrap the response writer
-			wrapped := &compressionWriter{
+			// For very small minSize or if we want to compress everything, use streaming compression
+			if minSize <= 512 { // Use streaming for small thresholds to avoid buffering
+				wrapped := &compressionWriter{
+					ResponseWriter: w,
+					algorithm:      algorithm,
+					minSize:        minSize,
+					baseLevel:      level,
+				}
+
+				// Add Vary header to indicate response varies based on Accept-Encoding
+				w.Header().Set("Vary", "Accept-Encoding")
+
+				next.ServeHTTP(wrapped, r)
+
+				// Close compression writer if it was initialized
+				if wrapped.writer != nil {
+					wrapped.Close()
+				}
+				return
+			}
+
+			// For larger minSize, use a response sniffer to determine if we should compress
+			sniffer := &responseSniffer{
 				ResponseWriter: w,
-				algorithm:      algorithm,
 				minSize:        minSize,
-				baseLevel:      level,
+				algorithm:      algorithm,
+				level:          level,
 			}
 
 			// Add Vary header to indicate response varies based on Accept-Encoding
 			w.Header().Set("Vary", "Accept-Encoding")
 
-			next.ServeHTTP(wrapped, r)
+			next.ServeHTTP(sniffer, r)
 
-			// Close compression writer if it was initialized
-			if wrapped.writer != nil {
-				wrapped.Close()
+			// If we captured the response and it should be compressed, write it compressed
+			if sniffer.shouldCompressResponse() {
+				sniffer.writeCompressedResponse()
+			} else {
+				// Write the captured response uncompressed
+				sniffer.writeUncompressedResponse()
 			}
 		})
 	}

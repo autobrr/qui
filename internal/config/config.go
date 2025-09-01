@@ -91,8 +91,8 @@ func (c *AppConfig) defaults() {
 
 	// Compression defaults - optimized for performance
 	c.viper.SetDefault("compression.enabled", true)
-	c.viper.SetDefault("compression.level", 4)     // Balanced compression level
-	c.viper.SetDefault("compression.minSize", 1024) // 1KB minimum to compress
+	c.viper.SetDefault("compression.level", 4)           // Balanced compression level
+	c.viper.SetDefault("compression.minSize", 512)       // 512B minimum to compress (compresses most text responses)
 	c.viper.SetDefault("compression.preferZstd", true)   // Prefer Zstd for speed
 	c.viper.SetDefault("compression.preferBrotli", true) // Prefer Brotli for compression ratio
 }

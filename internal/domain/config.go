@@ -29,8 +29,8 @@ type HTTPTimeouts struct {
 // Compression represents compression configuration
 type Compression struct {
 	Enabled      bool `toml:"enabled" mapstructure:"enabled"`
-	Level        int  `toml:"level" mapstructure:"level"`         // 1-9, 1=fastest, 9=best compression
-	MinSize      int  `toml:"minSize" mapstructure:"minSize"`     // Minimum response size to compress (bytes)
+	Level        int  `toml:"level" mapstructure:"level"`               // 1-9, 1=fastest, 9=best compression
+	MinSize      int  `toml:"minSize" mapstructure:"minSize"`           // Minimum response size to compress (bytes)
 	PreferZstd   bool `toml:"preferZstd" mapstructure:"preferZstd"`     // Prefer Zstd over Brotli/Gzip
-	PreferBrotli bool `toml:"preferBrotli" mapstructure:"preferBrotli"`   // Prefer Brotli over Gzip
+	PreferBrotli bool `toml:"preferBrotli" mapstructure:"preferBrotli"` // Prefer Brotli over Gzip
 }
