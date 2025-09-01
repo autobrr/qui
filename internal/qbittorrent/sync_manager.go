@@ -823,6 +823,15 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 						}
 					}
 				}
+			} else {
+				// Torrent no longer exists - clear the optimistic update
+				log.Debug().
+					Str("hash", hash).
+					Str("action", optimisticUpdate.Action).
+					Time("optimisticAt", optimisticUpdate.UpdatedAt).
+					Msg("Clearing optimistic update - torrent no longer exists")
+				client.clearOptimisticUpdate(hash)
+				removedCount++
 			}
 		}
 
