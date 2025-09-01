@@ -165,7 +165,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   // State for range select capabilities for checkboxes
   const shiftPressedRef = useRef<boolean>(false)
   const lastSelectedIndexRef = useRef<number | null>(null)
-  const lastServerRequestRef = useRef<number>(0)
 
   // These should be defined at module scope, not inside the component, to ensure stable references
   // (If not already, move them to the top of the file)
@@ -259,9 +258,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
     isLoading,
     isFetching,
-    isLoadingMore,
-    hasLoadedAll,
-    loadMore: loadMoreTorrents,
     isCachedData,
     isStaleData,
   } = useTorrentsList(instanceId, {
@@ -274,7 +270,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   // Call the callback when filtered data updates
   useEffect(() => {
     if (onFilteredDataUpdate && torrents && totalCount !== undefined && !isLoading) {
-      onFilteredDataUpdate(torrents, totalCount, counts, categories, tags)
+      // Only skip callback if ALL metadata is undefined (indicates incomplete initial load during instance switch)
+      // If any metadata exists, or if torrents list is non-empty, proceed with callback
+      const hasAnyMetadata = counts !== undefined || categories !== undefined || tags !== undefined
+      const hasExistingTorrents = torrents.length > 0
+
+      if (hasAnyMetadata || hasExistingTorrents) {
+        onFilteredDataUpdate(torrents, totalCount, counts, categories, tags)
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [totalCount, isLoading, torrents.length, counts, categories, tags, onFilteredDataUpdate]) // Use torrents.length to avoid unnecessary calls when content updates
@@ -453,21 +456,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     setLoadedRows(prev => {
       const newLoadedRows = Math.min(prev + 100, sortedTorrents.length)
 
-      // If we're near the end of loaded torrents and haven't loaded all from server
-      if (newLoadedRows >= sortedTorrents.length - 50 && !hasLoadedAll && !isLoadingMore) {
-        const now = Date.now()
-        if (now - lastServerRequestRef.current > 500) {
-          lastServerRequestRef.current = now
-          loadMoreTorrents()
-        }
-      }
+      // Backend returns all data, so no need for pagination
 
       return newLoadedRows
     })
 
     // Reset loading flag after a short delay
     setTimeout(() => setIsLoadingMoreRows(false), 100)
-  }, [sortedTorrents.length, hasLoadedAll, isLoadingMore, loadMoreTorrents, isLoadingMoreRows])
+  }, [sortedTorrents.length, isLoadingMoreRows])
 
   // Ensure loadedRows never exceeds actual data length
   const safeLoadedRows = Math.min(loadedRows, rows.length)
@@ -1505,7 +1501,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                 {totalCount} torrent{totalCount !== 1 ? "s" : ""}
                 {safeLoadedRows < rows.length && ` • ${safeLoadedRows} loaded`}
                 {safeLoadedRows < rows.length && " (scroll for more)"}
-                {isLoadingMore && " • Loading more from server..."}
               </>
             )}
             {effectiveSelectionCount > 0 && (

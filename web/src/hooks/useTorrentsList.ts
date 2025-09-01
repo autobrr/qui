@@ -29,14 +29,7 @@ export function useTorrentsList(
 ) {
   const { enabled = true, search, filters, sort = "added_on", order = "desc" } = options
 
-  const [currentPage, setCurrentPage] = useState(0)
   const [allTorrents, setAllTorrents] = useState<Torrent[]>([])
-  const [hasLoadedAll, setHasLoadedAll] = useState(false)
-  const [isLoadingMore, setIsLoadingMore] = useState(false)
-  const [lastRequestTime, setLastRequestTime] = useState(0)
-  const [lastKnownTotal, setLastKnownTotal] = useState(0)
-  const pageSize = 500 // Load 500 at a time (backend default)
-
 
   // Reset state when instanceId, filters, search, or sort changes
   // Use JSON.stringify to avoid resetting on every object reference change during polling
@@ -44,81 +37,33 @@ export function useTorrentsList(
   const searchKey = search || ""
 
   useEffect(() => {
-    setCurrentPage(0)
     setAllTorrents([])
-    setHasLoadedAll(false)
-    setLastKnownTotal(0)
   }, [instanceId, filterKey, searchKey, sort, order])
 
-  // Query for torrents - backend handles stale-while-revalidate
+  // Query for torrents - backend returns complete dataset
   const { data, isLoading, isFetching } = useQuery<TorrentResponse>({
-    queryKey: ["torrents-list", instanceId, currentPage, filters, search, sort, order],
+    queryKey: ["torrents-list", instanceId, filters, search, sort, order],
     queryFn: () => api.getTorrents(instanceId, {
-      page: currentPage,
-      limit: pageSize,
+      page: 0,
+      limit: 0, // Backend ignores this and returns all data
       sort,
       order,
       search,
       filters,
     }),
-    // Trust backend cache - it returns immediately with stale data if needed
-    staleTime: 0, // Always check with backend (it decides if cache is fresh)
-    gcTime: 300000, // Keep in React Query cache for 5 minutes for navigation
-    // Only poll the first page to get fresh data - don't poll pagination pages
-    refetchInterval: currentPage === 0 ? 3000 : false,
-    refetchIntervalInBackground: false, // Don't poll when tab is not active
+    staleTime: 0, // Always check with backend
+    gcTime: 300000, // Keep in React Query cache for 5 minutes
+    refetchInterval: 3000, // Poll for updates every 3 seconds
+    refetchIntervalInBackground: false,
     enabled,
   })
 
   // Update torrents when data arrives
   useEffect(() => {
     if (data?.torrents) {
-      // Update last known total whenever we get data
-      if (data.total !== undefined) {
-        setLastKnownTotal(data.total)
-      }
-
-      if (currentPage === 0) {
-        // First page, replace all
-        setAllTorrents(data.torrents)
-        // Use backend's HasMore field for accurate pagination
-        setHasLoadedAll(data.hasMore === false)
-      } else {
-        // Append to existing for pagination
-        setAllTorrents(prev => {
-          // Avoid duplicates by filtering out existing hashes
-          const existingHashes = new Set(prev.map(t => t.hash))
-          const newTorrents = data.torrents.filter(t => !existingHashes.has(t.hash))
-          const updatedTorrents = [...prev, ...newTorrents]
-
-          // Use backend's HasMore field for accurate pagination
-          if (data.hasMore === false) {
-            setHasLoadedAll(true)
-          }
-
-          return updatedTorrents
-        })
-      }
-
-      setIsLoadingMore(false)
+      setAllTorrents(data.torrents)
     }
-  }, [data, currentPage, pageSize])
-
-  // Load more function for pagination
-  const loadMore = () => {
-    const now = Date.now()
-
-    // Prevent duplicate requests within 500ms
-    if (now - lastRequestTime < 500) {
-      return
-    }
-
-    if (!hasLoadedAll && !isLoadingMore && !isFetching) {
-      setLastRequestTime(now)
-      setIsLoadingMore(true)
-      setCurrentPage(prev => prev + 1)
-    }
-  }
+  }, [data])
 
   // Extract stats from response or calculate defaults
   const stats = useMemo(() => {
@@ -149,22 +94,16 @@ export function useTorrentsList(
   const isCachedData = data?.cacheMetadata?.source === "cache"
   const isStaleData = data?.cacheMetadata?.isStale === true
 
-  // Use lastKnownTotal when loading more pages to prevent flickering
-  const effectiveTotalCount = currentPage > 0 && !data?.total ? lastKnownTotal : (data?.total ?? 0)
-
   return {
     torrents: allTorrents,
-    totalCount: effectiveTotalCount,
+    totalCount: data?.total ?? 0,
     stats,
-    counts: data?.counts, // Return counts from backend
-    categories: data?.categories, // Return categories from backend
-    tags: data?.tags, // Return tags from backend
+    counts: data?.counts,
+    categories: data?.categories,
+    tags: data?.tags,
     serverState: null, // Server state is fetched separately by Dashboard
-    isLoading: isLoading && currentPage === 0,
-    isFetching, // True when React Query is fetching (but we may have stale data)
-    isLoadingMore,
-    hasLoadedAll,
-    loadMore,
+    isLoading,
+    isFetching,
     // Metadata about data freshness
     isFreshData: !isCachedData || !isStaleData,
     isCachedData,

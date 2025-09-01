@@ -92,6 +92,8 @@ interface FilterSidebarProps {
   categories?: Record<string, Category>
   tags?: string[]
   className?: string
+  isStaleData?: boolean
+  isLoading?: boolean
 }
 
 
@@ -120,9 +122,28 @@ const FilterSidebarComponent = ({
   categories: propsCategories,
   tags: propsTags,
   className = "",
+  isStaleData = false,
+  isLoading = false,
 }: FilterSidebarProps) => {
   // Use incognito mode hook
   const [incognitoMode] = useIncognitoMode()
+
+  // Helper function to get count display - shows 0 when loading to prevent showing stale counts from previous instance
+  const getDisplayCount = useCallback((key: string, fallbackCount?: number): string => {
+    if (incognitoMode && fallbackCount !== undefined) {
+      return fallbackCount.toString()
+    }
+
+    if (isLoading) {
+      return "0"
+    }
+
+    if (!torrentCounts) {
+      return "..."
+    }
+
+    return (torrentCounts[key] || 0).toString()
+  }, [incognitoMode, isLoading, torrentCounts])
 
   // Persist accordion state
   const [expandedItems, setExpandedItems] = usePersistedAccordion()
@@ -150,17 +171,33 @@ const FilterSidebarComponent = ({
   const debouncedTrackerSearch = useDebounce(trackerSearch, 300)
 
   // Use fake data if in incognito mode, otherwise use props
+  // When loading or showing stale data, show empty data to prevent stale data from previous instance
   const categories = useMemo(() => {
-    return incognitoMode ? LINUX_CATEGORIES : (propsCategories || {})
-  }, [incognitoMode, propsCategories])
+    if (incognitoMode) return LINUX_CATEGORIES
+    if (isLoading || isStaleData) return {}  // Clear categories during loading or when stale
+    return propsCategories || {}
+  }, [incognitoMode, propsCategories, isLoading, isStaleData])
 
   const tags = useMemo(() => {
-    return incognitoMode ? LINUX_TAGS : (propsTags || [])
-  }, [incognitoMode, propsTags])
+    if (incognitoMode) return LINUX_TAGS
+    if (isLoading || isStaleData) return []  // Clear tags during loading or when stale
+    return propsTags || []
+  }, [incognitoMode, propsTags, isLoading, isStaleData])
+
+  // Helper function to check if we have received data from the server
+  const hasReceivedData = useCallback((data: Record<string, Category> | string[] | Record<string, number> | undefined) => {
+    return !incognitoMode && !isLoading && !isStaleData && data !== undefined
+  }, [incognitoMode, isLoading, isStaleData])
+
+  const hasReceivedCategoriesData = hasReceivedData(propsCategories)
+  const hasReceivedTagsData = hasReceivedData(propsTags)
+  const hasReceivedTrackersData = hasReceivedData(torrentCounts)
 
   // Use fake trackers if in incognito mode or extract from torrentCounts
+  // When loading or showing stale data, show empty data to prevent stale data from previous instance
   const trackers = useMemo(() => {
     if (incognitoMode) return LINUX_TRACKERS
+    if (isLoading || isStaleData) return []  // Clear trackers during loading or when stale
 
     // Extract unique trackers from torrentCounts
     const realTrackers = torrentCounts ? Object.keys(torrentCounts)
@@ -170,7 +207,7 @@ const FilterSidebarComponent = ({
       .sort() : []
 
     return realTrackers
-  }, [incognitoMode, torrentCounts])
+  }, [incognitoMode, torrentCounts, isLoading, isStaleData])
 
   // Use virtual scrolling for large lists to handle performance efficiently
   const VIRTUAL_THRESHOLD = 100 // Use virtual scrolling for lists > 100 items
@@ -334,12 +371,19 @@ const FilterSidebarComponent = ({
   // Simple slide animation - sidebar slides in/out from the left
   return (
     <div
-      className={`${className} h-full w-full xl:max-w-xs flex flex-col xl:flex-shrink-0 xl:border-r xl:bg-muted/10`}
+      className={`${className} h-full w-full xl:max-w-xs flex flex-col xl:flex-shrink-0 xl:border-r xl:bg-muted/10 ${
+        isStaleData ? "opacity-75 transition-opacity duration-200" : ""
+      }`}
     >
       <ScrollArea className="h-full flex-1 overscroll-contain">
         <div className="p-4">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold">Filters</h3>
+            <div className="flex items-center gap-2">
+              <h3 className="font-semibold">Filters</h3>
+              {(isLoading || isStaleData) && (
+                <span className="text-xs text-muted-foreground animate-pulse">Loading...</span>
+              )}
+            </div>
             {hasActiveFilters && (
               <button
                 onClick={clearFilters}
@@ -385,7 +429,7 @@ const FilterSidebarComponent = ({
                         <span>{state.label}</span>
                       </span>
                       <span className="text-xs text-muted-foreground">
-                        {torrentCounts ? (torrentCounts[`status:${state.value}`] || 0) : "..."}
+                        {getDisplayCount(`status:${state.value}`)}
                       </span>
                     </label>
                   ))}
@@ -439,15 +483,28 @@ const FilterSidebarComponent = ({
                       Uncategorized
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      {torrentCounts ? (torrentCounts["category:"] || 0) : "..."}
+                      {getDisplayCount("category:")}
                     </span>
                   </label>
 
+                  {/* Loading message for categories */}
+                  {!hasReceivedCategoriesData && !incognitoMode && (
+                    <div className="text-xs text-muted-foreground px-2 py-3 text-center italic animate-pulse">
+                      Loading categories...
+                    </div>
+                  )}
 
                   {/* No results message for categories */}
-                  {debouncedCategorySearch && filteredCategories.length === 0 && (
+                  {hasReceivedCategoriesData && debouncedCategorySearch && filteredCategories.length === 0 && (
                     <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
                       No categories found matching "{debouncedCategorySearch}"
+                    </div>
+                  )}
+
+                  {/* Empty categories message */}
+                  {hasReceivedCategoriesData && !debouncedCategorySearch && Object.keys(categories).length === 0 && (
+                    <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
+                      No categories available
                     </div>
                   )}
 
@@ -486,7 +543,7 @@ const FilterSidebarComponent = ({
                                       {name}
                                     </span>
                                     <span className="text-xs text-muted-foreground">
-                                      {incognitoMode ? getLinuxCount(name, 50) : (torrentCounts ? (torrentCounts[`category:${name}`] || 0) : "...")}
+                                      {getDisplayCount(`category:${name}`, incognitoMode ? getLinuxCount(name, 50) : undefined)}
                                     </span>
                                   </label>
                                 </ContextMenuTrigger>
@@ -531,7 +588,7 @@ const FilterSidebarComponent = ({
                               {name}
                             </span>
                             <span className="text-xs text-muted-foreground">
-                              {incognitoMode ? getLinuxCount(name, 50) : (torrentCounts ? (torrentCounts[`category:${name}`] || 0) : "...")}
+                              {getDisplayCount(`category:${name}`, incognitoMode ? getLinuxCount(name, 50) : undefined)}
                             </span>
                           </label>
                         </ContextMenuTrigger>
@@ -610,15 +667,28 @@ const FilterSidebarComponent = ({
                       Untagged
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      {torrentCounts ? (torrentCounts["tag:"] || 0) : "..."}
+                      {getDisplayCount("tag:")}
                     </span>
                   </label>
 
+                  {/* Loading message for tags */}
+                  {!hasReceivedTagsData && !incognitoMode && (
+                    <div className="text-xs text-muted-foreground px-2 py-3 text-center italic animate-pulse">
+                      Loading tags...
+                    </div>
+                  )}
 
                   {/* No results message for tags */}
-                  {debouncedTagSearch && filteredTags.length === 0 && (
+                  {hasReceivedTagsData && debouncedTagSearch && filteredTags.length === 0 && (
                     <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
                       No tags found matching "{debouncedTagSearch}"
+                    </div>
+                  )}
+
+                  {/* Empty tags message */}
+                  {hasReceivedTagsData && !debouncedTagSearch && tags.length === 0 && (
+                    <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
+                      No tags available
                     </div>
                   )}
 
@@ -657,7 +727,7 @@ const FilterSidebarComponent = ({
                                       {tag}
                                     </span>
                                     <span className="text-xs text-muted-foreground">
-                                      {incognitoMode ? getLinuxCount(tag, 30) : (torrentCounts ? (torrentCounts[`tag:${tag}`] || 0) : "...")}
+                                      {getDisplayCount(`tag:${tag}`, incognitoMode ? getLinuxCount(tag, 30) : undefined)}
                                     </span>
                                   </label>
                                 </ContextMenuTrigger>
@@ -700,7 +770,7 @@ const FilterSidebarComponent = ({
                               {tag}
                             </span>
                             <span className="text-xs text-muted-foreground">
-                              {incognitoMode ? getLinuxCount(tag, 30) : (torrentCounts ? (torrentCounts[`tag:${tag}`] || 0) : "...")}
+                              {getDisplayCount(`tag:${tag}`, incognitoMode ? getLinuxCount(tag, 30) : undefined)}
                             </span>
                           </label>
                         </ContextMenuTrigger>
@@ -768,13 +838,19 @@ const FilterSidebarComponent = ({
                       No tracker
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      {torrentCounts ? (torrentCounts["tracker:"] || 0) : "..."}
+                      {getDisplayCount("tracker:")}
                     </span>
                   </label>
 
+                  {/* Loading message for trackers */}
+                  {!hasReceivedTrackersData && !incognitoMode && (
+                    <div className="text-xs text-muted-foreground px-2 py-3 text-center italic animate-pulse">
+                      Loading trackers...
+                    </div>
+                  )}
 
                   {/* No results message for trackers */}
-                  {debouncedTrackerSearch && filteredTrackers.filter(tracker => tracker !== "").length === 0 && (
+                  {hasReceivedTrackersData && debouncedTrackerSearch && filteredTrackers.filter(tracker => tracker !== "").length === 0 && (
                     <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
                       No trackers found matching "{debouncedTrackerSearch}"
                     </div>
@@ -813,7 +889,7 @@ const FilterSidebarComponent = ({
                                   {tracker}
                                 </span>
                                 <span className="text-xs text-muted-foreground">
-                                  {incognitoMode ? getLinuxCount(tracker, 100) : (torrentCounts ? (torrentCounts[`tracker:${tracker}`] || 0) : "...")}
+                                  {getDisplayCount(`tracker:${tracker}`, incognitoMode ? getLinuxCount(tracker, 100) : undefined)}
                                 </span>
                               </label>
                             </div>
@@ -835,7 +911,7 @@ const FilterSidebarComponent = ({
                           {tracker}
                         </span>
                         <span className="text-xs text-muted-foreground">
-                          {incognitoMode ? getLinuxCount(tracker, 100) : (torrentCounts ? (torrentCounts[`tracker:${tracker}`] || 0) : "...")}
+                          {getDisplayCount(`tracker:${tracker}`, incognitoMode ? getLinuxCount(tracker, 100) : undefined)}
                         </span>
                       </label>
                     ))
@@ -903,6 +979,8 @@ export const FilterSidebar = memo(FilterSidebarComponent, (prevProps, nextProps)
     JSON.stringify(prevProps.torrentCounts) === JSON.stringify(nextProps.torrentCounts) &&
     JSON.stringify(prevProps.categories) === JSON.stringify(nextProps.categories) &&
     JSON.stringify(prevProps.tags) === JSON.stringify(nextProps.tags) &&
-    prevProps.className === nextProps.className
+    prevProps.className === nextProps.className &&
+    prevProps.isStaleData === nextProps.isStaleData &&
+    prevProps.isLoading === nextProps.isLoading
   )
 })

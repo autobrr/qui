@@ -382,9 +382,6 @@ export function TorrentCardsMobile({
     tags,
 
     isLoading,
-    isLoadingMore,
-    hasLoadedAll,
-    loadMore: loadMoreTorrents,
   } = useTorrentsList(instanceId, {
     search: effectiveSearch,
     filters,
@@ -422,12 +419,6 @@ export function TorrentCardsMobile({
       return 180
     },
     overscan: 5,
-    onChange: (instance) => {
-      const lastItem = instance.getVirtualItems().at(-1)
-      if (lastItem && lastItem.index >= torrents.length - 5 && !hasLoadedAll && !isLoadingMore) {
-        loadMoreTorrents()
-      }
-    },
   })
 
   const virtualItems = virtualizer.getVirtualItems()
@@ -888,12 +879,7 @@ export function TorrentCardsMobile({
           })}
         </div>
 
-        {/* Loading indicator */}
-        {isLoadingMore && (
-          <div className="flex items-center justify-center py-4">
-            <div className="text-sm text-muted-foreground">Loading more...</div>
-          </div>
-        )}
+        {/* All data loaded from backend - no pagination needed */}
       </div>
 
       {/* Fixed bottom action bar - visible in selection mode */}

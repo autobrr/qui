@@ -30,7 +30,7 @@ func NewTorrentsHandler(syncManager *qbittorrent.SyncManager) *TorrentsHandler {
 	}
 }
 
-// ListTorrents returns paginated torrents for an instance with enhanced metadata
+// ListTorrents returns all torrents for an instance with enhanced metadata
 func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 	// Get instance ID from URL
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
@@ -40,24 +40,10 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Parse query parameters
-	limit := 500 // Increased default for better performance
-	page := 0
 	sort := "addedOn"
 	order := "desc"
 	search := ""
 	sessionID := r.Header.Get("X-Session-ID") // Optional session tracking
-
-	if l := r.URL.Query().Get("limit"); l != "" {
-		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 2000 {
-			limit = parsed
-		}
-	}
-
-	if p := r.URL.Query().Get("page"); p != "" {
-		if parsed, err := strconv.Atoi(p); err == nil && parsed >= 0 {
-			page = parsed
-		}
-	}
 
 	if s := r.URL.Query().Get("sort"); s != "" {
 		sort = s
@@ -84,35 +70,22 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 	log.Debug().
 		Str("sort", sort).
 		Str("order", order).
-		Int("page", page).
-		Int("limit", limit).
 		Str("search", search).
 		Interface("filters", filters).
 		Str("sessionID", sessionID).
 		Msg("Torrent list request parameters")
 
-	// Calculate offset from page
-	offset := page * limit
-
-	// Get torrents with search, sorting and filters
-	// The sync manager will handle stale-while-revalidate internally
-	response, err := h.syncManager.GetTorrentsWithFilters(r.Context(), instanceID, limit, offset, sort, order, search, filters)
+	// Get all torrents with search, sorting and filters
+	// Backend returns complete dataset, frontend handles virtual scrolling
+	response, err := h.syncManager.GetTorrentsWithFilters(r.Context(), instanceID, sort, order, search, filters)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get torrents")
 		RespondError(w, http.StatusInternalServerError, "Failed to get torrents")
 		return
 	}
 
-	// Add cache headers for transparency
-	if response.CacheMetadata != nil {
-		w.Header().Set("X-Cache", response.CacheMetadata.Source)
-		w.Header().Set("X-Cache-Age", fmt.Sprintf("%d", response.CacheMetadata.Age))
-		if response.CacheMetadata.IsStale {
-			w.Header().Set("X-Cache-Status", "stale")
-		} else {
-			w.Header().Set("X-Cache-Status", "fresh")
-		}
-	}
+	// Data is always fresh from sync manager
+	w.Header().Set("X-Data-Source", "fresh")
 
 	RespondJSON(w, http.StatusOK, response)
 }
@@ -350,9 +323,8 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Immediately invalidate cache - the next request will get fresh data from qBittorrent
-	h.syncManager.InvalidateCache(instanceID)
-	log.Debug().Int("instanceID", instanceID).Msg("Cache invalidated after adding torrent")
+	// Data will be fresh on next request from sync manager
+	log.Debug().Int("instanceID", instanceID).Msg("Torrent added - next request will get fresh data from sync manager")
 
 	// Build response message
 	var message string
@@ -440,8 +412,8 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Get all torrents matching the current filters and search
-		// Use a very large limit to get all torrents (backend will handle this properly)
-		response, err := h.syncManager.GetTorrentsWithFilters(r.Context(), instanceID, 100000, 0, "added_on", "desc", req.Search, filters)
+		// Backend returns all data, no pagination needed
+		response, err := h.syncManager.GetTorrentsWithFilters(r.Context(), instanceID, "added_on", "desc", req.Search, filters)
 		if err != nil {
 			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get torrents for selectAll operation")
 			RespondError(w, http.StatusInternalServerError, "Failed to get torrents for bulk action")

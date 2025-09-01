@@ -44,6 +44,8 @@ export interface InstanceResponse extends Instance {
 
 export interface Torrent {
   hash: string
+  infohash_v1: string
+  infohash_v2: string
   name: string
   size: number
   progress: number
