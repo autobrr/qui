@@ -218,7 +218,13 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 	}
 
 	// Validate that torrents exist before proceeding
-	torrentMap := syncManager.GetTorrentHashes(hashes)
+	torrentList := syncManager.GetTorrents(qbt.TorrentFilterOptions{Hashes: hashes})
+
+	torrentMap := make(map[string]qbt.Torrent, len(torrentList))
+	for _, torrent := range torrentList {
+		torrentMap[torrent.Hash] = torrent
+	}
+
 	if len(torrentMap) == 0 {
 		return fmt.Errorf("no sync data available")
 	}
@@ -731,10 +737,12 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 	}
 
 	// Get all torrents from sync manager
-	torrentMap := syncManager.GetTorrents()
-	torrents := make([]qbt.Torrent, 0, len(torrentMap))
-	for _, torrent := range torrentMap {
-		torrents = append(torrents, torrent)
+	torrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{})
+
+	// Build a map for O(1) lookups during optimistic updates
+	torrentMap := make(map[string]*qbt.Torrent, len(torrents))
+	for i := range torrents {
+		torrentMap[torrents[i].Hash] = &torrents[i]
 	}
 
 	// Apply optimistic updates using the torrent map for O(1) lookups
@@ -748,7 +756,7 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 
 		for hash, optimisticUpdate := range instanceUpdates {
 			// Use O(1) map lookup instead of iterating through all torrents
-			if torrent, exists := client.getTorrentByHash(hash); exists {
+			if torrent, exists := torrentMap[hash]; exists {
 				shouldClear := false
 				timeSinceUpdate := time.Since(optimisticUpdate.UpdatedAt)
 
@@ -790,21 +798,15 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 					removedCount++
 				} else {
 					// Apply the optimistic state change to the torrent in our slice
-					// Find the torrent in the slice and update it
-					for i := range torrents {
-						if torrents[i].Hash == hash {
-							log.Debug().
-								Str("hash", hash).
-								Str("oldState", string(torrents[i].State)).
-								Str("newState", string(optimisticUpdate.State)).
-								Str("action", optimisticUpdate.Action).
-								Msg("Applying optimistic update")
+					log.Debug().
+						Str("hash", hash).
+						Str("oldState", string(torrent.State)).
+						Str("newState", string(optimisticUpdate.State)).
+						Str("action", optimisticUpdate.Action).
+						Msg("Applying optimistic update")
 
-							torrents[i].State = optimisticUpdate.State
-							optimisticCount++
-							break
-						}
-					}
+					torrent.State = optimisticUpdate.State
+					optimisticCount++
 				}
 			} else {
 				// Torrent no longer exists - clear the optimistic update
@@ -1343,7 +1345,13 @@ func (sm *SyncManager) AddTags(ctx context.Context, instanceID int, hashes []str
 	}
 
 	// Validate that torrents exist
-	torrentMap := syncManager.GetTorrentHashes(hashes)
+	torrentList := syncManager.GetTorrents(qbt.TorrentFilterOptions{Hashes: hashes})
+
+	torrentMap := make(map[string]qbt.Torrent, len(torrentList))
+	for _, torrent := range torrentList {
+		torrentMap[torrent.Hash] = torrent
+	}
+
 	if len(torrentMap) == 0 {
 		return fmt.Errorf("no sync data available")
 	}

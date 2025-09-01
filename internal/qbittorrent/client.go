@@ -141,23 +141,19 @@ func (c *Client) IsHealthy() bool {
 }
 
 // getTorrentByHash returns a torrent by hash from the sync manager
-func (c *Client) getTorrentByHash(hash string) (*qbt.Torrent, bool) {
+func (c *Client) getTorrentByHash(hash string) (qbt.Torrent, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
 	if c.syncManager == nil {
-		return nil, false
+		return qbt.Torrent{}, false
 	}
 
-	torrent, exists := c.syncManager.GetTorrent(hash)
-	if !exists {
-		return nil, false
-	}
-	return &torrent, true
+	return c.syncManager.GetTorrent(hash)
 }
 
 // getTorrentsByHashes returns multiple torrents by their hashes (O(n) where n is number of requested hashes)
-func (c *Client) getTorrentsByHashes(hashes []string) []*qbt.Torrent {
+func (c *Client) getTorrentsByHashes(hashes []string) []qbt.Torrent {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
@@ -165,18 +161,11 @@ func (c *Client) getTorrentsByHashes(hashes []string) []*qbt.Torrent {
 		return nil
 	}
 
-	torrentMap := c.syncManager.GetTorrentHashes(hashes)
-	torrents := make([]*qbt.Torrent, 0, len(hashes))
-	for _, hash := range hashes {
-		if torrent, exists := torrentMap[hash]; exists {
-			torrents = append(torrents, &torrent)
-		}
-	}
-	return torrents
+	return c.syncManager.GetTorrents(qbt.TorrentFilterOptions{Hashes: hashes})
 }
 
 // validateTorrentHashes returns validation info for a list of hashes
-func (c *Client) validateTorrentHashes(hashes []string) (existing []*qbt.Torrent, missing []string) {
+func (c *Client) validateTorrentHashes(hashes []string) (existing []qbt.Torrent, missing []string) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
@@ -184,13 +173,14 @@ func (c *Client) validateTorrentHashes(hashes []string) (existing []*qbt.Torrent
 		return nil, hashes
 	}
 
-	torrentMap := c.syncManager.GetTorrentHashes(hashes)
-	existing = make([]*qbt.Torrent, 0, len(hashes))
-	missing = make([]string, 0, len(hashes))
+	torrentMap := c.syncManager.GetTorrentMap(qbt.TorrentFilterOptions{Hashes: hashes})
+
+	existing = make([]qbt.Torrent, 0, len(torrentMap))
+	missing = make([]string, 0, len(hashes)-len(torrentMap))
 
 	for _, hash := range hashes {
 		if torrent, exists := torrentMap[hash]; exists {
-			existing = append(existing, &torrent)
+			existing = append(existing, torrent)
 		} else {
 			missing = append(missing, hash)
 		}
