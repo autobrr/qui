@@ -104,33 +104,23 @@ func (w *compressionWriter) shouldCompress() bool {
 		strings.Contains(contentType, "application/javascript")
 }
 
-func (w *compressionWriter) getCompressionLevel() int {
-	// Dynamic compression level based on response size
-	// Larger files benefit more from higher compression levels due to wire time savings
-	switch {
-	case w.size < 10*1024: // < 10KB - small files
-		if w.baseLevel-2 < 1 {
-			return 1
-		}
-		return w.baseLevel - 2 // Lower compression for small files (faster, minimal wire benefit)
-	case w.size < 100*1024: // 10KB - 100KB - medium files
-		return w.baseLevel // Base level for medium files (balanced)
-	default: // > 100KB - large files
-		if w.baseLevel+2 > 9 {
-			return 9
-		}
-		return w.baseLevel + 2 // Higher compression for large files (slower but much better wire savings)
-	}
-}
-
 func (w *compressionWriter) initCompression() error {
-	level := w.getCompressionLevel()
+	// Use fixed level for now to avoid corruption issues
+	level := w.baseLevel
 	w.currentLevel = level
 
 	switch w.algorithm {
 	case AlgorithmZstd:
 		w.Header().Set("Content-Encoding", "zstd")
-		encoder, err := zstd.NewWriter(w.ResponseWriter, zstd.WithEncoderLevel(zstd.EncoderLevelFromZstd(level)))
+		// Map gzip levels (1-9) to zstd levels (1-22, where 3=fast, 11=default, 22=best)
+		zstdLevel := level * 2 // Rough mapping: gzip level 1-9 -> zstd level 2-18
+		if zstdLevel < 1 {
+			zstdLevel = 1
+		}
+		if zstdLevel > 22 {
+			zstdLevel = 22
+		}
+		encoder, err := zstd.NewWriter(w.ResponseWriter, zstd.WithEncoderLevel(zstd.EncoderLevelFromZstd(zstdLevel)))
 		if err != nil {
 			return err
 		}
@@ -150,7 +140,16 @@ func (w *compressionWriter) initCompression() error {
 
 	case AlgorithmDeflate:
 		w.Header().Set("Content-Encoding", "deflate")
-		w.writer, _ = flate.NewWriter(w.ResponseWriter, level)
+		// Map gzip levels (1-9) to flate levels (-2 to 9)
+		flateLevel := level - 1 // flate uses -2 to 9, gzip uses 1-9
+		if flateLevel < -2 {
+			flateLevel = -2
+		}
+		var err error
+		w.writer, err = flate.NewWriter(w.ResponseWriter, flateLevel)
+		if err != nil {
+			return err
+		}
 	}
 
 	w.compressionInitialized = true
@@ -167,8 +166,10 @@ func (w *compressionWriter) Flush() {
 }
 
 func (w *compressionWriter) Close() error {
-	if closer, ok := w.writer.(io.Closer); ok {
-		return closer.Close()
+	if w.writer != nil && w.writer != w.ResponseWriter {
+		if closer, ok := w.writer.(io.Closer); ok {
+			return closer.Close()
+		}
 	}
 	return nil
 }
