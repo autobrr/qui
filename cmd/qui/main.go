@@ -15,6 +15,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Masterminds/semver/v3"
+	"github.com/creativeprojects/go-selfupdate"
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -59,6 +61,7 @@ multiple qBittorrent instances with support for 10k+ torrents.`,
 	rootCmd.AddCommand(RunGenerateConfigCommand())
 	rootCmd.AddCommand(RunCreateUserCommand())
 	rootCmd.AddCommand(RunChangePasswordCommand())
+	rootCmd.AddCommand(RunUpdateCommand())
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -361,6 +364,57 @@ If no --config-dir is specified, uses the OS-specific default location:
 		"new password (will prompt if not provided)")
 
 	return command
+}
+
+func RunUpdateCommand() *cobra.Command {
+	var command = &cobra.Command{
+		Use:                   "update",
+		Short:                 "Update qui",
+		Long:                  `Update qui to the latest version.`,
+		DisableFlagsInUseLine: true,
+		RunE:                  runUpdate,
+	}
+
+	command.SetUsageTemplate(`Usage:
+  {{.CommandPath}}
+  
+Flags:
+{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}
+`)
+
+	return command
+}
+
+func runUpdate(cmd *cobra.Command, args []string) error {
+	_, err := semver.NewVersion(Version)
+	if err != nil {
+		return fmt.Errorf("could not parse version: %w", err)
+	}
+
+	latest, found, err := selfupdate.DetectLatest(cmd.Context(), selfupdate.ParseSlug("autobrr/qui"))
+	if err != nil {
+		return fmt.Errorf("error occurred while detecting version: %w", err)
+	}
+	if !found {
+		return fmt.Errorf("latest version for %s/%s could not be found from github repository", "autobrr/qui", Version)
+	}
+
+	if latest.LessOrEqual(Version) {
+		fmt.Printf("Current binary is the latest version: %s\n", Version)
+		return nil
+	}
+
+	exe, err := selfupdate.ExecutablePath()
+	if err != nil {
+		return fmt.Errorf("could not locate executable path: %w", err)
+	}
+
+	if err := selfupdate.UpdateTo(cmd.Context(), latest.AssetURL, latest.AssetName, exe); err != nil {
+		return fmt.Errorf("error occurred while updating binary: %w", err)
+	}
+
+	fmt.Printf("Successfully updated to version: %s\n", latest.Version())
+	return nil
 }
 
 type Application struct {
