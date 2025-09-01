@@ -93,6 +93,7 @@ interface FilterSidebarProps {
   tags?: string[]
   className?: string
   isStaleData?: boolean
+  isLoading?: boolean
 }
 
 
@@ -122,9 +123,27 @@ const FilterSidebarComponent = ({
   tags: propsTags,
   className = "",
   isStaleData = false,
+  isLoading = false,
 }: FilterSidebarProps) => {
   // Use incognito mode hook
   const [incognitoMode] = useIncognitoMode()
+
+  // Helper function to get count display - shows 0 when loading to prevent showing stale counts from previous instance
+  const getDisplayCount = useCallback((key: string, fallbackCount?: number): string => {
+    if (incognitoMode && fallbackCount !== undefined) {
+      return fallbackCount.toString()
+    }
+
+    if (isLoading) {
+      return "0"
+    }
+
+    if (!torrentCounts) {
+      return "..."
+    }
+
+    return (torrentCounts[key] || 0).toString()
+  }, [incognitoMode, isLoading, torrentCounts])
 
   // Persist accordion state
   const [expandedItems, setExpandedItems] = usePersistedAccordion()
@@ -343,7 +362,12 @@ const FilterSidebarComponent = ({
       <ScrollArea className="h-full flex-1 overscroll-contain">
         <div className="p-4">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold">Filters</h3>
+            <div className="flex items-center gap-2">
+              <h3 className="font-semibold">Filters</h3>
+              {isStaleData && (
+                <div className="w-2 h-2 bg-amber-500 rounded-full animate-pulse" />
+              )}
+            </div>
             {hasActiveFilters && (
               <button
                 onClick={clearFilters}
@@ -389,7 +413,7 @@ const FilterSidebarComponent = ({
                         <span>{state.label}</span>
                       </span>
                       <span className="text-xs text-muted-foreground">
-                        {torrentCounts ? (torrentCounts[`status:${state.value}`] || 0) : "..."}
+                        {getDisplayCount(`status:${state.value}`)}
                       </span>
                     </label>
                   ))}
@@ -443,7 +467,7 @@ const FilterSidebarComponent = ({
                       Uncategorized
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      {torrentCounts ? (torrentCounts["category:"] || 0) : "..."}
+                      {getDisplayCount("category:")}
                     </span>
                   </label>
 
@@ -490,7 +514,7 @@ const FilterSidebarComponent = ({
                                       {name}
                                     </span>
                                     <span className="text-xs text-muted-foreground">
-                                      {incognitoMode ? getLinuxCount(name, 50) : (torrentCounts ? (torrentCounts[`category:${name}`] || 0) : "...")}
+                                      {getDisplayCount(`category:${name}`, incognitoMode ? getLinuxCount(name, 50) : undefined)}
                                     </span>
                                   </label>
                                 </ContextMenuTrigger>
@@ -535,7 +559,7 @@ const FilterSidebarComponent = ({
                               {name}
                             </span>
                             <span className="text-xs text-muted-foreground">
-                              {incognitoMode ? getLinuxCount(name, 50) : (torrentCounts ? (torrentCounts[`category:${name}`] || 0) : "...")}
+                              {getDisplayCount(`category:${name}`, incognitoMode ? getLinuxCount(name, 50) : undefined)}
                             </span>
                           </label>
                         </ContextMenuTrigger>
@@ -614,7 +638,7 @@ const FilterSidebarComponent = ({
                       Untagged
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      {torrentCounts ? (torrentCounts["tag:"] || 0) : "..."}
+                      {getDisplayCount("tag:")}
                     </span>
                   </label>
 
@@ -661,7 +685,7 @@ const FilterSidebarComponent = ({
                                       {tag}
                                     </span>
                                     <span className="text-xs text-muted-foreground">
-                                      {incognitoMode ? getLinuxCount(tag, 30) : (torrentCounts ? (torrentCounts[`tag:${tag}`] || 0) : "...")}
+                                      {getDisplayCount(`tag:${tag}`, incognitoMode ? getLinuxCount(tag, 30) : undefined)}
                                     </span>
                                   </label>
                                 </ContextMenuTrigger>
@@ -704,7 +728,7 @@ const FilterSidebarComponent = ({
                               {tag}
                             </span>
                             <span className="text-xs text-muted-foreground">
-                              {incognitoMode ? getLinuxCount(tag, 30) : (torrentCounts ? (torrentCounts[`tag:${tag}`] || 0) : "...")}
+                              {getDisplayCount(`tag:${tag}`, incognitoMode ? getLinuxCount(tag, 30) : undefined)}
                             </span>
                           </label>
                         </ContextMenuTrigger>
@@ -772,7 +796,7 @@ const FilterSidebarComponent = ({
                       No tracker
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      {torrentCounts ? (torrentCounts["tracker:"] || 0) : "..."}
+                      {getDisplayCount("tracker:")}
                     </span>
                   </label>
 
@@ -817,7 +841,7 @@ const FilterSidebarComponent = ({
                                   {tracker}
                                 </span>
                                 <span className="text-xs text-muted-foreground">
-                                  {incognitoMode ? getLinuxCount(tracker, 100) : (torrentCounts ? (torrentCounts[`tracker:${tracker}`] || 0) : "...")}
+                                  {getDisplayCount(`tracker:${tracker}`, incognitoMode ? getLinuxCount(tracker, 100) : undefined)}
                                 </span>
                               </label>
                             </div>
@@ -839,7 +863,7 @@ const FilterSidebarComponent = ({
                           {tracker}
                         </span>
                         <span className="text-xs text-muted-foreground">
-                          {incognitoMode ? getLinuxCount(tracker, 100) : (torrentCounts ? (torrentCounts[`tracker:${tracker}`] || 0) : "...")}
+                          {getDisplayCount(`tracker:${tracker}`, incognitoMode ? getLinuxCount(tracker, 100) : undefined)}
                         </span>
                       </label>
                     ))
@@ -907,6 +931,8 @@ export const FilterSidebar = memo(FilterSidebarComponent, (prevProps, nextProps)
     JSON.stringify(prevProps.torrentCounts) === JSON.stringify(nextProps.torrentCounts) &&
     JSON.stringify(prevProps.categories) === JSON.stringify(nextProps.categories) &&
     JSON.stringify(prevProps.tags) === JSON.stringify(nextProps.tags) &&
-    prevProps.className === nextProps.className
+    prevProps.className === nextProps.className &&
+    prevProps.isStaleData === nextProps.isStaleData &&
+    prevProps.isLoading === nextProps.isLoading
   )
 })
