@@ -195,16 +195,21 @@ func (c *Client) applyOptimisticCacheUpdate(hashes []string, action string, payl
 	case "resume":
 		// For resume, change paused torrents to downloading/uploading state
 		for _, hash := range hashes {
-			state := qbt.TorrentStateStalledDl
+			state := qbt.TorrentStateQueuedDl
+			var originalState qbt.TorrentState
 			if mainData != nil && mainData.Torrents != nil {
-				if torrent, exists := mainData.Torrents[hash]; exists && torrent.Progress == 1.0 {
-					state = qbt.TorrentStateStalledUp
+				if torrent, exists := mainData.Torrents[hash]; exists {
+					originalState = torrent.State
+					if torrent.Progress == 1.0 {
+						state = qbt.TorrentStateQueuedUp
+					}
 				}
 			}
 			c.optimisticUpdates[hash] = &OptimisticTorrentUpdate{
-				State:     state,
-				UpdatedAt: time.Now(),
-				Action:    action,
+				State:         state,
+				OriginalState: originalState,
+				UpdatedAt:     time.Now(),
+				Action:        action,
 			}
 			log.Debug().Int("instanceID", c.instanceID).Str("hash", hash).Str("action", action).Msg("Created optimistic update for resume")
 		}
@@ -212,15 +217,20 @@ func (c *Client) applyOptimisticCacheUpdate(hashes []string, action string, payl
 		// For force resume, change torrents to forced download/upload state
 		for _, hash := range hashes {
 			state := qbt.TorrentStateForcedDl
+			var originalState qbt.TorrentState
 			if mainData != nil && mainData.Torrents != nil {
-				if torrent, exists := mainData.Torrents[hash]; exists && torrent.Progress == 1.0 {
-					state = qbt.TorrentStateForcedUp
+				if torrent, exists := mainData.Torrents[hash]; exists {
+					originalState = torrent.State
+					if torrent.Progress == 1.0 {
+						state = qbt.TorrentStateForcedUp
+					}
 				}
 			}
 			c.optimisticUpdates[hash] = &OptimisticTorrentUpdate{
-				State:     state,
-				UpdatedAt: time.Now(),
-				Action:    action,
+				State:         state,
+				OriginalState: originalState,
+				UpdatedAt:     time.Now(),
+				Action:        action,
 			}
 			log.Debug().Int("instanceID", c.instanceID).Str("hash", hash).Str("action", action).Msg("Created optimistic update for force_resume")
 		}
@@ -228,15 +238,20 @@ func (c *Client) applyOptimisticCacheUpdate(hashes []string, action string, payl
 		// For pause, change active torrents to paused download/upload state
 		for _, hash := range hashes {
 			state := qbt.TorrentStatePausedDl
+			var originalState qbt.TorrentState
 			if mainData != nil && mainData.Torrents != nil {
-				if torrent, exists := mainData.Torrents[hash]; exists && torrent.Progress == 1.0 {
-					state = qbt.TorrentStatePausedUp
+				if torrent, exists := mainData.Torrents[hash]; exists {
+					originalState = torrent.State
+					if torrent.Progress == 1.0 {
+						state = qbt.TorrentStatePausedUp
+					}
 				}
 			}
 			c.optimisticUpdates[hash] = &OptimisticTorrentUpdate{
-				State:     state,
-				UpdatedAt: time.Now(),
-				Action:    action,
+				State:         state,
+				OriginalState: originalState,
+				UpdatedAt:     time.Now(),
+				Action:        action,
 			}
 			log.Debug().Int("instanceID", c.instanceID).Str("hash", hash).Str("action", action).Msg("Created optimistic update for pause")
 		}
@@ -244,15 +259,20 @@ func (c *Client) applyOptimisticCacheUpdate(hashes []string, action string, payl
 		// For recheck, change torrents to checking download/upload state
 		for _, hash := range hashes {
 			state := qbt.TorrentStateCheckingDl
+			var originalState qbt.TorrentState
 			if mainData != nil && mainData.Torrents != nil {
-				if torrent, exists := mainData.Torrents[hash]; exists && torrent.Progress == 1.0 {
-					state = qbt.TorrentStateCheckingUp
+				if torrent, exists := mainData.Torrents[hash]; exists {
+					originalState = torrent.State
+					if torrent.Progress == 1.0 {
+						state = qbt.TorrentStateCheckingUp
+					}
 				}
 			}
 			c.optimisticUpdates[hash] = &OptimisticTorrentUpdate{
-				State:     state,
-				UpdatedAt: time.Now(),
-				Action:    action,
+				State:         state,
+				OriginalState: originalState,
+				UpdatedAt:     time.Now(),
+				Action:        action,
 			}
 			log.Debug().Int("instanceID", c.instanceID).Str("hash", hash).Str("action", action).Msg("Created optimistic update for recheck")
 		}

@@ -58,9 +58,10 @@ type SyncManager struct {
 
 // OptimisticTorrentUpdate represents a temporary optimistic update to a torrent
 type OptimisticTorrentUpdate struct {
-	State     qbt.TorrentState `json:"state"`
-	UpdatedAt time.Time        `json:"updatedAt"`
-	Action    string           `json:"action"`
+	State        qbt.TorrentState `json:"state"`
+	OriginalState qbt.TorrentState `json:"originalState"`
+	UpdatedAt    time.Time        `json:"updatedAt"`
+	Action       string           `json:"action"`
 }
 
 // NewSyncManager creates a new sync manager
@@ -732,11 +733,12 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 				timeSinceUpdate := time.Since(optimisticUpdate.UpdatedAt)
 
 				// Clear if backend state indicates the operation was successful
-				if sm.shouldClearOptimisticUpdate(torrents[i].State, optimisticUpdate.State, optimisticUpdate.Action) {
+				if sm.shouldClearOptimisticUpdate(torrents[i].State, optimisticUpdate.OriginalState, optimisticUpdate.State, optimisticUpdate.Action) {
 					shouldClear = true
 					log.Debug().
 						Str("hash", torrents[i].Hash).
 						Str("state", string(torrents[i].State)).
+						Str("originalState", string(optimisticUpdate.OriginalState)).
 						Str("optimisticState", string(optimisticUpdate.State)).
 						Str("action", optimisticUpdate.Action).
 						Time("optimisticAt", optimisticUpdate.UpdatedAt).
@@ -1112,14 +1114,14 @@ func (sm *SyncManager) applyFilters(torrents []qbt.Torrent, filters FilterOption
 }
 
 // Torrent state categories for fast lookup
-var torrentStateCategories = map[string][]string{
-	"downloading": {"downloading", "stalledDL", "metaDL", "queuedDL", "allocating", "checkingDL", "forcedDL"},
-	"seeding":     {"uploading", "stalledUP", "queuedUP", "checkingUP", "forcedUP"},
-	"paused":      {"pausedDL", "pausedUP", "stoppedDL", "stoppedUP"},
-	"active":      {"downloading", "uploading", "forcedDL", "forcedUP"},
-	"stalled":     {"stalledDL", "stalledUP"},
-	"checking":    {"checkingDL", "checkingUP", "checkingResumeData"},
-	"errored":     {"error", "missingFiles"},
+var torrentStateCategories = map[string][]qbt.TorrentState{
+	"downloading": {qbt.TorrentStateDownloading, qbt.TorrentStateStalledDl, qbt.TorrentStateMetaDl, qbt.TorrentStateQueuedDl, qbt.TorrentStateAllocating, qbt.TorrentStateCheckingDl, qbt.TorrentStateForcedDl},
+	"seeding":     {qbt.TorrentStateUploading, qbt.TorrentStateStalledUp, qbt.TorrentStateQueuedUp, qbt.TorrentStateCheckingUp, qbt.TorrentStateForcedUp},
+	"paused":      {qbt.TorrentStatePausedDl, qbt.TorrentStatePausedUp, qbt.TorrentStateStoppedDl, qbt.TorrentStateStoppedUp},
+	"active":      {qbt.TorrentStateDownloading, qbt.TorrentStateUploading, qbt.TorrentStateForcedDl, qbt.TorrentStateForcedUp},
+	"stalled":     {qbt.TorrentStateStalledDl, qbt.TorrentStateStalledUp},
+	"checking":    {qbt.TorrentStateCheckingDl, qbt.TorrentStateCheckingUp, qbt.TorrentStateCheckingResumeData},
+	"errored":     {qbt.TorrentStateError, qbt.TorrentStateMissingFiles},
 }
 
 // Action state categories for optimistic update clearing
@@ -1131,24 +1133,25 @@ var actionSuccessCategories = map[string]string{
 }
 
 // shouldClearOptimisticUpdate checks if an optimistic update should be cleared based on the action and current state
-func (sm *SyncManager) shouldClearOptimisticUpdate(currentState qbt.TorrentState, optimisticState qbt.TorrentState, action string) bool {
-	stateStr := string(currentState)
-
-	// Check if this action has a success category defined
-	if successCategory, exists := actionSuccessCategories[action]; exists {
-		if categoryStates, categoryExists := torrentStateCategories[successCategory]; categoryExists {
-			return slices.Contains(categoryStates, stateStr)
-		}
+func (sm *SyncManager) shouldClearOptimisticUpdate(currentState qbt.TorrentState, originalState qbt.TorrentState, optimisticState qbt.TorrentState, action string) bool {
+	// Clear the optimistic update if the current state is different from the original state
+	// This indicates that the backend has acknowledged and processed the operation
+	if currentState != originalState {
+		log.Debug().
+			Str("currentState", string(currentState)).
+			Str("originalState", string(originalState)).
+			Str("optimisticState", string(optimisticState)).
+			Str("action", action).
+			Msg("Clearing optimistic update - backend state changed from original")
+		return true
 	}
 
-	// For other actions, use exact state match
+	// For other actions, use exact state match as fallback
 	return currentState == optimisticState
 }
 
 // matchTorrentStatus checks if a torrent matches a specific status filter
 func (sm *SyncManager) matchTorrentStatus(torrent qbt.Torrent, status string) bool {
-	state := string(torrent.State)
-
 	// Handle special cases first
 	switch status {
 	case "all":
@@ -1157,19 +1160,19 @@ func (sm *SyncManager) matchTorrentStatus(torrent qbt.Torrent, status string) bo
 		return torrent.Progress == 1
 	case "inactive":
 		// Inactive is the inverse of active
-		return !slices.Contains(torrentStateCategories["active"], state)
+		return !slices.Contains(torrentStateCategories["active"], torrent.State)
 	case "resumed":
 		// Resumed is the inverse of paused
-		return !slices.Contains(torrentStateCategories["paused"], state)
+		return !slices.Contains(torrentStateCategories["paused"], torrent.State)
 	}
 
 	// For grouped status categories, check if state is in the category
 	if category, exists := torrentStateCategories[status]; exists {
-		return slices.Contains(category, state)
+		return slices.Contains(category, torrent.State)
 	}
 
-	// For everything else, just do direct equality
-	return state == status
+	// For everything else, just do direct equality with the string representation
+	return string(torrent.State) == status
 }
 
 // calculateStats calculates torrent statistics from a list of torrents
