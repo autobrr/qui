@@ -41,7 +41,7 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Parse query parameters
-	sort := "addition_date"
+	sort := "added_on"
 	order := "desc"
 	search := ""
 	sessionID := r.Header.Get("X-Session-ID") // Optional session tracking
@@ -51,12 +51,12 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 		// Map frontend sort fields to qBittorrent API field names
 		switch s {
 		case "addedOn":
-			sort = "addition_date"
+			sort = "added_on"
 		case "dlspeed":
 			sort = "dlspeed"
 		case "upspeed":
 			sort = "upspeed"
-		// Add other mappings as needed
+			// Add other mappings as needed
 		}
 	}
 
@@ -79,7 +79,7 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 
 	// Convert custom filters to library format
 	var torrentFilterOptions qbt.TorrentFilterOptions
-	
+
 	// Handle status filter - take first status if multiple provided
 	if len(filters.Status) > 0 {
 		status := filters.Status[0]
@@ -473,7 +473,7 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 		if req.Filters != nil {
 			// Convert custom filters to library format
 			filters := *req.Filters
-			
+
 			// Handle status filter - take first status if multiple provided
 			if len(filters.Status) > 0 {
 				status := filters.Status[0]
@@ -525,7 +525,7 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 
 		// Get all torrents matching the current filters and search
 		// Backend returns all data, no pagination needed
-		response, err := h.syncManager.GetTorrentsWithFilters(r.Context(), instanceID, "addition_date", "desc", req.Search, torrentFilterOptions)
+		response, err := h.syncManager.GetTorrentsWithFilters(r.Context(), instanceID, "added_on", "desc", req.Search, torrentFilterOptions)
 		if err != nil {
 			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get torrents for selectAll operation")
 			RespondError(w, http.StatusInternalServerError, "Failed to get torrents for bulk action")
