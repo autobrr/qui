@@ -103,16 +103,8 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Add cache headers for transparency
-	if response.CacheMetadata != nil {
-		w.Header().Set("X-Cache", response.CacheMetadata.Source)
-		w.Header().Set("X-Cache-Age", fmt.Sprintf("%d", response.CacheMetadata.Age))
-		if response.CacheMetadata.IsStale {
-			w.Header().Set("X-Cache-Status", "stale")
-		} else {
-			w.Header().Set("X-Cache-Status", "fresh")
-		}
-	}
+	// Data is always fresh from sync manager
+	w.Header().Set("X-Data-Source", "fresh")
 
 	RespondJSON(w, http.StatusOK, response)
 }
@@ -350,9 +342,8 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Immediately invalidate cache - the next request will get fresh data from qBittorrent
-	h.syncManager.InvalidateCache(instanceID)
-	log.Debug().Int("instanceID", instanceID).Msg("Cache invalidated after adding torrent")
+	// Data will be fresh on next request from sync manager
+	log.Debug().Int("instanceID", instanceID).Msg("Torrent added - next request will get fresh data from sync manager")
 
 	// Build response message
 	var message string
