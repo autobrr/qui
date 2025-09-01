@@ -4,7 +4,7 @@ go 1.24
 
 require (
 	github.com/Masterminds/semver/v3 v3.4.0
-	github.com/autobrr/go-qbittorrent v1.14.1-0.20250901013949-dfe05ee1ca01
+	github.com/autobrr/go-qbittorrent v1.14.1-0.20250901021627-1f38008c2e78
 	github.com/dgraph-io/ristretto v0.2.0
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-chi/chi/v5 v5.2.2
