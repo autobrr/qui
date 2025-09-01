@@ -35,7 +35,7 @@ host = "localhost"
 port = 8080
 sessionSecret = "test-secret"
 dataDir = "/custom/path"`,
-			expectedInPath: "/custom/path/qui.db",
+			expectedInPath: filepath.ToSlash("/custom/path/qui.db"),
 		},
 		{
 			name: "env_var_override",
@@ -45,7 +45,7 @@ port = 8080
 sessionSecret = "test-secret"
 dataDir = "/config/path"`,
 			envVar:         "/env/override",
-			expectedInPath: "/env/override/qui.db",
+			expectedInPath: filepath.ToSlash("/env/override/qui.db"),
 		},
 	}
 
@@ -69,8 +69,10 @@ dataDir = "/config/path"`,
 
 			// Check database path
 			dbPath := cfg.GetDatabasePath()
-			if filepath.IsAbs(tt.expectedInPath) {
-				assert.Equal(t, tt.expectedInPath, dbPath)
+			if strings.HasPrefix(tt.expectedInPath, "/") {
+				// For Unix-style absolute paths, normalize both for comparison
+				normalizedDbPath := filepath.ToSlash(dbPath)
+				assert.Contains(t, normalizedDbPath, tt.expectedInPath)
 			} else {
 				assert.Contains(t, dbPath, tt.expectedInPath)
 			}
@@ -120,7 +122,7 @@ dataDir = "/config/file/path"`
 	cfg, err := New(configPath)
 	require.NoError(t, err)
 
-	assert.Equal(t, "/env/var/path/qui.db", cfg.GetDatabasePath())
+	assert.Equal(t, filepath.ToSlash("/env/var/path/qui.db"), filepath.ToSlash(cfg.GetDatabasePath()))
 }
 
 func TestGenerateSecureToken(t *testing.T) {

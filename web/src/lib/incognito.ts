@@ -191,7 +191,14 @@ export function getLinuxTracker(hash: string): string {
   }
   return `https://${LINUX_TRACKERS[hashSum % LINUX_TRACKERS.length]}/announce`
 }
-
+// Generate deterministic count value based on name for UI display
+export function getLinuxCount(name: string, max: number = 50): number {
+  let hashSum = 0
+  for (let i = 0; i < Math.min(8, name.length); i++) {
+    hashSum += name.charCodeAt(i) * (i + 1)
+  }
+  return (hashSum % max) + 1
+}
 // Generate deterministic ratio value based on hash
 export function getLinuxRatio(hash: string): number {
   let hashSum = 0
