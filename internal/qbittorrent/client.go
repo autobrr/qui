@@ -78,7 +78,6 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 
 	// Initialize sync manager with default options
 	syncOpts := qbt.DefaultSyncOptions()
-	syncOpts.AutoSync = true
 	syncOpts.DynamicSync = true
 	client.syncManager = qbtClient.NewSyncManager(syncOpts)
 
