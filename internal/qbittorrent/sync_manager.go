@@ -926,6 +926,10 @@ func (sm *SyncManager) syncAfterModification(instanceID int, client *Client, ope
 		
 		// If no client provided, get one
 		if client == nil {
+			if sm.clientPool == nil {
+				log.Warn().Int("instanceID", instanceID).Str("operation", operation).Msg("Client pool is nil, skipping sync")
+				return
+			}
 			var err error
 			client, err = sm.clientPool.GetClient(ctx, instanceID)
 			if err != nil {
