@@ -226,6 +226,42 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 		return fmt.Errorf("failed to get client: %w", err)
 	}
 
+	// Get sync manager
+	syncManager := client.GetSyncManager()
+	if syncManager == nil {
+		return fmt.Errorf("sync manager not initialized")
+	}
+
+	// Validate that torrents exist before proceeding
+	torrentMap := syncManager.GetTorrentHashes(hashes)
+	if len(torrentMap) == 0 {
+		return fmt.Errorf("no sync data available")
+	}
+
+	existingTorrents := make([]*qbt.Torrent, 0, len(hashes))
+	missingHashes := make([]string, 0, len(hashes))
+	for _, hash := range hashes {
+		if torrent, exists := torrentMap[hash]; exists {
+			existingTorrents = append(existingTorrents, &torrent)
+		} else {
+			missingHashes = append(missingHashes, hash)
+		}
+	}
+
+	if len(existingTorrents) == 0 {
+		return fmt.Errorf("no valid torrents found for bulk action: %s", action)
+	}
+
+	// Log warning for any missing torrents
+	if len(missingHashes) > 0 {
+		log.Warn().
+			Int("instanceID", instanceID).
+			Int("requested", len(hashes)).
+			Int("found", len(existingTorrents)).
+			Str("action", action).
+			Msg("Some torrents not found for bulk action")
+	}
+
 	// Apply optimistic update immediately for instant UI feedback
 	sm.applyOptimisticCacheUpdate(instanceID, hashes, action, nil)
 
@@ -709,16 +745,16 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 		return nil, fmt.Errorf("sync manager not initialized")
 	}
 
-	log.Debug().Int("instanceID", instanceID).Msg("getAllTorrentsForStats: Fetching from sync manager GetData()")
+	log.Debug().Int("instanceID", instanceID).Msg("getAllTorrentsForStats: Fetching from sync manager GetTorrents()")
 
-	// Get main data from sync manager (includes torrent metadata)
-	mainData := syncManager.GetData()
-	torrents := make([]qbt.Torrent, 0, len(mainData.Torrents))
-	for _, torrent := range mainData.Torrents {
+	// Get all torrents from sync manager
+	torrentMap := syncManager.GetTorrents()
+	torrents := make([]qbt.Torrent, 0, len(torrentMap))
+	for _, torrent := range torrentMap {
 		torrents = append(torrents, torrent)
 	}
 
-	// Apply optimistic updates
+	// Apply optimistic updates using the torrent map for O(1) lookups
 	if instanceUpdates := client.getOptimisticUpdates(); len(instanceUpdates) > 0 {
 		// Get the last sync time to detect if backend has responded since our optimistic update
 		// This provides much more accurate clearing than a fixed timeout
@@ -727,17 +763,18 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 		optimisticCount := 0
 		removedCount := 0
 
-		for i := range torrents {
-			if optimisticUpdate, hasUpdate := instanceUpdates[torrents[i].Hash]; hasUpdate {
+		for hash, optimisticUpdate := range instanceUpdates {
+			// Use O(1) map lookup instead of iterating through all torrents
+			if torrent, exists := client.getTorrentByHash(hash); exists {
 				shouldClear := false
 				timeSinceUpdate := time.Since(optimisticUpdate.UpdatedAt)
 
 				// Clear if backend state indicates the operation was successful
-				if sm.shouldClearOptimisticUpdate(torrents[i].State, optimisticUpdate.OriginalState, optimisticUpdate.State, optimisticUpdate.Action) {
+				if sm.shouldClearOptimisticUpdate(torrent.State, optimisticUpdate.OriginalState, optimisticUpdate.State, optimisticUpdate.Action) {
 					shouldClear = true
 					log.Debug().
-						Str("hash", torrents[i].Hash).
-						Str("state", string(torrents[i].State)).
+						Str("hash", hash).
+						Str("state", string(torrent.State)).
 						Str("originalState", string(optimisticUpdate.OriginalState)).
 						Str("optimisticState", string(optimisticUpdate.State)).
 						Str("action", optimisticUpdate.Action).
@@ -748,37 +785,43 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 					// Safety net: still clear after 60 seconds if something went wrong
 					shouldClear = true
 					log.Debug().
-						Str("hash", torrents[i].Hash).
+						Str("hash", hash).
 						Time("optimisticAt", optimisticUpdate.UpdatedAt).
 						Dur("timeSinceUpdate", timeSinceUpdate).
 						Msg("Clearing stale optimistic update (safety net)")
 				} else {
 					// Debug: show why we're not clearing yet
 					log.Debug().
-						Str("hash", torrents[i].Hash).
+						Str("hash", hash).
 						Time("optimisticAt", optimisticUpdate.UpdatedAt).
 						Time("lastSyncAt", lastSyncTime).
 						Dur("timeSinceUpdate", timeSinceUpdate).
 						Bool("syncAfterUpdate", lastSyncTime.After(optimisticUpdate.UpdatedAt)).
-						Str("backendState", string(torrents[i].State)).
+						Str("backendState", string(torrent.State)).
 						Str("optimisticState", string(optimisticUpdate.State)).
 						Msg("Keeping optimistic update - conditions not met")
 				}
 
 				if shouldClear {
-					client.clearOptimisticUpdate(torrents[i].Hash)
+					client.clearOptimisticUpdate(hash)
 					removedCount++
 				} else {
-					// Apply the optimistic state change
-					log.Debug().
-						Str("hash", torrents[i].Hash).
-						Str("oldState", string(torrents[i].State)).
-						Str("newState", string(optimisticUpdate.State)).
-						Str("action", optimisticUpdate.Action).
-						Msg("Applying optimistic update")
+					// Apply the optimistic state change to the torrent in our slice
+					// Find the torrent in the slice and update it
+					for i := range torrents {
+						if torrents[i].Hash == hash {
+							log.Debug().
+								Str("hash", hash).
+								Str("oldState", string(torrents[i].State)).
+								Str("newState", string(optimisticUpdate.State)).
+								Str("action", optimisticUpdate.Action).
+								Msg("Applying optimistic update")
 
-					torrents[i].State = optimisticUpdate.State
-					optimisticCount++
+							torrents[i].State = optimisticUpdate.State
+							optimisticCount++
+							break
+						}
+					}
 				}
 			}
 		}
@@ -1301,6 +1344,29 @@ func (sm *SyncManager) AddTags(ctx context.Context, instanceID int, hashes []str
 		return fmt.Errorf("failed to get client: %w", err)
 	}
 
+	// Get sync manager
+	syncManager := client.GetSyncManager()
+	if syncManager == nil {
+		return fmt.Errorf("sync manager not initialized")
+	}
+
+	// Validate that torrents exist
+	torrentMap := syncManager.GetTorrentHashes(hashes)
+	if len(torrentMap) == 0 {
+		return fmt.Errorf("no sync data available")
+	}
+
+	existingCount := 0
+	for _, hash := range hashes {
+		if _, exists := torrentMap[hash]; exists {
+			existingCount++
+		}
+	}
+
+	if existingCount == 0 {
+		return fmt.Errorf("no valid torrents found to add tags")
+	}
+
 	if err := client.AddTagsCtx(ctx, hashes, tags); err != nil {
 		return err
 	}
@@ -1315,6 +1381,12 @@ func (sm *SyncManager) RemoveTags(ctx context.Context, instanceID int, hashes []
 	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	// Validate that torrents exist
+	existingTorrents := client.getTorrentsByHashes(hashes)
+	if len(existingTorrents) == 0 {
+		return fmt.Errorf("no valid torrents found to remove tags")
 	}
 
 	if err := client.RemoveTagsCtx(ctx, hashes, tags); err != nil {
@@ -1345,12 +1417,9 @@ func (sm *SyncManager) SetTags(ctx context.Context, instanceID int, hashes []str
 			Str("webAPIVersion", client.GetWebAPIVersion()).
 			Msg("SetTags: qBittorrent version < 2.11.4, using fallback RemoveTags + AddTags")
 
-		torrents, err := client.GetTorrentsCtx(ctx, qbt.TorrentFilterOptions{
-			Hashes: hashes,
-		})
-		if err != nil {
-			return fmt.Errorf("failed to get torrents for fallback: %w", err)
-		}
+		// Use sync manager data instead of direct API call for better performance
+		// Get torrents directly from the client's torrent map for O(1) lookups
+		torrents := client.getTorrentsByHashes(hashes)
 
 		existingTagsSet := make(map[string]bool)
 		for _, torrent := range torrents {
@@ -1399,6 +1468,12 @@ func (sm *SyncManager) SetCategory(ctx context.Context, instanceID int, hashes [
 		return fmt.Errorf("failed to get client: %w", err)
 	}
 
+	// Validate that torrents exist
+	existingTorrents := client.getTorrentsByHashes(hashes)
+	if len(existingTorrents) == 0 {
+		return fmt.Errorf("no valid torrents found to set category")
+	}
+
 	if err := client.SetCategoryCtx(ctx, hashes, category); err != nil {
 		return err
 	}
@@ -1414,6 +1489,12 @@ func (sm *SyncManager) SetAutoTMM(ctx context.Context, instanceID int, hashes []
 	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	// Validate that torrents exist
+	existingTorrents := client.getTorrentsByHashes(hashes)
+	if len(existingTorrents) == 0 {
+		return fmt.Errorf("no valid torrents found to set auto TMM")
 	}
 
 	if err := client.SetAutoManagementCtx(ctx, hashes, enable); err != nil {
@@ -1583,6 +1664,12 @@ func (sm *SyncManager) SetTorrentShareLimit(ctx context.Context, instanceID int,
 		return fmt.Errorf("failed to get client: %w", err)
 	}
 
+	// Validate that torrents exist
+	existingTorrents := client.getTorrentsByHashes(hashes)
+	if len(existingTorrents) == 0 {
+		return fmt.Errorf("no valid torrents found to set share limits")
+	}
+
 	if err := client.SetTorrentShareLimitCtx(ctx, hashes, ratioLimit, seedingTimeLimit, inactiveSeedingTimeLimit); err != nil {
 		return fmt.Errorf("failed to set torrent share limit: %w", err)
 	}
@@ -1595,6 +1682,12 @@ func (sm *SyncManager) SetTorrentUploadLimit(ctx context.Context, instanceID int
 	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	// Validate that torrents exist
+	existingTorrents := client.getTorrentsByHashes(hashes)
+	if len(existingTorrents) == 0 {
+		return fmt.Errorf("no valid torrents found to set upload limit")
 	}
 
 	// Convert KB/s to bytes/s (qBittorrent API expects bytes/s)
@@ -1612,6 +1705,12 @@ func (sm *SyncManager) SetTorrentDownloadLimit(ctx context.Context, instanceID i
 	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	// Validate that torrents exist
+	existingTorrents := client.getTorrentsByHashes(hashes)
+	if len(existingTorrents) == 0 {
+		return fmt.Errorf("no valid torrents found to set download limit")
 	}
 
 	// Convert KB/s to bytes/s (qBittorrent API expects bytes/s)

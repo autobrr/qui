@@ -87,7 +87,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 	// Set up health check callbacks
 	syncOpts.OnUpdate = func(data *qbt.MainData) {
 		client.updateHealthStatus(true)
-		log.Debug().Int("instanceID", instanceID).Msg("Sync manager update received, marking client as healthy")
+		log.Debug().Int("instanceID", instanceID).Int("torrentCount", len(data.Torrents)).Msg("Sync manager update received, marking client as healthy")
 	}
 
 	syncOpts.OnError = func(err error) {
@@ -139,6 +139,64 @@ func (c *Client) IsHealthy() bool {
 	return c.isHealthy
 }
 
+// getTorrentByHash returns a torrent by hash from the sync manager
+func (c *Client) getTorrentByHash(hash string) (*qbt.Torrent, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.syncManager == nil {
+		return nil, false
+	}
+
+	torrent, exists := c.syncManager.GetTorrent(hash)
+	if !exists {
+		return nil, false
+	}
+	return &torrent, true
+}
+
+// getTorrentsByHashes returns multiple torrents by their hashes (O(n) where n is number of requested hashes)
+func (c *Client) getTorrentsByHashes(hashes []string) []*qbt.Torrent {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.syncManager == nil {
+		return nil
+	}
+
+	torrentMap := c.syncManager.GetTorrentHashes(hashes)
+	torrents := make([]*qbt.Torrent, 0, len(hashes))
+	for _, hash := range hashes {
+		if torrent, exists := torrentMap[hash]; exists {
+			torrents = append(torrents, &torrent)
+		}
+	}
+	return torrents
+}
+
+// validateTorrentHashes returns validation info for a list of hashes
+func (c *Client) validateTorrentHashes(hashes []string) (existing []*qbt.Torrent, missing []string) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.syncManager == nil {
+		return nil, hashes
+	}
+
+	torrentMap := c.syncManager.GetTorrentHashes(hashes)
+	existing = make([]*qbt.Torrent, 0, len(hashes))
+	missing = make([]string, 0, len(hashes))
+
+	for _, hash := range hashes {
+		if torrent, exists := torrentMap[hash]; exists {
+			existing = append(existing, &torrent)
+		} else {
+			missing = append(missing, hash)
+		}
+	}
+	return existing, missing
+}
+
 func (c *Client) HealthCheck(ctx context.Context) error {
 	if c.isHealthy && time.Now().Add(-minHealthCheckInterval).Before(c.GetLastHealthCheck()) {
 		return nil
@@ -188,15 +246,14 @@ func (c *Client) applyOptimisticCacheUpdate(hashes []string, action string, payl
 
 	log.Debug().Int("instanceID", c.instanceID).Str("action", action).Int("hashCount", len(hashes)).Msg("Starting optimistic cache update")
 
-	mainData := c.syncManager.GetData()
 	now := time.Now()
 
-	// Apply optimistic updates based on action
+	// Apply optimistic updates based on action using sync manager data
 	for _, hash := range hashes {
 		var originalState qbt.TorrentState
 		var progress float64
-		if mainData != nil && mainData.Torrents != nil {
-			if torrent, exists := mainData.Torrents[hash]; exists {
+		if c.syncManager != nil {
+			if torrent, exists := c.syncManager.GetTorrent(hash); exists {
 				originalState = torrent.State
 				progress = torrent.Progress
 			}
