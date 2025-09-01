@@ -46,7 +46,16 @@ func NewRouter(deps *Dependencies) *chi.Mux {
 	r.Use(apimiddleware.HTTPLogger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RealIP)
-	r.Use(middleware.Compress(5))
+
+	// Selective compression - only compress responses above minimum size
+	if deps.Config.Config.Compression.Enabled {
+		r.Use(apimiddleware.SelectiveCompress(
+			deps.Config.Config.Compression.MinSize,
+			deps.Config.Config.Compression.Level,
+			deps.Config.Config.Compression.PreferZstd,
+			deps.Config.Config.Compression.PreferBrotli,
+		))
+	}
 
 	// CORS - configure based on your needs
 	allowedOrigins := []string{"http://localhost:3000", "http://localhost:5173"}

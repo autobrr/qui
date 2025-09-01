@@ -16,6 +16,7 @@ type Config struct {
 	MetricsEnabled bool   `toml:"metricsEnabled" mapstructure:"metricsEnabled"`
 
 	HTTPTimeouts HTTPTimeouts `toml:"httpTimeouts" mapstructure:"httpTimeouts"`
+	Compression  Compression  `toml:"compression" mapstructure:"compression"`
 }
 
 // HTTPTimeouts represents HTTP server timeout configuration
@@ -23,4 +24,13 @@ type HTTPTimeouts struct {
 	ReadTimeout  int `toml:"readTimeout" mapstructure:"readTimeout"`   // seconds
 	WriteTimeout int `toml:"writeTimeout" mapstructure:"writeTimeout"` // seconds
 	IdleTimeout  int `toml:"idleTimeout" mapstructure:"idleTimeout"`   // seconds
+}
+
+// Compression represents compression configuration
+type Compression struct {
+	Enabled      bool `toml:"enabled" mapstructure:"enabled"`
+	Level        int  `toml:"level" mapstructure:"level"`         // 1-9, 1=fastest, 9=best compression
+	MinSize      int  `toml:"minSize" mapstructure:"minSize"`     // Minimum response size to compress (bytes)
+	PreferZstd   bool `toml:"preferZstd" mapstructure:"preferZstd"`     // Prefer Zstd over Brotli/Gzip
+	PreferBrotli bool `toml:"preferBrotli" mapstructure:"preferBrotli"`   // Prefer Brotli over Gzip
 }
