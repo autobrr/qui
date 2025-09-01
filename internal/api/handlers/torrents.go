@@ -124,10 +124,16 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 			torrentFilterOptions.Filter = qbt.TorrentFilterStalledDownloading
 		case "errored", "error":
 			torrentFilterOptions.Filter = qbt.TorrentFilterError
+		case "checking", "moving":
+			// These status filters don't have library support, so we need manual filtering
+			// (handled in GetTorrentsWithFilters)
 		default:
 			// Default to all if unknown status
 			torrentFilterOptions.Filter = qbt.TorrentFilterAll
 		}
+	} else {
+		// Default to all when no status filter is provided
+		torrentFilterOptions.Filter = qbt.TorrentFilterAll
 	}
 
 	// Handle category filter - take first category if multiple provided
@@ -140,7 +146,7 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 		torrentFilterOptions.Tag = filters.Tags[0]
 	}
 
-	// Note: Tracker filtering is not supported by the library, so we ignore filters.Trackers
+	// Note: Tracker filtering is implemented manually since the library doesn't support it
 
 	// Debug logging
 	log.Debug().
