@@ -96,7 +96,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	log.Debug().
 		Int("instanceID", instanceID).
 		Int("totalCount", len(filteredTorrents)).
-		Msg("Using filtered and sorted data from sync manager")
+		Msg("Using library filtering and sorting")
 
 	// Apply search filter if provided (library doesn't support search)
 	if search != "" {
@@ -221,19 +221,13 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 	}
 
 	// Validate that torrents exist before proceeding
-	torrentList := syncManager.GetTorrents(qbt.TorrentFilterOptions{Hashes: hashes})
-
-	torrentMap := make(map[string]qbt.Torrent, len(torrentList))
-	for _, torrent := range torrentList {
-		torrentMap[torrent.Hash] = torrent
-	}
-
+	torrentMap := syncManager.GetTorrentMap(qbt.TorrentFilterOptions{Hashes: hashes})
 	if len(torrentMap) == 0 {
 		return fmt.Errorf("no sync data available")
 	}
 
-	existingTorrents := make([]*qbt.Torrent, 0, len(hashes))
-	missingHashes := make([]string, 0, len(hashes))
+	existingTorrents := make([]*qbt.Torrent, 0, len(torrentMap))
+	missingHashes := make([]string, 0, len(hashes)-len(torrentMap))
 	for _, hash := range hashes {
 		if torrent, exists := torrentMap[hash]; exists {
 			existingTorrents = append(existingTorrents, &torrent)
