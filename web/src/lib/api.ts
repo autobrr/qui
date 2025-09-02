@@ -31,6 +31,11 @@ class ApiClient {
     })
 
     if (!response.ok) {
+      if (response.status === 401 && !window.location.pathname.startsWith("/login") && !window.location.pathname.startsWith("/setup")) {
+        window.location.href = "/login"
+        throw new Error("Session expired")
+      }
+
       let errorMessage = `HTTP error! status: ${response.status}`
       try {
         const errorData = await response.json()
