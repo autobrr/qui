@@ -17,7 +17,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
-	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
@@ -91,63 +90,6 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Convert custom filters to library format
-	var torrentFilterOptions qbt.TorrentFilterOptions
-
-	// Handle status filter - take first status if multiple provided
-	if len(filters.Status) > 0 {
-		status := filters.Status[0]
-		switch status {
-		case "all":
-			torrentFilterOptions.Filter = qbt.TorrentFilterAll
-		case "active":
-			// Use manual filtering for consistency
-		case "inactive":
-			// Use manual filtering for consistency
-		case "completed":
-			torrentFilterOptions.Filter = qbt.TorrentFilterCompleted
-		case "resumed":
-			torrentFilterOptions.Filter = qbt.TorrentFilterResumed
-		case "paused":
-			torrentFilterOptions.Filter = qbt.TorrentFilterPaused
-		case "stopped":
-			torrentFilterOptions.Filter = qbt.TorrentFilterStopped
-		case "stalled":
-			torrentFilterOptions.Filter = qbt.TorrentFilterStalled
-		case "uploading", "seeding":
-			torrentFilterOptions.Filter = qbt.TorrentFilterUploading
-		case "stalled_uploading", "stalled_seeding":
-			torrentFilterOptions.Filter = qbt.TorrentFilterStalledUploading
-		case "downloading":
-			torrentFilterOptions.Filter = qbt.TorrentFilterDownloading
-		case "stalled_downloading":
-			torrentFilterOptions.Filter = qbt.TorrentFilterStalledDownloading
-		case "errored", "error":
-			torrentFilterOptions.Filter = qbt.TorrentFilterError
-		case "checking", "moving":
-			// These status filters don't have library support, so we need manual filtering
-			// (handled in GetTorrentsWithFilters)
-		default:
-			// Default to all if unknown status
-			torrentFilterOptions.Filter = qbt.TorrentFilterAll
-		}
-	} else {
-		// Default to all when no status filter is provided
-		torrentFilterOptions.Filter = qbt.TorrentFilterAll
-	}
-
-	// Handle category filter - take first category if multiple provided
-	if len(filters.Categories) > 0 {
-		torrentFilterOptions.Category = filters.Categories[0]
-	}
-
-	// Handle tag filter - take first tag if multiple provided
-	if len(filters.Tags) > 0 {
-		torrentFilterOptions.Tag = filters.Tags[0]
-	}
-
-	// Note: Tracker filtering is implemented manually since the library doesn't support it
-
 	// Debug logging
 	log.Debug().
 		Str("sort", sort).
@@ -156,7 +98,6 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 		Int("limit", limit).
 		Str("search", search).
 		Interface("filters", filters).
-		Interface("torrentFilterOptions", torrentFilterOptions).
 		Str("sessionID", sessionID).
 		Msg("Torrent list request parameters")
 
@@ -494,58 +435,8 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 	var targetHashes []string
 	if req.SelectAll {
 		// Default to empty filters if not provided
-		var torrentFilterOptions qbt.TorrentFilterOptions
-		if req.Filters != nil {
-			// Convert custom filters to library format
-			filters := *req.Filters
-
-			// Handle status filter - take first status if multiple provided
-			if len(filters.Status) > 0 {
-				status := filters.Status[0]
-				switch status {
-				case "all":
-					torrentFilterOptions.Filter = qbt.TorrentFilterAll
-				case "active":
-					torrentFilterOptions.Filter = qbt.TorrentFilterActive
-				case "inactive":
-					torrentFilterOptions.Filter = qbt.TorrentFilterInactive
-				case "completed":
-					torrentFilterOptions.Filter = qbt.TorrentFilterCompleted
-				case "resumed":
-					torrentFilterOptions.Filter = qbt.TorrentFilterResumed
-				case "paused":
-					torrentFilterOptions.Filter = qbt.TorrentFilterPaused
-				case "stopped":
-					torrentFilterOptions.Filter = qbt.TorrentFilterStopped
-				case "stalled":
-					torrentFilterOptions.Filter = qbt.TorrentFilterStalled
-				case "uploading", "seeding":
-					torrentFilterOptions.Filter = qbt.TorrentFilterUploading
-				case "stalled_uploading", "stalled_seeding":
-					torrentFilterOptions.Filter = qbt.TorrentFilterStalledUploading
-				case "downloading":
-					torrentFilterOptions.Filter = qbt.TorrentFilterDownloading
-				case "stalled_downloading":
-					torrentFilterOptions.Filter = qbt.TorrentFilterStalledDownloading
-				case "errored", "error":
-					torrentFilterOptions.Filter = qbt.TorrentFilterError
-				default:
-					// Default to all if unknown status
-					torrentFilterOptions.Filter = qbt.TorrentFilterAll
-				}
-			}
-
-			// Handle category filter - take first category if multiple provided
-			if len(filters.Categories) > 0 {
-				torrentFilterOptions.Category = filters.Categories[0]
-			}
-
-			// Handle tag filter - take first tag if multiple provided
-			if len(filters.Tags) > 0 {
-				torrentFilterOptions.Tag = filters.Tags[0]
-			}
-
-			// Note: Tracker filtering is not supported by the library
+		if req.Filters == nil {
+			req.Filters = &qbittorrent.FilterOptions{}
 		}
 
 		// Get all torrents matching the current filters and search
