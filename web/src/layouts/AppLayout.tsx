@@ -33,7 +33,6 @@ function AppLayoutContent() {
       <div className="flex flex-1 flex-col min-w-0 relative">
         <Header
           sidebarCollapsed={sidebarCollapsed}
-          onSidebarToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
         >
           {/* Desktop toggle button */}
           <Tooltip>

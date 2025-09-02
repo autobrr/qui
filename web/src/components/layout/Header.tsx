@@ -26,16 +26,15 @@ import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSideba
 import { cn } from "@/lib/utils"
 import { Link, useNavigate, useRouterState, useSearch } from "@tanstack/react-router"
 import { Filter, HardDrive, Home, Info, LogOut, Menu, Plus, Search, Server, Settings, X } from "lucide-react"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react"
 import { useHotkeys } from "react-hotkeys-hook"
 
 interface HeaderProps {
-  children?: React.ReactNode
+  children?: ReactNode
   sidebarCollapsed?: boolean
-  onSidebarToggle?: () => void
 }
 
-export function Header({ children, sidebarCollapsed = false, onSidebarToggle }: HeaderProps) {
+export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
   const { logout } = useAuth()
   const navigate = useNavigate()
   const routeSearch = useSearch({ strict: false }) as { q?: string; modal?: string; [key: string]: unknown }
@@ -120,7 +119,7 @@ export function Header({ children, sidebarCollapsed = false, onSidebarToggle }: 
                 navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
               }}
             >
-              <Plus className="h-4 w-4 sm:mr-2" />
+              <Plus className="h-4 w-4 sm:mr-2"/>
               <span className="hidden sm:inline">Add Torrent</span>
             </Button>
           </div>
@@ -132,8 +131,8 @@ export function Header({ children, sidebarCollapsed = false, onSidebarToggle }: 
         <div className="flex-1 max-w-xl mx-2">
           <div className="flex items-center gap-2">
             {/* Slot to place actions directly to the left of the filter button (desktop only) */}
-            <span id="header-left-of-filter" className="hidden xl:inline-flex" />
-            <Tooltip >
+            <span id="header-left-of-filter" className="hidden xl:inline-flex"/>
+            <Tooltip>
               <TooltipTrigger asChild>
                 <Button
                   variant="outline"
@@ -141,14 +140,14 @@ export function Header({ children, sidebarCollapsed = false, onSidebarToggle }: 
                   className="hidden xl:inline-flex"
                   onClick={() => setFilterSidebarCollapsed(!filterSidebarCollapsed)}
                 >
-                  <Filter className="h-4 w-4" />
+                  <Filter className="h-4 w-4"/>
                 </Button>
               </TooltipTrigger>
               <TooltipContent>{filterSidebarCollapsed ? "Show filters" : "Hide filters"}</TooltipContent>
             </Tooltip>
             {/* Mobile filter button moved to card/table toolbars */}
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"/>
               <Input
                 ref={searchInputRef}
                 placeholder={isGlobSearch ? "Glob pattern..." : `Search torrents... (${shortcutKey})`}
@@ -169,7 +168,7 @@ export function Header({ children, sidebarCollapsed = false, onSidebarToggle }: 
               <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
                 {/* Clear search button */}
                 {searchValue && (
-                  <Tooltip >
+                  <Tooltip>
                     <TooltipTrigger asChild>
                       <button
                         type="button"
@@ -181,21 +180,21 @@ export function Header({ children, sidebarCollapsed = false, onSidebarToggle }: 
                           navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
                         }}
                       >
-                        <X className="h-3.5 w-3.5 text-muted-foreground" />
+                        <X className="h-3.5 w-3.5 text-muted-foreground"/>
                       </button>
                     </TooltipTrigger>
                     <TooltipContent>Clear search</TooltipContent>
                   </Tooltip>
                 )}
                 {/* Slot for actions next to search (e.g., Toggle columns) */}
-                <Tooltip >
+                <Tooltip>
                   <TooltipTrigger asChild>
                     <button
                       type="button"
                       className="p-1 hover:bg-muted rounded-sm transition-colors hidden sm:block"
                       onClick={(e) => e.preventDefault()}
                     >
-                      <Info className="h-3.5 w-3.5 text-muted-foreground" />
+                      <Info className="h-3.5 w-3.5 text-muted-foreground"/>
                     </button>
                   </TooltipTrigger>
                   <TooltipContent className="max-w-xs">
@@ -214,13 +213,13 @@ export function Header({ children, sidebarCollapsed = false, onSidebarToggle }: 
                 </Tooltip>
               </div>
             </div>
-            <span id="header-search-actions" className="flex items-center gap-1" />
+            <span id="header-search-actions" className="flex items-center gap-1"/>
           </div>
         </div>
       )}
 
       <div className="grid grid-cols-[auto_auto] items-center gap-3 transition-all duration-300 ease-out">
-        <ThemeToggle />
+        <ThemeToggle/>
         <div className={cn(
           "transition-all duration-300 ease-out overflow-hidden",
           sidebarCollapsed ? "w-10 opacity-100" : "w-0 opacity-0"
@@ -228,7 +227,7 @@ export function Header({ children, sidebarCollapsed = false, onSidebarToggle }: 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="hover:bg-muted hover:text-foreground transition-colors">
-                <Menu className="h-4 w-4" />
+                <Menu className="h-4 w-4"/>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52">
@@ -236,13 +235,8 @@ export function Header({ children, sidebarCollapsed = false, onSidebarToggle }: 
                 <Link
                   to="/dashboard"
                   className="flex cursor-pointer"
-                  onClick={() => {
-                    if (sidebarCollapsed && onSidebarToggle) {
-                      onSidebarToggle()
-                    }
-                  }}
                 >
-                  <Home className="mr-2 h-4 w-4" />
+                  <Home className="mr-2 h-4 w-4"/>
                   Dashboard
                 </Link>
               </DropdownMenuItem>
@@ -250,13 +244,8 @@ export function Header({ children, sidebarCollapsed = false, onSidebarToggle }: 
                 <Link
                   to="/instances"
                   className="flex cursor-pointer"
-                  onClick={() => {
-                    if (sidebarCollapsed && onSidebarToggle) {
-                      onSidebarToggle()
-                    }
-                  }}
                 >
-                  <Server className="mr-2 h-4 w-4" />
+                  <Server className="mr-2 h-4 w-4"/>
                   Instances
                 </Link>
               </DropdownMenuItem>
@@ -269,7 +258,7 @@ export function Header({ children, sidebarCollapsed = false, onSidebarToggle }: 
                         params={{ instanceId: instance.id.toString() }}
                         className="flex cursor-pointer pl-6"
                       >
-                        <HardDrive className="mr-2 h-4 w-4" />
+                        <HardDrive className="mr-2 h-4 w-4"/>
                         <span className="truncate">{instance.name}</span>
                         <span
                           className={cn(
@@ -282,24 +271,19 @@ export function Header({ children, sidebarCollapsed = false, onSidebarToggle }: 
                   ))}
                 </>
               )}
-              <DropdownMenuSeparator />
+              <DropdownMenuSeparator/>
               <DropdownMenuItem asChild>
                 <Link
                   to="/settings"
                   className="flex cursor-pointer"
-                  onClick={() => {
-                    if (sidebarCollapsed && onSidebarToggle) {
-                      onSidebarToggle()
-                    }
-                  }}
                 >
-                  <Settings className="mr-2 h-4 w-4" />
+                  <Settings className="mr-2 h-4 w-4"/>
                   Settings
                 </Link>
               </DropdownMenuItem>
-              <DropdownMenuSeparator />
+              <DropdownMenuSeparator/>
               <DropdownMenuItem onClick={() => logout()}>
-                <LogOut className="mr-2 h-4 w-4" />
+                <LogOut className="mr-2 h-4 w-4"/>
                 Logout
               </DropdownMenuItem>
             </DropdownMenuContent>

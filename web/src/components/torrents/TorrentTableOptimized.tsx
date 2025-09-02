@@ -3,68 +3,36 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import React, { memo, useState, useMemo, useRef, useCallback, useEffect } from "react"
-import {
-  useReactTable,
-  getCoreRowModel,
-  flexRender
-} from "@tanstack/react-table"
-import { useVirtualizer } from "@tanstack/react-virtual"
+import { useDebounce } from "@/hooks/useDebounce"
+import { usePersistedColumnOrder } from "@/hooks/usePersistedColumnOrder"
+import { usePersistedColumnSizing } from "@/hooks/usePersistedColumnSizing"
+import { usePersistedColumnSorting } from "@/hooks/usePersistedColumnSorting"
+import { usePersistedColumnVisibility } from "@/hooks/usePersistedColumnVisibility"
+import { usePersistedDeleteFiles } from "@/hooks/usePersistedDeleteFiles"
+import { useTorrentsList } from "@/hooks/useTorrentsList"
 import {
   DndContext,
-  closestCenter,
   MouseSensor,
   TouchSensor,
+  closestCenter,
   useSensor,
   useSensors,
   type DragEndEvent
 } from "@dnd-kit/core"
+import { restrictToHorizontalAxis } from "@dnd-kit/modifiers"
 import {
   SortableContext,
-  horizontalListSortingStrategy,
-  arrayMove
+  arrayMove,
+  horizontalListSortingStrategy
 } from "@dnd-kit/sortable"
-import { restrictToHorizontalAxis } from "@dnd-kit/modifiers"
-import { useTorrentsList } from "@/hooks/useTorrentsList"
-import { useDebounce } from "@/hooks/useDebounce"
-import { usePersistedColumnVisibility } from "@/hooks/usePersistedColumnVisibility"
-import { usePersistedColumnOrder } from "@/hooks/usePersistedColumnOrder"
-import { usePersistedColumnSizing } from "@/hooks/usePersistedColumnSizing"
-import { usePersistedColumnSorting } from "@/hooks/usePersistedColumnSorting"
-import { usePersistedDeleteFiles } from "@/hooks/usePersistedDeleteFiles"
-
-// Default values for persisted state hooks (module scope for stable references)
-const DEFAULT_COLUMN_VISIBILITY = {
-  downloaded: false,
-  uploaded: false,
-  save_path: false, // Fixed: was 'saveLocation', should match column accessorKey
-  tracker: false,
-  priority: true,
-}
-const DEFAULT_COLUMN_SIZING = {}
-
-// Helper function to get default column order (module scope for stable reference)
-function getDefaultColumnOrder(): string[] {
-  const cols = createColumns(false)
-  return cols.map(col => {
-    if ("id" in col && col.id) return col.id
-    if ("accessorKey" in col && typeof col.accessorKey === "string") return col.accessorKey
-    return null
-  }).filter((v): v is string => typeof v === "string")
-}
-
-import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { api } from "@/lib/api"
-import { toast } from "sonner"
-import { Button } from "@/components/ui/button"
 import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuTrigger
-} from "@/components/ui/context-menu"
+  flexRender,
+  getCoreRowModel,
+  useReactTable
+} from "@tanstack/react-table"
+import { useVirtualizer } from "@tanstack/react-virtual"
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
+
 import {
   AlertDialog,
   AlertDialogAction,
@@ -75,6 +43,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from "@/components/ui/alert-dialog"
+import { Button } from "@/components/ui/button"
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger
+} from "@/components/ui/context-menu"
 import {
   Dialog,
   DialogContent,
@@ -96,23 +72,47 @@ import {
   TooltipContent,
   TooltipTrigger
 } from "@/components/ui/tooltip"
-import { AddTorrentDialog } from "./AddTorrentDialog"
-import { TorrentActions } from "./TorrentActions"
-import { Loader2, Play, Pause, Trash2, CheckCircle, Copy, Tag, Folder, Columns3, Radio, Eye, EyeOff, ChevronDown, ChevronUp, Settings2, Sparkles } from "lucide-react"
-import { createPortal } from "react-dom"
-import { AddTagsDialog, SetTagsDialog, SetCategoryDialog, RemoveTagsDialog } from "./TorrentDialogs"
-import { ShareLimitSubmenu, SpeedLimitsSubmenu } from "./TorrentLimitSubmenus"
-import { QueueSubmenu } from "./QueueSubmenu"
-import { DraggableTableHeader } from "./DraggableTableHeader"
-import type { Torrent, TorrentCounts, Category } from "@/types"
+import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
+import { api } from "@/lib/api"
 import {
   getLinuxIsoName,
   useIncognitoMode
 } from "@/lib/incognito"
 import { formatSpeed } from "@/lib/utils"
-import { applyOptimisticUpdates } from "@/lib/torrent-state-utils"
+import type { Category, Torrent, TorrentCounts } from "@/types"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useSearch } from "@tanstack/react-router"
+import { CheckCircle, ChevronDown, ChevronUp, Columns3, Copy, Eye, EyeOff, Folder, Loader2, Pause, Play, Radio, Settings2, Sparkles, Tag, Trash2 } from "lucide-react"
+import { createPortal } from "react-dom"
+import { toast } from "sonner"
+import { AddTorrentDialog } from "./AddTorrentDialog"
+import { DraggableTableHeader } from "./DraggableTableHeader"
+import { QueueSubmenu } from "./QueueSubmenu"
+import { TorrentActions } from "./TorrentActions"
+import { AddTagsDialog, RemoveTagsDialog, SetCategoryDialog, SetTagsDialog } from "./TorrentDialogs"
+import { ShareLimitSubmenu, SpeedLimitsSubmenu } from "./TorrentLimitSubmenus"
 import { createColumns } from "./TorrentTableColumns"
+
+// Default values for persisted state hooks (module scope for stable references)
+const DEFAULT_COLUMN_VISIBILITY = {
+  downloaded: false,
+  uploaded: false,
+  save_path: false, // Fixed: was 'saveLocation', should match column accessorKey
+  tracker: false,
+  priority: true,
+}
+const DEFAULT_COLUMN_SIZING = {}
+
+// Helper function to get default column order (module scope for stable reference)
+function getDefaultColumnOrder(): string[] {
+  const cols = createColumns(false)
+  return cols.map(col => {
+    if ("id" in col && col.id) return col.id
+    if ("accessorKey" in col && typeof col.accessorKey === "string") return col.accessorKey
+    return null
+  }).filter((v): v is string => typeof v === "string")
+}
+
 
 interface TorrentTableOptimizedProps {
   instanceId: number
@@ -260,6 +260,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     isFetching,
     isCachedData,
     isStaleData,
+    isLoadingMore,
+    hasLoadedAll,
+    loadMore: backendLoadMore,
   } = useTorrentsList(instanceId, {
     search: effectiveSearch,
     filters,
@@ -301,21 +304,24 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const sortedTorrents = torrents
 
   // Custom selection handlers for "select all" functionality
-  const handleSelectAll = useCallback((checked: boolean) => {
-    if (checked) {
-      // Select all mode - clear regular selections and set isAllSelected
-      setIsAllSelected(true)
-      setExcludedFromSelectAll(new Set())
-      setRowSelection({})
-    } else {
-      // Deselect all mode
+  const handleSelectAll = useCallback(() => {
+    // Gmail-style behavior: if any rows are selected, always deselect all
+    const hasAnySelection = isAllSelected || Object.values(rowSelection).some(selected => selected)
+
+    if (hasAnySelection) {
+      // Deselect all mode - regardless of checked state
       setIsAllSelected(false)
       setExcludedFromSelectAll(new Set())
       setRowSelection({})
+    } else {
+      // Select all mode - only when nothing is selected
+      setIsAllSelected(true)
+      setExcludedFromSelectAll(new Set())
+      setRowSelection({})
     }
-  }, [setRowSelection])
+  }, [setRowSelection, isAllSelected, rowSelection])
 
-  const handleRowSelection = useCallback((hash: string, checked: boolean) => {
+  const handleRowSelection = useCallback((hash: string, checked: boolean, rowId?: string) => {
     if (isAllSelected) {
       if (!checked) {
         // When deselecting a row in "select all" mode, add to exclusions
@@ -329,10 +335,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         })
       }
     } else {
-      // Regular selection mode - use table's built-in selection
+      // Regular selection mode - use table's built-in selection with correct row ID
+      const keyToUse = rowId || hash // Use rowId if provided, fallback to hash for backward compatibility
       setRowSelection(prev => ({
         ...prev,
-        [hash]: checked,
+        [keyToUse]: checked,
       }))
     }
   }, [isAllSelected, setRowSelection])
@@ -346,9 +353,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   }, [isAllSelected, rowSelection, sortedTorrents.length])
 
   const isSelectAllIndeterminate = useMemo(() => {
-    if (isAllSelected) return false
+    // Show indeterminate (dash) when SOME but not ALL items are selected
+    if (isAllSelected) return false // All selected = checkmark, not dash
+
     const regularSelectionCount = Object.keys(rowSelection)
       .filter((key: string) => (rowSelection as Record<string, boolean>)[key]).length
+
+    // Indeterminate when some (but not all) are selected
     return regularSelectionCount > 0 && regularSelectionCount < sortedTorrents.length
   }, [isAllSelected, rowSelection, sortedTorrents.length])
 
@@ -374,8 +385,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     data: sortedTorrents,
     columns,
     getCoreRowModel: getCoreRowModel(),
-    // Use torrent hash as stable row ID
-    getRowId: (row: Torrent) => row.hash,
+    // Use torrent hash with index as unique row ID to handle duplicates
+    getRowId: (row: Torrent, index: number) => `${row.hash}-${index}`,
     // State management
     state: {
       sorting,
@@ -410,11 +421,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         .map(t => t.hash)
         .filter(hash => !excludedFromSelectAll.has(hash))
     } else {
-      // Regular selection mode
-      return Object.keys(rowSelection)
-        .filter((key: string) => (rowSelection as Record<string, boolean>)[key])
+      // Regular selection mode - get hashes from selected torrents directly
+      const tableRows = table.getRowModel().rows
+      return tableRows
+        .filter(row => (rowSelection as Record<string, boolean>)[row.id])
+        .map(row => row.original.hash)
     }
-  }, [rowSelection, isAllSelected, excludedFromSelectAll, sortedTorrents])
+  }, [rowSelection, isAllSelected, excludedFromSelectAll, sortedTorrents, table])
 
   // Calculate the effective selection count for display
   const effectiveSelectionCount = useMemo(() => {
@@ -445,25 +458,29 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const { rows } = table.getRowModel()
   const parentRef = useRef<HTMLDivElement>(null)
 
-  // Load more rows as user scrolls (progressive loading)
+  // Load more rows as user scrolls (progressive loading + backend pagination)
   const loadMore = useCallback((): void => {
-    // Prevent concurrent loads
-    if (isLoadingMoreRows) return
+    // First, try to load more from virtual scrolling if we have more local data
+    if (loadedRows < sortedTorrents.length) {
+      // Prevent concurrent loads
+      if (isLoadingMoreRows) {
+        return
+      }
 
-    setIsLoadingMoreRows(true)
+      setIsLoadingMoreRows(true)
 
-    // Use functional update to avoid stale closure
-    setLoadedRows(prev => {
-      const newLoadedRows = Math.min(prev + 100, sortedTorrents.length)
+      setLoadedRows(prev => {
+        const newLoadedRows = Math.min(prev + 100, sortedTorrents.length)
+        return newLoadedRows
+      })
 
-      // Backend returns all data, so no need for pagination
-
-      return newLoadedRows
-    })
-
-    // Reset loading flag after a short delay
-    setTimeout(() => setIsLoadingMoreRows(false), 100)
-  }, [sortedTorrents.length, isLoadingMoreRows])
+      // Reset loading flag after a short delay
+      setTimeout(() => setIsLoadingMoreRows(false), 100)
+    } else if (!hasLoadedAll && !isLoadingMore && backendLoadMore) {
+      // If we've displayed all local data but there's more on backend, load next page
+      backendLoadMore()
+    }
+  }, [sortedTorrents.length, isLoadingMoreRows, loadedRows, hasLoadedAll, isLoadingMore, backendLoadMore])
 
   // Ensure loadedRows never exceeds actual data length
   const safeLoadedRows = Math.min(loadedRows, rows.length)
@@ -480,21 +497,28 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     count: safeLoadedRows,
     getScrollElement: () => parentRef.current,
     estimateSize: () => 40,
-    // Reduce overscan for large datasets to minimize DOM nodes
-    overscan: sortedTorrents.length > 10000 ? 5 : 20,
-    // Provide a key to help with item tracking - use torrent hash for stability
+    // Optimized overscan based on TanStack Virtual recommendations
+    // Start small and adjust based on dataset size and performance
+    overscan: sortedTorrents.length > 50000 ? 3 : sortedTorrents.length > 10000 ? 5 : sortedTorrents.length > 1000 ? 10 : 15,
+    // Provide a key to help with item tracking - use hash with index for uniqueness
     getItemKey: useCallback((index: number) => {
       const row = rows[index]
-      return row?.original?.hash || `loading-${index}`
+      return row?.original?.hash ? `${row.original.hash}-${index}` : `loading-${index}`
     }, [rows]),
-    // Use a debounced onChange to prevent excessive rendering
-    onChange: (instance) => {
+    // Optimized onChange handler following TanStack Virtual best practices
+    onChange: (instance, sync) => {
       const vRows = instance.getVirtualItems();
-
-      // Check if we need to load more first (no need to wait for debounce)
       const lastItem = vRows.at(-1);
-      if (lastItem && lastItem.index >= safeLoadedRows - 50 && safeLoadedRows < rows.length) {
-        loadMore();
+
+      // Only trigger loadMore when scrolling has paused (sync === false) or we're not actively scrolling
+      // This prevents excessive loadMore calls during rapid scrolling
+      const shouldCheckLoadMore = !sync || !instance.isScrolling
+
+      if (shouldCheckLoadMore && lastItem && lastItem.index >= safeLoadedRows - 50) {
+        // Load more if we're near the end of virtual rows OR if we might need more data from backend
+        if (safeLoadedRows < rows.length || (!hasLoadedAll && !isLoadingMore)) {
+          loadMore();
+        }
       }
     },
   })
@@ -669,50 +693,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
           })
         }, refetchDelay)
       } else {
-        // For pause/resume, optimistically update the cache immediately
-        if (variables.action === "pause" || variables.action === "resume") {
-          // Get all cached queries for this instance
-          const cache = queryClient.getQueryCache()
-          const queries = cache.findAll({
-            queryKey: ["torrents-list", instanceId],
-            exact: false,
-          })
-
-          // Optimistically update torrent states in all cached queries
-          queries.forEach((query) => {
-            queryClient.setQueryData(query.queryKey, (oldData: {
-              torrents?: Torrent[]
-              total?: number
-              totalCount?: number
-            }) => {
-              if (!oldData?.torrents) return oldData
-
-              // Check if this query has a status filter in its key
-              // Query key structure: ['torrents-list', instanceId, currentPage, filters, search]
-              const queryKey = query.queryKey as unknown[]
-              const filters = queryKey[3] as { status?: string[] } | undefined // filters is at index 3
-              const statusFilters = filters?.status || []
-
-              // Apply optimistic updates using our utility function
-              const { torrents: updatedTorrents } = applyOptimisticUpdates(
-                oldData.torrents,
-                variables.hashes,
-                variables.action as "pause" | "resume", // Type narrowed by if condition above
-                statusFilters
-              )
-
-              return {
-                ...oldData,
-                torrents: updatedTorrents,
-                total: updatedTorrents.length,
-                totalCount: updatedTorrents.length,
-              }
-            })
-          })
-
-          // Note: torrent-counts are handled server-side now, no need for optimistic updates
-        }
-
         // For other operations, add delay to allow qBittorrent to process
         // Resume operations need more time for state transition
         const refetchDelay = variables.action === "resume" ? 2000 : 1000
@@ -1199,7 +1179,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
                   // Use memoized minTableWidth
                   return (
-                    <ContextMenu key={torrent.hash}>
+                    <ContextMenu key={`${torrent.hash}-${virtualRow.index}`}>
                       <ContextMenuTrigger asChild>
                         <div
                           className={`flex border-b cursor-pointer hover:bg-muted/50 ${row.getIsSelected() ? "bg-muted/50" : ""} ${isSelected ? "bg-accent" : ""}`}
@@ -1498,9 +1478,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
               "No torrents found"
             ) : (
               <>
-                {totalCount} torrent{totalCount !== 1 ? "s" : ""}
-                {safeLoadedRows < rows.length && ` • ${safeLoadedRows} loaded`}
-                {safeLoadedRows < rows.length && " (scroll for more)"}
+                {hasLoadedAll ? (
+                  `${torrents.length} torrent${torrents.length !== 1 ? "s" : ""}`
+                ) : isLoadingMore ? (
+                  "Loading more torrents..."
+                ) : (
+                  `${torrents.length} of ${totalCount} torrents loaded • Scroll to load more`
+                )}
+                {hasLoadedAll && safeLoadedRows < rows.length && " (scroll for more)"}
               </>
             )}
             {effectiveSelectionCount > 0 && (

@@ -21,7 +21,7 @@ interface UseTorrentsListOptions {
   order?: "asc" | "desc"
 }
 
-// Simplified hook that trusts the backend's stale-while-revalidate pattern
+// Hook that manages paginated torrent loading with stale-while-revalidate pattern
 // Backend handles all caching complexity and returns fresh or stale data immediately
 export function useTorrentsList(
   instanceId: number,
@@ -29,7 +29,14 @@ export function useTorrentsList(
 ) {
   const { enabled = true, search, filters, sort = "added_on", order = "desc" } = options
 
+  const [currentPage, setCurrentPage] = useState(0)
   const [allTorrents, setAllTorrents] = useState<Torrent[]>([])
+  const [hasLoadedAll, setHasLoadedAll] = useState(false)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const [lastRequestTime, setLastRequestTime] = useState(0)
+  const [lastKnownTotal, setLastKnownTotal] = useState(0)
+  const [lastProcessedPage, setLastProcessedPage] = useState(-1)
+  const pageSize = 300 // Load 300 at a time (backend default)
 
   // Reset state when instanceId, filters, search, or sort changes
   // Use JSON.stringify to avoid resetting on every object reference change during polling
@@ -37,33 +44,102 @@ export function useTorrentsList(
   const searchKey = search || ""
 
   useEffect(() => {
+    setCurrentPage(0)
     setAllTorrents([])
+    setHasLoadedAll(false)
+    setLastKnownTotal(0)
+    setLastProcessedPage(-1)
   }, [instanceId, filterKey, searchKey, sort, order])
 
-  // Query for torrents - backend returns complete dataset
+  // Query for torrents - backend handles stale-while-revalidate
   const { data, isLoading, isFetching } = useQuery<TorrentResponse>({
-    queryKey: ["torrents-list", instanceId, filters, search, sort, order],
-    queryFn: () => api.getTorrents(instanceId, {
-      page: 0,
-      limit: 0, // Backend ignores this and returns all data
-      sort,
-      order,
-      search,
-      filters,
-    }),
-    staleTime: 0, // Always check with backend
-    gcTime: 300000, // Keep in React Query cache for 5 minutes
-    refetchInterval: 3000, // Poll for updates every 3 seconds
-    refetchIntervalInBackground: false,
+    queryKey: ["torrents-list", instanceId, currentPage, filters, search, sort, order],
+    queryFn: () => {
+      return api.getTorrents(instanceId, {
+        page: currentPage,
+        limit: pageSize,
+        sort,
+        order,
+        search,
+        filters,
+      })
+    },
+    // Trust backend cache - it returns immediately with stale data if needed
+    staleTime: 0, // Always check with backend (it decides if cache is fresh)
+    gcTime: 300000, // Keep in React Query cache for 5 minutes for navigation
+    // Only poll the first page to get fresh data - don't poll pagination pages
+    refetchInterval: currentPage === 0 ? 3000 : false,
+    refetchIntervalInBackground: false, // Don't poll when tab is not active
     enabled,
   })
 
-  // Update torrents when data arrives
+  // Update torrents when data arrives or changes (including optimistic updates)
   useEffect(() => {
     if (data?.torrents) {
-      setAllTorrents(data.torrents)
+      // Check if this is a new page load or data update for current page
+      const isNewPageLoad = currentPage !== lastProcessedPage
+      const isDataUpdate = !isNewPageLoad // Same page, but data changed (optimistic updates)
+
+      // Update last known total whenever we get data
+      if (data.total !== undefined) {
+        setLastKnownTotal(data.total)
+      }
+
+      // For first page or true data updates (optimistic updates from mutations)
+      if (currentPage === 0 || (isDataUpdate && currentPage === 0)) {
+        // First page OR data update (optimistic updates): replace all
+        setAllTorrents(data.torrents)
+        // Use backend's HasMore field for accurate pagination
+        setHasLoadedAll(!data.hasMore)
+
+        // Mark this page as processed
+        if (isNewPageLoad) {
+          setLastProcessedPage(currentPage)
+        }
+      } else if (isNewPageLoad && currentPage > 0) {
+        // Mark this page as processed FIRST to prevent double processing
+        setLastProcessedPage(currentPage)
+
+        // Append to existing for pagination
+        setAllTorrents(prev => {
+          const updatedTorrents = [...prev, ...data.torrents]
+          return updatedTorrents
+        })
+
+        // Use backend's HasMore field for accurate pagination
+        if (!data.hasMore) {
+          setHasLoadedAll(true)
+        }
+      }
+
+      setIsLoadingMore(false)
     }
-  }, [data])
+  }, [data, currentPage, pageSize, lastProcessedPage])
+
+  // Load more function for pagination - following TanStack Query best practices
+  const loadMore = () => {
+    const now = Date.now()
+
+    // TanStack Query pattern: check hasNextPage && !isFetching before calling fetchNextPage
+    // Our equivalent: check !hasLoadedAll && !(isLoadingMore || isFetching)
+    if (hasLoadedAll) {
+      return
+    }
+
+    if (isLoadingMore || isFetching) {
+      return
+    }
+
+    // Enhanced throttling: 500ms for rapid scroll scenarios (up from 300ms)
+    // This helps prevent race conditions during very fast scrolling
+    if (now - lastRequestTime < 500) {
+      return
+    }
+
+    setLastRequestTime(now)
+    setIsLoadingMore(true)
+    setCurrentPage(prev => prev + 1)
+  }
 
   // Extract stats from response or calculate defaults
   const stats = useMemo(() => {
@@ -94,16 +170,22 @@ export function useTorrentsList(
   const isCachedData = data?.cacheMetadata?.source === "cache"
   const isStaleData = data?.cacheMetadata?.isStale === true
 
+  // Use lastKnownTotal when loading more pages to prevent flickering
+  const effectiveTotalCount = currentPage > 0 && !data?.total ? lastKnownTotal : (data?.total ?? 0)
+
   return {
     torrents: allTorrents,
-    totalCount: data?.total ?? 0,
+    totalCount: effectiveTotalCount,
     stats,
     counts: data?.counts,
     categories: data?.categories,
     tags: data?.tags,
     serverState: null, // Server state is fetched separately by Dashboard
-    isLoading,
+    isLoading: isLoading && currentPage === 0,
     isFetching,
+    isLoadingMore,
+    hasLoadedAll,
+    loadMore,
     // Metadata about data freshness
     isFreshData: !isCachedData || !isStaleData,
     isCachedData,
