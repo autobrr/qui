@@ -80,54 +80,59 @@ export function useTorrentsList(
       const isNewPageLoad = currentPage !== lastProcessedPage
       const isDataUpdate = !isNewPageLoad // Same page, but data changed (optimistic updates)
 
-      if (isNewPageLoad) {
-        // Mark this page as processed
-        setLastProcessedPage(currentPage)
-      }
-
       // Update last known total whenever we get data
       if (data.total !== undefined) {
         setLastKnownTotal(data.total)
       }
 
-      if (currentPage === 0 || isDataUpdate) {
+      // For first page or true data updates (optimistic updates from mutations)
+      if (currentPage === 0 || (isDataUpdate && currentPage === 0)) {
         // First page OR data update (optimistic updates): replace all
         setAllTorrents(data.torrents)
         // Use backend's HasMore field for accurate pagination
         setHasLoadedAll(!data.hasMore)
-      } else {
+
+        // Mark this page as processed
+        if (isNewPageLoad) {
+          setLastProcessedPage(currentPage)
+        }
+      } else if (isNewPageLoad && currentPage > 0) {
+        // Mark this page as processed FIRST to prevent double processing
+        setLastProcessedPage(currentPage)
+
         // Append to existing for pagination
         setAllTorrents(prev => {
           const updatedTorrents = [...prev, ...data.torrents]
-
-          // Use backend's HasMore field for accurate pagination
-          if (!data.hasMore) {
-            setHasLoadedAll(true)
-          }
-
           return updatedTorrents
         })
+
+        // Use backend's HasMore field for accurate pagination
+        if (!data.hasMore) {
+          setHasLoadedAll(true)
+        }
       }
 
       setIsLoadingMore(false)
     }
   }, [data, currentPage, pageSize, lastProcessedPage])
 
-  // Load more function for pagination
+  // Load more function for pagination - following TanStack Query best practices
   const loadMore = () => {
     const now = Date.now()
 
-    // Throttle requests to max one per 300ms (industry standard for infinite scroll)
-    if (now - lastRequestTime < 300) {
-      return
-    }
-
-    // Block if we're already loading or have loaded everything
+    // TanStack Query pattern: check hasNextPage && !isFetching before calling fetchNextPage
+    // Our equivalent: check !hasLoadedAll && !(isLoadingMore || isFetching)
     if (hasLoadedAll) {
       return
     }
 
     if (isLoadingMore || isFetching) {
+      return
+    }
+
+    // Enhanced throttling: 500ms for rapid scroll scenarios (up from 300ms)
+    // This helps prevent race conditions during very fast scrolling
+    if (now - lastRequestTime < 500) {
       return
     }
 

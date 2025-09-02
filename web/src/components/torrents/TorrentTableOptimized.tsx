@@ -490,20 +490,24 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     count: safeLoadedRows,
     getScrollElement: () => parentRef.current,
     estimateSize: () => 40,
-    // Reduce overscan for large datasets to minimize DOM nodes
-    overscan: sortedTorrents.length > 10000 ? 5 : 20,
+    // Optimized overscan based on TanStack Virtual recommendations
+    // Start small and adjust based on dataset size and performance
+    overscan: sortedTorrents.length > 50000 ? 3 : sortedTorrents.length > 10000 ? 5 : sortedTorrents.length > 1000 ? 10 : 15,
     // Provide a key to help with item tracking - use hash with index for uniqueness
     getItemKey: useCallback((index: number) => {
       const row = rows[index]
       return row?.original?.hash ? `${row.original.hash}-${index}` : `loading-${index}`
     }, [rows]),
-    // Use a debounced onChange to prevent excessive rendering
-    onChange: (instance) => {
+    // Optimized onChange handler following TanStack Virtual best practices
+    onChange: (instance, sync) => {
       const vRows = instance.getVirtualItems();
-
-      // Check if we need to load more first (no need to wait for debounce)
       const lastItem = vRows.at(-1);
-      if (lastItem && lastItem.index >= safeLoadedRows - 50) {
+
+      // Only trigger loadMore when scrolling has paused (sync === false) or we're not actively scrolling
+      // This prevents excessive loadMore calls during rapid scrolling
+      const shouldCheckLoadMore = !sync || !instance.isScrolling
+
+      if (shouldCheckLoadMore && lastItem && lastItem.index >= safeLoadedRows - 50) {
         // Load more if we're near the end of virtual rows OR if we might need more data from backend
         if (safeLoadedRows < rows.length || (!hasLoadedAll && !isLoadingMore)) {
           loadMore();
