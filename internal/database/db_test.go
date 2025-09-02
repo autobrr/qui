@@ -43,5 +43,5 @@ func TestMigrationIdempotency(t *testing.T) {
 	require.NoError(t, err, "Failed to count migrations")
 
 	assert.Equal(t, count1, count2, "Migration count should be the same after re-initialization")
-	assert.Equal(t, 3, count2, "Should have exactly 3 migrations applied")
+	assert.Equal(t, 4, count2, "Should have exactly 4 migrations applied")
 }

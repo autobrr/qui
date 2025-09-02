@@ -232,6 +232,83 @@ paths:
         '404':
           description: API key not found
 
+  /api/client-api-keys:
+    get:
+      tags:
+        - Client API Keys
+      summary: List client API keys
+      description: Get all client API keys for external applications
+      responses:
+        '200':
+          description: List of client API keys
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ClientApiKey'
+    post:
+      tags:
+        - Client API Keys
+      summary: Create client API key
+      description: Generate a new client API key for external applications
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - clientName
+                - instanceId
+              properties:
+                clientName:
+                  type: string
+                  description: Name of the client application (e.g., "Sonarr")
+                instanceId:
+                  type: integer
+                  description: ID of the qBittorrent instance to proxy to
+      responses:
+        '201':
+          description: Client API key created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  clientName:
+                    type: string
+                  instanceId:
+                    type: integer
+                  key:
+                    type: string
+                    description: The client API key (only shown once)
+                  createdAt:
+                    type: string
+                    format: date-time
+                  message:
+                    type: string
+
+  /api/client-api-keys/{id}:
+    delete:
+      tags:
+        - Client API Keys
+      summary: Delete client API key
+      description: Revoke a client API key
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Client API key deleted successfully
+        '404':
+          description: Client API key not found
+
   /api/instances:
     get:
       tags:
@@ -1024,6 +1101,28 @@ components:
           format: date-time
           nullable: true
 
+    ClientApiKey:
+      type: object
+      properties:
+        id:
+          type: integer
+        clientName:
+          type: string
+          description: Name of the client application
+        instanceId:
+          type: integer
+          description: ID of the qBittorrent instance
+        instanceName:
+          type: string
+          description: Name of the qBittorrent instance
+        createdAt:
+          type: string
+          format: date-time
+        lastUsedAt:
+          type: string
+          format: date-time
+          nullable: true
+
     Instance:
       type: object
       properties:
@@ -1194,6 +1293,8 @@ tags:
     description: User authentication and session management
   - name: API Keys
     description: API key management
+  - name: Client API Keys
+    description: Client API key management for external applications
   - name: Instances
     description: qBittorrent instance management
   - name: Torrents

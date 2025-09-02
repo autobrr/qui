@@ -62,7 +62,7 @@ export function CreateTagDialog({ open, onOpenChange, instanceId }: CreateTagDia
             Enter a name for the new tag
           </AlertDialogDescription>
         </AlertDialogHeader>
-        <div className="py-4">
+        <div className="py-4 space-y-2">
           <Label htmlFor="newTag">Tag Name</Label>
           <Input
             id="newTag"
@@ -186,7 +186,7 @@ export function CreateCategoryDialog({ open, onOpenChange, instanceId }: CreateC
           </AlertDialogDescription>
         </AlertDialogHeader>
         <div className="py-4 space-y-4">
-          <div>
+          <div className="space-y-2">
             <Label htmlFor="categoryName">Category Name</Label>
             <Input
               id="categoryName"
@@ -195,7 +195,7 @@ export function CreateCategoryDialog({ open, onOpenChange, instanceId }: CreateC
               placeholder="Enter category name"
             />
           </div>
-          <div>
+          <div className="space-y-2">
             <Label htmlFor="savePath">Save Path (optional)</Label>
             <Input
               id="savePath"
@@ -262,7 +262,7 @@ export function EditCategoryDialog({ open, onOpenChange, instanceId, category }:
             Update the save path for this category
           </AlertDialogDescription>
         </AlertDialogHeader>
-        <div className="py-4">
+        <div className="py-4 space-y-2">
           <Label htmlFor="editSavePath">Save Path</Label>
           <Input
             id="editSavePath"
