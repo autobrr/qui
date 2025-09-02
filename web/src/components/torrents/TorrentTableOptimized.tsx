@@ -3,68 +3,36 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import React, { memo, useState, useMemo, useRef, useCallback, useEffect } from "react"
-import {
-  useReactTable,
-  getCoreRowModel,
-  flexRender
-} from "@tanstack/react-table"
-import { useVirtualizer } from "@tanstack/react-virtual"
+import { useDebounce } from "@/hooks/useDebounce"
+import { usePersistedColumnOrder } from "@/hooks/usePersistedColumnOrder"
+import { usePersistedColumnSizing } from "@/hooks/usePersistedColumnSizing"
+import { usePersistedColumnSorting } from "@/hooks/usePersistedColumnSorting"
+import { usePersistedColumnVisibility } from "@/hooks/usePersistedColumnVisibility"
+import { usePersistedDeleteFiles } from "@/hooks/usePersistedDeleteFiles"
+import { useTorrentsList } from "@/hooks/useTorrentsList"
 import {
   DndContext,
-  closestCenter,
   MouseSensor,
   TouchSensor,
+  closestCenter,
   useSensor,
   useSensors,
   type DragEndEvent
 } from "@dnd-kit/core"
+import { restrictToHorizontalAxis } from "@dnd-kit/modifiers"
 import {
   SortableContext,
-  horizontalListSortingStrategy,
-  arrayMove
+  arrayMove,
+  horizontalListSortingStrategy
 } from "@dnd-kit/sortable"
-import { restrictToHorizontalAxis } from "@dnd-kit/modifiers"
-import { useTorrentsList } from "@/hooks/useTorrentsList"
-import { useDebounce } from "@/hooks/useDebounce"
-import { usePersistedColumnVisibility } from "@/hooks/usePersistedColumnVisibility"
-import { usePersistedColumnOrder } from "@/hooks/usePersistedColumnOrder"
-import { usePersistedColumnSizing } from "@/hooks/usePersistedColumnSizing"
-import { usePersistedColumnSorting } from "@/hooks/usePersistedColumnSorting"
-import { usePersistedDeleteFiles } from "@/hooks/usePersistedDeleteFiles"
-
-// Default values for persisted state hooks (module scope for stable references)
-const DEFAULT_COLUMN_VISIBILITY = {
-  downloaded: false,
-  uploaded: false,
-  save_path: false, // Fixed: was 'saveLocation', should match column accessorKey
-  tracker: false,
-  priority: true,
-}
-const DEFAULT_COLUMN_SIZING = {}
-
-// Helper function to get default column order (module scope for stable reference)
-function getDefaultColumnOrder(): string[] {
-  const cols = createColumns(false)
-  return cols.map(col => {
-    if ("id" in col && col.id) return col.id
-    if ("accessorKey" in col && typeof col.accessorKey === "string") return col.accessorKey
-    return null
-  }).filter((v): v is string => typeof v === "string")
-}
-
-import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { api } from "@/lib/api"
-import { toast } from "sonner"
-import { Button } from "@/components/ui/button"
 import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuTrigger
-} from "@/components/ui/context-menu"
+  flexRender,
+  getCoreRowModel,
+  useReactTable
+} from "@tanstack/react-table"
+import { useVirtualizer } from "@tanstack/react-virtual"
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
+
 import {
   AlertDialog,
   AlertDialogAction,
@@ -75,6 +43,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from "@/components/ui/alert-dialog"
+import { Button } from "@/components/ui/button"
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger
+} from "@/components/ui/context-menu"
 import {
   Dialog,
   DialogContent,
@@ -96,22 +72,47 @@ import {
   TooltipContent,
   TooltipTrigger
 } from "@/components/ui/tooltip"
-import { AddTorrentDialog } from "./AddTorrentDialog"
-import { TorrentActions } from "./TorrentActions"
-import { Loader2, Play, Pause, Trash2, CheckCircle, Copy, Tag, Folder, Columns3, Radio, Eye, EyeOff, ChevronDown, ChevronUp, Settings2, Sparkles } from "lucide-react"
-import { createPortal } from "react-dom"
-import { AddTagsDialog, SetTagsDialog, SetCategoryDialog, RemoveTagsDialog } from "./TorrentDialogs"
-import { ShareLimitSubmenu, SpeedLimitsSubmenu } from "./TorrentLimitSubmenus"
-import { QueueSubmenu } from "./QueueSubmenu"
-import { DraggableTableHeader } from "./DraggableTableHeader"
-import type { Torrent, TorrentCounts, Category } from "@/types"
+import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
+import { api } from "@/lib/api"
 import {
   getLinuxIsoName,
   useIncognitoMode
 } from "@/lib/incognito"
 import { formatSpeed } from "@/lib/utils"
+import type { Category, Torrent, TorrentCounts } from "@/types"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useSearch } from "@tanstack/react-router"
+import { CheckCircle, ChevronDown, ChevronUp, Columns3, Copy, Eye, EyeOff, Folder, Loader2, Pause, Play, Radio, Settings2, Sparkles, Tag, Trash2 } from "lucide-react"
+import { createPortal } from "react-dom"
+import { toast } from "sonner"
+import { AddTorrentDialog } from "./AddTorrentDialog"
+import { DraggableTableHeader } from "./DraggableTableHeader"
+import { QueueSubmenu } from "./QueueSubmenu"
+import { TorrentActions } from "./TorrentActions"
+import { AddTagsDialog, RemoveTagsDialog, SetCategoryDialog, SetTagsDialog } from "./TorrentDialogs"
+import { ShareLimitSubmenu, SpeedLimitsSubmenu } from "./TorrentLimitSubmenus"
 import { createColumns } from "./TorrentTableColumns"
+
+// Default values for persisted state hooks (module scope for stable references)
+const DEFAULT_COLUMN_VISIBILITY = {
+  downloaded: false,
+  uploaded: false,
+  save_path: false, // Fixed: was 'saveLocation', should match column accessorKey
+  tracker: false,
+  priority: true,
+}
+const DEFAULT_COLUMN_SIZING = {}
+
+// Helper function to get default column order (module scope for stable reference)
+function getDefaultColumnOrder(): string[] {
+  const cols = createColumns(false)
+  return cols.map(col => {
+    if ("id" in col && col.id) return col.id
+    if ("accessorKey" in col && typeof col.accessorKey === "string") return col.accessorKey
+    return null
+  }).filter((v): v is string => typeof v === "string")
+}
+
 
 interface TorrentTableOptimizedProps {
   instanceId: number
@@ -303,19 +304,22 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const sortedTorrents = torrents
 
   // Custom selection handlers for "select all" functionality
-  const handleSelectAll = useCallback((checked: boolean) => {
-    if (checked) {
-      // Select all mode - clear regular selections and set isAllSelected
-      setIsAllSelected(true)
-      setExcludedFromSelectAll(new Set())
-      setRowSelection({})
-    } else {
-      // Deselect all mode
+  const handleSelectAll = useCallback(() => {
+    // Gmail-style behavior: if any rows are selected, always deselect all
+    const hasAnySelection = isAllSelected || Object.values(rowSelection).some(selected => selected)
+
+    if (hasAnySelection) {
+      // Deselect all mode - regardless of checked state
       setIsAllSelected(false)
       setExcludedFromSelectAll(new Set())
       setRowSelection({})
+    } else {
+      // Select all mode - only when nothing is selected
+      setIsAllSelected(true)
+      setExcludedFromSelectAll(new Set())
+      setRowSelection({})
     }
-  }, [setRowSelection])
+  }, [setRowSelection, isAllSelected, rowSelection])
 
   const handleRowSelection = useCallback((hash: string, checked: boolean, rowId?: string) => {
     if (isAllSelected) {
@@ -349,9 +353,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   }, [isAllSelected, rowSelection, sortedTorrents.length])
 
   const isSelectAllIndeterminate = useMemo(() => {
-    if (isAllSelected) return false
+    // Show indeterminate (dash) when SOME but not ALL items are selected
+    if (isAllSelected) return false // All selected = checkmark, not dash
+
     const regularSelectionCount = Object.keys(rowSelection)
       .filter((key: string) => (rowSelection as Record<string, boolean>)[key]).length
+
+    // Indeterminate when some (but not all) are selected
     return regularSelectionCount > 0 && regularSelectionCount < sortedTorrents.length
   }, [isAllSelected, rowSelection, sortedTorrents.length])
 
