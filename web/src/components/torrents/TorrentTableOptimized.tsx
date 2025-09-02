@@ -110,7 +110,6 @@ import {
   useIncognitoMode
 } from "@/lib/incognito"
 import { formatSpeed } from "@/lib/utils"
-import { applyOptimisticUpdates } from "@/lib/torrent-state-utils"
 import { useSearch } from "@tanstack/react-router"
 import { createColumns } from "./TorrentTableColumns"
 
@@ -686,51 +685,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
           })
         }, refetchDelay)
       } else {
-        // For pause/resume, optimistically update the cache immediately
-        if (variables.action === "pause" || variables.action === "resume") {
-          // Get all cached queries for this instance
-          const cache = queryClient.getQueryCache()
-          const queries = cache.findAll({
-            queryKey: ["torrents-list", instanceId],
-            exact: false,
-          })
-
-          // Optimistically update torrent states in all cached queries
-          queries.forEach((query) => {
-            queryClient.setQueryData(query.queryKey, (oldData: {
-              torrents?: Torrent[]
-              total?: number
-              totalCount?: number
-            }) => {
-              if (!oldData?.torrents) return oldData
-
-              // Check if this query has a status filter in its key
-              // Query key structure: ['torrents-list', instanceId, currentPage, filters, search, sort, order]
-              const queryKey = query.queryKey as unknown[]
-              const filtersObj = queryKey[3] as { status?: string[] } | undefined // filters is at index 3
-              const statusFilters = filtersObj?.status || []
-
-              // Apply optimistic updates using our utility function
-              const { torrents: updatedTorrents } = applyOptimisticUpdates(
-                oldData.torrents,
-                variables.hashes,
-                variables.action as "pause" | "resume", // Type narrowed by if condition above
-                statusFilters
-              )
-
-              return {
-                ...oldData,
-                torrents: updatedTorrents,
-                // Keep original total/totalCount - don't change pagination counts
-                total: oldData.total,
-                totalCount: oldData.totalCount,
-              }
-            })
-          })
-
-          // Note: torrent-counts are handled server-side now, no need for optimistic updates
-        }
-
         // For other operations, add delay to allow qBittorrent to process
         // Resume operations need more time for state transition
         const refetchDelay = variables.action === "resume" ? 2000 : 1000

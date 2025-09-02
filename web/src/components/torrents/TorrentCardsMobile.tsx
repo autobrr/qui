@@ -50,7 +50,7 @@ import { SetCategoryDialog, SetTagsDialog } from "./TorrentDialogs"
 import type { Torrent } from "@/types"
 import { getLinuxCategory, getLinuxIsoName, getLinuxRatio, getLinuxTags, useIncognitoMode } from "@/lib/incognito"
 import { cn, formatBytes, formatSpeed } from "@/lib/utils"
-import { applyOptimisticUpdates, getStateLabel } from "@/lib/torrent-state-utils"
+import { getStateLabel } from "@/lib/torrent-state-utils"
 import { getCommonCategory, getCommonTags } from "@/lib/torrent-utils"
 import { toast } from "sonner"
 import { useInstances } from "@/hooks/useInstances"
@@ -545,39 +545,6 @@ export function TorrentCardsMobile({
           })
         }, refetchDelay)
       } else {
-        // Handle pause/resume optimistically
-        if (variables.action === "pause" || variables.action === "resume") {
-          const cache = queryClient.getQueryCache()
-          const queries = cache.findAll({
-            queryKey: ["torrents-list", instanceId],
-            exact: false,
-          })
-
-          queries.forEach(query => {
-            queryClient.setQueryData(query.queryKey, (oldData: {
-              torrents?: Torrent[]
-              total?: number
-              totalCount?: number
-            }) => {
-              if (!oldData?.torrents) return oldData
-
-              const { torrents: updatedTorrents } = applyOptimisticUpdates(
-                oldData.torrents,
-                variables.hashes,
-                variables.action as "pause" | "resume",
-                filters?.status || []
-              )
-
-              return {
-                ...oldData,
-                torrents: updatedTorrents,
-                total: updatedTorrents.length,
-                totalCount: updatedTorrents.length,
-              }
-            })
-          })
-        }
-
         // For other operations, add delay to allow qBittorrent to process
         // Resume operations need more time for state transition
         const refetchDelay = variables.action === "resume" ? 2000 : 1000
