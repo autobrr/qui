@@ -21,10 +21,6 @@ export interface Instance {
   host: string
   username: string
   basicUsername?: string
-  isActive: boolean
-  lastConnectedAt?: string
-  createdAt: string
-  updatedAt: string
 }
 
 export interface InstanceFormData {

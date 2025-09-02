@@ -3,13 +3,10 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState } from "react"
-import type { InstanceResponse } from "@/types"
-import { toast } from "sonner"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { InstanceErrorDisplay } from "@/components/instances/InstanceErrorDisplay"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,19 +14,22 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
-import {
-  MoreVertical,
-  Edit,
-  Trash2,
-  RefreshCw,
-  CheckCircle,
-  XCircle,
-  Eye,
-  EyeOff
-} from "lucide-react"
 import { useInstances } from "@/hooks/useInstances"
-import { cn, formatErrorMessage } from "@/lib/utils"
 import { useIncognitoMode } from "@/lib/incognito"
+import { cn, formatErrorMessage } from "@/lib/utils"
+import type { InstanceResponse } from "@/types"
+import {
+  CheckCircle,
+  Edit,
+  Eye,
+  EyeOff,
+  MoreVertical,
+  RefreshCw,
+  Trash2,
+  XCircle
+} from "lucide-react"
+import { useState } from "react"
+import { toast } from "sonner"
 
 interface InstanceCardProps {
   instance: InstanceResponse
@@ -161,12 +161,6 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
             <div className="flex justify-between">
               <span className="text-muted-foreground">Basic Auth:</span>
               <span>{instance.basicUsername}</span>
-            </div>
-          )}
-          {instance.lastConnectedAt && (
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Last connected:</span>
-              <span>{new Date(instance.lastConnectedAt).toLocaleString()}</span>
             </div>
           )}
         </div>
