@@ -6,9 +6,12 @@ package qbittorrent
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"reflect"
 	"maps"
 	"sync"
 	"time"
+	"unsafe"
 
 	"github.com/Masterminds/semver/v3"
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -213,6 +216,40 @@ func (c *Client) GetWebAPIVersion() string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.webAPIVersion
+}
+
+
+// GetHTTPClient allows you to receive the implemented *http.Client with cookie jar
+// This method uses reflection to access the private http field from the embedded qbt.Client
+//
+// TODO: Remove this method and update proxy handler when go-qbittorrent merges GetHTTPClient method
+// When https://github.com/autobrr/go-qbittorrent is updated with GetHTTPClient method:
+// 1. Remove this entire GetHTTPClient method from qui's Client wrapper
+// 2. Update proxy handler to call client.Client.GetHTTPClient() directly instead of client.GetHTTPClient()
+// 3. Remove "reflect" and "unsafe" imports from this file
+// 4. Update go.mod to use the new version of go-qbittorrent
+func (c *Client) GetHTTPClient() *http.Client {
+	// Use reflection to access the private 'http' field from the embedded qbt.Client
+	clientValue := reflect.ValueOf(c.Client).Elem()
+	httpField := clientValue.FieldByName("http")
+
+	if !httpField.IsValid() {
+		log.Error().Msg("Failed to access http field from qBittorrent client")
+		return nil
+	}
+
+	// The field is unexported, so we need to make it accessible
+	if !httpField.CanInterface() {
+		// Make the field accessible using reflection
+		httpField = reflect.NewAt(httpField.Type(), unsafe.Pointer(httpField.UnsafeAddr())).Elem()
+	}
+
+	if httpClient, ok := httpField.Interface().(*http.Client); ok {
+		return httpClient
+	}
+
+	log.Error().Msg("Failed to convert http field to *http.Client")
+	return nil
 }
 
 func (c *Client) GetSyncManager() *qbt.SyncManager {

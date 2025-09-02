@@ -18,6 +18,7 @@ import (
 	"github.com/autobrr/qui/internal/config"
 	"github.com/autobrr/qui/internal/metrics"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/proxy"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services"
 	"github.com/autobrr/qui/internal/web"
@@ -30,6 +31,7 @@ type Dependencies struct {
 	DB                  *sql.DB
 	AuthService         *auth.Service
 	InstanceStore       *models.InstanceStore
+	ClientAPIKeyStore   *models.ClientAPIKeyStore
 	ClientPool          *qbittorrent.ClientPool
 	SyncManager         *qbittorrent.SyncManager
 	WebHandler          *web.Handler
@@ -60,6 +62,10 @@ func NewRouter(deps *Dependencies) *chi.Mux {
 	instancesHandler := handlers.NewInstancesHandler(deps.InstanceStore, deps.ClientPool, deps.SyncManager)
 	torrentsHandler := handlers.NewTorrentsHandler(deps.SyncManager)
 	preferencesHandler := handlers.NewPreferencesHandler(deps.SyncManager)
+	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(deps.ClientAPIKeyStore, deps.InstanceStore)
+
+	// Create proxy handler
+	proxyHandler := proxy.NewHandler(deps.ClientPool, deps.ClientAPIKeyStore, deps.InstanceStore)
 
 	// Theme license handler (optional, only if service is configured)
 	var themeLicenseHandler *handlers.ThemeLicenseHandler
@@ -96,6 +102,13 @@ func NewRouter(deps *Dependencies) *chi.Mux {
 				r.Get("/", authHandler.ListAPIKeys)
 				r.Post("/", authHandler.CreateAPIKey)
 				r.Delete("/{id}", authHandler.DeleteAPIKey)
+			})
+
+			// Client API key management
+			r.Route("/client-api-keys", func(r chi.Router) {
+				r.Get("/", clientAPIKeysHandler.ListClientAPIKeys)
+				r.Post("/", clientAPIKeysHandler.CreateClientAPIKey)
+				r.Delete("/{id}", clientAPIKeysHandler.DeleteClientAPIKey)
 			})
 
 			// Instance management
@@ -154,6 +167,9 @@ func NewRouter(deps *Dependencies) *chi.Mux {
 			}
 		})
 	})
+
+	// Proxy routes (outside of /api and not requiring authentication)
+	proxyHandler.Routes(r)
 
 	swaggerHandler, err := swagger.NewHandler(deps.Config.Config.BaseURL)
 	if err != nil {
