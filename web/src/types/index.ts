@@ -32,10 +32,18 @@ export interface InstanceFormData {
   basicPassword?: string
 }
 
+export interface InstanceError {
+  id: number
+  instanceId: number
+  errorType: string
+  errorMessage: string
+  occurredAt: string
+}
+
 export interface InstanceResponse extends Instance {
   connected: boolean
-  connectionError?: string
   hasDecryptionError: boolean
+  recentErrors?: InstanceError[]
 }
 
 export interface Torrent {

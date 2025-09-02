@@ -3,28 +3,13 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useInstances } from "@/hooks/useInstances"
-import { useInstanceStats } from "@/hooks/useInstanceStats"
-import { usePersistedAccordionState } from "@/hooks/usePersistedAccordionState"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Badge } from "@/components/ui/badge"
-import { Progress } from "@/components/ui/progress"
-import { Button } from "@/components/ui/button"
-import { PasswordIssuesBanner } from "@/components/instances/PasswordIssuesBanner"
 import { InstanceErrorDisplay } from "@/components/instances/InstanceErrorDisplay"
 import { InstanceSettingsButton } from "@/components/instances/InstanceSettingsButton"
+import { PasswordIssuesBanner } from "@/components/instances/PasswordIssuesBanner"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { HardDrive, Download, Upload, Activity, Plus, Minus, Zap, ChevronDown, ChevronUp, Eye, EyeOff, ExternalLink, Rabbit, Turtle } from "lucide-react"
-import { Link } from "@tanstack/react-router"
-import { useMemo } from "react"
-import { formatSpeed, formatBytes, getRatioColor } from "@/lib/utils"
-import { useQuery, useQueries } from "@tanstack/react-query"
-import { api } from "@/lib/api"
-import type { ServerState, InstanceResponse, TorrentCounts } from "@/types"
-
-type InstanceStats = Awaited<ReturnType<typeof api.getInstanceStats>>
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,8 +18,23 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
-import { useIncognitoMode } from "@/lib/incognito"
+import { Progress } from "@/components/ui/progress"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useAlternativeSpeedLimits } from "@/hooks/useAlternativeSpeedLimits"
+import { useInstances } from "@/hooks/useInstances"
+import { useInstanceStats } from "@/hooks/useInstanceStats"
+import { usePersistedAccordionState } from "@/hooks/usePersistedAccordionState"
+import { api } from "@/lib/api"
+import { useIncognitoMode } from "@/lib/incognito"
+import { formatBytes, formatSpeed, getRatioColor } from "@/lib/utils"
+import type { InstanceResponse, ServerState, TorrentCounts } from "@/types"
+import { useQueries, useQuery } from "@tanstack/react-query"
+import { Link } from "@tanstack/react-router"
+import { Activity, ChevronDown, ChevronUp, Download, ExternalLink, Eye, EyeOff, HardDrive, Minus, Plus, Rabbit, Turtle, Upload, Zap } from "lucide-react"
+import { useMemo } from "react"
+
+type InstanceStats = Awaited<ReturnType<typeof api.getInstanceStats>>
 
 
 // Custom hook to get all instance stats using dynamic queries
@@ -174,7 +174,7 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
 
   // If we have stats but instance is not connected, show with zero values
   if (stats && !instance.connected) {
-    const hasErrors = instance.hasDecryptionError || instance.connectionError
+    const hasErrors = instance.hasDecryptionError || (instance.recentErrors && instance.recentErrors.length > 0)
     return (
       <>
         <Card className="hover:shadow-lg transition-shadow">
@@ -212,7 +212,6 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
           </CardHeader>
           <CardContent>
             <div className="text-sm text-muted-foreground text-center">
-              <p>Instance is disconnected</p>
               <InstanceErrorDisplay instance={instance} compact />
             </div>
           </CardContent>
@@ -223,7 +222,7 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
 
   // If we have an error or no stats data, show error state
   if (error || !stats || !stats.torrents) {
-    const hasErrors = instance.hasDecryptionError || instance.connectionError
+    const hasErrors = instance.hasDecryptionError || (instance.recentErrors && instance.recentErrors.length > 0)
     return (
       <>
         <Card className="hover:shadow-lg transition-shadow opacity-60">
@@ -270,7 +269,7 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
     )
   }
 
-  const hasErrors = instance.hasDecryptionError || instance.connectionError
+  const hasErrors = instance.hasDecryptionError || (instance.recentErrors && instance.recentErrors.length > 0)
   return (
     <>
       <Card className="hover:shadow-lg transition-shadow">

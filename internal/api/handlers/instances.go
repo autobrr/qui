@@ -103,6 +103,17 @@ func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *
 		HasDecryptionError: hasDecryptionError,
 	}
 
+	// Fetch recent errors for disconnected instances
+	if !healthy {
+		errorStore := h.clientPool.GetErrorStore()
+		recentErrors, err := errorStore.GetRecentErrors(ctx, instance.ID, 5)
+		if err != nil {
+			log.Error().Err(err).Int("instanceID", instance.ID).Msg("Failed to get recent errors")
+		} else {
+			response.RecentErrors = recentErrors
+		}
+	}
+
 	return response
 }
 
@@ -115,7 +126,6 @@ func (h *InstancesHandler) buildQuickInstanceResponse(instance *models.Instance)
 		Username:           instance.Username,
 		BasicUsername:      instance.BasicUsername,
 		Connected:          false, // Will be updated asynchronously
-		ConnectionError:    "",
 		HasDecryptionError: false,
 	}
 }
@@ -163,14 +173,14 @@ type UpdateInstanceRequest struct {
 
 // InstanceResponse represents an instance in API responses
 type InstanceResponse struct {
-	ID                 int     `json:"id"`
-	Name               string  `json:"name"`
-	Host               string  `json:"host"`
-	Username           string  `json:"username"`
-	BasicUsername      *string `json:"basicUsername,omitempty"`
-	Connected          bool    `json:"connected"`
-	ConnectionError    string  `json:"connectionError,omitempty"`
-	HasDecryptionError bool    `json:"hasDecryptionError"`
+	ID                 int                    `json:"id"`
+	Name               string                 `json:"name"`
+	Host               string                 `json:"host"`
+	Username           string                 `json:"username"`
+	BasicUsername      *string                `json:"basicUsername,omitempty"`
+	Connected          bool                   `json:"connected"`
+	HasDecryptionError bool                   `json:"hasDecryptionError"`
+	RecentErrors       []models.InstanceError `json:"recentErrors,omitempty"`
 }
 
 // TestConnectionResponse represents connection test results

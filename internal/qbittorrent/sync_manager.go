@@ -16,6 +16,8 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/lithammer/fuzzysearch/fuzzy"
 	"github.com/rs/zerolog/log"
+
+	"github.com/autobrr/qui/internal/models"
 )
 
 // CacheMetadata provides information about cache state
@@ -69,6 +71,11 @@ func NewSyncManager(clientPool *ClientPool) *SyncManager {
 	return &SyncManager{
 		clientPool: clientPool,
 	}
+}
+
+// GetErrorStore returns the error store for recording errors
+func (sm *SyncManager) GetErrorStore() *models.InstanceErrorStore {
+	return sm.clientPool.GetErrorStore()
 }
 
 // GetTorrentsWithFilters gets torrents with filters, search, sorting, and pagination
@@ -1461,16 +1468,16 @@ func (sm *SyncManager) applyManualFilters(torrents []qbt.Torrent, filters Filter
 
 // Torrent state categories for fast lookup
 var torrentStateCategories = map[string][]qbt.TorrentState{
-	"downloading":          {qbt.TorrentStateDownloading, qbt.TorrentStateStalledDl, qbt.TorrentStateMetaDl, qbt.TorrentStateQueuedDl, qbt.TorrentStateAllocating, qbt.TorrentStateCheckingDl, qbt.TorrentStateForcedDl},
-	"seeding":              {qbt.TorrentStateUploading, qbt.TorrentStateStalledUp, qbt.TorrentStateQueuedUp, qbt.TorrentStateCheckingUp, qbt.TorrentStateForcedUp},
-	"paused":               {qbt.TorrentStatePausedDl, qbt.TorrentStatePausedUp, qbt.TorrentStateStoppedDl, qbt.TorrentStateStoppedUp},
-	"active":               {qbt.TorrentStateDownloading, qbt.TorrentStateUploading, qbt.TorrentStateForcedDl, qbt.TorrentStateForcedUp},
-	"stalled":              {qbt.TorrentStateStalledDl, qbt.TorrentStateStalledUp},
-	"checking":             {qbt.TorrentStateCheckingDl, qbt.TorrentStateCheckingUp, qbt.TorrentStateCheckingResumeData},
-	"errored":              {qbt.TorrentStateError, qbt.TorrentStateMissingFiles},
-	"moving":               {qbt.TorrentStateMoving},
-	"stalled_uploading":    {qbt.TorrentStateStalledUp},
-	"stalled_downloading":  {qbt.TorrentStateStalledDl},
+	"downloading":         {qbt.TorrentStateDownloading, qbt.TorrentStateStalledDl, qbt.TorrentStateMetaDl, qbt.TorrentStateQueuedDl, qbt.TorrentStateAllocating, qbt.TorrentStateCheckingDl, qbt.TorrentStateForcedDl},
+	"seeding":             {qbt.TorrentStateUploading, qbt.TorrentStateStalledUp, qbt.TorrentStateQueuedUp, qbt.TorrentStateCheckingUp, qbt.TorrentStateForcedUp},
+	"paused":              {qbt.TorrentStatePausedDl, qbt.TorrentStatePausedUp, qbt.TorrentStateStoppedDl, qbt.TorrentStateStoppedUp},
+	"active":              {qbt.TorrentStateDownloading, qbt.TorrentStateUploading, qbt.TorrentStateForcedDl, qbt.TorrentStateForcedUp},
+	"stalled":             {qbt.TorrentStateStalledDl, qbt.TorrentStateStalledUp},
+	"checking":            {qbt.TorrentStateCheckingDl, qbt.TorrentStateCheckingUp, qbt.TorrentStateCheckingResumeData},
+	"errored":             {qbt.TorrentStateError, qbt.TorrentStateMissingFiles},
+	"moving":              {qbt.TorrentStateMoving},
+	"stalled_uploading":   {qbt.TorrentStateStalledUp},
+	"stalled_downloading": {qbt.TorrentStateStalledDl},
 }
 
 // Action state categories for optimistic update clearing

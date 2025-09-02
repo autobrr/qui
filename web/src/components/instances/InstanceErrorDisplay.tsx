@@ -3,16 +3,16 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger
 } from "@/components/ui/collapsible"
-import { XCircle, Edit, AlertCircle, ChevronDown } from "lucide-react"
-import type { InstanceResponse } from "@/types"
 import { formatErrorMessage } from "@/lib/utils"
+import type { InstanceResponse } from "@/types"
+import { AlertCircle, ChevronDown, Edit, XCircle } from "lucide-react"
+import { useState } from "react"
 
 interface InstanceErrorDisplayProps {
   instance: InstanceResponse
@@ -23,14 +23,7 @@ interface InstanceErrorDisplayProps {
 
 export function InstanceErrorDisplay({ instance, onEdit, showEditButton = false, compact = false }: InstanceErrorDisplayProps) {
   const [isDecryptionOpen, setIsDecryptionOpen] = useState(false)
-  const [isConnectionOpen, setIsConnectionOpen] = useState(false)
-
-  // Helper to check if connection error is decryption-related
-  const isDecryptionError = (error: string) => {
-    const errorLower = error.toLowerCase()
-    return errorLower.includes("decrypt") &&
-           (errorLower.includes("password") || errorLower.includes("cipher"))
-  }
+  const [isRecentErrorsOpen, setIsRecentErrorsOpen] = useState(false)
 
   // Compact mode shows expandable error cards
   if (compact) {
@@ -67,20 +60,39 @@ export function InstanceErrorDisplay({ instance, onEdit, showEditButton = false,
           </Collapsible>
         )}
 
-        {instance.connectionError && !(instance.hasDecryptionError && isDecryptionError(instance.connectionError)) && (
-          <Collapsible open={isConnectionOpen} onOpenChange={setIsConnectionOpen} className="mt-2">
+        {!instance.connected && instance.recentErrors && instance.recentErrors.length > 0 && (
+          <Collapsible open={isRecentErrorsOpen} onOpenChange={setIsRecentErrorsOpen} className="mt-2">
             <div className="rounded-lg border border-destructive/20 bg-destructive/10">
               <CollapsibleTrigger className="flex w-full items-center justify-between p-3 text-left hover:bg-destructive/20 transition-colors">
                 <div className="flex items-center gap-2">
                   <AlertCircle className="h-4 w-4 text-destructive flex-shrink-0" />
-                  <span className="text-sm font-medium text-destructive">Connection Error</span>
+                  <span className="text-sm font-medium text-destructive">
+                    Recent Errors ({instance.recentErrors.length})
+                  </span>
                 </div>
-                <ChevronDown className={`h-4 w-4 text-destructive transition-transform duration-200 ${isConnectionOpen ? "rotate-180" : ""}`} />
+                <ChevronDown className={`h-4 w-4 text-destructive transition-transform duration-200 ${isRecentErrorsOpen ? "rotate-180" : ""}`} />
               </CollapsibleTrigger>
 
               <CollapsibleContent className="px-3 pb-3">
-                <div className="text-sm text-destructive/90 mt-2 font-mono leading-relaxed">
-                  {formatErrorMessage(instance.connectionError)}
+                <div className="space-y-2 mt-2">
+                  {instance.recentErrors.map((error, index) => (
+                    <div key={error.id} className="text-xs">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-mono text-destructive/90 capitalize">
+                          {error.errorType}
+                        </span>
+                        <span className="text-destructive/70">
+                          {new Date(error.occurredAt).toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="font-mono text-destructive/80 leading-relaxed">
+                        {formatErrorMessage(error.errorMessage)}
+                      </div>
+                      {index < instance.recentErrors.length - 1 && (
+                        <div className="border-t border-destructive/20 mt-2" />
+                      )}
+                    </div>
+                  ))}
                 </div>
               </CollapsibleContent>
             </div>
@@ -117,14 +129,33 @@ export function InstanceErrorDisplay({ instance, onEdit, showEditButton = false,
         </div>
       )}
 
-      {instance.connectionError && !(instance.hasDecryptionError && isDecryptionError(instance.connectionError)) && (
+      {!instance.connected && instance.recentErrors && instance.recentErrors.length > 0 && (
         <div className="mt-4 p-3 rounded-lg bg-destructive/10 border border-destructive/20">
-          <div className="flex items-start gap-2 text-sm text-destructive">
-            <XCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+          <div className="flex items-start gap-2 text-sm">
+            <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0 text-destructive" />
             <div className="flex-1">
-              <div className="font-medium mb-1">Connection Error</div>
-              <div className="text-destructive/90">
-                {formatErrorMessage(instance.connectionError)}
+              <div className="font-medium mb-2 text-destructive">
+                Recent Errors ({instance.recentErrors.length})
+              </div>
+              <div className="space-y-3">
+                {instance.recentErrors.map((error, index) => (
+                  <div key={error.id} className="text-xs">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-mono text-destructive/90 capitalize font-semibold">
+                        {error.errorType}
+                      </span>
+                      <span className="text-destructive/70">
+                        {new Date(error.occurredAt).toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="font-mono text-destructive/80 leading-relaxed">
+                      {formatErrorMessage(error.errorMessage)}
+                    </div>
+                    {index < instance.recentErrors.length - 1 && (
+                      <div className="border-t border-destructive/20 mt-2" />
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
           </div>
