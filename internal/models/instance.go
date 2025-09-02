@@ -315,46 +315,6 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 	return s.Get(ctx, id)
 }
 
-func (s *InstanceStore) UpdateActive(ctx context.Context, id int, isActive bool) error {
-	query := `UPDATE instances SET is_active = ? WHERE id = ?`
-
-	result, err := s.db.ExecContext(ctx, query, isActive, id)
-	if err != nil {
-		return err
-	}
-
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-
-	if rows == 0 {
-		return ErrInstanceNotFound
-	}
-
-	return nil
-}
-
-func (s *InstanceStore) UpdateLastConnected(ctx context.Context, id int) error {
-	query := `UPDATE instances SET last_connected_at = CURRENT_TIMESTAMP WHERE id = ?`
-
-	result, err := s.db.ExecContext(ctx, query, id)
-	if err != nil {
-		return err
-	}
-
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-
-	if rows == 0 {
-		return ErrInstanceNotFound
-	}
-
-	return nil
-}
-
 func (s *InstanceStore) Delete(ctx context.Context, id int) error {
 	query := `DELETE FROM instances WHERE id = ?`
 

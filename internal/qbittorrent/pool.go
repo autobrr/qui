@@ -54,7 +54,6 @@ type ClientPool struct {
 	instanceStore     *models.InstanceStore
 	cache             *ristretto.Cache
 	mu                sync.RWMutex
-	dbMu              sync.Mutex          // Serialize database updates
 	creationMu        sync.Mutex          // Serialize client creation operations
 	creationLocks     map[int]*sync.Mutex // Per-instance creation locks
 	closed            bool
@@ -233,13 +232,6 @@ func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID in
 		// Don't fail client creation for sync manager issues
 	}
 
-	// Update last connected timestamp
-	cp.dbMu.Lock()
-	if err := cp.instanceStore.UpdateLastConnected(ctx, instanceID); err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to update last connected timestamp")
-	}
-	cp.dbMu.Unlock()
-
 	return client, nil
 }
 
@@ -305,23 +297,10 @@ func (cp *ClientPool) performHealthChecks() {
 				// Track failure and apply backoff
 				cp.trackFailure(instanceID, err)
 
-				// Mark as inactive in database (serialize DB updates)
-				cp.dbMu.Lock()
-				if err := cp.instanceStore.UpdateActive(ctx, instanceID, false); err != nil {
-					log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to update inactive status")
-				}
-				cp.dbMu.Unlock()
-
 				// Do not recreate client if unhealthy; just log and return
 			} else {
-				// Health check succeeded, reset failure tracking and ensure marked as active
+				// Health check succeeded, reset failure tracking
 				cp.resetFailureTracking(instanceID)
-
-				cp.dbMu.Lock()
-				if err := cp.instanceStore.UpdateActive(ctx, instanceID, true); err != nil {
-					log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to update active status")
-				}
-				cp.dbMu.Unlock()
 			}
 		}(client, instanceID)
 	}
