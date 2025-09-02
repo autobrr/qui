@@ -5,10 +5,9 @@
 
 import { memo, useState, useCallback } from "react"
 import type { ChangeEvent } from "react"
-import { useMutation, useQueryClient, useQuery, type Query } from "@tanstack/react-query"
+import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import { toast } from "sonner"
-import { applyOptimisticUpdates } from "@/lib/torrent-state-utils"
 import { getCommonTags, getCommonCategory } from "@/lib/torrent-utils"
 import { Button } from "@/components/ui/button"
 import {
@@ -40,7 +39,7 @@ import { ChevronDown, Play, Pause, Trash2, CheckCircle, Tag, Folder, Radio, Sett
 import { AddTagsDialog, SetTagsDialog, SetCategoryDialog } from "./TorrentDialogs"
 import { ShareLimitSubmenu, SpeedLimitsSubmenu } from "./TorrentLimitSubmenus"
 import { QueueSubmenu } from "./QueueSubmenu"
-import type { Torrent, TorrentResponse } from "@/types"
+import type { Torrent } from "@/types"
 
 type BulkActionVariables = {
   action: "pause" | "resume" | "delete" | "recheck" | "reannounce" | "increasePriority" | "decreasePriority" | "topPriority" | "bottomPriority" | "addTags" | "removeTags" | "setTags" | "setCategory" | "toggleAutoTMM" | "setShareLimit" | "setUploadLimit" | "setDownloadLimit"
@@ -152,55 +151,6 @@ export const TorrentActions = memo(function TorrentActions({ instanceId, selecte
         })
         onComplete?.()
       } else {
-        // Apply optimistic updates for actions that change visible state
-        const optimisticActions = ["pause", "resume", "delete", "deleteWithFiles", "recheck", "setCategory", "addTags", "removeTags", "setTags", "toggleAutoTMM"]
-
-        if (optimisticActions.includes(variables.action)) {
-          // Get all cached queries for this instance
-          const cache = queryClient.getQueryCache()
-          const queries = cache.findAll({
-            queryKey: ["torrents-list", instanceId],
-            exact: false,
-          })
-
-          // Build payload for the action
-          const payload = {
-            category: variables.category,
-            tags: variables.tags,
-            enable: variables.enable,
-            deleteFiles: variables.deleteFiles,
-          }
-
-          // Optimistically update torrent states in all cached queries
-          queries.forEach((query: Query) => {
-            queryClient.setQueryData(query.queryKey, (oldData: TorrentResponse | undefined) => {
-              if (!oldData?.torrents) return oldData
-
-              // Check if this query has a status filter in its key
-              // Query key structure: ['torrents-list', instanceId, currentPage, filters, search]
-              const queryKey = query.queryKey as readonly unknown[]
-              const filters = queryKey[3] as { status?: string[] } | undefined // filters is at index 3
-              const statusFilters = filters?.status || []
-
-              // Apply optimistic updates using our utility function
-              const { torrents: updatedTorrents } = applyOptimisticUpdates(
-                oldData.torrents,
-                selectedHashes,
-                variables.action,
-                statusFilters,
-                payload
-              )
-
-              return {
-                ...oldData,
-                torrents: updatedTorrents,
-                total: updatedTorrents.length,
-                totalCount: updatedTorrents.length,
-              }
-            })
-          })
-        }
-
         // For other operations, add delay to allow qBittorrent to process
         // Resume operations need more time for state transition
         const delay = variables.action === "resume" ? 2000 : 1000

@@ -46,6 +46,11 @@ class ApiClient {
       throw new Error(errorMessage)
     }
 
+    // Handle empty responses (like 204 No Content)
+    if (response.status === 204 || response.headers.get("content-length") === "0") {
+      return undefined as T
+    }
+
     return response.json()
   }
 
@@ -377,6 +382,51 @@ class ApiClient {
 
   async deleteApiKey(id: number): Promise<void> {
     return this.request(`/api-keys/${id}`, { method: "DELETE" })
+  }
+
+  // Client API Keys for proxy authentication
+  async getClientApiKeys(): Promise<{
+    id: number
+    clientName: string
+    instanceId: number
+    createdAt: string
+    lastUsedAt?: string
+    instance?: {
+      id: number
+      name: string
+      host: string
+    } | null
+  }[]> {
+    return this.request("/client-api-keys")
+  }
+
+  async createClientApiKey(data: {
+    clientName: string
+    instanceId: number
+  }): Promise<{
+    key: string
+    clientApiKey: {
+      id: number
+      clientName: string
+      instanceId: number
+      createdAt: string
+    }
+    instance?: {
+      id: number
+      name: string
+      host: string
+    }
+    proxyUrl: string
+    instructions: string
+  }> {
+    return this.request("/client-api-keys", {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async deleteClientApiKey(id: number): Promise<void> {
+    return this.request(`/client-api-keys/${id}`, { method: "DELETE" })
   }
 
   // Theme License endpoints

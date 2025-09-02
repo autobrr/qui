@@ -211,6 +211,84 @@ scrape_configs:
 
 All metrics are labeled with `instance_id` and `instance_name` for multi-instance monitoring.
 
+## Reverse Proxy for External Applications
+
+qui includes a built-in reverse proxy that allows external applications like autobrr, Sonarr, Radarr, and other tools to connect to your qBittorrent instances **without needing qBittorrent credentials**. qui handles authentication transparently, making integration seamless.
+
+### How It Works
+
+The reverse proxy feature:
+- **Handles authentication automatically** - qui manages the qBittorrent login using your configured credentials
+- **Isolates clients** - Each client gets its own API key for security and monitoring  
+- **Works with any qBittorrent security setting** - Even with "bypass authentication for clients on localhost" disabled
+- **Provides transparent access** - Clients see qui as if it were qBittorrent directly
+
+### Setup Instructions
+
+#### 1. Create a Client API Key
+
+1. Open qui in your browser
+2. Go to **Settings → Client API Keys**
+3. Click **"Generate New Key"** 
+4. Choose the qBittorrent instance you want to proxy
+5. Enter a name (e.g., "Sonarr")
+6. **Copy the generated key immediately** - it's only shown once
+
+#### 2. Configure Your External Application
+
+Use qui as the qBittorrent host with the special proxy URL format:
+
+**Example for Sonarr or autobrr:**
+- **Host**: `your-qui-server` (e.g., `localhost` or `192.168.1.100`)
+- **Port**: `7476` (or your qui port)
+- **Username**: *Leave empty*
+- **Password**: *Leave empty*  
+- **URL Base**: `/proxy/YOUR_CLIENT_API_KEY_HERE`
+
+**Complete URL example:**
+```
+http://localhost:7476/proxy/abc123def456ghi789jkl012mno345pqr678stu901vwx234yz
+```
+
+#### 3. Test the Connection
+
+Your external application should now be able to:
+- Connect successfully to qBittorrent through qui
+- Add torrents, check status, and manage downloads
+- Work without any qBittorrent credentials
+
+### Supported Applications
+
+This reverse proxy works with any application that supports qBittorrent's Web API:
+- **autobrr** - Automatic torrent downloading
+- **Sonarr** - Automatic TV show downloads
+- **Radarr** - Automatic movie downloads  
+- **Lidarr** - Automatic music downloads
+- **Prowlarr** - Indexer management
+- **Custom scripts** - Any application using qBittorrent's API
+
+### Security Features
+
+- **API Key Authentication** - Each client requires a unique key
+- **Instance Isolation** - Keys are tied to specific qBittorrent instances
+- **Usage Tracking** - Monitor which clients are accessing your instances
+- **Revocation** - Disable access instantly by deleting the API key
+- **No Credential Exposure** - qBittorrent passwords never leave qui
+
+### Troubleshooting
+
+**Connection Refused Error:**
+- Ensure qui is listening on all interfaces: `QUI__HOST=0.0.0.0 ./qui serve`
+- Check that the port is accessible from your external application
+
+**Authentication Errors:**  
+- Verify the Client API Key is correct and hasn't been deleted
+- Ensure the key is mapped to the correct qBittorrent instance
+
+**Version String Errors:**
+- This was a common issue that's now resolved with the new proxy implementation
+- Try regenerating the Client API Key if you still see version parsing errors
+
 ## Docker
 
 ```bash

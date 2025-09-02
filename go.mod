@@ -4,7 +4,7 @@ go 1.24.6
 
 require (
 	github.com/Masterminds/semver/v3 v3.4.0
-	github.com/autobrr/go-qbittorrent v1.14.1-0.20250901071920-23af5ace05cc
+	github.com/autobrr/go-qbittorrent v1.14.1-0.20250902072934-78bd17881c04
 	github.com/creativeprojects/go-selfupdate v1.5.1
 	github.com/dgraph-io/ristretto v0.2.0
 	github.com/fsnotify/fsnotify v1.9.0
@@ -61,7 +61,7 @@ require (
 	github.com/spf13/cast v1.7.1 // indirect
 	github.com/spf13/pflag v1.0.6 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
-	github.com/ulikunitz/xz v0.5.14 // indirect
+	github.com/ulikunitz/xz v0.5.15 // indirect
 	github.com/xanzy/go-gitlab v0.115.0 // indirect
 	go.uber.org/atomic v1.9.0 // indirect
 	go.uber.org/multierr v1.9.0 // indirect

@@ -64,26 +64,6 @@ func TestSyncManager_FilteringAndSorting(t *testing.T) {
 		}
 	})
 
-	t.Run("sortTorrents works correctly", func(t *testing.T) {
-		// Sort by name ascending
-		sm.sortTorrents(torrents, "name", "asc")
-
-		// Verify sorted order
-		for i := 1; i < len(torrents); i++ {
-			assert.LessOrEqual(t, torrents[i-1].Name, torrents[i].Name,
-				"Torrents should be sorted by name ascending")
-		}
-
-		// Sort by size descending
-		sm.sortTorrents(torrents, "size", "desc")
-
-		// Verify sorted order
-		for i := 1; i < len(torrents); i++ {
-			assert.GreaterOrEqual(t, torrents[i-1].Size, torrents[i].Size,
-				"Torrents should be sorted by size descending")
-		}
-	})
-
 	t.Run("calculateStats computes correctly", func(t *testing.T) {
 		// Set known download/upload speeds for testing
 		for i := range torrents {
@@ -244,20 +224,6 @@ func BenchmarkSyncManager_FilterTorrentsBySearch(b *testing.B) {
 		if len(results) == 0 {
 			b.Fatal("Should find at least one match")
 		}
-	}
-}
-
-func BenchmarkSyncManager_SortTorrents(b *testing.B) {
-	// Disable logging for benchmarks
-	oldLevel := zerolog.GlobalLevel()
-	zerolog.SetGlobalLevel(zerolog.Disabled)
-	defer zerolog.SetGlobalLevel(oldLevel)
-
-	sm := &SyncManager{}
-
-	for b.Loop() {
-		torrents := createTestTorrents(1000) // Create fresh slice each time
-		sm.sortTorrents(torrents, "name", "asc")
 	}
 }
 

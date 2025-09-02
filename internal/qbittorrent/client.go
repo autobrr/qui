@@ -6,9 +6,12 @@ package qbittorrent
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"reflect"
 	"maps"
 	"sync"
 	"time"
+	"unsafe"
 
 	"github.com/Masterminds/semver/v3"
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -141,23 +144,19 @@ func (c *Client) IsHealthy() bool {
 }
 
 // getTorrentByHash returns a torrent by hash from the sync manager
-func (c *Client) getTorrentByHash(hash string) (*qbt.Torrent, bool) {
+func (c *Client) getTorrentByHash(hash string) (qbt.Torrent, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
 	if c.syncManager == nil {
-		return nil, false
+		return qbt.Torrent{}, false
 	}
 
-	torrent, exists := c.syncManager.GetTorrent(hash)
-	if !exists {
-		return nil, false
-	}
-	return &torrent, true
+	return c.syncManager.GetTorrent(hash)
 }
 
 // getTorrentsByHashes returns multiple torrents by their hashes (O(n) where n is number of requested hashes)
-func (c *Client) getTorrentsByHashes(hashes []string) []*qbt.Torrent {
+func (c *Client) getTorrentsByHashes(hashes []string) []qbt.Torrent {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
@@ -165,18 +164,11 @@ func (c *Client) getTorrentsByHashes(hashes []string) []*qbt.Torrent {
 		return nil
 	}
 
-	torrentMap := c.syncManager.GetTorrentHashes(hashes)
-	torrents := make([]*qbt.Torrent, 0, len(hashes))
-	for _, hash := range hashes {
-		if torrent, exists := torrentMap[hash]; exists {
-			torrents = append(torrents, &torrent)
-		}
-	}
-	return torrents
+	return c.syncManager.GetTorrents(qbt.TorrentFilterOptions{Hashes: hashes})
 }
 
 // validateTorrentHashes returns validation info for a list of hashes
-func (c *Client) validateTorrentHashes(hashes []string) (existing []*qbt.Torrent, missing []string) {
+func (c *Client) validateTorrentHashes(hashes []string) (existing []qbt.Torrent, missing []string) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
@@ -184,13 +176,14 @@ func (c *Client) validateTorrentHashes(hashes []string) (existing []*qbt.Torrent
 		return nil, hashes
 	}
 
-	torrentMap := c.syncManager.GetTorrentHashes(hashes)
-	existing = make([]*qbt.Torrent, 0, len(hashes))
-	missing = make([]string, 0, len(hashes))
+	torrentMap := c.syncManager.GetTorrentMap(qbt.TorrentFilterOptions{Hashes: hashes})
+
+	existing = make([]qbt.Torrent, 0, len(torrentMap))
+	missing = make([]string, 0, len(hashes)-len(torrentMap))
 
 	for _, hash := range hashes {
 		if torrent, exists := torrentMap[hash]; exists {
-			existing = append(existing, &torrent)
+			existing = append(existing, torrent)
 		} else {
 			missing = append(missing, hash)
 		}
@@ -223,6 +216,40 @@ func (c *Client) GetWebAPIVersion() string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.webAPIVersion
+}
+
+
+// GetHTTPClient allows you to receive the implemented *http.Client with cookie jar
+// This method uses reflection to access the private http field from the embedded qbt.Client
+//
+// TODO: Remove this method and update proxy handler when go-qbittorrent merges GetHTTPClient method
+// When https://github.com/autobrr/go-qbittorrent is updated with GetHTTPClient method:
+// 1. Remove this entire GetHTTPClient method from qui's Client wrapper
+// 2. Update proxy handler to call client.Client.GetHTTPClient() directly instead of client.GetHTTPClient()
+// 3. Remove "reflect" and "unsafe" imports from this file
+// 4. Update go.mod to use the new version of go-qbittorrent
+func (c *Client) GetHTTPClient() *http.Client {
+	// Use reflection to access the private 'http' field from the embedded qbt.Client
+	clientValue := reflect.ValueOf(c.Client).Elem()
+	httpField := clientValue.FieldByName("http")
+
+	if !httpField.IsValid() {
+		log.Error().Msg("Failed to access http field from qBittorrent client")
+		return nil
+	}
+
+	// The field is unexported, so we need to make it accessible
+	if !httpField.CanInterface() {
+		// Make the field accessible using reflection
+		httpField = reflect.NewAt(httpField.Type(), unsafe.Pointer(httpField.UnsafeAddr())).Elem()
+	}
+
+	if httpClient, ok := httpField.Interface().(*http.Client); ok {
+		return httpClient
+	}
+
+	log.Error().Msg("Failed to convert http field to *http.Client")
+	return nil
 }
 
 func (c *Client) GetSyncManager() *qbt.SyncManager {

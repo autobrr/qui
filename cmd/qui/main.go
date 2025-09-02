@@ -47,7 +47,7 @@ func main() {
 	var rootCmd = &cobra.Command{
 		Use:   "qui",
 		Short: "A self-hosted qBittorrent WebUI alternative",
-		Long: `qBittorrent WebUI - A modern, self-hosted web interface for managing 
+		Long: `qui - A modern, self-hosted web interface for managing 
 multiple qBittorrent instances with support for 10k+ torrents.`,
 	}
 
@@ -480,6 +480,8 @@ func (app *Application) runServer() {
 		log.Fatal().Err(err).Msg("Failed to initialize instance store")
 	}
 
+	clientAPIKeyStore := models.NewClientAPIKeyStore(db.Conn())
+
 	// Initialize qBittorrent client pool
 	clientPool, err := qbittorrent.NewClientPool(instanceStore)
 	if err != nil {
@@ -559,6 +561,7 @@ func (app *Application) runServer() {
 		DB:                  db.Conn(),
 		AuthService:         authService,
 		InstanceStore:       instanceStore,
+		ClientAPIKeyStore:   clientAPIKeyStore,
 		ClientPool:          clientPool,
 		SyncManager:         syncManager,
 		WebHandler:          webHandler,
