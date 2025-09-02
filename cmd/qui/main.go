@@ -15,8 +15,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Masterminds/semver/v3"
-	"github.com/creativeprojects/go-selfupdate"
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -32,6 +30,7 @@ import (
 	"github.com/autobrr/qui/internal/polar"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services"
+	"github.com/autobrr/qui/internal/update"
 	"github.com/autobrr/qui/internal/web"
 	webfs "github.com/autobrr/qui/web"
 )
@@ -372,7 +371,13 @@ func RunUpdateCommand() *cobra.Command {
 		Short:                 "Update qui",
 		Long:                  `Update qui to the latest version.`,
 		DisableFlagsInUseLine: true,
-		RunE:                  runUpdate,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			updater := update.NewUpdater(update.Config{
+				Repository: "autobrr/qui",
+				Version:    Version,
+			})
+			return updater.Run(cmd.Context())
+		},
 	}
 
 	command.SetUsageTemplate(`Usage:
@@ -383,38 +388,6 @@ Flags:
 `)
 
 	return command
-}
-
-func runUpdate(cmd *cobra.Command, args []string) error {
-	_, err := semver.NewVersion(Version)
-	if err != nil {
-		return fmt.Errorf("could not parse version: %w", err)
-	}
-
-	latest, found, err := selfupdate.DetectLatest(cmd.Context(), selfupdate.ParseSlug("autobrr/qui"))
-	if err != nil {
-		return fmt.Errorf("error occurred while detecting version: %w", err)
-	}
-	if !found {
-		return fmt.Errorf("latest version for %s/%s could not be found from github repository", "autobrr/qui", Version)
-	}
-
-	if latest.LessOrEqual(Version) {
-		fmt.Printf("Current binary is the latest version: %s\n", Version)
-		return nil
-	}
-
-	exe, err := selfupdate.ExecutablePath()
-	if err != nil {
-		return fmt.Errorf("could not locate executable path: %w", err)
-	}
-
-	if err := selfupdate.UpdateTo(cmd.Context(), latest.AssetURL, latest.AssetName, exe); err != nil {
-		return fmt.Errorf("error occurred while updating binary: %w", err)
-	}
-
-	fmt.Printf("Successfully updated to version: %s\n", latest.Version())
-	return nil
 }
 
 type Application struct {
