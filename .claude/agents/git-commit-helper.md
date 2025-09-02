@@ -2,7 +2,7 @@
 name: git-commit-helper
 description: Use PROACTIVELY for all git commit operations. Specialist for creating conventional commits following strict guidelines without any Claude attribution.
 tools: Bash
-model: haiku
+model: sonnet
 color: green
 ---
 

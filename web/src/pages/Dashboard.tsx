@@ -173,7 +173,7 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
   }
 
   // If we have stats but instance is not connected, show with zero values
-  if (stats && !stats.connected) {
+  if (stats && !instance.connected) {
     const hasErrors = instance.hasDecryptionError || instance.connectionError
     return (
       <>
@@ -211,11 +211,10 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-muted-foreground text-center">
-              Instance is disconnected
-            </p>
-
-            <InstanceErrorDisplay instance={instance} />
+            <div className="text-sm text-muted-foreground text-center">
+              <p>Instance is disconnected</p>
+              <InstanceErrorDisplay instance={instance} compact />
+            </div>
           </CardContent>
         </Card>
       </>
@@ -261,11 +260,10 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-muted-foreground">
-              Failed to load stats
-            </p>
-
-            <InstanceErrorDisplay instance={instance} />
+            <div className="text-sm text-muted-foreground text-center">
+              <p>Failed to load stats</p>
+              <InstanceErrorDisplay instance={instance} compact />
+            </div>
           </CardContent>
         </Card>
       </>
@@ -287,7 +285,7 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
               <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
             </Link>
             <div className="flex items-center gap-2">
-              {stats.connected && (
+              {instance.connected && (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
@@ -313,14 +311,14 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
                   </TooltipContent>
                 </Tooltip>
               )}
-              {stats.connected && (
+              {instance.connected && (
                 <InstanceSettingsButton
                   instanceId={instance.id}
                   instanceName={instance.name}
                 />
               )}
-              <Badge variant={stats.connected ? "default" : "destructive"}>
-                {stats.connected ? "Connected" : "Disconnected"}
+              <Badge variant={instance.connected ? "default" : "destructive"}>
+                {instance.connected ? "Connected" : "Disconnected"}
               </Badge>
             </div>
           </div>
@@ -370,7 +368,7 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
             </div>
           </div>
 
-          <InstanceErrorDisplay instance={instance} />
+          <InstanceErrorDisplay instance={instance} compact />
         </CardContent>
       </Card>
     </>
@@ -379,7 +377,7 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
 
 function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: InstanceResponse, stats: InstanceStats | undefined, serverState: ServerState | null, torrentCounts: TorrentCounts | null | undefined }> }) {
   const globalStats = useMemo(() => {
-    const connected = statsData.filter(({ stats }) => stats?.connected).length
+    const connected = statsData.filter(({ instance }) => instance?.connected).length
     const totalTorrents = statsData.reduce((sum, { torrentCounts }) =>
       sum + (torrentCounts?.total || 0), 0)
     const activeTorrents = statsData.reduce((sum, { torrentCounts }) =>
@@ -644,7 +642,7 @@ function GlobalAllTimeStats({ statsData }: { statsData: Array<{ instance: Instan
 
 function QuickActionsDropdown({ statsData }: { statsData: Array<{ instance: InstanceResponse, stats: InstanceStats | undefined, serverState: ServerState | null }> }) {
   const connectedInstances = statsData
-    .filter(({ stats }) => stats?.connected)
+    .filter(({ instance }) => instance?.connected)
     .map(({ instance }) => instance)
 
   if (connectedInstances.length === 0) {

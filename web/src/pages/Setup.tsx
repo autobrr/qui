@@ -3,16 +3,17 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useForm } from "@tanstack/react-form"
-import { useNavigate } from "@tanstack/react-router"
-import { useAuth } from "@/hooks/useAuth"
+import { Footer } from "@/components/Footer"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { useEffect } from "react"
+import { Logo } from "@/components/ui/Logo"
+import { useAuth } from "@/hooks/useAuth"
 import { api } from "@/lib/api"
-import { Footer } from "@/components/Footer"
+import { useForm } from "@tanstack/react-form"
+import { useNavigate } from "@tanstack/react-router"
+import { useEffect } from "react"
 
 export function Setup() {
   const navigate = useNavigate()
@@ -43,6 +44,9 @@ export function Setup() {
     <div className="flex h-screen items-center justify-center bg-background px-4 sm:px-6">
       <Card className="w-full max-w-md shadow-xl">
         <CardHeader className="text-center">
+          <div className="flex items-center justify-center mb-2">
+            <Logo className="h-12 w-12" />
+          </div>
           <CardTitle className="text-3xl font-bold pointer-events-none select-none">
             qui
           </CardTitle>
