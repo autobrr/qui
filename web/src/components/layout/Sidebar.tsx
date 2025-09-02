@@ -3,21 +3,22 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { Link, useLocation } from "@tanstack/react-router"
-import { cn } from "@/lib/utils"
-import {
-  Home,
-  Server,
-  Settings,
-  LogOut,
-  HardDrive,
-  Github
-} from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Logo } from "@/components/ui/Logo"
 import { Separator } from "@/components/ui/separator"
 import { useAuth } from "@/hooks/useAuth"
-import { useQuery } from "@tanstack/react-query"
 import { api } from "@/lib/api"
+import { cn } from "@/lib/utils"
+import { useQuery } from "@tanstack/react-query"
+import { Link, useLocation } from "@tanstack/react-router"
+import {
+  Github,
+  HardDrive,
+  Home,
+  LogOut,
+  Server,
+  Settings
+} from "lucide-react"
 
 interface NavItem {
   title: string
@@ -55,7 +56,10 @@ export function Sidebar() {
   return (
     <div className="flex h-full w-64 flex-col border-r bg-sidebar border-sidebar-border">
       <div className="p-6">
-        <h2 className="text-lg font-semibold text-sidebar-foreground">qui</h2>
+        <h2 className="flex flex-row items-center gap-2 text-lg font-semibold text-sidebar-foreground">
+          <Logo className="h-5 w-5" />
+          qui
+        </h2>
       </div>
 
       <nav className="flex-1 space-y-1 px-3">
@@ -130,9 +134,12 @@ export function Sidebar() {
         <Separator className="mx-3 mb-3" />
 
         <div className="flex items-center justify-between px-3 pb-3">
-          <p className="text-[10px] text-sidebar-foreground/40">
-            © {new Date().getFullYear() > 2025 ? `2025-${new Date().getFullYear()}` : new Date().getFullYear()} autobrr • GPL-2.0-or-later
-          </p>
+          <div className="flex items-center gap-1.5">
+            <Logo className="h-3 w-3 opacity-60" />
+            <p className="text-[10px] text-sidebar-foreground/40">
+              © {new Date().getFullYear()} autobrr • GPL-2.0-or-later
+            </p>
+          </div>
           <Button
             variant="ghost"
             size="icon"

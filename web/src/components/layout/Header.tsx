@@ -3,14 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useAuth } from "@/hooks/useAuth"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger
-} from "@/components/ui/tooltip"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,14 +11,22 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
-import { Menu, LogOut, Settings, Search, Info, Filter, Plus, X, Home, Server, HardDrive } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Logo } from "@/components/ui/Logo"
 import { ThemeToggle } from "@/components/ui/ThemeToggle"
-import { cn } from "@/lib/utils"
-import { Link, useNavigate, useSearch, useRouterState } from "@tanstack/react-router"
-import { useEffect, useMemo, useState, useRef } from "react"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger
+} from "@/components/ui/tooltip"
+import { useAuth } from "@/hooks/useAuth"
 import { useDebounce } from "@/hooks/useDebounce"
-import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSidebarState"
 import { useInstances } from "@/hooks/useInstances"
+import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSidebarState"
+import { cn } from "@/lib/utils"
+import { Link, useNavigate, useRouterState, useSearch } from "@tanstack/react-router"
+import { Filter, HardDrive, Home, Info, LogOut, Menu, Plus, Search, Server, Settings, X } from "lucide-react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useHotkeys } from "react-hotkeys-hook"
 
 interface HeaderProps {
@@ -102,10 +103,13 @@ export function Header({ children, sidebarCollapsed = false, onSidebarToggle }: 
       <div className="flex items-center gap-2">
         {children}
         <h1 className={cn(
-          "text-xl font-semibold transition-opacity duration-300",
-          shouldShowQuiOnMobile ? "block sm:hidden pl-4" : "hidden", // Show 'qui' on mobile for non-instance routes
-          sidebarCollapsed && "sm:block"
-        )}>{instanceName ? `qui - ${instanceName}` : "qui"}</h1>
+          "flex flex-row items-center gap-2 text-xl font-semibold transition-opacity duration-300",
+          shouldShowQuiOnMobile ? "flex sm:hidden pl-4" : "hidden", // Show 'qui' on mobile for non-instance routes
+          sidebarCollapsed && "sm:flex"
+        )}>
+          <Logo className="h-6 w-6" />
+          {instanceName ? `qui - ${instanceName}` : "qui"}
+        </h1>
         {isInstanceRoute && (
           <div className="ml-2 hidden sm:block">
             <Button
