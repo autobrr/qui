@@ -88,7 +88,7 @@ export function InstanceErrorDisplay({ instance, onEdit, showEditButton = false,
                       <div className="font-mono text-destructive/80 leading-relaxed">
                         {formatErrorMessage(error.errorMessage)}
                       </div>
-                      {index < instance.recentErrors.length - 1 && (
+                      {index < (instance.recentErrors?.length ?? 0) - 1 && (
                         <div className="border-t border-destructive/20 mt-2" />
                       )}
                     </div>
@@ -151,7 +151,7 @@ export function InstanceErrorDisplay({ instance, onEdit, showEditButton = false,
                     <div className="font-mono text-destructive/80 leading-relaxed">
                       {formatErrorMessage(error.errorMessage)}
                     </div>
-                    {index < instance.recentErrors.length - 1 && (
+                    {index < (instance.recentErrors?.length ?? 0) - 1 && (
                       <div className="border-t border-destructive/20 mt-2" />
                     )}
                   </div>
