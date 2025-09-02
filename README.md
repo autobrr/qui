@@ -58,6 +58,20 @@ The web interface will be available at http://localhost:7476
 3. Add your qBittorrent instance(s)
 4. Start managing your torrents
 
+## Updating
+
+qui includes a built-in update command that automatically downloads and installs the latest release:
+
+```bash
+./qui update
+```
+
+**Note:** This feature is for standalone binary installations only. Docker users should pull the latest image instead:
+
+```bash
+docker compose pull && docker compose up -d
+```
+
 ## Configuration
 
 Configuration is stored in `config.toml` (created automatically on first run, or manually with `qui generate-config`). You can also use environment variables:
@@ -137,6 +151,15 @@ printf "password" | ./qui change-password --username admin
 **Default locations:**
 - Linux/macOS: `~/.config/qui/config.toml`
 - Windows: `%APPDATA%\qui\config.toml`
+
+### Update Command
+
+Keep your qui installation up-to-date:
+
+```bash
+# Update to the latest version
+./qui update
+```
 
 ### Command Line Flags
 
