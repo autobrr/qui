@@ -49,10 +49,12 @@ func TestRunGenerateConfigCommand(t *testing.T) {
 			args: []string{"--config-dir", "custom/path"},
 			validateOutput: func(t *testing.T, output string) {
 				assert.Contains(t, output, "Configuration file created")
-				assert.Contains(t, output, "custom/path/config.toml")
+				// Normalize path separators for cross-platform compatibility
+				normalizedOutput := filepath.ToSlash(output)
+				assert.Contains(t, normalizedOutput, "custom/path/config.toml")
 			},
 			validateConfigFile: func(t *testing.T, configPath string) {
-				assert.True(t, strings.HasSuffix(configPath, "custom/path/config.toml"))
+				assert.True(t, strings.HasSuffix(configPath, filepath.Join("custom", "path", "config.toml")))
 				content, err := os.ReadFile(configPath)
 				require.NoError(t, err)
 				assert.Contains(t, string(content), "# config.toml")
@@ -63,10 +65,10 @@ func TestRunGenerateConfigCommand(t *testing.T) {
 			args: []string{"--config-dir", "custom/myconfig.toml"},
 			validateOutput: func(t *testing.T, output string) {
 				assert.Contains(t, output, "Configuration file created")
-				assert.Contains(t, output, "custom/myconfig.toml")
+				assert.Contains(t, output, filepath.ToSlash("custom/myconfig.toml"))
 			},
 			validateConfigFile: func(t *testing.T, configPath string) {
-				assert.True(t, strings.HasSuffix(configPath, "custom/myconfig.toml"))
+				assert.True(t, strings.HasSuffix(configPath, filepath.Join("custom", "myconfig.toml")))
 				assert.Equal(t, "myconfig.toml", filepath.Base(configPath))
 			},
 		},
@@ -76,7 +78,9 @@ func TestRunGenerateConfigCommand(t *testing.T) {
 			setupExistingFile: true,
 			validateOutput: func(t *testing.T, output string) {
 				assert.Contains(t, output, "Configuration file already exists")
-				assert.Contains(t, output, "existing/path/config.toml")
+				// Normalize path separators for cross-platform compatibility
+				normalizedOutput := filepath.ToSlash(output)
+				assert.Contains(t, normalizedOutput, "existing/path/config.toml")
 			},
 			validateConfigFile: func(t *testing.T, configPath string) {
 				content, err := os.ReadFile(configPath)

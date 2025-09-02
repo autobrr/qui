@@ -47,7 +47,7 @@ func main() {
 	var rootCmd = &cobra.Command{
 		Use:   "qui",
 		Short: "A self-hosted qBittorrent WebUI alternative",
-		Long: `qBittorrent WebUI - A modern, self-hosted web interface for managing 
+		Long: `qui - A modern, self-hosted web interface for managing 
 multiple qBittorrent instances with support for 10k+ torrents.`,
 	}
 
@@ -396,7 +396,7 @@ func NewApplication(version, configDir, dataDir, logPath string, pprofFlag bool,
 }
 
 func (app *Application) runServer() {
-	log.Info().Str("version", app.version).Msg("Starting qBittorrent WebUI")
+	log.Info().Str("version", app.version).Msg("Starting qui")
 
 	// Initialize configuration
 	cfg, err := config.New(app.configDir)
@@ -446,6 +446,8 @@ func (app *Application) runServer() {
 		log.Fatal().Err(err).Msg("Failed to initialize instance store")
 	}
 
+	clientAPIKeyStore := models.NewClientAPIKeyStore(db.Conn())
+
 	// Initialize qBittorrent client pool
 	clientPool, err := qbittorrent.NewClientPool(instanceStore)
 	if err != nil {
@@ -455,7 +457,42 @@ func (app *Application) runServer() {
 
 	// Initialize managers
 	syncManager := qbittorrent.NewSyncManager(clientPool)
-	metricsManager := metrics.NewManager(syncManager, clientPool)
+
+	var metricsManager *metrics.Manager
+	if cfg.Config.MetricsEnabled {
+		metricsManager = metrics.NewManager(syncManager, clientPool)
+		log.Info().Msg("Prometheus metrics enabled at /metrics endpoint")
+	}
+
+	// Initialize client connections for all active instances on startup
+	go func() {
+		listCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		instances, err := instanceStore.List(listCtx, true) // Only active instances
+		cancel()
+
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to get instances for startup connection")
+			return
+		}
+
+		// Connect to instances in parallel with separate timeouts
+		for _, instance := range instances {
+			go func(instanceID int) {
+				// Use separate context for each connection attempt with longer timeout
+				connCtx, connCancel := context.WithTimeout(context.Background(), 60*time.Second)
+				defer connCancel()
+
+				// Trigger connection by trying to get client
+				// This will populate the pool for GetClientOffline calls
+				_, err := clientPool.GetClient(connCtx, instanceID)
+				if err != nil {
+					log.Debug().Err(err).Int("instanceID", instanceID).Msg("Failed to connect to instance on startup")
+				} else {
+					log.Debug().Int("instanceID", instanceID).Msg("Successfully connected to instance on startup")
+				}
+			}(instance.ID)
+		}
+	}()
 
 	// Initialize web handler (for embedded frontend)
 	webHandler, err := web.NewHandler(Version, cfg.Config.BaseURL, webfs.DistDirFS)
@@ -490,6 +527,7 @@ func (app *Application) runServer() {
 		DB:                  db.Conn(),
 		AuthService:         authService,
 		InstanceStore:       instanceStore,
+		ClientAPIKeyStore:   clientAPIKeyStore,
 		ClientPool:          clientPool,
 		SyncManager:         syncManager,
 		WebHandler:          webHandler,
