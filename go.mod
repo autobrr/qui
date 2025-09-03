@@ -8,7 +8,7 @@ require (
 	github.com/CAFxX/httpcompression v0.0.9
 	github.com/Masterminds/semver/v3 v3.4.0
 	github.com/andybalholm/brotli v1.2.0
-	github.com/autobrr/go-qbittorrent v1.14.1-0.20250901202703-37c09d8519e9
+	github.com/autobrr/go-qbittorrent v1.14.1-0.20250902072934-78bd17881c04
 	github.com/dgraph-io/ristretto v0.2.0
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-chi/chi/v5 v5.2.3

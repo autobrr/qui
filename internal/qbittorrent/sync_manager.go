@@ -71,12 +71,12 @@ func NewSyncManager(clientPool *ClientPool) *SyncManager {
 	}
 }
 
-// GetTorrentsWithFilters gets torrents with filters, search and sorting
+// GetTorrentsWithFilters gets torrents with filters, search, sorting, and pagination
 // Always fetches fresh data from sync manager for real-time updates
-func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID int, sort, order, search string, filters qbt.TorrentFilterOptions) (*TorrentResponse, error) {
-	// Set sorting in the filter options
-	filters.Sort = sort
-	filters.Reverse = (order == "desc")
+func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID int, limit, offset int, sort, order, search string, filters FilterOptions) (*TorrentResponse, error) {
+	// Always get fresh data from sync manager for real-time updates
+	var filteredTorrents []qbt.Torrent
+	var err error
 
 	// Get client
 	client, err := sm.clientPool.GetClient(ctx, instanceID)
@@ -90,13 +90,115 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		return nil, fmt.Errorf("sync manager not initialized")
 	}
 
-	// Use library filtering and sorting
-	filteredTorrents := syncManager.GetTorrents(filters)
+	// Determine if we can use library filtering or need manual filtering
+	// Use library filtering only if we have single filters that the library supports
+	var torrentFilterOptions qbt.TorrentFilterOptions
+	var useManualFiltering bool
+
+	// Check if we need manual filtering for any reason
+	hasMultipleStatusFilters := len(filters.Status) > 1
+	hasMultipleCategoryFilters := len(filters.Categories) > 1
+	hasMultipleTagFilters := len(filters.Tags) > 1
+	hasTrackerFilters := len(filters.Trackers) > 0 // Library doesn't support tracker filtering
+
+	// Determine if any status filter needs manual filtering
+	needsManualStatusFiltering := false
+	if len(filters.Status) > 0 {
+		for _, status := range filters.Status {
+			if status == "active" || status == "inactive" || status == "checking" || status == "moving" {
+				needsManualStatusFiltering = true
+				break
+			}
+		}
+	}
+
+	useManualFiltering = hasMultipleStatusFilters || hasMultipleCategoryFilters || hasMultipleTagFilters ||
+		hasTrackerFilters || needsManualStatusFiltering
+
+	if useManualFiltering {
+		// Use manual filtering - get all torrents and filter manually
+		log.Debug().
+			Int("instanceID", instanceID).
+			Bool("multipleStatus", hasMultipleStatusFilters).
+			Bool("multipleCategories", hasMultipleCategoryFilters).
+			Bool("multipleTags", hasMultipleTagFilters).
+			Bool("hasTrackers", hasTrackerFilters).
+			Bool("needsManualStatus", needsManualStatusFiltering).
+			Msg("Using manual filtering due to multiple selections or unsupported filters")
+
+		// Get all torrents
+		torrentFilterOptions.Filter = qbt.TorrentFilterAll
+		torrentFilterOptions.Sort = sort
+		torrentFilterOptions.Reverse = (order == "desc")
+
+		filteredTorrents = syncManager.GetTorrents(torrentFilterOptions)
+
+		// Apply manual filtering for multiple selections
+		filteredTorrents = sm.applyManualFilters(filteredTorrents, filters)
+	} else {
+		// Use library filtering for single selections
+		log.Debug().
+			Int("instanceID", instanceID).
+			Msg("Using library filtering for single selections")
+
+		// Handle single status filter
+		if len(filters.Status) == 1 {
+			status := filters.Status[0]
+			switch status {
+			case "all":
+				torrentFilterOptions.Filter = qbt.TorrentFilterAll
+			case "completed":
+				torrentFilterOptions.Filter = qbt.TorrentFilterCompleted
+			case "resumed":
+				torrentFilterOptions.Filter = qbt.TorrentFilterResumed
+			case "paused":
+				torrentFilterOptions.Filter = qbt.TorrentFilterPaused
+			case "stopped":
+				torrentFilterOptions.Filter = qbt.TorrentFilterStopped
+			case "stalled":
+				torrentFilterOptions.Filter = qbt.TorrentFilterStalled
+			case "uploading", "seeding":
+				torrentFilterOptions.Filter = qbt.TorrentFilterUploading
+			case "stalled_uploading", "stalled_seeding":
+				torrentFilterOptions.Filter = qbt.TorrentFilterStalledUploading
+			case "downloading":
+				torrentFilterOptions.Filter = qbt.TorrentFilterDownloading
+			case "stalled_downloading":
+				torrentFilterOptions.Filter = qbt.TorrentFilterStalledDownloading
+			case "errored", "error":
+				torrentFilterOptions.Filter = qbt.TorrentFilterError
+			default:
+				// Default to all if unknown status
+				torrentFilterOptions.Filter = qbt.TorrentFilterAll
+			}
+		} else {
+			// Default to all when no status filter is provided
+			torrentFilterOptions.Filter = qbt.TorrentFilterAll
+		}
+
+		// Handle single category filter
+		if len(filters.Categories) == 1 {
+			torrentFilterOptions.Category = filters.Categories[0]
+		}
+
+		// Handle single tag filter
+		if len(filters.Tags) == 1 {
+			torrentFilterOptions.Tag = filters.Tags[0]
+		}
+
+		// Set sorting in the filter options (library handles sorting)
+		torrentFilterOptions.Sort = sort
+		torrentFilterOptions.Reverse = (order == "desc")
+
+		// Use library filtering and sorting
+		filteredTorrents = syncManager.GetTorrents(torrentFilterOptions)
+	}
 
 	log.Debug().
 		Int("instanceID", instanceID).
 		Int("totalCount", len(filteredTorrents)).
-		Msg("Using library filtering and sorting")
+		Bool("useManualFiltering", useManualFiltering).
+		Msg("Applied initial filtering")
 
 	// Apply search filter if provided (library doesn't support search)
 	if search != "" {
@@ -111,8 +213,22 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	// Calculate stats from filtered torrents
 	stats := sm.calculateStats(filteredTorrents)
 
-	// Manual sorting is applied as fallback above
-	// Get all torrents for sidebar counts (without filters)
+	// Apply pagination to filtered results
+	var paginatedTorrents []qbt.Torrent
+	start := offset
+	end := offset + limit
+	if start < len(filteredTorrents) {
+		if end > len(filteredTorrents) {
+			end = len(filteredTorrents)
+		}
+		paginatedTorrents = filteredTorrents[start:end]
+	}
+
+	// Check if there are more pages
+	hasMore := end < len(filteredTorrents)
+
+	// Calculate counts from ALL torrents (not filtered) for sidebar
+	// This uses the same cached data, so it's very fast
 	allTorrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{})
 	counts := sm.calculateCountsFromTorrents(allTorrents)
 
@@ -157,13 +273,13 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	// Data is always fresh from sync manager
 
 	response := &TorrentResponse{
-		Torrents:      filteredTorrents,
+		Torrents:      paginatedTorrents,
 		Total:         len(filteredTorrents),
 		Stats:         stats,
 		Counts:        counts,     // Include counts for sidebar
 		Categories:    categories, // Include categories for sidebar
 		Tags:          tags,       // Include tags for sidebar
-		HasMore:       false,      // No pagination - frontend handles virtual scrolling
+		HasMore:       hasMore,
 		CacheMetadata: cacheMetadata,
 	}
 
@@ -173,11 +289,12 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 	log.Debug().
 		Int("instanceID", instanceID).
-		Int("count", len(filteredTorrents)).
+		Int("count", len(paginatedTorrents)).
 		Int("total", len(filteredTorrents)).
 		Str("search", search).
 		Interface("filters", filters).
-		Msg("Fresh torrent data fetched and returned")
+		Bool("hasMore", hasMore).
+		Msg("Fresh torrent data fetched and cached")
 
 	return response, nil
 }
@@ -505,18 +622,52 @@ func (sm *SyncManager) calculateCountsFromTorrents(allTorrents []qbt.Torrent) *T
 
 		// Tracker count (use first tracker URL)
 		if torrent.Tracker != "" {
-			// Extract domain from tracker URL
-			domain := torrent.Tracker
-			if strings.Contains(domain, "://") {
-				parts := strings.Split(domain, "://")
-				if len(parts) > 1 {
-					domain = parts[1]
-					if idx := strings.IndexAny(domain, ":/"); idx != -1 {
-						domain = domain[:idx]
+			// Extract domain from tracker URL using proper URL parsing
+			// Handle multiple trackers separated by newlines or commas
+			trackerStrings := strings.Split(torrent.Tracker, "\n")
+			domainFound := false
+			for _, trackerStr := range trackerStrings {
+				trackerStr = strings.TrimSpace(trackerStr)
+				if trackerStr == "" {
+					continue
+				}
+				// Split by commas
+				commaParts := strings.Split(trackerStr, ",")
+				for _, part := range commaParts {
+					part = strings.TrimSpace(part)
+					if part == "" {
+						continue
+					}
+					// Extract domain from this tracker URL
+					var domain string
+					if strings.Contains(part, "://") {
+						if u, err := url.Parse(part); err == nil {
+							domain = u.Hostname()
+						} else {
+							// Fallback to string manipulation
+							parts := strings.Split(part, "://")
+							if len(parts) > 1 {
+								domain = parts[1]
+								if idx := strings.IndexAny(domain, ":/"); idx != -1 {
+									domain = domain[:idx]
+								}
+							}
+						}
+					}
+					if domain != "" {
+						counts.Trackers[domain]++
+						domainFound = true
+						break // Use first valid domain found
 					}
 				}
+				if domainFound {
+					break // Use first tracker with valid domain
+				}
 			}
-			counts.Trackers[domain]++
+			if !domainFound {
+				// If no valid domain found, count as unknown
+				counts.Trackers["Unknown"]++
+			}
 		} else {
 			counts.Trackers[""]++
 		}
@@ -623,12 +774,48 @@ func (sm *SyncManager) GetTorrentCounts(ctx context.Context, instanceID int) (*T
 		if torrent.Tracker == "" {
 			counts.Trackers[""]++
 		} else {
-			// Extract hostname from tracker URL
-			if trackerURL, err := url.Parse(torrent.Tracker); err == nil {
-				hostname := trackerURL.Hostname()
-				counts.Trackers[hostname]++
-			} else {
-				counts.Trackers["Unknown"]++
+			// Extract hostname from tracker URL - handle multiple trackers
+			trackerStrings := strings.Split(torrent.Tracker, "\n")
+			domainFound := false
+			for _, trackerStr := range trackerStrings {
+				trackerStr = strings.TrimSpace(trackerStr)
+				if trackerStr == "" {
+					continue
+				}
+				// Split by commas
+				commaParts := strings.Split(trackerStr, ",")
+				for _, part := range commaParts {
+					part = strings.TrimSpace(part)
+					if part == "" {
+						continue
+					}
+					// Extract hostname from this tracker URL
+					if trackerURL, err := url.Parse(part); err == nil {
+						hostname := trackerURL.Hostname()
+						if hostname != "" {
+							counts.Trackers[hostname]++
+							domainFound = true
+							break // Use first valid hostname found
+						}
+					}
+				}
+				if domainFound {
+					break // Use first tracker with valid hostname
+				}
+			}
+			if !domainFound {
+				// Fallback to string manipulation if URL parsing fails
+				domain := torrent.Tracker
+				if strings.Contains(domain, "://") {
+					parts := strings.Split(domain, "://")
+					if len(parts) > 1 {
+						domain = parts[1]
+						if idx := strings.IndexAny(domain, ":/"); idx != -1 {
+							domain = domain[:idx]
+						}
+					}
+				}
+				counts.Trackers[domain]++
 			}
 		}
 	}
@@ -1045,15 +1232,245 @@ func (sm *SyncManager) filterTorrentsByGlob(torrents []qbt.Torrent, pattern stri
 	return filtered
 }
 
+// filterTorrentsByTrackers filters torrents by tracker domains
+func (sm *SyncManager) filterTorrentsByTrackers(torrents []qbt.Torrent, trackers []string) []qbt.Torrent {
+	if len(trackers) == 0 {
+		return torrents
+	}
+
+	var filtered []qbt.Torrent
+
+	for _, torrent := range torrents {
+		// Extract tracker domains - handle multiple trackers separated by newlines or commas
+		var trackerDomains []string
+
+		if torrent.Tracker != "" {
+			// Split by newlines first, then by commas
+			trackerStrings := strings.Split(torrent.Tracker, "\n")
+			for _, trackerStr := range trackerStrings {
+				trackerStr = strings.TrimSpace(trackerStr)
+				if trackerStr == "" {
+					continue
+				}
+				// Split by commas
+				commaParts := strings.Split(trackerStr, ",")
+				for _, part := range commaParts {
+					part = strings.TrimSpace(part)
+					if part == "" {
+						continue
+					}
+					// Extract domain from this tracker URL
+					var domain string
+					if strings.Contains(part, "://") {
+						if u, err := url.Parse(part); err == nil {
+							domain = u.Hostname()
+						} else {
+							// Fallback to string manipulation
+							parts := strings.Split(part, "://")
+							if len(parts) > 1 {
+								domain = parts[1]
+								if idx := strings.IndexAny(domain, ":/"); idx != -1 {
+									domain = domain[:idx]
+								}
+							}
+						}
+					}
+					if domain != "" {
+						trackerDomains = append(trackerDomains, domain)
+					}
+				}
+			}
+		}
+
+		// If no trackers found, add empty string
+		if len(trackerDomains) == 0 {
+			trackerDomains = append(trackerDomains, "")
+		}
+
+		// Check if any of this torrent's tracker domains match the filter list
+		for _, torrentDomain := range trackerDomains {
+			for _, filterTracker := range trackers {
+				if torrentDomain == filterTracker {
+					filtered = append(filtered, torrent)
+					goto nextTorrent
+				}
+			}
+		}
+	nextTorrent:
+	}
+
+	return filtered
+}
+
+// applyManualFilters applies all filters manually when library filtering is insufficient
+func (sm *SyncManager) applyManualFilters(torrents []qbt.Torrent, filters FilterOptions) []qbt.Torrent {
+	var filtered []qbt.Torrent
+
+	for _, torrent := range torrents {
+		matches := true
+
+		// Apply status filters (OR logic within status filters)
+		if len(filters.Status) > 0 {
+			statusMatch := false
+			for _, status := range filters.Status {
+				if sm.matchTorrentStatus(torrent, status) {
+					statusMatch = true
+					break
+				}
+			}
+			matches = matches && statusMatch
+		}
+
+		// Apply category filters (OR logic within category filters)
+		if len(filters.Categories) > 0 {
+			categoryMatch := false
+			torrentCategory := torrent.Category
+			for _, filterCategory := range filters.Categories {
+				if torrentCategory == filterCategory {
+					categoryMatch = true
+					break
+				}
+			}
+			matches = matches && categoryMatch
+		}
+
+		// Apply tag filters (OR logic within tag filters)
+		if len(filters.Tags) > 0 {
+			tagMatch := false
+			if torrent.Tags == "" {
+				// Check if empty tag is in the filter (for "untagged" option)
+				for _, filterTag := range filters.Tags {
+					if filterTag == "" {
+						tagMatch = true
+						break
+					}
+				}
+			} else {
+				// Parse torrent tags
+				torrentTags := strings.SplitSeq(torrent.Tags, ", ")
+				torrentTagsMap := make(map[string]bool)
+				for tag := range torrentTags {
+					trimmedTag := strings.TrimSpace(tag)
+					if trimmedTag != "" {
+						torrentTagsMap[trimmedTag] = true
+					}
+				}
+
+				// Check if any filter tag matches torrent tags
+				for _, filterTag := range filters.Tags {
+					if filterTag == "" {
+						// Empty filter tag means "untagged", but we already handled that case
+						continue
+					}
+					if torrentTagsMap[filterTag] {
+						tagMatch = true
+						break
+					}
+				}
+			}
+			matches = matches && tagMatch
+		}
+
+		// Apply tracker filters (OR logic within tracker filters)
+		if len(filters.Trackers) > 0 {
+			trackerMatch := false
+			if torrent.Tracker == "" {
+				// Check if empty tracker is in the filter (for "no tracker" option)
+				for _, filterTracker := range filters.Trackers {
+					if filterTracker == "" {
+						trackerMatch = true
+						break
+					}
+				}
+			} else {
+				// Extract tracker domains from torrent
+				var trackerDomains []string
+				trackerStrings := strings.Split(torrent.Tracker, "\n")
+
+				for _, trackerStr := range trackerStrings {
+					trackerStr = strings.TrimSpace(trackerStr)
+					if trackerStr == "" {
+						continue
+					}
+
+					commaParts := strings.Split(trackerStr, ",")
+					for _, part := range commaParts {
+						part = strings.TrimSpace(part)
+						if part == "" {
+							continue
+						}
+
+						var domain string
+						if strings.Contains(part, "://") {
+							if u, err := url.Parse(part); err == nil {
+								domain = u.Hostname()
+							} else {
+								parts := strings.Split(part, "://")
+								if len(parts) > 1 {
+									domain = parts[1]
+									if idx := strings.IndexAny(domain, ":/"); idx != -1 {
+										domain = domain[:idx]
+									}
+								}
+							}
+						}
+						if domain != "" {
+							trackerDomains = append(trackerDomains, domain)
+							break // Use first valid domain per tracker string
+						}
+					}
+				}
+
+				// If no valid domains found, use "Unknown"
+				if len(trackerDomains) == 0 {
+					trackerDomains = append(trackerDomains, "Unknown")
+				}
+
+				// Check if any tracker domain matches the filter
+				for _, trackerDomain := range trackerDomains {
+					for _, filterTracker := range filters.Trackers {
+						if trackerDomain == filterTracker {
+							trackerMatch = true
+							break
+						}
+					}
+					if trackerMatch {
+						break
+					}
+				}
+			}
+			matches = matches && trackerMatch
+		}
+
+		if matches {
+			filtered = append(filtered, torrent)
+		}
+	}
+
+	log.Debug().
+		Int("inputTorrents", len(torrents)).
+		Int("filteredTorrents", len(filtered)).
+		Int("statusFilters", len(filters.Status)).
+		Int("categoryFilters", len(filters.Categories)).
+		Int("tagFilters", len(filters.Tags)).
+		Int("trackerFilters", len(filters.Trackers)).
+		Msg("Applied manual filtering with multiple selections")
+
+	return filtered
+}
+
 // Torrent state categories for fast lookup
 var torrentStateCategories = map[string][]qbt.TorrentState{
-	"downloading": {qbt.TorrentStateDownloading, qbt.TorrentStateStalledDl, qbt.TorrentStateMetaDl, qbt.TorrentStateQueuedDl, qbt.TorrentStateAllocating, qbt.TorrentStateCheckingDl, qbt.TorrentStateForcedDl},
-	"seeding":     {qbt.TorrentStateUploading, qbt.TorrentStateStalledUp, qbt.TorrentStateQueuedUp, qbt.TorrentStateCheckingUp, qbt.TorrentStateForcedUp},
-	"paused":      {qbt.TorrentStatePausedDl, qbt.TorrentStatePausedUp, qbt.TorrentStateStoppedDl, qbt.TorrentStateStoppedUp},
-	"active":      {qbt.TorrentStateDownloading, qbt.TorrentStateUploading, qbt.TorrentStateForcedDl, qbt.TorrentStateForcedUp},
-	"stalled":     {qbt.TorrentStateStalledDl, qbt.TorrentStateStalledUp},
-	"checking":    {qbt.TorrentStateCheckingDl, qbt.TorrentStateCheckingUp, qbt.TorrentStateCheckingResumeData},
-	"errored":     {qbt.TorrentStateError, qbt.TorrentStateMissingFiles},
+	"downloading":          {qbt.TorrentStateDownloading, qbt.TorrentStateStalledDl, qbt.TorrentStateMetaDl, qbt.TorrentStateQueuedDl, qbt.TorrentStateAllocating, qbt.TorrentStateCheckingDl, qbt.TorrentStateForcedDl},
+	"seeding":              {qbt.TorrentStateUploading, qbt.TorrentStateStalledUp, qbt.TorrentStateQueuedUp, qbt.TorrentStateCheckingUp, qbt.TorrentStateForcedUp},
+	"paused":               {qbt.TorrentStatePausedDl, qbt.TorrentStatePausedUp, qbt.TorrentStateStoppedDl, qbt.TorrentStateStoppedUp},
+	"active":               {qbt.TorrentStateDownloading, qbt.TorrentStateUploading, qbt.TorrentStateForcedDl, qbt.TorrentStateForcedUp},
+	"stalled":              {qbt.TorrentStateStalledDl, qbt.TorrentStateStalledUp},
+	"checking":             {qbt.TorrentStateCheckingDl, qbt.TorrentStateCheckingUp, qbt.TorrentStateCheckingResumeData},
+	"errored":              {qbt.TorrentStateError, qbt.TorrentStateMissingFiles},
+	"moving":               {qbt.TorrentStateMoving},
+	"stalled_uploading":    {qbt.TorrentStateStalledUp},
+	"stalled_downloading":  {qbt.TorrentStateStalledDl},
 }
 
 // Action state categories for optimistic update clearing

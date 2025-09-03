@@ -433,9 +433,20 @@ paths:
       tags:
         - Torrents
       summary: List torrents
-      description: Get all torrents for instance
+      description: Get paginated list of torrents
       parameters:
         - $ref: '#/components/parameters/instanceId'
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 500
+            maximum: 2000
         - name: sort
           in: query
           schema:

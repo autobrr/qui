@@ -61,7 +61,7 @@ export const createColumns = (
       isAllSelected: boolean
       isIndeterminate: boolean
     }
-    onRowSelection?: (hash: string, checked: boolean) => void
+    onRowSelection?: (hash: string, checked: boolean, rowId?: string) => void
     isAllSelected?: boolean
     excludedFromSelectAll?: Set<string>
   }
@@ -124,7 +124,7 @@ export const createColumns = (
                     const r = allRows[i]
                     if (r) {
                       const rTorrent = r.original as Torrent
-                      selectionEnhancers.onRowSelection(rTorrent.hash, !!checked)
+                      selectionEnhancers.onRowSelection(rTorrent.hash, !!checked, r.id)
                     }
                   }
                 } else {
@@ -142,7 +142,7 @@ export const createColumns = (
               } else {
                 // Single row selection
                 if (selectionEnhancers?.onRowSelection) {
-                  selectionEnhancers.onRowSelection(hash, !!checked)
+                  selectionEnhancers.onRowSelection(hash, !!checked, row.id)
                 } else {
                   row.toggleSelected(!!checked)
                 }
