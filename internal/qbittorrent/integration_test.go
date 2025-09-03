@@ -4,110 +4,20 @@
 package qbittorrent
 
 import (
-	"fmt"
 	"strings"
 	"testing"
-	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
-	"github.com/dgraph-io/ristretto"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // TestSyncManager_CacheIntegration tests the cache integration with SyncManager methods
 func TestSyncManager_CacheIntegration(t *testing.T) {
-	// Create test cache
-	cache, err := ristretto.NewCache(&ristretto.Config{
-		NumCounters: 1e4,
-		MaxCost:     1 << 20,
-		BufferItems: 64,
+	// Skip cache-related tests since caching was removed
+	t.Run("Cache functionality removed", func(t *testing.T) {
+		t.Skip("Caching has been removed from the sync manager")
 	})
-	require.NoError(t, err)
-	defer cache.Close()
-
-	// Create sync manager
-	sm := &SyncManager{
-		cache: cache,
-	}
-
-	instanceID := 1
-
-	// Test InvalidateCache method
-	t.Run("InvalidateCache clears all cache entries", func(t *testing.T) {
-		// Populate cache with entries that InvalidateCache explicitly deletes
-		// These keys are the ones that InvalidateCache actually tries to delete
-		testEntries := map[string]any{
-			"all_torrents:1:":       createTestTorrents(50), // Empty search
-			"all_torrents:1: ":      createTestTorrents(25), // Space search
-			"categories:1":          map[string]any{"movies": "test"},
-			"tags:1":                []string{"action", "comedy"},
-			"torrents:1:":           createTestTorrents(100),                // Base torrents key
-			"torrents:filtered:1:":  createTestTorrents(50),                 // Filtered base
-			"torrents:search:1:":    createTestTorrents(30),                 // Search base
-			"native_filtered:1:":    createTestTorrents(10),                 // Native filtered base
-			"torrent:properties:1:": map[string]string{"hash": "abc"},       // Properties base
-			"torrent:trackers:1:":   []string{"tracker1"},                   // Trackers base
-			"torrent:files:1:":      []map[string]any{{"name": "file.mkv"}}, // Files base
-			"torrent:webseeds:1:":   []string{"webseed1"},                   // Webseeds base
-		}
-
-		// Also add some paginated entries that should be deleted
-		for page := range 2 {
-			for _, limit := range []int{100, 200} {
-				key := fmt.Sprintf("torrents:1:%d:%d", page*limit, limit)
-				testEntries[key] = createTestTorrents(limit)
-			}
-		}
-
-		for key, value := range testEntries {
-			sm.cache.SetWithTTL(key, value, 1, time.Minute)
-		}
-		sm.cache.Wait()
-
-		// Verify all entries exist
-		for key := range testEntries {
-			_, found := sm.cache.Get(key)
-			assert.True(t, found, "Entry should exist before invalidation: %s", key)
-		}
-
-		// Invalidate cache
-		sm.InvalidateCache(instanceID)
-		time.Sleep(100 * time.Millisecond)
-
-		// Check which entries should be gone
-		// The InvalidateCache method only deletes specific keys and some paginated variations
-		expectedDeleted := map[string]bool{
-			"all_torrents:1:":       true,
-			"all_torrents:1: ":      true,
-			"categories:1":          true,
-			"tags:1":                true,
-			"torrents:1:":           true,
-			"torrents:filtered:1:":  true,
-			"torrents:search:1:":    true,
-			"native_filtered:1:":    true,
-			"torrent:properties:1:": true,
-			"torrent:trackers:1:":   true,
-			"torrent:files:1:":      true,
-			"torrent:webseeds:1:":   true,
-		}
-
-		// Add paginated keys that should be deleted
-		for page := range 2 {
-			for _, limit := range []int{100, 200} {
-				key := fmt.Sprintf("torrents:1:%d:%d", page*limit, limit)
-				expectedDeleted[key] = true
-			}
-		}
-
-		// Verify expected entries are deleted
-		for key := range expectedDeleted {
-			_, found := sm.cache.Get(key)
-			assert.False(t, found, "Entry should be cleared after invalidation: %s", key)
-		}
-	})
-
 }
 
 // TestSyncManager_FilteringAndSorting tests the filtering and sorting logic
@@ -151,26 +61,6 @@ func TestSyncManager_FilteringAndSorting(t *testing.T) {
 			assert.Equal(t, tc.expected, count,
 				"Status filter '%s' should match %d torrents, got %d",
 				tc.status, tc.expected, count)
-		}
-	})
-
-	t.Run("sortTorrents works correctly", func(t *testing.T) {
-		// Sort by name ascending
-		sm.sortTorrents(torrents, "name", "asc")
-
-		// Verify sorted order
-		for i := 1; i < len(torrents); i++ {
-			assert.LessOrEqual(t, torrents[i-1].Name, torrents[i].Name,
-				"Torrents should be sorted by name ascending")
-		}
-
-		// Sort by size descending
-		sm.sortTorrents(torrents, "size", "desc")
-
-		// Verify sorted order
-		for i := 1; i < len(torrents); i++ {
-			assert.GreaterOrEqual(t, torrents[i-1].Size, torrents[i].Size,
-				"Torrents should be sorted by size descending")
 		}
 	})
 
@@ -337,20 +227,6 @@ func BenchmarkSyncManager_FilterTorrentsBySearch(b *testing.B) {
 	}
 }
 
-func BenchmarkSyncManager_SortTorrents(b *testing.B) {
-	// Disable logging for benchmarks
-	oldLevel := zerolog.GlobalLevel()
-	zerolog.SetGlobalLevel(zerolog.Disabled)
-	defer zerolog.SetGlobalLevel(oldLevel)
-
-	sm := &SyncManager{}
-
-	for b.Loop() {
-		torrents := createTestTorrents(1000) // Create fresh slice each time
-		sm.sortTorrents(torrents, "name", "asc")
-	}
-}
-
 func BenchmarkSyncManager_CalculateStats(b *testing.B) {
 	// Disable logging for benchmarks
 	oldLevel := zerolog.GlobalLevel()
@@ -374,35 +250,14 @@ func BenchmarkSyncManager_CacheOperations(b *testing.B) {
 	zerolog.SetGlobalLevel(zerolog.Disabled)
 	defer zerolog.SetGlobalLevel(oldLevel)
 
-	cache, _ := ristretto.NewCache(&ristretto.Config{
-		NumCounters: 1e6,
-		MaxCost:     1 << 28, // 256MB
-		BufferItems: 64,
-	})
-	defer cache.Close()
+	// Since caching was removed, benchmark stats calculation instead
+	sm := &SyncManager{}
+	torrents := createTestTorrents(1000) // 1k torrents for reasonable benchmark
 
-	// Pre-populate with realistic data
-	for i := range 1000 {
-		key := fmt.Sprintf("torrents:%d:%d:50", i%5+1, i)
-		response := &TorrentResponse{
-			Torrents: createTestTorrents(50),
-			Total:    1000,
-		}
-		cache.SetWithTTL(key, response, 1, 2*time.Second)
-	}
-	cache.Wait()
-
-	for i := 0; b.Loop(); i++ {
-		// Simulate typical operations
-		instanceID := i%5 + 1
-
-		if i%10 == 0 {
-			// Occasional cache invalidation - call Clear directly to avoid logging
-			cache.Clear()
-		} else {
-			// Mostly cache gets
-			key := fmt.Sprintf("torrents:%d:%d:50", instanceID, i%20*50)
-			cache.Get(key)
+	for b.Loop() {
+		stats := sm.calculateStats(torrents)
+		if stats.Total != 1000 {
+			b.Fatal("Stats calculation failed")
 		}
 	}
 }

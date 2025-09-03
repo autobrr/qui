@@ -3,28 +3,13 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useInstances } from "@/hooks/useInstances"
-import { useInstanceStats } from "@/hooks/useInstanceStats"
-import { usePersistedAccordionState } from "@/hooks/usePersistedAccordionState"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Badge } from "@/components/ui/badge"
-import { Progress } from "@/components/ui/progress"
-import { Button } from "@/components/ui/button"
-import { PasswordIssuesBanner } from "@/components/instances/PasswordIssuesBanner"
 import { InstanceErrorDisplay } from "@/components/instances/InstanceErrorDisplay"
 import { InstanceSettingsButton } from "@/components/instances/InstanceSettingsButton"
+import { PasswordIssuesBanner } from "@/components/instances/PasswordIssuesBanner"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { HardDrive, Download, Upload, Activity, Plus, Minus, Zap, ChevronDown, ChevronUp, Eye, EyeOff, ExternalLink, Rabbit, Turtle } from "lucide-react"
-import { Link } from "@tanstack/react-router"
-import { useMemo } from "react"
-import { formatSpeed, formatBytes, getRatioColor } from "@/lib/utils"
-import { useQuery, useQueries } from "@tanstack/react-query"
-import { api } from "@/lib/api"
-import type { ServerState, InstanceResponse, TorrentCounts } from "@/types"
-
-type InstanceStats = Awaited<ReturnType<typeof api.getInstanceStats>>
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,8 +18,23 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
-import { useIncognitoMode } from "@/lib/incognito"
+import { Progress } from "@/components/ui/progress"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useAlternativeSpeedLimits } from "@/hooks/useAlternativeSpeedLimits"
+import { useInstances } from "@/hooks/useInstances"
+import { useInstanceStats } from "@/hooks/useInstanceStats"
+import { usePersistedAccordionState } from "@/hooks/usePersistedAccordionState"
+import { api } from "@/lib/api"
+import { useIncognitoMode } from "@/lib/incognito"
+import { formatBytes, formatSpeed, getRatioColor } from "@/lib/utils"
+import type { InstanceResponse, ServerState, TorrentCounts } from "@/types"
+import { useQueries, useQuery } from "@tanstack/react-query"
+import { Link } from "@tanstack/react-router"
+import { Activity, ChevronDown, ChevronUp, Download, ExternalLink, Eye, EyeOff, HardDrive, Minus, Plus, Rabbit, Turtle, Upload, Zap } from "lucide-react"
+import { useMemo } from "react"
+
+type InstanceStats = Awaited<ReturnType<typeof api.getInstanceStats>>
 
 
 // Custom hook to get all instance stats using dynamic queries
@@ -173,8 +173,8 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
   }
 
   // If we have stats but instance is not connected, show with zero values
-  if (stats && !stats.connected) {
-    const hasErrors = instance.hasDecryptionError || instance.connectionError
+  if (stats && !instance.connected) {
+    const hasErrors = instance.hasDecryptionError || (instance.recentErrors && instance.recentErrors.length > 0)
     return (
       <>
         <Card className="hover:shadow-lg transition-shadow">
@@ -211,11 +211,9 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-muted-foreground text-center">
-              Instance is disconnected
-            </p>
-
-            <InstanceErrorDisplay instance={instance} />
+            <div className="text-sm text-muted-foreground text-center">
+              <InstanceErrorDisplay instance={instance} compact />
+            </div>
           </CardContent>
         </Card>
       </>
@@ -224,7 +222,7 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
 
   // If we have an error or no stats data, show error state
   if (error || !stats || !stats.torrents) {
-    const hasErrors = instance.hasDecryptionError || instance.connectionError
+    const hasErrors = instance.hasDecryptionError || (instance.recentErrors && instance.recentErrors.length > 0)
     return (
       <>
         <Card className="hover:shadow-lg transition-shadow opacity-60">
@@ -261,18 +259,17 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-muted-foreground">
-              Failed to load stats
-            </p>
-
-            <InstanceErrorDisplay instance={instance} />
+            <div className="text-sm text-muted-foreground text-center">
+              <p>Failed to load stats</p>
+              <InstanceErrorDisplay instance={instance} compact />
+            </div>
           </CardContent>
         </Card>
       </>
     )
   }
 
-  const hasErrors = instance.hasDecryptionError || instance.connectionError
+  const hasErrors = instance.hasDecryptionError || (instance.recentErrors && instance.recentErrors.length > 0)
   return (
     <>
       <Card className="hover:shadow-lg transition-shadow">
@@ -287,7 +284,7 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
               <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
             </Link>
             <div className="flex items-center gap-2">
-              {stats.connected && (
+              {instance.connected && (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
@@ -313,14 +310,14 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
                   </TooltipContent>
                 </Tooltip>
               )}
-              {stats.connected && (
+              {instance.connected && (
                 <InstanceSettingsButton
                   instanceId={instance.id}
                   instanceName={instance.name}
                 />
               )}
-              <Badge variant={stats.connected ? "default" : "destructive"}>
-                {stats.connected ? "Connected" : "Disconnected"}
+              <Badge variant={instance.connected ? "default" : "destructive"}>
+                {instance.connected ? "Connected" : "Disconnected"}
               </Badge>
             </div>
           </div>
@@ -370,7 +367,7 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
             </div>
           </div>
 
-          <InstanceErrorDisplay instance={instance} />
+          <InstanceErrorDisplay instance={instance} compact />
         </CardContent>
       </Card>
     </>
@@ -379,7 +376,7 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
 
 function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: InstanceResponse, stats: InstanceStats | undefined, serverState: ServerState | null, torrentCounts: TorrentCounts | null | undefined }> }) {
   const globalStats = useMemo(() => {
-    const connected = statsData.filter(({ stats }) => stats?.connected).length
+    const connected = statsData.filter(({ instance }) => instance?.connected).length
     const totalTorrents = statsData.reduce((sum, { torrentCounts }) =>
       sum + (torrentCounts?.total || 0), 0)
     const activeTorrents = statsData.reduce((sum, { torrentCounts }) =>
@@ -644,7 +641,7 @@ function GlobalAllTimeStats({ statsData }: { statsData: Array<{ instance: Instan
 
 function QuickActionsDropdown({ statsData }: { statsData: Array<{ instance: InstanceResponse, stats: InstanceStats | undefined, serverState: ServerState | null }> }) {
   const connectedInstances = statsData
-    .filter(({ stats }) => stats?.connected)
+    .filter(({ instance }) => instance?.connected)
     .map(({ instance }) => instance)
 
   if (connectedInstances.length === 0) {

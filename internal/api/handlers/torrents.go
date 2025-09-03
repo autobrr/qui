@@ -40,7 +40,7 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Parse query parameters
-	limit := 500 // Increased default for better performance
+	limit := 300 // Default pagination size
 	page := 0
 	sort := "addedOn"
 	order := "desc"
@@ -61,6 +61,16 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 
 	if s := r.URL.Query().Get("sort"); s != "" {
 		sort = s
+		// Map frontend sort fields to qBittorrent API field names
+		switch s {
+		case "addedOn":
+			sort = "added_on"
+		case "dlspeed":
+			sort = "dlspeed"
+		case "upspeed":
+			sort = "upspeed"
+			// Add other mappings as needed
+		}
 	}
 
 	if o := r.URL.Query().Get("order"); o != "" {
@@ -98,21 +108,19 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 	// The sync manager will handle stale-while-revalidate internally
 	response, err := h.syncManager.GetTorrentsWithFilters(r.Context(), instanceID, limit, offset, sort, order, search, filters)
 	if err != nil {
+		// Record error for user visibility
+		errorStore := h.syncManager.GetErrorStore()
+		if recordErr := errorStore.RecordError(r.Context(), instanceID, err); recordErr != nil {
+			log.Error().Err(recordErr).Int("instanceID", instanceID).Msg("Failed to record torrent error")
+		}
+
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get torrents")
 		RespondError(w, http.StatusInternalServerError, "Failed to get torrents")
 		return
 	}
 
-	// Add cache headers for transparency
-	if response.CacheMetadata != nil {
-		w.Header().Set("X-Cache", response.CacheMetadata.Source)
-		w.Header().Set("X-Cache-Age", fmt.Sprintf("%d", response.CacheMetadata.Age))
-		if response.CacheMetadata.IsStale {
-			w.Header().Set("X-Cache-Status", "stale")
-		} else {
-			w.Header().Set("X-Cache-Status", "fresh")
-		}
-	}
+	// Data is always fresh from sync manager
+	w.Header().Set("X-Data-Source", "fresh")
 
 	RespondJSON(w, http.StatusOK, response)
 }
@@ -350,9 +358,8 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Immediately invalidate cache - the next request will get fresh data from qBittorrent
-	h.syncManager.InvalidateCache(instanceID)
-	log.Debug().Int("instanceID", instanceID).Msg("Cache invalidated after adding torrent")
+	// Data will be fresh on next request from sync manager
+	log.Debug().Int("instanceID", instanceID).Msg("Torrent added - next request will get fresh data from sync manager")
 
 	// Build response message
 	var message string
@@ -434,15 +441,20 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 	var targetHashes []string
 	if req.SelectAll {
 		// Default to empty filters if not provided
-		filters := qbittorrent.FilterOptions{}
-		if req.Filters != nil {
-			filters = *req.Filters
+		if req.Filters == nil {
+			req.Filters = &qbittorrent.FilterOptions{}
 		}
 
 		// Get all torrents matching the current filters and search
 		// Use a very large limit to get all torrents (backend will handle this properly)
-		response, err := h.syncManager.GetTorrentsWithFilters(r.Context(), instanceID, 100000, 0, "added_on", "desc", req.Search, filters)
+		response, err := h.syncManager.GetTorrentsWithFilters(r.Context(), instanceID, 100000, 0, "added_on", "desc", req.Search, *req.Filters)
 		if err != nil {
+			// Record error for user visibility
+			errorStore := h.syncManager.GetErrorStore()
+			if recordErr := errorStore.RecordError(r.Context(), instanceID, err); recordErr != nil {
+				log.Error().Err(recordErr).Int("instanceID", instanceID).Msg("Failed to record torrent error")
+			}
+
 			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get torrents for selectAll operation")
 			RespondError(w, http.StatusInternalServerError, "Failed to get torrents for bulk action")
 			return

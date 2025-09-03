@@ -45,27 +45,51 @@ func (h *InstancesHandler) isDecryptionError(err error) bool {
 		(strings.Contains(errorStr, "password") || strings.Contains(errorStr, "cipher"))
 }
 
-// testInstanceConnection tests connection to an instance and returns status and error
-func (h *InstancesHandler) testInstanceConnection(ctx context.Context, instanceID int) (connected bool, connectionError string) {
-	client, err := h.clientPool.GetClient(ctx, instanceID)
-	if err != nil {
-		if !h.isDecryptionError(err) { // Only log if it's not a decryption error (those are already logged in pool)
-			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to connect to instance")
+func (h *InstancesHandler) buildInstanceResponsesParallel(ctx context.Context, instances []*models.Instance) []InstanceResponse {
+	if len(instances) == 0 {
+		return []InstanceResponse{}
+	}
+
+	type result struct {
+		index    int
+		response InstanceResponse
+	}
+	resultCh := make(chan result, len(instances))
+
+	for i, instance := range instances {
+		go func(index int, inst *models.Instance) {
+			response := h.buildInstanceResponse(ctx, inst)
+			resultCh <- result{index: index, response: response}
+		}(i, instance)
+	}
+
+	responses := make([]InstanceResponse, len(instances))
+	for i := range len(instances) {
+		select {
+		case res := <-resultCh:
+			responses[res.index] = res.response
+		case <-ctx.Done():
+			// Handle context cancellation gracefully
+			responses[i] = InstanceResponse{
+				ID:                 instances[i].ID,
+				Name:               instances[i].Name,
+				Host:               instances[i].Host,
+				Username:           instances[i].Username,
+				BasicUsername:      instances[i].BasicUsername,
+				Connected:          false,
+				HasDecryptionError: false,
+			}
 		}
-		return false, err.Error()
 	}
 
-	if err := client.HealthCheck(ctx); err != nil {
-		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Health check failed for instance")
-		return false, err.Error()
-	}
-
-	return true, ""
+	return responses
 }
 
 // buildInstanceResponse creates a consistent response for an instance
 func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *models.Instance) InstanceResponse {
-	connected, connectionError := h.testInstanceConnection(ctx, instance.ID)
+	// Use cached connection status only, do not test connection synchronously
+	client, _ := h.clientPool.GetClientOffline(ctx, instance.ID)
+	healthy := client != nil && client.IsHealthy()
 
 	decryptionErrorInstances := h.clientPool.GetInstancesWithDecryptionErrors()
 	hasDecryptionError := slices.Contains(decryptionErrorInstances, instance.ID)
@@ -76,19 +100,56 @@ func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *
 		Host:               instance.Host,
 		Username:           instance.Username,
 		BasicUsername:      instance.BasicUsername,
-		IsActive:           instance.IsActive,
-		LastConnectedAt:    instance.LastConnectedAt,
-		CreatedAt:          instance.CreatedAt,
-		UpdatedAt:          instance.UpdatedAt,
-		Connected:          connected,
+		Connected:          healthy,
 		HasDecryptionError: hasDecryptionError,
 	}
 
-	if connectionError != "" {
-		response.ConnectionError = connectionError
+	// Fetch recent errors for disconnected instances
+	if !healthy {
+		errorStore := h.clientPool.GetErrorStore()
+		recentErrors, err := errorStore.GetRecentErrors(ctx, instance.ID, 5)
+		if err != nil {
+			log.Error().Err(err).Int("instanceID", instance.ID).Msg("Failed to get recent errors")
+		} else {
+			response.RecentErrors = recentErrors
+		}
 	}
 
 	return response
+}
+
+// buildQuickInstanceResponse creates a response without testing connection
+func (h *InstancesHandler) buildQuickInstanceResponse(instance *models.Instance) InstanceResponse {
+	return InstanceResponse{
+		ID:                 instance.ID,
+		Name:               instance.Name,
+		Host:               instance.Host,
+		Username:           instance.Username,
+		BasicUsername:      instance.BasicUsername,
+		Connected:          false, // Will be updated asynchronously
+		HasDecryptionError: false,
+	}
+}
+
+// testConnectionAsync tests connection in background and updates cache
+func (h *InstancesHandler) testConnectionAsync(instanceID int) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	log.Debug().Int("instanceID", instanceID).Msg("Testing connection asynchronously")
+
+	client, err := h.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		log.Debug().Err(err).Int("instanceID", instanceID).Msg("Async connection test failed")
+		return
+	}
+
+	if err := client.HealthCheck(ctx); err != nil {
+		log.Debug().Err(err).Int("instanceID", instanceID).Msg("Async health check failed")
+		return
+	}
+
+	log.Debug().Int("instanceID", instanceID).Msg("Async connection test succeeded")
 }
 
 // CreateInstanceRequest represents a request to create a new instance
@@ -151,18 +212,14 @@ func (u UpdateInstanceRequest) MarshalJSON() ([]byte, error) {
 
 // InstanceResponse represents an instance in API responses
 type InstanceResponse struct {
-	ID                 int        `json:"id"`
-	Name               string     `json:"name"`
-	Host               string     `json:"host"`
-	Username           string     `json:"username"`
-	BasicUsername      *string    `json:"basicUsername,omitempty"`
-	IsActive           bool       `json:"isActive"`
-	LastConnectedAt    *time.Time `json:"lastConnectedAt,omitempty"`
-	CreatedAt          time.Time  `json:"createdAt"`
-	UpdatedAt          time.Time  `json:"updatedAt"`
-	Connected          bool       `json:"connected"`
-	ConnectionError    string     `json:"connectionError,omitempty"`
-	HasDecryptionError bool       `json:"hasDecryptionError"`
+	ID                 int                    `json:"id"`
+	Name               string                 `json:"name"`
+	Host               string                 `json:"host"`
+	Username           string                 `json:"username"`
+	BasicUsername      *string                `json:"basicUsername,omitempty"`
+	Connected          bool                   `json:"connected"`
+	HasDecryptionError bool                   `json:"hasDecryptionError"`
+	RecentErrors       []models.InstanceError `json:"recentErrors,omitempty"`
 }
 
 // TestConnectionResponse represents connection test results
@@ -180,7 +237,6 @@ type DeleteInstanceResponse struct {
 // InstanceStatsResponse represents statistics for an instance
 type InstanceStatsResponse struct {
 	InstanceID int          `json:"instanceId"`
-	Connected  bool         `json:"connected"`
 	Torrents   TorrentStats `json:"torrents"`
 	Speeds     SpeedStats   `json:"speeds"`
 }
@@ -203,21 +259,14 @@ type SpeedStats struct {
 
 // ListInstances returns all instances
 func (h *InstancesHandler) ListInstances(w http.ResponseWriter, r *http.Request) {
-	// Check if only active instances are requested
-	activeOnly := r.URL.Query().Get("active") == "true"
-
-	instances, err := h.instanceStore.List(r.Context(), activeOnly)
+	instances, err := h.instanceStore.List(r.Context())
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to list instances")
 		RespondError(w, http.StatusInternalServerError, "Failed to list instances")
 		return
 	}
 
-	// Build response with connection status for each instance
-	response := make([]InstanceResponse, 0, len(instances))
-	for _, instance := range instances {
-		response = append(response, h.buildInstanceResponse(r.Context(), instance))
-	}
+	response := h.buildInstanceResponsesParallel(r.Context(), instances)
 
 	RespondJSON(w, http.StatusOK, response)
 }
@@ -244,8 +293,12 @@ func (h *InstancesHandler) CreateInstance(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Build response with connection status
-	response := h.buildInstanceResponse(r.Context(), instance)
+	// Return quickly without testing connection
+	response := h.buildQuickInstanceResponse(instance)
+
+	// Test connection asynchronously
+	go h.testConnectionAsync(instance.ID)
+
 	RespondJSON(w, http.StatusCreated, response)
 }
 
@@ -285,8 +338,12 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 	// Remove old client from pool to force reconnection
 	h.clientPool.RemoveClient(instanceID)
 
-	// Build response with new connection status
-	response := h.buildInstanceResponse(r.Context(), instance)
+	// Return quickly without testing connection
+	response := h.buildQuickInstanceResponse(instance)
+
+	// Test connection asynchronously
+	go h.testConnectionAsync(instance.ID)
+
 	RespondJSON(w, http.StatusOK, response)
 }
 
@@ -360,7 +417,6 @@ func (h *InstancesHandler) TestConnection(w http.ResponseWriter, r *http.Request
 func (h *InstancesHandler) getDefaultStats(instanceID int) InstanceStatsResponse {
 	return InstanceStatsResponse{
 		InstanceID: instanceID,
-		Connected:  false,
 		Torrents: TorrentStats{
 			Total:       0,
 			Downloading: 0,
@@ -400,19 +456,8 @@ func (h *InstancesHandler) GetInstanceStats(w http.ResponseWriter, r *http.Reque
 	// Get default stats for error cases
 	defaultStats := h.getDefaultStats(instanceID)
 
-	// Get client
-	client, err := h.clientPool.GetClient(r.Context(), instanceID)
-	if err != nil {
-		if !h.isDecryptionError(err) { // Only log if it's not a decryption error (those are already logged in pool)
-			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client")
-		}
-		RespondJSON(w, http.StatusOK, defaultStats)
-		return
-	}
-
-	// Build response with connection status
+	// Build response with stats only
 	stats := defaultStats
-	stats.Connected = client.IsHealthy()
 
 	// Get torrent and speed statistics
 	h.populateInstanceStats(r.Context(), instanceID, &stats)

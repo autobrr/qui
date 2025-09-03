@@ -23,15 +23,10 @@ CREATE TABLE IF NOT EXISTS instances (
     name TEXT NOT NULL,
     host TEXT NOT NULL,
     username TEXT NOT NULL,
-    password_encrypted TEXT NOT NULL,
-    is_active BOOLEAN DEFAULT 1,
-    last_connected_at TIMESTAMP,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    password_encrypted TEXT NOT NULL
 );
 
 -- Performance indexes for 10k+ torrents
-CREATE INDEX IF NOT EXISTS idx_instances_active ON instances(is_active);
 CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash);
 
 -- Trigger to update the updated_at timestamp
@@ -41,8 +36,3 @@ BEGIN
     UPDATE user SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
 END;
 
-CREATE TRIGGER IF NOT EXISTS update_instances_updated_at 
-AFTER UPDATE ON instances
-BEGIN
-    UPDATE instances SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
-END;

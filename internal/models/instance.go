@@ -24,17 +24,13 @@ import (
 var ErrInstanceNotFound = errors.New("instance not found")
 
 type Instance struct {
-	ID                     int        `json:"id"`
-	Name                   string     `json:"name"`
-	Host                   string     `json:"host"`
-	Username               string     `json:"username"`
-	PasswordEncrypted      string     `json:"-"`
-	BasicUsername          *string    `json:"basic_username,omitempty"`
-	BasicPasswordEncrypted *string    `json:"-"`
-	IsActive               bool       `json:"is_active"`
-	LastConnectedAt        *time.Time `json:"last_connected_at,omitempty"`
-	CreatedAt              time.Time  `json:"created_at"`
-	UpdatedAt              time.Time  `json:"updated_at"`
+	ID                     int     `json:"id"`
+	Name                   string  `json:"name"`
+	Host                   string  `json:"host"`
+	Username               string  `json:"username"`
+	PasswordEncrypted      string  `json:"-"`
+	BasicUsername          *string `json:"basic_username,omitempty"`
+	BasicPasswordEncrypted *string `json:"-"`
 }
 
 func (i Instance) MarshalJSON() ([]byte, error) {
@@ -64,10 +60,6 @@ func (i Instance) MarshalJSON() ([]byte, error) {
 			}
 			return ""
 		}(),
-		IsActive:        i.IsActive,
-		LastConnectedAt: i.LastConnectedAt,
-		CreatedAt:       i.CreatedAt,
-		UpdatedAt:       i.UpdatedAt,
 	})
 }
 
@@ -97,10 +89,6 @@ func (i *Instance) UnmarshalJSON(data []byte) error {
 	i.Host = temp.Host
 	i.Username = temp.Username
 	i.BasicUsername = temp.BasicUsername
-	i.IsActive = temp.IsActive
-	i.LastConnectedAt = temp.LastConnectedAt
-	i.CreatedAt = temp.CreatedAt
-	i.UpdatedAt = temp.UpdatedAt
 
 	// Handle password - don't overwrite if redacted
 	if temp.Password != "" && !domain.IsRedactedValue(temp.Password) {
@@ -242,7 +230,7 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 	query := `
 		INSERT INTO instances (name, host, username, password_encrypted, basic_username, basic_password_encrypted) 
 		VALUES (?, ?, ?, ?, ?, ?)
-		RETURNING id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, is_active, last_connected_at, created_at, updated_at
+		RETURNING id, name, host, username, password_encrypted, basic_username, basic_password_encrypted
 	`
 
 	instance := &Instance{}
@@ -254,10 +242,6 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 		&instance.PasswordEncrypted,
 		&instance.BasicUsername,
 		&instance.BasicPasswordEncrypted,
-		&instance.IsActive,
-		&instance.LastConnectedAt,
-		&instance.CreatedAt,
-		&instance.UpdatedAt,
 	)
 
 	if err != nil {
@@ -269,7 +253,7 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 
 func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 	query := `
-		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, is_active, last_connected_at, created_at, updated_at 
+		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted 
 		FROM instances 
 		WHERE id = ?
 	`
@@ -283,10 +267,6 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 		&instance.PasswordEncrypted,
 		&instance.BasicUsername,
 		&instance.BasicPasswordEncrypted,
-		&instance.IsActive,
-		&instance.LastConnectedAt,
-		&instance.CreatedAt,
-		&instance.UpdatedAt,
 	)
 
 	if err != nil {
@@ -299,17 +279,12 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 	return instance, nil
 }
 
-func (s *InstanceStore) List(ctx context.Context, activeOnly bool) ([]*Instance, error) {
+func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 	query := `
-		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, is_active, last_connected_at, created_at, updated_at 
+		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted 
 		FROM instances
+		ORDER BY name ASC
 	`
-
-	if activeOnly {
-		query += " WHERE is_active = 1"
-	}
-
-	query += " ORDER BY name ASC"
 
 	rows, err := s.db.QueryContext(ctx, query)
 	if err != nil {
@@ -328,10 +303,6 @@ func (s *InstanceStore) List(ctx context.Context, activeOnly bool) ([]*Instance,
 			&instance.PasswordEncrypted,
 			&instance.BasicUsername,
 			&instance.BasicPasswordEncrypted,
-			&instance.IsActive,
-			&instance.LastConnectedAt,
-			&instance.CreatedAt,
-			&instance.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err
@@ -394,46 +365,6 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 	}
 
 	return s.Get(ctx, id)
-}
-
-func (s *InstanceStore) UpdateActive(ctx context.Context, id int, isActive bool) error {
-	query := `UPDATE instances SET is_active = ? WHERE id = ?`
-
-	result, err := s.db.ExecContext(ctx, query, isActive, id)
-	if err != nil {
-		return err
-	}
-
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-
-	if rows == 0 {
-		return ErrInstanceNotFound
-	}
-
-	return nil
-}
-
-func (s *InstanceStore) UpdateLastConnected(ctx context.Context, id int) error {
-	query := `UPDATE instances SET last_connected_at = CURRENT_TIMESTAMP WHERE id = ?`
-
-	result, err := s.db.ExecContext(ctx, query, id)
-	if err != nil {
-		return err
-	}
-
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-
-	if rows == 0 {
-		return ErrInstanceNotFound
-	}
-
-	return nil
 }
 
 func (s *InstanceStore) Delete(ctx context.Context, id int) error {

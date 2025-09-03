@@ -30,6 +30,7 @@ import (
 	"github.com/autobrr/qui/internal/polar"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services"
+	"github.com/autobrr/qui/internal/update"
 	"github.com/autobrr/qui/internal/web"
 	webfs "github.com/autobrr/qui/web"
 )
@@ -45,7 +46,7 @@ func main() {
 	var rootCmd = &cobra.Command{
 		Use:   "qui",
 		Short: "A self-hosted qBittorrent WebUI alternative",
-		Long: `qBittorrent WebUI - A modern, self-hosted web interface for managing 
+		Long: `qui - A modern, self-hosted web interface for managing 
 multiple qBittorrent instances with support for 10k+ torrents.`,
 	}
 
@@ -59,6 +60,7 @@ multiple qBittorrent instances with support for 10k+ torrents.`,
 	rootCmd.AddCommand(RunGenerateConfigCommand())
 	rootCmd.AddCommand(RunCreateUserCommand())
 	rootCmd.AddCommand(RunChangePasswordCommand())
+	rootCmd.AddCommand(RunUpdateCommand())
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -363,6 +365,31 @@ If no --config-dir is specified, uses the OS-specific default location:
 	return command
 }
 
+func RunUpdateCommand() *cobra.Command {
+	var command = &cobra.Command{
+		Use:                   "update",
+		Short:                 "Update qui",
+		Long:                  `Update qui to the latest version.`,
+		DisableFlagsInUseLine: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			updater := update.NewUpdater(update.Config{
+				Repository: "autobrr/qui",
+				Version:    Version,
+			})
+			return updater.Run(cmd.Context())
+		},
+	}
+
+	command.SetUsageTemplate(`Usage:
+  {{.CommandPath}}
+  
+Flags:
+{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}
+`)
+
+	return command
+}
+
 type Application struct {
 	version   string
 	configDir string
@@ -386,7 +413,7 @@ func NewApplication(version, configDir, dataDir, logPath string, pprofFlag bool,
 }
 
 func (app *Application) runServer() {
-	log.Info().Str("version", app.version).Msg("Starting qBittorrent WebUI")
+	log.Info().Str("version", app.version).Msg("Starting qui")
 
 	// Initialize configuration
 	cfg, err := config.New(app.configDir)
@@ -426,8 +453,11 @@ func (app *Application) runServer() {
 		log.Fatal().Err(err).Msg("Failed to initialize instance store")
 	}
 
+	clientAPIKeyStore := models.NewClientAPIKeyStore(db.Conn())
+	errorStore := models.NewInstanceErrorStore(db.Conn())
+
 	// Initialize qBittorrent client pool
-	clientPool, err := qbittorrent.NewClientPool(instanceStore)
+	clientPool, err := qbittorrent.NewClientPool(instanceStore, errorStore)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize client pool")
 	}
@@ -435,7 +465,42 @@ func (app *Application) runServer() {
 
 	// Initialize managers
 	syncManager := qbittorrent.NewSyncManager(clientPool)
-	metricsManager := metrics.NewManager(syncManager, clientPool)
+
+	var metricsManager *metrics.Manager
+	if cfg.Config.MetricsEnabled {
+		metricsManager = metrics.NewManager(syncManager, clientPool)
+		log.Info().Msg("Prometheus metrics enabled at /metrics endpoint")
+	}
+
+	// Initialize client connections for all active instances on startup
+	go func() {
+		listCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		instances, err := instanceStore.List(listCtx)
+		cancel()
+
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to get instances for startup connection")
+			return
+		}
+
+		// Connect to instances in parallel with separate timeouts
+		for _, instance := range instances {
+			go func(instanceID int) {
+				// Use separate context for each connection attempt with longer timeout
+				connCtx, connCancel := context.WithTimeout(context.Background(), 60*time.Second)
+				defer connCancel()
+
+				// Trigger connection by trying to get client
+				// This will populate the pool for GetClientOffline calls
+				_, err := clientPool.GetClient(connCtx, instanceID)
+				if err != nil {
+					log.Debug().Err(err).Int("instanceID", instanceID).Msg("Failed to connect to instance on startup")
+				} else {
+					log.Debug().Int("instanceID", instanceID).Msg("Successfully connected to instance on startup")
+				}
+			}(instance.ID)
+		}
+	}()
 
 	// Initialize web handler (for embedded frontend)
 	webHandler, err := web.NewHandler(Version, cfg.Config.BaseURL, webfs.DistDirFS)
@@ -470,6 +535,7 @@ func (app *Application) runServer() {
 		DB:                  db.Conn(),
 		AuthService:         authService,
 		InstanceStore:       instanceStore,
+		ClientAPIKeyStore:   clientAPIKeyStore,
 		ClientPool:          clientPool,
 		SyncManager:         syncManager,
 		WebHandler:          webHandler,

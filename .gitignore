@@ -64,3 +64,5 @@ output/*
 !.claude/agents/git-commit-helper.md
 prd_final.md
 appprefs.md
+
+web/src/themes/premium/*

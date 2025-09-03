@@ -21,10 +21,6 @@ export interface Instance {
   host: string
   username: string
   basicUsername?: string
-  isActive: boolean
-  lastConnectedAt?: string
-  createdAt: string
-  updatedAt: string
 }
 
 export interface InstanceFormData {
@@ -36,14 +32,24 @@ export interface InstanceFormData {
   basicPassword?: string
 }
 
+export interface InstanceError {
+  id: number
+  instanceId: number
+  errorType: string
+  errorMessage: string
+  occurredAt: string
+}
+
 export interface InstanceResponse extends Instance {
   connected: boolean
-  connectionError?: string
   hasDecryptionError: boolean
+  recentErrors?: InstanceError[]
 }
 
 export interface Torrent {
   hash: string
+  infohash_v1: string
+  infohash_v2: string
   name: string
   size: number
   progress: number
@@ -113,6 +119,7 @@ export interface TorrentResponse {
   categories?: Record<string, Category>
   tags?: string[]
   cacheMetadata?: CacheMetadata
+  hasMore?: boolean
 }
 
 // Simplified MainData - only used for Dashboard server stats
