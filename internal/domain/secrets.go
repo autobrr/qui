@@ -3,28 +3,21 @@
 
 package domain
 
-import "strings"
+const RedactedStr = "<redacted>"
 
-// RedactString replaces a string with asterisks of the same length
+// RedactString replaces a string with redacted placeholder
 func RedactString(s string) string {
 	if len(s) == 0 {
 		return ""
 	}
 
-	return strings.Repeat("*", len(s))
+	return RedactedStr
 }
 
-// IsRedactedValue checks if a value appears to be redacted (all asterisks)
-func IsRedactedValue(value string) bool {
-	if value == "" {
+// IsRedactedString checks if a value is the redacted placeholder
+func IsRedactedString(s string) bool {
+	if s == "" {
 		return false
 	}
-
-	// Check if the value is all asterisks
-	for _, char := range value {
-		if char != '*' {
-			return false
-		}
-	}
-	return true
+	return s == RedactedStr
 }

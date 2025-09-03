@@ -91,12 +91,12 @@ func (i *Instance) UnmarshalJSON(data []byte) error {
 	i.BasicUsername = temp.BasicUsername
 
 	// Handle password - don't overwrite if redacted
-	if temp.Password != "" && !domain.IsRedactedValue(temp.Password) {
+	if temp.Password != "" && !domain.IsRedactedString(temp.Password) {
 		i.PasswordEncrypted = temp.Password
 	}
 
 	// Handle basic password - don't overwrite if redacted
-	if temp.BasicPassword != "" && !domain.IsRedactedValue(temp.BasicPassword) {
+	if temp.BasicPassword != "" && !domain.IsRedactedString(temp.BasicPassword) {
 		i.BasicPasswordEncrypted = &temp.BasicPassword
 	}
 
@@ -324,8 +324,8 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 	query := `UPDATE instances SET name = ?, host = ?, username = ?, basic_username = ?`
 	args := []any{name, normalizedHost, username, basicUsername}
 
-	// Only update password if provided
-	if password != "" {
+	// Only update password if provided and not redacted
+	if password != "" && !domain.IsRedactedString(password) {
 		encryptedPassword, err := s.encrypt(password)
 		if err != nil {
 			return nil, fmt.Errorf("failed to encrypt password: %w", err)
@@ -334,8 +334,8 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 		args = append(args, encryptedPassword)
 	}
 
-	// Only update basic password if provided
-	if basicPassword != nil && *basicPassword != "" {
+	// Only update basic password if provided and not redacted
+	if basicPassword != nil && *basicPassword != "" && !domain.IsRedactedString(*basicPassword) {
 		encryptedBasicPassword, err := s.encrypt(*basicPassword)
 		if err != nil {
 			return nil, fmt.Errorf("failed to encrypt basic auth password: %w", err)
