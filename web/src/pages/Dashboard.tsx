@@ -3,28 +3,27 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useInstances } from "@/hooks/useInstances"
-import { useInstanceStats } from "@/hooks/useInstanceStats"
-import { usePersistedAccordionState } from "@/hooks/usePersistedAccordionState"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Badge } from "@/components/ui/badge"
-import { Progress } from "@/components/ui/progress"
-import { Button } from "@/components/ui/button"
-import { PasswordIssuesBanner } from "@/components/instances/PasswordIssuesBanner"
 import { InstanceErrorDisplay } from "@/components/instances/InstanceErrorDisplay"
 import { InstanceSettingsButton } from "@/components/instances/InstanceSettingsButton"
+import { PasswordIssuesBanner } from "@/components/instances/PasswordIssuesBanner"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { Progress } from "@/components/ui/progress"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { HardDrive, Download, Upload, Activity, Plus, Minus, Zap, ChevronDown, ChevronUp, Eye, EyeOff, ExternalLink, Rabbit, Turtle } from "lucide-react"
-import { Link } from "@tanstack/react-router"
-import { useMemo } from "react"
-import { formatSpeed, formatBytes, getRatioColor } from "@/lib/utils"
-import { useQuery, useQueries } from "@tanstack/react-query"
+import { useInstances } from "@/hooks/useInstances"
+import { usePersistedAccordionState } from "@/hooks/usePersistedAccordionState"
 import { api } from "@/lib/api"
-import type { ServerState, InstanceResponse, TorrentCounts } from "@/types"
+import { formatBytes, formatSpeed, getRatioColor } from "@/lib/utils"
+import type { InstanceResponse, ServerState, TorrentCounts, TorrentResponse, TorrentStats } from "@/types"
+import { useQueries, useQuery } from "@tanstack/react-query"
+import { Link } from "@tanstack/react-router"
+import { Activity, ChevronDown, ChevronUp, Download, ExternalLink, Eye, EyeOff, HardDrive, Minus, Plus, Rabbit, Turtle, Upload, Zap } from "lucide-react"
+import { useMemo, useState } from "react"
 
-type InstanceStats = Awaited<ReturnType<typeof api.getInstanceStats>>
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,101 +32,80 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
-import { useIncognitoMode } from "@/lib/incognito"
 import { useAlternativeSpeedLimits } from "@/hooks/useAlternativeSpeedLimits"
+import { useIncognitoMode } from "@/lib/incognito"
 
 
-// Custom hook to get all instance stats using dynamic queries
+// Optimized hook to get all instance stats using shared TorrentResponse cache
 function useAllInstanceStats(instances: InstanceResponse[]) {
-  const statsQueries = useQueries({
+  const dashboardQueries = useQueries({
     queries: instances.map(instance => ({
-      queryKey: ["instance-stats", instance.id],
-      queryFn: () => api.getInstanceStats(instance.id),
+      // Use same query key pattern as useTorrentsList for first page with no filters
+      queryKey: ["torrents-list", instance.id, 0, undefined, undefined, "added_on", "desc"],
+      queryFn: () => api.getTorrents(instance.id, {
+        page: 0,
+        limit: 1, // Only need metadata, not actual torrents for Dashboard
+        sort: "added_on",
+        order: "desc" as const,
+      }),
       enabled: true,
-      refetchInterval: 5000,
+      refetchInterval: 5000, // Match TorrentTable polling
       staleTime: 2000,
-      gcTime: 1800000,
-      placeholderData: (previousData: InstanceStats | undefined) => previousData,
+      gcTime: 300000, // Match TorrentTable cache time
+      placeholderData: (previousData: TorrentResponse | undefined) => previousData,
       retry: 1,
       retryDelay: 1000,
     })),
   })
 
-  const serverStateQueries = useQueries({
-    queries: instances.map(instance => ({
-      queryKey: ["server-state", instance.id],
-      queryFn: async () => {
-        try {
-          const data = await api.syncMainData(instance.id, 0)
-          const syncData = data as { server_state?: ServerState; serverState?: ServerState }
-          return syncData.server_state || syncData.serverState || null
-        } catch (error) {
-          console.error("Error fetching server state for instance", instance.id, error)
-          return null
-        }
-      },
-      staleTime: 30000,
-      refetchInterval: 30000,
-      enabled: true,
-    })),
+  return instances.map((instance, index) => {
+    const data = dashboardQueries[index].data
+    return {
+      instance,
+      // Return TorrentStats directly - no more backwards compatibility conversion
+      stats: data?.stats || null,
+      serverState: data?.serverState || null,
+      torrentCounts: data?.counts,
+    }
   })
-
-  const torrentCountsQueries = useQueries({
-    queries: instances.map(instance => ({
-      queryKey: ["torrent-counts", instance.id],
-      queryFn: async () => {
-        try {
-          const data = await api.getTorrents(instance.id, {
-            page: 0,
-            limit: 1,
-          })
-          return data.counts || null
-        } catch (error) {
-          console.error("Error fetching torrent counts for instance", instance.id, error)
-          return null
-        }
-      },
-      staleTime: 10000,
-      refetchInterval: 10000,
-      enabled: true,
-    })),
-  })
-
-  return instances.map((instance, index) => ({
-    instance,
-    stats: statsQueries[index].data,
-    serverState: serverStateQueries[index].data as ServerState | null,
-    torrentCounts: torrentCountsQueries[index].data,
-  }))
 }
 
 
-function InstanceCard({ instance }: { instance: InstanceResponse }) {
-  const { data: stats, isLoading, error } = useInstanceStats(instance.id, {
-    enabled: true, // Always fetch stats, regardless of isActive status
-    pollingInterval: 5000, // Slower polling for dashboard
-  })
-  const { enabled: altSpeedEnabled, toggle: toggleAltSpeed, isToggling } = useAlternativeSpeedLimits(instance.id)
-  const { data: torrentCounts } = useQuery({
-    queryKey: ["torrent-counts", instance.id],
-    queryFn: async () => {
-      try {
-        const data = await api.getTorrents(instance.id, {
-          page: 0,
-          limit: 1,
-        })
-        return data.counts || null
-      } catch (error) {
-        console.error("Error fetching torrent counts for instance", instance.id, error)
-        return null
-      }
-    },
-    staleTime: 10000,
-    refetchInterval: 10000,
+function InstanceCard({
+  instance,
+  isAdvancedMetricsOpen,
+  setIsAdvancedMetricsOpen,
+}: {
+  instance: InstanceResponse
+  isAdvancedMetricsOpen: boolean
+  setIsAdvancedMetricsOpen: (open: boolean) => void
+}) {
+
+  // Use shared TorrentResponse cache for optimized performance
+  const { data: torrentData, isLoading, error } = useQuery<TorrentResponse>({
+    queryKey: ["torrents-list", instance.id, 0, undefined, undefined, "added_on", "desc"],
+    queryFn: () => api.getTorrents(instance.id, {
+      page: 0,
+      limit: 1, // Only need metadata, not actual torrents
+      sort: "added_on",
+      order: "desc" as const,
+    }),
     enabled: true,
+    refetchInterval: 5000, // Match TorrentTable polling
+    staleTime: 2000,
+    gcTime: 300000, // Match TorrentTable cache time
+    retry: 1,
+    retryDelay: 1000,
   })
+
+  const { enabled: altSpeedEnabled, toggle: toggleAltSpeed, isToggling } = useAlternativeSpeedLimits(instance.id)
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const displayUrl = instance.host
+
+  // Use TorrentStats directly - no more conversion needed
+  const stats = torrentData?.stats
+  const torrentCounts = torrentData?.counts
+  const serverState = torrentData?.serverState
 
   // Show loading only on first load
   if (isLoading && !stats) {
@@ -222,7 +200,7 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
   }
 
   // If we have an error or no stats data, show error state
-  if (error || !stats || !stats.torrents) {
+  if (error || !stats) {
     const hasErrors = instance.hasDecryptionError || instance.connectionError
     return (
       <>
@@ -358,14 +336,72 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
             <div className="flex items-center gap-2 text-xs">
               <Download className="h-3 w-3 text-muted-foreground" />
               <span className="text-muted-foreground">Download</span>
-              <span className="ml-auto font-medium">{formatSpeed(stats.speeds?.download || 0)}</span>
+              <span className="ml-auto font-medium">{formatSpeed(stats.totalDownloadSpeed || 0)}</span>
             </div>
 
             <div className="flex items-center gap-2 text-xs">
               <Upload className="h-3 w-3 text-muted-foreground" />
               <span className="text-muted-foreground">Upload</span>
-              <span className="ml-auto font-medium">{formatSpeed(stats.speeds?.upload || 0)}</span>
+              <span className="ml-auto font-medium">{formatSpeed(stats.totalUploadSpeed || 0)}</span>
             </div>
+
+            {serverState?.free_space_on_disk !== undefined && serverState.free_space_on_disk > 0 && (
+              <div className="flex items-center gap-2 text-xs">
+                <HardDrive className="h-3 w-3 text-muted-foreground" />
+                <span className="text-muted-foreground">Free Space</span>
+                <span className="ml-auto font-medium">{formatBytes(serverState.free_space_on_disk)}</span>
+              </div>
+            )}
+
+            <Collapsible open={isAdvancedMetricsOpen} onOpenChange={setIsAdvancedMetricsOpen}>
+              <CollapsibleTrigger className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors w-full [&[data-state=open]>svg]:rotate-180">
+                <ChevronDown className="h-3 w-3 transition-transform" />
+                <span>Show More</span>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="space-y-2 mt-2">
+                {serverState?.total_peer_connections !== undefined && (
+                  <div className="flex items-center gap-2 text-xs">
+                    <Activity className="h-3 w-3 text-muted-foreground" />
+                    <span className="text-muted-foreground">Peer Connections</span>
+                    <span className="ml-auto font-medium">{serverState.total_peer_connections || 0}</span>
+                  </div>
+                )}
+
+                {serverState?.queued_io_jobs !== undefined && (
+                  <div className="flex items-center gap-2 text-xs">
+                    <Zap className="h-3 w-3 text-muted-foreground" />
+                    <span className="text-muted-foreground">Queued I/O Jobs</span>
+                    <span className="ml-auto font-medium">{serverState.queued_io_jobs || 0}</span>
+                  </div>
+                )}
+
+                {serverState?.total_buffers_size !== undefined && (
+                  <div className="flex items-center gap-2 text-xs">
+                    <HardDrive className="h-3 w-3 text-muted-foreground" />
+                    <span className="text-muted-foreground">Buffer Size</span>
+                    <span className="ml-auto font-medium">{formatBytes(serverState.total_buffers_size)}</span>
+                  </div>
+                )}
+
+                {serverState?.total_queued_size !== undefined && (
+                  <div className="flex items-center gap-2 text-xs">
+                    <Activity className="h-3 w-3 text-muted-foreground" />
+                    <span className="text-muted-foreground">Total Queued</span>
+                    <span className="ml-auto font-medium">{formatBytes(serverState.total_queued_size)}</span>
+                  </div>
+                )}
+
+                {serverState?.average_time_queue !== undefined && (
+                  <div className="flex items-center gap-2 text-xs">
+                    <Zap className="h-3 w-3 text-muted-foreground" />
+                    <span className="text-muted-foreground">Avg Queue Time</span>
+                    <span className="ml-auto font-medium">{serverState.average_time_queue}ms</span>
+                  </div>
+                )}
+              </CollapsibleContent>
+            </Collapsible>
+
+
           </div>
 
           <InstanceErrorDisplay instance={instance} compact />
@@ -375,7 +411,7 @@ function InstanceCard({ instance }: { instance: InstanceResponse }) {
   )
 }
 
-function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: InstanceResponse, stats: InstanceStats | undefined, serverState: ServerState | null, torrentCounts: TorrentCounts | null | undefined }> }) {
+function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: InstanceResponse, stats: TorrentStats | null, serverState: ServerState | null, torrentCounts: TorrentCounts | undefined }> }) {
   const globalStats = useMemo(() => {
     const connected = statsData.filter(({ instance }) => instance?.connected).length
     const totalTorrents = statsData.reduce((sum, { torrentCounts }) =>
@@ -383,9 +419,9 @@ function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: Instance
     const activeTorrents = statsData.reduce((sum, { torrentCounts }) =>
       sum + (torrentCounts?.status?.active || 0), 0)
     const totalDownload = statsData.reduce((sum, { stats }) =>
-      sum + (stats?.speeds?.download || 0), 0)
+      sum + (stats?.totalDownloadSpeed || 0), 0)
     const totalUpload = statsData.reduce((sum, { stats }) =>
-      sum + (stats?.speeds?.upload || 0), 0)
+      sum + (stats?.totalUploadSpeed || 0), 0)
     const totalErrors = statsData.reduce((sum, { torrentCounts }) =>
       sum + (torrentCounts?.status?.errored || 0), 0)
 
@@ -479,7 +515,7 @@ function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: Instance
   )
 }
 
-function GlobalAllTimeStats({ statsData }: { statsData: Array<{ instance: InstanceResponse, stats: InstanceStats | undefined, serverState: ServerState | null }> }) {
+function GlobalAllTimeStats({ statsData }: { statsData: Array<{ instance: InstanceResponse, stats: TorrentStats | null, serverState: ServerState | null }> }) {
   const [accordionValue, setAccordionValue] = usePersistedAccordionState("qui-global-stats-accordion")
 
   const globalStats = useMemo(() => {
@@ -627,7 +663,7 @@ function GlobalAllTimeStats({ statsData }: { statsData: Array<{ instance: Instan
                         {instanceRatio.toFixed(2)}
                       </TableCell>
                       <TableCell className="text-center font-semibold hidden sm:table-cell">
-                        {serverState?.total_peer_connections || "-"}
+                        {serverState?.total_peer_connections !== undefined ? (serverState.total_peer_connections || 0) : "-"}
                       </TableCell>
                     </TableRow>
                   )
@@ -640,7 +676,7 @@ function GlobalAllTimeStats({ statsData }: { statsData: Array<{ instance: Instan
   )
 }
 
-function QuickActionsDropdown({ statsData }: { statsData: Array<{ instance: InstanceResponse, stats: InstanceStats | undefined, serverState: ServerState | null }> }) {
+function QuickActionsDropdown({ statsData }: { statsData: Array<{ instance: InstanceResponse, stats: TorrentStats | null, serverState: ServerState | null }> }) {
   const connectedInstances = statsData
     .filter(({ instance }) => instance?.connected)
     .map(({ instance }) => instance)
@@ -680,6 +716,7 @@ function QuickActionsDropdown({ statsData }: { statsData: Array<{ instance: Inst
 }
 
 export function Dashboard() {
+  const [isAdvancedMetricsOpen, setIsAdvancedMetricsOpen] = useState(false)
   const { instances, isLoading } = useInstances()
   const allInstances = instances || []
 
@@ -745,7 +782,12 @@ export function Dashboard() {
               <h2 className="text-xl font-semibold mb-4">Instances</h2>
               <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
                 {allInstances.map(instance => (
-                  <InstanceCard key={instance.id} instance={instance} />
+                  <InstanceCard
+                    key={instance.id}
+                    instance={instance}
+                    isAdvancedMetricsOpen={isAdvancedMetricsOpen}
+                    setIsAdvancedMetricsOpen={setIsAdvancedMetricsOpen}
+                  />
                 ))}
               </div>
             </div>

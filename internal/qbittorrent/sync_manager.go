@@ -31,11 +31,12 @@ type TorrentResponse struct {
 	Torrents      []qbt.Torrent           `json:"torrents"`
 	Total         int                     `json:"total"`
 	Stats         *TorrentStats           `json:"stats,omitempty"`
-	Counts        *TorrentCounts          `json:"counts,omitempty"`     // Include counts for sidebar
-	Categories    map[string]qbt.Category `json:"categories,omitempty"` // Include categories for sidebar
-	Tags          []string                `json:"tags,omitempty"`       // Include tags for sidebar
-	HasMore       bool                    `json:"hasMore"`              // Whether more pages are available
-	SessionID     string                  `json:"sessionId,omitempty"`  // Optional session tracking
+	Counts        *TorrentCounts          `json:"counts,omitempty"`      // Include counts for sidebar
+	Categories    map[string]qbt.Category `json:"categories,omitempty"`  // Include categories for sidebar
+	Tags          []string                `json:"tags,omitempty"`        // Include tags for sidebar
+	ServerState   *qbt.ServerState        `json:"serverState,omitempty"` // Include server state for Dashboard
+	HasMore       bool                    `json:"hasMore"`               // Whether more pages are available
+	SessionID     string                  `json:"sessionId,omitempty"`   // Optional session tracking
 	CacheMetadata *CacheMetadata          `json:"cacheMetadata,omitempty"`
 }
 
@@ -272,13 +273,20 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 	// Data is always fresh from sync manager
 
+	// Get server state for Dashboard optimization
+	var serverState *qbt.ServerState
+	if mainData := syncManager.GetData(); mainData != nil {
+		serverState = &mainData.ServerState
+	}
+
 	response := &TorrentResponse{
 		Torrents:      paginatedTorrents,
 		Total:         len(filteredTorrents),
 		Stats:         stats,
-		Counts:        counts,     // Include counts for sidebar
-		Categories:    categories, // Include categories for sidebar
-		Tags:          tags,       // Include tags for sidebar
+		Counts:        counts,      // Include counts for sidebar
+		Categories:    categories,  // Include categories for sidebar
+		Tags:          tags,        // Include tags for sidebar
+		ServerState:   serverState, // Include server state for Dashboard
 		HasMore:       hasMore,
 		CacheMetadata: cacheMetadata,
 	}
@@ -1461,16 +1469,16 @@ func (sm *SyncManager) applyManualFilters(torrents []qbt.Torrent, filters Filter
 
 // Torrent state categories for fast lookup
 var torrentStateCategories = map[string][]qbt.TorrentState{
-	"downloading":          {qbt.TorrentStateDownloading, qbt.TorrentStateStalledDl, qbt.TorrentStateMetaDl, qbt.TorrentStateQueuedDl, qbt.TorrentStateAllocating, qbt.TorrentStateCheckingDl, qbt.TorrentStateForcedDl},
-	"seeding":              {qbt.TorrentStateUploading, qbt.TorrentStateStalledUp, qbt.TorrentStateQueuedUp, qbt.TorrentStateCheckingUp, qbt.TorrentStateForcedUp},
-	"paused":               {qbt.TorrentStatePausedDl, qbt.TorrentStatePausedUp, qbt.TorrentStateStoppedDl, qbt.TorrentStateStoppedUp},
-	"active":               {qbt.TorrentStateDownloading, qbt.TorrentStateUploading, qbt.TorrentStateForcedDl, qbt.TorrentStateForcedUp},
-	"stalled":              {qbt.TorrentStateStalledDl, qbt.TorrentStateStalledUp},
-	"checking":             {qbt.TorrentStateCheckingDl, qbt.TorrentStateCheckingUp, qbt.TorrentStateCheckingResumeData},
-	"errored":              {qbt.TorrentStateError, qbt.TorrentStateMissingFiles},
-	"moving":               {qbt.TorrentStateMoving},
-	"stalled_uploading":    {qbt.TorrentStateStalledUp},
-	"stalled_downloading":  {qbt.TorrentStateStalledDl},
+	"downloading":         {qbt.TorrentStateDownloading, qbt.TorrentStateStalledDl, qbt.TorrentStateMetaDl, qbt.TorrentStateQueuedDl, qbt.TorrentStateAllocating, qbt.TorrentStateCheckingDl, qbt.TorrentStateForcedDl},
+	"seeding":             {qbt.TorrentStateUploading, qbt.TorrentStateStalledUp, qbt.TorrentStateQueuedUp, qbt.TorrentStateCheckingUp, qbt.TorrentStateForcedUp},
+	"paused":              {qbt.TorrentStatePausedDl, qbt.TorrentStatePausedUp, qbt.TorrentStateStoppedDl, qbt.TorrentStateStoppedUp},
+	"active":              {qbt.TorrentStateDownloading, qbt.TorrentStateUploading, qbt.TorrentStateForcedDl, qbt.TorrentStateForcedUp},
+	"stalled":             {qbt.TorrentStateStalledDl, qbt.TorrentStateStalledUp},
+	"checking":            {qbt.TorrentStateCheckingDl, qbt.TorrentStateCheckingUp, qbt.TorrentStateCheckingResumeData},
+	"errored":             {qbt.TorrentStateError, qbt.TorrentStateMissingFiles},
+	"moving":              {qbt.TorrentStateMoving},
+	"stalled_uploading":   {qbt.TorrentStateStalledUp},
+	"stalled_downloading": {qbt.TorrentStateStalledDl},
 }
 
 // Action state categories for optimistic update clearing
