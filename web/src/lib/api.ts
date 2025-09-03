@@ -6,6 +6,7 @@
 import type {
   AppPreferences,
   AuthResponse,
+  Category,
   InstanceFormData,
   InstanceResponse,
   MainData,
@@ -311,7 +312,7 @@ class ApiClient {
   }
 
   // Categories & Tags
-  async getCategories(instanceId: number): Promise<Record<string, { name: string; savePath: string }>> {
+  async getCategories(instanceId: number): Promise<Record<string, Category>> {
     return this.request(`/instances/${instanceId}/categories`)
   }
 
