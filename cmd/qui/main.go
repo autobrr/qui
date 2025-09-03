@@ -454,9 +454,10 @@ func (app *Application) runServer() {
 	}
 
 	clientAPIKeyStore := models.NewClientAPIKeyStore(db.Conn())
+	errorStore := models.NewInstanceErrorStore(db.Conn())
 
 	// Initialize qBittorrent client pool
-	clientPool, err := qbittorrent.NewClientPool(instanceStore)
+	clientPool, err := qbittorrent.NewClientPool(instanceStore, errorStore)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize client pool")
 	}
@@ -474,7 +475,7 @@ func (app *Application) runServer() {
 	// Initialize client connections for all active instances on startup
 	go func() {
 		listCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		instances, err := instanceStore.List(listCtx, true) // Only active instances
+		instances, err := instanceStore.List(listCtx)
 		cancel()
 
 		if err != nil {

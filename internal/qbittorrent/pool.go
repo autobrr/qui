@@ -52,9 +52,9 @@ type decryptionErrorInfo struct {
 type ClientPool struct {
 	clients           map[int]*Client
 	instanceStore     *models.InstanceStore
+	errorStore        *models.InstanceErrorStore
 	cache             *ristretto.Cache
 	mu                sync.RWMutex
-	dbMu              sync.Mutex          // Serialize database updates
 	creationMu        sync.Mutex          // Serialize client creation operations
 	creationLocks     map[int]*sync.Mutex // Per-instance creation locks
 	closed            bool
@@ -65,7 +65,7 @@ type ClientPool struct {
 }
 
 // NewClientPool creates a new client pool
-func NewClientPool(instanceStore *models.InstanceStore) (*ClientPool, error) {
+func NewClientPool(instanceStore *models.InstanceStore, errorStore *models.InstanceErrorStore) (*ClientPool, error) {
 	// Create high-performance cache
 	cache, err := ristretto.NewCache(&ristretto.Config{
 		NumCounters: 1e7,     // 10 million
@@ -79,6 +79,7 @@ func NewClientPool(instanceStore *models.InstanceStore) (*ClientPool, error) {
 	cp := &ClientPool{
 		clients:           make(map[int]*Client),
 		instanceStore:     instanceStore,
+		errorStore:        errorStore,
 		cache:             cache,
 		creationLocks:     make(map[int]*sync.Mutex),
 		healthTicker:      time.NewTicker(healthCheckInterval),
@@ -228,13 +229,6 @@ func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID in
 		// Don't fail client creation for sync manager issues
 	}
 
-	// Update last connected timestamp
-	cp.dbMu.Lock()
-	if err := cp.instanceStore.UpdateLastConnected(ctx, instanceID); err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to update last connected timestamp")
-	}
-	cp.dbMu.Unlock()
-
 	return client, nil
 }
 
@@ -300,23 +294,10 @@ func (cp *ClientPool) performHealthChecks() {
 				// Track failure and apply backoff
 				cp.trackFailure(instanceID, err)
 
-				// Mark as inactive in database (serialize DB updates)
-				cp.dbMu.Lock()
-				if err := cp.instanceStore.UpdateActive(ctx, instanceID, false); err != nil {
-					log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to update inactive status")
-				}
-				cp.dbMu.Unlock()
-
 				// Do not recreate client if unhealthy; just log and return
 			} else {
-				// Health check succeeded, reset failure tracking and ensure marked as active
+				// Health check succeeded, reset failure tracking
 				cp.resetFailureTracking(instanceID)
-
-				cp.dbMu.Lock()
-				if err := cp.instanceStore.UpdateActive(ctx, instanceID, true); err != nil {
-					log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to update active status")
-				}
-				cp.dbMu.Unlock()
 			}
 		}(client, instanceID)
 	}
@@ -325,6 +306,11 @@ func (cp *ClientPool) performHealthChecks() {
 // GetCache returns the cache instance for external use
 func (cp *ClientPool) GetCache() *ristretto.Cache {
 	return cp.cache
+}
+
+// GetErrorStore returns the error store instance for external use
+func (cp *ClientPool) GetErrorStore() *models.InstanceErrorStore {
+	return cp.errorStore
 }
 
 // Close closes all clients and releases resources
@@ -382,6 +368,13 @@ func (cp *ClientPool) trackFailure(instanceID int, err error) {
 
 	info.attempts++
 
+	// Record error to database
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if recordErr := cp.errorStore.RecordError(ctx, instanceID, err); recordErr != nil {
+		log.Error().Err(recordErr).Int("instanceID", instanceID).Msg("Failed to record error to database")
+	}
+
 	// Calculate backoff duration
 	var backoffDuration time.Duration
 	if cp.isBanError(err) {
@@ -409,15 +402,29 @@ func (cp *ClientPool) resetFailureTracking(instanceID int) {
 }
 
 func (cp *ClientPool) resetFailureTrackingLocked(instanceID int) {
+	hadFailures := false
+
 	if _, exists := cp.failureTracker[instanceID]; exists {
 		delete(cp.failureTracker, instanceID)
+		hadFailures = true
 		log.Debug().Int("instanceID", instanceID).Msg("Reset failure tracking after successful connection")
 	}
 
 	// Also reset decryption error tracking on successful connection
 	if _, exists := cp.decryptionTracker[instanceID]; exists {
 		delete(cp.decryptionTracker, instanceID)
+		hadFailures = true
 		log.Debug().Int("instanceID", instanceID).Msg("Reset decryption error tracking after successful connection")
+	}
+
+	// Always clear errors from database on successful connection
+	// This ensures database cleanup even if in-memory tracking was reset (e.g., after restart)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if clearErr := cp.errorStore.ClearErrors(ctx, instanceID); clearErr != nil {
+		log.Error().Err(clearErr).Int("instanceID", instanceID).Msg("Failed to clear errors from database")
+	} else if hadFailures {
+		log.Debug().Int("instanceID", instanceID).Msg("Cleared instance errors from database after successful connection")
 	}
 }
 

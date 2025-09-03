@@ -16,6 +16,8 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/lithammer/fuzzysearch/fuzzy"
 	"github.com/rs/zerolog/log"
+
+	"github.com/autobrr/qui/internal/models"
 )
 
 // CacheMetadata provides information about cache state
@@ -70,6 +72,11 @@ func NewSyncManager(clientPool *ClientPool) *SyncManager {
 	return &SyncManager{
 		clientPool: clientPool,
 	}
+}
+
+// GetErrorStore returns the error store for recording errors
+func (sm *SyncManager) GetErrorStore() *models.InstanceErrorStore {
+	return sm.clientPool.GetErrorStore()
 }
 
 // GetTorrentsWithFilters gets torrents with filters, search, sorting, and pagination

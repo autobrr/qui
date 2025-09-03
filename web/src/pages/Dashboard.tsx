@@ -142,8 +142,9 @@ function InstanceCard({
               </Button>
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="text-center">
             <p className="text-sm text-muted-foreground">Loading stats...</p>
+            <InstanceErrorDisplay instance={instance} compact />
           </CardContent>
         </Card>
       </>
@@ -152,7 +153,7 @@ function InstanceCard({
 
   // If we have stats but instance is not connected, show with zero values
   if (stats && !instance.connected) {
-    const hasErrors = instance.hasDecryptionError || instance.connectionError
+    const hasErrors = instance.hasDecryptionError || (instance.recentErrors && instance.recentErrors.length > 0)
     return (
       <>
         <Card className="hover:shadow-lg transition-shadow">
@@ -190,7 +191,6 @@ function InstanceCard({
           </CardHeader>
           <CardContent>
             <div className="text-sm text-muted-foreground text-center">
-              <p>Instance is disconnected</p>
               <InstanceErrorDisplay instance={instance} compact />
             </div>
           </CardContent>
@@ -201,7 +201,7 @@ function InstanceCard({
 
   // If we have an error or no stats data, show error state
   if (error || !stats) {
-    const hasErrors = instance.hasDecryptionError || instance.connectionError
+    const hasErrors = instance.hasDecryptionError
     return (
       <>
         <Card className="hover:shadow-lg transition-shadow opacity-60">
@@ -248,7 +248,7 @@ function InstanceCard({
     )
   }
 
-  const hasErrors = instance.hasDecryptionError || instance.connectionError
+  const hasErrors = instance.hasDecryptionError || (instance.recentErrors && instance.recentErrors.length > 0)
   return (
     <>
       <Card className="hover:shadow-lg transition-shadow">
