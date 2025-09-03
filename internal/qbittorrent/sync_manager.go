@@ -248,6 +248,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 	// Determine cache metadata based on last sync update time
 	var cacheMetadata *CacheMetadata
+	var serverState *qbt.ServerState
 	client, clientErr := sm.clientPool.GetClient(ctx, instanceID)
 	if clientErr == nil {
 		syncManager := client.GetSyncManager()
@@ -268,15 +269,12 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 				IsStale:     !isFresh,
 				NextRefresh: now.Add(time.Second).Format(time.RFC3339),
 			}
+
+			// Get server state from sync manager for Dashboard
+			if mainData := syncManager.GetData(); mainData != nil {
+				serverState = &mainData.ServerState
+			}
 		}
-	}
-
-	// Data is always fresh from sync manager
-
-	// Get server state for Dashboard optimization
-	var serverState *qbt.ServerState
-	if mainData := syncManager.GetData(); mainData != nil {
-		serverState = &mainData.ServerState
 	}
 
 	response := &TorrentResponse{
@@ -305,30 +303,6 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		Msg("Fresh torrent data fetched and cached")
 
 	return response, nil
-}
-
-// GetServerStats gets server statistics using sync manager (for Dashboard)
-func (sm *SyncManager) GetServerStats(ctx context.Context, instanceID int) (*qbt.MainData, error) {
-	// Get client
-	client, err := sm.clientPool.GetClient(ctx, instanceID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get client: %w", err)
-	}
-
-	// Get sync manager
-	syncManager := client.GetSyncManager()
-	if syncManager == nil {
-		return nil, fmt.Errorf("sync manager not initialized")
-	}
-
-	// Get main data from sync manager
-	mainData := syncManager.GetData()
-
-	log.Debug().
-		Int("instanceID", instanceID).
-		Msg("Server stats fetched from sync manager")
-
-	return mainData, nil
 }
 
 // BulkAction performs bulk operations on torrents
