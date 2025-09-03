@@ -614,8 +614,8 @@ func (sm *SyncManager) calculateCountsFromTorrents(allTorrents []qbt.Torrent) *T
 					continue
 				}
 				// Split by commas
-				commaParts := strings.Split(trackerStr, ",")
-				for _, part := range commaParts {
+				commaParts := strings.SplitSeq(trackerStr, ",")
+				for part := range commaParts {
 					part = strings.TrimSpace(part)
 					if part == "" {
 						continue
@@ -765,8 +765,8 @@ func (sm *SyncManager) GetTorrentCounts(ctx context.Context, instanceID int) (*T
 					continue
 				}
 				// Split by commas
-				commaParts := strings.Split(trackerStr, ",")
-				for _, part := range commaParts {
+				commaParts := strings.SplitSeq(trackerStr, ",")
+				for part := range commaParts {
 					part = strings.TrimSpace(part)
 					if part == "" {
 						continue
@@ -1228,15 +1228,15 @@ func (sm *SyncManager) filterTorrentsByTrackers(torrents []qbt.Torrent, trackers
 
 		if torrent.Tracker != "" {
 			// Split by newlines first, then by commas
-			trackerStrings := strings.Split(torrent.Tracker, "\n")
-			for _, trackerStr := range trackerStrings {
+			trackerStrings := strings.SplitSeq(torrent.Tracker, "\n")
+			for trackerStr := range trackerStrings {
 				trackerStr = strings.TrimSpace(trackerStr)
 				if trackerStr == "" {
 					continue
 				}
 				// Split by commas
-				commaParts := strings.Split(trackerStr, ",")
-				for _, part := range commaParts {
+				commaParts := strings.SplitSeq(trackerStr, ",")
+				for part := range commaParts {
 					part = strings.TrimSpace(part)
 					if part == "" {
 						continue
@@ -1307,11 +1307,8 @@ func (sm *SyncManager) applyManualFilters(torrents []qbt.Torrent, filters Filter
 		if len(filters.Categories) > 0 {
 			categoryMatch := false
 			torrentCategory := torrent.Category
-			for _, filterCategory := range filters.Categories {
-				if torrentCategory == filterCategory {
-					categoryMatch = true
-					break
-				}
+			if slices.Contains(filters.Categories, torrentCategory) {
+				categoryMatch = true
 			}
 			matches = matches && categoryMatch
 		}
@@ -1321,11 +1318,8 @@ func (sm *SyncManager) applyManualFilters(torrents []qbt.Torrent, filters Filter
 			tagMatch := false
 			if torrent.Tags == "" {
 				// Check if empty tag is in the filter (for "untagged" option)
-				for _, filterTag := range filters.Tags {
-					if filterTag == "" {
-						tagMatch = true
-						break
-					}
+				if slices.Contains(filters.Tags, "") {
+					tagMatch = true
 				}
 			} else {
 				// Parse torrent tags
@@ -1358,25 +1352,22 @@ func (sm *SyncManager) applyManualFilters(torrents []qbt.Torrent, filters Filter
 			trackerMatch := false
 			if torrent.Tracker == "" {
 				// Check if empty tracker is in the filter (for "no tracker" option)
-				for _, filterTracker := range filters.Trackers {
-					if filterTracker == "" {
-						trackerMatch = true
-						break
-					}
+				if slices.Contains(filters.Trackers, "") {
+					trackerMatch = true
 				}
 			} else {
 				// Extract tracker domains from torrent
 				var trackerDomains []string
-				trackerStrings := strings.Split(torrent.Tracker, "\n")
+				trackerStrings := strings.SplitSeq(torrent.Tracker, "\n")
 
-				for _, trackerStr := range trackerStrings {
+				for trackerStr := range trackerStrings {
 					trackerStr = strings.TrimSpace(trackerStr)
 					if trackerStr == "" {
 						continue
 					}
 
-					commaParts := strings.Split(trackerStr, ",")
-					for _, part := range commaParts {
+					commaParts := strings.SplitSeq(trackerStr, ",")
+					for part := range commaParts {
 						part = strings.TrimSpace(part)
 						if part == "" {
 							continue
@@ -1410,11 +1401,8 @@ func (sm *SyncManager) applyManualFilters(torrents []qbt.Torrent, filters Filter
 
 				// Check if any tracker domain matches the filter
 				for _, trackerDomain := range trackerDomains {
-					for _, filterTracker := range filters.Trackers {
-						if trackerDomain == filterTracker {
-							trackerMatch = true
-							break
-						}
+					if slices.Contains(filters.Trackers, trackerDomain) {
+						trackerMatch = true
 					}
 					if trackerMatch {
 						break
