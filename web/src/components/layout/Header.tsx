@@ -105,16 +105,17 @@ export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
       <div className="flex items-center gap-2">
         {children}
         <h1 className={cn(
-          "flex items-center gap-2 text-xl font-semibold transition-opacity duration-300",
+          "flex items-center gap-2 pl-2 sm:pl-0 text-xl font-semibold transition-opacity duration-300",
           "lg:opacity-0 lg:pointer-events-none", // Hidden on desktop by default
-          sidebarCollapsed && "lg:opacity-100 lg:pointer-events-auto" // Visible on desktop when sidebar collapsed
+          sidebarCollapsed && "lg:opacity-100 lg:pointer-events-auto", // Visible on desktop when sidebar collapsed
+          !shouldShowQuiOnMobile && "hidden sm:flex" // Hide on mobile when on instance routes
         )}>
           {theme === "swizzin" ? (
             <SwizzinLogo className="h-5 w-5" />
           ) : (
             <Logo className="h-5 w-5" />
           )}
-          qui
+          {instanceName ? instanceName : "qui"}
         </h1>
       </div>
 
@@ -210,7 +211,7 @@ export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
         </div>
       )}
 
-      <div className="grid grid-cols-[auto_auto] items-center gap-3 transition-all duration-300 ease-out">
+      <div className="grid grid-cols-[auto_auto] items-center gap-1 transition-all duration-300 ease-out">
         <ThemeToggle/>
         <div className={cn(
           "transition-all duration-300 ease-out overflow-hidden",
