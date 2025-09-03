@@ -8,7 +8,6 @@ import type {
   AuthResponse,
   InstanceFormData,
   InstanceResponse,
-  MainData,
   TorrentResponse,
   User
 } from "@/types"
@@ -169,10 +168,6 @@ class ApiClient {
     return this.request<TorrentResponse>(
       `/instances/${instanceId}/torrents?${searchParams}`
     )
-  }
-
-  async syncMainData(instanceId: number, rid: number): Promise<MainData> {
-    return this.request<MainData>(`/instances/${instanceId}/torrents/sync?rid=${rid}`)
   }
 
   async addTorrent(

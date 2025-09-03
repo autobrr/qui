@@ -119,26 +119,6 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 	RespondJSON(w, http.StatusOK, response)
 }
 
-// SyncTorrents returns server statistics for an instance (used by Dashboard)
-func (h *TorrentsHandler) SyncTorrents(w http.ResponseWriter, r *http.Request) {
-	// Get instance ID from URL
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
-		return
-	}
-
-	// Get server statistics
-	mainData, err := h.syncManager.GetServerStats(r.Context(), instanceID)
-	if err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get server stats")
-		RespondError(w, http.StatusInternalServerError, "Failed to get server stats")
-		return
-	}
-
-	RespondJSON(w, http.StatusOK, mainData)
-}
-
 // AddTorrentRequest represents a request to add a torrent
 type AddTorrentRequest struct {
 	Category     string   `json:"category,omitempty"`
