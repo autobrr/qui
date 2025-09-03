@@ -520,48 +520,6 @@ paths:
         '201':
           description: Torrent added successfully
 
-  /api/instances/{instanceId}/torrents/sync:
-    get:
-      tags:
-        - Torrents
-      summary: Sync torrents (SyncMainData)
-      description: Get incremental torrent updates using qBittorrent's sync/maindata API
-      parameters:
-        - $ref: '#/components/parameters/instanceId'
-        - name: rid
-          in: query
-          required: true
-          schema:
-            type: integer
-            description: Request ID for incremental updates (0 for full sync)
-      responses:
-        '200':
-          description: Sync data
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  rid:
-                    type: integer
-                  full_update:
-                    type: boolean
-                  torrents:
-                    type: object
-                    additionalProperties:
-                      $ref: '#/components/schemas/Torrent'
-                  torrents_removed:
-                    type: array
-                    items:
-                      type: string
-                  categories:
-                    type: object
-                  tags:
-                    type: array
-                    items:
-                      type: string
-                  server_state:
-                    type: object
 
   /api/instances/{instanceId}/torrents/bulk-action:
     post:
