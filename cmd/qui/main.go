@@ -30,6 +30,7 @@ import (
 	"github.com/autobrr/qui/internal/polar"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services"
+	"github.com/autobrr/qui/internal/update"
 	"github.com/autobrr/qui/internal/web"
 	webfs "github.com/autobrr/qui/web"
 )
@@ -59,6 +60,7 @@ multiple qBittorrent instances with support for 10k+ torrents.`,
 	rootCmd.AddCommand(RunGenerateConfigCommand())
 	rootCmd.AddCommand(RunCreateUserCommand())
 	rootCmd.AddCommand(RunChangePasswordCommand())
+	rootCmd.AddCommand(RunUpdateCommand())
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -359,6 +361,31 @@ If no --config-dir is specified, uses the OS-specific default location:
 		"username to verify identity")
 	command.Flags().StringVar(&newPassword, "new-password", "",
 		"new password (will prompt if not provided)")
+
+	return command
+}
+
+func RunUpdateCommand() *cobra.Command {
+	var command = &cobra.Command{
+		Use:                   "update",
+		Short:                 "Update qui",
+		Long:                  `Update qui to the latest version.`,
+		DisableFlagsInUseLine: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			updater := update.NewUpdater(update.Config{
+				Repository: "autobrr/qui",
+				Version:    Version,
+			})
+			return updater.Run(cmd.Context())
+		},
+	}
+
+	command.SetUsageTemplate(`Usage:
+  {{.CommandPath}}
+  
+Flags:
+{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}
+`)
 
 	return command
 }

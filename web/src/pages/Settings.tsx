@@ -436,8 +436,8 @@ export function Settings() {
 
 
         <TabsContent value="themes" className="space-y-4">
-          <ThemeSelector />
           <ThemeLicenseManager />
+          <ThemeSelector />
         </TabsContent>
 
         <TabsContent value="api" className="space-y-4">
