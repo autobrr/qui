@@ -5,14 +5,15 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
+import { getLicenseErrorMessage } from "@/lib/theme-license-errors"
 import { toast } from "sonner"
 
-// Hook to get all licensed themes
-export const useLicensedThemes = () => {
+// Hook to check premium access status
+export const usePremiumAccess = () => {
   return useQuery({
     queryKey: ["theme-licenses"],
     queryFn: () => api.getLicensedThemes(),
-    staleTime: 30 * 60 * 1000, // 30 minutes
+    staleTime: 5 * 60 * 1000, // 5 minutes
     refetchOnWindowFocus: false,
   })
 }
@@ -33,7 +34,7 @@ export const useValidateThemeLicense = () => {
       }
     },
     onError: (error: Error) => {
-      toast.error(error.message || "Failed to validate license")
+      toast.error(getLicenseErrorMessage(error))
     },
   })
 }
@@ -76,7 +77,7 @@ export const useRefreshThemeLicenses = () => {
 
 // Helper hook to check if user has premium access
 export const useHasPremiumAccess = () => {
-  const { data, isLoading } = useLicensedThemes()
+  const { data, isLoading } = usePremiumAccess()
 
   return {
     hasPremiumAccess: data?.hasPremiumAccess ?? false,
@@ -84,8 +85,8 @@ export const useHasPremiumAccess = () => {
   }
 }
 
-// Hook to get all licenses
-export const useAllLicenses = () => {
+// Hook to get license details for management
+export const useLicenseDetails = () => {
   return useQuery({
     queryKey: ["theme-licenses", "all"],
     queryFn: () => api.getAllLicenses(),

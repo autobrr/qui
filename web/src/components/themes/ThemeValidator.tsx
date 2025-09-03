@@ -4,7 +4,7 @@
  */
 
 import { useEffect } from "react"
-import { useLicensedThemes } from "@/hooks/useThemeLicense"
+import { usePremiumAccess } from "@/hooks/useThemeLicense"
 import { themes, isThemePremium, getDefaultTheme } from "@/config/themes"
 import { setValidatedThemes, setTheme } from "@/utils/theme"
 
@@ -13,7 +13,7 @@ import { setValidatedThemes, setTheme } from "@/utils/theme"
  * to prevent unauthorized access to premium themes via localStorage tampering
  */
 export function ThemeValidator() {
-  const { data, isLoading, isError } = useLicensedThemes()
+  const { data, isLoading, isError } = usePremiumAccess()
 
   useEffect(() => {
     // Don't do anything while loading - let the stored theme persist
