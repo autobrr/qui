@@ -119,31 +119,6 @@ class ApiClient {
     return this.request(`/instances/${id}/test`, { method: "POST" })
   }
 
-  async getInstanceStats(id: number): Promise<{
-    instanceId: number
-    connected: boolean
-    torrents: {
-      total: number
-      downloading: number
-      seeding: number
-      paused: number
-      error: number
-      completed: number
-    }
-    speeds: {
-      download: number
-      upload: number
-    }
-    serverState?: {
-      downloadSpeed: number
-      uploadSpeed: number
-      downloaded: number
-      uploaded: number
-      freeSpace: number
-    }
-  }> {
-    return this.request(`/instances/${id}/stats`)
-  }
 
   // Torrent endpoints
   async getTorrents(
@@ -238,28 +213,6 @@ class ApiClient {
     return response.json()
   }
 
-  async pauseTorrent(instanceId: number, hash: string): Promise<void> {
-    return this.request(`/instances/${instanceId}/torrents/${hash}/pause`, {
-      method: "PUT",
-    })
-  }
-
-  async resumeTorrent(instanceId: number, hash: string): Promise<void> {
-    return this.request(`/instances/${instanceId}/torrents/${hash}/resume`, {
-      method: "PUT",
-    })
-  }
-
-  async deleteTorrent(
-    instanceId: number,
-    hash: string,
-    deleteFiles: boolean = false
-  ): Promise<void> {
-    return this.request(
-      `/instances/${instanceId}/torrents/${hash}?deleteFiles=${deleteFiles}`,
-      { method: "DELETE" }
-    )
-  }
 
   async bulkAction(
     instanceId: number,

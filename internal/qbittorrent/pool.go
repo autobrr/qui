@@ -156,11 +156,6 @@ func (cp *ClientPool) GetClientWithTimeout(ctx context.Context, instanceID int, 
 	return cp.createClientWithTimeout(ctx, instanceID, timeout)
 }
 
-// createClient creates a new client connection with default timeout
-func (cp *ClientPool) createClient(ctx context.Context, instanceID int) (*Client, error) {
-	return cp.createClientWithTimeout(ctx, instanceID, 60*time.Second)
-}
-
 // createClientWithTimeout creates a new client connection with custom timeout
 func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID int, timeout time.Duration) (*Client, error) {
 	// Use per-instance lock to prevent blocking other instances

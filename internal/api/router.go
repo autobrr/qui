@@ -128,7 +128,6 @@ func NewRouter(deps *Dependencies) *chi.Mux {
 					r.Put("/", instancesHandler.UpdateInstance)
 					r.Delete("/", instancesHandler.DeleteInstance)
 					r.Post("/test", instancesHandler.TestConnection)
-					r.Get("/stats", instancesHandler.GetInstanceStats)
 
 					// Torrent operations
 					r.Route("/torrents", func(r chi.Router) {
@@ -137,10 +136,6 @@ func NewRouter(deps *Dependencies) *chi.Mux {
 						r.Post("/bulk-action", torrentsHandler.BulkAction)
 
 						r.Route("/{hash}", func(r chi.Router) {
-							r.Delete("/", torrentsHandler.DeleteTorrent)
-							r.Put("/pause", torrentsHandler.PauseTorrent)
-							r.Put("/resume", torrentsHandler.ResumeTorrent)
-
 							// Torrent details
 							r.Get("/properties", torrentsHandler.GetTorrentProperties)
 							r.Get("/trackers", torrentsHandler.GetTorrentTrackers)

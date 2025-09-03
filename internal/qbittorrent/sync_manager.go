@@ -889,7 +889,7 @@ func (sm *SyncManager) syncAfterModification(instanceID int, client *Client, ope
 }
 
 // getAllTorrentsForStats gets all torrents for stats calculation (with optimistic updates)
-func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID int, search string) ([]qbt.Torrent, error) {
+func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID int, _ string) ([]qbt.Torrent, error) {
 	// Get client
 	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
@@ -1000,35 +1000,6 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 	return torrents, nil
 }
 
-// clearOptimisticUpdate removes an optimistic update for a specific torrent
-func (sm *SyncManager) clearOptimisticUpdate(instanceID int, hash string) {
-	client, err := sm.clientPool.GetClient(context.Background(), instanceID)
-	if err != nil {
-		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to get client for clearing optimistic update")
-		return
-	}
-	client.clearOptimisticUpdate(hash)
-}
-
-// clearStaleOptimisticUpdates removes optimistic updates that are older than the specified duration
-func (sm *SyncManager) clearStaleOptimisticUpdates(maxAge time.Duration) {
-	// This method is no longer needed since each client manages its own optimistic updates
-	// But we can iterate through all clients if needed
-	log.Debug().Dur("maxAge", maxAge).Msg("Clearing stale optimistic updates across all instances")
-
-	// Note: This would require iterating through all clients in the pool
-	// For now, we'll rely on the per-client clearing in getAllTorrentsForStats
-}
-
-// clearAllOptimisticUpdatesForInstance removes all optimistic updates for a specific instance
-func (sm *SyncManager) clearAllOptimisticUpdatesForInstance(instanceID int) {
-	client, err := sm.clientPool.GetClient(context.Background(), instanceID)
-	if err != nil {
-		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to get client for clearing all optimistic updates")
-		return
-	}
-	client.clearAllOptimisticUpdates()
-}
 func normalizeForSearch(text string) string {
 	// Replace common torrent separators with spaces
 	replacers := []string{".", "_", "-", "[", "]", "(", ")", "{", "}"}
@@ -1210,76 +1181,6 @@ func (sm *SyncManager) filterTorrentsByGlob(torrents []qbt.Torrent, pattern stri
 		Int("totalTorrents", len(torrents)).
 		Int("matchedTorrents", len(filtered)).
 		Msg("Glob pattern search completed")
-
-	return filtered
-}
-
-// filterTorrentsByTrackers filters torrents by tracker domains
-func (sm *SyncManager) filterTorrentsByTrackers(torrents []qbt.Torrent, trackers []string) []qbt.Torrent {
-	if len(trackers) == 0 {
-		return torrents
-	}
-
-	var filtered []qbt.Torrent
-
-	for _, torrent := range torrents {
-		// Extract tracker domains - handle multiple trackers separated by newlines or commas
-		var trackerDomains []string
-
-		if torrent.Tracker != "" {
-			// Split by newlines first, then by commas
-			trackerStrings := strings.SplitSeq(torrent.Tracker, "\n")
-			for trackerStr := range trackerStrings {
-				trackerStr = strings.TrimSpace(trackerStr)
-				if trackerStr == "" {
-					continue
-				}
-				// Split by commas
-				commaParts := strings.SplitSeq(trackerStr, ",")
-				for part := range commaParts {
-					part = strings.TrimSpace(part)
-					if part == "" {
-						continue
-					}
-					// Extract domain from this tracker URL
-					var domain string
-					if strings.Contains(part, "://") {
-						if u, err := url.Parse(part); err == nil {
-							domain = u.Hostname()
-						} else {
-							// Fallback to string manipulation
-							parts := strings.Split(part, "://")
-							if len(parts) > 1 {
-								domain = parts[1]
-								if idx := strings.IndexAny(domain, ":/"); idx != -1 {
-									domain = domain[:idx]
-								}
-							}
-						}
-					}
-					if domain != "" {
-						trackerDomains = append(trackerDomains, domain)
-					}
-				}
-			}
-		}
-
-		// If no trackers found, add empty string
-		if len(trackerDomains) == 0 {
-			trackerDomains = append(trackerDomains, "")
-		}
-
-		// Check if any of this torrent's tracker domains match the filter list
-		for _, torrentDomain := range trackerDomains {
-			for _, filterTracker := range trackers {
-				if torrentDomain == filterTracker {
-					filtered = append(filtered, torrent)
-					goto nextTorrent
-				}
-			}
-		}
-	nextTorrent:
-	}
 
 	return filtered
 }
