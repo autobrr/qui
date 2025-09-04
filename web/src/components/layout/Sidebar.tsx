@@ -6,7 +6,9 @@
 import { Button } from "@/components/ui/button"
 import { Logo } from "@/components/ui/Logo"
 import { Separator } from "@/components/ui/separator"
+import { SwizzinLogo } from "@/components/ui/SwizzinLogo"
 import { useAuth } from "@/hooks/useAuth"
+import { useTheme } from "@/hooks/useTheme"
 import { api } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { useQuery } from "@tanstack/react-query"
@@ -47,6 +49,7 @@ const navigation: NavItem[] = [
 export function Sidebar() {
   const location = useLocation()
   const { logout } = useAuth()
+  const { theme } = useTheme()
 
   const { data: instances } = useQuery({
     queryKey: ["instances"],
@@ -56,8 +59,12 @@ export function Sidebar() {
   return (
     <div className="flex h-full w-64 flex-col border-r bg-sidebar border-sidebar-border">
       <div className="p-6">
-        <h2 className="flex flex-row items-center gap-2 text-lg font-semibold text-sidebar-foreground">
-          <Logo className="h-5 w-5" />
+        <h2 className="flex flex-row items-center gap-2 flex items-center gap-2 text-lg font-semibold text-sidebar-foreground">
+          {theme === "swizzin" ? (
+            <SwizzinLogo className="h-5 w-5" />
+          ) : (
+            <Logo className="h-5 w-5" />
+          )}
           qui
         </h2>
       </div>

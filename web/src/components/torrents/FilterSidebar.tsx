@@ -157,7 +157,7 @@ const FilterSidebarComponent = ({
   const [showCreateCategoryDialog, setShowCreateCategoryDialog] = useState(false)
   const [showEditCategoryDialog, setShowEditCategoryDialog] = useState(false)
   const [showDeleteCategoryDialog, setShowDeleteCategoryDialog] = useState(false)
-  const [categoryToEdit, setCategoryToEdit] = useState<{ name: string; savePath: string } | null>(null)
+  const [categoryToEdit, setCategoryToEdit] = useState<Category | null>(null)
   const [categoryToDelete, setCategoryToDelete] = useState("")
 
   // Search states for filtering large lists
@@ -219,7 +219,7 @@ const FilterSidebarComponent = ({
 
   // Filtered categories for performance
   const filteredCategories = useMemo(() => {
-    const categoryEntries = Object.entries(categories)
+    const categoryEntries = Object.entries(categories) as [string, Category][]
 
     if (debouncedCategorySearch) {
       const searchLower = debouncedCategorySearch.toLowerCase()
@@ -550,7 +550,7 @@ const FilterSidebarComponent = ({
                                 <ContextMenuContent>
                                   <ContextMenuItem
                                     onClick={() => {
-                                      setCategoryToEdit({ name, savePath: (category as Category).save_path })
+                                      setCategoryToEdit(category)
                                       setShowEditCategoryDialog(true)
                                     }}
                                   >
@@ -576,7 +576,7 @@ const FilterSidebarComponent = ({
                       </div>
                     </div>
                   ) : (
-                    filteredCategories.map(([name, category]: [string, { save_path: string }]) => (
+                    filteredCategories.map(([name, category]: [string, Category]) => (
                       <ContextMenu key={name}>
                         <ContextMenuTrigger asChild>
                           <label className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer">
@@ -595,7 +595,7 @@ const FilterSidebarComponent = ({
                         <ContextMenuContent>
                           <ContextMenuItem
                             onClick={() => {
-                              setCategoryToEdit({ name, savePath: category.save_path })
+                              setCategoryToEdit(category)
                               setShowEditCategoryDialog(true)
                             }}
                           >

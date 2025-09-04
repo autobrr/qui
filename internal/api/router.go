@@ -37,7 +37,7 @@ type Dependencies struct {
 	SyncManager         *qbittorrent.SyncManager
 	WebHandler          *web.Handler
 	ThemeLicenseService *services.ThemeLicenseService
-	MetricsManager      *metrics.Manager
+	MetricsManager      *metrics.MetricsManager
 }
 
 // NewRouter creates and configures the main application router
@@ -185,11 +185,6 @@ func NewRouter(deps *Dependencies) *chi.Mux {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status":"ok"}`))
 	})
-
-	if deps.MetricsManager != nil {
-		metricsHandler := handlers.NewMetricsHandler(deps.MetricsManager)
-		r.With(apimiddleware.IsAuthenticated(deps.AuthService)).Get("/metrics", metricsHandler.ServeMetrics)
-	}
 
 	if deps.WebHandler != nil {
 		deps.WebHandler.RegisterRoutes(r)
