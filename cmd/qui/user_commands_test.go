@@ -9,7 +9,6 @@ import (
 	"os"
 	"testing"
 
-	"github.com/alexedwards/scs/v2"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -17,7 +16,6 @@ import (
 	"github.com/autobrr/qui/internal/auth"
 	"github.com/autobrr/qui/internal/config"
 	"github.com/autobrr/qui/internal/database"
-	"github.com/autobrr/qui/pkg/sqlite3store"
 )
 
 func TestRunCreateUserCommand(t *testing.T) {
@@ -108,10 +106,6 @@ func TestRunCreateUserCommand(t *testing.T) {
 
 				db, err := database.New(cfg.GetDatabasePath())
 				require.NoError(t, err)
-
-				// Create minimal session manager for test
-				sessionManager := scs.New()
-				sessionManager.Store = sqlite3store.New(db.Conn())
 
 				authService := auth.NewService(db.Conn())
 				_, err = authService.SetupUser(context.Background(), "existinguser", "password123")
@@ -242,10 +236,6 @@ func TestRunChangePasswordCommand(t *testing.T) {
 
 				db, err := database.New(cfg.GetDatabasePath())
 				require.NoError(t, err)
-
-				// Create minimal session manager for test
-				sessionManager := scs.New()
-				sessionManager.Store = sqlite3store.New(db.Conn())
 
 				authService := auth.NewService(db.Conn())
 				_, err = authService.SetupUser(context.Background(), "testuser", "oldpassword123")

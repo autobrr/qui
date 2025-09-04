@@ -211,10 +211,6 @@ If no --config-dir is specified, uses the OS-specific default location:
 			}
 			defer db.Close()
 
-			// Create minimal session manager for CLI command
-			sessionManager := scs.New()
-			sessionManager.Store = sqlite3store.New(db.Conn())
-
 			authService := auth.NewService(db.Conn())
 
 			exists, err := authService.IsSetupComplete(context.Background())
@@ -305,10 +301,6 @@ If no --config-dir is specified, uses the OS-specific default location:
 				return fmt.Errorf("failed to initialize database: %w", err)
 			}
 			defer db.Close()
-
-			// Create minimal session manager for CLI command
-			sessionManager := scs.New()
-			sessionManager.Store = sqlite3store.New(db.Conn())
 
 			authService := auth.NewService(db.Conn())
 
