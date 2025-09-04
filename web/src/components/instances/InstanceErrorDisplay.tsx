@@ -22,8 +22,8 @@ interface InstanceErrorDisplayProps {
 }
 
 export function InstanceErrorDisplay({ instance, onEdit, showEditButton = false, compact = false }: InstanceErrorDisplayProps) {
-  const [isDecryptionOpen, setIsDecryptionOpen] = useState(false)
-  const [isRecentErrorsOpen, setIsRecentErrorsOpen] = useState(false)
+  const [isDecryptionOpen, setIsDecryptionOpen] = useState(compact)
+  const [isRecentErrorsOpen, setIsRecentErrorsOpen] = useState(compact)
 
   // Compact mode shows expandable error cards
   if (compact) {

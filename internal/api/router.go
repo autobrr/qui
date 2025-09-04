@@ -37,7 +37,7 @@ type Dependencies struct {
 	SyncManager         *qbittorrent.SyncManager
 	WebHandler          *web.Handler
 	ThemeLicenseService *services.ThemeLicenseService
-	MetricsManager      *metrics.Manager
+	MetricsManager      *metrics.MetricsManager
 }
 
 // NewRouter creates and configures the main application router
@@ -128,20 +128,14 @@ func NewRouter(deps *Dependencies) *chi.Mux {
 					r.Put("/", instancesHandler.UpdateInstance)
 					r.Delete("/", instancesHandler.DeleteInstance)
 					r.Post("/test", instancesHandler.TestConnection)
-					r.Get("/stats", instancesHandler.GetInstanceStats)
 
 					// Torrent operations
 					r.Route("/torrents", func(r chi.Router) {
 						r.Get("/", torrentsHandler.ListTorrents)
-						r.Get("/sync", torrentsHandler.SyncTorrents)
 						r.Post("/", torrentsHandler.AddTorrent)
 						r.Post("/bulk-action", torrentsHandler.BulkAction)
 
 						r.Route("/{hash}", func(r chi.Router) {
-							r.Delete("/", torrentsHandler.DeleteTorrent)
-							r.Put("/pause", torrentsHandler.PauseTorrent)
-							r.Put("/resume", torrentsHandler.ResumeTorrent)
-
 							// Torrent details
 							r.Get("/properties", torrentsHandler.GetTorrentProperties)
 							r.Get("/trackers", torrentsHandler.GetTorrentTrackers)
@@ -191,11 +185,6 @@ func NewRouter(deps *Dependencies) *chi.Mux {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status":"ok"}`))
 	})
-
-	if deps.MetricsManager != nil {
-		metricsHandler := handlers.NewMetricsHandler(deps.MetricsManager)
-		r.With(apimiddleware.IsAuthenticated(deps.AuthService)).Get("/metrics", metricsHandler.ServeMetrics)
-	}
 
 	if deps.WebHandler != nil {
 		deps.WebHandler.RegisterRoutes(r)

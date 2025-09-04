@@ -118,6 +118,7 @@ export interface TorrentResponse {
   counts?: TorrentCounts
   categories?: Record<string, Category>
   tags?: string[]
+  serverState?: ServerState
   cacheMetadata?: CacheMetadata
   hasMore?: boolean
 }
@@ -146,12 +147,19 @@ export interface ServerState {
   queueing: boolean
   use_alt_speed_limits: boolean
   refresh_interval: number
-  // User statistics
   alltime_dl?: number
   alltime_ul?: number
   total_wasted_session?: number
   global_ratio?: string
   total_peer_connections?: number
+  free_space_on_disk?: number
+  average_time_queue?: number
+  queued_io_jobs?: number
+  read_cache_hits?: string
+  read_cache_overload?: string
+  total_buffers_size?: number
+  total_queued_size?: number
+  write_cache_overload?: string
 }
 
 export interface AppPreferences {
