@@ -324,8 +324,8 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 	query := `UPDATE instances SET name = ?, host = ?, username = ?, basic_username = ?`
 	args := []any{name, normalizedHost, username, basicUsername}
 
-	// Only update password if provided and not redacted
-	if password != "" && !domain.IsRedactedString(password) {
+	// Handle password update - encrypt if provided
+	if password != "" {
 		encryptedPassword, err := s.encrypt(password)
 		if err != nil {
 			return nil, fmt.Errorf("failed to encrypt password: %w", err)
@@ -334,17 +334,20 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 		args = append(args, encryptedPassword)
 	}
 
-	// Only update basic password if provided and not redacted
-	if basicPassword != nil && *basicPassword != "" && !domain.IsRedactedString(*basicPassword) {
-		encryptedBasicPassword, err := s.encrypt(*basicPassword)
-		if err != nil {
-			return nil, fmt.Errorf("failed to encrypt basic auth password: %w", err)
+	// Handle basic password update
+	if basicPassword != nil {
+		if *basicPassword == "" {
+			// Empty string explicitly provided - clear the basic password
+			query += ", basic_password_encrypted = NULL"
+		} else {
+			// Basic password provided - encrypt and update
+			encryptedBasicPassword, err := s.encrypt(*basicPassword)
+			if err != nil {
+				return nil, fmt.Errorf("failed to encrypt basic auth password: %w", err)
+			}
+			query += ", basic_password_encrypted = ?"
+			args = append(args, encryptedBasicPassword)
 		}
-		query += ", basic_password_encrypted = ?"
-		args = append(args, encryptedBasicPassword)
-	} else if basicPassword != nil && *basicPassword == "" {
-		// Clear basic password if empty string provided
-		query += ", basic_password_encrypted = NULL"
 	}
 
 	query += " WHERE id = ?"

@@ -411,7 +411,7 @@ paths:
                   type: string
                   nullable: true
                   writeOnly: true
-                  description: Optional basic auth password. Optional for updates - only updates if provided and not masked.
+                  description: Optional basic auth password. For updates - provide new password to update, omit field to keep existing, or empty string to remove basic auth.
       responses:
         '200':
           description: Instance updated

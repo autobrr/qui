@@ -16,6 +16,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
 	internalqbittorrent "github.com/autobrr/qui/internal/qbittorrent"
 )
@@ -282,6 +283,28 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 	if req.Name == "" || req.Host == "" {
 		RespondError(w, http.StatusBadRequest, "Name and host are required")
 		return
+	}
+
+	// Fetch existing instance to handle redacted values
+	existingInstance, err := h.instanceStore.Get(r.Context(), instanceID)
+	if err != nil {
+		if errors.Is(err, models.ErrInstanceNotFound) {
+			RespondError(w, http.StatusNotFound, "Instance not found")
+			return
+		}
+		log.Error().Err(err).Msg("Failed to fetch existing instance")
+		RespondError(w, http.StatusInternalServerError, "Failed to fetch instance")
+		return
+	}
+
+	// Handle redacted password - if redacted, use existing password
+	if req.Password != "" && domain.IsRedactedString(req.Password) {
+		req.Password = existingInstance.PasswordEncrypted
+	}
+
+	// Handle redacted basic password - if redacted, use existing basic password
+	if req.BasicPassword != nil && *req.BasicPassword != "" && domain.IsRedactedString(*req.BasicPassword) {
+		req.BasicPassword = existingInstance.BasicPasswordEncrypted
 	}
 
 	// Update instance
