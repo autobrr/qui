@@ -60,3 +60,4 @@ output/*
 .claude/agents/*
 
 web/src/themes/premium/*
+docs/*

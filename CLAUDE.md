@@ -2,6 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Additional Instructions
+- commit guidelines @docs/git-instructions.md
+
 ## Development Commands
 
 ### Core Development
