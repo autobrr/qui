@@ -20,7 +20,7 @@ func (i *InstanceInfo) IDString() string {
 }
 
 func (cp *ClientPool) GetAllInstances(ctx context.Context) []*InstanceInfo {
-	instances, err := cp.instanceStore.List(ctx, false)
+	instances, err := cp.instanceStore.List(ctx)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get instances for metrics")
 		return nil

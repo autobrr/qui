@@ -346,22 +346,28 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
   // Calculate these after we have selectedHashes
   const isSelectAllChecked = useMemo(() => {
-    if (isAllSelected) return true
+    if (isAllSelected) {
+      // When in "select all" mode, only show checked if no exclusions exist
+      return excludedFromSelectAll.size === 0
+    }
     const regularSelectionCount = Object.keys(rowSelection)
       .filter((key: string) => (rowSelection as Record<string, boolean>)[key]).length
     return regularSelectionCount === sortedTorrents.length && sortedTorrents.length > 0
-  }, [isAllSelected, rowSelection, sortedTorrents.length])
+  }, [isAllSelected, excludedFromSelectAll.size, rowSelection, sortedTorrents.length])
 
   const isSelectAllIndeterminate = useMemo(() => {
     // Show indeterminate (dash) when SOME but not ALL items are selected
-    if (isAllSelected) return false // All selected = checkmark, not dash
+    if (isAllSelected) {
+      // In "select all" mode, show indeterminate if some are excluded
+      return excludedFromSelectAll.size > 0
+    }
 
     const regularSelectionCount = Object.keys(rowSelection)
       .filter((key: string) => (rowSelection as Record<string, boolean>)[key]).length
 
     // Indeterminate when some (but not all) are selected
     return regularSelectionCount > 0 && regularSelectionCount < sortedTorrents.length
-  }, [isAllSelected, rowSelection, sortedTorrents.length])
+  }, [isAllSelected, excludedFromSelectAll.size, rowSelection, sortedTorrents.length])
 
   // Memoize columns to avoid unnecessary recalculations
   const columns = useMemo(
@@ -1491,18 +1497,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
             {effectiveSelectionCount > 0 && (
               <>
                 <span className="ml-2">
-                  ({isAllSelected ? `All ${effectiveSelectionCount}` : effectiveSelectionCount} selected)
+                  ({isAllSelected && excludedFromSelectAll.size === 0 ? `All ${effectiveSelectionCount}` : effectiveSelectionCount} selected)
                 </span>
-                <button
-                  onClick={() => {
-                    setRowSelection({})
-                    setIsAllSelected(false)
-                    setExcludedFromSelectAll(new Set())
-                  }}
-                  className="ml-2 text-xs text-primary hover:text-foreground transition-colors underline-offset-4 hover:underline"
-                >
-                  Clear selection
-                </button>
               </>
             )}
             {showRefetchIndicator && (
