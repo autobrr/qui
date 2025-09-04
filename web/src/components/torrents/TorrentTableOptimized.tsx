@@ -45,13 +45,6 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuTrigger
-} from "@/components/ui/context-menu"
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -74,23 +67,17 @@ import {
 } from "@/components/ui/tooltip"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { api } from "@/lib/api"
-import {
-  getLinuxIsoName,
-  useIncognitoMode
-} from "@/lib/incognito"
+import { useIncognitoMode } from "@/lib/incognito"
 import { formatSpeed } from "@/lib/utils"
 import type { Category, Torrent, TorrentCounts } from "@/types"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useSearch } from "@tanstack/react-router"
-import { CheckCircle, ChevronDown, ChevronUp, Columns3, Copy, Eye, EyeOff, Folder, Loader2, Pause, Play, Radio, Settings2, Sparkles, Tag, Trash2 } from "lucide-react"
+import { ChevronDown, ChevronUp, Columns3, Eye, EyeOff, Loader2 } from "lucide-react"
 import { createPortal } from "react-dom"
-import { toast } from "sonner"
 import { AddTorrentDialog } from "./AddTorrentDialog"
 import { DraggableTableHeader } from "./DraggableTableHeader"
-import { QueueSubmenu } from "./QueueSubmenu"
-import { TorrentActions } from "./TorrentActions"
+import { TorrentContextMenu } from "./TorrentContextMenu"
 import { AddTagsDialog, RemoveTagsDialog, SetCategoryDialog, SetTagsDialog } from "./TorrentDialogs"
-import { ShareLimitSubmenu, SpeedLimitsSubmenu } from "./TorrentLimitSubmenus"
 import { createColumns } from "./TorrentTableColumns"
 
 // Default values for persisted state hooks (module scope for stable references)
@@ -893,15 +880,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     }
   }, [isAllSelected, effectiveSelectionCount, handleContextMenuAction])
 
-  const copyToClipboard = useCallback(async (text: string, type: "name" | "hash") => {
-    try {
-      await navigator.clipboard.writeText(text)
-      const message = type === "name" ? "Torrent name copied!" : "Torrent hash copied!"
-      toast.success(message)
-    } catch {
-      toast.error("Failed to copy to clipboard")
-    }
-  }, [])
 
   // Synchronous version for immediate use (backwards compatibility)
   const getCommonTagsSync = (torrents: Torrent[]): string[] => {
@@ -1015,36 +993,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
           )}
           {/* Action buttons */}
           <div className="flex gap-1 sm:gap-2 flex-shrink-0">
-            {(() => {
-              const actions = effectiveSelectionCount > 0 ? (
-                <TorrentActions
-                  instanceId={instanceId}
-                  selectedHashes={selectedHashes}
-                  selectedTorrents={selectedTorrents}
-                  onComplete={() => {
-                    setRowSelection({})
-                    setIsAllSelected(false)
-                    setExcludedFromSelectAll(new Set())
-                  }}
-                  isAllSelected={isAllSelected}
-                  totalSelectionCount={effectiveSelectionCount}
-                  filters={filters}
-                  search={effectiveSearch}
-                  excludeHashes={Array.from(excludedFromSelectAll)}
-                />
-              ) : null
-              const headerLeft = typeof document !== "undefined" ? document.getElementById("header-left-of-filter") : null
-              return (
-                <>
-                  {/* Mobile/tablet inline (hidden on xl and up) */}
-                  <div className="xl:hidden">
-                    {actions}
-                  </div>
-                  {/* Desktop portal: render directly left of the filter button in header */}
-                  {headerLeft && actions ? createPortal(actions, headerLeft) : null}
-                </>
-              )
-            })()}
 
             {/* Column visibility dropdown moved next to search via portal, with inline fallback */}
             {(() => {
@@ -1185,285 +1133,73 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
                   // Use memoized minTableWidth
                   return (
-                    <ContextMenu key={`${torrent.hash}-${virtualRow.index}`}>
-                      <ContextMenuTrigger asChild>
-                        <div
-                          className={`flex border-b cursor-pointer hover:bg-muted/50 ${row.getIsSelected() ? "bg-muted/50" : ""} ${isSelected ? "bg-accent" : ""}`}
-                          style={{
-                            position: "absolute",
-                            top: 0,
-                            left: 0,
-                            minWidth: `${minTableWidth}px`,
-                            height: `${virtualRow.size}px`,
-                            transform: `translateY(${virtualRow.start}px)`,
-                          }}
-                          onClick={(e) => {
-                            // Don't select when clicking checkbox or its wrapper
-                            const target = e.target as HTMLElement
-                            const isCheckbox = target.closest("[data-slot=\"checkbox\"]") || target.closest("[role=\"checkbox\"]") || target.closest(".p-1.-m-1")
-                            if (!isCheckbox) {
-                              onTorrentSelect?.(torrent)
-                            }
-                          }}
-                          onContextMenu={() => {
-                            // Only select this row if not already selected and not part of a multi-selection
-                            if (!row.getIsSelected() && selectedHashes.length <= 1) {
-                              setRowSelection({ [row.id]: true })
-                            }
-                          }}
-                        >
-                          {row.getVisibleCells().map(cell => (
-                            <div
-                              key={cell.id}
-                              style={{
-                                width: cell.column.getSize(),
-                                flexShrink: 0,
-                              }}
-                              className="px-3 py-2 flex items-center overflow-hidden min-w-0"
-                            >
-                              {flexRender(
-                                cell.column.columnDef.cell,
-                                cell.getContext()
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </ContextMenuTrigger>
-                      <ContextMenuContent>
-                        <ContextMenuItem onClick={() => onTorrentSelect?.(torrent)}>
-                          View Details
-                        </ContextMenuItem>
-                        <ContextMenuSeparator />
-                        <ContextMenuItem
-                          onClick={() => {
-                            // Use selected torrents if this row is part of selection, or just this torrent
-                            const useSelection = row.getIsSelected() || isAllSelected
-                            const hashes = useSelection ? selectedHashes : [torrent.hash]
-                            handleContextMenuAction("resume", hashes)
-                          }}
-                          disabled={mutation.isPending}
-                        >
-                          <Play className="mr-2 h-4 w-4" />
-                          Resume {(row.getIsSelected() || isAllSelected) && effectiveSelectionCount > 1 ? `(${effectiveSelectionCount})` : ""}
-                        </ContextMenuItem>
-                        <ContextMenuItem
-                          onClick={() => {
-                            // Use selected torrents if this row is part of selection, or just this torrent
-                            const useSelection = row.getIsSelected() || isAllSelected
-                            const hashes = useSelection ? selectedHashes : [torrent.hash]
-                            handleContextMenuAction("pause", hashes)
-                          }}
-                          disabled={mutation.isPending}
-                        >
-                          <Pause className="mr-2 h-4 w-4" />
-                          Pause {(row.getIsSelected() || isAllSelected) && effectiveSelectionCount > 1 ? `(${effectiveSelectionCount})` : ""}
-                        </ContextMenuItem>
-                        <ContextMenuItem
-                          onClick={() => {
-                            // Use selected torrents if this row is part of selection, or just this torrent
-                            const useSelection = row.getIsSelected() || isAllSelected
-                            const hashes = useSelection ? selectedHashes : [torrent.hash]
-                            handleRecheckClick(hashes)
-                          }}
-                          disabled={mutation.isPending}
-                        >
-                          <CheckCircle className="mr-2 h-4 w-4" />
-                          Force Recheck {(row.getIsSelected() || isAllSelected) && effectiveSelectionCount > 1 ? `(${effectiveSelectionCount})` : ""}
-                        </ContextMenuItem>
-                        <ContextMenuItem
-                          onClick={() => {
-                            // Use selected torrents if this row is part of selection, or just this torrent
-                            const useSelection = row.getIsSelected() || isAllSelected
-                            const hashes = useSelection ? selectedHashes : [torrent.hash]
-                            handleReannounceClick(hashes)
-                          }}
-                          disabled={mutation.isPending}
-                        >
-                          <Radio className="mr-2 h-4 w-4" />
-                          Reannounce {(row.getIsSelected() || isAllSelected) && effectiveSelectionCount > 1 ? `(${effectiveSelectionCount})` : ""}
-                        </ContextMenuItem>
-                        <ContextMenuSeparator />
-                        {(() => {
-                          // Use selected torrents if this row is part of selection, or just this torrent
-                          const useSelection = row.getIsSelected() || isAllSelected
-                          const hashes = useSelection ? selectedHashes : [torrent.hash]
-                          const hashCount = isAllSelected ? effectiveSelectionCount : hashes.length
-
-                          const handleQueueAction = (action: "topPriority" | "increasePriority" | "decreasePriority" | "bottomPriority") => {
-                            handleContextMenuAction(action, hashes)
+                    <TorrentContextMenu
+                      key={`${torrent.hash}-${virtualRow.index}`}
+                      torrent={torrent}
+                      isSelected={row.getIsSelected()}
+                      selectedHashes={selectedHashes}
+                      selectedTorrents={selectedTorrents}
+                      effectiveSelectionCount={effectiveSelectionCount}
+                      isAllSelected={isAllSelected}
+                      isPending={mutation.isPending}
+                      incognitoMode={incognitoMode}
+                      onTorrentSelect={onTorrentSelect}
+                      onContextMenuAction={handleContextMenuAction}
+                      onRecheckClick={handleRecheckClick}
+                      onReannounceClick={handleReannounceClick}
+                      onSetContextMenuData={(hashes, torrents) => {
+                        setContextMenuHashes(hashes)
+                        setContextMenuTorrents(torrents)
+                      }}
+                      onSetShareLimit={handleSetShareLimit}
+                      onSetSpeedLimits={handleSetSpeedLimits}
+                      onShowAddTagsDialog={() => setShowAddTagsDialog(true)}
+                      onShowTagsDialog={() => setShowTagsDialog(true)}
+                      onShowCategoryDialog={() => setShowCategoryDialog(true)}
+                      onShowDeleteDialog={() => setShowDeleteDialog(true)}
+                    >
+                      <div
+                        className={`flex border-b cursor-pointer hover:bg-muted/50 ${row.getIsSelected() ? "bg-muted/50" : ""} ${isSelected ? "bg-accent" : ""}`}
+                        style={{
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          minWidth: `${minTableWidth}px`,
+                          height: `${virtualRow.size}px`,
+                          transform: `translateY(${virtualRow.start}px)`,
+                        }}
+                        onClick={(e) => {
+                          // Don't select when clicking checkbox or its wrapper
+                          const target = e.target as HTMLElement
+                          const isCheckbox = target.closest("[data-slot=\"checkbox\"]") || target.closest("[role=\"checkbox\"]") || target.closest(".p-1.-m-1")
+                          if (!isCheckbox) {
+                            onTorrentSelect?.(torrent)
                           }
-
-                          return (
-                            <QueueSubmenu
-                              type="context"
-                              hashCount={hashCount}
-                              onQueueAction={handleQueueAction}
-                              isPending={mutation.isPending}
-                            />
-                          )
-                        })()}
-                        <ContextMenuSeparator />
-                        <ContextMenuItem
-                          onClick={() => {
-                            // Use selected torrents if this row is part of selection, or just this torrent
-                            const useSelection = row.getIsSelected() || isAllSelected
-                            const hashes = useSelection ? selectedHashes : [torrent.hash]
-                            const torrents = useSelection ? selectedTorrents : [torrent]
-
-                            setContextMenuHashes(hashes)
-                            setContextMenuTorrents(torrents)
-                            setShowAddTagsDialog(true)
-                          }}
-                          disabled={mutation.isPending}
-                        >
-                          <Tag className="mr-2 h-4 w-4" />
-                          Add Tags {(row.getIsSelected() || isAllSelected) && effectiveSelectionCount > 1 ? `(${effectiveSelectionCount})` : ""}
-                        </ContextMenuItem>
-                        <ContextMenuItem
-                          onClick={() => {
-                            // Use selected torrents if this row is part of selection, or just this torrent
-                            const useSelection = row.getIsSelected() || isAllSelected
-                            const hashes = useSelection ? selectedHashes : [torrent.hash]
-                            const torrents = useSelection ? selectedTorrents : [torrent]
-
-                            setContextMenuHashes(hashes)
-                            setContextMenuTorrents(torrents)
-                            setShowTagsDialog(true)
-                          }}
-                          disabled={mutation.isPending}
-                        >
-                          <Tag className="mr-2 h-4 w-4" />
-                          Replace Tags {(row.getIsSelected() || isAllSelected) && effectiveSelectionCount > 1 ? `(${effectiveSelectionCount})` : ""}
-                        </ContextMenuItem>
-                        <ContextMenuItem
-                          onClick={() => {
-                            // Use selected torrents if this row is part of selection, or just this torrent
-                            const useSelection = row.getIsSelected() || isAllSelected
-                            const hashes = useSelection ? selectedHashes : [torrent.hash]
-                            const torrents = useSelection ? selectedTorrents : [torrent]
-
-                            setContextMenuHashes(hashes)
-                            setContextMenuTorrents(torrents)
-                            setShowCategoryDialog(true)
-                          }}
-                          disabled={mutation.isPending}
-                        >
-                          <Folder className="mr-2 h-4 w-4" />
-                          Set Category {(row.getIsSelected() || isAllSelected) && effectiveSelectionCount > 1 ? `(${effectiveSelectionCount})` : ""}
-                        </ContextMenuItem>
-                        <ContextMenuSeparator />
-                        {(() => {
-                          // Use selected torrents if this row is part of selection, or just this torrent
-                          const useSelection = row.getIsSelected() || isAllSelected
-                          const hashes = useSelection ? selectedHashes : [torrent.hash]
-                          const hashCount = isAllSelected ? effectiveSelectionCount : hashes.length
-
-                          // Create wrapped handlers that pass hashes directly
-                          const handleSetShareLimitWrapper = (ratioLimit: number, seedingTimeLimit: number, inactiveSeedingTimeLimit: number) => {
-                            handleSetShareLimit(ratioLimit, seedingTimeLimit, inactiveSeedingTimeLimit, hashes)
+                        }}
+                        onContextMenu={() => {
+                          // Only select this row if not already selected and not part of a multi-selection
+                          if (!row.getIsSelected() && selectedHashes.length <= 1) {
+                            setRowSelection({ [row.id]: true })
                           }
-
-                          const handleSetSpeedLimitsWrapper = (uploadLimit: number, downloadLimit: number) => {
-                            handleSetSpeedLimits(uploadLimit, downloadLimit, hashes)
-                          }
-
-                          return (
-                            <>
-                              <ShareLimitSubmenu
-                                type="context"
-                                hashCount={hashCount}
-                                onConfirm={handleSetShareLimitWrapper}
-                                isPending={mutation.isPending}
-                              />
-                              <SpeedLimitsSubmenu
-                                type="context"
-                                hashCount={hashCount}
-                                onConfirm={handleSetSpeedLimitsWrapper}
-                                isPending={mutation.isPending}
-                              />
-                            </>
-                          )
-                        })()}
-                        <ContextMenuSeparator />
-                        {(() => {
-                          // Use selected torrents if this row is part of selection, or just this torrent
-                          const useSelection = row.getIsSelected() || isAllSelected
-                          const hashes = useSelection ? selectedHashes : [torrent.hash]
-                          const torrents = useSelection ? selectedTorrents : [torrent]
-                          const count = isAllSelected ? effectiveSelectionCount : hashes.length
-
-                          const tmmStates = torrents.map(t => t.auto_tmm)
-                          const allEnabled = tmmStates.length > 0 && tmmStates.every(state => state === true)
-                          const allDisabled = tmmStates.length > 0 && tmmStates.every(state => state === false)
-                          const mixed = tmmStates.length > 0 && !allEnabled && !allDisabled
-
-                          if (mixed) {
-                            return (
-                              <>
-                                <ContextMenuItem
-                                  onClick={() => handleContextMenuAction("toggleAutoTMM", hashes, true)}
-                                  disabled={mutation.isPending}
-                                >
-                                  <Sparkles className="mr-2 h-4 w-4" />
-                                  Enable TMM {useSelection && count > 1 ? `(${count} Mixed)` : "(Mixed)"}
-                                </ContextMenuItem>
-                                <ContextMenuItem
-                                  onClick={() => handleContextMenuAction("toggleAutoTMM", hashes, false)}
-                                  disabled={mutation.isPending}
-                                >
-                                  <Settings2 className="mr-2 h-4 w-4" />
-                                  Disable TMM {useSelection && count > 1 ? `(${count} Mixed)` : "(Mixed)"}
-                                </ContextMenuItem>
-                              </>
-                            )
-                          }
-
-                          return (
-                            <ContextMenuItem
-                              onClick={() => handleContextMenuAction("toggleAutoTMM", hashes, !allEnabled)}
-                              disabled={mutation.isPending}
-                            >
-                              {allEnabled ? (
-                                <>
-                                  <Settings2 className="mr-2 h-4 w-4" />
-                                  Disable TMM {useSelection && count > 1 ? `(${count})` : ""}
-                                </>
-                              ) : (
-                                <>
-                                  <Sparkles className="mr-2 h-4 w-4" />
-                                  Enable TMM {useSelection && count > 1 ? `(${count})` : ""}
-                                </>
-                              )}
-                            </ContextMenuItem>
-                          )
-                        })()}
-                        <ContextMenuSeparator />
-                        <ContextMenuItem onClick={() => copyToClipboard(incognitoMode ? getLinuxIsoName(torrent.hash) : torrent.name, "name")}>
-                          <Copy className="mr-2 h-4 w-4" />
-                          Copy Name
-                        </ContextMenuItem>
-                        <ContextMenuItem onClick={() => copyToClipboard(torrent.hash, "hash")}>
-                          <Copy className="mr-2 h-4 w-4" />
-                          Copy Hash
-                        </ContextMenuItem>
-                        <ContextMenuSeparator />
-                        <ContextMenuItem
-                          onClick={() => {
-                            // Use selected torrents if this row is part of selection, or just this torrent
-                            const useSelection = row.getIsSelected() || isAllSelected
-                            const hashes = useSelection ? selectedHashes : [torrent.hash]
-
-                            setContextMenuHashes(hashes)
-                            setShowDeleteDialog(true)
-                          }}
-                          disabled={mutation.isPending}
-                          className="text-destructive"
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Delete {(row.getIsSelected() || isAllSelected) && effectiveSelectionCount > 1 ? `(${effectiveSelectionCount})` : ""}
-                        </ContextMenuItem>
-                      </ContextMenuContent>
-                    </ContextMenu>
+                        }}
+                      >
+                        {row.getVisibleCells().map(cell => (
+                          <div
+                            key={cell.id}
+                            style={{
+                              width: cell.column.getSize(),
+                              flexShrink: 0,
+                            }}
+                            className="px-3 py-2 flex items-center overflow-hidden min-w-0"
+                          >
+                            {flexRender(
+                              cell.column.columnDef.cell,
+                              cell.getContext()
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </TorrentContextMenu>
                   )
                 })}
               </div>
