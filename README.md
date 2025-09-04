@@ -94,6 +94,9 @@ QUI__DATA_DIR=...        # Optional: custom data directory (default: next to con
 
 # Metrics
 QUI__METRICS_ENABLED=true   # Optional: enable Prometheus metrics (default: false)
+QUI__METRICS_HOST=127.0.0.1  # Optional: metrics server bind address (default: 127.0.0.1)
+QUI__METRICS_PORT=9074       # Optional: metrics server port (default: 9074)
+QUI__METRICS_BASIC_AUTH_USERS=user:hash  # Optional: basic auth for metrics (bcrypt hashed)
 ```
 
 ## CLI Commands
@@ -195,7 +198,7 @@ curl -H "X-API-Key: YOUR_API_KEY_HERE" \
 
 ## Metrics
 
-Prometheus metrics can be enabled to monitor your qBittorrent instances. When enabled, metrics are exposed at `/metrics` with **authentication required** via session cookie or API key.
+Prometheus metrics can be enabled to monitor your qBittorrent instances. When enabled, metrics are served on a **separate port** (default: 9074) with **no authentication required** for easier monitoring setup.
 
 ### Enable Metrics
 
@@ -204,11 +207,17 @@ Metrics are **disabled by default**. Enable them via configuration file or envir
 **Config file (`config.toml`):**
 ```toml
 metricsEnabled = true
+metricsHost = "127.0.0.1"  # Bind to localhost only (recommended for security)
+metricsPort = 9074         # Standard Prometheus port range
+# metricsBasicAuthUsers = "user:$2y$10$bcrypt_hash_here"  # Optional: basic auth
 ```
 
-**Environment variable:**
+**Environment variables:**
 ```bash
 QUI__METRICS_ENABLED=true
+QUI__METRICS_HOST=0.0.0.0    # Optional: bind to all interfaces if needed
+QUI__METRICS_PORT=9074       # Optional: custom port
+QUI__METRICS_BASIC_AUTH_USERS="user:$2y$10$hash"  # Optional: basic auth
 ```
 
 ### Available Metrics
@@ -218,18 +227,18 @@ QUI__METRICS_ENABLED=true
 
 ### Prometheus Configuration
 
-First, create an API key in Settings → API Keys, then configure Prometheus:
+Configure Prometheus to scrape the dedicated metrics port (no authentication required):
 
 ```yaml
 scrape_configs:
   - job_name: 'qui'
     static_configs:
-      - targets: ['localhost:7476']
+      - targets: ['localhost:9074']
     metrics_path: /metrics
     scrape_interval: 30s
-    http_headers:
-      X-API-Key:
-        values: ['YOUR_API_KEY_HERE']
+    #basic_auth:
+      #username: prometheus
+      #password: yourpassword
 ```
 
 All metrics are labeled with `instance_id` and `instance_name` for multi-instance monitoring.
