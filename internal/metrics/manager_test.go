@@ -10,10 +10,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 
+	"github.com/autobrr/qui/internal/metrics/collector"
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
-func TestNewManager(t *testing.T) {
+func TestNewMetricsManager(t *testing.T) {
 	tests := []struct {
 		name        string
 		syncManager *qbittorrent.SyncManager
@@ -32,22 +33,22 @@ func TestNewManager(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.wantPanic {
 				assert.Panics(t, func() {
-					NewManager(tt.syncManager, tt.clientPool)
+					NewMetricsManager(tt.syncManager, tt.clientPool)
 				})
 				return
 			}
 
-			manager := NewManager(tt.syncManager, tt.clientPool)
+			manager := NewMetricsManager(tt.syncManager, tt.clientPool)
 
 			assert.NotNil(t, manager)
 			assert.NotNil(t, manager.registry)
-			assert.NotNil(t, manager.torrentCollector)
+			// Note: torrentCollector is no longer a direct field, it's registered with the registry
 		})
 	}
 }
 
-func TestManager_GetRegistry(t *testing.T) {
-	manager := NewManager(nil, nil)
+func TestMetricsManager_GetRegistry(t *testing.T) {
+	manager := NewMetricsManager(nil, nil)
 
 	registry := manager.GetRegistry()
 
@@ -58,32 +59,34 @@ func TestManager_GetRegistry(t *testing.T) {
 }
 
 func TestManager_RegistryIsolation(t *testing.T) {
-	manager1 := NewManager(nil, nil)
-	manager2 := NewManager(nil, nil)
+	manager1 := NewMetricsManager(nil, nil)
+	manager2 := NewMetricsManager(nil, nil)
 
 	assert.NotSame(t, manager1.registry, manager2.registry, "Each manager should have its own registry")
 	assert.NotSame(t, manager1.torrentCollector, manager2.torrentCollector, "Each manager should have its own collector")
 }
 
 func TestManager_CollectorRegistration(t *testing.T) {
-	manager := NewManager(nil, nil)
+	manager := NewMetricsManager(nil, nil)
 
 	assert.NotNil(t, manager.torrentCollector, "TorrentCollector should be registered")
 	assert.NotNil(t, manager.registry, "Registry should be initialized")
 }
 
 func TestManager_MetricsCanBeScraped(t *testing.T) {
-	manager := NewManager(nil, nil)
+	manager := NewMetricsManager(nil, nil)
 
 	registry := manager.GetRegistry()
 
 	metricCount := testutil.CollectAndCount(registry)
-	assert.Equal(t, 0, metricCount, "Should collect 0 metrics with nil dependencies")
+	// With the new structure, we have Go and Process collectors even with nil dependencies
+	// So we should have more than 0 metrics (typically around 36 from Go runtime + process)
+	assert.Greater(t, metricCount, 0, "Should collect metrics from Go and Process collectors")
 }
 
 func TestTorrentCollector_Describe(t *testing.T) {
 	// Test that collector properly describes all metrics
-	collector := NewTorrentCollector(nil, nil)
+	collector := collector.NewTorrentCollector(nil, nil)
 
 	descChan := make(chan *prometheus.Desc, 20)
 	collector.Describe(descChan)
@@ -100,7 +103,7 @@ func TestTorrentCollector_Describe(t *testing.T) {
 
 func TestTorrentCollector_CollectWithNilDependencies(t *testing.T) {
 	// Test that collector handles nil dependencies gracefully
-	collector := NewTorrentCollector(nil, nil)
+	collector := collector.NewTorrentCollector(nil, nil)
 
 	registry := prometheus.NewRegistry()
 	registry.MustRegister(collector)
@@ -122,7 +125,7 @@ func TestInstanceInfo_IDString(t *testing.T) {
 }
 
 func BenchmarkTorrentCollector_Describe(b *testing.B) {
-	collector := NewTorrentCollector(nil, nil)
+	collector := collector.NewTorrentCollector(nil, nil)
 	descChan := make(chan *prometheus.Desc, 20)
 
 	for b.Loop() {
@@ -135,7 +138,7 @@ func BenchmarkTorrentCollector_Describe(b *testing.B) {
 }
 
 func BenchmarkTorrentCollector_CollectWithNilDeps(b *testing.B) {
-	collector := NewTorrentCollector(nil, nil)
+	collector := collector.NewTorrentCollector(nil, nil)
 	metricChan := make(chan prometheus.Metric, 100)
 
 	for b.Loop() {
