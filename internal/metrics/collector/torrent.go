@@ -1,7 +1,7 @@
 // Copyright (c) 2025, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-package metrics
+package collector
 
 import (
 	"context"
@@ -158,18 +158,21 @@ func (c *TorrentCollector) Collect(ch chan<- prometheus.Metric) {
 			continue
 		}
 
-		counts, err := c.syncManager.GetTorrentCounts(ctx, instance.ID)
+		// Use GetTorrentsWithFilters with no filters to get all torrents and counts
+		// This uses the same data source as the UI for consistency
+		response, err := c.syncManager.GetTorrentsWithFilters(ctx, instance.ID, 100000, 0, "", "", "", qbittorrent.FilterOptions{})
 		if err != nil {
 			log.Warn().
 				Err(err).
 				Int("instanceID", instance.ID).
 				Str("instanceName", instanceName).
-				Msg("Failed to get torrent counts for metrics")
+				Msg("Failed to get torrents with filters for metrics")
 			c.reportError(ch, instanceIDStr, instanceName, "torrent_counts")
 			continue
 		}
 
-		if counts != nil && counts.Status != nil {
+		if response != nil && response.Counts != nil && response.Counts.Status != nil {
+			counts := response.Counts
 			if downloading, ok := counts.Status["downloading"]; ok {
 				ch <- prometheus.MustNewConstMetric(
 					c.torrentsDownloadingDesc,

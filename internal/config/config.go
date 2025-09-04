@@ -83,6 +83,9 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("dataDir", "") // Empty means auto-detect (next to config file)
 	c.viper.SetDefault("pprofEnabled", false)
 	c.viper.SetDefault("metricsEnabled", false)
+	c.viper.SetDefault("metricsHost", "127.0.0.1")
+	c.viper.SetDefault("metricsPort", 9074)
+	c.viper.SetDefault("metricsBasicAuthUsers", "")
 
 	// HTTP timeout defaults - increased for large qBittorrent instances
 	c.viper.SetDefault("httpTimeouts.readTimeout", 60)   // 60 seconds
@@ -158,6 +161,9 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("dataDir", envPrefix+"DATA_DIR")
 	c.viper.BindEnv("pprofEnabled", envPrefix+"PPROF_ENABLED")
 	c.viper.BindEnv("metricsEnabled", envPrefix+"METRICS_ENABLED")
+	c.viper.BindEnv("metricsHost", envPrefix+"METRICS_HOST")
+	c.viper.BindEnv("metricsPort", envPrefix+"METRICS_PORT")
+	c.viper.BindEnv("metricsBasicAuthUsers", envPrefix+"METRICS_BASIC_AUTH_USERS")
 
 	// HTTP timeout environment variables
 	c.viper.BindEnv("httpTimeouts.readTimeout", envPrefix+"HTTP_READ_TIMEOUT")
@@ -245,9 +251,25 @@ sessionSecret = "{{ .sessionSecret }}"
 logLevel = "{{ .logLevel }}"
 
 # Prometheus Metrics
-# Enable Prometheus metrics endpoint at /metrics
+# Enable Prometheus metrics on separate port (no authentication required)
 # Default: false
 #metricsEnabled = false
+
+# Metrics server host (bind address for metrics endpoint)
+# Default: "127.0.0.1"
+# Set to "0.0.0.0" to bind to all interfaces if needed
+#metricsHost = "127.0.0.1"
+
+# Metrics server port (separate from main web interface)
+# Default: 9074 (standard Prometheus range)
+#metricsPort = 9074
+
+# Basic authentication for metrics endpoint (optional)
+# Format: "username:bcrypt_hash" or "user1:hash1,user2:hash2" for multiple users
+# Passwords must be bcrypt-hashed. Use tools like htpasswd or online bcrypt generators
+# Example: "prometheus:$2y$10$example_bcrypt_hash_here"
+# Leave empty to disable authentication (default)
+#metricsBasicAuthUsers = ""
 
 # HTTP Timeouts (for large qBittorrent instances)
 # Increase these values if you experience timeouts with 10k+ torrents
