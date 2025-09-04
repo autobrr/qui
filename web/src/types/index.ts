@@ -131,7 +131,7 @@ export interface MainData {
 
 export interface Category {
   name: string
-  save_path: string
+  savePath: string
 }
 
 export interface ServerState {
