@@ -412,21 +412,6 @@ paths:
         '503':
           description: Connection failed
 
-  /api/instances/{instanceId}/stats:
-    get:
-      tags:
-        - Instances
-      summary: Get instance statistics
-      description: Get statistics for a qBittorrent instance
-      parameters:
-        - $ref: '#/components/parameters/instanceId'
-      responses:
-        '200':
-          description: Instance statistics
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/InstanceStats'
 
   /api/instances/{instanceId}/torrents:
     get:
@@ -520,48 +505,6 @@ paths:
         '201':
           description: Torrent added successfully
 
-  /api/instances/{instanceId}/torrents/sync:
-    get:
-      tags:
-        - Torrents
-      summary: Sync torrents (SyncMainData)
-      description: Get incremental torrent updates using qBittorrent's sync/maindata API
-      parameters:
-        - $ref: '#/components/parameters/instanceId'
-        - name: rid
-          in: query
-          required: true
-          schema:
-            type: integer
-            description: Request ID for incremental updates (0 for full sync)
-      responses:
-        '200':
-          description: Sync data
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  rid:
-                    type: integer
-                  full_update:
-                    type: boolean
-                  torrents:
-                    type: object
-                    additionalProperties:
-                      $ref: '#/components/schemas/Torrent'
-                  torrents_removed:
-                    type: array
-                    items:
-                      type: string
-                  categories:
-                    type: object
-                  tags:
-                    type: array
-                    items:
-                      type: string
-                  server_state:
-                    type: object
 
   /api/instances/{instanceId}/torrents/bulk-action:
     post:
@@ -595,49 +538,6 @@ paths:
         '200':
           description: Action performed successfully
 
-  /api/instances/{instanceId}/torrents/{hash}:
-    delete:
-      tags:
-        - Torrents
-      summary: Delete torrent
-      description: Delete a specific torrent
-      parameters:
-        - $ref: '#/components/parameters/instanceId'
-        - $ref: '#/components/parameters/hash'
-        - name: deleteFiles
-          in: query
-          schema:
-            type: boolean
-            default: false
-      responses:
-        '204':
-          description: Torrent deleted
-
-  /api/instances/{instanceId}/torrents/{hash}/pause:
-    put:
-      tags:
-        - Torrents
-      summary: Pause torrent
-      description: Pause a specific torrent
-      parameters:
-        - $ref: '#/components/parameters/instanceId'
-        - $ref: '#/components/parameters/hash'
-      responses:
-        '200':
-          description: Torrent paused
-
-  /api/instances/{instanceId}/torrents/{hash}/resume:
-    put:
-      tags:
-        - Torrents
-      summary: Resume torrent
-      description: Resume a specific torrent
-      parameters:
-        - $ref: '#/components/parameters/instanceId'
-        - $ref: '#/components/parameters/hash'
-      responses:
-        '200':
-          description: Torrent resumed
 
   /api/instances/{instanceId}/torrents/{hash}/properties:
     get:
@@ -1153,33 +1053,6 @@ components:
           type: string
           format: date-time
 
-    InstanceStats:
-      type: object
-      properties:
-        torrents:
-          type: object
-          properties:
-            total:
-              type: integer
-            active:
-              type: integer
-            paused:
-              type: integer
-            completed:
-              type: integer
-        serverState:
-          type: object
-          properties:
-            downloadSpeed:
-              type: integer
-            uploadSpeed:
-              type: integer
-            downloaded:
-              type: integer
-            uploaded:
-              type: integer
-            freeSpace:
-              type: integer
 
     Torrent:
       type: object

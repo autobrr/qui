@@ -33,11 +33,12 @@ type TorrentResponse struct {
 	Torrents      []qbt.Torrent           `json:"torrents"`
 	Total         int                     `json:"total"`
 	Stats         *TorrentStats           `json:"stats,omitempty"`
-	Counts        *TorrentCounts          `json:"counts,omitempty"`     // Include counts for sidebar
-	Categories    map[string]qbt.Category `json:"categories,omitempty"` // Include categories for sidebar
-	Tags          []string                `json:"tags,omitempty"`       // Include tags for sidebar
-	HasMore       bool                    `json:"hasMore"`              // Whether more pages are available
-	SessionID     string                  `json:"sessionId,omitempty"`  // Optional session tracking
+	Counts        *TorrentCounts          `json:"counts,omitempty"`      // Include counts for sidebar
+	Categories    map[string]qbt.Category `json:"categories,omitempty"`  // Include categories for sidebar
+	Tags          []string                `json:"tags,omitempty"`        // Include tags for sidebar
+	ServerState   *qbt.ServerState        `json:"serverState,omitempty"` // Include server state for Dashboard
+	HasMore       bool                    `json:"hasMore"`               // Whether more pages are available
+	SessionID     string                  `json:"sessionId,omitempty"`   // Optional session tracking
 	CacheMetadata *CacheMetadata          `json:"cacheMetadata,omitempty"`
 }
 
@@ -254,6 +255,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 	// Determine cache metadata based on last sync update time
 	var cacheMetadata *CacheMetadata
+	var serverState *qbt.ServerState
 	client, clientErr := sm.clientPool.GetClient(ctx, instanceID)
 	if clientErr == nil {
 		syncManager := client.GetSyncManager()
@@ -274,18 +276,22 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 				IsStale:     !isFresh,
 				NextRefresh: now.Add(time.Second).Format(time.RFC3339),
 			}
+
+			// Get server state from sync manager for Dashboard
+			if mainData := syncManager.GetData(); mainData != nil {
+				serverState = &mainData.ServerState
+			}
 		}
 	}
-
-	// Data is always fresh from sync manager
 
 	response := &TorrentResponse{
 		Torrents:      paginatedTorrents,
 		Total:         len(filteredTorrents),
 		Stats:         stats,
-		Counts:        counts,     // Include counts for sidebar
-		Categories:    categories, // Include categories for sidebar
-		Tags:          tags,       // Include tags for sidebar
+		Counts:        counts,      // Include counts for sidebar
+		Categories:    categories,  // Include categories for sidebar
+		Tags:          tags,        // Include tags for sidebar
+		ServerState:   serverState, // Include server state for Dashboard
 		HasMore:       hasMore,
 		CacheMetadata: cacheMetadata,
 	}
@@ -304,30 +310,6 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		Msg("Fresh torrent data fetched and cached")
 
 	return response, nil
-}
-
-// GetServerStats gets server statistics using sync manager (for Dashboard)
-func (sm *SyncManager) GetServerStats(ctx context.Context, instanceID int) (*qbt.MainData, error) {
-	// Get client
-	client, err := sm.clientPool.GetClient(ctx, instanceID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get client: %w", err)
-	}
-
-	// Get sync manager
-	syncManager := client.GetSyncManager()
-	if syncManager == nil {
-		return nil, fmt.Errorf("sync manager not initialized")
-	}
-
-	// Get main data from sync manager
-	mainData := syncManager.GetData()
-
-	log.Debug().
-		Int("instanceID", instanceID).
-		Msg("Server stats fetched from sync manager")
-
-	return mainData, nil
 }
 
 // BulkAction performs bulk operations on torrents
@@ -639,8 +621,8 @@ func (sm *SyncManager) calculateCountsFromTorrents(allTorrents []qbt.Torrent) *T
 					continue
 				}
 				// Split by commas
-				commaParts := strings.Split(trackerStr, ",")
-				for _, part := range commaParts {
+				commaParts := strings.SplitSeq(trackerStr, ",")
+				for part := range commaParts {
 					part = strings.TrimSpace(part)
 					if part == "" {
 						continue
@@ -790,8 +772,8 @@ func (sm *SyncManager) GetTorrentCounts(ctx context.Context, instanceID int) (*T
 					continue
 				}
 				// Split by commas
-				commaParts := strings.Split(trackerStr, ",")
-				for _, part := range commaParts {
+				commaParts := strings.SplitSeq(trackerStr, ",")
+				for part := range commaParts {
 					part = strings.TrimSpace(part)
 					if part == "" {
 						continue
@@ -914,7 +896,7 @@ func (sm *SyncManager) syncAfterModification(instanceID int, client *Client, ope
 }
 
 // getAllTorrentsForStats gets all torrents for stats calculation (with optimistic updates)
-func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID int, search string) ([]qbt.Torrent, error) {
+func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID int, _ string) ([]qbt.Torrent, error) {
 	// Get client
 	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
@@ -1025,35 +1007,6 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 	return torrents, nil
 }
 
-// clearOptimisticUpdate removes an optimistic update for a specific torrent
-func (sm *SyncManager) clearOptimisticUpdate(instanceID int, hash string) {
-	client, err := sm.clientPool.GetClient(context.Background(), instanceID)
-	if err != nil {
-		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to get client for clearing optimistic update")
-		return
-	}
-	client.clearOptimisticUpdate(hash)
-}
-
-// clearStaleOptimisticUpdates removes optimistic updates that are older than the specified duration
-func (sm *SyncManager) clearStaleOptimisticUpdates(maxAge time.Duration) {
-	// This method is no longer needed since each client manages its own optimistic updates
-	// But we can iterate through all clients if needed
-	log.Debug().Dur("maxAge", maxAge).Msg("Clearing stale optimistic updates across all instances")
-
-	// Note: This would require iterating through all clients in the pool
-	// For now, we'll rely on the per-client clearing in getAllTorrentsForStats
-}
-
-// clearAllOptimisticUpdatesForInstance removes all optimistic updates for a specific instance
-func (sm *SyncManager) clearAllOptimisticUpdatesForInstance(instanceID int) {
-	client, err := sm.clientPool.GetClient(context.Background(), instanceID)
-	if err != nil {
-		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to get client for clearing all optimistic updates")
-		return
-	}
-	client.clearAllOptimisticUpdates()
-}
 func normalizeForSearch(text string) string {
 	// Replace common torrent separators with spaces
 	replacers := []string{".", "_", "-", "[", "]", "(", ")", "{", "}"}
@@ -1239,76 +1192,6 @@ func (sm *SyncManager) filterTorrentsByGlob(torrents []qbt.Torrent, pattern stri
 	return filtered
 }
 
-// filterTorrentsByTrackers filters torrents by tracker domains
-func (sm *SyncManager) filterTorrentsByTrackers(torrents []qbt.Torrent, trackers []string) []qbt.Torrent {
-	if len(trackers) == 0 {
-		return torrents
-	}
-
-	var filtered []qbt.Torrent
-
-	for _, torrent := range torrents {
-		// Extract tracker domains - handle multiple trackers separated by newlines or commas
-		var trackerDomains []string
-
-		if torrent.Tracker != "" {
-			// Split by newlines first, then by commas
-			trackerStrings := strings.Split(torrent.Tracker, "\n")
-			for _, trackerStr := range trackerStrings {
-				trackerStr = strings.TrimSpace(trackerStr)
-				if trackerStr == "" {
-					continue
-				}
-				// Split by commas
-				commaParts := strings.Split(trackerStr, ",")
-				for _, part := range commaParts {
-					part = strings.TrimSpace(part)
-					if part == "" {
-						continue
-					}
-					// Extract domain from this tracker URL
-					var domain string
-					if strings.Contains(part, "://") {
-						if u, err := url.Parse(part); err == nil {
-							domain = u.Hostname()
-						} else {
-							// Fallback to string manipulation
-							parts := strings.Split(part, "://")
-							if len(parts) > 1 {
-								domain = parts[1]
-								if idx := strings.IndexAny(domain, ":/"); idx != -1 {
-									domain = domain[:idx]
-								}
-							}
-						}
-					}
-					if domain != "" {
-						trackerDomains = append(trackerDomains, domain)
-					}
-				}
-			}
-		}
-
-		// If no trackers found, add empty string
-		if len(trackerDomains) == 0 {
-			trackerDomains = append(trackerDomains, "")
-		}
-
-		// Check if any of this torrent's tracker domains match the filter list
-		for _, torrentDomain := range trackerDomains {
-			for _, filterTracker := range trackers {
-				if torrentDomain == filterTracker {
-					filtered = append(filtered, torrent)
-					goto nextTorrent
-				}
-			}
-		}
-	nextTorrent:
-	}
-
-	return filtered
-}
-
 // applyManualFilters applies all filters manually when library filtering is insufficient
 func (sm *SyncManager) applyManualFilters(torrents []qbt.Torrent, filters FilterOptions) []qbt.Torrent {
 	var filtered []qbt.Torrent
@@ -1332,11 +1215,8 @@ func (sm *SyncManager) applyManualFilters(torrents []qbt.Torrent, filters Filter
 		if len(filters.Categories) > 0 {
 			categoryMatch := false
 			torrentCategory := torrent.Category
-			for _, filterCategory := range filters.Categories {
-				if torrentCategory == filterCategory {
-					categoryMatch = true
-					break
-				}
+			if slices.Contains(filters.Categories, torrentCategory) {
+				categoryMatch = true
 			}
 			matches = matches && categoryMatch
 		}
@@ -1346,11 +1226,8 @@ func (sm *SyncManager) applyManualFilters(torrents []qbt.Torrent, filters Filter
 			tagMatch := false
 			if torrent.Tags == "" {
 				// Check if empty tag is in the filter (for "untagged" option)
-				for _, filterTag := range filters.Tags {
-					if filterTag == "" {
-						tagMatch = true
-						break
-					}
+				if slices.Contains(filters.Tags, "") {
+					tagMatch = true
 				}
 			} else {
 				// Parse torrent tags
@@ -1383,25 +1260,22 @@ func (sm *SyncManager) applyManualFilters(torrents []qbt.Torrent, filters Filter
 			trackerMatch := false
 			if torrent.Tracker == "" {
 				// Check if empty tracker is in the filter (for "no tracker" option)
-				for _, filterTracker := range filters.Trackers {
-					if filterTracker == "" {
-						trackerMatch = true
-						break
-					}
+				if slices.Contains(filters.Trackers, "") {
+					trackerMatch = true
 				}
 			} else {
 				// Extract tracker domains from torrent
 				var trackerDomains []string
-				trackerStrings := strings.Split(torrent.Tracker, "\n")
+				trackerStrings := strings.SplitSeq(torrent.Tracker, "\n")
 
-				for _, trackerStr := range trackerStrings {
+				for trackerStr := range trackerStrings {
 					trackerStr = strings.TrimSpace(trackerStr)
 					if trackerStr == "" {
 						continue
 					}
 
-					commaParts := strings.Split(trackerStr, ",")
-					for _, part := range commaParts {
+					commaParts := strings.SplitSeq(trackerStr, ",")
+					for part := range commaParts {
 						part = strings.TrimSpace(part)
 						if part == "" {
 							continue
@@ -1435,11 +1309,8 @@ func (sm *SyncManager) applyManualFilters(torrents []qbt.Torrent, filters Filter
 
 				// Check if any tracker domain matches the filter
 				for _, trackerDomain := range trackerDomains {
-					for _, filterTracker := range filters.Trackers {
-						if trackerDomain == filterTracker {
-							trackerMatch = true
-							break
-						}
+					if slices.Contains(filters.Trackers, trackerDomain) {
+						trackerMatch = true
 					}
 					if trackerMatch {
 						break

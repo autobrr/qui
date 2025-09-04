@@ -6,7 +6,7 @@ require (
 	github.com/CAFxX/httpcompression v0.0.9
 	github.com/Masterminds/semver/v3 v3.4.0
 	github.com/alexedwards/scs/v2 v2.9.0
-	github.com/autobrr/go-qbittorrent v1.14.1-0.20250902072934-78bd17881c04
+	github.com/autobrr/go-qbittorrent v1.14.1-0.20250904202550-78accb035a17
 	github.com/creativeprojects/go-selfupdate v1.5.1
 	github.com/dgraph-io/ristretto v0.2.0
 	github.com/fsnotify/fsnotify v1.9.0
