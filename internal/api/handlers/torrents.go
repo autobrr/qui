@@ -484,11 +484,11 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 	case "toggleAutoTMM":
 		err = h.syncManager.SetAutoTMM(r.Context(), instanceID, targetHashes, req.Enable)
 	case "setShareLimit":
-		err = h.syncManager.SetTorrentShareLimit(r.Context(), instanceID, req.Hashes, req.RatioLimit, req.SeedingTimeLimit, req.InactiveSeedingTimeLimit)
+		err = h.syncManager.SetTorrentShareLimit(r.Context(), instanceID, targetHashes, req.RatioLimit, req.SeedingTimeLimit, req.InactiveSeedingTimeLimit)
 	case "setUploadLimit":
-		err = h.syncManager.SetTorrentUploadLimit(r.Context(), instanceID, req.Hashes, req.UploadLimit)
+		err = h.syncManager.SetTorrentUploadLimit(r.Context(), instanceID, targetHashes, req.UploadLimit)
 	case "setDownloadLimit":
-		err = h.syncManager.SetTorrentDownloadLimit(r.Context(), instanceID, req.Hashes, req.DownloadLimit)
+		err = h.syncManager.SetTorrentDownloadLimit(r.Context(), instanceID, targetHashes, req.DownloadLimit)
 	case "delete":
 		// Handle delete with deleteFiles parameter
 		action := req.Action
