@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/CAFxX/httpcompression"
+	"github.com/alexedwards/scs/v2"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/rs/zerolog/log"
@@ -31,6 +32,7 @@ type Dependencies struct {
 	Config              *config.AppConfig
 	DB                  *sql.DB
 	AuthService         *auth.Service
+	SessionManager      *scs.SessionManager
 	InstanceStore       *models.InstanceStore
 	ClientAPIKeyStore   *models.ClientAPIKeyStore
 	ClientPool          *qbittorrent.ClientPool
@@ -66,10 +68,10 @@ func NewRouter(deps *Dependencies) *chi.Mux {
 	r.Use(apimiddleware.CORSWithCredentials(allowedOrigins))
 
 	// Session middleware - must be added before any session-dependent middleware
-	r.Use(deps.AuthService.GetSessionManager().LoadAndSave)
+	r.Use(deps.SessionManager.LoadAndSave)
 
 	// Create handlers
-	authHandler := handlers.NewAuthHandler(deps.AuthService)
+	authHandler := handlers.NewAuthHandler(deps.AuthService, deps.SessionManager)
 	instancesHandler := handlers.NewInstancesHandler(deps.InstanceStore, deps.ClientPool, deps.SyncManager)
 	torrentsHandler := handlers.NewTorrentsHandler(deps.SyncManager)
 	preferencesHandler := handlers.NewPreferencesHandler(deps.SyncManager)
@@ -101,7 +103,7 @@ func NewRouter(deps *Dependencies) *chi.Mux {
 
 		// Protected routes
 		r.Group(func(r chi.Router) {
-			r.Use(apimiddleware.IsAuthenticated(deps.AuthService))
+			r.Use(apimiddleware.IsAuthenticated(deps.AuthService, deps.SessionManager))
 
 			// Auth routes
 			r.Post("/auth/logout", authHandler.Logout)
@@ -197,7 +199,7 @@ func NewRouter(deps *Dependencies) *chi.Mux {
 
 	if deps.MetricsManager != nil {
 		metricsHandler := handlers.NewMetricsHandler(deps.MetricsManager)
-		r.With(apimiddleware.IsAuthenticated(deps.AuthService)).Get("/metrics", metricsHandler.ServeMetrics)
+		r.With(apimiddleware.IsAuthenticated(deps.AuthService, deps.SessionManager)).Get("/metrics", metricsHandler.ServeMetrics)
 	}
 
 	if deps.WebHandler != nil {

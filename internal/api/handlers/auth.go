@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/alexedwards/scs/v2"
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
@@ -17,12 +18,14 @@ import (
 )
 
 type AuthHandler struct {
-	authService *auth.Service
+	authService    *auth.Service
+	sessionManager *scs.SessionManager
 }
 
-func NewAuthHandler(authService *auth.Service) *AuthHandler {
+func NewAuthHandler(authService *auth.Service, sessionManager *scs.SessionManager) *AuthHandler {
 	return &AuthHandler{
-		authService: authService,
+		authService:    authService,
+		sessionManager: sessionManager,
 	}
 }
 
@@ -81,16 +84,14 @@ func (h *AuthHandler) Setup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create session using SCS
-	sessionManager := h.authService.GetSessionManager()
-
 	// Renew token to prevent session fixation attacks
-	if err := sessionManager.RenewToken(r.Context()); err != nil {
+	if err := h.sessionManager.RenewToken(r.Context()); err != nil {
 		log.Error().Err(err).Msg("Failed to renew session token")
 	}
 
-	sessionManager.Put(r.Context(), "authenticated", true)
-	sessionManager.Put(r.Context(), "user_id", user.ID)
-	sessionManager.Put(r.Context(), "username", user.Username)
+	h.sessionManager.Put(r.Context(), "authenticated", true)
+	h.sessionManager.Put(r.Context(), "user_id", user.ID)
+	h.sessionManager.Put(r.Context(), "username", user.Username)
 
 	RespondJSON(w, http.StatusCreated, map[string]any{
 		"message": "Setup completed successfully",
@@ -126,19 +127,17 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create session using SCS
-	sessionManager := h.authService.GetSessionManager()
-
 	// Renew token to prevent session fixation attacks
-	if err := sessionManager.RenewToken(r.Context()); err != nil {
+	if err := h.sessionManager.RenewToken(r.Context()); err != nil {
 		log.Error().Err(err).Msg("Failed to renew session token")
 	}
 
-	sessionManager.Put(r.Context(), "authenticated", true)
-	sessionManager.Put(r.Context(), "user_id", user.ID)
-	sessionManager.Put(r.Context(), "username", user.Username)
+	h.sessionManager.Put(r.Context(), "authenticated", true)
+	h.sessionManager.Put(r.Context(), "user_id", user.ID)
+	h.sessionManager.Put(r.Context(), "username", user.Username)
 
 	// Handle remember_me functionality
-	sessionManager.RememberMe(r.Context(), req.RememberMe)
+	h.sessionManager.RememberMe(r.Context(), req.RememberMe)
 
 	RespondJSON(w, http.StatusOK, map[string]any{
 		"message": "Login successful",
@@ -151,10 +150,8 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 // Logout handles user logout
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
-	sessionManager := h.authService.GetSessionManager()
-
 	// Destroy the session
-	if err := sessionManager.Destroy(r.Context()); err != nil {
+	if err := h.sessionManager.Destroy(r.Context()); err != nil {
 		log.Error().Err(err).Msg("Failed to destroy session")
 		RespondError(w, http.StatusInternalServerError, "Failed to logout")
 		return
@@ -167,15 +164,13 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 
 // GetCurrentUser returns the current user information
 func (h *AuthHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
-	sessionManager := h.authService.GetSessionManager()
-
-	userID := sessionManager.GetInt(r.Context(), "user_id")
+	userID := h.sessionManager.GetInt(r.Context(), "user_id")
 	if userID == 0 {
 		RespondError(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
 
-	username := sessionManager.GetString(r.Context(), "username")
+	username := h.sessionManager.GetString(r.Context(), "username")
 	if username == "" {
 		RespondError(w, http.StatusInternalServerError, "Invalid session data")
 		return

@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/alexedwards/scs/v2"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
@@ -25,16 +24,14 @@ var (
 )
 
 type Service struct {
-	userStore      *models.UserStore
-	apiKeyStore    *models.APIKeyStore
-	sessionManager *scs.SessionManager
+	userStore   *models.UserStore
+	apiKeyStore *models.APIKeyStore
 }
 
-func NewService(db *sql.DB, sessionManager *scs.SessionManager) *Service {
+func NewService(db *sql.DB) *Service {
 	return &Service{
-		userStore:      models.NewUserStore(db),
-		apiKeyStore:    models.NewAPIKeyStore(db),
-		sessionManager: sessionManager,
+		userStore:   models.NewUserStore(db),
+		apiKeyStore: models.NewAPIKeyStore(db),
 	}
 }
 
@@ -164,9 +161,4 @@ func (s *Service) DeleteAPIKey(ctx context.Context, id int) error {
 // IsSetupComplete checks if initial setup has been completed
 func (s *Service) IsSetupComplete(ctx context.Context) (bool, error) {
 	return s.userStore.Exists(ctx)
-}
-
-// GetSessionManager returns the session manager for use in middleware
-func (s *Service) GetSessionManager() *scs.SessionManager {
-	return s.sessionManager
 }

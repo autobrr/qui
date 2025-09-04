@@ -214,7 +214,7 @@ If no --config-dir is specified, uses the OS-specific default location:
 			sessionManager := scs.New()
 			sessionManager.Store = sqlite3store.New(db.Conn())
 
-			authService := auth.NewService(db.Conn(), sessionManager)
+			authService := auth.NewService(db.Conn())
 
 			exists, err := authService.IsSetupComplete(context.Background())
 			if err != nil {
@@ -309,7 +309,7 @@ If no --config-dir is specified, uses the OS-specific default location:
 			sessionManager := scs.New()
 			sessionManager.Store = sqlite3store.New(db.Conn())
 
-			authService := auth.NewService(db.Conn(), sessionManager)
+			authService := auth.NewService(db.Conn())
 
 			exists, err := authService.IsSetupComplete(context.Background())
 			if err != nil {
@@ -465,7 +465,7 @@ func (app *Application) runServer() {
 	sessionManager.Cookie.Persist = false
 
 	// Initialize services
-	authService := auth.NewService(db.Conn(), sessionManager)
+	authService := auth.NewService(db.Conn())
 
 	// Initialize stores
 	instanceStore, err := models.NewInstanceStore(db.Conn(), cfg.GetEncryptionKey())
@@ -554,6 +554,7 @@ func (app *Application) runServer() {
 		Config:              cfg,
 		DB:                  db.Conn(),
 		AuthService:         authService,
+		SessionManager:      sessionManager,
 		InstanceStore:       instanceStore,
 		ClientAPIKeyStore:   clientAPIKeyStore,
 		ClientPool:          clientPool,

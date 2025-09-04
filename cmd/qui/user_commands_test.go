@@ -113,7 +113,7 @@ func TestRunCreateUserCommand(t *testing.T) {
 				sessionManager := scs.New()
 				sessionManager.Store = sqlite3store.New(db.Conn())
 
-				authService := auth.NewService(db.Conn(), sessionManager)
+				authService := auth.NewService(db.Conn())
 				_, err = authService.SetupUser(context.Background(), "existinguser", "password123")
 				require.NoError(t, err)
 
@@ -247,7 +247,7 @@ func TestRunChangePasswordCommand(t *testing.T) {
 				sessionManager := scs.New()
 				sessionManager.Store = sqlite3store.New(db.Conn())
 
-				authService := auth.NewService(db.Conn(), sessionManager)
+				authService := auth.NewService(db.Conn())
 				_, err = authService.SetupUser(context.Background(), "testuser", "oldpassword123")
 				require.NoError(t, err)
 
