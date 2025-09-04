@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Logo } from "@/components/ui/Logo"
+import { SwizzinLogo } from "@/components/ui/SwizzinLogo"
 import { ThemeToggle } from "@/components/ui/ThemeToggle"
 import {
   Tooltip,
@@ -23,9 +24,10 @@ import { useAuth } from "@/hooks/useAuth"
 import { useDebounce } from "@/hooks/useDebounce"
 import { useInstances } from "@/hooks/useInstances"
 import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSidebarState"
+import { useTheme } from "@/hooks/useTheme"
 import { cn } from "@/lib/utils"
 import { Link, useNavigate, useRouterState, useSearch } from "@tanstack/react-router"
-import { Filter, HardDrive, Home, Info, LogOut, Menu, Plus, Search, Server, Settings, X } from "lucide-react"
+import { Filter, HardDrive, Home, Info, LogOut, Menu, Search, Server, Settings, X } from "lucide-react"
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react"
 import { useHotkeys } from "react-hotkeys-hook"
 
@@ -96,34 +98,25 @@ export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
     },
     [isInstanceRoute]
   )
+  const { theme } = useTheme()
 
   return (
     <header className="sticky top-0 z-50 flex h-16 items-center justify-between sm:border-b bg-background pl-1 pr-4 sm:pr-6 lg:static">
       <div className="flex items-center gap-2">
         {children}
         <h1 className={cn(
-          "flex flex-row items-center gap-2 text-xl font-semibold transition-opacity duration-300",
-          shouldShowQuiOnMobile ? "flex sm:hidden pl-4" : "hidden", // Show 'qui' on mobile for non-instance routes
-          sidebarCollapsed && "sm:flex"
+          "flex items-center gap-2 pl-2 sm:pl-0 text-xl font-semibold transition-opacity duration-300",
+          "lg:opacity-0 lg:pointer-events-none", // Hidden on desktop by default
+          sidebarCollapsed && "lg:opacity-100 lg:pointer-events-auto", // Visible on desktop when sidebar collapsed
+          !shouldShowQuiOnMobile && "hidden sm:flex" // Hide on mobile when on instance routes
         )}>
-          <Logo className="h-6 w-6" />
-          {instanceName ? `qui - ${instanceName}` : "qui"}
+          {theme === "swizzin" ? (
+            <SwizzinLogo className="h-5 w-5" />
+          ) : (
+            <Logo className="h-5 w-5" />
+          )}
+          {instanceName ? instanceName : "qui"}
         </h1>
-        {isInstanceRoute && (
-          <div className="ml-2 hidden sm:block">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                const next = { ...(routeSearch || {}), modal: "add-torrent" }
-                navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
-              }}
-            >
-              <Plus className="h-4 w-4 sm:mr-2"/>
-              <span className="hidden sm:inline">Add Torrent</span>
-            </Button>
-          </div>
-        )}
       </div>
 
       {/* Instance search bar */}
@@ -218,7 +211,7 @@ export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
         </div>
       )}
 
-      <div className="grid grid-cols-[auto_auto] items-center gap-3 transition-all duration-300 ease-out">
+      <div className="grid grid-cols-[auto_auto] items-center gap-1 transition-all duration-300 ease-out">
         <ThemeToggle/>
         <div className={cn(
           "transition-all duration-300 ease-out overflow-hidden",
