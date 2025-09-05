@@ -5,7 +5,7 @@ go 1.24.6
 require (
 	github.com/CAFxX/httpcompression v0.0.9
 	github.com/Masterminds/semver/v3 v3.4.0
-	github.com/autobrr/go-qbittorrent v1.14.1-0.20250905021328-b2baedece8f9
+	github.com/autobrr/go-qbittorrent v1.14.1-0.20250905022249-83d9b9cb1e15
 	github.com/creativeprojects/go-selfupdate v1.5.1
 	github.com/dgraph-io/ristretto v0.2.0
 	github.com/fsnotify/fsnotify v1.9.0
