@@ -609,6 +609,43 @@ func (sm *SyncManager) getDomainFromTracker(trackerStr string) string {
 	return ""
 }
 
+// countTorrentStatuses counts torrent statuses efficiently in a single pass
+func (sm *SyncManager) countTorrentStatuses(torrent qbt.Torrent, counts map[string]int) {
+	// Count "all"
+	counts["all"]++
+
+	// Count "completed"
+	if torrent.Progress == 1 {
+		counts["completed"]++
+	}
+
+	// Check active states for "active" and "inactive"
+	isActive := slices.Contains(torrentStateCategories["active"], torrent.State)
+	if isActive {
+		counts["active"]++
+	} else {
+		counts["inactive"]++
+	}
+
+	// Check paused states for "paused" and "resumed"
+	isPaused := slices.Contains(torrentStateCategories["paused"], torrent.State)
+	if isPaused {
+		counts["paused"]++
+	} else {
+		counts["resumed"]++
+	}
+
+	// Count other status categories
+	for status, states := range torrentStateCategories {
+		if slices.Contains(states, torrent.State) {
+			// Skip "active" and "paused" as we handled them above
+			if status != "active" && status != "paused" {
+				counts[status]++
+			}
+		}
+	}
+}
+
 // calculateCountsFromTorrents calculates counts from a list of torrents
 // This is used internally to generate counts without additional API calls
 func (sm *SyncManager) calculateCountsFromTorrents(allTorrents []qbt.Torrent) *TorrentCounts {
@@ -621,7 +658,7 @@ func (sm *SyncManager) calculateCountsFromTorrents(allTorrents []qbt.Torrent) *T
 		Total:      len(allTorrents),
 	}
 
-	// Status counts
+	// Status filters to count
 	statusFilters := []string{
 		"all", "downloading", "seeding", "completed", "paused",
 		"active", "inactive", "resumed", "stalled",
@@ -629,18 +666,16 @@ func (sm *SyncManager) calculateCountsFromTorrents(allTorrents []qbt.Torrent) *T
 		"checking", "moving",
 	}
 
+	// Initialize status counters
 	for _, status := range statusFilters {
-		count := 0
-		for _, torrent := range allTorrents {
-			if sm.matchTorrentStatus(torrent, status) {
-				count++
-			}
-		}
-		counts.Status[status] = count
+		counts.Status[status] = 0
 	}
 
-	// Count torrents by category, tag, and tracker
+	// Iterate through torrents once and count everything
 	for _, torrent := range allTorrents {
+		// Count statuses
+		sm.countTorrentStatuses(torrent, counts.Status)
+
 		// Category count
 		category := torrent.Category
 		if category == "" {
@@ -696,16 +731,14 @@ func (sm *SyncManager) GetTorrentCounts(ctx context.Context, instanceID int) (*T
 	log.Debug().Int("instanceID", instanceID).Int("torrents", len(allTorrents)).Msg("GetTorrentCounts: got fresh torrents from sync manager")
 
 	// Get categories and tags (cached for 60s)
-	categories, err := sm.GetCategories(ctx, instanceID)
+	_, err = sm.GetCategories(ctx, instanceID)
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to get categories for counts")
-		categories = make(map[string]qbt.Category)
 	}
 
-	tags, err := sm.GetTags(ctx, instanceID)
+	_, err = sm.GetTags(ctx, instanceID)
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to get tags for counts")
-		tags = []string{}
 	}
 
 	// Initialize counts
@@ -725,32 +758,16 @@ func (sm *SyncManager) GetTorrentCounts(ctx context.Context, instanceID int) (*T
 		"checking", "moving",
 	}
 
+	// Initialize status counters
 	for _, status := range statusFilters {
-		count := 0
-		for _, torrent := range allTorrents {
-			if sm.matchTorrentStatus(torrent, status) {
-				count++
-			}
-		}
-		counts.Status[status] = count
+		counts.Status[status] = 0
 	}
 
-	// Initialize all known categories with 0
-	for category := range categories {
-		counts.Categories[category] = 0
-	}
-	// Always include uncategorized
-	counts.Categories[""] = 0
-
-	// Initialize all known tags with 0
-	for _, tag := range tags {
-		counts.Tags[tag] = 0
-	}
-	// Always include untagged
-	counts.Tags[""] = 0
-
-	// Count torrents by category, tag, and tracker
+	// Iterate through torrents once and count everything
 	for _, torrent := range allTorrents {
+		// Count statuses
+		sm.countTorrentStatuses(torrent, counts.Status)
+
 		// Category count
 		category := torrent.Category
 		if category == "" {
