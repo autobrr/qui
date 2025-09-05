@@ -82,6 +82,32 @@ func (sm *SyncManager) GetErrorStore() *models.InstanceErrorStore {
 	return sm.clientPool.GetErrorStore()
 }
 
+// getClientAndSyncManager gets both client and sync manager with error handling
+func (sm *SyncManager) getClientAndSyncManager(ctx context.Context, instanceID int) (*Client, *qbt.SyncManager, error) {
+	// Get client
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get client: %w", err)
+	}
+
+	// Get sync manager
+	syncManager := client.GetSyncManager()
+	if syncManager == nil {
+		return nil, nil, fmt.Errorf("sync manager not initialized")
+	}
+
+	return client, syncManager, nil
+}
+
+// validateTorrentsExist checks if the specified torrent hashes exist
+func (sm *SyncManager) validateTorrentsExist(client *Client, hashes []string, operation string) error {
+	existingTorrents := client.getTorrentsByHashes(hashes)
+	if len(existingTorrents) == 0 {
+		return fmt.Errorf("no valid torrents found to %s", operation)
+	}
+	return nil
+}
+
 // GetTorrentsWithFilters gets torrents with filters, search, sorting, and pagination
 // Always fetches fresh data from sync manager for real-time updates
 func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID int, limit, offset int, sort, order, search string, filters FilterOptions) (*TorrentResponse, error) {
@@ -89,16 +115,10 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	var filteredTorrents []qbt.Torrent
 	var err error
 
-	// Get client
-	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	// Get client and sync manager
+	client, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get client: %w", err)
-	}
-
-	// Get sync manager
-	syncManager := client.GetSyncManager()
-	if syncManager == nil {
-		return nil, fmt.Errorf("sync manager not initialized")
+		return nil, err
 	}
 
 	// Determine if we can use library filtering or need manual filtering
@@ -316,16 +336,10 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 // BulkAction performs bulk operations on torrents
 func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []string, action string) error {
-	// Get client
-	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	// Get client and sync manager
+	client, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
-		return fmt.Errorf("failed to get client: %w", err)
-	}
-
-	// Get sync manager
-	syncManager := client.GetSyncManager()
-	if syncManager == nil {
-		return fmt.Errorf("sync manager not initialized")
+		return err
 	}
 
 	// Validate that torrents exist before proceeding
@@ -405,10 +419,10 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 
 // AddTorrent adds a new torrent from file content
 func (sm *SyncManager) AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) error {
-	// Get client
-	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	// Get client and sync manager
+	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
-		return fmt.Errorf("failed to get client: %w", err)
+		return err
 	}
 
 	// Use AddTorrentFromMemoryCtx which accepts byte array
@@ -424,10 +438,10 @@ func (sm *SyncManager) AddTorrent(ctx context.Context, instanceID int, fileConte
 
 // AddTorrentFromURLs adds new torrents from URLs or magnet links
 func (sm *SyncManager) AddTorrentFromURLs(ctx context.Context, instanceID int, urls []string, options map[string]string) error {
-	// Get client
-	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	// Get client and sync manager
+	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
-		return fmt.Errorf("failed to get client: %w", err)
+		return err
 	}
 
 	// Add each URL/magnet link
@@ -450,16 +464,10 @@ func (sm *SyncManager) AddTorrentFromURLs(ctx context.Context, instanceID int, u
 
 // GetCategories gets all categories
 func (sm *SyncManager) GetCategories(ctx context.Context, instanceID int) (map[string]qbt.Category, error) {
-	// Get client
-	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	// Get client and sync manager
+	_, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get client: %w", err)
-	}
-
-	// Get sync manager
-	syncManager := client.GetSyncManager()
-	if syncManager == nil {
-		return nil, fmt.Errorf("sync manager not initialized")
+		return nil, err
 	}
 
 	// Get categories from sync manager (real-time)
@@ -470,16 +478,10 @@ func (sm *SyncManager) GetCategories(ctx context.Context, instanceID int) (map[s
 
 // GetTags gets all tags
 func (sm *SyncManager) GetTags(ctx context.Context, instanceID int) ([]string, error) {
-	// Get client
-	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	// Get client and sync manager
+	_, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get client: %w", err)
-	}
-
-	// Get sync manager
-	syncManager := client.GetSyncManager()
-	if syncManager == nil {
-		return nil, fmt.Errorf("sync manager not initialized")
+		return nil, err
 	}
 
 	// Get tags from sync manager (real-time)
@@ -494,10 +496,10 @@ func (sm *SyncManager) GetTags(ctx context.Context, instanceID int) ([]string, e
 
 // GetTorrentProperties gets detailed properties for a specific torrent
 func (sm *SyncManager) GetTorrentProperties(ctx context.Context, instanceID int, hash string) (*qbt.TorrentProperties, error) {
-	// Get client
-	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	// Get client and sync manager
+	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get client: %w", err)
+		return nil, err
 	}
 
 	// Get properties (real-time)
@@ -511,10 +513,10 @@ func (sm *SyncManager) GetTorrentProperties(ctx context.Context, instanceID int,
 
 // GetTorrentTrackers gets trackers for a specific torrent
 func (sm *SyncManager) GetTorrentTrackers(ctx context.Context, instanceID int, hash string) ([]qbt.TorrentTracker, error) {
-	// Get client
-	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	// Get client and sync manager
+	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get client: %w", err)
+		return nil, err
 	}
 
 	// Get trackers (real-time)
@@ -528,10 +530,10 @@ func (sm *SyncManager) GetTorrentTrackers(ctx context.Context, instanceID int, h
 
 // GetTorrentFiles gets files information for a specific torrent
 func (sm *SyncManager) GetTorrentFiles(ctx context.Context, instanceID int, hash string) (*qbt.TorrentFiles, error) {
-	// Get client
-	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	// Get client and sync manager
+	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get client: %w", err)
+		return nil, err
 	}
 
 	// Get files (real-time)
@@ -707,12 +709,6 @@ func (sm *SyncManager) calculateCountsFromTorrents(allTorrents []qbt.Torrent) *T
 
 // GetTorrentCounts gets all torrent counts for the filter sidebar
 func (sm *SyncManager) GetTorrentCounts(ctx context.Context, instanceID int) (*TorrentCounts, error) {
-	// IMPORTANT: We don't cache counts separately anymore
-	// We derive counts from the same fresh torrent data that the table uses
-	// This ensures the sidebar and table are always in sync
-
-	log.Debug().Int("instanceID", instanceID).Msg("GetTorrentCounts: fetching fresh data from getAllTorrentsForStats")
-
 	// Get all torrents from the same source the table uses (now fresh from sync manager)
 	allTorrents, err := sm.getAllTorrentsForStats(ctx, instanceID, "")
 	if err != nil {
@@ -812,16 +808,10 @@ func (sm *SyncManager) syncAfterModification(instanceID int, client *Client, ope
 
 // getAllTorrentsForStats gets all torrents for stats calculation (with optimistic updates)
 func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID int, _ string) ([]qbt.Torrent, error) {
-	// Get client
-	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	// Get client and sync manager
+	client, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get client: %w", err)
-	}
-
-	// Get sync manager
-	syncManager := client.GetSyncManager()
-	if syncManager == nil {
-		return nil, fmt.Errorf("sync manager not initialized")
+		return nil, err
 	}
 
 	// Get all torrents from sync manager
@@ -1368,15 +1358,10 @@ func (sm *SyncManager) calculateStats(torrents []qbt.Torrent) *TorrentStats {
 
 // AddTags adds tags to the specified torrents (keeps existing tags)
 func (sm *SyncManager) AddTags(ctx context.Context, instanceID int, hashes []string, tags string) error {
-	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	// Get client and sync manager
+	client, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
-		return fmt.Errorf("failed to get client: %w", err)
-	}
-
-	// Get sync manager
-	syncManager := client.GetSyncManager()
-	if syncManager == nil {
-		return fmt.Errorf("sync manager not initialized")
+		return err
 	}
 
 	// Validate that torrents exist
@@ -1413,15 +1398,15 @@ func (sm *SyncManager) AddTags(ctx context.Context, instanceID int, hashes []str
 
 // RemoveTags removes specific tags from the specified torrents
 func (sm *SyncManager) RemoveTags(ctx context.Context, instanceID int, hashes []string, tags string) error {
-	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	// Get client and sync manager
+	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
-		return fmt.Errorf("failed to get client: %w", err)
+		return err
 	}
 
 	// Validate that torrents exist
-	existingTorrents := client.getTorrentsByHashes(hashes)
-	if len(existingTorrents) == 0 {
-		return fmt.Errorf("no valid torrents found to remove tags")
+	if err := sm.validateTorrentsExist(client, hashes, "remove tags"); err != nil {
+		return err
 	}
 
 	if err := client.RemoveTagsCtx(ctx, hashes, tags); err != nil {
@@ -1498,15 +1483,15 @@ func (sm *SyncManager) SetTags(ctx context.Context, instanceID int, hashes []str
 
 // SetCategory sets the category for the specified torrents
 func (sm *SyncManager) SetCategory(ctx context.Context, instanceID int, hashes []string, category string) error {
-	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	// Get client and sync manager
+	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
-		return fmt.Errorf("failed to get client: %w", err)
+		return err
 	}
 
 	// Validate that torrents exist
-	existingTorrents := client.getTorrentsByHashes(hashes)
-	if len(existingTorrents) == 0 {
-		return fmt.Errorf("no valid torrents found to set category")
+	if err := sm.validateTorrentsExist(client, hashes, "set category"); err != nil {
+		return err
 	}
 
 	if err := client.SetCategoryCtx(ctx, hashes, category); err != nil {
@@ -1521,15 +1506,15 @@ func (sm *SyncManager) SetCategory(ctx context.Context, instanceID int, hashes [
 
 // SetAutoTMM sets the automatic torrent management for torrents
 func (sm *SyncManager) SetAutoTMM(ctx context.Context, instanceID int, hashes []string, enable bool) error {
-	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	// Get client and sync manager
+	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
-		return fmt.Errorf("failed to get client: %w", err)
+		return err
 	}
 
 	// Validate that torrents exist
-	existingTorrents := client.getTorrentsByHashes(hashes)
-	if len(existingTorrents) == 0 {
-		return fmt.Errorf("no valid torrents found to set auto TMM")
+	if err := sm.validateTorrentsExist(client, hashes, "set auto TMM"); err != nil {
+		return err
 	}
 
 	if err := client.SetAutoManagementCtx(ctx, hashes, enable); err != nil {
@@ -1694,15 +1679,15 @@ func (sm *SyncManager) ToggleAlternativeSpeedLimits(ctx context.Context, instanc
 
 // SetTorrentShareLimit sets share limits (ratio, seeding time) for torrents
 func (sm *SyncManager) SetTorrentShareLimit(ctx context.Context, instanceID int, hashes []string, ratioLimit float64, seedingTimeLimit, inactiveSeedingTimeLimit int64) error {
-	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	// Get client and sync manager
+	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
-		return fmt.Errorf("failed to get client: %w", err)
+		return err
 	}
 
 	// Validate that torrents exist
-	existingTorrents := client.getTorrentsByHashes(hashes)
-	if len(existingTorrents) == 0 {
-		return fmt.Errorf("no valid torrents found to set share limits")
+	if err := sm.validateTorrentsExist(client, hashes, "set share limits"); err != nil {
+		return err
 	}
 
 	if err := client.SetTorrentShareLimitCtx(ctx, hashes, ratioLimit, seedingTimeLimit, inactiveSeedingTimeLimit); err != nil {
@@ -1714,15 +1699,15 @@ func (sm *SyncManager) SetTorrentShareLimit(ctx context.Context, instanceID int,
 
 // SetTorrentUploadLimit sets upload speed limit for torrents
 func (sm *SyncManager) SetTorrentUploadLimit(ctx context.Context, instanceID int, hashes []string, limitKBs int64) error {
-	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	// Get client and sync manager
+	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
-		return fmt.Errorf("failed to get client: %w", err)
+		return err
 	}
 
 	// Validate that torrents exist
-	existingTorrents := client.getTorrentsByHashes(hashes)
-	if len(existingTorrents) == 0 {
-		return fmt.Errorf("no valid torrents found to set upload limit")
+	if err := sm.validateTorrentsExist(client, hashes, "set upload limit"); err != nil {
+		return err
 	}
 
 	// Convert KB/s to bytes/s (qBittorrent API expects bytes/s)
@@ -1737,15 +1722,15 @@ func (sm *SyncManager) SetTorrentUploadLimit(ctx context.Context, instanceID int
 
 // SetTorrentDownloadLimit sets download speed limit for torrents
 func (sm *SyncManager) SetTorrentDownloadLimit(ctx context.Context, instanceID int, hashes []string, limitKBs int64) error {
-	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	// Get client and sync manager
+	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
-		return fmt.Errorf("failed to get client: %w", err)
+		return err
 	}
 
 	// Validate that torrents exist
-	existingTorrents := client.getTorrentsByHashes(hashes)
-	if len(existingTorrents) == 0 {
-		return fmt.Errorf("no valid torrents found to set download limit")
+	if err := sm.validateTorrentsExist(client, hashes, "set download limit"); err != nil {
+		return err
 	}
 
 	// Convert KB/s to bytes/s (qBittorrent API expects bytes/s)
