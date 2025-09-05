@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/autobrr/autobrr/pkg/ttlcache"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/lithammer/fuzzysearch/fuzzy"
 	"github.com/rs/zerolog/log"
@@ -57,6 +58,7 @@ type TorrentStats struct {
 // SyncManager manages torrent operations
 type SyncManager struct {
 	clientPool *ClientPool
+	urlCache   *ttlcache.Cache[string, string]
 }
 
 // OptimisticTorrentUpdate represents a temporary optimistic update to a torrent
@@ -71,6 +73,7 @@ type OptimisticTorrentUpdate struct {
 func NewSyncManager(clientPool *ClientPool) *SyncManager {
 	return &SyncManager{
 		clientPool: clientPool,
+		urlCache:   ttlcache.New[string, string](ttlcache.Options[string, string]{}.SetDefaultTTL(5 * time.Minute)),
 	}
 }
 
@@ -556,6 +559,56 @@ type InstanceSpeeds struct {
 	Upload   int64 `json:"upload"`
 }
 
+// getDomainFromTracker extracts domain from tracker string with caching
+func (sm *SyncManager) getDomainFromTracker(trackerStr string) string {
+	// Check cache first
+	if domain, found := sm.urlCache.Get(trackerStr); found {
+		return domain
+	}
+
+	// Handle multiple trackers separated by newlines or commas
+	trackerStrings := strings.Split(trackerStr, "\n")
+	for _, ts := range trackerStrings {
+		ts = strings.TrimSpace(ts)
+		if ts == "" {
+			continue
+		}
+		// Split by commas
+		commaParts := strings.SplitSeq(ts, ",")
+		for part := range commaParts {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			// Extract domain from this tracker URL
+			var domain string
+			if strings.Contains(part, "://") {
+				if u, err := url.Parse(part); err == nil {
+					domain = u.Hostname()
+				} else {
+					// Fallback to string manipulation
+					parts := strings.Split(part, "://")
+					if len(parts) > 1 {
+						domain = parts[1]
+						if idx := strings.IndexAny(domain, ":/"); idx != -1 {
+							domain = domain[:idx]
+						}
+					}
+				}
+			}
+			if domain != "" {
+				// Cache the result
+				sm.urlCache.Set(trackerStr, domain, ttlcache.DefaultTTL)
+				return domain
+			}
+		}
+	}
+
+	// Cache empty result to avoid repeated parsing
+	sm.urlCache.Set(trackerStr, "", ttlcache.DefaultTTL)
+	return ""
+}
+
 // calculateCountsFromTorrents calculates counts from a list of torrents
 // This is used internally to generate counts without additional API calls
 func (sm *SyncManager) calculateCountsFromTorrents(allTorrents []qbt.Torrent) *TorrentCounts {
@@ -611,49 +664,10 @@ func (sm *SyncManager) calculateCountsFromTorrents(allTorrents []qbt.Torrent) *T
 
 		// Tracker count (use first tracker URL)
 		if torrent.Tracker != "" {
-			// Extract domain from tracker URL using proper URL parsing
-			// Handle multiple trackers separated by newlines or commas
-			trackerStrings := strings.Split(torrent.Tracker, "\n")
-			domainFound := false
-			for _, trackerStr := range trackerStrings {
-				trackerStr = strings.TrimSpace(trackerStr)
-				if trackerStr == "" {
-					continue
-				}
-				// Split by commas
-				commaParts := strings.SplitSeq(trackerStr, ",")
-				for part := range commaParts {
-					part = strings.TrimSpace(part)
-					if part == "" {
-						continue
-					}
-					// Extract domain from this tracker URL
-					var domain string
-					if strings.Contains(part, "://") {
-						if u, err := url.Parse(part); err == nil {
-							domain = u.Hostname()
-						} else {
-							// Fallback to string manipulation
-							parts := strings.Split(part, "://")
-							if len(parts) > 1 {
-								domain = parts[1]
-								if idx := strings.IndexAny(domain, ":/"); idx != -1 {
-									domain = domain[:idx]
-								}
-							}
-						}
-					}
-					if domain != "" {
-						counts.Trackers[domain]++
-						domainFound = true
-						break // Use first valid domain found
-					}
-				}
-				if domainFound {
-					break // Use first tracker with valid domain
-				}
-			}
-			if !domainFound {
+			domain := sm.getDomainFromTracker(torrent.Tracker)
+			if domain != "" {
+				counts.Trackers[domain]++
+			} else {
 				// If no valid domain found, count as unknown
 				counts.Trackers["Unknown"]++
 			}
