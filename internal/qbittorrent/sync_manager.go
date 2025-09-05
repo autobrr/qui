@@ -137,7 +137,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	needsManualStatusFiltering := false
 	if len(filters.Status) > 0 {
 		for _, status := range filters.Status {
-			if status == "active" || status == "inactive" || status == "checking" || status == "moving" {
+			if status == "active" || status == "inactive" || status == "checking" || status == "moving" || status == "error" {
 				needsManualStatusFiltering = true
 				break
 			}
