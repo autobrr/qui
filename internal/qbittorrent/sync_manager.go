@@ -650,24 +650,16 @@ func (sm *SyncManager) countTorrentStatuses(torrent qbt.Torrent, counts map[stri
 func (sm *SyncManager) calculateCountsFromTorrents(allTorrents []qbt.Torrent) *TorrentCounts {
 	// Initialize counts
 	counts := &TorrentCounts{
-		Status:     make(map[string]int),
+		Status: map[string]int{
+			"all": 0, "downloading": 0, "seeding": 0, "completed": 0, "paused": 0,
+			"active": 0, "inactive": 0, "resumed": 0, "stalled": 0,
+			"stalled_uploading": 0, "stalled_downloading": 0, "errored": 0,
+			"checking": 0, "moving": 0,
+		},
 		Categories: make(map[string]int),
 		Tags:       make(map[string]int),
 		Trackers:   make(map[string]int),
 		Total:      len(allTorrents),
-	}
-
-	// Status filters to count
-	statusFilters := []string{
-		"all", "downloading", "seeding", "completed", "paused",
-		"active", "inactive", "resumed", "stalled",
-		"stalled_uploading", "stalled_downloading", "errored",
-		"checking", "moving",
-	}
-
-	// Initialize status counters
-	for _, status := range statusFilters {
-		counts.Status[status] = 0
 	}
 
 	// Iterate through torrents once and count everything
@@ -687,7 +679,7 @@ func (sm *SyncManager) calculateCountsFromTorrents(allTorrents []qbt.Torrent) *T
 		if torrent.Tags == "" {
 			counts.Tags[""]++
 		} else {
-			torrentTags := strings.SplitSeq(torrent.Tags, ", ")
+			torrentTags := strings.SplitSeq(torrent.Tags, ",")
 			for tag := range torrentTags {
 				tag = strings.TrimSpace(tag)
 				if tag != "" {
@@ -729,115 +721,8 @@ func (sm *SyncManager) GetTorrentCounts(ctx context.Context, instanceID int) (*T
 
 	log.Debug().Int("instanceID", instanceID).Int("torrents", len(allTorrents)).Msg("GetTorrentCounts: got fresh torrents from sync manager")
 
-	// Get categories and tags (cached for 60s)
-	_, err = sm.GetCategories(ctx, instanceID)
-	if err != nil {
-		log.Warn().Err(err).Msg("Failed to get categories for counts")
-	}
-
-	_, err = sm.GetTags(ctx, instanceID)
-	if err != nil {
-		log.Warn().Err(err).Msg("Failed to get tags for counts")
-	}
-
-	// Initialize counts
-	counts := &TorrentCounts{
-		Status:     make(map[string]int),
-		Categories: make(map[string]int),
-		Tags:       make(map[string]int),
-		Trackers:   make(map[string]int),
-		Total:      len(allTorrents),
-	}
-
-	// Status counts
-	statusFilters := []string{
-		"all", "downloading", "seeding", "completed", "paused",
-		"active", "inactive", "resumed", "stalled",
-		"stalled_uploading", "stalled_downloading", "errored",
-		"checking", "moving",
-	}
-
-	// Initialize status counters
-	for _, status := range statusFilters {
-		counts.Status[status] = 0
-	}
-
-	// Iterate through torrents once and count everything
-	for _, torrent := range allTorrents {
-		// Count statuses
-		sm.countTorrentStatuses(torrent, counts.Status)
-
-		// Category count
-		category := torrent.Category
-		if category == "" {
-			counts.Categories[""]++
-		} else {
-			counts.Categories[category]++
-		}
-
-		// Tag counts
-		if torrent.Tags == "" {
-			counts.Tags[""]++
-		} else {
-			// Handle tags as comma-separated string
-			torrentTags := strings.SplitSeq(torrent.Tags, ",")
-			for tag := range torrentTags {
-				tag = strings.TrimSpace(tag)
-				if tag != "" {
-					counts.Tags[tag]++
-				}
-			}
-		}
-
-		// Tracker counts
-		if torrent.Tracker == "" {
-			counts.Trackers[""]++
-		} else {
-			// Extract hostname from tracker URL - handle multiple trackers
-			trackerStrings := strings.Split(torrent.Tracker, "\n")
-			domainFound := false
-			for _, trackerStr := range trackerStrings {
-				trackerStr = strings.TrimSpace(trackerStr)
-				if trackerStr == "" {
-					continue
-				}
-				// Split by commas
-				commaParts := strings.SplitSeq(trackerStr, ",")
-				for part := range commaParts {
-					part = strings.TrimSpace(part)
-					if part == "" {
-						continue
-					}
-					// Extract hostname from this tracker URL
-					if trackerURL, err := url.Parse(part); err == nil {
-						hostname := trackerURL.Hostname()
-						if hostname != "" {
-							counts.Trackers[hostname]++
-							domainFound = true
-							break // Use first valid hostname found
-						}
-					}
-				}
-				if domainFound {
-					break // Use first tracker with valid hostname
-				}
-			}
-			if !domainFound {
-				// Fallback to string manipulation if URL parsing fails
-				domain := torrent.Tracker
-				if strings.Contains(domain, "://") {
-					parts := strings.Split(domain, "://")
-					if len(parts) > 1 {
-						domain = parts[1]
-						if idx := strings.IndexAny(domain, ":/"); idx != -1 {
-							domain = domain[:idx]
-						}
-					}
-				}
-				counts.Trackers[domain]++
-			}
-		}
-	}
+	// Calculate counts using the shared function
+	counts := sm.calculateCountsFromTorrents(allTorrents)
 
 	// Don't cache counts separately - they're always derived from the cached torrent data
 	// This ensures sidebar and table are always in sync
