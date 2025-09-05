@@ -642,7 +642,7 @@ func (sm *SyncManager) countTorrentStatuses(torrent qbt.Torrent, counts map[stri
 		if slices.Contains(states, torrent.State) {
 			// Skip "active" and "paused" as we handled them above
 			if status != "active" && status != "paused" {
-				counts[status]++
+				counts[string(status)]++
 			}
 		}
 	}
@@ -1220,17 +1220,17 @@ func (sm *SyncManager) applyManualFilters(torrents []qbt.Torrent, filters Filter
 }
 
 // Torrent state categories for fast lookup
-var torrentStateCategories = map[string][]qbt.TorrentState{
-	"downloading":         {qbt.TorrentStateDownloading, qbt.TorrentStateStalledDl, qbt.TorrentStateMetaDl, qbt.TorrentStateQueuedDl, qbt.TorrentStateAllocating, qbt.TorrentStateCheckingDl, qbt.TorrentStateForcedDl},
-	"seeding":             {qbt.TorrentStateUploading, qbt.TorrentStateStalledUp, qbt.TorrentStateQueuedUp, qbt.TorrentStateCheckingUp, qbt.TorrentStateForcedUp},
-	"paused":              {qbt.TorrentStatePausedDl, qbt.TorrentStatePausedUp, qbt.TorrentStateStoppedDl, qbt.TorrentStateStoppedUp},
-	"active":              {qbt.TorrentStateDownloading, qbt.TorrentStateUploading, qbt.TorrentStateForcedDl, qbt.TorrentStateForcedUp},
-	"stalled":             {qbt.TorrentStateStalledDl, qbt.TorrentStateStalledUp},
-	"checking":            {qbt.TorrentStateCheckingDl, qbt.TorrentStateCheckingUp, qbt.TorrentStateCheckingResumeData},
-	"errored":             {qbt.TorrentStateError, qbt.TorrentStateMissingFiles},
-	"moving":              {qbt.TorrentStateMoving},
-	"stalled_uploading":   {qbt.TorrentStateStalledUp},
-	"stalled_downloading": {qbt.TorrentStateStalledDl},
+var torrentStateCategories = map[qbt.TorrentFilter][]qbt.TorrentState{
+	qbt.TorrentFilterDownloading:        {qbt.TorrentStateDownloading, qbt.TorrentStateStalledDl, qbt.TorrentStateMetaDl, qbt.TorrentStateQueuedDl, qbt.TorrentStateAllocating, qbt.TorrentStateCheckingDl, qbt.TorrentStateForcedDl},
+	qbt.TorrentFilterUploading:          {qbt.TorrentStateUploading, qbt.TorrentStateStalledUp, qbt.TorrentStateQueuedUp, qbt.TorrentStateCheckingUp, qbt.TorrentStateForcedUp},
+	qbt.TorrentFilterPaused:             {qbt.TorrentStatePausedDl, qbt.TorrentStatePausedUp, qbt.TorrentStateStoppedDl, qbt.TorrentStateStoppedUp},
+	qbt.TorrentFilterActive:             {qbt.TorrentStateDownloading, qbt.TorrentStateUploading, qbt.TorrentStateForcedDl, qbt.TorrentStateForcedUp},
+	qbt.TorrentFilterStalled:            {qbt.TorrentStateStalledDl, qbt.TorrentStateStalledUp},
+	qbt.TorrentFilterChecking:           {qbt.TorrentStateCheckingDl, qbt.TorrentStateCheckingUp, qbt.TorrentStateCheckingResumeData},
+	qbt.TorrentFilterError:              {qbt.TorrentStateError, qbt.TorrentStateMissingFiles},
+	qbt.TorrentFilterMoving:             {qbt.TorrentStateMoving},
+	qbt.TorrentFilterStalledUploading:   {qbt.TorrentStateStalledUp},
+	qbt.TorrentFilterStalledDownloading: {qbt.TorrentStateStalledDl},
 }
 
 // Action state categories for optimistic update clearing
@@ -1260,7 +1260,7 @@ func (sm *SyncManager) shouldClearOptimisticUpdate(currentState qbt.TorrentState
 	} else {
 		// Fallback to category-based logic if originalState is not set
 		if successCategory, exists := actionSuccessCategories[action]; exists {
-			if categoryStates, categoryExists := torrentStateCategories[successCategory]; categoryExists {
+			if categoryStates, categoryExists := torrentStateCategories[qbt.TorrentFilter(successCategory)]; categoryExists {
 				if slices.Contains(categoryStates, currentState) {
 					log.Debug().
 						Str("currentState", string(currentState)).
@@ -1282,12 +1282,12 @@ func (sm *SyncManager) shouldClearOptimisticUpdate(currentState qbt.TorrentState
 // matchTorrentStatus checks if a torrent matches a specific status filter
 func (sm *SyncManager) matchTorrentStatus(torrent qbt.Torrent, status string) bool {
 	// Handle special cases first
-	switch status {
-	case "all":
+	switch qbt.TorrentFilter(status) {
+	case qbt.TorrentFilterAll:
 		return true
-	case "completed":
+	case qbt.TorrentFilterCompleted:
 		return torrent.Progress == 1
-	case "inactive":
+	case qbt.TorrentFilterInactive:
 		// Inactive is the inverse of active
 		return !slices.Contains(torrentStateCategories["active"], torrent.State)
 	case "resumed":
@@ -1296,7 +1296,7 @@ func (sm *SyncManager) matchTorrentStatus(torrent qbt.Torrent, status string) bo
 	}
 
 	// For grouped status categories, check if state is in the category
-	if category, exists := torrentStateCategories[status]; exists {
+	if category, exists := torrentStateCategories[qbt.TorrentFilter(status)]; exists {
 		return slices.Contains(category, torrent.State)
 	}
 
