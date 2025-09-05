@@ -73,7 +73,7 @@ type OptimisticTorrentUpdate struct {
 func NewSyncManager(clientPool *ClientPool) *SyncManager {
 	return &SyncManager{
 		clientPool: clientPool,
-		urlCache:   ttlcache.New[string, string](ttlcache.Options[string, string]{}.SetDefaultTTL(5 * time.Minute)),
+		urlCache:   ttlcache.New(ttlcache.Options[string, string]{}.SetDefaultTTL(5 * time.Minute)),
 	}
 }
 
@@ -281,9 +281,8 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 			}
 
 			// Get server state from sync manager for Dashboard
-			if mainData := syncManager.GetData(); mainData != nil {
-				serverState = &mainData.ServerState
-			}
+			serverStateData := syncManager.GetServerState()
+			serverState = &serverStateData
 		}
 	}
 
