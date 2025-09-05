@@ -138,7 +138,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	if len(filters.Status) > 0 {
 		for _, status := range filters.Status {
 			switch qbt.TorrentFilter(status) {
-			case qbt.TorrentFilterActive, qbt.TorrentFilterInactive, qbt.TorrentFilterChecking, qbt.TorrentFilterMoving, qbt.TorrentFilterError:
+			case qbt.TorrentFilterActive, qbt.TorrentFilterInactive, qbt.TorrentFilterChecking, qbt.TorrentFilterMoving, qbt.TorrentFilterError, qbt.TorrentFilterDownloading, qbt.TorrentFilterUploading:
 				needsManualStatusFiltering = true
 			}
 		}
@@ -1172,39 +1172,17 @@ func (sm *SyncManager) applyManualFilters(torrents []qbt.Torrent, filters Filter
 			} else {
 				// Extract tracker domains from torrent
 				var trackerDomains []string
-				trackerStrings := strings.SplitSeq(torrent.Tracker, "\n")
+				trackerStrings := strings.Split(torrent.Tracker, "\n")
 
-				for trackerStr := range trackerStrings {
+				for _, trackerStr := range trackerStrings {
 					trackerStr = strings.TrimSpace(trackerStr)
 					if trackerStr == "" {
 						continue
 					}
 
-					commaParts := strings.SplitSeq(trackerStr, ",")
-					for part := range commaParts {
-						part = strings.TrimSpace(part)
-						if part == "" {
-							continue
-						}
-
-						var domain string
-						if strings.Contains(part, "://") {
-							if u, err := url.Parse(part); err == nil {
-								domain = u.Hostname()
-							} else {
-								parts := strings.Split(part, "://")
-								if len(parts) > 1 {
-									domain = parts[1]
-									if idx := strings.IndexAny(domain, ":/"); idx != -1 {
-										domain = domain[:idx]
-									}
-								}
-							}
-						}
-						if domain != "" {
-							trackerDomains = append(trackerDomains, domain)
-							break // Use first valid domain per tracker string
-						}
+					domain := sm.getDomainFromTracker(trackerStr)
+					if domain != "" {
+						trackerDomains = append(trackerDomains, domain)
 					}
 				}
 
@@ -1217,8 +1195,6 @@ func (sm *SyncManager) applyManualFilters(torrents []qbt.Torrent, filters Filter
 				for _, trackerDomain := range trackerDomains {
 					if slices.Contains(filters.Trackers, trackerDomain) {
 						trackerMatch = true
-					}
-					if trackerMatch {
 						break
 					}
 				}
