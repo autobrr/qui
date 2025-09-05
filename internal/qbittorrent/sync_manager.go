@@ -21,6 +21,9 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
+// Global URL cache for domain extraction - shared across all sync managers
+var urlCache = ttlcache.New(ttlcache.Options[string, string]{}.SetDefaultTTL(5 * time.Minute))
+
 // CacheMetadata provides information about cache state
 type CacheMetadata struct {
 	Source      string `json:"source"`      // "cache" or "fresh"
@@ -58,7 +61,6 @@ type TorrentStats struct {
 // SyncManager manages torrent operations
 type SyncManager struct {
 	clientPool *ClientPool
-	urlCache   *ttlcache.Cache[string, string]
 }
 
 // OptimisticTorrentUpdate represents a temporary optimistic update to a torrent
@@ -73,7 +75,6 @@ type OptimisticTorrentUpdate struct {
 func NewSyncManager(clientPool *ClientPool) *SyncManager {
 	return &SyncManager{
 		clientPool: clientPool,
-		urlCache:   ttlcache.New(ttlcache.Options[string, string]{}.SetDefaultTTL(5 * time.Minute)),
 	}
 }
 
@@ -563,7 +564,7 @@ type InstanceSpeeds struct {
 // getDomainFromTracker extracts domain from tracker string with caching
 func (sm *SyncManager) getDomainFromTracker(trackerStr string) string {
 	// Check cache first
-	if domain, found := sm.urlCache.Get(trackerStr); found {
+	if domain, found := urlCache.Get(trackerStr); found {
 		return domain
 	}
 
@@ -599,14 +600,14 @@ func (sm *SyncManager) getDomainFromTracker(trackerStr string) string {
 			}
 			if domain != "" {
 				// Cache the result
-				sm.urlCache.Set(trackerStr, domain, ttlcache.DefaultTTL)
+				urlCache.Set(trackerStr, domain, ttlcache.DefaultTTL)
 				return domain
 			}
 		}
 	}
 
 	// Cache empty result to avoid repeated parsing
-	sm.urlCache.Set(trackerStr, "", ttlcache.DefaultTTL)
+	urlCache.Set(trackerStr, "", ttlcache.DefaultTTL)
 	return ""
 }
 
