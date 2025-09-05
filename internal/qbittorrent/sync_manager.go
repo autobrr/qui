@@ -1223,6 +1223,8 @@ func (sm *SyncManager) applyManualFilters(torrents []qbt.Torrent, filters Filter
 var torrentStateCategories = map[qbt.TorrentFilter][]qbt.TorrentState{
 	qbt.TorrentFilterDownloading:        {qbt.TorrentStateDownloading, qbt.TorrentStateStalledDl, qbt.TorrentStateMetaDl, qbt.TorrentStateQueuedDl, qbt.TorrentStateAllocating, qbt.TorrentStateCheckingDl, qbt.TorrentStateForcedDl},
 	qbt.TorrentFilterUploading:          {qbt.TorrentStateUploading, qbt.TorrentStateStalledUp, qbt.TorrentStateQueuedUp, qbt.TorrentStateCheckingUp, qbt.TorrentStateForcedUp},
+	qbt.TorrentFilter("seeding"):        {qbt.TorrentStateUploading, qbt.TorrentStateStalledUp, qbt.TorrentStateQueuedUp, qbt.TorrentStateCheckingUp, qbt.TorrentStateForcedUp},
+	qbt.TorrentFilterInactive:           {qbt.TorrentStatePausedDl, qbt.TorrentStatePausedUp, qbt.TorrentStateStoppedDl, qbt.TorrentStateStoppedUp},
 	qbt.TorrentFilterPaused:             {qbt.TorrentStatePausedDl, qbt.TorrentStatePausedUp, qbt.TorrentStateStoppedDl, qbt.TorrentStateStoppedUp},
 	qbt.TorrentFilterActive:             {qbt.TorrentStateDownloading, qbt.TorrentStateUploading, qbt.TorrentStateForcedDl, qbt.TorrentStateForcedUp},
 	qbt.TorrentFilterStalled:            {qbt.TorrentStateStalledDl, qbt.TorrentStateStalledUp},
