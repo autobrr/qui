@@ -8,8 +8,8 @@ import { usePersistedColumnOrder } from "@/hooks/usePersistedColumnOrder"
 import { usePersistedColumnSizing } from "@/hooks/usePersistedColumnSizing"
 import { usePersistedColumnSorting } from "@/hooks/usePersistedColumnSorting"
 import { usePersistedColumnVisibility } from "@/hooks/usePersistedColumnVisibility"
-import { usePersistedDeleteFiles } from "@/hooks/usePersistedDeleteFiles"
 import { useTorrentsList } from "@/hooks/useTorrentsList"
+import { useTorrentActions } from "@/hooks/useTorrentActions"
 import {
   DndContext,
   MouseSensor,
@@ -32,6 +32,7 @@ import {
 } from "@tanstack/react-table"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { TorrentContextMenu } from "./TorrentContextMenu"
 
 import {
   AlertDialog,
@@ -44,13 +45,6 @@ import {
   AlertDialogTitle
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuTrigger
-} from "@/components/ui/context-menu"
 import {
   Dialog,
   DialogContent,
@@ -73,23 +67,17 @@ import {
   TooltipTrigger
 } from "@/components/ui/tooltip"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
-import { api } from "@/lib/api"
-import {
-  getLinuxIsoName,
-  useIncognitoMode
-} from "@/lib/incognito"
+import { useIncognitoMode } from "@/lib/incognito"
 import { formatSpeed } from "@/lib/utils"
+import { getCommonTags, getCommonCategory } from "@/lib/torrent-utils"
 import type { Category, Torrent, TorrentCounts } from "@/types"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useQueryClient } from "@tanstack/react-query"
 import { useSearch } from "@tanstack/react-router"
-import { CheckCircle, ChevronDown, ChevronUp, Columns3, Copy, Eye, EyeOff, Folder, Loader2, Pause, Play, Radio, Settings2, Sparkles, Tag, Trash2 } from "lucide-react"
+import { ChevronDown, ChevronUp, Columns3, Eye, EyeOff, Loader2 } from "lucide-react"
 import { createPortal } from "react-dom"
-import { toast } from "sonner"
 import { AddTorrentDialog } from "./AddTorrentDialog"
 import { DraggableTableHeader } from "./DraggableTableHeader"
-import { QueueSubmenu } from "./QueueSubmenu"
 import { AddTagsDialog, RemoveTagsDialog, SetCategoryDialog, SetTagsDialog } from "./TorrentDialogs"
-import { ShareLimitSubmenu, SpeedLimitsSubmenu } from "./TorrentLimitSubmenus"
 import { createColumns } from "./TorrentTableColumns"
 
 // Default values for persisted state hooks (module scope for stable references)
@@ -138,16 +126,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const [globalFilter, setGlobalFilter] = useState("")
   const [immediateSearch] = useState("")
   const [rowSelection, setRowSelection] = useState({})
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
-  const [deleteFiles, setDeleteFiles] = usePersistedDeleteFiles()
-  const [contextMenuHashes, setContextMenuHashes] = useState<string[]>([])
-  const [contextMenuTorrents, setContextMenuTorrents] = useState<Torrent[]>([])
-  const [showAddTagsDialog, setShowAddTagsDialog] = useState(false)
-  const [showTagsDialog, setShowTagsDialog] = useState(false)
-  const [showCategoryDialog, setShowCategoryDialog] = useState(false)
-  const [showRemoveTagsDialog, setShowRemoveTagsDialog] = useState(false)
-  const [showRecheckDialog, setShowRecheckDialog] = useState(false)
-  const [showReannounceDialog, setShowReannounceDialog] = useState(false)
   const [showRefetchIndicator, setShowRefetchIndicator] = useState(false)
 
   // Custom "select all" state for handling large datasets
@@ -183,6 +161,49 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
   // Query client for invalidating queries
   const queryClient = useQueryClient()
+
+  // Use the shared torrent actions hook
+  const {
+    showDeleteDialog,
+    setShowDeleteDialog,
+    deleteFiles,
+    setDeleteFiles,
+    showAddTagsDialog,
+    setShowAddTagsDialog,
+    showSetTagsDialog,
+    setShowSetTagsDialog,
+    showRemoveTagsDialog,
+    setShowRemoveTagsDialog,
+    showCategoryDialog,
+    setShowCategoryDialog,
+    showRecheckDialog,
+    setShowRecheckDialog,
+    showReannounceDialog,
+    setShowReannounceDialog,
+    contextHashes,
+    contextTorrents,
+    isPending,
+    handleAction,
+    handleDelete,
+    handleAddTags,
+    handleSetTags,
+    handleRemoveTags,
+    handleSetCategory,
+    handleSetShareLimit,
+    handleSetSpeedLimits,
+    handleRecheck,
+    handleReannounce,
+    prepareDeleteAction,
+    prepareTagsAction,
+    prepareCategoryAction,
+    prepareRecheckAction,
+    prepareReannounceAction,
+  } = useTorrentActions({
+    instanceId,
+    onActionComplete: () => {
+      setRowSelection({})
+    },
+  })
 
   // Fetch metadata using shared hook
   const { data: metadata } = useInstanceMetadata(instanceId)
@@ -619,374 +640,82 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   }, [filters, effectiveSearch, instanceId, virtualizer, sortedTorrents.length, setRowSelection, lastUserAction])
 
 
-  // Mutation for bulk actions
-  const mutation = useMutation({
-    mutationFn: (data: {
-      action: "pause" | "resume" | "delete" | "recheck" | "reannounce" | "increasePriority" | "decreasePriority" | "topPriority" | "bottomPriority" | "addTags" | "removeTags" | "setTags" | "setCategory" | "toggleAutoTMM" | "setShareLimit" | "setUploadLimit" | "setDownloadLimit"
-      hashes: string[]
-      deleteFiles?: boolean
-      tags?: string
-      category?: string
-      enable?: boolean
-      ratioLimit?: number
-      seedingTimeLimit?: number
-      inactiveSeedingTimeLimit?: number
-      uploadLimit?: number
-      downloadLimit?: number
-      selectAll?: boolean
-      filters?: {
-        status: string[]
-        categories: string[]
-        tags: string[]
-        trackers: string[]
-      }
-      search?: string
-      excludeHashes?: string[]
-    }) => {
-      return api.bulkAction(instanceId, {
-        hashes: data.hashes,
-        action: data.action,
-        deleteFiles: data.deleteFiles,
-        tags: data.tags,
-        category: data.category,
-        enable: data.enable,
-        ratioLimit: data.ratioLimit,
-        seedingTimeLimit: data.seedingTimeLimit,
-        inactiveSeedingTimeLimit: data.inactiveSeedingTimeLimit,
-        uploadLimit: data.uploadLimit,
-        downloadLimit: data.downloadLimit,
-        selectAll: data.selectAll,
-        filters: data.filters,
-        search: data.search,
-        excludeHashes: data.excludeHashes,
-      })
-    },
-    onSuccess: async (_, variables) => {
-      // For delete operations, optimistically remove from UI immediately
-      if (variables.action === "delete") {
-        // Clear selection and context menu immediately
-        setRowSelection({})
-        setContextMenuHashes([])
 
-        // Optimistically remove torrents from ALL cached queries for this instance
-        // This includes all pages, filters, and search variations
-        const cache = queryClient.getQueryCache()
-        const queries = cache.findAll({
-          queryKey: ["torrents-list", instanceId],
-          exact: false,
-        })
+  // Wrapper functions to adapt hook handlers to component needs
+  const handleDeleteWrapper = useCallback(() => {
+    handleDelete(
+      contextHashes,
+      isAllSelected,
+      filters,
+      effectiveSearch,
+      Array.from(excludedFromSelectAll)
+    )
+  }, [handleDelete, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll])
 
-        queries.forEach((query) => {
-          queryClient.setQueryData(query.queryKey, (oldData: {
-            torrents?: Torrent[]
-            total?: number
-            totalCount?: number
-          }) => {
-            if (!oldData) return oldData
-            return {
-              ...oldData,
-              torrents: oldData.torrents?.filter((t: Torrent) =>
-                !variables.hashes.includes(t.hash)
-              ) || [],
-              total: Math.max(0, (oldData.total || 0) - variables.hashes.length),
-              totalCount: Math.max(0, (oldData.totalCount || oldData.total || 0) - variables.hashes.length),
-            }
-          })
-        })
+  const handleAddTagsWrapper = useCallback((tags: string[]) => {
+    handleAddTags(
+      tags,
+      contextHashes,
+      isAllSelected,
+      filters,
+      effectiveSearch,
+      Array.from(excludedFromSelectAll)
+    )
+  }, [handleAddTags, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll])
 
-        // Refetch later to sync with actual server state (don't invalidate!)
-        // Longer delay when deleting files from disk
-        const refetchDelay = variables.deleteFiles ? 5000 : 2000
+  const handleSetTagsWrapper = useCallback((tags: string[]) => {
+    handleSetTags(
+      tags,
+      contextHashes,
+      isAllSelected,
+      filters,
+      effectiveSearch,
+      Array.from(excludedFromSelectAll)
+    )
+  }, [handleSetTags, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll])
 
-        setTimeout(() => {
-          // Use refetch instead of invalidate to keep showing data
-          queryClient.refetchQueries({
-            queryKey: ["torrents-list", instanceId],
-            exact: false,
-            type: "active", // Only refetch if component is mounted
-          })
-          // Also refetch the counts query
-          queryClient.refetchQueries({
-            queryKey: ["torrent-counts", instanceId],
-            exact: false,
-            type: "active",
-          })
-        }, refetchDelay)
-      } else {
-        // For other operations, add delay to allow qBittorrent to process
-        // Resume operations need more time for state transition
-        const refetchDelay = variables.action === "resume" ? 2000 : 1000
-
-        setTimeout(() => {
-          // Use refetch instead of invalidate to avoid loading state
-          queryClient.refetchQueries({
-            queryKey: ["torrents-list", instanceId],
-            exact: false,
-            type: "active",
-          })
-          queryClient.refetchQueries({
-            queryKey: ["torrent-counts", instanceId],
-            exact: false,
-            type: "active",
-          })
-        }, refetchDelay)
-        setContextMenuHashes([])
-      }
-    },
-  })
-
-  const handleDelete = async () => {
-    await mutation.mutateAsync({
-      action: "delete",
-      deleteFiles,
-      hashes: isAllSelected ? [] : contextMenuHashes,  // Empty hashes when selectAll is true
-      selectAll: isAllSelected,
-      filters: isAllSelected ? filters : undefined,
-      search: isAllSelected ? effectiveSearch : undefined,
-      excludeHashes: isAllSelected ? Array.from(excludedFromSelectAll) : undefined,
-    })
-    setShowDeleteDialog(false)
-    setDeleteFiles(false)
-    setContextMenuHashes([])
-  }
-
-  const handleAddTags = async (tags: string[]) => {
-    await mutation.mutateAsync({
-      hashes: isAllSelected ? [] : contextMenuHashes,  // Empty hashes when selectAll is true
-      action: "addTags",
-      tags: tags.join(","),
-      selectAll: isAllSelected,
-      filters: isAllSelected ? filters : undefined,
-      search: isAllSelected ? effectiveSearch : undefined,
-      excludeHashes: isAllSelected ? Array.from(excludedFromSelectAll) : undefined,
-    })
-    setShowAddTagsDialog(false)
-    setContextMenuHashes([])
-  }
-
-  const handleSetTags = async (tags: string[]) => {
-    // Use setTags action (with fallback to addTags for older versions)
-    // The backend will handle the version check
-    try {
-      await mutation.mutateAsync({
-        hashes: isAllSelected ? [] : contextMenuHashes,  // Empty hashes when selectAll is true
-        action: "setTags",
-        tags: tags.join(","),
-        selectAll: isAllSelected,
-        filters: isAllSelected ? filters : undefined,
-        search: isAllSelected ? effectiveSearch : undefined,
-        excludeHashes: isAllSelected ? Array.from(excludedFromSelectAll) : undefined,
-      })
-    } catch (error) {
-      // If setTags fails due to version requirement, fall back to addTags
-      if ((error as Error).message?.includes("requires qBittorrent")) {
-        await mutation.mutateAsync({
-          hashes: isAllSelected ? [] : contextMenuHashes,  // Empty hashes when selectAll is true
-          action: "addTags",
-          tags: tags.join(","),
-          selectAll: isAllSelected,
-          filters: isAllSelected ? filters : undefined,
-          search: isAllSelected ? effectiveSearch : undefined,
-          excludeHashes: isAllSelected ? Array.from(excludedFromSelectAll) : undefined,
-        })
-      } else {
-        throw error
-      }
-    }
-
-    setShowTagsDialog(false)
-    setContextMenuHashes([])
-  }
-
-  const handleSetCategory = async (category: string) => {
-    await mutation.mutateAsync({
-      action: "setCategory",
+  const handleSetCategoryWrapper = useCallback((category: string) => {
+    handleSetCategory(
       category,
-      hashes: isAllSelected ? [] : contextMenuHashes,  // Empty hashes when selectAll is true
-      selectAll: isAllSelected,
-      filters: isAllSelected ? filters : undefined,
-      search: isAllSelected ? effectiveSearch : undefined,
-      excludeHashes: isAllSelected ? Array.from(excludedFromSelectAll) : undefined,
-    })
-    setShowCategoryDialog(false)
-    setContextMenuHashes([])
-  }
+      contextHashes,
+      isAllSelected,
+      filters,
+      effectiveSearch,
+      Array.from(excludedFromSelectAll)
+    )
+  }, [handleSetCategory, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll])
 
-  const handleRemoveTags = async (tags: string[]) => {
-    await mutation.mutateAsync({
-      action: "removeTags",
-      tags: tags.join(","),
-      hashes: isAllSelected ? [] : contextMenuHashes,  // Empty hashes when selectAll is true
-      selectAll: isAllSelected,
-      filters: isAllSelected ? filters : undefined,
-      search: isAllSelected ? effectiveSearch : undefined,
-      excludeHashes: isAllSelected ? Array.from(excludedFromSelectAll) : undefined,
-    })
-    setShowRemoveTagsDialog(false)
-    setContextMenuHashes([])
-  }
+  const handleRemoveTagsWrapper = useCallback((tags: string[]) => {
+    handleRemoveTags(
+      tags,
+      contextHashes,
+      isAllSelected,
+      filters,
+      effectiveSearch,
+      Array.from(excludedFromSelectAll)
+    )
+  }, [handleRemoveTags, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll])
 
-  const handleSetShareLimit = async (ratioLimit: number, seedingTimeLimit: number, inactiveSeedingTimeLimit: number, hashes?: string[]) => {
-    const targetHashes = hashes || contextMenuHashes
-    await mutation.mutateAsync({
-      action: "setShareLimit",
-      hashes: targetHashes,
-      ratioLimit,
-      seedingTimeLimit,
-      inactiveSeedingTimeLimit,
-    })
-    setContextMenuHashes([])
-  }
+  const handleRecheckWrapper = useCallback(() => {
+    handleRecheck(
+      contextHashes,
+      isAllSelected,
+      filters,
+      effectiveSearch,
+      Array.from(excludedFromSelectAll)
+    )
+  }, [handleRecheck, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll])
 
-  const handleSetSpeedLimits = async (uploadLimit: number, downloadLimit: number, hashes?: string[]) => {
-    const targetHashes = hashes || contextMenuHashes
-    // Set upload and download limits separately since they are different actions
-    const promises = []
-    if (uploadLimit >= 0) {
-      promises.push(mutation.mutateAsync({ action: "setUploadLimit", hashes: targetHashes, uploadLimit }))
-    }
-    if (downloadLimit >= 0) {
-      promises.push(mutation.mutateAsync({ action: "setDownloadLimit", hashes: targetHashes, downloadLimit }))
-    }
+  const handleReannounceWrapper = useCallback(() => {
+    handleReannounce(
+      contextHashes,
+      isAllSelected,
+      filters,
+      effectiveSearch,
+      Array.from(excludedFromSelectAll)
+    )
+  }, [handleReannounce, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll])
 
-    if (promises.length > 0) {
-      await Promise.all(promises)
-    }
-
-    setContextMenuHashes([])
-  }
-
-  const handleContextMenuAction = useCallback((action: "pause" | "resume" | "recheck" | "reannounce" | "increasePriority" | "decreasePriority" | "topPriority" | "bottomPriority" | "toggleAutoTMM", hashes: string[], enable?: boolean) => {
-    setContextMenuHashes(hashes)
-    mutation.mutate({ action, hashes, enable })
-  }, [mutation])
-
-  const handleRecheck = useCallback(async () => {
-    await mutation.mutateAsync({
-      action: "recheck",
-      hashes: isAllSelected ? [] : contextMenuHashes,
-      selectAll: isAllSelected,
-      filters: isAllSelected ? filters : undefined,
-      search: isAllSelected ? effectiveSearch : undefined,
-      excludeHashes: isAllSelected ? Array.from(excludedFromSelectAll) : undefined,
-    })
-    setShowRecheckDialog(false)
-    setContextMenuHashes([])
-  }, [mutation, isAllSelected, contextMenuHashes, filters, effectiveSearch, excludedFromSelectAll])
-
-  const handleReannounce = useCallback(async () => {
-    await mutation.mutateAsync({
-      action: "reannounce",
-      hashes: isAllSelected ? [] : contextMenuHashes,
-      selectAll: isAllSelected,
-      filters: isAllSelected ? filters : undefined,
-      search: isAllSelected ? effectiveSearch : undefined,
-      excludeHashes: isAllSelected ? Array.from(excludedFromSelectAll) : undefined,
-    })
-    setShowReannounceDialog(false)
-    setContextMenuHashes([])
-  }, [mutation, isAllSelected, contextMenuHashes, filters, effectiveSearch, excludedFromSelectAll])
-
-  const handleRecheckClick = useCallback((hashes: string[]) => {
-    const count = isAllSelected ? effectiveSelectionCount : hashes.length
-    if (count > 1) {
-      setContextMenuHashes(hashes)
-      setShowRecheckDialog(true)
-    } else {
-      handleContextMenuAction("recheck", hashes)
-    }
-  }, [isAllSelected, effectiveSelectionCount, handleContextMenuAction])
-
-  const handleReannounceClick = useCallback((hashes: string[]) => {
-    const count = isAllSelected ? effectiveSelectionCount : hashes.length
-    if (count > 1) {
-      setContextMenuHashes(hashes)
-      setShowReannounceDialog(true)
-    } else {
-      handleContextMenuAction("reannounce", hashes)
-    }
-  }, [isAllSelected, effectiveSelectionCount, handleContextMenuAction])
-
-  const copyToClipboard = useCallback(async (text: string, type: "name" | "hash") => {
-    try {
-      await navigator.clipboard.writeText(text)
-      const message = type === "name" ? "Torrent name copied!" : "Torrent hash copied!"
-      toast.success(message)
-    } catch {
-      toast.error("Failed to copy to clipboard")
-    }
-  }, [])
-
-  // Synchronous version for immediate use (backwards compatibility)
-  const getCommonTagsSync = (torrents: Torrent[]): string[] => {
-    if (torrents.length === 0) return []
-
-    // Fast path for single torrent
-    if (torrents.length === 1) {
-      const tags = torrents[0].tags;
-      return tags ? tags.split(",").map(t => t.trim()).filter(Boolean) : [];
-    }
-
-    // Initialize with first torrent's tags
-    const firstTorrent = torrents[0];
-    if (!firstTorrent.tags) return [];
-
-    // Use a Set for O(1) lookups
-    const firstTorrentTagsSet = new Set(
-      firstTorrent.tags.split(",").map(t => t.trim()).filter(Boolean)
-    );
-
-    // If first torrent has no tags, no common tags exist
-    if (firstTorrentTagsSet.size === 0) return [];
-
-    // Convert to array once for iteration
-    const firstTorrentTags = Array.from(firstTorrentTagsSet);
-
-    // Use Object as a counter map for better performance with large datasets
-    const tagCounts: Record<string, number> = {};
-    for (const tag of firstTorrentTags) {
-      tagCounts[tag] = 1; // First torrent has this tag
-    }
-
-    // Count occurrences of each tag across all torrents
-    for (let i = 1; i < torrents.length; i++) {
-      const torrent = torrents[i];
-      if (!torrent.tags) continue;
-
-      // Create a Set of this torrent's tags for O(1) lookups
-      const currentTags = new Set(
-        torrent.tags.split(",").map(t => t.trim()).filter(Boolean)
-      );
-
-      // Only increment count for tags that this torrent has
-      for (const tag in tagCounts) {
-        if (currentTags.has(tag)) {
-          tagCounts[tag]++;
-        }
-      }
-    }
-
-    // Return tags that appear in all torrents
-    return Object.keys(tagCounts).filter(tag => tagCounts[tag] === torrents.length);
-  }
-
-  // Optimized version of getCommonCategory with early returns
-  const getCommonCategory = (torrents: Torrent[]): string => {
-    // Early returns for common cases
-    if (torrents.length === 0) return "";
-    if (torrents.length === 1) return torrents[0].category || "";
-
-    const firstCategory = torrents[0].category || "";
-
-    // Use direct loop instead of every() for early return optimization
-    for (let i = 1; i < torrents.length; i++) {
-      if ((torrents[i].category || "") !== firstCategory) {
-        return ""; // Different category found, no need to check the rest
-      }
-    }
-
-    return firstCategory;
-  }
 
   // Drag and drop setup
   // Sensors must be called at the top level, not inside useMemo
@@ -1169,285 +898,67 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
                   // Use memoized minTableWidth
                   return (
-                    <ContextMenu key={`${torrent.hash}-${virtualRow.index}`}>
-                      <ContextMenuTrigger asChild>
-                        <div
-                          className={`flex border-b cursor-pointer hover:bg-muted/50 ${row.getIsSelected() ? "bg-muted/50" : ""} ${isSelected ? "bg-accent" : ""}`}
-                          style={{
-                            position: "absolute",
-                            top: 0,
-                            left: 0,
-                            minWidth: `${minTableWidth}px`,
-                            height: `${virtualRow.size}px`,
-                            transform: `translateY(${virtualRow.start}px)`,
-                          }}
-                          onClick={(e) => {
-                            // Don't select when clicking checkbox or its wrapper
-                            const target = e.target as HTMLElement
-                            const isCheckbox = target.closest("[data-slot=\"checkbox\"]") || target.closest("[role=\"checkbox\"]") || target.closest(".p-1.-m-1")
-                            if (!isCheckbox) {
-                              onTorrentSelect?.(torrent)
-                            }
-                          }}
-                          onContextMenu={() => {
-                            // Only select this row if not already selected and not part of a multi-selection
-                            if (!row.getIsSelected() && selectedHashes.length <= 1) {
-                              setRowSelection({ [row.id]: true })
-                            }
-                          }}
-                        >
-                          {row.getVisibleCells().map(cell => (
-                            <div
-                              key={cell.id}
-                              style={{
-                                width: cell.column.getSize(),
-                                flexShrink: 0,
-                              }}
-                              className="px-3 py-2 flex items-center overflow-hidden min-w-0"
-                            >
-                              {flexRender(
-                                cell.column.columnDef.cell,
-                                cell.getContext()
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </ContextMenuTrigger>
-                      <ContextMenuContent>
-                        <ContextMenuItem onClick={() => onTorrentSelect?.(torrent)}>
-                          View Details
-                        </ContextMenuItem>
-                        <ContextMenuSeparator />
-                        <ContextMenuItem
-                          onClick={() => {
-                            // Use selected torrents if this row is part of selection, or just this torrent
-                            const useSelection = row.getIsSelected() || isAllSelected
-                            const hashes = useSelection ? selectedHashes : [torrent.hash]
-                            handleContextMenuAction("resume", hashes)
-                          }}
-                          disabled={mutation.isPending}
-                        >
-                          <Play className="mr-2 h-4 w-4" />
-                          Resume {(row.getIsSelected() || isAllSelected) && effectiveSelectionCount > 1 ? `(${effectiveSelectionCount})` : ""}
-                        </ContextMenuItem>
-                        <ContextMenuItem
-                          onClick={() => {
-                            // Use selected torrents if this row is part of selection, or just this torrent
-                            const useSelection = row.getIsSelected() || isAllSelected
-                            const hashes = useSelection ? selectedHashes : [torrent.hash]
-                            handleContextMenuAction("pause", hashes)
-                          }}
-                          disabled={mutation.isPending}
-                        >
-                          <Pause className="mr-2 h-4 w-4" />
-                          Pause {(row.getIsSelected() || isAllSelected) && effectiveSelectionCount > 1 ? `(${effectiveSelectionCount})` : ""}
-                        </ContextMenuItem>
-                        <ContextMenuItem
-                          onClick={() => {
-                            // Use selected torrents if this row is part of selection, or just this torrent
-                            const useSelection = row.getIsSelected() || isAllSelected
-                            const hashes = useSelection ? selectedHashes : [torrent.hash]
-                            handleRecheckClick(hashes)
-                          }}
-                          disabled={mutation.isPending}
-                        >
-                          <CheckCircle className="mr-2 h-4 w-4" />
-                          Force Recheck {(row.getIsSelected() || isAllSelected) && effectiveSelectionCount > 1 ? `(${effectiveSelectionCount})` : ""}
-                        </ContextMenuItem>
-                        <ContextMenuItem
-                          onClick={() => {
-                            // Use selected torrents if this row is part of selection, or just this torrent
-                            const useSelection = row.getIsSelected() || isAllSelected
-                            const hashes = useSelection ? selectedHashes : [torrent.hash]
-                            handleReannounceClick(hashes)
-                          }}
-                          disabled={mutation.isPending}
-                        >
-                          <Radio className="mr-2 h-4 w-4" />
-                          Reannounce {(row.getIsSelected() || isAllSelected) && effectiveSelectionCount > 1 ? `(${effectiveSelectionCount})` : ""}
-                        </ContextMenuItem>
-                        <ContextMenuSeparator />
-                        {(() => {
-                          // Use selected torrents if this row is part of selection, or just this torrent
-                          const useSelection = row.getIsSelected() || isAllSelected
-                          const hashes = useSelection ? selectedHashes : [torrent.hash]
-                          const hashCount = isAllSelected ? effectiveSelectionCount : hashes.length
-
-                          const handleQueueAction = (action: "topPriority" | "increasePriority" | "decreasePriority" | "bottomPriority") => {
-                            handleContextMenuAction(action, hashes)
+                    <TorrentContextMenu
+                      key={`${torrent.hash}-${virtualRow.index}`}
+                      torrent={torrent}
+                      isSelected={row.getIsSelected()}
+                      isAllSelected={isAllSelected}
+                      selectedHashes={selectedHashes}
+                      selectedTorrents={selectedTorrents}
+                      effectiveSelectionCount={effectiveSelectionCount}
+                      onTorrentSelect={onTorrentSelect}
+                      onAction={handleAction}
+                      onPrepareDelete={prepareDeleteAction}
+                      onPrepareTags={prepareTagsAction}
+                      onPrepareCategory={prepareCategoryAction}
+                      onPrepareRecheck={prepareRecheckAction}
+                      onPrepareReannounce={prepareReannounceAction}
+                      onSetShareLimit={handleSetShareLimit}
+                      onSetSpeedLimits={handleSetSpeedLimits}
+                      isPending={isPending}
+                    >
+                      <div
+                        className={`flex border-b cursor-pointer hover:bg-muted/50 ${row.getIsSelected() ? "bg-muted/50" : ""} ${isSelected ? "bg-accent" : ""}`}
+                        style={{
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          minWidth: `${minTableWidth}px`,
+                          height: `${virtualRow.size}px`,
+                          transform: `translateY(${virtualRow.start}px)`,
+                        }}
+                        onClick={(e) => {
+                          // Don't select when clicking checkbox or its wrapper
+                          const target = e.target as HTMLElement
+                          const isCheckbox = target.closest("[data-slot=\"checkbox\"]") || target.closest("[role=\"checkbox\"]") || target.closest(".p-1.-m-1")
+                          if (!isCheckbox) {
+                            onTorrentSelect?.(torrent)
                           }
-
-                          return (
-                            <QueueSubmenu
-                              type="context"
-                              hashCount={hashCount}
-                              onQueueAction={handleQueueAction}
-                              isPending={mutation.isPending}
-                            />
-                          )
-                        })()}
-                        <ContextMenuSeparator />
-                        <ContextMenuItem
-                          onClick={() => {
-                            // Use selected torrents if this row is part of selection, or just this torrent
-                            const useSelection = row.getIsSelected() || isAllSelected
-                            const hashes = useSelection ? selectedHashes : [torrent.hash]
-                            const torrents = useSelection ? selectedTorrents : [torrent]
-
-                            setContextMenuHashes(hashes)
-                            setContextMenuTorrents(torrents)
-                            setShowAddTagsDialog(true)
-                          }}
-                          disabled={mutation.isPending}
-                        >
-                          <Tag className="mr-2 h-4 w-4" />
-                          Add Tags {(row.getIsSelected() || isAllSelected) && effectiveSelectionCount > 1 ? `(${effectiveSelectionCount})` : ""}
-                        </ContextMenuItem>
-                        <ContextMenuItem
-                          onClick={() => {
-                            // Use selected torrents if this row is part of selection, or just this torrent
-                            const useSelection = row.getIsSelected() || isAllSelected
-                            const hashes = useSelection ? selectedHashes : [torrent.hash]
-                            const torrents = useSelection ? selectedTorrents : [torrent]
-
-                            setContextMenuHashes(hashes)
-                            setContextMenuTorrents(torrents)
-                            setShowTagsDialog(true)
-                          }}
-                          disabled={mutation.isPending}
-                        >
-                          <Tag className="mr-2 h-4 w-4" />
-                          Replace Tags {(row.getIsSelected() || isAllSelected) && effectiveSelectionCount > 1 ? `(${effectiveSelectionCount})` : ""}
-                        </ContextMenuItem>
-                        <ContextMenuItem
-                          onClick={() => {
-                            // Use selected torrents if this row is part of selection, or just this torrent
-                            const useSelection = row.getIsSelected() || isAllSelected
-                            const hashes = useSelection ? selectedHashes : [torrent.hash]
-                            const torrents = useSelection ? selectedTorrents : [torrent]
-
-                            setContextMenuHashes(hashes)
-                            setContextMenuTorrents(torrents)
-                            setShowCategoryDialog(true)
-                          }}
-                          disabled={mutation.isPending}
-                        >
-                          <Folder className="mr-2 h-4 w-4" />
-                          Set Category {(row.getIsSelected() || isAllSelected) && effectiveSelectionCount > 1 ? `(${effectiveSelectionCount})` : ""}
-                        </ContextMenuItem>
-                        <ContextMenuSeparator />
-                        {(() => {
-                          // Use selected torrents if this row is part of selection, or just this torrent
-                          const useSelection = row.getIsSelected() || isAllSelected
-                          const hashes = useSelection ? selectedHashes : [torrent.hash]
-                          const hashCount = isAllSelected ? effectiveSelectionCount : hashes.length
-
-                          // Create wrapped handlers that pass hashes directly
-                          const handleSetShareLimitWrapper = (ratioLimit: number, seedingTimeLimit: number, inactiveSeedingTimeLimit: number) => {
-                            handleSetShareLimit(ratioLimit, seedingTimeLimit, inactiveSeedingTimeLimit, hashes)
+                        }}
+                        onContextMenu={() => {
+                          // Only select this row if not already selected and not part of a multi-selection
+                          if (!row.getIsSelected() && selectedHashes.length <= 1) {
+                            setRowSelection({ [row.id]: true })
                           }
-
-                          const handleSetSpeedLimitsWrapper = (uploadLimit: number, downloadLimit: number) => {
-                            handleSetSpeedLimits(uploadLimit, downloadLimit, hashes)
-                          }
-
-                          return (
-                            <>
-                              <ShareLimitSubmenu
-                                type="context"
-                                hashCount={hashCount}
-                                onConfirm={handleSetShareLimitWrapper}
-                                isPending={mutation.isPending}
-                              />
-                              <SpeedLimitsSubmenu
-                                type="context"
-                                hashCount={hashCount}
-                                onConfirm={handleSetSpeedLimitsWrapper}
-                                isPending={mutation.isPending}
-                              />
-                            </>
-                          )
-                        })()}
-                        <ContextMenuSeparator />
-                        {(() => {
-                          // Use selected torrents if this row is part of selection, or just this torrent
-                          const useSelection = row.getIsSelected() || isAllSelected
-                          const hashes = useSelection ? selectedHashes : [torrent.hash]
-                          const torrents = useSelection ? selectedTorrents : [torrent]
-                          const count = isAllSelected ? effectiveSelectionCount : hashes.length
-
-                          const tmmStates = torrents.map(t => t.auto_tmm)
-                          const allEnabled = tmmStates.length > 0 && tmmStates.every(state => state === true)
-                          const allDisabled = tmmStates.length > 0 && tmmStates.every(state => state === false)
-                          const mixed = tmmStates.length > 0 && !allEnabled && !allDisabled
-
-                          if (mixed) {
-                            return (
-                              <>
-                                <ContextMenuItem
-                                  onClick={() => handleContextMenuAction("toggleAutoTMM", hashes, true)}
-                                  disabled={mutation.isPending}
-                                >
-                                  <Sparkles className="mr-2 h-4 w-4" />
-                                  Enable TMM {useSelection && count > 1 ? `(${count} Mixed)` : "(Mixed)"}
-                                </ContextMenuItem>
-                                <ContextMenuItem
-                                  onClick={() => handleContextMenuAction("toggleAutoTMM", hashes, false)}
-                                  disabled={mutation.isPending}
-                                >
-                                  <Settings2 className="mr-2 h-4 w-4" />
-                                  Disable TMM {useSelection && count > 1 ? `(${count} Mixed)` : "(Mixed)"}
-                                </ContextMenuItem>
-                              </>
-                            )
-                          }
-
-                          return (
-                            <ContextMenuItem
-                              onClick={() => handleContextMenuAction("toggleAutoTMM", hashes, !allEnabled)}
-                              disabled={mutation.isPending}
-                            >
-                              {allEnabled ? (
-                                <>
-                                  <Settings2 className="mr-2 h-4 w-4" />
-                                  Disable TMM {useSelection && count > 1 ? `(${count})` : ""}
-                                </>
-                              ) : (
-                                <>
-                                  <Sparkles className="mr-2 h-4 w-4" />
-                                  Enable TMM {useSelection && count > 1 ? `(${count})` : ""}
-                                </>
-                              )}
-                            </ContextMenuItem>
-                          )
-                        })()}
-                        <ContextMenuSeparator />
-                        <ContextMenuItem onClick={() => copyToClipboard(incognitoMode ? getLinuxIsoName(torrent.hash) : torrent.name, "name")}>
-                          <Copy className="mr-2 h-4 w-4" />
-                          Copy Name
-                        </ContextMenuItem>
-                        <ContextMenuItem onClick={() => copyToClipboard(torrent.hash, "hash")}>
-                          <Copy className="mr-2 h-4 w-4" />
-                          Copy Hash
-                        </ContextMenuItem>
-                        <ContextMenuSeparator />
-                        <ContextMenuItem
-                          onClick={() => {
-                            // Use selected torrents if this row is part of selection, or just this torrent
-                            const useSelection = row.getIsSelected() || isAllSelected
-                            const hashes = useSelection ? selectedHashes : [torrent.hash]
-
-                            setContextMenuHashes(hashes)
-                            setShowDeleteDialog(true)
-                          }}
-                          disabled={mutation.isPending}
-                          className="text-destructive"
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Delete {(row.getIsSelected() || isAllSelected) && effectiveSelectionCount > 1 ? `(${effectiveSelectionCount})` : ""}
-                        </ContextMenuItem>
-                      </ContextMenuContent>
-                    </ContextMenu>
+                        }}
+                      >
+                        {row.getVisibleCells().map(cell => (
+                          <div
+                            key={cell.id}
+                            style={{
+                              width: cell.column.getSize(),
+                              flexShrink: 0,
+                            }}
+                            className="px-3 py-2 flex items-center overflow-hidden min-w-0"
+                          >
+                            {flexRender(
+                              cell.column.columnDef.cell,
+                              cell.getContext()
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </TorrentContextMenu>
                   )
                 })}
               </div>
@@ -1525,7 +1036,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete {isAllSelected ? effectiveSelectionCount : contextMenuHashes.length} torrent(s)?</AlertDialogTitle>
+            <AlertDialogTitle>Delete {isAllSelected ? effectiveSelectionCount : contextHashes.length} torrent(s)?</AlertDialogTitle>
             <AlertDialogDescription>
               This action cannot be undone. The torrents will be removed from qBittorrent.
             </AlertDialogDescription>
@@ -1545,7 +1056,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={handleDelete}
+              onClick={handleDeleteWrapper}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Delete
@@ -1559,20 +1070,20 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         open={showAddTagsDialog}
         onOpenChange={setShowAddTagsDialog}
         availableTags={availableTags || []}
-        hashCount={isAllSelected ? effectiveSelectionCount : contextMenuHashes.length}
-        onConfirm={handleAddTags}
-        isPending={mutation.isPending}
+        hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
+        onConfirm={handleAddTagsWrapper}
+        isPending={isPending}
       />
 
       {/* Set Tags Dialog */}
       <SetTagsDialog
-        open={showTagsDialog}
-        onOpenChange={setShowTagsDialog}
+        open={showSetTagsDialog}
+        onOpenChange={setShowSetTagsDialog}
         availableTags={availableTags || []}
-        hashCount={isAllSelected ? effectiveSelectionCount : contextMenuHashes.length}
-        onConfirm={handleSetTags}
-        isPending={mutation.isPending}
-        initialTags={getCommonTagsSync(contextMenuTorrents)}
+        hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
+        onConfirm={handleSetTagsWrapper}
+        isPending={isPending}
+        initialTags={getCommonTags(contextTorrents)}
       />
 
       {/* Set Category Dialog */}
@@ -1580,10 +1091,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         open={showCategoryDialog}
         onOpenChange={setShowCategoryDialog}
         availableCategories={availableCategories || {}}
-        hashCount={isAllSelected ? effectiveSelectionCount : contextMenuHashes.length}
-        onConfirm={handleSetCategory}
-        isPending={mutation.isPending}
-        initialCategory={getCommonCategory(contextMenuTorrents)}
+        hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
+        onConfirm={handleSetCategoryWrapper}
+        isPending={isPending}
+        initialCategory={getCommonCategory(contextTorrents)}
       />
 
       {/* Remove Tags Dialog */}
@@ -1591,17 +1102,17 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         open={showRemoveTagsDialog}
         onOpenChange={setShowRemoveTagsDialog}
         availableTags={availableTags || []}
-        hashCount={isAllSelected ? effectiveSelectionCount : contextMenuHashes.length}
-        onConfirm={handleRemoveTags}
-        isPending={mutation.isPending}
-        currentTags={getCommonTagsSync(contextMenuTorrents)}
+        hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
+        onConfirm={handleRemoveTagsWrapper}
+        isPending={isPending}
+        currentTags={getCommonTags(contextTorrents)}
       />
 
       {/* Force Recheck Confirmation Dialog */}
       <Dialog open={showRecheckDialog} onOpenChange={setShowRecheckDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Force Recheck {isAllSelected ? effectiveSelectionCount : contextMenuHashes.length} torrent(s)?</DialogTitle>
+            <DialogTitle>Force Recheck {isAllSelected ? effectiveSelectionCount : contextHashes.length} torrent(s)?</DialogTitle>
             <DialogDescription>
               This will force qBittorrent to recheck all pieces of the selected torrents. This process may take some time and will temporarily pause the torrents.
             </DialogDescription>
@@ -1610,7 +1121,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
             <Button variant="outline" onClick={() => setShowRecheckDialog(false)}>
               Cancel
             </Button>
-            <Button onClick={handleRecheck} disabled={mutation.isPending}>
+            <Button onClick={handleRecheckWrapper} disabled={isPending}>
               Force Recheck
             </Button>
           </DialogFooter>
@@ -1621,7 +1132,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       <Dialog open={showReannounceDialog} onOpenChange={setShowReannounceDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Reannounce {isAllSelected ? effectiveSelectionCount : contextMenuHashes.length} torrent(s)?</DialogTitle>
+            <DialogTitle>Reannounce {isAllSelected ? effectiveSelectionCount : contextHashes.length} torrent(s)?</DialogTitle>
             <DialogDescription>
               This will force the selected torrents to reannounce to all their trackers. This is useful when trackers are not responding or you want to refresh your connection.
             </DialogDescription>
@@ -1630,7 +1141,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
             <Button variant="outline" onClick={() => setShowReannounceDialog(false)}>
               Cancel
             </Button>
-            <Button onClick={handleReannounce} disabled={mutation.isPending}>
+            <Button onClick={handleReannounceWrapper} disabled={isPending}>
               Reannounce
             </Button>
           </DialogFooter>
