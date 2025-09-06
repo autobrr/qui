@@ -29,7 +29,7 @@ import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSideba
 import { useTheme } from "@/hooks/useTheme"
 import { cn } from "@/lib/utils"
 import { Link, useNavigate, useRouterState, useSearch } from "@tanstack/react-router"
-import { HardDrive, Home, Info, LogOut, Menu, Search, Server, Settings, X, FunnelPlus, FunnelX } from "lucide-react"
+import { FunnelPlus, FunnelX, HardDrive, Home, Info, LogOut, Menu, Search, Server, Settings, X } from "lucide-react"
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react"
 import { useHotkeys } from "react-hotkeys-hook"
 
@@ -118,47 +118,48 @@ export function Header({
 
   return (
     <header className="sticky top-0 z-50 flex h-16 items-center justify-between sm:border-b bg-background pl-1 pr-4 sm:pr-6 lg:static">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 mr-2">
         {children}
-        <h1 className={cn(
-          "flex items-center gap-2 pl-2 sm:pl-0 text-xl font-semibold transition-opacity duration-300",
-          "lg:opacity-0 lg:pointer-events-none", // Hidden on desktop by default
-          sidebarCollapsed && "lg:opacity-100 lg:pointer-events-auto", // Visible on desktop when sidebar collapsed
-          !shouldShowQuiOnMobile && "hidden sm:flex" // Hide on mobile when on instance routes
-        )}>
-          {theme === "swizzin" ? (
-            <SwizzinLogo className="h-5 w-5" />
-          ) : (
-            <Logo className="h-5 w-5" />
-          )}
-          {instanceName ? instanceName : "qui"}
-        </h1>
-      </div>
 
-      {/* Instance search bar with management bar */}
-      {isInstanceRoute && (
-        <div className="flex items-center flex-1 max-w-4xl mx-2">
-          {/* Filter button - leftmost position */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="outline"
-                size="icon"
-                className="hidden xl:inline-flex mx-2"
-                onClick={() => setFilterSidebarCollapsed(!filterSidebarCollapsed)}
-              >
-                {filterSidebarCollapsed ? (
-                  <FunnelPlus className="h-4 w-4"/>
-                ) : (
-                  <FunnelX className="h-4 w-4"/>
-                )}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{filterSidebarCollapsed ? "Show filters" : "Hide filters"}</TooltipContent>
-          </Tooltip>
+        {/* Logo/title only shows when sidebar is collapsed */}
+        {sidebarCollapsed && (
+          <h1 className={cn(
+            "flex items-center gap-2 pl-2 sm:pl-0 text-lg font-semibold transition-opacity duration-300",
+            "lg:opacity-100 lg:pointer-events-auto",
+            !shouldShowQuiOnMobile && "hidden sm:flex"
+          )}>
+            {theme === "swizzin" ? (
+              <SwizzinLogo className="h-5 w-5 flex-shrink-0" />
+            ) : (
+              <Logo className="h-5 w-5 flex-shrink-0" />
+            )}
+            <span className="truncate max-w-[200px]">
+              {instanceName ? instanceName : "qui"}
+            </span>
+          </h1>
+        )}
 
-          {/* Management Bar - always visible on left side (desktop only) */}
-          <div className="hidden lg:block">
+        {/* Filter button and management bar always show on instance routes */}
+        {isInstanceRoute && (
+          <div className="hidden lg:flex items-center gap-2">
+            {/* Filter button */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="hidden xl:inline-flex"
+                  onClick={() => setFilterSidebarCollapsed(!filterSidebarCollapsed)}
+                >
+                  {filterSidebarCollapsed ? (
+                    <FunnelPlus className="h-4 w-4"/>
+                  ) : (
+                    <FunnelX className="h-4 w-4"/>
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{filterSidebarCollapsed ? "Show filters" : "Hide filters"}</TooltipContent>
+            </Tooltip>
             <TorrentManagementBar
               instanceId={selectedInstanceId || undefined}
               selectedHashes={selectedHashes}
@@ -171,12 +172,17 @@ export function Header({
               onComplete={clearSelection}
             />
           </div>
+        )}
+      </div>
 
-          <div className="flex items-center gap-2 flex-1">
-            {/* Slot to place actions directly to the left of the filter button (desktop only) */}
-            <span id="header-left-of-filter" className="hidden xl:inline-flex"/>
-            {/* Mobile filter button moved to card/table toolbars */}
-            <div className="relative flex-1">
+      {/* Instance route - search on right */}
+      {isInstanceRoute && (
+        <div className="flex items-center flex-1 gap-2">
+
+          {/* Right side: Filter button and Search bar */}
+          <div className="flex items-center gap-2 flex-1 justify-end mr-2">
+            {/* Search bar */}
+            <div className="relative w-full max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"/>
               <Input
                 ref={searchInputRef}
@@ -216,7 +222,7 @@ export function Header({
                     <TooltipContent>Clear search</TooltipContent>
                   </Tooltip>
                 )}
-                {/* Slot for actions next to search (e.g., Toggle columns) */}
+                {/* Info tooltip */}
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
