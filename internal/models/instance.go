@@ -10,11 +10,15 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/url"
 	"strings"
+	"time"
+
+	"github.com/autobrr/qui/internal/domain"
 )
 
 var ErrInstanceNotFound = errors.New("instance not found")
@@ -27,6 +31,76 @@ type Instance struct {
 	PasswordEncrypted      string  `json:"-"`
 	BasicUsername          *string `json:"basic_username,omitempty"`
 	BasicPasswordEncrypted *string `json:"-"`
+}
+
+func (i Instance) MarshalJSON() ([]byte, error) {
+	// Create the JSON structure with redacted password fields
+	return json.Marshal(&struct {
+		ID              int        `json:"id"`
+		Name            string     `json:"name"`
+		Host            string     `json:"host"`
+		Username        string     `json:"username"`
+		Password        string     `json:"password,omitempty"`
+		BasicUsername   *string    `json:"basic_username,omitempty"`
+		BasicPassword   string     `json:"basic_password,omitempty"`
+		IsActive        bool       `json:"is_active"`
+		LastConnectedAt *time.Time `json:"last_connected_at,omitempty"`
+		CreatedAt       time.Time  `json:"created_at"`
+		UpdatedAt       time.Time  `json:"updated_at"`
+	}{
+		ID:            i.ID,
+		Name:          i.Name,
+		Host:          i.Host,
+		Username:      i.Username,
+		Password:      domain.RedactString(i.PasswordEncrypted),
+		BasicUsername: i.BasicUsername,
+		BasicPassword: func() string {
+			if i.BasicPasswordEncrypted != nil {
+				return domain.RedactString(*i.BasicPasswordEncrypted)
+			}
+			return ""
+		}(),
+	})
+}
+
+func (i *Instance) UnmarshalJSON(data []byte) error {
+	// Temporary struct for unmarshaling
+	var temp struct {
+		ID              int        `json:"id"`
+		Name            string     `json:"name"`
+		Host            string     `json:"host"`
+		Username        string     `json:"username"`
+		Password        string     `json:"password,omitempty"`
+		BasicUsername   *string    `json:"basic_username,omitempty"`
+		BasicPassword   string     `json:"basic_password,omitempty"`
+		IsActive        bool       `json:"is_active"`
+		LastConnectedAt *time.Time `json:"last_connected_at,omitempty"`
+		CreatedAt       time.Time  `json:"created_at"`
+		UpdatedAt       time.Time  `json:"updated_at"`
+	}
+
+	if err := json.Unmarshal(data, &temp); err != nil {
+		return err
+	}
+
+	// Copy non-secret fields
+	i.ID = temp.ID
+	i.Name = temp.Name
+	i.Host = temp.Host
+	i.Username = temp.Username
+	i.BasicUsername = temp.BasicUsername
+
+	// Handle password - don't overwrite if redacted
+	if temp.Password != "" && !domain.IsRedactedString(temp.Password) {
+		i.PasswordEncrypted = temp.Password
+	}
+
+	// Handle basic password - don't overwrite if redacted
+	if temp.BasicPassword != "" && !domain.IsRedactedString(temp.BasicPassword) {
+		i.BasicPasswordEncrypted = &temp.BasicPassword
+	}
+
+	return nil
 }
 
 type InstanceStore struct {
@@ -250,7 +324,7 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 	query := `UPDATE instances SET name = ?, host = ?, username = ?, basic_username = ?`
 	args := []any{name, normalizedHost, username, basicUsername}
 
-	// Only update password if provided
+	// Handle password update - encrypt if provided
 	if password != "" {
 		encryptedPassword, err := s.encrypt(password)
 		if err != nil {
@@ -260,17 +334,20 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 		args = append(args, encryptedPassword)
 	}
 
-	// Only update basic password if provided
-	if basicPassword != nil && *basicPassword != "" {
-		encryptedBasicPassword, err := s.encrypt(*basicPassword)
-		if err != nil {
-			return nil, fmt.Errorf("failed to encrypt basic auth password: %w", err)
+	// Handle basic password update
+	if basicPassword != nil {
+		if *basicPassword == "" {
+			// Empty string explicitly provided - clear the basic password
+			query += ", basic_password_encrypted = NULL"
+		} else {
+			// Basic password provided - encrypt and update
+			encryptedBasicPassword, err := s.encrypt(*basicPassword)
+			if err != nil {
+				return nil, fmt.Errorf("failed to encrypt basic auth password: %w", err)
+			}
+			query += ", basic_password_encrypted = ?"
+			args = append(args, encryptedBasicPassword)
 		}
-		query += ", basic_password_encrypted = ?"
-		args = append(args, encryptedBasicPassword)
-	} else if basicPassword != nil && *basicPassword == "" {
-		// Clear basic password if empty string provided
-		query += ", basic_password_encrypted = NULL"
 	}
 
 	query += " WHERE id = ?"
