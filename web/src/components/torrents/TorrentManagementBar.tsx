@@ -37,7 +37,7 @@ import { api } from "@/lib/api"
 import { getCommonCategory, getCommonTags } from "@/lib/torrent-utils"
 import type { Torrent } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { ArrowDown, ArrowUp, ChevronsDown, ChevronsUp, Folder, List, LoaderCircle, Pause, Play, Radio, Settings2, Sparkles, Tag, Trash2, X } from "lucide-react"
+import { ArrowDown, ArrowUp, ChevronsDown, ChevronsUp, Folder, List, LoaderCircle, Pause, Play, Radio, Settings2, Tag, Trash2 } from "lucide-react"
 import type { ChangeEvent } from "react"
 import { memo, useCallback, useState } from "react"
 import { toast } from "sonner"
@@ -57,10 +57,9 @@ type BulkActionVariables = {
 }
 
 interface TorrentManagementBarProps {
-  instanceId: number
-  selectedHashes: string[]
+  instanceId?: number
+  selectedHashes?: string[]
   selectedTorrents?: Torrent[]
-  onComplete?: () => void
   isAllSelected?: boolean
   totalSelectionCount?: number
   filters?: {
@@ -71,20 +70,19 @@ interface TorrentManagementBarProps {
   }
   search?: string
   excludeHashes?: string[]
-  onClose?: () => void
+  onComplete?: () => void
 }
 
 export const TorrentManagementBar = memo(function TorrentManagementBar({
   instanceId,
-  selectedHashes,
+  selectedHashes = [],
   selectedTorrents = [],
-  onComplete,
   isAllSelected = false,
-  totalSelectionCount,
+  totalSelectionCount = 0,
   filters,
   search,
-  excludeHashes,
-  onClose,
+  excludeHashes = [],
+  onComplete,
 }: TorrentManagementBarProps) {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [deleteFiles, setDeleteFiles] = useState(false)
@@ -98,14 +96,16 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   // Fetch available tags
   const { data: availableTags = [] } = useQuery({
     queryKey: ["tags", instanceId],
-    queryFn: () => api.getTags(instanceId),
+    queryFn: () => instanceId ? api.getTags(instanceId) : Promise.resolve([]),
+    enabled: !!instanceId,
     staleTime: 60000,
   })
 
   // Fetch available categories
   const { data: availableCategories = {} } = useQuery({
     queryKey: ["categories", instanceId],
-    queryFn: () => api.getCategories(instanceId),
+    queryFn: () => instanceId ? api.getCategories(instanceId) : Promise.resolve({}),
+    enabled: !!instanceId,
     staleTime: 60000,
   })
 
@@ -122,6 +122,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
       uploadLimit?: number
       downloadLimit?: number
     }) => {
+      if (!instanceId) throw new Error("No instance selected")
       return api.bulkAction(instanceId, {
         hashes: isAllSelected ? [] : selectedHashes,
         action: data.action,
@@ -309,12 +310,14 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   }, [mutation])
 
   const selectionCount = totalSelectionCount || selectedHashes.length
+  const hasSelection = selectionCount > 0 || isAllSelected
+  const isDisabled = !instanceId || !hasSelection
 
   return (
     <>
-      <div className="flex items-center h-10 bg-muted/50 border border-input rounded-md px-4 py-2 animate-in slide-in-from-top-2 duration-200 gap-3">
-        <div className="flex items-center gap-2 flex-shrink-0 min-w-0">
-          <span className="text-xs text-muted-foreground whitespace-nowrap">
+      <div className="flex items-center h-9 dark:bg-input/30 border border-input rounded-md px-3 py-2 animate-in slide-in-from-top-2 duration-200 gap-3 shadow-xs">
+        <div className="flex items-center gap-3 flex-shrink-0 min-w-0">
+          <span className="text-xs text-muted-foreground whitespace-nowrap min-w-[3ch] text-center">
             {selectionCount}
           </span>
         </div>
@@ -327,7 +330,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
                 variant="ghost"
                 size="sm"
                 onClick={() => mutation.mutate({ action: "resume" })}
-                disabled={mutation.isPending}
+                disabled={mutation.isPending || isDisabled}
               >
                 <Play className="h-4 w-4" />
               </Button>
@@ -341,7 +344,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
                 variant="ghost"
                 size="sm"
                 onClick={() => mutation.mutate({ action: "pause" })}
-                disabled={mutation.isPending}
+                disabled={mutation.isPending || isDisabled}
               >
                 <Pause className="h-4 w-4" />
               </Button>
@@ -355,7 +358,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
                 variant="ghost"
                 size="sm"
                 onClick={handleRecheckClick}
-                disabled={mutation.isPending}
+                disabled={mutation.isPending || isDisabled}
               >
                 <LoaderCircle className="h-4 w-4" />
               </Button>
@@ -369,7 +372,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
                 variant="ghost"
                 size="sm"
                 onClick={handleReannounceClick}
-                disabled={mutation.isPending}
+                disabled={mutation.isPending || isDisabled}
               >
                 <Radio className="h-4 w-4" />
               </Button>
@@ -385,7 +388,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
                   <Button
                     variant="ghost"
                     size="sm"
-                    disabled={mutation.isPending}
+                    disabled={mutation.isPending || isDisabled}
                   >
                     <Tag className="h-4 w-4" />
                   </Button>
@@ -396,14 +399,14 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
             <DropdownMenuContent align="center">
               <DropdownMenuItem
                 onClick={() => setShowAddTagsDialog(true)}
-                disabled={mutation.isPending}
+                disabled={mutation.isPending || isDisabled}
               >
                 <Tag className="h-4 w-4 mr-2" />
                 Add Tags {selectionCount > 1 ? `(${selectionCount})` : ""}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => setShowTagsDialog(true)}
-                disabled={mutation.isPending}
+                disabled={mutation.isPending || isDisabled}
               >
                 <Tag className="h-4 w-4 mr-2" />
                 Replace Tags {selectionCount > 1 ? `(${selectionCount})` : ""}
@@ -417,7 +420,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
                 variant="ghost"
                 size="sm"
                 onClick={() => setShowCategoryDialog(true)}
-                disabled={mutation.isPending}
+                disabled={mutation.isPending || isDisabled}
               >
                 <Folder className="h-4 w-4" />
               </Button>
@@ -433,7 +436,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
                   <Button
                     variant="ghost"
                     size="sm"
-                    disabled={mutation.isPending}
+                    disabled={mutation.isPending || isDisabled}
                   >
                     <List className="h-4 w-4" />
                   </Button>
@@ -444,28 +447,28 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
             <DropdownMenuContent align="center">
               <DropdownMenuItem
                 onClick={() => handleQueueAction("topPriority")}
-                disabled={mutation.isPending}
+                disabled={mutation.isPending || isDisabled}
               >
                 <ChevronsUp className="h-4 w-4 mr-2" />
                 Top Priority {selectionCount > 1 ? `(${selectionCount})` : ""}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => handleQueueAction("increasePriority")}
-                disabled={mutation.isPending}
+                disabled={mutation.isPending || isDisabled}
               >
                 <ArrowUp className="h-4 w-4 mr-2" />
                 Increase Priority {selectionCount > 1 ? `(${selectionCount})` : ""}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => handleQueueAction("decreasePriority")}
-                disabled={mutation.isPending}
+                disabled={mutation.isPending || isDisabled}
               >
                 <ArrowDown className="h-4 w-4 mr-2" />
                 Decrease Priority {selectionCount > 1 ? `(${selectionCount})` : ""}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => handleQueueAction("bottomPriority")}
-                disabled={mutation.isPending}
+                disabled={mutation.isPending || isDisabled}
               >
                 <ChevronsDown className="h-4 w-4 mr-2" />
                 Bottom Priority {selectionCount > 1 ? `(${selectionCount})` : ""}
@@ -486,13 +489,9 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
                     variant="ghost"
                     size="sm"
                     onClick={() => mutation.mutate({ action: "toggleAutoTMM", enable: !allEnabled })}
-                    disabled={mutation.isPending}
+                    disabled={mutation.isPending || isDisabled}
                   >
-                    {allEnabled ? (
-                      <Settings2 className="h-4 w-4" />
-                    ) : (
-                      <Sparkles className="h-4 w-4" />
-                    )}
+                    <Settings2 className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
@@ -510,30 +509,13 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
                 variant="ghost"
                 size="sm"
                 onClick={() => setShowDeleteDialog(true)}
-                disabled={mutation.isPending}
+                disabled={mutation.isPending || isDisabled}
                 className="text-destructive hover:text-destructive"
               >
                 <Trash2 className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>Delete</TooltipContent>
-          </Tooltip>
-        </div>
-
-        {/* Close Button */}
-        <div className="flex items-center gap-1 flex-shrink-0">
-          <div className="w-px h-4 bg-border mx-2"></div>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onClose}
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Close</TooltipContent>
           </Tooltip>
         </div>
       </div>

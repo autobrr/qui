@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { TorrentManagementBar } from "@/components/torrents/TorrentManagementBar"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -20,6 +21,7 @@ import {
   TooltipContent,
   TooltipTrigger
 } from "@/components/ui/tooltip"
+import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
 import { useAuth } from "@/hooks/useAuth"
 import { useDebounce } from "@/hooks/useDebounce"
 import { useInstances } from "@/hooks/useInstances"
@@ -27,48 +29,33 @@ import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSideba
 import { useTheme } from "@/hooks/useTheme"
 import { cn } from "@/lib/utils"
 import { Link, useNavigate, useRouterState, useSearch } from "@tanstack/react-router"
-import { Filter, HardDrive, Home, Info, LogOut, Menu, Search, Server, Settings, X } from "lucide-react"
+import { HardDrive, Home, Info, LogOut, Menu, Search, Server, Settings, X, FunnelPlus, FunnelX } from "lucide-react"
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react"
 import { useHotkeys } from "react-hotkeys-hook"
-import { TorrentManagementBar } from "@/components/torrents/TorrentManagementBar"
-import type { Torrent } from "@/types"
 
 interface HeaderProps {
   children?: ReactNode
   sidebarCollapsed?: boolean
-  // Management Bar props
-  showManagementBar?: boolean
-  selectedHashes?: string[]
-  selectedTorrents?: Torrent[]
-  isAllSelected?: boolean
-  totalSelectionCount?: number
-  filters?: {
-    status: string[]
-    categories: string[]
-    tags: string[]
-    trackers: string[]
-  }
-  onManagementBarClose?: () => void
-  onSelectionComplete?: () => void
-  excludeHashes?: string[]
 }
 
 export function Header({
   children,
   sidebarCollapsed = false,
-  showManagementBar = false,
-  selectedHashes = [],
-  selectedTorrents = [],
-  isAllSelected = false,
-  totalSelectionCount = 0,
-  filters,
-  onManagementBarClose,
-  onSelectionComplete,
-  excludeHashes = [],
 }: HeaderProps) {
   const { logout } = useAuth()
   const navigate = useNavigate()
   const routeSearch = useSearch({ strict: false }) as { q?: string; modal?: string; [key: string]: unknown }
+
+  // Get selection state from context
+  const {
+    selectedHashes,
+    selectedTorrents,
+    isAllSelected,
+    totalSelectionCount,
+    excludeHashes,
+    filters,
+    clearSelection,
+  } = useTorrentSelection()
 
   const instanceId = useRouterState({
     select: (s) => s.matches.find((m) => m.routeId === "/_authenticated/instances/$instanceId")?.params?.instanceId as string | undefined,
@@ -148,25 +135,46 @@ export function Header({
         </h1>
       </div>
 
-      {/* Instance search bar */}
+      {/* Instance search bar with management bar */}
       {isInstanceRoute && (
-        <div className="flex-1 max-w-xl mx-2">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center flex-1 max-w-4xl mx-2">
+          {/* Filter button - leftmost position */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon"
+                className="hidden xl:inline-flex mx-2"
+                onClick={() => setFilterSidebarCollapsed(!filterSidebarCollapsed)}
+              >
+                {filterSidebarCollapsed ? (
+                  <FunnelPlus className="h-4 w-4"/>
+                ) : (
+                  <FunnelX className="h-4 w-4"/>
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{filterSidebarCollapsed ? "Show filters" : "Hide filters"}</TooltipContent>
+          </Tooltip>
+
+          {/* Management Bar - always visible on left side (desktop only) */}
+          <div className="hidden lg:block">
+            <TorrentManagementBar
+              instanceId={selectedInstanceId || undefined}
+              selectedHashes={selectedHashes}
+              selectedTorrents={selectedTorrents}
+              isAllSelected={isAllSelected}
+              totalSelectionCount={totalSelectionCount}
+              filters={filters}
+              search={routeSearch?.q}
+              excludeHashes={excludeHashes}
+              onComplete={clearSelection}
+            />
+          </div>
+
+          <div className="flex items-center gap-2 flex-1">
             {/* Slot to place actions directly to the left of the filter button (desktop only) */}
             <span id="header-left-of-filter" className="hidden xl:inline-flex"/>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="hidden xl:inline-flex"
-                  onClick={() => setFilterSidebarCollapsed(!filterSidebarCollapsed)}
-                >
-                  <Filter className="h-4 w-4"/>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{filterSidebarCollapsed ? "Show filters" : "Hide filters"}</TooltipContent>
-            </Tooltip>
             {/* Mobile filter button moved to card/table toolbars */}
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"/>
@@ -240,21 +248,6 @@ export function Header({
         </div>
       )}
 
-      {/* Management Bar - appears inline when torrents are selected */}
-      {showManagementBar && isInstanceRoute && selectedInstanceId !== null && (
-        <TorrentManagementBar
-          instanceId={selectedInstanceId}
-          selectedHashes={selectedHashes}
-          selectedTorrents={selectedTorrents}
-          isAllSelected={isAllSelected}
-          totalSelectionCount={totalSelectionCount}
-          filters={filters}
-          search={routeSearch?.q}
-          excludeHashes={excludeHashes}
-          onComplete={onSelectionComplete}
-          onClose={onManagementBarClose}
-        />
-      )}
 
       <div className="grid grid-cols-[auto_auto] items-center gap-1 transition-all duration-300 ease-out">
         <ThemeToggle/>
