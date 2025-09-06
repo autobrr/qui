@@ -91,7 +91,7 @@ func (h *ThemeLicenseHandler) ValidateLicense(w http.ResponseWriter, r *http.Req
 			Str("licenseKey", maskLicenseKey(req.LicenseKey)).
 			Msg("Failed to validate license")
 
-		RespondJSON(w, http.StatusUnauthorized, ValidateLicenseResponse{
+		RespondJSON(w, http.StatusForbidden, ValidateLicenseResponse{
 			Valid: false,
 			Error: err.Error(),
 		})

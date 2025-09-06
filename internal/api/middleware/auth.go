@@ -7,12 +7,13 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/alexedwards/scs/v2"
 	"github.com/autobrr/qui/internal/auth"
 	"github.com/rs/zerolog/log"
 )
 
 // IsAuthenticated middleware checks if the user is authenticated
-func IsAuthenticated(authService *auth.Service) func(http.Handler) http.Handler {
+func IsAuthenticated(authService *auth.Service, sessionManager *scs.SessionManager) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Check for API key first
@@ -31,9 +32,8 @@ func IsAuthenticated(authService *auth.Service) func(http.Handler) http.Handler 
 				return
 			}
 
-			// Check session
-			session, _ := authService.GetSessionStore().Get(r, auth.SessionName)
-			if auth, ok := session.Values["authenticated"].(bool); !ok || !auth {
+			// Check session using SCS
+			if !sessionManager.GetBool(r.Context(), "authenticated") {
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}

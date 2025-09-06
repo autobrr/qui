@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/alexedwards/scs/v2"
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -33,6 +34,7 @@ import (
 	"github.com/autobrr/qui/internal/services"
 	"github.com/autobrr/qui/internal/update"
 	"github.com/autobrr/qui/internal/web"
+	"github.com/autobrr/qui/pkg/sqlite3store"
 	webfs "github.com/autobrr/qui/web"
 )
 
@@ -209,7 +211,7 @@ If no --config-dir is specified, uses the OS-specific default location:
 			}
 			defer db.Close()
 
-			authService := auth.NewService(db.Conn(), cfg.Config.SessionSecret)
+			authService := auth.NewService(db.Conn())
 
 			exists, err := authService.IsSetupComplete(context.Background())
 			if err != nil {
@@ -300,7 +302,7 @@ If no --config-dir is specified, uses the OS-specific default location:
 			}
 			defer db.Close()
 
-			authService := auth.NewService(db.Conn(), cfg.Config.SessionSecret)
+			authService := auth.NewService(db.Conn())
 
 			exists, err := authService.IsSetupComplete(context.Background())
 			if err != nil {
@@ -445,8 +447,18 @@ func (app *Application) runServer() {
 	}
 	defer db.Close()
 
+	// Initialize session manager
+	sessionManager := scs.New()
+	sessionManager.Store = sqlite3store.New(db.Conn())
+	sessionManager.Lifetime = 24 * time.Hour * 30 // 30 days
+	sessionManager.Cookie.Name = "qui_user_session"
+	sessionManager.Cookie.HttpOnly = true
+	sessionManager.Cookie.SameSite = http.SameSiteLaxMode
+	sessionManager.Cookie.Secure = false // Will be set to true when HTTPS is detected
+	sessionManager.Cookie.Persist = false
+
 	// Initialize services
-	authService := auth.NewService(db.Conn(), cfg.Config.SessionSecret)
+	authService := auth.NewService(db.Conn())
 
 	// Initialize stores
 	instanceStore, err := models.NewInstanceStore(db.Conn(), cfg.GetEncryptionKey())
@@ -561,6 +573,7 @@ func (app *Application) runServer() {
 		Config:              cfg,
 		DB:                  db.Conn(),
 		AuthService:         authService,
+		SessionManager:      sessionManager,
 		InstanceStore:       instanceStore,
 		ClientAPIKeyStore:   clientAPIKeyStore,
 		ClientPool:          clientPool,

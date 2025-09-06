@@ -107,7 +107,7 @@ func TestRunCreateUserCommand(t *testing.T) {
 				db, err := database.New(cfg.GetDatabasePath())
 				require.NoError(t, err)
 
-				authService := auth.NewService(db.Conn(), cfg.Config.SessionSecret)
+				authService := auth.NewService(db.Conn())
 				_, err = authService.SetupUser(context.Background(), "existinguser", "password123")
 				require.NoError(t, err)
 
@@ -237,7 +237,7 @@ func TestRunChangePasswordCommand(t *testing.T) {
 				db, err := database.New(cfg.GetDatabasePath())
 				require.NoError(t, err)
 
-				authService := auth.NewService(db.Conn(), cfg.Config.SessionSecret)
+				authService := auth.NewService(db.Conn())
 				_, err = authService.SetupUser(context.Background(), "testuser", "oldpassword123")
 				require.NoError(t, err)
 

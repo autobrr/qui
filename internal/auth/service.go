@@ -8,9 +8,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"net/http"
 
-	"github.com/gorilla/sessions"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
@@ -28,24 +26,12 @@ var (
 type Service struct {
 	userStore   *models.UserStore
 	apiKeyStore *models.APIKeyStore
-	store       sessions.Store
 }
 
-func NewService(db *sql.DB, sessionSecret string) *Service {
-	store := sessions.NewCookieStore([]byte(sessionSecret))
-
-	// Configure session options
-	store.Options = &sessions.Options{
-		Path:     "/",
-		MaxAge:   86400 * 7, // 7 days
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-	}
-
+func NewService(db *sql.DB) *Service {
 	return &Service{
 		userStore:   models.NewUserStore(db),
 		apiKeyStore: models.NewAPIKeyStore(db),
-		store:       store,
 	}
 }
 
@@ -175,9 +161,4 @@ func (s *Service) DeleteAPIKey(ctx context.Context, id int) error {
 // IsSetupComplete checks if initial setup has been completed
 func (s *Service) IsSetupComplete(ctx context.Context) (bool, error) {
 	return s.userStore.Exists(ctx)
-}
-
-// GetSessionStore returns the session store for use in middleware
-func (s *Service) GetSessionStore() sessions.Store {
-	return s.store
 }
