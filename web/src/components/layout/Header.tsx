@@ -30,13 +30,42 @@ import { Link, useNavigate, useRouterState, useSearch } from "@tanstack/react-ro
 import { Filter, HardDrive, Home, Info, LogOut, Menu, Search, Server, Settings, X } from "lucide-react"
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react"
 import { useHotkeys } from "react-hotkeys-hook"
+import { TorrentManagementBar } from "@/components/torrents/TorrentManagementBar"
+import type { Torrent } from "@/types"
 
 interface HeaderProps {
   children?: ReactNode
   sidebarCollapsed?: boolean
+  // Management Bar props
+  showManagementBar?: boolean
+  selectedHashes?: string[]
+  selectedTorrents?: Torrent[]
+  isAllSelected?: boolean
+  totalSelectionCount?: number
+  filters?: {
+    status: string[]
+    categories: string[]
+    tags: string[]
+    trackers: string[]
+  }
+  onManagementBarClose?: () => void
+  onSelectionComplete?: () => void
+  excludeHashes?: string[]
 }
 
-export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
+export function Header({
+  children,
+  sidebarCollapsed = false,
+  showManagementBar = false,
+  selectedHashes = [],
+  selectedTorrents = [],
+  isAllSelected = false,
+  totalSelectionCount = 0,
+  filters,
+  onManagementBarClose,
+  onSelectionComplete,
+  excludeHashes = [],
+}: HeaderProps) {
   const { logout } = useAuth()
   const navigate = useNavigate()
   const routeSearch = useSearch({ strict: false }) as { q?: string; modal?: string; [key: string]: unknown }
@@ -209,6 +238,22 @@ export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
             <span id="header-search-actions" className="flex items-center gap-1"/>
           </div>
         </div>
+      )}
+
+      {/* Management Bar - appears inline when torrents are selected */}
+      {showManagementBar && isInstanceRoute && selectedInstanceId !== null && (
+        <TorrentManagementBar
+          instanceId={selectedInstanceId}
+          selectedHashes={selectedHashes}
+          selectedTorrents={selectedTorrents}
+          isAllSelected={isAllSelected}
+          totalSelectionCount={totalSelectionCount}
+          filters={filters}
+          search={routeSearch?.q}
+          excludeHashes={excludeHashes}
+          onComplete={onSelectionComplete}
+          onClose={onManagementBarClose}
+        />
       )}
 
       <div className="grid grid-cols-[auto_auto] items-center gap-1 transition-all duration-300 ease-out">

@@ -9,8 +9,13 @@
     "baseColor": "neutral",
     "cssVariables": true
   },
+  "iconLibrary": "lucide",
   "aliases": {
     "components": "src/components",
     "utils": "src/lib/utils"
+  },
+  "registries": {
+    "@aceternity": "https://ui.aceternity.com/registry/{name}.json",
+    "@magicui": "https://magicui.design/r/{name}.json"
   }
 }

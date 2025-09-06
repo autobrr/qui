@@ -88,7 +88,6 @@ import { toast } from "sonner"
 import { AddTorrentDialog } from "./AddTorrentDialog"
 import { DraggableTableHeader } from "./DraggableTableHeader"
 import { QueueSubmenu } from "./QueueSubmenu"
-import { TorrentActions } from "./TorrentActions"
 import { AddTagsDialog, RemoveTagsDialog, SetCategoryDialog, SetTagsDialog } from "./TorrentDialogs"
 import { ShareLimitSubmenu, SpeedLimitsSubmenu } from "./TorrentLimitSubmenus"
 import { createColumns } from "./TorrentTableColumns"
@@ -127,10 +126,11 @@ interface TorrentTableOptimizedProps {
   addTorrentModalOpen?: boolean
   onAddTorrentModalChange?: (open: boolean) => void
   onFilteredDataUpdate?: (torrents: Torrent[], total: number, counts?: TorrentCounts, categories?: Record<string, Category>, tags?: string[]) => void
+  onSelectionChange?: (selectedHashes: string[], selectedTorrents: Torrent[], isAllSelected: boolean, totalSelectionCount: number, excludeHashes: string[]) => void
   filterButton?: React.ReactNode
 }
 
-export const TorrentTableOptimized = memo(function TorrentTableOptimized({ instanceId, filters, selectedTorrent, onTorrentSelect, addTorrentModalOpen, onAddTorrentModalChange, onFilteredDataUpdate, filterButton }: TorrentTableOptimizedProps) {
+export const TorrentTableOptimized = memo(function TorrentTableOptimized({ instanceId, filters, selectedTorrent, onTorrentSelect, addTorrentModalOpen, onAddTorrentModalChange, onFilteredDataUpdate, onSelectionChange, filterButton }: TorrentTableOptimizedProps) {
   // State management
   // Move default values outside the component for stable references
   // (This should be at module scope, not inside the component)
@@ -284,6 +284,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [totalCount, isLoading, torrents.length, counts, categories, tags, onFilteredDataUpdate]) // Use torrents.length to avoid unnecessary calls when content updates
+
 
   // Show refetch indicator only if fetching takes more than 2 seconds
   useEffect(() => {
@@ -459,6 +460,19 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         .filter(Boolean) as Torrent[]
     }
   }, [selectedHashes, sortedTorrents, isAllSelected, excludedFromSelectAll])
+
+  // Call the callback when selection state changes
+  useEffect(() => {
+    if (onSelectionChange) {
+      onSelectionChange(
+        selectedHashes,
+        selectedTorrents,
+        isAllSelected,
+        effectiveSelectionCount,
+        Array.from(excludedFromSelectAll)
+      )
+    }
+  }, [onSelectionChange, selectedHashes, selectedTorrents, isAllSelected, effectiveSelectionCount, excludedFromSelectAll])
 
   // Virtualization setup with progressive loading
   const { rows } = table.getRowModel()
@@ -1013,38 +1027,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
               {filterButton}
             </div>
           )}
-          {/* Action buttons */}
+          {/* Action buttons - now handled by Management Bar in Header */}
           <div className="flex gap-1 sm:gap-2 flex-shrink-0">
-            {(() => {
-              const actions = effectiveSelectionCount > 0 ? (
-                <TorrentActions
-                  instanceId={instanceId}
-                  selectedHashes={selectedHashes}
-                  selectedTorrents={selectedTorrents}
-                  onComplete={() => {
-                    setRowSelection({})
-                    setIsAllSelected(false)
-                    setExcludedFromSelectAll(new Set())
-                  }}
-                  isAllSelected={isAllSelected}
-                  totalSelectionCount={effectiveSelectionCount}
-                  filters={filters}
-                  search={effectiveSearch}
-                  excludeHashes={Array.from(excludedFromSelectAll)}
-                />
-              ) : null
-              const headerLeft = typeof document !== "undefined" ? document.getElementById("header-left-of-filter") : null
-              return (
-                <>
-                  {/* Mobile/tablet inline (hidden on xl and up) */}
-                  <div className="xl:hidden">
-                    {actions}
-                  </div>
-                  {/* Desktop portal: render directly left of the filter button in header */}
-                  {headerLeft && actions ? createPortal(actions, headerLeft) : null}
-                </>
-              )
-            })()}
 
             {/* Column visibility dropdown moved next to search via portal, with inline fallback */}
             {(() => {

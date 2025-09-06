@@ -13,10 +13,20 @@ import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import { MobileScrollProvider } from "@/contexts/MobileScrollContext"
-import { TorrentSelectionProvider } from "@/contexts/TorrentSelectionContext"
+import { TorrentSelectionProvider, useTorrentSelection } from "@/contexts/TorrentSelectionContext"
 
 function AppLayoutContent() {
   const [sidebarCollapsed, setSidebarCollapsed] = usePersistedSidebarState(false) // Desktop: persisted state
+  const {
+    showManagementBar,
+    selectedHashes,
+    selectedTorrents,
+    isAllSelected,
+    totalSelectionCount,
+    excludeHashes,
+    filters,
+    clearSelection,
+  } = useTorrentSelection()
 
   return (
     <div className="flex h-screen bg-background">
@@ -33,6 +43,15 @@ function AppLayoutContent() {
       <div className="flex flex-1 flex-col min-w-0 relative">
         <Header
           sidebarCollapsed={sidebarCollapsed}
+          showManagementBar={showManagementBar}
+          selectedHashes={selectedHashes}
+          selectedTorrents={selectedTorrents}
+          isAllSelected={isAllSelected}
+          totalSelectionCount={totalSelectionCount}
+          filters={filters}
+          excludeHashes={excludeHashes}
+          onManagementBarClose={clearSelection}
+          onSelectionComplete={clearSelection}
         >
           {/* Desktop toggle button */}
           <Tooltip>
