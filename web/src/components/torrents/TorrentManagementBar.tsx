@@ -33,28 +33,16 @@ import {
   TooltipContent,
   TooltipTrigger
 } from "@/components/ui/tooltip"
+import { useTorrentActions } from "@/hooks/useTorrentActions"
 import { api } from "@/lib/api"
 import { getCommonCategory, getCommonTags } from "@/lib/torrent-utils"
 import type { Torrent } from "@/types"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { ArrowDown, ArrowUp, ChevronsDown, ChevronsUp, Folder, List, LoaderCircle, Pause, Play, Radio, Settings2, Tag, Trash2 } from "lucide-react"
+import { useQuery } from "@tanstack/react-query"
+import { ArrowDown, ArrowUp, ChevronsDown, ChevronsUp, Folder, List, LoaderCircle, Pause, Play, Radio, Settings2, Share2, Tag, Trash2 } from "lucide-react"
 import type { ChangeEvent } from "react"
-import { memo, useCallback, useState } from "react"
-import { toast } from "sonner"
+import { memo, useCallback } from "react"
 import { AddTagsDialog, SetCategoryDialog, SetTagsDialog } from "./TorrentDialogs"
-
-type BulkActionVariables = {
-  action: "pause" | "resume" | "delete" | "recheck" | "reannounce" | "increasePriority" | "decreasePriority" | "topPriority" | "bottomPriority" | "addTags" | "removeTags" | "setTags" | "setCategory" | "toggleAutoTMM" | "setShareLimit" | "setUploadLimit" | "setDownloadLimit"
-  deleteFiles?: boolean
-  tags?: string
-  category?: string
-  enable?: boolean
-  ratioLimit?: number
-  seedingTimeLimit?: number
-  inactiveSeedingTimeLimit?: number
-  uploadLimit?: number
-  downloadLimit?: number
-}
+import { ShareLimitSubmenu, SpeedLimitsSubmenu } from "./TorrentLimitSubmenus"
 
 interface TorrentManagementBarProps {
   instanceId?: number
@@ -84,15 +72,6 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   excludeHashes = [],
   onComplete,
 }: TorrentManagementBarProps) {
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
-  const [deleteFiles, setDeleteFiles] = useState(false)
-  const [showAddTagsDialog, setShowAddTagsDialog] = useState(false)
-  const [showTagsDialog, setShowTagsDialog] = useState(false)
-  const [showCategoryDialog, setShowCategoryDialog] = useState(false)
-  const [showRecheckDialog, setShowRecheckDialog] = useState(false)
-  const [showReannounceDialog, setShowReannounceDialog] = useState(false)
-  const queryClient = useQueryClient()
-
   // Fetch available tags
   const { data: availableTags = [] } = useQuery({
     queryKey: ["tags", instanceId],
@@ -109,205 +88,135 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     staleTime: 60000,
   })
 
-  const mutation = useMutation({
-    mutationFn: (data: {
-      action: "pause" | "resume" | "delete" | "recheck" | "reannounce" | "increasePriority" | "decreasePriority" | "topPriority" | "bottomPriority" | "addTags" | "removeTags" | "setTags" | "setCategory" | "toggleAutoTMM" | "setShareLimit" | "setUploadLimit" | "setDownloadLimit"
-      deleteFiles?: boolean
-      tags?: string
-      category?: string
-      enable?: boolean
-      ratioLimit?: number
-      seedingTimeLimit?: number
-      inactiveSeedingTimeLimit?: number
-      uploadLimit?: number
-      downloadLimit?: number
-    }) => {
-      if (!instanceId) throw new Error("No instance selected")
-      return api.bulkAction(instanceId, {
-        hashes: isAllSelected ? [] : selectedHashes,
-        action: data.action,
-        deleteFiles: data.deleteFiles,
-        tags: data.tags,
-        category: data.category,
-        enable: data.enable,
-        selectAll: isAllSelected,
-        filters: isAllSelected ? filters : undefined,
-        search: isAllSelected ? search : undefined,
-        excludeHashes: isAllSelected ? excludeHashes : undefined,
-        ratioLimit: data.ratioLimit,
-        seedingTimeLimit: data.seedingTimeLimit,
-        inactiveSeedingTimeLimit: data.inactiveSeedingTimeLimit,
-        uploadLimit: data.uploadLimit,
-        downloadLimit: data.downloadLimit,
-      })
-    },
-    onSuccess: async (_: unknown, variables: BulkActionVariables) => {
-      // For delete operations, force immediate refetch
-      if (variables.action === "delete") {
-        queryClient.removeQueries({
-          queryKey: ["torrents-list", instanceId],
-          exact: false,
-        })
-        queryClient.removeQueries({
-          queryKey: ["torrent-counts", instanceId],
-          exact: false,
-        })
-
-        await queryClient.refetchQueries({
-          queryKey: ["torrents-list", instanceId],
-          exact: false,
-        })
-        await queryClient.refetchQueries({
-          queryKey: ["torrent-counts", instanceId],
-          exact: false,
-        })
-        onComplete?.()
-      } else {
-        const delay = variables.action === "resume" ? 2000 : 1000
-        setTimeout(() => {
-          queryClient.invalidateQueries({
-            queryKey: ["torrents-list", instanceId],
-            exact: false,
-          })
-          queryClient.invalidateQueries({
-            queryKey: ["torrent-counts", instanceId],
-            exact: false,
-          })
-        }, delay)
-        onComplete?.()
-      }
-
-      // Show success toast
-      const count = totalSelectionCount || selectedHashes.length
-      const torrentText = count === 1 ? "torrent" : "torrents"
-
-      switch (variables.action) {
-        case "resume":
-          toast.success(`Resumed ${count} ${torrentText}`)
-          break
-        case "pause":
-          toast.success(`Paused ${count} ${torrentText}`)
-          break
-        case "delete":
-          toast.success(`Deleted ${count} ${torrentText}${variables.deleteFiles ? " and files" : ""}`)
-          break
-        case "recheck":
-          toast.success(`Started recheck for ${count} ${torrentText}`)
-          break
-        case "reannounce":
-          toast.success(`Reannounced ${count} ${torrentText}`)
-          break
-        case "increasePriority":
-          toast.success(`Increased priority for ${count} ${torrentText}`)
-          break
-        case "decreasePriority":
-          toast.success(`Decreased priority for ${count} ${torrentText}`)
-          break
-        case "topPriority":
-          toast.success(`Set ${count} ${torrentText} to top priority`)
-          break
-        case "bottomPriority":
-          toast.success(`Set ${count} ${torrentText} to bottom priority`)
-          break
-        case "addTags":
-          toast.success(`Added tags to ${count} ${torrentText}`)
-          break
-        case "removeTags":
-          toast.success(`Removed tags from ${count} ${torrentText}`)
-          break
-        case "setTags":
-          toast.success(`Replaced tags for ${count} ${torrentText}`)
-          break
-        case "setCategory":
-          toast.success(`Set category for ${count} ${torrentText}`)
-          break
-        case "toggleAutoTMM":
-          toast.success(`${variables.enable ? "Enabled" : "Disabled"} Auto TMM for ${count} ${torrentText}`)
-          break
-        case "setShareLimit":
-          toast.success(`Set share limits for ${count} ${torrentText}`)
-          break
-        case "setUploadLimit":
-          toast.success(`Set upload limit for ${count} ${torrentText}`)
-          break
-        case "setDownloadLimit":
-          toast.success(`Set download limit for ${count} ${torrentText}`)
-          break
-      }
-    },
-    onError: (error: Error, variables: BulkActionVariables) => {
-      const count = totalSelectionCount || selectedHashes.length
-      const torrentText = count === 1 ? "torrent" : "torrents"
-      const actionText = variables.action === "recheck" ? "recheck" : variables.action
-
-      toast.error(`Failed to ${actionText} ${count} ${torrentText}`, {
-        description: error.message || "An unexpected error occurred",
-      })
-    },
+  // Use the shared torrent actions hook
+  const {
+    showDeleteDialog,
+    setShowDeleteDialog,
+    deleteFiles,
+    setDeleteFiles,
+    showAddTagsDialog,
+    setShowAddTagsDialog,
+    showSetTagsDialog,
+    setShowSetTagsDialog,
+    showCategoryDialog,
+    setShowCategoryDialog,
+    showRecheckDialog,
+    setShowRecheckDialog,
+    showReannounceDialog,
+    setShowReannounceDialog,
+    isPending,
+    handleAction,
+    handleDelete,
+    handleAddTags,
+    handleSetTags,
+    handleSetCategory,
+    handleSetShareLimit,
+    handleSetSpeedLimits,
+    handleRecheck,
+    handleReannounce,
+    prepareDeleteAction,
+    prepareTagsAction,
+    prepareCategoryAction,
+    prepareRecheckAction,
+    prepareReannounceAction,
+  } = useTorrentActions({
+    instanceId: instanceId || 0,
+    onActionComplete: onComplete,
   })
 
-  const handleDelete = useCallback(async () => {
-    await mutation.mutateAsync({ action: "delete", deleteFiles })
-    setShowDeleteDialog(false)
-    setDeleteFiles(false)
-  }, [mutation, deleteFiles])
+  // Wrapper functions to adapt hook handlers to component needs
+  const handleDeleteWrapper = useCallback(() => {
+    handleDelete(
+      selectedHashes,
+      isAllSelected,
+      filters,
+      search,
+      excludeHashes
+    )
+  }, [handleDelete, selectedHashes, isAllSelected, filters, search, excludeHashes])
 
-  const handleAddTags = useCallback(async (tags: string[]) => {
-    await mutation.mutateAsync({ action: "addTags", tags: tags.join(",") })
-    setShowAddTagsDialog(false)
-  }, [mutation])
+  const handleAddTagsWrapper = useCallback((tags: string[]) => {
+    handleAddTags(
+      tags,
+      selectedHashes,
+      isAllSelected,
+      filters,
+      search,
+      excludeHashes
+    )
+  }, [handleAddTags, selectedHashes, isAllSelected, filters, search, excludeHashes])
 
-  const handleSetTags = useCallback(async (tags: string[]) => {
-    try {
-      await mutation.mutateAsync({ action: "setTags", tags: tags.join(",") })
-    } catch (error: unknown) {
-      const err = error instanceof Error ? error : new Error("Unknown error occurred")
-      if (err.message?.includes("requires qBittorrent")) {
-        await mutation.mutateAsync({ action: "addTags", tags: tags.join(",") })
-      } else {
-        throw err
-      }
-    }
-    setShowTagsDialog(false)
-  }, [mutation])
+  const handleSetTagsWrapper = useCallback((tags: string[]) => {
+    handleSetTags(
+      tags,
+      selectedHashes,
+      isAllSelected,
+      filters,
+      search,
+      excludeHashes
+    )
+  }, [handleSetTags, selectedHashes, isAllSelected, filters, search, excludeHashes])
 
-  const handleSetCategory = useCallback(async (category: string) => {
-    await mutation.mutateAsync({ action: "setCategory", category })
-    setShowCategoryDialog(false)
-  }, [mutation])
+  const handleSetCategoryWrapper = useCallback((category: string) => {
+    handleSetCategory(
+      category,
+      selectedHashes,
+      isAllSelected,
+      filters,
+      search,
+      excludeHashes
+    )
+  }, [handleSetCategory, selectedHashes, isAllSelected, filters, search, excludeHashes])
 
+  const handleRecheckWrapper = useCallback(() => {
+    handleRecheck(
+      selectedHashes,
+      isAllSelected,
+      filters,
+      search,
+      excludeHashes
+    )
+  }, [handleRecheck, selectedHashes, isAllSelected, filters, search, excludeHashes])
 
-  const handleRecheck = useCallback(async () => {
-    await mutation.mutateAsync({ action: "recheck" })
-    setShowRecheckDialog(false)
-  }, [mutation])
-
-  const handleReannounce = useCallback(async () => {
-    await mutation.mutateAsync({ action: "reannounce" })
-    setShowReannounceDialog(false)
-  }, [mutation])
+  const handleReannounceWrapper = useCallback(() => {
+    handleReannounce(
+      selectedHashes,
+      isAllSelected,
+      filters,
+      search,
+      excludeHashes
+    )
+  }, [handleReannounce, selectedHashes, isAllSelected, filters, search, excludeHashes])
 
   const handleRecheckClick = useCallback(() => {
     const count = totalSelectionCount || selectedHashes.length
     if (count > 1) {
-      setShowRecheckDialog(true)
+      prepareRecheckAction(selectedHashes, count)
     } else {
-      mutation.mutate({ action: "recheck" })
+      handleAction("recheck", selectedHashes)
     }
-  }, [totalSelectionCount, selectedHashes.length, mutation])
+  }, [totalSelectionCount, selectedHashes, prepareRecheckAction, handleAction])
 
   const handleReannounceClick = useCallback(() => {
     const count = totalSelectionCount || selectedHashes.length
     if (count > 1) {
-      setShowReannounceDialog(true)
+      prepareReannounceAction(selectedHashes, count)
     } else {
-      mutation.mutate({ action: "reannounce" })
+      handleAction("reannounce", selectedHashes)
     }
-  }, [totalSelectionCount, selectedHashes.length, mutation])
+  }, [totalSelectionCount, selectedHashes, prepareReannounceAction, handleAction])
 
   const handleQueueAction = useCallback((action: "topPriority" | "increasePriority" | "decreasePriority" | "bottomPriority") => {
-    mutation.mutate({ action })
-  }, [mutation])
+    handleAction(action, selectedHashes)
+  }, [handleAction, selectedHashes])
+
+  const handleSetShareLimitWrapper = useCallback((ratioLimit: number, seedingTimeLimit: number, inactiveSeedingTimeLimit: number) => {
+    handleSetShareLimit(ratioLimit, seedingTimeLimit, inactiveSeedingTimeLimit, selectedHashes)
+  }, [handleSetShareLimit, selectedHashes])
+
+  const handleSetSpeedLimitsWrapper = useCallback((uploadLimit: number, downloadLimit: number) => {
+    handleSetSpeedLimits(uploadLimit, downloadLimit, selectedHashes)
+  }, [handleSetSpeedLimits, selectedHashes])
 
   const selectionCount = totalSelectionCount || selectedHashes.length
   const hasSelection = selectionCount > 0 || isAllSelected
@@ -329,8 +238,8 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => mutation.mutate({ action: "resume" })}
-                disabled={mutation.isPending || isDisabled}
+                onClick={() => handleAction("resume", selectedHashes)}
+                disabled={isPending || isDisabled}
               >
                 <Play className="h-4 w-4" />
               </Button>
@@ -343,8 +252,8 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => mutation.mutate({ action: "pause" })}
-                disabled={mutation.isPending || isDisabled}
+                onClick={() => handleAction("pause", selectedHashes)}
+                disabled={isPending || isDisabled}
               >
                 <Pause className="h-4 w-4" />
               </Button>
@@ -358,7 +267,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
                 variant="ghost"
                 size="sm"
                 onClick={handleRecheckClick}
-                disabled={mutation.isPending || isDisabled}
+                disabled={isPending || isDisabled}
               >
                 <LoaderCircle className="h-4 w-4" />
               </Button>
@@ -372,7 +281,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
                 variant="ghost"
                 size="sm"
                 onClick={handleReannounceClick}
-                disabled={mutation.isPending || isDisabled}
+                disabled={isPending || isDisabled}
               >
                 <Radio className="h-4 w-4" />
               </Button>
@@ -388,7 +297,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
                   <Button
                     variant="ghost"
                     size="sm"
-                    disabled={mutation.isPending || isDisabled}
+                    disabled={isPending || isDisabled}
                   >
                     <Tag className="h-4 w-4" />
                   </Button>
@@ -398,15 +307,15 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
             </Tooltip>
             <DropdownMenuContent align="center">
               <DropdownMenuItem
-                onClick={() => setShowAddTagsDialog(true)}
-                disabled={mutation.isPending || isDisabled}
+                onClick={() => prepareTagsAction("add", selectedHashes, selectedTorrents)}
+                disabled={isPending || isDisabled}
               >
                 <Tag className="h-4 w-4 mr-2" />
                 Add Tags {selectionCount > 1 ? `(${selectionCount})` : ""}
               </DropdownMenuItem>
               <DropdownMenuItem
-                onClick={() => setShowTagsDialog(true)}
-                disabled={mutation.isPending || isDisabled}
+                onClick={() => prepareTagsAction("set", selectedHashes, selectedTorrents)}
+                disabled={isPending || isDisabled}
               >
                 <Tag className="h-4 w-4 mr-2" />
                 Replace Tags {selectionCount > 1 ? `(${selectionCount})` : ""}
@@ -419,8 +328,8 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setShowCategoryDialog(true)}
-                disabled={mutation.isPending || isDisabled}
+                onClick={() => prepareCategoryAction(selectedHashes, selectedTorrents)}
+                disabled={isPending || isDisabled}
               >
                 <Folder className="h-4 w-4" />
               </Button>
@@ -436,7 +345,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
                   <Button
                     variant="ghost"
                     size="sm"
-                    disabled={mutation.isPending || isDisabled}
+                    disabled={isPending || isDisabled}
                   >
                     <List className="h-4 w-4" />
                   </Button>
@@ -447,32 +356,64 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
             <DropdownMenuContent align="center">
               <DropdownMenuItem
                 onClick={() => handleQueueAction("topPriority")}
-                disabled={mutation.isPending || isDisabled}
+                disabled={isPending || isDisabled}
               >
                 <ChevronsUp className="h-4 w-4 mr-2" />
                 Top Priority {selectionCount > 1 ? `(${selectionCount})` : ""}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => handleQueueAction("increasePriority")}
-                disabled={mutation.isPending || isDisabled}
+                disabled={isPending || isDisabled}
               >
                 <ArrowUp className="h-4 w-4 mr-2" />
                 Increase Priority {selectionCount > 1 ? `(${selectionCount})` : ""}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => handleQueueAction("decreasePriority")}
-                disabled={mutation.isPending || isDisabled}
+                disabled={isPending || isDisabled}
               >
                 <ArrowDown className="h-4 w-4 mr-2" />
                 Decrease Priority {selectionCount > 1 ? `(${selectionCount})` : ""}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => handleQueueAction("bottomPriority")}
-                disabled={mutation.isPending || isDisabled}
+                disabled={isPending || isDisabled}
               >
                 <ChevronsDown className="h-4 w-4 mr-2" />
                 Bottom Priority {selectionCount > 1 ? `(${selectionCount})` : ""}
               </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* Share/Speed Limits */}
+          <DropdownMenu>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={isPending || isDisabled}
+                  >
+                    <Share2 className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+              </TooltipTrigger>
+              <TooltipContent>Limits</TooltipContent>
+            </Tooltip>
+            <DropdownMenuContent align="center" className="w-72">
+              <ShareLimitSubmenu
+                type="dropdown"
+                hashCount={selectionCount}
+                onConfirm={handleSetShareLimitWrapper}
+                isPending={isPending}
+              />
+              <SpeedLimitsSubmenu
+                type="dropdown"
+                hashCount={selectionCount}
+                onConfirm={handleSetSpeedLimitsWrapper}
+                isPending={isPending}
+              />
             </DropdownMenuContent>
           </DropdownMenu>
 
@@ -488,8 +429,8 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => mutation.mutate({ action: "toggleAutoTMM", enable: !allEnabled })}
-                    disabled={mutation.isPending || isDisabled}
+                    onClick={() => handleAction("toggleAutoTMM", selectedHashes, { enable: !allEnabled })}
+                    disabled={isPending || isDisabled}
                   >
                     <Settings2 className="h-4 w-4" />
                   </Button>
@@ -501,15 +442,14 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
             )
           })()}
 
-
           {/* Delete Action */}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setShowDeleteDialog(true)}
-                disabled={mutation.isPending || isDisabled}
+                onClick={() => prepareDeleteAction(selectedHashes, selectedTorrents)}
+                disabled={isPending || isDisabled}
                 className="text-destructive hover:text-destructive"
               >
                 <Trash2 className="h-4 w-4" />
@@ -543,7 +483,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={handleDelete}
+              onClick={handleDeleteWrapper}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Delete
@@ -558,18 +498,18 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
         onOpenChange={setShowAddTagsDialog}
         availableTags={availableTags}
         hashCount={totalSelectionCount || selectedHashes.length}
-        onConfirm={handleAddTags}
-        isPending={mutation.isPending}
+        onConfirm={handleAddTagsWrapper}
+        isPending={isPending}
       />
 
       {/* Set Tags Dialog */}
       <SetTagsDialog
-        open={showTagsDialog}
-        onOpenChange={setShowTagsDialog}
+        open={showSetTagsDialog}
+        onOpenChange={setShowSetTagsDialog}
         availableTags={availableTags}
         hashCount={totalSelectionCount || selectedHashes.length}
-        onConfirm={handleSetTags}
-        isPending={mutation.isPending}
+        onConfirm={handleSetTagsWrapper}
+        isPending={isPending}
         initialTags={getCommonTags(selectedTorrents)}
       />
 
@@ -579,8 +519,8 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
         onOpenChange={setShowCategoryDialog}
         availableCategories={availableCategories}
         hashCount={totalSelectionCount || selectedHashes.length}
-        onConfirm={handleSetCategory}
-        isPending={mutation.isPending}
+        onConfirm={handleSetCategoryWrapper}
+        isPending={isPending}
         initialCategory={getCommonCategory(selectedTorrents)}
       />
 
@@ -597,7 +537,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
             <Button variant="outline" onClick={() => setShowRecheckDialog(false)}>
               Cancel
             </Button>
-            <Button onClick={handleRecheck} disabled={mutation.isPending}>
+            <Button onClick={handleRecheckWrapper} disabled={isPending}>
               Force Recheck
             </Button>
           </DialogFooter>
@@ -617,7 +557,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
             <Button variant="outline" onClick={() => setShowReannounceDialog(false)}>
               Cancel
             </Button>
-            <Button onClick={handleReannounce} disabled={mutation.isPending}>
+            <Button onClick={handleReannounceWrapper} disabled={isPending}>
               Reannounce
             </Button>
           </DialogFooter>
