@@ -8,8 +8,8 @@ import { usePersistedColumnOrder } from "@/hooks/usePersistedColumnOrder"
 import { usePersistedColumnSizing } from "@/hooks/usePersistedColumnSizing"
 import { usePersistedColumnSorting } from "@/hooks/usePersistedColumnSorting"
 import { usePersistedColumnVisibility } from "@/hooks/usePersistedColumnVisibility"
-import { useTorrentsList } from "@/hooks/useTorrentsList"
 import { useTorrentActions } from "@/hooks/useTorrentActions"
+import { useTorrentsList } from "@/hooks/useTorrentsList"
 import {
   DndContext,
   MouseSensor,
@@ -68,10 +68,9 @@ import {
 } from "@/components/ui/tooltip"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { useIncognitoMode } from "@/lib/incognito"
+import { getCommonCategory, getCommonTags } from "@/lib/torrent-utils"
 import { formatSpeed } from "@/lib/utils"
-import { getCommonTags, getCommonCategory } from "@/lib/torrent-utils"
 import type { Category, Torrent, TorrentCounts } from "@/types"
-import { useQueryClient } from "@tanstack/react-query"
 import { useSearch } from "@tanstack/react-router"
 import { ChevronDown, ChevronUp, Columns3, Eye, EyeOff, Loader2 } from "lucide-react"
 import { createPortal } from "react-dom"
@@ -158,9 +157,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   // Progressive loading state with async management
   const [loadedRows, setLoadedRows] = useState(100)
   const [isLoadingMoreRows, setIsLoadingMoreRows] = useState(false)
-
-  // Query client for invalidating queries
-  const queryClient = useQueryClient()
 
   // Use the shared torrent actions hook
   const {

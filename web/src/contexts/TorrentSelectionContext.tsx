@@ -33,7 +33,7 @@ interface TorrentSelectionContextType {
     excludeHashes: string[]
   ) => void
   clearSelection: () => void
-  setFiltersAndInstance: (filters: typeof this.filters, instanceId: number) => void
+  setFiltersAndInstance: (filters: TorrentSelectionContextType["filters"], instanceId: number) => void
 }
 
 const TorrentSelectionContext = createContext<TorrentSelectionContextType | undefined>(undefined)

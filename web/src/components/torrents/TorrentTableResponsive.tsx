@@ -71,7 +71,7 @@ export function TorrentTableResponsive(props: TorrentTableResponsiveProps) {
   const memoizedProps = props // If props are stable, this is fine; otherwise use useMemo
 
   if (isMobile) {
-    return <TorrentCardsMobile {...memoizedProps} onSelectionChange={updateSelection} />
+    return <TorrentCardsMobile {...memoizedProps} />
   }
   return <TorrentTableOptimized {...memoizedProps} onSelectionChange={updateSelection} />
 }

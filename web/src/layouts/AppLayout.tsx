@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import { MobileScrollProvider } from "@/contexts/MobileScrollContext"
-import { TorrentSelectionProvider, useTorrentSelection } from "@/contexts/TorrentSelectionContext"
+import { TorrentSelectionProvider } from "@/contexts/TorrentSelectionContext"
 
 function AppLayoutContent() {
   const [sidebarCollapsed, setSidebarCollapsed] = usePersistedSidebarState(false) // Desktop: persisted state
