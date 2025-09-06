@@ -107,163 +107,50 @@ function InstanceCard({
   const torrentCounts = torrentData?.counts
   const serverState = torrentData?.serverState
 
-  // Show loading only on first load
-  if (isLoading && !stats) {
-    return (
-      <>
-        <Card className="hover:shadow-lg transition-shadow opacity-60">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <Link
-                to="/instances/$instanceId"
-                params={{ instanceId: instance.id.toString() }}
-                className="flex items-center gap-2 hover:underline"
-              >
-                <CardTitle className="text-lg">{instance.name}</CardTitle>
-                <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
-              </Link>
-              <Badge variant="secondary">
-                Loading...
-              </Badge>
-            </div>
-            <CardDescription className="flex items-center gap-1">
-              <span className={incognitoMode ? "blur-sm select-none" : ""}>{displayUrl}</span>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-5 w-5 p-0 hover:bg-muted/50"
-                onClick={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  setIncognitoMode(!incognitoMode)
-                }}
-              >
-                {incognitoMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-              </Button>
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="text-center">
-            <p className="text-sm text-muted-foreground">Loading stats...</p>
-            <InstanceErrorDisplay instance={instance} compact />
-          </CardContent>
-        </Card>
-      </>
-    )
+  // Determine card state
+  const isFirstLoad = isLoading && !stats
+  const isDisconnected = (stats && !instance.connected) || (!isFirstLoad && !instance.connected)
+  const hasError = error || (!isFirstLoad && !stats)
+  const hasDecryptionOrRecentErrors = instance.hasDecryptionError || (instance.recentErrors && instance.recentErrors.length > 0)
+
+  // Determine badge variant and text
+  let badgeVariant: "default" | "secondary" | "destructive" = "default"
+  let badgeText = "Connected"
+
+  if (isFirstLoad) {
+    badgeVariant = "secondary"
+    badgeText = "Loading..."
+  } else if (hasError) {
+    badgeVariant = "destructive"
+    badgeText = "Error"
+  } else if (isDisconnected) {
+    badgeVariant = "destructive"
+    badgeText = "Disconnected"
   }
 
-  // If we have stats but instance is not connected, show with zero values
-  if (stats && !instance.connected) {
-    const hasErrors = instance.hasDecryptionError || (instance.recentErrors && instance.recentErrors.length > 0)
-    return (
-      <>
-        <Card className="hover:shadow-lg transition-shadow">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <Link
-                to={hasErrors ? "/instances" : "/instances/$instanceId"}
-                params={hasErrors ? {} : { instanceId: instance.id.toString() }}
-                className="flex items-center gap-2 hover:underline"
-              >
-                <CardTitle className="text-lg">{instance.name}</CardTitle>
-                <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
-              </Link>
-              <div className="flex items-center gap-2">
-                {!hasErrors && (
-                  <InstanceSettingsButton
-                    instanceId={instance.id}
-                    instanceName={instance.name}
-                  />
-                )}
-                <Badge variant="destructive">Disconnected</Badge>
-              </div>
-            </div>
-            <CardDescription className="flex items-center gap-1">
-              <span className={incognitoMode ? "blur-sm select-none" : ""}>{displayUrl}</span>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-5 w-5 p-0 hover:bg-muted/50"
-                onClick={() => setIncognitoMode(!incognitoMode)}
-              >
-                {incognitoMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-              </Button>
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-sm text-muted-foreground text-center">
-              <InstanceErrorDisplay instance={instance} compact />
-            </div>
-          </CardContent>
-        </Card>
-      </>
-    )
-  }
+  // Determine if settings button should show
+  const showSettingsButton = instance.connected && !isFirstLoad && !hasDecryptionOrRecentErrors
 
-  // If we have an error or no stats data, show error state
-  if (error || !stats) {
-    const hasErrors = instance.hasDecryptionError
-    return (
-      <>
-        <Card className="hover:shadow-lg transition-shadow opacity-60">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <Link
-                to={hasErrors ? "/instances" : "/instances/$instanceId"}
-                params={hasErrors ? {} : { instanceId: instance.id.toString() }}
-                className="flex items-center gap-2 hover:underline"
-              >
-                <CardTitle className="text-lg">{instance.name}</CardTitle>
-                <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
-              </Link>
-              <div className="flex items-center gap-2">
-                {!hasErrors && (
-                  <InstanceSettingsButton
-                    instanceId={instance.id}
-                    instanceName={instance.name}
-                  />
-                )}
-                <Badge variant="destructive">Error</Badge>
-              </div>
-            </div>
-            <CardDescription className="flex items-center gap-1">
-              <span className={incognitoMode ? "blur-sm select-none" : ""}>{displayUrl}</span>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-5 w-5 p-0 hover:bg-muted/50"
-                onClick={() => setIncognitoMode(!incognitoMode)}
-              >
-                {incognitoMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-              </Button>
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-sm text-muted-foreground text-center">
-              <p>Failed to load stats</p>
-              <InstanceErrorDisplay instance={instance} compact />
-            </div>
-          </CardContent>
-        </Card>
-      </>
-    )
-  }
+  // Determine link destination
+  const linkTo = hasDecryptionOrRecentErrors ? "/instances" : "/instances/$instanceId"
+  const linkParams = hasDecryptionOrRecentErrors ? {} : { instanceId: instance.id.toString() }
 
-  const hasErrors = instance.hasDecryptionError || (instance.recentErrors && instance.recentErrors.length > 0)
+  // Unified return statement
   return (
     <>
       <Card className="hover:shadow-lg transition-shadow">
-        <CardHeader className='gap-0'>
+        <CardHeader className={!isFirstLoad ? "gap-0" : ""}>
           <div className="flex items-center justify-between">
             <Link
-              to={hasErrors ? "/instances" : "/instances/$instanceId"}
-              params={hasErrors ? {} : { instanceId: instance.id.toString() }}
-              className="flex items-center gap-2 hover:underline"
+              to={linkTo}
+              params={linkParams}
+              className="flex items-center gap-2 hover:underline truncate max-w-40"
             >
-              <CardTitle className="text-lg">{instance.name}</CardTitle>
+              <CardTitle className="text-lg truncate">{instance.name}</CardTitle>
               <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
             </Link>
             <div className="flex items-center gap-2">
-              {instance.connected && (
+              {instance.connected && !isFirstLoad && (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
@@ -289,122 +176,138 @@ function InstanceCard({
                   </TooltipContent>
                 </Tooltip>
               )}
-              {instance.connected && (
+              {showSettingsButton && (
                 <InstanceSettingsButton
                   instanceId={instance.id}
                   instanceName={instance.name}
                 />
               )}
-              <Badge variant={instance.connected ? "default" : "destructive"}>
-                {instance.connected ? "Connected" : "Disconnected"}
+              <Badge variant={badgeVariant}>
+                {badgeText}
               </Badge>
             </div>
           </div>
-          <CardDescription className="flex items-center gap-1 text-xs">
-            <span className={incognitoMode ? "blur-sm select-none truncate" : "truncate"}>{displayUrl}</span>
+          <CardDescription className={`flex items-center gap-1 ${!isFirstLoad ? "text-xs" : ""} overflow-hidden`}>
+            <span className={`${incognitoMode ? "blur-sm select-none" : ""} truncate`} title={displayUrl}>
+              {displayUrl}
+            </span>
             <Button
               variant="ghost"
               size="icon"
-              className="h-4 w-4 p-0"
-              onClick={() => setIncognitoMode(!incognitoMode)}
+              className={`${!isFirstLoad ? "h-4 w-4" : "h-5 w-5"} p-0 ${isFirstLoad ? "hover:bg-muted/50" : ""} shrink-0`}
+              onClick={(e) => {
+                if (isFirstLoad) {
+                  e.preventDefault()
+                  e.stopPropagation()
+                }
+                setIncognitoMode(!incognitoMode)
+              }}
             >
               {incognitoMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
             </Button>
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-3">
-            <div className="mb-6">
-              <div className="flex items-center justify-center mb-1">
-                <span className="flex-1 text-center text-xs text-muted-foreground">Downloading</span>
-                <span className="flex-1 text-center text-xs text-muted-foreground">Active</span>
-                <span className="flex-1 text-center text-xs text-muted-foreground">Error</span>
-                <span className="flex-1 text-center text-xs text-muted-foreground">Total</span>
+          {/* Show loading or error state */}
+          {(isFirstLoad || hasError || isDisconnected) ? (
+            <div className="text-sm text-muted-foreground text-center">
+              {isFirstLoad && <p className="animate-pulse">Loading stats...</p>}
+              {hasError && !isDisconnected && <p>Failed to load stats</p>}
+              <InstanceErrorDisplay instance={instance} compact />
+            </div>
+          ) : (
+            /* Show normal stats */
+            <div className="space-y-3">
+              <div className="mb-6">
+                <div className="flex items-center justify-center mb-1">
+                  <span className="flex-1 text-center text-xs text-muted-foreground">Downloading</span>
+                  <span className="flex-1 text-center text-xs text-muted-foreground">Active</span>
+                  <span className="flex-1 text-center text-xs text-muted-foreground">Error</span>
+                  <span className="flex-1 text-center text-xs text-muted-foreground">Total</span>
+                </div>
+                <div className="flex items-center justify-center">
+                  <span className="flex-1 text-center text-lg font-semibold">
+                    {torrentCounts?.status?.downloading || 0}
+                  </span>
+                  <span className="flex-1 text-center text-lg font-semibold">{torrentCounts?.status?.active || 0}</span>
+                  <span className={`flex-1 text-center text-lg font-semibold ${(torrentCounts?.status?.errored || 0) > 0 ? "text-destructive" : ""}`}>
+                    {torrentCounts?.status?.errored || 0}
+                  </span>
+                  <span className="flex-1 text-center text-lg font-semibold">{torrentCounts?.total || 0}</span>
+                </div>
               </div>
-              <div className="flex items-center justify-center">
-                <span className="flex-1 text-center text-lg font-semibold">
-                  {torrentCounts?.status?.downloading || 0}
-                </span>
-                <span className="flex-1 text-center text-lg font-semibold">{torrentCounts?.status?.active || 0}</span>
-                <span className={`flex-1 text-center text-lg font-semibold ${(torrentCounts?.status?.errored || 0) > 0 ? "text-destructive" : ""}`}>
-                  {torrentCounts?.status?.errored || 0}
-                </span>
-                <span className="flex-1 text-center text-lg font-semibold">{torrentCounts?.total || 0}</span>
-              </div>
-            </div>
 
-            <div className="flex items-center gap-2 text-xs">
-              <Download className="h-3 w-3 text-muted-foreground" />
-              <span className="text-muted-foreground">Download</span>
-              <span className="ml-auto font-medium">{formatSpeed(stats.totalDownloadSpeed || 0)}</span>
-            </div>
-
-            <div className="flex items-center gap-2 text-xs">
-              <Upload className="h-3 w-3 text-muted-foreground" />
-              <span className="text-muted-foreground">Upload</span>
-              <span className="ml-auto font-medium">{formatSpeed(stats.totalUploadSpeed || 0)}</span>
-            </div>
-
-            {serverState?.free_space_on_disk !== undefined && serverState.free_space_on_disk > 0 && (
               <div className="flex items-center gap-2 text-xs">
-                <HardDrive className="h-3 w-3 text-muted-foreground" />
-                <span className="text-muted-foreground">Free Space</span>
-                <span className="ml-auto font-medium">{formatBytes(serverState.free_space_on_disk)}</span>
+                <Download className="h-3 w-3 text-muted-foreground" />
+                <span className="text-muted-foreground">Download</span>
+                <span className="ml-auto font-medium">{formatSpeed(stats?.totalDownloadSpeed || 0)}</span>
               </div>
-            )}
 
-            <Collapsible open={isAdvancedMetricsOpen} onOpenChange={setIsAdvancedMetricsOpen}>
-              <CollapsibleTrigger className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors w-full [&[data-state=open]>svg]:rotate-180">
-                <ChevronDown className="h-3 w-3 transition-transform" />
-                <span>Show More</span>
-              </CollapsibleTrigger>
-              <CollapsibleContent className="space-y-2 mt-2">
-                {serverState?.total_peer_connections !== undefined && (
-                  <div className="flex items-center gap-2 text-xs">
-                    <Activity className="h-3 w-3 text-muted-foreground" />
-                    <span className="text-muted-foreground">Peer Connections</span>
-                    <span className="ml-auto font-medium">{serverState.total_peer_connections || 0}</span>
-                  </div>
-                )}
+              <div className="flex items-center gap-2 text-xs">
+                <Upload className="h-3 w-3 text-muted-foreground" />
+                <span className="text-muted-foreground">Upload</span>
+                <span className="ml-auto font-medium">{formatSpeed(stats?.totalUploadSpeed || 0)}</span>
+              </div>
 
-                {serverState?.queued_io_jobs !== undefined && (
-                  <div className="flex items-center gap-2 text-xs">
-                    <Zap className="h-3 w-3 text-muted-foreground" />
-                    <span className="text-muted-foreground">Queued I/O Jobs</span>
-                    <span className="ml-auto font-medium">{serverState.queued_io_jobs || 0}</span>
-                  </div>
-                )}
+              {serverState?.free_space_on_disk !== undefined && serverState.free_space_on_disk > 0 && (
+                <div className="flex items-center gap-2 text-xs">
+                  <HardDrive className="h-3 w-3 text-muted-foreground" />
+                  <span className="text-muted-foreground">Free Space</span>
+                  <span className="ml-auto font-medium">{formatBytes(serverState.free_space_on_disk)}</span>
+                </div>
+              )}
 
-                {serverState?.total_buffers_size !== undefined && (
-                  <div className="flex items-center gap-2 text-xs">
-                    <HardDrive className="h-3 w-3 text-muted-foreground" />
-                    <span className="text-muted-foreground">Buffer Size</span>
-                    <span className="ml-auto font-medium">{formatBytes(serverState.total_buffers_size)}</span>
-                  </div>
-                )}
+              <Collapsible open={isAdvancedMetricsOpen} onOpenChange={setIsAdvancedMetricsOpen}>
+                <CollapsibleTrigger className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors w-full [&[data-state=open]>svg]:rotate-180">
+                  <ChevronDown className="h-3 w-3 transition-transform" />
+                  <span>Show More</span>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="space-y-2 mt-2">
+                  {serverState?.total_peer_connections !== undefined && (
+                    <div className="flex items-center gap-2 text-xs">
+                      <Activity className="h-3 w-3 text-muted-foreground" />
+                      <span className="text-muted-foreground">Peer Connections</span>
+                      <span className="ml-auto font-medium">{serverState.total_peer_connections || 0}</span>
+                    </div>
+                  )}
 
-                {serverState?.total_queued_size !== undefined && (
-                  <div className="flex items-center gap-2 text-xs">
-                    <Activity className="h-3 w-3 text-muted-foreground" />
-                    <span className="text-muted-foreground">Total Queued</span>
-                    <span className="ml-auto font-medium">{formatBytes(serverState.total_queued_size)}</span>
-                  </div>
-                )}
+                  {serverState?.queued_io_jobs !== undefined && (
+                    <div className="flex items-center gap-2 text-xs">
+                      <Zap className="h-3 w-3 text-muted-foreground" />
+                      <span className="text-muted-foreground">Queued I/O Jobs</span>
+                      <span className="ml-auto font-medium">{serverState.queued_io_jobs || 0}</span>
+                    </div>
+                  )}
 
-                {serverState?.average_time_queue !== undefined && (
-                  <div className="flex items-center gap-2 text-xs">
-                    <Zap className="h-3 w-3 text-muted-foreground" />
-                    <span className="text-muted-foreground">Avg Queue Time</span>
-                    <span className="ml-auto font-medium">{serverState.average_time_queue}ms</span>
-                  </div>
-                )}
-              </CollapsibleContent>
-            </Collapsible>
+                  {serverState?.total_buffers_size !== undefined && (
+                    <div className="flex items-center gap-2 text-xs">
+                      <HardDrive className="h-3 w-3 text-muted-foreground" />
+                      <span className="text-muted-foreground">Buffer Size</span>
+                      <span className="ml-auto font-medium">{formatBytes(serverState.total_buffers_size)}</span>
+                    </div>
+                  )}
 
+                  {serverState?.total_queued_size !== undefined && (
+                    <div className="flex items-center gap-2 text-xs">
+                      <Activity className="h-3 w-3 text-muted-foreground" />
+                      <span className="text-muted-foreground">Total Queued</span>
+                      <span className="ml-auto font-medium">{formatBytes(serverState.total_queued_size)}</span>
+                    </div>
+                  )}
 
-          </div>
+                  {serverState?.average_time_queue !== undefined && (
+                    <div className="flex items-center gap-2 text-xs">
+                      <Zap className="h-3 w-3 text-muted-foreground" />
+                      <span className="text-muted-foreground">Avg Queue Time</span>
+                      <span className="ml-auto font-medium">{serverState.average_time_queue}ms</span>
+                    </div>
+                  )}
+                </CollapsibleContent>
+              </Collapsible>
 
-          <InstanceErrorDisplay instance={instance} compact />
+              <InstanceErrorDisplay instance={instance} compact />
+            </div>
+          )}
         </CardContent>
       </Card>
     </>
