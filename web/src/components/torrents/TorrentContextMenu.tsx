@@ -30,6 +30,7 @@ import { TORRENT_ACTIONS } from "@/hooks/useTorrentActions"
 import { QueueSubmenu } from "./QueueSubmenu"
 import { ShareLimitSubmenu, SpeedLimitsSubmenu } from "./TorrentLimitSubmenus"
 import { getLinuxIsoName, useIncognitoMode } from "@/lib/incognito"
+import { useMemo } from "react"
 
 interface TorrentContextMenuProps {
   children: React.ReactNode
@@ -84,8 +85,18 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
 
   // Determine if we should use selection or just this torrent
   const useSelection = isSelected || isAllSelected
-  const hashes = useSelection ? selectedHashes : [torrent.hash]
-  const torrents = useSelection ? selectedTorrents : [torrent]
+
+  // Memoize hashes and torrents to avoid re-creating arrays on every render
+  const hashes = useMemo(() =>
+    useSelection ? selectedHashes : [torrent.hash],
+  [useSelection, selectedHashes, torrent.hash]
+  )
+
+  const torrents = useMemo(() =>
+    useSelection ? selectedTorrents : [torrent],
+  [useSelection, selectedTorrents, torrent]
+  )
+
   const count = isAllSelected ? effectiveSelectionCount : hashes.length
 
   // TMM state calculation
