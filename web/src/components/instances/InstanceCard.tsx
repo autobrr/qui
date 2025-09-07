@@ -90,8 +90,8 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
     <Card>
       <div>
         <CardHeader className="flex flex-row items-center justify-between pr-2 space-y-0">
-          <div>
-            <CardTitle className="text-base font-medium">
+          <div className="flex-1 max-w-45">
+            <CardTitle className="text-base font-medium truncate" title={instance.name}>
               {instance.name}
             </CardTitle>
           </div>
