@@ -61,16 +61,6 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 
 	if s := r.URL.Query().Get("sort"); s != "" {
 		sort = s
-		// Map frontend sort fields to qBittorrent API field names
-		switch s {
-		case "addedOn":
-			sort = "added_on"
-		case "dlspeed":
-			sort = "dlspeed"
-		case "upspeed":
-			sort = "upspeed"
-			// Add other mappings as needed
-		}
 	}
 
 	if o := r.URL.Query().Get("order"); o != "" {

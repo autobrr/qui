@@ -242,6 +242,12 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		Int("filtered", len(filteredTorrents)).
 		Msg("Applied search filtering")
 
+	// Apply custom sorting for priority field
+	// qBittorrent's native sorting treats 0 as lowest, but we want it as highest (no priority)
+	if sort == "priority" {
+		sm.sortTorrentsByPriority(filteredTorrents, order == "desc")
+	}
+
 	// Calculate stats from filtered torrents
 	stats := sm.calculateStats(filteredTorrents)
 
@@ -1303,6 +1309,28 @@ func (sm *SyncManager) matchTorrentStatus(torrent qbt.Torrent, status string) bo
 
 	// For everything else, just do direct equality with the string representation
 	return string(torrent.State) == status
+}
+
+// sortTorrentsByPriority sorts torrents by priority (queue position) with special handling for 0 values
+// Priority represents queue position: 1 = first in queue, 2 = second, etc.
+// Priority 0 means the torrent is not in the queue system (active, seeding, or manually paused)
+// We sort queued torrents (priority 1+) before non-queued torrents (priority 0) for better UX
+func (sm *SyncManager) sortTorrentsByPriority(torrents []qbt.Torrent, desc bool) {
+	slices.SortStableFunc(torrents, func(a, b qbt.Torrent) int {
+		if a.Priority == 0 && b.Priority == 0 {
+			return 0
+		}
+		if a.Priority == 0 {
+			return 1
+		}
+		if b.Priority == 0 {
+			return -1
+		}
+		if desc {
+			return int(a.Priority - b.Priority)
+		}
+		return int(b.Priority - a.Priority)
+	})
 }
 
 // calculateStats calculates torrent statistics from a list of torrents
