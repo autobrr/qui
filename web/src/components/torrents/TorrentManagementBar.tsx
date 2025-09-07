@@ -502,7 +502,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
       <AddTagsDialog
         open={showAddTagsDialog}
         onOpenChange={setShowAddTagsDialog}
-        availableTags={availableTags}
+        availableTags={availableTags || []}
         hashCount={totalSelectionCount || selectedHashes.length}
         onConfirm={handleAddTagsWrapper}
         isPending={isPending}
@@ -512,7 +512,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
       <SetTagsDialog
         open={showSetTagsDialog}
         onOpenChange={setShowSetTagsDialog}
-        availableTags={availableTags}
+        availableTags={availableTags || []}
         hashCount={totalSelectionCount || selectedHashes.length}
         onConfirm={handleSetTagsWrapper}
         isPending={isPending}

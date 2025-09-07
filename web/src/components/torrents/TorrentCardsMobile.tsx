@@ -1372,7 +1372,7 @@ export function TorrentCardsMobile({
       <SetTagsDialog
         open={showSetTagsDialog}
         onOpenChange={setShowSetTagsDialog}
-        availableTags={availableTags}
+        availableTags={availableTags || []}
         hashCount={actionTorrents.length}
         onConfirm={handleSetTagsWrapper}
         isPending={isPending}
@@ -1394,7 +1394,7 @@ export function TorrentCardsMobile({
       <RemoveTagsDialog
         open={showRemoveTagsDialog}
         onOpenChange={setShowRemoveTagsDialog}
-        availableTags={availableTags}
+        availableTags={availableTags || []}
         hashCount={actionTorrents.length}
         onConfirm={async (tags) => {
           const hashes = isAllSelected ? [] : actionTorrents.map(t => t.hash)
