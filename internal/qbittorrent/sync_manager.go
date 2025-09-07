@@ -189,7 +189,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 				torrentFilterOptions.Filter = qbt.TorrentFilterStopped
 			case "stalled":
 				torrentFilterOptions.Filter = qbt.TorrentFilterStalled
-			case "uploading", "seeding":
+			case "uploading":
 				torrentFilterOptions.Filter = qbt.TorrentFilterUploading
 			case "stalled_uploading", "stalled_seeding":
 				torrentFilterOptions.Filter = qbt.TorrentFilterStalledUploading
