@@ -226,25 +226,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
   // Map TanStack Table column IDs to backend field names
   const getBackendSortField = (columnId: string): string => {
-    const mapping: Record<string, string> = {
-      "priority": "priority",
-      "name": "name",
-      "size": "size",
-      "progress": "progress",
-      "state": "state",
-      "dlspeed": "dlspeed",
-      "upspeed": "upspeed",
-      "eta": "eta",
-      "ratio": "ratio",
-      "added_on": "added_on",
-      "category": "category",
-      "tags": "tags",
-      "downloaded": "downloaded",
-      "uploaded": "uploaded",
-      "save_path": "save_path",
-      "tracker": "tracker",
-    }
-    return mapping[columnId] || "added_on"
+    return columnId || "added_on"
   }
 
   // Fetch torrents data with backend sorting
