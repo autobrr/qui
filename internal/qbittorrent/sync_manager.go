@@ -190,23 +190,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 			case "stalled":
 				torrentFilterOptions.Filter = qbt.TorrentFilterStalled
 			case "seeding":
-				// Special handling for seeding - need to get all torrents and filter manually
-				// because qbt.TorrentFilterUploading doesn't include all seeding states
-				torrentFilterOptions.Filter = qbt.TorrentFilterAll
-				filteredTorrents = syncManager.GetTorrents(torrentFilterOptions)
-				// Manually filter for all seeding states
-				var seedingTorrents []qbt.Torrent
-				for _, t := range filteredTorrents {
-					if t.State == qbt.TorrentStateUploading ||
-						t.State == qbt.TorrentStateStalledUp ||
-						t.State == qbt.TorrentStateQueuedUp ||
-						t.State == qbt.TorrentStateForcedUp {
-						seedingTorrents = append(seedingTorrents, t)
-					}
-				}
-				filteredTorrents = seedingTorrents
-				// Skip the normal library filtering since we already filtered
-				goto skipLibraryFiltering
+				torrentFilterOptions.Filter = qbt.TorrentFilterUploading
 			case "stalled_uploading":
 				torrentFilterOptions.Filter = qbt.TorrentFilterStalledUploading
 			case "downloading":
@@ -242,7 +226,6 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		filteredTorrents = syncManager.GetTorrents(torrentFilterOptions)
 	}
 
-skipLibraryFiltering:
 	log.Debug().
 		Int("instanceID", instanceID).
 		Int("totalCount", len(filteredTorrents)).
