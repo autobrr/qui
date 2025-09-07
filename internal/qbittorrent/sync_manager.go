@@ -141,6 +141,10 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 			case qbt.TorrentFilterActive, qbt.TorrentFilterInactive, qbt.TorrentFilterChecking, qbt.TorrentFilterMoving, qbt.TorrentFilterError, qbt.TorrentFilterDownloading, qbt.TorrentFilterUploading:
 				needsManualStatusFiltering = true
 			}
+			// "seeding" is a custom filter that needs manual filtering
+			if status == "seeding" || status == "resumed" {
+				needsManualStatusFiltering = true
+			}
 		}
 	}
 
@@ -189,9 +193,9 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 				torrentFilterOptions.Filter = qbt.TorrentFilterStopped
 			case "stalled":
 				torrentFilterOptions.Filter = qbt.TorrentFilterStalled
-			case "seeding":
+			case "uploading", "seeding":
 				torrentFilterOptions.Filter = qbt.TorrentFilterUploading
-			case "stalled_uploading":
+			case "stalled_uploading", "stalled_seeding":
 				torrentFilterOptions.Filter = qbt.TorrentFilterStalledUploading
 			case "downloading":
 				torrentFilterOptions.Filter = qbt.TorrentFilterDownloading
@@ -622,51 +626,30 @@ func (sm *SyncManager) countTorrentStatuses(torrent qbt.Torrent, counts map[stri
 	}
 
 	// Check active states for "active" and "inactive"
-	isActive := slices.Contains(torrentStateCategories[qbt.TorrentFilterActive], torrent.State)
+	// Inactive is the inverse of active (matches matchTorrentStatus logic)
+	isActive := slices.Contains(torrentStateCategories["active"], torrent.State)
 	if isActive {
 		counts["active"]++
-	}
-	// Check inactive states separately (not just !active)
-	isInactive := slices.Contains(torrentStateCategories[qbt.TorrentFilterInactive], torrent.State)
-	if isInactive {
+	} else {
 		counts["inactive"]++
 	}
 
-	// Check paused states for "paused" and "resumed"
-	isPaused := slices.Contains(torrentStateCategories[qbt.TorrentFilterPaused], torrent.State)
-	if isPaused {
+	// Check paused states
+	if slices.Contains(torrentStateCategories["paused"], torrent.State) {
 		counts["paused"]++
-	} else {
+	}
+
+	// "resumed" means not paused (inverse of paused)
+	if !slices.Contains(torrentStateCategories["paused"], torrent.State) {
 		counts["resumed"]++
 	}
 
 	// Count other status categories
 	for status, states := range torrentStateCategories {
 		if slices.Contains(states, torrent.State) {
-			// Skip "active", "inactive", and "paused" as we handled them above
-			if status != qbt.TorrentFilterActive && status != qbt.TorrentFilterInactive && status != qbt.TorrentFilterPaused {
-				statusKey := string(status)
-				switch status {
-				case qbt.TorrentFilterUploading:
-					statusKey = "seeding"
-				case qbt.TorrentFilterDownloading:
-					statusKey = "downloading"
-				case qbt.TorrentFilterStalled:
-					statusKey = "stalled"
-				case qbt.TorrentFilterStalledUploading:
-					statusKey = "stalled_uploading"
-				case qbt.TorrentFilterStalledDownloading:
-					statusKey = "stalled_downloading"
-				case qbt.TorrentFilterError:
-					statusKey = "errored"
-				case qbt.TorrentFilterChecking:
-					statusKey = "checking"
-				case qbt.TorrentFilterMoving:
-					statusKey = "moving"
-				case qbt.TorrentFilterStopped:
-					statusKey = "stopped"
-				}
-				counts[statusKey]++
+			// Skip "active" and "paused" as we handled them above
+			if status != "active" && status != "paused" {
+				counts[string(status)]++
 			}
 		}
 	}
@@ -679,7 +662,7 @@ func (sm *SyncManager) calculateCountsFromTorrents(allTorrents []qbt.Torrent) *T
 	counts := &TorrentCounts{
 		Status: map[string]int{
 			"all": 0, "downloading": 0, "seeding": 0, "completed": 0, "paused": 0,
-			"active": 0, "inactive": 0, "resumed": 0, "stalled": 0, "stopped": 0,
+			"active": 0, "inactive": 0, "resumed": 0, "stalled": 0,
 			"stalled_uploading": 0, "stalled_downloading": 0, "errored": 0,
 			"checking": 0, "moving": 0,
 		},
@@ -1245,11 +1228,11 @@ func (sm *SyncManager) applyManualFilters(torrents []qbt.Torrent, filters Filter
 
 // Torrent state categories for fast lookup
 var torrentStateCategories = map[qbt.TorrentFilter][]qbt.TorrentState{
-	qbt.TorrentFilterDownloading:        {qbt.TorrentStateDownloading, qbt.TorrentStateStalledDl, qbt.TorrentStateMetaDl, qbt.TorrentStateQueuedDl, qbt.TorrentStateAllocating, qbt.TorrentStateCheckingDl, qbt.TorrentStateForcedDl},
-	qbt.TorrentFilterUploading:          {qbt.TorrentStateUploading, qbt.TorrentStateStalledUp, qbt.TorrentStateQueuedUp, qbt.TorrentStateCheckingUp, qbt.TorrentStateForcedUp},
-	qbt.TorrentFilterInactive:           {qbt.TorrentStatePausedDl, qbt.TorrentStatePausedUp, qbt.TorrentStateStoppedDl, qbt.TorrentStateStoppedUp, qbt.TorrentStateQueuedDl, qbt.TorrentStateQueuedUp, qbt.TorrentStateStalledDl, qbt.TorrentStateStalledUp},
-	qbt.TorrentFilterPaused:             {qbt.TorrentStatePausedDl, qbt.TorrentStatePausedUp},
-	qbt.TorrentFilterStopped:            {qbt.TorrentStateStoppedDl, qbt.TorrentStateStoppedUp},
+	qbt.TorrentFilterDownloading: {qbt.TorrentStateDownloading, qbt.TorrentStateStalledDl, qbt.TorrentStateMetaDl, qbt.TorrentStateQueuedDl, qbt.TorrentStateAllocating, qbt.TorrentStateCheckingDl, qbt.TorrentStateForcedDl},
+	qbt.TorrentFilterUploading:   {qbt.TorrentStateUploading, qbt.TorrentStateStalledUp, qbt.TorrentStateQueuedUp, qbt.TorrentStateCheckingUp, qbt.TorrentStateForcedUp},
+	qbt.TorrentFilter("seeding"): {qbt.TorrentStateUploading, qbt.TorrentStateStalledUp, qbt.TorrentStateQueuedUp, qbt.TorrentStateCheckingUp, qbt.TorrentStateForcedUp},
+	// NOTE: TorrentFilterInactive is NOT included here because it's the inverse of active, not a specific set of states
+	qbt.TorrentFilterPaused:             {qbt.TorrentStatePausedDl, qbt.TorrentStatePausedUp, qbt.TorrentStateStoppedDl, qbt.TorrentStateStoppedUp},
 	qbt.TorrentFilterActive:             {qbt.TorrentStateDownloading, qbt.TorrentStateUploading, qbt.TorrentStateForcedDl, qbt.TorrentStateForcedUp},
 	qbt.TorrentFilterStalled:            {qbt.TorrentStateStalledDl, qbt.TorrentStateStalledUp},
 	qbt.TorrentFilterChecking:           {qbt.TorrentStateCheckingDl, qbt.TorrentStateCheckingUp, qbt.TorrentStateCheckingResumeData},
