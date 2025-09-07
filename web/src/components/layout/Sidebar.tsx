@@ -109,8 +109,8 @@ export function Sidebar() {
                   isActive? "bg-sidebar-primary text-sidebar-primary-foreground": "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                 )}
               >
-                <HardDrive className="h-4 w-4" />
-                <span className="truncate">{instance.name}</span>
+                <HardDrive className="h-4 w-4 flex-shrink-0" />
+                <span className="truncate max-w-38" title={instance.name}>{instance.name}</span>
                 <span
                   className={cn(
                     "ml-auto h-2 w-2 rounded-full",
