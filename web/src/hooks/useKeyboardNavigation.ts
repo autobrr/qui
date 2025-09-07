@@ -6,6 +6,9 @@
 import { useEffect, type RefObject } from "react"
 import { type Virtualizer } from "@tanstack/react-virtual"
 
+// Number of rows from the end to trigger loading more data
+const LOAD_MORE_THRESHOLD = 50
+
 interface UseKeyboardNavigationProps {
   parentRef: RefObject<HTMLDivElement | null>
   virtualizer: Virtualizer<HTMLDivElement, Element>
@@ -73,7 +76,7 @@ export function useKeyboardNavigation({
           })
 
           // Trigger loading if needed
-          if (targetIndex >= safeLoadedRows - 50 && !hasLoadedAll && !isLoadingMore) {
+          if (targetIndex >= safeLoadedRows - LOAD_MORE_THRESHOLD && !hasLoadedAll && !isLoadingMore) {
             loadMore()
           }
           break
@@ -92,7 +95,7 @@ export function useKeyboardNavigation({
           })
 
           // Trigger loading if needed
-          if (targetIndex >= safeLoadedRows - 50 && !hasLoadedAll && !isLoadingMore) {
+          if (targetIndex >= safeLoadedRows - LOAD_MORE_THRESHOLD && !hasLoadedAll && !isLoadingMore) {
             loadMore()
           }
           break
