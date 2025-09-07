@@ -26,6 +26,7 @@ import {
 import { toast } from "sonner"
 import type { Torrent } from "@/types"
 import type { TorrentAction } from "@/hooks/useTorrentActions"
+import { TORRENT_ACTIONS } from "@/hooks/useTorrentActions"
 import { QueueSubmenu } from "./QueueSubmenu"
 import { ShareLimitSubmenu, SpeedLimitsSubmenu } from "./TorrentLimitSubmenus"
 import { getLinuxIsoName, useIncognitoMode } from "@/lib/incognito"
@@ -94,7 +95,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   const mixed = tmmStates.length > 0 && !allEnabled && !allDisabled
 
   const handleQueueAction = useCallback((action: "topPriority" | "increasePriority" | "decreasePriority" | "bottomPriority") => {
-    onAction(action, hashes)
+    onAction(action as TorrentAction, hashes)
   }, [onAction, hashes])
 
   const handleSetShareLimitWrapper = useCallback((ratioLimit: number, seedingTimeLimit: number, inactiveSeedingTimeLimit: number) => {
@@ -116,14 +117,14 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
         </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem
-          onClick={() => onAction("resume", hashes)}
+          onClick={() => onAction(TORRENT_ACTIONS.RESUME, hashes)}
           disabled={isPending}
         >
           <Play className="mr-2 h-4 w-4" />
           Resume {count > 1 ? `(${count})` : ""}
         </ContextMenuItem>
         <ContextMenuItem
-          onClick={() => onAction("pause", hashes)}
+          onClick={() => onAction(TORRENT_ACTIONS.PAUSE, hashes)}
           disabled={isPending}
         >
           <Pause className="mr-2 h-4 w-4" />
@@ -189,14 +190,14 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
         {mixed ? (
           <>
             <ContextMenuItem
-              onClick={() => onAction("toggleAutoTMM", hashes, { enable: true })}
+              onClick={() => onAction(TORRENT_ACTIONS.TOGGLE_AUTO_TMM, hashes, { enable: true })}
               disabled={isPending}
             >
               <Sparkles className="mr-2 h-4 w-4" />
               Enable TMM {count > 1 ? `(${count} Mixed)` : "(Mixed)"}
             </ContextMenuItem>
             <ContextMenuItem
-              onClick={() => onAction("toggleAutoTMM", hashes, { enable: false })}
+              onClick={() => onAction(TORRENT_ACTIONS.TOGGLE_AUTO_TMM, hashes, { enable: false })}
               disabled={isPending}
             >
               <Settings2 className="mr-2 h-4 w-4" />
@@ -205,7 +206,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
           </>
         ) : (
           <ContextMenuItem
-            onClick={() => onAction("toggleAutoTMM", hashes, { enable: !allEnabled })}
+            onClick={() => onAction(TORRENT_ACTIONS.TOGGLE_AUTO_TMM, hashes, { enable: !allEnabled })}
             disabled={isPending}
           >
             {allEnabled ? (

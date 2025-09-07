@@ -33,7 +33,7 @@ import {
   TooltipContent,
   TooltipTrigger
 } from "@/components/ui/tooltip"
-import { useTorrentActions } from "@/hooks/useTorrentActions"
+import { useTorrentActions, TORRENT_ACTIONS } from "@/hooks/useTorrentActions"
 import { api } from "@/lib/api"
 import { getCommonCategory, getCommonTags } from "@/lib/torrent-utils"
 import type { Torrent } from "@/types"
@@ -193,7 +193,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     if (count > 1) {
       prepareRecheckAction(selectedHashes, count)
     } else {
-      handleAction("recheck", selectedHashes)
+      handleAction(TORRENT_ACTIONS.RECHECK, selectedHashes)
     }
   }, [totalSelectionCount, selectedHashes, prepareRecheckAction, handleAction])
 
@@ -202,12 +202,18 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     if (count > 1) {
       prepareReannounceAction(selectedHashes, count)
     } else {
-      handleAction("reannounce", selectedHashes)
+      handleAction(TORRENT_ACTIONS.REANNOUNCE, selectedHashes)
     }
   }, [totalSelectionCount, selectedHashes, prepareReannounceAction, handleAction])
 
   const handleQueueAction = useCallback((action: "topPriority" | "increasePriority" | "decreasePriority" | "bottomPriority") => {
-    handleAction(action, selectedHashes)
+    const actionMap = {
+      topPriority: TORRENT_ACTIONS.TOP_PRIORITY,
+      increasePriority: TORRENT_ACTIONS.INCREASE_PRIORITY,
+      decreasePriority: TORRENT_ACTIONS.DECREASE_PRIORITY,
+      bottomPriority: TORRENT_ACTIONS.BOTTOM_PRIORITY,
+    }
+    handleAction(actionMap[action], selectedHashes)
   }, [handleAction, selectedHashes])
 
   const handleSetShareLimitWrapper = useCallback((ratioLimit: number, seedingTimeLimit: number, inactiveSeedingTimeLimit: number) => {
@@ -238,7 +244,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => handleAction("resume", selectedHashes)}
+                onClick={() => handleAction(TORRENT_ACTIONS.RESUME, selectedHashes)}
                 disabled={isPending || isDisabled}
               >
                 <Play className="h-4 w-4" />
@@ -252,7 +258,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => handleAction("pause", selectedHashes)}
+                onClick={() => handleAction(TORRENT_ACTIONS.PAUSE, selectedHashes)}
                 disabled={isPending || isDisabled}
               >
                 <Pause className="h-4 w-4" />
@@ -429,7 +435,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => handleAction("toggleAutoTMM", selectedHashes, { enable: !allEnabled })}
+                    onClick={() => handleAction(TORRENT_ACTIONS.TOGGLE_AUTO_TMM, selectedHashes, { enable: !allEnabled })}
                     disabled={isPending || isDisabled}
                   >
                     <Settings2 className="h-4 w-4" />

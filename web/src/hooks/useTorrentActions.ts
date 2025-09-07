@@ -3,30 +3,35 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState, useCallback } from "react"
 import { api } from "@/lib/api"
 import type { Torrent } from "@/types"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useCallback, useState } from "react"
 import { toast } from "sonner"
 
-export type TorrentAction =
-  | "pause"
-  | "resume"
-  | "delete"
-  | "recheck"
-  | "reannounce"
-  | "increasePriority"
-  | "decreasePriority"
-  | "topPriority"
-  | "bottomPriority"
-  | "addTags"
-  | "removeTags"
-  | "setTags"
-  | "setCategory"
-  | "toggleAutoTMM"
-  | "setShareLimit"
-  | "setUploadLimit"
-  | "setDownloadLimit"
+// Const object for better developer experience and refactoring safety
+export const TORRENT_ACTIONS = {
+  PAUSE: "pause",
+  RESUME: "resume",
+  DELETE: "delete",
+  RECHECK: "recheck",
+  REANNOUNCE: "reannounce",
+  INCREASE_PRIORITY: "increasePriority",
+  DECREASE_PRIORITY: "decreasePriority",
+  TOP_PRIORITY: "topPriority",
+  BOTTOM_PRIORITY: "bottomPriority",
+  ADD_TAGS: "addTags",
+  REMOVE_TAGS: "removeTags",
+  SET_TAGS: "setTags",
+  SET_CATEGORY: "setCategory",
+  TOGGLE_AUTO_TMM: "toggleAutoTMM",
+  SET_SHARE_LIMIT: "setShareLimit",
+  SET_UPLOAD_LIMIT: "setUploadLimit",
+  SET_DOWNLOAD_LIMIT: "setDownloadLimit",
+} as const
+
+// Derive the type from the const object - single source of truth
+export type TorrentAction = typeof TORRENT_ACTIONS[keyof typeof TORRENT_ACTIONS]
 
 interface UseTorrentActionsProps {
   instanceId: number

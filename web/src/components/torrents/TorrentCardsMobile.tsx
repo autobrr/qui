@@ -30,7 +30,7 @@ import { Progress } from "@/components/ui/progress"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Switch } from "@/components/ui/switch"
 import { useDebounce } from "@/hooks/useDebounce"
-import { useTorrentActions, type TorrentAction } from "@/hooks/useTorrentActions"
+import { useTorrentActions, type TorrentAction, TORRENT_ACTIONS } from "@/hooks/useTorrentActions"
 import { useTorrentsList } from "@/hooks/useTorrentsList"
 import { useSearch } from "@tanstack/react-router"
 import { useVirtualizer } from "@tanstack/react-virtual"
@@ -1135,7 +1135,7 @@ export function TorrentCardsMobile({
         >
           <div className="flex items-center justify-around h-16">
             <button
-              onClick={() => handleBulkAction("resume")}
+              onClick={() => handleBulkAction(TORRENT_ACTIONS.RESUME)}
               className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground"
             >
               <Play className="h-5 w-5"/>
@@ -1143,7 +1143,7 @@ export function TorrentCardsMobile({
             </button>
 
             <button
-              onClick={() => handleBulkAction("pause")}
+              onClick={() => handleBulkAction(TORRENT_ACTIONS.PAUSE)}
               className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground"
             >
               <Pause className="h-5 w-5"/>
@@ -1193,7 +1193,7 @@ export function TorrentCardsMobile({
           <div className="grid gap-2 py-4 px-4">
             <Button
               variant="outline"
-              onClick={() => handleBulkAction("recheck")}
+              onClick={() => handleBulkAction(TORRENT_ACTIONS.RECHECK)}
               className="justify-start"
             >
               <CheckCircle2 className="mr-2 h-4 w-4"/>
@@ -1201,7 +1201,7 @@ export function TorrentCardsMobile({
             </Button>
             <Button
               variant="outline"
-              onClick={() => handleBulkAction("reannounce")}
+              onClick={() => handleBulkAction(TORRENT_ACTIONS.REANNOUNCE)}
               className="justify-start"
             >
               <Radio className="mr-2 h-4 w-4"/>
@@ -1209,7 +1209,7 @@ export function TorrentCardsMobile({
             </Button>
             <Button
               variant="outline"
-              onClick={() => handleBulkAction("increasePriority")}
+              onClick={() => handleBulkAction(TORRENT_ACTIONS.INCREASE_PRIORITY)}
               className="justify-start"
             >
               <ChevronUp className="mr-2 h-4 w-4"/>
@@ -1217,7 +1217,7 @@ export function TorrentCardsMobile({
             </Button>
             <Button
               variant="outline"
-              onClick={() => handleBulkAction("decreasePriority")}
+              onClick={() => handleBulkAction(TORRENT_ACTIONS.DECREASE_PRIORITY)}
               className="justify-start"
             >
               <ChevronDown className="mr-2 h-4 w-4"/>
@@ -1225,7 +1225,7 @@ export function TorrentCardsMobile({
             </Button>
             <Button
               variant="outline"
-              onClick={() => handleBulkAction("topPriority")}
+              onClick={() => handleBulkAction(TORRENT_ACTIONS.TOP_PRIORITY)}
               className="justify-start"
             >
               <ChevronUp className="mr-2 h-4 w-4"/>
@@ -1233,7 +1233,7 @@ export function TorrentCardsMobile({
             </Button>
             <Button
               variant="outline"
-              onClick={() => handleBulkAction("bottomPriority")}
+              onClick={() => handleBulkAction(TORRENT_ACTIONS.BOTTOM_PRIORITY)}
               className="justify-start"
             >
               <ChevronDown className="mr-2 h-4 w-4"/>
@@ -1252,7 +1252,7 @@ export function TorrentCardsMobile({
                     <Button
                       variant="outline"
                       onClick={() => {
-                        handleAction("toggleAutoTMM", isAllSelected ? [] : Array.from(selectedHashes), { enable: true })
+                        handleAction(TORRENT_ACTIONS.TOGGLE_AUTO_TMM, isAllSelected ? [] : Array.from(selectedHashes), { enable: true })
                         setShowActionsSheet(false)
                       }}
                       className="justify-start"
@@ -1263,7 +1263,7 @@ export function TorrentCardsMobile({
                     <Button
                       variant="outline"
                       onClick={() => {
-                        handleAction("toggleAutoTMM", isAllSelected ? [] : Array.from(selectedHashes), { enable: false })
+                        handleAction(TORRENT_ACTIONS.TOGGLE_AUTO_TMM, isAllSelected ? [] : Array.from(selectedHashes), { enable: false })
                         setShowActionsSheet(false)
                       }}
                       className="justify-start"
@@ -1279,7 +1279,7 @@ export function TorrentCardsMobile({
                 <Button
                   variant="outline"
                   onClick={() => {
-                    handleAction("toggleAutoTMM", isAllSelected ? [] : Array.from(selectedHashes), { enable: !allEnabled })
+                    handleAction(TORRENT_ACTIONS.TOGGLE_AUTO_TMM, isAllSelected ? [] : Array.from(selectedHashes), { enable: !allEnabled })
                     setShowActionsSheet(false)
                   }}
                   className="justify-start"
