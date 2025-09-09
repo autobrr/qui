@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && touch dist/.gitkeep",
     "preview": "vite preview",
     "lint": "eslint \"src/**/*.{ts,tsx,js,jsx}\" \"*.{js,ts}\"",
     "format": "eslint --fix \"src/**/*.{ts,tsx,js,jsx}\" \"*.{js,ts}\""
