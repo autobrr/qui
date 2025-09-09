@@ -16,7 +16,7 @@ INTERNAL_WEB_DIR = internal/web
 # Go build flags with Polar credentials
 LDFLAGS = -ldflags "-X main.Version=$(VERSION) -X main.PolarOrgID=$(POLAR_ORG_ID)"
 
-.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test help
+.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test help themes-fetch themes-clean
 
 # Default target
 all: build
@@ -24,8 +24,29 @@ all: build
 # Build both frontend and backend
 build: frontend backend
 
+# Fetch premium themes from private repository
+themes-fetch:
+	@echo "Fetching premium themes..."
+	@if [ -n "$$THEMES_REPO_TOKEN" ]; then \
+		rm -rf .themes-temp && \
+		git clone --depth=1 --filter=blob:none --sparse \
+			https://$$THEMES_REPO_TOKEN@github.com/autobrr/qui-premium-themes.git .themes-temp && \
+		cd .themes-temp && git sparse-checkout set --cone themes && cd .. && \
+		mkdir -p $(WEB_DIR)/src/themes/premium && \
+		cp .themes-temp/themes/*.css $(WEB_DIR)/src/themes/premium/ && \
+		rm -rf .themes-temp && \
+		echo "Premium themes fetched successfully"; \
+	else \
+		echo "THEMES_REPO_TOKEN not set, skipping premium themes"; \
+	fi
+
+# Clean premium themes
+themes-clean:
+	@echo "Cleaning premium themes..."
+	rm -rf $(WEB_DIR)/src/themes/premium
+
 # Build frontend
-frontend:
+frontend: themes-fetch
 	@echo "Building frontend..."
 	cd $(WEB_DIR) && pnpm install && pnpm build
 	@echo "Copying frontend assets..."
@@ -63,7 +84,7 @@ dev-frontend-expose:
 	cd $(WEB_DIR) && pnpm dev --host
 
 # Clean build artifacts
-clean:
+clean: themes-clean
 	@echo "Cleaning..."
 	rm -rf $(WEB_DIR)/dist $(INTERNAL_WEB_DIR)/dist $(BINARY_NAME) $(BUILD_DIR)
 
@@ -106,6 +127,8 @@ help:
 	@echo "  make build        - Build both frontend and backend"
 	@echo "  make frontend     - Build frontend only"
 	@echo "  make backend      - Build backend only"
+	@echo "  make themes-fetch - Fetch premium themes from private repository"
+	@echo "  make themes-clean - Clean premium themes"
 	@echo "  make dev          - Run development servers"
 	@echo "  make dev-backend  - Run backend with hot reload"
 	@echo "  make dev-frontend - Run frontend development server"

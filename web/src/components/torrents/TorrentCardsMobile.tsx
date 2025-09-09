@@ -27,10 +27,11 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
+import { ScrollToTopButton } from "@/components/ui/scroll-to-top-button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Switch } from "@/components/ui/switch"
 import { useDebounce } from "@/hooks/useDebounce"
-import { useTorrentActions, type TorrentAction, TORRENT_ACTIONS } from "@/hooks/useTorrentActions"
+import { TORRENT_ACTIONS, useTorrentActions, type TorrentAction } from "@/hooks/useTorrentActions"
 import { useTorrentsList } from "@/hooks/useTorrentsList"
 import { useSearch } from "@tanstack/react-router"
 import { useVirtualizer } from "@tanstack/react-virtual"
@@ -1448,6 +1449,14 @@ export function TorrentCardsMobile({
         open={addTorrentModalOpen}
         onOpenChange={onAddTorrentModalChange}
       />
+
+      {/* Scroll to top button - only on mobile */}
+      <div className="lg:hidden">
+        <ScrollToTopButton
+          scrollContainerRef={parentRef}
+          className="bottom-24 right-4"
+        />
+      </div>
     </div>
   )
 }

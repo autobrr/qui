@@ -4,6 +4,7 @@
  */
 
 import { useDebounce } from "@/hooks/useDebounce"
+import { useKeyboardNavigation } from "@/hooks/useKeyboardNavigation"
 import { usePersistedColumnOrder } from "@/hooks/usePersistedColumnOrder"
 import { usePersistedColumnSizing } from "@/hooks/usePersistedColumnSizing"
 import { usePersistedColumnSorting } from "@/hooks/usePersistedColumnSorting"
@@ -61,6 +62,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
+import { ScrollToTopButton } from "@/components/ui/scroll-to-top-button"
 import {
   Tooltip,
   TooltipContent,
@@ -617,6 +619,17 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     }
   }, [filters, effectiveSearch, instanceId, virtualizer, sortedTorrents.length, setRowSelection, lastUserAction])
 
+  // Set up keyboard navigation
+  useKeyboardNavigation({
+    parentRef,
+    virtualizer,
+    safeLoadedRows,
+    hasLoadedAll,
+    isLoadingMore,
+    loadMore,
+    estimatedRowHeight: 40,
+  })
+
 
 
   // Wrapper functions to adapt hook handlers to component needs
@@ -811,7 +824,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
       {/* Table container */}
       <div className="flex flex-col flex-1 min-h-0 mt-2 sm:mt-0 overflow-hidden">
-        <div className="relative flex-1 overflow-auto scrollbar-thin" ref={parentRef}>
+        <div
+          className="relative flex-1 overflow-auto scrollbar-thin"
+          ref={parentRef}
+          role="grid"
+          aria-label="Torrents table"
+          aria-rowcount={totalCount}
+          aria-colcount={table.getVisibleLeafColumns().length}
+        >
           <div style={{ position: "relative", minWidth: "min-content" }}>
             {/* Header */}
             <div className="sticky top-0 bg-background border-b" style={{ zIndex: 50 }}>
@@ -1125,6 +1145,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Scroll to top button*/}
+      <div className="hidden lg:block">
+        <ScrollToTopButton
+          scrollContainerRef={parentRef}
+          className="bottom-20 right-6"
+        />
+      </div>
     </div>
   )
 });
