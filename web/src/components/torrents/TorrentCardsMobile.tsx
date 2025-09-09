@@ -46,6 +46,7 @@ import {
   X
 } from "lucide-react"
 import { SetCategoryDialog, SetTagsDialog } from "./TorrentDialogs"
+import { ScrollToTopButton } from "@/components/ui/scroll-to-top-button"
 // import { createPortal } from 'react-dom'
 // Columns dropdown removed on mobile
 import type { Category, Torrent, TorrentCounts } from "@/types"
@@ -1192,6 +1193,14 @@ export function TorrentCardsMobile({
         open={addTorrentModalOpen}
         onOpenChange={onAddTorrentModalChange}
       />
+
+      {/* Scroll to top button - only on mobile */}
+      <div className="lg:hidden">
+        <ScrollToTopButton
+          scrollContainerRef={parentRef}
+          className="bottom-24 right-4"
+        />
+      </div>
     </div>
   )
 }
