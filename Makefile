@@ -28,11 +28,12 @@ build: frontend backend
 themes-fetch:
 	@echo "Fetching premium themes..."
 	@if [ -n "$$THEMES_REPO_TOKEN" ]; then \
-		git clone --depth=1 --sparse \
+		rm -rf .themes-temp && \
+		git clone --depth=1 --filter=blob:none --sparse \
 			https://$$THEMES_REPO_TOKEN@github.com/autobrr/qui-premium-themes.git .themes-temp && \
-		cd .themes-temp && git sparse-checkout set themes && \
+		cd .themes-temp && git sparse-checkout set --cone themes && cd .. && \
 		mkdir -p $(WEB_DIR)/src/themes/premium && \
-		cp themes/*.css $(WEB_DIR)/src/themes/premium/ 2>/dev/null || true && \
+		cp .themes-temp/themes/*.css $(WEB_DIR)/src/themes/premium/ && \
 		rm -rf .themes-temp && \
 		echo "Premium themes fetched successfully"; \
 	else \

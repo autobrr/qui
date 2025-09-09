@@ -69,11 +69,12 @@ jobs:
       - name: Fetch premium themes
         run: |
           if [ -n "${{ secrets.THEMES_REPO_TOKEN }}" ]; then
-            git clone --depth=1 --sparse \
+            rm -rf .themes-temp
+            git clone --depth=1 --filter=blob:none --sparse \
               https://${{ secrets.THEMES_REPO_TOKEN }}@github.com/autobrr/qui-premium-themes.git .themes-temp
-            cd .themes-temp && git sparse-checkout set themes
+            cd .themes-temp && git sparse-checkout set --cone themes && cd ..
             mkdir -p web/src/themes/premium
-            cp themes/*.css web/src/themes/premium/ 2>/dev/null || true
+            cp .themes-temp/themes/*.css web/src/themes/premium/
             rm -rf .themes-temp
             echo "Premium themes fetched successfully"
           else
