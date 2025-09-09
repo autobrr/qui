@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils"
 import { useQuery } from "@tanstack/react-query"
 import { Link, useLocation } from "@tanstack/react-router"
 import {
+  Copyright,
   Github,
   HardDrive,
   Home,
@@ -59,7 +60,7 @@ export function Sidebar() {
   return (
     <div className="flex h-full w-64 flex-col border-r bg-sidebar border-sidebar-border">
       <div className="p-6">
-        <h2 className="flex flex-row items-center gap-2 flex items-center gap-2 text-lg font-semibold text-sidebar-foreground">
+        <h2 className="flex items-center gap-2 text-lg font-semibold text-sidebar-foreground">
           {theme === "swizzin" ? (
             <SwizzinLogo className="h-5 w-5" />
           ) : (
@@ -142,10 +143,10 @@ export function Sidebar() {
 
         <div className="flex items-center justify-between px-3 pb-3">
           <div className="flex items-center gap-1.5">
-            <Logo className="h-3 w-3 opacity-60" />
-            <p className="text-[10px] text-sidebar-foreground/40">
-              © {new Date().getFullYear()} autobrr • GPL-2.0-or-later
-            </p>
+            <div className="flex items-center gap-1 text-[10px] text-sidebar-foreground/40 select-none">
+              <Copyright className="h-2.5 w-2.5" />
+              <span>{new Date().getFullYear()} autobrr</span>
+            </div>
           </div>
           <Button
             variant="ghost"

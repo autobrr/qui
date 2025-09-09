@@ -29,7 +29,7 @@ import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSideba
 import { useTheme } from "@/hooks/useTheme"
 import { cn } from "@/lib/utils"
 import { Link, useNavigate, useRouterState, useSearch } from "@tanstack/react-router"
-import { FunnelPlus, FunnelX, HardDrive, Home, Info, LogOut, Menu, Search, Server, Settings, X } from "lucide-react"
+import { FunnelPlus, FunnelX, HardDrive, Home, Info, LogOut, Menu, Plus, Search, Server, Settings, X } from "lucide-react"
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react"
 import { useHotkeys } from "react-hotkeys-hook"
 
@@ -143,6 +143,7 @@ export function Header({
         {isInstanceRoute && (
           <div className="hidden lg:flex items-center gap-2">
             {/* Filter button */}
+            {/* Filter button */}
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -159,6 +160,23 @@ export function Header({
                 </Button>
               </TooltipTrigger>
               <TooltipContent>{filterSidebarCollapsed ? "Show filters" : "Hide filters"}</TooltipContent>
+            </Tooltip>
+            {/* Add Torrent button */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="hidden md:inline-flex"
+                  onClick={() => {
+                    const next = { ...(routeSearch || {}), modal: "add-torrent" }
+                    navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
+                  }}
+                >
+                  <Plus className="h-4 w-4"/>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Add torrent</TooltipContent>
             </Tooltip>
             <TorrentManagementBar
               instanceId={selectedInstanceId || undefined}
