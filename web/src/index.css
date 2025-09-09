@@ -14,7 +14,7 @@
   *::-webkit-scrollbar {
     display: none;
   }
-  
+
   /* Hide scrollbar for IE, Edge and Firefox */
   * {
     -ms-overflow-style: none;  /* IE and Edge */
@@ -200,6 +200,21 @@
   --shadow-lg: var(--shadow-lg);
   --shadow-xl: var(--shadow-xl);
   --shadow-2xl: var(--shadow-2xl);
+  --animate-shine: shine var(--duration) infinite linear;
+  @keyframes shine {
+  0% {
+    background-position: 0% 0%;
+    transform: translateZ(0);
+    }
+  50% {
+    background-position: 100% 100%;
+    transform: translateZ(0);
+    }
+  to {
+    background-position: 0% 0%;
+    transform: translateZ(0);
+    }
+  }
 }
 
 /* Base styles for the app */
@@ -207,13 +222,13 @@
   * {
     @apply border-border;
   }
-  
+
   html, body, #root {
     height: 100%;
     margin: 0;
     padding: 0;
   }
-  
+
   body {
     @apply bg-background text-foreground;
     letter-spacing: var(--tracking-normal);
@@ -285,7 +300,7 @@
   :root {
     color-scheme: light;
   }
-  
+
   .dark {
     color-scheme: dark;
   }
@@ -324,25 +339,25 @@
       scrollbar-color: oklch(from var(--border) l c h) transparent;
     }
   }
-  
+
   /* Firefox fallback */
   @supports not (color: oklch(from red l c h)) {
     * {
       scrollbar-color: var(--border) transparent;
     }
   }
-  
+
   /* Additional Safari-specific optimizations */
   @supports (-webkit-appearance: none) and (not (-moz-appearance: none)) {
     * {
       -webkit-overflow-scrolling: touch;
     }
-    
+
     /* Ensure Safari uses the CSS variables */
     *::-webkit-scrollbar-thumb {
       background-color: var(--border) !important;
     }
-    
+
     *::-webkit-scrollbar-thumb:hover {
       background-color: var(--muted-foreground) !important;
     }
@@ -365,38 +380,36 @@
     scrollbar-color: transparent transparent;
     transition: scrollbar-color 0.2s;
   }
-  
+
   .scrollbar-thin:hover,
   .scrollbar-thin:focus,
   .scrollbar-thin:focus-within {
     scrollbar-color: var(--border) transparent;
   }
-  
+
   /* Webkit browsers (Chrome, Safari, Edge) */
   .scrollbar-thin::-webkit-scrollbar {
     width: 8px;
     height: 8px;
   }
-  
+
   .scrollbar-thin::-webkit-scrollbar-track {
     background: transparent;
   }
-  
+
   .scrollbar-thin::-webkit-scrollbar-thumb {
     background-color: transparent;
     border-radius: 4px;
     transition: background-color 0.2s;
   }
-  
+
   .scrollbar-thin:hover::-webkit-scrollbar-thumb,
   .scrollbar-thin:focus::-webkit-scrollbar-thumb,
   .scrollbar-thin:focus-within::-webkit-scrollbar-thumb {
     background-color: var(--border);
   }
-  
+
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
     background-color: var(--muted-foreground);
   }
 }
-
-

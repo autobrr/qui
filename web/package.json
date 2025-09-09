@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && touch dist/.gitkeep",
     "preview": "vite preview",
     "lint": "eslint \"src/**/*.{ts,tsx,js,jsx}\" \"*.{js,ts}\"",
     "format": "eslint --fix \"src/**/*.{ts,tsx,js,jsx}\" \"*.{js,ts}\""
@@ -47,6 +47,7 @@
     "clsx": "^2.1.1",
     "culori": "^4.0.2",
     "lucide-react": "^0.539.0",
+    "motion": "^12.23.12",
     "next-themes": "^0.4.6",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
