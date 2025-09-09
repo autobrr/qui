@@ -19,6 +19,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from "@/components/ui/alert-dialog"
+import type { Category } from "@/types";
 
 interface CreateTagDialogProps {
   open: boolean
@@ -226,11 +227,11 @@ interface EditCategoryDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   instanceId: number
-  category: { name: string; savePath: string }
+  category: Category
 }
 
 export function EditCategoryDialog({ open, onOpenChange, instanceId, category }: EditCategoryDialogProps) {
-  const [savePath, setSavePath] = useState(category.savePath)
+  const [newSavePath, setNewSavePath] = useState("")
   const queryClient = useQueryClient()
 
   const mutation = useMutation({
@@ -250,11 +251,18 @@ export function EditCategoryDialog({ open, onOpenChange, instanceId, category }:
   })
 
   const handleSave = () => {
-    mutation.mutate(savePath.trim())
+    mutation.mutate(newSavePath.trim())
+  }
+
+  const handleOpenChange = (isOpen: boolean) => {
+    if (!isOpen) {
+      setNewSavePath("")
+    }
+    onOpenChange(isOpen)
   }
 
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
+    <AlertDialog open={open} onOpenChange={handleOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Edit Category: {category.name}</AlertDialogTitle>
@@ -263,11 +271,19 @@ export function EditCategoryDialog({ open, onOpenChange, instanceId, category }:
           </AlertDialogDescription>
         </AlertDialogHeader>
         <div className="py-4 space-y-2">
-          <Label htmlFor="editSavePath">Save Path</Label>
+          <Label htmlFor="oldSavePath">Current Save Path</Label>
+          <Input
+            id="oldSavePath"
+            value={category.savePath || "No save path configured"}
+            className={!category.savePath ? "text-muted-foreground italic" : ""}
+            disabled={!category.savePath}
+            readOnly
+          />
+          <Label htmlFor="editSavePath">New Save Path</Label>
           <Input
             id="editSavePath"
-            value={savePath}
-            onChange={(e) => setSavePath(e.target.value)}
+            value={newSavePath}
+            onChange={(e) => setNewSavePath(e.target.value)}
             placeholder="e.g. /downloads/movies"
             onKeyDown={(e) => {
               if (e.key === "Enter") {

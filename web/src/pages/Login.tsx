@@ -9,6 +9,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Logo } from "@/components/ui/Logo"
+import { ShineBorder } from "@/components/magicui/shine-border"
+import { BlurFade } from "@/components/magicui/blur-fade"
 import { useAuth } from "@/hooks/useAuth"
 import { api } from "@/lib/api"
 import { useForm } from "@tanstack/react-form"
@@ -40,98 +42,101 @@ export function Login() {
 
   return (
     <div className="flex h-screen items-center justify-center bg-background px-4 sm:px-6">
-      <Card className="w-full max-w-md shadow-xl">
-        <CardHeader className="text-center">
-          <div className="flex items-center justify-center mb-2">
-            <Logo className="h-12 w-12" />
-          </div>
-          <CardTitle className="text-3xl font-bold pointer-events-none select-none">
-            qui
-          </CardTitle>
-          <CardDescription className="pointer-events-none select-none">
-            qBittorrent management interface
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="pt-6">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault()
-              form.handleSubmit()
-            }}
-            className="space-y-4"
-          >
-            <form.Field
-              name="username"
-              validators={{
-                onChange: ({ value }) => (!value ? "Username is required" : undefined),
+      <BlurFade duration={0.5} delay={0.1} blur="10px" className="w-full max-w-md">
+        <Card className="relative overflow-hidden w-full shadow-xl">
+          <ShineBorder shineColor={["var(--chart-1)", "var(--chart-2)", "var(--chart-3)"]} />
+          <CardHeader className="text-center">
+            <div className="flex items-center justify-center mb-2">
+              <Logo className="h-12 w-12" />
+            </div>
+            <CardTitle className="text-3xl font-bold pointer-events-none select-none">
+              qui
+            </CardTitle>
+            <CardDescription className="pointer-events-none select-none">
+              qBittorrent management interface
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="pt-6">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault()
+                form.handleSubmit()
               }}
+              className="space-y-4"
             >
-              {(field) => (
-                <div className="space-y-2">
-                  <Label htmlFor={field.name}>Username</Label>
-                  <Input
-                    id={field.name}
-                    type="text"
-                    value={field.state.value}
-                    onBlur={field.handleBlur}
-                    onChange={(e) => field.handleChange(e.target.value)}
-                    placeholder="Enter your username"
-                  />
-                  {field.state.meta.isTouched && field.state.meta.errors[0] && (
-                    <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
-                  )}
+              <form.Field
+                name="username"
+                validators={{
+                  onChange: ({ value }) => (!value ? "Username is required" : undefined),
+                }}
+              >
+                {(field) => (
+                  <div className="space-y-2">
+                    <Label htmlFor={field.name}>Username</Label>
+                    <Input
+                      id={field.name}
+                      type="text"
+                      value={field.state.value}
+                      onBlur={field.handleBlur}
+                      onChange={(e) => field.handleChange(e.target.value)}
+                      placeholder="Enter your username"
+                    />
+                    {field.state.meta.isTouched && field.state.meta.errors[0] && (
+                      <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
+                    )}
+                  </div>
+                )}
+              </form.Field>
+
+              <form.Field
+                name="password"
+                validators={{
+                  onChange: ({ value }) => (!value ? "Password is required" : undefined),
+                }}
+              >
+                {(field) => (
+                  <div className="space-y-2">
+                    <Label htmlFor={field.name}>Password</Label>
+                    <Input
+                      id={field.name}
+                      type="password"
+                      value={field.state.value}
+                      onBlur={field.handleBlur}
+                      onChange={(e) => field.handleChange(e.target.value)}
+                      placeholder="Enter your password"
+                    />
+                    {field.state.meta.isTouched && field.state.meta.errors[0] && (
+                      <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
+                    )}
+                  </div>
+                )}
+              </form.Field>
+
+              {loginError && (
+                <div className="bg-destructive/10 border border-destructive/20 text-destructive px-4 py-3 rounded-md text-sm">
+                  {typeof loginError === "string"? loginError: loginError.message?.includes("Invalid credentials") || loginError.message?.includes("401")? "Invalid username or password": loginError.message || "Login failed. Please try again."}
                 </div>
               )}
-            </form.Field>
 
-            <form.Field
-              name="password"
-              validators={{
-                onChange: ({ value }) => (!value ? "Password is required" : undefined),
-              }}
-            >
-              {(field) => (
-                <div className="space-y-2">
-                  <Label htmlFor={field.name}>Password</Label>
-                  <Input
-                    id={field.name}
-                    type="password"
-                    value={field.state.value}
-                    onBlur={field.handleBlur}
-                    onChange={(e) => field.handleChange(e.target.value)}
-                    placeholder="Enter your password"
-                  />
-                  {field.state.meta.isTouched && field.state.meta.errors[0] && (
-                    <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
-                  )}
-                </div>
-              )}
-            </form.Field>
-
-            {loginError && (
-              <div className="bg-destructive/10 border border-destructive/20 text-destructive px-4 py-3 rounded-md text-sm">
-                {typeof loginError === "string"? loginError: loginError.message?.includes("Invalid credentials") || loginError.message?.includes("401")? "Invalid username or password": loginError.message || "Login failed. Please try again."}
-              </div>
-            )}
-
-            <form.Subscribe
-              selector={(state) => [state.canSubmit, state.isSubmitting]}
-            >
-              {([canSubmit, isSubmitting]) => (
-                <Button
-                  type="submit"
-                  className="w-full"
-                  size="lg"
-                  disabled={!canSubmit || isSubmitting || isLoggingIn}
-                >
-                  {isLoggingIn ? "Logging in..." : "Sign in"}
-                </Button>
-              )}
-            </form.Subscribe>
-          </form>
-          <Footer />
-        </CardContent>
-      </Card>
+              <form.Subscribe
+                selector={(state) => [state.canSubmit, state.isSubmitting]}
+              >
+                {([canSubmit, isSubmitting]) => (
+                  <Button
+                    type="submit"
+                    className="w-full"
+                    size="lg"
+                    disabled={!canSubmit || isSubmitting || isLoggingIn}
+                  >
+                    {isLoggingIn ? "Logging in..." : "Sign in"}
+                  </Button>
+                )}
+              </form.Subscribe>
+            </form>
+            <Footer />
+          </CardContent>
+        </Card>
+      </BlurFade>
     </div>
   )
 }

@@ -3,18 +3,14 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState, useMemo, memo, useCallback, useRef } from "react"
-import { useVirtualizer } from "@tanstack/react-virtual"
 import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger
 } from "@/components/ui/accordion"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
-import { SearchInput } from "@/components/ui/SearchInput"
 import {
   ContextMenu,
   ContextMenuContent,
@@ -22,35 +18,39 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger
 } from "@/components/ui/context-menu"
-import { usePersistedAccordion } from "@/hooks/usePersistedAccordion"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { SearchInput } from "@/components/ui/SearchInput"
 import { useDebounce } from "@/hooks/useDebounce"
+import { usePersistedAccordion } from "@/hooks/usePersistedAccordion"
+import { getLinuxCount, LINUX_CATEGORIES, LINUX_TAGS, LINUX_TRACKERS, useIncognitoMode } from "@/lib/incognito"
+import type { Category } from "@/types"
+import { useVirtualizer } from "@tanstack/react-virtual"
 import {
-  Download,
-  Upload,
+  AlertCircle,
   CheckCircle2,
+  Download,
+  Edit,
+  MoveRight,
   PauseCircle,
   PlayCircle,
-  StopCircle,
-  AlertCircle,
-  XCircle,
   Plus,
-  Edit,
-  Trash2,
   RotateCw,
-  MoveRight,
+  StopCircle,
+  Trash2,
+  Upload,
   X,
+  XCircle,
   type LucideIcon
 } from "lucide-react"
+import { memo, useCallback, useMemo, useRef, useState } from "react"
 import {
-  CreateTagDialog,
-  DeleteTagDialog,
   CreateCategoryDialog,
-  EditCategoryDialog,
+  CreateTagDialog,
   DeleteCategoryDialog,
-  DeleteUnusedTagsDialog
+  DeleteTagDialog,
+  DeleteUnusedTagsDialog,
+  EditCategoryDialog
 } from "./TagCategoryManagement"
-import { LINUX_CATEGORIES, LINUX_TAGS, LINUX_TRACKERS, useIncognitoMode, getLinuxCount } from "@/lib/incognito"
-import type { Category } from "@/types";
 
 interface FilterBadgeProps {
   count: number
@@ -100,7 +100,7 @@ interface FilterSidebarProps {
 // Define torrent states based on qBittorrent
 const TORRENT_STATES: Array<{ value: string; label: string; icon: LucideIcon }> = [
   { value: "downloading", label: "Downloading", icon: Download },
-  { value: "seeding", label: "Seeding", icon: Upload },
+  { value: "uploading", label: "Seeding", icon: Upload },
   { value: "completed", label: "Completed", icon: CheckCircle2 },
   { value: "paused", label: "Paused", icon: PauseCircle },
   { value: "active", label: "Active", icon: PlayCircle },
@@ -157,7 +157,7 @@ const FilterSidebarComponent = ({
   const [showCreateCategoryDialog, setShowCreateCategoryDialog] = useState(false)
   const [showEditCategoryDialog, setShowEditCategoryDialog] = useState(false)
   const [showDeleteCategoryDialog, setShowDeleteCategoryDialog] = useState(false)
-  const [categoryToEdit, setCategoryToEdit] = useState<{ name: string; savePath: string } | null>(null)
+  const [categoryToEdit, setCategoryToEdit] = useState<Category | null>(null)
   const [categoryToDelete, setCategoryToDelete] = useState("")
 
   // Search states for filtering large lists
@@ -219,7 +219,7 @@ const FilterSidebarComponent = ({
 
   // Filtered categories for performance
   const filteredCategories = useMemo(() => {
-    const categoryEntries = Object.entries(categories)
+    const categoryEntries = Object.entries(categories) as [string, Category][]
 
     if (debouncedCategorySearch) {
       const searchLower = debouncedCategorySearch.toLowerCase()
@@ -550,7 +550,7 @@ const FilterSidebarComponent = ({
                                 <ContextMenuContent>
                                   <ContextMenuItem
                                     onClick={() => {
-                                      setCategoryToEdit({ name, savePath: (category as Category).save_path })
+                                      setCategoryToEdit(category)
                                       setShowEditCategoryDialog(true)
                                     }}
                                   >
@@ -576,7 +576,7 @@ const FilterSidebarComponent = ({
                       </div>
                     </div>
                   ) : (
-                    filteredCategories.map(([name, category]: [string, { save_path: string }]) => (
+                    filteredCategories.map(([name, category]: [string, Category]) => (
                       <ContextMenu key={name}>
                         <ContextMenuTrigger asChild>
                           <label className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer">
@@ -595,7 +595,7 @@ const FilterSidebarComponent = ({
                         <ContextMenuContent>
                           <ContextMenuItem
                             onClick={() => {
-                              setCategoryToEdit({ name, savePath: category.save_path })
+                              setCategoryToEdit(category)
                               setShowEditCategoryDialog(true)
                             }}
                           >

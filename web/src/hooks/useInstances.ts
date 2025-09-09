@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import type { InstanceFormData, InstanceResponse } from "@/types"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
 export function useInstances() {
   const queryClient = useQueryClient()
@@ -13,7 +13,7 @@ export function useInstances() {
   const { data: instances, isLoading, error } = useQuery({
     queryKey: ["instances"],
     queryFn: () => api.getInstances(),
-    refetchInterval: 30000, // Refetch every 30 seconds for a single-user app
+    refetchInterval: 30000, // Refetch every 30 seconds
   })
 
   const createMutation = useMutation({

@@ -4,6 +4,7 @@
  */
 
 import { useDebounce } from "@/hooks/useDebounce"
+import { useKeyboardNavigation } from "@/hooks/useKeyboardNavigation"
 import { usePersistedColumnOrder } from "@/hooks/usePersistedColumnOrder"
 import { usePersistedColumnSizing } from "@/hooks/usePersistedColumnSizing"
 import { usePersistedColumnSorting } from "@/hooks/usePersistedColumnSorting"
@@ -67,6 +68,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
+import { ScrollToTopButton } from "@/components/ui/scroll-to-top-button"
 import {
   Tooltip,
   TooltipContent,
@@ -226,25 +228,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
   // Map TanStack Table column IDs to backend field names
   const getBackendSortField = (columnId: string): string => {
-    const mapping: Record<string, string> = {
-      "priority": "priority",
-      "name": "name",
-      "size": "size",
-      "progress": "progress",
-      "state": "state",
-      "dlspeed": "dlspeed",
-      "upspeed": "upspeed",
-      "eta": "eta",
-      "ratio": "ratio",
-      "added_on": "added_on",
-      "category": "category",
-      "tags": "tags",
-      "downloaded": "downloaded",
-      "uploaded": "uploaded",
-      "save_path": "save_path",
-      "tracker": "tracker",
-    }
-    return mapping[columnId] || "added_on"
+    return columnId || "added_on"
   }
 
   // Fetch torrents data with backend sorting
@@ -346,22 +330,28 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
   // Calculate these after we have selectedHashes
   const isSelectAllChecked = useMemo(() => {
-    if (isAllSelected) return true
+    if (isAllSelected) {
+      // When in "select all" mode, only show checked if no exclusions exist
+      return excludedFromSelectAll.size === 0
+    }
     const regularSelectionCount = Object.keys(rowSelection)
       .filter((key: string) => (rowSelection as Record<string, boolean>)[key]).length
     return regularSelectionCount === sortedTorrents.length && sortedTorrents.length > 0
-  }, [isAllSelected, rowSelection, sortedTorrents.length])
+  }, [isAllSelected, excludedFromSelectAll.size, rowSelection, sortedTorrents.length])
 
   const isSelectAllIndeterminate = useMemo(() => {
     // Show indeterminate (dash) when SOME but not ALL items are selected
-    if (isAllSelected) return false // All selected = checkmark, not dash
+    if (isAllSelected) {
+      // In "select all" mode, show indeterminate if some are excluded
+      return excludedFromSelectAll.size > 0
+    }
 
     const regularSelectionCount = Object.keys(rowSelection)
       .filter((key: string) => (rowSelection as Record<string, boolean>)[key]).length
 
     // Indeterminate when some (but not all) are selected
     return regularSelectionCount > 0 && regularSelectionCount < sortedTorrents.length
-  }, [isAllSelected, rowSelection, sortedTorrents.length])
+  }, [isAllSelected, excludedFromSelectAll.size, rowSelection, sortedTorrents.length])
 
   // Memoize columns to avoid unnecessary recalculations
   const columns = useMemo(
@@ -597,6 +587,17 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       }, 0)
     }
   }, [filters, effectiveSearch, instanceId, virtualizer, sortedTorrents.length, setRowSelection, lastUserAction])
+
+  // Set up keyboard navigation
+  useKeyboardNavigation({
+    parentRef,
+    virtualizer,
+    safeLoadedRows,
+    hasLoadedAll,
+    isLoadingMore,
+    loadMore,
+    estimatedRowHeight: 40,
+  })
 
 
   // Mutation for bulk actions
@@ -1114,7 +1115,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
       {/* Table container */}
       <div className="flex flex-col flex-1 min-h-0 mt-2 sm:mt-0 overflow-hidden">
-        <div className="relative flex-1 overflow-auto scrollbar-thin" ref={parentRef}>
+        <div
+          className="relative flex-1 overflow-auto scrollbar-thin"
+          ref={parentRef}
+          role="grid"
+          aria-label="Torrents table"
+          aria-rowcount={totalCount}
+          aria-colcount={table.getVisibleLeafColumns().length}
+        >
           <div style={{ position: "relative", minWidth: "min-content" }}>
             {/* Header */}
             <div className="sticky top-0 bg-background border-b" style={{ zIndex: 50 }}>
@@ -1491,18 +1499,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
             {effectiveSelectionCount > 0 && (
               <>
                 <span className="ml-2">
-                  ({isAllSelected ? `All ${effectiveSelectionCount}` : effectiveSelectionCount} selected)
+                  ({isAllSelected && excludedFromSelectAll.size === 0 ? `All ${effectiveSelectionCount}` : effectiveSelectionCount} selected)
                 </span>
-                <button
-                  onClick={() => {
-                    setRowSelection({})
-                    setIsAllSelected(false)
-                    setExcludedFromSelectAll(new Set())
-                  }}
-                  className="ml-2 text-xs text-primary hover:text-foreground transition-colors underline-offset-4 hover:underline"
-                >
-                  Clear selection
-                </button>
               </>
             )}
             {showRefetchIndicator && (
@@ -1656,6 +1654,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Scroll to top button*/}
+      <div className="hidden lg:block">
+        <ScrollToTopButton
+          scrollContainerRef={parentRef}
+          className="bottom-20 right-6"
+        />
+      </div>
     </div>
   )
 });

@@ -25,6 +25,7 @@ import (
 	"github.com/autobrr/qui/internal/auth"
 	"github.com/autobrr/qui/internal/config"
 	"github.com/autobrr/qui/internal/database"
+	quihttp "github.com/autobrr/qui/internal/http"
 	"github.com/autobrr/qui/internal/metrics"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/polar"
@@ -454,9 +455,10 @@ func (app *Application) runServer() {
 	}
 
 	clientAPIKeyStore := models.NewClientAPIKeyStore(db.Conn())
+	errorStore := models.NewInstanceErrorStore(db.Conn())
 
 	// Initialize qBittorrent client pool
-	clientPool, err := qbittorrent.NewClientPool(instanceStore)
+	clientPool, err := qbittorrent.NewClientPool(instanceStore, errorStore)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize client pool")
 	}
@@ -465,16 +467,42 @@ func (app *Application) runServer() {
 	// Initialize managers
 	syncManager := qbittorrent.NewSyncManager(clientPool)
 
-	var metricsManager *metrics.Manager
+	var metricsManager *metrics.MetricsManager
 	if cfg.Config.MetricsEnabled {
-		metricsManager = metrics.NewManager(syncManager, clientPool)
-		log.Info().Msg("Prometheus metrics enabled at /metrics endpoint")
+		metricsManager = metrics.NewMetricsManager(syncManager, clientPool)
+
+		// Start metrics server on separate port
+		go func() {
+			// Parse basic auth users
+			basicAuthUsers := map[string]string{}
+			if cfg.Config.MetricsBasicAuthUsers != "" {
+				for cred := range strings.SplitSeq(cfg.Config.MetricsBasicAuthUsers, ",") {
+					parts := strings.Split(strings.TrimSpace(cred), ":")
+					if len(parts) == 2 {
+						basicAuthUsers[parts[0]] = parts[1]
+					} else {
+						log.Warn().Msgf("Invalid metrics basic auth credentials: %s", cred)
+					}
+				}
+			}
+
+			metricsServer := quihttp.NewMetricsServer(
+				metricsManager,
+				cfg.Config.MetricsHost,
+				cfg.Config.MetricsPort,
+				basicAuthUsers,
+			)
+
+			if err := metricsServer.Start(); err != nil && err != http.ErrServerClosed {
+				log.Error().Err(err).Msg("Metrics server failed")
+			}
+		}()
 	}
 
 	// Initialize client connections for all active instances on startup
 	go func() {
 		listCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		instances, err := instanceStore.List(listCtx, true) // Only active instances
+		instances, err := instanceStore.List(listCtx)
 		cancel()
 
 		if err != nil {

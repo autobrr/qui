@@ -2,750 +2,105 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Project Overview
-
-qui - a self-hosted, single-user web interface for managing multiple qBittorrent instances. Built with Go backend and React frontend.
-
-**Important**: See `prd_final.md` for the complete implementation plan, architecture details, and technical specifications.
+## Additional Instructions
+- commit guidelines @docs/git-instructions.md
+- development guidelines @docs/instructions.md
 
 ## Development Commands
 
-### Backend (Go)
-```bash
-# Install dependencies
-go mod download
+### Core Development
+- `make dev` - Start both frontend and backend with hot reload
+- `make dev-backend` - Backend only with air hot reload
+- `make dev-frontend` - Frontend only (Vite dev server)
+- `make build` - Build complete application (frontend + backend binary)
 
-# Build backend
-go build -ldflags "-X main.Version=$(git describe --tags --always)" -o qui ./cmd/qui
+### Testing and Quality
+- `make test` - Run Go tests
+- `make test-openapi` - Validate OpenAPI specification  
+- `make lint` - Lint both Go and TypeScript code
+- `make fmt` - Format both Go and TypeScript code
+- `golangci-lint run` - Go specific linting
+- `cd web && pnpm lint` - Frontend linting
+- `cd web && pnpm format` - Frontend formatting
 
-# Run backend in development
-air -c .air.toml  # Hot reload
+### Binary Operations
+- `./qui serve` - Run the server
+- `./qui generate-config` - Generate default config.toml
+- `./qui create-user --username admin` - Create initial user account
+- `./qui update` - Self-update the binary
 
-# Run tests
-go test ./...
+## Architecture Overview
 
-# Run specific test
-go test -v -run TestFunctionName ./path/to/package
+### High-Level Structure
+qui is a modern Go web application providing a qBittorrent WebUI alternative. The architecture follows clean architecture principles with clear separation between layers.
 
-# Run integration tests (requires qBittorrent instance)
-go test -v -tags=integration ./internal/qbittorrent
+**Core Components:**
+- **Frontend**: React/TypeScript SPA in `web/` using Vite, TanStack Router, shadcn/ui
+- **Backend**: Go HTTP server using chi router with embedded frontend assets
+- **Database**: SQLite with migration system
+- **qBittorrent Integration**: Client pool for managing multiple instances
+- **Real-time Sync**: WebSocket-like sync manager for live torrent updates
 
-# Run with coverage
-go test -coverprofile=coverage.out ./...
-go tool cover -html=coverage.out
-
-# Run with race detection
-go test -race ./...
-
-# Benchmark tests
-go test -bench=. ./internal/qbittorrent
-
-# Validate OpenAPI spec
-go test -v ./internal/web/swagger
+### Package Structure
+```
+cmd/qui/           - CLI commands and main application entry
+internal/
+  api/             - HTTP handlers and routing
+  auth/            - Authentication and session management  
+  config/          - Configuration management
+  database/        - SQLite setup and migrations
+  models/          - Data models and database stores
+  metrics/         - Prometheus metrics collection
+  polar/           - Premium theme licensing (Polar.sh integration)
+  proxy/           - Reverse proxy for external app integration
+  qbittorrent/     - qBittorrent client pool and sync management
+  services/        - Business logic layer
+  update/          - Self-update functionality
+  web/             - Embedded frontend assets and handlers
+web/               - React frontend source code
 ```
 
-### Frontend (React/TypeScript)
-```bash
-# Install dependencies
-cd web && pnpm install
+### Key Patterns
 
-# Run frontend in development
-cd web && pnpm dev
+**Client Pool Architecture**: Uses a connection pool (`internal/qbittorrent/pool.go`) to manage multiple qBittorrent instances with automatic reconnection and health monitoring.
 
-# Build frontend for production
-cd web && pnpm build
+**Sync Manager**: Real-time synchronization system (`internal/qbittorrent/sync_manager.go`) that efficiently handles large torrent collections (10k+) using WebSocket-like patterns.
 
-# Lint frontend code
-cd web && pnpm lint
+**Store Pattern**: Database access through dedicated stores (`internal/models/`) with proper error handling and encryption for sensitive data.
 
-# Format frontend code
-cd web && pnpm format
+**Reverse Proxy**: Built-in proxy (`internal/proxy/`) allows external applications (Sonarr, Radarr, etc.) to access qBittorrent instances through qui without credential exposure.
 
-# Type check
-cd web && pnpm tsc -b
-```
+## Technology Stack
 
-### Full Build
-```bash
-# Build both frontend and backend into single binary
-make build
+### Backend
+- **Language**: Go 1.24+
+- **Router**: chi/v5 
+- **Database**: SQLite with modernc.org/sqlite driver
+- **Auth**: Session-based with Argon2 password hashing
+- **Metrics**: Prometheus client
+- **Self-update**: creativeprojects/go-selfupdate
 
-# Development mode (run both frontend and backend)
-make dev
+### Frontend  
+- **Framework**: React 19 with TypeScript
+- **Router**: TanStack Router
+- **State**: TanStack Query for server state
+- **UI**: shadcn/ui components with Radix primitives
+- **Styling**: Tailwind CSS v4
+- **Build**: Vite with PWA plugin
 
-# Run backend with hot reload
-make dev-backend
+### Notable Dependencies
+- `autobrr/go-qbittorrent` - qBittorrent API client
+- `gorilla/sessions` - Session management
+- `spf13/viper` - Configuration
+- `rs/zerolog` - Structured logging
 
-# Run frontend development server
-make dev-frontend
+## Development Workflow
 
-# Format code
-make fmt
-
-# Lint code
-make lint
-
-# Modernize Go code (interface{} -> any, etc)
-make modern
-
-# Validate OpenAPI specification
-make test-openapi
-
-# Install all dependencies
-make deps
-
-# Clean build artifacts
-make clean
-```
-
-## Architecture
-
-### Backend Architecture
-- **Framework**: Chi router (github.com/go-chi/chi/v5)
-- **Database**: SQLite via modernc.org/sqlite (CGO-free)
-- **qBittorrent Client**: github.com/autobrr/go-qbittorrent
-- **Session Management**: gorilla/sessions with secure cookies
-- **Configuration**: Viper with TOML config and environment overrides
-- **Performance**: Ristretto cache, ants/v2 goroutine pool
-- **Logging**: zerolog with configurable levels
-
-Key patterns:
-- Frontend assets embedded using `go:embed` 
-- Single user authentication (no multi-tenancy)
-- Connection pooling for multiple qBittorrent instances
-- Cache-first architecture with coordinated invalidation
-
-### Frontend Architecture
-- **Build**: Vite with React 19 and TypeScript
-- **Routing**: TanStack Router for type-safe routes
-- **Data**: TanStack Query for server state, TanStack Form for forms
-- **UI**: shadcn/ui components exclusively (no custom modifications)
-- **Tables**: TanStack Table v8 with TanStack Virtual for performance
-- **Styling**: Tailwind CSS v4 with CSS-first configuration
-- **State**: React hooks + TanStack Query (no global state library)
-
-#### Important: shadcn/ui Component Installation
-The project is already configured for shadcn/ui components:
-- **Location**: Components are installed in `web/src/components/ui/`
-- **Configuration**: `components.json` is configured to use `src/components/ui`
-- **Installation**: Use `cd web && pnpm dlx shadcn@latest add <component-name>`
-
-Key patterns:
-- Server-side operations for large datasets
-- Virtual scrolling for performance
-- Incremental sync updates via SyncMainData
-- Progressive loading for initial render
-- Optimistic UI updates with delayed server invalidation
-- PWA support with service worker (production builds only)
-- Theme system with CSS-based configuration
-
-#### TanStack Form Best Practices
-- **Avoid `form.reset()`**: Use individual `form.setFieldValue(field, value)` calls for updating form values
-- **Use nullish coalescing (`??`) not logical OR (`||`)**: Prevents `0`, `false`, and `""` from being replaced with fallbacks
-- **Example**:
-  ```typescript
-  // ❌ Problematic - reset() doesn't work reliably, || treats 0 as falsy
-  form.reset({ 
-    max_downloads: preferences.max_downloads || 3 
-  })
-  
-  // ✅ Correct - setFieldValue works reliably, ?? only fallbacks null/undefined
-  form.setFieldValue("max_downloads", preferences.max_downloads ?? 3)
-  ```
-
-#### TanStack Router Search Parameter Best Practices
-- **Zod is available**: The project includes `zod` v4 for validation - import with `import { z } from "zod"`
-- **Direct Zod validation**: Use Zod schemas directly with `validateSearch: zodSchema` (no `@tanstack/zod-adapter` needed)
-- **Always define search schemas**: Use `validateSearch` with Zod in route definitions for type safety
-- **Avoid `useSearch({ strict: false })`**: Only use when route context is unavailable; prefer typed search
-- **Never use `any` type assertions**: Use proper search parameter schemas instead
-- **Handle navigation in route components**: Use `Route.useNavigate()` where the schema is defined
-- **Pass search state as props**: When components need search state, pass from route component
-- **Example**:
-  ```typescript
-  // ✅ Route definition with search schema
-  import { z } from "zod"
-  
-  const searchSchema = z.object({
-    modal: z.enum(["add-torrent"]).optional(),
-  })
-  
-  export const Route = createFileRoute("/path")({ 
-    validateSearch: searchSchema,
-    component: Component 
-  })
-  
-  // ✅ Type-safe navigation in route component
-  function Component() {
-    const search = Route.useSearch() // Fully typed
-    const navigate = Route.useNavigate() // Route-aware
-    
-    const updateSearch = (newSearch) => {
-      navigate({ search: newSearch, replace: true })
-    }
-  }
-  ```
-
-#### Component Form Patterns
-The project uses focused, purpose-specific dialog patterns for better UX:
-
-**Focused Dialogs Pattern**:
-- **Principle**: Small, focused dialogs instead of large multi-section forms
-- **Implementation**: Each dialog handles one specific area (e.g., Speed Limits, Queue Management)
-- **Access Pattern**: Dropdown menus provide direct access to specific settings
-
-**Dialog Component Structure**:
-```typescript
-// Example: SpeedLimitsDialog
-function SpeedLimitsDialog({ instanceId, open, onOpenChange }: DialogProps) {
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Speed Limits</DialogTitle>
-        </DialogHeader>
-        <SpeedLimitsForm instanceId={instanceId} onClose={() => onOpenChange(false)} />
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-// Corresponding focused form component
-function SpeedLimitsForm({ instanceId, onClose }: FormProps) {
-  const { preferences, updatePreferences } = useInstancePreferences(instanceId)
-  // Form implementation focused on speed limits only
-}
-```
-
-**Benefits**:
-- Smaller, less overwhelming interfaces
-- Better mobile experience
-- Faster loading and rendering
-- Clear separation of concerns
-- Reduced cognitive load for users
+1. **Frontend Development**: Run `make dev` for full stack or `make dev-frontend` for frontend-only development
+2. **Backend Development**: Use `make dev-backend` with air for hot reload on Go changes  
+3. **Testing**: Always run `make test` and `make lint` before commits
+4. **Building**: Use `make build` to create production binary with embedded frontend
 
 ## Configuration
 
-### Environment Variables
-Environment variables use `qui__` prefix:
-- `qui__HOST` (default: localhost or 0.0.0.0 in containers)
-- `qui__PORT` (default: 7476)
-- `qui__BASE_URL` (serve app under subdirectory, e.g., "/qui/")
-- `qui__SESSION_SECRET` (auto-generated if not set)
-- `qui__LOG_LEVEL` (ERROR, DEBUG, INFO, WARN, TRACE)
-
-Config file: `config.toml` (auto-created on first run)
-Database file: `qui.db` (always created next to config.toml)
-
-## API Endpoints
-
-Protected routes require authentication via session cookie or API key header (`X-API-Key`).
-
-- `POST /api/auth/setup` - Initial user setup
-- `POST /api/auth/login` - User login
-- `GET /api/instances` - List all instances
-- `POST /api/instances` - Add new instance
-- `GET /api/instances/{id}/torrents` - Get torrents (paginated)
-- `GET /api/instances/{id}/torrents/sync` - SyncMainData endpoint
-- `POST /api/instances/{id}/torrents` - Add torrent
-- `POST /api/instances/{id}/torrents/bulk-action` - Bulk operations
-- `GET /api/instances/{id}/preferences` - Get instance preferences
-- `PATCH /api/instances/{id}/preferences` - Update instance preferences
-- `GET /metrics` - Prometheus metrics endpoint (requires API key)
-
-## Database Schema
-
-Single-user design with encrypted instance credentials:
-- `user` table - Single record enforced
-- `api_keys` table - For automation/scripts
-- `instances` table - qBittorrent instance connections
-
-## Testing Strategy
-
-- Backend: Table-driven tests for handlers
-- Frontend: React Testing Library for components
-- E2E: Playwright for critical user flows
-
-### Running Tests
-
-```bash
-# Run all backend tests
-go test ./...
-
-# Run specific package tests
-go test -v ./internal/qbittorrent
-
-# Run integration tests
-go test -v -tags=integration ./internal/qbittorrent
-
-# Run with race detection
-go test -race ./...
-
-# Benchmark cache performance
-go test -bench=. ./internal/qbittorrent
-```
-
-## Commit Guidelines
-
-Follow Conventional Commit format with package name as scope:
-- `feat(package):` New feature
-- `fix(package):` Bug fix
-- `docs(package):` Documentation only
-- `style(package):` Code style changes
-- `refactor(package):` Code refactoring
-- `test(package):` Test changes
-- `chore(package):` Build process or auxiliary tool changes
-
-Examples using Go package names as scopes:
-- `feat(metrics):` Add Prometheus metrics endpoint
-- `fix(qbittorrent):` Correct connection pooling
-- `refactor(api):` Simplify handler structure
-- `test(database):` Add migration tests
-- `chore(deps):` Update Go dependencies
-
-For frontend changes, use:
-- `feat(web):` Frontend changes
-- `fix(web):` Frontend bug fixes
-
-**CRITICAL**: Never reference Claude or Claude Code in any commit messages
-
-## Commit Co-Authors
-
-- **Important**: Never add co-authors to commits at all
-
-## Common Development Workflows
-
-### Adding a New API Endpoint
-1. Define handler in `internal/api/handlers/`
-2. Add route in `internal/api/router.go`
-3. Update frontend API client in `web/src/lib/api.ts`
-4. Add TypeScript types in `web/src/types/index.ts`
-5. Create React Query hook in `web/src/hooks/`
-
-### Adding a New shadcn/ui Component
-```bash
-cd web
-pnpm dlx shadcn@latest add <component-name>
-# Components are installed in web/src/components/ui/
-# The project is pre-configured with components.json
-```
-
-### Debugging Performance Issues
-1. Check backend logs with `LOG_LEVEL=DEBUG`
-2. Monitor cache hit rates in sync_manager.go
-3. Use browser DevTools Performance tab for frontend
-4. Check virtual scrolling in TorrentTableOptimized.tsx
-
-## Key Implementation Details
-
-### Backend
-- **Database Migrations**: Auto-run on startup via `internal/database/migrations.go`
-- **Instance Connections**: Pooled and health-checked every 30 seconds
-- **Password Storage**: Argon2id hashing with secure defaults
-- **Session Management**: HTTP-only cookies with CSRF protection
-- **API Response Format**: Always camelCase JSON (handled by converters)
-
-### Frontend
-- **Route Guards**: Authentication checked in `_authenticated.tsx` layout
-- **Real-time Updates**: 
-  - Dashboard uses 10-second polling for stats
-  - Torrent table uses paginated API with 5-second polling
-- **State Management**: 
-  - Server state: TanStack Query with 5s stale time
-  - UI state: React useState/useReducer
-- **Virtual Scrolling**: Progressive loading starting at 100 rows
-- **Column Resizing**: Persisted in component state (not localStorage)
-- **Torrent Details**: 
-  - Click torrent row to view details panel below table
-  - Tabs for General, Trackers, and Content (Files)
-  - Responsive split layout (side-by-side on desktop, stacked on mobile)
-
-### Critical Files
-- `internal/qbittorrent/sync_manager.go` - Handles all torrent operations and caching
-- `web/src/hooks/useTorrentsList.ts` - Main hook for torrent data fetching
-- `web/src/components/torrents/TorrentTableOptimized.tsx` - Virtual scrolling implementation with torrent details
-- `web/src/components/torrents/TorrentDetailsPanel.tsx` - Torrent details panel with tabs
-- `internal/api/handlers/torrents.go` - Backend filtering and pagination logic
-
-## Docker Deployment
-
-The application can be deployed using Docker:
-
-```bash
-# Using Docker Compose (recommended)
-docker compose up -d
-
-# Or standalone
-docker run -d \
-  -v $(pwd)/config:/config \
-  ghcr.io/autobrr/qui:latest
-```
-
-### Environment Variables for Docker
-- `QUI__HOST`: Listen address (default: 0.0.0.0 in containers)
-- `QUI__PORT`: Port number (default: 8080)
-- `QUI__BASE_URL`: Serve from subdirectory (e.g., "/qui/")
-- `QUI__SESSION_SECRET`: Cookie encryption secret
-- `QUI__LOG_LEVEL`: Logging level (ERROR, DEBUG, INFO, WARN, TRACE)
-
-## Base URL Configuration
-
-When serving the application from a subdirectory (e.g., `/qui/`), set the `baseUrl` in config:
-
-```toml
-baseUrl = "/qui/"
-```
-
-This configuration:
-- Mounts all routes under the specified path
-- Injects the base URL into the frontend at runtime (no rebuild needed)
-- Updates API endpoints and router navigation automatically
-- Redirects root path `/` to the base URL
-
-Example nginx proxy configuration:
-```nginx
-location /qui/ {
-    proxy_pass http://localhost:7476/qui/;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-}
-```
-
-## Theme System
-
-### Theme Configuration
-- **Theme Files**: Located in `web/src/themes/`
-- **Theme Selection**: Available in Settings → Appearance
-- **License Validation**: Some themes require license validation
-- **Custom Themes**: CSS-based theme system with CSS variables
-
-### Available Themes
-Multiple built-in themes including minimal, cyberpunk, catppuccin, and more.
-
-## PWA Configuration
-
-### Progressive Web App Features
-- **Service Worker**: Enabled in production builds only
-- **Caching Strategy**: 
-  - NetworkFirst for API calls (5-minute cache)
-  - CacheFirst for fonts (1-year cache)
-- **Offline Support**: Basic offline functionality with cached resources
-- **Installation**: Can be installed as a native app on supported devices
-
-## Known Issues and Workarounds
-- SyncMainData implementation exists but is currently unused due to complexity
-- Tags can be either string[] or comma-separated string from API
-- Instance status requires periodic health checks due to connection drops
-- **TanStack Form `form.reset()` Issue**: `form.reset()` does not reliably update form field values. Use individual `form.setFieldValue(field, value)` calls instead
-- **TanStack Router Search Parameters**: Always define search schemas in route definitions. Avoid `useSearch({ strict: false })` and `any` type assertions. Handle navigation in route components where schemas are defined.
-
-## Cache Management and Real-time Updates
-
-### Backend Cache Strategy
-The backend uses Ristretto cache with **2-second TTL** for torrent data to ensure responsive updates after user actions. Key considerations:
-
-- **Cache Invalidation**: Immediately clear cache after bulk actions (pause/resume/delete) and adding torrents
-- **qBittorrent Processing Time**: qBittorrent needs time to process actions before its API reflects changes
-- **Cache TTL**: Reduced from 10-30 seconds to 2 seconds for better responsiveness
-
-### Frontend Update Strategy
-Frontend uses coordinated timing with backend for optimal user experience:
-
-- **TorrentActions**: 1-second delay before React Query invalidation
-- **AddTorrentDialog**: 500ms delay before React Query invalidation  
-- **React Query**: 5-second stale time with `exact: false` invalidation to match all related queries
-
-### Implementation Pattern
-```go
-// Backend: Immediate cache clear after action
-h.syncManager.BulkAction(ctx, instanceID, hashes, action)
-h.syncManager.InvalidateCache(instanceID) // Clear entire cache
-
-// Frontend: Delayed invalidation to allow qBittorrent processing
-setTimeout(() => {
-  queryClient.invalidateQueries({ 
-    queryKey: ['torrents-list', instanceId],
-    exact: false 
-  })
-}, 1000) // 1 second for actions, 500ms for adding torrents
-```
-
-This approach ensures:
-1. Actions return immediately (good UX)  
-2. Backend cache is cleared immediately
-3. Frontend waits for qBittorrent to process changes
-4. Next API call gets fresh data with updated torrent states
-
-## Cache Architecture and qBittorrent Protection
-
-### Cache Implementation
-The backend uses **Ristretto** high-performance cache to prevent overwhelming qBittorrent instances:
-
-- **Cache Capacity**: 1GB memory, 10M counters
-- **Shared Cache**: Single cache serves all qBittorrent instances
-- **Metrics Available**: Hit/miss ratios exposed for monitoring via pool stats
-
-### Cache TTL Strategy
-Different data types have optimized TTL values:
-
-- **Torrent Lists**: 2-second TTL (main torrent data for responsiveness)
-- **Categories/Tags**: 60-second TTL (metadata rarely changes)  
-- **Torrent Properties**: 30-second TTL (individual torrent details)
-- **Filtered Results**: 5-second TTL (search/filter combinations)
-- **Torrent Files/Trackers**: 30-second TTL (detailed torrent data)
-
-### Cache Key Structure
-Every API endpoint uses specific cache keys to prevent collisions:
-```
-torrents:filtered:{instanceId}:{offset}:{limit}:{sort}:{order}:{search}:{filters}
-categories:{instanceId}
-tags:{instanceId}
-torrent:properties:{instanceId}:{hash}
-torrent:trackers:{instanceId}:{hash}
-```
-
-### Protection Mechanisms
-1. **Respectful Polling**: Frontend React Query polls every 5 seconds (not aggressive)
-2. **Cache-First**: Backend checks cache before qBittorrent API calls
-3. **Coordinated Invalidation**: Cache cleared immediately after user actions
-4. **Batch Operations**: Multiple requests coalesced where possible
-5. **Health Monitoring**: Instance connections health-checked every 30 seconds
-
-### Monitoring Cache Performance
-Cache metrics are exposed in the client pool stats:
-- `cache_hits`: Number of successful cache lookups
-- `cache_misses`: Number of cache misses requiring qBittorrent API calls
-- Monitor these to ensure qBittorrent instances aren't being overwhelmed
-
-### Performance Monitoring and Debugging
-The application includes several performance monitoring tools:
-
-**Cache Metrics Monitoring**:
-```bash
-# Enable debug logging to see cache hit/miss ratios
-QUI__LOG_LEVEL=DEBUG ./qui serve
-
-# Monitor cache performance in logs
-tail -f qui.log | grep "cache"
-```
-
-**Goroutine Pool Monitoring**:
-- Uses `ants/v2` goroutine pool for connection management
-- Pool stats available via debugging endpoints
-- Monitor for pool exhaustion under high load
-
-**Connection Health Monitoring**:
-- Instance connections health-checked every 30 seconds
-- Failed connections marked offline in dashboard
-- Automatic reconnection attempts with exponential backoff
-
-**Frontend Performance**:
-- Virtual scrolling enabled for >100 torrents
-- React Query stale time: 5 seconds
-- TanStack Virtual for efficient large list rendering
-- Progressive loading prevents initial render blocking
-
-**Debug Commands**:
-```bash
-# Enable verbose qBittorrent client logging
-QUI__LOG_LEVEL=TRACE ./qui serve
-
-# Monitor SQL query performance
-QUI__LOG_LEVEL=DEBUG ./qui serve | grep "sql"
-
-# Check goroutine and memory usage
-go tool pprof http://localhost:7476/debug/pprof/goroutine
-go tool pprof http://localhost:7476/debug/pprof/heap
-```
-
-## Prometheus Metrics
-
-The `/metrics` endpoint exposes Prometheus metrics for monitoring. Implementation details:
-
-### Metrics Architecture
-- **Custom Collector**: Implements `prometheus.Collector` interface in `internal/metrics/collector.go`
-- **Proactive Connection**: Establishes connections when scraped (no UI required)
-- **On-demand Calculation**: Metrics computed during scrape, not pre-stored
-- **API Key Required**: Uses existing API key authentication system
-
-### Available Metrics
-- `qbittorrent_torrents_*` - Torrent counts by status (downloading, seeding, paused, error, checking)
-- `qbittorrent_*_speed_bytes_per_second` - Upload/download speeds
-- `qbittorrent_instance_connection_status` - Instance health (1=connected, 0=disconnected)
-
-All metrics labeled with `instance_id` and `instance_name` for multi-instance monitoring.
-
-## Instance Preferences System
-
-The application includes a comprehensive instance preferences system for managing qBittorrent settings.
-
-### Backend Architecture
-**SyncManager Integration** (`internal/qbittorrent/sync_manager.go`):
-- `GetAppPreferences(instanceID)` - Cached preference retrieval (60s TTL)
-- `SetAppPreferences(instanceID, prefs)` - Updates with cache invalidation
-- Same caching strategy as categories/tags for consistency
-
-**API Handler** (`internal/api/handlers/preferences.go`):
-- `GET /api/instances/{id}/preferences` - Retrieve preferences
-- `PATCH /api/instances/{id}/preferences` - Partial updates support
-- Returns updated preferences after successful modification
-
-### Frontend Integration
-**React Hook** (`web/src/hooks/useInstancePreferences.ts`):
-```typescript
-const { preferences, updatePreferences, isLoading } = useInstancePreferences(instanceId)
-
-// Optimistic updates with error rollback
-updatePreferences({ dl_limit: 1000 })
-```
-
-**Smart Defaults in Components**:
-- **AddTorrentDialog**: Uses `save_path`, `start_paused_enabled`, `auto_tmm_enabled` from preferences
-- **Dashboard**: Shows per-instance speed limits alongside current speeds
-- **Settings Integration**: Focused dialogs for specific preference areas
-
-### Focused Dialog Pattern
-Instance preferences use focused, purpose-specific dialogs accessed from Dashboard instance cards:
-
-**Available Dialogs**:
-- **Speed Limits**: Download/upload limits and alternative speeds
-- **Queue Management**: Active torrent limits and queue settings
-- **File Management**: Save paths and automatic torrent management
-- **Seeding Limits**: Ratio and time-based seeding controls
-
-**Access Pattern**:
-1. Dashboard instance card → More menu (⋮) → Specific preference area
-2. Small, focused dialog opens with relevant settings only
-3. Real-time updates with optimistic UI feedback
-
-**Benefits**:
-- Reduced cognitive load with focused interfaces
-- Better mobile experience with smaller dialogs
-- Direct access to specific settings without navigation
-- Consistent with existing component patterns
-
-### Usage Examples
-```typescript
-// Reading preferences in components
-const { preferences } = useInstancePreferences(instanceId)
-const downloadLimit = preferences?.dl_limit || 0
-
-// Smart defaults in forms
-const defaultSavePath = preferences?.save_path || "/downloads"
-const useAutoTMM = preferences?.auto_tmm_enabled ?? true
-
-// Conditional UI based on preferences
-{preferences?.queueing_enabled && (
-  <QueueStatusBadge position={torrent.priority} />
-)}
-```
-
-The system provides type-safe preference management with comprehensive caching and real-time updates across the entire application.
-
-## Reverse Proxy System
-
-The application includes a reverse proxy system that allows external applications (like Sonarr, Radarr) to connect to qBittorrent instances through qui without requiring qBittorrent credentials.
-
-### Architecture Overview
-
-The reverse proxy provides transparent authentication by:
-1. **Client API Key Authentication**: Each external client gets a unique API key mapped to a specific qBittorrent instance
-2. **Cookie Jar Forwarding**: Uses qui's authenticated HTTP client cookie jar to forward session cookies
-3. **Transparent Proxying**: External clients see qui as if it were qBittorrent directly
-
-### Key Components
-
-#### Database Schema
-- **client_api_keys table**: Stores API keys with instance mapping and usage tracking
-- **Migration**: `004_add_client_api_keys.sql` adds the necessary schema
-
-#### Backend Implementation
-- **Handler**: `internal/proxy/handler.go` - Main reverse proxy logic
-- **Middleware**: `internal/proxy/middleware.go` - Client API key validation  
-- **Buffer Pool**: `internal/proxy/buffer_pool.go` - Optimized memory management
-- **Models**: `internal/models/client_api_key.go` - API key data structures
-- **API Handler**: `internal/api/handlers/client_api_keys.go` - CRUD operations for keys
-
-#### Frontend Integration  
-- **Manager Component**: `web/src/components/settings/ClientApiKeysManager.tsx` - UI for key management
-- **Settings Page**: Integrated into main Settings page
-- **API Client**: Methods in `web/src/lib/api.ts` for key operations
-
-### Authentication Flow
-
-1. **Client Request**: External client sends request to `/proxy/{api-key}/api/v2/...`
-2. **API Key Validation**: Middleware validates the key and extracts instance ID
-3. **Cookie Jar Access**: Handler gets authenticated HTTP client from qui's pool
-4. **Cookie Forwarding**: Extracts cookies using `client.GetHTTPClient().Jar.Cookies(url)`
-5. **Request Proxying**: Forwards request to qBittorrent with qui's session cookies
-6. **Response Passthrough**: Returns qBittorrent's response to client
-
-### Cookie Jar Implementation
-
-**Current Implementation (Temporary)**:
-```go
-// GetHTTPClient uses reflection to access go-qbittorrent's private HTTP client
-func (c *Client) GetHTTPClient() *http.Client {
-    // Uses reflection to access private 'http' field
-    clientValue := reflect.ValueOf(c.Client).Elem()
-    httpField := clientValue.FieldByName("http")
-    // Returns HTTP client with cookie jar
-}
-```
-
-**TODO: Future Migration**:
-When `github.com/autobrr/go-qbittorrent` merges the `GetHTTPClient()` method:
-1. Remove reflection-based method from `internal/qbittorrent/client.go`
-2. Update proxy handler: `client.GetHTTPClient()` → `client.Client.GetHTTPClient()`
-3. Remove `reflect` and `unsafe` imports
-4. Update go.mod to use new go-qbittorrent version
-
-### Security Features
-
-- **Instance Isolation**: API keys are scoped to specific qBittorrent instances
-- **Usage Tracking**: Last used timestamps and activity monitoring
-- **Key Revocation**: Instant access removal by deleting keys
-- **No Credential Exposure**: qBittorrent credentials never leave qui
-
-### Route Configuration
-
-Routes are registered in `internal/api/router.go`:
-- **Proxy Routes**: `proxyHandler.Routes(r)` registers `/proxy/{api-key}/*` 
-- **Client API Key Routes**: Standard CRUD endpoints under `/api/client-api-keys`
-- **Unauthenticated**: Proxy routes don't require qui session authentication
-
-### Performance Considerations
-
-- **Buffer Pool**: Reuses HTTP request/response buffers for efficiency
-- **Connection Pooling**: Leverages qui's existing qBittorrent connection pool
-- **Cookie Caching**: HTTP client cookie jars provide efficient cookie management
-- **Minimal Overhead**: Direct proxy with minimal request transformation
-
-### Troubleshooting
-
-**Common Issues**:
-- **Connection Refused**: qui must bind to external interface (`QUI__HOST=0.0.0.0`)
-- **Version Parsing Errors**: Fixed by using cookie jar instead of manual cookie extraction
-- **Authentication Failures**: Ensure Client API key exists and maps to correct instance
-
-**Debug Logging**:
-```bash
-QUI__LOG_LEVEL=DEBUG ./qui serve
-# Shows: "Added cookies from HTTP client jar to proxy request"
-```
-
-### Files Reference
-
-**Backend**:
-- `internal/proxy/handler.go` - Main proxy logic with cookie jar access
-- `internal/proxy/middleware.go` - Client API key validation
-- `internal/qbittorrent/client.go` - GetHTTPClient() implementation (temporary)
-- `internal/models/client_api_key.go` - Data models
-- `internal/api/handlers/client_api_keys.go` - API endpoints
-
-**Frontend**:
-- `web/src/components/settings/ClientApiKeysManager.tsx` - Key management UI
-- `web/src/lib/api.ts` - API client methods
-
-**Database**:
-- `internal/database/migrations/004_add_client_api_keys.sql` - Schema migration
+Configuration uses TOML format (`config.toml`) with environment variable overrides (`QUI__*` prefix). Key settings include database path, server host/port, base URL for reverse proxy setups, and metrics enablement.

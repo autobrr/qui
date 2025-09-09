@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -32,16 +31,6 @@ func NewInstancesHandler(instanceStore *models.InstanceStore, clientPool *intern
 		clientPool:    clientPool,
 		syncManager:   syncManager,
 	}
-}
-
-func (h *InstancesHandler) isDecryptionError(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	errorStr := strings.ToLower(err.Error())
-	return strings.Contains(errorStr, "decrypt") &&
-		(strings.Contains(errorStr, "password") || strings.Contains(errorStr, "cipher"))
 }
 
 func (h *InstancesHandler) buildInstanceResponsesParallel(ctx context.Context, instances []*models.Instance) []InstanceResponse {
@@ -75,10 +64,6 @@ func (h *InstancesHandler) buildInstanceResponsesParallel(ctx context.Context, i
 				Host:               instances[i].Host,
 				Username:           instances[i].Username,
 				BasicUsername:      instances[i].BasicUsername,
-				IsActive:           instances[i].IsActive,
-				LastConnectedAt:    instances[i].LastConnectedAt,
-				CreatedAt:          instances[i].CreatedAt,
-				UpdatedAt:          instances[i].UpdatedAt,
 				Connected:          false,
 				HasDecryptionError: false,
 			}
@@ -103,12 +88,19 @@ func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *
 		Host:               instance.Host,
 		Username:           instance.Username,
 		BasicUsername:      instance.BasicUsername,
-		IsActive:           instance.IsActive,
-		LastConnectedAt:    instance.LastConnectedAt,
-		CreatedAt:          instance.CreatedAt,
-		UpdatedAt:          instance.UpdatedAt,
 		Connected:          healthy,
 		HasDecryptionError: hasDecryptionError,
+	}
+
+	// Fetch recent errors for disconnected instances
+	if !healthy {
+		errorStore := h.clientPool.GetErrorStore()
+		recentErrors, err := errorStore.GetRecentErrors(ctx, instance.ID, 5)
+		if err != nil {
+			log.Error().Err(err).Int("instanceID", instance.ID).Msg("Failed to get recent errors")
+		} else {
+			response.RecentErrors = recentErrors
+		}
 	}
 
 	return response
@@ -122,12 +114,7 @@ func (h *InstancesHandler) buildQuickInstanceResponse(instance *models.Instance)
 		Host:               instance.Host,
 		Username:           instance.Username,
 		BasicUsername:      instance.BasicUsername,
-		IsActive:           instance.IsActive,
-		LastConnectedAt:    instance.LastConnectedAt,
-		CreatedAt:          instance.CreatedAt,
-		UpdatedAt:          instance.UpdatedAt,
 		Connected:          false, // Will be updated asynchronously
-		ConnectionError:    "",
 		HasDecryptionError: false,
 	}
 }
@@ -175,18 +162,14 @@ type UpdateInstanceRequest struct {
 
 // InstanceResponse represents an instance in API responses
 type InstanceResponse struct {
-	ID                 int        `json:"id"`
-	Name               string     `json:"name"`
-	Host               string     `json:"host"`
-	Username           string     `json:"username"`
-	BasicUsername      *string    `json:"basicUsername,omitempty"`
-	IsActive           bool       `json:"isActive"`
-	LastConnectedAt    *time.Time `json:"lastConnectedAt,omitempty"`
-	CreatedAt          time.Time  `json:"createdAt"`
-	UpdatedAt          time.Time  `json:"updatedAt"`
-	Connected          bool       `json:"connected"`
-	ConnectionError    string     `json:"connectionError,omitempty"`
-	HasDecryptionError bool       `json:"hasDecryptionError"`
+	ID                 int                    `json:"id"`
+	Name               string                 `json:"name"`
+	Host               string                 `json:"host"`
+	Username           string                 `json:"username"`
+	BasicUsername      *string                `json:"basicUsername,omitempty"`
+	Connected          bool                   `json:"connected"`
+	HasDecryptionError bool                   `json:"hasDecryptionError"`
+	RecentErrors       []models.InstanceError `json:"recentErrors,omitempty"`
 }
 
 // TestConnectionResponse represents connection test results
@@ -201,35 +184,9 @@ type DeleteInstanceResponse struct {
 	Message string `json:"message"`
 }
 
-// InstanceStatsResponse represents statistics for an instance
-type InstanceStatsResponse struct {
-	InstanceID int          `json:"instanceId"`
-	Torrents   TorrentStats `json:"torrents"`
-	Speeds     SpeedStats   `json:"speeds"`
-}
-
-// TorrentStats represents torrent count statistics
-type TorrentStats struct {
-	Total       int `json:"total"`
-	Downloading int `json:"downloading"`
-	Seeding     int `json:"seeding"`
-	Paused      int `json:"paused"`
-	Error       int `json:"error"`
-	Completed   int `json:"completed"`
-}
-
-// SpeedStats represents download/upload speed statistics
-type SpeedStats struct {
-	Download int64 `json:"download"`
-	Upload   int64 `json:"upload"`
-}
-
 // ListInstances returns all instances
 func (h *InstancesHandler) ListInstances(w http.ResponseWriter, r *http.Request) {
-	// Check if only active instances are requested
-	activeOnly := r.URL.Query().Get("active") == "true"
-
-	instances, err := h.instanceStore.List(r.Context(), activeOnly)
+	instances, err := h.instanceStore.List(r.Context())
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to list instances")
 		RespondError(w, http.StatusInternalServerError, "Failed to list instances")
@@ -381,91 +338,4 @@ func (h *InstancesHandler) TestConnection(w http.ResponseWriter, r *http.Request
 		Message:   "Connection successful",
 	}
 	RespondJSON(w, http.StatusOK, response)
-}
-
-// getDefaultStats returns default stats for when connection fails
-func (h *InstancesHandler) getDefaultStats(instanceID int) InstanceStatsResponse {
-	return InstanceStatsResponse{
-		InstanceID: instanceID,
-		Torrents: TorrentStats{
-			Total:       0,
-			Downloading: 0,
-			Seeding:     0,
-			Paused:      0,
-			Error:       0,
-			Completed:   0,
-		},
-		Speeds: SpeedStats{
-			Download: 0,
-			Upload:   0,
-		},
-	}
-}
-
-// buildStatsFromCounts builds torrent stats from cached counts
-func (h *InstancesHandler) buildStatsFromCounts(torrentCounts *internalqbittorrent.TorrentCounts) TorrentStats {
-	return TorrentStats{
-		Total:       torrentCounts.Total,
-		Downloading: torrentCounts.Status["downloading"],
-		Seeding:     torrentCounts.Status["seeding"],
-		Paused:      torrentCounts.Status["paused"],
-		Error:       torrentCounts.Status["errored"],
-		Completed:   torrentCounts.Status["completed"],
-	}
-}
-
-// GetInstanceStats returns statistics for an instance
-func (h *InstancesHandler) GetInstanceStats(w http.ResponseWriter, r *http.Request) {
-	// Get instance ID from URL
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
-		return
-	}
-
-	// Get default stats for error cases
-	defaultStats := h.getDefaultStats(instanceID)
-
-	// Build response with stats only
-	stats := defaultStats
-
-	// Get torrent and speed statistics
-	h.populateInstanceStats(r.Context(), instanceID, &stats)
-	RespondJSON(w, http.StatusOK, stats)
-}
-
-// populateInstanceStats fills stats with torrent counts and speeds
-func (h *InstancesHandler) populateInstanceStats(ctx context.Context, instanceID int, stats *InstanceStatsResponse) {
-	// Use longer timeout for slow instances with 10k+ torrents
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-
-	// Get torrent counts from cached data
-	torrentCounts, err := h.syncManager.GetTorrentCounts(ctx, instanceID)
-	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
-			log.Warn().Int("instanceID", instanceID).Msg("Timeout getting torrent counts")
-		} else {
-			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get torrent counts")
-		}
-		return // Keep default stats
-	}
-
-	// Update stats with counts from cached data
-	stats.Torrents = h.buildStatsFromCounts(torrentCounts)
-
-	// Get speeds from cached torrents
-	speeds, err := h.syncManager.GetInstanceSpeeds(ctx, instanceID)
-	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
-			log.Warn().Int("instanceID", instanceID).Msg("Timeout getting instance speeds")
-		} else {
-			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to get instance speeds")
-		}
-		return // Keep default speeds
-	}
-
-	// Update stats with calculated speeds
-	stats.Speeds.Download = speeds.Download
-	stats.Speeds.Upload = speeds.Upload
 }

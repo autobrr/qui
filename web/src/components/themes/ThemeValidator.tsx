@@ -7,6 +7,7 @@ import { useEffect } from "react"
 import { usePremiumAccess } from "@/hooks/useThemeLicense"
 import { themes, isThemePremium, getDefaultTheme } from "@/config/themes"
 import { setValidatedThemes, setTheme } from "@/utils/theme"
+import { router } from "@/router"
 
 /**
  * ThemeValidator component validates theme access on mount and periodically
@@ -19,17 +20,36 @@ export function ThemeValidator() {
     // Don't do anything while loading - let the stored theme persist
     if (isLoading) return
 
-    // If there's an error fetching license data, don't reset themes
-    // This prevents losing theme on network issues
+    // Check if we're on the login page using TanStack Router
+    const currentPath = router.state.location.pathname
+    const isLoginPage = currentPath === "/login"
+
+    // If there's an error fetching license data
     if (isError) {
-      console.warn("Failed to fetch license data, keeping current theme")
-      // Still set some validated themes to prevent lockout
-      const fallbackThemes: string[] = []
-      themes.forEach(theme => {
-        // Allow all themes on error to avoid disrupting user experience
-        fallbackThemes.push(theme.id)
-      })
-      setValidatedThemes(fallbackThemes)
+      console.warn("Failed to fetch license data")
+
+      // Don't reset theme on login page to avoid disruption
+      if (isLoginPage) {
+        console.log("On login page, keeping current theme")
+        // Still set some validated themes to prevent lockout
+        const fallbackThemes: string[] = []
+        themes.forEach(theme => {
+          fallbackThemes.push(theme.id)
+        })
+        setValidatedThemes(fallbackThemes)
+        return
+      }
+
+      // Reset to minimal theme when not on login page
+      console.log("Resetting to minimal theme due to license fetch error")
+      const minimalThemes = themes.filter(theme => !isThemePremium(theme.id)).map(theme => theme.id)
+      setValidatedThemes(minimalThemes)
+
+      // Force reset to minimal theme
+      const currentTheme = localStorage.getItem("color-theme")
+      if (currentTheme && isThemePremium(currentTheme)) {
+        setTheme("minimal")
+      }
       return
     }
 

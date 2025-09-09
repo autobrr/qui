@@ -21,10 +21,6 @@ export interface Instance {
   host: string
   username: string
   basicUsername?: string
-  isActive: boolean
-  lastConnectedAt?: string
-  createdAt: string
-  updatedAt: string
 }
 
 export interface InstanceFormData {
@@ -36,10 +32,18 @@ export interface InstanceFormData {
   basicPassword?: string
 }
 
+export interface InstanceError {
+  id: number
+  instanceId: number
+  errorType: string
+  errorMessage: string
+  occurredAt: string
+}
+
 export interface InstanceResponse extends Instance {
   connected: boolean
-  connectionError?: string
   hasDecryptionError: boolean
+  recentErrors?: InstanceError[]
 }
 
 export interface Torrent {
@@ -114,6 +118,7 @@ export interface TorrentResponse {
   counts?: TorrentCounts
   categories?: Record<string, Category>
   tags?: string[]
+  serverState?: ServerState
   cacheMetadata?: CacheMetadata
   hasMore?: boolean
 }
@@ -127,7 +132,7 @@ export interface MainData {
 
 export interface Category {
   name: string
-  save_path: string
+  savePath: string
 }
 
 export interface ServerState {
@@ -142,12 +147,19 @@ export interface ServerState {
   queueing: boolean
   use_alt_speed_limits: boolean
   refresh_interval: number
-  // User statistics
   alltime_dl?: number
   alltime_ul?: number
   total_wasted_session?: number
   global_ratio?: string
   total_peer_connections?: number
+  free_space_on_disk?: number
+  average_time_queue?: number
+  queued_io_jobs?: number
+  read_cache_hits?: string
+  read_cache_overload?: string
+  total_buffers_size?: number
+  total_queued_size?: number
+  write_cache_overload?: string
 }
 
 export interface AppPreferences {
