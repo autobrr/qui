@@ -74,11 +74,11 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
         submitData = data
       }
     } else {
-      // Basic auth disabled - preserve existing basic auth if editing
+      // Basic auth disabled - clear basic auth credentials
       submitData = {
         ...data,
-        basicUsername: instance?.basicUsername ?? undefined,
-        basicPassword: undefined, // Don't send basicPassword to preserve existing
+        basicUsername: "",
+        basicPassword: "",
       }
     }
 
