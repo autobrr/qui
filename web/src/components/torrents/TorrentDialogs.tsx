@@ -40,7 +40,7 @@ import { Plus, X } from "lucide-react"
 interface SetTagsDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  availableTags: string[]
+  availableTags: string[] | null
   hashCount: number
   onConfirm: (tags: string[]) => void
   isPending?: boolean
@@ -50,7 +50,7 @@ interface SetTagsDialogProps {
 interface AddTagsDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  availableTags: string[]
+  availableTags: string[] | null
   hashCount: number
   onConfirm: (tags: string[]) => void
   isPending?: boolean
@@ -81,7 +81,7 @@ export const AddTagsDialog = memo(function AddTagsDialog({
   }, [open, initialTags])
 
   // Combine server tags with temporary tags for display
-  const displayTags = [...availableTags, ...temporaryTags].sort()
+  const displayTags = [...(availableTags || []), ...temporaryTags].sort()
 
   const handleConfirm = useCallback((): void => {
     const allTags = [...selectedTags]
@@ -105,7 +105,7 @@ export const AddTagsDialog = memo(function AddTagsDialog({
     const trimmedTag = tagToAdd.trim()
     if (trimmedTag && !displayTags.includes(trimmedTag)) {
       // Add to temporary tags if it's not already in server tags
-      if (!availableTags.includes(trimmedTag)) {
+      if (!availableTags?.includes(trimmedTag)) {
         setTemporaryTags(prev => [...prev, trimmedTag])
       }
       // Add to selected tags
@@ -246,7 +246,7 @@ export const SetTagsDialog = memo(function SetTagsDialog({
   }, [open, initialTags])
 
   // Combine server tags with temporary tags for display
-  const displayTags = [...availableTags, ...temporaryTags].sort()
+  const displayTags = [...(availableTags || []), ...temporaryTags].sort()
 
   const handleConfirm = useCallback((): void => {
     const allTags = [...selectedTags]
@@ -270,7 +270,7 @@ export const SetTagsDialog = memo(function SetTagsDialog({
     const trimmedTag = tagToAdd.trim()
     if (trimmedTag && !displayTags.includes(trimmedTag)) {
       // Add to temporary tags if it's not already in server tags
-      if (!availableTags.includes(trimmedTag)) {
+      if (!availableTags?.includes(trimmedTag)) {
         setTemporaryTags(prev => [...prev, trimmedTag])
       }
       // Add to selected tags
@@ -489,7 +489,7 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
 interface RemoveTagsDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  availableTags: string[]
+  availableTags: string[] | null
   hashCount: number
   onConfirm: (tags: string[]) => void
   isPending?: boolean
@@ -530,7 +530,7 @@ export const RemoveTagsDialog = memo(function RemoveTagsDialog({
   }, [onOpenChange])
 
   // Filter available tags to only show those that are on the selected torrents
-  const relevantTags = availableTags.filter(tag => currentTags.includes(tag))
+  const relevantTags = (availableTags || []).filter(tag => currentTags.includes(tag))
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
