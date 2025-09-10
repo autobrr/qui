@@ -180,7 +180,7 @@ export function Header({
             </Tooltip>
             {/* Conditional Management Bar with smooth animations */}
             {(selectedHashes.length > 0 || isAllSelected) ? (
-              <div className="animate-in slide-in-from-top-2 fade-in duration-200 ease-out motion-reduce:animate-none motion-reduce:duration-0">
+              <div className="animate-in fade-in duration-400 ease-out motion-reduce:animate-none motion-reduce:duration-0">
                 <TorrentManagementBar
                   instanceId={selectedInstanceId || undefined}
                   selectedHashes={selectedHashes}
