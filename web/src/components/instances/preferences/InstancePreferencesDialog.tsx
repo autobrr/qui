@@ -5,14 +5,14 @@
 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { SpeedLimitsForm } from "./SpeedLimitsForm"
-import { QueueManagementForm } from "./QueueManagementForm"
-import { FileManagementForm } from "./FileManagementForm"
-import { SeedingLimitsForm } from "./SeedingLimitsForm"
-import { ConnectionSettingsForm } from "./ConnectionSettingsForm"
-import { NetworkDiscoveryForm } from "./NetworkDiscoveryForm"
+import { Clock, Cog, Folder, Gauge, Radar, Settings, Upload, Wifi } from "lucide-react"
 import { AdvancedNetworkForm } from "./AdvancedNetworkForm"
-import { Gauge, Clock, Folder, Upload, Wifi, Radar, Settings, Cog } from "lucide-react"
+import { ConnectionSettingsForm } from "./ConnectionSettingsForm"
+import { FileManagementForm } from "./FileManagementForm"
+import { NetworkDiscoveryForm } from "./NetworkDiscoveryForm"
+import { QueueManagementForm } from "./QueueManagementForm"
+import { SeedingLimitsForm } from "./SeedingLimitsForm"
+import { SpeedLimitsForm } from "./SpeedLimitsForm"
 
 interface InstancePreferencesDialogProps {
   open: boolean
@@ -40,8 +40,8 @@ export function InstancePreferencesDialog({
             <Cog className="h-5 w-5" />
             Instance Preferences
           </DialogTitle>
-          <DialogDescription>
-            Configure all settings and preferences for <strong>{instanceName}</strong>
+          <DialogDescription className="flex items-center gap-1">
+            Configure all settings and preferences for <strong className="truncate max-w-xs inline-block align-bottom" title={instanceName}>{instanceName}</strong>
           </DialogDescription>
         </DialogHeader>
 

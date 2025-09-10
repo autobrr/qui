@@ -6,6 +6,7 @@
 import { useEffect, useState } from "react"
 import { TorrentTableOptimized } from "./TorrentTableOptimized"
 import { TorrentCardsMobile } from "./TorrentCardsMobile"
+import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
 import type { Torrent } from "@/types"
 
 interface TorrentTableResponsiveProps {
@@ -26,6 +27,12 @@ interface TorrentTableResponsiveProps {
 
 export function TorrentTableResponsive(props: TorrentTableResponsiveProps) {
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768)
+  const { updateSelection, setFiltersAndInstance } = useTorrentSelection()
+
+  // Update context with current filters and instance
+  useEffect(() => {
+    setFiltersAndInstance(props.filters, props.instanceId)
+  }, [props.filters, props.instanceId, setFiltersAndInstance])
 
   // Debounced resize/orientation handler
   useEffect(() => {
@@ -66,5 +73,5 @@ export function TorrentTableResponsive(props: TorrentTableResponsiveProps) {
   if (isMobile) {
     return <TorrentCardsMobile {...memoizedProps} />
   }
-  return <TorrentTableOptimized {...memoizedProps} />
+  return <TorrentTableOptimized {...memoizedProps} onSelectionChange={updateSelection} />
 }
