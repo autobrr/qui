@@ -44,7 +44,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -65,6 +65,21 @@ jobs:
           key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: |
             ${{ runner.os }}-pnpm-store-
+
+      - name: Fetch premium themes
+        run: |
+          if [ -n "${{ secrets.THEMES_REPO_TOKEN }}" ]; then
+            rm -rf .themes-temp
+            git clone --depth=1 --filter=blob:none --sparse \
+              https://${{ secrets.THEMES_REPO_TOKEN }}@github.com/autobrr/qui-premium-themes.git .themes-temp
+            cd .themes-temp && git sparse-checkout set --cone themes && cd ..
+            mkdir -p web/src/themes/premium
+            cp .themes-temp/themes/*.css web/src/themes/premium/
+            rm -rf .themes-temp
+            echo "Premium themes fetched successfully"
+          else
+            echo "THEMES_REPO_TOKEN not set, skipping premium themes"
+          fi
 
       - name: Install dependencies
         working-directory: web
@@ -99,7 +114,7 @@ jobs:
           path: web/dist
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: true
@@ -145,7 +160,7 @@ jobs:
           path: web/dist
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: 'go.mod'
           cache: true

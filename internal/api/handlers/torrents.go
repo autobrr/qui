@@ -61,16 +61,6 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 
 	if s := r.URL.Query().Get("sort"); s != "" {
 		sort = s
-		// Map frontend sort fields to qBittorrent API field names
-		switch s {
-		case "addedOn":
-			sort = "added_on"
-		case "dlspeed":
-			sort = "dlspeed"
-		case "upspeed":
-			sort = "upspeed"
-			// Add other mappings as needed
-		}
 	}
 
 	if o := r.URL.Query().Get("order"); o != "" {
@@ -123,26 +113,6 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Data-Source", "fresh")
 
 	RespondJSON(w, http.StatusOK, response)
-}
-
-// SyncTorrents returns server statistics for an instance (used by Dashboard)
-func (h *TorrentsHandler) SyncTorrents(w http.ResponseWriter, r *http.Request) {
-	// Get instance ID from URL
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
-		return
-	}
-
-	// Get server statistics
-	mainData, err := h.syncManager.GetServerStats(r.Context(), instanceID)
-	if err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get server stats")
-		RespondError(w, http.StatusInternalServerError, "Failed to get server stats")
-		return
-	}
-
-	RespondJSON(w, http.StatusOK, mainData)
 }
 
 // AddTorrentRequest represents a request to add a torrent
@@ -504,11 +474,11 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 	case "toggleAutoTMM":
 		err = h.syncManager.SetAutoTMM(r.Context(), instanceID, targetHashes, req.Enable)
 	case "setShareLimit":
-		err = h.syncManager.SetTorrentShareLimit(r.Context(), instanceID, req.Hashes, req.RatioLimit, req.SeedingTimeLimit, req.InactiveSeedingTimeLimit)
+		err = h.syncManager.SetTorrentShareLimit(r.Context(), instanceID, targetHashes, req.RatioLimit, req.SeedingTimeLimit, req.InactiveSeedingTimeLimit)
 	case "setUploadLimit":
-		err = h.syncManager.SetTorrentUploadLimit(r.Context(), instanceID, req.Hashes, req.UploadLimit)
+		err = h.syncManager.SetTorrentUploadLimit(r.Context(), instanceID, targetHashes, req.UploadLimit)
 	case "setDownloadLimit":
-		err = h.syncManager.SetTorrentDownloadLimit(r.Context(), instanceID, req.Hashes, req.DownloadLimit)
+		err = h.syncManager.SetTorrentDownloadLimit(r.Context(), instanceID, targetHashes, req.DownloadLimit)
 	case "delete":
 		// Handle delete with deleteFiles parameter
 		action := req.Action
@@ -531,97 +501,6 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 
 	RespondJSON(w, http.StatusOK, map[string]string{
 		"message": "Bulk action completed successfully",
-	})
-}
-
-// Individual torrent actions
-
-// DeleteTorrent deletes a single torrent
-func (h *TorrentsHandler) DeleteTorrent(w http.ResponseWriter, r *http.Request) {
-	// Get instance ID and hash from URL
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
-		return
-	}
-
-	hash := chi.URLParam(r, "hash")
-	if hash == "" {
-		RespondError(w, http.StatusBadRequest, "Torrent hash is required")
-		return
-	}
-
-	// Check if files should be deleted
-	deleteFiles := r.URL.Query().Get("deleteFiles") == "true"
-
-	action := "delete"
-	if deleteFiles {
-		action = "deleteWithFiles"
-	}
-
-	// Delete torrent
-	if err := h.syncManager.BulkAction(r.Context(), instanceID, []string{hash}, action); err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to delete torrent")
-		RespondError(w, http.StatusInternalServerError, "Failed to delete torrent")
-		return
-	}
-
-	RespondJSON(w, http.StatusOK, map[string]string{
-		"message": "Torrent deleted successfully",
-	})
-}
-
-// PauseTorrent pauses a single torrent
-func (h *TorrentsHandler) PauseTorrent(w http.ResponseWriter, r *http.Request) {
-	// Get instance ID and hash from URL
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
-		return
-	}
-
-	hash := chi.URLParam(r, "hash")
-	if hash == "" {
-		RespondError(w, http.StatusBadRequest, "Torrent hash is required")
-		return
-	}
-
-	// Pause torrent
-	if err := h.syncManager.BulkAction(r.Context(), instanceID, []string{hash}, "pause"); err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to pause torrent")
-		RespondError(w, http.StatusInternalServerError, "Failed to pause torrent")
-		return
-	}
-
-	RespondJSON(w, http.StatusOK, map[string]string{
-		"message": "Torrent paused successfully",
-	})
-}
-
-// ResumeTorrent resumes a single torrent
-func (h *TorrentsHandler) ResumeTorrent(w http.ResponseWriter, r *http.Request) {
-	// Get instance ID and hash from URL
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
-		return
-	}
-
-	hash := chi.URLParam(r, "hash")
-	if hash == "" {
-		RespondError(w, http.StatusBadRequest, "Torrent hash is required")
-		return
-	}
-
-	// Resume torrent
-	if err := h.syncManager.BulkAction(r.Context(), instanceID, []string{hash}, "resume"); err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to resume torrent")
-		RespondError(w, http.StatusInternalServerError, "Failed to resume torrent")
-		return
-	}
-
-	RespondJSON(w, http.StatusOK, map[string]string{
-		"message": "Torrent resumed successfully",
 	})
 }
 

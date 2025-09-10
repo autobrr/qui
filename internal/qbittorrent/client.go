@@ -6,9 +6,9 @@ package qbittorrent
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net/http"
 	"reflect"
-	"maps"
 	"sync"
 	"time"
 	"unsafe"
@@ -143,18 +143,6 @@ func (c *Client) IsHealthy() bool {
 	return c.isHealthy
 }
 
-// getTorrentByHash returns a torrent by hash from the sync manager
-func (c *Client) getTorrentByHash(hash string) (qbt.Torrent, bool) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	if c.syncManager == nil {
-		return qbt.Torrent{}, false
-	}
-
-	return c.syncManager.GetTorrent(hash)
-}
-
 // getTorrentsByHashes returns multiple torrents by their hashes (O(n) where n is number of requested hashes)
 func (c *Client) getTorrentsByHashes(hashes []string) []qbt.Torrent {
 	c.mu.RLock()
@@ -165,30 +153,6 @@ func (c *Client) getTorrentsByHashes(hashes []string) []qbt.Torrent {
 	}
 
 	return c.syncManager.GetTorrents(qbt.TorrentFilterOptions{Hashes: hashes})
-}
-
-// validateTorrentHashes returns validation info for a list of hashes
-func (c *Client) validateTorrentHashes(hashes []string) (existing []qbt.Torrent, missing []string) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	if c.syncManager == nil {
-		return nil, hashes
-	}
-
-	torrentMap := c.syncManager.GetTorrentMap(qbt.TorrentFilterOptions{Hashes: hashes})
-
-	existing = make([]qbt.Torrent, 0, len(torrentMap))
-	missing = make([]string, 0, len(hashes)-len(torrentMap))
-
-	for _, hash := range hashes {
-		if torrent, exists := torrentMap[hash]; exists {
-			existing = append(existing, torrent)
-		} else {
-			missing = append(missing, hash)
-		}
-	}
-	return existing, missing
 }
 
 func (c *Client) HealthCheck(ctx context.Context) error {
@@ -217,7 +181,6 @@ func (c *Client) GetWebAPIVersion() string {
 	defer c.mu.RUnlock()
 	return c.webAPIVersion
 }
-
 
 // GetHTTPClient allows you to receive the implemented *http.Client with cookie jar
 // This method uses reflection to access the private http field from the embedded qbt.Client
@@ -268,7 +231,7 @@ func (c *Client) StartSyncManager(ctx context.Context) error {
 }
 
 // applyOptimisticCacheUpdate applies optimistic updates for the given hashes and action
-func (c *Client) applyOptimisticCacheUpdate(hashes []string, action string, payload map[string]any) {
+func (c *Client) applyOptimisticCacheUpdate(hashes []string, action string, _ map[string]any) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -318,38 +281,6 @@ func (c *Client) clearOptimisticUpdate(hash string) {
 	defer c.mu.Unlock()
 	delete(c.optimisticUpdates, hash)
 	log.Debug().Int("instanceID", c.instanceID).Str("hash", hash).Msg("Cleared optimistic update")
-}
-
-// clearStaleOptimisticUpdates removes optimistic updates that are older than the specified duration
-func (c *Client) clearStaleOptimisticUpdates(maxAge time.Duration) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	now := time.Now()
-	removed := 0
-
-	for hash, update := range c.optimisticUpdates {
-		if now.Sub(update.UpdatedAt) > maxAge {
-			delete(c.optimisticUpdates, hash)
-			removed++
-		}
-	}
-
-	if removed > 0 {
-		log.Debug().Int("instanceID", c.instanceID).Int("removed", removed).Msg("Cleared stale optimistic updates")
-	}
-}
-
-// clearAllOptimisticUpdates removes all optimistic updates for this instance
-func (c *Client) clearAllOptimisticUpdates() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	count := len(c.optimisticUpdates)
-	if count > 0 {
-		c.optimisticUpdates = make(map[string]*OptimisticTorrentUpdate)
-		log.Debug().Int("instanceID", c.instanceID).Int("cleared", count).Msg("Cleared all optimistic updates")
-	}
 }
 
 // getTargetState returns the target state for the given action and progress

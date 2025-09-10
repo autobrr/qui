@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -33,16 +32,6 @@ func NewInstancesHandler(instanceStore *models.InstanceStore, clientPool *intern
 		clientPool:    clientPool,
 		syncManager:   syncManager,
 	}
-}
-
-func (h *InstancesHandler) isDecryptionError(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	errorStr := strings.ToLower(err.Error())
-	return strings.Contains(errorStr, "decrypt") &&
-		(strings.Contains(errorStr, "password") || strings.Contains(errorStr, "cipher"))
 }
 
 func (h *InstancesHandler) buildInstanceResponsesParallel(ctx context.Context, instances []*models.Instance) []InstanceResponse {
@@ -194,29 +183,6 @@ type TestConnectionResponse struct {
 // DeleteInstanceResponse represents delete operation result
 type DeleteInstanceResponse struct {
 	Message string `json:"message"`
-}
-
-// InstanceStatsResponse represents statistics for an instance
-type InstanceStatsResponse struct {
-	InstanceID int          `json:"instanceId"`
-	Torrents   TorrentStats `json:"torrents"`
-	Speeds     SpeedStats   `json:"speeds"`
-}
-
-// TorrentStats represents torrent count statistics
-type TorrentStats struct {
-	Total       int `json:"total"`
-	Downloading int `json:"downloading"`
-	Seeding     int `json:"seeding"`
-	Paused      int `json:"paused"`
-	Error       int `json:"error"`
-	Completed   int `json:"completed"`
-}
-
-// SpeedStats represents download/upload speed statistics
-type SpeedStats struct {
-	Download int64 `json:"download"`
-	Upload   int64 `json:"upload"`
 }
 
 // ListInstances returns all instances
@@ -395,91 +361,4 @@ func (h *InstancesHandler) TestConnection(w http.ResponseWriter, r *http.Request
 		Message:   "Connection successful",
 	}
 	RespondJSON(w, http.StatusOK, response)
-}
-
-// getDefaultStats returns default stats for when connection fails
-func (h *InstancesHandler) getDefaultStats(instanceID int) InstanceStatsResponse {
-	return InstanceStatsResponse{
-		InstanceID: instanceID,
-		Torrents: TorrentStats{
-			Total:       0,
-			Downloading: 0,
-			Seeding:     0,
-			Paused:      0,
-			Error:       0,
-			Completed:   0,
-		},
-		Speeds: SpeedStats{
-			Download: 0,
-			Upload:   0,
-		},
-	}
-}
-
-// buildStatsFromCounts builds torrent stats from cached counts
-func (h *InstancesHandler) buildStatsFromCounts(torrentCounts *internalqbittorrent.TorrentCounts) TorrentStats {
-	return TorrentStats{
-		Total:       torrentCounts.Total,
-		Downloading: torrentCounts.Status["downloading"],
-		Seeding:     torrentCounts.Status["seeding"],
-		Paused:      torrentCounts.Status["paused"],
-		Error:       torrentCounts.Status["errored"],
-		Completed:   torrentCounts.Status["completed"],
-	}
-}
-
-// GetInstanceStats returns statistics for an instance
-func (h *InstancesHandler) GetInstanceStats(w http.ResponseWriter, r *http.Request) {
-	// Get instance ID from URL
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
-		return
-	}
-
-	// Get default stats for error cases
-	defaultStats := h.getDefaultStats(instanceID)
-
-	// Build response with stats only
-	stats := defaultStats
-
-	// Get torrent and speed statistics
-	h.populateInstanceStats(r.Context(), instanceID, &stats)
-	RespondJSON(w, http.StatusOK, stats)
-}
-
-// populateInstanceStats fills stats with torrent counts and speeds
-func (h *InstancesHandler) populateInstanceStats(ctx context.Context, instanceID int, stats *InstanceStatsResponse) {
-	// Use longer timeout for slow instances with 10k+ torrents
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-
-	// Get torrent counts from cached data
-	torrentCounts, err := h.syncManager.GetTorrentCounts(ctx, instanceID)
-	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
-			log.Warn().Int("instanceID", instanceID).Msg("Timeout getting torrent counts")
-		} else {
-			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get torrent counts")
-		}
-		return // Keep default stats
-	}
-
-	// Update stats with counts from cached data
-	stats.Torrents = h.buildStatsFromCounts(torrentCounts)
-
-	// Get speeds from cached torrents
-	speeds, err := h.syncManager.GetInstanceSpeeds(ctx, instanceID)
-	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
-			log.Warn().Int("instanceID", instanceID).Msg("Timeout getting instance speeds")
-		} else {
-			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to get instance speeds")
-		}
-		return // Keep default speeds
-	}
-
-	// Update stats with calculated speeds
-	stats.Speeds.Download = speeds.Download
-	stats.Speeds.Upload = speeds.Upload
 }

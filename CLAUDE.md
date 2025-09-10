@@ -4,6 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Additional Instructions
 - commit guidelines @docs/git-instructions.md
+- development guidelines @docs/instructions.md
 
 ## Development Commands
 

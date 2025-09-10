@@ -44,11 +44,11 @@ func TestSyncManager_FilteringAndSorting(t *testing.T) {
 			expected int // Expected number of matches
 		}{
 			{"all", 10},
-			{"downloading", 4}, // downloading, stalledDL, queuedDL, downloading
-			{"seeding", 3},     // uploading, stalledUP, uploading
-			{"paused", 2},      // pausedDL, pausedUP
-			{"active", 4},      // downloading states that are active
-			{"errored", 1},     // error state
+			{"downloading", 4},
+			{"uploading", 3},
+			{"paused", 2},
+			{"active", 4},
+			{"errored", 1},
 		}
 
 		for _, tc := range testCases {

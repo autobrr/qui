@@ -48,6 +48,8 @@ test/mockindexer/feeds/*
 test/mockindexer/files/*
 cpu.pprof
 
+web/src/themes/premium/
+
 # Preserve files
 !.gitkeep
 config.toml
@@ -61,3 +63,4 @@ output/*
 
 web/src/themes/premium/*
 docs/*
+components.json

@@ -13,7 +13,8 @@ export const usePremiumAccess = () => {
   return useQuery({
     queryKey: ["theme-licenses"],
     queryFn: () => api.getLicensedThemes(),
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 30 * 1000, // 30 seconds
+    refetchInterval: 30 * 1000, // Poll every 30 seconds
     refetchOnWindowFocus: false,
   })
 }

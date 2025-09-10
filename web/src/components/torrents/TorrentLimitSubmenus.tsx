@@ -3,22 +3,22 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { memo, useState, useCallback } from "react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Switch } from "@/components/ui/switch"
 import {
   ContextMenuSub,
-  ContextMenuSubTrigger,
-  ContextMenuSubContent
+  ContextMenuSubContent,
+  ContextMenuSubTrigger
 } from "@/components/ui/context-menu"
 import {
   DropdownMenuSub,
-  DropdownMenuSubTrigger,
-  DropdownMenuSubContent
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger
 } from "@/components/ui/dropdown-menu"
-import { Share2, Upload, Download, Gauge } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
+import { Download, Gauge, Sprout, Upload } from "lucide-react"
+import { memo, useCallback, useState } from "react"
 
 interface ShareLimitSubmenuProps {
   type: "context" | "dropdown"
@@ -62,7 +62,7 @@ export const ShareLimitSubmenu = memo(function ShareLimitSubmenu({
   return (
     <Sub>
       <SubTrigger disabled={isPending}>
-        <Share2 className="mr-2 h-4 w-4" />
+        <Sprout className="mr-2 h-4 w-4" />
         Set Share Limits
       </SubTrigger>
       <SubContent className="w-72">

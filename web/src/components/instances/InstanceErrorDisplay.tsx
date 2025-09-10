@@ -9,6 +9,11 @@ import {
   CollapsibleContent,
   CollapsibleTrigger
 } from "@/components/ui/collapsible"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger
+} from "@/components/ui/tooltip"
 import { formatErrorMessage } from "@/lib/utils"
 import type { InstanceResponse } from "@/types"
 import { AlertCircle, ChevronDown, Edit, XCircle } from "lucide-react"
@@ -22,8 +27,8 @@ interface InstanceErrorDisplayProps {
 }
 
 export function InstanceErrorDisplay({ instance, onEdit, showEditButton = false, compact = false }: InstanceErrorDisplayProps) {
-  const [isDecryptionOpen, setIsDecryptionOpen] = useState(false)
-  const [isRecentErrorsOpen, setIsRecentErrorsOpen] = useState(false)
+  const [isDecryptionOpen, setIsDecryptionOpen] = useState(compact)
+  const [isRecentErrorsOpen, setIsRecentErrorsOpen] = useState(compact)
 
   // Compact mode shows expandable error cards
   if (compact) {
@@ -33,9 +38,9 @@ export function InstanceErrorDisplay({ instance, onEdit, showEditButton = false,
           <Collapsible open={isDecryptionOpen} onOpenChange={setIsDecryptionOpen} className="mt-2">
             <div className="rounded-lg border border-destructive/20 bg-destructive/10">
               <CollapsibleTrigger className="flex w-full items-center justify-between p-3 text-left hover:bg-destructive/20 transition-colors">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 min-w-0">
                   <XCircle className="h-4 w-4 text-destructive flex-shrink-0" />
-                  <span className="text-sm font-medium text-destructive">Password Required</span>
+                  <span className="text-sm font-medium text-destructive truncate">Password Required</span>
                 </div>
                 <ChevronDown className={`h-4 w-4 text-destructive transition-transform duration-200 ${isDecryptionOpen ? "rotate-180" : ""}`} />
               </CollapsibleTrigger>
@@ -64,9 +69,9 @@ export function InstanceErrorDisplay({ instance, onEdit, showEditButton = false,
           <Collapsible open={isRecentErrorsOpen} onOpenChange={setIsRecentErrorsOpen} className="mt-2">
             <div className="rounded-lg border border-destructive/20 bg-destructive/10">
               <CollapsibleTrigger className="flex w-full items-center justify-between p-3 text-left hover:bg-destructive/20 transition-colors">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 min-w-0">
                   <AlertCircle className="h-4 w-4 text-destructive flex-shrink-0" />
-                  <span className="text-sm font-medium text-destructive">
+                  <span className="text-sm font-medium text-destructive truncate">
                     Recent Errors ({instance.recentErrors.length})
                   </span>
                 </div>
@@ -77,17 +82,24 @@ export function InstanceErrorDisplay({ instance, onEdit, showEditButton = false,
                 <div className="space-y-2 mt-2">
                   {instance.recentErrors.map((error, index) => (
                     <div key={error.id} className="text-xs">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="font-mono text-destructive/90 capitalize">
+                      <div className="flex items-center justify-between mb-1 gap-2">
+                        <span className="font-mono text-destructive/90 capitalize truncate">
                           {error.errorType}
                         </span>
-                        <span className="text-destructive/70">
+                        <span className="text-destructive/70 flex-shrink-0 text-xs">
                           {new Date(error.occurredAt).toLocaleString()}
                         </span>
                       </div>
-                      <div className="font-mono text-destructive/80 leading-relaxed">
-                        {formatErrorMessage(error.errorMessage)}
-                      </div>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="font-mono text-destructive/80 leading-relaxed truncate cursor-help">
+                            {formatErrorMessage(error.errorMessage)}
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-md">
+                          <p className="break-words">{formatErrorMessage(error.errorMessage)}</p>
+                        </TooltipContent>
+                      </Tooltip>
                       {index < (instance.recentErrors?.length ?? 0) - 1 && (
                         <div className="border-t border-destructive/20 mt-2" />
                       )}
@@ -140,17 +152,24 @@ export function InstanceErrorDisplay({ instance, onEdit, showEditButton = false,
               <div className="space-y-3">
                 {instance.recentErrors.map((error, index) => (
                   <div key={error.id} className="text-xs">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-mono text-destructive/90 capitalize font-semibold">
+                    <div className="flex items-center justify-between mb-1 gap-2">
+                      <span className="font-mono text-destructive/90 capitalize font-semibold truncate">
                         {error.errorType}
                       </span>
-                      <span className="text-destructive/70">
+                      <span className="text-destructive/70 flex-shrink-0">
                         {new Date(error.occurredAt).toLocaleString()}
                       </span>
                     </div>
-                    <div className="font-mono text-destructive/80 leading-relaxed">
-                      {formatErrorMessage(error.errorMessage)}
-                    </div>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="font-mono text-destructive/80 leading-relaxed truncate cursor-help">
+                          {formatErrorMessage(error.errorMessage)}
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-md">
+                        <p className="break-words">{formatErrorMessage(error.errorMessage)}</p>
+                      </TooltipContent>
+                    </Tooltip>
                     {index < (instance.recentErrors?.length ?? 0) - 1 && (
                       <div className="border-t border-destructive/20 mt-2" />
                     )}

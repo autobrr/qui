@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { TorrentManagementBar } from "@/components/torrents/TorrentManagementBar"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -20,6 +21,7 @@ import {
   TooltipContent,
   TooltipTrigger
 } from "@/components/ui/tooltip"
+import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
 import { useAuth } from "@/hooks/useAuth"
 import { useDebounce } from "@/hooks/useDebounce"
 import { useInstances } from "@/hooks/useInstances"
@@ -27,7 +29,7 @@ import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSideba
 import { useTheme } from "@/hooks/useTheme"
 import { cn } from "@/lib/utils"
 import { Link, useNavigate, useRouterState, useSearch } from "@tanstack/react-router"
-import { Filter, HardDrive, Home, Info, LogOut, Menu, Search, Server, Settings, X } from "lucide-react"
+import { FunnelPlus, FunnelX, HardDrive, Home, Info, LogOut, Menu, Plus, Search, Server, Settings, X } from "lucide-react"
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react"
 import { useHotkeys } from "react-hotkeys-hook"
 
@@ -36,10 +38,24 @@ interface HeaderProps {
   sidebarCollapsed?: boolean
 }
 
-export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
+export function Header({
+  children,
+  sidebarCollapsed = false,
+}: HeaderProps) {
   const { logout } = useAuth()
   const navigate = useNavigate()
   const routeSearch = useSearch({ strict: false }) as { q?: string; modal?: string; [key: string]: unknown }
+
+  // Get selection state from context
+  const {
+    selectedHashes,
+    selectedTorrents,
+    isAllSelected,
+    totalSelectionCount,
+    excludeHashes,
+    filters,
+    clearSelection,
+  } = useTorrentSelection()
 
   const instanceId = useRouterState({
     select: (s) => s.matches.find((m) => m.routeId === "/_authenticated/instances/$instanceId")?.params?.instanceId as string | undefined,
@@ -102,29 +118,32 @@ export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
 
   return (
     <header className="sticky top-0 z-50 flex h-16 items-center justify-between sm:border-b bg-background pl-1 pr-4 sm:pr-6 lg:static">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 mr-2">
         {children}
-        <h1 className={cn(
-          "flex items-center gap-2 pl-2 sm:pl-0 text-xl font-semibold transition-opacity duration-300",
-          "lg:opacity-0 lg:pointer-events-none", // Hidden on desktop by default
-          sidebarCollapsed && "lg:opacity-100 lg:pointer-events-auto", // Visible on desktop when sidebar collapsed
-          !shouldShowQuiOnMobile && "hidden sm:flex" // Hide on mobile when on instance routes
-        )}>
-          {theme === "swizzin" ? (
-            <SwizzinLogo className="h-5 w-5" />
-          ) : (
-            <Logo className="h-5 w-5" />
-          )}
-          {instanceName ? instanceName : "qui"}
-        </h1>
-      </div>
 
-      {/* Instance search bar */}
-      {isInstanceRoute && (
-        <div className="flex-1 max-w-xl mx-2">
-          <div className="flex items-center gap-2">
-            {/* Slot to place actions directly to the left of the filter button (desktop only) */}
-            <span id="header-left-of-filter" className="hidden xl:inline-flex"/>
+        {/* Logo/title only shows when sidebar is collapsed */}
+        {sidebarCollapsed && (
+          <h1 className={cn(
+            "flex items-center gap-2 pl-2 sm:pl-0 text-lg font-semibold transition-opacity duration-300",
+            "lg:opacity-100 lg:pointer-events-auto",
+            !shouldShowQuiOnMobile && "hidden sm:flex"
+          )}>
+            {theme === "swizzin" ? (
+              <SwizzinLogo className="h-5 w-5 flex-shrink-0" />
+            ) : (
+              <Logo className="h-5 w-5 flex-shrink-0" />
+            )}
+            <span className="truncate max-w-[200px]">
+              {instanceName ? instanceName : "qui"}
+            </span>
+          </h1>
+        )}
+
+        {/* Filter button and management bar always show on instance routes */}
+        {isInstanceRoute && (
+          <div className="hidden lg:flex items-center gap-2 ml-2">
+            {/* Filter button */}
+            {/* Filter button */}
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -133,13 +152,62 @@ export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
                   className="hidden xl:inline-flex"
                   onClick={() => setFilterSidebarCollapsed(!filterSidebarCollapsed)}
                 >
-                  <Filter className="h-4 w-4"/>
+                  {filterSidebarCollapsed ? (
+                    <FunnelPlus className="h-4 w-4"/>
+                  ) : (
+                    <FunnelX className="h-4 w-4"/>
+                  )}
                 </Button>
               </TooltipTrigger>
               <TooltipContent>{filterSidebarCollapsed ? "Show filters" : "Hide filters"}</TooltipContent>
             </Tooltip>
-            {/* Mobile filter button moved to card/table toolbars */}
-            <div className="relative flex-1">
+            {/* Add Torrent button */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="hidden md:inline-flex"
+                  onClick={() => {
+                    const next = { ...(routeSearch || {}), modal: "add-torrent" }
+                    navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
+                  }}
+                >
+                  <Plus className="h-4 w-4"/>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Add torrent</TooltipContent>
+            </Tooltip>
+            {/* Conditional Management Bar with smooth animations */}
+            {(selectedHashes.length > 0 || isAllSelected) ? (
+              <div className="animate-in fade-in duration-400 ease-out motion-reduce:animate-none motion-reduce:duration-0">
+                <TorrentManagementBar
+                  instanceId={selectedInstanceId || undefined}
+                  selectedHashes={selectedHashes}
+                  selectedTorrents={selectedTorrents}
+                  isAllSelected={isAllSelected}
+                  totalSelectionCount={totalSelectionCount}
+                  filters={filters}
+                  search={routeSearch?.q}
+                  excludeHashes={excludeHashes}
+                  onComplete={clearSelection}
+                />
+              </div>
+            ) : (
+              <div className="h-9" aria-hidden="true" />
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Instance route - search on right */}
+      {isInstanceRoute && (
+        <div className="flex items-center flex-1 gap-2">
+
+          {/* Right side: Filter button and Search bar */}
+          <div className="flex items-center gap-2 flex-1 justify-end mr-2">
+            {/* Search bar */}
+            <div className="relative w-full max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"/>
               <Input
                 ref={searchInputRef}
@@ -179,7 +247,7 @@ export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
                     <TooltipContent>Clear search</TooltipContent>
                   </Tooltip>
                 )}
-                {/* Slot for actions next to search (e.g., Toggle columns) */}
+                {/* Info tooltip */}
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
@@ -210,6 +278,7 @@ export function Header({ children, sidebarCollapsed = false }: HeaderProps) {
           </div>
         </div>
       )}
+
 
       <div className="grid grid-cols-[auto_auto] items-center gap-1 transition-all duration-300 ease-out">
         <ThemeToggle/>
