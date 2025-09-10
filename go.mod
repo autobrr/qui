@@ -1,6 +1,6 @@
 module github.com/autobrr/qui
 
-go 1.24.6
+go 1.25
 
 require (
 	github.com/CAFxX/httpcompression v0.0.9
