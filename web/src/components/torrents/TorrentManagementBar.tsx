@@ -33,7 +33,7 @@ import {
   TooltipContent,
   TooltipTrigger
 } from "@/components/ui/tooltip"
-import { useTorrentActions, TORRENT_ACTIONS } from "@/hooks/useTorrentActions"
+import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
 import { api } from "@/lib/api"
 import { getCommonCategory, getCommonTags } from "@/lib/torrent-utils"
 import type { Torrent } from "@/types"
@@ -228,9 +228,14 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   const hasSelection = selectionCount > 0 || isAllSelected
   const isDisabled = !instanceId || !hasSelection
 
+
   return (
     <>
-      <div className="flex items-center h-9 dark:bg-input/30 border border-input rounded-md px-3 py-2 animate-in slide-in-from-top-2 duration-200 gap-3 shadow-xs">
+      <div
+        className="flex items-center h-9 dark:bg-input/30 border border-input rounded-md px-3 py-2 gap-3 shadow-xs transition-all duration-200"
+        role="toolbar"
+        aria-label={`${selectionCount} torrent${selectionCount !== 1 ? "s" : ""} selected - Bulk actions available`}
+      >
         <div className="flex items-center gap-3 flex-shrink-0 min-w-0">
           <span className="text-xs text-muted-foreground whitespace-nowrap min-w-[3ch] text-center">
             {selectionCount}

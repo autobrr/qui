@@ -141,7 +141,7 @@ export function Header({
 
         {/* Filter button and management bar always show on instance routes */}
         {isInstanceRoute && (
-          <div className="hidden lg:flex items-center gap-2">
+          <div className="hidden lg:flex items-center gap-2 ml-2">
             {/* Filter button */}
             {/* Filter button */}
             <Tooltip>
@@ -178,17 +178,24 @@ export function Header({
               </TooltipTrigger>
               <TooltipContent>Add torrent</TooltipContent>
             </Tooltip>
-            <TorrentManagementBar
-              instanceId={selectedInstanceId || undefined}
-              selectedHashes={selectedHashes}
-              selectedTorrents={selectedTorrents}
-              isAllSelected={isAllSelected}
-              totalSelectionCount={totalSelectionCount}
-              filters={filters}
-              search={routeSearch?.q}
-              excludeHashes={excludeHashes}
-              onComplete={clearSelection}
-            />
+            {/* Conditional Management Bar with smooth animations */}
+            {(selectedHashes.length > 0 || isAllSelected) ? (
+              <div className="animate-in slide-in-from-top-2 fade-in duration-200 ease-out motion-reduce:animate-none motion-reduce:duration-0">
+                <TorrentManagementBar
+                  instanceId={selectedInstanceId || undefined}
+                  selectedHashes={selectedHashes}
+                  selectedTorrents={selectedTorrents}
+                  isAllSelected={isAllSelected}
+                  totalSelectionCount={totalSelectionCount}
+                  filters={filters}
+                  search={routeSearch?.q}
+                  excludeHashes={excludeHashes}
+                  onComplete={clearSelection}
+                />
+              </div>
+            ) : (
+              <div className="h-9" aria-hidden="true" />
+            )}
           </div>
         )}
       </div>

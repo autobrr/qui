@@ -619,7 +619,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     }
   }, [filters, effectiveSearch, instanceId, virtualizer, sortedTorrents.length, setRowSelection, lastUserAction])
 
-  // Set up keyboard navigation
+  // Clear selection handler for keyboard navigation
+  const clearSelection = useCallback(() => {
+    setIsAllSelected(false)
+    setExcludedFromSelectAll(new Set())
+    setRowSelection({})
+  }, [setRowSelection])
+
+  // Set up keyboard navigation with selection clearing
   useKeyboardNavigation({
     parentRef,
     virtualizer,
@@ -628,6 +635,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     isLoadingMore,
     loadMore,
     estimatedRowHeight: 40,
+    onClearSelection: clearSelection,
+    hasSelection: isAllSelected || Object.values(rowSelection).some(selected => selected),
   })
 
 
