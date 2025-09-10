@@ -282,7 +282,13 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
                 )}
               </form.Field>
 
-              <form.Field name="basicPassword">
+              <form.Field
+                name="basicPassword"
+                validators={{
+                  onChange: ({ value }) =>
+                    showBasicAuth && value === ""? "Basic auth password is required when basic auth is enabled": undefined,
+                }}
+              >
                 {(field) => (
                   <div className="space-y-2">
                     <Label htmlFor={field.name}>Basic Auth Password</Label>
@@ -298,7 +304,7 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
                         }
                       }}
                       onChange={(e) => field.handleChange(e.target.value)}
-                      placeholder="Enter new password or leave empty to remove basic auth"
+                      placeholder="Enter basic auth password (required)"
                       data-1p-ignore
                       autoComplete='off'
                     />
