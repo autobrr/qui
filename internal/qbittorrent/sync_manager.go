@@ -589,12 +589,11 @@ func (sm *SyncManager) extractDomainFromURL(urlStr string) string {
 		return cachedDomain
 	}
 
-	var domain string
+	domain := "Unknown"
 	if u, err := url.Parse(urlStr); err == nil {
-		domain = u.Hostname()
-	}
-	if domain == "" {
-		domain = "Unknown"
+		if hostname := u.Hostname(); hostname != "" {
+			domain = hostname
+		}
 	}
 
 	// Cache the result
