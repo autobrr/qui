@@ -41,6 +41,7 @@ import { useTorrentsList } from "@/hooks/useTorrentsList"
 import { Link, useSearch } from "@tanstack/react-router"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import {
+  ArrowUpDown,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
@@ -73,9 +74,10 @@ import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata.ts"
 import { useInstances } from "@/hooks/useInstances"
 import { getLinuxCategory, getLinuxIsoName, getLinuxRatio, getLinuxTags, useIncognitoMode } from "@/lib/incognito"
+import { formatSpeedWithUnit, useSpeedUnits, type SpeedUnit } from "@/lib/speedUnits"
 import { getStateLabel } from "@/lib/torrent-state-utils"
 import { getCommonCategory, getCommonTags } from "@/lib/torrent-utils"
-import { cn, formatBytes, formatSpeed } from "@/lib/utils"
+import { cn, formatBytes } from "@/lib/utils"
 import type { Category, Torrent, TorrentCounts } from "@/types"
 
 // Mobile-friendly Share Limits Dialog
@@ -356,6 +358,7 @@ function SwipeableCard({
   onLongPress,
   incognitoMode,
   selectionMode,
+  speedUnit,
 }: {
   torrent: Torrent
   isSelected: boolean
@@ -364,6 +367,7 @@ function SwipeableCard({
   onLongPress: (torrent: Torrent) => void
   incognitoMode: boolean
   selectionMode: boolean
+  speedUnit: SpeedUnit
 }) {
 
   // Use number for timeoutId in browser
@@ -506,7 +510,7 @@ function SwipeableCard({
           {torrent.dlspeed > 0 && (
             <div className="flex items-center gap-1">
               <ChevronDown className="h-3 w-3 [color:var(--chart-2)]"/>
-              <span className="font-medium">{formatSpeed(torrent.dlspeed)}</span>
+              <span className="font-medium">{formatSpeedWithUnit(torrent.dlspeed, speedUnit)}</span>
             </div>
           )}
 
@@ -514,7 +518,7 @@ function SwipeableCard({
           {torrent.upspeed > 0 && (
             <div className="flex items-center gap-1">
               <ChevronUp className="h-3 w-3 [color:var(--chart-3)]"/>
-              <span className="font-medium">{formatSpeed(torrent.upspeed)}</span>
+              <span className="font-medium">{formatSpeedWithUnit(torrent.upspeed, speedUnit)}</span>
             </div>
           )}
         </div>
@@ -578,6 +582,7 @@ export function TorrentCardsMobile({
   const [excludedFromSelectAll, setExcludedFromSelectAll] = useState<Set<string>>(new Set())
 
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
+  const [speedUnit, setSpeedUnit] = useSpeedUnits()
 
   // Detect touch device for mobile fallback
   const [isTouchDevice, setIsTouchDevice] = useState(false)
@@ -673,7 +678,6 @@ export function TorrentCardsMobile({
   const {
     torrents,
     totalCount,
-    stats,
     counts,
     categories,
     tags,
@@ -1097,10 +1101,15 @@ export function TorrentCardsMobile({
             )}
           </div>
           <div className="flex items-center gap-1">
-            <ChevronDown className="h-3 w-3"/>
-            <span className="font-medium">{formatSpeed(stats.totalDownloadSpeed || 0)}</span>
-            <ChevronUp className="h-3 w-3"/>
-            <span className="font-medium">{formatSpeed(stats.totalUploadSpeed || 0)}</span>
+            <button
+              onClick={() => setSpeedUnit(speedUnit === "bytes" ? "bits" : "bytes")}
+              className="flex items-center gap-1 pl-1.5 py-0.5 rounded-sm transition-all hover:bg-muted/50"
+            >
+              <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-xs text-muted-foreground">
+                {speedUnit === "bytes" ? "MiB/s" : "Mbps"}
+              </span>
+            </button>
           </div>
         </div>
 
@@ -1170,6 +1179,7 @@ export function TorrentCardsMobile({
                   onLongPress={handleLongPress}
                   incognitoMode={incognitoMode}
                   selectionMode={selectionMode}
+                  speedUnit={speedUnit}
                 />
               </div>
             )

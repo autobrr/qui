@@ -17,7 +17,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useInstances } from "@/hooks/useInstances"
 import { usePersistedAccordionState } from "@/hooks/usePersistedAccordionState"
 import { api } from "@/lib/api"
-import { formatBytes, formatSpeed, getRatioColor } from "@/lib/utils"
+import { formatBytes, getRatioColor } from "@/lib/utils"
 import type { InstanceResponse, ServerState, TorrentCounts, TorrentResponse, TorrentStats } from "@/types"
 import { useQueries, useQuery } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { useAlternativeSpeedLimits } from "@/hooks/useAlternativeSpeedLimits"
 import { useIncognitoMode } from "@/lib/incognito"
+import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 
 
 // Optimized hook to get all instance stats using shared TorrentResponse cache
@@ -100,6 +101,7 @@ function InstanceCard({
 
   const { enabled: altSpeedEnabled, toggle: toggleAltSpeed, isToggling } = useAlternativeSpeedLimits(instance.id)
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
+  const [speedUnit] = useSpeedUnits()
   const displayUrl = instance.host
 
   // Use TorrentStats directly - no more conversion needed
@@ -240,13 +242,13 @@ function InstanceCard({
               <div className="flex items-center gap-2 text-xs">
                 <Download className="h-3 w-3 text-muted-foreground" />
                 <span className="text-muted-foreground">Download</span>
-                <span className="ml-auto font-medium">{formatSpeed(stats?.totalDownloadSpeed || 0)}</span>
+                <span className="ml-auto font-medium">{formatSpeedWithUnit(stats?.totalDownloadSpeed || 0, speedUnit)}</span>
               </div>
 
               <div className="flex items-center gap-2 text-xs">
                 <Upload className="h-3 w-3 text-muted-foreground" />
                 <span className="text-muted-foreground">Upload</span>
-                <span className="ml-auto font-medium">{formatSpeed(stats?.totalUploadSpeed || 0)}</span>
+                <span className="ml-auto font-medium">{formatSpeedWithUnit(stats?.totalUploadSpeed || 0, speedUnit)}</span>
               </div>
 
               {serverState?.free_space_on_disk !== undefined && serverState.free_space_on_disk > 0 && (
@@ -315,6 +317,7 @@ function InstanceCard({
 }
 
 function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: InstanceResponse, stats: TorrentStats | null, serverState: ServerState | null, torrentCounts: TorrentCounts | undefined }> }) {
+  const [speedUnit] = useSpeedUnits()
   const globalStats = useMemo(() => {
     const connected = statsData.filter(({ instance }) => instance?.connected).length
     const totalTorrents = statsData.reduce((sum, { torrentCounts }) =>
@@ -395,7 +398,7 @@ function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: Instance
           <Download className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold">{formatSpeed(globalStats.totalDownload)}</div>
+          <div className="text-2xl font-bold">{formatSpeedWithUnit(globalStats.totalDownload, speedUnit)}</div>
           <p className="text-xs text-muted-foreground">
             All instances combined
           </p>
@@ -408,7 +411,7 @@ function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: Instance
           <Upload className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold">{formatSpeed(globalStats.totalUpload)}</div>
+          <div className="text-2xl font-bold">{formatSpeedWithUnit(globalStats.totalUpload, speedUnit)}</div>
           <p className="text-xs text-muted-foreground">
             All instances combined
           </p>

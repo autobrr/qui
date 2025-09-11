@@ -13,7 +13,8 @@ import { Progress } from "@/components/ui/progress"
 import { Loader2 } from "lucide-react"
 import { api } from "@/lib/api"
 import type { Torrent } from "@/types"
-import { formatBytes, formatSpeed, formatTimestamp, formatDuration } from "@/lib/utils"
+import { formatBytes, formatTimestamp, formatDuration } from "@/lib/utils"
+import { useSpeedUnits, formatSpeedWithUnit } from "@/lib/speedUnits"
 
 interface TorrentDetailsPanelProps {
   instanceId: number;
@@ -40,6 +41,7 @@ function getTrackerStatusBadge(status: number) {
 export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceId, torrent }: TorrentDetailsPanelProps) {
   const [activeTab, setActiveTab] = useState("general")
   const { data: metadata } = useInstanceMetadata(instanceId)
+  const [speedUnit] = useSpeedUnits()
 
   // Reset tab when torrent changes
   useEffect(() => {
@@ -147,11 +149,11 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                     <div className="space-y-2">
                       <div>
                         <span className="text-sm text-muted-foreground">Download Speed:</span>
-                        <span className="ml-2 text-sm">{formatSpeed(properties.dl_speed || 0)} (avg: {formatSpeed(properties.dl_speed_avg || 0)})</span>
+                        <span className="ml-2 text-sm">{formatSpeedWithUnit(properties.dl_speed || 0, speedUnit)} (avg: {formatSpeedWithUnit(properties.dl_speed_avg || 0, speedUnit)})</span>
                       </div>
                       <div>
                         <span className="text-sm text-muted-foreground">Upload Speed:</span>
-                        <span className="ml-2 text-sm">{formatSpeed(properties.up_speed || 0)} (avg: {formatSpeed(properties.up_speed_avg || 0)})</span>
+                        <span className="ml-2 text-sm">{formatSpeedWithUnit(properties.up_speed || 0, speedUnit)} (avg: {formatSpeedWithUnit(properties.up_speed_avg || 0, speedUnit)})</span>
                       </div>
                     </div>
 
