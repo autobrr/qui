@@ -576,91 +576,30 @@ type InstanceSpeeds struct {
 	Upload   int64 `json:"upload"`
 }
 
-// extractDomainFromURL extracts the domain from a single URL
+// extractDomainFromURL extracts the domain from a BitTorrent tracker URL with caching
+// Where scheme is typically: http, https, udp, ws, or wss
 func (sm *SyncManager) extractDomainFromURL(urlStr string) string {
 	urlStr = strings.TrimSpace(urlStr)
 	if urlStr == "" {
 		return ""
 	}
 
-	if strings.Contains(urlStr, "://") {
-		if u, err := url.Parse(urlStr); err == nil {
-			return u.Hostname()
-		}
-		// Fallback to string manipulation
-		parts := strings.Split(urlStr, "://")
-		if len(parts) > 1 {
-			domain := parts[1]
-			if idx := strings.IndexAny(domain, ":/"); idx != -1 {
-				domain = domain[:idx]
-			}
-			return domain
-		}
-	}
-	return ""
-}
-
-// getDomainsFromTracker extracts ALL domains from tracker string with caching
-// Returns a slice of all unique domains found in the tracker string
-func (sm *SyncManager) getDomainsFromTracker(trackerStr string) []string {
-	// Check cache first - cache key includes "multi:" prefix to differentiate from single domain cache
-	cacheKey := "multi:" + trackerStr
-	if cachedDomains, found := urlCache.Get(cacheKey); found {
-		// Parse the cached string back to slice
-		if cachedDomains == "" {
-			return []string{}
-		}
-		return strings.Split(cachedDomains, "|")
+	// Check cache first
+	if cachedDomain, found := urlCache.Get(urlStr); found {
+		return cachedDomain
 	}
 
-	domainSet := make(map[string]bool)
-	var domains []string
-
-	// Handle multiple trackers separated by newlines or commas
-	trackerStrings := strings.SplitSeq(trackerStr, "\n")
-	for ts := range trackerStrings {
-		ts = strings.TrimSpace(ts)
-		if ts == "" {
-			continue
-		}
-		// Split by commas
-		commaParts := strings.SplitSeq(ts, ",")
-		for part := range commaParts {
-			part = strings.TrimSpace(part)
-			if part == "" {
-				continue
-			}
-			// Extract domain from this tracker URL
-			var domain string
-			if strings.Contains(part, "://") {
-				if u, err := url.Parse(part); err == nil {
-					domain = u.Hostname()
-				} else {
-					// Fallback to string manipulation
-					parts := strings.Split(part, "://")
-					if len(parts) > 1 {
-						domain = parts[1]
-						if idx := strings.IndexAny(domain, ":/"); idx != -1 {
-							domain = domain[:idx]
-						}
-					}
-				}
-			}
-			if domain != "" && !domainSet[domain] {
-				domainSet[domain] = true
-				domains = append(domains, domain)
-			}
-		}
+	var domain string
+	if u, err := url.Parse(urlStr); err == nil {
+		domain = u.Hostname()
+	}
+	if domain == "" {
+		domain = "Unknown"
 	}
 
-	// Cache the result - join domains with | separator
-	if len(domains) > 0 {
-		urlCache.Set(cacheKey, strings.Join(domains, "|"), ttlcache.DefaultTTL)
-	} else {
-		urlCache.Set(cacheKey, "", ttlcache.DefaultTTL)
-	}
-
-	return domains
+	// Cache the result
+	urlCache.Set(urlStr, domain, ttlcache.DefaultTTL)
+	return domain
 }
 
 // countTorrentStatuses counts torrent statuses efficiently in a single pass
@@ -783,22 +722,6 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(allTorrents []qbt
 				if tag != "" {
 					counts.Tags[tag]++
 				}
-			}
-		}
-
-		// Fallback: If MainData.Trackers was not available, use the torrent's Tracker field
-		if mainData == nil || mainData.Trackers == nil {
-			if torrent.Tracker != "" {
-				domains := sm.getDomainsFromTracker(torrent.Tracker)
-				if len(domains) > 0 {
-					for _, domain := range domains {
-						counts.Trackers[domain]++
-					}
-				} else {
-					counts.Trackers["Unknown"]++
-				}
-			} else {
-				counts.Trackers[""]++
 			}
 		}
 	}
@@ -1312,20 +1235,16 @@ func (sm *SyncManager) applyManualFilters(torrents []qbt.Torrent, filters Filter
 						trackerMatch = true
 					}
 				} else {
-					// Extract ALL tracker domains from torrent
-					trackerDomains := sm.getDomainsFromTracker(torrent.Tracker)
-
-					// If no valid domains found, use "Unknown"
-					if len(trackerDomains) == 0 {
-						trackerDomains = []string{"Unknown"}
+					// Extract domain from the active tracker
+					// Note: torrent.Tracker only contains the currently active tracker
+					trackerDomain := sm.extractDomainFromURL(torrent.Tracker)
+					if trackerDomain == "" {
+						trackerDomain = "Unknown"
 					}
 
-					// Check if any tracker domain matches the filter
-					for _, trackerDomain := range trackerDomains {
-						if slices.Contains(filters.Trackers, trackerDomain) {
-							trackerMatch = true
-							break
-						}
+					// Check if the tracker domain matches the filter
+					if slices.Contains(filters.Trackers, trackerDomain) {
+						trackerMatch = true
 					}
 				}
 			}
