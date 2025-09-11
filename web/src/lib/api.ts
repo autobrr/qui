@@ -12,7 +12,7 @@ import type {
   TorrentResponse,
   User
 } from "@/types"
-import { getApiBaseUrl } from "./base-url"
+import { getApiBaseUrl, withBasePath } from "./base-url"
 
 const API_BASE = getApiBaseUrl()
 
@@ -31,8 +31,8 @@ class ApiClient {
     })
 
     if (!response.ok) {
-      if (response.status === 401 && !window.location.pathname.startsWith("/login") && !window.location.pathname.startsWith("/setup")) {
-        window.location.href = "/login"
+      if (response.status === 401 && !window.location.pathname.startsWith(withBasePath("/login")) && !window.location.pathname.startsWith(withBasePath("/setup")) {
+        window.location.href = withBasePath("/login")
         throw new Error("Session expired")
       }
 
