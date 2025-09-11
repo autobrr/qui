@@ -122,6 +122,12 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		return nil, err
 	}
 
+	// Get MainData for tracker filtering (if needed)
+	var mainData *qbt.MainData
+	if len(filters.Trackers) > 0 {
+		mainData = syncManager.GetData()
+	}
+
 	// Determine if we can use library filtering or need manual filtering
 	// Use library filtering only if we have single filters that the library supports
 	var torrentFilterOptions qbt.TorrentFilterOptions
@@ -166,7 +172,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		filteredTorrents = syncManager.GetTorrents(torrentFilterOptions)
 
 		// Apply manual filtering for multiple selections
-		filteredTorrents = sm.applyManualFilters(filteredTorrents, filters)
+		filteredTorrents = sm.applyManualFilters(filteredTorrents, filters, mainData)
 	} else {
 		// Use library filtering for single selections
 		log.Debug().
@@ -268,7 +274,10 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	// Calculate counts from ALL torrents (not filtered) for sidebar
 	// This uses the same cached data, so it's very fast
 	allTorrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{})
-	counts := sm.calculateCountsFromTorrents(allTorrents)
+
+	// Get MainData for accurate tracker information
+	mainData = syncManager.GetData()
+	counts := sm.calculateCountsFromTorrentsWithTrackers(allTorrents, mainData)
 
 	// Fetch categories and tags (cached separately for 60s)
 	categories, err := sm.GetCategories(ctx, instanceID)
@@ -567,16 +576,49 @@ type InstanceSpeeds struct {
 	Upload   int64 `json:"upload"`
 }
 
-// getDomainFromTracker extracts domain from tracker string with caching
-func (sm *SyncManager) getDomainFromTracker(trackerStr string) string {
-	// Check cache first
-	if domain, found := urlCache.Get(trackerStr); found {
-		return domain
+// extractDomainFromURL extracts the domain from a single URL
+func (sm *SyncManager) extractDomainFromURL(urlStr string) string {
+	urlStr = strings.TrimSpace(urlStr)
+	if urlStr == "" {
+		return ""
 	}
 
+	if strings.Contains(urlStr, "://") {
+		if u, err := url.Parse(urlStr); err == nil {
+			return u.Hostname()
+		}
+		// Fallback to string manipulation
+		parts := strings.Split(urlStr, "://")
+		if len(parts) > 1 {
+			domain := parts[1]
+			if idx := strings.IndexAny(domain, ":/"); idx != -1 {
+				domain = domain[:idx]
+			}
+			return domain
+		}
+	}
+	return ""
+}
+
+// getDomainsFromTracker extracts ALL domains from tracker string with caching
+// Returns a slice of all unique domains found in the tracker string
+func (sm *SyncManager) getDomainsFromTracker(trackerStr string) []string {
+	// Check cache first - cache key includes "multi:" prefix to differentiate from single domain cache
+	cacheKey := "multi:" + trackerStr
+	if cachedDomains, found := urlCache.Get(cacheKey); found {
+		// Parse the cached string back to slice
+		if cachedDomains == "" {
+			return []string{}
+		}
+		return strings.Split(cachedDomains, "|")
+	}
+
+	domainSet := make(map[string]bool)
+	var domains []string
+
 	// Handle multiple trackers separated by newlines or commas
-	trackerStrings := strings.Split(trackerStr, "\n")
-	for _, ts := range trackerStrings {
+	trackerStrings := strings.SplitSeq(trackerStr, "\n")
+	for ts := range trackerStrings {
 		ts = strings.TrimSpace(ts)
 		if ts == "" {
 			continue
@@ -604,17 +646,21 @@ func (sm *SyncManager) getDomainFromTracker(trackerStr string) string {
 					}
 				}
 			}
-			if domain != "" {
-				// Cache the result
-				urlCache.Set(trackerStr, domain, ttlcache.DefaultTTL)
-				return domain
+			if domain != "" && !domainSet[domain] {
+				domainSet[domain] = true
+				domains = append(domains, domain)
 			}
 		}
 	}
 
-	// Cache empty result to avoid repeated parsing
-	urlCache.Set(trackerStr, "", ttlcache.DefaultTTL)
-	return ""
+	// Cache the result - join domains with | separator
+	if len(domains) > 0 {
+		urlCache.Set(cacheKey, strings.Join(domains, "|"), ttlcache.DefaultTTL)
+	} else {
+		urlCache.Set(cacheKey, "", ttlcache.DefaultTTL)
+	}
+
+	return domains
 }
 
 // countTorrentStatuses counts torrent statuses efficiently in a single pass
@@ -654,9 +700,9 @@ func (sm *SyncManager) countTorrentStatuses(torrent qbt.Torrent, counts map[stri
 	}
 }
 
-// calculateCountsFromTorrents calculates counts from a list of torrents
-// This is used internally to generate counts without additional API calls
-func (sm *SyncManager) calculateCountsFromTorrents(allTorrents []qbt.Torrent) *TorrentCounts {
+// calculateCountsFromTorrentsWithTrackers calculates counts using MainData's tracker information
+// This gives us the REAL tracker-to-torrent mapping from qBittorrent
+func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(allTorrents []qbt.Torrent, mainData *qbt.MainData) *TorrentCounts {
 	// Initialize counts
 	counts := &TorrentCounts{
 		Status: map[string]int{
@@ -671,7 +717,50 @@ func (sm *SyncManager) calculateCountsFromTorrents(allTorrents []qbt.Torrent) *T
 		Total:      len(allTorrents),
 	}
 
-	// Iterate through torrents once and count everything
+	// Build a torrent map for O(1) lookups
+	torrentMap := make(map[string]*qbt.Torrent)
+	for i := range allTorrents {
+		torrentMap[allTorrents[i].Hash] = &allTorrents[i]
+	}
+
+	// Process tracker counts using MainData's Trackers field if available
+	// The Trackers field maps tracker URLs to arrays of torrent hashes
+	if mainData != nil && mainData.Trackers != nil {
+		log.Debug().
+			Int("trackerCount", len(mainData.Trackers)).
+			Msg("Using MainData.Trackers for accurate multi-tracker counting")
+
+		// Count torrents per tracker domain
+		trackerDomainCounts := make(map[string]map[string]bool) // domain -> set of torrent hashes
+
+		for trackerURL, torrentHashes := range mainData.Trackers {
+			// Extract domain from tracker URL
+			domain := sm.extractDomainFromURL(trackerURL)
+			if domain == "" {
+				domain = "Unknown"
+			}
+
+			// Initialize domain set if needed
+			if trackerDomainCounts[domain] == nil {
+				trackerDomainCounts[domain] = make(map[string]bool)
+			}
+
+			// Add all torrent hashes for this tracker to the domain's set
+			for _, hash := range torrentHashes {
+				// Only count if the torrent exists in our current torrent list
+				if _, exists := torrentMap[hash]; exists {
+					trackerDomainCounts[domain][hash] = true
+				}
+			}
+		}
+
+		// Convert sets to counts
+		for domain, hashSet := range trackerDomainCounts {
+			counts.Trackers[domain] = len(hashSet)
+		}
+	}
+
+	// Process each torrent for other counts (status, categories, tags)
 	for _, torrent := range allTorrents {
 		// Count statuses
 		sm.countTorrentStatuses(torrent, counts.Status)
@@ -697,17 +786,20 @@ func (sm *SyncManager) calculateCountsFromTorrents(allTorrents []qbt.Torrent) *T
 			}
 		}
 
-		// Tracker count (use first tracker URL)
-		if torrent.Tracker != "" {
-			domain := sm.getDomainFromTracker(torrent.Tracker)
-			if domain != "" {
-				counts.Trackers[domain]++
+		// Fallback: If MainData.Trackers was not available, use the torrent's Tracker field
+		if mainData == nil || mainData.Trackers == nil {
+			if torrent.Tracker != "" {
+				domains := sm.getDomainsFromTracker(torrent.Tracker)
+				if len(domains) > 0 {
+					for _, domain := range domains {
+						counts.Trackers[domain]++
+					}
+				} else {
+					counts.Trackers["Unknown"]++
+				}
 			} else {
-				// If no valid domain found, count as unknown
-				counts.Trackers["Unknown"]++
+				counts.Trackers[""]++
 			}
-		} else {
-			counts.Trackers[""]++
 		}
 	}
 
@@ -716,6 +808,12 @@ func (sm *SyncManager) calculateCountsFromTorrents(allTorrents []qbt.Torrent) *T
 
 // GetTorrentCounts gets all torrent counts for the filter sidebar
 func (sm *SyncManager) GetTorrentCounts(ctx context.Context, instanceID int) (*TorrentCounts, error) {
+	// Get client and sync manager
+	_, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		return nil, err
+	}
+
 	// Get all torrents from the same source the table uses (now fresh from sync manager)
 	allTorrents, err := sm.getAllTorrentsForStats(ctx, instanceID, "")
 	if err != nil {
@@ -724,8 +822,11 @@ func (sm *SyncManager) GetTorrentCounts(ctx context.Context, instanceID int) (*T
 
 	log.Debug().Int("instanceID", instanceID).Int("torrents", len(allTorrents)).Msg("GetTorrentCounts: got fresh torrents from sync manager")
 
-	// Calculate counts using the shared function
-	counts := sm.calculateCountsFromTorrents(allTorrents)
+	// Get the MainData which includes the Trackers map
+	mainData := syncManager.GetData()
+
+	// Calculate counts using the shared function - pass mainData for tracker information
+	counts := sm.calculateCountsFromTorrentsWithTrackers(allTorrents, mainData)
 
 	// Don't cache counts separately - they're always derived from the cached torrent data
 	// This ensures sidebar and table are always in sync
@@ -1105,7 +1206,7 @@ func (sm *SyncManager) filterTorrentsByGlob(torrents []qbt.Torrent, pattern stri
 }
 
 // applyManualFilters applies all filters manually when library filtering is insufficient
-func (sm *SyncManager) applyManualFilters(torrents []qbt.Torrent, filters FilterOptions) []qbt.Torrent {
+func (sm *SyncManager) applyManualFilters(torrents []qbt.Torrent, filters FilterOptions, mainData *qbt.MainData) []qbt.Torrent {
 	var filtered []qbt.Torrent
 
 	for _, torrent := range torrents {
@@ -1170,38 +1271,61 @@ func (sm *SyncManager) applyManualFilters(torrents []qbt.Torrent, filters Filter
 		// Apply tracker filters (OR logic within tracker filters)
 		if len(filters.Trackers) > 0 {
 			trackerMatch := false
-			if torrent.Tracker == "" {
-				// Check if empty tracker is in the filter (for "no tracker" option)
-				if slices.Contains(filters.Trackers, "") {
-					trackerMatch = true
+
+			// Use MainData.Trackers if available for accurate multi-tracker filtering
+			if mainData != nil && mainData.Trackers != nil {
+				// Build a set of tracker domains for this torrent using MainData
+				torrentTrackerDomains := make(map[string]bool)
+
+				// Check each tracker URL in MainData
+				for trackerURL, torrentHashes := range mainData.Trackers {
+					// Check if this torrent is in the hash list for this tracker
+					if slices.Contains(torrentHashes, torrent.Hash) {
+						// This torrent uses this tracker
+						domain := sm.extractDomainFromURL(trackerURL)
+						if domain == "" {
+							domain = "Unknown"
+						}
+						torrentTrackerDomains[domain] = true
+					}
+				}
+
+				// If torrent has no trackers in MainData, check for empty filter
+				if len(torrentTrackerDomains) == 0 {
+					if slices.Contains(filters.Trackers, "") {
+						trackerMatch = true
+					}
+				} else {
+					// Check if any of the torrent's tracker domains match the filter
+					for domain := range torrentTrackerDomains {
+						if slices.Contains(filters.Trackers, domain) {
+							trackerMatch = true
+							break
+						}
+					}
 				}
 			} else {
-				// Extract tracker domains from torrent
-				var trackerDomains []string
-				trackerStrings := strings.Split(torrent.Tracker, "\n")
-
-				for _, trackerStr := range trackerStrings {
-					trackerStr = strings.TrimSpace(trackerStr)
-					if trackerStr == "" {
-						continue
-					}
-
-					domain := sm.getDomainFromTracker(trackerStr)
-					if domain != "" {
-						trackerDomains = append(trackerDomains, domain)
-					}
-				}
-
-				// If no valid domains found, use "Unknown"
-				if len(trackerDomains) == 0 {
-					trackerDomains = append(trackerDomains, "Unknown")
-				}
-
-				// Check if any tracker domain matches the filter
-				for _, trackerDomain := range trackerDomains {
-					if slices.Contains(filters.Trackers, trackerDomain) {
+				// Fallback to using torrent.Tracker field if MainData not available
+				if torrent.Tracker == "" {
+					// Check if empty tracker is in the filter (for "no tracker" option)
+					if slices.Contains(filters.Trackers, "") {
 						trackerMatch = true
-						break
+					}
+				} else {
+					// Extract ALL tracker domains from torrent
+					trackerDomains := sm.getDomainsFromTracker(torrent.Tracker)
+
+					// If no valid domains found, use "Unknown"
+					if len(trackerDomains) == 0 {
+						trackerDomains = []string{"Unknown"}
+					}
+
+					// Check if any tracker domain matches the filter
+					for _, trackerDomain := range trackerDomains {
+						if slices.Contains(filters.Trackers, trackerDomain) {
+							trackerMatch = true
+							break
+						}
 					}
 				}
 			}
