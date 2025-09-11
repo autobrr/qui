@@ -59,17 +59,18 @@ interface FilterBadgeProps {
 
 function FilterBadge({ count, onClick }: FilterBadgeProps) {
   return (
-    <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-xs">
-      <button
-        onClick={(e) => {
-          e.stopPropagation()
-          onClick()
-        }}
-        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-      >
+    <Badge
+      variant="secondary"
+      className="ml-2 h-5 px-1.5 text-xs cursor-pointer hover:bg-secondary/80"
+      onClick={(e: React.MouseEvent) => {
+        e.stopPropagation()
+        onClick()
+      }}
+    >
+      <span className="flex items-center gap-1 text-xs text-muted-foreground">
         <X className="size-3"/>
         {count}
-      </button>
+      </span>
     </Badge>
   )
 }
