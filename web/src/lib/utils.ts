@@ -18,15 +18,6 @@ export function formatBytes(bytes: number): string {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`
 }
 
-export function formatSpeed(bytesPerSecond: number, compact: boolean = false): string {
-  if (!bytesPerSecond || bytesPerSecond === 0) return compact ? "0" : "0 B/s"
-  const k = 1024
-  const sizes = compact ? ["B", "KiB", "MiB", "GiB"] : ["B/s", "KiB/s", "MiB/s", "GiB/s"]
-  const i = Math.floor(Math.log(bytesPerSecond) / Math.log(k))
-  const value = parseFloat((bytesPerSecond / Math.pow(k, i)).toFixed(i > 0 ? 1 : 0))
-  return `${value}${sizes[i]}`
-}
-
 export function formatTimestamp(timestamp: number): string {
   if (!timestamp || timestamp === 0) return "N/A"
   return new Date(timestamp * 1000).toLocaleString()

@@ -70,11 +70,11 @@ import {
 } from "@/components/ui/tooltip"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { useIncognitoMode } from "@/lib/incognito"
+import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { getCommonCategory, getCommonTags } from "@/lib/torrent-utils"
-import { formatSpeed } from "@/lib/utils"
 import type { Category, Torrent, TorrentCounts } from "@/types"
 import { useSearch } from "@tanstack/react-router"
-import { ChevronDown, ChevronUp, Columns3, Eye, EyeOff, Loader2 } from "lucide-react"
+import { ArrowUpDown, ChevronDown, ChevronUp, Columns3, Eye, EyeOff, Loader2 } from "lucide-react"
 import { createPortal } from "react-dom"
 import { AddTorrentDialog } from "./AddTorrentDialog"
 import { DraggableTableHeader } from "./DraggableTableHeader"
@@ -93,7 +93,7 @@ const DEFAULT_COLUMN_SIZING = {}
 
 // Helper function to get default column order (module scope for stable reference)
 function getDefaultColumnOrder(): string[] {
-  const cols = createColumns(false)
+  const cols = createColumns(false, undefined, "bytes")
   return cols.map(col => {
     if ("id" in col && col.id) return col.id
     if ("accessorKey" in col && typeof col.accessorKey === "string") return col.accessorKey
@@ -134,6 +134,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const [excludedFromSelectAll, setExcludedFromSelectAll] = useState<Set<string>>(new Set())
 
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
+  const [speedUnit, setSpeedUnit] = useSpeedUnits()
 
   // Track user-initiated actions to differentiate from automatic data updates
   const [lastUserAction, setLastUserAction] = useState<{ type: string; timestamp: number } | null>(null)
@@ -385,8 +386,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       onRowSelection: handleRowSelection,
       isAllSelected,
       excludedFromSelectAll,
-    }),
-    [incognitoMode, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, isAllSelected, excludedFromSelectAll]
+    }, speedUnit),
+    [incognitoMode, speedUnit, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, isAllSelected, excludedFromSelectAll]
   )
 
   const table = useReactTable({
@@ -1015,27 +1016,50 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
           <div className="flex items-center gap-2 text-xs">
             <div className="flex items-center gap-1">
               <ChevronDown className="h-3 w-3 text-muted-foreground" />
-              <span className="font-medium">{formatSpeed(stats.totalDownloadSpeed || 0)}</span>
+              <span className="font-medium">{formatSpeedWithUnit(stats.totalDownloadSpeed || 0, speedUnit)}</span>
               <ChevronUp className="h-3 w-3 text-muted-foreground" />
-              <span className="font-medium">{formatSpeed(stats.totalUploadSpeed || 0)}</span>
+              <span className="font-medium">{formatSpeedWithUnit(stats.totalUploadSpeed || 0, speedUnit)}</span>
             </div>
           </div>
 
 
 
           <div className="flex items-center gap-4">
-            {/* Incognito mode toggle - barely visible */}
-            <button
-              onClick={() => setIncognitoMode(!incognitoMode)}
-              className="p-1 rounded-sm transition-all hover:bg-muted/50"
-              title={incognitoMode ? "Exit incognito mode" : "Enable incognito mode"}
-            >
-              {incognitoMode ? (
-                <EyeOff className="h-3.5 w-3.5 text-muted-foreground" />
-              ) : (
-                <Eye className="h-3.5 w-3.5 text-muted-foreground" />
-              )}
-            </button>
+            {/* Speed units toggle */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => setSpeedUnit(speedUnit === "bytes" ? "bits" : "bytes")}
+                  className="flex items-center gap-1 pl-1.5 py-0.5 rounded-sm transition-all hover:bg-muted/50"
+                >
+                  <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">
+                    {speedUnit === "bytes" ? "MiB/s" : "Mbps"}
+                  </span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {speedUnit === "bytes" ? "Switch to bits per second (bps)" : "Switch to bytes per second (B/s)"}
+              </TooltipContent>
+            </Tooltip>
+            {/* Incognito mode toggle */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => setIncognitoMode(!incognitoMode)}
+                  className="p-1 rounded-sm transition-all hover:bg-muted/50"
+                >
+                  {incognitoMode ? (
+                    <EyeOff className="h-3.5 w-3.5 text-muted-foreground" />
+                  ) : (
+                    <Eye className="h-3.5 w-3.5 text-muted-foreground" />
+                  )}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {incognitoMode ? "Exit incognito mode" : "Enable incognito mode"}
+              </TooltipContent>
+            </Tooltip>
           </div>
         </div>
       </div>

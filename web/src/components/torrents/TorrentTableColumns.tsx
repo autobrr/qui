@@ -22,7 +22,8 @@ import {
   getLinuxTracker,
   getLinuxRatio
 } from "@/lib/incognito"
-import { formatBytes, formatSpeed, getRatioColor } from "@/lib/utils"
+import { formatBytes, getRatioColor } from "@/lib/utils"
+import { formatSpeedWithUnit, type SpeedUnit } from "@/lib/speedUnits"
 import { getStateLabel } from "@/lib/torrent-state-utils"
 
 function formatEta(seconds: number): string {
@@ -64,7 +65,8 @@ export const createColumns = (
     onRowSelection?: (hash: string, checked: boolean, rowId?: string) => void
     isAllSelected?: boolean
     excludedFromSelectAll?: Set<string>
-  }
+  },
+  speedUnit: SpeedUnit = "bytes"
 ): ColumnDef<Torrent>[] => [
   {
     id: "select",
@@ -265,13 +267,13 @@ export const createColumns = (
   {
     accessorKey: "dlspeed",
     header: "Down Speed",
-    cell: ({ row }) => <span className="text-sm truncate">{formatSpeed(row.original.dlspeed)}</span>,
+    cell: ({ row }) => <span className="text-sm truncate">{formatSpeedWithUnit(row.original.dlspeed, speedUnit)}</span>,
     size: calculateMinWidth("Down Speed"),
   },
   {
     accessorKey: "upspeed",
     header: "Up Speed",
-    cell: ({ row }) => <span className="text-sm truncate">{formatSpeed(row.original.upspeed)}</span>,
+    cell: ({ row }) => <span className="text-sm truncate">{formatSpeedWithUnit(row.original.upspeed, speedUnit)}</span>,
     size: calculateMinWidth("Up Speed"),
   },
   {
