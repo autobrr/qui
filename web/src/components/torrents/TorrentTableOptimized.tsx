@@ -88,6 +88,8 @@ const DEFAULT_COLUMN_VISIBILITY = {
   save_path: false, // Fixed: was 'saveLocation', should match column accessorKey
   tracker: false,
   priority: true,
+  num_seeds: false,
+  num_leechs: false,
 }
 const DEFAULT_COLUMN_SIZING = {}
 
