@@ -265,6 +265,36 @@ export const createColumns = (
     size: 130,
   },
   {
+    accessorKey: "num_seeds",
+    header: "Seeds",
+    cell: ({ row }) => {
+      const connected = row.original.num_seeds >= 0 ? row.original.num_seeds : 0
+      const total = row.original.num_complete >= 0 ? row.original.num_complete : 0
+      if (total < 0 && connected < 0) return <span className="text-sm truncate">-</span>
+      return (
+        <span className="text-sm truncate">
+          {connected} ({total})
+        </span>
+      )
+    },
+    size: 85,
+  },
+  {
+    accessorKey: "num_leechs",
+    header: "Peers",
+    cell: ({ row }) => {
+      const connected = row.original.num_leechs >= 0 ? row.original.num_leechs : 0
+      const total = row.original.num_incomplete >= 0 ? row.original.num_incomplete : 0
+      if (total < 0 && connected < 0) return <span className="text-sm truncate">-</span>
+      return (
+        <span className="text-sm truncate">
+          {connected} ({total})
+        </span>
+      )
+    },
+    size: 85,
+  },
+  {
     accessorKey: "dlspeed",
     header: "Down Speed",
     cell: ({ row }) => <span className="text-sm truncate">{formatSpeedWithUnit(row.original.dlspeed, speedUnit)}</span>,
