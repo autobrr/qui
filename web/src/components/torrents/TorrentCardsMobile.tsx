@@ -678,7 +678,6 @@ export function TorrentCardsMobile({
   const {
     torrents,
     totalCount,
-    stats,
     counts,
     categories,
     tags,
