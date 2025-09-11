@@ -69,7 +69,11 @@ export function Login() {
               <form.Field
                 name="username"
                 validators={{
-                  onChange: ({ value }) => (!value ? "Username is required" : undefined),
+                  onChangeAsyncDebounceMs: 500,
+                  onChangeAsync: async ({ value }) => {
+                    if (!value) return "Username is required"
+                    return undefined
+                  },
                 }}
               >
                 {(field) => (
@@ -93,7 +97,11 @@ export function Login() {
               <form.Field
                 name="password"
                 validators={{
-                  onChange: ({ value }) => (!value ? "Password is required" : undefined),
+                  onChangeAsyncDebounceMs: 500,
+                  onChangeAsync: async ({ value }) => {
+                    if (!value) return "Password is required"
+                    return undefined
+                  },
                 }}
               >
                 {(field) => (
@@ -114,23 +122,23 @@ export function Login() {
                 )}
               </form.Field>
 
-            <form.Field name="rememberMe">
-              {(field) => (
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id={field.name}
-                    checked={field.state.value}
-                    onCheckedChange={(checked) => field.handleChange(checked === true)}
-                  />
-                  <Label
-                    htmlFor={field.name}
-                    className="text-sm font-normal leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                  >
-                    Remember me
-                  </Label>
-                </div>
-              )}
-            </form.Field>
+              <form.Field name="rememberMe">
+                {(field) => (
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id={field.name}
+                      checked={field.state.value}
+                      onCheckedChange={(checked) => field.handleChange(checked === true)}
+                    />
+                    <Label
+                      htmlFor={field.name}
+                      className="text-sm font-normal leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                    >
+                      Remember me
+                    </Label>
+                  </div>
+                )}
+              </form.Field>
 
               {loginError && (
                 <div className="bg-destructive/10 border border-destructive/20 text-destructive px-4 py-3 rounded-md text-sm">
