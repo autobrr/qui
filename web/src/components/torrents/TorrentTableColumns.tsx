@@ -265,24 +265,6 @@ export const createColumns = (
     size: 130,
   },
   {
-    accessorKey: "dlspeed",
-    header: "Down Speed",
-    cell: ({ row }) => <span className="text-sm truncate">{formatSpeedWithUnit(row.original.dlspeed, speedUnit)}</span>,
-    size: calculateMinWidth("Down Speed"),
-  },
-  {
-    accessorKey: "upspeed",
-    header: "Up Speed",
-    cell: ({ row }) => <span className="text-sm truncate">{formatSpeedWithUnit(row.original.upspeed, speedUnit)}</span>,
-    size: calculateMinWidth("Up Speed"),
-  },
-  {
-    accessorKey: "eta",
-    header: "ETA",
-    cell: ({ row }) => <span className="text-sm truncate">{formatEta(row.original.eta)}</span>,
-    size: 80,
-  },
-  {
     accessorKey: "num_seeds",
     header: "Seeds",
     cell: ({ row }) => {
@@ -311,6 +293,24 @@ export const createColumns = (
       )
     },
     size: 85,
+  },
+  {
+    accessorKey: "dlspeed",
+    header: "Down Speed",
+    cell: ({ row }) => <span className="text-sm truncate">{formatSpeedWithUnit(row.original.dlspeed, speedUnit)}</span>,
+    size: calculateMinWidth("Down Speed"),
+  },
+  {
+    accessorKey: "upspeed",
+    header: "Up Speed",
+    cell: ({ row }) => <span className="text-sm truncate">{formatSpeedWithUnit(row.original.upspeed, speedUnit)}</span>,
+    size: calculateMinWidth("Up Speed"),
+  },
+  {
+    accessorKey: "eta",
+    header: "ETA",
+    cell: ({ row }) => <span className="text-sm truncate">{formatEta(row.original.eta)}</span>,
+    size: 80,
   },
   {
     accessorKey: "ratio",

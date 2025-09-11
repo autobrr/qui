@@ -85,7 +85,7 @@ import { createColumns } from "./TorrentTableColumns"
 const DEFAULT_COLUMN_VISIBILITY = {
   downloaded: false,
   uploaded: false,
-  save_path: false, // Fixed: was 'saveLocation', should match column accessorKey
+  save_path: false,
   tracker: false,
   priority: true,
   num_seeds: false,
