@@ -62,6 +62,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
+import { Logo } from "@/components/ui/Logo"
 import { ScrollToTopButton } from "@/components/ui/scroll-to-top-button"
 import {
   Tooltip,
@@ -162,6 +163,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   // Progressive loading state with async management
   const [loadedRows, setLoadedRows] = useState(100)
   const [isLoadingMoreRows, setIsLoadingMoreRows] = useState(false)
+
+  // Delayed loading state to avoid flicker on fast loads
+  const [showLoadingState, setShowLoadingState] = useState(false)
 
   // Use the shared torrent actions hook
   const {
@@ -273,6 +277,27 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     sort: sorting.length > 0 ? getBackendSortField(sorting[0].id) : "added_on",
     order: sorting.length > 0 ? (sorting[0].desc ? "desc" : "asc") : "desc",
   })
+
+  // Delayed loading state to avoid flicker on fast loads
+  useEffect(() => {
+    let timeoutId: ReturnType<typeof setTimeout>
+
+    if (isLoading && torrents.length === 0) {
+      // Start a timer to show loading state after 500ms
+      timeoutId = setTimeout(() => {
+        setShowLoadingState(true)
+      }, 500)
+    } else {
+      // Clear the timer and hide loading state when not loading
+      setShowLoadingState(false)
+    }
+
+    return () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+      }
+    }
+  }, [isLoading, torrents.length])
 
   // Call the callback when filtered data updates
   useEffect(() => {
@@ -837,13 +862,23 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       {/* Table container */}
       <div className="flex flex-col flex-1 min-h-0 mt-2 sm:mt-0 overflow-hidden">
         <div
-          className="relative flex-1 overflow-auto scrollbar-thin"
+          className="relative flex-1 overflow-auto scrollbar-thin select-none"
           ref={parentRef}
           role="grid"
           aria-label="Torrents table"
           aria-rowcount={totalCount}
           aria-colcount={table.getVisibleLeafColumns().length}
         >
+          {/* Loading overlay - positioned absolute to scroll container */}
+          {torrents.length === 0 && showLoadingState && (
+            <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm z-50 animate-in fade-in duration-300">
+              <div className="text-center animate-in zoom-in-95 duration-300">
+                <Logo className="h-12 w-12 animate-pulse mx-auto mb-3" />
+                <p>Loading torrents...</p>
+              </div>
+            </div>
+          )}
+
           <div style={{ position: "relative", minWidth: "min-content" }}>
             {/* Header */}
             <div className="sticky top-0 bg-background border-b" style={{ zIndex: 50 }}>
@@ -880,13 +915,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
             </div>
 
             {/* Body */}
-            {torrents.length === 0 && isLoading ? (
-              // Show skeleton loader for initial load
-              <div className="p-8 text-center text-muted-foreground">
-                <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2" />
-                <p>Loading torrents...</p>
-              </div>
-            ) : torrents.length === 0 ? (
+            {torrents.length === 0 && !isLoading ? (
               // Show empty state
               <div className="p-8 text-center text-muted-foreground">
                 <p>No torrents found</p>
@@ -977,7 +1006,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         </div>
 
         {/* Status bar */}
-        <div className="flex items-center justify-between p-2 border-t flex-shrink-0">
+        <div className="flex items-center justify-between p-2 border-t flex-shrink-0 select-none">
           <div className="text-sm text-muted-foreground">
             {/* Show special loading message when fetching without cache (cold load) */}
             {isLoading && !isCachedData && !isStaleData && torrents.length === 0 ? (

@@ -189,8 +189,8 @@ function InstanceCard({
               </Badge>
             </div>
           </div>
-          <CardDescription className={`flex items-center gap-1 ${!isFirstLoad ? "text-xs" : ""} overflow-hidden`}>
-            <span className={`${incognitoMode ? "blur-sm select-none" : ""} truncate`} title={displayUrl}>
+          <CardDescription className={`flex items-center gap-1 ${!isFirstLoad ? "text-xs" : ""}`}>
+            <span className={`${incognitoMode ? "blur-sm select-none" : ""} truncate`} style={incognitoMode ? { filter: "blur(8px)" } : {}} title={displayUrl}>
               {displayUrl}
             </span>
             <Button

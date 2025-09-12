@@ -10,7 +10,8 @@ import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Wifi, Server, Globe } from "lucide-react"
+import { Textarea } from "@/components/ui/textarea"
+import { Wifi, Server, Globe, Shield } from "lucide-react"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { NumberInputWithUnlimited } from "@/components/forms/NumberInputWithUnlimited"
 import { toast } from "sonner"
@@ -103,6 +104,10 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
       enable_multi_connections_from_same_ip: false,
       outgoing_ports_min: 0,
       outgoing_ports_max: 0,
+      ip_filter_enabled: false,
+      ip_filter_path: "",
+      ip_filter_trackers: false,
+      banned_IPs: "",
     },
     onSubmit: async ({ value }) => {
       try {
@@ -134,6 +139,10 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
       form.setFieldValue("enable_multi_connections_from_same_ip", preferences.enable_multi_connections_from_same_ip)
       form.setFieldValue("outgoing_ports_min", preferences.outgoing_ports_min)
       form.setFieldValue("outgoing_ports_max", preferences.outgoing_ports_max)
+      form.setFieldValue("ip_filter_enabled", preferences.ip_filter_enabled)
+      form.setFieldValue("ip_filter_path", preferences.ip_filter_path)
+      form.setFieldValue("ip_filter_trackers", preferences.ip_filter_trackers)
+      form.setFieldValue("banned_IPs", preferences.banned_IPs)
     }
   }, [preferences, form])
 
@@ -433,6 +442,76 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
                 max={65535}
                 description="Maximum port for outgoing connections (0 = no limit)"
               />
+            )}
+          </form.Field>
+        </div>
+      </div>
+
+      {/* IP Filtering Section */}
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <Shield className="h-4 w-4" />
+          <h3 className="text-lg font-medium">IP Filtering</h3>
+        </div>
+
+        <div className="space-y-4">
+          <form.Field name="ip_filter_enabled">
+            {(field) => (
+              <SwitchSetting
+                label="Enable IP filtering"
+                description="Filter specific IP addresses from connecting"
+                checked={field.state.value}
+                onChange={(checked) => field.handleChange(checked)}
+              />
+            )}
+          </form.Field>
+
+          <form.Field name="ip_filter_path">
+            {(field) => (
+              <div className="space-y-2">
+                <Label htmlFor="ip_filter_path">IP filter file path</Label>
+                <Input
+                  id="ip_filter_path"
+                  value={field.state.value}
+                  onChange={(e) => field.handleChange(e.target.value)}
+                  placeholder="/path/to/filter.dat"
+                  disabled={!form.state.values.ip_filter_enabled}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Path to IP filter file (.dat, .p2p, .p2b formats)
+                </p>
+              </div>
+            )}
+          </form.Field>
+
+          <form.Field name="ip_filter_trackers">
+            {(field) => (
+              <SwitchSetting
+                label="Apply IP filter to trackers"
+                description="Also filter tracker connections based on IP filter rules"
+                checked={field.state.value}
+                onChange={(checked) => field.handleChange(checked)}
+              />
+            )}
+          </form.Field>
+
+          <form.Field name="banned_IPs">
+            {(field) => (
+              <div className="space-y-2">
+                <Label>Manually banned IP addresses</Label>
+                <Textarea
+                  value={field.state.value}
+                  onChange={(e) => field.handleChange(e.target.value)}
+                  placeholder={`Enter IP addresses to ban (one per line):
+192.168.1.100
+10.0.0.50
+2001:db8::1`}
+                  className="min-h-[100px] font-mono text-sm"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Add IP addresses to permanently ban from connecting (one per line)
+                </p>
+              </div>
             )}
           </form.Field>
         </div>

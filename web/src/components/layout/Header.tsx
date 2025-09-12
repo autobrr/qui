@@ -230,7 +230,7 @@ export function Header({
       {/* Filter button and management bar always show on instance routes */}
       {isInstanceRoute && (
         <div className={cn(
-          "hidden lg:flex items-center gap-2",
+          "hidden sm:flex items-center gap-2",
           sidebarCollapsed && "ml-2"
         )}>
           {/* Filter button */}
@@ -239,7 +239,7 @@ export function Header({
               <Button
                 variant="outline"
                 size="icon"
-                className="hidden xl:inline-flex"
+                className="hidden md:inline-flex"
                 onClick={() => setFilterSidebarCollapsed(!filterSidebarCollapsed)}
               >
                 {filterSidebarCollapsed ? (

@@ -14,6 +14,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from "@/components/ui/alert-dialog"
 import { useInstances } from "@/hooks/useInstances"
 import { useIncognitoMode } from "@/lib/incognito"
 import { cn, formatErrorMessage } from "@/lib/utils"
@@ -40,6 +50,7 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
   const { deleteInstance, testConnection, isDeleting, isTesting } = useInstances()
   const [testResult, setTestResult] = useState<{ success: boolean; message: string | undefined } | null>(null)
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const displayUrl = instance.host
 
 
@@ -70,20 +81,20 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
   }
 
   const handleDelete = () => {
-    if (confirm(`Are you sure you want to delete "${instance.name}"?`)) {
-      deleteInstance({ id: instance.id, name: instance.name }, {
-        onSuccess: () => {
-          toast.success("Instance Deleted", {
-            description: `Successfully deleted "${instance.name}"`,
-          })
-        },
-        onError: (error) => {
-          toast.error("Delete Failed", {
-            description: error instanceof Error ? formatErrorMessage(error.message) : "Failed to delete instance",
-          })
-        },
-      })
-    }
+    deleteInstance({ id: instance.id, name: instance.name }, {
+      onSuccess: () => {
+        toast.success("Instance Deleted", {
+          description: `Successfully deleted "${instance.name}"`,
+        })
+        setShowDeleteDialog(false)
+      },
+      onError: (error) => {
+        toast.error("Delete Failed", {
+          description: error instanceof Error ? formatErrorMessage(error.message) : "Failed to delete instance",
+        })
+        setShowDeleteDialog(false)
+      },
+    })
   }
 
   return (
@@ -118,7 +129,7 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
-                  onClick={handleDelete}
+                  onClick={() => setShowDeleteDialog(true)}
                   disabled={isDeleting}
                   className="text-destructive"
                 >
@@ -188,6 +199,26 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
           </div>
         )}
       </CardContent>
+
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Instance</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{instance.name}"? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   )
 }

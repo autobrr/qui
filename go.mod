@@ -5,13 +5,13 @@ go 1.24.6
 require (
 	github.com/CAFxX/httpcompression v0.0.9
 	github.com/Masterminds/semver/v3 v3.4.0
+	github.com/alexedwards/scs/v2 v2.9.0
 	github.com/autobrr/autobrr v1.66.1
-	github.com/autobrr/go-qbittorrent v1.14.1-0.20250907075546-d9f066577456
+	github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20250912150321-f669d40212ea
 	github.com/creativeprojects/go-selfupdate v1.5.1
 	github.com/dgraph-io/ristretto v0.2.0
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-chi/chi/v5 v5.2.3
-	github.com/gorilla/sessions v1.4.0
 	github.com/lithammer/fuzzysearch v1.1.8
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.23.0
@@ -41,7 +41,6 @@ require (
 	github.com/google/go-github/v30 v30.1.0 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/gorilla/securecookie v1.1.2 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-retryablehttp v0.7.8 // indirect
 	github.com/hashicorp/go-version v1.7.0 // indirect

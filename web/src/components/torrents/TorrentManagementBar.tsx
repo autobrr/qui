@@ -232,7 +232,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   return (
     <>
       <div
-        className="flex items-center h-9 dark:bg-input/30 border border-input rounded-md px-3 py-2 gap-3 shadow-xs transition-all duration-200"
+        className="flex items-center h-9 dark:bg-input/30 border border-input rounded-md mr-2 px-3 py-2 gap-3 shadow-xs transition-all duration-200"
         role="toolbar"
         aria-label={`${selectionCount} torrent${selectionCount !== 1 ? "s" : ""} selected - Bulk actions available`}
       >

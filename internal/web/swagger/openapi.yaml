@@ -680,6 +680,108 @@ paths:
                 items:
                   $ref: '#/components/schemas/TorrentFile'
 
+  /api/instances/{instanceId}/torrents/{hash}/peers:
+    get:
+      tags:
+        - Torrent Details
+      summary: Get torrent peers
+      description: Get list of peers for a torrent
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/hash'
+      responses:
+        '200':
+          description: List of peers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    ip:
+                      type: string
+                    port:
+                      type: integer
+                    client:
+                      type: string
+                    progress:
+                      type: number
+                    dlSpeed:
+                      type: integer
+                    upSpeed:
+                      type: integer
+                    downloaded:
+                      type: integer
+                    uploaded:
+                      type: integer
+                    connection:
+                      type: string
+                    flags:
+                      type: string
+                    flagsDesc:
+                      type: string
+                    relevance:
+                      type: number
+
+  /api/instances/{instanceId}/torrents/add-peers:
+    post:
+      tags:
+        - Torrents
+      summary: Add peers to torrents
+      description: Add peers to one or more torrents
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - hashes
+                - peers
+              properties:
+                hashes:
+                  type: array
+                  items:
+                    type: string
+                  description: List of torrent hashes
+                peers:
+                  type: array
+                  items:
+                    type: string
+                  description: List of peers in host:port format
+      responses:
+        '200':
+          description: Peers added successfully
+
+  /api/instances/{instanceId}/torrents/ban-peers:
+    post:
+      tags:
+        - Torrents
+      summary: Ban peers permanently
+      description: Ban peers from connecting to the client
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - peers
+              properties:
+                peers:
+                  type: array
+                  items:
+                    type: string
+                  description: List of peer IPs to ban
+      responses:
+        '200':
+          description: Peers banned successfully
+
   /api/instances/{instanceId}/categories:
     get:
       tags:

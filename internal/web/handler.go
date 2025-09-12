@@ -64,6 +64,7 @@ func (h *Handler) RegisterRoutes(r chi.Router) {
 	r.Get("/apple-touch-icon.png", h.serveAssets)
 	r.Get("/pwa-192x192.png", h.serveAssets)
 	r.Get("/pwa-512x512.png", h.serveAssets)
+	r.Get("/swizzin.png", h.serveAssets)
 
 	// SPA catch-all route
 	r.Get("/*", h.serveSPA)
@@ -224,6 +225,7 @@ func (h *Handler) serveSPA(w http.ResponseWriter, r *http.Request) {
 		modifiedContent = strings.ReplaceAll(modifiedContent, `href="/favicon.png"`, `href="`+basePrefix+`/favicon.png"`)
 		modifiedContent = strings.ReplaceAll(modifiedContent, `href="/apple-touch-icon.png"`, `href="`+basePrefix+`/apple-touch-icon.png"`)
 		modifiedContent = strings.ReplaceAll(modifiedContent, `href="/qui.png"`, `href="`+basePrefix+`/qui.png"`)
+		modifiedContent = strings.ReplaceAll(modifiedContent, `src="/swizzin.png"`, `src="`+basePrefix+`/swizzin.png"`)
 
 		// Fix PWA files
 		modifiedContent = strings.ReplaceAll(modifiedContent, `src="/registerSW.js"`, `src="`+basePrefix+`/registerSW.js"`)
