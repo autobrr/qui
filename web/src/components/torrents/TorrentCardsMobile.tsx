@@ -25,10 +25,13 @@ import {
   DialogTitle
 } from "@/components/ui/dialog"
 import {
-  HoverCard,
-  HoverCardContent,
-  HoverCardTrigger
-} from "@/components/ui/hover-card"
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
@@ -584,12 +587,6 @@ export function TorrentCardsMobile({
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const [speedUnit, setSpeedUnit] = useSpeedUnits()
 
-  // Detect touch device for mobile fallback
-  const [isTouchDevice, setIsTouchDevice] = useState(false)
-  useEffect(() => {
-    setIsTouchDevice("ontouchstart" in window || navigator.maxTouchPoints > 0)
-  }, [])
-
   // Track user-initiated actions to differentiate from automatic data updates
   const [lastUserAction, setLastUserAction] = useState<{ type: string; timestamp: number } | null>(null)
   const previousFiltersRef = useRef(filters)
@@ -988,48 +985,32 @@ export function TorrentCardsMobile({
         <div className="pb-3">
           <div className="flex items-center gap-2">
             {instanceName && instances && instances.length > 1 ? (
-              <HoverCard openDelay={isTouchDevice ? 0 : 200} closeDelay={isTouchDevice ? 0 : 100}>
-                <HoverCardTrigger asChild>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
                   <button
                     className="flex items-center text-lg font-semibold max-w-[55%] hover:opacity-80 transition-opacity rounded-sm px-1 -mx-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                    aria-label={`Current instance: ${instanceName}. ${isTouchDevice ? "Tap" : "Hover or click"} to switch instances.`}
+                    aria-label={`Current instance: ${instanceName}. Tap to switch instances.`}
                     aria-haspopup="menu"
-                    aria-expanded="false"
                   >
                     <span className="truncate">{instanceName}</span>
                     <ChevronsUpDown className="h-3 w-3 text-muted-foreground ml-1 mt-0.5 opacity-60 flex-shrink-0" />
                   </button>
-                </HoverCardTrigger>
-                <HoverCardContent className="w-64 p-3" side="bottom" align="start">
-                  <div className="space-y-1">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                      Switch Instance
-                    </p>
-                    <div className="space-y-1 max-h-64 overflow-y-auto" role="menu" aria-label="Available instances">
-                      {instances.map((instance, index) => (
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-64" side="bottom" align="start">
+                  <DropdownMenuLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                    Switch Instance
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <div className="max-h-64 overflow-y-auto">
+                    {instances.map((instance) => (
+                      <DropdownMenuItem key={instance.id} asChild>
                         <Link
-                          key={instance.id}
                           to="/instances/$instanceId"
                           params={{ instanceId: instance.id.toString() }}
                           className={cn(
-                            "flex items-center gap-2 rounded-sm px-2 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
-                            instance.id === instanceId? "bg-accent text-accent-foreground font-medium": "hover:bg-accent/80 focus-visible:bg-accent/20 text-foreground"
+                            "flex items-center gap-2 cursor-pointer",
+                            instance.id === instanceId && "font-medium"
                           )}
-                          role="menuitem"
-                          tabIndex={0}
-                          onKeyDown={(e) => {
-                            if (e.key === "ArrowDown") {
-                              e.preventDefault()
-                              const nextIndex = (index + 1) % instances.length
-                              const nextElement = e.currentTarget.parentElement?.children[nextIndex] as HTMLElement
-                              nextElement?.focus()
-                            } else if (e.key === "ArrowUp") {
-                              e.preventDefault()
-                              const prevIndex = index === 0 ? instances.length - 1 : index - 1
-                              const prevElement = e.currentTarget.parentElement?.children[prevIndex] as HTMLElement
-                              prevElement?.focus()
-                            }
-                          }}
                         >
                           <HardDrive className="h-4 w-4 flex-shrink-0" />
                           <span className="flex-1 truncate">{instance.name}</span>
@@ -1041,11 +1022,11 @@ export function TorrentCardsMobile({
                             aria-label={instance.connected ? "Connected" : "Disconnected"}
                           />
                         </Link>
-                      ))}
-                    </div>
+                      </DropdownMenuItem>
+                    ))}
                   </div>
-                </HoverCardContent>
-              </HoverCard>
+                </DropdownMenuContent>
+              </DropdownMenu>
             ) : (
               <div className="text-lg font-semibold truncate max-w-[55%]">
                 {instanceName ?? ""}
