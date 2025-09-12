@@ -57,7 +57,7 @@ export function DraggableTableHeader({ header }: DraggableTableHeaderProps) {
         <div
           className={`flex items-center gap-1 flex-1 min-w-0 ${column.id === "select" ? "justify-center" : ""}`}
         >
-          <span className={`truncate ${column.id === "select" ? "flex items-center" : ""}`}>
+          <span className={`overflow-hidden whitespace-nowrap ${column.id === "select" ? "flex items-center" : ""}`}>
             {header.isPlaceholder? null: flexRender(
               column.columnDef.header,
               header.getContext()
