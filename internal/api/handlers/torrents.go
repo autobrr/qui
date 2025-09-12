@@ -10,10 +10,12 @@ import (
 	"io"
 	"net/http"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
@@ -22,6 +24,18 @@ import (
 
 type TorrentsHandler struct {
 	syncManager *qbittorrent.SyncManager
+}
+
+// SortedPeer represents a peer with its key for sorting
+type SortedPeer struct {
+	Key string `json:"key"`
+	qbt.TorrentPeer
+}
+
+// SortedPeersResponse wraps the peers response with sorted peers
+type SortedPeersResponse struct {
+	*qbt.TorrentPeersResponse
+	SortedPeers []SortedPeer `json:"sorted_peers,omitempty"`
 }
 
 func NewTorrentsHandler(syncManager *qbittorrent.SyncManager) *TorrentsHandler {
@@ -786,14 +800,58 @@ func (h *TorrentsHandler) GetTorrentPeers(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Create sorted peers array
+	sortedPeers := make([]SortedPeer, 0, len(peers.Peers))
+	for key, peer := range peers.Peers {
+		sortedPeers = append(sortedPeers, SortedPeer{
+			Key:         key,
+			TorrentPeer: peer,
+		})
+	}
+
+	// Sort peers: seeders first (progress = 1.0), then by download speed, then upload speed
+	sort.Slice(sortedPeers, func(i, j int) bool {
+		// Seeders (100% progress) always come first
+		iIsSeeder := sortedPeers[i].Progress == 1.0
+		jIsSeeder := sortedPeers[j].Progress == 1.0
+
+		if iIsSeeder != jIsSeeder {
+			return iIsSeeder // Seeders first
+		}
+
+		// Then sort by progress (higher progress first)
+		if sortedPeers[i].Progress != sortedPeers[j].Progress {
+			return sortedPeers[i].Progress > sortedPeers[j].Progress
+		}
+
+		// Then by download speed (active downloading peers)
+		if sortedPeers[i].DownSpeed != sortedPeers[j].DownSpeed {
+			return sortedPeers[i].DownSpeed > sortedPeers[j].DownSpeed
+		}
+
+		// Then by upload speed
+		if sortedPeers[i].UpSpeed != sortedPeers[j].UpSpeed {
+			return sortedPeers[i].UpSpeed > sortedPeers[j].UpSpeed
+		}
+
+		// Finally by IP for stable sorting
+		return sortedPeers[i].IP < sortedPeers[j].IP
+	})
+
+	// Create response with sorted peers
+	response := &SortedPeersResponse{
+		TorrentPeersResponse: peers,
+		SortedPeers:          sortedPeers,
+	}
+
 	// Debug logging
 	log.Trace().
 		Int("instanceID", instanceID).
 		Str("hash", hash).
-		Interface("peers", peers).
-		Msg("Torrent peers response")
+		Int("peerCount", len(sortedPeers)).
+		Msg("Torrent peers response with sorted peers")
 
-	RespondJSON(w, http.StatusOK, peers)
+	RespondJSON(w, http.StatusOK, response)
 }
 
 func (h *TorrentsHandler) GetTorrentFiles(w http.ResponseWriter, r *http.Request) {

@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
@@ -30,7 +31,7 @@ interface TorrentPeer {
   flags?: string
   flags_desc?: string
   client?: string
-  progress?: number
+  progress?: number  // Float 0-1, where 1 = 100% (seeder). Note: qBittorrent doesn't expose the actual seed status via API
   dl_speed?: number
   up_speed?: number
   downloaded?: number
@@ -42,12 +43,17 @@ interface TorrentPeer {
   peer_id_client?: string
 }
 
+interface SortedPeer extends TorrentPeer {
+  key: string
+}
+
 interface TorrentPeersResponse {
   full_update?: boolean
   rid?: number
   peers?: Record<string, TorrentPeer>
   peers_removed?: string[]
   show_flags?: boolean
+  sorted_peers?: SortedPeer[]
 }
 
 interface TorrentDetailsPanelProps {
@@ -268,182 +274,248 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                     <Loader2 className="h-6 w-6 animate-spin" />
                   </div>
                 ) : properties ? (
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 text-sm">
-                      <div>
-                        <span className="text-muted-foreground">Total Size:</span>
-                        <span className="ml-2">{formatBytes(properties.total_size || torrent.size)}</span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Pieces:</span>
-                        <span className="ml-2">{properties.pieces_have || 0} / {properties.pieces_num || 0} ({formatBytes(properties.piece_size || 0)})</span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Downloaded:</span>
-                        <span className="ml-2">{formatBytes(properties.total_downloaded || 0)}</span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Uploaded:</span>
-                        <span className="ml-2">{formatBytes(properties.total_uploaded || 0)}</span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Share Ratio:</span>
-                        <span className="ml-2">{(properties.share_ratio || 0).toFixed(2)}</span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Seeds:</span>
-                        <span className="ml-2">{properties.seeds || 0} ({properties.seeds_total || 0})</span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Peers:</span>
-                        <span className="ml-2">{properties.peers || 0} ({properties.peers_total || 0})</span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Wasted:</span>
-                        <span className="ml-2">{formatBytes(properties.total_wasted || 0)}</span>
+                  <div className="space-y-6">
+                    {/* Transfer Statistics Section */}
+                    <div className="space-y-3">
+                      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Transfer Statistics</h3>
+                      <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 space-y-4 border border-border/50">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div className="space-y-1">
+                            <p className="text-xs text-muted-foreground">Total Size</p>
+                            <p className="text-lg font-semibold">{formatBytes(properties.total_size || torrent.size)}</p>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-xs text-muted-foreground">Share Ratio</p>
+                            <p className="text-lg font-semibold">{(properties.share_ratio || 0).toFixed(2)}</p>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-xs text-muted-foreground">Downloaded</p>
+                            <p className="text-base font-medium">{formatBytes(properties.total_downloaded || 0)}</p>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-xs text-muted-foreground">Uploaded</p>
+                            <p className="text-base font-medium">{formatBytes(properties.total_uploaded || 0)}</p>
+                          </div>
+                        </div>
+
+                        <Separator className="opacity-50" />
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div className="space-y-1">
+                            <p className="text-xs text-muted-foreground">Pieces</p>
+                            <p className="text-sm font-medium">{properties.pieces_have || 0} / {properties.pieces_num || 0}</p>
+                            <p className="text-xs text-muted-foreground">({formatBytes(properties.piece_size || 0)} each)</p>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-xs text-muted-foreground">Wasted</p>
+                            <p className="text-sm font-medium">{formatBytes(properties.total_wasted || 0)}</p>
+                          </div>
+                        </div>
                       </div>
                     </div>
 
-                    <div className="space-y-2">
-                      <div>
-                        <span className="text-sm text-muted-foreground">Download Speed:</span>
-                        <span className="ml-2 text-sm">{formatSpeedWithUnit(properties.dl_speed || 0, speedUnit)} (avg: {formatSpeedWithUnit(properties.dl_speed_avg || 0, speedUnit)})</span>
+                    {/* Speed Section */}
+                    <div className="space-y-3">
+                      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Speed</h3>
+                      <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div className="space-y-1">
+                            <p className="text-xs text-muted-foreground">Download Speed</p>
+                            <p className="text-base font-semibold text-green-500">{formatSpeedWithUnit(properties.dl_speed || 0, speedUnit)}</p>
+                            <p className="text-xs text-muted-foreground">avg: {formatSpeedWithUnit(properties.dl_speed_avg || 0, speedUnit)}</p>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-xs text-muted-foreground">Upload Speed</p>
+                            <p className="text-base font-semibold text-blue-500">{formatSpeedWithUnit(properties.up_speed || 0, speedUnit)}</p>
+                            <p className="text-xs text-muted-foreground">avg: {formatSpeedWithUnit(properties.up_speed_avg || 0, speedUnit)}</p>
+                          </div>
+                        </div>
                       </div>
-                      <div>
-                        <span className="text-sm text-muted-foreground">Upload Speed:</span>
-                        <span className="ml-2 text-sm">{formatSpeedWithUnit(properties.up_speed || 0, speedUnit)} (avg: {formatSpeedWithUnit(properties.up_speed_avg || 0, speedUnit)})</span>
+                    </div>
+
+                    {/* Peers Section */}
+                    <div className="space-y-3">
+                      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Network</h3>
+                      <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-1">
+                            <p className="text-xs text-muted-foreground">Seeds</p>
+                            <p className="text-base font-semibold">{properties.seeds || 0} <span className="text-sm font-normal text-muted-foreground">/ {properties.seeds_total || 0}</span></p>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-xs text-muted-foreground">Peers</p>
+                            <p className="text-base font-semibold">{properties.peers || 0} <span className="text-sm font-normal text-muted-foreground">/ {properties.peers_total || 0}</span></p>
+                          </div>
+                        </div>
                       </div>
                     </div>
 
                     {/* Queue Information */}
                     {metadata?.preferences?.queueing_enabled && (
-                      <div className="space-y-2">
-                        <div>
-                          <span className="text-sm text-muted-foreground">Priority:</span>
-                          <span className="ml-2 text-sm">
-                            {torrent?.priority > 0 ? (
-                              <>
-                                {torrent.priority}
-                                {(torrent.state === "queuedDL" || torrent.state === "queuedUP") && (
-                                  <Badge variant="secondary" className="ml-2 text-xs">
-                                    Queued {torrent.state === "queuedDL" ? "DL" : "UP"}
-                                  </Badge>
+                      <div className="space-y-3">
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Queue Management</h3>
+                        <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-muted-foreground">Priority</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-semibold">
+                                {torrent?.priority > 0 ? torrent.priority : "Normal"}
+                              </span>
+                              {(torrent?.state === "queuedDL" || torrent?.state === "queuedUP") && (
+                                <Badge variant="secondary" className="text-xs">
+                                  Queued {torrent.state === "queuedDL" ? "DL" : "UP"}
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                          {(metadata.preferences.max_active_downloads > 0 ||
+                            metadata.preferences.max_active_uploads > 0 ||
+                            metadata.preferences.max_active_torrents > 0) && (
+                            <>
+                              <Separator className="opacity-50" />
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                                {metadata.preferences.max_active_downloads > 0 && (
+                                  <div className="space-y-1">
+                                    <p className="text-muted-foreground">Max Downloads</p>
+                                    <p className="font-medium">{metadata.preferences.max_active_downloads}</p>
+                                  </div>
                                 )}
-                              </>
-                            ) : (
-                              "Normal"
-                            )}
-                          </span>
+                                {metadata.preferences.max_active_uploads > 0 && (
+                                  <div className="space-y-1">
+                                    <p className="text-muted-foreground">Max Uploads</p>
+                                    <p className="font-medium">{metadata.preferences.max_active_uploads}</p>
+                                  </div>
+                                )}
+                                {metadata.preferences.max_active_torrents > 0 && (
+                                  <div className="space-y-1">
+                                    <p className="text-muted-foreground">Max Active</p>
+                                    <p className="font-medium">{metadata.preferences.max_active_torrents}</p>
+                                  </div>
+                                )}
+                              </div>
+                            </>
+                          )}
                         </div>
-                        {metadata.preferences.max_active_downloads > 0 && (
-                          <div>
-                            <span className="text-sm text-muted-foreground">Max Active Downloads:</span>
-                            <span className="ml-2 text-sm">{metadata.preferences.max_active_downloads}</span>
-                          </div>
-                        )}
-                        {metadata.preferences.max_active_uploads > 0 && (
-                          <div>
-                            <span className="text-sm text-muted-foreground">Max Active Uploads:</span>
-                            <span className="ml-2 text-sm">{metadata.preferences.max_active_uploads}</span>
-                          </div>
-                        )}
-                        {metadata.preferences.max_active_torrents > 0 && (
-                          <div>
-                            <span className="text-sm text-muted-foreground">Max Active Torrents:</span>
-                            <span className="ml-2 text-sm">{metadata.preferences.max_active_torrents}</span>
-                          </div>
-                        )}
                       </div>
                     )}
 
-                    <div className="space-y-2">
-                      <div>
-                        <span className="text-sm text-muted-foreground">Time Active:</span>
-                        <span className="ml-2 text-sm">{formatDuration(properties.time_elapsed || 0)}</span>
-                      </div>
-                      <div>
-                        <span className="text-sm text-muted-foreground">Seeding Time:</span>
-                        <span className="ml-2 text-sm">{formatDuration(properties.seeding_time || 0)}</span>
+                    {/* Time Information */}
+                    <div className="space-y-3">
+                      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Time Information</h3>
+                      <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-1">
+                            <p className="text-xs text-muted-foreground">Time Active</p>
+                            <p className="text-sm font-medium">{formatDuration(properties.time_elapsed || 0)}</p>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-xs text-muted-foreground">Seeding Time</p>
+                            <p className="text-sm font-medium">{formatDuration(properties.seeding_time || 0)}</p>
+                          </div>
+                        </div>
                       </div>
                     </div>
 
-                    <div className="space-y-2">
-                      <div>
-                        <span className="text-sm text-muted-foreground">Save Path:</span>
-                        <div className="text-xs sm:text-sm mt-1 font-mono bg-muted/50 hover:bg-muted transition-colors p-2 sm:p-3 rounded break-all">
+                    {/* Save Path */}
+                    <div className="space-y-3">
+                      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">File Location</h3>
+                      <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50">
+                        <div className="font-mono text-xs sm:text-sm break-all text-muted-foreground">
                           {properties.save_path || "N/A"}
                         </div>
                       </div>
                     </div>
 
                     {/* Info Hash Display */}
-                    <div className="space-y-2">
-                      <div>
-                        <span className="text-sm text-muted-foreground">Info Hash v1:</span>
-                        <div className="flex items-center gap-2 mt-1">
-                          <div className="text-xs sm:text-sm font-mono bg-muted/50 hover:bg-muted transition-colors p-2 sm:p-3 rounded break-all select-text flex-1">
-                            {properties.infohash_v1 && properties.infohash_v1.length > 0 ? properties.infohash_v1 : "N/A"}
+                    <div className="space-y-3">
+                      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Torrent Identifiers</h3>
+                      <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50 space-y-4">
+                        <div className="space-y-2">
+                          <p className="text-xs text-muted-foreground">Info Hash v1</p>
+                          <div className="flex items-center gap-2">
+                            <div className="text-xs font-mono bg-background/50 p-2.5 rounded flex-1 break-all select-text">
+                              {properties.infohash_v1 && properties.infohash_v1.length > 0 ? properties.infohash_v1 : "N/A"}
+                            </div>
+                            {properties.infohash_v1 && properties.infohash_v1.length > 0 && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 shrink-0"
+                                onClick={() => copyToClipboard(properties.infohash_v1, "Info Hash v1")}
+                              >
+                                <Copy className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
                           </div>
-                          {properties.infohash_v1 && properties.infohash_v1.length > 0 && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 shrink-0"
-                              onClick={() => copyToClipboard(properties.infohash_v1, "Info Hash v1")}
-                            >
-                              <Copy className="h-4 w-4" />
-                            </Button>
-                          )}
                         </div>
+                        {properties.infohash_v2 && properties.infohash_v2.length > 0 && (
+                          <>
+                            <Separator className="opacity-50" />
+                            <div className="space-y-2">
+                              <p className="text-xs text-muted-foreground">Info Hash v2</p>
+                              <div className="flex items-center gap-2">
+                                <div className="text-xs font-mono bg-background/50 p-2.5 rounded flex-1 break-all select-text">
+                                  {properties.infohash_v2}
+                                </div>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 shrink-0"
+                                  onClick={() => copyToClipboard(properties.infohash_v2, "Info Hash v2")}
+                                >
+                                  <Copy className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            </div>
+                          </>
+                        )}
                       </div>
-                      <div>
-                        <span className="text-sm text-muted-foreground">Info Hash v2:</span>
-                        <div className="flex items-center gap-2 mt-1">
-                          <div className="text-xs sm:text-sm font-mono bg-muted/50 hover:bg-muted transition-colors p-2 sm:p-3 rounded break-all select-text flex-1">
-                            {properties.infohash_v2 && properties.infohash_v2.length > 0 ? properties.infohash_v2 : "N/A"}
+                    </div>
+
+                    {/* Timestamps */}
+                    <div className="space-y-3">
+                      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Timestamps</h3>
+                      <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                          <div className="space-y-1">
+                            <p className="text-xs text-muted-foreground">Added</p>
+                            <p className="text-sm">{formatTimestamp(properties.addition_date)}</p>
                           </div>
-                          {properties.infohash_v2 && properties.infohash_v2.length > 0 && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 shrink-0"
-                              onClick={() => copyToClipboard(properties.infohash_v2, "Info Hash v2")}
-                            >
-                              <Copy className="h-4 w-4" />
-                            </Button>
-                          )}
+                          <div className="space-y-1">
+                            <p className="text-xs text-muted-foreground">Completed</p>
+                            <p className="text-sm">{formatTimestamp(properties.completion_date)}</p>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-xs text-muted-foreground">Created</p>
+                            <p className="text-sm">{formatTimestamp(properties.creation_date)}</p>
+                          </div>
                         </div>
                       </div>
                     </div>
 
-                    <div className="space-y-2">
-                      <div>
-                        <span className="text-sm text-muted-foreground">Added On:</span>
-                        <span className="ml-2 text-sm">{formatTimestamp(properties.addition_date)}</span>
-                      </div>
-                      <div>
-                        <span className="text-sm text-muted-foreground">Completed On:</span>
-                        <span className="ml-2 text-sm">{formatTimestamp(properties.completion_date)}</span>
-                      </div>
-                      <div>
-                        <span className="text-sm text-muted-foreground">Created On:</span>
-                        <span className="ml-2 text-sm">{formatTimestamp(properties.creation_date)}</span>
-                      </div>
-                    </div>
-
-                    {properties.comment && (
-                      <div>
-                        <span className="text-sm text-muted-foreground">Comment:</span>
-                        <div className="text-xs sm:text-sm mt-1 bg-muted/50 hover:bg-muted transition-colors p-2 sm:p-3 rounded break-words">
-                          {properties.comment}
+                    {/* Additional Information */}
+                    {(properties.comment || properties.created_by) && (
+                      <div className="space-y-3">
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Additional Information</h3>
+                        <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50 space-y-3">
+                          {properties.created_by && (
+                            <div>
+                              <p className="text-xs text-muted-foreground mb-1">Created By</p>
+                              <p className="text-sm">{properties.created_by}</p>
+                            </div>
+                          )}
+                          {properties.comment && (
+                            <>
+                              {properties.created_by && <Separator className="opacity-50" />}
+                              <div>
+                                <p className="text-xs text-muted-foreground mb-2">Comment</p>
+                                <div className="text-sm bg-background/50 p-3 rounded break-words">
+                                  {properties.comment}
+                                </div>
+                              </div>
+                            </>
+                          )}
                         </div>
-                      </div>
-                    )}
-
-                    {properties.created_by && (
-                      <div>
-                        <span className="text-sm text-muted-foreground">Created By:</span>
-                        <span className="ml-2 text-sm">{properties.created_by}</span>
                       </div>
                     )}
                   </div>
@@ -460,27 +532,65 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                     <Loader2 className="h-6 w-6 animate-spin" />
                   </div>
                 ) : trackers && trackers.length > 0 ? (
-                  <div className="space-y-2">
-                    {trackers.map((tracker, index) => (
-                      <div key={index} className="border border-border/50 hover:border-border bg-card/50 hover:bg-card transition-all rounded-lg p-3 sm:p-4 space-y-2">
-                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                          <span className="text-xs sm:text-sm font-mono break-all">{tracker.url}</span>
-                          {getTrackerStatusBadge(tracker.status)}
-                        </div>
-                        <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-                          <div>Seeds: {tracker.num_seeds}</div>
-                          <div>Peers: {tracker.num_peers}</div>
-                          <div>Leechers: {tracker.num_leechers}</div>
-                          <div>Downloaded: {tracker.num_downloaded}</div>
-                        </div>
-                        {tracker.msg && (
-                          <div className="text-xs text-muted-foreground">{tracker.msg}</div>
-                        )}
-                      </div>
-                    ))}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between mb-1">
+                      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Active Trackers</h3>
+                      <span className="text-xs text-muted-foreground">{trackers.length} tracker{trackers.length !== 1 ? "s" : ""}</span>
+                    </div>
+                    <div className="space-y-2">
+                      {trackers
+                        .sort((a, b) => {
+                          // Sort disabled trackers (status 0) to the end
+                          if (a.status === 0 && b.status !== 0) return 1
+                          if (a.status !== 0 && b.status === 0) return -1
+                          // Then sort by status (working trackers first)
+                          if (a.status === 2 && b.status !== 2) return -1
+                          if (a.status !== 2 && b.status === 2) return 1
+                          return 0
+                        })
+                        .map((tracker, index) => (
+                          <div key={index} className={`backdrop-blur-sm border ${tracker.status === 0 ? "bg-card/30 border-border/30 opacity-60" : "bg-card/50 border-border/50"} hover:border-border transition-all rounded-lg p-4 space-y-3`}>
+                            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                              <div className="flex-1 space-y-1">
+                                <div className="flex items-center gap-2">
+                                  {getTrackerStatusBadge(tracker.status)}
+                                </div>
+                                <p className="text-xs font-mono text-muted-foreground break-all">{tracker.url}</p>
+                              </div>
+                            </div>
+                            <Separator className="opacity-50" />
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                              <div className="space-y-1">
+                                <p className="text-xs text-muted-foreground">Seeds</p>
+                                <p className="text-sm font-medium">{tracker.num_seeds}</p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-xs text-muted-foreground">Peers</p>
+                                <p className="text-sm font-medium">{tracker.num_peers}</p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-xs text-muted-foreground">Leechers</p>
+                                <p className="text-sm font-medium">{tracker.num_leechers}</p>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-xs text-muted-foreground">Downloaded</p>
+                                <p className="text-sm font-medium">{tracker.num_downloaded}</p>
+                              </div>
+                            </div>
+                            {tracker.msg && (
+                              <>
+                                <Separator className="opacity-50" />
+                                <div className="bg-background/50 p-2 rounded">
+                                  <p className="text-xs text-muted-foreground">{tracker.msg}</p>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        ))}
+                    </div>
                   </div>
                 ) : (
-                  <div className="text-sm text-muted-foreground text-center p-4">
+                  <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
                     No trackers found
                   </div>
                 )}
@@ -496,8 +606,12 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                     <Loader2 className="h-6 w-6 animate-spin" />
                   </div>
                 ) : peersData && peersData.peers && typeof peersData.peers === "object" && Object.keys(peersData.peers).length > 0 ? (
-                  <>
-                    <div className="flex justify-end mb-4">
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between mb-1">
+                      <div>
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Connected Peers</h3>
+                        <p className="text-xs text-muted-foreground mt-1">{Object.keys(peersData.peers).length} peer{Object.keys(peersData.peers).length !== 1 ? "s" : ""} connected</p>
+                      </div>
                       <Button
                         variant="outline"
                         size="sm"
@@ -507,59 +621,143 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                         Add Peers
                       </Button>
                     </div>
-                    <div className="space-y-2">
-                      {Object.entries(peersData.peers).map(([peerKey, peer]) => (
-                        <ContextMenu key={peerKey}>
-                          <ContextMenuTrigger>
-                            <div className="border border-border/50 hover:border-border bg-card/50 hover:bg-card transition-all rounded-lg p-3 sm:p-4 space-y-2 cursor-context-menu">
-                              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-xs sm:text-sm font-mono">{peer.ip}:{peer.port}</span>
-                                  {peer.country_code && (
-                                    <span
-                                      className={`fi fi-${peer.country_code.toLowerCase()} rounded text-xs`}
-                                      title={peer.country || peer.country_code}
-                                    />
-                                  )}
+                    <div className="space-y-4 mt-4">
+                      {(peersData.sorted_peers ||
+                        Object.entries(peersData.peers).map(([key, peer]) => ({ key, ...peer }))
+                      ).map((peerWithKey) => {
+                        const peerKey = peerWithKey.key
+                        const peer = peerWithKey
+                        const isActive = (peer.dl_speed || 0) > 0 || (peer.up_speed || 0) > 0
+                        // Progress is a float between 0 and 1, where 1 = 100%
+                        // Note: qBittorrent API doesn't expose the actual seed status, so we rely on progress
+                        const progressValue = peer.progress || 0
+
+                        // Match qBittorrent's own WebUI logic for displaying progress
+                        let progressPercent = Math.round(progressValue * 100 * 10) / 10 // Round to 1 decimal
+                        // If progress rounds to 100% but isn't exactly 1.0, show as 99.9%
+                        if (progressPercent === 100.0 && progressValue !== 1.0) {
+                          progressPercent = 99.9
+                        }
+
+                        // A seeder has exactly 1.0 progress
+                        const isSeeder = progressValue === 1.0
+
+                        return (
+                          <ContextMenu key={peerKey}>
+                            <ContextMenuTrigger asChild>
+                              <div className={`bg-card/50 backdrop-blur-sm border ${isActive ? "border-border/70" : "border-border/30"} hover:border-border transition-all rounded-lg p-4 space-y-3 cursor-context-menu`}>
+                                {/* Peer Header */}
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="flex-1 space-y-1">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className="font-mono text-sm">{peer.ip}:{peer.port}</span>
+                                      {peer.country_code && (
+                                        <span
+                                          className={`fi fi-${peer.country_code.toLowerCase()} rounded text-sm`}
+                                          title={peer.country || peer.country_code}
+                                        />
+                                      )}
+                                      {isSeeder && (
+                                        <Badge variant="secondary" className="text-xs">Seeder</Badge>
+                                      )}
+                                    </div>
+                                    <p className="text-xs text-muted-foreground">{peer.client || "Unknown client"}</p>
+                                  </div>
                                 </div>
-                                <span className="text-xs text-muted-foreground">{peer.client || "Unknown"}</span>
+
+                                <Separator className="opacity-50" />
+
+                                {/* Progress Bar */}
+                                <div className="space-y-1">
+                                  <p className="text-xs text-muted-foreground">Peer Progress</p>
+                                  <div className="flex items-center gap-2">
+                                    <Progress value={progressPercent} className="flex-1 h-1.5" />
+                                    <span className={`text-xs font-medium ${isSeeder ? "text-green-500" : ""}`}>
+                                      {progressPercent}%
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {/* Transfer Speeds */}
+                                <div className="grid grid-cols-2 gap-3">
+                                  <div className="space-y-1">
+                                    <p className="text-xs text-muted-foreground">Download Speed</p>
+                                    <p className={`text-sm font-medium ${peer.dl_speed && peer.dl_speed > 0 ? "text-green-500" : ""}`}>
+                                      {formatSpeedWithUnit(peer.dl_speed || 0, speedUnit)}
+                                    </p>
+                                  </div>
+                                  <div className="space-y-1">
+                                    <p className="text-xs text-muted-foreground">Upload Speed</p>
+                                    <p className={`text-sm font-medium ${peer.up_speed && peer.up_speed > 0 ? "text-blue-500" : ""}`}>
+                                      {formatSpeedWithUnit(peer.up_speed || 0, speedUnit)}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                {/* Data Transfer Info */}
+                                <div className="grid grid-cols-2 gap-3 text-xs">
+                                  <div className="space-y-1">
+                                    <p className="text-muted-foreground">Downloaded</p>
+                                    <p className="font-medium">{formatBytes(peer.downloaded || 0)}</p>
+                                  </div>
+                                  <div className="space-y-1">
+                                    <p className="text-muted-foreground">Uploaded</p>
+                                    <p className="font-medium">{formatBytes(peer.uploaded || 0)}</p>
+                                  </div>
+                                </div>
+
+                                {/* Connection Info */}
+                                {(peer.connection || peer.flags) && (
+                                  <>
+                                    <Separator className="opacity-50" />
+                                    <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+                                      {peer.connection && (
+                                        <div>
+                                          <span className="opacity-70">Connection:</span> {peer.connection}
+                                        </div>
+                                      )}
+                                      {peer.flags && (
+                                        <div>
+                                          <span className="opacity-70">Flags:</span> {peer.flags}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </>
+                                )}
                               </div>
-                              <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-                                <div>Progress: {Math.round((peer.progress || 0) * 100)}%</div>
-                                <div>Connection: {peer.connection || "N/A"}</div>
-                                <div>DL: {formatSpeedWithUnit(peer.dl_speed || 0, speedUnit)}</div>
-                                <div>UL: {formatSpeedWithUnit(peer.up_speed || 0, speedUnit)}</div>
-                                <div>Downloaded: {formatBytes(peer.downloaded || 0)}</div>
-                                <div>Uploaded: {formatBytes(peer.uploaded || 0)}</div>
-                              </div>
-                              {peer.flags && (
-                                <div className="text-xs text-muted-foreground">Flags: {peer.flags}</div>
-                              )}
-                            </div>
-                          </ContextMenuTrigger>
-                          <ContextMenuContent>
-                            <ContextMenuItem
-                              onClick={() => handleCopyPeer(peer)}
-                            >
-                              <Copy className="h-4 w-4 mr-2" />
-                              Copy IP:port
-                            </ContextMenuItem>
-                            <ContextMenuSeparator />
-                            <ContextMenuItem
-                              onClick={() => handleBanPeerClick(peer)}
-                              className="text-destructive focus:text-destructive"
-                            >
-                              <Ban className="h-4 w-4 mr-2" />
-                              Ban peer permanently
-                            </ContextMenuItem>
-                          </ContextMenuContent>
-                        </ContextMenu>
-                      ))}
+                            </ContextMenuTrigger>
+                            <ContextMenuContent>
+                              <ContextMenuItem
+                                onClick={() => handleCopyPeer(peer)}
+                              >
+                                <Copy className="h-4 w-4 mr-2" />
+                                Copy IP:port
+                              </ContextMenuItem>
+                              <ContextMenuSeparator />
+                              <ContextMenuItem
+                                onClick={() => handleBanPeerClick(peer)}
+                                className="text-destructive focus:text-destructive"
+                              >
+                                <Ban className="h-4 w-4 mr-2" />
+                                Ban peer permanently
+                              </ContextMenuItem>
+                            </ContextMenuContent>
+                          </ContextMenu>
+                        )
+                      })}
                     </div>
-                  </>
+                  </div>
                 ) : (
-                  <div className="text-sm text-muted-foreground text-center p-4">
-                    No peers connected
+                  <div className="flex flex-col items-center justify-center h-32 text-sm text-muted-foreground gap-3">
+                    <p>No peers connected</p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowAddPeersDialog(true)}
+                    >
+                      <UserPlus className="h-4 w-4 mr-2" />
+                      Add Peers
+                    </Button>
                   </div>
                 )}
               </div>
@@ -574,29 +772,41 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                     <Loader2 className="h-6 w-6 animate-spin" />
                   </div>
                 ) : files && files.length > 0 ? (
-                  <div className="space-y-1">
-                    {files.map((file, index) => (
-                      <div key={index} className="border border-border/50 hover:border-border bg-card/50 hover:bg-card transition-all rounded p-3 sm:p-2 space-y-2 sm:space-y-1">
-                        <div className="text-xs sm:text-sm font-mono break-all">{file.name}</div>
-                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 text-xs text-muted-foreground">
-                          <span>{formatBytes(file.size)}</span>
-                          <div className="flex items-center gap-2">
-                            {(() => {
-                              const progressPercent = file.progress * 100
-                              return (
-                                <>
-                                  <Progress value={progressPercent} className="w-20 h-2" />
-                                  <span>{Math.round(progressPercent)}%</span>
-                                </>
-                              )
-                            })()}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between mb-1">
+                      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">File Contents</h3>
+                      <span className="text-xs text-muted-foreground">{files.length} file{files.length !== 1 ? "s" : ""}</span>
+                    </div>
+                    <div className="space-y-2">
+                      {files.map((file, index) => {
+                        const progressPercent = file.progress * 100
+                        const isComplete = progressPercent === 100
+
+                        return (
+                          <div key={index} className="bg-card/50 backdrop-blur-sm border border-border/50 hover:border-border transition-all rounded-lg p-4">
+                            <div className="space-y-3">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs sm:text-sm font-mono text-muted-foreground break-all">{file.name}</p>
+                                </div>
+                                <Badge variant={isComplete ? "default" : "secondary"} className="shrink-0 text-xs">
+                                  {formatBytes(file.size)}
+                                </Badge>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <Progress value={progressPercent} className="flex-1 h-1.5" />
+                                <span className={`text-xs font-medium ${isComplete ? "text-green-500" : "text-muted-foreground"}`}>
+                                  {Math.round(progressPercent)}%
+                                </span>
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                      </div>
-                    ))}
+                        )
+                      })}
+                    </div>
                   </div>
                 ) : (
-                  <div className="text-sm text-muted-foreground text-center p-4">
+                  <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
                     No files found
                   </div>
                 )}
