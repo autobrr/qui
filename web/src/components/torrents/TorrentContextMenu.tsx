@@ -15,6 +15,7 @@ import {
   CheckCircle,
   Copy,
   Folder,
+  FolderOpen,
   Pause,
   Play,
   Radio,
@@ -47,6 +48,7 @@ interface TorrentContextMenuProps {
   onPrepareCategory: (hashes: string[], torrents?: Torrent[]) => void
   onPrepareRecheck: (hashes: string[], count?: number) => void
   onPrepareReannounce: (hashes: string[], count?: number) => void
+  onPrepareLocation: (hashes: string[], torrents?: Torrent[]) => void
   onSetShareLimit: (ratioLimit: number, seedingTimeLimit: number, inactiveSeedingTimeLimit: number, hashes: string[]) => void
   onSetSpeedLimits: (uploadLimit: number, downloadLimit: number, hashes: string[]) => void
   isPending?: boolean
@@ -67,6 +69,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   onPrepareCategory,
   onPrepareRecheck,
   onPrepareReannounce,
+  onPrepareLocation,
   onSetShareLimit,
   onSetSpeedLimits,
   isPending = false,
@@ -122,7 +125,11 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
       <ContextMenuTrigger asChild>
         {children}
       </ContextMenuTrigger>
-      <ContextMenuContent>
+      <ContextMenuContent
+        alignOffset={8}
+        collisionPadding={10}
+        className="ml-2"
+      >
         <ContextMenuItem onClick={() => onTorrentSelect?.(torrent)}>
           View Details
         </ContextMenuItem>
@@ -183,6 +190,13 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
         >
           <Folder className="mr-2 h-4 w-4" />
           Set Category {count > 1 ? `(${count})` : ""}
+        </ContextMenuItem>
+        <ContextMenuItem
+          onClick={() => onPrepareLocation(hashes, torrents)}
+          disabled={isPending}
+        >
+          <FolderOpen className="mr-2 h-4 w-4" />
+          Set Location {count > 1 ? `(${count})` : ""}
         </ContextMenuItem>
         <ContextMenuSeparator />
         <ShareLimitSubmenu

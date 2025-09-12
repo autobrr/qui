@@ -379,6 +379,7 @@ type BulkActionRequest struct {
 	InactiveSeedingTimeLimit int64                      `json:"inactiveSeedingTimeLimit,omitempty"` // For setShareLimit action
 	UploadLimit              int64                      `json:"uploadLimit,omitempty"`              // For setUploadLimit action (KB/s)
 	DownloadLimit            int64                      `json:"downloadLimit,omitempty"`            // For setDownloadLimit action (KB/s)
+	Location                 string                     `json:"location,omitempty"`                 // For setLocation action
 }
 
 // BulkAction performs bulk operations on torrents
@@ -411,7 +412,7 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 		"pause", "resume", "delete", "deleteWithFiles",
 		"recheck", "reannounce", "increasePriority", "decreasePriority",
 		"topPriority", "bottomPriority", "addTags", "removeTags", "setTags", "setCategory",
-		"toggleAutoTMM", "setShareLimit", "setUploadLimit", "setDownloadLimit",
+		"toggleAutoTMM", "setShareLimit", "setUploadLimit", "setDownloadLimit", "setLocation",
 	}
 
 	valid := slices.Contains(validActions, req.Action)
@@ -493,6 +494,12 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 		err = h.syncManager.SetTorrentUploadLimit(r.Context(), instanceID, targetHashes, req.UploadLimit)
 	case "setDownloadLimit":
 		err = h.syncManager.SetTorrentDownloadLimit(r.Context(), instanceID, targetHashes, req.DownloadLimit)
+	case "setLocation":
+		if req.Location == "" {
+			RespondError(w, http.StatusBadRequest, "Location parameter is required for setLocation action")
+			return
+		}
+		err = h.syncManager.SetLocation(r.Context(), instanceID, targetHashes, req.Location)
 	case "delete":
 		// Handle delete with deleteFiles parameter
 		action := req.Action

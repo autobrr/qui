@@ -28,6 +28,7 @@ export const TORRENT_ACTIONS = {
   SET_SHARE_LIMIT: "setShareLimit",
   SET_UPLOAD_LIMIT: "setUploadLimit",
   SET_DOWNLOAD_LIMIT: "setDownloadLimit",
+  SET_LOCATION: "setLocation",
 } as const
 
 // Derive the type from the const object - single source of truth
@@ -50,6 +51,7 @@ interface TorrentActionData {
   inactiveSeedingTimeLimit?: number
   uploadLimit?: number
   downloadLimit?: number
+  location?: string
   selectAll?: boolean
   filters?: {
     status: string[]
@@ -73,6 +75,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
   const [showCategoryDialog, setShowCategoryDialog] = useState(false)
   const [showRecheckDialog, setShowRecheckDialog] = useState(false)
   const [showReannounceDialog, setShowReannounceDialog] = useState(false)
+  const [showLocationDialog, setShowLocationDialog] = useState(false)
 
   // Context state for dialogs
   const [contextHashes, setContextHashes] = useState<string[]>([])
@@ -92,6 +95,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
         inactiveSeedingTimeLimit: data.inactiveSeedingTimeLimit,
         uploadLimit: data.uploadLimit,
         downloadLimit: data.downloadLimit,
+        location: data.location,
         selectAll: data.selectAll,
         filters: data.filters,
         search: data.search,
@@ -391,6 +395,28 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     setContextHashes([])
   }, [mutation])
 
+  const handleSetLocation = useCallback(async (
+    location: string,
+    hashes: string[],
+    isAllSelected?: boolean,
+    filters?: TorrentActionData["filters"],
+    search?: string,
+    excludeHashes?: string[]
+  ) => {
+    await mutation.mutateAsync({
+      action: "setLocation",
+      location,
+      hashes: isAllSelected ? [] : hashes,
+      selectAll: isAllSelected,
+      filters: isAllSelected ? filters : undefined,
+      search: isAllSelected ? search : undefined,
+      excludeHashes: isAllSelected ? excludeHashes : undefined,
+    })
+    setShowLocationDialog(false)
+    setContextHashes([])
+    setContextTorrents([])
+  }, [mutation])
+
   const prepareDeleteAction = useCallback((hashes: string[], torrents?: Torrent[]) => {
     setContextHashes(hashes)
     if (torrents) setContextTorrents(torrents)
@@ -432,6 +458,12 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     }
   }, [handleAction])
 
+  const prepareLocationAction = useCallback((hashes: string[], torrents?: Torrent[]) => {
+    setContextHashes(hashes)
+    if (torrents) setContextTorrents(torrents)
+    setShowLocationDialog(true)
+  }, [])
+
   return {
     // State
     showDeleteDialog,
@@ -450,6 +482,8 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     setShowRecheckDialog,
     showReannounceDialog,
     setShowReannounceDialog,
+    showLocationDialog,
+    setShowLocationDialog,
     contextHashes,
     contextTorrents,
 
@@ -467,6 +501,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     handleSetSpeedLimits,
     handleRecheck,
     handleReannounce,
+    handleSetLocation,
 
     // Preparation handlers (for showing dialogs)
     prepareDeleteAction,
@@ -474,6 +509,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     prepareCategoryAction,
     prepareRecheckAction,
     prepareReannounceAction,
+    prepareLocationAction,
   }
 }
 
@@ -532,6 +568,9 @@ function showSuccessToast(action: TorrentAction, count: number, deleteFiles?: bo
       break
     case "setDownloadLimit":
       toast.success(`Set download limit for ${count} ${torrentText}`)
+      break
+    case "setLocation":
+      toast.success(`Set location for ${count} ${torrentText}`)
       break
   }
 }
