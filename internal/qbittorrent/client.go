@@ -27,6 +27,7 @@ type Client struct {
 	lastHealthCheck time.Time
 	isHealthy       bool
 	syncManager     *qbt.SyncManager
+	peerSyncManager map[string]*qbt.PeerSyncManager // Map of torrent hash to PeerSyncManager
 	// optimisticUpdates stores temporary optimistic state changes for this instance
 	optimisticUpdates map[string]*OptimisticTorrentUpdate
 	mu                sync.RWMutex
@@ -82,6 +83,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 		lastHealthCheck:   time.Now(),
 		isHealthy:         true,
 		optimisticUpdates: make(map[string]*OptimisticTorrentUpdate),
+		peerSyncManager:   make(map[string]*qbt.PeerSyncManager),
 	}
 
 	// Initialize sync manager with default options
@@ -228,6 +230,25 @@ func (c *Client) StartSyncManager(ctx context.Context) error {
 		return fmt.Errorf("sync manager not initialized")
 	}
 	return c.syncManager.Start(ctx)
+}
+
+// GetOrCreatePeerSyncManager gets or creates a PeerSyncManager for a specific torrent
+func (c *Client) GetOrCreatePeerSyncManager(hash string) *qbt.PeerSyncManager {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// Check if we already have a sync manager for this torrent
+	if peerSync, exists := c.peerSyncManager[hash]; exists {
+		return peerSync
+	}
+
+	// Create a new peer sync manager for this torrent
+	peerSyncOpts := qbt.DefaultPeerSyncOptions()
+	peerSyncOpts.AutoSync = false // We'll sync manually when requested
+	peerSync := c.Client.NewPeerSyncManager(hash, peerSyncOpts)
+	c.peerSyncManager[hash] = peerSync
+
+	return peerSync
 }
 
 // applyOptimisticCacheUpdate applies optimistic updates for the given hashes and action

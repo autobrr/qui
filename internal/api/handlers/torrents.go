@@ -10,10 +10,12 @@ import (
 	"io"
 	"net/http"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
@@ -22,6 +24,18 @@ import (
 
 type TorrentsHandler struct {
 	syncManager *qbittorrent.SyncManager
+}
+
+// SortedPeer represents a peer with its key for sorting
+type SortedPeer struct {
+	Key string `json:"key"`
+	qbt.TorrentPeer
+}
+
+// SortedPeersResponse wraps the peers response with sorted peers
+type SortedPeersResponse struct {
+	*qbt.TorrentPeersResponse
+	SortedPeers []SortedPeer `json:"sorted_peers,omitempty"`
 }
 
 func NewTorrentsHandler(syncManager *qbittorrent.SyncManager) *TorrentsHandler {
@@ -764,6 +778,82 @@ func (h *TorrentsHandler) GetTorrentTrackers(w http.ResponseWriter, r *http.Requ
 }
 
 // GetTorrentFiles returns files information for a specific torrent
+func (h *TorrentsHandler) GetTorrentPeers(w http.ResponseWriter, r *http.Request) {
+	// Get instance ID and hash from URL
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	hash := chi.URLParam(r, "hash")
+	if hash == "" {
+		RespondError(w, http.StatusBadRequest, "Torrent hash is required")
+		return
+	}
+
+	// Get peers (backend handles incremental updates internally)
+	peers, err := h.syncManager.GetTorrentPeers(r.Context(), instanceID, hash)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to get torrent peers")
+		RespondError(w, http.StatusInternalServerError, "Failed to get torrent peers")
+		return
+	}
+
+	// Create sorted peers array
+	sortedPeers := make([]SortedPeer, 0, len(peers.Peers))
+	for key, peer := range peers.Peers {
+		sortedPeers = append(sortedPeers, SortedPeer{
+			Key:         key,
+			TorrentPeer: peer,
+		})
+	}
+
+	// Sort peers: seeders first (progress = 1.0), then by download speed, then upload speed
+	sort.Slice(sortedPeers, func(i, j int) bool {
+		// Seeders (100% progress) always come first
+		iIsSeeder := sortedPeers[i].Progress == 1.0
+		jIsSeeder := sortedPeers[j].Progress == 1.0
+
+		if iIsSeeder != jIsSeeder {
+			return iIsSeeder // Seeders first
+		}
+
+		// Then sort by progress (higher progress first)
+		if sortedPeers[i].Progress != sortedPeers[j].Progress {
+			return sortedPeers[i].Progress > sortedPeers[j].Progress
+		}
+
+		// Then by download speed (active downloading peers)
+		if sortedPeers[i].DownSpeed != sortedPeers[j].DownSpeed {
+			return sortedPeers[i].DownSpeed > sortedPeers[j].DownSpeed
+		}
+
+		// Then by upload speed
+		if sortedPeers[i].UpSpeed != sortedPeers[j].UpSpeed {
+			return sortedPeers[i].UpSpeed > sortedPeers[j].UpSpeed
+		}
+
+		// Finally by IP for stable sorting
+		return sortedPeers[i].IP < sortedPeers[j].IP
+	})
+
+	// Create response with sorted peers
+	response := &SortedPeersResponse{
+		TorrentPeersResponse: peers,
+		SortedPeers:          sortedPeers,
+	}
+
+	// Debug logging
+	log.Trace().
+		Int("instanceID", instanceID).
+		Str("hash", hash).
+		Int("peerCount", len(sortedPeers)).
+		Msg("Torrent peers response with sorted peers")
+
+	RespondJSON(w, http.StatusOK, response)
+}
+
 func (h *TorrentsHandler) GetTorrentFiles(w http.ResponseWriter, r *http.Request) {
 	// Get instance ID and hash from URL
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
@@ -787,4 +877,75 @@ func (h *TorrentsHandler) GetTorrentFiles(w http.ResponseWriter, r *http.Request
 	}
 
 	RespondJSON(w, http.StatusOK, files)
+}
+
+// AddPeers adds peers to torrents
+func (h *TorrentsHandler) AddPeers(w http.ResponseWriter, r *http.Request) {
+	// Get instance ID from URL
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	// Parse request body
+	var req struct {
+		Hashes []string `json:"hashes"`
+		Peers  []string `json:"peers"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if len(req.Hashes) == 0 || len(req.Peers) == 0 {
+		RespondError(w, http.StatusBadRequest, "Hashes and peers are required")
+		return
+	}
+
+	// Add peers
+	err = h.syncManager.AddPeersToTorrents(r.Context(), instanceID, req.Hashes, req.Peers)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to add peers to torrents")
+		RespondError(w, http.StatusInternalServerError, "Failed to add peers")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, map[string]bool{"success": true})
+}
+
+// BanPeers bans peers permanently
+func (h *TorrentsHandler) BanPeers(w http.ResponseWriter, r *http.Request) {
+	// Get instance ID from URL
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	// Parse request body
+	var req struct {
+		Peers []string `json:"peers"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if len(req.Peers) == 0 {
+		RespondError(w, http.StatusBadRequest, "Peers are required")
+		return
+	}
+
+	// Ban peers
+	err = h.syncManager.BanPeers(r.Context(), instanceID, req.Peers)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to ban peers")
+		RespondError(w, http.StatusInternalServerError, "Failed to ban peers")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, map[string]bool{"success": true})
 }

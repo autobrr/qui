@@ -544,6 +544,26 @@ func (sm *SyncManager) GetTorrentTrackers(ctx context.Context, instanceID int, h
 	return trackers, nil
 }
 
+// GetTorrentPeers gets peers for a specific torrent with incremental updates
+func (sm *SyncManager) GetTorrentPeers(ctx context.Context, instanceID int, hash string) (*qbt.TorrentPeersResponse, error) {
+	// Get client
+	clientWrapper, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client: %w", err)
+	}
+
+	// Get or create peer sync manager for this torrent
+	peerSync := clientWrapper.GetOrCreatePeerSyncManager(hash)
+
+	// Sync to get latest peer data
+	if err := peerSync.Sync(ctx); err != nil {
+		return nil, fmt.Errorf("failed to sync torrent peers: %w", err)
+	}
+
+	// Return the current peer data (already merged with incremental updates)
+	return peerSync.GetPeers(), nil
+}
+
 // GetTorrentFiles gets files information for a specific torrent
 func (sm *SyncManager) GetTorrentFiles(ctx context.Context, instanceID int, hash string) (*qbt.TorrentFiles, error) {
 	// Get client and sync manager
@@ -1689,6 +1709,42 @@ func (sm *SyncManager) SetAppPreferences(ctx context.Context, instanceID int, pr
 
 	// Sync after modification
 	sm.syncAfterModification(instanceID, client, "set_app_preferences")
+
+	return nil
+}
+
+// AddPeersToTorrents adds peers to the specified torrents
+func (sm *SyncManager) AddPeersToTorrents(ctx context.Context, instanceID int, hashes []string, peers []string) error {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	// Add peers using the qBittorrent client
+	if err := client.AddPeersForTorrentsCtx(ctx, hashes, peers); err != nil {
+		return fmt.Errorf("failed to add peers: %w", err)
+	}
+
+	// Sync after modification
+	sm.syncAfterModification(instanceID, client, "add_peers")
+
+	return nil
+}
+
+// BanPeers bans the specified peers permanently
+func (sm *SyncManager) BanPeers(ctx context.Context, instanceID int, peers []string) error {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	// Ban peers using the qBittorrent client
+	if err := client.BanPeersCtx(ctx, peers); err != nil {
+		return fmt.Errorf("failed to ban peers: %w", err)
+	}
+
+	// Sync after modification
+	sm.syncAfterModification(instanceID, client, "ban_peers")
 
 	return nil
 }

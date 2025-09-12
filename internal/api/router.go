@@ -139,11 +139,14 @@ func NewRouter(deps *Dependencies) *chi.Mux {
 						r.Get("/", torrentsHandler.ListTorrents)
 						r.Post("/", torrentsHandler.AddTorrent)
 						r.Post("/bulk-action", torrentsHandler.BulkAction)
+						r.Post("/add-peers", torrentsHandler.AddPeers)
+						r.Post("/ban-peers", torrentsHandler.BanPeers)
 
 						r.Route("/{hash}", func(r chi.Router) {
 							// Torrent details
 							r.Get("/properties", torrentsHandler.GetTorrentProperties)
 							r.Get("/trackers", torrentsHandler.GetTorrentTrackers)
+							r.Get("/peers", torrentsHandler.GetTorrentPeers)
 							r.Get("/files", torrentsHandler.GetTorrentFiles)
 						})
 					})
