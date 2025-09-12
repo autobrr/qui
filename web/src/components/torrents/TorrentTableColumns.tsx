@@ -3,28 +3,28 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import type { ColumnDef } from "@tanstack/react-table"
-import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Progress } from "@/components/ui/progress"
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger
 } from "@/components/ui/tooltip"
-import { ListOrdered } from "lucide-react"
-import type { Torrent } from "@/types"
 import {
-  getLinuxIsoName,
   getLinuxCategory,
-  getLinuxTags,
+  getLinuxIsoName,
+  getLinuxRatio,
   getLinuxSavePath,
-  getLinuxTracker,
-  getLinuxRatio
+  getLinuxTags,
+  getLinuxTracker
 } from "@/lib/incognito"
-import { formatBytes, getRatioColor } from "@/lib/utils"
 import { formatSpeedWithUnit, type SpeedUnit } from "@/lib/speedUnits"
 import { getStateLabel } from "@/lib/torrent-state-utils"
+import { formatBytes, getRatioColor } from "@/lib/utils"
+import type { Torrent } from "@/types"
+import type { ColumnDef } from "@tanstack/react-table"
+import { ListOrdered } from "lucide-react"
 
 function formatEta(seconds: number): string {
   if (seconds === 8640000) return "∞"
@@ -185,7 +185,7 @@ export const createColumns = (
       const isQueued = state === "queuedDL" || state === "queuedUP"
 
       if (priority === 0 && !isQueued) {
-        return <span className="text-sm text-muted-foreground text-center block">-</span>
+        return <span className="text-sm text-muted-foreground text-center block"> </span>
       }
 
       if (isQueued) {
@@ -297,13 +297,19 @@ export const createColumns = (
   {
     accessorKey: "dlspeed",
     header: "Down Speed",
-    cell: ({ row }) => <span className="text-sm overflow-hidden whitespace-nowrap">{formatSpeedWithUnit(row.original.dlspeed, speedUnit)}</span>,
+    cell: ({ row }) => {
+      const speed = row.original.dlspeed
+      return <span className="text-sm overflow-hidden whitespace-nowrap">{speed === 0 ? " " : formatSpeedWithUnit(speed, speedUnit)}</span>
+    },
     size: calculateMinWidth("Down Speed"),
   },
   {
     accessorKey: "upspeed",
     header: "Up Speed",
-    cell: ({ row }) => <span className="text-sm overflow-hidden whitespace-nowrap">{formatSpeedWithUnit(row.original.upspeed, speedUnit)}</span>,
+    cell: ({ row }) => {
+      const speed = row.original.upspeed
+      return <span className="text-sm overflow-hidden whitespace-nowrap">{speed === 0 ? " " : formatSpeedWithUnit(speed, speedUnit)}</span>
+    },
     size: calculateMinWidth("Up Speed"),
   },
   {
@@ -363,8 +369,8 @@ export const createColumns = (
     cell: ({ row }) => {
       const displayCategory = incognitoMode ? getLinuxCategory(row.original.hash) : row.original.category
       return (
-        <div className="overflow-hidden whitespace-nowrap text-sm" title={displayCategory || "-"}>
-          {displayCategory || "-"}
+        <div className="overflow-hidden whitespace-nowrap text-sm" title={displayCategory || ""}>
+          {displayCategory || ""}
         </div>
       )
     },
@@ -375,7 +381,7 @@ export const createColumns = (
     header: "Tags",
     cell: ({ row }) => {
       const tags = incognitoMode ? getLinuxTags(row.original.hash) : row.original.tags
-      const displayTags = Array.isArray(tags) ? tags.join(", ") : tags || "-"
+      const displayTags = Array.isArray(tags) ? tags.join(", ") : tags || ""
       return (
         <div className="overflow-hidden whitespace-nowrap text-sm" title={displayTags}>
           {displayTags}
@@ -387,13 +393,19 @@ export const createColumns = (
   {
     accessorKey: "downloaded",
     header: "Downloaded",
-    cell: ({ row }) => <span className="text-sm overflow-hidden whitespace-nowrap">{formatBytes(row.original.downloaded)}</span>,
+    cell: ({ row }) => {
+      const downloaded = row.original.downloaded
+      return <span className="text-sm overflow-hidden whitespace-nowrap">{downloaded === 0 ? "" : formatBytes(downloaded)}</span>
+    },
     size: calculateMinWidth("Downloaded"),
   },
   {
     accessorKey: "uploaded",
     header: "Uploaded",
-    cell: ({ row }) => <span className="text-sm overflow-hidden whitespace-nowrap">{formatBytes(row.original.uploaded)}</span>,
+    cell: ({ row }) => {
+      const uploaded = row.original.uploaded
+      return <span className="text-sm overflow-hidden whitespace-nowrap">{uploaded === 0 ? "" : formatBytes(uploaded)}</span>
+    },
     size: calculateMinWidth("Uploaded"),
   },
   {
