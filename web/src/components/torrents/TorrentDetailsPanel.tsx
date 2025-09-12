@@ -3,18 +3,20 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { memo, useState, useEffect } from "react"
-import { useQuery } from "@tanstack/react-query"
-import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
-import { Loader2 } from "lucide-react"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { api } from "@/lib/api"
+import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
+import { formatBytes, formatDuration, formatTimestamp } from "@/lib/utils"
 import type { Torrent } from "@/types"
-import { formatBytes, formatTimestamp, formatDuration } from "@/lib/utils"
-import { useSpeedUnits, formatSpeedWithUnit } from "@/lib/speedUnits"
+import { useQuery } from "@tanstack/react-query"
+import { Copy, Loader2 } from "lucide-react"
+import { memo, useCallback, useEffect, useState } from "react"
+import { toast } from "sonner"
 
 interface TorrentDetailsPanelProps {
   instanceId: number;
@@ -42,6 +44,15 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const [activeTab, setActiveTab] = useState("general")
   const { data: metadata } = useInstanceMetadata(instanceId)
   const [speedUnit] = useSpeedUnits()
+
+  const copyToClipboard = useCallback(async (text: string, type: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      toast.success(`${type} copied!`)
+    } catch {
+      toast.error("Failed to copy to clipboard")
+    }
+  }, [])
 
   // Reset tab when torrent changes
   useEffect(() => {
@@ -210,6 +221,46 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                         <span className="text-sm text-muted-foreground">Save Path:</span>
                         <div className="text-xs sm:text-sm mt-1 font-mono bg-muted/50 hover:bg-muted transition-colors p-2 sm:p-3 rounded break-all">
                           {properties.save_path || "N/A"}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Info Hash Display */}
+                    <div className="space-y-2">
+                      <div>
+                        <span className="text-sm text-muted-foreground">Info Hash v1:</span>
+                        <div className="flex items-center gap-2 mt-1">
+                          <div className="text-xs sm:text-sm font-mono bg-muted/50 hover:bg-muted transition-colors p-2 sm:p-3 rounded break-all select-text flex-1">
+                            {properties.infohash_v1 && properties.infohash_v1.length > 0 ? properties.infohash_v1 : "N/A"}
+                          </div>
+                          {properties.infohash_v1 && properties.infohash_v1.length > 0 && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 shrink-0"
+                              onClick={() => copyToClipboard(properties.infohash_v1, "Info Hash v1")}
+                            >
+                              <Copy className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                      <div>
+                        <span className="text-sm text-muted-foreground">Info Hash v2:</span>
+                        <div className="flex items-center gap-2 mt-1">
+                          <div className="text-xs sm:text-sm font-mono bg-muted/50 hover:bg-muted transition-colors p-2 sm:p-3 rounded break-all select-text flex-1">
+                            {properties.infohash_v2 && properties.infohash_v2.length > 0 ? properties.infohash_v2 : "N/A"}
+                          </div>
+                          {properties.infohash_v2 && properties.infohash_v2.length > 0 && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 shrink-0"
+                              onClick={() => copyToClipboard(properties.infohash_v2, "Info Hash v2")}
+                            >
+                              <Copy className="h-4 w-4" />
+                            </Button>
+                          )}
                         </div>
                       </div>
                     </div>
