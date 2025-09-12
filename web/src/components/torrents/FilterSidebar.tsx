@@ -376,7 +376,7 @@ const FilterSidebarComponent = ({
         isStaleData ? "opacity-75 transition-opacity duration-200" : ""
       }`}
     >
-      <ScrollArea className="h-full flex-1 overscroll-contain">
+      <ScrollArea className="h-full flex-1 overscroll-contain select-none">
         <div className="p-4">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">

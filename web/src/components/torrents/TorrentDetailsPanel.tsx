@@ -83,6 +83,14 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const queryClient = useQueryClient()
   const [speedUnit] = useSpeedUnits()
 
+  const copyToClipboard = useCallback(async (text: string, type: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      toast.success(`${type} copied!`)
+    } catch {
+      toast.error("Failed to copy to clipboard")
+    }
+  }, [])
   // Reset tab when torrent changes and wait for component to be ready
   useEffect(() => {
     setActiveTab("general")
@@ -327,20 +335,24 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                             )}
                           </span>
                         </div>
-                        <div>
-                          <span className="text-sm text-muted-foreground">Queue Limits:</span>
-                          <div className="ml-2 text-sm space-y-1">
-                            {metadata.preferences.max_active_downloads > 0 && (
-                              <div>Max Active Downloads: {metadata.preferences.max_active_downloads}</div>
-                            )}
-                            {metadata.preferences.max_active_uploads > 0 && (
-                              <div>Max Active Uploads: {metadata.preferences.max_active_uploads}</div>
-                            )}
-                            {metadata.preferences.max_active_torrents > 0 && (
-                              <div>Max Active Total: {metadata.preferences.max_active_torrents}</div>
-                            )}
+                        {metadata.preferences.max_active_downloads > 0 && (
+                          <div>
+                            <span className="text-sm text-muted-foreground">Max Active Downloads:</span>
+                            <span className="ml-2 text-sm">{metadata.preferences.max_active_downloads}</span>
                           </div>
-                        </div>
+                        )}
+                        {metadata.preferences.max_active_uploads > 0 && (
+                          <div>
+                            <span className="text-sm text-muted-foreground">Max Active Uploads:</span>
+                            <span className="ml-2 text-sm">{metadata.preferences.max_active_uploads}</span>
+                          </div>
+                        )}
+                        {metadata.preferences.max_active_torrents > 0 && (
+                          <div>
+                            <span className="text-sm text-muted-foreground">Max Active Torrents:</span>
+                            <span className="ml-2 text-sm">{metadata.preferences.max_active_torrents}</span>
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -360,6 +372,46 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                         <span className="text-sm text-muted-foreground">Save Path:</span>
                         <div className="text-xs sm:text-sm mt-1 font-mono bg-muted/50 hover:bg-muted transition-colors p-2 sm:p-3 rounded break-all">
                           {properties.save_path || "N/A"}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Info Hash Display */}
+                    <div className="space-y-2">
+                      <div>
+                        <span className="text-sm text-muted-foreground">Info Hash v1:</span>
+                        <div className="flex items-center gap-2 mt-1">
+                          <div className="text-xs sm:text-sm font-mono bg-muted/50 hover:bg-muted transition-colors p-2 sm:p-3 rounded break-all select-text flex-1">
+                            {properties.infohash_v1 && properties.infohash_v1.length > 0 ? properties.infohash_v1 : "N/A"}
+                          </div>
+                          {properties.infohash_v1 && properties.infohash_v1.length > 0 && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 shrink-0"
+                              onClick={() => copyToClipboard(properties.infohash_v1, "Info Hash v1")}
+                            >
+                              <Copy className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                      <div>
+                        <span className="text-sm text-muted-foreground">Info Hash v2:</span>
+                        <div className="flex items-center gap-2 mt-1">
+                          <div className="text-xs sm:text-sm font-mono bg-muted/50 hover:bg-muted transition-colors p-2 sm:p-3 rounded break-all select-text flex-1">
+                            {properties.infohash_v2 && properties.infohash_v2.length > 0 ? properties.infohash_v2 : "N/A"}
+                          </div>
+                          {properties.infohash_v2 && properties.infohash_v2.length > 0 && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 shrink-0"
+                              onClick={() => copyToClipboard(properties.infohash_v2, "Info Hash v2")}
+                            >
+                              <Copy className="h-4 w-4" />
+                            </Button>
+                          )}
                         </div>
                       </div>
                     </div>

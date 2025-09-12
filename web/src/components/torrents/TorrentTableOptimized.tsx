@@ -837,7 +837,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       {/* Table container */}
       <div className="flex flex-col flex-1 min-h-0 mt-2 sm:mt-0 overflow-hidden">
         <div
-          className="relative flex-1 overflow-auto scrollbar-thin"
+          className="relative flex-1 overflow-auto scrollbar-thin select-none"
           ref={parentRef}
           role="grid"
           aria-label="Torrents table"
@@ -977,7 +977,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         </div>
 
         {/* Status bar */}
-        <div className="flex items-center justify-between p-2 border-t flex-shrink-0">
+        <div className="flex items-center justify-between p-2 border-t flex-shrink-0 select-none">
           <div className="text-sm text-muted-foreground">
             {/* Show special loading message when fetching without cache (cold load) */}
             {isLoading && !isCachedData && !isStaleData && torrents.length === 0 ? (
