@@ -322,7 +322,7 @@ export const createColumns = (
 
       return (
         <span
-          className="text-sm font-medium"
+          className="text-sm font-medium truncate"
           style={{ color: colorVar }}
         >
           {displayRatio}
@@ -350,7 +350,7 @@ export const createColumns = (
       const displayHours = hours % 12 || 12
 
       return (
-        <div className="whitespace-nowrap text-sm">
+        <div className="truncate text-sm">
           {month}/{day}/{year}, {displayHours}:{minutes.toString().padStart(2, "0")}:{seconds.toString().padStart(2, "0")} {ampm}
         </div>
       )
