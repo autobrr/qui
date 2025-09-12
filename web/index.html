@@ -10,6 +10,42 @@
     <title>qui</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <script>
+      /* Anti-FOUC: Apply theme immediately before render */
+      (function() {
+        try {
+          // Get stored theme preferences
+          var themeMode = localStorage.getItem('theme') || 'auto';
+          var isDark = themeMode === 'dark' || 
+                       (themeMode === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          
+          // Apply dark class if needed
+          if (isDark) {
+            document.documentElement.classList.add('dark');
+          }
+          
+          // Set immediate background to prevent flash
+          // Default to minimal theme dark background
+          document.documentElement.style.backgroundColor = isDark ? 'oklch(0.1450 0 0)' : 'oklch(0.98 0 0)';
+          document.body && (document.body.style.backgroundColor = isDark ? 'oklch(0.1450 0 0)' : 'oklch(0.98 0 0)');
+          
+          // Check if we have stored critical theme vars for more accurate color
+          var criticalVars = localStorage.getItem('theme-critical-vars');
+          if (criticalVars) {
+            try {
+              var vars = JSON.parse(criticalVars);
+              if (vars.background) {
+                document.documentElement.style.backgroundColor = vars.background;
+                document.body && (document.body.style.backgroundColor = vars.background);
+              }
+            } catch(e) {}
+          }
+        } catch (e) {
+          // Fallback to dark theme on error
+          document.documentElement.style.backgroundColor = 'oklch(0.1450 0 0)';
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

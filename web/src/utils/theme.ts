@@ -200,6 +200,29 @@ const applyTheme = async (theme: Theme, isDark: boolean, withTransition = false)
   // Add theme class
   root.setAttribute("data-theme", theme.id);
 
+  // Update HTML and body background color to match theme
+  // This prevents flash of hardcoded background color
+  const backgroundColor = cssVars["--background"];
+  if (backgroundColor) {
+    // Apply to both html and body for consistency
+    root.style.backgroundColor = backgroundColor;
+    if (document.body) {
+      document.body.style.backgroundColor = backgroundColor;
+    }
+
+    // Store critical vars in localStorage for immediate application on next load
+    // This prevents FOUC by allowing the inline script to apply the exact theme color
+    try {
+      const criticalVars = {
+        background: backgroundColor,
+        foreground: cssVars["--foreground"] || "",
+      };
+      localStorage.setItem("theme-critical-vars", JSON.stringify(criticalVars));
+    } catch {
+      // Ignore localStorage errors
+    }
+  }
+
   if (withTransition) {
     setTimeout(() => {
       root.classList.remove(THEME_TRANSITION_CLASS);
