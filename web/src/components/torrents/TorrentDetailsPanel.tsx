@@ -188,20 +188,24 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                             )}
                           </span>
                         </div>
-                        <div>
-                          <span className="text-sm text-muted-foreground">Queue Limits:</span>
-                          <div className="ml-2 text-sm space-y-1">
-                            {metadata.preferences.max_active_downloads > 0 && (
-                              <div>Max Active Downloads: {metadata.preferences.max_active_downloads}</div>
-                            )}
-                            {metadata.preferences.max_active_uploads > 0 && (
-                              <div>Max Active Uploads: {metadata.preferences.max_active_uploads}</div>
-                            )}
-                            {metadata.preferences.max_active_torrents > 0 && (
-                              <div>Max Active Total: {metadata.preferences.max_active_torrents}</div>
-                            )}
+                        {metadata.preferences.max_active_downloads > 0 && (
+                          <div>
+                            <span className="text-sm text-muted-foreground">Max Active Downloads:</span>
+                            <span className="ml-2 text-sm">{metadata.preferences.max_active_downloads}</span>
                           </div>
-                        </div>
+                        )}
+                        {metadata.preferences.max_active_uploads > 0 && (
+                          <div>
+                            <span className="text-sm text-muted-foreground">Max Active Uploads:</span>
+                            <span className="ml-2 text-sm">{metadata.preferences.max_active_uploads}</span>
+                          </div>
+                        )}
+                        {metadata.preferences.max_active_torrents > 0 && (
+                          <div>
+                            <span className="text-sm text-muted-foreground">Max Active Torrents:</span>
+                            <span className="ml-2 text-sm">{metadata.preferences.max_active_torrents}</span>
+                          </div>
+                        )}
                       </div>
                     )}
 
