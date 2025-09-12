@@ -185,7 +185,7 @@ export const createColumns = (
       const isQueued = state === "queuedDL" || state === "queuedUP"
 
       if (priority === 0 && !isQueued) {
-        return <span className="text-sm text-muted-foreground text-center block"> </span>
+        return <span className="text-sm text-muted-foreground text-center block">-</span>
       }
 
       if (isQueued) {
@@ -299,7 +299,7 @@ export const createColumns = (
     header: "Down Speed",
     cell: ({ row }) => {
       const speed = row.original.dlspeed
-      return <span className="text-sm overflow-hidden whitespace-nowrap">{speed === 0 ? " " : formatSpeedWithUnit(speed, speedUnit)}</span>
+      return <span className="text-sm overflow-hidden whitespace-nowrap">{speed === 0 ? "-" : formatSpeedWithUnit(speed, speedUnit)}</span>
     },
     size: calculateMinWidth("Down Speed"),
   },
@@ -308,7 +308,7 @@ export const createColumns = (
     header: "Up Speed",
     cell: ({ row }) => {
       const speed = row.original.upspeed
-      return <span className="text-sm overflow-hidden whitespace-nowrap">{speed === 0 ? " " : formatSpeedWithUnit(speed, speedUnit)}</span>
+      return <span className="text-sm overflow-hidden whitespace-nowrap">{speed === 0 ? "-" : formatSpeedWithUnit(speed, speedUnit)}</span>
     },
     size: calculateMinWidth("Up Speed"),
   },
@@ -395,7 +395,7 @@ export const createColumns = (
     header: "Downloaded",
     cell: ({ row }) => {
       const downloaded = row.original.downloaded
-      return <span className="text-sm overflow-hidden whitespace-nowrap">{downloaded === 0 ? "" : formatBytes(downloaded)}</span>
+      return <span className="text-sm overflow-hidden whitespace-nowrap">{downloaded === 0 ? "-" : formatBytes(downloaded)}</span>
     },
     size: calculateMinWidth("Downloaded"),
   },
@@ -404,7 +404,7 @@ export const createColumns = (
     header: "Uploaded",
     cell: ({ row }) => {
       const uploaded = row.original.uploaded
-      return <span className="text-sm overflow-hidden whitespace-nowrap">{uploaded === 0 ? "" : formatBytes(uploaded)}</span>
+      return <span className="text-sm overflow-hidden whitespace-nowrap">{uploaded === 0 ? "-" : formatBytes(uploaded)}</span>
     },
     size: calculateMinWidth("Uploaded"),
   },
