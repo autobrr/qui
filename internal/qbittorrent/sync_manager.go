@@ -1895,3 +1895,29 @@ func (sm *SyncManager) SetTorrentDownloadLimit(ctx context.Context, instanceID i
 
 	return nil
 }
+
+// SetLocation sets the save location for torrents
+func (sm *SyncManager) SetLocation(ctx context.Context, instanceID int, hashes []string, location string) error {
+	// Get client and sync manager
+	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		return err
+	}
+
+	// Validate that torrents exist
+	if err := sm.validateTorrentsExist(client, hashes, "set location"); err != nil {
+		return err
+	}
+
+	// Validate location is not empty
+	if strings.TrimSpace(location) == "" {
+		return fmt.Errorf("location cannot be empty")
+	}
+
+	// Set the location - this will disable Auto TMM and move the torrents
+	if err := client.SetLocationCtx(ctx, hashes, location); err != nil {
+		return fmt.Errorf("failed to set torrent location: %w", err)
+	}
+
+	return nil
+}

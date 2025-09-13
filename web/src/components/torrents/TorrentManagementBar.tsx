@@ -35,13 +35,13 @@ import {
 } from "@/components/ui/tooltip"
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
 import { api } from "@/lib/api"
-import { getCommonCategory, getCommonTags } from "@/lib/torrent-utils"
+import { getCommonCategory, getCommonSavePath, getCommonTags } from "@/lib/torrent-utils"
 import type { Torrent } from "@/types"
 import { useQuery } from "@tanstack/react-query"
-import { ArrowDown, ArrowUp, ChevronsDown, ChevronsUp, Folder, List, LoaderCircle, Pause, Play, Radio, Settings2, Share2, Tag, Trash2 } from "lucide-react"
+import { ArrowDown, ArrowUp, ChevronsDown, ChevronsUp, Folder, FolderOpen, List, LoaderCircle, Pause, Play, Radio, Settings2, Share2, Tag, Trash2 } from "lucide-react"
 import type { ChangeEvent } from "react"
 import { memo, useCallback } from "react"
-import { AddTagsDialog, SetCategoryDialog, SetTagsDialog } from "./TorrentDialogs"
+import { AddTagsDialog, SetCategoryDialog, SetLocationDialog, SetTagsDialog } from "./TorrentDialogs"
 import { ShareLimitSubmenu, SpeedLimitsSubmenu } from "./TorrentLimitSubmenus"
 
 interface TorrentManagementBarProps {
@@ -100,6 +100,8 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     setShowSetTagsDialog,
     showCategoryDialog,
     setShowCategoryDialog,
+    showLocationDialog,
+    setShowLocationDialog,
     showRecheckDialog,
     setShowRecheckDialog,
     showReannounceDialog,
@@ -110,6 +112,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     handleAddTags,
     handleSetTags,
     handleSetCategory,
+    handleSetLocation,
     handleSetShareLimit,
     handleSetSpeedLimits,
     handleRecheck,
@@ -117,6 +120,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     prepareDeleteAction,
     prepareTagsAction,
     prepareCategoryAction,
+    prepareLocationAction,
     prepareRecheckAction,
     prepareReannounceAction,
   } = useTorrentActions({
@@ -167,6 +171,17 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
       excludeHashes
     )
   }, [handleSetCategory, selectedHashes, isAllSelected, filters, search, excludeHashes])
+
+  const handleSetLocationWrapper = useCallback((location: string) => {
+    handleSetLocation(
+      location,
+      selectedHashes,
+      isAllSelected,
+      filters,
+      search,
+      excludeHashes
+    )
+  }, [handleSetLocation, selectedHashes, isAllSelected, filters, search, excludeHashes])
 
   const handleRecheckWrapper = useCallback(() => {
     handleRecheck(
@@ -346,6 +361,20 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
               </Button>
             </TooltipTrigger>
             <TooltipContent>Set Category</TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => prepareLocationAction(selectedHashes, selectedTorrents)}
+                disabled={isPending || isDisabled}
+              >
+                <FolderOpen className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Set Location</TooltipContent>
           </Tooltip>
 
           {/* Queue Priority */}
@@ -533,6 +562,16 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
         onConfirm={handleSetCategoryWrapper}
         isPending={isPending}
         initialCategory={getCommonCategory(selectedTorrents)}
+      />
+
+      {/* Set Location Dialog */}
+      <SetLocationDialog
+        open={showLocationDialog}
+        onOpenChange={setShowLocationDialog}
+        hashCount={totalSelectionCount || selectedHashes.length}
+        onConfirm={handleSetLocationWrapper}
+        isPending={isPending}
+        initialLocation={getCommonSavePath(selectedTorrents)}
       />
 
       {/* Force Recheck Confirmation Dialog */}

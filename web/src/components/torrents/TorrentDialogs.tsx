@@ -397,6 +397,96 @@ interface SetCategoryDialogProps {
   initialCategory?: string
 }
 
+interface SetLocationDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  hashCount: number
+  onConfirm: (location: string) => void
+  isPending?: boolean
+  initialLocation?: string
+}
+
+export const SetLocationDialog = memo(function SetLocationDialog({
+  open,
+  onOpenChange,
+  hashCount,
+  onConfirm,
+  isPending = false,
+  initialLocation = "",
+}: SetLocationDialogProps) {
+  const [location, setLocation] = useState("")
+  const wasOpen = useRef(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  // Initialize location only when dialog transitions from closed to open
+  useEffect(() => {
+    if (open && !wasOpen.current) {
+      setLocation(initialLocation)
+      // Focus the input when dialog opens
+      setTimeout(() => inputRef.current?.focus(), 0)
+    }
+    wasOpen.current = open
+  }, [open, initialLocation])
+
+  const handleConfirm = useCallback(() => {
+    if (location.trim()) {
+      onConfirm(location.trim())
+      setLocation("")
+    }
+  }, [location, onConfirm])
+
+  const handleCancel = useCallback(() => {
+    setLocation("")
+    onOpenChange(false)
+  }, [onOpenChange])
+
+  const handleKeyDown = useCallback((e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && !isPending && location.trim()) {
+      e.preventDefault()
+      handleConfirm()
+    }
+  }, [isPending, location, handleConfirm])
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Set Location for {hashCount} torrent(s)</DialogTitle>
+          <DialogDescription>
+            Enter the new save location for the selected torrents. This will disable Auto TMM and move the torrents to the specified location.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="py-4 space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="location">Location</Label>
+            <Input
+              ref={inputRef}
+              id="location"
+              type="text"
+              value={location}
+              onChange={(e: ChangeEvent<HTMLInputElement>) => setLocation(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="/path/to/save/location"
+              disabled={isPending}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={handleCancel} disabled={isPending}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleConfirm}
+            disabled={isPending || !location.trim()}
+          >
+            Set Location
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+})
+
 export const SetCategoryDialog = memo(function SetCategoryDialog({
   open,
   onOpenChange,
