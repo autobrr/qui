@@ -9,7 +9,6 @@ require (
 	github.com/autobrr/autobrr v1.66.1
 	github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20250912150321-f669d40212ea
 	github.com/creativeprojects/go-selfupdate v1.5.1
-	github.com/dgraph-io/ristretto v0.2.0
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-chi/chi/v5 v5.2.3
 	github.com/lithammer/fuzzysearch v1.1.8

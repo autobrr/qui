@@ -6,14 +6,11 @@ package qbittorrent
 import (
 	"context"
 	"fmt"
-	"maps"
-	"net/http"
-	"reflect"
 	"sync"
 	"time"
-	"unsafe"
 
 	"github.com/Masterminds/semver/v3"
+	"github.com/autobrr/autobrr/pkg/ttlcache"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -29,7 +26,7 @@ type Client struct {
 	syncManager     *qbt.SyncManager
 	peerSyncManager map[string]*qbt.PeerSyncManager // Map of torrent hash to PeerSyncManager
 	// optimisticUpdates stores temporary optimistic state changes for this instance
-	optimisticUpdates map[string]*OptimisticTorrentUpdate
+	optimisticUpdates *ttlcache.Cache[string, *OptimisticTorrentUpdate]
 	mu                sync.RWMutex
 	healthMu          sync.RWMutex
 }
@@ -76,14 +73,15 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 	}
 
 	client := &Client{
-		Client:            qbtClient,
-		instanceID:        instanceID,
-		webAPIVersion:     webAPIVersion,
-		supportsSetTags:   supportsSetTags,
-		lastHealthCheck:   time.Now(),
-		isHealthy:         true,
-		optimisticUpdates: make(map[string]*OptimisticTorrentUpdate),
-		peerSyncManager:   make(map[string]*qbt.PeerSyncManager),
+		Client:          qbtClient,
+		instanceID:      instanceID,
+		webAPIVersion:   webAPIVersion,
+		supportsSetTags: supportsSetTags,
+		lastHealthCheck: time.Now(),
+		isHealthy:       true,
+		optimisticUpdates: ttlcache.New(ttlcache.Options[string, *OptimisticTorrentUpdate]{}.
+			SetDefaultTTL(30 * time.Second)), // Updates expire after 30 seconds
+		peerSyncManager: make(map[string]*qbt.PeerSyncManager),
 	}
 
 	// Initialize sync manager with default options
@@ -184,39 +182,6 @@ func (c *Client) GetWebAPIVersion() string {
 	return c.webAPIVersion
 }
 
-// GetHTTPClient allows you to receive the implemented *http.Client with cookie jar
-// This method uses reflection to access the private http field from the embedded qbt.Client
-//
-// TODO: Remove this method and update proxy handler when go-qbittorrent merges GetHTTPClient method
-// When https://github.com/autobrr/go-qbittorrent is updated with GetHTTPClient method:
-// 1. Remove this entire GetHTTPClient method from qui's Client wrapper
-// 2. Update proxy handler to call client.Client.GetHTTPClient() directly instead of client.GetHTTPClient()
-// 3. Remove "reflect" and "unsafe" imports from this file
-// 4. Update go.mod to use the new version of go-qbittorrent
-func (c *Client) GetHTTPClient() *http.Client {
-	// Use reflection to access the private 'http' field from the embedded qbt.Client
-	clientValue := reflect.ValueOf(c.Client).Elem()
-	httpField := clientValue.FieldByName("http")
-
-	if !httpField.IsValid() {
-		log.Error().Msg("Failed to access http field from qBittorrent client")
-		return nil
-	}
-
-	// The field is unexported, so we need to make it accessible
-	if !httpField.CanInterface() {
-		// Make the field accessible using reflection
-		httpField = reflect.NewAt(httpField.Type(), unsafe.Pointer(httpField.UnsafeAddr())).Elem()
-	}
-
-	if httpClient, ok := httpField.Interface().(*http.Client); ok {
-		return httpClient
-	}
-
-	log.Error().Msg("Failed to convert http field to *http.Client")
-	return nil
-}
-
 func (c *Client) GetSyncManager() *qbt.SyncManager {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -253,9 +218,6 @@ func (c *Client) GetOrCreatePeerSyncManager(hash string) *qbt.PeerSyncManager {
 
 // applyOptimisticCacheUpdate applies optimistic updates for the given hashes and action
 func (c *Client) applyOptimisticCacheUpdate(hashes []string, action string, _ map[string]any) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	log.Debug().Int("instanceID", c.instanceID).Str("action", action).Int("hashCount", len(hashes)).Msg("Starting optimistic cache update")
 
 	now := time.Now()
@@ -264,43 +226,46 @@ func (c *Client) applyOptimisticCacheUpdate(hashes []string, action string, _ ma
 	for _, hash := range hashes {
 		var originalState qbt.TorrentState
 		var progress float64
+
+		// Need mutex only for syncManager access
+		c.mu.RLock()
 		if c.syncManager != nil {
 			if torrent, exists := c.syncManager.GetTorrent(hash); exists {
 				originalState = torrent.State
 				progress = torrent.Progress
 			}
 		}
+		c.mu.RUnlock()
+
 		state := getTargetState(action, progress)
 		if state != "" && state != originalState {
-			c.optimisticUpdates[hash] = &OptimisticTorrentUpdate{
+			c.optimisticUpdates.Set(hash, &OptimisticTorrentUpdate{
 				State:         state,
 				OriginalState: originalState,
 				UpdatedAt:     now,
 				Action:        action,
-			}
+			}, 30*time.Second)
 			log.Debug().Int("instanceID", c.instanceID).Str("hash", hash).Str("action", action).Msg("Created optimistic update for " + action)
 		}
 	}
 
-	log.Debug().Int("instanceID", c.instanceID).Str("action", action).Int("hashCount", len(hashes)).Int("totalOptimistic", len(c.optimisticUpdates)).Msg("Completed optimistic cache update")
+	log.Debug().Int("instanceID", c.instanceID).Str("action", action).Int("hashCount", len(hashes)).Msg("Completed optimistic cache update")
 }
 
-// getOptimisticUpdates returns a copy of the current optimistic updates
+// getOptimisticUpdates returns all current optimistic updates
 func (c *Client) getOptimisticUpdates() map[string]*OptimisticTorrentUpdate {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	// Return a copy to prevent external modification
-	updates := make(map[string]*OptimisticTorrentUpdate, len(c.optimisticUpdates))
-	maps.Copy(updates, c.optimisticUpdates)
+	updates := make(map[string]*OptimisticTorrentUpdate)
+	for _, key := range c.optimisticUpdates.GetKeys() {
+		if val, found := c.optimisticUpdates.Get(key); found {
+			updates[key] = val
+		}
+	}
 	return updates
 }
 
 // clearOptimisticUpdate removes an optimistic update for a specific torrent
 func (c *Client) clearOptimisticUpdate(hash string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	delete(c.optimisticUpdates, hash)
+	c.optimisticUpdates.Delete(hash)
 	log.Debug().Int("instanceID", c.instanceID).Str("hash", hash).Msg("Cleared optimistic update")
 }
 
