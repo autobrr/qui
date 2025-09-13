@@ -4,7 +4,6 @@
 package qbittorrent
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"net/url"
@@ -975,38 +974,33 @@ func normalizeForSearch(text string) string {
 }
 
 // containsTagNoAlloc checks if the comma-separated tags string contains the target tag
-// It avoids allocations by operating on byte slices and simple scanning.
-func containsTagNoAlloc(tags string, target []byte) bool {
-	if len(tags) == 0 || len(target) == 0 {
+// It avoids allocations by scanning the string and comparing token substrings using strings.EqualFold.
+func containsTagNoAlloc(tags string, target string) bool {
+	if tags == "" || target == "" {
 		return false
 	}
 
-	// Scan through tags, tokenizing on comma
-	// We'll compare each token trimmed of spaces
-	s := []byte(tags)
-	// Convert token to lower-case on the fly
 	i := 0
-	n := len(s)
+	n := len(tags)
 	for i < n {
 		// skip leading spaces
-		for i < n && s[i] == ' ' {
+		for i < n && tags[i] == ' ' {
 			i++
 		}
 		// start of token
 		start := i
-		for i < n && s[i] != ',' {
+		for i < n && tags[i] != ',' {
 			i++
 		}
 		end := i
 		// trim trailing spaces
-		for end > start && s[end-1] == ' ' {
+		for end > start && tags[end-1] == ' ' {
 			end--
 		}
 
 		// quick length check
 		if end-start == len(target) {
-			// Compare without allocations using bytes.EqualFold
-			if bytes.EqualFold(s[start:end], target) {
+			if tags[start:end] == target {
 				return true
 			}
 		}
@@ -1202,16 +1196,16 @@ func (sm *SyncManager) applyManualFilters(torrents []qbt.Torrent, filters Filter
 		categorySet[c] = struct{}{}
 	}
 
-	// Prepare tag filter bytes (lower-cased) to reuse across torrents (avoid per-torrent allocations)
+	// Prepare tag filter strings (lower-cased/trimmed) to reuse across torrents (avoid per-torrent allocations)
 	includeUntagged := false
-	var filterTagBytes [][]byte
+	var filterTags []string
 	if len(filters.Tags) > 0 {
 		for _, t := range filters.Tags {
 			if t == "" {
 				includeUntagged = true
 				continue
 			}
-			filterTagBytes = append(filterTagBytes, []byte(t))
+			filterTags = append(filterTags, t)
 		}
 	}
 
@@ -1277,7 +1271,7 @@ func (sm *SyncManager) applyManualFilters(torrents []qbt.Torrent, filters Filter
 				}
 			} else {
 				tagMatched := false
-				for _, ft := range filterTagBytes {
+				for _, ft := range filterTags {
 					if containsTagNoAlloc(torrent.Tags, ft) {
 						tagMatched = true
 						break
