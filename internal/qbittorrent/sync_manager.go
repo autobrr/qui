@@ -981,9 +981,6 @@ func containsTagNoAlloc(tags string, target []byte) bool {
 		return false
 	}
 
-	// Convert target to []byte once
-	targetLower := target
-
 	// Scan through tags, tokenizing on comma
 	// We'll compare each token trimmed of spaces
 	s := []byte(tags)
@@ -1007,10 +1004,9 @@ func containsTagNoAlloc(tags string, target []byte) bool {
 		}
 
 		// quick length check
-		if end-start == len(targetLower) {
-			match := true
+		if end-start == len(target) {
 			// Compare without allocations using bytes.EqualFold
-			if bytes.EqualFold(s[start:end], targetLower) {
+			if bytes.EqualFold(s[start:end], target) {
 				return true
 			}
 		}
