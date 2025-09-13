@@ -187,11 +187,11 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 				torrentFilterOptions.Filter = qbt.TorrentFilterAll
 			case "completed":
 				torrentFilterOptions.Filter = qbt.TorrentFilterCompleted
-			case "resumed":
-				torrentFilterOptions.Filter = qbt.TorrentFilterResumed
-			case "paused":
-				torrentFilterOptions.Filter = qbt.TorrentFilterPaused
-			case "stopped":
+			case "running", "resumed":
+				// Use TorrentFilterRunning - go-qbittorrent will translate based on version
+				torrentFilterOptions.Filter = qbt.TorrentFilterRunning
+			case "paused", "stopped":
+				// Use TorrentFilterStopped - go-qbittorrent will translate based on version
 				torrentFilterOptions.Filter = qbt.TorrentFilterStopped
 			case "stalled":
 				torrentFilterOptions.Filter = qbt.TorrentFilterStalled
@@ -632,26 +632,35 @@ func (sm *SyncManager) countTorrentStatuses(torrent qbt.Torrent, counts map[stri
 	}
 
 	// Check active states for "active" and "inactive"
-	isActive := slices.Contains(torrentStateCategories["active"], torrent.State)
+	isActive := slices.Contains(torrentStateCategories[qbt.TorrentFilterActive], torrent.State)
 	if isActive {
 		counts["active"]++
 	} else {
 		counts["inactive"]++
 	}
 
-	// Check paused states for "paused" and "resumed"
-	isPaused := slices.Contains(torrentStateCategories["paused"], torrent.State)
-	if isPaused {
-		counts["paused"]++
+	// Check stopped/paused states - both old PausedDl/Up and new StoppedDl/Up states
+	pausedStates := torrentStateCategories[qbt.TorrentFilterPaused]
+	stoppedStates := torrentStateCategories[qbt.TorrentFilterStopped]
+
+	// A torrent is considered stopped if it's in either paused or stopped states
+	isPausedOrStopped := slices.Contains(pausedStates, torrent.State) || slices.Contains(stoppedStates, torrent.State)
+
+	if isPausedOrStopped {
+		counts["stopped"]++
+		counts["paused"]++ // For backward compatibility
 	} else {
-		counts["resumed"]++
+		// Running is the inverse of stopped/paused
+		counts["running"]++
+		counts["resumed"]++ // For backward compatibility
 	}
 
 	// Count other status categories
 	for status, states := range torrentStateCategories {
 		if slices.Contains(states, torrent.State) {
-			// Skip "active" and "paused" as we handled them above
-			if status != "active" && status != "paused" {
+			// Skip "active", "paused", and "stopped" as we handled them above
+			if status != qbt.TorrentFilterActive && status != qbt.TorrentFilterPaused &&
+				status != qbt.TorrentFilterStopped {
 				counts[string(status)]++
 			}
 		}
@@ -665,7 +674,7 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(allTorrents []qbt
 	counts := &TorrentCounts{
 		Status: map[string]int{
 			"all": 0, "downloading": 0, "seeding": 0, "completed": 0, "paused": 0,
-			"active": 0, "inactive": 0, "resumed": 0, "stalled": 0,
+			"active": 0, "inactive": 0, "resumed": 0, "running": 0, "stopped": 0, "stalled": 0,
 			"stalled_uploading": 0, "stalled_downloading": 0, "errored": 0,
 			"checking": 0, "moving": 0,
 		},
@@ -1300,6 +1309,8 @@ var torrentStateCategories = map[qbt.TorrentFilter][]qbt.TorrentState{
 	qbt.TorrentFilterMoving:             {qbt.TorrentStateMoving},
 	qbt.TorrentFilterStalledUploading:   {qbt.TorrentStateStalledUp},
 	qbt.TorrentFilterStalledDownloading: {qbt.TorrentStateStalledDl},
+	qbt.TorrentFilterStopped:            {qbt.TorrentStateStoppedDl, qbt.TorrentStateStoppedUp},
+	// TorrentFilterRunning is handled specially in matchTorrentStatus as inverse of stopped
 }
 
 // Action state categories for optimistic update clearing
@@ -1358,10 +1369,17 @@ func (sm *SyncManager) matchTorrentStatus(torrent qbt.Torrent, status string) bo
 		return torrent.Progress == 1
 	case qbt.TorrentFilterInactive:
 		// Inactive is the inverse of active
-		return !slices.Contains(torrentStateCategories["active"], torrent.State)
-	case "resumed":
-		// Resumed is the inverse of paused
-		return !slices.Contains(torrentStateCategories["paused"], torrent.State)
+		return !slices.Contains(torrentStateCategories[qbt.TorrentFilterActive], torrent.State)
+	case qbt.TorrentFilterRunning, qbt.TorrentFilterResumed:
+		// Running/Resumed means "not paused and not stopped"
+		pausedStates := torrentStateCategories[qbt.TorrentFilterPaused]
+		stoppedStates := torrentStateCategories[qbt.TorrentFilterStopped]
+		return !slices.Contains(pausedStates, torrent.State) && !slices.Contains(stoppedStates, torrent.State)
+	case qbt.TorrentFilterStopped, qbt.TorrentFilterPaused:
+		// Stopped/Paused includes both paused and stopped states
+		pausedStates := torrentStateCategories[qbt.TorrentFilterPaused]
+		stoppedStates := torrentStateCategories[qbt.TorrentFilterStopped]
+		return slices.Contains(pausedStates, torrent.State) || slices.Contains(stoppedStates, torrent.State)
 	}
 
 	// For grouped status categories, check if state is in the category
