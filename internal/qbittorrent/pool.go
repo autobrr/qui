@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dgraph-io/ristretto"
+	"github.com/autobrr/autobrr/pkg/ttlcache"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 
@@ -53,7 +53,7 @@ type ClientPool struct {
 	clients           map[int]*Client
 	instanceStore     *models.InstanceStore
 	errorStore        *models.InstanceErrorStore
-	cache             *ristretto.Cache
+	cache             *ttlcache.Cache[string, *TorrentResponse]
 	mu                sync.RWMutex
 	creationMu        sync.Mutex          // Serialize client creation operations
 	creationLocks     map[int]*sync.Mutex // Per-instance creation locks
@@ -66,15 +66,9 @@ type ClientPool struct {
 
 // NewClientPool creates a new client pool
 func NewClientPool(instanceStore *models.InstanceStore, errorStore *models.InstanceErrorStore) (*ClientPool, error) {
-	// Create high-performance cache
-	cache, err := ristretto.NewCache(&ristretto.Config{
-		NumCounters: 1e7,     // 10 million
-		MaxCost:     1 << 30, // 1GB
-		BufferItems: 64,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create cache: %w", err)
-	}
+	// Create cache with 30 second TTL since torrent data changes frequently
+	cache := ttlcache.New(ttlcache.Options[string, *TorrentResponse]{}.
+		SetDefaultTTL(30 * time.Second))
 
 	cp := &ClientPool{
 		clients:           make(map[int]*Client),
@@ -304,7 +298,7 @@ func (cp *ClientPool) performHealthChecks() {
 }
 
 // GetCache returns the cache instance for external use
-func (cp *ClientPool) GetCache() *ristretto.Cache {
+func (cp *ClientPool) GetCache() *ttlcache.Cache[string, *TorrentResponse] {
 	return cp.cache
 }
 

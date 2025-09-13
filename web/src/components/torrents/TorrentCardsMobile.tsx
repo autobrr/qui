@@ -54,6 +54,7 @@ import {
   EyeOff,
   Filter,
   Folder,
+  FolderOpen,
   Gauge,
   HardDrive,
   Loader2,
@@ -70,7 +71,7 @@ import {
 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { AddTorrentDialog } from "./AddTorrentDialog"
-import { RemoveTagsDialog, SetCategoryDialog, SetTagsDialog } from "./TorrentDialogs"
+import { RemoveTagsDialog, SetCategoryDialog, SetLocationDialog, SetTagsDialog } from "./TorrentDialogs"
 // import { createPortal } from 'react-dom'
 // Columns dropdown removed on mobile
 import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
@@ -79,7 +80,7 @@ import { useInstances } from "@/hooks/useInstances"
 import { getLinuxCategory, getLinuxIsoName, getLinuxRatio, getLinuxTags, useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits, type SpeedUnit } from "@/lib/speedUnits"
 import { getStateLabel } from "@/lib/torrent-state-utils"
-import { getCommonCategory, getCommonTags } from "@/lib/torrent-utils"
+import { getCommonCategory, getCommonSavePath, getCommonTags } from "@/lib/torrent-utils"
 import { cn, formatBytes } from "@/lib/utils"
 import type { Category, Torrent, TorrentCounts } from "@/types"
 
@@ -609,14 +610,18 @@ export function TorrentCardsMobile({
     setShowRemoveTagsDialog,
     showCategoryDialog,
     setShowCategoryDialog,
+    showLocationDialog,
+    setShowLocationDialog,
     isPending,
     handleAction,
     handleDelete,
     handleSetTags,
     handleRemoveTags,
     handleSetCategory,
+    handleSetLocation,
     handleSetShareLimit,
     handleSetSpeedLimits,
+    prepareLocationAction,
   } = useTorrentActions({
     instanceId,
     onActionComplete: () => {
@@ -967,6 +972,19 @@ export function TorrentCardsMobile({
     )
     setActionTorrents([])
   }, [isAllSelected, actionTorrents, handleSetCategory, filters, effectiveSearch, excludedFromSelectAll])
+
+  const handleSetLocationWrapper = useCallback(async (location: string) => {
+    const hashes = isAllSelected ? [] : actionTorrents.map(t => t.hash)
+    await handleSetLocation(
+      location,
+      hashes,
+      isAllSelected,
+      isAllSelected ? filters : undefined,
+      isAllSelected ? effectiveSearch : undefined,
+      isAllSelected ? Array.from(excludedFromSelectAll) : undefined
+    )
+    setActionTorrents([])
+  }, [isAllSelected, actionTorrents, handleSetLocation, filters, effectiveSearch, excludedFromSelectAll])
 
   const getSelectedTorrents = useMemo(() => {
     if (isAllSelected) {
@@ -1387,6 +1405,21 @@ export function TorrentCardsMobile({
               Set Speed Limits
             </Button>
             <Button
+              variant="outline"
+              onClick={() => {
+                setActionTorrents(getSelectedTorrents)
+                prepareLocationAction(
+                  isAllSelected ? [] : Array.from(selectedHashes),
+                  getSelectedTorrents
+                )
+                setShowActionsSheet(false)
+              }}
+              className="justify-start"
+            >
+              <FolderOpen className="mr-2 h-4 w-4"/>
+              Set Location
+            </Button>
+            <Button
               variant="destructive"
               onClick={() => {
                 setShowDeleteDialog(true)
@@ -1508,6 +1541,16 @@ export function TorrentCardsMobile({
         isPending={isPending}
       />
 
+      {/* Set Location Dialog */}
+      <SetLocationDialog
+        open={showLocationDialog}
+        onOpenChange={setShowLocationDialog}
+        hashCount={effectiveSelectionCount}
+        initialLocation={getCommonSavePath(getSelectedTorrents)}
+        onConfirm={handleSetLocationWrapper}
+        isPending={isPending}
+      />
+
       {/* Add torrent dialog */}
       <AddTorrentDialog
         instanceId={instanceId}
@@ -1516,7 +1559,7 @@ export function TorrentCardsMobile({
       />
 
       {/* Scroll to top button - only on mobile */}
-      <div className="lg:hidden">
+      <div className="sm:hidden">
         <ScrollToTopButton
           scrollContainerRef={parentRef}
           className="bottom-24 right-4"
