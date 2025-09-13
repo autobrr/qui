@@ -75,7 +75,7 @@ export function useTorrentsList(
 
   // Update torrents when data arrives or changes (including optimistic updates)
   useEffect(() => {
-    if (data?.torrents) {
+    if (data) {
       // Check if this is a new page load or data update for current page
       const isNewPageLoad = currentPage !== lastProcessedPage
       const isDataUpdate = !isNewPageLoad // Same page, but data changed (optimistic updates)
@@ -88,7 +88,8 @@ export function useTorrentsList(
       // For first page or true data updates (optimistic updates from mutations)
       if (currentPage === 0 || (isDataUpdate && currentPage === 0)) {
         // First page OR data update (optimistic updates): replace all
-        setAllTorrents(data.torrents)
+        // Handle empty arrays explicitly - backend returns empty array when no torrents match filter
+        setAllTorrents(data.torrents || [])
         // Use backend's HasMore field for accurate pagination
         setHasLoadedAll(!data.hasMore)
 
@@ -102,7 +103,7 @@ export function useTorrentsList(
 
         // Append to existing for pagination
         setAllTorrents(prev => {
-          const updatedTorrents = [...prev, ...data.torrents]
+          const updatedTorrents = [...prev, ...(data.torrents || [])]
           return updatedTorrents
         })
 

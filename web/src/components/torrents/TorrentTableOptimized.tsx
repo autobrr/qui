@@ -314,6 +314,40 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [totalCount, isLoading, torrents.length, counts, categories, tags, onFilteredDataUpdate]) // Use torrents.length to avoid unnecessary calls when content updates
 
+  // Clear selection when torrents are removed from the filtered view
+  useEffect(() => {
+    if (isAllSelected && torrents.length === 0 && !isLoading) {
+      // If we were in "select all" mode but now have no torrents, clear selection
+      setIsAllSelected(false)
+      setExcludedFromSelectAll(new Set())
+      setRowSelection({})
+    } else if (isAllSelected && excludedFromSelectAll.size > 0) {
+      // Clean up excluded items that no longer exist in the current torrent list
+      const currentHashes = new Set(torrents.map(t => t.hash))
+      const validExclusions = new Set(
+        Array.from(excludedFromSelectAll).filter(hash => currentHashes.has(hash))
+      )
+
+      if (validExclusions.size !== excludedFromSelectAll.size) {
+        setExcludedFromSelectAll(validExclusions)
+      }
+    } else if (!isAllSelected && Object.keys(rowSelection).length > 0) {
+      // Clean up regular selection for torrents that no longer exist
+      const currentRowIds = new Set(torrents.map((t, i) => `${t.hash}-${i}`))
+      const validSelection: Record<string, boolean> = {}
+
+      Object.entries(rowSelection).forEach(([rowId, selected]) => {
+        if (selected && currentRowIds.has(rowId)) {
+          validSelection[rowId] = true
+        }
+      })
+
+      if (Object.keys(validSelection).length !== Object.keys(rowSelection).length) {
+        setRowSelection(validSelection)
+      }
+    }
+  }, [torrents, isAllSelected, excludedFromSelectAll, rowSelection, isLoading, setRowSelection])
+
 
   // Show refetch indicator only if fetching takes more than 2 seconds
   useEffect(() => {
