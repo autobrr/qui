@@ -14,6 +14,7 @@ A fast, modern web interface for qBittorrent. Manage multiple qBittorrent instan
 - **Real-time Updates**: Live torrent progress and status updates
 - **Clean Interface**: Modern UI built with React and shadcn/ui components
 - **Multiple Themes**: Choose from various color themes
+- **OpenID Connect (OIDC)**: Single sign-on with external identity providers
 - **Base URL Support**: Serve from a subdirectory (e.g., `/qui/`) for reverse proxy setups
 
 ## Installation
@@ -84,6 +85,14 @@ QUI__BASE_URL=/qui/      # Optional: serve from subdirectory
 
 # Security
 QUI__SESSION_SECRET=...  # Auto-generated if not set
+
+# OIDC Authentication (Optional)
+QUI__OIDC_ENABLED=true                            # Enable OpenID Connect
+QUI__OIDC_ISSUER=https://auth.example.com         # OIDC provider URL
+QUI__OIDC_CLIENT_ID=your-client-id                # OAuth2 client ID
+QUI__OIDC_CLIENT_SECRET=your-client-secret        # OAuth2 client secret
+QUI__OIDC_REDIRECT_URL=http://localhost:7476/api/auth/oidc/callback  # Callback URL
+QUI__OIDC_DISABLE_BUILT_IN_LOGIN=false           # Optional: disable password login
 
 # Logging
 QUI__LOG_LEVEL=INFO      # Options: ERROR, DEBUG, INFO, WARN, TRACE
@@ -333,6 +342,96 @@ docker run -d \
   -v $(pwd)/config:/config \
   ghcr.io/autobrr/qui:latest
 ```
+
+## OpenID Connect (OIDC) Authentication
+
+qui supports OpenID Connect (OIDC) for single sign-on (SSO) authentication. This allows you to use external identity providers like Authentik, Keycloak, Auth0, Okta, Google, or any OIDC-compliant provider.
+
+### Configuration
+
+Add these settings to your `config.toml`:
+
+```toml
+# Enable OIDC authentication
+oidcEnabled = true
+
+# Your OIDC provider's issuer URL
+oidcIssuer = "https://auth.example.com"
+
+# OAuth2 client credentials from your provider
+oidcClientId = "qui-client"
+oidcClientSecret = "your-client-secret"
+
+# Callback URL - must match the redirect URI configured in your provider
+oidcRedirectUrl = "http://localhost:7476/api/auth/oidc/callback"
+
+# Optional: Disable built-in password login when using OIDC
+oidcDisableBuiltInLogin = false
+```
+
+Or use environment variables:
+
+```bash
+QUI__OIDC_ENABLED=true
+QUI__OIDC_ISSUER=https://auth.example.com
+QUI__OIDC_CLIENT_ID=qui-client
+QUI__OIDC_CLIENT_SECRET=your-client-secret
+QUI__OIDC_REDIRECT_URL=http://localhost:7476/api/auth/oidc/callback
+QUI__OIDC_DISABLE_BUILT_IN_LOGIN=false
+```
+
+### Provider Setup
+
+Configure your OIDC provider with these settings:
+
+- **Redirect URI**: `http://your-qui-url/api/auth/oidc/callback`
+- **Scopes**: `openid profile email`
+- **Grant Type**: Authorization Code
+- **Response Type**: Code
+
+### Supported Providers
+
+qui works with any OIDC-compliant provider, including:
+
+- **Authentik** - Self-hosted identity provider
+- **Keycloak** - Enterprise identity management
+- **Auth0** - Cloud identity platform
+- **Okta** - Enterprise SSO solution
+- **Google** - Google Workspace SSO
+- **Microsoft Azure AD** - Azure Active Directory
+- **GitLab** - GitLab as identity provider
+- **GitHub** (via OAuth2 adapter)
+
+### How It Works
+
+1. When OIDC is enabled, a "Sign in with OpenID Connect" button appears on the login page
+2. Clicking the button redirects to your identity provider
+3. After authentication, the provider redirects back to qui
+4. qui creates a session using the OIDC claims (username, email, etc.)
+5. No qui password is required - authentication is handled entirely by your OIDC provider
+
+### Security Notes
+
+- OIDC sessions are separate from password-based sessions
+- The `oidcDisableBuiltInLogin` option can enforce OIDC-only authentication
+- Username is derived from OIDC claims in this order: preferred_username, nickname, name, email, sub
+- State parameter is used for CSRF protection during the OAuth flow
+
+### Reverse Proxy Configuration
+
+When using qui behind a reverse proxy with OIDC:
+
+```nginx
+location /qui/ {
+    proxy_pass http://localhost:7476/qui/;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;  # Important for OIDC redirects
+}
+```
+
+The `X-Forwarded-Proto` header is especially important for OIDC to generate correct redirect URLs.
 
 ## Base URL Configuration
 

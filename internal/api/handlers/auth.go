@@ -14,19 +14,40 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/auth"
+	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
 )
 
 type AuthHandler struct {
 	authService    *auth.Service
 	sessionManager *scs.SessionManager
+	oidcHandler    *OIDCHandler
+	config         *domain.Config
 }
 
-func NewAuthHandler(authService *auth.Service, sessionManager *scs.SessionManager) *AuthHandler {
-	return &AuthHandler{
+func NewAuthHandler(authService *auth.Service, sessionManager *scs.SessionManager, config *domain.Config) *AuthHandler {
+	h := &AuthHandler{
 		authService:    authService,
 		sessionManager: sessionManager,
+		config:         config,
 	}
+
+	// Initialize OIDC handler if enabled
+	if config.OIDCEnabled {
+		oidcHandler, err := NewOIDCHandler(config, sessionManager)
+		if err != nil {
+			log.Error().Err(err).Msg("failed to initialize OIDC handler")
+		} else {
+			h.oidcHandler = oidcHandler
+		}
+	}
+
+	return h
+}
+
+// GetOIDCHandler returns the OIDC handler if configured
+func (h *AuthHandler) GetOIDCHandler() *OIDCHandler {
+	return h.oidcHandler
 }
 
 // SetupRequest represents the initial setup request
@@ -135,6 +156,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	h.sessionManager.Put(r.Context(), "authenticated", true)
 	h.sessionManager.Put(r.Context(), "user_id", user.ID)
 	h.sessionManager.Put(r.Context(), "username", user.Username)
+	h.sessionManager.Put(r.Context(), "auth_method", "password")
 
 	// Handle remember_me functionality
 	h.sessionManager.RememberMe(r.Context(), req.RememberMe)
@@ -164,8 +186,9 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 
 // GetCurrentUser returns the current user information
 func (h *AuthHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
-	userID := h.sessionManager.GetInt(r.Context(), "user_id")
-	if userID == 0 {
+	// Check if the session is authenticated (works for both regular and OIDC auth)
+	authenticated := h.sessionManager.GetBool(r.Context(), "authenticated")
+	if !authenticated {
 		RespondError(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
@@ -176,9 +199,43 @@ func (h *AuthHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]any{
-		"id":       userID,
+	// For OIDC users, we might not have a user_id
+	userID := h.sessionManager.GetInt(r.Context(), "user_id")
+	authMethod := h.sessionManager.GetString(r.Context(), "auth_method")
+
+	response := map[string]any{
 		"username": username,
+	}
+
+	// Only include ID if it exists (for built-in auth users)
+	if userID != 0 {
+		response["id"] = userID
+	}
+
+	// Include auth method if available
+	if authMethod != "" {
+		response["auth_method"] = authMethod
+	}
+
+	RespondJSON(w, http.StatusOK, response)
+}
+
+// Validate checks if the user has a valid session (used for OIDC callback)
+func (h *AuthHandler) Validate(w http.ResponseWriter, r *http.Request) {
+	authenticated := h.sessionManager.GetBool(r.Context(), "authenticated")
+	if !authenticated {
+		RespondError(w, http.StatusUnauthorized, "Not authenticated")
+		return
+	}
+
+	username := h.sessionManager.GetString(r.Context(), "username")
+	authMethod := h.sessionManager.GetString(r.Context(), "auth_method")
+	profilePicture := h.sessionManager.GetString(r.Context(), "profile_picture")
+
+	RespondJSON(w, http.StatusOK, map[string]any{
+		"username":        username,
+		"auth_method":     authMethod,
+		"profile_picture": profilePicture,
 	})
 }
 

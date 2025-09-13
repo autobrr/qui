@@ -71,7 +71,7 @@ func NewRouter(deps *Dependencies) *chi.Mux {
 	r.Use(deps.SessionManager.LoadAndSave)
 
 	// Create handlers
-	authHandler := handlers.NewAuthHandler(deps.AuthService, deps.SessionManager)
+	authHandler := handlers.NewAuthHandler(deps.AuthService, deps.SessionManager, deps.Config.Config)
 	instancesHandler := handlers.NewInstancesHandler(deps.InstanceStore, deps.ClientPool, deps.SyncManager)
 	torrentsHandler := handlers.NewTorrentsHandler(deps.SyncManager)
 	preferencesHandler := handlers.NewPreferencesHandler(deps.SyncManager)
@@ -99,6 +99,12 @@ func NewRouter(deps *Dependencies) *chi.Mux {
 			r.Post("/setup", authHandler.Setup)
 			r.Post("/login", authHandler.Login)
 			r.Get("/check-setup", authHandler.CheckSetupRequired)
+			r.Get("/validate", authHandler.Validate)
+
+			// OIDC routes (if enabled)
+			if deps.Config.Config.OIDCEnabled && authHandler.GetOIDCHandler() != nil {
+				r.Route("/oidc", authHandler.GetOIDCHandler().Routes)
+			}
 		})
 
 		// Protected routes

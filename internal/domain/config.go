@@ -18,6 +18,14 @@ type Config struct {
 	MetricsPort           int    `toml:"metricsPort" mapstructure:"metricsPort"`
 	MetricsBasicAuthUsers string `toml:"metricsBasicAuthUsers" mapstructure:"metricsBasicAuthUsers"`
 
+	// OIDC Configuration
+	OIDCEnabled             bool   `toml:"oidcEnabled" mapstructure:"oidcEnabled"`
+	OIDCIssuer              string `toml:"oidcIssuer" mapstructure:"oidcIssuer"`
+	OIDCClientID            string `toml:"oidcClientId" mapstructure:"oidcClientId"`
+	OIDCClientSecret        string `toml:"oidcClientSecret" mapstructure:"oidcClientSecret"`
+	OIDCRedirectURL         string `toml:"oidcRedirectUrl" mapstructure:"oidcRedirectUrl"`
+	OIDCDisableBuiltInLogin bool   `toml:"oidcDisableBuiltInLogin" mapstructure:"oidcDisableBuiltInLogin"`
+
 	HTTPTimeouts HTTPTimeouts `toml:"httpTimeouts" mapstructure:"httpTimeouts"`
 }
 
