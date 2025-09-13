@@ -1211,7 +1211,7 @@ func (sm *SyncManager) applyManualFilters(torrents []qbt.Torrent, filters Filter
 				includeUntagged = true
 				continue
 			}
-			filterTagBytes = append(filterTagBytes, []byte(strings.ToLower(t)))
+			filterTagBytes = append(filterTagBytes, []byte(t))
 		}
 	}
 
