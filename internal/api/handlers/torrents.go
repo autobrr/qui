@@ -879,6 +879,105 @@ func (h *TorrentsHandler) GetTorrentFiles(w http.ResponseWriter, r *http.Request
 	RespondJSON(w, http.StatusOK, files)
 }
 
+// GetEconomyAnalysis returns the complete economy analysis for an instance
+func (h *TorrentsHandler) GetEconomyAnalysis(w http.ResponseWriter, r *http.Request) {
+	// Get instance ID from URL
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	// Parse pagination parameters
+	page := 1
+	pageSize := 25 // Increased default for better performance
+
+	if pageStr := r.URL.Query().Get("page"); pageStr != "" {
+		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+			page = p
+		}
+	}
+
+	if pageSizeStr := r.URL.Query().Get("pageSize"); pageSizeStr != "" {
+		if ps, err := strconv.Atoi(pageSizeStr); err == nil && ps > 0 && ps <= 100 {
+			pageSize = ps
+		}
+	}
+
+	// Parse sorting parameters
+	sortField := r.URL.Query().Get("sort")
+	sortDesc := false
+	if sortOrder := r.URL.Query().Get("order"); sortOrder == "desc" {
+		sortDesc = true
+	}
+
+	// Parse filters
+	var filters qbittorrent.FilterOptions
+	if filtersStr := r.URL.Query().Get("filters"); filtersStr != "" {
+		if err := json.Unmarshal([]byte(filtersStr), &filters); err != nil {
+			log.Warn().Err(err).Msg("Failed to parse filters, ignoring")
+		}
+	}
+
+	// Get economy analysis
+	analysis, err := h.syncManager.GetEconomyAnalysisWithPaginationAndSorting(r.Context(), instanceID, page, pageSize, sortField, sortDesc, filters)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get economy analysis")
+		RespondError(w, http.StatusInternalServerError, "Failed to get economy analysis")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, analysis)
+}
+
+// GetEconomyStats returns aggregated economy statistics for an instance
+func (h *TorrentsHandler) GetEconomyStats(w http.ResponseWriter, r *http.Request) {
+	// Get instance ID from URL
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	// Get economy stats
+	stats, err := h.syncManager.GetEconomyStats(r.Context(), instanceID)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get economy stats")
+		RespondError(w, http.StatusInternalServerError, "Failed to get economy stats")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, stats)
+}
+
+// GetTopValuableTorrents returns the most valuable torrents by economy score
+func (h *TorrentsHandler) GetTopValuableTorrents(w http.ResponseWriter, r *http.Request) {
+	// Get instance ID from URL
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	// Parse limit parameter
+	limit := 20 // Default limit
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 100 {
+			limit = parsed
+		}
+	}
+
+	// Get top valuable torrents
+	torrents, err := h.syncManager.GetTopValuableTorrents(r.Context(), instanceID, limit)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get top valuable torrents")
+		RespondError(w, http.StatusInternalServerError, "Failed to get top valuable torrents")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, torrents)
+}
+
 // AddPeers adds peers to torrents
 func (h *TorrentsHandler) AddPeers(w http.ResponseWriter, r *http.Request) {
 	// Get instance ID from URL
