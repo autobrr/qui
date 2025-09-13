@@ -69,8 +69,7 @@ export function Setup() {
               <form.Field
                 name="username"
                 validators={{
-                  onChangeAsyncDebounceMs: 500,
-                  onChangeAsync: async ({ value }) => {
+                  onChange: ({ value }) => {
                     if (!value) return "Username is required"
                     if (value.length < 3) return "Username must be at least 3 characters"
                     return undefined
@@ -98,8 +97,7 @@ export function Setup() {
               <form.Field
                 name="password"
                 validators={{
-                  onChangeAsyncDebounceMs: 500,
-                  onChangeAsync: async ({ value }) => {
+                  onChange: ({ value }) => {
                     if (!value) return "Password is required"
                     if (value.length < 8) return "Password must be at least 8 characters"
                     return undefined
@@ -127,8 +125,7 @@ export function Setup() {
               <form.Field
                 name="confirmPassword"
                 validators={{
-                  onChangeAsyncDebounceMs: 500,
-                  onChangeAsync: async ({ value, fieldApi }) => {
+                  onChange: ({ value, fieldApi }) => {
                     const password = fieldApi.form.getFieldValue("password")
                     if (!value) return "Please confirm your password"
                     if (value !== password) return "Passwords do not match"

@@ -69,8 +69,7 @@ export function Login() {
               <form.Field
                 name="username"
                 validators={{
-                  onChangeAsyncDebounceMs: 500,
-                  onChangeAsync: async ({ value }) => {
+                  onChange: ({ value }) => {
                     if (!value) return "Username is required"
                     return undefined
                   },
@@ -97,8 +96,7 @@ export function Login() {
               <form.Field
                 name="password"
                 validators={{
-                  onChangeAsyncDebounceMs: 500,
-                  onChangeAsync: async ({ value }) => {
+                  onChange: ({ value }) => {
                     if (!value) return "Password is required"
                     return undefined
                   },
