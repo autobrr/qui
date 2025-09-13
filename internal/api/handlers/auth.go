@@ -161,7 +161,7 @@ func (h *AuthHandler) warmSession(ctx context.Context) {
 		_, err := h.syncManager.GetTorrentsWithFilters(
 			warmCtx,
 			instances[0].ID,
-			300,
+			1,
 			0,
 			"added_on",
 			"desc",
