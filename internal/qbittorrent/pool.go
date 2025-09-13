@@ -486,3 +486,29 @@ func (cp *ClientPool) GetInstancesWithDecryptionErrors() []int {
 
 	return instanceIDs
 }
+
+// GetAllInstanceIDs returns all configured instance IDs
+func (cp *ClientPool) GetAllInstanceIDs() []int {
+	ctx := context.Background()
+	instances, err := cp.instanceStore.List(ctx)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to get instances from store")
+		return []int{}
+	}
+
+	var ids []int
+	for _, instance := range instances {
+		ids = append(ids, instance.ID)
+	}
+	return ids
+}
+
+// GetInstanceInfo returns basic information about an instance
+func (cp *ClientPool) GetInstanceInfo(instanceID int) (*models.Instance, error) {
+	ctx := context.Background()
+	instance, err := cp.instanceStore.Get(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get instance info: %w", err)
+	}
+	return instance, nil
+}

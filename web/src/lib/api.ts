@@ -9,6 +9,8 @@ import type {
   Category,
   InstanceFormData,
   InstanceResponse,
+  RacingDashboard,
+  RacingDashboardOptions,
   TorrentResponse,
   User
 } from "@/types"
@@ -460,6 +462,55 @@ class ApiClient {
     return this.request<{ enabled: boolean }>(`/instances/${instanceId}/alternative-speed-limits/toggle`, {
       method: "POST",
     })
+  }
+
+  // Racing Dashboard endpoint
+  async getRacingDashboard(
+    instanceId: number | null,
+    options?: RacingDashboardOptions
+  ): Promise<RacingDashboard> {
+    const searchParams = new URLSearchParams()
+
+    // Handle multiple instance IDs
+    if (options?.instanceIds && options.instanceIds.length > 0) {
+      searchParams.set("instanceIds", options.instanceIds.join(","))
+    }
+
+    if (options?.limit !== undefined) {
+      searchParams.set("limit", options.limit.toString())
+    }
+    if (options?.trackerFilter && options.trackerFilter.length > 0) {
+      searchParams.set("trackers", options.trackerFilter.join(","))
+    }
+    if (options?.minRatio !== undefined) {
+      searchParams.set("minRatio", options.minRatio.toString())
+    }
+    if (options?.minSize !== undefined) {
+      searchParams.set("minSize", options.minSize.toString())
+    }
+    if (options?.maxSize !== undefined) {
+      searchParams.set("maxSize", options.maxSize.toString())
+    }
+    if (options?.categoryFilter && options.categoryFilter.length > 0) {
+      searchParams.set("categories", options.categoryFilter.join(","))
+    }
+    if (options?.timeRange) {
+      searchParams.set("timeRange", options.timeRange)
+    }
+    if (options?.startDate) {
+      searchParams.set("startDate", options.startDate)
+    }
+    if (options?.endDate) {
+      searchParams.set("endDate", options.endDate)
+    }
+
+    const queryString = searchParams.toString()
+
+    // If instanceId is provided (backward compatibility), use it in the URL
+    // Otherwise, rely on instanceIds in the query params
+    const url = instanceId? (queryString ? `/instances/${instanceId}/torrents/racing?${queryString}` : `/instances/${instanceId}/torrents/racing`): `/instances/0/torrents/racing?${queryString}`
+
+    return this.request<RacingDashboard>(url)
   }
 }
 
