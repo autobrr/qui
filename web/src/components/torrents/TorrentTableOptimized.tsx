@@ -72,14 +72,14 @@ import {
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
-import { getCommonCategory, getCommonTags } from "@/lib/torrent-utils"
+import { getCommonCategory, getCommonSavePath, getCommonTags } from "@/lib/torrent-utils"
 import type { Category, Torrent, TorrentCounts } from "@/types"
 import { useSearch } from "@tanstack/react-router"
 import { ArrowUpDown, ChevronDown, ChevronUp, Columns3, Eye, EyeOff, Loader2 } from "lucide-react"
 import { createPortal } from "react-dom"
 import { AddTorrentDialog } from "./AddTorrentDialog"
 import { DraggableTableHeader } from "./DraggableTableHeader"
-import { AddTagsDialog, RemoveTagsDialog, SetCategoryDialog, SetTagsDialog } from "./TorrentDialogs"
+import { AddTagsDialog, RemoveTagsDialog, SetCategoryDialog, SetLocationDialog, SetTagsDialog } from "./TorrentDialogs"
 import { createColumns } from "./TorrentTableColumns"
 
 // Default values for persisted state hooks (module scope for stable references)
@@ -181,6 +181,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     setShowRemoveTagsDialog,
     showCategoryDialog,
     setShowCategoryDialog,
+    showLocationDialog,
+    setShowLocationDialog,
     showRecheckDialog,
     setShowRecheckDialog,
     showReannounceDialog,
@@ -194,6 +196,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     handleSetTags,
     handleRemoveTags,
     handleSetCategory,
+    handleSetLocation,
     handleSetShareLimit,
     handleSetSpeedLimits,
     handleRecheck,
@@ -201,6 +204,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     prepareDeleteAction,
     prepareTagsAction,
     prepareCategoryAction,
+    prepareLocationAction,
     prepareRecheckAction,
     prepareReannounceAction,
   } = useTorrentActions({
@@ -747,6 +751,17 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     )
   }, [handleSetCategory, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll])
 
+  const handleSetLocationWrapper = useCallback((location: string) => {
+    handleSetLocation(
+      location,
+      contextHashes,
+      isAllSelected,
+      filters,
+      effectiveSearch,
+      Array.from(excludedFromSelectAll)
+    )
+  }, [handleSetLocation, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll])
+
   const handleRemoveTagsWrapper = useCallback((tags: string[]) => {
     handleRemoveTags(
       tags,
@@ -984,6 +999,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                       onPrepareDelete={prepareDeleteAction}
                       onPrepareTags={prepareTagsAction}
                       onPrepareCategory={prepareCategoryAction}
+                      onPrepareLocation={prepareLocationAction}
                       onPrepareRecheck={prepareRecheckAction}
                       onPrepareReannounce={prepareReannounceAction}
                       onSetShareLimit={handleSetShareLimit}
@@ -1191,6 +1207,16 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         onConfirm={handleSetCategoryWrapper}
         isPending={isPending}
         initialCategory={getCommonCategory(contextTorrents)}
+      />
+
+      {/* Set Location Dialog */}
+      <SetLocationDialog
+        open={showLocationDialog}
+        onOpenChange={setShowLocationDialog}
+        hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
+        onConfirm={handleSetLocationWrapper}
+        isPending={isPending}
+        initialLocation={getCommonSavePath(contextTorrents)}
       />
 
       {/* Remove Tags Dialog */}

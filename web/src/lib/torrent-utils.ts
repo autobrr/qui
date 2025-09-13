@@ -79,3 +79,23 @@ export function getCommonCategory(torrents: Torrent[]): string {
 
   return firstCategory
 }
+
+/**
+ * Get common save path from selected torrents (if all have the same path)
+ */
+export function getCommonSavePath(torrents: Torrent[]): string {
+  // Early returns for common cases
+  if (torrents.length === 0) return ""
+  if (torrents.length === 1) return torrents[0].save_path || ""
+
+  const firstPath = torrents[0].save_path || ""
+
+  // Use direct loop instead of every() for early return optimization
+  for (let i = 1; i < torrents.length; i++) {
+    if ((torrents[i].save_path || "") !== firstPath) {
+      return "" // Different path found, no need to check the rest
+    }
+  }
+
+  return firstPath
+}

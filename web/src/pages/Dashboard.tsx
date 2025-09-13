@@ -7,6 +7,16 @@ import { InstanceErrorDisplay } from "@/components/instances/InstanceErrorDispla
 import { InstanceSettingsButton } from "@/components/instances/InstanceSettingsButton"
 import { PasswordIssuesBanner } from "@/components/instances/PasswordIssuesBanner"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -81,6 +91,7 @@ function InstanceCard({
   isAdvancedMetricsOpen: boolean
   setIsAdvancedMetricsOpen: (open: boolean) => void
 }) {
+  const [showSpeedLimitDialog, setShowSpeedLimitDialog] = useState(false)
 
   // Use shared TorrentResponse cache for optimized performance
   const { data: torrentData, isLoading, error } = useQuery<TorrentResponse>({
@@ -153,30 +164,56 @@ function InstanceCard({
             </Link>
             <div className="flex items-center gap-2">
               {instance.connected && !isFirstLoad && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={(e) => {
-                        e.preventDefault()
-                        e.stopPropagation()
-                        toggleAltSpeed()
-                      }}
-                      disabled={isToggling}
-                      className="h-8 w-8 p-0 !hover:bg-transparent"
-                    >
-                      {altSpeedEnabled ? (
-                        <Turtle className="h-4 w-4 text-orange-600" />
-                      ) : (
-                        <Rabbit className="h-4 w-4 text-green-600" />
-                      )}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    Alternative speed limits {altSpeedEnabled ? "enabled (turtle mode)" : "disabled (normal mode)"} - Click to toggle
-                  </TooltipContent>
-                </Tooltip>
+                <>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          setShowSpeedLimitDialog(true)
+                        }}
+                        disabled={isToggling}
+                        className="h-8 w-8 p-0 !hover:bg-transparent"
+                      >
+                        {altSpeedEnabled ? (
+                          <Turtle className="h-4 w-4 text-orange-600" />
+                        ) : (
+                          <Rabbit className="h-4 w-4 text-green-600" />
+                        )}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      Alternative speed limits {altSpeedEnabled ? "enabled (turtle mode)" : "disabled (normal mode)"} - Click to toggle
+                    </TooltipContent>
+                  </Tooltip>
+                  <AlertDialog open={showSpeedLimitDialog} onOpenChange={setShowSpeedLimitDialog}>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>
+                          {altSpeedEnabled ? "Disable Alternative Speed Limits?" : "Enable Alternative Speed Limits?"}
+                        </AlertDialogTitle>
+                        <AlertDialogDescription>
+                          {altSpeedEnabled? `This will disable alternative speed limits for ${instance.name} and return to normal speed limits.`: `This will enable alternative speed limits for ${instance.name}, which will reduce transfer speeds based on your configured limits.`
+                          }
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={() => {
+                            toggleAltSpeed()
+                            setShowSpeedLimitDialog(false)
+                          }}
+                        >
+                          {altSpeedEnabled ? "Disable" : "Enable"}
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </>
               )}
               {showSettingsButton && (
                 <InstanceSettingsButton
