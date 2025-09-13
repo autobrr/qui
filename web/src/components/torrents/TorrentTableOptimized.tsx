@@ -211,6 +211,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     instanceId,
     onActionComplete: () => {
       setRowSelection({})
+      lastSelectedIndexRef.current = null // Reset anchor after actions
     },
   })
 
@@ -347,6 +348,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       setIsAllSelected(false)
       setExcludedFromSelectAll(new Set())
       setRowSelection({})
+      lastSelectedIndexRef.current = null // Reset anchor on deselect all
     } else {
       // Select all mode - only when nothing is selected
       setIsAllSelected(true)
@@ -634,6 +636,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       setIsAllSelected(false)
       setExcludedFromSelectAll(new Set())
       setRowSelection({})
+      lastSelectedIndexRef.current = null // Reset anchor on filter/search change
 
       // User-initiated change: scroll to top
       if (parentRef.current) {
@@ -656,6 +659,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     setIsAllSelected(false)
     setExcludedFromSelectAll(new Set())
     setRowSelection({})
+    lastSelectedIndexRef.current = null // Reset anchor on clear selection
   }, [setRowSelection])
 
   // Set up keyboard navigation with selection clearing
@@ -987,7 +991,50 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                           const target = e.target as HTMLElement
                           const isCheckbox = target.closest("[data-slot=\"checkbox\"]") || target.closest("[role=\"checkbox\"]") || target.closest(".p-1.-m-1")
                           if (!isCheckbox) {
-                            onTorrentSelect?.(torrent)
+                            // Handle shift-click for range selection - EXACTLY like checkbox
+                            if (e.shiftKey) {
+                              e.preventDefault() // Prevent text selection
+
+                              const allRows = table.getRowModel().rows
+                              const currentIndex = allRows.findIndex(r => r.id === row.id)
+
+                              if (lastSelectedIndexRef.current !== null) {
+                                const start = Math.min(lastSelectedIndexRef.current, currentIndex)
+                                const end = Math.max(lastSelectedIndexRef.current, currentIndex)
+
+                                // Select range EXACTLY like checkbox does
+                                for (let i = start; i <= end; i++) {
+                                  const targetRow = allRows[i]
+                                  if (targetRow) {
+                                    handleRowSelection(targetRow.original.hash, true, targetRow.id)
+                                  }
+                                }
+                              } else {
+                                // No anchor - just select this row
+                                handleRowSelection(torrent.hash, true, row.id)
+                                lastSelectedIndexRef.current = currentIndex
+                              }
+
+                              // Don't update lastSelectedIndexRef on shift-click (keeps anchor stable)
+                            } else if (e.ctrlKey || e.metaKey) {
+                              // Ctrl/Cmd click - toggle single row EXACTLY like checkbox
+                              const allRows = table.getRowModel().rows
+                              const currentIndex = allRows.findIndex(r => r.id === row.id)
+
+                              handleRowSelection(torrent.hash, !row.getIsSelected(), row.id)
+                              lastSelectedIndexRef.current = currentIndex
+                            } else {
+                              // Normal click - toggle selection like checkbox AND open details
+                              const allRows = table.getRowModel().rows
+                              const currentIndex = allRows.findIndex(r => r.id === row.id)
+
+                              // Toggle this row's selection (EXACTLY like checkbox)
+                              handleRowSelection(torrent.hash, !row.getIsSelected(), row.id)
+                              lastSelectedIndexRef.current = currentIndex
+
+                              // Also open details panel
+                              onTorrentSelect?.(torrent)
+                            }
                           }
                         }}
                         onContextMenu={() => {
