@@ -4,6 +4,7 @@
 package qbittorrent
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net/url"
@@ -980,16 +981,8 @@ func containsTagNoAlloc(tags string, target []byte) bool {
 		return false
 	}
 
-	// Convert target to lower-case for case-insensitive check
-	// We'll compare using bytes in lower-case form
-	targetLower := make([]byte, len(target))
-	for i, b := range target {
-		if 'A' <= b && b <= 'Z' {
-			targetLower[i] = b + ('a' - 'A')
-		} else {
-			targetLower[i] = b
-		}
-	}
+	// Convert target to []byte once
+	targetLower := target
 
 	// Scan through tags, tokenizing on comma
 	// We'll compare each token trimmed of spaces
@@ -1016,18 +1009,8 @@ func containsTagNoAlloc(tags string, target []byte) bool {
 		// quick length check
 		if end-start == len(targetLower) {
 			match := true
-			for j := 0; j < len(targetLower); j++ {
-				c := s[start+j]
-				// tolower
-				if 'A' <= c && c <= 'Z' {
-					c = c + ('a' - 'A')
-				}
-				if c != targetLower[j] {
-					match = false
-					break
-				}
-			}
-			if match {
+			// Compare without allocations using bytes.EqualFold
+			if bytes.EqualFold(s[start:end], targetLower) {
 				return true
 			}
 		}
