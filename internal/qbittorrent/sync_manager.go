@@ -1218,9 +1218,9 @@ func (sm *SyncManager) applyManualFilters(torrents []qbt.Torrent, filters Filter
 	var filtered []qbt.Torrent
 
 	// Category set for O(1) lookups
-	categorySet := make(map[string]bool, len(filters.Categories))
+	categorySet := make(map[string]struct{}, len(filters.Categories))
 	for _, c := range filters.Categories {
-		categorySet[c] = true
+		categorySet[c] = struct{}{}
 	}
 
 	// Prepare tag filter bytes (lower-cased) to reuse across torrents (avoid per-torrent allocations)
@@ -1245,7 +1245,7 @@ func (sm *SyncManager) applyManualFilters(torrents []qbt.Torrent, filters Filter
 	// Precompute a map from torrent hash -> set of tracker domains using mainData.Trackers
 	// Only keep domains that are present in the tracker filter set (if any filters are provided)
 	torrentHashToDomains := map[string]map[string]struct{}{}
-	if mainData != nil && mainData.Trackers != nil {
+	if mainData != nil && mainData.Trackers != nil && len(filters.Trackers) != 0 {
 		for trackerURL, hashes := range mainData.Trackers {
 			domain := sm.extractDomainFromURL(trackerURL)
 			if domain == "" {
@@ -1285,7 +1285,7 @@ func (sm *SyncManager) applyManualFilters(torrents []qbt.Torrent, filters Filter
 
 		// Category filters (OR logic)
 		if len(filters.Categories) > 0 {
-			if !categorySet[torrent.Category] {
+			if _, ok := categorySet[torrent.Category]; !ok {
 				continue
 			}
 		}
