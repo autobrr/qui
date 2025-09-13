@@ -71,7 +71,7 @@ func NewRouter(deps *Dependencies) *chi.Mux {
 	r.Use(deps.SessionManager.LoadAndSave)
 
 	// Create handlers
-	authHandler := handlers.NewAuthHandler(deps.AuthService, deps.SessionManager)
+	authHandler := handlers.NewAuthHandler(deps.AuthService, deps.SessionManager, deps.InstanceStore, deps.ClientPool, deps.SyncManager)
 	instancesHandler := handlers.NewInstancesHandler(deps.InstanceStore, deps.ClientPool, deps.SyncManager)
 	torrentsHandler := handlers.NewTorrentsHandler(deps.SyncManager)
 	preferencesHandler := handlers.NewPreferencesHandler(deps.SyncManager)
