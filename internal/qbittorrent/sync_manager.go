@@ -1198,14 +1198,12 @@ func (sm *SyncManager) applyManualFilters(torrents []qbt.Torrent, filters Filter
 
 	// Prepare tag filter strings (lower-cased/trimmed) to reuse across torrents (avoid per-torrent allocations)
 	includeUntagged := false
-	var filterTags []string
 	if len(filters.Tags) > 0 {
 		for _, t := range filters.Tags {
 			if t == "" {
 				includeUntagged = true
 				continue
 			}
-			filterTags = append(filterTags, t)
 		}
 	}
 
@@ -1271,7 +1269,7 @@ func (sm *SyncManager) applyManualFilters(torrents []qbt.Torrent, filters Filter
 				}
 			} else {
 				tagMatched := false
-				for _, ft := range filterTags {
+				for _, ft := range filters.Tags {
 					if containsTagNoAlloc(torrent.Tags, ft) {
 						tagMatched = true
 						break
