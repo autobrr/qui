@@ -25,6 +25,20 @@ func NewThemeLicenseHandler(themeLicenseService *services.ThemeLicenseService) *
 	}
 }
 
+// ActivateLicenseRequest represents the request body for license activation
+type ActivateLicenseRequest struct {
+	LicenseKey string `json:"licenseKey"`
+}
+
+// ActivateLicenseResponse represents the response for license activation
+type ActivateLicenseResponse struct {
+	Valid     bool       `json:"valid"`
+	ThemeName string     `json:"themeName,omitempty"`
+	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
+	Message   string     `json:"message,omitempty"`
+	Error     string     `json:"error,omitempty"`
+}
+
 // ValidateLicenseRequest represents the request body for license validation
 type ValidateLicenseRequest struct {
 	LicenseKey string `json:"licenseKey"`
@@ -55,11 +69,60 @@ type LicenseInfo struct {
 // RegisterRoutes registers theme license routes
 func (h *ThemeLicenseHandler) RegisterRoutes(r chi.Router) {
 	r.Route("/themes", func(r chi.Router) {
+		r.Post("/license/activate", h.ActivateLicense)
 		r.Post("/license/validate", h.ValidateLicense)
 		r.Get("/licensed", h.GetLicensedThemes)
 		r.Get("/licenses", h.GetAllLicenses)
 		r.Delete("/license/{licenseKey}", h.DeleteLicense)
 		r.Post("/license/refresh", h.RefreshLicenses)
+	})
+}
+
+// ActivateLicense activates a license
+func (h *ThemeLicenseHandler) ActivateLicense(w http.ResponseWriter, r *http.Request) {
+	var req ActivateLicenseRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Error().Err(err).Msg("Failed to decode activate license request")
+		RespondJSON(w, http.StatusBadRequest, ActivateLicenseResponse{
+			Valid: false,
+			Error: "Invalid request body",
+		})
+		return
+	}
+
+	if req.LicenseKey == "" {
+		RespondJSON(w, http.StatusBadRequest, ActivateLicenseResponse{
+			Valid: false,
+			Error: "License key is required",
+		})
+		return
+	}
+
+	// Activate and store license
+	license, err := h.themeLicenseService.ActivateAndStoreLicense(r.Context(), req.LicenseKey)
+	if err != nil {
+		log.Error().
+			Err(err).
+			Str("licenseKey", maskLicenseKey(req.LicenseKey)).
+			Msg("Failed to activate license")
+
+		RespondJSON(w, http.StatusForbidden, ActivateLicenseResponse{
+			Valid: false,
+			Error: err.Error(),
+		})
+		return
+	}
+
+	log.Info().
+		Str("themeName", license.ThemeName).
+		Str("licenseKey", maskLicenseKey(req.LicenseKey)).
+		Msg("License activated successfully")
+
+	RespondJSON(w, http.StatusOK, ActivateLicenseResponse{
+		Valid:     true,
+		ThemeName: license.ThemeName,
+		ExpiresAt: license.ExpiresAt,
+		Message:   "License activated successfully",
 	})
 }
 

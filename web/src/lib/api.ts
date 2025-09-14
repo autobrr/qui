@@ -403,6 +403,18 @@ class ApiClient {
   }
 
   // Theme License endpoints
+  async activateThemeLicense(licenseKey: string): Promise<{
+    valid: boolean
+    expiresAt?: string
+    message?: string
+    error?: string
+  }> {
+    return this.request("/themes/license/activate", {
+      method: "POST",
+      body: JSON.stringify({ licenseKey }),
+    })
+  }
+
   async validateThemeLicense(licenseKey: string): Promise<{
     valid: boolean
     themeName?: string

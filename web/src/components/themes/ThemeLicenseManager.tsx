@@ -16,10 +16,10 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
+  useActivateThemeLicense,
   useDeleteThemeLicense,
   useHasPremiumAccess,
   useLicenseDetails,
-  useValidateThemeLicense
 } from "@/hooks/useThemeLicense"
 import { getLicenseErrorMessage } from "@/lib/theme-license-errors"
 import { useForm } from "@tanstack/react-form"
@@ -41,7 +41,8 @@ export function ThemeLicenseManager() {
 
   const { hasPremiumAccess, isLoading } = useHasPremiumAccess()
   const { data: licenses } = useLicenseDetails()
-  const validateLicense = useValidateThemeLicense()
+  const activateLicense = useActivateThemeLicense()
+  // const validateLicense = useValidateThemeLicense()
   const deleteLicense = useDeleteThemeLicense()
 
   const form = useForm({
@@ -49,7 +50,7 @@ export function ThemeLicenseManager() {
       licenseKey: "",
     },
     onSubmit: async ({ value }) => {
-      await validateLicense.mutateAsync(value.licenseKey)
+      await activateLicense.mutateAsync(value.licenseKey)
       form.reset()
       setShowAddLicense(false)
     },
@@ -272,9 +273,9 @@ export function ThemeLicenseManager() {
                   {field.state.meta.isTouched && field.state.meta.errors[0] && (
                     <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
                   )}
-                  {validateLicense.isError && (
+                  {activateLicense.isError && (
                     <p className="text-sm text-destructive">
-                      {getLicenseErrorMessage(validateLicense.error)}
+                      {getLicenseErrorMessage(activateLicense.error)}
                     </p>
                   )}
                 </div>
@@ -303,10 +304,10 @@ export function ThemeLicenseManager() {
                   {([canSubmit, isSubmitting]) => (
                     <Button
                       type="submit"
-                      disabled={!canSubmit || isSubmitting || validateLicense.isPending}
+                      disabled={!canSubmit || isSubmitting || activateLicense.isPending}
                       className="flex-1 sm:flex-none"
                     >
-                      {isSubmitting || validateLicense.isPending ? "Validating..." : "Activate License"}
+                      {isSubmitting || activateLicense.isPending ? "Validating..." : "Activate License"}
                     </Button>
                   )}
                 </form.Subscribe>

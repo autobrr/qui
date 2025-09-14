@@ -19,6 +19,25 @@ export const usePremiumAccess = () => {
   })
 }
 
+// Hook to activate a theme license
+export const useActivateThemeLicense = () => {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (licenseKey: string) => api.activateThemeLicense(licenseKey),
+    onSuccess: (data) => {
+      if (data.valid) {
+        const message = "Premium access activated! Thank you!"
+        toast.success(message)
+        // Invalidate theme license queries to refresh the UI
+        queryClient.invalidateQueries({ queryKey: ["theme-licenses"] })
+      }
+    },
+    onError: (error: Error) => {
+      toast.error(getLicenseErrorMessage(error))
+    },
+  })
+}
 
 // Hook to validate a theme license
 export const useValidateThemeLicense = () => {

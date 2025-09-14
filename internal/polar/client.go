@@ -48,6 +48,33 @@ type ActivationResponse struct {
 	LicenseKey LicenseKeyData `json:"license_key"`
 }
 
+type ActivateKeyResponse struct {
+	Id           string `json:"id"`
+	LicenseKeyID string `json:"license_key_id"`
+	Label        string `json:"label"`
+	Meta         struct {
+		Ip string `json:"ip"`
+	} `json:"meta"`
+	CreatedAt  time.Time   `json:"created_at"`
+	ModifiedAt interface{} `json:"modified_at"`
+	LicenseKey struct {
+		ID               string      `json:"id"`
+		OrganizationID   string      `json:"organization_id"`
+		CustomerID       string      `json:"customer_id"`
+		UserID           string      `json:"user_id"`
+		BenefitID        string      `json:"benefit_id"`
+		Key              string      `json:"key"`
+		DisplayKey       string      `json:"display_key"`
+		Status           string      `json:"status"`
+		LimitActivations int         `json:"limit_activations"`
+		Usage            int         `json:"usage"`
+		LimitUsage       int         `json:"limit_usage"`
+		Validations      int         `json:"validations"`
+		LastValidatedAt  interface{} `json:"last_validated_at"`
+		ExpiresAt        time.Time   `json:"expires_at"`
+	} `json:"license_key"`
+}
+
 // LicenseKeyData represents the nested license key data in activation response
 type LicenseKeyData struct {
 	ID               string     `json:"id"`
@@ -58,6 +85,11 @@ type LicenseKeyData struct {
 	ExpiresAt        *time.Time `json:"expires_at"`
 	LimitActivations int        `json:"limit_activations"`
 	Usage            int        `json:"usage"`
+}
+
+type ErrorResponse struct {
+	Error  string `json:"error"`
+	Detail string `json:"detail"`
 }
 
 // Client wraps the Polar API for theme license management
@@ -89,6 +121,102 @@ func NewClient() *Client {
 			},
 		},
 	}
+}
+
+// ActivateLicense validates a license key against Polar API
+func (c *Client) ActivateLicense(ctx context.Context, licenseKey string) (*LicenseInfo, error) {
+	if c.organizationID == "" {
+		return &LicenseInfo{
+			Key:          licenseKey,
+			Valid:        false,
+			ErrorMessage: orgIDNotConfigMsg,
+		}, nil
+	}
+
+	log.Debug().
+		Str("organizationId", c.organizationID).
+		Msg("Activating license key with Polar API")
+
+	requestBody := map[string]string{
+		"key":             licenseKey,
+		"label":           defaultLabel,
+		"organization_id": c.organizationID,
+	}
+
+	jsonData, err := json.Marshal(requestBody)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to marshal request body")
+		return nil, fmt.Errorf("failed to prepare request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", polarAPIBaseURL+activateEndpoint, bytes.NewBuffer(jsonData))
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to create HTTP request")
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", contentTypeJSON)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		log.Error().
+			Err(err).
+			Str("licenseKey", maskLicenseKey(requestBody["key"])).
+			Str("orgId", c.organizationID).
+			Msg("HTTP request to Polar API failed")
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to read response body")
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	switch resp.StatusCode {
+	case http.StatusForbidden:
+		var response ErrorResponse
+		if err := json.Unmarshal(body, &response); err != nil {
+			log.Error().Err(err).Msg("Failed to parse activation response")
+			return &LicenseInfo{
+				Key:          licenseKey,
+				Valid:        false,
+				ErrorMessage: invalidRespMsg,
+			}, err
+		}
+
+		return nil, fmt.Errorf("could not activate license, error: %s details: %s", response.Error, response.Detail)
+		//case http.StatusOK, http.StatusCreated:
+	}
+
+	var response ActivateKeyResponse
+	if err := json.Unmarshal(body, &response); err != nil {
+		log.Error().Err(err).Msg("Failed to parse activation response")
+		return &LicenseInfo{
+			Key:          licenseKey,
+			Valid:        false,
+			ErrorMessage: invalidRespMsg,
+		}, err
+	}
+
+	themeName := c.mapBenefitToTheme(response.LicenseKey.BenefitID, "validation")
+
+	log.Info().
+		Str("themeName", themeName).
+		Str("customerID", maskID(response.LicenseKey.CustomerID)).
+		Str("productID", maskID(response.LicenseKey.BenefitID)).
+		Str("licenseKey", maskLicenseKey(licenseKey)).
+		Msg("License key activated successfully")
+
+	return &LicenseInfo{
+		Key:        licenseKey,
+		ThemeName:  themeName,
+		CustomerID: response.LicenseKey.CustomerID,
+		ProductID:  response.LicenseKey.BenefitID,
+		ExpiresAt:  &response.LicenseKey.ExpiresAt,
+		Valid:      true,
+	}, nil
 }
 
 // ValidateLicense validates a license key against Polar API

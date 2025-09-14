@@ -30,6 +30,54 @@ func NewThemeLicenseService(db *database.DB, polarClient *polar.Client) *ThemeLi
 	}
 }
 
+// ActivateAndStoreLicense activates a license key and stores it if valid
+func (s *ThemeLicenseService) ActivateAndStoreLicense(ctx context.Context, licenseKey string) (*models.ThemeLicense, error) {
+	// Validate with Polar API
+	if s.polarClient == nil || !s.polarClient.IsClientConfigured() {
+		return nil, fmt.Errorf("polar client not configured")
+	}
+
+	licenseInfo, err := s.polarClient.ActivateLicense(ctx, licenseKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to activate license: %w", err)
+	}
+
+	validationResp, err := s.polarClient.ValidateLicense(ctx, licenseKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate license: %w", err)
+	}
+
+	if !validationResp.Valid {
+		return nil, fmt.Errorf("validation error: %s", validationResp.ErrorMessage)
+	}
+
+	// Create a license record
+	license := &models.ThemeLicense{
+		LicenseKey:      licenseKey,
+		ThemeName:       licenseInfo.ThemeName,
+		Status:          models.LicenseStatusActive,
+		ActivatedAt:     time.Now(),
+		ExpiresAt:       licenseInfo.ExpiresAt,
+		LastValidated:   time.Now(),
+		PolarCustomerID: &licenseInfo.CustomerID,
+		PolarProductID:  &licenseInfo.ProductID,
+		CreatedAt:       time.Now(),
+		UpdatedAt:       time.Now(),
+	}
+
+	// Store in the database
+	if err := s.storeLicense(ctx, license); err != nil {
+		return nil, fmt.Errorf("failed to store license: %w", err)
+	}
+
+	log.Info().
+		Str("themeName", license.ThemeName).
+		Str("licenseKey", maskLicenseKey(licenseKey)).
+		Msg("License validated and stored successfully")
+
+	return license, nil
+}
+
 // ValidateAndStoreLicense validates a license key and stores it if valid
 func (s *ThemeLicenseService) ValidateAndStoreLicense(ctx context.Context, licenseKey string) (*models.ThemeLicense, error) {
 	// Check if license already exists
