@@ -951,6 +951,41 @@ paths:
                     type: boolean
                     description: New status of alternative speed limits
 
+  /api/themes/license/activate:
+    post:
+      tags:
+        - Theme Licenses
+      summary: Activate theme license
+      description: Activate and validate a theme license key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - licenseKey
+              properties:
+                licenseKey:
+                  type: string
+      responses:
+        '200':
+          description: License activated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid:
+                    type: boolean
+                  themeName:
+                    type: string
+                  expiresAt:
+                    type: string
+                    format: date-time
+                  message:
+                    type: string
+
   /api/themes/license/validate:
     post:
       tags:
