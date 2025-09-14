@@ -217,7 +217,7 @@ func (s *ThemeLicenseService) hasPremiumAccess(ctx context.Context) (bool, error
 		SELECT COUNT(*) 
 		FROM theme_licenses 
 		WHERE theme_name = 'premium-access' 
-		AND status = ? 
+		AND status = ?
 		AND (expires_at IS NULL OR expires_at > datetime('now'))
 	`
 
@@ -316,7 +316,7 @@ func (s *ThemeLicenseService) storeLicense(ctx context.Context, license *models.
 		license.ThemeName,
 		license.Status,
 		license.ActivatedAt,
-		license.ExpiresAt,
+		timeToNullTime(license.ExpiresAt),
 		license.LastValidated,
 		license.PolarCustomerID,
 		license.PolarProductID,
@@ -355,4 +355,11 @@ func maskLicenseKey(key string) string {
 		return "***"
 	}
 	return key[:8] + "***"
+}
+
+func timeToNullTime(t *time.Time) sql.NullTime {
+	if t == nil {
+		return sql.NullTime{Valid: false}
+	}
+	return sql.NullTime{Time: *t, Valid: true}
 }

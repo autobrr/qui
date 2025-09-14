@@ -55,23 +55,23 @@ type ActivateKeyResponse struct {
 	Meta         struct {
 		Ip string `json:"ip"`
 	} `json:"meta"`
-	CreatedAt  time.Time   `json:"created_at"`
-	ModifiedAt interface{} `json:"modified_at"`
+	CreatedAt  time.Time `json:"created_at"`
+	ModifiedAt time.Time `json:"modified_at"`
 	LicenseKey struct {
-		ID               string      `json:"id"`
-		OrganizationID   string      `json:"organization_id"`
-		CustomerID       string      `json:"customer_id"`
-		UserID           string      `json:"user_id"`
-		BenefitID        string      `json:"benefit_id"`
-		Key              string      `json:"key"`
-		DisplayKey       string      `json:"display_key"`
-		Status           string      `json:"status"`
-		LimitActivations int         `json:"limit_activations"`
-		Usage            int         `json:"usage"`
-		LimitUsage       int         `json:"limit_usage"`
-		Validations      int         `json:"validations"`
-		LastValidatedAt  interface{} `json:"last_validated_at"`
-		ExpiresAt        time.Time   `json:"expires_at"`
+		ID               string     `json:"id"`
+		OrganizationID   string     `json:"organization_id"`
+		CustomerID       string     `json:"customer_id"`
+		UserID           string     `json:"user_id"`
+		BenefitID        string     `json:"benefit_id"`
+		Key              string     `json:"key"`
+		DisplayKey       string     `json:"display_key"`
+		Status           string     `json:"status"`
+		LimitActivations int        `json:"limit_activations"`
+		Usage            int        `json:"usage"`
+		LimitUsage       int        `json:"limit_usage"`
+		Validations      int        `json:"validations"`
+		LastValidatedAt  *time.Time `json:"last_validated_at"`
+		ExpiresAt        *time.Time `json:"expires_at"`
 	} `json:"license_key"`
 }
 
@@ -214,7 +214,7 @@ func (c *Client) ActivateLicense(ctx context.Context, licenseKey string) (*Licen
 		ThemeName:  themeName,
 		CustomerID: response.LicenseKey.CustomerID,
 		ProductID:  response.LicenseKey.BenefitID,
-		ExpiresAt:  &response.LicenseKey.ExpiresAt,
+		ExpiresAt:  response.LicenseKey.ExpiresAt,
 		Valid:      true,
 	}, nil
 }
