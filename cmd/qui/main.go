@@ -31,7 +31,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/polar"
 	"github.com/autobrr/qui/internal/qbittorrent"
-	"github.com/autobrr/qui/internal/services"
+	"github.com/autobrr/qui/internal/services/license"
 	"github.com/autobrr/qui/internal/update"
 	"github.com/autobrr/qui/internal/web"
 	"github.com/autobrr/qui/pkg/sqlite3store"
@@ -547,26 +547,24 @@ func (app *Application) runServer() {
 		log.Warn().Err(err).Msg("Failed to initialize web handler")
 	}
 
-	// Initialize Polar client and theme license service
-	var themeLicenseService *services.ThemeLicenseService
-
+	polarClient := polar.NewClient(polar.WithOrganizationID(app.polarOrgID), polar.WithEnvironment(os.Getenv("QUI__POLAR_ENVIRONMENT")))
 	if app.polarOrgID != "" {
-		log.Trace().
-			Msg("Initializing Polar client for license validation")
-
-		polarClient := polar.NewClient()
-		polarClient.SetOrganizationID(app.polarOrgID)
-
-		themeLicenseService = services.NewThemeLicenseService(db, polarClient)
-		log.Info().Msg("Theme licensing service initialized")
+		log.Trace().Msg("Initializing Polar client for license validation")
 	} else {
 		log.Warn().Msg("No Polar organization ID configured - premium themes will be disabled")
-
-		polarClient := polar.NewClient()
-		polarClient.SetOrganizationID("")
-
-		themeLicenseService = services.NewThemeLicenseService(db, polarClient)
 	}
+
+	// Initialize Polar client and theme license service
+	themeLicenseService := license.NewThemeLicenseService(db, polarClient)
+
+	go func() {
+		// TODO start background to refresh licenses at an interval
+
+		time.Sleep(5 * time.Second)
+		if err := themeLicenseService.RefreshAllLicenses(context.Background()); err != nil {
+			log.Error().Err(err).Msg("Failed to refresh theme licenses")
+		}
+	}()
 
 	// Create router dependencies
 	deps := &api.Dependencies{

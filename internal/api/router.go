@@ -22,7 +22,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/proxy"
 	"github.com/autobrr/qui/internal/qbittorrent"
-	"github.com/autobrr/qui/internal/services"
+	"github.com/autobrr/qui/internal/services/license"
 	"github.com/autobrr/qui/internal/web"
 	"github.com/autobrr/qui/internal/web/swagger"
 )
@@ -38,7 +38,7 @@ type Dependencies struct {
 	ClientPool          *qbittorrent.ClientPool
 	SyncManager         *qbittorrent.SyncManager
 	WebHandler          *web.Handler
-	ThemeLicenseService *services.ThemeLicenseService
+	ThemeLicenseService *license.ThemeLicenseService
 	MetricsManager      *metrics.MetricsManager
 }
 

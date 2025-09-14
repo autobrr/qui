@@ -5,21 +5,23 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
-	"github.com/autobrr/qui/internal/services"
+	"github.com/autobrr/qui/internal/services/license"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 )
 
 // ThemeLicenseHandler handles theme license related HTTP requests
 type ThemeLicenseHandler struct {
-	themeLicenseService *services.ThemeLicenseService
+	themeLicenseService *license.ThemeLicenseService
 }
 
 // NewThemeLicenseHandler creates a new theme license handler
-func NewThemeLicenseHandler(themeLicenseService *services.ThemeLicenseService) *ThemeLicenseHandler {
+func NewThemeLicenseHandler(themeLicenseService *license.ThemeLicenseService) *ThemeLicenseHandler {
 	return &ThemeLicenseHandler{
 		themeLicenseService: themeLicenseService,
 	}
@@ -99,7 +101,7 @@ func (h *ThemeLicenseHandler) ActivateLicense(w http.ResponseWriter, r *http.Req
 	}
 
 	// Activate and store license
-	license, err := h.themeLicenseService.ActivateAndStoreLicense(r.Context(), req.LicenseKey)
+	licenseResp, err := h.themeLicenseService.ActivateAndStoreLicense(r.Context(), req.LicenseKey)
 	if err != nil {
 		log.Error().
 			Err(err).
@@ -114,14 +116,14 @@ func (h *ThemeLicenseHandler) ActivateLicense(w http.ResponseWriter, r *http.Req
 	}
 
 	log.Info().
-		Str("themeName", license.ThemeName).
+		Str("themeName", licenseResp.ThemeName).
 		Str("licenseKey", maskLicenseKey(req.LicenseKey)).
 		Msg("License activated successfully")
 
 	RespondJSON(w, http.StatusOK, ActivateLicenseResponse{
 		Valid:     true,
-		ThemeName: license.ThemeName,
-		ExpiresAt: license.ExpiresAt,
+		ThemeName: licenseResp.ThemeName,
+		ExpiresAt: licenseResp.ExpiresAt,
 		Message:   "License activated successfully",
 	})
 }
@@ -147,12 +149,20 @@ func (h *ThemeLicenseHandler) ValidateLicense(w http.ResponseWriter, r *http.Req
 	}
 
 	// Validate and store license
-	license, err := h.themeLicenseService.ValidateAndStoreLicense(r.Context(), req.LicenseKey)
+	licenseResp, err := h.themeLicenseService.ValidateAndStoreLicense(r.Context(), req.LicenseKey)
 	if err != nil {
 		log.Error().
 			Err(err).
 			Str("licenseKey", maskLicenseKey(req.LicenseKey)).
 			Msg("Failed to validate license")
+
+		if errors.Is(err, license.ErrLicenseNotFound) {
+			RespondJSON(w, http.StatusNotFound, ValidateLicenseResponse{
+				Valid: false,
+				Error: err.Error(),
+			})
+			return
+		}
 
 		RespondJSON(w, http.StatusForbidden, ValidateLicenseResponse{
 			Valid: false,
@@ -162,14 +172,14 @@ func (h *ThemeLicenseHandler) ValidateLicense(w http.ResponseWriter, r *http.Req
 	}
 
 	log.Info().
-		Str("themeName", license.ThemeName).
+		Str("themeName", licenseResp.ThemeName).
 		Str("licenseKey", maskLicenseKey(req.LicenseKey)).
 		Msg("License validated successfully")
 
 	RespondJSON(w, http.StatusOK, ValidateLicenseResponse{
 		Valid:     true,
-		ThemeName: license.ThemeName,
-		ExpiresAt: license.ExpiresAt,
+		ThemeName: licenseResp.ThemeName,
+		ExpiresAt: licenseResp.ExpiresAt,
 		Message:   "License validated and activated successfully",
 	})
 }
@@ -202,13 +212,13 @@ func (h *ThemeLicenseHandler) GetAllLicenses(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Convert to API response format
-	var licenseInfos []LicenseInfo
-	for _, license := range licenses {
+	licenseInfos := make([]LicenseInfo, 0)
+	for _, themeLicense := range licenses {
 		licenseInfos = append(licenseInfos, LicenseInfo{
-			LicenseKey: license.LicenseKey,
-			ThemeName:  license.ThemeName,
-			Status:     license.Status,
-			CreatedAt:  license.CreatedAt,
+			LicenseKey: themeLicense.LicenseKey,
+			ThemeName:  themeLicense.ThemeName,
+			Status:     themeLicense.Status,
+			CreatedAt:  themeLicense.CreatedAt,
 		})
 	}
 

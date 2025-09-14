@@ -1,0 +1,1 @@
+ALTER TABLE theme_licenses ADD polar_activation_id TEXT;

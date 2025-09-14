@@ -11,6 +11,7 @@ require (
 	github.com/creativeprojects/go-selfupdate v1.5.1
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-chi/chi/v5 v5.2.3
+	github.com/keygen-sh/machineid v1.1.1
 	github.com/lithammer/fuzzysearch v1.1.8
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.23.0

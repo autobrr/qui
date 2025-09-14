@@ -16,7 +16,7 @@ import (
 	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
-	"github.com/autobrr/qui/internal/services"
+	"github.com/autobrr/qui/internal/services/license"
 	"github.com/autobrr/qui/internal/web"
 	"github.com/autobrr/qui/internal/web/swagger"
 )
@@ -37,7 +37,7 @@ func TestAllEndpointsDocumented(t *testing.T) {
 		ClientPool:          &qbittorrent.ClientPool{},
 		SyncManager:         &qbittorrent.SyncManager{},
 		WebHandler:          &web.Handler{},
-		ThemeLicenseService: &services.ThemeLicenseService{}, // Include theme service to get all routes
+		ThemeLicenseService: &license.ThemeLicenseService{}, // Include theme service to get all routes
 	}
 
 	// Create the actual router from router.go
