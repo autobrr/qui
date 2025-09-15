@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
 import * as HoverCardPrimitive from "@radix-ui/react-hover-card"
 import * as React from "react"
 
