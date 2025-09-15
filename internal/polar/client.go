@@ -20,7 +20,7 @@ var (
 	ErrLicenseExpired          = errors.New("license expired")
 	ErrLicenseNotActivated     = errors.New("license not activated")
 	ErrInvalidLicenseKey       = errors.New("license key is not valid")
-	ErrActivationLimitExceeded = errors.New("activation limit exceeded")
+	ErrActivationLimitExceeded = errors.New("license key activation limit already reached")
 	ErrBadRequestData          = errors.New("bad request data")
 	ErrCouldNotUnmarshalData   = errors.New("could not unmarshal data")
 	ErrDataValidationError     = errors.New("data validation error")
