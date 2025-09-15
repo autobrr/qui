@@ -23,6 +23,7 @@ var (
 	ErrActivationLimitExceeded = errors.New("license key activation limit already reached")
 	ErrBadRequestData          = errors.New("bad request data")
 	ErrCouldNotUnmarshalData   = errors.New("could not unmarshal data")
+	ErrRateLimitExceeded       = errors.New("rate limit exceeded")
 	ErrDataValidationError     = errors.New("data validation error")
 )
 
@@ -394,7 +395,7 @@ func (c *Client) Validate(ctx context.Context, validateReq ValidateRequest) (*Va
 		return nil, ErrInvalidLicenseKey
 
 	case http.StatusTooManyRequests:
-		return nil, ErrActivationLimitExceeded
+		return nil, ErrRateLimitExceeded
 
 	default:
 		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)

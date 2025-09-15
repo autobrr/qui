@@ -467,12 +467,8 @@ func (app *Application) runServer() {
 	licenseService := license.NewLicenseService(licenseRepo, polarClient)
 
 	go func() {
-		// TODO start background to refresh licenses at an interval
-
-		time.Sleep(5 * time.Second)
-		if err := licenseService.RefreshAllLicenses(context.Background()); err != nil {
-			log.Error().Err(err).Msg("Failed to refresh licenses")
-		}
+		checker := license.NewLicenseChecker(licenseService)
+		checker.StartPeriodicChecks(context.Background())
 	}()
 
 	// Initialize qBittorrent client pool

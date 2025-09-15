@@ -180,7 +180,7 @@ func (s *Service) RefreshAllLicenses(ctx context.Context) error {
 		return fmt.Errorf("failed to get machine ID: %w", err)
 	}
 
-	log.Debug().Str("fingerprint", fingerprint).Msg("Refreshing licenses")
+	log.Trace().Str("fingerprint", fingerprint).Msg("Refreshing licenses")
 
 	for _, license := range licenses {
 		// Skip recently validated licenses (within 1 hour)
@@ -200,7 +200,15 @@ func (s *Service) RefreshAllLicenses(ctx context.Context) error {
 				Err(err).
 				Str("licenseKey", maskLicenseKey(license.LicenseKey)).
 				Msg("Failed to validate license during refresh")
-			continue
+			switch {
+			case errors.Is(err, polar.ErrActivationLimitExceeded):
+				log.Error().Err(err).Msg("Activation limit exceeded")
+				return err
+			case errors.Is(err, polar.ErrInvalidLicenseKey):
+				return err
+			default:
+				return err
+			}
 		}
 
 		// Update status
@@ -218,6 +226,77 @@ func (s *Service) RefreshAllLicenses(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// ValidateLicenses validates all stored licenses against Polar API
+func (s *Service) ValidateLicenses(ctx context.Context) (bool, error) {
+	if s.polarClient == nil || !s.polarClient.IsClientConfigured() {
+		log.Warn().Msg("Polar client not configured, skipping license refresh")
+		return false, nil
+	}
+
+	licenses, err := s.licenseRepo.GetAllLicenses(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to get licenses: %w", err)
+	}
+
+	log.Debug().Int("count", len(licenses)).Msg("Refreshing licenses")
+
+	if len(licenses) == 0 {
+		return true, nil
+	}
+
+	fingerprint, err := machineid.ProtectedID("qui-premium")
+	if err != nil {
+		return false, fmt.Errorf("failed to get machine ID: %w", err)
+	}
+
+	log.Trace().Str("fingerprint", fingerprint).Msg("Refreshing licenses")
+
+	for _, license := range licenses {
+		// Skip recently validated licenses (within 1 hour)
+		//if time.Since(license.LastValidated) < time.Hour {
+		//	continue
+		//}
+
+		log.Info().Msgf("checking license validation...")
+
+		validationRequest := polar.ValidateRequest{Key: license.LicenseKey, ActivationID: license.PolarActivationID}
+		validationRequest.SetCondition("fingerprint", fingerprint)
+
+		// Validate with Polar
+		licenseInfo, err := s.polarClient.Validate(ctx, validationRequest)
+		if err != nil {
+			log.Error().
+				Err(err).
+				Str("licenseKey", maskLicenseKey(license.LicenseKey)).
+				Msg("Failed to validate license during refresh")
+			switch {
+			case errors.Is(err, polar.ErrActivationLimitExceeded):
+				log.Error().Err(err).Msg("Activation limit exceeded")
+				return false, err
+			case errors.Is(err, polar.ErrInvalidLicenseKey):
+				return false, err
+			default:
+				return false, err
+			}
+		}
+
+		// Update status
+		newStatus := models.LicenseStatusActive
+		if !licenseInfo.ValidLicense() {
+			newStatus = models.LicenseStatusInvalid
+		}
+
+		if err := s.licenseRepo.UpdateLicenseStatus(ctx, license.ID, newStatus); err != nil {
+			log.Error().
+				Err(err).
+				Int("licenseId", license.ID).
+				Msg("Failed to update license status")
+		}
+	}
+
+	return true, nil
 }
 
 func (s *Service) GetLicenseByKey(ctx context.Context, licenseKey string) (*models.ProductLicense, error) {
