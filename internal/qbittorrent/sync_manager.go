@@ -150,8 +150,18 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		}
 	}
 
+	needsManualCategoryFiltering := false
+	if len(filters.Categories) == 1 && filters.Categories[0] == "" {
+		needsManualCategoryFiltering = true
+	}
+
+	needsManualTagFiltering := false
+	if len(filters.Tags) == 1 && filters.Tags[0] == "" {
+		needsManualTagFiltering = true
+	}
+
 	useManualFiltering = hasMultipleStatusFilters || hasMultipleCategoryFilters || hasMultipleTagFilters ||
-		hasTrackerFilters || needsManualStatusFiltering
+		hasTrackerFilters || needsManualStatusFiltering || needsManualCategoryFiltering || needsManualTagFiltering
 
 	if useManualFiltering {
 		// Use manual filtering - get all torrents and filter manually
@@ -162,6 +172,8 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 			Bool("multipleTags", hasMultipleTagFilters).
 			Bool("hasTrackers", hasTrackerFilters).
 			Bool("needsManualStatus", needsManualStatusFiltering).
+			Bool("needsManualCategory", needsManualCategoryFiltering).
+			Bool("needsManualTag", needsManualTagFiltering).
 			Msg("Using manual filtering due to multiple selections or unsupported filters")
 
 		// Get all torrents
