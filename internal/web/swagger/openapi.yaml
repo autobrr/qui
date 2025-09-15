@@ -951,12 +951,12 @@ paths:
                     type: boolean
                     description: New status of alternative speed limits
 
-  /api/themes/license/activate:
+  /api/license/activate:
     post:
       tags:
-        - Theme Licenses
-      summary: Activate theme license
-      description: Activate and validate a theme license key
+        - Licenses
+      summary: Activate license
+      description: Activate and validate a license key
       requestBody:
         required: true
         content:
@@ -986,12 +986,12 @@ paths:
                   message:
                     type: string
 
-  /api/themes/license/validate:
+  /api/license/validate:
     post:
       tags:
-        - Theme Licenses
-      summary: Validate theme license
-      description: Validate and activate a theme license key
+        - Licenses
+      summary: Validate license
+      description: Validate and activate a license key
       requestBody:
         required: true
         content:
@@ -1021,10 +1021,10 @@ paths:
                   message:
                     type: string
 
-  /api/themes/licensed:
+  /api/license/licensed:
     get:
       tags:
-        - Theme Licenses
+        - Licenses
       summary: Get licensed themes
       description: Get list of themes with active licenses
       responses:
@@ -1043,12 +1043,12 @@ paths:
                       type: string
                       format: date-time
 
-  /api/themes/licenses:
+  /api/license/licenses:
     get:
       tags:
-        - Theme Licenses
+        - Licenses
       summary: Get all licenses
-      description: Get all theme licenses
+      description: Get all licenses
       responses:
         '200':
           description: List of licenses
@@ -1072,12 +1072,12 @@ paths:
                       type: string
                       format: date-time
 
-  /api/themes/license/{licenseKey}:
+  /api/license/{licenseKey}:
     delete:
       tags:
-        - Theme Licenses
+        - Licenses
       summary: Delete license
-      description: Remove a theme license
+      description: Remove a license
       parameters:
         - name: licenseKey
           in: path
@@ -1088,12 +1088,12 @@ paths:
         '200':
           description: License deleted
 
-  /api/themes/license/refresh:
+  /api/license/refresh:
     post:
       tags:
-        - Theme Licenses
+        - Licenses
       summary: Refresh licenses
-      description: Refresh all theme licenses
+      description: Refresh all licenses
       responses:
         '200':
           description: Licenses refreshed
@@ -1117,6 +1117,44 @@ paths:
       responses:
         '200':
           description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "ok"
+
+  /healthz/liveness:
+    get:
+      tags:
+        - System
+      summary: Liveness check
+      description: Check if the API is running and responding
+      security: []
+      responses:
+        '200':
+          description: Service is running
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "ok"
+
+  /healthz/readiness:
+    get:
+      tags:
+        - System
+      summary: Readiness check
+      description: Check if the API is running and ready to serve traffic
+      security: []
+      responses:
+        '200':
+          description: Service is running
           content:
             application/json:
               schema:
@@ -1383,5 +1421,5 @@ tags:
     description: Category management
   - name: Tags
     description: Tag management
-  - name: Theme Licenses
-    description: Theme license management (optional feature)
+  - name: Licenses
+    description: License management (optional feature)

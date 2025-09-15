@@ -402,52 +402,52 @@ class ApiClient {
     return this.request(`/client-api-keys/${id}`, { method: "DELETE" })
   }
 
-  // Theme License endpoints
-  async activateThemeLicense(licenseKey: string): Promise<{
+  // License endpoints
+  async activateLicense(licenseKey: string): Promise<{
     valid: boolean
     expiresAt?: string
     message?: string
     error?: string
   }> {
-    return this.request("/themes/license/activate", {
+    return this.request("/license/activate", {
       method: "POST",
       body: JSON.stringify({ licenseKey }),
     })
   }
 
-  async validateThemeLicense(licenseKey: string): Promise<{
+  async validateLicense(licenseKey: string): Promise<{
     valid: boolean
-    themeName?: string
+    productName?: string
     expiresAt?: string
     message?: string
     error?: string
   }> {
-    return this.request("/themes/license/validate", {
+    return this.request("/license/validate", {
       method: "POST",
       body: JSON.stringify({ licenseKey }),
     })
   }
 
   async getLicensedThemes(): Promise<{ hasPremiumAccess: boolean }> {
-    return this.request("/themes/licensed")
+    return this.request("/license/licensed")
   }
 
   async getAllLicenses(): Promise<Array<{
     licenseKey: string
-    themeName: string
+    productName: string
     status: string
     createdAt: string
   }>> {
-    return this.request("/themes/licenses")
+    return this.request("/license/licenses")
   }
 
 
-  async deleteThemeLicense(licenseKey: string): Promise<{ message: string }> {
-    return this.request(`/themes/license/${licenseKey}`, { method: "DELETE" })
+  async deleteLicense(licenseKey: string): Promise<{ message: string }> {
+    return this.request(`/license/${licenseKey}`, { method: "DELETE" })
   }
 
-  async refreshThemeLicenses(): Promise<{ message: string }> {
-    return this.request("/themes/license/refresh", { method: "POST" })
+  async refreshLicenses(): Promise<{ message: string }> {
+    return this.request("/license/refresh", { method: "POST" })
   }
 
   // Preferences endpoints

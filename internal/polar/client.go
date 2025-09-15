@@ -131,24 +131,13 @@ type ErrorResponse struct {
 	Detail string `json:"detail"`
 }
 
-// Client wraps the Polar API for theme license management
+// Client wraps the Polar API for license management
 type Client struct {
 	baseURL        string
 	environment    string
 	organizationID string
 
 	httpClient *http.Client
-}
-
-// LicenseInfo contains license validation information
-type LicenseInfo struct {
-	Key          string     `json:"key"`
-	ThemeName    string     `json:"themeName"`
-	CustomerID   string     `json:"customerId"`
-	ProductID    string     `json:"productId"`
-	ExpiresAt    *time.Time `json:"expiresAt,omitempty"`
-	Valid        bool       `json:"valid"`
-	ErrorMessage string     `json:"errorMessage,omitempty"`
 }
 
 type OptFunc func(*Client)

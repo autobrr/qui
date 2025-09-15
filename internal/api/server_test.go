@@ -28,20 +28,20 @@ func TestAllEndpointsDocumented(t *testing.T) {
 	deps := &Dependencies{
 		Config: &config.AppConfig{
 			Config: &domain.Config{
-				BaseURL: "",
+				BaseURL: "/",
 			},
 		},
-		DB:                  nil, // DB can be nil since handlers won't execute
-		AuthService:         &auth.Service{},
-		InstanceStore:       &models.InstanceStore{},
-		ClientPool:          &qbittorrent.ClientPool{},
-		SyncManager:         &qbittorrent.SyncManager{},
-		WebHandler:          &web.Handler{},
-		ThemeLicenseService: &license.ThemeLicenseService{}, // Include theme service to get all routes
+		AuthService:    &auth.Service{},
+		InstanceStore:  &models.InstanceStore{},
+		ClientPool:     &qbittorrent.ClientPool{},
+		SyncManager:    &qbittorrent.SyncManager{},
+		WebHandler:     &web.Handler{},
+		LicenseService: &license.Service{}, // Include license service to get all routes
 	}
 
 	// Create the actual router from router.go
-	router := NewRouter(deps)
+	server := NewServer(deps)
+	router := server.Handler()
 
 	// Extract all routes from the actual router
 	var actualRoutes []Route
@@ -86,7 +86,7 @@ func TestAllEndpointsDocumented(t *testing.T) {
 
 	for _, route := range actualRoutes {
 		// Skip non-API routes (these are handled elsewhere)
-		if !strings.HasPrefix(route.Path, "/api/") && route.Path != "/health" {
+		if !strings.HasPrefix(route.Path, "/api/") && !strings.HasPrefix(route.Path, "/health") {
 			if route.Path != "/" && route.Path != "/*" {
 				nonAPIRoutes = append(nonAPIRoutes, route.Method+" "+route.Path)
 			}
@@ -134,7 +134,7 @@ func TestAllEndpointsDocumented(t *testing.T) {
 
 	for _, route := range actualRoutes {
 		// Skip non-API routes
-		if !strings.HasPrefix(route.Path, "/api/") && route.Path != "/health" {
+		if !strings.HasPrefix(route.Path, "/api/") && !strings.HasPrefix(route.Path, "/health") {
 			continue
 		}
 

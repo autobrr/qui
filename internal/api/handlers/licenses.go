@@ -15,15 +15,15 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// ThemeLicenseHandler handles theme license related HTTP requests
-type ThemeLicenseHandler struct {
-	themeLicenseService *license.ThemeLicenseService
+// LicenseHandler handles license related HTTP requests
+type LicenseHandler struct {
+	licenseService *license.Service
 }
 
-// NewThemeLicenseHandler creates a new theme license handler
-func NewThemeLicenseHandler(themeLicenseService *license.ThemeLicenseService) *ThemeLicenseHandler {
-	return &ThemeLicenseHandler{
-		themeLicenseService: themeLicenseService,
+// NewLicenseHandler creates a new license handler
+func NewLicenseHandler(licenseService *license.Service) *LicenseHandler {
+	return &LicenseHandler{
+		licenseService: licenseService,
 	}
 }
 
@@ -34,11 +34,11 @@ type ActivateLicenseRequest struct {
 
 // ActivateLicenseResponse represents the response for license activation
 type ActivateLicenseResponse struct {
-	Valid     bool       `json:"valid"`
-	ThemeName string     `json:"themeName,omitempty"`
-	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
-	Message   string     `json:"message,omitempty"`
-	Error     string     `json:"error,omitempty"`
+	Valid       bool       `json:"valid"`
+	ProductName string     `json:"productName,omitempty"`
+	ExpiresAt   *time.Time `json:"expiresAt,omitempty"`
+	Message     string     `json:"message,omitempty"`
+	Error       string     `json:"error,omitempty"`
 }
 
 // ValidateLicenseRequest represents the request body for license validation
@@ -48,11 +48,11 @@ type ValidateLicenseRequest struct {
 
 // ValidateLicenseResponse represents the response for license validation
 type ValidateLicenseResponse struct {
-	Valid     bool       `json:"valid"`
-	ThemeName string     `json:"themeName,omitempty"`
-	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
-	Message   string     `json:"message,omitempty"`
-	Error     string     `json:"error,omitempty"`
+	Valid       bool       `json:"valid"`
+	ProductName string     `json:"productName,omitempty"`
+	ExpiresAt   *time.Time `json:"expiresAt,omitempty"`
+	Message     string     `json:"message,omitempty"`
+	Error       string     `json:"error,omitempty"`
 }
 
 // PremiumAccessResponse represents the response for premium access status
@@ -62,26 +62,23 @@ type PremiumAccessResponse struct {
 
 // LicenseInfo represents basic license information for UI display
 type LicenseInfo struct {
-	LicenseKey string    `json:"licenseKey"`
-	ThemeName  string    `json:"themeName"`
-	Status     string    `json:"status"`
-	CreatedAt  time.Time `json:"createdAt"`
+	LicenseKey  string    `json:"licenseKey"`
+	ProductName string    `json:"productName"`
+	Status      string    `json:"status"`
+	CreatedAt   time.Time `json:"createdAt"`
 }
 
-// RegisterRoutes registers theme license routes
-func (h *ThemeLicenseHandler) RegisterRoutes(r chi.Router) {
-	r.Route("/themes", func(r chi.Router) {
-		r.Post("/license/activate", h.ActivateLicense)
-		r.Post("/license/validate", h.ValidateLicense)
-		r.Get("/licensed", h.GetLicensedThemes)
-		r.Get("/licenses", h.GetAllLicenses)
-		r.Delete("/license/{licenseKey}", h.DeleteLicense)
-		r.Post("/license/refresh", h.RefreshLicenses)
-	})
+func (h *LicenseHandler) Routes(r chi.Router) {
+	r.Get("/licensed", h.GetLicensedThemes)
+	r.Get("/licenses", h.GetAllLicenses)
+	r.Post("/activate", h.ActivateLicense)
+	r.Post("/validate", h.ValidateLicense)
+	r.Post("/refresh", h.RefreshLicenses)
+	r.Delete("/{licenseKey}", h.DeleteLicense)
 }
 
 // ActivateLicense activates a license
-func (h *ThemeLicenseHandler) ActivateLicense(w http.ResponseWriter, r *http.Request) {
+func (h *LicenseHandler) ActivateLicense(w http.ResponseWriter, r *http.Request) {
 	var req ActivateLicenseRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		log.Error().Err(err).Msg("Failed to decode activate license request")
@@ -101,7 +98,7 @@ func (h *ThemeLicenseHandler) ActivateLicense(w http.ResponseWriter, r *http.Req
 	}
 
 	// Activate and store license
-	licenseResp, err := h.themeLicenseService.ActivateAndStoreLicense(r.Context(), req.LicenseKey)
+	licenseResp, err := h.licenseService.ActivateAndStoreLicense(r.Context(), req.LicenseKey)
 	if err != nil {
 		log.Error().
 			Err(err).
@@ -116,20 +113,20 @@ func (h *ThemeLicenseHandler) ActivateLicense(w http.ResponseWriter, r *http.Req
 	}
 
 	log.Info().
-		Str("themeName", licenseResp.ThemeName).
+		Str("productName", licenseResp.ProductName).
 		Str("licenseKey", maskLicenseKey(req.LicenseKey)).
 		Msg("License activated successfully")
 
 	RespondJSON(w, http.StatusOK, ActivateLicenseResponse{
-		Valid:     true,
-		ThemeName: licenseResp.ThemeName,
-		ExpiresAt: licenseResp.ExpiresAt,
-		Message:   "License activated successfully",
+		Valid:       true,
+		ProductName: licenseResp.ProductName,
+		ExpiresAt:   licenseResp.ExpiresAt,
+		Message:     "License activated successfully",
 	})
 }
 
-// ValidateLicense validates and activates a theme license
-func (h *ThemeLicenseHandler) ValidateLicense(w http.ResponseWriter, r *http.Request) {
+// ValidateLicense validates a license
+func (h *LicenseHandler) ValidateLicense(w http.ResponseWriter, r *http.Request) {
 	var req ValidateLicenseRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		log.Error().Err(err).Msg("Failed to decode validate license request")
@@ -149,7 +146,7 @@ func (h *ThemeLicenseHandler) ValidateLicense(w http.ResponseWriter, r *http.Req
 	}
 
 	// Validate and store license
-	licenseResp, err := h.themeLicenseService.ValidateAndStoreLicense(r.Context(), req.LicenseKey)
+	licenseResp, err := h.licenseService.ValidateAndStoreLicense(r.Context(), req.LicenseKey)
 	if err != nil {
 		log.Error().
 			Err(err).
@@ -172,21 +169,21 @@ func (h *ThemeLicenseHandler) ValidateLicense(w http.ResponseWriter, r *http.Req
 	}
 
 	log.Info().
-		Str("themeName", licenseResp.ThemeName).
+		Str("productName", licenseResp.ProductName).
 		Str("licenseKey", maskLicenseKey(req.LicenseKey)).
 		Msg("License validated successfully")
 
 	RespondJSON(w, http.StatusOK, ValidateLicenseResponse{
-		Valid:     true,
-		ThemeName: licenseResp.ThemeName,
-		ExpiresAt: licenseResp.ExpiresAt,
-		Message:   "License validated and activated successfully",
+		Valid:       true,
+		ProductName: licenseResp.ProductName,
+		ExpiresAt:   licenseResp.ExpiresAt,
+		Message:     "License validated and activated successfully",
 	})
 }
 
 // GetLicensedThemes returns premium access status
-func (h *ThemeLicenseHandler) GetLicensedThemes(w http.ResponseWriter, r *http.Request) {
-	hasPremium, err := h.themeLicenseService.HasPremiumAccess(r.Context())
+func (h *LicenseHandler) GetLicensedThemes(w http.ResponseWriter, r *http.Request) {
+	hasPremium, err := h.licenseService.HasPremiumAccess(r.Context())
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to check premium access")
 		RespondJSON(w, http.StatusInternalServerError, map[string]string{
@@ -201,8 +198,8 @@ func (h *ThemeLicenseHandler) GetLicensedThemes(w http.ResponseWriter, r *http.R
 }
 
 // GetAllLicenses returns all licenses for the current user
-func (h *ThemeLicenseHandler) GetAllLicenses(w http.ResponseWriter, r *http.Request) {
-	licenses, err := h.themeLicenseService.GetAllLicenses(r.Context())
+func (h *LicenseHandler) GetAllLicenses(w http.ResponseWriter, r *http.Request) {
+	licenses, err := h.licenseService.GetAllLicenses(r.Context())
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get licenses")
 		RespondJSON(w, http.StatusInternalServerError, map[string]string{
@@ -213,12 +210,12 @@ func (h *ThemeLicenseHandler) GetAllLicenses(w http.ResponseWriter, r *http.Requ
 
 	// Convert to API response format
 	licenseInfos := make([]LicenseInfo, 0)
-	for _, themeLicense := range licenses {
+	for _, lic := range licenses {
 		licenseInfos = append(licenseInfos, LicenseInfo{
-			LicenseKey: themeLicense.LicenseKey,
-			ThemeName:  themeLicense.ThemeName,
-			Status:     themeLicense.Status,
-			CreatedAt:  themeLicense.CreatedAt,
+			LicenseKey:  lic.LicenseKey,
+			ProductName: lic.ProductName,
+			Status:      lic.Status,
+			CreatedAt:   lic.CreatedAt,
 		})
 	}
 
@@ -226,7 +223,7 @@ func (h *ThemeLicenseHandler) GetAllLicenses(w http.ResponseWriter, r *http.Requ
 }
 
 // DeleteLicense removes a license from the system
-func (h *ThemeLicenseHandler) DeleteLicense(w http.ResponseWriter, r *http.Request) {
+func (h *LicenseHandler) DeleteLicense(w http.ResponseWriter, r *http.Request) {
 	licenseKey := chi.URLParam(r, "licenseKey")
 	if licenseKey == "" {
 		RespondJSON(w, http.StatusBadRequest, map[string]string{
@@ -235,7 +232,7 @@ func (h *ThemeLicenseHandler) DeleteLicense(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	err := h.themeLicenseService.DeleteLicense(r.Context(), licenseKey)
+	err := h.licenseService.DeleteLicense(r.Context(), licenseKey)
 	if err != nil {
 		log.Error().
 			Err(err).
@@ -257,8 +254,8 @@ func (h *ThemeLicenseHandler) DeleteLicense(w http.ResponseWriter, r *http.Reque
 }
 
 // RefreshLicenses manually triggers a refresh of all licenses
-func (h *ThemeLicenseHandler) RefreshLicenses(w http.ResponseWriter, r *http.Request) {
-	err := h.themeLicenseService.RefreshAllLicenses(r.Context())
+func (h *LicenseHandler) RefreshLicenses(w http.ResponseWriter, r *http.Request) {
+	err := h.licenseService.RefreshAllLicenses(r.Context())
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to refresh licenses")
 		RespondJSON(w, http.StatusInternalServerError, map[string]string{

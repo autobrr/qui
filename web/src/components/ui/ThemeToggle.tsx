@@ -24,7 +24,7 @@ import {
   DropdownMenuLabel
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { useHasPremiumAccess } from "@/hooks/useThemeLicense";
+import { useHasPremiumAccess } from "@/hooks/useLicense.ts";
 
 // Constants
 const THEME_CHANGE_EVENT = "themechange";

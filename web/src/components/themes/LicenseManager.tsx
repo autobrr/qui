@@ -16,12 +16,12 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
-  useActivateThemeLicense,
-  useDeleteThemeLicense,
+  useActivateLicense,
+  useDeleteLicense,
   useHasPremiumAccess,
-  useLicenseDetails,
-} from "@/hooks/useThemeLicense"
-import { getLicenseErrorMessage } from "@/lib/theme-license-errors"
+  useLicenseDetails
+} from "@/hooks/useLicense"
+import { getLicenseErrorMessage } from "@/lib/license-errors"
 import { useForm } from "@tanstack/react-form"
 import { Copy, ExternalLink, Key, ShoppingCart, Sparkles, Trash2 } from "lucide-react"
 import { useState } from "react"
@@ -35,15 +35,15 @@ function maskLicenseKey(key: string): string {
   return key.slice(0, 8) + "-***-***-***-***"
 }
 
-export function ThemeLicenseManager() {
+export function LicenseManager() {
   const [showAddLicense, setShowAddLicense] = useState(false)
   const [selectedLicenseKey, setSelectedLicenseKey] = useState<string | null>(null)
 
   const { hasPremiumAccess, isLoading } = useHasPremiumAccess()
   const { data: licenses } = useLicenseDetails()
-  const activateLicense = useActivateThemeLicense()
+  const activateLicense = useActivateLicense()
   // const validateLicense = useValidateThemeLicense()
-  const deleteLicense = useDeleteThemeLicense()
+  const deleteLicense = useDeleteLicense()
 
   const form = useForm({
     defaultValues: {
@@ -139,7 +139,7 @@ export function ThemeLicenseManager() {
                         {maskLicenseKey(licenses[0].licenseKey)}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        {licenses[0].themeName} • Added {new Date(licenses[0].createdAt).toLocaleDateString()}
+                        {licenses[0].productName} • Added {new Date(licenses[0].createdAt).toLocaleDateString()}
                       </div>
                     </div>
                   )}
@@ -160,7 +160,7 @@ export function ThemeLicenseManager() {
                 )}
                 {!hasPremiumAccess && (
                   <Button size="sm" asChild>
-                    <a href="https://buy.polar.sh/polar_cl_yyXJesVM9pFVfAPIplspbfCukgVgXzXjXIc2N0I8WcL" target="_blank" rel="noopener noreferrer">
+                    <a href="https://sandbox-api.polar.sh/v1/checkout-links/polar_cl_5dhqiQBBNaPiCc0sniCocHAJI84X1JCGGI98Y0B7zg5/redirect" target="_blank" rel="noopener noreferrer">
                       <ShoppingCart className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                       Buy license
                     </a>

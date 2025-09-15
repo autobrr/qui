@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestMapBenefitToTheme(t *testing.T) {
+func TestMapBenefitToProduct(t *testing.T) {
 	tests := []struct {
 		name      string
 		benefitID string
@@ -17,19 +17,19 @@ func TestMapBenefitToTheme(t *testing.T) {
 			name:      "empty benefit ID returns unknown",
 			benefitID: "",
 			operation: "validation",
-			expected:  unknownThemeName,
+			expected:  ProductNameUnknown,
 		},
 		{
 			name:      "non-empty benefit ID returns premium",
 			benefitID: "benefit-123",
 			operation: "activation",
-			expected:  premiumThemeName,
+			expected:  ProductNamePremium,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := mapBenefitToTheme(tt.benefitID, tt.operation)
+			result := mapBenefitToProduct(tt.benefitID, tt.operation)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
