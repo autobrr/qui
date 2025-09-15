@@ -139,6 +139,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const [speedUnit, setSpeedUnit] = useSpeedUnits()
 
+  // Detect platform for keyboard shortcuts
+  const isMac = useMemo(() => {
+    return typeof window !== "undefined" && /Mac|iPhone|iPad|iPod/.test(window.navigator.userAgent)
+  }, [])
+
   // Track user-initiated actions to differentiate from automatic data updates
   const [lastUserAction, setLastUserAction] = useState<{ type: string; timestamp: number } | null>(null)
   const previousFiltersRef = useRef(filters)
@@ -1095,6 +1100,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
               <>
                 <span className="ml-2">
                   ({isAllSelected && excludedFromSelectAll.size === 0 ? `All ${effectiveSelectionCount}` : effectiveSelectionCount} selected)
+                </span>
+                {/* Keyboard shortcuts helper - only show on desktop */}
+                <span className="hidden sm:inline-block ml-2 text-xs opacity-70">
+                  • Shift+click for range • {isMac ? "Cmd" : "Ctrl"}+click for multiple
                 </span>
               </>
             )}
