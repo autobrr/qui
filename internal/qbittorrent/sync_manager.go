@@ -1939,3 +1939,132 @@ func (sm *SyncManager) SetLocation(ctx context.Context, instanceID int, hashes [
 
 	return nil
 }
+
+// EditTorrentTracker edits a tracker URL for a specific torrent
+func (sm *SyncManager) EditTorrentTracker(ctx context.Context, instanceID int, hash, oldURL, newURL string) error {
+	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		return err
+	}
+
+	// Validate that torrent exists
+	if err := sm.validateTorrentsExist(client, []string{hash}, "edit tracker"); err != nil {
+		return err
+	}
+
+	// Edit the tracker
+	if err := client.EditTrackerCtx(ctx, hash, oldURL, newURL); err != nil {
+		return fmt.Errorf("failed to edit tracker: %w", err)
+	}
+
+	return nil
+}
+
+// AddTorrentTrackers adds trackers to a specific torrent
+func (sm *SyncManager) AddTorrentTrackers(ctx context.Context, instanceID int, hash, urls string) error {
+	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		return err
+	}
+
+	// Validate that torrent exists
+	if err := sm.validateTorrentsExist(client, []string{hash}, "add trackers"); err != nil {
+		return err
+	}
+
+	// Add the trackers
+	if err := client.AddTrackersCtx(ctx, hash, urls); err != nil {
+		return fmt.Errorf("failed to add trackers: %w", err)
+	}
+
+	return nil
+}
+
+// RemoveTorrentTrackers removes trackers from a specific torrent
+func (sm *SyncManager) RemoveTorrentTrackers(ctx context.Context, instanceID int, hash, urls string) error {
+	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		return err
+	}
+
+	// Validate that torrent exists
+	if err := sm.validateTorrentsExist(client, []string{hash}, "remove trackers"); err != nil {
+		return err
+	}
+
+	// Remove the trackers
+	if err := client.RemoveTrackersCtx(ctx, hash, urls); err != nil {
+		return fmt.Errorf("failed to remove trackers: %w", err)
+	}
+
+	return nil
+}
+
+// BulkEditTrackers edits tracker URLs for multiple torrents
+func (sm *SyncManager) BulkEditTrackers(ctx context.Context, instanceID int, hashes []string, oldURL, newURL string) error {
+	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		return err
+	}
+
+	// Validate that torrents exist
+	if err := sm.validateTorrentsExist(client, hashes, "bulk edit trackers"); err != nil {
+		return err
+	}
+
+	// Edit trackers for each torrent
+	for _, hash := range hashes {
+		if err := client.EditTrackerCtx(ctx, hash, oldURL, newURL); err != nil {
+			// Log error but continue with other torrents
+			log.Error().Err(err).Str("hash", hash).Msg("Failed to edit tracker for torrent")
+		}
+	}
+
+	return nil
+}
+
+// BulkAddTrackers adds trackers to multiple torrents
+func (sm *SyncManager) BulkAddTrackers(ctx context.Context, instanceID int, hashes []string, urls string) error {
+	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		return err
+	}
+
+	// Validate that torrents exist
+	if err := sm.validateTorrentsExist(client, hashes, "bulk add trackers"); err != nil {
+		return err
+	}
+
+	// Add trackers to each torrent
+	for _, hash := range hashes {
+		if err := client.AddTrackersCtx(ctx, hash, urls); err != nil {
+			// Log error but continue with other torrents
+			log.Error().Err(err).Str("hash", hash).Msg("Failed to add trackers to torrent")
+		}
+	}
+
+	return nil
+}
+
+// BulkRemoveTrackers removes trackers from multiple torrents
+func (sm *SyncManager) BulkRemoveTrackers(ctx context.Context, instanceID int, hashes []string, urls string) error {
+	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		return err
+	}
+
+	// Validate that torrents exist
+	if err := sm.validateTorrentsExist(client, hashes, "bulk remove trackers"); err != nil {
+		return err
+	}
+
+	// Remove trackers from each torrent
+	for _, hash := range hashes {
+		if err := client.RemoveTrackersCtx(ctx, hash, urls); err != nil {
+			// Log error but continue with other torrents
+			log.Error().Err(err).Str("hash", hash).Msg("Failed to remove trackers from torrent")
+		}
+	}
+
+	return nil
+}

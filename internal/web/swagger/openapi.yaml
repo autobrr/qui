@@ -604,6 +604,91 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Tracker'
+    put:
+      tags:
+        - Torrent Details
+      summary: Edit torrent tracker
+      description: Edit a tracker URL for a torrent
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/hash'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - oldURL
+                - newURL
+              properties:
+                oldURL:
+                  type: string
+                  description: The current tracker URL to replace
+                newURL:
+                  type: string
+                  description: The new tracker URL
+      responses:
+        '200':
+          description: Tracker edited successfully
+        '400':
+          description: Invalid request
+        '500':
+          description: Failed to edit tracker
+    post:
+      tags:
+        - Torrent Details
+      summary: Add torrent trackers
+      description: Add new trackers to a torrent
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/hash'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - urls
+              properties:
+                urls:
+                  type: string
+                  description: Newline-separated list of tracker URLs to add
+      responses:
+        '200':
+          description: Trackers added successfully
+        '400':
+          description: Invalid request
+        '500':
+          description: Failed to add trackers
+    delete:
+      tags:
+        - Torrent Details
+      summary: Remove torrent trackers
+      description: Remove trackers from a torrent
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/hash'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - urls
+              properties:
+                urls:
+                  type: string
+                  description: Newline-separated list of tracker URLs to remove
+      responses:
+        '200':
+          description: Trackers removed successfully
+        '400':
+          description: Invalid request
+        '500':
+          description: Failed to remove trackers
 
   /api/instances/{instanceId}/torrents/{hash}/files:
     get:

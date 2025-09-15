@@ -689,3 +689,149 @@ export const RemoveTagsDialog = memo(function RemoveTagsDialog({
     </AlertDialog>
   )
 })
+
+interface EditTrackerDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  instanceId: number
+  tracker: string
+  trackerURLs?: string[]
+  loadingURLs?: boolean
+  selectedHashes: string[]
+  onConfirm: (oldURL: string, newURL: string) => void
+  isPending?: boolean
+}
+
+export const EditTrackerDialog = memo(function EditTrackerDialog({
+  open,
+  onOpenChange,
+  instanceId: _instanceId, // eslint-disable-line @typescript-eslint/no-unused-vars
+  tracker,
+  trackerURLs = [],
+  loadingURLs = false,
+  selectedHashes,
+  onConfirm,
+  isPending = false,
+}: EditTrackerDialogProps) {
+  const [oldURL, setOldURL] = useState("")
+  const [newURL, setNewURL] = useState("")
+  const wasOpen = useRef(false)
+
+  // Initialize URLs when dialog opens
+  useEffect(() => {
+    if (open && !wasOpen.current) {
+      // Set the first tracker URL if available, otherwise clear
+      if (trackerURLs && trackerURLs.length > 0) {
+        setOldURL(trackerURLs[0])
+      } else {
+        setOldURL("")
+      }
+      setNewURL("")
+    }
+    wasOpen.current = open
+  }, [open, tracker, trackerURLs])
+
+  const handleConfirm = useCallback((): void => {
+    if (oldURL.trim() && newURL.trim()) {
+      onConfirm(oldURL.trim(), newURL.trim())
+      setOldURL("")
+      setNewURL("")
+    }
+  }, [oldURL, newURL, onConfirm])
+
+  const handleCancel = useCallback((): void => {
+    setOldURL("")
+    setNewURL("")
+    onOpenChange(false)
+  }, [onOpenChange])
+
+  const hashCount = selectedHashes.length
+  const isFilteredMode = hashCount === 0 // When no hashes provided, we're updating all torrents with this tracker
+
+  return (
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      <AlertDialogContent className="max-w-xl">
+        <AlertDialogHeader>
+          <AlertDialogTitle>Edit Tracker URL - {tracker}</AlertDialogTitle>
+          <AlertDialogDescription>
+            Update the tracker URL for all torrents using <strong className="font-mono">{tracker}</strong>.
+            This is useful for updating passkeys or changing tracker addresses.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label htmlFor="oldURL">Current Full Tracker URL</Label>
+            {loadingURLs ? (
+              <div className="flex items-center justify-center py-3 text-sm text-muted-foreground">
+                <span className="animate-pulse">Loading tracker URLs...</span>
+              </div>
+            ) : trackerURLs && trackerURLs.length > 1 ? (
+              <div className="space-y-2">
+                <select
+                  className="w-full px-3 py-2 text-sm font-mono border rounded-md bg-background"
+                  value={oldURL}
+                  onChange={(e) => setOldURL(e.target.value)}
+                >
+                  <option value="">Select a tracker URL</option>
+                  {trackerURLs.map((url) => (
+                    <option key={url} value={url}>
+                      {url}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  Multiple tracker URLs found. Select the one you want to update.
+                </p>
+              </div>
+            ) : (
+              <>
+                <Input
+                  id="oldURL"
+                  value={oldURL}
+                  onChange={(e) => setOldURL(e.target.value)}
+                  placeholder={trackerURLs.length === 0 ? `e.g., http://${tracker}:6969/announce` : ""}
+                  className="font-mono text-sm"
+                  readOnly={trackerURLs.length === 1}
+                />
+                {trackerURLs.length === 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Enter the complete tracker URL including the announce path
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="newURL">New Full Tracker URL</Label>
+            <Input
+              id="newURL"
+              value={newURL}
+              onChange={(e) => setNewURL(e.target.value)}
+              placeholder={`e.g., http://${tracker}:6969/announce?passkey=new_key`}
+              className="font-mono text-sm"
+            />
+            <p className="text-xs text-muted-foreground">
+              Enter the new complete URL (typically with updated passkey)
+            </p>
+          </div>
+          {isFilteredMode && (
+            <div className="bg-muted p-3 rounded-md">
+              <p className="text-sm text-muted-foreground">
+                <strong>Note:</strong> This will update all torrents that have the exact matching tracker URL.
+              </p>
+            </div>
+          )}
+        </div>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={handleCancel}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={handleConfirm}
+            disabled={!oldURL.trim() || !newURL.trim() || oldURL === newURL || isPending || loadingURLs}
+          >
+            Update Tracker
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  )
+})
