@@ -42,6 +42,7 @@ import {
   type LucideIcon
 } from "lucide-react"
 import { memo, useCallback, useMemo, useRef, useState } from "react"
+import { CategoryTree } from "./CategoryTree"
 import {
   CreateCategoryDialog,
   CreateTagDialog,
@@ -91,6 +92,7 @@ interface FilterSidebarProps {
   torrentCounts?: Record<string, number>
   categories?: Record<string, Category>
   tags?: string[]
+  useSubcategories?: boolean
   className?: string
   isStaleData?: boolean
   isLoading?: boolean
@@ -121,6 +123,7 @@ const FilterSidebarComponent = ({
   torrentCounts = {},
   categories: propsCategories,
   tags: propsTags,
+  useSubcategories = false,
   className = "",
   isStaleData = false,
   isLoading = false,
@@ -159,11 +162,15 @@ const FilterSidebarComponent = ({
   const [showDeleteCategoryDialog, setShowDeleteCategoryDialog] = useState(false)
   const [categoryToEdit, setCategoryToEdit] = useState<Category | null>(null)
   const [categoryToDelete, setCategoryToDelete] = useState("")
+  const [parentCategoryForNew, setParentCategoryForNew] = useState<string | undefined>(undefined)
 
   // Search states for filtering large lists
   const [categorySearch, setCategorySearch] = useState("")
   const [tagSearch, setTagSearch] = useState("")
   const [trackerSearch, setTrackerSearch] = useState("")
+
+  // State for collapsed categories in tree view
+  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set())
 
   // Debounce search terms for better performance
   const debouncedCategorySearch = useDebounce(categorySearch, 300)
@@ -368,6 +375,41 @@ const FilterSidebarComponent = ({
     selectedFilters.tags.length > 0 ||
     selectedFilters.trackers.length > 0
 
+  // Handlers for CategoryTree
+  const handleToggleCollapse = useCallback((category: string) => {
+    setCollapsedCategories((prev) => {
+      const next = new Set(prev)
+      if (next.has(category)) {
+        next.delete(category)
+      } else {
+        next.add(category)
+      }
+      return next
+    })
+  }, [])
+
+  const handleCreateSubcategory = useCallback((parent: string) => {
+    setParentCategoryForNew(parent)
+    setShowCreateCategoryDialog(true)
+  }, [])
+
+  const handleEditCategory = useCallback((category: string) => {
+    // Type guard to ensure we have proper categories object
+    const categoriesRecord = categories as Record<string, { savePath: string }>
+    if (typeof categoriesRecord === "object" && category in categoriesRecord) {
+      const cat = categoriesRecord[category]
+      if (cat && "savePath" in cat) {
+        setCategoryToEdit({ name: category, savePath: cat.savePath })
+        setShowEditCategoryDialog(true)
+      }
+    }
+  }, [categories])
+
+  const handleDeleteCategory = useCallback((category: string) => {
+    setCategoryToDelete(category)
+    setShowDeleteCategoryDialog(true)
+  }, [])
+
   // Simple slide animation - sidebar slides in/out from the left
   return (
     <div
@@ -455,7 +497,10 @@ const FilterSidebarComponent = ({
                   {/* Add new category button */}
                   <button
                     className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-1 px-2 w-full cursor-pointer"
-                    onClick={() => setShowCreateCategoryDialog(true)}
+                    onClick={() => {
+                      setParentCategoryForNew(undefined)
+                      setShowCreateCategoryDialog(true)
+                    }}
                   >
                     <Plus className="h-3 w-3" />
                     Add category
@@ -471,153 +516,172 @@ const FilterSidebarComponent = ({
                       className="h-7 text-xs"
                     />
                   </div>
+                </div>
 
-                  {/* Uncategorized option */}
-                  <label className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer">
-                    <Checkbox
-                      checked={selectedFilters.categories.includes("")}
-                      onCheckedChange={() => handleCategoryToggle("")}
-                      className="rounded border-input"
-                    />
-                    <span className="text-sm flex-1 italic text-muted-foreground">
-                      Uncategorized
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {getDisplayCount("category:")}
-                    </span>
-                  </label>
+                {/* Use CategoryTree for subcategories mode */}
+                {useSubcategories ? (
+                  <CategoryTree
+                    categories={categories as Record<string, Category>}
+                    counts={torrentCounts || {}}
+                    selectedCategories={selectedFilters.categories}
+                    useSubcategories={useSubcategories}
+                    onCategoryToggle={handleCategoryToggle}
+                    onCreateSubcategory={handleCreateSubcategory}
+                    onEditCategory={handleEditCategory}
+                    onDeleteCategory={handleDeleteCategory}
+                    collapsedCategories={collapsedCategories}
+                    onToggleCollapse={handleToggleCollapse}
+                    searchTerm={debouncedCategorySearch}
+                  />
+                ) : (
+                  <div className="space-y-1">
+                    {/* Uncategorized option */}
+                    <label className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer">
+                      <Checkbox
+                        checked={selectedFilters.categories.includes("")}
+                        onCheckedChange={() => handleCategoryToggle("")}
+                        className="rounded border-input"
+                      />
+                      <span className="text-sm flex-1 italic text-muted-foreground">
+                        Uncategorized
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {getDisplayCount("category:")}
+                      </span>
+                    </label>
 
-                  {/* Loading message for categories */}
-                  {!hasReceivedCategoriesData && !incognitoMode && (
-                    <div className="text-xs text-muted-foreground px-2 py-3 text-center italic animate-pulse">
-                      Loading categories...
-                    </div>
-                  )}
+                    {/* Loading message for categories */}
+                    {!hasReceivedCategoriesData && !incognitoMode && (
+                      <div className="text-xs text-muted-foreground px-2 py-3 text-center italic animate-pulse">
+                        Loading categories...
+                      </div>
+                    )}
 
-                  {/* No results message for categories */}
-                  {hasReceivedCategoriesData && debouncedCategorySearch && filteredCategories.length === 0 && (
-                    <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
-                      No categories found matching "{debouncedCategorySearch}"
-                    </div>
-                  )}
+                    {/* No results message for categories */}
+                    {hasReceivedCategoriesData && debouncedCategorySearch && filteredCategories.length === 0 && (
+                      <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
+                        No categories found matching "{debouncedCategorySearch}"
+                      </div>
+                    )}
 
-                  {/* Empty categories message */}
-                  {hasReceivedCategoriesData && !debouncedCategorySearch && Object.keys(categories).length === 0 && (
-                    <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
-                      No categories available
-                    </div>
-                  )}
+                    {/* Empty categories message */}
+                    {hasReceivedCategoriesData && !debouncedCategorySearch && Object.keys(categories).length === 0 && (
+                      <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
+                        No categories available
+                      </div>
+                    )}
 
-                  {/* Category list - use filtered categories for performance or virtual scrolling for large lists */}
-                  {Object.keys(categories).length > VIRTUAL_THRESHOLD ? (
-                    <div ref={categoryListRef} className="max-h-96 overflow-auto">
-                      <div
-                        className="relative"
-                        style={{ height: `${categoryVirtualizer.getTotalSize()}px` }}
-                      >
-                        {categoryVirtualizer.getVirtualItems().map((virtualRow) => {
-                          const [name, category] = filteredCategories[virtualRow.index] || ["", {}]
-                          if (!name) return null
+                    {/* Category list - use filtered categories for performance or virtual scrolling for large lists */}
+                    {Object.keys(categories).length > VIRTUAL_THRESHOLD ? (
+                      <div ref={categoryListRef} className="max-h-96 overflow-auto">
+                        <div
+                          className="relative"
+                          style={{ height: `${categoryVirtualizer.getTotalSize()}px` }}
+                        >
+                          {categoryVirtualizer.getVirtualItems().map((virtualRow) => {
+                            const [name, category] = filteredCategories[virtualRow.index] || ["", {}]
+                            if (!name) return null
 
-                          return (
-                            <div
-                              key={virtualRow.key}
-                              data-index={virtualRow.index}
-                              ref={categoryVirtualizer.measureElement}
-                              style={{
-                                position: "absolute",
-                                top: 0,
-                                left: 0,
-                                width: "100%",
-                                transform: `translateY(${virtualRow.start}px)`,
+                            return (
+                              <div
+                                key={virtualRow.key}
+                                data-index={virtualRow.index}
+                                ref={categoryVirtualizer.measureElement}
+                                style={{
+                                  position: "absolute",
+                                  top: 0,
+                                  left: 0,
+                                  width: "100%",
+                                  transform: `translateY(${virtualRow.start}px)`,
+                                }}
+                              >
+                                <ContextMenu>
+                                  <ContextMenuTrigger asChild>
+                                    <label className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer">
+                                      <Checkbox
+                                        checked={selectedFilters.categories.includes(name)}
+                                        onCheckedChange={() => handleCategoryToggle(name)}
+                                      />
+                                      <span className="text-sm flex-1 truncate w-8" title={name}>
+                                        {name}
+                                      </span>
+                                      <span className="text-xs text-muted-foreground">
+                                        {getDisplayCount(`category:${name}`, incognitoMode ? getLinuxCount(name, 50) : undefined)}
+                                      </span>
+                                    </label>
+                                  </ContextMenuTrigger>
+                                  <ContextMenuContent>
+                                    <ContextMenuItem
+                                      onClick={() => {
+                                        setCategoryToEdit(category)
+                                        setShowEditCategoryDialog(true)
+                                      }}
+                                    >
+                                      <Edit className="mr-2 h-4 w-4" />
+                                      Edit Category
+                                    </ContextMenuItem>
+                                    <ContextMenuSeparator />
+                                    <ContextMenuItem
+                                      onClick={() => {
+                                        setCategoryToDelete(name)
+                                        setShowDeleteCategoryDialog(true)
+                                      }}
+                                      className="text-destructive"
+                                    >
+                                      <Trash2 className="mr-2 h-4 w-4" />
+                                      Delete Category
+                                    </ContextMenuItem>
+                                  </ContextMenuContent>
+                                </ContextMenu>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    ) : (
+                      filteredCategories.map(([name, category]: [string, Category]) => (
+                        <ContextMenu key={name}>
+                          <ContextMenuTrigger asChild>
+                            <label className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer">
+                              <Checkbox
+                                checked={selectedFilters.categories.includes(name)}
+                                onCheckedChange={() => handleCategoryToggle(name)}
+                              />
+                              <span className="text-sm flex-1 truncate w-8" title={name}>
+                                {name}
+                              </span>
+                              <span className="text-xs text-muted-foreground">
+                                {getDisplayCount(`category:${name}`, incognitoMode ? getLinuxCount(name, 50) : undefined)}
+                              </span>
+                            </label>
+                          </ContextMenuTrigger>
+                          <ContextMenuContent>
+                            <ContextMenuItem
+                              onClick={() => {
+                                setCategoryToEdit(category)
+                                setShowEditCategoryDialog(true)
                               }}
                             >
-                              <ContextMenu>
-                                <ContextMenuTrigger asChild>
-                                  <label className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer">
-                                    <Checkbox
-                                      checked={selectedFilters.categories.includes(name)}
-                                      onCheckedChange={() => handleCategoryToggle(name)}
-                                    />
-                                    <span className="text-sm flex-1 truncate w-8" title={name}>
-                                      {name}
-                                    </span>
-                                    <span className="text-xs text-muted-foreground">
-                                      {getDisplayCount(`category:${name}`, incognitoMode ? getLinuxCount(name, 50) : undefined)}
-                                    </span>
-                                  </label>
-                                </ContextMenuTrigger>
-                                <ContextMenuContent>
-                                  <ContextMenuItem
-                                    onClick={() => {
-                                      setCategoryToEdit(category)
-                                      setShowEditCategoryDialog(true)
-                                    }}
-                                  >
-                                    <Edit className="mr-2 h-4 w-4" />
-                                    Edit Category
-                                  </ContextMenuItem>
-                                  <ContextMenuSeparator />
-                                  <ContextMenuItem
-                                    onClick={() => {
-                                      setCategoryToDelete(name)
-                                      setShowDeleteCategoryDialog(true)
-                                    }}
-                                    className="text-destructive"
-                                  >
-                                    <Trash2 className="mr-2 h-4 w-4" />
-                                    Delete Category
-                                  </ContextMenuItem>
-                                </ContextMenuContent>
-                              </ContextMenu>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  ) : (
-                    filteredCategories.map(([name, category]: [string, Category]) => (
-                      <ContextMenu key={name}>
-                        <ContextMenuTrigger asChild>
-                          <label className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer">
-                            <Checkbox
-                              checked={selectedFilters.categories.includes(name)}
-                              onCheckedChange={() => handleCategoryToggle(name)}
-                            />
-                            <span className="text-sm flex-1 truncate w-8" title={name}>
-                              {name}
-                            </span>
-                            <span className="text-xs text-muted-foreground">
-                              {getDisplayCount(`category:${name}`, incognitoMode ? getLinuxCount(name, 50) : undefined)}
-                            </span>
-                          </label>
-                        </ContextMenuTrigger>
-                        <ContextMenuContent>
-                          <ContextMenuItem
-                            onClick={() => {
-                              setCategoryToEdit(category)
-                              setShowEditCategoryDialog(true)
-                            }}
-                          >
-                            <Edit className="mr-2 h-4 w-4" />
-                            Edit Category
-                          </ContextMenuItem>
-                          <ContextMenuSeparator />
-                          <ContextMenuItem
-                            onClick={() => {
-                              setCategoryToDelete(name)
-                              setShowDeleteCategoryDialog(true)
-                            }}
-                            className="text-destructive"
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Delete Category
-                          </ContextMenuItem>
-                        </ContextMenuContent>
-                      </ContextMenu>
-                    ))
-                  )}
-                </div>
+                              <Edit className="mr-2 h-4 w-4" />
+                              Edit Category
+                            </ContextMenuItem>
+                            <ContextMenuSeparator />
+                            <ContextMenuItem
+                              onClick={() => {
+                                setCategoryToDelete(name)
+                                setShowDeleteCategoryDialog(true)
+                              }}
+                              className="text-destructive"
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Delete Category
+                            </ContextMenuItem>
+                          </ContextMenuContent>
+                        </ContextMenu>
+                      ))
+                    )}
+                  </div>
+                )}
               </AccordionContent>
             </AccordionItem>
 
@@ -939,8 +1003,14 @@ const FilterSidebarComponent = ({
 
       <CreateCategoryDialog
         open={showCreateCategoryDialog}
-        onOpenChange={setShowCreateCategoryDialog}
+        onOpenChange={(open) => {
+          setShowCreateCategoryDialog(open)
+          if (!open) {
+            setParentCategoryForNew(undefined)
+          }
+        }}
         instanceId={instanceId}
+        parent={parentCategoryForNew}
       />
 
       {categoryToEdit && (

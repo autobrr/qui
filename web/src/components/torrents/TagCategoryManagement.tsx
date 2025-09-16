@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import { toast } from "sonner"
@@ -145,12 +145,25 @@ interface CreateCategoryDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   instanceId: number
+  parent?: string
 }
 
-export function CreateCategoryDialog({ open, onOpenChange, instanceId }: CreateCategoryDialogProps) {
+export function CreateCategoryDialog({ open, onOpenChange, instanceId, parent }: CreateCategoryDialogProps) {
   const [name, setName] = useState("")
   const [savePath, setSavePath] = useState("")
   const queryClient = useQueryClient()
+
+  // Pre-fill with parent path when dialog opens
+  useEffect(() => {
+    if (open) {
+      if (parent) {
+        setName(parent + "/")
+      } else {
+        setName("")
+      }
+      setSavePath("")
+    }
+  }, [open, parent])
 
   const mutation = useMutation({
     mutationFn: ({ name, savePath }: { name: string; savePath?: string }) =>
@@ -181,14 +194,14 @@ export function CreateCategoryDialog({ open, onOpenChange, instanceId }: CreateC
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Create New Category</AlertDialogTitle>
+          <AlertDialogTitle>{parent ? "Create Subcategory" : "Create New Category"}</AlertDialogTitle>
           <AlertDialogDescription>
-            Enter details for the new category
+            {parent ? `Creating subcategory under "${parent}"` : "Enter details for the new category"}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <div className="py-4 space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="categoryName">Category Name</Label>
+            <Label htmlFor="categoryName">{parent ? "Subcategory Name" : "Category Name"}</Label>
             <Input
               id="categoryName"
               value={name}
@@ -207,10 +220,7 @@ export function CreateCategoryDialog({ open, onOpenChange, instanceId }: CreateC
           </div>
         </div>
         <AlertDialogFooter>
-          <AlertDialogCancel onClick={() => {
-            setName("")
-            setSavePath("")
-          }}>Cancel</AlertDialogCancel>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
           <AlertDialogAction
             onClick={handleCreate}
             disabled={!name.trim() || mutation.isPending}

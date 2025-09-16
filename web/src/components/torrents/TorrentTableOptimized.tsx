@@ -117,7 +117,7 @@ interface TorrentTableOptimizedProps {
   onTorrentSelect?: (torrent: Torrent | null) => void
   addTorrentModalOpen?: boolean
   onAddTorrentModalChange?: (open: boolean) => void
-  onFilteredDataUpdate?: (torrents: Torrent[], total: number, counts?: TorrentCounts, categories?: Record<string, Category>, tags?: string[]) => void
+  onFilteredDataUpdate?: (torrents: Torrent[], total: number, counts?: TorrentCounts, categories?: Record<string, Category>, tags?: string[], useSubcategories?: boolean) => void
   onSelectionChange?: (selectedHashes: string[], selectedTorrents: Torrent[], isAllSelected: boolean, totalSelectionCount: number, excludeHashes: string[]) => void
   filterButton?: React.ReactNode
 }
@@ -273,6 +273,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     counts,
     categories,
     tags,
+    useSubcategories,
 
     isLoading,
     isFetching,
@@ -318,11 +319,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       const hasExistingTorrents = torrents.length > 0
 
       if (hasAnyMetadata || hasExistingTorrents) {
-        onFilteredDataUpdate(torrents, totalCount, counts, categories, tags)
+        onFilteredDataUpdate(torrents, totalCount, counts, categories, tags, useSubcategories)
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [totalCount, isLoading, torrents.length, counts, categories, tags, onFilteredDataUpdate]) // Use torrents.length to avoid unnecessary calls when content updates
+  }, [totalCount, isLoading, torrents.length, counts, categories, tags, useSubcategories, onFilteredDataUpdate]) // Use torrents.length to avoid unnecessary calls when content updates
 
 
   // Show refetch indicator only if fetching takes more than 2 seconds

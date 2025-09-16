@@ -56,6 +56,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
   const [torrentCounts, setTorrentCounts] = useState<Record<string, number> | undefined>(undefined)
   const [categories, setCategories] = useState<Record<string, Category> | undefined>(undefined)
   const [tags, setTags] = useState<string[] | undefined>(undefined)
+  const [useSubcategories, setUseSubcategories] = useState<boolean>(false)
   const [lastInstanceId, setLastInstanceId] = useState<number | null>(null)
 
   const handleTorrentSelect = (torrent: Torrent | null) => {
@@ -75,8 +76,8 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
     // The TorrentTableOptimized callback will only update when complete data is available
   }, [instanceId])
 
-  // Callback when filtered data updates - now receives counts, categories, and tags from backend
-  const handleFilteredDataUpdate = useCallback((_torrents: Torrent[], _total: number, counts?: TorrentCounts, categoriesData?: Record<string, Category>, tagsData?: string[]) => {
+  // Callback when filtered data updates - now receives counts, categories, tags, and useSubcategories from backend
+  const handleFilteredDataUpdate = useCallback((_torrents: Torrent[], _total: number, counts?: TorrentCounts, categoriesData?: Record<string, Category>, tagsData?: string[], subcategoriesEnabled?: boolean) => {
     // Update the last instance ID when we receive new data
     setLastInstanceId(instanceId)
 
@@ -110,6 +111,11 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
     // Store categories and tags - always set them even if empty to indicate data has been received
     setCategories(categoriesData || {})
     setTags(tagsData || [])
+
+    // Update subcategories flag
+    if (subcategoriesEnabled !== undefined) {
+      setUseSubcategories(subcategoriesEnabled)
+    }
   }, [instanceId])
 
   // Calculate total active filters for badge
@@ -136,6 +142,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
           torrentCounts={torrentCounts}
           categories={categories}
           tags={tags}
+          useSubcategories={useSubcategories}
           isStaleData={lastInstanceId !== null && lastInstanceId !== instanceId}
           isLoading={lastInstanceId !== null && lastInstanceId !== instanceId}
         />
@@ -156,6 +163,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
               torrentCounts={torrentCounts}
               categories={categories}
               tags={tags}
+              useSubcategories={useSubcategories}
               isStaleData={lastInstanceId !== null && lastInstanceId !== instanceId}
               isLoading={lastInstanceId !== null && lastInstanceId !== instanceId}
             />

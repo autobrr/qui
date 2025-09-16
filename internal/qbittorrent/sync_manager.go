@@ -6,6 +6,7 @@ package qbittorrent
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net/url"
 	"path/filepath"
 	"slices"
@@ -34,16 +35,17 @@ type CacheMetadata struct {
 
 // TorrentResponse represents a response containing torrents with stats
 type TorrentResponse struct {
-	Torrents      []qbt.Torrent           `json:"torrents"`
-	Total         int                     `json:"total"`
-	Stats         *TorrentStats           `json:"stats,omitempty"`
-	Counts        *TorrentCounts          `json:"counts,omitempty"`      // Include counts for sidebar
-	Categories    map[string]qbt.Category `json:"categories,omitempty"`  // Include categories for sidebar
-	Tags          []string                `json:"tags,omitempty"`        // Include tags for sidebar
-	ServerState   *qbt.ServerState        `json:"serverState,omitempty"` // Include server state for Dashboard
-	HasMore       bool                    `json:"hasMore"`               // Whether more pages are available
-	SessionID     string                  `json:"sessionId,omitempty"`   // Optional session tracking
-	CacheMetadata *CacheMetadata          `json:"cacheMetadata,omitempty"`
+	Torrents         []qbt.Torrent           `json:"torrents"`
+	Total            int                     `json:"total"`
+	Stats            *TorrentStats           `json:"stats,omitempty"`
+	Counts           *TorrentCounts          `json:"counts,omitempty"`      // Include counts for sidebar
+	Categories       map[string]qbt.Category `json:"categories,omitempty"`  // Include categories for sidebar
+	Tags             []string                `json:"tags,omitempty"`        // Include tags for sidebar
+	ServerState      *qbt.ServerState        `json:"serverState,omitempty"` // Include server state for Dashboard
+	UseSubcategories bool                    `json:"useSubcategories"`      // Whether subcategories are enabled
+	HasMore          bool                    `json:"hasMore"`               // Whether more pages are available
+	SessionID        string                  `json:"sessionId,omitempty"`   // Optional session tracking
+	CacheMetadata    *CacheMetadata          `json:"cacheMetadata,omitempty"`
 }
 
 // TorrentStats represents aggregated torrent statistics
@@ -334,16 +336,23 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		}
 	}
 
+	// Extract UseSubcategories from server state if available
+	useSubcategories := false
+	if serverState != nil {
+		useSubcategories = serverState.UseSubcategories
+	}
+
 	response := &TorrentResponse{
-		Torrents:      paginatedTorrents,
-		Total:         len(filteredTorrents),
-		Stats:         stats,
-		Counts:        counts,      // Include counts for sidebar
-		Categories:    categories,  // Include categories for sidebar
-		Tags:          tags,        // Include tags for sidebar
-		ServerState:   serverState, // Include server state for Dashboard
-		HasMore:       hasMore,
-		CacheMetadata: cacheMetadata,
+		Torrents:         paginatedTorrents,
+		Total:            len(filteredTorrents),
+		Stats:            stats,
+		Counts:           counts,      // Include counts for sidebar
+		Categories:       categories,  // Include categories for sidebar
+		Tags:             tags,        // Include tags for sidebar
+		ServerState:      serverState, // Include server state for Dashboard
+		UseSubcategories: useSubcategories,
+		HasMore:          hasMore,
+		CacheMetadata:    cacheMetadata,
 	}
 
 	// Always compute from fresh all_torrents data
@@ -764,6 +773,32 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(allTorrents []qbt
 				}
 			}
 		}
+	}
+
+	// If subcategories are enabled, aggregate subcategory counts into parent categories
+	if mainData != nil && mainData.ServerState.UseSubcategories {
+		// Build a temporary map to hold aggregated counts
+		aggregatedCounts := make(map[string]int)
+
+		// First, copy all existing counts
+		maps.Copy(aggregatedCounts, counts.Categories)
+
+		// Find all parent categories and ensure they exist in the map
+		// Also aggregate subcategory counts into parent categories
+		for cat, count := range counts.Categories {
+			if cat != "" && strings.Contains(cat, "/") {
+				// This is a subcategory - ensure all parent paths exist and aggregate counts
+				segments := strings.Split(cat, "/")
+				for i := 1; i <= len(segments)-1; i++ {
+					parentPath := strings.Join(segments[:i], "/")
+					// Add subcategory count to parent
+					aggregatedCounts[parentPath] += count
+				}
+			}
+		}
+
+		// Replace the original counts with aggregated ones
+		counts.Categories = aggregatedCounts
 	}
 
 	return counts
@@ -1212,9 +1247,23 @@ func (sm *SyncManager) applyManualFilters(torrents []qbt.Torrent, filters Filter
 	var filtered []qbt.Torrent
 
 	// Category set for O(1) lookups
+	// When subcategories are enabled, we need to include child categories
 	categorySet := make(map[string]struct{}, len(filters.Categories))
 	for _, c := range filters.Categories {
 		categorySet[c] = struct{}{}
+		// If subcategories are enabled and mainData has server state with subcategories enabled,
+		// we need to also include all subcategories
+		if mainData != nil && mainData.ServerState.UseSubcategories && c != "" {
+			// Add all subcategories of this category
+			// We check if each category in the full list starts with the parent category + "/"
+			if mainData.Categories != nil {
+				for catName := range mainData.Categories {
+					if strings.HasPrefix(catName, c+"/") {
+						categorySet[catName] = struct{}{}
+					}
+				}
+			}
+		}
 	}
 
 	// Prepare tag filter strings (lower-cased/trimmed) to reuse across torrents (avoid per-torrent allocations)
