@@ -9,8 +9,12 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+type ValidationChecker interface {
+	ValidateLicenses(ctx context.Context) (bool, error)
+}
+
 type Checker struct {
-	service       *Service
+	service       ValidationChecker
 	lastCheck     time.Time
 	isValid       atomic.Bool
 	checkInterval time.Duration
@@ -18,7 +22,7 @@ type Checker struct {
 	mu            sync.RWMutex
 }
 
-func NewLicenseChecker(service *Service) *Checker {
+func NewLicenseChecker(service ValidationChecker) *Checker {
 	return &Checker{
 		service:       service,
 		checkInterval: 24 * time.Hour,

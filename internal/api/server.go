@@ -119,7 +119,7 @@ func (s *Server) Handler() *chi.Mux {
 
 	// Global middleware
 	r.Use(middleware.RequestID) // Must be before logger to capture request ID
-	r.Use(middleware.Logger(s.logger))
+	//r.Use(middleware.Logger(s.logger))
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RealIP)
 
@@ -162,6 +162,8 @@ func (s *Server) Handler() *chi.Mux {
 	apiRouter := chi.NewRouter()
 
 	apiRouter.Group(func(r chi.Router) {
+		r.Use(middleware.Logger(s.logger))
+
 		// Apply setup check middleware
 		r.Use(middleware.RequireSetup(s.authService))
 

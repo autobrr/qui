@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/keygen-sh/machineid"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 
@@ -49,7 +48,7 @@ func (s *Service) ActivateAndStoreLicense(ctx context.Context, licenseKey string
 		return nil, fmt.Errorf("failed to check existing license: %w", err)
 	}
 
-	fingerprint, err := machineid.ProtectedID("qui-premium")
+	fingerprint, err := GetDeviceID("qui-premium")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get machine ID: %w", err)
 	}
@@ -152,7 +151,7 @@ func (s *Service) ValidateAndStoreLicense(ctx context.Context, licenseKey string
 		return nil, err
 	}
 
-	fingerprint, err := machineid.ProtectedID("qui-premium")
+	fingerprint, err := GetDeviceID("qui-premium")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get machine ID: %w", err)
 	}
@@ -206,7 +205,7 @@ func (s *Service) RefreshAllLicenses(ctx context.Context) error {
 		return nil
 	}
 
-	fingerprint, err := machineid.ProtectedID("qui-premium")
+	fingerprint, err := GetDeviceID("qui-premium")
 	if err != nil {
 		return fmt.Errorf("failed to get machine ID: %w", err)
 	}
@@ -329,7 +328,7 @@ func (s *Service) ValidateLicenses(ctx context.Context) (bool, error) {
 		return true, nil
 	}
 
-	fingerprint, err := machineid.ProtectedID("qui-premium")
+	fingerprint, err := GetDeviceID("qui-premium")
 	if err != nil {
 		return false, fmt.Errorf("failed to get machine ID: %w", err)
 	}

@@ -421,6 +421,12 @@ func (app *Application) runServer() {
 		log.Fatal().Err(err).Msg("Failed to initialize configuration")
 	}
 
+	fingerprint, err := license.GetDeviceID("qui-premium")
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to get machine ID")
+	}
+	log.Debug().Str("machine_id", fingerprint).Msg("Using machine ID")
+
 	// Override with CLI flags if provided
 	if app.dataDir != "" {
 		os.Setenv("QUI__DATA_DIR", app.dataDir)
