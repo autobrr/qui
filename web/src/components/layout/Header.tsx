@@ -295,8 +295,8 @@ export function Header({
           {/* Right side: Filter button and Search bar */}
           <div className="flex items-center gap-2 flex-1 justify-end mr-2">
             {/* Search bar */}
-            <div className="relative w-full max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"/>
+            <div className="relative w-62 focus-within:w-full max-w-md transition-[width] duration-100 ease-out will-change-[width]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none transition-opacity duration-300"/>
               <Input
                 ref={searchInputRef}
                 placeholder={isGlobSearch ? "Glob pattern..." : `Search torrents... (${shortcutKey})`}
@@ -308,9 +308,20 @@ export function Header({
                     if (searchValue) next.q = searchValue
                     else delete next.q
                     navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
+                  } else if (e.key === "Escape") {
+                    // Clear search and blur the input
+                    e.preventDefault()
+                    e.stopPropagation() // Prevent event from bubbling to table selection handler
+                    if (searchValue) {
+                      setSearchValue("")
+                    }
+                    // Delay blur to match animation duration
+                    setTimeout(() => {
+                      searchInputRef.current?.blur()
+                    }, 100)
                   }
                 }}
-                className={`w-full pl-9 pr-16 transition-all text-xs ${
+                className={`w-full pl-9 pr-16 transition-[box-shadow,border-color] duration-200 text-xs ${
                   searchValue ? "ring-1 ring-primary/50" : ""
                 } ${isGlobSearch ? "ring-1 ring-primary" : ""}`}
               />
