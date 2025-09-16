@@ -334,10 +334,6 @@ func (s *Service) ValidateLicenses(ctx context.Context) (bool, error) {
 		return false, fmt.Errorf("failed to get machine ID: %w", err)
 	}
 
-	// TEST: Hardcode fingerprint to simulate copied database
-	fingerprint = "fake-test-fingerprint-12345"
-	log.Debug().Str("TEST_fingerprint", fingerprint).Msg("TESTING: Using fake fingerprint to simulate copied database")
-
 	log.Trace().Str("fingerprint", fingerprint).Msg("Refreshing licenses")
 
 	for _, license := range licenses {
