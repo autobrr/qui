@@ -324,18 +324,26 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [totalCount, isLoading, torrents.length, counts, categories, tags, onFilteredDataUpdate]) // Use torrents.length to avoid unnecessary calls when content updates
 
+  // Memoize current torrent hashes to avoid recreating Sets on every render
+  const currentTorrentHashes = useMemo(
+    () => new Set(torrents.map(t => t.hash)),
+    [torrents]
+  )
+
   // Clear selection when torrents are removed from the filtered view
   useEffect(() => {
-    if (isAllSelected && torrents.length === 0 && !isLoading) {
+    // Skip cleanup if loading to avoid unnecessary operations
+    if (isLoading) return
+
+    if (isAllSelected && torrents.length === 0) {
       // If we were in "select all" mode but now have no torrents, clear selection
       setIsAllSelected(false)
       setExcludedFromSelectAll(new Set())
       setRowSelection({})
     } else if (isAllSelected && excludedFromSelectAll.size > 0) {
       // Clean up excluded items that no longer exist in the current torrent list
-      const currentHashes = new Set(torrents.map(t => t.hash))
       const validExclusions = new Set(
-        Array.from(excludedFromSelectAll).filter(hash => currentHashes.has(hash))
+        Array.from(excludedFromSelectAll).filter(hash => currentTorrentHashes.has(hash))
       )
 
       if (validExclusions.size !== excludedFromSelectAll.size) {
@@ -343,20 +351,22 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       }
     } else if (!isAllSelected && Object.keys(rowSelection).length > 0) {
       // Clean up regular selection for torrents that no longer exist
-      const currentRowIds = new Set(torrents.map((t, i) => `${t.hash}-${i}`))
       const validSelection: Record<string, boolean> = {}
+      let hasChanges = false
 
-      Object.entries(rowSelection).forEach(([rowId, selected]) => {
-        if (selected && currentRowIds.has(rowId)) {
-          validSelection[rowId] = true
+      Object.entries(rowSelection).forEach(([hash, selected]) => {
+        if (selected && currentTorrentHashes.has(hash)) {
+          validSelection[hash] = true
+        } else if (selected) {
+          hasChanges = true
         }
       })
 
-      if (Object.keys(validSelection).length !== Object.keys(rowSelection).length) {
+      if (hasChanges) {
         setRowSelection(validSelection)
       }
     }
-  }, [torrents, isAllSelected, excludedFromSelectAll, rowSelection, isLoading, setRowSelection])
+  }, [currentTorrentHashes, torrents.length, isAllSelected, excludedFromSelectAll, rowSelection, isLoading, setRowSelection, setIsAllSelected, setExcludedFromSelectAll])
 
 
   // Show refetch indicator only if fetching takes more than 2 seconds
@@ -466,8 +476,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     data: sortedTorrents,
     columns,
     getCoreRowModel: getCoreRowModel(),
-    // Use torrent hash with index as unique row ID to handle duplicates
-    getRowId: (row: Torrent, index: number) => `${row.hash}-${index}`,
+    // Use torrent hash as stable row ID
+    getRowId: (row: Torrent) => row.hash,
     // State management
     state: {
       sorting,
