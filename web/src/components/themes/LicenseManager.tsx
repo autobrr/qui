@@ -22,8 +22,9 @@ import {
   useLicenseDetails
 } from "@/hooks/useLicense"
 import { getLicenseErrorMessage } from "@/lib/license-errors"
+import { POLAR_PORTAL_URL } from "@/lib/polar-constants"
 import { useForm } from "@tanstack/react-form"
-import { Copy, ExternalLink, Key, ShoppingCart, Sparkles, Trash2 } from "lucide-react"
+import { AlertTriangle, Copy, ExternalLink, Key, RefreshCw, ShoppingCart, Sparkles, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { toast } from "sonner"
 
@@ -44,6 +45,9 @@ export function LicenseManager() {
   const activateLicense = useActivateLicense()
   // const validateLicense = useValidateThemeLicense()
   const deleteLicense = useDeleteLicense()
+
+  // Check if we have an invalid license (exists but not active)
+  const hasInvalidLicense = licenses && licenses.length > 0 && licenses[0].status !== "active"
 
   const form = useForm({
     defaultValues: {
@@ -126,28 +130,61 @@ export function LicenseManager() {
                 <Sparkles className={hasPremiumAccess ? "h-5 w-5 text-primary flex-shrink-0 mt-0.5" : "h-5 w-5 text-muted-foreground flex-shrink-0 mt-0.5"} />
                 <div className="min-w-0 space-y-1 flex-1">
                   <p className="font-medium text-base">
-                    {hasPremiumAccess ? "Premium Access Active" : "Unlock Premium Themes"}
+                    {hasPremiumAccess ? "Premium Access Active" :hasInvalidLicense ? "License Activation Required" :"Unlock Premium Themes"}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    {hasPremiumAccess ? "You have access to all current and future premium themes" : "One-time purchase • $9.99 • All themes"}
+                    {hasPremiumAccess ? "You have access to all current and future premium themes" :hasInvalidLicense ? "Your license needs to be activated on this machine" :"One-time purchase • $9.99 • All themes"}
                   </p>
 
-                  {/* License Key Details - Integrated */}
-                  {hasPremiumAccess && licenses && licenses.length > 0 && (
+                  {/* License Key Details - Show for both active and invalid licenses */}
+                  {licenses && licenses.length > 0 && (
                     <div className="mt-3 pt-3 border-t border-border/50 space-y-2">
                       <div className="font-mono text-xs break-all text-muted-foreground">
                         {maskLicenseKey(licenses[0].licenseKey)}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        {licenses[0].productName} • Added {new Date(licenses[0].createdAt).toLocaleDateString()}
+                        {licenses[0].productName} • Status: {licenses[0].status} • Added {new Date(licenses[0].createdAt).toLocaleDateString()}
                       </div>
+                      {hasInvalidLicense && (
+                        <div className="space-y-2">
+                          <div className="text-xs text-amber-600 dark:text-amber-500 mt-2 flex items-start gap-1">
+                            <AlertTriangle className="h-3 w-3 flex-shrink-0 mt-0.5" />
+                            <span>License validation failed. This may occur if the license was activated on another machine or if the database was copied. To deactivate on another machine, visit{" "}
+                              <a
+                                href={POLAR_PORTAL_URL}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="underline hover:no-underline inline-flex items-center gap-0.5"
+                              >
+                                {POLAR_PORTAL_URL.replace("https://", "")}
+                                <ExternalLink className="h-2.5 w-2.5" />
+                              </a>
+                            </span>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              // Re-attempt activation with the existing license key
+                              if (licenses && licenses[0]) {
+                                activateLicense.mutate(licenses[0].licenseKey)
+                              }
+                            }}
+                            disabled={activateLicense.isPending}
+                            className="h-7 text-xs"
+                          >
+                            <RefreshCw className={`h-3 w-3 mr-1 ${activateLicense.isPending ? "animate-spin" : ""}`} />
+                            {activateLicense.isPending ? "Activating..." : "Re-activate License"}
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
               </div>
 
               <div className="flex gap-2 flex-shrink-0">
-                {hasPremiumAccess && licenses && licenses.length > 0 && (
+                {licenses && licenses.length > 0 && (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -158,7 +195,7 @@ export function LicenseManager() {
                     Remove
                   </Button>
                 )}
-                {!hasPremiumAccess && (
+                {!hasPremiumAccess && !hasInvalidLicense && (
                   <Button size="sm" asChild>
                     <a href="https://sandbox-api.polar.sh/v1/checkout-links/polar_cl_5dhqiQBBNaPiCc0sniCocHAJI84X1JCGGI98Y0B7zg5/redirect" target="_blank" rel="noopener noreferrer">
                       <ShoppingCart className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
@@ -207,7 +244,7 @@ export function LicenseManager() {
               <div className="text-sm text-muted-foreground">
                 If needed, you can recover it later from your{" "}
                 <a
-                  href="https://polar.sh/qbitwebui/portal/request"
+                  href={POLAR_PORTAL_URL}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-primary underline inline-flex items-center gap-1"
@@ -284,7 +321,7 @@ export function LicenseManager() {
 
             <DialogFooter className="flex flex-col sm:flex-row sm:items-center gap-3">
               <Button variant="outline" asChild className="sm:mr-auto">
-                <a href="https://polar.sh/qbitwebui/portal/request" target="_blank" rel="noopener noreferrer">
+                <a href={POLAR_PORTAL_URL} target="_blank" rel="noopener noreferrer">
                   Recover key?
                 </a>
               </Button>

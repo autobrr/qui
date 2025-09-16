@@ -20,6 +20,7 @@ var (
 	ErrLicenseExpired          = errors.New("license expired")
 	ErrLicenseNotActivated     = errors.New("license not activated")
 	ErrInvalidLicenseKey       = errors.New("license key is not valid")
+	ErrConditionMismatch       = errors.New("license key does not match required conditions")
 	ErrActivationLimitExceeded = errors.New("license key activation limit already reached")
 	ErrBadRequestData          = errors.New("bad request data")
 	ErrCouldNotUnmarshalData   = errors.New("could not unmarshal data")
@@ -34,10 +35,10 @@ const (
 
 	requestTimeout = 30 * time.Second
 
-	orgIDNotConfigMsg = "Organization ID not configured"
-	licenseFailedMsg  = "Failed to validate license"
-	activateFailedMsg = "Failed to activate license"
-	invalidRespMsg    = "Invalid license response"
+	OrgIDNotConfigMsg = "Organization ID not configured"
+	LicenseFailedMsg  = "Failed to validate license"
+	ActivateFailedMsg = "Failed to activate license"
+	InvalidRespMsg    = "Invalid license response"
 )
 
 // ValidationResponse represents the response from the validate endpoint
@@ -392,6 +393,12 @@ func (c *Client) Validate(ctx context.Context, validateReq ValidateRequest) (*Va
 		return nil, errors.Wrapf(errors.New(response.Detail), "%s", response.Error)
 
 	case http.StatusNotFound:
+		var response ErrorResponse
+		if err := json.Unmarshal(body, &response); err == nil {
+			if response.Detail == "License key does not match required conditions" {
+				return nil, ErrConditionMismatch
+			}
+		}
 		return nil, ErrInvalidLicenseKey
 
 	case http.StatusTooManyRequests:

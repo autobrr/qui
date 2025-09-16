@@ -43,6 +43,12 @@ func (s *Service) ActivateAndStoreLicense(ctx context.Context, licenseKey string
 		return nil, fmt.Errorf("polar client not configured")
 	}
 
+	// Check if license already exists in database
+	existingLicense, err := s.licenseRepo.GetLicenseByKey(ctx, licenseKey)
+	if err != nil && !errors.Is(err, models.ErrLicenseNotFound) {
+		return nil, fmt.Errorf("failed to check existing license: %w", err)
+	}
+
 	fingerprint, err := machineid.ProtectedID("qui-premium")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get machine ID: %w", err)
@@ -80,19 +86,44 @@ func (s *Service) ActivateAndStoreLicense(ctx context.Context, licenseKey string
 
 	productName := mapBenefitToProduct(activateResp.LicenseKey.BenefitID, "validation")
 
-	// Create a license record
+	// If license exists, update it; otherwise create new
+	if existingLicense != nil {
+		// Update existing license with new activation details
+		existingLicense.ProductName = productName
+		existingLicense.Status = models.LicenseStatusActive
+		existingLicense.ActivatedAt = time.Now()
+		existingLicense.ExpiresAt = activateResp.LicenseKey.ExpiresAt
+		existingLicense.LastValidated = time.Now()
+		existingLicense.PolarCustomerID = &activateResp.LicenseKey.CustomerID
+		existingLicense.PolarProductID = &activateResp.LicenseKey.BenefitID
+		existingLicense.PolarActivationID = activateResp.Id
+		existingLicense.UpdatedAt = time.Now()
+
+		if err := s.licenseRepo.UpdateLicenseActivation(ctx, existingLicense); err != nil {
+			return nil, fmt.Errorf("failed to update license activation: %w", err)
+		}
+
+		log.Info().
+			Str("productName", existingLicense.ProductName).
+			Str("licenseKey", maskLicenseKey(licenseKey)).
+			Msg("License re-activated and updated successfully")
+
+		return existingLicense, nil
+	}
+
+	// Create a new license record
 	license := &models.ProductLicense{
 		LicenseKey:        licenseKey,
 		ProductName:       productName,
 		Status:            models.LicenseStatusActive,
 		ActivatedAt:       time.Now(),
 		ExpiresAt:         activateResp.LicenseKey.ExpiresAt,
-		LastValidated:     activateResp.CreatedAt,
+		LastValidated:     time.Now(),
 		PolarCustomerID:   &activateResp.LicenseKey.CustomerID,
 		PolarProductID:    &activateResp.LicenseKey.BenefitID,
 		PolarActivationID: activateResp.Id,
-		CreatedAt:         activateResp.CreatedAt,
-		UpdatedAt:         activateResp.ModifiedAt,
+		CreatedAt:         time.Now(),
+		UpdatedAt:         time.Now(),
 	}
 
 	// Store in the database
@@ -188,6 +219,58 @@ func (s *Service) RefreshAllLicenses(ctx context.Context) error {
 			continue
 		}
 
+		// Handle licenses without activation IDs (migrated from old system)
+		if license.PolarActivationID == "" {
+			log.Info().
+				Str("licenseKey", maskLicenseKey(license.LicenseKey)).
+				Msg("Found license without activation ID, attempting to activate")
+
+			activateReq := polar.ActivateRequest{Key: license.LicenseKey, Label: defaultLabel}
+			activateReq.SetCondition("fingerprint", fingerprint)
+			activateReq.SetMeta("product", defaultLabel)
+
+			activateResp, err := s.polarClient.Activate(ctx, activateReq)
+			if err != nil {
+				log.Error().
+					Err(err).
+					Str("licenseKey", maskLicenseKey(license.LicenseKey)).
+					Msg(polar.ActivateFailedMsg)
+
+				// If activation limit is exceeded, mark the license as invalid
+				if errors.Is(err, polar.ErrActivationLimitExceeded) {
+					if updateErr := s.licenseRepo.UpdateLicenseStatus(ctx, license.ID, models.LicenseStatusInvalid); updateErr != nil {
+						log.Error().
+							Err(updateErr).
+							Int("licenseId", license.ID).
+							Msg("Failed to update license status to invalid")
+					}
+				}
+				// Continue to next license instead of failing entire refresh
+				continue
+			}
+
+			// Update the license with activation ID
+			license.PolarActivationID = activateResp.Id
+			license.PolarCustomerID = &activateResp.LicenseKey.CustomerID
+			license.PolarProductID = &activateResp.LicenseKey.BenefitID
+			license.ActivatedAt = time.Now()
+			license.ExpiresAt = activateResp.LicenseKey.ExpiresAt
+
+			// Update in database
+			if err := s.licenseRepo.UpdateLicenseActivation(ctx, license); err != nil {
+				log.Error().
+					Err(err).
+					Str("licenseKey", maskLicenseKey(license.LicenseKey)).
+					Msg("Failed to update license with activation ID")
+				continue
+			}
+
+			log.Info().
+				Str("licenseKey", maskLicenseKey(license.LicenseKey)).
+				Str("activationId", activateResp.Id).
+				Msg("Successfully activated license and updated activation ID")
+		}
+
 		log.Info().Msgf("checking license validation...")
 
 		validationRequest := polar.ValidateRequest{Key: license.LicenseKey, ActivationID: license.PolarActivationID}
@@ -199,7 +282,7 @@ func (s *Service) RefreshAllLicenses(ctx context.Context) error {
 			log.Error().
 				Err(err).
 				Str("licenseKey", maskLicenseKey(license.LicenseKey)).
-				Msg("Failed to validate license during refresh")
+				Msg(polar.LicenseFailedMsg)
 			switch {
 			case errors.Is(err, polar.ErrActivationLimitExceeded):
 				log.Error().Err(err).Msg("Activation limit exceeded")
@@ -251,6 +334,10 @@ func (s *Service) ValidateLicenses(ctx context.Context) (bool, error) {
 		return false, fmt.Errorf("failed to get machine ID: %w", err)
 	}
 
+	// TEST: Hardcode fingerprint to simulate copied database
+	fingerprint = "fake-test-fingerprint-12345"
+	log.Debug().Str("TEST_fingerprint", fingerprint).Msg("TESTING: Using fake fingerprint to simulate copied database")
+
 	log.Trace().Str("fingerprint", fingerprint).Msg("Refreshing licenses")
 
 	for _, license := range licenses {
@@ -258,6 +345,58 @@ func (s *Service) ValidateLicenses(ctx context.Context) (bool, error) {
 		//if time.Since(license.LastValidated) < time.Hour {
 		//	continue
 		//}
+
+		// Handle licenses without activation IDs (migrated from old system)
+		if license.PolarActivationID == "" {
+			log.Info().
+				Str("licenseKey", maskLicenseKey(license.LicenseKey)).
+				Msg("Found license without activation ID, attempting to activate")
+
+			activateReq := polar.ActivateRequest{Key: license.LicenseKey, Label: defaultLabel}
+			activateReq.SetCondition("fingerprint", fingerprint)
+			activateReq.SetMeta("product", defaultLabel)
+
+			activateResp, err := s.polarClient.Activate(ctx, activateReq)
+			if err != nil {
+				log.Error().
+					Err(err).
+					Str("licenseKey", maskLicenseKey(license.LicenseKey)).
+					Msg(polar.ActivateFailedMsg)
+
+				// If activation limit is exceeded, mark the license as invalid
+				if errors.Is(err, polar.ErrActivationLimitExceeded) {
+					if updateErr := s.licenseRepo.UpdateLicenseStatus(ctx, license.ID, models.LicenseStatusInvalid); updateErr != nil {
+						log.Error().
+							Err(updateErr).
+							Int("licenseId", license.ID).
+							Msg("Failed to update license status to invalid")
+					}
+				}
+				// Continue to next license instead of failing entire validation
+				continue
+			}
+
+			// Update the license with activation ID
+			license.PolarActivationID = activateResp.Id
+			license.PolarCustomerID = &activateResp.LicenseKey.CustomerID
+			license.PolarProductID = &activateResp.LicenseKey.BenefitID
+			license.ActivatedAt = time.Now()
+			license.ExpiresAt = activateResp.LicenseKey.ExpiresAt
+
+			// Update in database
+			if err := s.licenseRepo.UpdateLicenseActivation(ctx, license); err != nil {
+				log.Error().
+					Err(err).
+					Str("licenseKey", maskLicenseKey(license.LicenseKey)).
+					Msg("Failed to update license with activation ID")
+				continue
+			}
+
+			log.Info().
+				Str("licenseKey", maskLicenseKey(license.LicenseKey)).
+				Str("activationId", activateResp.Id).
+				Msg("Successfully activated license and updated activation ID")
+		}
 
 		log.Info().Msgf("checking license validation...")
 
@@ -267,19 +406,36 @@ func (s *Service) ValidateLicenses(ctx context.Context) (bool, error) {
 		// Validate with Polar
 		licenseInfo, err := s.polarClient.Validate(ctx, validationRequest)
 		if err != nil {
-			log.Error().
-				Err(err).
-				Str("licenseKey", maskLicenseKey(license.LicenseKey)).
-				Msg("Failed to validate license during refresh")
+			// Log specific error based on type
 			switch {
+			case errors.Is(err, polar.ErrConditionMismatch):
+				log.Error().
+					Str("licenseKey", maskLicenseKey(license.LicenseKey)).
+					Msg("License fingerprint mismatch - database appears to have been copied from another machine")
 			case errors.Is(err, polar.ErrActivationLimitExceeded):
-				log.Error().Err(err).Msg("Activation limit exceeded")
-				return false, err
+				log.Error().
+					Str("licenseKey", maskLicenseKey(license.LicenseKey)).
+					Msg("License activation limit exceeded")
 			case errors.Is(err, polar.ErrInvalidLicenseKey):
-				return false, err
+				log.Error().
+					Str("licenseKey", maskLicenseKey(license.LicenseKey)).
+					Msg("Invalid license key - license does not exist")
 			default:
-				return false, err
+				log.Error().
+					Err(err).
+					Str("licenseKey", maskLicenseKey(license.LicenseKey)).
+					Msg(polar.LicenseFailedMsg)
 			}
+
+			// Mark license as invalid when validation fails
+			if updateErr := s.licenseRepo.UpdateLicenseStatus(ctx, license.ID, models.LicenseStatusInvalid); updateErr != nil {
+				log.Error().
+					Err(updateErr).
+					Int("licenseId", license.ID).
+					Msg("Failed to update license status to invalid")
+			}
+
+			return false, err
 		}
 
 		// Update status

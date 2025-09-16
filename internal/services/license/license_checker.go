@@ -48,7 +48,6 @@ func (lc *Checker) validateLicense(ctx context.Context) {
 
 	isValid, err := lc.service.ValidateLicenses(ctx)
 	if err != nil {
-		log.Warn().Err(err).Msg("License validation error")
 		// Don't change validity on network errors
 		return
 	}

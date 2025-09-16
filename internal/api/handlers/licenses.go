@@ -9,10 +9,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/autobrr/qui/internal/services/license"
-
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
+
+	"github.com/autobrr/qui/internal/services/license"
 )
 
 // LicenseHandler handles license related HTTP requests

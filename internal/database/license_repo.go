@@ -186,12 +186,35 @@ func (r *LicenseRepo) UpdateLicenseStatus(ctx context.Context, licenseID int, st
 
 func (r *LicenseRepo) UpdateLicenseValidation(ctx context.Context, license *models.ProductLicense) error {
 	query := `
-		UPDATE licenses 
+		UPDATE licenses
 		SET last_validated = ?, updated_at = ?
 		WHERE id = ?
 	`
 
 	_, err := r.db.Conn().ExecContext(ctx, query, license.LastValidated, time.Now(), license.ID)
+	return err
+}
+
+// UpdateLicenseActivation updates a license with activation details
+func (r *LicenseRepo) UpdateLicenseActivation(ctx context.Context, license *models.ProductLicense) error {
+	query := `
+		UPDATE licenses
+		SET polar_activation_id = ?, polar_customer_id = ?, polar_product_id = ?,
+		    activated_at = ?, expires_at = ?, last_validated = ?, updated_at = ?, status = ?
+		WHERE id = ?
+	`
+
+	_, err := r.db.Conn().ExecContext(ctx, query,
+		license.PolarActivationID,
+		license.PolarCustomerID,
+		license.PolarProductID,
+		license.ActivatedAt,
+		timeToNullTime(license.ExpiresAt),
+		time.Now(),
+		time.Now(),
+		license.Status,
+		license.ID,
+	)
 	return err
 }
 
