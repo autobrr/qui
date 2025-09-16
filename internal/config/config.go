@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -14,6 +15,7 @@ import (
 	"text/template"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 
@@ -400,8 +402,10 @@ func setupLogFile(path string) error {
 		return fmt.Errorf("failed to open log file: %w", err)
 	}
 
+	logWriters := []io.Writer{zerolog.ConsoleWriter{Out: os.Stderr}, f}
+
 	// Update logger output
-	log.Logger = log.Output(f)
+	log.Logger = log.Output(io.MultiWriter(logWriters...))
 	return nil
 }
 
