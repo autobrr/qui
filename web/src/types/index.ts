@@ -400,3 +400,27 @@ export interface AppPreferences {
   // Add catch-all for any additional fields from the API
   [key: string]: unknown
 }
+
+// Log types
+export interface LogEntry {
+  id: number
+  message: string
+  timestamp: number
+  type: number // 1=Normal, 2=Info, 4=Warning, 8=Critical
+}
+
+export interface PeerLogEntry {
+  id: number
+  ip: string
+  blocked: boolean
+  timestamp: number
+  reason: string
+}
+
+export interface LogResponse {
+  logs: LogEntry[] | PeerLogEntry[]
+  total: number
+  page: number
+  limit: number
+  hasMore: boolean
+}

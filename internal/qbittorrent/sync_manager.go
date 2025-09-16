@@ -61,6 +61,7 @@ type TorrentStats struct {
 // SyncManager manages torrent operations
 type SyncManager struct {
 	clientPool *ClientPool
+	logCache   *LogCache
 }
 
 // OptimisticTorrentUpdate represents a temporary optimistic update to a torrent
@@ -73,9 +74,16 @@ type OptimisticTorrentUpdate struct {
 
 // NewSyncManager creates a new sync manager
 func NewSyncManager(clientPool *ClientPool) *SyncManager {
+	logCache := NewLogCache(clientPool)
 	return &SyncManager{
 		clientPool: clientPool,
+		logCache:   logCache,
 	}
+}
+
+// GetLogCache returns the log cache
+func (sm *SyncManager) GetLogCache() *LogCache {
+	return sm.logCache
 }
 
 // GetErrorStore returns the error store for recording errors

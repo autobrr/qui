@@ -20,6 +20,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Label } from "@/components/ui/label"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Progress } from "@/components/ui/progress"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -42,9 +43,17 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select"
 import { useAlternativeSpeedLimits } from "@/hooks/useAlternativeSpeedLimits"
 import { useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
+import { LogViewer } from "@/components/logs/LogViewer"
 
 
 // Optimized hook to get all instance stats using shared TorrentResponse cache
@@ -660,6 +669,8 @@ function QuickActionsDropdown({ statsData }: { statsData: Array<{ instance: Inst
 
 export function Dashboard() {
   const [isAdvancedMetricsOpen, setIsAdvancedMetricsOpen] = useState(false)
+  const [selectedLogInstance, setSelectedLogInstance] = useState<number | null>(null)
+  const [showLogs, setShowLogs] = useState(false)
   const { instances, isLoading } = useInstances()
   const allInstances = instances || []
 
@@ -734,6 +745,66 @@ export function Dashboard() {
                 ))}
               </div>
             </div>
+          )}
+
+          {/* Log Viewer Section */}
+          {allInstances.length > 0 && (
+            <Accordion
+              type="single"
+              collapsible
+              className="rounded-lg border bg-card"
+              value={showLogs ? "logs" : ""}
+              onValueChange={(value) => setShowLogs(value === "logs")}
+            >
+              <AccordionItem value="logs" className="border-0">
+                <AccordionTrigger className="px-4 py-4 hover:no-underline hover:bg-muted/50 transition-colors [&>svg]:hidden group">
+                  <div className="flex items-center justify-between w-full">
+                    <div className="flex items-center gap-2">
+                      <Plus className="h-4 w-4 text-muted-foreground group-data-[state=open]:hidden" />
+                      <Minus className="h-4 w-4 text-muted-foreground group-data-[state=closed]:hidden" />
+                      <h3 className="text-base font-medium">System Logs</h3>
+                      {selectedLogInstance && (
+                        <Badge variant="secondary">
+                          {allInstances.find(i => i.id === selectedLogInstance)?.name || "All"}
+                        </Badge>
+                      )}
+                    </div>
+                    {allInstances.length > 1 && !showLogs && (
+                      <span className="text-sm text-muted-foreground">
+                        Click to view logs
+                      </span>
+                    )}
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent className="px-4 pb-4">
+                  {allInstances.length > 1 && (
+                    <div className="flex items-center gap-2 mb-4">
+                      <Label htmlFor="instance-select">Instance:</Label>
+                      <Select
+                        value={selectedLogInstance?.toString() || allInstances[0]?.id.toString()}
+                        onValueChange={(value) => setSelectedLogInstance(parseInt(value))}
+                      >
+                        <SelectTrigger id="instance-select" className="w-[200px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {allInstances.map(instance => (
+                            <SelectItem key={instance.id} value={instance.id.toString()}>
+                              {instance.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                  <LogViewer
+                    instanceId={selectedLogInstance || allInstances[0]?.id}
+                    instanceName={allInstances.find(i => i.id === (selectedLogInstance || allInstances[0]?.id))?.name}
+                    maxHeight="400px"
+                  />
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
           )}
         </div>
       ) : (

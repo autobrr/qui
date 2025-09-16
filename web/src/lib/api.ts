@@ -9,6 +9,7 @@ import type {
   Category,
   InstanceFormData,
   InstanceResponse,
+  LogResponse,
   TorrentResponse,
   User
 } from "@/types"
@@ -461,6 +462,47 @@ class ApiClient {
     return this.request<{ enabled: boolean }>(`/instances/${instanceId}/alternative-speed-limits/toggle`, {
       method: "POST",
     })
+  }
+
+  // Log methods
+  async getMainLogs(
+    instanceId: number,
+    params?: {
+      page?: number
+      limit?: number
+      search?: string
+      levels?: number[]
+    }
+  ): Promise<LogResponse> {
+    const searchParams = new URLSearchParams()
+    if (params?.page !== undefined) searchParams.append("page", params.page.toString())
+    if (params?.limit !== undefined) searchParams.append("limit", params.limit.toString())
+    if (params?.search) searchParams.append("search", params.search)
+    if (params?.levels && params.levels.length > 0) {
+      params.levels.forEach(level => searchParams.append("levels[]", level.toString()))
+    }
+
+    const queryString = searchParams.toString()
+    const url = `/instances/${instanceId}/logs/main${queryString ? `?${queryString}` : ""}`
+    return this.request<LogResponse>(url)
+  }
+
+  async getPeerLogs(
+    instanceId: number,
+    params?: {
+      page?: number
+      limit?: number
+      search?: string
+    }
+  ): Promise<LogResponse> {
+    const searchParams = new URLSearchParams()
+    if (params?.page !== undefined) searchParams.append("page", params.page.toString())
+    if (params?.limit !== undefined) searchParams.append("limit", params.limit.toString())
+    if (params?.search) searchParams.append("search", params.search)
+
+    const queryString = searchParams.toString()
+    const url = `/instances/${instanceId}/logs/peers${queryString ? `?${queryString}` : ""}`
+    return this.request<LogResponse>(url)
   }
 }
 

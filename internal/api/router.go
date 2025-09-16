@@ -76,6 +76,7 @@ func NewRouter(deps *Dependencies) *chi.Mux {
 	torrentsHandler := handlers.NewTorrentsHandler(deps.SyncManager)
 	preferencesHandler := handlers.NewPreferencesHandler(deps.SyncManager)
 	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(deps.ClientAPIKeyStore, deps.InstanceStore)
+	logsHandler := handlers.NewLogsHandler(deps.SyncManager.GetLogCache())
 
 	// Create proxy handler
 	proxyHandler := proxy.NewHandler(deps.ClientPool, deps.ClientAPIKeyStore, deps.InstanceStore)
@@ -168,6 +169,12 @@ func NewRouter(deps *Dependencies) *chi.Mux {
 					// Alternative speed limits
 					r.Get("/alternative-speed-limits", preferencesHandler.GetAlternativeSpeedLimitsMode)
 					r.Post("/alternative-speed-limits/toggle", preferencesHandler.ToggleAlternativeSpeedLimits)
+
+					// Logs
+					r.Route("/logs", func(r chi.Router) {
+						r.Get("/main", logsHandler.GetMainLogs)
+						r.Get("/peers", logsHandler.GetPeerLogs)
+					})
 				})
 			})
 
