@@ -1029,15 +1029,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                               handleRowSelection(torrent.hash, !row.getIsSelected(), row.id)
                               lastSelectedIndexRef.current = currentIndex
                             } else {
-                              // Normal click - toggle selection like checkbox AND open details
-                              const allRows = table.getRowModel().rows
-                              const currentIndex = allRows.findIndex(r => r.id === row.id)
-
-                              // Toggle this row's selection (EXACTLY like checkbox)
-                              handleRowSelection(torrent.hash, !row.getIsSelected(), row.id)
-                              lastSelectedIndexRef.current = currentIndex
-
-                              // Also open details panel
+                              // Plain click - open details without changing checkbox selection state
                               onTorrentSelect?.(torrent)
                             }
                           }
