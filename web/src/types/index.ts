@@ -121,6 +121,7 @@ export interface TorrentResponse {
   categories?: Record<string, Category>
   tags?: string[]
   serverState?: ServerState
+  useSubcategories?: boolean
   cacheMetadata?: CacheMetadata
   hasMore?: boolean
 }
@@ -148,6 +149,7 @@ export interface ServerState {
   up_rate_limit: number
   queueing: boolean
   use_alt_speed_limits: boolean
+  use_subcategories?: boolean
   refresh_interval: number
   alltime_dl?: number
   alltime_ul?: number

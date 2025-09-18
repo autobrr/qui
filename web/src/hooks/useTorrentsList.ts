@@ -180,6 +180,7 @@ export function useTorrentsList(
     counts: data?.counts,
     categories: data?.categories,
     tags: data?.tags,
+    useSubcategories: data?.useSubcategories ?? false,
     serverState: null, // Server state is fetched separately by Dashboard
     isLoading: isLoading && currentPage === 0,
     isFetching,

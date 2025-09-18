@@ -57,6 +57,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
     defaultValues: {
       auto_tmm_enabled: false,
       start_paused_enabled: false,
+      use_subcategories: false,
       save_path: "",
       torrent_content_layout: "Original",
     },
@@ -69,6 +70,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
         // Update other preferences to qBittorrent (excluding start_paused_enabled)
         const qbittorrentPrefs = {
           auto_tmm_enabled: value.auto_tmm_enabled,
+          use_subcategories: Boolean(value.use_subcategories),
           save_path: value.save_path,
           torrent_content_layout: value.torrent_content_layout ?? "Original",
         }
@@ -85,6 +87,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
   React.useEffect(() => {
     if (preferences) {
       form.setFieldValue("auto_tmm_enabled", preferences.auto_tmm_enabled)
+      form.setFieldValue("use_subcategories", Boolean(preferences.use_subcategories))
       form.setFieldValue("save_path", preferences.save_path)
       form.setFieldValue("torrent_content_layout", preferences.torrent_content_layout ?? "Original")
     }
@@ -127,6 +130,17 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
               checked={field.state.value as boolean}
               onCheckedChange={field.handleChange}
               description="Use category-based paths for downloads"
+            />
+          )}
+        </form.Field>
+
+        <form.Field name="use_subcategories">
+          {(field) => (
+            <SwitchSetting
+              label="Enable Subcategories"
+              checked={field.state.value as boolean}
+              onCheckedChange={field.handleChange}
+              description="Allow creating nested categories using slash separator (e.g., Movies/4K)"
             />
           )}
         </form.Field>
