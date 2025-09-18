@@ -29,9 +29,10 @@ var (
 )
 
 const (
-	polarAPIBaseURL  = "https://api.polar.sh"
-	validateEndpoint = "/v1/customer-portal/license-keys/validate"
-	activateEndpoint = "/v1/customer-portal/license-keys/activate"
+	polarAPIBaseURL        = "https://api.autobrr.com"
+	polarSandboxAPIBaseURL = "https://sandbox-api.autobrr.com"
+	validateEndpoint       = "/v1/customer-portal/license-keys/validate"
+	activateEndpoint       = "/v1/customer-portal/license-keys/activate"
 
 	requestTimeout = 30 * time.Second
 
@@ -157,11 +158,11 @@ func WithEnvironment(env string) OptFunc {
 	return func(c *Client) {
 		switch env {
 		case "production":
-			c.baseURL = "https://api.polar.sh"
+			c.baseURL = polarAPIBaseURL
 			c.environment = env
 			break
 		case "sandbox":
-			c.baseURL = "https://sandbox-api.polar.sh"
+			c.baseURL = polarSandboxAPIBaseURL
 			c.environment = env
 			break
 		case "development":
