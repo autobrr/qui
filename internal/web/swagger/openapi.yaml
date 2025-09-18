@@ -41,6 +41,8 @@ paths:
                 password:
                   type: string
                   minLength: 8
+                  writeOnly: true
+                  description: Password will be hashed and never returned in responses
       responses:
         '201':
           description: Setup completed successfully
@@ -77,6 +79,8 @@ paths:
                   type: string
                 password:
                   type: string
+                  writeOnly: true
+                  description: Password will be hashed and never returned in responses
       responses:
         '200':
           description: Login successful
@@ -152,9 +156,13 @@ paths:
               properties:
                 currentPassword:
                   type: string
+                  writeOnly: true
+                  description: Current password for verification
                 newPassword:
                   type: string
                   minLength: 8
+                  writeOnly: true
+                  description: New password will be hashed and never returned in responses
       responses:
         '200':
           description: Password changed successfully
@@ -337,19 +345,30 @@ paths:
               type: object
               required:
                 - name
-                - url
+                - host
                 - username
                 - password
               properties:
                 name:
                   type: string
-                url:
+                host:
                   type: string
                   format: uri
                 username:
                   type: string
                 password:
                   type: string
+                  writeOnly: true
+                  description: Password for qBittorrent instance. Will be encrypted and never returned in responses.
+                basicUsername:
+                  type: string
+                  nullable: true
+                  description: Optional basic auth username
+                basicPassword:
+                  type: string
+                  nullable: true
+                  writeOnly: true
+                  description: Optional basic auth password. Will be encrypted and never returned in responses.
       responses:
         '201':
           description: Instance created
@@ -375,13 +394,24 @@ paths:
               properties:
                 name:
                   type: string
-                url:
+                host:
                   type: string
                   format: uri
                 username:
                   type: string
                 password:
                   type: string
+                  writeOnly: true
+                  description: Password for qBittorrent instance. Optional for updates - only updates if provided and not masked.
+                basicUsername:
+                  type: string
+                  nullable: true
+                  description: Optional basic auth username
+                basicPassword:
+                  type: string
+                  nullable: true
+                  writeOnly: true
+                  description: Optional basic auth password. For updates - provide new password to update, omit field to keep existing, or empty string to remove basic auth.
       responses:
         '200':
           description: Instance updated
@@ -593,6 +623,108 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/TorrentFile'
+
+  /api/instances/{instanceId}/torrents/{hash}/peers:
+    get:
+      tags:
+        - Torrent Details
+      summary: Get torrent peers
+      description: Get list of peers for a torrent
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/hash'
+      responses:
+        '200':
+          description: List of peers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    ip:
+                      type: string
+                    port:
+                      type: integer
+                    client:
+                      type: string
+                    progress:
+                      type: number
+                    dlSpeed:
+                      type: integer
+                    upSpeed:
+                      type: integer
+                    downloaded:
+                      type: integer
+                    uploaded:
+                      type: integer
+                    connection:
+                      type: string
+                    flags:
+                      type: string
+                    flagsDesc:
+                      type: string
+                    relevance:
+                      type: number
+
+  /api/instances/{instanceId}/torrents/add-peers:
+    post:
+      tags:
+        - Torrents
+      summary: Add peers to torrents
+      description: Add peers to one or more torrents
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - hashes
+                - peers
+              properties:
+                hashes:
+                  type: array
+                  items:
+                    type: string
+                  description: List of torrent hashes
+                peers:
+                  type: array
+                  items:
+                    type: string
+                  description: List of peers in host:port format
+      responses:
+        '200':
+          description: Peers added successfully
+
+  /api/instances/{instanceId}/torrents/ban-peers:
+    post:
+      tags:
+        - Torrents
+      summary: Ban peers permanently
+      description: Ban peers from connecting to the client
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - peers
+              properties:
+                peers:
+                  type: array
+                  items:
+                    type: string
+                  description: List of peer IPs to ban
+      responses:
+        '200':
+          description: Peers banned successfully
 
   /api/instances/{instanceId}/categories:
     get:
@@ -1041,17 +1173,44 @@ components:
           type: integer
         name:
           type: string
-        url:
+        host:
           type: string
           format: uri
-        isDefault:
-          type: boolean
-        status:
+        username:
           type: string
-          enum: [online, offline, error]
-        lastChecked:
+        password:
+          type: string
+          description: Always masked with asterisks in responses. Only used for input.
+          readOnly: true
+        basic_username:
+          type: string
+          nullable: true
+        basic_password:
+          type: string
+          description: Always masked with asterisks in responses. Only used for input.
+          readOnly: true
+          nullable: true
+        is_active:
+          type: boolean
+        last_connected_at:
           type: string
           format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        connected:
+          type: boolean
+          description: Current connection status
+        connectionError:
+          type: string
+          description: Error message if connection failed
+        hasDecryptionError:
+          type: boolean
+          description: Whether there's a password decryption error
 
 
     Torrent:

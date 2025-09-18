@@ -4,6 +4,7 @@
  */
 
 import { createRootRoute, Outlet } from "@tanstack/react-router"
+import { NotFound } from "@/pages/NotFound"
 
 export const Route = createRootRoute({
   component: () => (
@@ -11,4 +12,5 @@ export const Route = createRootRoute({
       <Outlet />
     </>
   ),
+  notFoundComponent: NotFound,
 })

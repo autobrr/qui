@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/CAFxX/httpcompression"
+	"github.com/alexedwards/scs/v2"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/rs/zerolog/log"
@@ -31,6 +32,7 @@ type Dependencies struct {
 	Config              *config.AppConfig
 	DB                  *sql.DB
 	AuthService         *auth.Service
+	SessionManager      *scs.SessionManager
 	InstanceStore       *models.InstanceStore
 	ClientAPIKeyStore   *models.ClientAPIKeyStore
 	ClientPool          *qbittorrent.ClientPool
@@ -65,8 +67,11 @@ func NewRouter(deps *Dependencies) *chi.Mux {
 	}
 	r.Use(apimiddleware.CORSWithCredentials(allowedOrigins))
 
+	// Session middleware - must be added before any session-dependent middleware
+	r.Use(deps.SessionManager.LoadAndSave)
+
 	// Create handlers
-	authHandler := handlers.NewAuthHandler(deps.AuthService)
+	authHandler := handlers.NewAuthHandler(deps.AuthService, deps.SessionManager, deps.InstanceStore, deps.ClientPool, deps.SyncManager)
 	instancesHandler := handlers.NewInstancesHandler(deps.InstanceStore, deps.ClientPool, deps.SyncManager)
 	torrentsHandler := handlers.NewTorrentsHandler(deps.SyncManager)
 	preferencesHandler := handlers.NewPreferencesHandler(deps.SyncManager)
@@ -98,7 +103,7 @@ func NewRouter(deps *Dependencies) *chi.Mux {
 
 		// Protected routes
 		r.Group(func(r chi.Router) {
-			r.Use(apimiddleware.IsAuthenticated(deps.AuthService))
+			r.Use(apimiddleware.IsAuthenticated(deps.AuthService, deps.SessionManager))
 
 			// Auth routes
 			r.Post("/auth/logout", authHandler.Logout)
@@ -134,11 +139,14 @@ func NewRouter(deps *Dependencies) *chi.Mux {
 						r.Get("/", torrentsHandler.ListTorrents)
 						r.Post("/", torrentsHandler.AddTorrent)
 						r.Post("/bulk-action", torrentsHandler.BulkAction)
+						r.Post("/add-peers", torrentsHandler.AddPeers)
+						r.Post("/ban-peers", torrentsHandler.BanPeers)
 
 						r.Route("/{hash}", func(r chi.Router) {
 							// Torrent details
 							r.Get("/properties", torrentsHandler.GetTorrentProperties)
 							r.Get("/trackers", torrentsHandler.GetTorrentTrackers)
+							r.Get("/peers", torrentsHandler.GetTorrentPeers)
 							r.Get("/files", torrentsHandler.GetTorrentFiles)
 						})
 					})

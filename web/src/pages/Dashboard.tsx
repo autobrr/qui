@@ -7,6 +7,16 @@ import { InstanceErrorDisplay } from "@/components/instances/InstanceErrorDispla
 import { InstanceSettingsButton } from "@/components/instances/InstanceSettingsButton"
 import { PasswordIssuesBanner } from "@/components/instances/PasswordIssuesBanner"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -17,7 +27,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useInstances } from "@/hooks/useInstances"
 import { usePersistedAccordionState } from "@/hooks/usePersistedAccordionState"
 import { api } from "@/lib/api"
-import { formatBytes, formatSpeed, getRatioColor } from "@/lib/utils"
+import { formatBytes, getRatioColor } from "@/lib/utils"
 import type { InstanceResponse, ServerState, TorrentCounts, TorrentResponse, TorrentStats } from "@/types"
 import { useQueries, useQuery } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
@@ -34,6 +44,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { useAlternativeSpeedLimits } from "@/hooks/useAlternativeSpeedLimits"
 import { useIncognitoMode } from "@/lib/incognito"
+import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 
 
 // Optimized hook to get all instance stats using shared TorrentResponse cache
@@ -80,6 +91,7 @@ function InstanceCard({
   isAdvancedMetricsOpen: boolean
   setIsAdvancedMetricsOpen: (open: boolean) => void
 }) {
+  const [showSpeedLimitDialog, setShowSpeedLimitDialog] = useState(false)
 
   // Use shared TorrentResponse cache for optimized performance
   const { data: torrentData, isLoading, error } = useQuery<TorrentResponse>({
@@ -100,6 +112,7 @@ function InstanceCard({
 
   const { enabled: altSpeedEnabled, toggle: toggleAltSpeed, isToggling } = useAlternativeSpeedLimits(instance.id)
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
+  const [speedUnit] = useSpeedUnits()
   const displayUrl = instance.host
 
   // Use TorrentStats directly - no more conversion needed
@@ -151,30 +164,56 @@ function InstanceCard({
             </Link>
             <div className="flex items-center gap-2">
               {instance.connected && !isFirstLoad && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={(e) => {
-                        e.preventDefault()
-                        e.stopPropagation()
-                        toggleAltSpeed()
-                      }}
-                      disabled={isToggling}
-                      className="h-8 w-8 p-0 !hover:bg-transparent"
-                    >
-                      {altSpeedEnabled ? (
-                        <Turtle className="h-4 w-4 text-orange-600" />
-                      ) : (
-                        <Rabbit className="h-4 w-4 text-green-600" />
-                      )}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    Alternative speed limits {altSpeedEnabled ? "enabled (turtle mode)" : "disabled (normal mode)"} - Click to toggle
-                  </TooltipContent>
-                </Tooltip>
+                <>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          setShowSpeedLimitDialog(true)
+                        }}
+                        disabled={isToggling}
+                        className="h-8 w-8 p-0 !hover:bg-transparent"
+                      >
+                        {altSpeedEnabled ? (
+                          <Turtle className="h-4 w-4 text-orange-600" />
+                        ) : (
+                          <Rabbit className="h-4 w-4 text-green-600" />
+                        )}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      Alternative speed limits {altSpeedEnabled ? "enabled (turtle mode)" : "disabled (normal mode)"} - Click to toggle
+                    </TooltipContent>
+                  </Tooltip>
+                  <AlertDialog open={showSpeedLimitDialog} onOpenChange={setShowSpeedLimitDialog}>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>
+                          {altSpeedEnabled ? "Disable Alternative Speed Limits?" : "Enable Alternative Speed Limits?"}
+                        </AlertDialogTitle>
+                        <AlertDialogDescription>
+                          {altSpeedEnabled? `This will disable alternative speed limits for ${instance.name} and return to normal speed limits.`: `This will enable alternative speed limits for ${instance.name}, which will reduce transfer speeds based on your configured limits.`
+                          }
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={() => {
+                            toggleAltSpeed()
+                            setShowSpeedLimitDialog(false)
+                          }}
+                        >
+                          {altSpeedEnabled ? "Disable" : "Enable"}
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </>
               )}
               {showSettingsButton && (
                 <InstanceSettingsButton
@@ -187,8 +226,8 @@ function InstanceCard({
               </Badge>
             </div>
           </div>
-          <CardDescription className={`flex items-center gap-1 ${!isFirstLoad ? "text-xs" : ""} overflow-hidden`}>
-            <span className={`${incognitoMode ? "blur-sm select-none" : ""} truncate`} title={displayUrl}>
+          <CardDescription className={`flex items-center gap-1 ${!isFirstLoad ? "text-xs" : ""}`}>
+            <span className={`${incognitoMode ? "blur-sm select-none" : ""} truncate`} style={incognitoMode ? { filter: "blur(8px)" } : {}} title={displayUrl}>
               {displayUrl}
             </span>
             <Button
@@ -240,13 +279,13 @@ function InstanceCard({
               <div className="flex items-center gap-2 text-xs">
                 <Download className="h-3 w-3 text-muted-foreground" />
                 <span className="text-muted-foreground">Download</span>
-                <span className="ml-auto font-medium">{formatSpeed(stats?.totalDownloadSpeed || 0)}</span>
+                <span className="ml-auto font-medium">{formatSpeedWithUnit(stats?.totalDownloadSpeed || 0, speedUnit)}</span>
               </div>
 
               <div className="flex items-center gap-2 text-xs">
                 <Upload className="h-3 w-3 text-muted-foreground" />
                 <span className="text-muted-foreground">Upload</span>
-                <span className="ml-auto font-medium">{formatSpeed(stats?.totalUploadSpeed || 0)}</span>
+                <span className="ml-auto font-medium">{formatSpeedWithUnit(stats?.totalUploadSpeed || 0, speedUnit)}</span>
               </div>
 
               {serverState?.free_space_on_disk !== undefined && serverState.free_space_on_disk > 0 && (
@@ -315,6 +354,7 @@ function InstanceCard({
 }
 
 function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: InstanceResponse, stats: TorrentStats | null, serverState: ServerState | null, torrentCounts: TorrentCounts | undefined }> }) {
+  const [speedUnit] = useSpeedUnits()
   const globalStats = useMemo(() => {
     const connected = statsData.filter(({ instance }) => instance?.connected).length
     const totalTorrents = statsData.reduce((sum, { torrentCounts }) =>
@@ -395,7 +435,7 @@ function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: Instance
           <Download className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold">{formatSpeed(globalStats.totalDownload)}</div>
+          <div className="text-2xl font-bold">{formatSpeedWithUnit(globalStats.totalDownload, speedUnit)}</div>
           <p className="text-xs text-muted-foreground">
             All instances combined
           </p>
@@ -408,7 +448,7 @@ function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: Instance
           <Upload className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold">{formatSpeed(globalStats.totalUpload)}</div>
+          <div className="text-2xl font-bold">{formatSpeedWithUnit(globalStats.totalUpload, speedUnit)}</div>
           <p className="text-xs text-muted-foreground">
             All instances combined
           </p>

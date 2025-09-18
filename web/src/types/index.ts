@@ -58,6 +58,8 @@ export interface Torrent {
   priority: number
   num_seeds: number
   num_leechs: number
+  num_complete: number
+  num_incomplete: number
   ratio: number
   eta: number
   state: string

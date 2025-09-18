@@ -12,7 +12,7 @@ import type {
   TorrentResponse,
   User
 } from "@/types"
-import { getApiBaseUrl } from "./base-url"
+import { getApiBaseUrl, withBasePath } from "./base-url"
 
 const API_BASE = getApiBaseUrl()
 
@@ -31,6 +31,11 @@ class ApiClient {
     })
 
     if (!response.ok) {
+      if (response.status === 401 && !window.location.pathname.startsWith(withBasePath("/login")) && !window.location.pathname.startsWith(withBasePath("/setup"))) {
+        window.location.href = withBasePath("/login")
+        throw new Error("Session expired")
+      }
+
       let errorMessage = `HTTP error! status: ${response.status}`
       try {
         const errorData = await response.json()
@@ -79,10 +84,10 @@ class ApiClient {
     })
   }
 
-  async login(username: string, password: string): Promise<AuthResponse> {
+  async login(username: string, password: string, rememberMe = false): Promise<AuthResponse> {
     return this.request<AuthResponse>("/auth/login", {
       method: "POST",
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username, password, remember_me: rememberMe }),
     })
   }
 
@@ -219,7 +224,7 @@ class ApiClient {
     instanceId: number,
     data: {
       hashes: string[]
-      action: "pause" | "resume" | "delete" | "recheck" | "reannounce" | "increasePriority" | "decreasePriority" | "topPriority" | "bottomPriority" | "setCategory" | "addTags" | "removeTags" | "setTags" | "toggleAutoTMM" | "setShareLimit" | "setUploadLimit" | "setDownloadLimit"
+      action: "pause" | "resume" | "delete" | "recheck" | "reannounce" | "increasePriority" | "decreasePriority" | "topPriority" | "bottomPriority" | "setCategory" | "addTags" | "removeTags" | "setTags" | "toggleAutoTMM" | "setShareLimit" | "setUploadLimit" | "setDownloadLimit" | "setLocation"
       deleteFiles?: boolean
       category?: string
       tags?: string  // Comma-separated tags string
@@ -238,6 +243,7 @@ class ApiClient {
       inactiveSeedingTimeLimit?: number  // For setShareLimit action (minutes)
       uploadLimit?: number  // For setUploadLimit action (KB/s)
       downloadLimit?: number  // For setDownloadLimit action (KB/s)
+      location?: string  // For setLocation action
     }
   ): Promise<void> {
     return this.request(`/instances/${instanceId}/torrents/bulk-action`, {
@@ -257,6 +263,24 @@ class ApiClient {
 
   async getTorrentFiles(instanceId: number, hash: string): Promise<any[]> {
     return this.request(`/instances/${instanceId}/torrents/${hash}/files`)
+  }
+
+  async getTorrentPeers(instanceId: number, hash: string): Promise<any> {
+    return this.request(`/instances/${instanceId}/torrents/${hash}/peers`)
+  }
+
+  async addPeersToTorrents(instanceId: number, hashes: string[], peers: string[]): Promise<void> {
+    return this.request(`/instances/${instanceId}/torrents/add-peers`, {
+      method: "POST",
+      body: JSON.stringify({ hashes, peers }),
+    })
+  }
+
+  async banPeers(instanceId: number, peers: string[]): Promise<void> {
+    return this.request(`/instances/${instanceId}/torrents/ban-peers`, {
+      method: "POST",
+      body: JSON.stringify({ peers }),
+    })
   }
 
   // Categories & Tags

@@ -31,7 +31,6 @@ import {
   Download,
   Edit,
   MoveRight,
-  PauseCircle,
   PlayCircle,
   Plus,
   RotateCw,
@@ -59,17 +58,18 @@ interface FilterBadgeProps {
 
 function FilterBadge({ count, onClick }: FilterBadgeProps) {
   return (
-    <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-xs">
-      <button
-        onClick={(e) => {
-          e.stopPropagation()
-          onClick()
-        }}
-        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-      >
+    <Badge
+      variant="secondary"
+      className="ml-2 h-5 px-1.5 text-xs cursor-pointer hover:bg-secondary/80"
+      onClick={(e: React.MouseEvent) => {
+        e.stopPropagation()
+        onClick()
+      }}
+    >
+      <span className="flex items-center gap-1 text-xs text-muted-foreground">
         <X className="size-3"/>
         {count}
-      </button>
+      </span>
     </Badge>
   )
 }
@@ -102,10 +102,10 @@ const TORRENT_STATES: Array<{ value: string; label: string; icon: LucideIcon }> 
   { value: "downloading", label: "Downloading", icon: Download },
   { value: "uploading", label: "Seeding", icon: Upload },
   { value: "completed", label: "Completed", icon: CheckCircle2 },
-  { value: "paused", label: "Paused", icon: PauseCircle },
+  { value: "stopped", label: "Stopped", icon: StopCircle },
   { value: "active", label: "Active", icon: PlayCircle },
   { value: "inactive", label: "Inactive", icon: StopCircle },
-  { value: "resumed", label: "Resumed", icon: PlayCircle },
+  { value: "running", label: "Running", icon: PlayCircle },
   { value: "stalled", label: "Stalled", icon: AlertCircle },
   { value: "stalled_uploading", label: "Stalled Uploading", icon: AlertCircle },
   { value: "stalled_downloading", label: "Stalled Downloading", icon: AlertCircle },
@@ -375,7 +375,7 @@ const FilterSidebarComponent = ({
         isStaleData ? "opacity-75 transition-opacity duration-200" : ""
       }`}
     >
-      <ScrollArea className="h-full flex-1 overscroll-contain">
+      <ScrollArea className="h-full flex-1 overscroll-contain select-none">
         <div className="p-4">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">

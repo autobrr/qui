@@ -3,27 +3,28 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import type { ColumnDef } from "@tanstack/react-table"
-import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Progress } from "@/components/ui/progress"
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger
 } from "@/components/ui/tooltip"
-import { ListOrdered } from "lucide-react"
-import type { Torrent } from "@/types"
 import {
-  getLinuxIsoName,
   getLinuxCategory,
-  getLinuxTags,
+  getLinuxIsoName,
+  getLinuxRatio,
   getLinuxSavePath,
-  getLinuxTracker,
-  getLinuxRatio
+  getLinuxTags,
+  getLinuxTracker
 } from "@/lib/incognito"
-import { formatBytes, formatSpeed, getRatioColor } from "@/lib/utils"
+import { formatSpeedWithUnit, type SpeedUnit } from "@/lib/speedUnits"
 import { getStateLabel } from "@/lib/torrent-state-utils"
+import { formatBytes, getRatioColor } from "@/lib/utils"
+import type { Torrent } from "@/types"
+import type { ColumnDef } from "@tanstack/react-table"
+import { ListOrdered } from "lucide-react"
 
 function formatEta(seconds: number): string {
   if (seconds === 8640000) return "∞"
@@ -64,7 +65,8 @@ export const createColumns = (
     onRowSelection?: (hash: string, checked: boolean, rowId?: string) => void
     isAllSelected?: boolean
     excludedFromSelectAll?: Set<string>
-  }
+  },
+  speedUnit: SpeedUnit = "bytes"
 ): ColumnDef<Torrent>[] => [
   {
     id: "select",
@@ -209,7 +211,7 @@ export const createColumns = (
     cell: ({ row }) => {
       const displayName = incognitoMode ? getLinuxIsoName(row.original.hash) : row.original.name
       return (
-        <div className="truncate text-sm" title={displayName}>
+        <div className="overflow-hidden whitespace-nowrap text-sm" title={displayName}>
           {displayName}
         </div>
       )
@@ -219,7 +221,7 @@ export const createColumns = (
   {
     accessorKey: "size",
     header: "Size",
-    cell: ({ row }) => <span className="text-sm truncate">{formatBytes(row.original.size)}</span>,
+    cell: ({ row }) => <span className="text-sm overflow-hidden whitespace-nowrap">{formatBytes(row.original.size)}</span>,
     size: 85,
   },
   {
@@ -263,21 +265,57 @@ export const createColumns = (
     size: 130,
   },
   {
+    accessorKey: "num_seeds",
+    header: "Seeds",
+    cell: ({ row }) => {
+      const connected = row.original.num_seeds >= 0 ? row.original.num_seeds : 0
+      const total = row.original.num_complete >= 0 ? row.original.num_complete : 0
+      if (total < 0 && connected < 0) return <span className="text-sm overflow-hidden whitespace-nowrap">-</span>
+      return (
+        <span className="text-sm overflow-hidden whitespace-nowrap">
+          {connected} ({total})
+        </span>
+      )
+    },
+    size: 85,
+  },
+  {
+    accessorKey: "num_leechs",
+    header: "Peers",
+    cell: ({ row }) => {
+      const connected = row.original.num_leechs >= 0 ? row.original.num_leechs : 0
+      const total = row.original.num_incomplete >= 0 ? row.original.num_incomplete : 0
+      if (total < 0 && connected < 0) return <span className="text-sm overflow-hidden whitespace-nowrap">-</span>
+      return (
+        <span className="text-sm overflow-hidden whitespace-nowrap">
+          {connected} ({total})
+        </span>
+      )
+    },
+    size: 85,
+  },
+  {
     accessorKey: "dlspeed",
     header: "Down Speed",
-    cell: ({ row }) => <span className="text-sm truncate">{formatSpeed(row.original.dlspeed)}</span>,
+    cell: ({ row }) => {
+      const speed = row.original.dlspeed
+      return <span className="text-sm overflow-hidden whitespace-nowrap">{speed === 0 ? "-" : formatSpeedWithUnit(speed, speedUnit)}</span>
+    },
     size: calculateMinWidth("Down Speed"),
   },
   {
     accessorKey: "upspeed",
     header: "Up Speed",
-    cell: ({ row }) => <span className="text-sm truncate">{formatSpeed(row.original.upspeed)}</span>,
+    cell: ({ row }) => {
+      const speed = row.original.upspeed
+      return <span className="text-sm overflow-hidden whitespace-nowrap">{speed === 0 ? "-" : formatSpeedWithUnit(speed, speedUnit)}</span>
+    },
     size: calculateMinWidth("Up Speed"),
   },
   {
     accessorKey: "eta",
     header: "ETA",
-    cell: ({ row }) => <span className="text-sm truncate">{formatEta(row.original.eta)}</span>,
+    cell: ({ row }) => <span className="text-sm overflow-hidden whitespace-nowrap">{formatEta(row.original.eta)}</span>,
     size: 80,
   },
   {
@@ -290,7 +328,7 @@ export const createColumns = (
 
       return (
         <span
-          className="text-sm font-medium"
+          className="text-sm font-medium overflow-hidden whitespace-nowrap"
           style={{ color: colorVar }}
         >
           {displayRatio}
@@ -318,7 +356,7 @@ export const createColumns = (
       const displayHours = hours % 12 || 12
 
       return (
-        <div className="whitespace-nowrap text-sm">
+        <div className="overflow-hidden whitespace-nowrap text-sm">
           {month}/{day}/{year}, {displayHours}:{minutes.toString().padStart(2, "0")}:{seconds.toString().padStart(2, "0")} {ampm}
         </div>
       )
@@ -331,8 +369,8 @@ export const createColumns = (
     cell: ({ row }) => {
       const displayCategory = incognitoMode ? getLinuxCategory(row.original.hash) : row.original.category
       return (
-        <div className="truncate text-sm" title={displayCategory || "-"}>
-          {displayCategory || "-"}
+        <div className="overflow-hidden whitespace-nowrap text-sm" title={displayCategory || ""}>
+          {displayCategory || ""}
         </div>
       )
     },
@@ -343,9 +381,9 @@ export const createColumns = (
     header: "Tags",
     cell: ({ row }) => {
       const tags = incognitoMode ? getLinuxTags(row.original.hash) : row.original.tags
-      const displayTags = Array.isArray(tags) ? tags.join(", ") : tags || "-"
+      const displayTags = Array.isArray(tags) ? tags.join(", ") : tags || ""
       return (
-        <div className="truncate text-sm" title={displayTags}>
+        <div className="overflow-hidden whitespace-nowrap text-sm" title={displayTags}>
           {displayTags}
         </div>
       )
@@ -355,13 +393,19 @@ export const createColumns = (
   {
     accessorKey: "downloaded",
     header: "Downloaded",
-    cell: ({ row }) => <span className="text-sm truncate">{formatBytes(row.original.downloaded)}</span>,
+    cell: ({ row }) => {
+      const downloaded = row.original.downloaded
+      return <span className="text-sm overflow-hidden whitespace-nowrap">{downloaded === 0 ? "-" : formatBytes(downloaded)}</span>
+    },
     size: calculateMinWidth("Downloaded"),
   },
   {
     accessorKey: "uploaded",
     header: "Uploaded",
-    cell: ({ row }) => <span className="text-sm truncate">{formatBytes(row.original.uploaded)}</span>,
+    cell: ({ row }) => {
+      const uploaded = row.original.uploaded
+      return <span className="text-sm overflow-hidden whitespace-nowrap">{uploaded === 0 ? "-" : formatBytes(uploaded)}</span>
+    },
     size: calculateMinWidth("Uploaded"),
   },
   {
@@ -370,7 +414,7 @@ export const createColumns = (
     cell: ({ row }) => {
       const displayPath = incognitoMode ? getLinuxSavePath(row.original.hash) : row.original.save_path
       return (
-        <div className="truncate text-sm" title={displayPath}>
+        <div className="overflow-hidden whitespace-nowrap text-sm" title={displayPath}>
           {displayPath}
         </div>
       )
@@ -392,7 +436,7 @@ export const createColumns = (
         // ignore
       }
       return (
-        <div className="truncate text-sm" title={tracker}>
+        <div className="overflow-hidden whitespace-nowrap text-sm" title={tracker}>
           {displayTracker || "-"}
         </div>
       )

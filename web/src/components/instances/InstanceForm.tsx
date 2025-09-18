@@ -60,10 +60,26 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
   const [authBypass, setAuthBypass] = useState(false)
 
   const handleSubmit = (data: InstanceFormData) => {
-    const submitData = showBasicAuth ? data : {
-      ...data,
-      basicUsername: undefined,
-      basicPassword: undefined,
+    let submitData: InstanceFormData
+
+    if (showBasicAuth) {
+      // If basic auth is enabled, only include basicPassword if it's not the redacted placeholder
+      if (data.basicPassword === "<redacted>") {
+        // Don't send basicPassword at all - this preserves existing password
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { basicPassword, ...dataWithoutPassword } = data
+        submitData = dataWithoutPassword
+      } else {
+        // Send the actual password (could be empty to clear, or new password)
+        submitData = data
+      }
+    } else {
+      // Basic auth disabled - clear basic auth credentials
+      submitData = {
+        ...data,
+        basicUsername: "",
+        basicPassword: "",
+      }
     }
 
     if (instance) {
@@ -104,7 +120,7 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
       username: instance?.username ?? "",
       password: "",
       basicUsername: instance?.basicUsername ?? "",
-      basicPassword: "",
+      basicPassword: instance?.basicUsername ? "<redacted>" : "",
     },
     onSubmit: ({ value }) => {
       handleSubmit(value)
@@ -266,7 +282,13 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
                 )}
               </form.Field>
 
-              <form.Field name="basicPassword">
+              <form.Field
+                name="basicPassword"
+                validators={{
+                  onChange: ({ value }) =>
+                    showBasicAuth && value === ""? "Basic auth password is required when basic auth is enabled": undefined,
+                }}
+              >
                 {(field) => (
                   <div className="space-y-2">
                     <Label htmlFor={field.name}>Basic Auth Password</Label>
@@ -275,11 +297,20 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
                       type="password"
                       value={field.state.value}
                       onBlur={field.handleBlur}
+                      onFocus={() => {
+                        // Clear the redacted placeholder when user focuses to edit
+                        if (field.state.value === "<redacted>") {
+                          field.handleChange("")
+                        }
+                      }}
                       onChange={(e) => field.handleChange(e.target.value)}
-                      placeholder={instance?.basicUsername ? "Leave empty to keep current password" : "Enter basic auth password"}
+                      placeholder="Enter basic auth password (required)"
                       data-1p-ignore
                       autoComplete='off'
                     />
+                    {field.state.meta.errors[0] && (
+                      <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
+                    )}
                   </div>
                 )}
               </form.Field>
