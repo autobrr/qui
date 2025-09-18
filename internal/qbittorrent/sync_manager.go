@@ -150,8 +150,18 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		}
 	}
 
+	needsManualCategoryFiltering := false
+	if len(filters.Categories) == 1 && filters.Categories[0] == "" {
+		needsManualCategoryFiltering = true
+	}
+
+	needsManualTagFiltering := false
+	if len(filters.Tags) == 1 && filters.Tags[0] == "" {
+		needsManualTagFiltering = true
+	}
+
 	useManualFiltering = hasMultipleStatusFilters || hasMultipleCategoryFilters || hasMultipleTagFilters ||
-		hasTrackerFilters || needsManualStatusFiltering
+		hasTrackerFilters || needsManualStatusFiltering || needsManualCategoryFiltering || needsManualTagFiltering
 
 	if useManualFiltering {
 		// Use manual filtering - get all torrents and filter manually
@@ -162,6 +172,8 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 			Bool("multipleTags", hasMultipleTagFilters).
 			Bool("hasTrackers", hasTrackerFilters).
 			Bool("needsManualStatus", needsManualStatusFiltering).
+			Bool("needsManualCategory", needsManualCategoryFiltering).
+			Bool("needsManualTag", needsManualTagFiltering).
 			Msg("Using manual filtering due to multiple selections or unsupported filters")
 
 		// Get all torrents
@@ -187,11 +199,11 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 				torrentFilterOptions.Filter = qbt.TorrentFilterAll
 			case "completed":
 				torrentFilterOptions.Filter = qbt.TorrentFilterCompleted
-			case "resumed":
-				torrentFilterOptions.Filter = qbt.TorrentFilterResumed
-			case "paused":
-				torrentFilterOptions.Filter = qbt.TorrentFilterPaused
-			case "stopped":
+			case "running", "resumed":
+				// Use TorrentFilterRunning - go-qbittorrent will translate based on version
+				torrentFilterOptions.Filter = qbt.TorrentFilterRunning
+			case "paused", "stopped":
+				// Use TorrentFilterStopped - go-qbittorrent will translate based on version
 				torrentFilterOptions.Filter = qbt.TorrentFilterStopped
 			case "stalled":
 				torrentFilterOptions.Filter = qbt.TorrentFilterStalled
@@ -632,26 +644,35 @@ func (sm *SyncManager) countTorrentStatuses(torrent qbt.Torrent, counts map[stri
 	}
 
 	// Check active states for "active" and "inactive"
-	isActive := slices.Contains(torrentStateCategories["active"], torrent.State)
+	isActive := slices.Contains(torrentStateCategories[qbt.TorrentFilterActive], torrent.State)
 	if isActive {
 		counts["active"]++
 	} else {
 		counts["inactive"]++
 	}
 
-	// Check paused states for "paused" and "resumed"
-	isPaused := slices.Contains(torrentStateCategories["paused"], torrent.State)
-	if isPaused {
-		counts["paused"]++
+	// Check stopped/paused states - both old PausedDl/Up and new StoppedDl/Up states
+	pausedStates := torrentStateCategories[qbt.TorrentFilterPaused]
+	stoppedStates := torrentStateCategories[qbt.TorrentFilterStopped]
+
+	// A torrent is considered stopped if it's in either paused or stopped states
+	isPausedOrStopped := slices.Contains(pausedStates, torrent.State) || slices.Contains(stoppedStates, torrent.State)
+
+	if isPausedOrStopped {
+		counts["stopped"]++
+		counts["paused"]++ // For backward compatibility
 	} else {
-		counts["resumed"]++
+		// Running is the inverse of stopped/paused
+		counts["running"]++
+		counts["resumed"]++ // For backward compatibility
 	}
 
 	// Count other status categories
 	for status, states := range torrentStateCategories {
 		if slices.Contains(states, torrent.State) {
-			// Skip "active" and "paused" as we handled them above
-			if status != "active" && status != "paused" {
+			// Skip "active", "paused", and "stopped" as we handled them above
+			if status != qbt.TorrentFilterActive && status != qbt.TorrentFilterPaused &&
+				status != qbt.TorrentFilterStopped {
 				counts[string(status)]++
 			}
 		}
@@ -665,7 +686,7 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(allTorrents []qbt
 	counts := &TorrentCounts{
 		Status: map[string]int{
 			"all": 0, "downloading": 0, "seeding": 0, "completed": 0, "paused": 0,
-			"active": 0, "inactive": 0, "resumed": 0, "stalled": 0,
+			"active": 0, "inactive": 0, "resumed": 0, "running": 0, "stopped": 0, "stalled": 0,
 			"stalled_uploading": 0, "stalled_downloading": 0, "errored": 0,
 			"checking": 0, "moving": 0,
 		},
@@ -973,6 +994,45 @@ func normalizeForSearch(text string) string {
 	return strings.Join(strings.Fields(normalized), " ")
 }
 
+// containsTagNoAlloc checks if the comma-separated tags string contains the target tag
+// It avoids allocations by scanning the string and comparing token substrings using strings.EqualFold.
+func containsTagNoAlloc(tags string, target string) bool {
+	if tags == "" || target == "" {
+		return false
+	}
+
+	i := 0
+	n := len(tags)
+	for i < n {
+		// skip leading spaces
+		for i < n && tags[i] == ' ' {
+			i++
+		}
+		// start of token
+		start := i
+		for i < n && tags[i] != ',' {
+			i++
+		}
+		end := i
+		// trim trailing spaces
+		for end > start && tags[end-1] == ' ' {
+			end--
+		}
+
+		// quick length check
+		if end-start == len(target) {
+			if tags[start:end] == target {
+				return true
+			}
+		}
+
+		// skip comma
+		i++
+	}
+
+	return false
+}
+
 // filterTorrentsBySearch filters torrents by search string with smart matching
 func (sm *SyncManager) filterTorrentsBySearch(torrents []qbt.Torrent, search string) []qbt.Torrent {
 	if search == "" {
@@ -1151,128 +1211,138 @@ func (sm *SyncManager) filterTorrentsByGlob(torrents []qbt.Torrent, pattern stri
 func (sm *SyncManager) applyManualFilters(torrents []qbt.Torrent, filters FilterOptions, mainData *qbt.MainData) []qbt.Torrent {
 	var filtered []qbt.Torrent
 
-	for _, torrent := range torrents {
-		matches := true
+	// Category set for O(1) lookups
+	categorySet := make(map[string]struct{}, len(filters.Categories))
+	for _, c := range filters.Categories {
+		categorySet[c] = struct{}{}
+	}
 
-		// Apply status filters (OR logic within status filters)
+	// Prepare tag filter strings (lower-cased/trimmed) to reuse across torrents (avoid per-torrent allocations)
+	includeUntagged := false
+	if len(filters.Tags) > 0 {
+		for _, t := range filters.Tags {
+			if t == "" {
+				includeUntagged = true
+				continue
+			}
+		}
+	}
+
+	// Precompute tracker filter set for O(1) lookups
+	trackerFilterSet := make(map[string]struct{}, len(filters.Trackers))
+	for _, t := range filters.Trackers {
+		trackerFilterSet[t] = struct{}{}
+	}
+
+	// Precompute a map from torrent hash -> set of tracker domains using mainData.Trackers
+	// Only keep domains that are present in the tracker filter set (if any filters are provided)
+	torrentHashToDomains := map[string]map[string]struct{}{}
+	if mainData != nil && mainData.Trackers != nil && len(filters.Trackers) != 0 {
+		for trackerURL, hashes := range mainData.Trackers {
+			domain := sm.extractDomainFromURL(trackerURL)
+			if domain == "" {
+				domain = "Unknown"
+			}
+
+			// If tracker filters are set and this domain isn't in them, skip storing it
+			if len(trackerFilterSet) > 0 {
+				if _, ok := trackerFilterSet[domain]; !ok {
+					continue
+				}
+			}
+
+			for _, h := range hashes {
+				if torrentHashToDomains[h] == nil {
+					torrentHashToDomains[h] = make(map[string]struct{})
+				}
+				torrentHashToDomains[h][domain] = struct{}{}
+			}
+		}
+	}
+
+	for _, torrent := range torrents {
+		// Status filters (OR logic)
 		if len(filters.Status) > 0 {
-			statusMatch := false
+			matched := false
 			for _, status := range filters.Status {
 				if sm.matchTorrentStatus(torrent, status) {
-					statusMatch = true
+					matched = true
 					break
 				}
 			}
-			matches = matches && statusMatch
-		}
-
-		// Apply category filters (OR logic within category filters)
-		if len(filters.Categories) > 0 {
-			categoryMatch := false
-			torrentCategory := torrent.Category
-			if slices.Contains(filters.Categories, torrentCategory) {
-				categoryMatch = true
+			if !matched {
+				continue
 			}
-			matches = matches && categoryMatch
 		}
 
-		// Apply tag filters (OR logic within tag filters)
+		// Category filters (OR logic)
+		if len(filters.Categories) > 0 {
+			if _, ok := categorySet[torrent.Category]; !ok {
+				continue
+			}
+		}
+
+		// Tag filters (OR logic)
 		if len(filters.Tags) > 0 {
-			tagMatch := false
 			if torrent.Tags == "" {
-				// Check if empty tag is in the filter (for "untagged" option)
-				if slices.Contains(filters.Tags, "") {
-					tagMatch = true
+				if !includeUntagged {
+					continue
 				}
 			} else {
-				// Parse torrent tags
-				torrentTags := strings.SplitSeq(torrent.Tags, ", ")
-				torrentTagsMap := make(map[string]bool)
-				for tag := range torrentTags {
-					trimmedTag := strings.TrimSpace(tag)
-					if trimmedTag != "" {
-						torrentTagsMap[trimmedTag] = true
-					}
-				}
-
-				// Check if any filter tag matches torrent tags
-				for _, filterTag := range filters.Tags {
-					if filterTag == "" {
-						// Empty filter tag means "untagged", but we already handled that case
-						continue
-					}
-					if torrentTagsMap[filterTag] {
-						tagMatch = true
+				tagMatched := false
+				for _, ft := range filters.Tags {
+					if containsTagNoAlloc(torrent.Tags, ft) {
+						tagMatched = true
 						break
 					}
 				}
+				if !tagMatched {
+					continue
+				}
 			}
-			matches = matches && tagMatch
 		}
 
-		// Apply tracker filters (OR logic within tracker filters)
+		// Tracker filters (OR logic)
 		if len(filters.Trackers) > 0 {
-			trackerMatch := false
-
-			// Use MainData.Trackers if available for accurate multi-tracker filtering
-			if mainData != nil && mainData.Trackers != nil {
-				// Build a set of tracker domains for this torrent using MainData
-				torrentTrackerDomains := make(map[string]bool)
-
-				// Check each tracker URL in MainData
-				for trackerURL, torrentHashes := range mainData.Trackers {
-					// Check if this torrent is in the hash list for this tracker
-					if slices.Contains(torrentHashes, torrent.Hash) {
-						// This torrent uses this tracker
-						domain := sm.extractDomainFromURL(trackerURL)
-						if domain == "" {
-							domain = "Unknown"
-						}
-						torrentTrackerDomains[domain] = true
-					}
-				}
-
-				// If torrent has no trackers in MainData, check for empty filter
-				if len(torrentTrackerDomains) == 0 {
-					if slices.Contains(filters.Trackers, "") {
-						trackerMatch = true
-					}
-				} else {
-					// Check if any of the torrent's tracker domains match the filter
-					for domain := range torrentTrackerDomains {
-						if slices.Contains(filters.Trackers, domain) {
-							trackerMatch = true
+			// If we precomputed MainData domains, use them
+			if len(torrentHashToDomains) > 0 {
+				if domains, ok := torrentHashToDomains[torrent.Hash]; ok && len(domains) > 0 {
+					found := false
+					for domain := range domains {
+						if _, ok := trackerFilterSet[domain]; ok {
+							found = true
 							break
 						}
 					}
-				}
-			} else {
-				// Fallback to using torrent.Tracker field if MainData not available
-				if torrent.Tracker == "" {
-					// Check if empty tracker is in the filter (for "no tracker" option)
-					if slices.Contains(filters.Trackers, "") {
-						trackerMatch = true
+					if !found {
+						continue
 					}
 				} else {
-					// Extract domain from the active tracker
-					// Note: torrent.Tracker only contains the currently active tracker
+					// No trackers known for this torrent
+					if _, ok := trackerFilterSet[""]; !ok {
+						continue
+					}
+				}
+			} else {
+				// Fallback to torrent.Tracker
+				if torrent.Tracker == "" {
+					if _, ok := trackerFilterSet[""]; !ok {
+						continue
+					}
+				} else {
 					trackerDomain := sm.extractDomainFromURL(torrent.Tracker)
 					if trackerDomain == "" {
 						trackerDomain = "Unknown"
 					}
-
-					// Check if the tracker domain matches the filter
-					if slices.Contains(filters.Trackers, trackerDomain) {
-						trackerMatch = true
+					if _, ok := trackerFilterSet[trackerDomain]; !ok {
+						continue
 					}
 				}
 			}
-			matches = matches && trackerMatch
 		}
 
-		if matches {
-			filtered = append(filtered, torrent)
-		}
+		// If we reach here, torrent passed all active filters
+		filtered = append(filtered, torrent)
 	}
 
 	log.Debug().
@@ -1300,6 +1370,8 @@ var torrentStateCategories = map[qbt.TorrentFilter][]qbt.TorrentState{
 	qbt.TorrentFilterMoving:             {qbt.TorrentStateMoving},
 	qbt.TorrentFilterStalledUploading:   {qbt.TorrentStateStalledUp},
 	qbt.TorrentFilterStalledDownloading: {qbt.TorrentStateStalledDl},
+	qbt.TorrentFilterStopped:            {qbt.TorrentStateStoppedDl, qbt.TorrentStateStoppedUp},
+	// TorrentFilterRunning is handled specially in matchTorrentStatus as inverse of stopped
 }
 
 // Action state categories for optimistic update clearing
@@ -1358,10 +1430,17 @@ func (sm *SyncManager) matchTorrentStatus(torrent qbt.Torrent, status string) bo
 		return torrent.Progress == 1
 	case qbt.TorrentFilterInactive:
 		// Inactive is the inverse of active
-		return !slices.Contains(torrentStateCategories["active"], torrent.State)
-	case "resumed":
-		// Resumed is the inverse of paused
-		return !slices.Contains(torrentStateCategories["paused"], torrent.State)
+		return !slices.Contains(torrentStateCategories[qbt.TorrentFilterActive], torrent.State)
+	case qbt.TorrentFilterRunning, qbt.TorrentFilterResumed:
+		// Running/Resumed means "not paused and not stopped"
+		pausedStates := torrentStateCategories[qbt.TorrentFilterPaused]
+		stoppedStates := torrentStateCategories[qbt.TorrentFilterStopped]
+		return !slices.Contains(pausedStates, torrent.State) && !slices.Contains(stoppedStates, torrent.State)
+	case qbt.TorrentFilterStopped, qbt.TorrentFilterPaused:
+		// Stopped/Paused includes both paused and stopped states
+		pausedStates := torrentStateCategories[qbt.TorrentFilterPaused]
+		stoppedStates := torrentStateCategories[qbt.TorrentFilterStopped]
+		return slices.Contains(pausedStates, torrent.State) || slices.Contains(stoppedStates, torrent.State)
 	}
 
 	// For grouped status categories, check if state is in the category
@@ -1842,6 +1921,32 @@ func (sm *SyncManager) SetTorrentDownloadLimit(ctx context.Context, instanceID i
 
 	if err := client.SetTorrentDownloadLimitCtx(ctx, hashes, limitBytes); err != nil {
 		return fmt.Errorf("failed to set torrent download limit: %w", err)
+	}
+
+	return nil
+}
+
+// SetLocation sets the save location for torrents
+func (sm *SyncManager) SetLocation(ctx context.Context, instanceID int, hashes []string, location string) error {
+	// Get client and sync manager
+	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		return err
+	}
+
+	// Validate that torrents exist
+	if err := sm.validateTorrentsExist(client, hashes, "set location"); err != nil {
+		return err
+	}
+
+	// Validate location is not empty
+	if strings.TrimSpace(location) == "" {
+		return fmt.Errorf("location cannot be empty")
+	}
+
+	// Set the location - this will disable Auto TMM and move the torrents
+	if err := client.SetLocationCtx(ctx, hashes, location); err != nil {
+		return fmt.Errorf("failed to set torrent location: %w", err)
 	}
 
 	return nil

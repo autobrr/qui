@@ -72,14 +72,14 @@ import {
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
-import { getCommonCategory, getCommonTags } from "@/lib/torrent-utils"
+import { getCommonCategory, getCommonSavePath, getCommonTags } from "@/lib/torrent-utils"
 import type { Category, Torrent, TorrentCounts } from "@/types"
 import { useSearch } from "@tanstack/react-router"
 import { ArrowUpDown, ChevronDown, ChevronUp, Columns3, Eye, EyeOff, Loader2 } from "lucide-react"
 import { createPortal } from "react-dom"
 import { AddTorrentDialog } from "./AddTorrentDialog"
 import { DraggableTableHeader } from "./DraggableTableHeader"
-import { AddTagsDialog, RemoveTagsDialog, SetCategoryDialog, SetTagsDialog } from "./TorrentDialogs"
+import { AddTagsDialog, RemoveTagsDialog, SetCategoryDialog, SetLocationDialog, SetTagsDialog } from "./TorrentDialogs"
 import { createColumns } from "./TorrentTableColumns"
 
 // Default values for persisted state hooks (module scope for stable references)
@@ -139,6 +139,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const [speedUnit, setSpeedUnit] = useSpeedUnits()
 
+  // Detect platform for keyboard shortcuts
+  const isMac = useMemo(() => {
+    return typeof window !== "undefined" && /Mac|iPhone|iPad|iPod/.test(window.navigator.userAgent)
+  }, [])
+
   // Track user-initiated actions to differentiate from automatic data updates
   const [lastUserAction, setLastUserAction] = useState<{ type: string; timestamp: number } | null>(null)
   const previousFiltersRef = useRef(filters)
@@ -181,6 +186,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     setShowRemoveTagsDialog,
     showCategoryDialog,
     setShowCategoryDialog,
+    showLocationDialog,
+    setShowLocationDialog,
     showRecheckDialog,
     setShowRecheckDialog,
     showReannounceDialog,
@@ -194,6 +201,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     handleSetTags,
     handleRemoveTags,
     handleSetCategory,
+    handleSetLocation,
     handleSetShareLimit,
     handleSetSpeedLimits,
     handleRecheck,
@@ -201,12 +209,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     prepareDeleteAction,
     prepareTagsAction,
     prepareCategoryAction,
+    prepareLocationAction,
     prepareRecheckAction,
     prepareReannounceAction,
   } = useTorrentActions({
     instanceId,
     onActionComplete: () => {
       setRowSelection({})
+      lastSelectedIndexRef.current = null // Reset anchor after actions
     },
   })
 
@@ -343,6 +353,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       setIsAllSelected(false)
       setExcludedFromSelectAll(new Set())
       setRowSelection({})
+      lastSelectedIndexRef.current = null // Reset anchor on deselect all
     } else {
       // Select all mode - only when nothing is selected
       setIsAllSelected(true)
@@ -630,6 +641,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       setIsAllSelected(false)
       setExcludedFromSelectAll(new Set())
       setRowSelection({})
+      lastSelectedIndexRef.current = null // Reset anchor on filter/search change
 
       // User-initiated change: scroll to top
       if (parentRef.current) {
@@ -652,6 +664,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     setIsAllSelected(false)
     setExcludedFromSelectAll(new Set())
     setRowSelection({})
+    lastSelectedIndexRef.current = null // Reset anchor on clear selection
   }, [setRowSelection])
 
   // Set up keyboard navigation with selection clearing
@@ -712,6 +725,17 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       Array.from(excludedFromSelectAll)
     )
   }, [handleSetCategory, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll])
+
+  const handleSetLocationWrapper = useCallback((location: string) => {
+    handleSetLocation(
+      location,
+      contextHashes,
+      isAllSelected,
+      filters,
+      effectiveSearch,
+      Array.from(excludedFromSelectAll)
+    )
+  }, [handleSetLocation, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll])
 
   const handleRemoveTagsWrapper = useCallback((tags: string[]) => {
     handleRemoveTags(
@@ -950,6 +974,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                       onPrepareDelete={prepareDeleteAction}
                       onPrepareTags={prepareTagsAction}
                       onPrepareCategory={prepareCategoryAction}
+                      onPrepareLocation={prepareLocationAction}
                       onPrepareRecheck={prepareRecheckAction}
                       onPrepareReannounce={prepareReannounceAction}
                       onSetShareLimit={handleSetShareLimit}
@@ -971,7 +996,42 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                           const target = e.target as HTMLElement
                           const isCheckbox = target.closest("[data-slot=\"checkbox\"]") || target.closest("[role=\"checkbox\"]") || target.closest(".p-1.-m-1")
                           if (!isCheckbox) {
-                            onTorrentSelect?.(torrent)
+                            // Handle shift-click for range selection - EXACTLY like checkbox
+                            if (e.shiftKey) {
+                              e.preventDefault() // Prevent text selection
+
+                              const allRows = table.getRowModel().rows
+                              const currentIndex = allRows.findIndex(r => r.id === row.id)
+
+                              if (lastSelectedIndexRef.current !== null) {
+                                const start = Math.min(lastSelectedIndexRef.current, currentIndex)
+                                const end = Math.max(lastSelectedIndexRef.current, currentIndex)
+
+                                // Select range EXACTLY like checkbox does
+                                for (let i = start; i <= end; i++) {
+                                  const targetRow = allRows[i]
+                                  if (targetRow) {
+                                    handleRowSelection(targetRow.original.hash, true, targetRow.id)
+                                  }
+                                }
+                              } else {
+                                // No anchor - just select this row
+                                handleRowSelection(torrent.hash, true, row.id)
+                                lastSelectedIndexRef.current = currentIndex
+                              }
+
+                              // Don't update lastSelectedIndexRef on shift-click (keeps anchor stable)
+                            } else if (e.ctrlKey || e.metaKey) {
+                              // Ctrl/Cmd click - toggle single row EXACTLY like checkbox
+                              const allRows = table.getRowModel().rows
+                              const currentIndex = allRows.findIndex(r => r.id === row.id)
+
+                              handleRowSelection(torrent.hash, !row.getIsSelected(), row.id)
+                              lastSelectedIndexRef.current = currentIndex
+                            } else {
+                              // Plain click - open details without changing checkbox selection state
+                              onTorrentSelect?.(torrent)
+                            }
                           }
                         }}
                         onContextMenu={() => {
@@ -1032,6 +1092,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
               <>
                 <span className="ml-2">
                   ({isAllSelected && excludedFromSelectAll.size === 0 ? `All ${effectiveSelectionCount}` : effectiveSelectionCount} selected)
+                </span>
+                {/* Keyboard shortcuts helper - only show on desktop */}
+                <span className="hidden sm:inline-block ml-2 text-xs opacity-70">
+                  • Shift+click for range • {isMac ? "Cmd" : "Ctrl"}+click for multiple
                 </span>
               </>
             )}
@@ -1157,6 +1221,16 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         onConfirm={handleSetCategoryWrapper}
         isPending={isPending}
         initialCategory={getCommonCategory(contextTorrents)}
+      />
+
+      {/* Set Location Dialog */}
+      <SetLocationDialog
+        open={showLocationDialog}
+        onOpenChange={setShowLocationDialog}
+        hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
+        onConfirm={handleSetLocationWrapper}
+        isPending={isPending}
+        initialLocation={getCommonSavePath(contextTorrents)}
       />
 
       {/* Remove Tags Dialog */}
