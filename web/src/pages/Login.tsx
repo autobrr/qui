@@ -116,66 +116,67 @@ export function Login() {
             </CardDescription>
           </CardHeader>
           <CardContent className="pt-6">
-            <form
-              onSubmit={(e) => {
-                e.preventDefault()
-                form.handleSubmit()
-              }}
-              className="space-y-4"
-            >
-              <form.Field
-                name="username"
-                validators={{
-                  onChange: ({ value }) => {
-                    if (!value) return "Username is required"
-                    return undefined
-                  },
+            {showBuiltInLogin && (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  form.handleSubmit()
                 }}
+                className="space-y-4"
               >
-                {(field) => (
-                  <div className="space-y-2">
-                    <Label htmlFor={field.name}>Username</Label>
-                    <Input
-                      id={field.name}
-                      type="text"
-                      value={field.state.value}
-                      onBlur={field.handleBlur}
-                      onChange={(e) => field.handleChange(e.target.value)}
-                      placeholder="Enter your username"
-                    />
-                    {field.state.meta.isTouched && field.state.meta.errors[0] && (
-                      <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
-                    )}
-                  </div>
-                )}
-              </form.Field>
+                <form.Field
+                  name="username"
+                  validators={{
+                    onChange: ({ value }) => {
+                      if (!value) return "Username is required"
+                      return undefined
+                    },
+                  }}
+                >
+                  {(field) => (
+                    <div className="space-y-2">
+                      <Label htmlFor={field.name}>Username</Label>
+                      <Input
+                        id={field.name}
+                        type="text"
+                        value={field.state.value}
+                        onBlur={field.handleBlur}
+                        onChange={(e) => field.handleChange(e.target.value)}
+                        placeholder="Enter your username"
+                      />
+                      {field.state.meta.isTouched && field.state.meta.errors[0] && (
+                        <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
+                      )}
+                    </div>
+                  )}
+                </form.Field>
 
-              <form.Field
-                name="password"
-                validators={{
-                  onChange: ({ value }) => {
-                    if (!value) return "Password is required"
-                    return undefined
-                  },
-                }}
-              >
-                {(field) => (
-                  <div className="space-y-2">
-                    <Label htmlFor={field.name}>Password</Label>
-                    <Input
-                      id={field.name}
-                      type="password"
-                      value={field.state.value}
-                      onBlur={field.handleBlur}
-                      onChange={(e) => field.handleChange(e.target.value)}
-                      placeholder="Enter your password"
-                    />
-                    {field.state.meta.isTouched && field.state.meta.errors[0] && (
-                      <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
-                    )}
-                  </div>
-                )}
-              </form.Field>
+                <form.Field
+                  name="password"
+                  validators={{
+                    onChange: ({ value }) => {
+                      if (!value) return "Password is required"
+                      return undefined
+                    },
+                  }}
+                >
+                  {(field) => (
+                    <div className="space-y-2">
+                      <Label htmlFor={field.name}>Password</Label>
+                      <Input
+                        id={field.name}
+                        type="password"
+                        value={field.state.value}
+                        onBlur={field.handleBlur}
+                        onChange={(e) => field.handleChange(e.target.value)}
+                        placeholder="Enter your password"
+                      />
+                      {field.state.meta.isTouched && field.state.meta.errors[0] && (
+                        <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
+                      )}
+                    </div>
+                  )}
+                </form.Field>
 
                 <form.Field name="rememberMe">
                   {(field) => (
