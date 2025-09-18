@@ -551,19 +551,114 @@ paths:
             schema:
               type: object
               required:
-                - hashes
                 - action
               properties:
                 hashes:
                   type: array
                   items:
                     type: string
+                  description: Specific torrent hashes to target. Required unless selectAll is true.
+                selectAll:
+                  type: boolean
+                  description: Apply the action to all torrents matching the provided filters.
+                filters:
+                  type: object
+                  description: Filter criteria used when selectAll is true.
+                  properties:
+                    status:
+                      type: array
+                      items:
+                        type: string
+                    categories:
+                      type: array
+                      items:
+                        type: string
+                    tags:
+                      type: array
+                      items:
+                        type: string
+                    trackers:
+                      type: array
+                      items:
+                        type: string
+                search:
+                  type: string
+                  description: Optional search query applied when selectAll is true.
+                excludeHashes:
+                  type: array
+                  items:
+                    type: string
+                  description: Hashes to exclude when selectAll is true.
                 action:
                   type: string
-                  enum: [pause, resume, delete]
+                  description: Bulk action to perform on the selected torrents.
+                  enum:
+                    - pause
+                    - resume
+                    - delete
+                    - deleteWithFiles
+                    - recheck
+                    - reannounce
+                    - increasePriority
+                    - decreasePriority
+                    - topPriority
+                    - bottomPriority
+                    - addTags
+                    - removeTags
+                    - setTags
+                    - setCategory
+                    - toggleAutoTMM
+                    - setShareLimit
+                    - setUploadLimit
+                    - setDownloadLimit
+                    - setLocation
+                    - editTrackers
+                    - addTrackers
+                    - removeTrackers
                 deleteFiles:
                   type: boolean
                   description: Only for delete action
+                tags:
+                  type: string
+                  description: Comma-separated list of tags for tag-related actions.
+                category:
+                  type: string
+                  description: Category name for setCategory action.
+                enable:
+                  type: boolean
+                  description: Enable or disable Automatic Torrent Management for toggleAutoTMM.
+                ratioLimit:
+                  type: number
+                  format: float
+                  description: Ratio limit for setShareLimit action.
+                seedingTimeLimit:
+                  type: integer
+                  format: int64
+                  description: Seeding time limit (minutes) for setShareLimit action.
+                inactiveSeedingTimeLimit:
+                  type: integer
+                  format: int64
+                  description: Inactive seeding time limit (minutes) for setShareLimit action.
+                uploadLimit:
+                  type: integer
+                  format: int64
+                  description: Upload speed limit in KB/s for setUploadLimit action.
+                downloadLimit:
+                  type: integer
+                  format: int64
+                  description: Download speed limit in KB/s for setDownloadLimit action.
+                location:
+                  type: string
+                  description: Destination path for setLocation action.
+                trackerOldURL:
+                  type: string
+                  description: Existing tracker URL to replace for editTrackers action.
+                trackerNewURL:
+                  type: string
+                  description: Replacement tracker URL for editTrackers action.
+                trackerURLs:
+                  type: string
+                  description: Newline-separated tracker URLs for addTrackers/removeTrackers actions.
       responses:
         '200':
           description: Action performed successfully

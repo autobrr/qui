@@ -2056,6 +2056,8 @@ func (sm *SyncManager) AddTorrentTrackers(ctx context.Context, instanceID int, h
 		return fmt.Errorf("failed to add trackers: %w", err)
 	}
 
+	sm.syncAfterModification(instanceID, client, "add_trackers")
+
 	return nil
 }
 
@@ -2076,6 +2078,8 @@ func (sm *SyncManager) RemoveTorrentTrackers(ctx context.Context, instanceID int
 		return fmt.Errorf("failed to remove trackers: %w", err)
 	}
 
+	sm.syncAfterModification(instanceID, client, "remove_trackers")
+
 	return nil
 }
 
@@ -2093,18 +2097,24 @@ func (sm *SyncManager) BulkEditTrackers(ctx context.Context, instanceID int, has
 
 	updatedHashes := make([]string, 0, len(hashes))
 
+	var lastErr error
+
 	// Edit trackers for each torrent
 	for _, hash := range hashes {
 		if err := client.EditTrackerCtx(ctx, hash, oldURL, newURL); err != nil {
 			// Log error but continue with other torrents
 			log.Error().Err(err).Str("hash", hash).Msg("Failed to edit tracker for torrent")
+			lastErr = err
 			continue
 		}
 		updatedHashes = append(updatedHashes, hash)
 	}
 
 	if len(updatedHashes) == 0 {
-		return nil
+		if lastErr != nil {
+			return fmt.Errorf("failed to edit trackers: %w", lastErr)
+		}
+		return fmt.Errorf("failed to edit trackers")
 	}
 
 	sm.recordTrackerTransition(client, oldURL, newURL, updatedHashes)
@@ -2127,13 +2137,28 @@ func (sm *SyncManager) BulkAddTrackers(ctx context.Context, instanceID int, hash
 		return err
 	}
 
+	var success bool
+	var lastErr error
+
 	// Add trackers to each torrent
 	for _, hash := range hashes {
 		if err := client.AddTrackersCtx(ctx, hash, urls); err != nil {
 			// Log error but continue with other torrents
 			log.Error().Err(err).Str("hash", hash).Msg("Failed to add trackers to torrent")
+			lastErr = err
+			continue
 		}
+		success = true
 	}
+
+	if !success {
+		if lastErr != nil {
+			return fmt.Errorf("failed to add trackers: %w", lastErr)
+		}
+		return fmt.Errorf("failed to add trackers")
+	}
+
+	sm.syncAfterModification(instanceID, client, "bulk_add_trackers")
 
 	return nil
 }
@@ -2150,13 +2175,28 @@ func (sm *SyncManager) BulkRemoveTrackers(ctx context.Context, instanceID int, h
 		return err
 	}
 
+	var success bool
+	var lastErr error
+
 	// Remove trackers from each torrent
 	for _, hash := range hashes {
 		if err := client.RemoveTrackersCtx(ctx, hash, urls); err != nil {
 			// Log error but continue with other torrents
 			log.Error().Err(err).Str("hash", hash).Msg("Failed to remove trackers from torrent")
+			lastErr = err
+			continue
 		}
+		success = true
 	}
+
+	if !success {
+		if lastErr != nil {
+			return fmt.Errorf("failed to remove trackers: %w", lastErr)
+		}
+		return fmt.Errorf("failed to remove trackers")
+	}
+
+	sm.syncAfterModification(instanceID, client, "bulk_remove_trackers")
 
 	return nil
 }
