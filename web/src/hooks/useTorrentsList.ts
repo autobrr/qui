@@ -52,7 +52,7 @@ export function useTorrentsList(
   }, [instanceId, filterKey, searchKey, sort, order])
 
   // Query for torrents - backend handles stale-while-revalidate
-  const { data, isLoading, isFetching } = useQuery<TorrentResponse>({
+  const { data, isLoading, isFetching, isPlaceholderData } = useQuery<TorrentResponse>({
     queryKey: ["torrents-list", instanceId, currentPage, filters, search, sort, order],
     queryFn: () => {
       return api.getTorrents(instanceId, {
@@ -67,6 +67,8 @@ export function useTorrentsList(
     // Trust backend cache - it returns immediately with stale data if needed
     staleTime: 0, // Always check with backend (it decides if cache is fresh)
     gcTime: 300000, // Keep in React Query cache for 5 minutes for navigation
+    // Reuse the previous page's data while the next page is loading so the UI doesn't flash empty state
+    placeholderData: previousData => previousData,
     // Only poll the first page to get fresh data - don't poll pagination pages
     refetchInterval: currentPage === 0 ? 3000 : false,
     refetchIntervalInBackground: false, // Don't poll when tab is not active
@@ -75,6 +77,10 @@ export function useTorrentsList(
 
   // Update torrents when data arrives or changes (including optimistic updates)
   useEffect(() => {
+    if (currentPage > 0 && isFetching && isPlaceholderData) {
+      return
+    }
+
     if (data?.torrents) {
       // Check if this is a new page load or data update for current page
       const isNewPageLoad = currentPage !== lastProcessedPage
@@ -114,7 +120,7 @@ export function useTorrentsList(
 
       setIsLoadingMore(false)
     }
-  }, [data, currentPage, pageSize, lastProcessedPage])
+  }, [data, currentPage, lastProcessedPage, isFetching, isPlaceholderData])
 
   // Load more function for pagination - following TanStack Query best practices
   const loadMore = () => {
