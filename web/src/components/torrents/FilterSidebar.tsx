@@ -23,7 +23,8 @@ import { SearchInput } from "@/components/ui/SearchInput"
 import { useDebounce } from "@/hooks/useDebounce"
 import { usePersistedAccordion } from "@/hooks/usePersistedAccordion"
 import { getLinuxCount, LINUX_CATEGORIES, LINUX_TAGS, LINUX_TRACKERS, useIncognitoMode } from "@/lib/incognito"
-import type { Category } from "@/types"
+import { cn } from "@/lib/utils"
+import type { Category, TorrentFilters } from "@/types"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import {
   AlertCircle,
@@ -76,18 +77,8 @@ function FilterBadge({ count, onClick }: FilterBadgeProps) {
 
 interface FilterSidebarProps {
   instanceId: number
-  selectedFilters: {
-    status: string[]
-    categories: string[]
-    tags: string[]
-    trackers: string[]
-  }
-  onFilterChange: (filters: {
-    status: string[]
-    categories: string[]
-    tags: string[]
-    trackers: string[]
-  }) => void
+  selectedFilters: TorrentFilters
+  onFilterChange: (filters: TorrentFilters) => void
   torrentCounts?: Record<string, number>
   categories?: Record<string, Category>
   tags?: string[]
@@ -217,6 +208,41 @@ const FilterSidebarComponent = ({
   const tagListRef = useRef<HTMLDivElement>(null)
   const trackerListRef = useRef<HTMLDivElement>(null)
 
+  const includeTagSet = useMemo(() => new Set(selectedFilters.tags), [selectedFilters.tags])
+  const excludeTagSet = useMemo(() => new Set(selectedFilters.excludeTags), [selectedFilters.excludeTags])
+
+  const getTagState = useCallback((tag: string): "include" | "exclude" | "neutral" => {
+    if (includeTagSet.has(tag)) return "include"
+    if (excludeTagSet.has(tag)) return "exclude"
+    return "neutral"
+  }, [includeTagSet, excludeTagSet])
+
+  const handleTagStateCycle = useCallback((tag: string) => {
+    const currentState = getTagState(tag)
+
+    let nextIncluded = selectedFilters.tags
+    let nextExcluded = selectedFilters.excludeTags
+
+    if (currentState === "neutral") {
+      nextIncluded = [...selectedFilters.tags, tag]
+    } else if (currentState === "include") {
+      nextIncluded = selectedFilters.tags.filter(t => t !== tag)
+      if (!selectedFilters.excludeTags.includes(tag)) {
+        nextExcluded = [...selectedFilters.excludeTags, tag]
+      }
+    } else {
+      nextExcluded = selectedFilters.excludeTags.filter(t => t !== tag)
+    }
+
+    onFilterChange({
+      ...selectedFilters,
+      tags: nextIncluded,
+      excludeTags: nextExcluded,
+    })
+  }, [getTagState, onFilterChange, selectedFilters])
+
+  const untaggedState = getTagState("")
+
   // Filtered categories for performance
   const filteredCategories = useMemo(() => {
     const categoryEntries = Object.entries(categories) as [string, Category][]
@@ -248,16 +274,13 @@ const FilterSidebarComponent = ({
       )
     }
 
-    // Show selected tags first, then others
-    const selectedTags = tags.filter(tag =>
-      selectedFilters.tags.includes(tag)
-    )
-    const unselectedTags = tags.filter(tag =>
-      !selectedFilters.tags.includes(tag)
-    )
+    // Show included tags first, then exclusions, then neutral tags
+    const included = tags.filter(tag => includeTagSet.has(tag))
+    const excluded = tags.filter(tag => !includeTagSet.has(tag) && excludeTagSet.has(tag))
+    const neutral = tags.filter(tag => !includeTagSet.has(tag) && !excludeTagSet.has(tag))
 
-    return [...selectedTags, ...unselectedTags]
-  }, [tags, debouncedTagSearch, selectedFilters.tags])
+    return [...included, ...excluded, ...neutral]
+  }, [tags, debouncedTagSearch, includeTagSet, excludeTagSet])
 
   // Filtered trackers for performance
   const filteredTrackers = useMemo(() => {
@@ -321,15 +344,6 @@ const FilterSidebarComponent = ({
     })
   }, [selectedFilters, onFilterChange])
 
-  const handleTagToggle = useCallback((tag: string) => {
-    const newTags = selectedFilters.tags.includes(tag)? selectedFilters.tags.filter(t => t !== tag): [...selectedFilters.tags, tag]
-
-    onFilterChange({
-      ...selectedFilters,
-      tags: newTags,
-    })
-  }, [selectedFilters, onFilterChange])
-
   const handleTrackerToggle = useCallback((tracker: string) => {
     const newTrackers = selectedFilters.trackers.includes(tracker)? selectedFilters.trackers.filter(t => t !== tracker): [...selectedFilters.trackers, tracker]
 
@@ -344,28 +358,36 @@ const FilterSidebarComponent = ({
       status: [],
       categories: [],
       tags: [],
+      excludeTags: [],
       trackers: [],
     })
     // Optionally reset accordion state to defaults
     // setExpandedItems(['status', 'categories', 'tags'])
   }
 
-  const createClearFilter = (property: keyof typeof selectedFilters) => () => {
+  const createClearFilter = <K extends keyof TorrentFilters>(property: K) => () => {
     onFilterChange({
       ...selectedFilters,
-      [property]: [],
+      [property]: [] as TorrentFilters[K],
     })
   }
 
   const clearStatusFilter = createClearFilter("status")
   const clearCategoriesFilter = createClearFilter("categories")
-  const clearTagsFilter = createClearFilter("tags")
   const clearTrackersFilter = createClearFilter("trackers")
+  const clearTagsFilter = () => {
+    onFilterChange({
+      ...selectedFilters,
+      tags: [],
+      excludeTags: [],
+    })
+  }
 
   const hasActiveFilters =
     selectedFilters.status.length > 0 ||
     selectedFilters.categories.length > 0 ||
     selectedFilters.tags.length > 0 ||
+    selectedFilters.excludeTags.length > 0 ||
     selectedFilters.trackers.length > 0
 
   // Simple slide animation - sidebar slides in/out from the left
@@ -626,9 +648,9 @@ const FilterSidebarComponent = ({
               <AccordionTrigger className="px-3 py-2 hover:no-underline">
                 <div className="flex items-center justify-between w-full">
                   <span className="text-sm font-medium">Tags</span>
-                  {selectedFilters.tags.length > 0 && (
+                  {selectedFilters.tags.length + selectedFilters.excludeTags.length > 0 && (
                     <FilterBadge
-                      count={selectedFilters.tags.length}
+                      count={selectedFilters.tags.length + selectedFilters.excludeTags.length}
                       onClick={clearTagsFilter}
                     />
                   )}
@@ -657,16 +679,33 @@ const FilterSidebarComponent = ({
                   </div>
 
                   {/* Untagged option */}
-                  <label className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer">
+                  <label
+                    className={cn(
+                      "flex items-center space-x-2 py-1 px-2 rounded cursor-pointer transition-colors",
+                      untaggedState === "exclude"
+                        ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
+                        : "hover:bg-muted"
+                    )}
+                  >
                     <Checkbox
-                      checked={selectedFilters.tags.includes("")}
-                      onCheckedChange={() => handleTagToggle("")}
+                      checked={untaggedState === "include" ? true : untaggedState === "exclude" ? "indeterminate" : false}
+                      onCheckedChange={() => handleTagStateCycle("")}
                       className="rounded border-input"
                     />
-                    <span className="text-sm flex-1 italic text-muted-foreground">
+                    <span
+                      className={cn(
+                        "text-sm flex-1 italic",
+                        untaggedState === "exclude" ? "text-destructive" : "text-muted-foreground"
+                      )}
+                    >
                       Untagged
                     </span>
-                    <span className="text-xs text-muted-foreground">
+                    <span
+                      className={cn(
+                        "text-xs",
+                        untaggedState === "exclude" ? "text-destructive" : "text-muted-foreground"
+                      )}
+                    >
                       {getDisplayCount("tag:")}
                     </span>
                   </label>
@@ -702,6 +741,7 @@ const FilterSidebarComponent = ({
                         {tagVirtualizer.getVirtualItems().map((virtualRow) => {
                           const tag = filteredTags[virtualRow.index]
                           if (!tag) return null
+                          const tagState = getTagState(tag)
 
                           return (
                             <div
@@ -718,15 +758,33 @@ const FilterSidebarComponent = ({
                             >
                               <ContextMenu>
                                 <ContextMenuTrigger asChild>
-                                  <label className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer">
+                                  <label
+                                    className={cn(
+                                      "flex items-center space-x-2 py-1 px-2 rounded cursor-pointer transition-colors",
+                                      tagState === "exclude"
+                                        ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
+                                        : "hover:bg-muted"
+                                    )}
+                                  >
                                     <Checkbox
-                                      checked={selectedFilters.tags.includes(tag)}
-                                      onCheckedChange={() => handleTagToggle(tag)}
+                                      checked={tagState === "include" ? true : tagState === "exclude" ? "indeterminate" : false}
+                                      onCheckedChange={() => handleTagStateCycle(tag)}
                                     />
-                                    <span className="text-sm flex-1 truncate w-8" title={tag}>
+                                    <span
+                                      className={cn(
+                                        "text-sm flex-1 truncate w-8",
+                                        tagState === "exclude" ? "text-destructive" : undefined
+                                      )}
+                                      title={tag}
+                                    >
                                       {tag}
                                     </span>
-                                    <span className="text-xs text-muted-foreground">
+                                    <span
+                                      className={cn(
+                                        "text-xs",
+                                        tagState === "exclude" ? "text-destructive" : "text-muted-foreground"
+                                      )}
+                                    >
                                       {getDisplayCount(`tag:${tag}`, incognitoMode ? getLinuxCount(tag, 30) : undefined)}
                                     </span>
                                   </label>
@@ -758,22 +816,42 @@ const FilterSidebarComponent = ({
                       </div>
                     </div>
                   ) : (
-                    filteredTags.map((tag: string) => (
-                      <ContextMenu key={tag}>
-                        <ContextMenuTrigger asChild>
-                          <label className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer">
-                            <Checkbox
-                              checked={selectedFilters.tags.includes(tag)}
-                              onCheckedChange={() => handleTagToggle(tag)}
-                            />
-                            <span className="text-sm flex-1 truncate w-8" title={tag}>
-                              {tag}
-                            </span>
-                            <span className="text-xs text-muted-foreground">
-                              {getDisplayCount(`tag:${tag}`, incognitoMode ? getLinuxCount(tag, 30) : undefined)}
-                            </span>
-                          </label>
-                        </ContextMenuTrigger>
+                    filteredTags.map((tag: string) => {
+                      const tagState = getTagState(tag)
+                      return (
+                        <ContextMenu key={tag}>
+                          <ContextMenuTrigger asChild>
+                            <label
+                              className={cn(
+                                "flex items-center space-x-2 py-1 px-2 rounded cursor-pointer transition-colors",
+                                tagState === "exclude"
+                                  ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
+                                  : "hover:bg-muted"
+                              )}
+                            >
+                              <Checkbox
+                                checked={tagState === "include" ? true : tagState === "exclude" ? "indeterminate" : false}
+                                onCheckedChange={() => handleTagStateCycle(tag)}
+                              />
+                              <span
+                                className={cn(
+                                  "text-sm flex-1 truncate w-8",
+                                  tagState === "exclude" ? "text-destructive" : undefined
+                                )}
+                                title={tag}
+                              >
+                                {tag}
+                              </span>
+                              <span
+                                className={cn(
+                                  "text-xs",
+                                  tagState === "exclude" ? "text-destructive" : "text-muted-foreground"
+                                )}
+                              >
+                                {getDisplayCount(`tag:${tag}`, incognitoMode ? getLinuxCount(tag, 30) : undefined)}
+                              </span>
+                            </label>
+                          </ContextMenuTrigger>
                         <ContextMenuContent>
                           <ContextMenuItem
                             onClick={() => {
@@ -794,8 +872,9 @@ const FilterSidebarComponent = ({
                             Delete All Unused Tags
                           </ContextMenuItem>
                         </ContextMenuContent>
-                      </ContextMenu>
-                    ))
+                        </ContextMenu>
+                      )
+                    })
                   )}
                 </div>
               </AccordionContent>

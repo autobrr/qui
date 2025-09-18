@@ -73,7 +73,7 @@ import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { getCommonCategory, getCommonSavePath, getCommonTags } from "@/lib/torrent-utils"
-import type { Category, Torrent, TorrentCounts } from "@/types"
+import type { Category, Torrent, TorrentCounts, TorrentFilters } from "@/types"
 import { useSearch } from "@tanstack/react-router"
 import { ArrowUpDown, ChevronDown, ChevronUp, Columns3, Eye, EyeOff, Loader2 } from "lucide-react"
 import { createPortal } from "react-dom"
@@ -107,12 +107,7 @@ function getDefaultColumnOrder(): string[] {
 
 interface TorrentTableOptimizedProps {
   instanceId: number
-  filters?: {
-    status: string[]
-    categories: string[]
-    tags: string[]
-    trackers: string[]
-  }
+  filters?: TorrentFilters
   selectedTorrent?: Torrent | null
   onTorrentSelect?: (torrent: Torrent | null) => void
   addTorrentModalOpen?: boolean

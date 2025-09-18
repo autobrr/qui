@@ -9,6 +9,7 @@ import type {
   Category,
   InstanceFormData,
   InstanceResponse,
+  TorrentFilters,
   TorrentResponse,
   User
 } from "@/types"
@@ -135,7 +136,7 @@ class ApiClient {
       sort?: string
       order?: "asc" | "desc"
       search?: string
-      filters?: any
+      filters?: TorrentFilters
     }
   ): Promise<TorrentResponse> {
     const searchParams = new URLSearchParams()
@@ -230,12 +231,7 @@ class ApiClient {
       tags?: string  // Comma-separated tags string
       enable?: boolean  // For toggleAutoTMM
       selectAll?: boolean  // When true, apply to all torrents matching filters
-      filters?: {
-        status: string[]
-        categories: string[]
-        tags: string[]
-        trackers: string[]
-      }
+      filters?: TorrentFilters
       search?: string  // Search query when selectAll is true
       excludeHashes?: string[]  // Hashes to exclude when selectAll is true
       ratioLimit?: number  // For setShareLimit action

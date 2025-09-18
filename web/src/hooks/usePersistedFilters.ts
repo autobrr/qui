@@ -4,17 +4,11 @@
  */
 
 import { useState, useEffect } from "react"
-
-interface Filters {
-  status: string[]
-  categories: string[]
-  tags: string[]
-  trackers: string[]
-}
+import type { TorrentFilters } from "@/types"
 
 export function usePersistedFilters(instanceId: number) {
   // Initialize state with persisted values immediately
-  const [filters, setFilters] = useState<Filters>(() => {
+  const [filters, setFilters] = useState<TorrentFilters>(() => {
     const global = JSON.parse(localStorage.getItem("qui-filters-global") || "{}")
     const instance = JSON.parse(localStorage.getItem(`qui-filters-${instanceId}`) || "{}")
 
@@ -22,6 +16,7 @@ export function usePersistedFilters(instanceId: number) {
       status: global.status || [],
       categories: instance.categories || [],
       tags: instance.tags || [],
+      excludeTags: instance.excludeTags || [],
       trackers: instance.trackers || [],
     }
   })
@@ -35,6 +30,7 @@ export function usePersistedFilters(instanceId: number) {
       status: global.status || [],
       categories: instance.categories || [],
       tags: instance.tags || [],
+      excludeTags: instance.excludeTags || [],
       trackers: instance.trackers || [],
     })
   }, [instanceId])
@@ -45,6 +41,7 @@ export function usePersistedFilters(instanceId: number) {
     localStorage.setItem(`qui-filters-${instanceId}`, JSON.stringify({
       categories: filters.categories,
       tags: filters.tags,
+      excludeTags: filters.excludeTags,
       trackers: filters.trackers,
     }))
   }, [filters, instanceId])

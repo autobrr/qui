@@ -138,6 +138,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	hasMultipleCategoryFilters := len(filters.Categories) > 1
 	hasMultipleTagFilters := len(filters.Tags) > 1
 	hasTrackerFilters := len(filters.Trackers) > 0 // Library doesn't support tracker filtering
+	hasExcludeTagFilters := len(filters.ExcludeTags) > 0
 
 	// Determine if any status filter needs manual filtering
 	needsManualStatusFiltering := false
@@ -161,7 +162,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	}
 
 	useManualFiltering = hasMultipleStatusFilters || hasMultipleCategoryFilters || hasMultipleTagFilters ||
-		hasTrackerFilters || needsManualStatusFiltering || needsManualCategoryFiltering || needsManualTagFiltering
+		hasTrackerFilters || hasExcludeTagFilters || needsManualStatusFiltering || needsManualCategoryFiltering || needsManualTagFiltering
 
 	if useManualFiltering {
 		// Use manual filtering - get all torrents and filter manually
@@ -171,6 +172,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 			Bool("multipleCategories", hasMultipleCategoryFilters).
 			Bool("multipleTags", hasMultipleTagFilters).
 			Bool("hasTrackers", hasTrackerFilters).
+			Bool("hasExcludeTags", hasExcludeTagFilters).
 			Bool("needsManualStatus", needsManualStatusFiltering).
 			Bool("needsManualCategory", needsManualCategoryFiltering).
 			Bool("needsManualTag", needsManualTagFiltering).
@@ -1228,6 +1230,18 @@ func (sm *SyncManager) applyManualFilters(torrents []qbt.Torrent, filters Filter
 		}
 	}
 
+	excludeUntagged := false
+	excludeTags := make([]string, 0, len(filters.ExcludeTags))
+	if len(filters.ExcludeTags) > 0 {
+		for _, t := range filters.ExcludeTags {
+			if t == "" {
+				excludeUntagged = true
+				continue
+			}
+			excludeTags = append(excludeTags, t)
+		}
+	}
+
 	// Precompute tracker filter set for O(1) lookups
 	trackerFilterSet := make(map[string]struct{}, len(filters.Trackers))
 	for _, t := range filters.Trackers {
@@ -1297,6 +1311,26 @@ func (sm *SyncManager) applyManualFilters(torrents []qbt.Torrent, filters Filter
 					}
 				}
 				if !tagMatched {
+					continue
+				}
+			}
+		}
+
+		// Exclude tags (AND logic - any match should exclude the torrent)
+		if excludeUntagged || len(excludeTags) > 0 {
+			if torrent.Tags == "" {
+				if excludeUntagged {
+					continue
+				}
+			} else {
+				excluded := false
+				for _, et := range excludeTags {
+					if containsTagNoAlloc(torrent.Tags, et) {
+						excluded = true
+						break
+					}
+				}
+				if excluded {
 					continue
 				}
 			}

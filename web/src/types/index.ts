@@ -113,6 +113,14 @@ export interface TorrentCounts {
   total: number
 }
 
+export interface TorrentFilters {
+  status: string[]
+  categories: string[]
+  tags: string[]
+  excludeTags: string[]
+  trackers: string[]
+}
+
 export interface TorrentResponse {
   torrents: Torrent[]
   total: number

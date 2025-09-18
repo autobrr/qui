@@ -481,7 +481,7 @@ paths:
           in: query
           schema:
             type: string
-            description: JSON object with filter criteria
+            description: JSON object with filter criteria (`status`, `categories`, `tags`, `excludeTags`, `trackers`)
       responses:
         '200':
           description: Paginated torrent list
