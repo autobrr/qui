@@ -217,21 +217,42 @@ const FilterSidebarComponent = ({
     return "neutral"
   }, [includeTagSet, excludeTagSet])
 
-  const handleTagStateCycle = useCallback((tag: string) => {
-    const currentState = getTagState(tag)
-
+  const setTagState = useCallback((tag: string, state: "include" | "exclude" | "neutral") => {
     let nextIncluded = selectedFilters.tags
     let nextExcluded = selectedFilters.excludeTags
 
-    if (currentState === "neutral") {
-      nextIncluded = [...selectedFilters.tags, tag]
-    } else if (currentState === "include") {
-      nextIncluded = selectedFilters.tags.filter(t => t !== tag)
-      if (!selectedFilters.excludeTags.includes(tag)) {
-        nextExcluded = [...selectedFilters.excludeTags, tag]
-      }
-    } else {
-      nextExcluded = selectedFilters.excludeTags.filter(t => t !== tag)
+    const isIncluded = includeTagSet.has(tag)
+    const isExcluded = excludeTagSet.has(tag)
+
+    switch (state) {
+      case "include":
+        if (!isIncluded) {
+          nextIncluded = [...selectedFilters.tags, tag]
+        }
+        if (isExcluded) {
+          nextExcluded = selectedFilters.excludeTags.filter(t => t !== tag)
+        }
+        break
+      case "exclude":
+        if (isIncluded) {
+          nextIncluded = selectedFilters.tags.filter(t => t !== tag)
+        }
+        if (!isExcluded) {
+          nextExcluded = [...selectedFilters.excludeTags, tag]
+        }
+        break
+      case "neutral":
+        if (isIncluded) {
+          nextIncluded = selectedFilters.tags.filter(t => t !== tag)
+        }
+        if (isExcluded) {
+          nextExcluded = selectedFilters.excludeTags.filter(t => t !== tag)
+        }
+        break
+    }
+
+    if (nextIncluded === selectedFilters.tags && nextExcluded === selectedFilters.excludeTags) {
+      return
     }
 
     onFilterChange({
@@ -239,7 +260,37 @@ const FilterSidebarComponent = ({
       tags: nextIncluded,
       excludeTags: nextExcluded,
     })
-  }, [getTagState, onFilterChange, selectedFilters])
+  }, [excludeTagSet, includeTagSet, onFilterChange, selectedFilters])
+
+  const getCheckboxVisualState = useCallback((state: "include" | "exclude" | "neutral"): boolean | "indeterminate" => {
+    if (state === "include") return true
+    if (state === "exclude") return "indeterminate"
+    return false
+  }, [])
+
+  const handleTagStateCycle = useCallback((tag: string, options?: { forceState?: "include" | "exclude" | "neutral" }) => {
+    if (options?.forceState) {
+      setTagState(tag, options.forceState)
+      return
+    }
+
+    const currentState = getTagState(tag)
+    const nextState = currentState === "neutral" ? "include" : currentState === "include" ? "exclude" : "neutral"
+    setTagState(tag, nextState)
+  }, [getTagState, setTagState])
+
+  const handleTagPointerDown = useCallback((event: React.PointerEvent<HTMLElement>, tag: string) => {
+    if (event.button !== 0) {
+      return
+    }
+    if (!event.shiftKey) {
+      return
+    }
+
+    event.preventDefault()
+    event.stopPropagation()
+    handleTagStateCycle(tag, { forceState: "exclude" })
+  }, [handleTagStateCycle])
 
   const untaggedState = getTagState("")
 
@@ -478,6 +529,7 @@ const FilterSidebarComponent = ({
                   <button
                     className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-1 px-2 w-full cursor-pointer"
                     onClick={() => setShowCreateCategoryDialog(true)}
+                    onPointerDown={(event) => handleTagPointerDown(event, "")}
                   >
                     <Plus className="h-3 w-3" />
                     Add category
@@ -575,6 +627,7 @@ const FilterSidebarComponent = ({
                                       setCategoryToEdit(category)
                                       setShowEditCategoryDialog(true)
                                     }}
+                                    onPointerDown={(event) => handleTagPointerDown(event, tag)}
                                   >
                                     <Edit className="mr-2 h-4 w-4" />
                                     Edit Category
@@ -682,13 +735,12 @@ const FilterSidebarComponent = ({
                   <label
                     className={cn(
                       "flex items-center space-x-2 py-1 px-2 rounded cursor-pointer transition-colors",
-                      untaggedState === "exclude"
-                        ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
-                        : "hover:bg-muted"
+                      untaggedState === "exclude" ? "bg-destructive/10 text-destructive hover:bg-destructive/15" : "hover:bg-muted"
                     )}
+                    onPointerDown={(event) => handleTagPointerDown(event, "")}
                   >
                     <Checkbox
-                      checked={untaggedState === "include" ? true : untaggedState === "exclude" ? "indeterminate" : false}
+                      checked={getCheckboxVisualState(untaggedState)}
                       onCheckedChange={() => handleTagStateCycle("")}
                       className="rounded border-input"
                     />
@@ -761,13 +813,12 @@ const FilterSidebarComponent = ({
                                   <label
                                     className={cn(
                                       "flex items-center space-x-2 py-1 px-2 rounded cursor-pointer transition-colors",
-                                      tagState === "exclude"
-                                        ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
-                                        : "hover:bg-muted"
+                                      tagState === "exclude" ? "bg-destructive/10 text-destructive hover:bg-destructive/15" : "hover:bg-muted"
                                     )}
+                                    onPointerDown={(event) => handleTagPointerDown(event, tag)}
                                   >
                                     <Checkbox
-                                      checked={tagState === "include" ? true : tagState === "exclude" ? "indeterminate" : false}
+                                      checked={getCheckboxVisualState(tagState)}
                                       onCheckedChange={() => handleTagStateCycle(tag)}
                                     />
                                     <span
@@ -824,13 +875,12 @@ const FilterSidebarComponent = ({
                             <label
                               className={cn(
                                 "flex items-center space-x-2 py-1 px-2 rounded cursor-pointer transition-colors",
-                                tagState === "exclude"
-                                  ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
-                                  : "hover:bg-muted"
+                                tagState === "exclude" ? "bg-destructive/10 text-destructive hover:bg-destructive/15" : "hover:bg-muted"
                               )}
+                              onPointerDown={(event) => handleTagPointerDown(event, tag)}
                             >
                               <Checkbox
-                                checked={tagState === "include" ? true : tagState === "exclude" ? "indeterminate" : false}
+                                checked={getCheckboxVisualState(tagState)}
                                 onCheckedChange={() => handleTagStateCycle(tag)}
                               />
                               <span
@@ -852,26 +902,26 @@ const FilterSidebarComponent = ({
                               </span>
                             </label>
                           </ContextMenuTrigger>
-                        <ContextMenuContent>
-                          <ContextMenuItem
-                            onClick={() => {
-                              setTagToDelete(tag)
-                              setShowDeleteTagDialog(true)
-                            }}
-                            className="text-destructive"
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Delete Tag
-                          </ContextMenuItem>
-                          <ContextMenuSeparator />
-                          <ContextMenuItem
-                            onClick={() => setShowDeleteUnusedTagsDialog(true)}
-                            className="text-destructive"
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Delete All Unused Tags
-                          </ContextMenuItem>
-                        </ContextMenuContent>
+                          <ContextMenuContent>
+                            <ContextMenuItem
+                              onClick={() => {
+                                setTagToDelete(tag)
+                                setShowDeleteTagDialog(true)
+                              }}
+                              className="text-destructive"
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Delete Tag
+                            </ContextMenuItem>
+                            <ContextMenuSeparator />
+                            <ContextMenuItem
+                              onClick={() => setShowDeleteUnusedTagsDialog(true)}
+                              className="text-destructive"
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Delete All Unused Tags
+                            </ContextMenuItem>
+                          </ContextMenuContent>
                         </ContextMenu>
                       )
                     })
