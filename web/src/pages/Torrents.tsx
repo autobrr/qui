@@ -3,15 +3,15 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState, useCallback, useEffect, useRef } from "react"
-import { TorrentTableResponsive } from "@/components/torrents/TorrentTableResponsive"
 import { FilterSidebar } from "@/components/torrents/FilterSidebar"
 import { TorrentDetailsPanel } from "@/components/torrents/TorrentDetailsPanel"
+import { TorrentTableResponsive } from "@/components/torrents/TorrentTableResponsive"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { VisuallyHidden } from "@/components/ui/visually-hidden"
 import { usePersistedFilters } from "@/hooks/usePersistedFilters"
 import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSidebarState"
 import type { Category, Torrent, TorrentCounts } from "@/types"
+import { useCallback, useEffect, useRef, useState } from "react"
 
 interface TorrentsProps {
   instanceId: number
@@ -107,9 +107,13 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
       setTorrentCounts(transformedCounts)
     }
 
-    // Store categories and tags - always set them even if empty to indicate data has been received
-    setCategories(categoriesData || {})
-    setTags(tagsData || [])
+    // Store categories and tags only when new data arrives; preserve previous values during pagination fetches
+    if (categoriesData !== undefined) {
+      setCategories(categoriesData)
+    }
+    if (tagsData !== undefined) {
+      setTags(tagsData)
+    }
   }, [instanceId])
 
   // Calculate total active filters for badge
