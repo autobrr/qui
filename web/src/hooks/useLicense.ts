@@ -3,15 +3,15 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
-import { getLicenseErrorMessage } from "@/lib/theme-license-errors"
+import { getLicenseErrorMessage } from "@/lib/license-errors.ts"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 
 // Hook to check premium access status
 export const usePremiumAccess = () => {
   return useQuery({
-    queryKey: ["theme-licenses"],
+    queryKey: ["licenses"],
     queryFn: () => api.getLicensedThemes(),
     staleTime: 30 * 1000, // 30 seconds
     refetchInterval: 30 * 1000, // Poll every 30 seconds
@@ -19,19 +19,18 @@ export const usePremiumAccess = () => {
   })
 }
 
-
-// Hook to validate a theme license
-export const useValidateThemeLicense = () => {
+// Hook to activate a license
+export const useActivateLicense = () => {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (licenseKey: string) => api.validateThemeLicense(licenseKey),
+    mutationFn: (licenseKey: string) => api.activateLicense(licenseKey),
     onSuccess: (data) => {
       if (data.valid) {
-        const message = data.themeName === "premium-access"? "Premium access activated! Thank you!": "License activated successfully!"
+        const message = "Premium access activated! Thank you!"
         toast.success(message)
-        // Invalidate theme license queries to refresh the UI
-        queryClient.invalidateQueries({ queryKey: ["theme-licenses"] })
+        // Invalidate license queries to refresh the UI
+        queryClient.invalidateQueries({ queryKey: ["licenses"] })
       }
     },
     onError: (error: Error) => {
@@ -40,17 +39,36 @@ export const useValidateThemeLicense = () => {
   })
 }
 
-// Hook to delete a theme license
-export const useDeleteThemeLicense = () => {
+// Hook to validate a license
+export const useValidateLicense = () => {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (licenseKey: string) => api.deleteThemeLicense(licenseKey),
+    mutationFn: (licenseKey: string) => api.validateLicense(licenseKey),
+    onSuccess: (data) => {
+      if (data.valid) {
+        const message = data.productName === "premium-access"? "Premium access activated! Thank you!": "License activated successfully!"
+        toast.success(message)
+        // Invalidate license queries to refresh the UI
+        queryClient.invalidateQueries({ queryKey: ["licenses"] })
+      }
+    },
+    onError: (error: Error) => {
+      toast.error(getLicenseErrorMessage(error))
+    },
+  })
+}
+
+// Hook to delete a license
+export const useDeleteLicense = () => {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (licenseKey: string) => api.deleteLicense(licenseKey),
     onSuccess: () => {
       toast.success("License released successfully")
-      // Invalidate theme license queries to refresh the UI
-      queryClient.invalidateQueries({ queryKey: ["theme-licenses"] })
-      queryClient.invalidateQueries({ queryKey: ["theme-license"] })
+      // Invalidate license queries to refresh the UI
+      queryClient.invalidateQueries({ queryKey: ["licenses"] })
     },
     onError: (error: Error) => {
       toast.error(error.message || "Failed to release license")
@@ -58,17 +76,16 @@ export const useDeleteThemeLicense = () => {
   })
 }
 
-// Hook to refresh all theme licenses
-export const useRefreshThemeLicenses = () => {
+// Hook to refresh all licenses
+export const useRefreshLicenses = () => {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: () => api.refreshThemeLicenses(),
+    mutationFn: () => api.refreshLicenses(),
     onSuccess: () => {
       toast.success("All licenses refreshed successfully")
-      // Invalidate theme license queries to refresh the UI
-      queryClient.invalidateQueries({ queryKey: ["theme-licenses"] })
-      queryClient.invalidateQueries({ queryKey: ["theme-license"] })
+      // Invalidate license queries to refresh the UI
+      queryClient.invalidateQueries({ queryKey: ["licenses"] })
     },
     onError: (error: Error) => {
       toast.error(error.message || "Failed to refresh licenses")
@@ -89,7 +106,7 @@ export const useHasPremiumAccess = () => {
 // Hook to get license details for management
 export const useLicenseDetails = () => {
   return useQuery({
-    queryKey: ["theme-licenses", "all"],
+    queryKey: ["licenses", "all"],
     queryFn: () => api.getAllLicenses(),
     staleTime: 30 * 60 * 1000, // 30 minutes
     refetchOnWindowFocus: false,

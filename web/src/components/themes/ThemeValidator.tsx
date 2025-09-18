@@ -4,7 +4,7 @@
  */
 
 import { useEffect } from "react"
-import { usePremiumAccess } from "@/hooks/useThemeLicense"
+import { usePremiumAccess } from "@/hooks/useLicense.ts"
 import { themes, isThemePremium, getDefaultTheme } from "@/config/themes"
 import { setValidatedThemes, setTheme } from "@/utils/theme"
 import { router } from "@/router"
