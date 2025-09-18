@@ -4,10 +4,12 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/go-chi/chi/v5"
@@ -15,17 +17,30 @@ import (
 
 	"github.com/autobrr/qui/internal/auth"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
 type AuthHandler struct {
 	authService    *auth.Service
 	sessionManager *scs.SessionManager
+	instanceStore  *models.InstanceStore
+	clientPool     *qbittorrent.ClientPool
+	syncManager    *qbittorrent.SyncManager
 }
 
-func NewAuthHandler(authService *auth.Service, sessionManager *scs.SessionManager) *AuthHandler {
+func NewAuthHandler(
+	authService *auth.Service,
+	sessionManager *scs.SessionManager,
+	instanceStore *models.InstanceStore,
+	clientPool *qbittorrent.ClientPool,
+	syncManager *qbittorrent.SyncManager,
+) *AuthHandler {
 	return &AuthHandler{
 		authService:    authService,
 		sessionManager: sessionManager,
+		instanceStore:  instanceStore,
+		clientPool:     clientPool,
+		syncManager:    syncManager,
 	}
 }
 
@@ -102,6 +117,71 @@ func (h *AuthHandler) Setup(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// warmSession prefetches data to improve perceived performance after login
+func (h *AuthHandler) warmSession(ctx context.Context) {
+	instances, err := h.instanceStore.List(ctx)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to list instances for session warming")
+		return
+	}
+
+	// Warm instance connections concurrently
+	for _, instance := range instances {
+		go func(inst *models.Instance) {
+			// Derive context from parent to respect cancellation
+			warmCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+			defer cancel()
+
+			_, err := h.clientPool.GetClientWithTimeout(warmCtx, inst.ID, 3*time.Second)
+			if err != nil {
+				log.Error().
+					Int("instance_id", inst.ID).
+					Str("instance_name", inst.Name).
+					Err(err).
+					Msg("Failed to warm instance connection")
+				return
+			}
+
+			log.Debug().
+				Int("instance_id", inst.ID).
+				Str("instance_name", inst.Name).
+				Msg("Successfully warmed instance connection")
+		}(instance)
+	}
+
+	// Prefetch torrent data for the first instance
+	if len(instances) == 0 {
+		return
+	}
+
+	go func() {
+		warmCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+
+		_, err := h.syncManager.GetTorrentsWithFilters(
+			warmCtx,
+			instances[0].ID,
+			1,
+			0,
+			"added_on",
+			"desc",
+			"",
+			qbittorrent.FilterOptions{},
+		)
+		if err != nil {
+			log.Error().
+				Int("instance_id", instances[0].ID).
+				Err(err).
+				Msg("Failed to prefetch torrents during session warming")
+			return
+		}
+
+		log.Debug().
+			Int("instance_id", instances[0].ID).
+			Msg("Successfully prefetched torrents during session warming")
+	}()
+}
+
 // Login handles user login
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var req LoginRequest
@@ -138,6 +218,10 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	// Handle remember_me functionality
 	h.sessionManager.RememberMe(r.Context(), req.RememberMe)
+
+	// Warm the session by prefetching data in the background
+	// Use a detached context since this should continue even after the HTTP request completes
+	go h.warmSession(context.Background())
 
 	RespondJSON(w, http.StatusOK, map[string]any{
 		"message": "Login successful",
