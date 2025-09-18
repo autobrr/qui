@@ -89,7 +89,7 @@ func NewRouter(deps *Dependencies) *chi.Mux {
 	// API routes
 	r.Route("/api", func(r chi.Router) {
 		// Apply setup check middleware
-		r.Use(apimiddleware.RequireSetup(deps.AuthService))
+		r.Use(apimiddleware.RequireSetup(deps.AuthService, deps.Config.Config))
 
 		// Public routes (no auth required)
 		r.Route("/auth", func(r chi.Router) {

@@ -86,6 +86,11 @@ type ChangePasswordRequest struct {
 
 // Setup handles initial user setup
 func (h *AuthHandler) Setup(w http.ResponseWriter, r *http.Request) {
+	if h.config != nil && h.config.OIDCEnabled {
+		RespondError(w, http.StatusForbidden, "Setup is disabled when OIDC is enabled")
+		return
+	}
+
 	// Check if setup is already complete
 	complete, err := h.authService.IsSetupComplete(r.Context())
 	if err != nil {
@@ -325,6 +330,13 @@ func (h *AuthHandler) Validate(w http.ResponseWriter, r *http.Request) {
 
 // CheckSetupRequired checks if initial setup is required
 func (h *AuthHandler) CheckSetupRequired(w http.ResponseWriter, r *http.Request) {
+	if h.config != nil && h.config.OIDCEnabled {
+		RespondJSON(w, http.StatusOK, map[string]any{
+			"setupRequired": false,
+		})
+		return
+	}
+
 	complete, err := h.authService.IsSetupComplete(r.Context())
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to check setup status")
