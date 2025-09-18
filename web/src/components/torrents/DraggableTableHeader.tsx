@@ -7,13 +7,12 @@ import { useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { flexRender, type Header } from "@tanstack/react-table"
 import { ChevronUp, ChevronDown } from "lucide-react"
-import type { Torrent } from "@/types"
 
-interface DraggableTableHeaderProps {
-  header: Header<Torrent, unknown>
+interface DraggableTableHeaderProps<T> {
+  header: Header<T, unknown>
 }
 
-export function DraggableTableHeader({ header }: DraggableTableHeaderProps) {
+export function DraggableTableHeader<T>({ header }: DraggableTableHeaderProps<T>) {
   const { column } = header
 
   const {

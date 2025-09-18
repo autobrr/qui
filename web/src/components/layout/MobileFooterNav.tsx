@@ -11,7 +11,8 @@ import {
   HardDrive,
   Server,
   Github,
-  LogOut
+  LogOut,
+  TrendingUp
 } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { api } from "@/lib/api"
@@ -69,6 +70,21 @@ export function MobileFooterNav() {
             location.pathname === "/dashboard" && "text-primary"
           )} />
           <span className="truncate">Dashboard</span>
+        </Link>
+
+        {/* Economy */}
+        <Link
+          to="/economy"
+          className={cn(
+            "flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1",
+            location.pathname === "/economy"? "text-primary": "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          <TrendingUp className={cn(
+            "h-5 w-5",
+            location.pathname === "/economy" && "text-primary"
+          )} />
+          <span className="truncate">Economy</span>
         </Link>
 
         {/* Clients dropdown */}

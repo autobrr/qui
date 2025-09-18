@@ -20,7 +20,8 @@ import {
   Home,
   LogOut,
   Server,
-  Settings
+  Settings,
+  TrendingUp
 } from "lucide-react"
 
 interface NavItem {
@@ -34,6 +35,11 @@ const navigation: NavItem[] = [
     title: "Dashboard",
     href: "/dashboard",
     icon: Home,
+  },
+  {
+    title: "Economy",
+    href: "/economy",
+    icon: TrendingUp,
   },
   {
     title: "Instances",
