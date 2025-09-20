@@ -6,6 +6,7 @@ package qbittorrent
 import (
 	"context"
 	"fmt"
+	"maps"
 	"strings"
 	"sync"
 	"time"
@@ -479,4 +480,14 @@ func (cp *ClientPool) GetInstancesWithDecryptionErrors() []int {
 	}
 
 	return instanceIDs
+}
+
+// GetAllClients returns all clients in the pool
+func (cp *ClientPool) GetAllClients() map[int]*Client {
+	cp.mu.RLock()
+	defer cp.mu.RUnlock()
+
+	clients := make(map[int]*Client)
+	maps.Copy(clients, cp.clients)
+	return clients
 }
