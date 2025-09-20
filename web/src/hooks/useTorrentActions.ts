@@ -61,6 +61,9 @@ interface TorrentActionData {
   }
   search?: string
   excludeHashes?: string[]
+  // Client-side metadata used for optimistic updates and toast messages
+  clientHashes?: string[]
+  clientCount?: number
 }
 
 export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentActionsProps) {
@@ -83,23 +86,26 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
 
   const mutation = useMutation({
     mutationFn: (data: TorrentActionData) => {
+      const { clientHashes, clientCount, ...payload } = data
+      void clientHashes
+      void clientCount
       return api.bulkAction(instanceId, {
-        hashes: data.hashes,
-        action: data.action,
-        deleteFiles: data.deleteFiles,
-        tags: data.tags,
-        category: data.category,
-        enable: data.enable,
-        ratioLimit: data.ratioLimit,
-        seedingTimeLimit: data.seedingTimeLimit,
-        inactiveSeedingTimeLimit: data.inactiveSeedingTimeLimit,
-        uploadLimit: data.uploadLimit,
-        downloadLimit: data.downloadLimit,
-        location: data.location,
-        selectAll: data.selectAll,
-        filters: data.filters,
-        search: data.search,
-        excludeHashes: data.excludeHashes,
+        hashes: payload.hashes,
+        action: payload.action,
+        deleteFiles: payload.deleteFiles,
+        tags: payload.tags,
+        category: payload.category,
+        enable: payload.enable,
+        ratioLimit: payload.ratioLimit,
+        seedingTimeLimit: payload.seedingTimeLimit,
+        inactiveSeedingTimeLimit: payload.inactiveSeedingTimeLimit,
+        uploadLimit: payload.uploadLimit,
+        downloadLimit: payload.downloadLimit,
+        location: payload.location,
+        selectAll: payload.selectAll,
+        filters: payload.filters,
+        search: payload.search,
+        excludeHashes: payload.excludeHashes,
       })
     },
     onSuccess: async (_, variables) => {
@@ -116,6 +122,12 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
           exact: false,
         })
 
+        let hashesToRemove = variables.hashes
+        if (variables.clientHashes && variables.clientHashes.length > 0) {
+          hashesToRemove = variables.clientHashes
+        }
+        const optimisticRemoveCount = variables.clientCount ?? hashesToRemove.length
+
         queries.forEach((query) => {
           queryClient.setQueryData(query.queryKey, (oldData: {
             torrents?: Torrent[]
@@ -126,10 +138,10 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
             return {
               ...oldData,
               torrents: oldData.torrents?.filter((t: Torrent) =>
-                !variables.hashes.includes(t.hash)
+                !hashesToRemove.includes(t.hash)
               ) || [],
-              total: Math.max(0, (oldData.total || 0) - variables.hashes.length),
-              totalCount: Math.max(0, (oldData.totalCount || oldData.total || 0) - variables.hashes.length),
+              total: Math.max(0, (oldData.total || 0) - optimisticRemoveCount),
+              totalCount: Math.max(0, (oldData.totalCount || oldData.total || 0) - optimisticRemoveCount),
             }
           })
         })
@@ -168,7 +180,14 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
       }
 
       // Show success toast
-      showSuccessToast(variables.action, variables.hashes.length || 1, variables.deleteFiles, variables.enable)
+      let toastCount = variables.hashes.length
+      if (variables.clientHashes && variables.clientHashes.length > 0) {
+        toastCount = variables.clientHashes.length
+      }
+      if (typeof variables.clientCount === "number") {
+        toastCount = variables.clientCount
+      }
+      showSuccessToast(variables.action, Math.max(1, toastCount), variables.deleteFiles, variables.enable)
 
       onActionComplete?.()
     },
@@ -199,8 +218,15 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     isAllSelected?: boolean,
     filters?: TorrentActionData["filters"],
     search?: string,
-    excludeHashes?: string[]
+    excludeHashes?: string[],
+    clientMeta?: {
+      clientHashes?: string[]
+      totalSelected?: number
+    }
   ) => {
+    const clientHashes = clientMeta?.clientHashes ?? hashes
+    const clientCount = clientMeta?.totalSelected
+      ?? (clientHashes?.length ?? hashes.length)
     await mutation.mutateAsync({
       action: "delete",
       deleteFiles,
@@ -209,6 +235,8 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
       filters: isAllSelected ? filters : undefined,
       search: isAllSelected ? search : undefined,
       excludeHashes: isAllSelected ? excludeHashes : undefined,
+      clientHashes,
+      clientCount,
     })
     setShowDeleteDialog(false)
     setDeleteFiles(false)

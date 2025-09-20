@@ -128,6 +128,8 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     onActionComplete: onComplete,
   })
 
+  const selectionCount = totalSelectionCount || selectedHashes.length
+
   // Wrapper functions to adapt hook handlers to component needs
   const handleDeleteWrapper = useCallback(() => {
     handleDelete(
@@ -135,9 +137,13 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
       isAllSelected,
       filters,
       search,
-      excludeHashes
+      excludeHashes,
+      {
+        clientHashes: selectedHashes,
+        totalSelected: selectionCount,
+      }
     )
-  }, [handleDelete, selectedHashes, isAllSelected, filters, search, excludeHashes])
+  }, [handleDelete, selectedHashes, isAllSelected, filters, search, excludeHashes, selectionCount])
 
   const handleAddTagsWrapper = useCallback((tags: string[]) => {
     handleAddTags(
@@ -239,7 +245,6 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     handleSetSpeedLimits(uploadLimit, downloadLimit, selectedHashes)
   }, [handleSetSpeedLimits, selectedHashes])
 
-  const selectionCount = totalSelectionCount || selectedHashes.length
   const hasSelection = selectionCount > 0 || isAllSelected
   const isDisabled = !instanceId || !hasSelection
 

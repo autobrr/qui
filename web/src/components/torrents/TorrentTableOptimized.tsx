@@ -689,9 +689,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       isAllSelected,
       filters,
       effectiveSearch,
-      Array.from(excludedFromSelectAll)
+      Array.from(excludedFromSelectAll),
+      {
+        clientHashes: contextHashes,
+        totalSelected: isAllSelected ? effectiveSelectionCount : contextHashes.length,
+      }
     )
-  }, [handleDelete, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll])
+  }, [handleDelete, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll, effectiveSelectionCount])
 
   const handleAddTagsWrapper = useCallback((tags: string[]) => {
     handleAddTags(

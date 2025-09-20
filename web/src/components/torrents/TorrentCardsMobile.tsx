@@ -935,17 +935,48 @@ export function TorrentCardsMobile({
   }, [selectedHashes, handleAction, isAllSelected, filters, effectiveSearch, excludedFromSelectAll])
 
   const handleDeleteWrapper = useCallback(async () => {
-    const hashes = torrentToDelete ? [torrentToDelete.hash] : (isAllSelected ? [] : Array.from(selectedHashes))
+    let hashes: string[]
+    if (torrentToDelete) {
+      hashes = [torrentToDelete.hash]
+    } else if (isAllSelected) {
+      hashes = []
+    } else {
+      hashes = Array.from(selectedHashes)
+    }
+
+    let visibleHashes: string[]
+    if (torrentToDelete) {
+      visibleHashes = [torrentToDelete.hash]
+    } else if (isAllSelected) {
+      visibleHashes = torrents
+        .filter(t => !excludedFromSelectAll.has(t.hash))
+        .map(t => t.hash)
+    } else {
+      visibleHashes = Array.from(selectedHashes)
+    }
+
+    let totalSelected: number
+    if (torrentToDelete) {
+      totalSelected = 1
+    } else if (isAllSelected) {
+      totalSelected = effectiveSelectionCount
+    } else {
+      totalSelected = visibleHashes.length
+    }
 
     await handleDelete(
       hashes,
       !torrentToDelete && isAllSelected,
       !torrentToDelete && isAllSelected ? filters : undefined,
       !torrentToDelete && isAllSelected ? effectiveSearch : undefined,
-      !torrentToDelete && isAllSelected ? Array.from(excludedFromSelectAll) : undefined
+      !torrentToDelete && isAllSelected ? Array.from(excludedFromSelectAll) : undefined,
+      {
+        clientHashes: visibleHashes,
+        totalSelected,
+      }
     )
     setTorrentToDelete(null)
-  }, [torrentToDelete, isAllSelected, selectedHashes, handleDelete, filters, effectiveSearch, excludedFromSelectAll])
+  }, [torrentToDelete, isAllSelected, selectedHashes, handleDelete, filters, effectiveSearch, excludedFromSelectAll, torrents, effectiveSelectionCount])
 
   const handleSetTagsWrapper = useCallback(async (tags: string[]) => {
     const hashes = isAllSelected ? [] : actionTorrents.map(t => t.hash)
