@@ -1,8 +1,3 @@
-/*
- * Copyright (c) 2025, s0up and the autobrr contributors.
- * SPDX-License-Identifier: GPL-2.0-or-later
- */
-
 /* eslint-disable */
 
 // @ts-nocheck
@@ -19,6 +14,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
+import { Route as AuthenticatedRacingRouteImport } from './routes/_authenticated/racing'
 import { Route as AuthenticatedInstancesRouteImport } from './routes/_authenticated/instances'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedInstancesIndexRouteImport } from './routes/_authenticated/instances.index'
@@ -46,6 +42,11 @@ const IndexRoute = IndexRouteImport.update({
 const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedRacingRoute = AuthenticatedRacingRouteImport.update({
+  id: '/racing',
+  path: '/racing',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedInstancesRoute = AuthenticatedInstancesRouteImport.update({
@@ -77,6 +78,7 @@ export interface FileRoutesByFullPath {
   '/setup': typeof SetupRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/instances': typeof AuthenticatedInstancesRouteWithChildren
+  '/racing': typeof AuthenticatedRacingRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/instances/$instanceId': typeof AuthenticatedInstancesInstanceIdRoute
   '/instances/': typeof AuthenticatedInstancesIndexRoute
@@ -86,6 +88,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/racing': typeof AuthenticatedRacingRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/instances/$instanceId': typeof AuthenticatedInstancesInstanceIdRoute
   '/instances': typeof AuthenticatedInstancesIndexRoute
@@ -98,6 +101,7 @@ export interface FileRoutesById {
   '/setup': typeof SetupRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/instances': typeof AuthenticatedInstancesRouteWithChildren
+  '/_authenticated/racing': typeof AuthenticatedRacingRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/instances/$instanceId': typeof AuthenticatedInstancesInstanceIdRoute
   '/_authenticated/instances/': typeof AuthenticatedInstancesIndexRoute
@@ -110,6 +114,7 @@ export interface FileRouteTypes {
     | '/setup'
     | '/dashboard'
     | '/instances'
+    | '/racing'
     | '/settings'
     | '/instances/$instanceId'
     | '/instances/'
@@ -119,6 +124,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/setup'
     | '/dashboard'
+    | '/racing'
     | '/settings'
     | '/instances/$instanceId'
     | '/instances'
@@ -130,6 +136,7 @@ export interface FileRouteTypes {
     | '/setup'
     | '/_authenticated/dashboard'
     | '/_authenticated/instances'
+    | '/_authenticated/racing'
     | '/_authenticated/settings'
     | '/_authenticated/instances/$instanceId'
     | '/_authenticated/instances/'
@@ -177,6 +184,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof AuthenticatedSettingsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/racing': {
+      id: '/_authenticated/racing'
+      path: '/racing'
+      fullPath: '/racing'
+      preLoaderRoute: typeof AuthenticatedRacingRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/instances': {
@@ -230,12 +244,14 @@ const AuthenticatedInstancesRouteWithChildren =
 interface AuthenticatedRouteChildren {
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedInstancesRoute: typeof AuthenticatedInstancesRouteWithChildren
+  AuthenticatedRacingRoute: typeof AuthenticatedRacingRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedInstancesRoute: AuthenticatedInstancesRouteWithChildren,
+  AuthenticatedRacingRoute: AuthenticatedRacingRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
 }
 
