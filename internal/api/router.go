@@ -23,7 +23,6 @@ import (
 	"github.com/autobrr/qui/internal/proxy"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services"
-	"github.com/autobrr/qui/internal/update"
 	"github.com/autobrr/qui/internal/web"
 	"github.com/autobrr/qui/internal/web/swagger"
 )
@@ -41,8 +40,6 @@ type Dependencies struct {
 	WebHandler          *web.Handler
 	ThemeLicenseService *services.ThemeLicenseService
 	MetricsManager      *metrics.MetricsManager
-	UpdateService       *update.Service
-	Version             string
 }
 
 // NewRouter creates and configures the main application router
@@ -79,8 +76,6 @@ func NewRouter(deps *Dependencies) *chi.Mux {
 	torrentsHandler := handlers.NewTorrentsHandler(deps.SyncManager)
 	preferencesHandler := handlers.NewPreferencesHandler(deps.SyncManager)
 	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(deps.ClientAPIKeyStore, deps.InstanceStore)
-	configHandler := handlers.NewConfigHandler(deps.Config, deps.Version, deps.UpdateService)
-	updateHandler := handlers.NewUpdateHandler(deps.UpdateService)
 
 	// Create proxy handler
 	proxyHandler := proxy.NewHandler(deps.ClientPool, deps.ClientAPIKeyStore, deps.InstanceStore)
@@ -109,9 +104,6 @@ func NewRouter(deps *Dependencies) *chi.Mux {
 		// Protected routes
 		r.Group(func(r chi.Router) {
 			r.Use(apimiddleware.IsAuthenticated(deps.AuthService, deps.SessionManager))
-
-			configHandler.RegisterRoutes(r)
-			updateHandler.RegisterRoutes(r)
 
 			// Auth routes
 			r.Post("/auth/logout", authHandler.Logout)

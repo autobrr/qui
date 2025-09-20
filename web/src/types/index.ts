@@ -15,60 +15,6 @@ export interface AuthResponse {
   message?: string
 }
 
-export interface AppConfigResponse {
-  host: string
-  port: number
-  base_url: string
-  log_level: string
-  log_path: string
-  check_for_updates: boolean
-  version: string
-}
-
-export interface GithubAuthor {
-  login: string
-  id: number
-  node_id: string
-  avatar_url: string
-  gravatar_id: string
-  url: string
-  html_url: string
-  type: string
-}
-
-export interface GithubReleaseAsset {
-  url: string
-  id: number
-  node_id: string
-  name: string
-  label: string
-  uploader: GithubAuthor
-  content_type: string
-  state: string
-  size: number
-  download_count: number
-  created_at: string
-  updated_at: string
-  browser_download_url: string
-}
-
-export interface GithubRelease {
-  id: number
-  node_id: string
-  url: string
-  html_url: string
-  tag_name: string
-  target_commitish: string
-  name: string | null
-  body: string | null
-  draft: boolean
-  prerelease: boolean
-  created_at: string
-  published_at: string
-  author: GithubAuthor
-  assets: GithubReleaseAsset[]
-}
-
 export interface Instance {
   id: number
   name: string

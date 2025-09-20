@@ -4,11 +4,9 @@
  */
 
 import type {
-  AppConfigResponse,
   AppPreferences,
   AuthResponse,
   Category,
-  GithubRelease,
   InstanceFormData,
   InstanceResponse,
   TorrentResponse,
@@ -95,26 +93,6 @@ class ApiClient {
 
   async logout(): Promise<void> {
     return this.request("/auth/logout", { method: "POST" })
-  }
-
-  async getAppConfig(): Promise<AppConfigResponse> {
-    return this.request<AppConfigResponse>("/config")
-  }
-
-  async updateAppConfig(payload: Partial<Pick<AppConfigResponse, "check_for_updates">>): Promise<void> {
-    await this.request("/config", {
-      method: "PATCH",
-      body: JSON.stringify(payload),
-    })
-  }
-
-  async checkForUpdates(): Promise<void> {
-    await this.request("/updates/check")
-  }
-
-  async getLatestRelease(): Promise<GithubRelease | null> {
-    const release = await this.request<GithubRelease | undefined>("/updates/latest")
-    return release ?? null
   }
 
   // Instance endpoints
