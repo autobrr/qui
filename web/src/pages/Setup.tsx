@@ -14,6 +14,7 @@ import { BlurFade } from "@/components/magicui/blur-fade"
 import { useAuth } from "@/hooks/useAuth"
 import { api } from "@/lib/api"
 import { useForm } from "@tanstack/react-form"
+import { useQuery } from "@tanstack/react-query"
 import { useNavigate } from "@tanstack/react-router"
 import { useEffect } from "react"
 
@@ -21,14 +22,31 @@ export function Setup() {
   const navigate = useNavigate()
   const { setup, isSettingUp, setupError } = useAuth()
 
+  const { data: oidcConfig } = useQuery({
+    queryKey: ["oidc-config"],
+    queryFn: () => api.getOIDCConfig(),
+    staleTime: Infinity,
+    retry: false,
+    refetchOnWindowFocus: false,
+  })
+
   useEffect(() => {
+    if (oidcConfig === undefined) {
+      return
+    }
+
+    if (oidcConfig.enabled) {
+      navigate({ to: "/login" })
+      return
+    }
+
     // Check if user already exists
     api.checkAuth().then(() => {
       navigate({ to: "/login" })
     }).catch(() => {
       // No user exists, stay on setup page
     })
-  }, [navigate])
+  }, [navigate, oidcConfig])
 
   const form = useForm({
     defaultValues: {

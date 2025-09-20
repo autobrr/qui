@@ -94,7 +94,9 @@ func TestAllEndpointsDocumented(t *testing.T) {
 		}
 
 		// Skip special routes that shouldn't be documented
-		if route.Path == "/api/docs" || route.Path == "/api/openapi.json" {
+		// - /api/docs and /api/openapi.json are meta endpoints for documentation itself
+		// - /api/auth/validate is an internal endpoint for OIDC session validation
+		if route.Path == "/api/docs" || route.Path == "/api/openapi.json" || route.Path == "/api/auth/validate" {
 			continue
 		}
 
@@ -139,7 +141,9 @@ func TestAllEndpointsDocumented(t *testing.T) {
 		}
 
 		// Skip special routes that shouldn't be documented
-		if route.Path == "/api/docs" || route.Path == "/api/openapi.json" {
+		// - /api/docs and /api/openapi.json are meta endpoints for documentation itself
+		// - /api/auth/validate is an internal endpoint for OIDC session validation
+		if route.Path == "/api/docs" || route.Path == "/api/openapi.json" || route.Path == "/api/auth/validate" {
 			continue
 		}
 
