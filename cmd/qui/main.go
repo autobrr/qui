@@ -590,8 +590,6 @@ func (app *Application) runServer() {
 		WebHandler:          webHandler,
 		ThemeLicenseService: themeLicenseService,
 		MetricsManager:      metricsManager,
-		UpdateService:       updateService,
-		Version:             app.version,
 	}
 
 	// Initialize router
