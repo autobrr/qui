@@ -1008,6 +1008,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
               </div>
             </div>
           )}
+          {torrents.length === 0 && !isLoading && (
+            <div className="absolute inset-0 flex items-center justify-center z-40 animate-in fade-in duration-300 pointer-events-none">
+              <div className="text-center animate-in zoom-in-95 duration-300 text-muted-foreground">
+                <p>No torrents found</p>
+              </div>
+            </div>
+          )}
 
           <div style={{ position: "relative", minWidth: "min-content" }}>
             {/* Header */}
@@ -1045,129 +1052,121 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
             </div>
 
             {/* Body */}
-            {torrents.length === 0 && !isLoading ? (
-              // Show empty state
-              <div className="p-8 text-center text-muted-foreground">
-                <p>No torrents found</p>
-              </div>
-            ) : (
-              // Show virtual table
-              <div
-                style={{
-                  height: `${virtualizer.getTotalSize()}px`,
-                  width: "100%",
-                  position: "relative",
-                }}
-              >
-                {virtualRows.map(virtualRow => {
-                  const row = rows[virtualRow.index]
-                  if (!row || !row.original) return null
-                  const torrent = row.original
-                  const isSelected = selectedTorrent?.hash === torrent.hash
+            <div
+              style={{
+                height: `${virtualizer.getTotalSize()}px`,
+                width: "100%",
+                position: "relative",
+              }}
+            >
+              {virtualRows.map(virtualRow => {
+                const row = rows[virtualRow.index]
+                if (!row || !row.original) return null
+                const torrent = row.original
+                const isSelected = selectedTorrent?.hash === torrent.hash
 
-                  // Use memoized minTableWidth
-                  return (
-                    <TorrentContextMenu
-                      key={`${torrent.hash}-${virtualRow.index}`}
-                      torrent={torrent}
-                      isSelected={row.getIsSelected()}
-                      isAllSelected={isAllSelected}
-                      selectedHashes={selectedHashes}
-                      selectedTorrents={selectedTorrents}
-                      effectiveSelectionCount={effectiveSelectionCount}
-                      onTorrentSelect={onTorrentSelect}
-                      onAction={runAction}
-                      onPrepareDelete={prepareDeleteAction}
-                      onPrepareTags={prepareTagsAction}
-                      onPrepareCategory={prepareCategoryAction}
-                      onPrepareLocation={prepareLocationAction}
-                      onPrepareRecheck={prepareRecheckAction}
-                      onPrepareReannounce={prepareReannounceAction}
-                      onSetShareLimit={handleSetShareLimitContext}
-                      onSetSpeedLimits={handleSetSpeedLimitsContext}
-                      isPending={isPending}
-                    >
-                      <div
-                        className={`flex border-b cursor-pointer hover:bg-muted/50 ${row.getIsSelected() ? "bg-muted/50" : ""} ${isSelected ? "bg-accent" : ""}`}
-                        style={{
-                          position: "absolute",
-                          top: 0,
-                          left: 0,
-                          minWidth: `${minTableWidth}px`,
-                          height: `${virtualRow.size}px`,
-                          transform: `translateY(${virtualRow.start}px)`,
-                        }}
-                        onClick={(e) => {
-                          // Don't select when clicking checkbox or its wrapper
-                          const target = e.target as HTMLElement
-                          const isCheckbox = target.closest("[data-slot=\"checkbox\"]") || target.closest("[role=\"checkbox\"]") || target.closest(".p-1.-m-1")
-                          if (!isCheckbox) {
-                            // Handle shift-click for range selection - EXACTLY like checkbox
-                            if (e.shiftKey) {
-                              e.preventDefault() // Prevent text selection
+                // Use memoized minTableWidth
+                return (
+                  <TorrentContextMenu
+                    key={`${torrent.hash}-${virtualRow.index}`}
+                    torrent={torrent}
+                    isSelected={row.getIsSelected()}
+                    isAllSelected={isAllSelected}
+                    selectedHashes={selectedHashes}
+                    selectedTorrents={selectedTorrents}
+                    effectiveSelectionCount={effectiveSelectionCount}
+                    onTorrentSelect={onTorrentSelect}
+                    onAction={runAction}
+                    onPrepareDelete={prepareDeleteAction}
+                    onPrepareTags={prepareTagsAction}
+                    onPrepareCategory={prepareCategoryAction}
+                    onPrepareLocation={prepareLocationAction}
+                    onPrepareRecheck={prepareRecheckAction}
+                    onPrepareReannounce={prepareReannounceAction}
+                    onSetShareLimit={handleSetShareLimitContext}
+                    onSetSpeedLimits={handleSetSpeedLimitsContext}
+                    isPending={isPending}
+                  >
+                    <div
+                      className={`flex border-b cursor-pointer hover:bg-muted/50 ${row.getIsSelected() ? "bg-muted/50" : ""} ${isSelected ? "bg-accent" : ""}`}
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        minWidth: `${minTableWidth}px`,
+                        height: `${virtualRow.size}px`,
+                        transform: `translateY(${virtualRow.start}px)`,
+                      }}
+                      onClick={(e) => {
+                        // Don't select when clicking checkbox or its wrapper
+                        const target = e.target as HTMLElement
+                        const isCheckbox = target.closest("[data-slot=\"checkbox\"]") || target.closest("[role=\"checkbox\"]") || target.closest(".p-1.-m-1")
+                        if (!isCheckbox) {
+                          // Handle shift-click for range selection - EXACTLY like checkbox
+                          if (e.shiftKey) {
+                            e.preventDefault() // Prevent text selection
 
-                              const allRows = table.getRowModel().rows
-                              const currentIndex = allRows.findIndex(r => r.id === row.id)
+                            const allRows = table.getRowModel().rows
+                            const currentIndex = allRows.findIndex(r => r.id === row.id)
 
-                              if (lastSelectedIndexRef.current !== null) {
-                                const start = Math.min(lastSelectedIndexRef.current, currentIndex)
-                                const end = Math.max(lastSelectedIndexRef.current, currentIndex)
+                            if (lastSelectedIndexRef.current !== null) {
+                              const start = Math.min(lastSelectedIndexRef.current, currentIndex)
+                              const end = Math.max(lastSelectedIndexRef.current, currentIndex)
 
-                                // Select range EXACTLY like checkbox does
-                                for (let i = start; i <= end; i++) {
-                                  const targetRow = allRows[i]
-                                  if (targetRow) {
-                                    handleRowSelection(targetRow.original.hash, true, targetRow.id)
-                                  }
+                              // Select range EXACTLY like checkbox does
+                              for (let i = start; i <= end; i++) {
+                                const targetRow = allRows[i]
+                                if (targetRow) {
+                                  handleRowSelection(targetRow.original.hash, true, targetRow.id)
                                 }
-                              } else {
-                                // No anchor - just select this row
-                                handleRowSelection(torrent.hash, true, row.id)
-                                lastSelectedIndexRef.current = currentIndex
                               }
-
-                              // Don't update lastSelectedIndexRef on shift-click (keeps anchor stable)
-                            } else if (e.ctrlKey || e.metaKey) {
-                              // Ctrl/Cmd click - toggle single row EXACTLY like checkbox
-                              const allRows = table.getRowModel().rows
-                              const currentIndex = allRows.findIndex(r => r.id === row.id)
-
-                              handleRowSelection(torrent.hash, !row.getIsSelected(), row.id)
-                              lastSelectedIndexRef.current = currentIndex
                             } else {
-                              // Plain click - open details without changing checkbox selection state
-                              onTorrentSelect?.(torrent)
+                              // No anchor - just select this row
+                              handleRowSelection(torrent.hash, true, row.id)
+                              lastSelectedIndexRef.current = currentIndex
                             }
+
+                            // Don't update lastSelectedIndexRef on shift-click (keeps anchor stable)
+                          } else if (e.ctrlKey || e.metaKey) {
+                            // Ctrl/Cmd click - toggle single row EXACTLY like checkbox
+                            const allRows = table.getRowModel().rows
+                            const currentIndex = allRows.findIndex(r => r.id === row.id)
+
+                            handleRowSelection(torrent.hash, !row.getIsSelected(), row.id)
+                            lastSelectedIndexRef.current = currentIndex
+                          } else {
+                            // Plain click - open details without changing checkbox selection state
+                            onTorrentSelect?.(torrent)
                           }
-                        }}
-                        onContextMenu={() => {
-                          // Only select this row if not already selected and not part of a multi-selection
-                          if (!row.getIsSelected() && selectedHashes.length <= 1) {
-                            setRowSelection({ [row.id]: true })
-                          }
-                        }}
-                      >
-                        {row.getVisibleCells().map(cell => (
-                          <div
-                            key={cell.id}
-                            style={{
-                              width: cell.column.getSize(),
-                              flexShrink: 0,
-                            }}
-                            className="px-3 py-2 flex items-center overflow-hidden min-w-0"
-                          >
-                            {flexRender(
-                              cell.column.columnDef.cell,
-                              cell.getContext()
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </TorrentContextMenu>
-                  )
-                })}
-              </div>
-            )}
+                        }
+                      }}
+                      onContextMenu={() => {
+                        // Only select this row if not already selected and not part of a multi-selection
+                        if (!row.getIsSelected() && selectedHashes.length <= 1) {
+                          setRowSelection({ [row.id]: true })
+                        }
+                      }}
+                    >
+                      {row.getVisibleCells().map(cell => (
+                        <div
+                          key={cell.id}
+                          style={{
+                            width: cell.column.getSize(),
+                            flexShrink: 0,
+                          }}
+                          className="px-3 py-2 flex items-center overflow-hidden min-w-0"
+                        >
+                          {flexRender(
+                            cell.column.columnDef.cell,
+                            cell.getContext()
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </TorrentContextMenu>
+                )
+              })}
+            </div>
           </div>
         </div>
 
