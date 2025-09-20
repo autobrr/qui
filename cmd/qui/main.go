@@ -26,6 +26,7 @@ import (
 	"github.com/autobrr/qui/internal/auth"
 	"github.com/autobrr/qui/internal/config"
 	"github.com/autobrr/qui/internal/database"
+	"github.com/autobrr/qui/internal/domain"
 	quihttp "github.com/autobrr/qui/internal/http"
 	"github.com/autobrr/qui/internal/metrics"
 	"github.com/autobrr/qui/internal/models"
@@ -479,6 +480,14 @@ func (app *Application) runServer() {
 	// Initialize managers
 	syncManager := qbittorrent.NewSyncManager(clientPool)
 
+	updateService := update.NewService(log.Logger, cfg.Config.CheckForUpdates, app.version)
+	cfg.RegisterReloadListener(func(conf *domain.Config) {
+		updateService.SetEnabled(conf.CheckForUpdates)
+	})
+	updateCtx, cancelUpdate := context.WithCancel(context.Background())
+	defer cancelUpdate()
+	updateService.Start(updateCtx)
+
 	var metricsManager *metrics.MetricsManager
 	if cfg.Config.MetricsEnabled {
 		metricsManager = metrics.NewMetricsManager(syncManager, clientPool)
@@ -581,6 +590,8 @@ func (app *Application) runServer() {
 		WebHandler:          webHandler,
 		ThemeLicenseService: themeLicenseService,
 		MetricsManager:      metricsManager,
+		UpdateService:       updateService,
+		Version:             app.version,
 	}
 
 	// Initialize router

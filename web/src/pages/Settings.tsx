@@ -15,7 +15,9 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
-import { Copy, Plus, Trash2, ExternalLink } from "lucide-react"
+import { Switch } from "@/components/ui/switch"
+import { cn } from "@/lib/utils"
+import { Copy, ExternalLink, Megaphone, Plus, RefreshCw, Trash2 } from "lucide-react"
 import { ThemeLicenseManager } from "@/components/themes/ThemeLicenseManager"
 import { ThemeSelector } from "@/components/themes/ThemeSelector"
 import { ClientApiKeysManager } from "@/components/settings/ClientApiKeysManager"
@@ -166,6 +168,111 @@ function ChangePasswordForm() {
         )}
       </form.Subscribe>
     </form>
+  )
+}
+
+function ApplicationSettingsCard() {
+  const queryClient = useQueryClient()
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["config"],
+    queryFn: () => api.getAppConfig(),
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const { data: latestRelease, isFetching: isFetchingRelease } = useQuery({
+    queryKey: ["updates", data?.check_for_updates],
+    queryFn: () => api.getLatestRelease(),
+    enabled: data?.check_for_updates === true,
+    staleTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const updatePrefMutation = useMutation({
+    mutationFn: (value: boolean) => api.updateAppConfig({ check_for_updates: value }),
+    onSuccess: (_, value) => {
+      queryClient.invalidateQueries({ queryKey: ["config"] })
+      queryClient.invalidateQueries({ queryKey: ["updates"] })
+      toast.success(value ? "You'll be notified when a new release is available." : "Update notifications disabled.")
+    },
+    onError: () => {
+      toast.error("Failed to update preference. Please try again.")
+    },
+  })
+
+  const manualCheckMutation = useMutation({
+    mutationFn: () => api.checkForUpdates(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["updates"] })
+      toast.success("Update check triggered. Refreshing release info...")
+    },
+    onError: () => {
+      toast.error("Failed to trigger update check.")
+    },
+  })
+
+  const checkForUpdatesEnabled = Boolean(data?.check_for_updates)
+  const releaseName = latestRelease?.name ?? latestRelease?.tag_name
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Application</CardTitle>
+        <CardDescription>Control update notifications and view your current version.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <p className="font-medium">Check for updates</p>
+            <p className="text-sm text-muted-foreground">
+              When enabled, qui will periodically look for new releases via api.autobrr.com.
+            </p>
+          </div>
+          <Switch
+            checked={checkForUpdatesEnabled}
+            disabled={isLoading || updatePrefMutation.isPending}
+            onCheckedChange={(value) => updatePrefMutation.mutate(value)}
+            aria-label="Toggle automatic update checks"
+          />
+        </div>
+
+        <div className="rounded-md border border-border/60 bg-muted/40 p-4">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Current version</p>
+              <p className="text-lg font-semibold">{data?.version ?? "Unknown"}</p>
+              {releaseName && latestRelease?.html_url && (
+                <a
+                  href={latestRelease.html_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-2 inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                >
+                  <Megaphone className="h-4 w-4" aria-hidden="true" />
+                  <span>Latest release: {releaseName}</span>
+                </a>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={() => manualCheckMutation.mutate()}
+                disabled={manualCheckMutation.isPending || !checkForUpdatesEnabled}
+              >
+                <RefreshCw className={cn("mr-2 h-4 w-4", manualCheckMutation.isPending || isFetchingRelease ? "animate-spin" : undefined)} />
+                Check now
+              </Button>
+            </div>
+          </div>
+          {!checkForUpdatesEnabled && (
+            <p className="mt-3 text-xs text-muted-foreground">
+              Automatic checks are disabled. Enable them to receive in-app notifications when updates are available.
+            </p>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -412,8 +519,9 @@ export function Settings() {
 
       <Tabs defaultValue={defaultTab} className="space-y-4">
         <div className="w-full overflow-x-auto">
-          <TabsList className="inline-flex h-auto min-w-full sm:grid sm:grid-cols-4">
+          <TabsList className="inline-flex h-auto min-w-full sm:grid sm:grid-cols-5">
             <TabsTrigger value="security" className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 py-2 min-w-fit cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform">Security</TabsTrigger>
+            <TabsTrigger value="application" className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 py-2 min-w-fit cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform">Application</TabsTrigger>
             <TabsTrigger value="themes" className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 py-2 min-w-fit cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform">Themes</TabsTrigger>
             <TabsTrigger value="api" className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 py-2 min-w-fit whitespace-nowrap cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform">API Keys</TabsTrigger>
             <TabsTrigger value="client-api" className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 py-2 min-w-fit whitespace-nowrap cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform">Client Proxy</TabsTrigger>
@@ -432,6 +540,11 @@ export function Settings() {
               <ChangePasswordForm />
             </CardContent>
           </Card>
+        </TabsContent>
+
+
+        <TabsContent value="application" className="space-y-4">
+          <ApplicationSettingsCard />
         </TabsContent>
 
 

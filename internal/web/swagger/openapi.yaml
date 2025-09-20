@@ -169,6 +169,64 @@ paths:
         '401':
           description: Invalid current password
 
+  /api/config:
+    get:
+      tags:
+        - Configuration
+      summary: Get application configuration
+      description: Retrieve server configuration values exposed to the UI.
+      responses:
+        '200':
+          description: Current application configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppConfig'
+    patch:
+      tags:
+        - Configuration
+      summary: Update application configuration
+      description: Enable or disable automatic update checks.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                check_for_updates:
+                  type: boolean
+                  description: Enable or disable automatic release checks.
+      responses:
+        '204':
+          description: Configuration updated
+
+  /api/updates/check:
+    get:
+      tags:
+        - Updates
+      summary: Trigger update check
+      description: Trigger a background check for the latest qui release.
+      responses:
+        '204':
+          description: Update check started
+
+  /api/updates/latest:
+    get:
+      tags:
+        - Updates
+      summary: Get latest release information
+      description: Retrieve metadata for the latest release if a newer version is available.
+      responses:
+        '200':
+          description: Latest release information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GithubRelease'
+        '204':
+          description: No newer release available
+
   /api/api-keys:
     get:
       tags:
@@ -1308,6 +1366,125 @@ components:
           type: integer
         username:
           type: string
+
+    AppConfig:
+      type: object
+      properties:
+        host:
+          type: string
+        port:
+          type: integer
+        base_url:
+          type: string
+          description: Base URL the application is served from.
+        log_level:
+          type: string
+        log_path:
+          type: string
+        check_for_updates:
+          type: boolean
+          description: Whether automatic update checks are enabled.
+        version:
+          type: string
+          description: Running qui version.
+
+    GithubAuthor:
+      type: object
+      properties:
+        login:
+          type: string
+        id:
+          type: integer
+        node_id:
+          type: string
+        avatar_url:
+          type: string
+          format: uri
+        gravatar_id:
+          type: string
+        url:
+          type: string
+          format: uri
+        html_url:
+          type: string
+          format: uri
+        type:
+          type: string
+
+    GithubAsset:
+      type: object
+      properties:
+        url:
+          type: string
+          format: uri
+        id:
+          type: integer
+        node_id:
+          type: string
+        name:
+          type: string
+        label:
+          type: string
+          nullable: true
+        uploader:
+          $ref: '#/components/schemas/GithubAuthor'
+        content_type:
+          type: string
+        state:
+          type: string
+        size:
+          type: integer
+        download_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        browser_download_url:
+          type: string
+          format: uri
+
+    GithubRelease:
+      type: object
+      properties:
+        id:
+          type: integer
+        node_id:
+          type: string
+        url:
+          type: string
+          format: uri
+        html_url:
+          type: string
+          format: uri
+        tag_name:
+          type: string
+        target_commitish:
+          type: string
+        name:
+          type: string
+          nullable: true
+        body:
+          type: string
+          nullable: true
+        draft:
+          type: boolean
+        prerelease:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        published_at:
+          type: string
+          format: date-time
+        author:
+          $ref: '#/components/schemas/GithubAuthor'
+        assets:
+          type: array
+          items:
+            $ref: '#/components/schemas/GithubAsset'
 
     ApiKey:
       type: object
