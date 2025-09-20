@@ -12,6 +12,7 @@ type Config struct {
 	LogLevel              string `toml:"logLevel" mapstructure:"logLevel"`
 	LogPath               string `toml:"logPath" mapstructure:"logPath"`
 	DataDir               string `toml:"dataDir" mapstructure:"dataDir"`
+	CheckForUpdates       bool   `toml:"checkForUpdates" mapstructure:"checkForUpdates"`
 	PprofEnabled          bool   `toml:"pprofEnabled" mapstructure:"pprofEnabled"`
 	MetricsEnabled        bool   `toml:"metricsEnabled" mapstructure:"metricsEnabled"`
 	MetricsHost           string `toml:"metricsHost" mapstructure:"metricsHost"`

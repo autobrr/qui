@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"text/template"
 
 	"github.com/fsnotify/fsnotify"
@@ -28,6 +29,9 @@ type AppConfig struct {
 	Config  *domain.Config
 	viper   *viper.Viper
 	dataDir string
+
+	listenersMu sync.RWMutex
+	listeners   []func(*domain.Config)
 }
 
 func New(configDirOrPath string) (*AppConfig, error) {
@@ -83,6 +87,7 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("logLevel", "INFO")
 	c.viper.SetDefault("logPath", "")
 	c.viper.SetDefault("dataDir", "") // Empty means auto-detect (next to config file)
+	c.viper.SetDefault("checkForUpdates", true)
 	c.viper.SetDefault("pprofEnabled", false)
 	c.viper.SetDefault("metricsEnabled", false)
 	c.viper.SetDefault("metricsHost", "127.0.0.1")
@@ -161,6 +166,7 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("logLevel", envPrefix+"LOG_LEVEL")
 	c.viper.BindEnv("logPath", envPrefix+"LOG_PATH")
 	c.viper.BindEnv("dataDir", envPrefix+"DATA_DIR")
+	c.viper.BindEnv("checkForUpdates", envPrefix+"CHECK_FOR_UPDATES")
 	c.viper.BindEnv("pprofEnabled", envPrefix+"PPROF_ENABLED")
 	c.viper.BindEnv("metricsEnabled", envPrefix+"METRICS_ENABLED")
 	c.viper.BindEnv("metricsHost", envPrefix+"METRICS_HOST")
@@ -198,6 +204,33 @@ func (c *AppConfig) applyDynamicChanges() {
 		if err := setupLogFile(c.Config.LogPath); err != nil {
 			log.Error().Err(err).Msg("Failed to update log file")
 		}
+	}
+
+	// Update check for updates flag from config changes
+	c.Config.CheckForUpdates = c.viper.GetBool("checkForUpdates")
+
+	c.notifyListeners()
+}
+
+// RegisterReloadListener registers a callback that's invoked when the configuration file is reloaded.
+func (c *AppConfig) RegisterReloadListener(fn func(*domain.Config)) {
+	c.listenersMu.Lock()
+	defer c.listenersMu.Unlock()
+	c.listeners = append(c.listeners, fn)
+}
+
+func (c *AppConfig) notifyListeners() {
+	c.listenersMu.RLock()
+	listeners := append([]func(*domain.Config){}, c.listeners...)
+	c.listenersMu.RUnlock()
+
+	if len(listeners) == 0 {
+		return
+	}
+
+	copied := *c.Config
+	for _, listener := range listeners {
+		listener(&copied)
 	}
 }
 
@@ -246,6 +279,10 @@ sessionSecret = "{{ .sessionSecret }}"
 # Data directory (default: next to config file)
 # Database file (qui.db) will be created inside this directory
 #dataDir = "/var/db/qui"
+
+# Check for new releases via api.autobrr.com
+# Default: true
+#checkForUpdates = true
 
 # Log level
 # Default: "INFO"
@@ -458,6 +495,39 @@ func (c *AppConfig) ApplyLogConfig() {
 			log.Error().Err(err).Msg("Failed to setup log file")
 		}
 	}
+}
+
+// UpdateConfig persists current in-memory configuration values back to the loaded config file.
+func (c *AppConfig) UpdateConfig() error {
+	configFile := c.viper.ConfigFileUsed()
+	if configFile == "" {
+		return fmt.Errorf("no config file is loaded")
+	}
+
+	c.viper.Set("host", c.Config.Host)
+	c.viper.Set("port", c.Config.Port)
+	c.viper.Set("baseUrl", c.Config.BaseURL)
+	c.viper.Set("sessionSecret", c.Config.SessionSecret)
+	c.viper.Set("logLevel", c.Config.LogLevel)
+	c.viper.Set("logPath", c.Config.LogPath)
+	c.viper.Set("dataDir", c.Config.DataDir)
+	c.viper.Set("checkForUpdates", c.Config.CheckForUpdates)
+	c.viper.Set("pprofEnabled", c.Config.PprofEnabled)
+	c.viper.Set("metricsEnabled", c.Config.MetricsEnabled)
+	c.viper.Set("metricsHost", c.Config.MetricsHost)
+	c.viper.Set("metricsPort", c.Config.MetricsPort)
+	c.viper.Set("metricsBasicAuthUsers", c.Config.MetricsBasicAuthUsers)
+
+	// HTTP timeout configuration is nested - update the map directly.
+	c.viper.Set("httpTimeouts.readTimeout", c.Config.HTTPTimeouts.ReadTimeout)
+	c.viper.Set("httpTimeouts.writeTimeout", c.Config.HTTPTimeouts.WriteTimeout)
+	c.viper.Set("httpTimeouts.idleTimeout", c.Config.HTTPTimeouts.IdleTimeout)
+
+	if err := c.viper.WriteConfig(); err != nil {
+		return fmt.Errorf("failed to write config: %w", err)
+	}
+
+	return nil
 }
 
 const encryptionKeySize = 32
