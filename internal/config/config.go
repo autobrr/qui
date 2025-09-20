@@ -497,39 +497,6 @@ func (c *AppConfig) ApplyLogConfig() {
 	}
 }
 
-// UpdateConfig persists current in-memory configuration values back to the loaded config file.
-func (c *AppConfig) UpdateConfig() error {
-	configFile := c.viper.ConfigFileUsed()
-	if configFile == "" {
-		return fmt.Errorf("no config file is loaded")
-	}
-
-	c.viper.Set("host", c.Config.Host)
-	c.viper.Set("port", c.Config.Port)
-	c.viper.Set("baseUrl", c.Config.BaseURL)
-	c.viper.Set("sessionSecret", c.Config.SessionSecret)
-	c.viper.Set("logLevel", c.Config.LogLevel)
-	c.viper.Set("logPath", c.Config.LogPath)
-	c.viper.Set("dataDir", c.Config.DataDir)
-	c.viper.Set("checkForUpdates", c.Config.CheckForUpdates)
-	c.viper.Set("pprofEnabled", c.Config.PprofEnabled)
-	c.viper.Set("metricsEnabled", c.Config.MetricsEnabled)
-	c.viper.Set("metricsHost", c.Config.MetricsHost)
-	c.viper.Set("metricsPort", c.Config.MetricsPort)
-	c.viper.Set("metricsBasicAuthUsers", c.Config.MetricsBasicAuthUsers)
-
-	// HTTP timeout configuration is nested - update the map directly.
-	c.viper.Set("httpTimeouts.readTimeout", c.Config.HTTPTimeouts.ReadTimeout)
-	c.viper.Set("httpTimeouts.writeTimeout", c.Config.HTTPTimeouts.WriteTimeout)
-	c.viper.Set("httpTimeouts.idleTimeout", c.Config.HTTPTimeouts.IdleTimeout)
-
-	if err := c.viper.WriteConfig(); err != nil {
-		return fmt.Errorf("failed to write config: %w", err)
-	}
-
-	return nil
-}
-
 const encryptionKeySize = 32
 
 func WriteDefaultConfig(path string) error {
