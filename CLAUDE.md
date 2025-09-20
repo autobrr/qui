@@ -73,7 +73,7 @@ web/               - React frontend source code
 ## Technology Stack
 
 ### Backend
-- **Language**: Go 1.24+
+- **Language**: Go 1.25+
 - **Router**: chi/v5 
 - **Database**: SQLite with modernc.org/sqlite driver
 - **Auth**: Session-based with Argon2 password hashing
