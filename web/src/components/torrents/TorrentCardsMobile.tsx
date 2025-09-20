@@ -1651,7 +1651,7 @@ export function TorrentCardsMobile({
       <div className="sm:hidden">
         <ScrollToTopButton
           scrollContainerRef={parentRef}
-          className="bottom-24 right-4"
+          className="bottom-28 right-4"
         />
       </div>
     </div>
