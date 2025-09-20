@@ -149,6 +149,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const previousFiltersRef = useRef(filters)
   const previousInstanceIdRef = useRef(instanceId)
   const previousSearchRef = useRef("")
+  const lastMetadataRef = useRef<{
+    counts?: TorrentCounts
+    categories?: Record<string, Category>
+    tags?: string[]
+    totalCount?: number
+    torrentsLength?: number
+  }>({})
 
   // State for range select capabilities for checkboxes
   const shiftPressedRef = useRef<boolean>(false)
@@ -311,18 +318,44 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
   // Call the callback when filtered data updates
   useEffect(() => {
-    if (onFilteredDataUpdate && torrents && totalCount !== undefined && !isLoading) {
-      // Only skip callback if ALL metadata is undefined (indicates incomplete initial load during instance switch)
-      // If any metadata exists, or if torrents list is non-empty, proceed with callback
-      const hasAnyMetadata = counts !== undefined || categories !== undefined || tags !== undefined
-      const hasExistingTorrents = torrents.length > 0
-
-      if (hasAnyMetadata || hasExistingTorrents) {
-        onFilteredDataUpdate(torrents, totalCount, counts, categories, tags)
-      }
+    if (!onFilteredDataUpdate || isLoading) {
+      return
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [totalCount, isLoading, torrents.length, counts, categories, tags, onFilteredDataUpdate]) // Use torrents.length to avoid unnecessary calls when content updates
+
+    const nextCounts = counts ?? lastMetadataRef.current.counts
+    const nextCategories = categories ?? lastMetadataRef.current.categories
+    const nextTags = tags ?? lastMetadataRef.current.tags
+    const nextTotalCount = totalCount
+
+    const hasAnyMetadata = nextCounts !== undefined || nextCategories !== undefined || nextTags !== undefined
+    const hasExistingTorrents = torrents.length > 0
+
+    if (!hasAnyMetadata && !hasExistingTorrents) {
+      return
+    }
+
+    const metadataChanged =
+      nextCounts !== lastMetadataRef.current.counts ||
+      nextCategories !== lastMetadataRef.current.categories ||
+      nextTags !== lastMetadataRef.current.tags ||
+      nextTotalCount !== lastMetadataRef.current.totalCount
+
+    const torrentsLengthChanged = torrents.length !== (lastMetadataRef.current.torrentsLength ?? -1)
+
+    if (!metadataChanged && !torrentsLengthChanged) {
+      return
+    }
+
+    onFilteredDataUpdate(torrents, totalCount, nextCounts, nextCategories, nextTags)
+
+    lastMetadataRef.current = {
+      counts: nextCounts,
+      categories: nextCategories,
+      tags: nextTags,
+      totalCount: nextTotalCount,
+      torrentsLength: torrents.length,
+    }
+  }, [counts, categories, tags, totalCount, torrents, isLoading, onFilteredDataUpdate])
 
 
   // Show refetch indicator only if fetching takes more than 2 seconds
