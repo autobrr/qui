@@ -66,6 +66,11 @@ interface TorrentActionData {
   clientCount?: number
 }
 
+interface ClientMeta {
+  clientHashes?: string[]
+  totalSelected?: number
+}
+
 export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentActionsProps) {
   const queryClient = useQueryClient()
 
@@ -219,10 +224,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     filters?: TorrentActionData["filters"],
     search?: string,
     excludeHashes?: string[],
-    clientMeta?: {
-      clientHashes?: string[]
-      totalSelected?: number
-    }
+    clientMeta?: ClientMeta
   ) => {
     const clientHashes = clientMeta?.clientHashes ?? hashes
     const clientCount = clientMeta?.totalSelected
@@ -250,8 +252,12 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     isAllSelected?: boolean,
     filters?: TorrentActionData["filters"],
     search?: string,
-    excludeHashes?: string[]
+    excludeHashes?: string[],
+    clientMeta?: ClientMeta
   ) => {
+    const clientHashes = clientMeta?.clientHashes ?? hashes
+    const clientCount = clientMeta?.totalSelected
+      ?? (clientHashes?.length ?? hashes.length)
     await mutation.mutateAsync({
       action: "addTags",
       tags: tags.join(","),
@@ -260,6 +266,8 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
       filters: isAllSelected ? filters : undefined,
       search: isAllSelected ? search : undefined,
       excludeHashes: isAllSelected ? excludeHashes : undefined,
+      clientHashes,
+      clientCount,
     })
     setShowAddTagsDialog(false)
     setContextHashes([])
@@ -272,8 +280,12 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     isAllSelected?: boolean,
     filters?: TorrentActionData["filters"],
     search?: string,
-    excludeHashes?: string[]
+    excludeHashes?: string[],
+    clientMeta?: ClientMeta
   ) => {
+    const clientHashes = clientMeta?.clientHashes ?? hashes
+    const clientCount = clientMeta?.totalSelected
+      ?? (clientHashes?.length ?? hashes.length)
     try {
       await mutation.mutateAsync({
         action: "setTags",
@@ -283,6 +295,8 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
         filters: isAllSelected ? filters : undefined,
         search: isAllSelected ? search : undefined,
         excludeHashes: isAllSelected ? excludeHashes : undefined,
+        clientHashes,
+        clientCount,
       })
     } catch (error) {
       // Fallback to addTags for older qBittorrent versions
@@ -295,6 +309,8 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
           filters: isAllSelected ? filters : undefined,
           search: isAllSelected ? search : undefined,
           excludeHashes: isAllSelected ? excludeHashes : undefined,
+          clientHashes,
+          clientCount,
         })
       } else {
         throw error
@@ -311,8 +327,12 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     isAllSelected?: boolean,
     filters?: TorrentActionData["filters"],
     search?: string,
-    excludeHashes?: string[]
+    excludeHashes?: string[],
+    clientMeta?: ClientMeta
   ) => {
+    const clientHashes = clientMeta?.clientHashes ?? hashes
+    const clientCount = clientMeta?.totalSelected
+      ?? (clientHashes?.length ?? hashes.length)
     await mutation.mutateAsync({
       action: "removeTags",
       tags: tags.join(","),
@@ -321,6 +341,8 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
       filters: isAllSelected ? filters : undefined,
       search: isAllSelected ? search : undefined,
       excludeHashes: isAllSelected ? excludeHashes : undefined,
+      clientHashes,
+      clientCount,
     })
     setShowRemoveTagsDialog(false)
     setContextHashes([])
@@ -333,8 +355,12 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     isAllSelected?: boolean,
     filters?: TorrentActionData["filters"],
     search?: string,
-    excludeHashes?: string[]
+    excludeHashes?: string[],
+    clientMeta?: ClientMeta
   ) => {
+    const clientHashes = clientMeta?.clientHashes ?? hashes
+    const clientCount = clientMeta?.totalSelected
+      ?? (clientHashes?.length ?? hashes.length)
     await mutation.mutateAsync({
       action: "setCategory",
       category,
@@ -343,6 +369,8 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
       filters: isAllSelected ? filters : undefined,
       search: isAllSelected ? search : undefined,
       excludeHashes: isAllSelected ? excludeHashes : undefined,
+      clientHashes,
+      clientCount,
     })
     setShowCategoryDialog(false)
     setContextHashes([])
@@ -353,14 +381,28 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     ratioLimit: number,
     seedingTimeLimit: number,
     inactiveSeedingTimeLimit: number,
-    hashes: string[]
+    hashes: string[],
+    isAllSelected?: boolean,
+    filters?: TorrentActionData["filters"],
+    search?: string,
+    excludeHashes?: string[],
+    clientMeta?: ClientMeta
   ) => {
+    const clientHashes = clientMeta?.clientHashes ?? hashes
+    const clientCount = clientMeta?.totalSelected
+      ?? (clientHashes?.length ?? hashes.length)
     await mutation.mutateAsync({
       action: "setShareLimit",
-      hashes,
+      hashes: isAllSelected ? [] : hashes,
+      selectAll: isAllSelected,
+      filters: isAllSelected ? filters : undefined,
+      search: isAllSelected ? search : undefined,
+      excludeHashes: isAllSelected ? excludeHashes : undefined,
       ratioLimit,
       seedingTimeLimit,
       inactiveSeedingTimeLimit,
+      clientHashes,
+      clientCount,
     })
     setContextHashes([])
     setContextTorrents([])
@@ -369,14 +411,40 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
   const handleSetSpeedLimits = useCallback(async (
     uploadLimit: number,
     downloadLimit: number,
-    hashes: string[]
+    hashes: string[],
+    isAllSelected?: boolean,
+    filters?: TorrentActionData["filters"],
+    search?: string,
+    excludeHashes?: string[],
+    clientMeta?: ClientMeta
   ) => {
+    const clientHashes = clientMeta?.clientHashes ?? hashes
+    const clientCount = clientMeta?.totalSelected
+      ?? (clientHashes?.length ?? hashes.length)
+    const sharedOptions = {
+      selectAll: isAllSelected,
+      filters: isAllSelected ? filters : undefined,
+      search: isAllSelected ? search : undefined,
+      excludeHashes: isAllSelected ? excludeHashes : undefined,
+      clientHashes,
+      clientCount,
+    }
     const promises = []
     if (uploadLimit >= 0) {
-      promises.push(mutation.mutateAsync({ action: "setUploadLimit", hashes, uploadLimit }))
+      promises.push(mutation.mutateAsync({
+        action: "setUploadLimit",
+        hashes: isAllSelected ? [] : hashes,
+        uploadLimit,
+        ...sharedOptions,
+      }))
     }
     if (downloadLimit >= 0) {
-      promises.push(mutation.mutateAsync({ action: "setDownloadLimit", hashes, downloadLimit }))
+      promises.push(mutation.mutateAsync({
+        action: "setDownloadLimit",
+        hashes: isAllSelected ? [] : hashes,
+        downloadLimit,
+        ...sharedOptions,
+      }))
     }
     if (promises.length > 0) {
       await Promise.all(promises)
@@ -390,8 +458,12 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     isAllSelected?: boolean,
     filters?: TorrentActionData["filters"],
     search?: string,
-    excludeHashes?: string[]
+    excludeHashes?: string[],
+    clientMeta?: ClientMeta
   ) => {
+    const clientHashes = clientMeta?.clientHashes ?? hashes
+    const clientCount = clientMeta?.totalSelected
+      ?? (clientHashes?.length ?? hashes.length)
     await mutation.mutateAsync({
       action: "recheck",
       hashes: isAllSelected ? [] : hashes,
@@ -399,6 +471,8 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
       filters: isAllSelected ? filters : undefined,
       search: isAllSelected ? search : undefined,
       excludeHashes: isAllSelected ? excludeHashes : undefined,
+      clientHashes,
+      clientCount,
     })
     setShowRecheckDialog(false)
     setContextHashes([])
@@ -409,8 +483,12 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     isAllSelected?: boolean,
     filters?: TorrentActionData["filters"],
     search?: string,
-    excludeHashes?: string[]
+    excludeHashes?: string[],
+    clientMeta?: ClientMeta
   ) => {
+    const clientHashes = clientMeta?.clientHashes ?? hashes
+    const clientCount = clientMeta?.totalSelected
+      ?? (clientHashes?.length ?? hashes.length)
     await mutation.mutateAsync({
       action: "reannounce",
       hashes: isAllSelected ? [] : hashes,
@@ -418,6 +496,8 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
       filters: isAllSelected ? filters : undefined,
       search: isAllSelected ? search : undefined,
       excludeHashes: isAllSelected ? excludeHashes : undefined,
+      clientHashes,
+      clientCount,
     })
     setShowReannounceDialog(false)
     setContextHashes([])
@@ -429,8 +509,12 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     isAllSelected?: boolean,
     filters?: TorrentActionData["filters"],
     search?: string,
-    excludeHashes?: string[]
+    excludeHashes?: string[],
+    clientMeta?: ClientMeta
   ) => {
+    const clientHashes = clientMeta?.clientHashes ?? hashes
+    const clientCount = clientMeta?.totalSelected
+      ?? (clientHashes?.length ?? hashes.length)
     await mutation.mutateAsync({
       action: "setLocation",
       location,
@@ -439,6 +523,8 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
       filters: isAllSelected ? filters : undefined,
       search: isAllSelected ? search : undefined,
       excludeHashes: isAllSelected ? excludeHashes : undefined,
+      clientHashes,
+      clientCount,
     })
     setShowLocationDialog(false)
     setContextHashes([])

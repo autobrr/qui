@@ -9,7 +9,7 @@ import { usePersistedColumnOrder } from "@/hooks/usePersistedColumnOrder"
 import { usePersistedColumnSizing } from "@/hooks/usePersistedColumnSizing"
 import { usePersistedColumnSorting } from "@/hooks/usePersistedColumnSorting"
 import { usePersistedColumnVisibility } from "@/hooks/usePersistedColumnVisibility"
-import { useTorrentActions } from "@/hooks/useTorrentActions"
+import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
 import { useTorrentsList } from "@/hooks/useTorrentsList"
 import {
   DndContext,
@@ -683,6 +683,29 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
 
   // Wrapper functions to adapt hook handlers to component needs
+  const selectAllOptions = useMemo(() => ({
+    selectAll: isAllSelected,
+    filters: isAllSelected ? filters : undefined,
+    search: isAllSelected ? effectiveSearch : undefined,
+    excludeHashes: isAllSelected ? Array.from(excludedFromSelectAll) : undefined,
+  }), [isAllSelected, filters, effectiveSearch, excludedFromSelectAll])
+
+  const contextClientMeta = useMemo(() => ({
+    clientHashes: contextHashes,
+    totalSelected: isAllSelected ? effectiveSelectionCount : contextHashes.length,
+  }), [contextHashes, isAllSelected, effectiveSelectionCount])
+
+  const runAction = useCallback((action: (typeof TORRENT_ACTIONS)[keyof typeof TORRENT_ACTIONS], hashes: string[], extra?: Parameters<typeof handleAction>[2]) => {
+    const clientHashes = hashes.length > 0 ? hashes : selectedHashes
+    const clientCount = isAllSelected ? effectiveSelectionCount : (clientHashes.length || hashes.length || 1)
+    handleAction(action, isAllSelected ? [] : hashes, {
+      ...selectAllOptions,
+      clientHashes,
+      clientCount,
+      ...extra,
+    })
+  }, [handleAction, isAllSelected, selectAllOptions, selectedHashes, effectiveSelectionCount])
+
   const handleDeleteWrapper = useCallback(() => {
     handleDelete(
       contextHashes,
@@ -690,12 +713,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       filters,
       effectiveSearch,
       Array.from(excludedFromSelectAll),
-      {
-        clientHashes: contextHashes,
-        totalSelected: isAllSelected ? effectiveSelectionCount : contextHashes.length,
-      }
+      contextClientMeta
     )
-  }, [handleDelete, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll, effectiveSelectionCount])
+  }, [handleDelete, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
 
   const handleAddTagsWrapper = useCallback((tags: string[]) => {
     handleAddTags(
@@ -704,9 +724,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       isAllSelected,
       filters,
       effectiveSearch,
-      Array.from(excludedFromSelectAll)
+      Array.from(excludedFromSelectAll),
+      contextClientMeta
     )
-  }, [handleAddTags, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll])
+  }, [handleAddTags, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
 
   const handleSetTagsWrapper = useCallback((tags: string[]) => {
     handleSetTags(
@@ -715,9 +736,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       isAllSelected,
       filters,
       effectiveSearch,
-      Array.from(excludedFromSelectAll)
+      Array.from(excludedFromSelectAll),
+      contextClientMeta
     )
-  }, [handleSetTags, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll])
+  }, [handleSetTags, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
 
   const handleSetCategoryWrapper = useCallback((category: string) => {
     handleSetCategory(
@@ -726,9 +748,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       isAllSelected,
       filters,
       effectiveSearch,
-      Array.from(excludedFromSelectAll)
+      Array.from(excludedFromSelectAll),
+      contextClientMeta
     )
-  }, [handleSetCategory, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll])
+  }, [handleSetCategory, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
 
   const handleSetLocationWrapper = useCallback((location: string) => {
     handleSetLocation(
@@ -737,9 +760,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       isAllSelected,
       filters,
       effectiveSearch,
-      Array.from(excludedFromSelectAll)
+      Array.from(excludedFromSelectAll),
+      contextClientMeta
     )
-  }, [handleSetLocation, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll])
+  }, [handleSetLocation, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
 
   const handleRemoveTagsWrapper = useCallback((tags: string[]) => {
     handleRemoveTags(
@@ -748,9 +772,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       isAllSelected,
       filters,
       effectiveSearch,
-      Array.from(excludedFromSelectAll)
+      Array.from(excludedFromSelectAll),
+      contextClientMeta
     )
-  }, [handleRemoveTags, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll])
+  }, [handleRemoveTags, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
 
   const handleRecheckWrapper = useCallback(() => {
     handleRecheck(
@@ -758,9 +783,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       isAllSelected,
       filters,
       effectiveSearch,
-      Array.from(excludedFromSelectAll)
+      Array.from(excludedFromSelectAll),
+      contextClientMeta
     )
-  }, [handleRecheck, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll])
+  }, [handleRecheck, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
 
   const handleReannounceWrapper = useCallback(() => {
     handleReannounce(
@@ -768,9 +794,52 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       isAllSelected,
       filters,
       effectiveSearch,
-      Array.from(excludedFromSelectAll)
+      Array.from(excludedFromSelectAll),
+      contextClientMeta
     )
-  }, [handleReannounce, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll])
+  }, [handleReannounce, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
+
+  const handleSetShareLimitContext = useCallback((
+    ratioLimit: number,
+    seedingTimeLimit: number,
+    inactiveSeedingTimeLimit: number,
+    hashes: string[]
+  ) => {
+    handleSetShareLimit(
+      ratioLimit,
+      seedingTimeLimit,
+      inactiveSeedingTimeLimit,
+      hashes,
+      isAllSelected,
+      filters,
+      effectiveSearch,
+      Array.from(excludedFromSelectAll),
+      {
+        clientHashes: hashes,
+        totalSelected: isAllSelected ? effectiveSelectionCount : hashes.length,
+      }
+    )
+  }, [handleSetShareLimit, isAllSelected, filters, effectiveSearch, excludedFromSelectAll, effectiveSelectionCount])
+
+  const handleSetSpeedLimitsContext = useCallback((
+    uploadLimit: number,
+    downloadLimit: number,
+    hashes: string[]
+  ) => {
+    handleSetSpeedLimits(
+      uploadLimit,
+      downloadLimit,
+      hashes,
+      isAllSelected,
+      filters,
+      effectiveSearch,
+      Array.from(excludedFromSelectAll),
+      {
+        clientHashes: hashes,
+        totalSelected: isAllSelected ? effectiveSelectionCount : hashes.length,
+      }
+    )
+  }, [handleSetSpeedLimits, isAllSelected, filters, effectiveSearch, excludedFromSelectAll, effectiveSelectionCount])
 
 
   // Drag and drop setup
@@ -974,15 +1043,15 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                       selectedTorrents={selectedTorrents}
                       effectiveSelectionCount={effectiveSelectionCount}
                       onTorrentSelect={onTorrentSelect}
-                      onAction={handleAction}
+                      onAction={runAction}
                       onPrepareDelete={prepareDeleteAction}
                       onPrepareTags={prepareTagsAction}
                       onPrepareCategory={prepareCategoryAction}
                       onPrepareLocation={prepareLocationAction}
                       onPrepareRecheck={prepareRecheckAction}
                       onPrepareReannounce={prepareReannounceAction}
-                      onSetShareLimit={handleSetShareLimit}
-                      onSetSpeedLimits={handleSetSpeedLimits}
+                      onSetShareLimit={handleSetShareLimitContext}
+                      onSetSpeedLimits={handleSetSpeedLimitsContext}
                       isPending={isPending}
                     >
                       <div
