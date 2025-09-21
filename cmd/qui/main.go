@@ -24,6 +24,7 @@ import (
 
 	"github.com/autobrr/qui/internal/api"
 	"github.com/autobrr/qui/internal/auth"
+	"github.com/autobrr/qui/internal/buildinfo"
 	"github.com/autobrr/qui/internal/config"
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/metrics"
@@ -36,8 +37,6 @@ import (
 )
 
 var (
-	Version = "dev"
-
 	// PolarOrgID Publisher credentials - set during build via ldflags
 	PolarOrgID = "" // Set via: -X main.PolarOrgID=your-org-id
 )
@@ -53,10 +52,10 @@ multiple qBittorrent instances with support for 10k+ torrents.`,
 	// Initialize logger
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
-	rootCmd.Version = Version
+	rootCmd.Version = buildinfo.Version
 
 	rootCmd.AddCommand(RunServeCommand())
-	rootCmd.AddCommand(RunVersionCommand(Version))
+	rootCmd.AddCommand(RunVersionCommand(buildinfo.Version))
 	rootCmd.AddCommand(RunGenerateConfigCommand())
 	rootCmd.AddCommand(RunCreateUserCommand())
 	rootCmd.AddCommand(RunChangePasswordCommand())
@@ -87,7 +86,7 @@ func RunServeCommand() *cobra.Command {
 	command.Flags().BoolVar(&pprofFlag, "pprof", false, "enable pprof server on :6060")
 
 	command.Run = func(cmd *cobra.Command, args []string) {
-		app := NewApplication(Version, configDir, dataDir, logPath, pprofFlag, PolarOrgID)
+		app := NewApplication(configDir, dataDir, logPath, pprofFlag, PolarOrgID)
 		app.runServer()
 	}
 
@@ -391,7 +390,6 @@ Flags:
 }
 
 type Application struct {
-	version   string
 	configDir string
 	dataDir   string
 	logPath   string
@@ -401,9 +399,8 @@ type Application struct {
 	polarOrgID string // Set via: -X main.PolarOrgID=your-org-id
 }
 
-func NewApplication(version, configDir, dataDir, logPath string, pprofFlag bool, polarOrgID string) *Application {
+func NewApplication(configDir, dataDir, logPath string, pprofFlag bool, polarOrgID string) *Application {
 	return &Application{
-		version:    version,
 		configDir:  configDir,
 		dataDir:    dataDir,
 		logPath:    logPath,
@@ -413,7 +410,7 @@ func NewApplication(version, configDir, dataDir, logPath string, pprofFlag bool,
 }
 
 func (app *Application) runServer() {
-	log.Info().Str("version", app.version).Msg("Starting qui")
+	log.Info().Str("version", buildinfo.Version).Msg("Starting qui")
 
 	// Initialize configuration
 	cfg, err := config.New(app.configDir)
@@ -444,7 +441,7 @@ func (app *Application) runServer() {
 	cfg.ApplyLogConfig()
 
 	// init polar client
-	polarClient := polar.NewClient(polar.WithOrganizationID(app.polarOrgID), polar.WithEnvironment(os.Getenv("QUI__POLAR_ENVIRONMENT")))
+	polarClient := polar.NewClient(polar.WithOrganizationID(app.polarOrgID), polar.WithEnvironment(os.Getenv("QUI__POLAR_ENVIRONMENT")), polar.WithUserAgent(buildinfo.UserAgent))
 	if app.polarOrgID != "" {
 		log.Trace().Msg("Initializing Polar client for license validation")
 	} else {
@@ -530,7 +527,7 @@ func (app *Application) runServer() {
 	// Start server in goroutine
 	httpServer := api.NewServer(&api.Dependencies{
 		Config:            cfg,
-		Version:           Version,
+		Version:           buildinfo.Version,
 		AuthService:       authService,
 		SessionManager:    sessionManager,
 		InstanceStore:     instanceStore,

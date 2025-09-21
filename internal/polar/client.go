@@ -139,6 +139,7 @@ type Client struct {
 	baseURL        string
 	environment    string
 	organizationID string
+	userAgent      string
 
 	httpClient *http.Client
 }
@@ -173,6 +174,12 @@ func WithEnvironment(env string) OptFunc {
 	}
 }
 
+func WithUserAgent(userAgent string) OptFunc {
+	return func(c *Client) {
+		c.userAgent = userAgent
+	}
+}
+
 // WithHTTPClient sets a custom HTTP client to use for requests
 func WithHTTPClient(httpClient *http.Client) OptFunc {
 	return func(c *Client) {
@@ -186,6 +193,7 @@ func NewClient(opts ...OptFunc) *Client {
 		baseURL:        polarAPIBaseURL,
 		environment:    "production",
 		organizationID: "",
+		userAgent:      "polar-go",
 
 		httpClient: &http.Client{
 			Timeout: requestTimeout,
@@ -271,6 +279,7 @@ func (c *Client) Activate(ctx context.Context, activateReq ActivateRequest) (*Ac
 	}
 
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", c.userAgent)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -365,6 +374,7 @@ func (c *Client) Validate(ctx context.Context, validateReq ValidateRequest) (*Va
 	}
 
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", c.userAgent)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
