@@ -400,3 +400,59 @@ export interface AppPreferences {
   // Add catch-all for any additional fields from the API
   [key: string]: unknown
 }
+
+// Racing Dashboard types
+export interface RacingTorrent {
+  hash: string
+  name: string
+  size: number
+  tracker: string
+  trackerDomain: string
+  ratio: number
+  completionTime?: number // Time to complete in seconds
+  addedOn: string
+  completedOn?: string
+  state: string
+  category: string
+  tags: string
+  instanceId: number
+  instanceName: string
+}
+
+export interface TrackerData {
+  totalTorrents: number
+  completedTorrents: number
+  averageRatio: number
+  averageCompletionTime?: number
+  instanceId: number
+  instanceName: string
+}
+
+export interface TrackerStats {
+  totalTorrents: number
+  completedTorrents: number
+  averageRatio: number
+  averageCompletionTime?: number
+  byTracker: Record<string, TrackerData>
+}
+
+export interface RacingDashboard {
+  topFastest: RacingTorrent[]
+  topRatios: RacingTorrent[]
+  bottomRatios: RacingTorrent[]
+  trackerStats: TrackerStats
+  lastUpdated: string
+}
+
+export interface RacingDashboardOptions {
+  limit?: number
+  instanceIds?: number[]
+  trackerFilter?: string[]
+  minRatio?: number
+  minSize?: number
+  maxSize?: number
+  categoryFilter?: string[]
+  startDate?: string
+  endDate?: string
+  timeRange?: string
+}

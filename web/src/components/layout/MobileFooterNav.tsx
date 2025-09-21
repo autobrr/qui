@@ -6,6 +6,7 @@
 import { Link, useLocation } from "@tanstack/react-router"
 import { cn } from "@/lib/utils"
 import {
+  Activity,
   Home,
   Settings,
   HardDrive,
@@ -69,6 +70,21 @@ export function MobileFooterNav() {
             location.pathname === "/dashboard" && "text-primary"
           )} />
           <span className="truncate">Dashboard</span>
+        </Link>
+
+        {/* Racing */}
+        <Link
+          to="/racing"
+          className={cn(
+            "flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1",
+            location.pathname === "/racing"? "text-primary": "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          <Activity className={cn(
+            "h-5 w-5",
+            location.pathname === "/racing" && "text-primary"
+          )} />
+          <span className="truncate">Racing</span>
         </Link>
 
         {/* Clients dropdown */}

@@ -26,6 +26,7 @@ import { useForm } from "@tanstack/react-form"
 import { Copy, ExternalLink, Key, ShoppingCart, Sparkles, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { toast } from "sonner"
+import { POLAR_PURCHASE_URL } from "../premium/constants"
 
 // Helper function to mask license keys for display
 function maskLicenseKey(key: string): string {
@@ -159,7 +160,7 @@ export function ThemeLicenseManager() {
                 )}
                 {!hasPremiumAccess && (
                   <Button size="sm" asChild>
-                    <a href="https://buy.polar.sh/polar_cl_yyXJesVM9pFVfAPIplspbfCukgVgXzXjXIc2N0I8WcL" target="_blank" rel="noopener noreferrer">
+                    <a href={POLAR_PURCHASE_URL} target="_blank" rel="noopener noreferrer">
                       <ShoppingCart className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                       Buy license
                     </a>
