@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/CAFxX/httpcompression"
@@ -269,10 +270,25 @@ func (s *Server) Handler() *chi.Mux {
 	}
 
 	baseURL := s.config.Config.BaseURL
+	if baseURL == "" {
+		baseURL = "/"
+	}
 
 	// Initialize web handler (for embedded frontend)
 	webHandler := web.NewHandler(s.version, s.config.Config.BaseURL, webfs.DistDirFS)
-	webHandler.RegisterRoutes(r)
+
+	if baseURL != "/" {
+		trimmedBaseURL := strings.TrimSuffix(baseURL, "/")
+		if trimmedBaseURL == "" {
+			trimmedBaseURL = "/"
+		}
+
+		r.Route(trimmedBaseURL, func(sub chi.Router) {
+			webHandler.RegisterRoutes(sub)
+		})
+	} else {
+		webHandler.RegisterRoutes(r)
+	}
 
 	r.Get("/health", healthHandler.HandleHealth)
 	r.Get("/healthz/readiness", healthHandler.HandleReady)
