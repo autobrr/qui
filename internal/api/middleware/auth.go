@@ -4,6 +4,7 @@
 package middleware
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
@@ -37,6 +38,10 @@ func IsAuthenticated(authService *auth.Service, sessionManager *scs.SessionManag
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}
+
+			username := sessionManager.GetString(r.Context(), "username")
+			ctx := context.WithValue(r.Context(), "username", username)
+			r = r.WithContext(ctx)
 
 			next.ServeHTTP(w, r)
 		})
