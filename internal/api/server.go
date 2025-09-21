@@ -227,6 +227,9 @@ func (s *Server) Handler() *chi.Mux {
 							// Torrent details
 							r.Get("/properties", torrentsHandler.GetTorrentProperties)
 							r.Get("/trackers", torrentsHandler.GetTorrentTrackers)
+							r.Put("/trackers", torrentsHandler.EditTorrentTracker)
+							r.Post("/trackers", torrentsHandler.AddTorrentTrackers)
+							r.Delete("/trackers", torrentsHandler.RemoveTorrentTrackers)
 							r.Get("/peers", torrentsHandler.GetTorrentPeers)
 							r.Get("/files", torrentsHandler.GetTorrentFiles)
 						})
