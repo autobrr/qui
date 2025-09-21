@@ -25,6 +25,7 @@ type ProductLicense struct {
 	PolarCustomerID   *string    `json:"polarCustomerId,omitempty"`
 	PolarProductID    *string    `json:"polarProductId,omitempty"`
 	PolarActivationID string     `json:"polarActivationId,omitempty"`
+	Username          string     `json:"username"`
 	CreatedAt         time.Time  `json:"createdAt"`
 	UpdatedAt         time.Time  `json:"updatedAt"`
 }

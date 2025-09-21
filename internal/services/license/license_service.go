@@ -36,7 +36,7 @@ func NewLicenseService(repo *database.LicenseRepo, polarClient *polar.Client) *S
 }
 
 // ActivateAndStoreLicense activates a license key and stores it if valid
-func (s *Service) ActivateAndStoreLicense(ctx context.Context, licenseKey string) (*models.ProductLicense, error) {
+func (s *Service) ActivateAndStoreLicense(ctx context.Context, licenseKey string, username string) (*models.ProductLicense, error) {
 	// Validate with Polar API
 	if s.polarClient == nil || !s.polarClient.IsClientConfigured() {
 		return nil, fmt.Errorf("polar client not configured")
@@ -48,7 +48,7 @@ func (s *Service) ActivateAndStoreLicense(ctx context.Context, licenseKey string
 		return nil, fmt.Errorf("failed to check existing license: %w", err)
 	}
 
-	fingerprint, err := GetDeviceID("qui-premium")
+	fingerprint, err := GetDeviceID("qui-premium", username)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get machine ID: %w", err)
 	}
@@ -96,6 +96,7 @@ func (s *Service) ActivateAndStoreLicense(ctx context.Context, licenseKey string
 		existingLicense.PolarCustomerID = &activateResp.LicenseKey.CustomerID
 		existingLicense.PolarProductID = &activateResp.LicenseKey.BenefitID
 		existingLicense.PolarActivationID = activateResp.Id
+		existingLicense.Username = username
 		existingLicense.UpdatedAt = time.Now()
 
 		if err := s.licenseRepo.UpdateLicenseActivation(ctx, existingLicense); err != nil {
@@ -121,6 +122,7 @@ func (s *Service) ActivateAndStoreLicense(ctx context.Context, licenseKey string
 		PolarCustomerID:   &activateResp.LicenseKey.CustomerID,
 		PolarProductID:    &activateResp.LicenseKey.BenefitID,
 		PolarActivationID: activateResp.Id,
+		Username:          username,
 		CreatedAt:         time.Now(),
 		UpdatedAt:         time.Now(),
 	}
@@ -139,7 +141,7 @@ func (s *Service) ActivateAndStoreLicense(ctx context.Context, licenseKey string
 }
 
 // ValidateAndStoreLicense validates a license key and stores it if valid
-func (s *Service) ValidateAndStoreLicense(ctx context.Context, licenseKey string) (*models.ProductLicense, error) {
+func (s *Service) ValidateAndStoreLicense(ctx context.Context, licenseKey string, username string) (*models.ProductLicense, error) {
 	// Validate with Polar API
 	if s.polarClient == nil || !s.polarClient.IsClientConfigured() {
 		return nil, fmt.Errorf("polar client not configured")
@@ -151,7 +153,7 @@ func (s *Service) ValidateAndStoreLicense(ctx context.Context, licenseKey string
 		return nil, err
 	}
 
-	fingerprint, err := GetDeviceID("qui-premium")
+	fingerprint, err := GetDeviceID("qui-premium", username)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get machine ID: %w", err)
 	}
@@ -205,18 +207,23 @@ func (s *Service) RefreshAllLicenses(ctx context.Context) error {
 		return nil
 	}
 
-	fingerprint, err := GetDeviceID("qui-premium")
-	if err != nil {
-		return fmt.Errorf("failed to get machine ID: %w", err)
-	}
-
-	log.Trace().Str("fingerprint", fingerprint).Msg("Refreshing licenses")
-
 	for _, license := range licenses {
 		// Skip recently validated licenses (within 1 hour)
 		if time.Since(license.LastValidated) < time.Hour {
 			continue
 		}
+
+		if license.Username == "" {
+			log.Error().Msg("no username found for license, skipping refresh")
+			continue
+		}
+
+		fingerprint, err := GetDeviceID("qui-premium", license.Username)
+		if err != nil {
+			return fmt.Errorf("failed to get machine ID: %w", err)
+		}
+
+		log.Trace().Str("fingerprint", fingerprint).Msg("Refreshing licenses")
 
 		// Handle licenses without activation IDs (migrated from old system)
 		if license.PolarActivationID == "" {
@@ -328,18 +335,23 @@ func (s *Service) ValidateLicenses(ctx context.Context) (bool, error) {
 		return true, nil
 	}
 
-	fingerprint, err := GetDeviceID("qui-premium")
-	if err != nil {
-		return false, fmt.Errorf("failed to get machine ID: %w", err)
-	}
-
-	log.Trace().Str("fingerprint", fingerprint).Msg("Refreshing licenses")
-
 	for _, license := range licenses {
 		// Skip recently validated licenses (within 1 hour)
 		//if time.Since(license.LastValidated) < time.Hour {
 		//	continue
 		//}
+
+		if license.Username == "" {
+			log.Error().Msg("no username found for license, skipping refresh")
+			continue
+		}
+
+		fingerprint, err := GetDeviceID("qui-premium", license.Username)
+		if err != nil {
+			return false, fmt.Errorf("failed to get machine ID: %w", err)
+		}
+
+		log.Trace().Str("fingerprint", fingerprint).Msg("Refreshing licenses")
 
 		// Handle licenses without activation IDs (migrated from old system)
 		if license.PolarActivationID == "" {

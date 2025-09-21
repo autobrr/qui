@@ -1,9 +1,7 @@
 package license
 
 import (
-	"crypto/rand"
 	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,22 +12,27 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-func GetDeviceID(appID string) (string, error) {
-	id, err := machineid.ProtectedID(appID)
-	if err != nil {
-		return "", err
-	}
-
-	if isRunningInContainer() {
-		log.Trace().Msg("get device id, running in container")
-		if persistentID := getPersistentContainerID(); persistentID != "" {
-			combined := fmt.Sprintf("%s-%s", appID, persistentID)
-			hash := sha256.Sum256([]byte(combined))
-			return fmt.Sprintf("%x", hash), nil
+func GetDeviceID(appID string, userID string) (string, error) {
+	fingerprintPath := getFingerprintPath(userID)
+	if content, err := os.ReadFile(fingerprintPath); err == nil {
+		existing := strings.TrimSpace(string(content))
+		if existing != "" {
+			log.Trace().Str("path", fingerprintPath).Msg("using existing fingerprint")
+			return existing, nil
 		}
 	}
 
-	return id, nil
+	baseID, err := machineid.ProtectedID(appID)
+	if err != nil {
+		log.Warn().Err(err).Msg("failed to get machine ID, using fallback")
+		baseID = generateFallbackMachineID()
+	}
+
+	combined := fmt.Sprintf("%s-%s-%s", appID, baseID, userID)
+	hash := sha256.Sum256([]byte(combined))
+	fingerprint := fmt.Sprintf("%x", hash)
+
+	return persistFingerprint(fingerprint, userID)
 }
 
 func isRunningInContainer() bool {
@@ -48,41 +51,79 @@ func isRunningInContainer() bool {
 	return false
 }
 
-func getPersistentContainerID() string {
-	persistentPaths := []string{
-		"/config/.qui-device-id",
-		"/var/lib/qui/.qui-device-id",
-	}
-
-	for _, path := range persistentPaths {
-		if content, err := os.ReadFile(path); err == nil {
-			return strings.TrimSpace(string(content))
-		}
-	}
-
-	for _, path := range persistentPaths {
-		if dir := filepath.Dir(path); dirExists(dir) {
-			newID := generateRandomID()
-			if err := os.WriteFile(path, []byte(newID), 0644); err == nil {
-				return newID
-			}
-		}
-	}
-
-	return ""
-}
-
 func dirExists(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && info.IsDir()
 }
 
-func generateRandomID() string {
-	bytes := make([]byte, 16)
-	if _, err := rand.Read(bytes); err != nil {
-		// Fallback to a deterministic but unique ID based on current state
-		hash := sha256.Sum256([]byte(fmt.Sprintf("%d-%s", os.Getpid(), runtime.GOOS)))
-		return fmt.Sprintf("%x", hash)[:32]
+func generateFallbackMachineID() string {
+	hostInfo := fmt.Sprintf("%s-%s", runtime.GOOS, runtime.GOARCH)
+
+	if hostname, err := os.Hostname(); err == nil {
+		hostInfo = fmt.Sprintf("%s-%s", hostInfo, hostname)
 	}
-	return hex.EncodeToString(bytes)
+
+	hash := sha256.Sum256([]byte(hostInfo))
+	return fmt.Sprintf("%x", hash)[:32]
+}
+
+func persistFingerprint(fingerprint, userID string) (string, error) {
+	fingerprintPath := getFingerprintPath(userID)
+
+	if err := os.MkdirAll(filepath.Dir(fingerprintPath), 0755); err != nil {
+		log.Warn().Err(err).Str("path", fingerprintPath).Msg("failed to create fingerprint directory")
+		return fingerprint, nil
+	}
+
+	if err := os.WriteFile(fingerprintPath, []byte(fingerprint), 0644); err != nil {
+		log.Warn().Err(err).Str("path", fingerprintPath).Msg("failed to persist fingerprint")
+		return fingerprint, nil
+	}
+
+	log.Trace().Str("path", fingerprintPath).Msg("persisted new fingerprint")
+
+	return fingerprint, nil
+}
+
+func getFingerprintPath(userID string) string {
+	var configDir string
+
+	if isRunningInContainer() {
+		containerPaths := []string{
+			"/config",
+			"/var/lib/qui",
+			"/tmp",
+		}
+		for _, path := range containerPaths {
+			if dirExists(path) {
+				configDir = path
+				break
+			}
+		}
+	} else {
+		if homeDir, err := os.UserHomeDir(); err == nil {
+			switch runtime.GOOS {
+			case "windows":
+				configDir = filepath.Join(homeDir, "AppData", "Roaming", "qui")
+			case "darwin":
+				configDir = filepath.Join(homeDir, "Library", "Application Support", "qui")
+			default: // linux, bsd, etc
+				if xdgConfig := os.Getenv("XDG_CONFIG_HOME"); xdgConfig != "" {
+					configDir = filepath.Join(xdgConfig, "qui")
+				} else {
+					configDir = filepath.Join(homeDir, ".config", "qui")
+				}
+			}
+		}
+	}
+
+	// fallback to tmp
+	if configDir == "" {
+		configDir = filepath.Join(os.TempDir(), "qui")
+	}
+
+	userHash := sha256.Sum256([]byte(userID))
+	filename := fmt.Sprintf(".device-id-%x", userHash)[:20]
+
+	return filepath.Join(configDir, filename)
 }

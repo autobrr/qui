@@ -373,7 +373,7 @@ func RunUpdateCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			updater := update.NewUpdater(update.Config{
 				Repository: "autobrr/qui",
-				Version:    Version,
+				Version:    buildinfo.Version,
 			})
 			return updater.Run(cmd.Context())
 		},
@@ -417,12 +417,6 @@ func (app *Application) runServer() {
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize configuration")
 	}
-
-	fingerprint, err := license.GetDeviceID("qui-premium")
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to get machine ID")
-	}
-	log.Debug().Str("machine_id", fingerprint).Msg("Using machine ID")
 
 	// Override with CLI flags if provided
 	if app.dataDir != "" {

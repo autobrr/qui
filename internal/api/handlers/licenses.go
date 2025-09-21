@@ -97,8 +97,17 @@ func (h *LicenseHandler) ActivateLicense(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	username := r.Context().Value("username")
+	if username == "" || username == nil {
+		RespondJSON(w, http.StatusBadRequest, ActivateLicenseResponse{
+			Valid: false,
+			Error: "Username not found in context",
+		})
+		return
+	}
+
 	// Activate and store license
-	licenseResp, err := h.licenseService.ActivateAndStoreLicense(r.Context(), req.LicenseKey)
+	licenseResp, err := h.licenseService.ActivateAndStoreLicense(r.Context(), req.LicenseKey, username.(string))
 	if err != nil {
 		log.Error().
 			Err(err).
@@ -145,8 +154,17 @@ func (h *LicenseHandler) ValidateLicense(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	username := r.Context().Value("username")
+	if username == "" || username == nil {
+		RespondJSON(w, http.StatusBadRequest, ActivateLicenseResponse{
+			Valid: false,
+			Error: "Username not found in context",
+		})
+		return
+	}
+
 	// Validate and store license
-	licenseResp, err := h.licenseService.ValidateAndStoreLicense(r.Context(), req.LicenseKey)
+	licenseResp, err := h.licenseService.ValidateAndStoreLicense(r.Context(), req.LicenseKey, username.(string))
 	if err != nil {
 		log.Error().
 			Err(err).

@@ -11,26 +11,12 @@ CREATE TABLE licenses
     polar_customer_id   TEXT,
     polar_product_id    TEXT,
     polar_activation_id TEXT,
+    username            TEXT,
     created_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at          DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
-insert into licenses(id, license_key, product_name, status, activated_at, expires_at, last_validated, polar_customer_id,
-                     polar_product_id, created_at, updated_at)
-select id,
-       license_key,
-       theme_name,
-       status,
-       activated_at,
-       expires_at,
-       last_validated,
-       polar_customer_id,
-       polar_product_id,
-       created_at,
-       updated_at
-from theme_licenses;
-
-drop table theme_licenses;
+DROP TABLE theme_licenses;
 
 -- Index for performance
 CREATE INDEX idx_licenses_status ON licenses(status);

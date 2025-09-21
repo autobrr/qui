@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/autobrr/qui/internal/models"
+
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 )
@@ -22,8 +23,8 @@ func NewLicenseRepo(db *DB) *LicenseRepo {
 // GetLicenseByKey retrieves a license by its key
 func (r *LicenseRepo) GetLicenseByKey(ctx context.Context, licenseKey string) (*models.ProductLicense, error) {
 	query := `
-		SELECT id, license_key, product_name, status, activated_at, expires_at, 
-		       last_validated, polar_customer_id, polar_product_id, polar_activation_id, created_at, updated_at
+		SELECT id, license_key, product_name,  status, activated_at, expires_at, 
+		       last_validated, polar_customer_id, polar_product_id, polar_activation_id, username, created_at, updated_at
 		FROM licenses 
 		WHERE license_key = ?
 	`
@@ -42,6 +43,7 @@ func (r *LicenseRepo) GetLicenseByKey(ctx context.Context, licenseKey string) (*
 		&license.PolarCustomerID,
 		&license.PolarProductID,
 		&activationId,
+		&license.Username,
 		&license.CreatedAt,
 		&license.UpdatedAt,
 	)
@@ -62,7 +64,7 @@ func (r *LicenseRepo) GetLicenseByKey(ctx context.Context, licenseKey string) (*
 func (r *LicenseRepo) GetAllLicenses(ctx context.Context) ([]*models.ProductLicense, error) {
 	query := `
 		SELECT id, license_key, product_name, status, activated_at, expires_at, 
-		       last_validated, polar_customer_id, polar_product_id, polar_activation_id, created_at, updated_at
+		       last_validated, polar_customer_id, polar_product_id, polar_activation_id, username, created_at, updated_at
 		FROM licenses 
 		ORDER BY created_at DESC
 	`
@@ -90,6 +92,7 @@ func (r *LicenseRepo) GetAllLicenses(ctx context.Context) ([]*models.ProductLice
 			&license.PolarCustomerID,
 			&license.PolarProductID,
 			&activationId,
+			&license.Username,
 			&license.CreatedAt,
 			&license.UpdatedAt,
 		)
@@ -152,8 +155,8 @@ func (r *LicenseRepo) DeleteLicense(ctx context.Context, licenseKey string) erro
 func (r *LicenseRepo) StoreLicense(ctx context.Context, license *models.ProductLicense) error {
 	query := `
 		INSERT INTO licenses (license_key, product_name, status, activated_at, expires_at, 
-		                           last_validated, polar_customer_id, polar_product_id, polar_activation_id, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		                           last_validated, polar_customer_id, polar_product_id, polar_activation_id, username, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	_, err := r.db.Conn().ExecContext(ctx, query,
@@ -166,6 +169,7 @@ func (r *LicenseRepo) StoreLicense(ctx context.Context, license *models.ProductL
 		license.PolarCustomerID,
 		license.PolarProductID,
 		license.PolarActivationID,
+		license.Username,
 		license.CreatedAt,
 		license.UpdatedAt,
 	)
