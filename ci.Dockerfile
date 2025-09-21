@@ -45,9 +45,9 @@ RUN case "${TARGETARCH}" in \
 # Build the binary with ldflags for target platform
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="\
     -s -w \
-    -X main.Version=${VERSION} \
-    -X main.buildTime=${BUILDTIME} \
-    -X main.commit=${REVISION} \
+    -X github.com/autobrr/qui/internal/buildinfo.Version=${VERSION} \
+    -X github.com/autobrr/qui/internal/buildinfo.Date=${BUILDTIME} \
+    -X github.com/autobrr/qui/internal/buildinfo.Commit=${REVISION} \
     -X main.PolarOrgID=${POLAR_ORG_ID}" \
     -o qui ./cmd/qui
 

@@ -4,31 +4,17 @@ FROM node:22.18-alpine AS frontend-builder
 # Install git for cloning
 RUN apk add --no-cache git
 
-# Build arguments for premium themes
-ARG THEMES_REPO_TOKEN=""
-ARG GITHUB_REPOSITORY_OWNER="autobrr"
+# Update and enable Corepack
+RUN npm install -g corepack@latest && \
+    corepack enable
 
 WORKDIR /app/web
 
-# Fetch premium themes if token is provided
-RUN if [ -n "$THEMES_REPO_TOKEN" ]; then \
-      git clone --depth=1 --sparse \
-        https://${THEMES_REPO_TOKEN}@github.com/${GITHUB_REPOSITORY_OWNER}/qui-premium-themes.git /tmp/themes && \
-      cd /tmp/themes && \
-      git sparse-checkout set themes && \
-      mkdir -p /app/web/src/themes/premium && \
-      cp themes/*.css /app/web/src/themes/premium/ 2>/dev/null || true && \
-      rm -rf /tmp/themes && \
-      echo "Premium themes fetched successfully"; \
-    else \
-      echo "THEMES_REPO_TOKEN not set, skipping premium themes"; \
-    fi
+COPY web/package.json web/pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
 
-COPY web/package*.json ./
-RUN npm ci
-
-COPY web/ ./
-RUN npm run build
+COPY web ./
+RUN pnpm run build
 
 # Go build stage
 # Use BUILDPLATFORM to build on native architecture (fast)
@@ -72,7 +58,7 @@ RUN case "${TARGETARCH}" in \
 
 # Build the application
 RUN CGO_ENABLED=0 go build \
-    -ldflags "-s -w -X main.Version=${VERSION} -X main.PolarOrgID=${POLAR_ORG_ID}" \
+    -ldflags "-s -w -X github.com/autobrr/qui/internal/buildinfo.Version=${VERSION} -X main.PolarOrgID=${POLAR_ORG_ID}" \
     -o qui ./cmd/qui
 
 # Final stage

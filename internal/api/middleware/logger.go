@@ -5,33 +5,56 @@ package middleware
 
 import (
 	"net/http"
+	"runtime/debug"
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/rs/zerolog/log"
+	"github.com/rs/zerolog"
 )
 
-// HTTPLogger logs HTTP requests using the global zerolog logger
-func HTTPLogger(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
+// Logger logs HTTP requests using a local zerolog logger
+func Logger(logger zerolog.Logger) func(next http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		fn := func(w http.ResponseWriter, r *http.Request) {
+			l := logger.With().Logger()
 
-		// Wrap the ResponseWriter to capture status code
-		ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
+			ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
 
-		// Process request
-		next.ServeHTTP(ww, r)
+			t1 := time.Now()
+			defer func() {
+				t2 := time.Now()
 
-		// Log request details
-		duration := time.Since(start)
+				// Recover and record stack traces in case of a panic
+				if rec := recover(); rec != nil {
+					l.Error().
+						Str("type", "error").
+						Timestamp().
+						Interface("recover_info", rec).
+						Bytes("debug_stack", debug.Stack()).
+						Msg("log system error")
+					http.Error(ww, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				}
 
-		log.Trace().
-			Str("method", r.Method).
-			Str("path", r.URL.Path).
-			Str("remote_addr", r.RemoteAddr).
-			Int("status", ww.Status()).
-			Int("bytes", ww.BytesWritten()).
-			Dur("duration", duration).
-			Msg("http request")
-	})
+				// log end request
+				l.Trace().
+					Str("type", "access").
+					Timestamp().
+					Fields(map[string]interface{}{
+						"remote_ip":  r.RemoteAddr,
+						"url":        r.URL.Path,
+						"proto":      r.Proto,
+						"method":     r.Method,
+						"user_agent": r.Header.Get("User-Agent"),
+						"status":     ww.Status(),
+						"latency_ms": float64(t2.Sub(t1).Nanoseconds()) / 1000000.0,
+						"bytes_in":   r.Header.Get("Content-Length"),
+						"bytes_out":  ww.BytesWritten(),
+					}).
+					Msg("incoming_request")
+			}()
+
+			next.ServeHTTP(ww, r)
+		}
+		return http.HandlerFunc(fn)
+	}
 }

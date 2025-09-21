@@ -380,6 +380,9 @@ type BulkActionRequest struct {
 	UploadLimit              int64                      `json:"uploadLimit,omitempty"`              // For setUploadLimit action (KB/s)
 	DownloadLimit            int64                      `json:"downloadLimit,omitempty"`            // For setDownloadLimit action (KB/s)
 	Location                 string                     `json:"location,omitempty"`                 // For setLocation action
+	TrackerOldURL            string                     `json:"trackerOldURL,omitempty"`            // For editTrackers action
+	TrackerNewURL            string                     `json:"trackerNewURL,omitempty"`            // For editTrackers action
+	TrackerURLs              string                     `json:"trackerURLs,omitempty"`              // For addTrackers/removeTrackers actions
 }
 
 // BulkAction performs bulk operations on torrents
@@ -413,6 +416,7 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 		"recheck", "reannounce", "increasePriority", "decreasePriority",
 		"topPriority", "bottomPriority", "addTags", "removeTags", "setTags", "setCategory",
 		"toggleAutoTMM", "setShareLimit", "setUploadLimit", "setDownloadLimit", "setLocation",
+		"editTrackers", "addTrackers", "removeTrackers",
 	}
 
 	valid := slices.Contains(validActions, req.Action)
@@ -500,6 +504,24 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		err = h.syncManager.SetLocation(r.Context(), instanceID, targetHashes, req.Location)
+	case "editTrackers":
+		if req.TrackerOldURL == "" || req.TrackerNewURL == "" {
+			RespondError(w, http.StatusBadRequest, "Both trackerOldURL and trackerNewURL are required for editTrackers action")
+			return
+		}
+		err = h.syncManager.BulkEditTrackers(r.Context(), instanceID, targetHashes, req.TrackerOldURL, req.TrackerNewURL)
+	case "addTrackers":
+		if req.TrackerURLs == "" {
+			RespondError(w, http.StatusBadRequest, "TrackerURLs parameter is required for addTrackers action")
+			return
+		}
+		err = h.syncManager.BulkAddTrackers(r.Context(), instanceID, targetHashes, req.TrackerURLs)
+	case "removeTrackers":
+		if req.TrackerURLs == "" {
+			RespondError(w, http.StatusBadRequest, "TrackerURLs parameter is required for removeTrackers action")
+			return
+		}
+		err = h.syncManager.BulkRemoveTrackers(r.Context(), instanceID, targetHashes, req.TrackerURLs)
 	case "delete":
 		// Handle delete with deleteFiles parameter
 		action := req.Action
@@ -782,6 +804,133 @@ func (h *TorrentsHandler) GetTorrentTrackers(w http.ResponseWriter, r *http.Requ
 	}
 
 	RespondJSON(w, http.StatusOK, trackers)
+}
+
+// EditTrackerRequest represents a tracker edit request
+type EditTrackerRequest struct {
+	OldURL string `json:"oldURL"`
+	NewURL string `json:"newURL"`
+}
+
+// EditTorrentTracker edits a tracker URL for a specific torrent
+func (h *TorrentsHandler) EditTorrentTracker(w http.ResponseWriter, r *http.Request) {
+	// Get instance ID and hash from URL
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	hash := chi.URLParam(r, "hash")
+	if hash == "" {
+		RespondError(w, http.StatusBadRequest, "Torrent hash is required")
+		return
+	}
+
+	var req EditTrackerRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if req.OldURL == "" || req.NewURL == "" {
+		RespondError(w, http.StatusBadRequest, "Both oldURL and newURL are required")
+		return
+	}
+
+	// Edit tracker
+	err = h.syncManager.EditTorrentTracker(r.Context(), instanceID, hash, req.OldURL, req.NewURL)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to edit tracker")
+		RespondError(w, http.StatusInternalServerError, "Failed to edit tracker")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, map[string]string{"status": "success"})
+}
+
+// AddTrackerRequest represents a tracker add request
+type AddTrackerRequest struct {
+	URLs string `json:"urls"` // Newline-separated URLs
+}
+
+// AddTorrentTrackers adds trackers to a specific torrent
+func (h *TorrentsHandler) AddTorrentTrackers(w http.ResponseWriter, r *http.Request) {
+	// Get instance ID and hash from URL
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	hash := chi.URLParam(r, "hash")
+	if hash == "" {
+		RespondError(w, http.StatusBadRequest, "Torrent hash is required")
+		return
+	}
+
+	var req AddTrackerRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if req.URLs == "" {
+		RespondError(w, http.StatusBadRequest, "URLs are required")
+		return
+	}
+
+	// Add trackers
+	err = h.syncManager.AddTorrentTrackers(r.Context(), instanceID, hash, req.URLs)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to add trackers")
+		RespondError(w, http.StatusInternalServerError, "Failed to add trackers")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, map[string]string{"status": "success"})
+}
+
+// RemoveTrackerRequest represents a tracker remove request
+type RemoveTrackerRequest struct {
+	URLs string `json:"urls"` // Newline-separated URLs
+}
+
+// RemoveTorrentTrackers removes trackers from a specific torrent
+func (h *TorrentsHandler) RemoveTorrentTrackers(w http.ResponseWriter, r *http.Request) {
+	// Get instance ID and hash from URL
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	hash := chi.URLParam(r, "hash")
+	if hash == "" {
+		RespondError(w, http.StatusBadRequest, "Torrent hash is required")
+		return
+	}
+
+	var req RemoveTrackerRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if req.URLs == "" {
+		RespondError(w, http.StatusBadRequest, "URLs are required")
+		return
+	}
+
+	// Remove trackers
+	err = h.syncManager.RemoveTorrentTrackers(r.Context(), instanceID, hash, req.URLs)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to remove trackers")
+		RespondError(w, http.StatusInternalServerError, "Failed to remove trackers")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, map[string]string{"status": "success"})
 }
 
 // GetTorrentFiles returns files information for a specific torrent

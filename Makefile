@@ -8,13 +8,15 @@ endif
 
 # Variables
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+GIT_COMMIT := $(shell git rev-parse HEAD 2> /dev/null)
+GIT_TAG := $(shell git describe --abbrev=0 --tags)
 BINARY_NAME = qui
 BUILD_DIR = build
 WEB_DIR = web
 INTERNAL_WEB_DIR = internal/web
 
 # Go build flags with Polar credentials
-LDFLAGS = -ldflags "-X main.Version=$(VERSION) -X main.PolarOrgID=$(POLAR_ORG_ID)"
+LDFLAGS = -ldflags "-X github.com/autobrr/qui/internal/buildinfo.Version=$(VERSION) -X main.PolarOrgID=$(POLAR_ORG_ID)"
 
 .PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test help themes-fetch themes-clean
 
@@ -23,6 +25,13 @@ all: build
 
 # Build both frontend and backend
 build: frontend backend
+
+build/docker:
+	@echo "Building docker image..."
+	docker build -t ghcr.io/autobrr/qui:dev -f Dockerfile . --build-arg  GIT_TAG=$(GIT_TAG) --build-arg GIT_COMMIT=$(GIT_COMMIT) --build-arg POLAR_ORG_ID=$(POLAR_ORG_ID) --build-arg VERSION=$(VERSION)
+
+build/dockerx:
+	docker buildx build -t ghcr.io/autobrr/qui:dev -f Dockerfile . --build-arg GIT_TAG=$(GIT_TAG) --build-arg GIT_COMMIT=$(GIT_COMMIT) --build-arg VERSION=$(VERSION) --platform=linux/amd64,linux/arm64 --pull --load
 
 # Fetch premium themes from private repository
 themes-fetch:
