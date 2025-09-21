@@ -22,7 +22,7 @@ import {
   useLicenseDetails
 } from "@/hooks/useLicense"
 import { getLicenseErrorMessage } from "@/lib/license-errors"
-import { POLAR_PORTAL_URL } from "@/lib/polar-constants"
+import { POLAR_CHECKOUT_URL, POLAR_PORTAL_URL } from "@/lib/polar-constants"
 import { useForm } from "@tanstack/react-form"
 import { AlertTriangle, Copy, ExternalLink, Key, RefreshCw, ShoppingCart, Sparkles, Trash2 } from "lucide-react"
 import { useState } from "react"
@@ -197,7 +197,7 @@ export function LicenseManager() {
                 )}
                 {!hasPremiumAccess && !hasInvalidLicense && (
                   <Button size="sm" asChild>
-                    <a href="https://sandbox-api.polar.sh/v1/checkout-links/polar_cl_5dhqiQBBNaPiCc0sniCocHAJI84X1JCGGI98Y0B7zg5/redirect" target="_blank" rel="noopener noreferrer">
+                    <a href={POLAR_CHECKOUT_URL} target="_blank" rel="noopener noreferrer">
                       <ShoppingCart className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                       Buy license
                     </a>
