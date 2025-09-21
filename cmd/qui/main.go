@@ -479,7 +479,7 @@ func (app *Application) runServer() {
 	// Initialize managers
 	syncManager := qbittorrent.NewSyncManager(clientPool)
 
-	updateService := update.NewService(log.Logger, cfg.Config.CheckForUpdates, app.version)
+	updateService := update.NewService(log.Logger, cfg.Config.CheckForUpdates, buildinfo.Version, buildinfo.UserAgent)
 	cfg.RegisterReloadListener(func(conf *domain.Config) {
 		updateService.SetEnabled(conf.CheckForUpdates)
 	})

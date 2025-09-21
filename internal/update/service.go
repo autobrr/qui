@@ -11,10 +11,9 @@ import (
 	"github.com/autobrr/qui/pkg/version"
 
 	"github.com/rs/zerolog"
-	"sync/atomic"
 )
 
-const defaultCheckInterval = 6 * time.Hour
+const defaultCheckInterval = 2 * time.Hour
 
 // Service periodically checks api.autobrr.com for new qui releases and caches the latest result.
 type Service struct {
@@ -26,17 +25,17 @@ type Service struct {
 	latestRelease  *version.Release
 	lastChecked    time.Time
 	lastTag        string
-	enabled        atomic.Bool
+	isEnabled      bool
 }
 
 // NewService creates a new update Service instance.
-func NewService(log zerolog.Logger, enabled bool, currentVersion string) *Service {
+func NewService(log zerolog.Logger, enabled bool, currentVersion, userAgent string) *Service {
 	svc := &Service{
 		log:            log.With().Str("component", "update").Logger(),
 		currentVersion: currentVersion,
-		releaseChecker: version.NewChecker("autobrr", "qui", currentVersion),
+		releaseChecker: version.NewChecker("autobrr", "qui", userAgent),
+		isEnabled:      enabled,
 	}
-	svc.enabled.Store(enabled)
 	return svc
 }
 
@@ -81,7 +80,7 @@ func (s *Service) GetLatestRelease(_ context.Context) *version.Release {
 
 // CheckUpdates triggers a refresh of the latest release information if updates are enabled.
 func (s *Service) CheckUpdates(ctx context.Context) {
-	if !s.enabled.Load() {
+	if !s.isEnabled {
 		s.log.Trace().Msg("skipping update check - disabled in config")
 		return
 	}
@@ -126,5 +125,5 @@ func (s *Service) CheckUpdateAvailable(ctx context.Context) (*version.Release, e
 
 // SetEnabled toggles whether periodic update checks should run.
 func (s *Service) SetEnabled(enabled bool) {
-	s.enabled.Store(enabled)
+	s.isEnabled = enabled
 }

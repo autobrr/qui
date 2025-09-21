@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"runtime"
 	"strings"
 	"time"
 
@@ -64,19 +63,19 @@ type Asset struct {
 
 // Checker talks to api.autobrr.com to determine whether a newer release is available.
 type Checker struct {
-	Owner          string
-	Repo           string
-	CurrentVersion string
+	Owner     string
+	Repo      string
+	UserAgent string
 
 	httpClient *http.Client
 }
 
 // NewChecker returns a configured Checker for the provided repository.
-func NewChecker(owner, repo, currentVersion string) *Checker {
+func NewChecker(owner, repo, userAgent string) *Checker {
 	return &Checker{
-		Owner:          owner,
-		Repo:           repo,
-		CurrentVersion: currentVersion,
+		Owner:     owner,
+		Repo:      repo,
+		UserAgent: userAgent,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -92,7 +91,10 @@ func (c *Checker) get(ctx context.Context) (*Release, error) {
 	}
 
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
-	req.Header.Set("User-Agent", c.buildUserAgent())
+
+	if c.UserAgent != "" {
+		req.Header.Set("User-Agent", c.UserAgent)
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -156,10 +158,6 @@ func (c *Checker) compareVersions(version string, release *Release) (bool, strin
 	}
 
 	return false, "", nil
-}
-
-func (c *Checker) buildUserAgent() string {
-	return fmt.Sprintf("qui/%s (%s %s)", c.CurrentVersion, runtime.GOOS, runtime.GOARCH)
 }
 
 func isDevelop(version string) bool {
