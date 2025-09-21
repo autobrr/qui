@@ -224,7 +224,7 @@ class ApiClient {
     instanceId: number,
     data: {
       hashes: string[]
-      action: "pause" | "resume" | "delete" | "recheck" | "reannounce" | "increasePriority" | "decreasePriority" | "topPriority" | "bottomPriority" | "setCategory" | "addTags" | "removeTags" | "setTags" | "toggleAutoTMM" | "setShareLimit" | "setUploadLimit" | "setDownloadLimit" | "setLocation"
+      action: "pause" | "resume" | "delete" | "recheck" | "reannounce" | "increasePriority" | "decreasePriority" | "topPriority" | "bottomPriority" | "setCategory" | "addTags" | "removeTags" | "setTags" | "toggleAutoTMM" | "setShareLimit" | "setUploadLimit" | "setDownloadLimit" | "setLocation" | "editTrackers" | "addTrackers" | "removeTrackers"
       deleteFiles?: boolean
       category?: string
       tags?: string  // Comma-separated tags string
@@ -244,6 +244,9 @@ class ApiClient {
       uploadLimit?: number  // For setUploadLimit action (KB/s)
       downloadLimit?: number  // For setDownloadLimit action (KB/s)
       location?: string  // For setLocation action
+      trackerOldURL?: string  // For editTrackers action
+      trackerNewURL?: string  // For editTrackers action
+      trackerURLs?: string  // For addTrackers/removeTrackers actions (newline-separated)
     }
   ): Promise<void> {
     return this.request(`/instances/${instanceId}/torrents/bulk-action`, {
@@ -259,6 +262,27 @@ class ApiClient {
 
   async getTorrentTrackers(instanceId: number, hash: string): Promise<any[]> {
     return this.request(`/instances/${instanceId}/torrents/${hash}/trackers`)
+  }
+
+  async editTorrentTracker(instanceId: number, hash: string, oldURL: string, newURL: string): Promise<void> {
+    return this.request(`/instances/${instanceId}/torrents/${hash}/trackers`, {
+      method: "PUT",
+      body: JSON.stringify({ oldURL, newURL }),
+    })
+  }
+
+  async addTorrentTrackers(instanceId: number, hash: string, urls: string): Promise<void> {
+    return this.request(`/instances/${instanceId}/torrents/${hash}/trackers`, {
+      method: "POST",
+      body: JSON.stringify({ urls }),
+    })
+  }
+
+  async removeTorrentTrackers(instanceId: number, hash: string, urls: string): Promise<void> {
+    return this.request(`/instances/${instanceId}/torrents/${hash}/trackers`, {
+      method: "DELETE",
+      body: JSON.stringify({ urls }),
+    })
   }
 
   async getTorrentFiles(instanceId: number, hash: string): Promise<any[]> {

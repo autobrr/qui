@@ -551,19 +551,114 @@ paths:
             schema:
               type: object
               required:
-                - hashes
                 - action
               properties:
                 hashes:
                   type: array
                   items:
                     type: string
+                  description: Specific torrent hashes to target. Required unless selectAll is true.
+                selectAll:
+                  type: boolean
+                  description: Apply the action to all torrents matching the provided filters.
+                filters:
+                  type: object
+                  description: Filter criteria used when selectAll is true.
+                  properties:
+                    status:
+                      type: array
+                      items:
+                        type: string
+                    categories:
+                      type: array
+                      items:
+                        type: string
+                    tags:
+                      type: array
+                      items:
+                        type: string
+                    trackers:
+                      type: array
+                      items:
+                        type: string
+                search:
+                  type: string
+                  description: Optional search query applied when selectAll is true.
+                excludeHashes:
+                  type: array
+                  items:
+                    type: string
+                  description: Hashes to exclude when selectAll is true.
                 action:
                   type: string
-                  enum: [pause, resume, delete]
+                  description: Bulk action to perform on the selected torrents.
+                  enum:
+                    - pause
+                    - resume
+                    - delete
+                    - deleteWithFiles
+                    - recheck
+                    - reannounce
+                    - increasePriority
+                    - decreasePriority
+                    - topPriority
+                    - bottomPriority
+                    - addTags
+                    - removeTags
+                    - setTags
+                    - setCategory
+                    - toggleAutoTMM
+                    - setShareLimit
+                    - setUploadLimit
+                    - setDownloadLimit
+                    - setLocation
+                    - editTrackers
+                    - addTrackers
+                    - removeTrackers
                 deleteFiles:
                   type: boolean
                   description: Only for delete action
+                tags:
+                  type: string
+                  description: Comma-separated list of tags for tag-related actions.
+                category:
+                  type: string
+                  description: Category name for setCategory action.
+                enable:
+                  type: boolean
+                  description: Enable or disable Automatic Torrent Management for toggleAutoTMM.
+                ratioLimit:
+                  type: number
+                  format: float
+                  description: Ratio limit for setShareLimit action.
+                seedingTimeLimit:
+                  type: integer
+                  format: int64
+                  description: Seeding time limit (minutes) for setShareLimit action.
+                inactiveSeedingTimeLimit:
+                  type: integer
+                  format: int64
+                  description: Inactive seeding time limit (minutes) for setShareLimit action.
+                uploadLimit:
+                  type: integer
+                  format: int64
+                  description: Upload speed limit in KB/s for setUploadLimit action.
+                downloadLimit:
+                  type: integer
+                  format: int64
+                  description: Download speed limit in KB/s for setDownloadLimit action.
+                location:
+                  type: string
+                  description: Destination path for setLocation action.
+                trackerOldURL:
+                  type: string
+                  description: Existing tracker URL to replace for editTrackers action.
+                trackerNewURL:
+                  type: string
+                  description: Replacement tracker URL for editTrackers action.
+                trackerURLs:
+                  type: string
+                  description: Newline-separated tracker URLs for addTrackers/removeTrackers actions.
       responses:
         '200':
           description: Action performed successfully
@@ -604,6 +699,91 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Tracker'
+    put:
+      tags:
+        - Torrent Details
+      summary: Edit torrent tracker
+      description: Edit a tracker URL for a torrent
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/hash'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - oldURL
+                - newURL
+              properties:
+                oldURL:
+                  type: string
+                  description: The current tracker URL to replace
+                newURL:
+                  type: string
+                  description: The new tracker URL
+      responses:
+        '200':
+          description: Tracker edited successfully
+        '400':
+          description: Invalid request
+        '500':
+          description: Failed to edit tracker
+    post:
+      tags:
+        - Torrent Details
+      summary: Add torrent trackers
+      description: Add new trackers to a torrent
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/hash'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - urls
+              properties:
+                urls:
+                  type: string
+                  description: Newline-separated list of tracker URLs to add
+      responses:
+        '200':
+          description: Trackers added successfully
+        '400':
+          description: Invalid request
+        '500':
+          description: Failed to add trackers
+    delete:
+      tags:
+        - Torrent Details
+      summary: Remove torrent trackers
+      description: Remove trackers from a torrent
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/hash'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - urls
+              properties:
+                urls:
+                  type: string
+                  description: Newline-separated list of tracker URLs to remove
+      responses:
+        '200':
+          description: Trackers removed successfully
+        '400':
+          description: Invalid request
+        '500':
+          description: Failed to remove trackers
 
   /api/instances/{instanceId}/torrents/{hash}/files:
     get:
@@ -951,47 +1131,12 @@ paths:
                     type: boolean
                     description: New status of alternative speed limits
 
-  /api/license/activate:
+  /api/themes/license/validate:
     post:
       tags:
-        - Licenses
-      summary: Activate license
-      description: Activate and validate a license key
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - licenseKey
-              properties:
-                licenseKey:
-                  type: string
-      responses:
-        '200':
-          description: License activated
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  valid:
-                    type: boolean
-                  themeName:
-                    type: string
-                  expiresAt:
-                    type: string
-                    format: date-time
-                  message:
-                    type: string
-
-  /api/license/validate:
-    post:
-      tags:
-        - Licenses
-      summary: Validate license
-      description: Validate and activate a license key
+        - Theme Licenses
+      summary: Validate theme license
+      description: Validate and activate a theme license key
       requestBody:
         required: true
         content:
@@ -1021,10 +1166,10 @@ paths:
                   message:
                     type: string
 
-  /api/license/licensed:
+  /api/themes/licensed:
     get:
       tags:
-        - Licenses
+        - Theme Licenses
       summary: Get licensed themes
       description: Get list of themes with active licenses
       responses:
@@ -1043,12 +1188,12 @@ paths:
                       type: string
                       format: date-time
 
-  /api/license/licenses:
+  /api/themes/licenses:
     get:
       tags:
-        - Licenses
+        - Theme Licenses
       summary: Get all licenses
-      description: Get all licenses
+      description: Get all theme licenses
       responses:
         '200':
           description: List of licenses
@@ -1072,12 +1217,12 @@ paths:
                       type: string
                       format: date-time
 
-  /api/license/{licenseKey}:
+  /api/themes/license/{licenseKey}:
     delete:
       tags:
-        - Licenses
+        - Theme Licenses
       summary: Delete license
-      description: Remove a license
+      description: Remove a theme license
       parameters:
         - name: licenseKey
           in: path
@@ -1088,12 +1233,12 @@ paths:
         '200':
           description: License deleted
 
-  /api/license/refresh:
+  /api/themes/license/refresh:
     post:
       tags:
-        - Licenses
+        - Theme Licenses
       summary: Refresh licenses
-      description: Refresh all licenses
+      description: Refresh all theme licenses
       responses:
         '200':
           description: Licenses refreshed
@@ -1117,44 +1262,6 @@ paths:
       responses:
         '200':
           description: Service is healthy
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    example: "ok"
-
-  /healthz/liveness:
-    get:
-      tags:
-        - System
-      summary: Liveness check
-      description: Check if the API is running and responding
-      security: []
-      responses:
-        '200':
-          description: Service is running
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    example: "ok"
-
-  /healthz/readiness:
-    get:
-      tags:
-        - System
-      summary: Readiness check
-      description: Check if the API is running and ready to serve traffic
-      security: []
-      responses:
-        '200':
-          description: Service is running
           content:
             application/json:
               schema:
@@ -1421,5 +1528,5 @@ tags:
     description: Category management
   - name: Tags
     description: Tag management
-  - name: Licenses
-    description: License management (optional feature)
+  - name: Theme Licenses
+    description: Theme license management (optional feature)
