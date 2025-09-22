@@ -153,7 +153,7 @@ func normalizeRoutePath(path string) (string, bool) {
 		return "", false
 	}
 
-	if !strings.HasPrefix(path, "/api") && path != "/health" {
+	if !strings.HasPrefix(path, "/api") && !strings.HasPrefix(path, "/health") {
 		return "", false
 	}
 
