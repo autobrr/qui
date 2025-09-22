@@ -41,8 +41,12 @@ const urlSchema = z
     const isIPv4 = /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname)
     const isIPv6 = hostname.startsWith("[") && hostname.endsWith("]")
 
-    if ((isIPv4 || isIPv6) && !parsed.port) {
-      return false
+    if (isIPv4 || isIPv6) {
+      // default ports such as 80 and 443 are omitted from the result of new URL()
+      const hasExplicitPort = url.match(/:(\d+)(?:\/|$)/)
+      if (!hasExplicitPort) {
+        return false
+      }
     }
 
     return true
