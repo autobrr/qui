@@ -62,6 +62,12 @@ export function formatDuration(seconds: number): string {
 
 export function formatErrorMessage(error: string | undefined): string {
   if (!error) return "Unknown error"
-  const cleaned = error.replace(/^(failed to create client: |failed to connect to qBittorrent instance: |connection failed: |error: )/i, "")
+
+  const normalized = error.trim()
+  if (!normalized) return "Unknown error"
+
+  const cleaned = normalized.replace(/^(failed to create client: |failed to connect to qBittorrent instance: |connection failed: |error: )/i, "")
+  if (!cleaned) return "Unknown error"
+
   return cleaned.charAt(0).toUpperCase() + cleaned.slice(1)
 }
