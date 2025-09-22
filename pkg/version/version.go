@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -161,16 +162,10 @@ func (c *Checker) compareVersions(version string, release *Release) (bool, strin
 }
 
 func isDevelop(version string) bool {
-	if strings.HasPrefix(version, "pr-") {
+	if strings.HasPrefix(version, "pr-") || strings.HasSuffix(version, "-dev") || strings.HasSuffix(version, "-develop") {
 		return true
 	}
 
 	tags := []string{"dev", "develop", "master", "latest", ""}
-	for _, tag := range tags {
-		if version == tag {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(tags, version)
 }
