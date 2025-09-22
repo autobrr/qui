@@ -166,6 +166,6 @@ func isDevelop(version string) bool {
 		return true
 	}
 
-	tags := []string{"dev", "develop", "master", "latest", ""}
+	tags := []string{"dev", "develop", "main", "latest", ""}
 	return slices.Contains(tags, version)
 }
