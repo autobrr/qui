@@ -11,7 +11,6 @@ A fast, modern web interface for qBittorrent. Supports managing multiple qBittor
 - **Single Binary**: No dependencies, just download and run
 - **Multi-Instance Support**: Manage all your qBittorrent instances from one place
 - **Fast & Responsive**: Optimized for performance with large torrent collections
-- **Real-time Updates**: Live torrent progress and status updates
 - **Clean Interface**: Modern UI built with React and shadcn/ui components
 - **Multiple Themes**: Choose from various color themes
 - **Base URL Support**: Serve from a subdirectory (e.g., `/qui/`) for reverse proxy setups
