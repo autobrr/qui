@@ -1,3 +1,6 @@
+// Copyright (c) 2025, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package middleware
 
 import "github.com/go-chi/chi/v5/middleware"
