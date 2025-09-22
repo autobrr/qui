@@ -16,7 +16,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Copy, Plus, Trash2, ExternalLink } from "lucide-react"
-import { ThemeLicenseManager } from "@/components/themes/ThemeLicenseManager"
+import { LicenseManager } from "@/components/themes/LicenseManager.tsx"
 import { ThemeSelector } from "@/components/themes/ThemeSelector"
 import { ClientApiKeysManager } from "@/components/settings/ClientApiKeysManager"
 import { useSearch } from "@tanstack/react-router"
@@ -436,7 +436,7 @@ export function Settings() {
 
 
         <TabsContent value="themes" className="space-y-4">
-          <ThemeLicenseManager />
+          <LicenseManager />
           <ThemeSelector />
         </TabsContent>
 

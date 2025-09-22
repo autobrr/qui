@@ -21,7 +21,7 @@ func TestCacheInvalidation_RealWorldScenario(t *testing.T) {
 }
 
 // TestCacheInvalidation_CoordinatedUpdates tests the coordination between
-// cache invalidation and the update cycle described in CLAUDE.md
+// cache invalidation and the update cycle
 func TestCacheInvalidation_CoordinatedUpdates(t *testing.T) {
 	// Skip since caching was removed
 	t.Skip("Caching has been removed from the sync manager")
