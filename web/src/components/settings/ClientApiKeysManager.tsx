@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
+import type { ReactNode } from "react"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
@@ -54,7 +55,72 @@ interface NewClientAPIKey {
     host: string
   }
   proxyUrl: string
-  instructions: string
+}
+
+const INLINE_CODE_CLASS = "rounded bg-muted px-1 py-0.5 font-mono text-xs"
+const DEFAULT_QUI_URL_EXAMPLE = "http://localhost:7476"
+const ARR_CLIENTS = new Set(["sonarr", "radarr", "lidarr"])
+
+function renderProxyInstructions(clientName: string, proxyUrl: string, instanceHost?: string): ReactNode {
+  const normalizedName = clientName.trim().toLowerCase()
+
+  if (ARR_CLIENTS.has(normalizedName)) {
+    return (
+      <dl className="space-y-1.5 text-xs">
+        <div className="flex gap-2">
+          <dt className="font-medium text-muted-foreground min-w-20">Host:</dt>
+          <dd className="text-foreground">Your qui server (e.g., 100.69.80.112 or domain.tld)</dd>
+        </div>
+        <div className="flex gap-2">
+          <dt className="font-medium text-muted-foreground min-w-20">Port:</dt>
+          <dd className="text-foreground">Your qui port</dd>
+        </div>
+        <div className="flex gap-2">
+          <dt className="font-medium text-muted-foreground min-w-20">URL Base:</dt>
+          <dd className="text-foreground">
+            <code className={INLINE_CODE_CLASS}>{proxyUrl}</code>
+            <span className="text-muted-foreground ml-1">(Show Advanced)</span>
+          </dd>
+        </div>
+      </dl>
+    )
+  }
+
+  if (normalizedName === "autobrr") {
+    return (
+      <div className="text-xs space-y-1.5">
+        <p className="text-foreground">
+          In Autobrr, set the qBittorrent host to:
+        </p>
+        <p className="text-muted-foreground">
+          <span className="text-foreground">Your qui server URL</span> + <code className={INLINE_CODE_CLASS}>{proxyUrl}</code>
+        </p>
+        <p className="text-muted-foreground">
+          Example: <code className={INLINE_CODE_CLASS}>{`${DEFAULT_QUI_URL_EXAMPLE}${proxyUrl}`}</code>
+        </p>
+      </div>
+    )
+  }
+
+  const hostHint = instanceHost ? (
+    <code className={INLINE_CODE_CLASS}>{instanceHost}</code>
+  ) : (
+    <span>your current qBittorrent host</span>
+  )
+
+  return (
+    <div className="text-xs space-y-1.5">
+      <p className="text-foreground">
+        Replace {hostHint} with:
+      </p>
+      <p className="text-muted-foreground">
+        <span className="text-foreground">Your qui server URL</span> + <code className={INLINE_CODE_CLASS}>{proxyUrl}</code>
+      </p>
+      <p className="text-muted-foreground">
+        Example: <code className={INLINE_CODE_CLASS}>{`${DEFAULT_QUI_URL_EXAMPLE}${proxyUrl}`}</code>
+      </p>
+    </div>
+  )
 }
 
 export function ClientApiKeysManager() {
@@ -62,6 +128,18 @@ export function ClientApiKeysManager() {
   const [deleteKeyId, setDeleteKeyId] = useState<number | null>(null)
   const [newKey, setNewKey] = useState<NewClientAPIKey | null>(null)
   const queryClient = useQueryClient()
+
+  const instructionsContent = useMemo(() => {
+    if (!newKey) {
+      return null
+    }
+
+    return renderProxyInstructions(
+      newKey.clientApiKey.clientName,
+      newKey.proxyUrl,
+      newKey.instance?.host
+    )
+  }, [newKey])
 
   // Fetch client API keys
   const { data: clientApiKeys, isLoading, error } = useQuery({
@@ -159,7 +237,7 @@ export function ClientApiKeysManager() {
               Create Client API Key
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-md">
+          <DialogContent className="sm:max-w-2xl">
             <DialogHeader>
               <DialogTitle>Create Client API Key</DialogTitle>
               <DialogDescription>
@@ -170,54 +248,39 @@ export function ClientApiKeysManager() {
             {newKey ? (
               <div className="space-y-4">
                 <Card>
-                  <CardHeader>
+                  <CardHeader className="pb-3">
                     <CardTitle className="text-base">API Key Created</CardTitle>
                     <CardDescription>
-                      Save this key now. You won't be able to see it again.
+                      Save this proxy URL now. You won't be able to see it again.
                     </CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-4">
+                  <CardContent className="space-y-3">
                     <div>
-                      <Label>API Key</Label>
-                      <div className="mt-2 flex items-center gap-2">
-                        <code className="flex-1 rounded bg-muted px-2 py-1 text-sm font-mono break-all">
-                          {newKey.key}
-                        </code>
-                        <Button
-                          size="icon"
-                          variant="outline"
-                          onClick={() => {
-                            navigator.clipboard.writeText(newKey.key)
-                            toast.success("API key copied to clipboard")
-                          }}
-                        >
-                          <Copy className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    <div>
-                      <Label>Proxy URL</Label>
-                      <div className="mt-2 flex items-center gap-2">
-                        <code className="flex-1 rounded bg-muted px-2 py-1 text-sm font-mono break-all">
+                      <Label htmlFor="proxy-url" className="text-xs uppercase text-muted-foreground">Proxy URL</Label>
+                      <div className="mt-1 flex items-center gap-2">
+                        <code id="proxy-url" className="flex-1 rounded bg-muted px-2 py-1.5 text-xs font-mono break-all">
                           {newKey.proxyUrl}
                         </code>
                         <Button
                           size="icon"
                           variant="outline"
+                          className="h-7 w-7"
                           onClick={() => {
                             navigator.clipboard.writeText(newKey.proxyUrl)
                             toast.success("Proxy URL copied to clipboard")
                           }}
+                          title="Copy proxy URL"
                         >
-                          <Copy className="h-4 w-4" />
+                          <Copy className="h-3.5 w-3.5" />
                         </Button>
                       </div>
                     </div>
 
-                    <div className="rounded-lg bg-blue-50 p-3 text-sm text-blue-800 dark:bg-blue-900/20 dark:text-blue-200">
-                      <div className="font-medium mb-1">Setup Instructions:</div>
-                      <p>{newKey.instructions}</p>
+                    <div className="border rounded-md p-3 space-y-2">
+                      <h4 className="text-xs font-semibold uppercase text-muted-foreground">Setup Instructions</h4>
+                      <div className="text-sm space-y-1">
+                        {instructionsContent}
+                      </div>
                     </div>
                   </CardContent>
                 </Card>

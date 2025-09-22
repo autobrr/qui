@@ -36,7 +36,6 @@ type CreateClientAPIKeyResponse struct {
 	ClientAPIKey *models.ClientAPIKey `json:"clientApiKey"`
 	Instance     *models.Instance     `json:"instance,omitempty"`
 	ProxyURL     string               `json:"proxyUrl"`
-	Instructions string               `json:"instructions"`
 }
 
 type ClientAPIKeyWithInstance struct {
@@ -85,16 +84,14 @@ func (h *ClientAPIKeysHandler) CreateClientAPIKey(w http.ResponseWriter, r *http
 		return
 	}
 
-	// Generate proxy URL and instructions
+	// Generate proxy URL
 	proxyURL := "/proxy/" + rawKey
-	instructions := generateProxyInstructions(req.ClientName, proxyURL, instance.Host)
 
 	response := CreateClientAPIKeyResponse{
 		Key:          rawKey,
 		ClientAPIKey: clientAPIKey,
 		Instance:     instance,
 		ProxyURL:     proxyURL,
-		Instructions: instructions,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -164,22 +161,4 @@ func (h *ClientAPIKeysHandler) DeleteClientAPIKey(w http.ResponseWriter, r *http
 	}
 
 	w.WriteHeader(http.StatusNoContent)
-}
-
-// generateProxyInstructions creates usage instructions for different client types
-func generateProxyInstructions(clientName, proxyURL, instanceHost string) string {
-	switch clientName {
-	case "Sonarr", "sonarr":
-		return "In Sonarr, set the qBittorrent host to your qui server URL + '" + proxyURL + "'. " +
-			"Example: If qui runs on http://localhost:8080, use http://localhost:8080" + proxyURL
-	case "Radarr", "radarr":
-		return "In Radarr, set the qBittorrent host to your qui server URL + '" + proxyURL + "'. " +
-			"Example: If qui runs on http://localhost:8080, use http://localhost:8080" + proxyURL
-	case "Lidarr", "lidarr":
-		return "In Lidarr, set the qBittorrent host to your qui server URL + '" + proxyURL + "'. " +
-			"Example: If qui runs on http://localhost:8080, use http://localhost:8080" + proxyURL
-	default:
-		return "Replace your qBittorrent host (" + instanceHost + ") with your qui server URL + '" + proxyURL + "'. " +
-			"Example: If qui runs on http://localhost:8080, use http://localhost:8080" + proxyURL
-	}
 }
