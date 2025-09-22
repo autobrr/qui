@@ -4,6 +4,7 @@
  */
 
 import { Button } from "@/components/ui/button"
+import { CatppuccinLogo } from "@/components/ui/CatppuccinLogo"
 import { Logo } from "@/components/ui/Logo"
 import { Separator } from "@/components/ui/separator"
 import { SwizzinLogo } from "@/components/ui/SwizzinLogo"
@@ -50,7 +51,11 @@ const navigation: NavItem[] = [
 export function Sidebar() {
   const location = useLocation()
   const { logout } = useAuth()
-  const { theme } = useTheme()
+  const { theme, currentTheme } = useTheme()
+  const themeId = currentTheme?.id ?? theme
+  const normalizedTheme = themeId?.toLowerCase()
+  const isCatppuccin = normalizedTheme?.startsWith("catppuccin")
+  const isSwizzin = normalizedTheme === "swizzin"
 
   const { data: instances } = useQuery({
     queryKey: ["instances"],
@@ -61,7 +66,9 @@ export function Sidebar() {
     <div className="flex h-full w-64 flex-col border-r bg-sidebar border-sidebar-border">
       <div className="p-6">
         <h2 className="flex items-center gap-2 text-lg font-semibold text-sidebar-foreground">
-          {theme === "swizzin" ? (
+          {isCatppuccin ? (
+            <CatppuccinLogo className="h-5 w-5" />
+          ) : isSwizzin ? (
             <SwizzinLogo className="h-5 w-5" />
           ) : (
             <Logo className="h-5 w-5" />

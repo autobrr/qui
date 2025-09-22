@@ -19,6 +19,7 @@ import {
   HoverCardTrigger
 } from "@/components/ui/hover-card"
 import { Input } from "@/components/ui/input"
+import { CatppuccinLogo } from "@/components/ui/CatppuccinLogo"
 import { Logo } from "@/components/ui/Logo"
 import { SwizzinLogo } from "@/components/ui/SwizzinLogo"
 import { ThemeToggle } from "@/components/ui/ThemeToggle"
@@ -126,7 +127,11 @@ export function Header({
     },
     [isInstanceRoute]
   )
-  const { theme } = useTheme()
+  const { theme, currentTheme } = useTheme()
+  const themeId = currentTheme?.id ?? theme
+  const normalizedTheme = themeId?.toLowerCase()
+  const isCatppuccin = normalizedTheme?.startsWith("catppuccin")
+  const isSwizzin = normalizedTheme === "swizzin"
 
   return (
     <header className="sticky top-0 z-50 flex h-16 items-center justify-between sm:border-b bg-background pl-1 pr-4 sm:pr-6 lg:static">
@@ -146,11 +151,14 @@ export function Header({
                 aria-haspopup="menu"
                 aria-expanded="false"
               >
-                {theme === "swizzin" ? (
+                {isCatppuccin ? (
+                  <CatppuccinLogo className="h-5 w-5" />
+                ) : isSwizzin ? (
                   <SwizzinLogo className="h-5 w-5" />
                 ) : (
                   <Logo className="h-5 w-5" />
-                )}<span className="flex items-center max-w-32">
+                )}
+                <span className="flex items-center max-w-32">
                   <span className="truncate" title={instanceName}>{instanceName}</span>
                   <ChevronsUpDown className="h-3 w-3 text-muted-foreground ml-1 mt-0.5 opacity-60 flex-shrink-0" />
                 </span>
@@ -215,7 +223,9 @@ export function Header({
             sidebarCollapsed && "lg:flex", // Visible on desktop when sidebar collapsed
             !shouldShowQuiOnMobile && "hidden sm:flex" // Hide on mobile when on instance routes
           )}>
-            {theme === "swizzin" ? (
+            {isCatppuccin ? (
+              <CatppuccinLogo className="h-5 w-5" />
+            ) : isSwizzin ? (
               <SwizzinLogo className="h-5 w-5" />
             ) : (
               <Logo className="h-5 w-5" />
