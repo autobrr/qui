@@ -12,9 +12,9 @@ builds:
       - -trimpath
     ldflags:
       - -s -w
-      - -X main.Version={{.Version}}
-      - -X main.buildTime={{.Date}}
-      - -X main.commit={{.Commit}}
+      - -X github.com/autobrr/qui/internal/buildinfo.Version={{.Version}}
+      - -X github.com/autobrr/qui/internal/buildinfo.Date={{.Date}}
+      - -X github.com/autobrr/qui/internal/buildinfo.Commit={{.Commit}}
       - -X main.PolarOrgID={{.Env.POLAR_ORG_ID}}
     goos:
       - linux
@@ -64,7 +64,7 @@ release:
 
     - `docker pull ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/qui:{{ .Tag }}`
     - `docker pull ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/qui:latest`
-
+    
     
     ## What to do next?
 
