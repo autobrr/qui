@@ -7,6 +7,7 @@ import { useState } from "react"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
+import { formatDate } from "@/lib/utils"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -376,9 +377,9 @@ export function ClientApiKeysManager() {
                   </div>
                   <div className="text-sm text-muted-foreground space-y-1">
                     <p>
-                      Created: {new Date(key.createdAt).toLocaleDateString()}
+                      Created: {formatDate(new Date(key.createdAt).getTime() / 1000)}
                       {key.lastUsedAt && (
-                        <> • Last used: {new Date(key.lastUsedAt).toLocaleDateString()}</>
+                        <> • Last used: {formatDate(new Date(key.lastUsedAt).getTime() / 1000)}</>
                       )}
                     </p>
                     {key.instance && (
