@@ -551,19 +551,114 @@ paths:
             schema:
               type: object
               required:
-                - hashes
                 - action
               properties:
                 hashes:
                   type: array
                   items:
                     type: string
+                  description: Specific torrent hashes to target. Required unless selectAll is true.
+                selectAll:
+                  type: boolean
+                  description: Apply the action to all torrents matching the provided filters.
+                filters:
+                  type: object
+                  description: Filter criteria used when selectAll is true.
+                  properties:
+                    status:
+                      type: array
+                      items:
+                        type: string
+                    categories:
+                      type: array
+                      items:
+                        type: string
+                    tags:
+                      type: array
+                      items:
+                        type: string
+                    trackers:
+                      type: array
+                      items:
+                        type: string
+                search:
+                  type: string
+                  description: Optional search query applied when selectAll is true.
+                excludeHashes:
+                  type: array
+                  items:
+                    type: string
+                  description: Hashes to exclude when selectAll is true.
                 action:
                   type: string
-                  enum: [pause, resume, delete]
+                  description: Bulk action to perform on the selected torrents.
+                  enum:
+                    - pause
+                    - resume
+                    - delete
+                    - deleteWithFiles
+                    - recheck
+                    - reannounce
+                    - increasePriority
+                    - decreasePriority
+                    - topPriority
+                    - bottomPriority
+                    - addTags
+                    - removeTags
+                    - setTags
+                    - setCategory
+                    - toggleAutoTMM
+                    - setShareLimit
+                    - setUploadLimit
+                    - setDownloadLimit
+                    - setLocation
+                    - editTrackers
+                    - addTrackers
+                    - removeTrackers
                 deleteFiles:
                   type: boolean
                   description: Only for delete action
+                tags:
+                  type: string
+                  description: Comma-separated list of tags for tag-related actions.
+                category:
+                  type: string
+                  description: Category name for setCategory action.
+                enable:
+                  type: boolean
+                  description: Enable or disable Automatic Torrent Management for toggleAutoTMM.
+                ratioLimit:
+                  type: number
+                  format: float
+                  description: Ratio limit for setShareLimit action.
+                seedingTimeLimit:
+                  type: integer
+                  format: int64
+                  description: Seeding time limit (minutes) for setShareLimit action.
+                inactiveSeedingTimeLimit:
+                  type: integer
+                  format: int64
+                  description: Inactive seeding time limit (minutes) for setShareLimit action.
+                uploadLimit:
+                  type: integer
+                  format: int64
+                  description: Upload speed limit in KB/s for setUploadLimit action.
+                downloadLimit:
+                  type: integer
+                  format: int64
+                  description: Download speed limit in KB/s for setDownloadLimit action.
+                location:
+                  type: string
+                  description: Destination path for setLocation action.
+                trackerOldURL:
+                  type: string
+                  description: Existing tracker URL to replace for editTrackers action.
+                trackerNewURL:
+                  type: string
+                  description: Replacement tracker URL for editTrackers action.
+                trackerURLs:
+                  type: string
+                  description: Newline-separated tracker URLs for addTrackers/removeTrackers actions.
       responses:
         '200':
           description: Action performed successfully
@@ -604,6 +699,91 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Tracker'
+    put:
+      tags:
+        - Torrent Details
+      summary: Edit torrent tracker
+      description: Edit a tracker URL for a torrent
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/hash'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - oldURL
+                - newURL
+              properties:
+                oldURL:
+                  type: string
+                  description: The current tracker URL to replace
+                newURL:
+                  type: string
+                  description: The new tracker URL
+      responses:
+        '200':
+          description: Tracker edited successfully
+        '400':
+          description: Invalid request
+        '500':
+          description: Failed to edit tracker
+    post:
+      tags:
+        - Torrent Details
+      summary: Add torrent trackers
+      description: Add new trackers to a torrent
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/hash'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - urls
+              properties:
+                urls:
+                  type: string
+                  description: Newline-separated list of tracker URLs to add
+      responses:
+        '200':
+          description: Trackers added successfully
+        '400':
+          description: Invalid request
+        '500':
+          description: Failed to add trackers
+    delete:
+      tags:
+        - Torrent Details
+      summary: Remove torrent trackers
+      description: Remove trackers from a torrent
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/hash'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - urls
+              properties:
+                urls:
+                  type: string
+                  description: Newline-separated list of tracker URLs to remove
+      responses:
+        '200':
+          description: Trackers removed successfully
+        '400':
+          description: Invalid request
+        '500':
+          description: Failed to remove trackers
 
   /api/instances/{instanceId}/torrents/{hash}/files:
     get:
@@ -951,12 +1131,12 @@ paths:
                     type: boolean
                     description: New status of alternative speed limits
 
-  /api/themes/license/validate:
+  /api/license/activate:
     post:
       tags:
-        - Theme Licenses
-      summary: Validate theme license
-      description: Validate and activate a theme license key
+        - Licenses
+      summary: Activate license
+      description: Activate a license key and store it for the current user
       requestBody:
         required: true
         content:
@@ -970,7 +1150,7 @@ paths:
                   type: string
       responses:
         '200':
-          description: License validated
+          description: License activated successfully
           content:
             application/json:
               schema:
@@ -978,23 +1158,91 @@ paths:
                 properties:
                   valid:
                     type: boolean
-                  themeName:
+                  productName:
                     type: string
                   expiresAt:
                     type: string
                     format: date-time
                   message:
                     type: string
+                  error:
+                    type: string
+                    nullable: true
+        '400':
+          description: Invalid request payload
+        '403':
+          description: License activation failed
 
-  /api/themes/licensed:
-    get:
+  /api/license/validate:
+    post:
       tags:
-        - Theme Licenses
-      summary: Get licensed themes
-      description: Get list of themes with active licenses
+        - Licenses
+      summary: Validate license
+      description: Validate a license key and ensure it remains active
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - licenseKey
+              properties:
+                licenseKey:
+                  type: string
       responses:
         '200':
-          description: List of licensed themes
+          description: License validated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid:
+                    type: boolean
+                  productName:
+                    type: string
+                  expiresAt:
+                    type: string
+                    format: date-time
+                  message:
+                    type: string
+                  error:
+                    type: string
+                    nullable: true
+        '400':
+          description: Invalid request payload
+        '403':
+          description: License validation failed
+        '404':
+          description: License not found
+
+  /api/license/licensed:
+    get:
+      tags:
+        - Licenses
+      summary: Check premium access
+      description: Check if any active licenses grant premium access
+      responses:
+        '200':
+          description: Premium access status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  hasPremiumAccess:
+                    type: boolean
+
+  /api/license/licenses:
+    get:
+      tags:
+        - Licenses
+      summary: List licenses
+      description: List all stored licenses
+      responses:
+        '200':
+          description: Licenses retrieved
           content:
             application/json:
               schema:
@@ -1002,47 +1250,22 @@ paths:
                 items:
                   type: object
                   properties:
-                    name:
-                      type: string
-                    expiresAt:
-                      type: string
-                      format: date-time
-
-  /api/themes/licenses:
-    get:
-      tags:
-        - Theme Licenses
-      summary: Get all licenses
-      description: Get all theme licenses
-      responses:
-        '200':
-          description: List of licenses
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  type: object
-                  properties:
-                    id:
-                      type: integer
                     licenseKey:
                       type: string
-                    themeName:
+                    productName:
                       type: string
-                    expiresAt:
+                    status:
                       type: string
-                      format: date-time
                     createdAt:
                       type: string
                       format: date-time
 
-  /api/themes/license/{licenseKey}:
+  /api/license/{licenseKey}:
     delete:
       tags:
-        - Theme Licenses
+        - Licenses
       summary: Delete license
-      description: Remove a theme license
+      description: Remove a stored license
       parameters:
         - name: licenseKey
           in: path
@@ -1051,26 +1274,28 @@ paths:
             type: string
       responses:
         '200':
-          description: License deleted
+          description: License deleted successfully
+        '400':
+          description: Invalid license key
 
-  /api/themes/license/refresh:
+  /api/license/refresh:
     post:
       tags:
-        - Theme Licenses
+        - Licenses
       summary: Refresh licenses
-      description: Refresh all theme licenses
+      description: Refresh all stored licenses from the licensing service
       responses:
         '200':
-          description: Licenses refreshed
+          description: Licenses refreshed successfully
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  refreshed:
-                    type: integer
-                  failed:
-                    type: integer
+                  message:
+                    type: string
+        '500':
+          description: Failed to refresh licenses
 
   /health:
     get:
@@ -1090,6 +1315,31 @@ paths:
                   status:
                     type: string
                     example: "ok"
+
+  /healthz/readiness:
+    get:
+      tags:
+        - System
+      summary: Readiness probe
+      description: Check if the service and its dependencies are ready to receive traffic
+      security: []
+      responses:
+        '200':
+          description: Service ready
+        '503':
+          description: Service not ready
+
+  /healthz/liveness:
+    get:
+      tags:
+        - System
+      summary: Liveness probe
+      description: Simple liveness check to confirm the service is running
+      security: []
+      responses:
+        '200':
+          description: Service is alive
+
 
 components:
   securitySchemes:
