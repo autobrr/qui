@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Copy, Plus, Trash2, Server, Globe } from "lucide-react"
+import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import {
   Dialog,
   DialogContent,
@@ -62,6 +63,7 @@ export function ClientApiKeysManager() {
   const [deleteKeyId, setDeleteKeyId] = useState<number | null>(null)
   const [newKey, setNewKey] = useState<NewClientAPIKey | null>(null)
   const queryClient = useQueryClient()
+  const { formatDate } = useDateTimeFormatters()
 
   // Fetch client API keys
   const { data: clientApiKeys, isLoading, error } = useQuery({
@@ -376,9 +378,9 @@ export function ClientApiKeysManager() {
                   </div>
                   <div className="text-sm text-muted-foreground space-y-1">
                     <p>
-                      Created: {new Date(key.createdAt).toLocaleDateString()}
+                      Created: {formatDate(new Date(key.createdAt))}
                       {key.lastUsedAt && (
-                        <> • Last used: {new Date(key.lastUsedAt).toLocaleDateString()}</>
+                        <> • Last used: {formatDate(new Date(key.lastUsedAt))}</>
                       )}
                     </p>
                     {key.instance && (

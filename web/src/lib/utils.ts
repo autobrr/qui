@@ -20,6 +20,8 @@ export function formatBytes(bytes: number): string {
 
 export function formatTimestamp(timestamp: number): string {
   if (!timestamp || timestamp === 0) return "N/A"
+  // For backward compatibility, fall back to basic locale string
+  // Components should use the new dateTimeUtils or useDateTimeFormatters hook for preference-aware formatting
   return new Date(timestamp * 1000).toLocaleString()
 }
 

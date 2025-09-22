@@ -18,6 +18,7 @@ import { formatErrorMessage } from "@/lib/utils"
 import type { InstanceResponse } from "@/types"
 import { AlertCircle, ChevronDown, Edit, XCircle } from "lucide-react"
 import { useState } from "react"
+import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 
 interface InstanceErrorDisplayProps {
   instance: InstanceResponse
@@ -29,6 +30,7 @@ interface InstanceErrorDisplayProps {
 export function InstanceErrorDisplay({ instance, onEdit, showEditButton = false, compact = false }: InstanceErrorDisplayProps) {
   const [isDecryptionOpen, setIsDecryptionOpen] = useState(compact)
   const [isRecentErrorsOpen, setIsRecentErrorsOpen] = useState(compact)
+  const { formatTimestamp } = useDateTimeFormatters()
 
   // Compact mode shows expandable error cards
   if (compact) {
@@ -87,7 +89,7 @@ export function InstanceErrorDisplay({ instance, onEdit, showEditButton = false,
                           {error.errorType}
                         </span>
                         <span className="text-destructive/70 flex-shrink-0 text-xs">
-                          {new Date(error.occurredAt).toLocaleString()}
+                          {formatTimestamp(Math.floor(new Date(error.occurredAt).getTime() / 1000))}
                         </span>
                       </div>
                       <Tooltip>
@@ -157,7 +159,7 @@ export function InstanceErrorDisplay({ instance, onEdit, showEditButton = false,
                         {error.errorType}
                       </span>
                       <span className="text-destructive/70 flex-shrink-0">
-                        {new Date(error.occurredAt).toLocaleString()}
+                        {formatTimestamp(Math.floor(new Date(error.occurredAt).getTime() / 1000))}
                       </span>
                     </div>
                     <Tooltip>
