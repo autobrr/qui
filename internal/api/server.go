@@ -156,7 +156,7 @@ func (s *Server) Handler() *chi.Mux {
 
 	// Create handlers
 	healthHandler := handlers.NewHealthHandler()
-	authHandler := handlers.NewAuthHandler(s.authService, s.sessionManager, s.instanceStore, s.clientPool, s.syncManager)
+	authHandler := handlers.NewAuthHandler(s.authService, s.sessionManager, s.config.Config, s.instanceStore, s.clientPool, s.syncManager)
 	instancesHandler := handlers.NewInstancesHandler(s.instanceStore, s.clientPool, s.syncManager)
 	torrentsHandler := handlers.NewTorrentsHandler(s.syncManager)
 	preferencesHandler := handlers.NewPreferencesHandler(s.syncManager)
@@ -178,7 +178,7 @@ func (s *Server) Handler() *chi.Mux {
 		r.Use(middleware.Logger(s.logger))
 
 		// Apply setup check middleware
-		r.Use(middleware.RequireSetup(s.authService))
+		r.Use(middleware.RequireSetup(s.authService, s.config.Config))
 
 		// Public routes (no auth required)
 		r.Route("/auth", func(r chi.Router) {
@@ -188,6 +188,12 @@ func (s *Server) Handler() *chi.Mux {
 			r.Post("/setup", authHandler.Setup)
 			r.Post("/login", authHandler.Login)
 			r.Get("/check-setup", authHandler.CheckSetupRequired)
+			r.Get("/validate", authHandler.Validate)
+
+			// OIDC routes (if enabled)
+			if s.config.Config.OIDCEnabled && authHandler.GetOIDCHandler() != nil {
+				r.Route("/oidc", authHandler.GetOIDCHandler().Routes)
+			}
 		})
 
 		// Protected routes
