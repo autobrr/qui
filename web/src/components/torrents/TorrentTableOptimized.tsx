@@ -89,7 +89,7 @@ const DEFAULT_COLUMN_VISIBILITY = {
   num_seeds: false,
   num_leechs: false,
   popularity: false,
-  completed_on: false,
+  completion_on: false,
   tracker: false,
   dl_limit: false,
   up_limit: false,
