@@ -21,6 +21,7 @@ export interface Instance {
   host: string
   username: string
   basicUsername?: string
+  tlsSkipVerify: boolean
 }
 
 export interface InstanceFormData {
@@ -30,6 +31,7 @@ export interface InstanceFormData {
   password?: string
   basicUsername?: string
   basicPassword?: string
+  tlsSkipVerify: boolean
 }
 
 export interface InstanceError {

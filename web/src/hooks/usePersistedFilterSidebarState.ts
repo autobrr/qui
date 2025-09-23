@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState, useEffect } from "react"
+import { useCallback, useEffect, useState } from "react"
 
 export function usePersistedFilterSidebarState(defaultCollapsed: boolean = false) {
   const storageKey = "qui-filter-sidebar-collapsed"
@@ -22,13 +22,18 @@ export function usePersistedFilterSidebarState(defaultCollapsed: boolean = false
     return defaultCollapsed
   })
 
-  // Persist to localStorage whenever state changes
+  // Persist to localStorage and broadcast to other listeners whenever state changes
   useEffect(() => {
+    if (typeof window === "undefined") return
+
     try {
       localStorage.setItem(storageKey, filterSidebarCollapsed.toString())
     } catch (error) {
       console.error("Failed to save filter sidebar state to localStorage:", error)
     }
+
+    const evt = new CustomEvent(storageKey, { detail: { collapsed: filterSidebarCollapsed } })
+    window.dispatchEvent(evt)
   }, [filterSidebarCollapsed])
 
   // Listen for cross-component updates via CustomEvent within the same tab
@@ -44,19 +49,11 @@ export function usePersistedFilterSidebarState(defaultCollapsed: boolean = false
   }, [])
 
   // Wrapped setter that syncs state and dispatches event
-  const setFilterSidebarCollapsed = (next: boolean | ((prev: boolean) => boolean)) => {
-    setFilterSidebarCollapsedState((prev) => {
-      const value = typeof next === "function" ? (next as (p: boolean) => boolean)(prev) : next
-      try {
-        localStorage.setItem(storageKey, value.toString())
-      } catch (error) {
-        console.error("Failed to save filter sidebar state to localStorage:", error)
-      }
-      const evt = new CustomEvent(storageKey, { detail: { collapsed: value } })
-      window.dispatchEvent(evt)
-      return value
-    })
-  }
+  const setFilterSidebarCollapsed = useCallback((next: boolean | ((prev: boolean) => boolean)) => {
+    setFilterSidebarCollapsedState((prev) => (
+      typeof next === "function" ? (next as (p: boolean) => boolean)(prev) : next
+    ))
+  }, [])
 
   return [filterSidebarCollapsed, setFilterSidebarCollapsed] as const
 }

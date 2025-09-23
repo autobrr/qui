@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/auth"
+	"github.com/autobrr/qui/internal/buildinfo"
 	"github.com/autobrr/qui/internal/config"
 	"github.com/autobrr/qui/internal/database"
 )
@@ -101,7 +102,7 @@ func TestRunCreateUserCommand(t *testing.T) {
 			// Setup existing user if needed
 			if tt.setupExistingUser {
 				// Create config and database with existing user
-				cfg, err := config.New(configDir)
+				cfg, err := config.New(configDir, buildinfo.Version)
 				require.NoError(t, err)
 
 				db, err := database.New(cfg.GetDatabasePath())
@@ -223,7 +224,7 @@ func TestRunChangePasswordCommand(t *testing.T) {
 			// Setup user if needed
 			if tt.setupUser {
 				// Create config and database with user
-				cfg, err := config.New(configDir)
+				cfg, err := config.New(configDir, buildinfo.Version)
 				require.NoError(t, err)
 
 				// Set custom data directory if specified

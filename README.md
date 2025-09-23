@@ -87,6 +87,8 @@ QUI__SESSION_SECRET=...  # Auto-generated if not set
 # Logging
 QUI__LOG_LEVEL=INFO      # Options: ERROR, DEBUG, INFO, WARN, TRACE
 QUI__LOG_PATH=...        # Optional: log file path
+QUI__LOG_MAX_SIZE=50     # Optional: rotate when log file exceeds N megabytes (default: 50)
+QUI__LOG_MAX_BACKUPS=3   # Optional: retain N rotated files (default: 3, 0 keeps all)
 
 # Storage
 QUI__DATA_DIR=...        # Optional: custom data directory (default: next to config)
@@ -97,6 +99,8 @@ QUI__METRICS_HOST=127.0.0.1  # Optional: metrics server bind address (default: 1
 QUI__METRICS_PORT=9074       # Optional: metrics server port (default: 9074)
 QUI__METRICS_BASIC_AUTH_USERS=user:hash  # Optional: basic auth for metrics (bcrypt hashed)
 ```
+
+When `logPath` is set the server writes to disk using size-based rotation. Adjust `logMaxSize` and `logMaxBackups` in `config.toml` or the corresponding environment variables shown above to control the rotation thresholds and retention.
 
 ## CLI Commands
 
