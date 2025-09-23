@@ -84,13 +84,29 @@ import { createColumns } from "./TorrentTableColumns"
 
 // Default values for persisted state hooks (module scope for stable references)
 const DEFAULT_COLUMN_VISIBILITY = {
-  downloaded: false,
-  uploaded: false,
-  save_path: false,
-  tracker: false,
   priority: true,
+  total_size: false,
   num_seeds: false,
   num_leechs: false,
+  popularity: false,
+  completed_on: false,
+  tracker: false,
+  dl_limit: false,
+  up_limit: false,
+  downloaded: false,
+  uploaded: false,
+  downloaded_session: false,
+  uploaded_session: false,
+  amount_left: false,
+  time_active: false,
+  save_path: false,
+  completed: false,
+  ratio_limit: false,
+  seen_complete: false,
+  last_activity: false,
+  availability: false,
+  infohash_v1: false,
+  infohash_v2: false,
 }
 const DEFAULT_COLUMN_SIZING = {}
 
