@@ -126,11 +126,43 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
     return () => window.removeEventListener("qui-open-mobile-filters", handler)
   }, [])
 
+  // Close the mobile filters sheet when viewport switches to desktop layout
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(min-width: 768px)")
+
+    const handleChange = (event: MediaQueryListEvent) => {
+      if (event.matches) {
+        setMobileFilterOpen(false)
+      }
+    }
+
+    if (mediaQuery.matches) {
+      setMobileFilterOpen(false)
+    }
+
+    const supportsAddEventListener = typeof mediaQuery.addEventListener === "function"
+    if (supportsAddEventListener) {
+      mediaQuery.addEventListener("change", handleChange)
+    } else {
+      type MediaQueryListLegacy = MediaQueryList & {
+        addListener?: (listener: (event: MediaQueryListEvent) => void) => void
+        removeListener?: (listener: (event: MediaQueryListEvent) => void) => void
+      }
+
+      const legacyMediaQuery = mediaQuery as MediaQueryListLegacy
+      legacyMediaQuery.addListener?.(handleChange)
+
+      return () => legacyMediaQuery.removeListener?.(handleChange)
+    }
+
+    return () => mediaQuery.removeEventListener("change", handleChange)
+  }, [])
+
   return (
     <div className="flex h-full relative">
       {/* Desktop Sidebar - hidden on mobile, with slide animation */}
-      <div className={`hidden xl:block w-full xl:max-w-xs overflow-hidden ${
-        filterSidebarCollapsed ? "-ml-80 opacity-0" : "ml-0 opacity-100" // animate left margin instead of width
+      <div className={`hidden md:block w-full md:max-w-xs overflow-hidden ${
+        filterSidebarCollapsed ? "-ml-80 opacity-0 md:hidden" : "ml-0 opacity-100 md:block" // animate left margin instead of width, also control visibility on tablet
       } transition-all duration-300 ease-in-out`}>
         <FilterSidebar
           key={`filter-sidebar-${instanceId}`}
@@ -147,7 +179,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
 
       {/* Mobile Filter Sheet */}
       <Sheet open={mobileFilterOpen} onOpenChange={setMobileFilterOpen}>
-        <SheetContent side="left" className="p-0 w-[280px] sm:w-[320px] xl:hidden flex flex-col max-h-[100dvh]">
+        <SheetContent side="left" className="p-0 w-[280px] sm:w-[320px] md:hidden flex flex-col max-h-[100dvh]">
           <SheetHeader className="px-4 py-3 border-b">
             <SheetTitle className="text-lg font-semibold">Filters</SheetTitle>
           </SheetHeader>

@@ -5,6 +5,7 @@ package domain
 
 // Config represents the application configuration
 type Config struct {
+	Version               string
 	Host                  string `toml:"host" mapstructure:"host"`
 	Port                  int    `toml:"port" mapstructure:"port"`
 	BaseURL               string `toml:"baseUrl" mapstructure:"baseUrl"`
