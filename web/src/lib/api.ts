@@ -414,7 +414,6 @@ class ApiClient {
       host: string
     }
     proxyUrl: string
-    instructions: string
   }> {
     return this.request("/client-api-keys", {
       method: "POST",

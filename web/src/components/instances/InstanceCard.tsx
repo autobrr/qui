@@ -174,6 +174,12 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
               <span>{instance.basicUsername}</span>
             </div>
           )}
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">TLS Verification:</span>
+            <span className={instance.tlsSkipVerify ? "text-amber-500" : ""}>
+              {instance.tlsSkipVerify ? "Skipped" : "Strict"}
+            </span>
+          </div>
         </div>
 
         <InstanceErrorDisplay instance={instance} onEdit={onEdit} showEditButton={true} compact />

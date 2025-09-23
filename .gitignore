@@ -2,6 +2,7 @@
 *.log
 *.sqlite
 *.db*
+*.exe
 log/
 logs/
 
