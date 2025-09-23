@@ -333,6 +333,29 @@ docker run -d \
   ghcr.io/autobrr/qui:latest
 ```
 
+### Unraid
+
+Our release workflow builds multi-architecture images (`linux/amd64`, `linux/arm64`, and friends) and publishes them to `ghcr.io/autobrr/qui`, so the container should work on Unraid out of the box.
+
+**Deploy from the Docker tab**
+- Open **Docker → Add Container**
+- Set **Name** to `qui`
+- Set **Repository** to `ghcr.io/autobrr/qui:latest`
+- Keep the default **Network Type** (`bridge` works for most setups)
+- Add a port mapping: **Host port** `7476` → **Container port** `7476`
+- Add a path mapping: **Container Path** `/config` → **Host Path** `/mnt/user/appdata/qui`
+- (Optional) add environment variables for advanced settings (e.g., `QUI__BASE_URL`, `QUI__LOG_LEVEL`, `TZ`)
+- Click **Apply** to pull the image and start the container
+
+The `/config` mount stores `config.toml`, the SQLite database, and logs. Point it at your preferred appdata share so settings persist across upgrades.
+
+If the app logs to stdout, check logs via Docker → qui → Logs; if it writes to files, they’ll be under /config.
+
+**Updating**
+- Use Unraid's **Check for Updates** action to pull a newer `latest` image
+- If you pinned a specific version tag, edit the repository field to the new tag when you're ready to upgrade
+- Restart the container if needed after the image update so the new binary is loaded
+
 ## Base URL Configuration
 
 If you need to serve qui from a subdirectory (e.g., `https://example.com/qui/`), you can configure the base URL:
