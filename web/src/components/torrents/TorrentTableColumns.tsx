@@ -229,7 +229,7 @@ export const createColumns = (
     accessorKey: "total_size",
     header: "Total Size",
     cell: ({ row }) => <span className="text-sm overflow-hidden whitespace-nowrap">{formatBytes(row.original.total_size)}</span>,
-    size: 85,
+    size: 115,
   },
   {
     accessorKey: "progress",
@@ -356,7 +356,7 @@ export const createColumns = (
         </div>
       )
     },
-    size: 150,
+    size: 115,
   },
   {
     accessorKey: "category",
