@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { memo, useCallback } from "react"
+import { memo, useCallback, useMemo } from "react"
 import {
   ContextMenu,
   ContextMenuContent,
@@ -31,7 +31,7 @@ import { TORRENT_ACTIONS } from "@/hooks/useTorrentActions"
 import { QueueSubmenu } from "./QueueSubmenu"
 import { ShareLimitSubmenu, SpeedLimitsSubmenu } from "./TorrentLimitSubmenus"
 import { getLinuxIsoName, useIncognitoMode } from "@/lib/incognito"
-import { useMemo } from "react"
+import { getTorrentDisplayHash } from "@/lib/torrent-utils"
 
 interface TorrentContextMenuProps {
   children: React.ReactNode
@@ -85,6 +85,17 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
       toast.error("Failed to copy to clipboard")
     }
   }, [])
+
+  const displayHash = useMemo(() => getTorrentDisplayHash(torrent), [torrent])
+
+  const copyHash = useCallback(() => {
+    const value = displayHash || torrent.hash
+    if (!value) {
+      toast.error("Hash not available")
+      return
+    }
+    void copyToClipboard(value, "hash")
+  }, [copyToClipboard, displayHash, torrent.hash])
 
   // Determine if we should use selection or just this torrent
   const useSelection = isSelected || isAllSelected
@@ -254,7 +265,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
           <Copy className="mr-2 h-4 w-4" />
           Copy Name
         </ContextMenuItem>
-        <ContextMenuItem onClick={() => copyToClipboard(torrent.hash, "hash")}>
+        <ContextMenuItem onClick={copyHash}>
           <Copy className="mr-2 h-4 w-4" />
           Copy Hash
         </ContextMenuItem>

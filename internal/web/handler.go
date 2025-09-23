@@ -33,12 +33,12 @@ func init() {
 	mime.AddExtensionType(".woff2", "font/woff2")
 }
 
-func NewHandler(version, baseURL string, embedFS fs.FS) (*Handler, error) {
+func NewHandler(version, baseURL string, embedFS fs.FS) *Handler {
 	return &Handler{
 		fs:      embedFS,
 		baseURL: baseURL,
 		version: version,
-	}, nil
+	}
 }
 
 func (h *Handler) RegisterRoutes(r chi.Router) {
@@ -66,7 +66,8 @@ func (h *Handler) RegisterRoutes(r chi.Router) {
 	r.Get("/pwa-512x512.png", h.serveAssets)
 	r.Get("/swizzin.png", h.serveAssets)
 
-	// SPA catch-all route
+	// SPA routes
+	r.Get("/", h.serveSPA)
 	r.Get("/*", h.serveSPA)
 }
 
