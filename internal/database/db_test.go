@@ -95,6 +95,30 @@ func TestMigrationsApplyFullSchema(t *testing.T) {
 	})
 }
 
+func TestConnectionPragmasApplyToEachConnection(t *testing.T) {
+	ctx := t.Context()
+	db := openTestDatabase(t)
+	sqlDB := db.Conn()
+
+	sqlDB.SetMaxOpenConns(2)
+	sqlDB.SetMaxIdleConns(2)
+
+	conn1, err := sqlDB.Conn(ctx)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, conn1.Close())
+	})
+
+	conn2, err := sqlDB.Conn(ctx)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, conn2.Close())
+	})
+
+	verifyPragmas(t, ctx, conn1)
+	verifyPragmas(t, ctx, conn2)
+}
+
 type columnSpec struct {
 	Name       string
 	Type       string
@@ -130,16 +154,18 @@ var expectedSchema = map[string][]columnSpec{
 		{Name: "basic_username", Type: "TEXT"},
 		{Name: "basic_password_encrypted", Type: "TEXT"},
 	},
-	"theme_licenses": {
+	"licenses": {
 		{Name: "id", Type: "INTEGER", PrimaryKey: true},
 		{Name: "license_key", Type: "TEXT"},
-		{Name: "theme_name", Type: "TEXT"},
+		{Name: "product_name", Type: "TEXT"},
 		{Name: "status", Type: "TEXT"},
 		{Name: "activated_at", Type: "DATETIME"},
 		{Name: "expires_at", Type: "DATETIME"},
 		{Name: "last_validated", Type: "DATETIME"},
 		{Name: "polar_customer_id", Type: "TEXT"},
 		{Name: "polar_product_id", Type: "TEXT"},
+		{Name: "polar_activation_id", Type: "TEXT"},
+		{Name: "username", Type: "TEXT"},
 		{Name: "created_at", Type: "DATETIME"},
 		{Name: "updated_at", Type: "DATETIME"},
 	},
@@ -167,7 +193,7 @@ var expectedSchema = map[string][]columnSpec{
 
 var expectedIndexes = map[string][]string{
 	"api_keys":        {"idx_api_keys_hash"},
-	"theme_licenses":  {"idx_theme_licenses_status", "idx_theme_licenses_theme", "idx_theme_licenses_key"},
+	"licenses":        {"idx_licenses_status", "idx_licenses_theme", "idx_licenses_key"},
 	"client_api_keys": {"idx_client_api_keys_key_hash", "idx_client_api_keys_instance_id"},
 	"instance_errors": {"idx_instance_errors_lookup"},
 	"sessions":        {"sessions_expiry_idx"},
@@ -205,18 +231,27 @@ func openTestDatabase(t *testing.T) *DB {
 	return db
 }
 
-func verifyPragmas(t *testing.T, ctx context.Context, conn *sql.DB) {
+type pragmaQuerier interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
+func verifyPragmas(t *testing.T, ctx context.Context, q pragmaQuerier) {
 	t.Helper()
 
 	var journalMode string
-	require.NoError(t, conn.QueryRowContext(ctx, "PRAGMA journal_mode").Scan(&journalMode))
+	require.NoError(t, q.QueryRowContext(ctx, "PRAGMA journal_mode").Scan(&journalMode))
 	require.Equal(t, "wal", strings.ToLower(journalMode))
 
 	var foreignKeys int
-	require.NoError(t, conn.QueryRowContext(ctx, "PRAGMA foreign_keys").Scan(&foreignKeys))
+	require.NoError(t, q.QueryRowContext(ctx, "PRAGMA foreign_keys").Scan(&foreignKeys))
 	require.Equal(t, 1, foreignKeys)
 
-	rows, err := conn.QueryContext(ctx, "PRAGMA foreign_key_check")
+	var busyTimeout int
+	require.NoError(t, q.QueryRowContext(ctx, "PRAGMA busy_timeout").Scan(&busyTimeout))
+	require.Equal(t, defaultBusyTimeoutMillis, busyTimeout)
+
+	rows, err := q.QueryContext(ctx, "PRAGMA foreign_key_check")
 	require.NoError(t, err)
 	defer rows.Close()
 	if rows.Next() {
@@ -224,7 +259,7 @@ func verifyPragmas(t *testing.T, ctx context.Context, conn *sql.DB) {
 	}
 
 	var integrity string
-	require.NoError(t, conn.QueryRowContext(ctx, "PRAGMA integrity_check").Scan(&integrity))
+	require.NoError(t, q.QueryRowContext(ctx, "PRAGMA integrity_check").Scan(&integrity))
 	require.Equal(t, "ok", strings.ToLower(integrity))
 }
 
