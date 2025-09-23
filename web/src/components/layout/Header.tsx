@@ -46,8 +46,8 @@ const detectTouchDevice = () => {
   if (!isClient) return false
 
   const nav = window.navigator
-  const coarsePointer = window.matchMedia?.("(pointer: coarse)").matches
-  const anyCoarsePointer = window.matchMedia?.("(any-pointer: coarse)").matches
+  const coarsePointer = window.matchMedia?.("(pointer: coarse)")?.matches ?? false
+  const anyCoarsePointer = window.matchMedia?.("(any-pointer: coarse)")?.matches ?? false
   const legacyMaxTouchPoints = (nav as Navigator & { msMaxTouchPoints?: number })
     .msMaxTouchPoints ?? 0
 
