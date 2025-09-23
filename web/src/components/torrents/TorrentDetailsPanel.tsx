@@ -18,6 +18,7 @@ import { api } from "@/lib/api"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { resolveTorrentHashes } from "@/lib/torrent-utils"
 import { formatBytes, formatDuration, formatTimestamp } from "@/lib/utils"
+import { renderTextWithLinks } from "@/lib/linkUtils"
 import type { Torrent } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import "flag-icons/css/flag-icons.min.css"
@@ -516,7 +517,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                               <div>
                                 <p className="text-xs text-muted-foreground mb-2">Comment</p>
                                 <div className="text-sm bg-background/50 p-3 rounded break-words">
-                                  {properties.comment}
+                                  {renderTextWithLinks(properties.comment)}
                                 </div>
                               </div>
                             </>

@@ -12,6 +12,8 @@ type Config struct {
 	SessionSecret         string `toml:"sessionSecret" mapstructure:"sessionSecret"`
 	LogLevel              string `toml:"logLevel" mapstructure:"logLevel"`
 	LogPath               string `toml:"logPath" mapstructure:"logPath"`
+	LogMaxSize            int    `toml:"logMaxSize" mapstructure:"logMaxSize"`
+	LogMaxBackups         int    `toml:"logMaxBackups" mapstructure:"logMaxBackups"`
 	DataDir               string `toml:"dataDir" mapstructure:"dataDir"`
 	CheckForUpdates       bool   `toml:"checkForUpdates" mapstructure:"checkForUpdates"`
 	PprofEnabled          bool   `toml:"pprofEnabled" mapstructure:"pprofEnabled"`
