@@ -104,7 +104,19 @@ func (s *Server) tryToServe(addr, protocol string) error {
 		return err
 	}
 
-	s.logger.Info().Str("protocol", protocol).Str("addr", listener.Addr().String()).Str("base_url", s.config.Config.BaseURL).Msg("Starting API server")
+	host := listener.Addr().String()
+	// Replace 0.0.0.0 or :: with localhost for clickable links
+	if strings.HasPrefix(host, "0.0.0.0:") || strings.HasPrefix(host, "[::]:") {
+		host = strings.Replace(host, "0.0.0.0:", "localhost:", 1)
+		host = strings.Replace(host, "[::]:", "localhost:", 1)
+	}
+	clickableURL := fmt.Sprintf("http://%s%s", host, s.config.Config.BaseURL)
+
+	s.logger.Info().
+		Str("protocol", protocol).
+		Str("addr", listener.Addr().String()).
+		Str("base_url", s.config.Config.BaseURL).
+		Msgf("Starting API server - Open: %s", clickableURL)
 
 	s.server.Handler = s.Handler()
 
