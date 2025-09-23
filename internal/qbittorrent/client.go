@@ -32,16 +32,17 @@ type Client struct {
 	healthMu          sync.RWMutex
 }
 
-func NewClient(instanceID int, instanceHost, username, password string, basicUsername, basicPassword *string) (*Client, error) {
-	return NewClientWithTimeout(instanceID, instanceHost, username, password, basicUsername, basicPassword, 60*time.Second)
+func NewClient(instanceID int, instanceHost, username, password string, basicUsername, basicPassword *string, tlsSkipVerify bool) (*Client, error) {
+	return NewClientWithTimeout(instanceID, instanceHost, username, password, basicUsername, basicPassword, tlsSkipVerify, 60*time.Second)
 }
 
-func NewClientWithTimeout(instanceID int, instanceHost, username, password string, basicUsername, basicPassword *string, timeout time.Duration) (*Client, error) {
+func NewClientWithTimeout(instanceID int, instanceHost, username, password string, basicUsername, basicPassword *string, tlsSkipVerify bool, timeout time.Duration) (*Client, error) {
 	cfg := qbt.Config{
-		Host:     instanceHost,
-		Username: username,
-		Password: password,
-		Timeout:  int(timeout.Seconds()),
+		Host:          instanceHost,
+		Username:      username,
+		Password:      password,
+		Timeout:       int(timeout.Seconds()),
+		TLSSkipVerify: tlsSkipVerify,
 	}
 
 	if basicUsername != nil && *basicUsername != "" {
@@ -108,6 +109,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 		Str("host", instanceHost).
 		Str("webAPIVersion", webAPIVersion).
 		Bool("supportsSetTags", supportsSetTags).
+		Bool("tlsSkipVerify", tlsSkipVerify).
 		Msg("qBittorrent client created successfully")
 
 	return client, nil
