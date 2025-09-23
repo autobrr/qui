@@ -16,6 +16,16 @@ import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { NumberInputWithUnlimited } from "@/components/forms/NumberInputWithUnlimited"
 import { toast } from "sonner"
 
+const sanitizeBtProtocol = (value: unknown): 0 | 1 | 2 => {
+  const numeric = typeof value === "number" ? value : parseInt(String(value), 10)
+
+  if (Number.isNaN(numeric)) {
+    return 0
+  }
+
+  return Math.min(2, Math.max(0, numeric)) as 0 | 1 | 2
+}
+
 const sanitizeUtpTcpMixedMode = (value: unknown): 0 | 1 => {
   const numeric = typeof value === "number" ? value : parseInt(String(value), 10)
   return numeric === 1 ? 1 : 0
@@ -140,7 +150,7 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
       form.setFieldValue("random_port", preferences.random_port)
       form.setFieldValue("upnp", preferences.upnp)
       form.setFieldValue("upnp_lease_duration", preferences.upnp_lease_duration)
-      form.setFieldValue("bittorrent_protocol", preferences.bittorrent_protocol)
+      form.setFieldValue("bittorrent_protocol", sanitizeBtProtocol(preferences.bittorrent_protocol))
       form.setFieldValue("utp_tcp_mixed_mode", sanitizeUtpTcpMixedMode(preferences.utp_tcp_mixed_mode))
       form.setFieldValue("current_network_interface", preferences.current_network_interface)
       form.setFieldValue("current_interface_address", preferences.current_interface_address)
@@ -255,27 +265,41 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <form.Field name="bittorrent_protocol">
-            {(field) => (
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">BitTorrent Protocol</Label>
-                <Select
-                  value={field.state.value.toString()}
-                  onValueChange={(value) => field.handleChange(parseInt(value))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="0">{getBittorrentProtocolLabel(0)}</SelectItem>
-                    <SelectItem value="1">{getBittorrentProtocolLabel(1)}</SelectItem>
-                    <SelectItem value="2">{getBittorrentProtocolLabel(2)}</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  Protocol to use for peer connections
-                </p>
-              </div>
-            )}
+            {(field) => {
+              const sanitizedValue = sanitizeBtProtocol(field.state.value)
+
+              if (field.state.value !== sanitizedValue) {
+                scheduleMicrotask(() => field.handleChange(sanitizedValue))
+              }
+
+              return (
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">BitTorrent Protocol</Label>
+                  <Select
+                    value={sanitizedValue.toString()}
+                    onValueChange={(value) => {
+                      const parsed = parseInt(value, 10)
+
+                      if (!Number.isNaN(parsed)) {
+                        field.handleChange(sanitizeBtProtocol(parsed))
+                      }
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="0">{getBittorrentProtocolLabel(0)}</SelectItem>
+                      <SelectItem value="1">{getBittorrentProtocolLabel(1)}</SelectItem>
+                      <SelectItem value="2">{getBittorrentProtocolLabel(2)}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Protocol to use for peer connections
+                  </p>
+                </div>
+              )
+            }}
           </form.Field>
 
           <form.Field name="utp_tcp_mixed_mode">
