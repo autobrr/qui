@@ -46,6 +46,18 @@ function formatEta(seconds: number): string {
   return `${minutes}m`
 }
 
+function formatReannounce(seconds: number): string {
+  if (seconds < 0) return "-"
+
+  const minutes = Math.floor(seconds / 60)
+
+  if (minutes < 1) {
+    return "< 1m"
+  }
+
+  return `${minutes}m`
+}
+
 // Calculate minimum column width based on header text
 function calculateMinWidth(text: string, padding: number = 48): number {
   const charWidth = 7.5
@@ -348,11 +360,9 @@ export const createColumns = (
     accessorKey: "popularity",
     header: "Popularity",
     cell: ({ row }) => {
-      const monthsActive = row.original.time_active / (30 * 24 * 60 * 60) // Convert seconds to months (30 days)
-      const popularity = row.original.ratio / monthsActive
       return (
         <div className="overflow-hidden whitespace-nowrap text-sm">
-          {popularity.toFixed(2)}
+          {row.original.popularity.toFixed(2)}
         </div>
       )
     },
@@ -680,6 +690,28 @@ export const createColumns = (
     },
     size: 370,
   },
-  // reannounce is not available yet in go-qbittorrent
-  // isPrivate is not available yet in go-qbittorrent
+  {
+    accessorKey: "reannounce",
+    header: "Reannounce In",
+    cell: ({ row }) => {
+      return (
+        <div className="overflow-hidden whitespace-nowrap text-sm">
+          {formatReannounce(row.original.reannounce)}
+        </div>
+      )
+    },
+    size: calculateMinWidth("Reannounce In"),
+  },
+  {
+    accessorKey: "private",
+    header: "Private",
+    cell: ({ row }) => {
+      return (
+        <div className="overflow-hidden whitespace-nowrap text-sm">
+          {row.original.private ? "Yes" : "No"}
+        </div>
+      )
+    },
+    size: calculateMinWidth("Private"),
+  },
 ]

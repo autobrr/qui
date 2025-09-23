@@ -68,6 +68,8 @@ export interface Torrent {
   hash: string
   infohash_v1: string
   infohash_v2: string
+  popularity: number
+  private: boolean
   last_activity: number
   magnet_uri: string
   max_ratio: number
@@ -81,6 +83,7 @@ export interface Torrent {
   progress: number
   ratio: number
   ratio_limit: number
+  reannounce: number
   save_path: string
   seeding_time: number
   seeding_time_limit: number
