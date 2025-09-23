@@ -222,7 +222,7 @@ func (h *Handler) prepareProxyContext(r *http.Request) (*proxyContext, error) {
 	}
 
 	if instanceID == 0 || clientAPIKey == nil {
-		logger.Error().Msg("Proxy request missing instance ID or client API key")
+		logger.Warn().Msg("Proxy request missing instance ID or client API key")
 		return nil, fmt.Errorf("missing proxy context")
 	}
 
