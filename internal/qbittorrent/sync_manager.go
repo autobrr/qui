@@ -266,6 +266,11 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		sm.sortTorrentsByPriority(filteredTorrents, order == "desc")
 	}
 
+	// Apply custom sorting for popularity field as the Web API doesn't expose it
+	if sort == "popularity" {
+		sm.sortTorrentsByPopularity(filteredTorrents, order == "desc")
+	}
+
 	// Calculate stats from filtered torrents
 	stats := sm.calculateStats(filteredTorrents)
 
@@ -1533,6 +1538,27 @@ func (sm *SyncManager) sortTorrentsByPriority(torrents []qbt.Torrent, desc bool)
 			return int(a.Priority - b.Priority)
 		}
 		return int(b.Priority - a.Priority)
+	})
+}
+
+func (sm *SyncManager) sortTorrentsByPopularity(torrents []qbt.Torrent, desc bool) {
+	slices.SortStableFunc(torrents, func(a, b qbt.Torrent) int {
+		popularityA := a.Ratio / (float64(a.TimeActive) / (30 * 24 * 60 * 60))
+		popularityB := b.Ratio / (float64(b.TimeActive) / (30 * 24 * 60 * 60))
+
+		var result int
+		if popularityA > popularityB {
+			result = 1
+		} else if popularityA < popularityB {
+			result = -1
+		} else {
+			result = 0
+		}
+
+		if desc {
+			return -result
+		}
+		return result
 	})
 }
 

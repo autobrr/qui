@@ -60,6 +60,32 @@ export function formatDuration(seconds: number): string {
   return parts.join(" ")
 }
 
+export function formatTimeActive(seconds: number): string {
+  if (seconds <= 0) return "-"
+
+  const units = [
+    { name: "y", value: 365 * 24 * 3600 },
+    { name: "d", value: 24 * 3600 },
+    { name: "h", value: 3600 },
+    { name: "m", value: 60 },
+    { name: "s", value: 1 },
+  ]
+
+  const result = []
+  let remaining = seconds
+
+  for (const unit of units) {
+    const count = Math.floor(remaining / unit.value)
+    if (count > 0) {
+      result.push(`${count}${unit.name}`)
+      remaining -= count * unit.value
+    }
+    if (result.length === 2) break
+  }
+
+  return result.length > 0 ? result.join(" ") : "0s"
+}
+
 export function formatErrorMessage(error: string | undefined): string {
   if (!error) return "Unknown error"
 

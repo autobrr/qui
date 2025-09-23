@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/tooltip"
 import {
   getLinuxCategory,
+  getLinuxHash,
   getLinuxIsoName,
   getLinuxRatio,
   getLinuxSavePath,
@@ -21,7 +22,7 @@ import {
 } from "@/lib/incognito"
 import { formatSpeedWithUnit, type SpeedUnit } from "@/lib/speedUnits"
 import { getStateLabel } from "@/lib/torrent-state-utils"
-import { formatBytes, getRatioColor } from "@/lib/utils"
+import { formatBytes, formatTimeActive, getRatioColor } from "@/lib/utils"
 import type { Torrent } from "@/types"
 import type { ColumnDef } from "@tanstack/react-table"
 import { ListOrdered } from "lucide-react"
@@ -225,6 +226,12 @@ export const createColumns = (
     size: 85,
   },
   {
+    accessorKey: "total_size",
+    header: "Total Size",
+    cell: ({ row }) => <span className="text-sm overflow-hidden whitespace-nowrap">{formatBytes(row.original.total_size)}</span>,
+    size: 85,
+  },
+  {
     accessorKey: "progress",
     header: "Progress",
     cell: ({ row }) => (
@@ -338,30 +345,18 @@ export const createColumns = (
     size: 80,
   },
   {
-    accessorKey: "added_on",
-    header: "Added",
+    accessorKey: "popularity",
+    header: "Popularity",
     cell: ({ row }) => {
-      const addedOn = row.original.added_on
-      if (!addedOn || addedOn === 0) {
-        return "-"
-      }
-      const date = new Date(addedOn * 1000)
-      const month = date.getMonth() + 1
-      const day = date.getDate()
-      const year = date.getFullYear()
-      const hours = date.getHours()
-      const minutes = date.getMinutes()
-      const seconds = date.getSeconds()
-      const ampm = hours >= 12 ? "PM" : "AM"
-      const displayHours = hours % 12 || 12
-
+      const monthsActive = row.original.time_active / (30 * 24 * 60 * 60) // Convert seconds to months (30 days)
+      const popularity = row.original.ratio / monthsActive
       return (
         <div className="overflow-hidden whitespace-nowrap text-sm">
-          {month}/{day}/{year}, {displayHours}:{minutes.toString().padStart(2, "0")}:{seconds.toString().padStart(2, "0")} {ampm}
+          {popularity.toFixed(2)}
         </div>
       )
     },
-    size: 200,
+    size: 150,
   },
   {
     accessorKey: "category",
@@ -391,35 +386,56 @@ export const createColumns = (
     size: 200,
   },
   {
-    accessorKey: "downloaded",
-    header: "Downloaded",
+    accessorKey: "added_on",
+    header: "Added",
     cell: ({ row }) => {
-      const downloaded = row.original.downloaded
-      return <span className="text-sm overflow-hidden whitespace-nowrap">{downloaded === 0 ? "-" : formatBytes(downloaded)}</span>
-    },
-    size: calculateMinWidth("Downloaded"),
-  },
-  {
-    accessorKey: "uploaded",
-    header: "Uploaded",
-    cell: ({ row }) => {
-      const uploaded = row.original.uploaded
-      return <span className="text-sm overflow-hidden whitespace-nowrap">{uploaded === 0 ? "-" : formatBytes(uploaded)}</span>
-    },
-    size: calculateMinWidth("Uploaded"),
-  },
-  {
-    accessorKey: "save_path",
-    header: "Save Path",
-    cell: ({ row }) => {
-      const displayPath = incognitoMode ? getLinuxSavePath(row.original.hash) : row.original.save_path
+      const addedOn = row.original.added_on
+      if (!addedOn || addedOn === 0) {
+        return "-"
+      }
+      const date = new Date(addedOn * 1000)
+      const month = date.getMonth() + 1
+      const day = date.getDate()
+      const year = date.getFullYear()
+      const hours = date.getHours()
+      const minutes = date.getMinutes()
+      const seconds = date.getSeconds()
+      const ampm = hours >= 12 ? "PM" : "AM"
+      const displayHours = hours % 12 || 12
+
       return (
-        <div className="overflow-hidden whitespace-nowrap text-sm" title={displayPath}>
-          {displayPath}
+        <div className="overflow-hidden whitespace-nowrap text-sm">
+          {month}/{day}/{year}, {displayHours}:{minutes.toString().padStart(2, "0")}:{seconds.toString().padStart(2, "0")} {ampm}
         </div>
       )
     },
-    size: 250,
+    size: 200,
+  },
+  {
+    accessorKey: "completion_on",
+    header: "Completed On",
+    cell: ({ row }) => {
+      const completionOn = row.original.completion_on
+      if (!completionOn || completionOn === 0) {
+        return "-"
+      }
+      const date = new Date(completionOn * 1000)
+      const month = date.getMonth() + 1
+      const day = date.getDate()
+      const year = date.getFullYear()
+      const hours = date.getHours()
+      const minutes = date.getMinutes()
+      const seconds = date.getSeconds()
+      const ampm = hours >= 12 ? "PM" : "AM"
+      const displayHours = hours % 12 || 12
+
+      return (
+        <div className="overflow-hidden whitespace-nowrap text-sm">
+          {month}/{day}/{year}, {displayHours}:{minutes.toString().padStart(2, "0")}:{seconds.toString().padStart(2, "0")} {ampm}
+        </div>
+      )
+    },
+    size: 200,
   },
   {
     accessorKey: "tracker",
@@ -443,6 +459,227 @@ export const createColumns = (
     },
     size: 150,
   },
+  {
+    accessorKey: "dl_limit",
+    header: "Down Limit",
+    cell: ({ row }) => {
+      const downLimit = row.original.dl_limit
+      const displayDownLimit = downLimit === 0 ? "∞" : formatSpeedWithUnit(downLimit, speedUnit)
+
+      return (
+        <span
+          className="text-sm font-medium overflow-hidden whitespace-nowrap"
+        >
+          {displayDownLimit}
+        </span>
+      )
+    },
+    size: calculateMinWidth("Down Limit", 24),
+  },
+  {
+    accessorKey: "up_limit",
+    header: "Up Limit",
+    cell: ({ row }) => {
+      const upLimit = row.original.up_limit
+      const displayUpLimit = upLimit === 0 ? "∞" : formatSpeedWithUnit(upLimit, speedUnit)
+
+      return (
+        <span
+          className="text-sm font-medium overflow-hidden whitespace-nowrap"
+        >
+          {displayUpLimit}
+        </span>
+      )
+    },
+    size: calculateMinWidth("Up Limit", 24),
+  },
+  {
+    accessorKey: "downloaded",
+    header: "Downloaded",
+    cell: ({ row }) => {
+      const downloaded = row.original.downloaded
+      return <span className="text-sm overflow-hidden whitespace-nowrap">{downloaded === 0 ? "-" : formatBytes(downloaded)}</span>
+    },
+    size: calculateMinWidth("Downloaded"),
+  },
+  {
+    accessorKey: "uploaded",
+    header: "Uploaded",
+    cell: ({ row }) => {
+      const uploaded = row.original.uploaded
+      return <span className="text-sm overflow-hidden whitespace-nowrap">{uploaded === 0 ? "-" : formatBytes(uploaded)}</span>
+    },
+    size: calculateMinWidth("Uploaded"),
+  },
+  {
+    accessorKey: "downloaded_session",
+    header: "Session Downloaded",
+    cell: ({ row }) => {
+      const sessionDownloaded = row.original.downloaded_session
+      return <span className="text-sm overflow-hidden whitespace-nowrap">{sessionDownloaded === 0 ? "-" : formatBytes(sessionDownloaded)}</span>
+    },
+    size: calculateMinWidth("Session Downloaded"),
+  },
+  {
+    accessorKey: "uploaded_session",
+    header: "Session Uploaded",
+    cell: ({ row }) => {
+      const sessionUploaded = row.original.uploaded_session
+      return <span className="text-sm overflow-hidden whitespace-nowrap">{sessionUploaded === 0 ? "-" : formatBytes(sessionUploaded)}</span>
+    },
+    size: calculateMinWidth("Session Uploaded"),
+  },
+  {
+    accessorKey: "amount_left",
+    header: "Remaining",
+    cell: ({ row }) => {
+      const amountLeft = row.original.amount_left
+      return <span className="text-sm overflow-hidden whitespace-nowrap">{amountLeft === 0 ? "-" : formatBytes(amountLeft)}</span>
+    },
+    size: calculateMinWidth("Remaining"),
+  },
+  {
+    accessorKey: "time_active",
+    header: "Time Active",
+    cell: ({ row }) => {
+      const timeActive = row.original.time_active
+      const timeSeeded = row.original.seeding_time
+      return (
+        <span className="text-sm overflow-hidden whitespace-nowrap">
+          {formatTimeActive(timeActive)}
+          {timeSeeded === 0 ? "" : " (seeded for " + formatTimeActive(timeSeeded) + ")"}
+        </span>
+      )
+    },
+    size: 250,
+  },
+  {
+    accessorKey: "save_path",
+    header: "Save Path",
+    cell: ({ row }) => {
+      const displayPath = incognitoMode ? getLinuxSavePath(row.original.hash) : row.original.save_path
+      return (
+        <div className="overflow-hidden whitespace-nowrap text-sm" title={displayPath}>
+          {displayPath}
+        </div>
+      )
+    },
+    size: 250,
+  },
+  {
+    accessorKey: "completed",
+    header: "Completed",
+    cell: ({ row }) => {
+      const completed = row.original.completed
+      return <span className="text-sm overflow-hidden whitespace-nowrap">{completed === 0 ? "-" : formatBytes(completed)}</span>
+    },
+    size: calculateMinWidth("Completed"),
+  },
+  {
+    accessorKey: "ratio_limit",
+    header: "Ratio Limit",
+    cell: ({ row }) => {
+      const ratioLimit = row.original.ratio_limit
+      const displayRatioLimit = ratioLimit === -2 ? "∞" : ratioLimit.toFixed(2)
+
+      return (
+        <span
+          className="text-sm font-medium overflow-hidden whitespace-nowrap"
+        >
+          {displayRatioLimit}
+        </span>
+      )
+    },
+    size: calculateMinWidth("Ratio Limit", 24),
+  },
+  {
+    accessorKey: "seen_complete",
+    header: "Last Seen Complete",
+    cell: ({ row }) => {
+      const lastSeenComplete = row.original.seen_complete
+      if (!lastSeenComplete || lastSeenComplete === 0) {
+        return "-"
+      }
+      const date = new Date(lastSeenComplete * 1000)
+      const month = date.getMonth() + 1
+      const day = date.getDate()
+      const year = date.getFullYear()
+      const hours = date.getHours()
+      const minutes = date.getMinutes()
+      const seconds = date.getSeconds()
+      const ampm = hours >= 12 ? "PM" : "AM"
+      const displayHours = hours % 12 || 12
+
+      return (
+        <div className="overflow-hidden whitespace-nowrap text-sm">
+          {month}/{day}/{year}, {displayHours}:{minutes.toString().padStart(2, "0")}:{seconds.toString().padStart(2, "0")} {ampm}
+        </div>
+      )
+    },
+    size: 200,
+  },
+  {
+    accessorKey: "last_activity",
+    header: "Last Activity",
+    cell: ({ row }) => {
+      const lastActivity = row.original.last_activity
+      if (!lastActivity || lastActivity === 0) {
+        return "-"
+      }
+      const date = new Date(lastActivity * 1000)
+      const month = date.getMonth() + 1
+      const day = date.getDate()
+      const year = date.getFullYear()
+      const hours = date.getHours()
+      const minutes = date.getMinutes()
+      const seconds = date.getSeconds()
+      const ampm = hours >= 12 ? "PM" : "AM"
+      const displayHours = hours % 12 || 12
+
+      return (
+        <div className="overflow-hidden whitespace-nowrap text-sm">
+          {month}/{day}/{year}, {displayHours}:{minutes.toString().padStart(2, "0")}:{seconds.toString().padStart(2, "0")} {ampm}
+        </div>
+      )
+    },
+    size: 200,
+  },
+  {
+    accessorKey: "availability",
+    header: "Availability",
+    cell: ({ row }) => {
+      const availability = row.original.availability
+      return <span className="text-sm overflow-hidden whitespace-nowrap">{availability.toFixed(3)}</span>
+    },
+    size: calculateMinWidth("Availability"),
+  },
+  // incomplete save path is not exposed by the API?
+  {
+    accessorKey: "infohash_v1",
+    header: "Info Hash v1",
+    cell: ({ row }) => {
+      const infoHash = incognitoMode ? getLinuxHash(row.original.infohash_v1) : row.original.infohash_v1
+      return (
+        <div className="overflow-hidden whitespace-nowrap text-sm" title={infoHash}>
+          {infoHash || "-"}
+        </div>
+      )
+    },
+    size: 370,
+  },
+  {
+    accessorKey: "infohash_v2",
+    header: "Info Hash v2",
+    cell: ({ row }) => {
+      const infoHash = incognitoMode ? getLinuxHash(row.original.infohash_v2) : row.original.infohash_v2
+      return (
+        <div className="overflow-hidden whitespace-nowrap text-sm" title={infoHash}>
+          {infoHash || "-"}
+        </div>
+      )
+    },
+    size: 370,
+  },
+  // reannounce is not available yet in go-qbittorrent
+  // isPrivate is not available yet in go-qbittorrent
 ]
-
-
