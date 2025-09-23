@@ -50,6 +50,45 @@ chmod +x qui
 
 The web interface will be available at http://localhost:7476
 
+### Seedbox installers
+
+Bytesized installer (NOT TESTED)
+
+```bash
+wget -O installer.sh https://get.autobrr.com/qui/bytesized && chmod +x installer.sh && ./installer.sh
+```
+
+Feral hosting installer
+
+```bash
+wget -O installer.sh https://get.autobrr.com/qui/feral && chmod +x installer.sh && ./installer.sh
+```
+
+HostingByDesign App slots installer
+
+```bash
+wget -O installer.sh https://get.autobrr.com/qui/hostingbydesign && chmod +x installer.sh && ./installer.sh
+```
+
+Seedhost installer (NOT TESTED)
+
+```bash
+wget -O installer.sh https://get.autobrr.com/qui/seedhost && chmod +x installer.sh && ./installer.sh
+```
+
+Ultra.cc installer
+
+```bash
+wget -O installer.sh https://get.autobrr.com/qui/ultra && chmod +x installer.sh && ./installer.sh
+```
+
+Whatbox installer (NOT TESTED)
+
+```bash
+wget -O installer.sh https://get.autobrr.com/qui/whatbox && chmod +x installer.sh && ./installer.sh
+```
+
+
 ### First Setup
 
 1. Open your browser to http://localhost:7476
