@@ -17,7 +17,7 @@ import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { api } from "@/lib/api"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { resolveTorrentHashes } from "@/lib/torrent-utils"
-import { formatBytes, formatDuration, formatTimestamp } from "@/lib/utils"
+import { formatBytes, formatDuration, formatDateTime } from "@/lib/utils"
 import { renderTextWithLinks } from "@/lib/linkUtils"
 import type { Torrent } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
@@ -486,15 +486,15 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                           <div className="space-y-1">
                             <p className="text-xs text-muted-foreground">Added</p>
-                            <p className="text-sm">{formatTimestamp(properties.addition_date)}</p>
+                            <p className="text-sm">{formatDateTime(properties.addition_date)}</p>
                           </div>
                           <div className="space-y-1">
                             <p className="text-xs text-muted-foreground">Completed</p>
-                            <p className="text-sm">{formatTimestamp(properties.completion_date)}</p>
+                            <p className="text-sm">{formatDateTime(properties.completion_date)}</p>
                           </div>
                           <div className="space-y-1">
                             <p className="text-xs text-muted-foreground">Created</p>
-                            <p className="text-sm">{formatTimestamp(properties.creation_date)}</p>
+                            <p className="text-sm">{formatDateTime(properties.creation_date)}</p>
                           </div>
                         </div>
                       </div>
