@@ -149,6 +149,7 @@ func TestInstanceStoreWithHost(t *testing.T) {
 			password_encrypted TEXT NOT NULL,
 			basic_username TEXT,
 			basic_password_encrypted TEXT,
+			tls_skip_verify BOOLEAN NOT NULL DEFAULT 0,
 			is_active BOOLEAN DEFAULT 1,
 			last_connected_at TIMESTAMP,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -158,17 +159,21 @@ func TestInstanceStoreWithHost(t *testing.T) {
 	require.NoError(t, err, "Failed to create test table")
 
 	// Test creating an instance with host
-	instance, err := store.Create(ctx, "Test Instance", "http://localhost:8080", "testuser", "testpass", nil, nil)
+	instance, err := store.Create(ctx, "Test Instance", "http://localhost:8080", "testuser", "testpass", nil, nil, false)
 	require.NoError(t, err, "Failed to create instance")
 	assert.Equal(t, "http://localhost:8080", instance.Host, "host should match")
+	assert.False(t, instance.TLSSkipVerify)
 
 	// Test retrieving the instance
 	retrieved, err := store.Get(ctx, instance.ID)
 	require.NoError(t, err, "Failed to get instance")
 	assert.Equal(t, "http://localhost:8080", retrieved.Host, "retrieved host should match")
+	assert.False(t, retrieved.TLSSkipVerify)
 
 	// Test updating the instance
-	updated, err := store.Update(ctx, instance.ID, "Updated Instance", "https://example.com:8443/qbittorrent", "newuser", "", nil, nil)
+	newTLSSetting := true
+	updated, err := store.Update(ctx, instance.ID, "Updated Instance", "https://example.com:8443/qbittorrent", "newuser", "", nil, nil, &newTLSSetting)
 	require.NoError(t, err, "Failed to update instance")
 	assert.Equal(t, "https://example.com:8443/qbittorrent", updated.Host, "updated host should match")
+	assert.True(t, updated.TLSSkipVerify)
 }

@@ -3,17 +3,17 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState } from "react"
-import { useForm } from "@tanstack/react-form"
-import { toast } from "sonner"
-import { z } from "zod"
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
-import type { Instance, InstanceFormData } from "@/types"
 import { useInstances } from "@/hooks/useInstances"
 import { formatErrorMessage } from "@/lib/utils"
+import type { Instance, InstanceFormData } from "@/types"
+import { useForm } from "@tanstack/react-form"
+import { useState } from "react"
+import { toast } from "sonner"
+import { z } from "zod"
 
 // URL validation schema
 const urlSchema = z
@@ -41,8 +41,12 @@ const urlSchema = z
     const isIPv4 = /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname)
     const isIPv6 = hostname.startsWith("[") && hostname.endsWith("]")
 
-    if ((isIPv4 || isIPv6) && !parsed.port) {
-      return false
+    if (isIPv4 || isIPv6) {
+      // default ports such as 80 and 443 are omitted from the result of new URL()
+      const hasExplicitPort = url.match(/:(\d+)(?:\/|$)/)
+      if (!hasExplicitPort) {
+        return false
+      }
     }
 
     return true
@@ -121,6 +125,7 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
       password: "",
       basicUsername: instance?.basicUsername ?? "",
       basicPassword: instance?.basicUsername ? "<redacted>" : "",
+      tlsSkipVerify: instance?.tlsSkipVerify ?? false,
     },
     onSubmit: ({ value }) => {
       handleSubmit(value)
@@ -184,6 +189,24 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
               {field.state.meta.isTouched && field.state.meta.errors[0] && (
                 <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
               )}
+            </div>
+          )}
+        </form.Field>
+
+        <form.Field name="tlsSkipVerify">
+          {(field) => (
+            <div className="flex items-start justify-between gap-4 rounded-lg border border-border/60 bg-muted/30 p-4">
+              <div className="space-y-1">
+                <Label htmlFor="tls-skip-verify">Skip TLS Certificate Verification</Label>
+                <p className="text-sm text-muted-foreground max-w-prose">
+                  Allow connections to qBittorrent instances that use self-signed or otherwise untrusted certificates.
+                </p>
+              </div>
+              <Switch
+                id="tls-skip-verify"
+                checked={field.state.value}
+                onCheckedChange={(checked) => field.handleChange(checked)}
+              />
             </div>
           )}
         </form.Field>

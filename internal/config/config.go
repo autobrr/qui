@@ -20,6 +20,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
+	"gopkg.in/natefinch/lumberjack.v2"
 
 	"github.com/autobrr/qui/internal/domain"
 )
@@ -95,6 +96,8 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("sessionSecret", sessionSecret)
 	c.viper.SetDefault("logLevel", "INFO")
 	c.viper.SetDefault("logPath", "")
+	c.viper.SetDefault("logMaxSize", 50)
+	c.viper.SetDefault("logMaxBackups", 3)
 	c.viper.SetDefault("dataDir", "") // Empty means auto-detect (next to config file)
 	c.viper.SetDefault("checkForUpdates", true)
 	c.viper.SetDefault("pprofEnabled", false)
@@ -174,6 +177,8 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("sessionSecret", envPrefix+"SESSION_SECRET")
 	c.viper.BindEnv("logLevel", envPrefix+"LOG_LEVEL")
 	c.viper.BindEnv("logPath", envPrefix+"LOG_PATH")
+	c.viper.BindEnv("logMaxSize", envPrefix+"LOG_MAX_SIZE")
+	c.viper.BindEnv("logMaxBackups", envPrefix+"LOG_MAX_BACKUPS")
 	c.viper.BindEnv("dataDir", envPrefix+"DATA_DIR")
 	c.viper.BindEnv("checkForUpdates", envPrefix+"CHECK_FOR_UPDATES")
 	c.viper.BindEnv("pprofEnabled", envPrefix+"PPROF_ENABLED")
@@ -278,6 +283,15 @@ sessionSecret = "{{ .sessionSecret }}"
 # Optional
 #logPath = "log/qui.log"
 
+# Log rotation
+# Maximum log file size in megabytes before rotation
+# Default: {{ .logMaxSize }}
+#logMaxSize = {{ .logMaxSize }}
+
+# Number of rotated log files to retain (0 keeps all)
+# Default: {{ .logMaxBackups }}
+#logMaxBackups = {{ .logMaxBackups }}
+
 # Data directory (default: next to config file)
 # Database file (qui.db) will be created inside this directory
 #dataDir = "/var/db/qui"
@@ -334,6 +348,8 @@ logLevel = "{{ .logLevel }}"
 		"port":          c.viper.GetInt("port"),
 		"sessionSecret": c.viper.GetString("sessionSecret"),
 		"logLevel":      c.viper.GetString("logLevel"),
+		"logMaxSize":    c.viper.GetInt("logMaxSize"),
+		"logMaxBackups": c.viper.GetInt("logMaxBackups"),
 	}
 
 	// Parse and execute template
@@ -419,7 +435,7 @@ func (c *AppConfig) ApplyLogConfig() {
 	writer := c.baseLogWriter()
 
 	if c.Config.LogPath != "" {
-		multiWriter, err := setupLogFile(c.Config.LogPath, writer)
+		multiWriter, err := setupLogFile(c.Config.LogPath, writer, c.Config.LogMaxSize, c.Config.LogMaxBackups)
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to setup log file")
 		} else {
@@ -439,33 +455,41 @@ func setLogLevel(level string) {
 	log.Logger = log.Logger.Level(lvl)
 }
 
-func setupLogFile(path string, base io.Writer) (io.Writer, error) {
+func setupLogFile(path string, base io.Writer, maxSize, maxBackups int) (io.Writer, error) {
 	// Create log directory if needed
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create log directory: %w", err)
 	}
 
-	// Open log file
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open log file: %w", err)
+	if maxSize <= 0 {
+		maxSize = 50
 	}
 
-	return io.MultiWriter(base, f), nil
+	if maxBackups < 0 {
+		maxBackups = 0
+	}
+
+	rotator := &lumberjack.Logger{
+		Filename:   path,
+		MaxSize:    maxSize,
+		MaxBackups: maxBackups,
+	}
+
+	return io.MultiWriter(base, rotator), nil
 }
 
 func baseLogWriterForVersion(version string) io.Writer {
 	if isDevBuild(version) {
 		writer := zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339}
 		writer.PartsOrder = []string{zerolog.TimestampFieldName, zerolog.LevelFieldName, zerolog.MessageFieldName}
-		writer.FormatTimestamp = func(i interface{}) string {
+		writer.FormatTimestamp = func(i any) string {
 			if i == nil {
 				return ""
 			}
 			return fmt.Sprint(i)
 		}
-		writer.FormatMessage = func(i interface{}) string {
+		writer.FormatMessage = func(i any) string {
 			if i == nil {
 				return ""
 			}
