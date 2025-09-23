@@ -107,6 +107,8 @@ const DEFAULT_COLUMN_VISIBILITY = {
   availability: false,
   infohash_v1: false,
   infohash_v2: false,
+  reannounce: false,
+  private: false,
 }
 const DEFAULT_COLUMN_SIZING = {}
 
