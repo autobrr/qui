@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"text/template"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/rs/zerolog"
@@ -29,15 +30,22 @@ type AppConfig struct {
 	Config  *domain.Config
 	viper   *viper.Viper
 	dataDir string
+	version string
 
 	listenersMu sync.RWMutex
 	listeners   []func(*domain.Config)
 }
 
-func New(configDirOrPath string) (*AppConfig, error) {
+func New(configDirOrPath string, versions ...string) (*AppConfig, error) {
+	version := "dev"
+	if len(versions) > 0 && strings.TrimSpace(versions[0]) != "" {
+		version = versions[0]
+	}
+
 	c := &AppConfig{
-		viper:  viper.New(),
-		Config: &domain.Config{},
+		viper:   viper.New(),
+		Config:  &domain.Config{},
+		version: version,
 	}
 
 	// Set defaults
@@ -55,6 +63,7 @@ func New(configDirOrPath string) (*AppConfig, error) {
 	if err := c.viper.Unmarshal(c.Config); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
+	c.Config.Version = c.version
 
 	// Resolve data directory after config is unmarshaled
 	c.resolveDataDir()
@@ -196,15 +205,8 @@ func (c *AppConfig) watchConfig() {
 }
 
 func (c *AppConfig) applyDynamicChanges() {
-	// Update log level dynamically
-	setLogLevel(c.Config.LogLevel)
-
-	// Update log output if path changed
-	if c.Config.LogPath != "" {
-		if err := setupLogFile(c.Config.LogPath); err != nil {
-			log.Error().Err(err).Msg("Failed to update log file")
-		}
-	}
+	c.Config.Version = c.version
+	c.ApplyLogConfig()
 
 	// Update check for updates flag from config changes
 	c.Config.CheckForUpdates = c.viper.GetBool("checkForUpdates")
@@ -409,41 +411,94 @@ func generateSecureToken(length int) (string, error) {
 	return hex.EncodeToString(bytes), nil
 }
 
-func setLogLevel(level string) {
-	switch strings.ToUpper(level) {
-	case "TRACE":
-		log.Logger = log.Level(-1) // zerolog.TraceLevel
-	case "DEBUG":
-		log.Logger = log.Level(0) // zerolog.DebugLevel
-	case "INFO":
-		log.Logger = log.Level(1) // zerolog.InfoLevel
-	case "WARN":
-		log.Logger = log.Level(2) // zerolog.WarnLevel
-	case "ERROR":
-		log.Logger = log.Level(3) // zerolog.ErrorLevel
-	default:
-		log.Logger = log.Level(1) // Default to INFO
+func (c *AppConfig) ApplyLogConfig() {
+	zerolog.TimeFieldFormat = time.RFC3339
+
+	setLogLevel(c.Config.LogLevel)
+
+	writer := c.baseLogWriter()
+
+	if c.Config.LogPath != "" {
+		multiWriter, err := setupLogFile(c.Config.LogPath, writer)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to setup log file")
+		} else {
+			writer = multiWriter
+		}
 	}
+
+	log.Logger = log.Logger.Output(writer)
 }
 
-func setupLogFile(path string) error {
+func setLogLevel(level string) {
+	lvl, err := zerolog.ParseLevel(strings.ToLower(strings.TrimSpace(level)))
+	if err != nil {
+		lvl = zerolog.InfoLevel
+	}
+	zerolog.SetGlobalLevel(lvl)
+	log.Logger = log.Logger.Level(lvl)
+}
+
+func setupLogFile(path string, base io.Writer) (io.Writer, error) {
 	// Create log directory if needed
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("failed to create log directory: %w", err)
+		return nil, fmt.Errorf("failed to create log directory: %w", err)
 	}
 
 	// Open log file
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
-		return fmt.Errorf("failed to open log file: %w", err)
+		return nil, fmt.Errorf("failed to open log file: %w", err)
 	}
 
-	logWriters := []io.Writer{zerolog.ConsoleWriter{Out: os.Stderr}, f}
+	return io.MultiWriter(base, f), nil
+}
 
-	// Update logger output
-	log.Logger = log.Output(io.MultiWriter(logWriters...))
-	return nil
+func baseLogWriterForVersion(version string) io.Writer {
+	if isDevBuild(version) {
+		writer := zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339}
+		writer.PartsOrder = []string{zerolog.TimestampFieldName, zerolog.LevelFieldName, zerolog.MessageFieldName}
+		writer.FormatTimestamp = func(i interface{}) string {
+			if i == nil {
+				return ""
+			}
+			return fmt.Sprint(i)
+		}
+		writer.FormatMessage = func(i interface{}) string {
+			if i == nil {
+				return ""
+			}
+			msg := strings.TrimSpace(fmt.Sprint(i))
+			if msg == "" {
+				return ""
+			}
+			return "--> " + msg
+		}
+		return writer
+	}
+	return os.Stderr
+}
+
+func (c *AppConfig) baseLogWriter() io.Writer {
+	return baseLogWriterForVersion(c.version)
+}
+
+// DefaultLogWriter returns the base log writer for the provided version.
+func DefaultLogWriter(version string) io.Writer {
+	return baseLogWriterForVersion(version)
+}
+
+// InitDefaultLogger configures zerolog with the default writer for this version.
+// This is used by CLI entry points before a configuration file is loaded.
+func InitDefaultLogger(version string) {
+	zerolog.TimeFieldFormat = time.RFC3339
+	log.Logger = log.Logger.Output(DefaultLogWriter(version))
+}
+
+func isDevBuild(version string) bool {
+	v := strings.ToLower(strings.TrimSpace(version))
+	return v == "" || v == "dev" || strings.HasSuffix(v, "-dev")
 }
 
 // resolveConfigPath determines the actual config file path from the provided directory or file path
@@ -482,19 +537,6 @@ func (c *AppConfig) GetDatabasePath() string {
 // SetDataDir sets the data directory (used by CLI flags)
 func (c *AppConfig) SetDataDir(dir string) {
 	c.dataDir = dir
-}
-
-// ApplyLogConfig applies the log level and log file configuration
-func (c *AppConfig) ApplyLogConfig() {
-	// Set log level
-	setLogLevel(c.Config.LogLevel)
-
-	// Set log file if configured
-	if c.Config.LogPath != "" {
-		if err := setupLogFile(c.Config.LogPath); err != nil {
-			log.Error().Err(err).Msg("Failed to setup log file")
-		}
-	}
 }
 
 const encryptionKeySize = 32
