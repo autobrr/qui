@@ -466,6 +466,12 @@ make dev-frontend
 - Fast search and filtering
 - Responsive UI with virtual scrolling
 
+## Community
+
+Join our friendly and welcoming community on [Discord](https://discord.gg/RkeZYfm5ej)! Connect with fellow autobrr users, get advice, and share your experiences. 
+Whether you're seeking help, wanting to contribute, or just looking to discuss your ideas, our community is a hub of discussion and support. 
+We're all here to help each other out, so don't hesitate to jump in!
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
