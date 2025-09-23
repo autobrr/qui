@@ -1551,8 +1551,6 @@ func (sm *SyncManager) sortTorrentsByPopularity(torrents []qbt.Torrent, desc boo
 			result = 1
 		} else if popularityA < popularityB {
 			result = -1
-		} else {
-			result = 0
 		}
 
 		if desc {
