@@ -7,12 +7,14 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"io"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
 )
 
@@ -38,6 +40,7 @@ func TestMigrationNumbering(t *testing.T) {
 }
 
 func TestMigrationIdempotency(t *testing.T) {
+	log.Logger = log.Output(io.Discard)
 	ctx := t.Context()
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 
@@ -69,6 +72,7 @@ func TestMigrationIdempotency(t *testing.T) {
 }
 
 func TestMigrationsApplyFullSchema(t *testing.T) {
+	log.Output(io.Discard)
 	ctx := t.Context()
 	db := openTestDatabase(t)
 	conn := db.Conn()
@@ -96,6 +100,7 @@ func TestMigrationsApplyFullSchema(t *testing.T) {
 }
 
 func TestConnectionPragmasApplyToEachConnection(t *testing.T) {
+	log.Output(io.Discard)
 	ctx := t.Context()
 	db := openTestDatabase(t)
 	sqlDB := db.Conn()
@@ -153,6 +158,7 @@ var expectedSchema = map[string][]columnSpec{
 		{Name: "password_encrypted", Type: "TEXT"},
 		{Name: "basic_username", Type: "TEXT"},
 		{Name: "basic_password_encrypted", Type: "TEXT"},
+		{Name: "tls_skip_verify", Type: "BOOLEAN"},
 	},
 	"licenses": {
 		{Name: "id", Type: "INTEGER", PrimaryKey: true},
