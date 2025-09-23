@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
@@ -31,6 +32,9 @@ const (
 	proxyContextKey   contextKey = "proxy_request_context"
 	proxyErrorPayload string     = `{"error":"Failed to connect to qBittorrent instance"}`
 )
+
+// missingProxyContextSampler throttles repeated missing-context warnings to avoid log floods.
+var missingProxyContextSampler = &zerolog.BasicSampler{N: 100}
 
 type basicAuthCredentials struct {
 	username string
@@ -222,7 +226,8 @@ func (h *Handler) prepareProxyContext(r *http.Request) (*proxyContext, error) {
 	}
 
 	if instanceID == 0 || clientAPIKey == nil {
-		logger.Warn().Msg("Proxy request missing instance ID or client API key")
+		sampled := logger.Sample(missingProxyContextSampler)
+		sampled.Warn().Msg("Proxy request missing instance ID or client API key")
 		return nil, fmt.Errorf("missing proxy context")
 	}
 
