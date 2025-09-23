@@ -37,7 +37,7 @@ import { useTheme } from "@/hooks/useTheme"
 import { cn } from "@/lib/utils"
 import { Link, useNavigate, useRouterState, useSearch } from "@tanstack/react-router"
 import { ChevronsUpDown, FunnelPlus, FunnelX, HardDrive, Home, Info, LogOut, Menu, Plus, Search, Server, Settings, X } from "lucide-react"
-import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { useHotkeys } from "react-hotkeys-hook"
 
 const isClient = typeof window !== "undefined"
@@ -126,6 +126,17 @@ export function Header({
   const isGlobSearch = !!searchValue && /[*?[\]]/.test(searchValue)
   const [filterSidebarCollapsed, setFilterSidebarCollapsed] = usePersistedFilterSidebarState(false)
   const searchInputRef = useRef<HTMLInputElement>(null)
+  const lastFilterToggleRef = useRef(0)
+
+  const handleToggleFilters = useCallback(() => {
+    const now = Date.now()
+    if (now - lastFilterToggleRef.current < 250) {
+      return
+    }
+
+    lastFilterToggleRef.current = now
+    setFilterSidebarCollapsed((prev) => !prev)
+  }, [setFilterSidebarCollapsed])
 
   // Detect platform for appropriate key display
   const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.userAgent)
@@ -352,7 +363,7 @@ export function Header({
                 variant="outline"
                 size="icon"
                 className="hidden md:inline-flex"
-                onClick={() => setFilterSidebarCollapsed(!filterSidebarCollapsed)}
+                onClick={handleToggleFilters}
               >
                 {filterSidebarCollapsed ? (
                   <FunnelPlus className="h-4 w-4"/>
