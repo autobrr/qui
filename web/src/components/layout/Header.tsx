@@ -9,6 +9,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
@@ -36,8 +37,31 @@ import { useTheme } from "@/hooks/useTheme"
 import { cn } from "@/lib/utils"
 import { Link, useNavigate, useRouterState, useSearch } from "@tanstack/react-router"
 import { ChevronsUpDown, FunnelPlus, FunnelX, HardDrive, Home, Info, LogOut, Menu, Plus, Search, Server, Settings, X } from "lucide-react"
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react"
+import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { useHotkeys } from "react-hotkeys-hook"
+
+const isClient = typeof window !== "undefined"
+
+const detectTouchDevice = () => {
+  if (!isClient) return false
+
+  const nav = window.navigator
+  const coarsePointer = window.matchMedia?.("(pointer: coarse)").matches
+  const anyCoarsePointer = window.matchMedia?.("(any-pointer: coarse)").matches
+  const legacyMaxTouchPoints = (nav as Navigator & { msMaxTouchPoints?: number })
+    .msMaxTouchPoints ?? 0
+
+  return (
+    coarsePointer ||
+    anyCoarsePointer ||
+    "ontouchstart" in window ||
+    (nav?.maxTouchPoints ?? 0) > 0 ||
+    // Older Safari/iPadOS exposes this prefixed property
+    legacyMaxTouchPoints > 0
+  )
+}
+
+const useIsomorphicLayoutEffect = isClient ? useLayoutEffect : useEffect
 
 interface HeaderProps {
   children?: ReactNode
@@ -107,10 +131,41 @@ export function Header({
   const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.userAgent)
   const shortcutKey = isMac ? "⌘K" : "Ctrl+K"
 
-  // Detect touch device for mobile fallback
-  const [isTouchDevice, setIsTouchDevice] = useState(false)
-  useEffect(() => {
-    setIsTouchDevice("ontouchstart" in window || navigator.maxTouchPoints > 0)
+  // Detect touch capability so tablets without hover get the tap menu
+  const [isTouchDevice, setIsTouchDevice] = useState(() => detectTouchDevice())
+  useIsomorphicLayoutEffect(() => {
+    if (!isClient) return
+
+    const updateTouchCapability = () => setIsTouchDevice(detectTouchDevice())
+    updateTouchCapability()
+
+    const coarsePointerQuery = window.matchMedia?.("(pointer: coarse)")
+    const anyCoarsePointerQuery = window.matchMedia?.("(any-pointer: coarse)")
+
+    const addListener = (query: MediaQueryList | undefined) => {
+      if (!query) return () => {}
+      const handler = () => updateTouchCapability()
+
+      if (typeof query.addEventListener === "function") {
+        query.addEventListener("change", handler)
+        return () => query.removeEventListener("change", handler)
+      }
+
+      if (typeof query.addListener === "function") {
+        query.addListener(handler)
+        return () => query.removeListener(handler)
+      }
+
+      return () => {}
+    }
+
+    const removePrimary = addListener(coarsePointerQuery)
+    const removeAny = addListener(anyCoarsePointerQuery)
+
+    return () => {
+      removePrimary()
+      removeAny()
+    }
   }, [])
 
   // Global keyboard shortcut to focus search
@@ -133,64 +188,45 @@ export function Header({
       <div className="flex items-center gap-2 mr-2">
         {children}
         {instanceName && instances && instances.length > 1 ? (
-          <HoverCard openDelay={isTouchDevice ? 0 : 200} closeDelay={isTouchDevice ? 0 : 100}>
-            <HoverCardTrigger asChild>
-              <button
-                className={cn(
-                  "group flex items-center gap-2 pl-2 sm:pl-0 text-xl font-semibold transition-all duration-300 hover:opacity-90 rounded-sm px-1 -mx-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                  "lg:hidden", // Hidden on desktop by default
-                  sidebarCollapsed && "lg:flex", // Visible on desktop when sidebar collapsed
-                  !shouldShowQuiOnMobile && "hidden sm:flex" // Hide on mobile when on instance routes
-                )}
-                aria-label={`Current instance: ${instanceName}. ${isTouchDevice ? "Tap" : "Hover or click"} to switch instances.`}
-                aria-haspopup="menu"
-                aria-expanded="false"
-              >
-                {theme === "swizzin" ? (
-                  <SwizzinLogo className="h-5 w-5" />
-                ) : (
-                  <Logo className="h-5 w-5" />
-                )}<span className="flex items-center max-w-32">
-                  <span className="truncate" title={instanceName}>{instanceName}</span>
-                  <ChevronsUpDown className="h-3 w-3 text-muted-foreground ml-1 mt-0.5 opacity-60 flex-shrink-0" />
-                </span>
-              </button>
-            </HoverCardTrigger>
-            <HoverCardPortal>
-              <HoverCardContent
-                className="w-64 p-3"
-                side="bottom"
-                align="start"
-              >
-                <div className="space-y-1">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                    Switch Instance
-                  </p>
-                  <div className="space-y-1 max-h-64 overflow-y-auto" role="menu" aria-label="Available instances">
-                    {instances.map((instance, index) => (
+          isTouchDevice ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  className={cn(
+                    "group flex items-center gap-2 pl-2 sm:pl-0 text-xl font-semibold transition-all duration-300 hover:opacity-90 rounded-sm px-1 -mx-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                    "lg:hidden", // Hidden on desktop by default
+                    sidebarCollapsed && "lg:flex", // Visible on desktop when sidebar collapsed
+                    !shouldShowQuiOnMobile && "hidden sm:flex" // Hide on mobile when on instance routes
+                  )}
+                  aria-label={`Current instance: ${instanceName}. Tap to switch instances.`}
+                  aria-haspopup="menu"
+                >
+                  {theme === "swizzin" ? (
+                    <SwizzinLogo className="h-5 w-5" />
+                  ) : (
+                    <Logo className="h-5 w-5" />
+                  )}
+                  <span className="flex items-center max-w-32">
+                    <span className="truncate">{instanceName}</span>
+                    <ChevronsUpDown className="h-3 w-3 text-muted-foreground ml-1 mt-0.5 opacity-60 flex-shrink-0" />
+                  </span>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-64" side="bottom" align="start">
+                <DropdownMenuLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                  Switch Instance
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <div className="max-h-64 overflow-y-auto">
+                  {instances.map((instance) => (
+                    <DropdownMenuItem key={instance.id} asChild>
                       <Link
-                        key={instance.id}
                         to="/instances/$instanceId"
                         params={{ instanceId: instance.id.toString() }}
                         className={cn(
-                          "flex items-center gap-2 rounded-sm px-2 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
-                          instance.id === selectedInstanceId? "bg-accent text-accent-foreground font-medium": "hover:bg-accent/80 focus-visible:bg-accent/20 text-foreground"
+                          "flex items-center gap-2 cursor-pointer rounded-sm px-2 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+                          instance.id === selectedInstanceId? "bg-accent text-accent-foreground font-medium": "hover:bg-accent/80 data-[highlighted]:bg-accent/80 focus-visible:bg-accent/20 text-foreground"
                         )}
-                        role="menuitem"
-                        tabIndex={0}
-                        onKeyDown={(e) => {
-                          if (e.key === "ArrowDown") {
-                            e.preventDefault()
-                            const nextIndex = (index + 1) % instances.length
-                            const nextElement = e.currentTarget.parentElement?.children[nextIndex] as HTMLElement
-                            nextElement?.focus()
-                          } else if (e.key === "ArrowUp") {
-                            e.preventDefault()
-                            const prevIndex = index === 0 ? instances.length - 1 : index - 1
-                            const prevElement = e.currentTarget.parentElement?.children[prevIndex] as HTMLElement
-                            prevElement?.focus()
-                          }
-                        }}
                       >
                         <HardDrive className="h-4 w-4 flex-shrink-0" />
                         <span className="flex-1 truncate">{instance.name}</span>
@@ -202,12 +238,88 @@ export function Header({
                           aria-label={instance.connected ? "Connected" : "Disconnected"}
                         />
                       </Link>
-                    ))}
-                  </div>
+                    </DropdownMenuItem>
+                  ))}
                 </div>
-              </HoverCardContent>
-            </HoverCardPortal>
-          </HoverCard>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <HoverCard openDelay={200} closeDelay={100}>
+              <HoverCardTrigger asChild>
+                <button
+                  className={cn(
+                    "group flex items-center gap-2 pl-2 sm:pl-0 text-xl font-semibold transition-all duration-300 hover:opacity-90 rounded-sm px-1 -mx-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                    "lg:hidden", // Hidden on desktop by default
+                    sidebarCollapsed && "lg:flex", // Visible on desktop when sidebar collapsed
+                    !shouldShowQuiOnMobile && "hidden sm:flex" // Hide on mobile when on instance routes
+                  )}
+                  aria-label={`Current instance: ${instanceName}. Hover or click to switch instances.`}
+                  aria-haspopup="menu"
+                >
+                  {theme === "swizzin" ? (
+                    <SwizzinLogo className="h-5 w-5" />
+                  ) : (
+                    <Logo className="h-5 w-5" />
+                  )}
+                  <span className="flex items-center max-w-32">
+                    <span className="truncate">{instanceName}</span>
+                    <ChevronsUpDown className="h-3 w-3 text-muted-foreground ml-1 mt-0.5 opacity-60 flex-shrink-0" />
+                  </span>
+                </button>
+              </HoverCardTrigger>
+              <HoverCardPortal>
+                <HoverCardContent
+                  className="w-64 p-3"
+                  side="bottom"
+                  align="start"
+                >
+                  <div className="space-y-1">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                      Switch Instance
+                    </p>
+                    <div className="space-y-1 max-h-64 overflow-y-auto" role="menu" aria-label="Available instances">
+                      {instances.map((instance, index) => (
+                        <Link
+                          key={instance.id}
+                          to="/instances/$instanceId"
+                          params={{ instanceId: instance.id.toString() }}
+                          className={cn(
+                            "flex items-center gap-2 rounded-sm px-2 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+                            instance.id === selectedInstanceId ? "bg-accent text-accent-foreground font-medium" : "hover:bg-accent/80 focus-visible:bg-accent/20 text-foreground"
+                          )}
+                          role="menuitem"
+                          tabIndex={0}
+                          onKeyDown={(e) => {
+                            if (e.key === "ArrowDown") {
+                              e.preventDefault()
+                              const nextIndex = (index + 1) % instances.length
+                              const nextElement = e.currentTarget.parentElement?.children[nextIndex] as HTMLElement
+                              nextElement?.focus()
+                            } else if (e.key === "ArrowUp") {
+                              e.preventDefault()
+                              const prevIndex = index === 0 ? instances.length - 1 : index - 1
+                              const prevElement = e.currentTarget.parentElement?.children[prevIndex] as HTMLElement
+                              prevElement?.focus()
+                            }
+                          }}
+                        >
+                          <HardDrive className="h-4 w-4 flex-shrink-0" />
+                          <span className="flex-1 truncate">{instance.name}</span>
+                          <span
+                            className={cn(
+                              "h-2 w-2 rounded-full flex-shrink-0",
+                              instance.connected ? "bg-green-500" : "bg-red-500"
+                            )}
+                            aria-label={instance.connected ? "Connected" : "Disconnected"}
+                          />
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                </HoverCardContent>
+              </HoverCardPortal>
+            </HoverCard>
+          )
         ) : (
           <h1 className={cn(
             "flex items-center gap-2 pl-2 sm:pl-0 text-xl font-semibold transition-all duration-300",
@@ -221,7 +333,7 @@ export function Header({
               <Logo className="h-5 w-5" />
             )}
             {instanceName ? (
-              <span className="truncate max-w-32" title={instanceName}>{instanceName}</span>
+              <span className="truncate max-w-32">{instanceName}</span>
             ) : "qui"}
           </h1>
         )}
