@@ -33,8 +33,11 @@ func TestSetupForbiddenWhenOIDCEnabled(t *testing.T) {
 		OIDCEnabled: true,
 	}
 
-	handler := NewAuthHandler(authService, sessionManager, config, nil, nil, nil)
-	require.NotNil(t, handler)
+	handler := &AuthHandler{
+		authService:    authService,
+		sessionManager: sessionManager,
+		config:         config,
+	}
 
 	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/api/auth/setup", strings.NewReader(`{"username":"alice","password":"password1234"}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -45,4 +48,18 @@ func TestSetupForbiddenWhenOIDCEnabled(t *testing.T) {
 
 	assert.Equal(t, http.StatusForbidden, resp.Code)
 	assert.Contains(t, resp.Body.String(), "Setup is disabled when OIDC is enabled")
+}
+
+func TestNewAuthHandlerFailsWhenOIDCInitFails(t *testing.T) {
+	authService := &auth.Service{}
+	sessionManager := scs.New()
+
+	config := &domain.Config{
+		OIDCEnabled: true,
+		// Missing mandatory OIDC settings so initialization fails before network calls.
+	}
+
+	_, err := NewAuthHandler(authService, sessionManager, config, nil, nil, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "OIDC issuer is required")
 }

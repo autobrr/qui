@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -37,7 +38,7 @@ func NewAuthHandler(
 	instanceStore *models.InstanceStore,
 	clientPool *qbittorrent.ClientPool,
 	syncManager *qbittorrent.SyncManager,
-) *AuthHandler {
+) (*AuthHandler, error) {
 	h := &AuthHandler{
 		authService:    authService,
 		sessionManager: sessionManager,
@@ -51,13 +52,12 @@ func NewAuthHandler(
 	if config.OIDCEnabled {
 		oidcHandler, err := NewOIDCHandler(config, sessionManager)
 		if err != nil {
-			log.Error().Err(err).Msg("failed to initialize OIDC handler")
-		} else {
-			h.oidcHandler = oidcHandler
+			return nil, fmt.Errorf("init OIDC handler: %w", err)
 		}
+		h.oidcHandler = oidcHandler
 	}
 
-	return h
+	return h, nil
 }
 
 // GetOIDCHandler returns the OIDC handler if configured

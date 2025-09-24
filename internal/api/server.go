@@ -121,7 +121,13 @@ func (s *Server) tryToServe(addr, protocol string) error {
 		Str("base_url", s.config.Config.BaseURL).
 		Msgf("Starting API server - Open: %s", clickableURL)
 
-	s.server.Handler = s.Handler()
+	handler, err := s.Handler()
+	if err != nil {
+		listener.Close()
+		return fmt.Errorf("build API router: %w", err)
+	}
+
+	s.server.Handler = handler
 
 	return s.server.Serve(listener)
 }
@@ -130,7 +136,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	return s.server.Shutdown(ctx)
 }
 
-func (s *Server) Handler() *chi.Mux {
+func (s *Server) Handler() (*chi.Mux, error) {
 	r := chi.NewRouter()
 
 	// Global middleware
@@ -159,7 +165,10 @@ func (s *Server) Handler() *chi.Mux {
 
 	// Create handlers
 	healthHandler := handlers.NewHealthHandler()
-	authHandler := handlers.NewAuthHandler(s.authService, s.sessionManager, s.config.Config, s.instanceStore, s.clientPool, s.syncManager)
+	authHandler, err := handlers.NewAuthHandler(s.authService, s.sessionManager, s.config.Config, s.instanceStore, s.clientPool, s.syncManager)
+	if err != nil {
+		return nil, err
+	}
 	instancesHandler := handlers.NewInstancesHandler(s.instanceStore, s.clientPool, s.syncManager)
 	torrentsHandler := handlers.NewTorrentsHandler(s.syncManager)
 	preferencesHandler := handlers.NewPreferencesHandler(s.syncManager)
@@ -332,7 +341,7 @@ func (s *Server) Handler() *chi.Mux {
 		//	})
 	}
 
-	return r
+	return r, nil
 }
 
 // Dependencies holds all the dependencies needed for the API

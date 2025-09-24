@@ -36,7 +36,8 @@ var undocumentedRoutes = map[routeKey]struct{}{
 
 func TestAllEndpointsDocumented(t *testing.T) {
 	server := NewServer(newTestDependencies(t))
-	router := server.Handler()
+	router, err := server.Handler()
+	require.NoError(t, err)
 
 	actualRoutes := collectRouterRoutes(t, router)
 	documentedRoutes := loadDocumentedRoutes(t)
