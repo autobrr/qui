@@ -51,6 +51,45 @@ chmod +x qui
 
 The web interface will be available at http://localhost:7476
 
+### Seedbox installers
+
+Bytesized installer (NOT TESTED)
+
+```bash
+wget -O installer.sh https://get.autobrr.com/qui/bytesized && chmod +x installer.sh && ./installer.sh
+```
+
+Feral hosting installer
+
+```bash
+wget -O installer.sh https://get.autobrr.com/qui/feral && chmod +x installer.sh && ./installer.sh
+```
+
+HostingByDesign App slots installer
+
+```bash
+wget -O installer.sh https://get.autobrr.com/qui/hostingbydesign && chmod +x installer.sh && ./installer.sh
+```
+
+Seedhost installer (NOT TESTED)
+
+```bash
+wget -O installer.sh https://get.autobrr.com/qui/seedhost && chmod +x installer.sh && ./installer.sh
+```
+
+Ultra.cc installer
+
+```bash
+wget -O installer.sh https://get.autobrr.com/qui/ultra && chmod +x installer.sh && ./installer.sh
+```
+
+Whatbox installer (NOT TESTED)
+
+```bash
+wget -O installer.sh https://get.autobrr.com/qui/whatbox && chmod +x installer.sh && ./installer.sh
+```
+
+
 ### First Setup
 
 1. Open your browser to http://localhost:7476
@@ -88,6 +127,8 @@ QUI__SESSION_SECRET=...  # Auto-generated if not set
 # Logging
 QUI__LOG_LEVEL=INFO      # Options: ERROR, DEBUG, INFO, WARN, TRACE
 QUI__LOG_PATH=...        # Optional: log file path
+QUI__LOG_MAX_SIZE=50     # Optional: rotate when log file exceeds N megabytes (default: 50)
+QUI__LOG_MAX_BACKUPS=3   # Optional: retain N rotated files (default: 3, 0 keeps all)
 
 # Storage
 QUI__DATA_DIR=...        # Optional: custom data directory (default: next to config)
@@ -98,6 +139,8 @@ QUI__METRICS_HOST=127.0.0.1  # Optional: metrics server bind address (default: 1
 QUI__METRICS_PORT=9074       # Optional: metrics server port (default: 9074)
 QUI__METRICS_BASIC_AUTH_USERS=user:hash  # Optional: basic auth for metrics (bcrypt hashed)
 ```
+
+When `logPath` is set the server writes to disk using size-based rotation. Adjust `logMaxSize` and `logMaxBackups` in `config.toml` or the corresponding environment variables shown above to control the rotation thresholds and retention.
 
 ### OpenID Connect (OIDC)
 
@@ -357,6 +400,29 @@ docker run -d \
   ghcr.io/autobrr/qui:latest
 ```
 
+### Unraid
+
+Our release workflow builds multi-architecture images (`linux/amd64`, `linux/arm64`, and friends) and publishes them to `ghcr.io/autobrr/qui`, so the container should work on Unraid out of the box.
+
+**Deploy from the Docker tab**
+- Open **Docker → Add Container**
+- Set **Name** to `qui`
+- Set **Repository** to `ghcr.io/autobrr/qui:latest`
+- Keep the default **Network Type** (`bridge` works for most setups)
+- Add a port mapping: **Host port** `7476` → **Container port** `7476`
+- Add a path mapping: **Container Path** `/config` → **Host Path** `/mnt/user/appdata/qui`
+- (Optional) add environment variables for advanced settings (e.g., `QUI__BASE_URL`, `QUI__LOG_LEVEL`, `TZ`)
+- Click **Apply** to pull the image and start the container
+
+The `/config` mount stores `config.toml`, the SQLite database, and logs. Point it at your preferred appdata share so settings persist across upgrades.
+
+If the app logs to stdout, check logs via Docker → qui → Logs; if it writes to files, they’ll be under /config.
+
+**Updating**
+- Use Unraid's **Check for Updates** action to pull a newer `latest` image
+- If you pinned a specific version tag, edit the repository field to the new tag when you're ready to upgrade
+- Restart the container if needed after the image update so the new binary is loaded
+
 ## Base URL Configuration
 
 If you need to serve qui from a subdirectory (e.g., `https://example.com/qui/`), you can configure the base URL:
@@ -423,6 +489,12 @@ make dev-frontend
 - Minimal memory footprint
 - Fast search and filtering
 - Responsive UI with virtual scrolling
+
+## Community
+
+Join our friendly and welcoming community on [Discord](https://discord.gg/RkeZYfm5ej)! Connect with fellow autobrr users, get advice, and share your experiences. 
+Whether you're seeking help, wanting to contribute, or just looking to discuss your ideas, our community is a hub of discussion and support. 
+We're all here to help each other out, so don't hesitate to jump in!
 
 ## Contributing
 

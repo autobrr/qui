@@ -529,6 +529,20 @@ class ApiClient {
       method: "POST",
     })
   }
+
+  async getLatestVersion(): Promise<{
+    tag_name: string
+    name?: string
+    html_url: string
+    published_at: string
+  } | null> {
+    try {
+      return await this.request("/version/latest")
+    } catch (error) {
+      // Return null if no update available (204 status) or any error
+      return null
+    }
+  }
 }
 
 export const api = new ApiClient()

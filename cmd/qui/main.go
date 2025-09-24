@@ -17,7 +17,6 @@ import (
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/pkg/errors"
-	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -43,15 +42,14 @@ var (
 )
 
 func main() {
+	config.InitDefaultLogger(buildinfo.Version)
+
 	var rootCmd = &cobra.Command{
 		Use:   "qui",
 		Short: "A self-hosted qBittorrent WebUI alternative",
 		Long: `qui - A modern, self-hosted web interface for managing 
 multiple qBittorrent instances with support for 10k+ torrents.`,
 	}
-
-	// Initialize logger
-	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
 	rootCmd.Version = buildinfo.Version
 
@@ -192,7 +190,7 @@ If no --config-dir is specified, uses the OS-specific default location:
 - Windows: %APPDATA%\qui\config.toml`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Initialize configuration
-			cfg, err := config.New(configDir)
+			cfg, err := config.New(configDir, buildinfo.Version)
 			if err != nil {
 				return fmt.Errorf("failed to initialize configuration: %w", err)
 			}
@@ -279,7 +277,7 @@ If no --config-dir is specified, uses the OS-specific default location:
 - Linux/macOS: ~/.config/qui/config.toml  
 - Windows: %APPDATA%\qui\config.toml`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := config.New(configDir)
+			cfg, err := config.New(configDir, buildinfo.Version)
 			if err != nil {
 				return fmt.Errorf("failed to initialize configuration: %w", err)
 			}
@@ -411,10 +409,8 @@ func NewApplication(configDir, dataDir, logPath string, pprofFlag bool, polarOrg
 }
 
 func (app *Application) runServer() {
-	log.Info().Str("version", buildinfo.Version).Msg("Starting qui")
-
 	// Initialize configuration
-	cfg, err := config.New(app.configDir)
+	cfg, err := config.New(app.configDir, buildinfo.Version)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize configuration")
 	}
@@ -434,6 +430,8 @@ func (app *Application) runServer() {
 	}
 
 	cfg.ApplyLogConfig()
+
+	log.Info().Str("version", buildinfo.Version).Msg("Starting qui")
 
 	// init polar client
 	polarClient := polar.NewClient(polar.WithOrganizationID(app.polarOrgID), polar.WithEnvironment(os.Getenv("QUI__POLAR_ENVIRONMENT")), polar.WithUserAgent(buildinfo.UserAgent))
@@ -538,6 +536,7 @@ func (app *Application) runServer() {
 		ClientPool:        clientPool,
 		SyncManager:       syncManager,
 		LicenseService:    licenseService,
+		UpdateService:     updateService,
 	})
 
 	errorChannel := make(chan error)

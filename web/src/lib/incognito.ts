@@ -232,6 +232,29 @@ export function getLinuxRatio(hash: string): number {
   return 1.5 // Default fallback
 }
 
+// Generate deterministic Linux-style hash based on input hash
+export function getLinuxHash(hash: string): string {
+  if (!hash || hash.length === 0) {
+    return ""
+  }
+
+  let hashSum = 0
+  for (let i = 0; i < hash.length; i++) {
+    hashSum += hash.charCodeAt(i) * (i + 1)
+  }
+
+  // Generate a 40-character hex hash (SHA-1 style)
+  const chars = "0123456789abcdef"
+  let result = ""
+
+  for (let i = 0; i < 40; i++) {
+    const index = (hashSum + i * 17) % 16
+    result += chars[index]
+  }
+
+  return result
+}
+
 // Storage key for incognito mode
 const INCOGNITO_STORAGE_KEY = "qui-incognito-mode"
 

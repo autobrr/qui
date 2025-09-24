@@ -7,7 +7,7 @@ require (
 	github.com/Masterminds/semver/v3 v3.4.0
 	github.com/alexedwards/scs/v2 v2.9.0
 	github.com/autobrr/autobrr v1.66.1
-	github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20250913104039-caa2794d8f53
+	github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20250924072341-79e00669bb9b
 	github.com/coreos/go-oidc/v3 v3.15.0
 	github.com/creativeprojects/go-selfupdate v1.5.1
 	github.com/fsnotify/fsnotify v1.9.0
@@ -24,6 +24,7 @@ require (
 	golang.org/x/crypto v0.42.0
 	golang.org/x/oauth2 v0.30.0
 	golang.org/x/term v0.35.0
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.39.0
 )
