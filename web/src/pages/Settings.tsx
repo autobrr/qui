@@ -8,6 +8,7 @@ import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import { withBasePath } from "@/lib/base-url"
+import { formatDate } from "@/lib/utils"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -352,9 +353,9 @@ function ApiKeysManager() {
                     </Badge>
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    Created: {formatDate(new Date(key.createdAt))}
+                    Created: {formatDate(new Date(key.createdAt).getTime() / 1000)}
                     {key.lastUsedAt && (
-                      <> • Last used: {formatDate(new Date(key.lastUsedAt))}</>
+                      <> • Last used: {formatDate(new Date(key.lastUsedAt).getTime() / 1000)}</>
                     )}
                   </p>
                 </div>

@@ -487,15 +487,15 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                           <div className="space-y-1">
                             <p className="text-xs text-muted-foreground">Added</p>
-                            <p className="text-sm">{formatTimestamp(properties.addition_date)}</p>
+                            <p className="text-sm">{formatDateTime(properties.addition_date)}</p>
                           </div>
                           <div className="space-y-1">
                             <p className="text-xs text-muted-foreground">Completed</p>
-                            <p className="text-sm">{formatTimestamp(properties.completion_date)}</p>
+                            <p className="text-sm">{formatDateTime(properties.completion_date)}</p>
                           </div>
                           <div className="space-y-1">
                             <p className="text-xs text-muted-foreground">Created</p>
-                            <p className="text-sm">{formatTimestamp(properties.creation_date)}</p>
+                            <p className="text-sm">{formatDateTime(properties.creation_date)}</p>
                           </div>
                         </div>
                       </div>
@@ -518,7 +518,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                               <div>
                                 <p className="text-xs text-muted-foreground mb-2">Comment</p>
                                 <div className="text-sm bg-background/50 p-3 rounded break-words">
-                                  {properties.comment}
+                                  {renderTextWithLinks(properties.comment)}
                                 </div>
                               </div>
                             </>

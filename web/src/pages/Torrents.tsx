@@ -10,6 +10,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { VisuallyHidden } from "@/components/ui/visually-hidden"
 import { usePersistedFilters } from "@/hooks/usePersistedFilters"
 import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSidebarState"
+import { cn } from "@/lib/utils"
 import type { Category, Torrent, TorrentCounts } from "@/types"
 import { useCallback, useEffect, useRef, useState } from "react"
 
@@ -160,21 +161,32 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
 
   return (
     <div className="flex h-full relative">
-      {/* Desktop Sidebar - hidden on mobile, with slide animation */}
-      <div className={`hidden md:block w-full md:max-w-xs overflow-hidden ${
-        filterSidebarCollapsed ? "-ml-80 opacity-0 md:hidden" : "ml-0 opacity-100 md:block" // animate left margin instead of width, also control visibility on tablet
-      } transition-all duration-300 ease-in-out`}>
-        <FilterSidebar
-          key={`filter-sidebar-${instanceId}`}
-          instanceId={instanceId}
-          selectedFilters={filters}
-          onFilterChange={debouncedSetFilters}
-          torrentCounts={torrentCounts}
-          categories={categories}
-          tags={tags}
-          isStaleData={lastInstanceId !== null && lastInstanceId !== instanceId}
-          isLoading={lastInstanceId !== null && lastInstanceId !== instanceId}
-        />
+      {/* Desktop Sidebar - slides in on tablet/desktop */}
+      <div
+        className={cn(
+          "hidden md:flex shrink-0 h-full overflow-hidden transition-[flex-basis] duration-300 ease-in-out",
+          filterSidebarCollapsed ? "basis-0" : "basis-[20rem]"
+        )}
+        aria-hidden={filterSidebarCollapsed}
+      >
+        <div
+          className={cn(
+            "w-[20rem] overflow-hidden transition-[transform,opacity] duration-300 ease-in-out",
+            filterSidebarCollapsed? "-translate-x-full opacity-0 pointer-events-none": "translate-x-0 opacity-100"
+          )}
+        >
+          <FilterSidebar
+            key={`filter-sidebar-${instanceId}`}
+            instanceId={instanceId}
+            selectedFilters={filters}
+            onFilterChange={debouncedSetFilters}
+            torrentCounts={torrentCounts}
+            categories={categories}
+            tags={tags}
+            isStaleData={lastInstanceId !== null && lastInstanceId !== instanceId}
+            isLoading={lastInstanceId !== null && lastInstanceId !== instanceId}
+          />
+        </div>
       </div>
 
       {/* Mobile Filter Sheet */}

@@ -35,4 +35,3 @@ AFTER UPDATE ON user
 BEGIN
     UPDATE user SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
 END;
-
