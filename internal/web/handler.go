@@ -223,6 +223,7 @@ func (h *Handler) serveSPA(w http.ResponseWriter, r *http.Request) {
 		modifiedContent = strings.ReplaceAll(modifiedContent, `href="/assets/`, `href="`+basePrefix+`/assets/`)
 
 		// Fix favicon and app icons
+		modifiedContent = strings.ReplaceAll(modifiedContent, `href="/favicon.png"`, `href="`+basePrefix+`/favicon.png"`)
 		modifiedContent = strings.ReplaceAll(modifiedContent, `href="/apple-touch-icon.png"`, `href="`+basePrefix+`/apple-touch-icon.png"`)
 		modifiedContent = strings.ReplaceAll(modifiedContent, `href="/qui.png"`, `href="`+basePrefix+`/qui.png"`)
 		modifiedContent = strings.ReplaceAll(modifiedContent, `src="/swizzin.png"`, `src="`+basePrefix+`/swizzin.png"`)
