@@ -50,6 +50,45 @@ chmod +x qui
 
 The web interface will be available at http://localhost:7476
 
+### Seedbox installers
+
+Bytesized installer (NOT TESTED)
+
+```bash
+wget -O installer.sh https://get.autobrr.com/qui/bytesized && chmod +x installer.sh && ./installer.sh
+```
+
+Feral hosting installer
+
+```bash
+wget -O installer.sh https://get.autobrr.com/qui/feral && chmod +x installer.sh && ./installer.sh
+```
+
+HostingByDesign App slots installer
+
+```bash
+wget -O installer.sh https://get.autobrr.com/qui/hostingbydesign && chmod +x installer.sh && ./installer.sh
+```
+
+Seedhost installer (NOT TESTED)
+
+```bash
+wget -O installer.sh https://get.autobrr.com/qui/seedhost && chmod +x installer.sh && ./installer.sh
+```
+
+Ultra.cc installer
+
+```bash
+wget -O installer.sh https://get.autobrr.com/qui/ultra && chmod +x installer.sh && ./installer.sh
+```
+
+Whatbox installer (NOT TESTED)
+
+```bash
+wget -O installer.sh https://get.autobrr.com/qui/whatbox && chmod +x installer.sh && ./installer.sh
+```
+
+
 ### First Setup
 
 1. Open your browser to http://localhost:7476
@@ -426,6 +465,12 @@ make dev-frontend
 - Minimal memory footprint
 - Fast search and filtering
 - Responsive UI with virtual scrolling
+
+## Community
+
+Join our friendly and welcoming community on [Discord](https://discord.gg/RkeZYfm5ej)! Connect with fellow autobrr users, get advice, and share your experiences. 
+Whether you're seeking help, wanting to contribute, or just looking to discuss your ideas, our community is a hub of discussion and support. 
+We're all here to help each other out, so don't hesitate to jump in!
 
 ## Contributing
 
