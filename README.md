@@ -336,7 +336,7 @@ http://localhost:7476/proxy/abc123def456ghi789jkl012mno345pqr678stu901vwx234yz
 
 ### Supported Applications
 
-This reverse proxy will work with any application that supports qBittorrent's Web API, unless they have some special logic that requires username and password to be set etc.
+This reverse proxy will work with any application that supports qBittorrent's Web API.
 
 ### Security Features
 
