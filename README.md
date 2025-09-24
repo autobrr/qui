@@ -323,10 +323,8 @@ http://localhost:7476/proxy/abc123def456ghi789jkl012mno345pqr678stu901vwx234yz
 **Sonarr / Radarr**
 - Go to `Settings → Download Clients`
 - Add a new **qBittorrent** client
-- Set **Name** to match your API key label (optional but helpful)
-- Use the host, port, and URL Base from above (remember `/qui/proxy/...` if you configured a base URL)
-- Leave **Username** and **Password** empty
-- Toggle **Use SSL** if you access qui over HTTPS
+- Set the host and port of qui
+- Add URL Base (`/proxy/...`) - remember to include /qui/ if you use custom baseurl
 - Click **Test** and then **Save** once the test succeeds
 
 **autobrr**
