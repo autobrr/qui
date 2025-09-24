@@ -22,16 +22,24 @@ export function renderTextWithLinks(text: string): React.ReactNode {
     // Check if this part is a URL
     if (URL_REGEX.test(part)) {
       URL_REGEX.lastIndex = 0 // Reset regex state
+      
+      // Remove trailing punctuation from URLs
+      const trailingPunctuationMatch = part.match(/^(.*?)([\)\]\}.,;!?]*?)$/);
+      const cleanUrl = trailingPunctuationMatch ? trailingPunctuationMatch[1] : part;
+      const trailingPunctuation = trailingPunctuationMatch ? trailingPunctuationMatch[2] : '';
+      
       return (
-        <a
-          key={index}
-          href={part}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-primary hover:underline break-all"
-        >
-          {part}
-        </a>
+        <React.Fragment key={index}>
+          <a
+            href={cleanUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary hover:underline break-all"
+          >
+            {cleanUrl}
+          </a>
+          {trailingPunctuation && <span>{trailingPunctuation}</span>}
+        </React.Fragment>
       )
     }
     
