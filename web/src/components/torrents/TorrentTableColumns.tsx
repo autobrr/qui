@@ -22,7 +22,7 @@ import {
 } from "@/lib/incognito"
 import { formatSpeedWithUnit, type SpeedUnit } from "@/lib/speedUnits"
 import { getStateLabel } from "@/lib/torrent-state-utils"
-import { formatBytes, formatDateTime, formatTimeActive, getRatioColor } from "@/lib/utils"
+import { formatBytes, formatDateTime, formatDuration, getRatioColor } from "@/lib/utils"
 import type { Torrent } from "@/types"
 import type { ColumnDef } from "@tanstack/react-table"
 import { ListOrdered } from "lucide-react"
@@ -405,9 +405,7 @@ export const createColumns = (
       }
 
       return (
-        <div className="overflow-hidden whitespace-nowrap text-sm">
-          {formatDateTime(addedOn)}
-        </div>
+        <div className="overflow-hidden whitespace-nowrap text-sm">{formatDateTime(addedOn)}</div>
       )
     },
     size: 200,
@@ -420,20 +418,9 @@ export const createColumns = (
       if (!completionOn || completionOn === 0) {
         return "-"
       }
-      const date = new Date(completionOn * 1000)
-      const month = date.getMonth() + 1
-      const day = date.getDate()
-      const year = date.getFullYear()
-      const hours = date.getHours()
-      const minutes = date.getMinutes()
-      const seconds = date.getSeconds()
-      const ampm = hours >= 12 ? "PM" : "AM"
-      const displayHours = hours % 12 || 12
 
       return (
-        <div className="overflow-hidden whitespace-nowrap text-sm">
-          {month}/{day}/{year}, {displayHours}:{minutes.toString().padStart(2, "0")}:{seconds.toString().padStart(2, "0")} {ampm}
-        </div>
+        <div className="overflow-hidden whitespace-nowrap text-sm">{formatDateTime(completionOn)}</div>
       )
     },
     size: 200,
@@ -544,12 +531,19 @@ export const createColumns = (
     header: "Time Active",
     cell: ({ row }) => {
       const timeActive = row.original.time_active
+      return (
+        <span className="text-sm overflow-hidden whitespace-nowrap">{formatDuration(timeActive)}</span>
+      )
+    },
+    size: 250,
+  },
+  {
+    accessorKey: "seeding_time",
+    header: "Seeding Time",
+    cell: ({ row }) => {
       const timeSeeded = row.original.seeding_time
       return (
-        <span className="text-sm overflow-hidden whitespace-nowrap">
-          {formatTimeActive(timeActive)}
-          {timeSeeded === 0 ? "" : " (seeded for " + formatTimeActive(timeSeeded) + ")"}
-        </span>
+        <span className="text-sm overflow-hidden whitespace-nowrap">{formatDuration(timeSeeded)}</span>
       )
     },
     size: 250,
@@ -601,20 +595,9 @@ export const createColumns = (
       if (!lastSeenComplete || lastSeenComplete === 0) {
         return "-"
       }
-      const date = new Date(lastSeenComplete * 1000)
-      const month = date.getMonth() + 1
-      const day = date.getDate()
-      const year = date.getFullYear()
-      const hours = date.getHours()
-      const minutes = date.getMinutes()
-      const seconds = date.getSeconds()
-      const ampm = hours >= 12 ? "PM" : "AM"
-      const displayHours = hours % 12 || 12
 
       return (
-        <div className="overflow-hidden whitespace-nowrap text-sm">
-          {month}/{day}/{year}, {displayHours}:{minutes.toString().padStart(2, "0")}:{seconds.toString().padStart(2, "0")} {ampm}
-        </div>
+        <div className="overflow-hidden whitespace-nowrap text-sm">{formatDateTime(lastSeenComplete)}</div>
       )
     },
     size: 200,
@@ -627,20 +610,9 @@ export const createColumns = (
       if (!lastActivity || lastActivity === 0) {
         return "-"
       }
-      const date = new Date(lastActivity * 1000)
-      const month = date.getMonth() + 1
-      const day = date.getDate()
-      const year = date.getFullYear()
-      const hours = date.getHours()
-      const minutes = date.getMinutes()
-      const seconds = date.getSeconds()
-      const ampm = hours >= 12 ? "PM" : "AM"
-      const displayHours = hours % 12 || 12
 
       return (
-        <div className="overflow-hidden whitespace-nowrap text-sm">
-          {month}/{day}/{year}, {displayHours}:{minutes.toString().padStart(2, "0")}:{seconds.toString().padStart(2, "0")} {ampm}
-        </div>
+        <div className="overflow-hidden whitespace-nowrap text-sm">{formatDateTime(lastActivity)}</div>
       )
     },
     size: 200,

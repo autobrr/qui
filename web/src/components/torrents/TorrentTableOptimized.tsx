@@ -99,6 +99,7 @@ const DEFAULT_COLUMN_VISIBILITY = {
   uploaded_session: false,
   amount_left: false,
   time_active: false,
+  seeding_time: false,
   save_path: false,
   completed: false,
   ratio_limit: false,
