@@ -508,7 +508,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                           {properties.created_by && (
                             <div>
                               <p className="text-xs text-muted-foreground mb-1">Created By</p>
-                              <p className="text-sm">{properties.created_by}</p>
+                              <div className="text-sm">{renderTextWithLinks(properties.created_by)}</div>
                             </div>
                           )}
                           {properties.comment && (
