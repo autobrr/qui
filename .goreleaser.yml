@@ -94,3 +94,17 @@ changelog:
     - title: "Other Changes"
       regexp: "^.*(chore|docs|style|refactor|test|perf|security|build|ci)[(\\w)]*:+.*$"
       order: 20
+
+homebrew_casks:
+  - name: qui
+    directory: Casks
+    repository:
+      owner: autobrr
+      name: qui
+    commit_author:
+      name: goreleaserbot
+      email: goreleaserbot@users.noreply.github.com
+    commit_msg_template: "Brew cask update for {{ .ProjectName }} version {{ .Tag }}"
+    homepage: "https://github.com/autobrr/qui"
+    description: "Fast, modern web interface for qBittorrent"
+    license: "GPL-2.0"
