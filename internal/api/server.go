@@ -164,6 +164,7 @@ func (s *Server) Handler() *chi.Mux {
 	torrentsHandler := handlers.NewTorrentsHandler(s.syncManager)
 	preferencesHandler := handlers.NewPreferencesHandler(s.syncManager)
 	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(s.clientAPIKeyStore, s.instanceStore)
+	externalAppsHandler := handlers.NewExternalAppsHandler(s.syncManager)
 	versionHandler := handlers.NewVersionHandler(s.updateService)
 
 	// Create proxy handler
@@ -202,6 +203,9 @@ func (s *Server) Handler() *chi.Mux {
 			r.Post("/auth/logout", authHandler.Logout)
 			r.Get("/auth/me", authHandler.GetCurrentUser)
 			r.Put("/auth/change-password", authHandler.ChangePassword)
+
+			// External apps
+			r.Post("/external-apps/execute", externalAppsHandler.ExecuteCustomAction)
 
 			// license routes (if configured)
 			if licenseHandler != nil {
