@@ -24,7 +24,10 @@ import { getStateLabel } from "@/lib/torrent-state-utils"
 import { formatBytes, formatDateTime, getRatioColor } from "@/lib/utils"
 import type { Torrent } from "@/types"
 import type { ColumnDef } from "@tanstack/react-table"
+import { useQuery } from "@tanstack/react-query"
+import { api } from "@/lib/api"
 import { ListOrdered } from "lucide-react"
+import { memo } from "react"
 
 function formatEta(seconds: number): string {
   if (seconds === 8640000) return "∞"
@@ -52,6 +55,68 @@ function calculateMinWidth(text: string, padding: number = 48): number {
   return Math.max(60, Math.ceil(text.length * charWidth) + padding + extraPadding)
 }
 
+// StatusCell component that can use hooks for tracker data fetching
+const StatusCell = memo(function StatusCell({ 
+  torrent, 
+  instanceId 
+}: { 
+  torrent: Torrent
+  instanceId?: number 
+}) {
+  const state = torrent.state
+  const priority = torrent.priority
+  const label = getStateLabel(state)
+  const isQueued = state === "queuedDL" || state === "queuedUP"
+  
+  // Fetch tracker data
+  const { data: trackerData } = useQuery({
+    queryKey: ["torrent-trackers", instanceId, torrent.hash],
+    queryFn: () => api.getTorrentTrackers(instanceId!, torrent.hash),
+    enabled: !!instanceId, // Fetch when instanceId is available
+    staleTime: 30000, // Cache for 30 seconds
+    gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
+  })
+  
+  // Determine if there's a tracker error
+  // Only report error if there are NO working trackers AND at least one has an error
+  const hasTrackerError = trackerData && Array.isArray(trackerData) 
+    ? (() => {
+        const hasWorkingTracker = trackerData.some((tracker: any) => tracker.status === 2) // status 2 = working
+        const hasErrorTracker = trackerData.some((tracker: any) => tracker.status === 4) // status 4 = error
+        return !hasWorkingTracker && hasErrorTracker
+      })()
+    : false
+  
+  const hasError = state === "error" || state === "missingFiles" || hasTrackerError
+
+  const variant =
+    hasError ? "destructive" :
+    state === "downloading" ? "default" :
+    state === "stalledDL" ? "secondary" :
+    state === "uploading" ? "default" :
+    state === "stalledUP" ? "secondary" :
+    state === "pausedDL" || state === "pausedUP" ? "secondary" :
+    state === "queuedDL" || state === "queuedUP" ? "secondary" :
+    "outline"
+
+  if (isQueued && priority > 0) {
+    return (
+      <div className="flex items-center gap-1">
+        <Badge variant={variant} className="text-xs">
+          {label}
+        </Badge>
+        <span className="text-xs text-muted-foreground">#{priority}</span>
+      </div>
+    )
+  }
+
+  return (
+    <Badge variant={variant} className="text-xs">
+      {label}
+    </Badge>
+  )
+})
+
 export const createColumns = (
   incognitoMode: boolean,
   selectionEnhancers?: {
@@ -66,7 +131,8 @@ export const createColumns = (
     isAllSelected?: boolean
     excludedFromSelectAll?: Set<string>
   },
-  speedUnit: SpeedUnit = "bytes"
+  speedUnit: SpeedUnit = "bytes",
+  instanceId?: number
 ): ColumnDef<Torrent>[] => [
   {
     id: "select",
@@ -241,26 +307,7 @@ export const createColumns = (
     accessorKey: "state",
     header: "Status",
     cell: ({ row }) => {
-      const state = row.original.state
-      const priority = row.original.priority
-      const label = getStateLabel(state)
-      const isQueued = state === "queuedDL" || state === "queuedUP"
-
-      const variant =
-        state === "downloading" ? "default" :state === "stalledDL" ? "secondary" :state === "uploading" ? "default" :state === "stalledUP" ? "secondary" :state === "pausedDL" || state === "pausedUP" ? "secondary" :state === "queuedDL" || state === "queuedUP" ? "secondary" :state === "error" || state === "missingFiles" ? "destructive" :"outline"
-
-      if (isQueued && priority > 0) {
-        return (
-          <div className="flex items-center gap-1">
-            <Badge variant={variant} className="text-xs">
-              {label}
-            </Badge>
-            <span className="text-xs text-muted-foreground">#{priority}</span>
-          </div>
-        )
-      }
-
-      return <Badge variant={variant} className="text-xs">{label}</Badge>
+      return <StatusCell torrent={row.original} instanceId={instanceId} />
     },
     size: 130,
   },
