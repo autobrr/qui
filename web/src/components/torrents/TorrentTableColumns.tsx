@@ -22,7 +22,7 @@ import {
 import { formatSpeedWithUnit, type SpeedUnit } from "@/lib/speedUnits"
 import { getStateLabel } from "@/lib/torrent-state-utils"
 import { formatAddedOn } from "@/lib/dateTimeUtils"
-import { formatBytes, formatDateTime, getRatioColor } from "@/lib/utils"
+import { formatBytes, getRatioColor } from "@/lib/utils"
 import type { Torrent } from "@/types"
 import type { ColumnDef } from "@tanstack/react-table"
 import { ListOrdered } from "lucide-react"
@@ -349,7 +349,7 @@ export const createColumns = (
 
       return (
         <div className="overflow-hidden whitespace-nowrap text-sm">
-          {formatDateTime(addedOn)}
+          {formatAddedOn(addedOn)}
         </div>
       )
     },

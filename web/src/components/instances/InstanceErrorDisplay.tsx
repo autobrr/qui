@@ -14,7 +14,7 @@ import {
   TooltipContent,
   TooltipTrigger
 } from "@/components/ui/tooltip"
-import { formatDateTime, formatErrorMessage } from "@/lib/utils"
+import { formatErrorMessage } from "@/lib/utils"
 import type { InstanceResponse } from "@/types"
 import { AlertCircle, ChevronDown, Edit, XCircle } from "lucide-react"
 import { useState } from "react"
@@ -89,7 +89,7 @@ export function InstanceErrorDisplay({ instance, onEdit, showEditButton = false,
                           {error.errorType}
                         </span>
                         <span className="text-destructive/70 flex-shrink-0 text-xs">
-                          {formatDateTime(new Date(error.occurredAt).getTime() / 1000)}
+                          {formatTimestamp(new Date(error.occurredAt).getTime() / 1000)}
                         </span>
                       </div>
                       <Tooltip>
@@ -159,7 +159,7 @@ export function InstanceErrorDisplay({ instance, onEdit, showEditButton = false,
                         {error.errorType}
                       </span>
                       <span className="text-destructive/70 flex-shrink-0">
-                        {formatDateTime(new Date(error.occurredAt).getTime() / 1000)}
+                        {formatTimestamp(new Date(error.occurredAt).getTime() / 1000)}
                       </span>
                     </div>
                     <Tooltip>

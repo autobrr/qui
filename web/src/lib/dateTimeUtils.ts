@@ -73,15 +73,20 @@ export function formatTimestamp(timestamp: number, preferences?: DateTimePrefere
     
     switch (prefs.dateFormat) {
       case "iso": {
-        // ISO 8601 format: YYYY-MM-DD HH:MM
-        const dateStr = date.toISOString().split('T')[0]
-        const timeStr = date.toLocaleTimeString([], { 
-          timeZone, 
-          hour12,
-          hour: "2-digit", 
-          minute: "2-digit" 
+        // ISO 8601 format: YYYY-MM-DD HH:MM covering the preferred timezone
+        const dateFormatter = new Intl.DateTimeFormat("en-CA", {
+          timeZone,
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
         })
-        return `${dateStr} ${timeStr}`
+        const timeFormatter = new Intl.DateTimeFormat("en-US", {
+          timeZone,
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12,
+        })
+        return `${dateFormatter.format(date)} ${timeFormatter.format(date)}`
       }
       
       case "us": {
@@ -110,16 +115,22 @@ export function formatTimestamp(timestamp: number, preferences?: DateTimePrefere
         })
       }
       
-      default:
+      default: {
         // Fallback to ISO format
-        const dateStr = date.toISOString().split('T')[0]
-        const timeStr = date.toLocaleTimeString([], { 
-          timeZone, 
-          hour12,
-          hour: "2-digit", 
-          minute: "2-digit" 
+        const dateFormatter = new Intl.DateTimeFormat("en-CA", {
+          timeZone,
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
         })
-        return `${dateStr} ${timeStr}`
+        const timeFormatter = new Intl.DateTimeFormat("en-US", {
+          timeZone,
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12,
+        })
+        return `${dateFormatter.format(date)} ${timeFormatter.format(date)}`
+      }
     }
   } catch (error) {
     console.error("Error formatting timestamp:", error)
@@ -157,8 +168,15 @@ export function formatDateOnly(timestamp: number, preferences?: DateTimePreferen
     const timeZone = prefs.timezone
     
     switch (prefs.dateFormat) {
-      case "iso":
-        return date.toISOString().split('T')[0] // YYYY-MM-DD
+      case "iso": {
+        const dateFormatter = new Intl.DateTimeFormat("en-CA", {
+          timeZone,
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        })
+        return dateFormatter.format(date)
+      }
       
       case "us":
         return date.toLocaleDateString("en-US", {
@@ -176,8 +194,15 @@ export function formatDateOnly(timestamp: number, preferences?: DateTimePreferen
           year: "numeric"
         })
       
-      default:
-        return date.toISOString().split('T')[0]
+      default: {
+        const dateFormatter = new Intl.DateTimeFormat("en-CA", {
+          timeZone,
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        })
+        return dateFormatter.format(date)
+      }
     }
   } catch (error) {
     console.error("Error formatting date:", error)

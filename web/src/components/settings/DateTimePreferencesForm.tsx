@@ -17,6 +17,8 @@ import {
 } from "@/components/ui/select"
 import { Clock, Calendar, Globe } from "lucide-react"
 import { usePersistedDateTimePreferences } from "@/hooks/usePersistedDateTimePreferences"
+import type { DateTimePreferences } from "@/hooks/usePersistedDateTimePreferences"
+import { formatTimestamp } from "@/lib/dateTimeUtils"
 import { toast } from "sonner"
 
 // Comprehensive worldwide timezone list organized by region
@@ -203,62 +205,17 @@ export function DateTimePreferencesForm() {
   // Format example date for preview using current form values
   const getFormattedExample = () => {
     const now = new Date()
-    const timeZone = form.getFieldValue("timezone") || preferences.timezone
-    const timeFormat = form.getFieldValue("timeFormat") || preferences.timeFormat
-    const dateFormat = form.getFieldValue("dateFormat") || preferences.dateFormat
+    const timeZone = (form.getFieldValue("timezone") || preferences.timezone) as DateTimePreferences["timezone"]
+    const timeFormat = (form.getFieldValue("timeFormat") || preferences.timeFormat) as DateTimePreferences["timeFormat"]
+    const dateFormat = (form.getFieldValue("dateFormat") || preferences.dateFormat) as DateTimePreferences["dateFormat"]
 
-    try {
-      let dateFormatOptions: Intl.DateTimeFormatOptions
-      
-      switch (dateFormat) {
-        case "iso":
-          return now.toISOString().split('T')[0] + " " + 
-                 now.toLocaleTimeString([], { 
-                   timeZone, 
-                   hour12: timeFormat === "12h",
-                   hour: "2-digit", 
-                   minute: "2-digit" 
-                 })
-        case "us":
-          dateFormatOptions = {
-            timeZone,
-            month: "2-digit",
-            day: "2-digit", 
-            year: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: timeFormat === "12h"
-          }
-          break
-        case "eu":
-          dateFormatOptions = {
-            timeZone,
-            day: "2-digit",
-            month: "2-digit",
-            year: "numeric", 
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: timeFormat === "12h"
-          }
-          break
-        case "relative":
-          return "Just now"
-        default:
-          dateFormatOptions = {
-            timeZone,
-            year: "numeric",
-            month: "2-digit", 
-            day: "2-digit",
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: timeFormat === "12h"
-          }
-      }
-
-      return now.toLocaleString([], dateFormatOptions)
-    } catch (error) {
-      return "Preview unavailable"
+    const previewPreferences: DateTimePreferences = {
+      timezone: timeZone,
+      timeFormat,
+      dateFormat,
     }
+
+    return formatTimestamp(Math.floor(now.getTime() / 1000), previewPreferences)
   }
 
   return (
