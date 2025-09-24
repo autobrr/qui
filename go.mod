@@ -7,7 +7,7 @@ require (
 	github.com/Masterminds/semver/v3 v3.4.0
 	github.com/alexedwards/scs/v2 v2.9.0
 	github.com/autobrr/autobrr v1.66.1
-	github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20250922083519-785c79994ee2
+	github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20250924072341-79e00669bb9b
 	github.com/creativeprojects/go-selfupdate v1.5.1
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-chi/chi/v5 v5.2.3
