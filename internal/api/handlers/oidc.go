@@ -153,6 +153,7 @@ func NewOIDCHandler(cfg *domain.Config, sessionManager *scs.SessionManager) (*OI
 }
 
 func (h *OIDCHandler) Routes(r chi.Router) {
+	// Re-apply throttling because chi.Route creates a fresh middleware stack.
 	r.Use(middleware.ThrottleBacklog(1, 1, time.Second))
 	r.Get("/config", h.getConfig)
 	r.Get("/callback", h.handleCallback)
