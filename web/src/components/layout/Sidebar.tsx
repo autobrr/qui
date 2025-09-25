@@ -149,11 +149,11 @@ export function Sidebar() {
 
         <div className="flex items-center justify-between px-3 pb-3">
           <div className="flex flex-col gap-1 text-[10px] text-sidebar-foreground/40 select-none">
+            <span className="font-medium text-sidebar-foreground/50">Version {appVersion}</span>
             <div className="flex items-center gap-1">
               <Copyright className="h-2.5 w-2.5" />
               <span>{new Date().getFullYear()} autobrr</span>
             </div>
-            <span className="font-medium text-sidebar-foreground/50">Version {appVersion}</span>
           </div>
           <Button
             variant="ghost"
