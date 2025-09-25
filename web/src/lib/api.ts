@@ -9,6 +9,7 @@ import type {
   Category,
   InstanceFormData,
   InstanceResponse,
+  Torrent,
   TorrentResponse,
   User
 } from "@/types"
@@ -495,6 +496,61 @@ class ApiClient {
   async toggleAlternativeSpeedLimits(instanceId: number): Promise<{ enabled: boolean }> {
     return this.request<{ enabled: boolean }>(`/instances/${instanceId}/alternative-speed-limits/toggle`, {
       method: "POST",
+    })
+  }
+
+  async executeCustomAction(
+    instanceId: number,
+    torrent: Torrent,
+    executable: string,
+    args: string,
+    pathMapping?: string,
+    workingDir?: string,
+    highPrivileges?: boolean,
+    useCommandLine?: boolean,
+    keepTerminalOpen?: boolean
+  ): Promise<{
+    success: boolean
+    message: string
+    command: string
+    output?: string
+    error?: string
+    exitCode?: number
+  }> {
+    return this.request(`/external-apps/execute`, {
+      method: "POST",
+      body: JSON.stringify({
+        instanceId,
+        torrent: {
+          hash: torrent.hash,
+          name: torrent.name,
+          save_path: torrent.save_path,
+          category: torrent.category,
+          tags: torrent.tags,
+          size: torrent.size,
+          progress: torrent.progress,
+          dlspeed: torrent.dlspeed,
+          upspeed: torrent.upspeed,
+          priority: torrent.priority,
+          num_seeds: torrent.num_seeds,
+          num_leechs: torrent.num_leechs,
+          ratio: torrent.ratio,
+          eta: torrent.eta,
+          state: torrent.state,
+          downloaded: torrent.downloaded,
+          uploaded: torrent.uploaded,
+          availability: 0,
+          force_start: false,
+          super_seeding: false,
+        },
+        executable,
+        arguments: args,
+        pathMapping,
+        workingDir,
+        highPrivileges,
+        useCommandLine,
+        keepTerminalOpen,
+      }),
     })
   }
 

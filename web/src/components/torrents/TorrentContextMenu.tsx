@@ -14,6 +14,7 @@ import {
 import {
   CheckCircle,
   Copy,
+  ExternalLink,
   Folder,
   FolderOpen,
   Pause,
@@ -28,12 +29,14 @@ import { toast } from "sonner"
 import type { Torrent } from "@/types"
 import type { TorrentAction } from "@/hooks/useTorrentActions"
 import { TORRENT_ACTIONS } from "@/hooks/useTorrentActions"
+import { useCustomContextMenuItems, executeCustomMenuActionAPI } from "@/hooks/useCustomContextMenuItems"
 import { QueueSubmenu } from "./QueueSubmenu"
 import { ShareLimitSubmenu, SpeedLimitsSubmenu } from "./TorrentLimitSubmenus"
 import { getLinuxIsoName, useIncognitoMode } from "@/lib/incognito"
 import { getTorrentDisplayHash } from "@/lib/torrent-utils"
 
 interface TorrentContextMenuProps {
+  instanceId: number
   children: React.ReactNode
   torrent: Torrent
   isSelected: boolean
@@ -55,6 +58,7 @@ interface TorrentContextMenuProps {
 }
 
 export const TorrentContextMenu = memo(function TorrentContextMenu({
+  instanceId,
   children,
   torrent,
   isSelected,
@@ -116,6 +120,25 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   // TMM state calculation
   const tmmStates = torrents.map(t => t.auto_tmm)
   const allEnabled = tmmStates.length > 0 && tmmStates.every(state => state === true)
+
+  // Load custom context menu items
+  const { enabledMenuItems: customMenuItems } = useCustomContextMenuItems()
+
+  // Handle custom menu item execution
+  const handleCustomMenuAction = useCallback(async (item: typeof customMenuItems[0]) => {
+    try {
+      await executeCustomMenuActionAPI(item, torrent, instanceId)
+      toast.success(`Executed: ${item.name}`, {
+        description: `Successfully launched external program`,
+      })
+    } catch (error) {
+      console.error('Failed to execute custom menu action:', error)
+      toast.error(`Failed to execute: ${item.name}`, {
+        description: error instanceof Error ? error.message : 'Unknown error occurred',
+      })
+    }
+  }, [torrent, instanceId])
+
   const allDisabled = tmmStates.length > 0 && tmmStates.every(state => state === false)
   const mixed = tmmStates.length > 0 && !allEnabled && !allDisabled
 
@@ -269,6 +292,23 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
           <Copy className="mr-2 h-4 w-4" />
           Copy Hash
         </ContextMenuItem>
+        
+        {/* Custom Context Menu Items */}
+        {customMenuItems.length > 0 && (
+          <>
+            <ContextMenuSeparator />
+            {customMenuItems.map((item) => (
+              <ContextMenuItem
+                key={item.id}
+                onClick={() => handleCustomMenuAction(item)}
+              >
+                <ExternalLink className="mr-2 h-4 w-4" />
+                {item.name}
+              </ContextMenuItem>
+            ))}
+          </>
+        )}
+        
         <ContextMenuSeparator />
         <ContextMenuItem
           onClick={() => onPrepareDelete(hashes, torrents)}

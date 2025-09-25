@@ -1099,6 +1099,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                 return (
                   <TorrentContextMenu
                     key={`${torrent.hash}-${virtualRow.index}`}
+                    instanceId={instanceId}
                     torrent={torrent}
                     isSelected={row.getIsSelected()}
                     isAllSelected={isAllSelected}
