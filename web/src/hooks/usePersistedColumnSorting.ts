@@ -3,30 +3,63 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState, useEffect } from "react"
 import type { SortingState } from "@tanstack/react-table"
+import { useEffect, useState } from "react"
 
 export function usePersistedColumnSorting(
-  defaultSorting: SortingState = []
+  defaultSorting: SortingState = [],
+  instanceKey?: string | number
 ) {
-  // Global key shared across all instances
-  const storageKey = "qui-column-sorting"
+  const baseStorageKey = "qui-column-sorting"
+  const hasInstanceKey = instanceKey !== undefined && instanceKey !== null
+  const storageKey = hasInstanceKey ? `${baseStorageKey}:${instanceKey}` : baseStorageKey
+  const legacyKeys = hasInstanceKey ? [baseStorageKey] : []
 
-  // Initialize state from localStorage or default values
-  const [sorting, setSorting] = useState<SortingState>(() => {
-    try {
-      const stored = localStorage.getItem(storageKey)
-      if (stored) {
-        return JSON.parse(stored)
+  const loadSorting = (): SortingState => {
+    const keysToTry = [storageKey, ...legacyKeys]
+
+    for (const key of keysToTry) {
+      try {
+        const stored = localStorage.getItem(key)
+        if (stored) {
+          const parsed = JSON.parse(stored)
+          if (Array.isArray(parsed)) {
+            if (key !== storageKey) {
+              let migrationSucceeded = false
+
+              try {
+                localStorage.setItem(storageKey, stored)
+                migrationSucceeded = true
+              } catch (migrationError) {
+                console.error("Failed to migrate legacy column sorting state:", migrationError)
+              }
+
+              if (migrationSucceeded) {
+                try {
+                  localStorage.removeItem(key)
+                } catch (removeError) {
+                  console.error("Failed to clear legacy column sorting state:", removeError)
+                }
+              }
+            }
+            return parsed as SortingState
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load column sorting from localStorage:", error)
       }
-    } catch (error) {
-      console.error("Failed to load column sorting from localStorage:", error)
     }
 
-    return defaultSorting
-  })
+    return [...defaultSorting]
+  }
 
-  // Persist to localStorage whenever state changes
+  const [sorting, setSorting] = useState<SortingState>(() => loadSorting())
+
+  useEffect(() => {
+    setSorting(loadSorting())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storageKey])
+
   useEffect(() => {
     try {
       localStorage.setItem(storageKey, JSON.stringify(sorting))
