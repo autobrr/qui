@@ -872,6 +872,39 @@ paths:
         '500':
           description: Failed to rename torrent file
 
+  /api/instances/{instanceId}/torrents/{hash}/rename-folder:
+    put:
+      tags:
+        - Torrent Details
+      summary: Rename torrent folder
+      description: Rename a folder within a torrent
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/hash'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - oldPath
+                - newPath
+              properties:
+                oldPath:
+                  type: string
+                  description: Existing folder path relative to the torrent root
+                newPath:
+                  type: string
+                  description: New folder path (relative) to apply
+      responses:
+        '200':
+          description: Torrent folder renamed successfully
+        '400':
+          description: Invalid request
+        '500':
+          description: Failed to rename torrent folder
+
   /api/instances/{instanceId}/torrents/{hash}/peers:
     get:
       tags:

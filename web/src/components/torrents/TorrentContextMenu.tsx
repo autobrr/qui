@@ -15,6 +15,7 @@ import {
   CheckCircle,
   Copy,
   Folder,
+  FolderPen,
   FolderOpen,
   Pause,
   Play,
@@ -53,6 +54,7 @@ interface TorrentContextMenuProps {
   onPrepareLocation: (hashes: string[], torrents?: Torrent[]) => void
   onPrepareRenameTorrent: (hashes: string[], torrents?: Torrent[]) => void
   onPrepareRenameFile: (hashes: string[], torrents?: Torrent[]) => void
+  onPrepareRenameFolder: (hashes: string[], torrents?: Torrent[]) => void
   onSetShareLimit: (ratioLimit: number, seedingTimeLimit: number, inactiveSeedingTimeLimit: number, hashes: string[]) => void
   onSetSpeedLimits: (uploadLimit: number, downloadLimit: number, hashes: string[]) => void
   isPending?: boolean
@@ -76,6 +78,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   onPrepareLocation,
   onPrepareRenameTorrent,
   onPrepareRenameFile,
+  onPrepareRenameFolder,
   onSetShareLimit,
   onSetSpeedLimits,
   isPending = false,
@@ -228,6 +231,13 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
         >
           <FilePen className="mr-2 h-4 w-4" />
           Rename File
+        </ContextMenuItem>
+        <ContextMenuItem
+          onClick={() => onPrepareRenameFolder(hashes, torrents)}
+          disabled={isPending || count !== 1}
+        >
+          <FolderPen className="mr-2 h-4 w-4" />
+          Rename Folder
         </ContextMenuItem>
         <ContextMenuSeparator />
         <ShareLimitSubmenu

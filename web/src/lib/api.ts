@@ -299,6 +299,13 @@ class ApiClient {
     })
   }
 
+  async renameTorrentFolder(instanceId: number, hash: string, oldPath: string, newPath: string): Promise<void> {
+    return this.request(`/instances/${instanceId}/torrents/${hash}/rename-folder`, {
+      method: "PUT",
+      body: JSON.stringify({ oldPath, newPath }),
+    })
+  }
+
   async getTorrentFiles(instanceId: number, hash: string): Promise<any[]> {
     return this.request(`/instances/${instanceId}/torrents/${hash}/files`)
   }

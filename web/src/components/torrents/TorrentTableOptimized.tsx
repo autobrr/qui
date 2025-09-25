@@ -81,7 +81,7 @@ import { ArrowUpDown, ChevronDown, ChevronUp, Columns3, Eye, EyeOff, Loader2 } f
 import { createPortal } from "react-dom"
 import { AddTorrentDialog } from "./AddTorrentDialog"
 import { DraggableTableHeader } from "./DraggableTableHeader"
-import { AddTagsDialog, RemoveTagsDialog, RenameTorrentDialog, RenameTorrentFileDialog, SetCategoryDialog, SetLocationDialog, SetTagsDialog } from "./TorrentDialogs"
+import { AddTagsDialog, RemoveTagsDialog, RenameTorrentDialog, RenameTorrentFileDialog, RenameTorrentFolderDialog, SetCategoryDialog, SetLocationDialog, SetTagsDialog } from "./TorrentDialogs"
 import { createColumns } from "./TorrentTableColumns"
 
 // Default values for persisted state hooks (module scope for stable references)
@@ -231,6 +231,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     setShowRenameTorrentDialog,
     showRenameFileDialog,
     setShowRenameFileDialog,
+    showRenameFolderDialog,
+    setShowRenameFolderDialog,
     showRecheckDialog,
     setShowRecheckDialog,
     showReannounceDialog,
@@ -247,6 +249,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     handleSetLocation,
     handleRenameTorrent,
     handleRenameFile,
+    handleRenameFolder,
     handleSetShareLimit,
     handleSetSpeedLimits,
     handleRecheck,
@@ -257,6 +260,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     prepareLocationAction,
     prepareRenameTorrentAction,
     prepareRenameFileAction,
+    prepareRenameFolderAction,
     prepareRecheckAction,
     prepareReannounceAction,
   } = useTorrentActions({
@@ -272,13 +276,15 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const availableTags = metadata?.tags || []
   const availableCategories = metadata?.categories || {}
 
+  const shouldLoadRenameEntries = (showRenameFileDialog || showRenameFolderDialog) && Boolean(contextHashes[0])
+
   const {
     data: renameFileData,
-    isLoading: renameFileLoading,
+    isLoading: renameEntriesLoading,
   } = useQuery({
     queryKey: ["torrent-files", instanceId, contextHashes[0]],
     queryFn: () => api.getTorrentFiles(instanceId, contextHashes[0]!),
-    enabled: showRenameFileDialog && Boolean(contextHashes[0]),
+    enabled: shouldLoadRenameEntries,
     staleTime: 30000,
     gcTime: 5 * 60 * 1000,
   })
@@ -287,6 +293,23 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     if (!Array.isArray(renameFileData)) return [] as { name: string }[]
     return renameFileData.filter((file): file is { name: string } => typeof file?.name === "string")
   }, [renameFileData])
+
+  const renameFolderEntries = useMemo(() => {
+    if (renameFileEntries.length === 0) return [] as { name: string }[]
+    const folderSet = new Set<string>()
+    for (const file of renameFileEntries) {
+      const parts = file.name.split("/")
+      if (parts.length <= 1) continue
+      let current = ""
+      for (let i = 0; i < parts.length - 1; i++) {
+        current = current ? `${current}/${parts[i]}` : parts[i]
+        folderSet.add(current)
+      }
+    }
+    return Array.from(folderSet)
+      .sort((a, b) => a.localeCompare(b))
+      .map(name => ({ name }))
+  }, [renameFileEntries])
 
   // Debounce search to prevent excessive filtering (200ms delay for faster response)
   const debouncedSearch = useDebounce(globalFilter, 200)
@@ -870,6 +893,16 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     await handleRenameFile(hash, oldPath, newPath)
   }, [handleRenameFile, contextHashes])
 
+  const handleRenameFolderWrapper = useCallback(async ({ oldPath, newName }: { oldPath: string; newName: string }) => {
+    const hash = contextHashes[0]
+    if (!hash) return
+    if (!oldPath) return
+    const segments = oldPath.split("/")
+    segments[segments.length - 1] = newName
+    const newPath = segments.join("/")
+    await handleRenameFolder(hash, oldPath, newPath)
+  }, [contextHashes, handleRenameFolder])
+
   const handleRemoveTagsWrapper = useCallback((tags: string[]) => {
     handleRemoveTags(
       tags,
@@ -1155,6 +1188,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                     onPrepareLocation={prepareLocationAction}
                     onPrepareRenameTorrent={prepareRenameTorrentAction}
                     onPrepareRenameFile={prepareRenameFileAction}
+                    onPrepareRenameFolder={prepareRenameFolderAction}
                     onPrepareRecheck={prepareRecheckAction}
                     onPrepareReannounce={prepareReannounceAction}
                     onSetShareLimit={handleSetShareLimitContext}
@@ -1424,8 +1458,16 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         open={showRenameFileDialog}
         onOpenChange={setShowRenameFileDialog}
         files={renameFileEntries}
-        isLoading={renameFileLoading}
+        isLoading={renameEntriesLoading}
         onConfirm={handleRenameFileWrapper}
+        isPending={isPending}
+      />
+      <RenameTorrentFolderDialog
+        open={showRenameFolderDialog}
+        onOpenChange={setShowRenameFolderDialog}
+        folders={renameFolderEntries}
+        isLoading={renameEntriesLoading}
+        onConfirm={handleRenameFolderWrapper}
         isPending={isPending}
       />
 

@@ -2067,6 +2067,34 @@ func (sm *SyncManager) RenameTorrentFile(ctx context.Context, instanceID int, ha
 	return nil
 }
 
+// RenameTorrentFolder renames a folder inside a torrent
+func (sm *SyncManager) RenameTorrentFolder(ctx context.Context, instanceID int, hash, oldPath, newPath string) error {
+	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		return err
+	}
+
+	if err := sm.validateTorrentsExist(client, []string{hash}, "rename folder"); err != nil {
+		return err
+	}
+
+	if strings.TrimSpace(oldPath) == "" {
+		return fmt.Errorf("original folder path cannot be empty")
+	}
+
+	if strings.TrimSpace(newPath) == "" {
+		return fmt.Errorf("new folder path cannot be empty")
+	}
+
+	if err := client.RenameFolderCtx(ctx, hash, oldPath, newPath); err != nil {
+		return fmt.Errorf("failed to rename folder: %w", err)
+	}
+
+	sm.syncAfterModification(instanceID, client, "rename_torrent_folder")
+
+	return nil
+}
+
 // EditTorrentTracker edits a tracker URL for a specific torrent
 func (sm *SyncManager) EditTorrentTracker(ctx context.Context, instanceID int, hash, oldURL, newURL string) error {
 	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
