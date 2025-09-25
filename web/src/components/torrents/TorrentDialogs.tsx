@@ -23,6 +23,8 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog"
+import { Tree } from "@/components/ui/file-tree"
+import { pathsToTreeView } from "@/components/ui/file-tree-utils"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -593,6 +595,16 @@ export const RenameTorrentFileDialog = memo(function RenameTorrentFileDialog({
     return files.slice().sort((a, b) => a.name.localeCompare(b.name))
   }, [files])
 
+  const fileTreeElements = useMemo(() => {
+    const filePaths = sortedFiles.map(file => file.name)
+    if (filePaths.length === 0) {
+      return []
+    }
+    return pathsToTreeView(filePaths, {
+      selectablePaths: new Set(filePaths),
+    })
+  }, [sortedFiles])
+
   useEffect(() => {
     if (open && !wasOpen.current) {
       const defaultPath = sortedFiles[0]?.name ?? ""
@@ -654,35 +666,15 @@ export const RenameTorrentFileDialog = memo(function RenameTorrentFileDialog({
           ) : (
             <>
               <div className="space-y-2">
-                <Label htmlFor="filePath">Select File</Label>
-                <Select
-                  value={selectedPath || sortedFiles[0]?.name}
-                  onValueChange={handlePathChange}
-                >
-                  <SelectTrigger
-                    id="filePath"
-                    className="flex h-auto min-h-[2.75rem] w-full max-w-full items-start justify-between gap-2 whitespace-normal break-all px-3 py-2 text-left font-mono text-xs"
-                  >
-                    <SelectValue
-                      placeholder="Choose a file"
-                      className="whitespace-normal break-all text-left leading-5"
-                    />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-60 w-[calc(100vw-3rem)] max-w-xl sm:w-[32rem]">
-                    {sortedFiles.map(file => (
-                      <SelectItem
-                        key={file.name}
-                        value={file.name}
-                        title={file.name}
-                        className="whitespace-normal break-all text-left"
-                      >
-                        <span className="block font-mono text-xs whitespace-normal break-all">
-                          {file.name}
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label>Select File</Label>
+                <div className="rounded-md border p-2">
+                  <Tree
+                    className="h-64"
+                    elements={fileTreeElements}
+                    initialSelectedId={selectedPath || sortedFiles[0]?.name}
+                    onSelectionChange={handlePathChange}
+                  />
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -750,6 +742,17 @@ export const RenameTorrentFolderDialog = memo(function RenameTorrentFolderDialog
     return folders.slice().sort((a, b) => a.name.localeCompare(b.name))
   }, [folders])
 
+  const folderTreeElements = useMemo(() => {
+    const folderPaths = sortedFolders.map(folder => folder.name)
+    if (folderPaths.length === 0) {
+      return []
+    }
+    return pathsToTreeView(folderPaths, {
+      selectablePaths: new Set(folderPaths),
+      leafType: "folder",
+    })
+  }, [sortedFolders])
+
   useEffect(() => {
     if (open && !wasOpen.current) {
       const defaultPath = sortedFolders[0]?.name ?? ""
@@ -811,41 +814,15 @@ export const RenameTorrentFolderDialog = memo(function RenameTorrentFolderDialog
           ) : (
             <>
               <div className="space-y-2">
-                <Label htmlFor="folderPath">Select Folder</Label>
-                {sortedFolders.length > 1 ? (
-                  <Select
-                    value={selectedPath || sortedFolders[0]?.name}
-                    onValueChange={handlePathChange}
-                  >
-                    <SelectTrigger
-                      id="folderPath"
-                      className="flex h-auto min-h-[2.75rem] w-full max-w-full items-start justify-between gap-2 whitespace-normal break-all px-3 py-2 text-left font-mono text-xs"
-                    >
-                      <SelectValue
-                        placeholder="Choose a folder"
-                        className="whitespace-normal break-all text-left leading-5"
-                      />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-60 w-[calc(100vw-3rem)] max-w-xl sm:w-[32rem]">
-                      {sortedFolders.map(folder => (
-                        <SelectItem
-                          key={folder.name}
-                          value={folder.name}
-                          title={folder.name}
-                          className="whitespace-normal break-all text-left"
-                        >
-                          <span className="block font-mono text-xs whitespace-normal break-all">
-                            {folder.name}
-                          </span>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <div className="rounded-md border px-3 py-2 text-xs font-mono whitespace-normal break-all bg-muted/40" title={sortedFolders[0].name}>
-                    {sortedFolders[0].name}
-                  </div>
-                )}
+                <Label>Select Folder</Label>
+                <div className="rounded-md border p-2">
+                  <Tree
+                    className="h-64"
+                    elements={folderTreeElements}
+                    initialSelectedId={selectedPath || sortedFolders[0]?.name}
+                    onSelectionChange={handlePathChange}
+                  />
+                </div>
               </div>
 
               <div className="space-y-2">
