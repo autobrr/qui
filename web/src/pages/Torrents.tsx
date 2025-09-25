@@ -3,15 +3,16 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState, useCallback, useEffect, useRef } from "react"
-import { TorrentTableResponsive } from "@/components/torrents/TorrentTableResponsive"
 import { FilterSidebar } from "@/components/torrents/FilterSidebar"
 import { TorrentDetailsPanel } from "@/components/torrents/TorrentDetailsPanel"
+import { TorrentTableResponsive } from "@/components/torrents/TorrentTableResponsive"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { VisuallyHidden } from "@/components/ui/visually-hidden"
 import { usePersistedFilters } from "@/hooks/usePersistedFilters"
 import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSidebarState"
+import { cn } from "@/lib/utils"
 import type { Category, Torrent, TorrentCounts } from "@/types"
+import { useCallback, useEffect, useRef, useState } from "react"
 
 interface TorrentsProps {
   instanceId: number
@@ -107,9 +108,13 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
       setTorrentCounts(transformedCounts)
     }
 
-    // Store categories and tags - always set them even if empty to indicate data has been received
-    setCategories(categoriesData || {})
-    setTags(tagsData || [])
+    // Store categories and tags only when new data arrives; preserve previous values during pagination fetches
+    if (categoriesData !== undefined) {
+      setCategories(categoriesData)
+    }
+    if (tagsData !== undefined) {
+      setTags(tagsData)
+    }
   }, [instanceId])
 
   // Calculate total active filters for badge
@@ -122,28 +127,71 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
     return () => window.removeEventListener("qui-open-mobile-filters", handler)
   }, [])
 
+  // Close the mobile filters sheet when viewport switches to desktop layout
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(min-width: 768px)")
+
+    const handleChange = (event: MediaQueryListEvent) => {
+      if (event.matches) {
+        setMobileFilterOpen(false)
+      }
+    }
+
+    if (mediaQuery.matches) {
+      setMobileFilterOpen(false)
+    }
+
+    const supportsAddEventListener = typeof mediaQuery.addEventListener === "function"
+    if (supportsAddEventListener) {
+      mediaQuery.addEventListener("change", handleChange)
+    } else {
+      type MediaQueryListLegacy = MediaQueryList & {
+        addListener?: (listener: (event: MediaQueryListEvent) => void) => void
+        removeListener?: (listener: (event: MediaQueryListEvent) => void) => void
+      }
+
+      const legacyMediaQuery = mediaQuery as MediaQueryListLegacy
+      legacyMediaQuery.addListener?.(handleChange)
+
+      return () => legacyMediaQuery.removeListener?.(handleChange)
+    }
+
+    return () => mediaQuery.removeEventListener("change", handleChange)
+  }, [])
+
   return (
     <div className="flex h-full relative">
-      {/* Desktop Sidebar - hidden on mobile, with slide animation */}
-      <div className={`hidden xl:block w-full xl:max-w-xs overflow-hidden ${
-        filterSidebarCollapsed ? "-ml-80 opacity-0" : "ml-0 opacity-100" // animate left margin instead of width
-      } transition-all duration-300 ease-in-out`}>
-        <FilterSidebar
-          key={`filter-sidebar-${instanceId}`}
-          instanceId={instanceId}
-          selectedFilters={filters}
-          onFilterChange={debouncedSetFilters}
-          torrentCounts={torrentCounts}
-          categories={categories}
-          tags={tags}
-          isStaleData={lastInstanceId !== null && lastInstanceId !== instanceId}
-          isLoading={lastInstanceId !== null && lastInstanceId !== instanceId}
-        />
+      {/* Desktop Sidebar - slides in on tablet/desktop */}
+      <div
+        className={cn(
+          "hidden md:flex shrink-0 h-full overflow-hidden transition-[flex-basis] duration-300 ease-in-out",
+          filterSidebarCollapsed ? "basis-0" : "basis-[20rem]"
+        )}
+        aria-hidden={filterSidebarCollapsed}
+      >
+        <div
+          className={cn(
+            "w-[20rem] overflow-hidden transition-[transform,opacity] duration-300 ease-in-out",
+            filterSidebarCollapsed? "-translate-x-full opacity-0 pointer-events-none": "translate-x-0 opacity-100"
+          )}
+        >
+          <FilterSidebar
+            key={`filter-sidebar-${instanceId}`}
+            instanceId={instanceId}
+            selectedFilters={filters}
+            onFilterChange={debouncedSetFilters}
+            torrentCounts={torrentCounts}
+            categories={categories}
+            tags={tags}
+            isStaleData={lastInstanceId !== null && lastInstanceId !== instanceId}
+            isLoading={lastInstanceId !== null && lastInstanceId !== instanceId}
+          />
+        </div>
       </div>
 
       {/* Mobile Filter Sheet */}
       <Sheet open={mobileFilterOpen} onOpenChange={setMobileFilterOpen}>
-        <SheetContent side="left" className="p-0 w-[280px] sm:w-[320px] xl:hidden flex flex-col max-h-[100dvh]">
+        <SheetContent side="left" className="p-0 w-[280px] sm:w-[320px] md:hidden flex flex-col max-h-[100dvh]">
           <SheetHeader className="px-4 py-3 border-b">
             <SheetTitle className="text-lg font-semibold">Filters</SheetTitle>
           </SheetHeader>

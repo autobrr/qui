@@ -2,7 +2,7 @@
 
 # Build stage for Go binary
 # Use BUILDPLATFORM to build on native architecture (fast)
-FROM --platform=$BUILDPLATFORM golang:1.24-alpine3.22 AS go-builder
+FROM --platform=$BUILDPLATFORM golang:1.25-alpine3.22 AS go-builder
 
 # Install build dependencies
 RUN apk add --no-cache git make
@@ -45,16 +45,18 @@ RUN case "${TARGETARCH}" in \
 # Build the binary with ldflags for target platform
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="\
     -s -w \
-    -X main.Version=${VERSION} \
-    -X main.buildTime=${BUILDTIME} \
-    -X main.commit=${REVISION} \
+    -X github.com/autobrr/qui/internal/buildinfo.Version=${VERSION} \
+    -X github.com/autobrr/qui/internal/buildinfo.Date=${BUILDTIME} \
+    -X github.com/autobrr/qui/internal/buildinfo.Commit=${REVISION} \
     -X main.PolarOrgID=${POLAR_ORG_ID}" \
     -o qui ./cmd/qui
 
 # Final stage
-FROM alpine:3.22
+FROM alpine:latest AS runner
 
 LABEL org.opencontainers.image.source="https://github.com/autobrr/qui"
+LABEL org.opencontainers.image.licenses="GPL-2.0-or-later"
+LABEL org.opencontainers.image.base.name="alpine:latest"
 
 # Set environment variables for config paths
 ENV HOME="/config" \

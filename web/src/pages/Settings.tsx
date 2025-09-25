@@ -8,6 +8,7 @@ import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import { withBasePath } from "@/lib/base-url"
+import { formatDate } from "@/lib/utils"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -16,7 +17,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Copy, Plus, Trash2, ExternalLink } from "lucide-react"
-import { ThemeLicenseManager } from "@/components/themes/ThemeLicenseManager"
+import { LicenseManager } from "@/components/themes/LicenseManager.tsx"
 import { ThemeSelector } from "@/components/themes/ThemeSelector"
 import { ClientApiKeysManager } from "@/components/settings/ClientApiKeysManager"
 import { useSearch } from "@tanstack/react-router"
@@ -349,9 +350,9 @@ function ApiKeysManager() {
                     </Badge>
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    Created: {new Date(key.createdAt).toLocaleDateString()}
+                    Created: {formatDate(new Date(key.createdAt).getTime() / 1000)}
                     {key.lastUsedAt && (
-                      <> • Last used: {new Date(key.lastUsedAt).toLocaleDateString()}</>
+                      <> • Last used: {formatDate(new Date(key.lastUsedAt).getTime() / 1000)}</>
                     )}
                   </p>
                 </div>
@@ -436,7 +437,7 @@ export function Settings() {
 
 
         <TabsContent value="themes" className="space-y-4">
-          <ThemeLicenseManager />
+          <LicenseManager />
           <ThemeSelector />
         </TabsContent>
 

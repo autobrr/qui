@@ -16,7 +16,9 @@ import { Textarea } from "@/components/ui/textarea"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { api } from "@/lib/api"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
-import { formatBytes, formatDuration, formatTimestamp } from "@/lib/utils"
+import { resolveTorrentHashes } from "@/lib/torrent-utils"
+import { formatBytes, formatDuration, formatDateTime } from "@/lib/utils"
+import { renderTextWithLinks } from "@/lib/linkUtils"
 import type { Torrent } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import "flag-icons/css/flag-icons.min.css"
@@ -115,6 +117,8 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
   })
 
+  const { infohashV1: resolvedInfohashV1, infohashV2: resolvedInfohashV2 } = resolveTorrentHashes(properties as { hash?: string; infohash_v1?: string; infohash_v2?: string } | undefined, torrent ?? undefined)
+
   // Fetch torrent trackers
   const { data: trackers, isLoading: loadingTrackers } = useQuery({
     queryKey: ["torrent-trackers", instanceId, torrent?.hash],
@@ -134,21 +138,24 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   })
 
   // Fetch torrent peers with optimized refetch
+  const isPeersTabActive = activeTab === "peers"
+  const peersQueryKey = ["torrent-peers", instanceId, torrent?.hash] as const
+
   const { data: peersData, isLoading: loadingPeers } = useQuery<TorrentPeersResponse>({
-    queryKey: ["torrent-peers", instanceId, torrent?.hash],
+    queryKey: peersQueryKey,
     queryFn: async () => {
       const data = await api.getTorrentPeers(instanceId, torrent!.hash)
       return data as TorrentPeersResponse
     },
-    enabled: !!torrent && isReady,
-    // Only refetch when tab is active and document is visible
+    enabled: !!torrent && isReady && isPeersTabActive,
     refetchInterval: () => {
-      if (activeTab === "peers" && document.visibilityState === "visible" && isReady) {
+      if (!isPeersTabActive) return false
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
         return 2000
       }
       return false
     },
-    staleTime: activeTab === "peers" ? 0 : 30000, // No stale time when viewing peers
+    staleTime: 0,
     gcTime: 5 * 60 * 1000,
   })
 
@@ -434,34 +441,34 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                           <p className="text-xs text-muted-foreground">Info Hash v1</p>
                           <div className="flex items-center gap-2">
                             <div className="text-xs font-mono bg-background/50 p-2.5 rounded flex-1 break-all select-text">
-                              {properties.infohash_v1 && properties.infohash_v1.length > 0 ? properties.infohash_v1 : "N/A"}
+                              {resolvedInfohashV1 || "N/A"}
                             </div>
-                            {properties.infohash_v1 && properties.infohash_v1.length > 0 && (
+                            {resolvedInfohashV1 && (
                               <Button
                                 variant="ghost"
                                 size="icon"
                                 className="h-8 w-8 shrink-0"
-                                onClick={() => copyToClipboard(properties.infohash_v1, "Info Hash v1")}
+                                onClick={() => copyToClipboard(resolvedInfohashV1, "Info Hash v1")}
                               >
                                 <Copy className="h-3.5 w-3.5" />
                               </Button>
                             )}
                           </div>
                         </div>
-                        {properties.infohash_v2 && properties.infohash_v2.length > 0 && (
+                        {resolvedInfohashV2 && (
                           <>
                             <Separator className="opacity-50" />
                             <div className="space-y-2">
                               <p className="text-xs text-muted-foreground">Info Hash v2</p>
                               <div className="flex items-center gap-2">
                                 <div className="text-xs font-mono bg-background/50 p-2.5 rounded flex-1 break-all select-text">
-                                  {properties.infohash_v2}
+                                  {resolvedInfohashV2}
                                 </div>
                                 <Button
                                   variant="ghost"
                                   size="icon"
                                   className="h-8 w-8 shrink-0"
-                                  onClick={() => copyToClipboard(properties.infohash_v2, "Info Hash v2")}
+                                  onClick={() => copyToClipboard(resolvedInfohashV2, "Info Hash v2")}
                                 >
                                   <Copy className="h-3.5 w-3.5" />
                                 </Button>
@@ -479,15 +486,15 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                           <div className="space-y-1">
                             <p className="text-xs text-muted-foreground">Added</p>
-                            <p className="text-sm">{formatTimestamp(properties.addition_date)}</p>
+                            <p className="text-sm">{formatDateTime(properties.addition_date)}</p>
                           </div>
                           <div className="space-y-1">
                             <p className="text-xs text-muted-foreground">Completed</p>
-                            <p className="text-sm">{formatTimestamp(properties.completion_date)}</p>
+                            <p className="text-sm">{formatDateTime(properties.completion_date)}</p>
                           </div>
                           <div className="space-y-1">
                             <p className="text-xs text-muted-foreground">Created</p>
-                            <p className="text-sm">{formatTimestamp(properties.creation_date)}</p>
+                            <p className="text-sm">{formatDateTime(properties.creation_date)}</p>
                           </div>
                         </div>
                       </div>
@@ -501,7 +508,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                           {properties.created_by && (
                             <div>
                               <p className="text-xs text-muted-foreground mb-1">Created By</p>
-                              <p className="text-sm">{properties.created_by}</p>
+                              <div className="text-sm">{renderTextWithLinks(properties.created_by)}</div>
                             </div>
                           )}
                           {properties.comment && (
@@ -510,7 +517,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                               <div>
                                 <p className="text-xs text-muted-foreground mb-2">Comment</p>
                                 <div className="text-sm bg-background/50 p-3 rounded break-words">
-                                  {properties.comment}
+                                  {renderTextWithLinks(properties.comment)}
                                 </div>
                               </div>
                             </>

@@ -24,7 +24,7 @@ import {
   DropdownMenuLabel
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { useHasPremiumAccess } from "@/hooks/useThemeLicense";
+import { useHasPremiumAccess } from "@/hooks/useLicense.ts";
 
 // Constants
 const THEME_CHANGE_EVENT = "themechange";
@@ -177,7 +177,7 @@ export const ThemeToggle: React.FC = () => {
                       background: getThemePrimaryColor(theme) + " !important",
                     }}
                   />
-                  <div className="flex items-center gap-1.5 flex-1">
+                  <div className="flex items-center justify-between gap-1.5 flex-1">
                     <span>{theme.name}</span>
                     {isPremium && (
                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground font-medium">

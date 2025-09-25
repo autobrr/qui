@@ -47,7 +47,7 @@ export function useTorrentsList(
   }, [instanceId, filterKey, searchKey, sort, order])
 
   // Query for torrents - backend handles stale-while-revalidate
-  const { data, isLoading, isFetching } = useQuery<TorrentResponse>({
+  const { data, isLoading, isFetching, isPlaceholderData } = useQuery<TorrentResponse>({
     queryKey: ["torrents-list", instanceId, currentPage, filters, search, sort, order],
     queryFn: () => {
       return api.getTorrents(instanceId, {
@@ -62,6 +62,8 @@ export function useTorrentsList(
     // Trust backend cache - it returns immediately with stale data if needed
     staleTime: 0, // Always check with backend (it decides if cache is fresh)
     gcTime: 300000, // Keep in React Query cache for 5 minutes for navigation
+    // Reuse the previous page's data while the next page is loading so the UI doesn't flash empty state
+    placeholderData: currentPage > 0 ? ((previousData) => previousData) : undefined,
     // Only poll the first page to get fresh data - don't poll pagination pages
     refetchInterval: currentPage === 0 ? 3000 : false,
     refetchIntervalInBackground: false, // Don't poll when tab is not active
@@ -70,46 +72,73 @@ export function useTorrentsList(
 
   // Update torrents when data arrives or changes (including optimistic updates)
   useEffect(() => {
-    if (data?.torrents) {
-      // Check if this is a new page load or data update for current page
-      const isNewPageLoad = currentPage !== lastProcessedPage
-      const isDataUpdate = !isNewPageLoad // Same page, but data changed (optimistic updates)
-
-      // Update last known total whenever we get data
-      if (data.total !== undefined) {
-        setLastKnownTotal(data.total)
-      }
-
-      // For first page or true data updates (optimistic updates from mutations)
-      if (currentPage === 0 || (isDataUpdate && currentPage === 0)) {
-        // First page OR data update (optimistic updates): replace all
-        setAllTorrents(data.torrents)
-        // Use backend's HasMore field for accurate pagination
-        setHasLoadedAll(!data.hasMore)
-
-        // Mark this page as processed
-        if (isNewPageLoad) {
-          setLastProcessedPage(currentPage)
-        }
-      } else if (isNewPageLoad && currentPage > 0) {
-        // Mark this page as processed FIRST to prevent double processing
-        setLastProcessedPage(currentPage)
-
-        // Append to existing for pagination
-        setAllTorrents(prev => {
-          const updatedTorrents = [...prev, ...data.torrents]
-          return updatedTorrents
-        })
-
-        // Use backend's HasMore field for accurate pagination
-        if (!data.hasMore) {
-          setHasLoadedAll(true)
-        }
-      }
-
-      setIsLoadingMore(false)
+    // When filters/search/sort change we reset lastProcessedPage to -1. Skip placeholder
+    // data in that window so we don't repopulate the table with stale results from the
+    // previous query while the new request is in-flight.
+    if (isPlaceholderData && (lastProcessedPage === -1 || currentPage === 0)) {
+      return
     }
-  }, [data, currentPage, pageSize, lastProcessedPage])
+
+    if (currentPage > 0 && isFetching && isPlaceholderData) {
+      return
+    }
+
+    if (!data) {
+      return
+    }
+
+    if (data.total !== undefined) {
+      setLastKnownTotal(data.total)
+    }
+
+    // When the first page reports zero results, immediately clear the list so
+    // downstream UIs don't render stale rows from the previous query.
+    if (currentPage === 0 && data.total === 0) {
+      setAllTorrents([])
+      setHasLoadedAll(true)
+      setLastProcessedPage(currentPage)
+      setIsLoadingMore(false)
+      return
+    }
+
+    if (!data.torrents) {
+      setIsLoadingMore(false)
+      return
+    }
+
+    // Check if this is a new page load or data update for current page
+    const isNewPageLoad = currentPage !== lastProcessedPage
+    const isDataUpdate = !isNewPageLoad // Same page, but data changed (optimistic updates)
+
+    // For first page or true data updates (optimistic updates from mutations)
+    if (currentPage === 0 || (isDataUpdate && currentPage === 0)) {
+      // First page OR data update (optimistic updates): replace all
+      setAllTorrents(data.torrents)
+      // Use backend's HasMore field for accurate pagination
+      setHasLoadedAll(!data.hasMore)
+
+      // Mark this page as processed
+      if (isNewPageLoad) {
+        setLastProcessedPage(currentPage)
+      }
+    } else if (isNewPageLoad && currentPage > 0) {
+      // Mark this page as processed FIRST to prevent double processing
+      setLastProcessedPage(currentPage)
+
+      // Append to existing for pagination
+      setAllTorrents(prev => {
+        const updatedTorrents = [...prev, ...data.torrents]
+        return updatedTorrents
+      })
+
+      // Use backend's HasMore field for accurate pagination
+      if (!data.hasMore) {
+        setHasLoadedAll(true)
+      }
+    }
+
+    setIsLoadingMore(false)
+  }, [data, currentPage, lastProcessedPage, isFetching, isPlaceholderData])
 
   // Load more function for pagination - following TanStack Query best practices
   const loadMore = () => {
