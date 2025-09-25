@@ -2014,6 +2014,59 @@ func (sm *SyncManager) SetLocation(ctx context.Context, instanceID int, hashes [
 	return nil
 }
 
+// RenameTorrent renames a torrent by hash
+func (sm *SyncManager) RenameTorrent(ctx context.Context, instanceID int, hash, name string) error {
+	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		return err
+	}
+
+	if err := sm.validateTorrentsExist(client, []string{hash}, "rename torrent"); err != nil {
+		return err
+	}
+
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" {
+		return fmt.Errorf("torrent name cannot be empty")
+	}
+
+	if err := client.SetTorrentNameCtx(ctx, hash, trimmed); err != nil {
+		return fmt.Errorf("failed to rename torrent: %w", err)
+	}
+
+	sm.syncAfterModification(instanceID, client, "rename_torrent")
+
+	return nil
+}
+
+// RenameTorrentFile renames a file inside a torrent
+func (sm *SyncManager) RenameTorrentFile(ctx context.Context, instanceID int, hash, oldPath, newPath string) error {
+	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		return err
+	}
+
+	if err := sm.validateTorrentsExist(client, []string{hash}, "rename file"); err != nil {
+		return err
+	}
+
+	if strings.TrimSpace(oldPath) == "" {
+		return fmt.Errorf("original file path cannot be empty")
+	}
+
+	if strings.TrimSpace(newPath) == "" {
+		return fmt.Errorf("new file path cannot be empty")
+	}
+
+	if err := client.RenameFileCtx(ctx, hash, oldPath, newPath); err != nil {
+		return fmt.Errorf("failed to rename file: %w", err)
+	}
+
+	sm.syncAfterModification(instanceID, client, "rename_torrent_file")
+
+	return nil
+}
+
 // EditTorrentTracker edits a tracker URL for a specific torrent
 func (sm *SyncManager) EditTorrentTracker(ctx context.Context, instanceID int, hash, oldURL, newURL string) error {
 	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)

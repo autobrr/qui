@@ -810,6 +810,68 @@ paths:
                 items:
                   $ref: '#/components/schemas/TorrentFile'
 
+  /api/instances/{instanceId}/torrents/{hash}/rename:
+    put:
+      tags:
+        - Torrent Details
+      summary: Rename torrent
+      description: Update the display name for a torrent
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/hash'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  description: New name to assign to the torrent
+      responses:
+        '200':
+          description: Torrent renamed successfully
+        '400':
+          description: Invalid request
+        '500':
+          description: Failed to rename torrent
+
+  /api/instances/{instanceId}/torrents/{hash}/rename-file:
+    put:
+      tags:
+        - Torrent Details
+      summary: Rename torrent file
+      description: Rename a specific file within a torrent
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/hash'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - oldPath
+                - newPath
+              properties:
+                oldPath:
+                  type: string
+                  description: Existing relative path of the file inside the torrent
+                newPath:
+                  type: string
+                  description: New relative path (including file name) to apply
+      responses:
+        '200':
+          description: Torrent file renamed successfully
+        '400':
+          description: Invalid request
+        '500':
+          description: Failed to rename torrent file
+
   /api/instances/{instanceId}/torrents/{hash}/peers:
     get:
       tags:
