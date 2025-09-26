@@ -646,10 +646,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     },
   })
 
-  // Force virtualizer to recalculate when count changes
+  // Force virtualizer to recalculate when count or column visibility changes
   useEffect(() => {
     virtualizer.measure()
-  }, [safeLoadedRows, virtualizer])
+  }, [safeLoadedRows, virtualizer, columnVisibility])
 
   const virtualRows = virtualizer.getVirtualItems()
 
