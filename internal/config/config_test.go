@@ -4,6 +4,8 @@
 package config
 
 import (
+	"encoding/hex"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,164 +13,116 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/domain"
 )
 
-func TestDataDirConfiguration(t *testing.T) {
+func TestDatabasePathResolution(t *testing.T) {
 	tests := []struct {
-		name           string
-		configContent  string
-		envVar         string
-		expectedInPath string
+		name    string
+		prepare func(t *testing.T, tmpDir string) (configPath string, envDataDir string, expectedDBPath string)
 	}{
 		{
 			name: "default_next_to_config",
-			configContent: `
-host = "localhost"
-port = 8080
-sessionSecret = "test-secret"`,
-			expectedInPath: "qui.db",
+			prepare: func(t *testing.T, tmpDir string) (string, string, string) {
+				configPath := filepath.Join(tmpDir, "config.toml")
+				content := "host = \"localhost\"\nport = 8080\nsessionSecret = \"test-secret\"\n"
+				require.NoError(t, os.WriteFile(configPath, []byte(content), 0o644))
+				return configPath, "", filepath.Join(tmpDir, "qui.db")
+			},
 		},
 		{
-			name: "explicit_in_config",
-			configContent: `
-host = "localhost"
-port = 8080
-sessionSecret = "test-secret"
-dataDir = "/custom/path"`,
-			expectedInPath: filepath.ToSlash("/custom/path/qui.db"),
+			name: "explicit_data_dir_in_config",
+			prepare: func(t *testing.T, tmpDir string) (string, string, string) {
+				configPath := filepath.Join(tmpDir, "config.toml")
+				dataDir := filepath.Join(tmpDir, "data")
+				require.NoError(t, os.MkdirAll(dataDir, 0o755))
+				content := fmt.Sprintf("host = \"localhost\"\nport = 8080\nsessionSecret = \"test-secret\"\ndataDir = %q\n", dataDir)
+				require.NoError(t, os.WriteFile(configPath, []byte(content), 0o644))
+				return configPath, "", filepath.Join(dataDir, "qui.db")
+			},
 		},
 		{
 			name: "env_var_override",
-			configContent: `
-host = "localhost"
-port = 8080
-sessionSecret = "test-secret"
-dataDir = "/config/path"`,
-			envVar:         "/env/override",
-			expectedInPath: filepath.ToSlash("/env/override/qui.db"),
+			prepare: func(t *testing.T, tmpDir string) (string, string, string) {
+				configPath := filepath.Join(tmpDir, "config.toml")
+				configDataDir := filepath.Join(tmpDir, "config-data")
+				envDataDir := filepath.Join(tmpDir, "env-data")
+				require.NoError(t, os.MkdirAll(configDataDir, 0o755))
+				require.NoError(t, os.MkdirAll(envDataDir, 0o755))
+				content := fmt.Sprintf("host = \"localhost\"\nport = 8080\nsessionSecret = \"test-secret\"\ndataDir = %q\n", configDataDir)
+				require.NoError(t, os.WriteFile(configPath, []byte(content), 0o644))
+				return configPath, envDataDir, filepath.Join(envDataDir, "qui.db")
+			},
 		},
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			// Setup
 			tmpDir := t.TempDir()
-			configPath := filepath.Join(tmpDir, "config.toml")
-			err := os.WriteFile(configPath, []byte(tt.configContent), 0644)
-			require.NoError(t, err)
-
-			// Set env var if specified
-			if tt.envVar != "" {
-				os.Setenv(envPrefix+"DATA_DIR", tt.envVar)
-				defer os.Unsetenv(envPrefix + "DATA_DIR")
+			configPath, envValue, expectedDBPath := tt.prepare(t, tmpDir)
+			if envValue != "" {
+				t.Setenv(envPrefix+"DATA_DIR", envValue)
 			}
 
-			// Create config
 			cfg, err := New(configPath)
 			require.NoError(t, err)
 
-			// Check database path
-			dbPath := cfg.GetDatabasePath()
-			if strings.HasPrefix(tt.expectedInPath, "/") {
-				// For Unix-style absolute paths, normalize both for comparison
-				normalizedDbPath := filepath.ToSlash(dbPath)
-				assert.Contains(t, normalizedDbPath, tt.expectedInPath)
-			} else {
-				assert.Contains(t, dbPath, tt.expectedInPath)
-			}
+			assert.Equal(t, filepath.Clean(expectedDBPath), filepath.Clean(cfg.GetDatabasePath()))
 		})
 	}
 }
 
-func TestDataDirBackwardCompatibility(t *testing.T) {
-	// Ensure existing configs work without dataDir
-	tmpDir := t.TempDir()
-	configPath := filepath.Join(tmpDir, "config.toml")
-
-	configContent := `
-host = "localhost"
-port = 8080
-sessionSecret = "existing-secret"`
-
-	err := os.WriteFile(configPath, []byte(configContent), 0644)
-	require.NoError(t, err)
-
-	cfg, err := New(configPath)
-	require.NoError(t, err)
-
-	// Database should be next to config (old behavior)
-	dbPath := cfg.GetDatabasePath()
-	expectedPath := filepath.Join(tmpDir, "qui.db")
-	assert.Equal(t, expectedPath, dbPath)
-}
-
-func TestEnvironmentVariablePrecedence(t *testing.T) {
-	tmpDir := t.TempDir()
-	configPath := filepath.Join(tmpDir, "config.toml")
-
-	configContent := `
-host = "localhost"
-port = 8080
-sessionSecret = "test-secret"
-dataDir = "/config/file/path"`
-
-	err := os.WriteFile(configPath, []byte(configContent), 0644)
-	require.NoError(t, err)
-
-	// Env var should override config
-	os.Setenv(envPrefix+"DATA_DIR", "/env/var/path")
-	defer os.Unsetenv(envPrefix + "DATA_DIR")
-
-	cfg, err := New(configPath)
-	require.NoError(t, err)
-
-	assert.Equal(t, filepath.ToSlash("/env/var/path/qui.db"), filepath.ToSlash(cfg.GetDatabasePath()))
-}
-
-func TestGenerateSecureToken(t *testing.T) {
+func TestGenerateSecureTokenHexOutput(t *testing.T) {
 	tests := []struct {
 		name   string
 		length int
 	}{
-		{
-			name:   "standard_32_bytes",
-			length: 32,
-		},
-		{
-			name:   "small_token",
-			length: 8,
-		},
+		{name: "standard_32_bytes", length: 32},
+		{name: "small_token", length: 8},
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			token, err := generateSecureToken(tt.length)
 			require.NoError(t, err)
-			assert.NotEmpty(t, token)
-			// Hex encoding produces 2 characters per byte
+			require.NotEmpty(t, token)
+
 			assert.Len(t, token, tt.length*2)
+			_, err = hex.DecodeString(token)
+			require.NoError(t, err)
 		})
 	}
 }
 
-func TestEncryptionKeySize(t *testing.T) {
-	tmpDir := t.TempDir()
-	configPath := filepath.Join(tmpDir, "config.toml")
+func TestGetEncryptionKey(t *testing.T) {
+	tests := []struct {
+		name   string
+		secret string
+	}{
+		{name: "truncates_long_secret", secret: strings.Repeat("a", encryptionKeySize+8)},
+		{name: "pads_short_secret", secret: "short"},
+	}
 
-	configContent := `
-host = "localhost"
-port = 8080
-sessionSecret = "very-long-session-secret-that-is-over-32-bytes-long-for-testing"`
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &AppConfig{Config: &domain.Config{SessionSecret: tt.secret}}
 
-	err := os.WriteFile(configPath, []byte(configContent), 0644)
-	require.NoError(t, err)
+			key := cfg.GetEncryptionKey()
+			require.Len(t, key, encryptionKeySize)
 
-	cfg, err := New(configPath)
-	require.NoError(t, err)
-
-	key := cfg.GetEncryptionKey()
-	assert.Len(t, key, encryptionKeySize)
-	assert.Equal(t, 32, encryptionKeySize)
+			if len(tt.secret) >= encryptionKeySize {
+				assert.Equal(t, []byte(tt.secret[:encryptionKeySize]), key)
+			} else {
+				expected := make([]byte, encryptionKeySize)
+				copy(expected, []byte(tt.secret))
+				assert.Equal(t, expected, key)
+			}
+		})
+	}
 }
 
 func TestConfigDirResolution(t *testing.T) {
@@ -211,16 +165,17 @@ func TestConfigDirResolution(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			tmpDir := t.TempDir()
 			inputPath := filepath.Join(tmpDir, filepath.Base(tt.input))
 
 			if tt.setupFile {
 				if tt.fileIsDir {
-					err := os.MkdirAll(inputPath, 0755)
+					err := os.MkdirAll(inputPath, 0o755)
 					require.NoError(t, err)
 				} else {
-					err := os.WriteFile(inputPath, []byte("test"), 0644)
+					err := os.WriteFile(inputPath, []byte("test"), 0o644)
 					require.NoError(t, err)
 				}
 			}
@@ -233,48 +188,44 @@ func TestConfigDirResolution(t *testing.T) {
 	}
 }
 
-func TestConfigDirBackwardCompatibility(t *testing.T) {
-	tmpDir := t.TempDir()
-	configPath := filepath.Join(tmpDir, "myconfig.toml")
+func TestNewLoadsConfigFromFileOrDirectory(t *testing.T) {
+	tests := []struct {
+		name    string
+		prepare func(t *testing.T, tmpDir string) (inputPath string, expectedHost string, expectedPort int, expectedDBPath string)
+	}{
+		{
+			name: "config_file_path",
+			prepare: func(t *testing.T, tmpDir string) (string, string, int, string) {
+				configPath := filepath.Join(tmpDir, "myconfig.toml")
+				content := "host = \"localhost\"\nport = 8080\nsessionSecret = \"test-secret\"\n"
+				require.NoError(t, os.WriteFile(configPath, []byte(content), 0o644))
+				return configPath, "localhost", 8080, filepath.Join(tmpDir, "qui.db")
+			},
+		},
+		{
+			name: "config_directory_path",
+			prepare: func(t *testing.T, tmpDir string) (string, string, int, string) {
+				configDir := filepath.Join(tmpDir, "configdir")
+				require.NoError(t, os.MkdirAll(configDir, 0o755))
+				content := "host = \"0.0.0.0\"\nport = 9090\nsessionSecret = \"dir-secret\"\n"
+				require.NoError(t, os.WriteFile(filepath.Join(configDir, "config.toml"), []byte(content), 0o644))
+				return configDir, "0.0.0.0", 9090, filepath.Join(configDir, "qui.db")
+			},
+		},
+	}
 
-	configContent := `
-host = "localhost"
-port = 8080
-sessionSecret = "test-secret"`
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			inputPath, expectedHost, expectedPort, expectedDBPath := tt.prepare(t, tmpDir)
 
-	err := os.WriteFile(configPath, []byte(configContent), 0644)
-	require.NoError(t, err)
+			cfg, err := New(inputPath)
+			require.NoError(t, err)
 
-	// Test with direct file path (old behavior)
-	cfg, err := New(configPath)
-	require.NoError(t, err)
-	assert.Equal(t, "localhost", cfg.Config.Host)
-	assert.Equal(t, 8080, cfg.Config.Port)
-}
-
-func TestConfigDirNewBehavior(t *testing.T) {
-	tmpDir := t.TempDir()
-	configDir := filepath.Join(tmpDir, "config")
-	err := os.MkdirAll(configDir, 0755)
-	require.NoError(t, err)
-
-	configPath := filepath.Join(configDir, "config.toml")
-	configContent := `
-host = "0.0.0.0"
-port = 9090
-sessionSecret = "dir-test-secret"`
-
-	err = os.WriteFile(configPath, []byte(configContent), 0644)
-	require.NoError(t, err)
-
-	// Test with directory path (new behavior)
-	cfg, err := New(configDir)
-	require.NoError(t, err)
-	assert.Equal(t, "0.0.0.0", cfg.Config.Host)
-	assert.Equal(t, 9090, cfg.Config.Port)
-
-	// Database should be in the same directory as the config
-	dbPath := cfg.GetDatabasePath()
-	expectedPath := filepath.Join(configDir, "qui.db")
-	assert.Equal(t, expectedPath, dbPath)
+			assert.Equal(t, expectedHost, cfg.Config.Host)
+			assert.Equal(t, expectedPort, cfg.Config.Port)
+			assert.Equal(t, filepath.Clean(expectedDBPath), filepath.Clean(cfg.GetDatabasePath()))
+		})
+	}
 }

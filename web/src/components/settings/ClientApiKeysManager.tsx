@@ -3,26 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useMemo, useState } from "react"
-import type { ReactNode } from "react"
-import { useForm } from "@tanstack/react-form"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { api } from "@/lib/api"
-import { toast } from "sonner"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Badge } from "@/components/ui/badge"
-import { Copy, Plus, Trash2, Server, Globe } from "lucide-react"
-import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger
-} from "@/components/ui/dialog"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,6 +13,19 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from "@/components/ui/alert-dialog"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import {
   Select,
   SelectContent,
@@ -40,7 +33,14 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { api } from "@/lib/api"
+import { withBasePath } from "@/lib/base-url"
+import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
+import { useForm } from "@tanstack/react-form"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { Copy, Plus, Server, Trash2 } from "lucide-react"
+import { useState } from "react"
+import { toast } from "sonner"
 
 interface NewClientAPIKey {
   key: string
@@ -58,72 +58,6 @@ interface NewClientAPIKey {
   proxyUrl: string
 }
 
-const INLINE_CODE_CLASS = "rounded bg-muted px-1 py-0.5 font-mono text-xs"
-const DEFAULT_QUI_URL_EXAMPLE = "http://localhost:7476"
-const ARR_CLIENTS = new Set(["sonarr", "radarr", "lidarr"])
-
-function renderProxyInstructions(clientName: string, proxyUrl: string, instanceHost?: string): ReactNode {
-  const normalizedName = clientName.trim().toLowerCase()
-
-  if (ARR_CLIENTS.has(normalizedName)) {
-    return (
-      <dl className="space-y-1.5 text-xs">
-        <div className="flex gap-2">
-          <dt className="font-medium text-muted-foreground min-w-20">Host:</dt>
-          <dd className="text-foreground">Your qui server (e.g., 100.69.80.112 or domain.tld)</dd>
-        </div>
-        <div className="flex gap-2">
-          <dt className="font-medium text-muted-foreground min-w-20">Port:</dt>
-          <dd className="text-foreground">Your qui port</dd>
-        </div>
-        <div className="flex gap-2">
-          <dt className="font-medium text-muted-foreground min-w-20">URL Base:</dt>
-          <dd className="text-foreground">
-            <code className={INLINE_CODE_CLASS}>{proxyUrl}</code>
-            <span className="text-muted-foreground ml-1">(Show Advanced)</span>
-          </dd>
-        </div>
-      </dl>
-    )
-  }
-
-  if (normalizedName === "autobrr") {
-    return (
-      <div className="text-xs space-y-1.5">
-        <p className="text-foreground">
-          In Autobrr, set the qBittorrent host to:
-        </p>
-        <p className="text-muted-foreground">
-          <span className="text-foreground">Your qui server URL</span> + <code className={INLINE_CODE_CLASS}>{proxyUrl}</code>
-        </p>
-        <p className="text-muted-foreground">
-          Example: <code className={INLINE_CODE_CLASS}>{`${DEFAULT_QUI_URL_EXAMPLE}${proxyUrl}`}</code>
-        </p>
-      </div>
-    )
-  }
-
-  const hostHint = instanceHost ? (
-    <code className={INLINE_CODE_CLASS}>{instanceHost}</code>
-  ) : (
-    <span>your current qBittorrent host</span>
-  )
-
-  return (
-    <div className="text-xs space-y-1.5">
-      <p className="text-foreground">
-        Replace {hostHint} with:
-      </p>
-      <p className="text-muted-foreground">
-        <span className="text-foreground">Your qui server URL</span> + <code className={INLINE_CODE_CLASS}>{proxyUrl}</code>
-      </p>
-      <p className="text-muted-foreground">
-        Example: <code className={INLINE_CODE_CLASS}>{`${DEFAULT_QUI_URL_EXAMPLE}${proxyUrl}`}</code>
-      </p>
-    </div>
-  )
-}
-
 export function ClientApiKeysManager() {
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [deleteKeyId, setDeleteKeyId] = useState<number | null>(null)
@@ -131,17 +65,12 @@ export function ClientApiKeysManager() {
   const queryClient = useQueryClient()
   const { formatDate } = useDateTimeFormatters()
 
-  const instructionsContent = useMemo(() => {
-    if (!newKey) {
-      return null
-    }
-
-    return renderProxyInstructions(
-      newKey.clientApiKey.clientName,
-      newKey.proxyUrl,
-      newKey.instance?.host
-    )
-  }, [newKey])
+  // Get the current browser URL to construct full proxy URL
+  const getFullProxyUrl = (proxyPath: string) => {
+    const { protocol, hostname, port } = window.location
+    const origin = port ? `${protocol}//${hostname}:${port}` : `${protocol}//${hostname}`
+    return `${origin}${withBasePath(proxyPath)}`
+  }
 
   // Fetch client API keys
   const { data: clientApiKeys, isLoading, error } = useQuery({
@@ -216,30 +145,25 @@ export function ClientApiKeysManager() {
     },
   })
 
-  const commonClientNames = [
-    "autobrr",
-    "Sonarr",
-    "Radarr",
-    "Lidarr",
-    "Prowlarr",
-    "Bazarr",
-    "Readarr",
-  ]
+  const handleDialogOpenChange = (open: boolean) => {
+    setShowCreateDialog(open)
+    if (!open) {
+      setNewKey(null)
+      form.reset()
+    }
+  }
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          Client API keys allow external applications like autobrr and Sonarr/Radarr to connect through qui to your qBittorrent instances.
-        </p>
-        <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+      <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:justify-end">
+        <Dialog open={showCreateDialog} onOpenChange={handleDialogOpenChange}>
           <DialogTrigger asChild>
-            <Button size="sm">
+            <Button size="sm" className="w-full sm:w-auto">
               <Plus className="mr-2 h-4 w-4" />
               Create Client API Key
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-2xl">
+          <DialogContent className="sm:max-w-xl max-w-full">
             <DialogHeader>
               <DialogTitle>Create Client API Key</DialogTitle>
               <DialogDescription>
@@ -249,26 +173,26 @@ export function ClientApiKeysManager() {
 
             {newKey ? (
               <div className="space-y-4">
-                <Card>
-                  <CardHeader className="pb-3">
+                <Card className="w-full">
+                  <CardHeader>
                     <CardTitle className="text-base">API Key Created</CardTitle>
                     <CardDescription>
-                      Save this proxy URL now. You won't be able to see it again.
+                      This information is shown only once. Store it in your password manager before closing the dialog.
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     <div>
                       <Label htmlFor="proxy-url" className="text-xs uppercase text-muted-foreground">Proxy URL</Label>
-                      <div className="mt-1 flex items-center gap-2">
-                        <code id="proxy-url" className="flex-1 rounded bg-muted px-2 py-1.5 text-xs font-mono break-all">
-                          {newKey.proxyUrl}
+                      <div className="mt-1 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
+                        <code id="proxy-url" className="w-full rounded bg-muted px-2 py-1.5 text-xs font-mono break-all">
+                          {getFullProxyUrl(newKey.proxyUrl)}
                         </code>
                         <Button
                           size="icon"
                           variant="outline"
-                          className="h-7 w-7"
+                          className="h-7 w-7 justify-self-start sm:justify-self-end"
                           onClick={() => {
-                            navigator.clipboard.writeText(newKey.proxyUrl)
+                            navigator.clipboard.writeText(getFullProxyUrl(newKey.proxyUrl))
                             toast.success("Proxy URL copied to clipboard")
                           }}
                           title="Copy proxy URL"
@@ -277,21 +201,11 @@ export function ClientApiKeysManager() {
                         </Button>
                       </div>
                     </div>
-
-                    <div className="border rounded-md p-3 space-y-2">
-                      <h4 className="text-xs font-semibold uppercase text-muted-foreground">Setup Instructions</h4>
-                      <div className="text-sm space-y-1">
-                        {instructionsContent}
-                      </div>
-                    </div>
                   </CardContent>
                 </Card>
 
                 <Button
-                  onClick={() => {
-                    setNewKey(null)
-                    setShowCreateDialog(false)
-                  }}
+                  onClick={() => handleDialogOpenChange(false)}
                   className="w-full"
                 >
                   Done
@@ -317,27 +231,13 @@ export function ClientApiKeysManager() {
                       <div className="space-y-2">
                         <Input
                           id="clientName"
-                          placeholder="e.g., Sonarr, Radarr"
+                          placeholder="e.g., autobrr, tqm, sonarr, radarr, cross-seed"
                           value={field.state.value}
                           onBlur={field.handleBlur}
                           onChange={(e) => field.handleChange(e.target.value)}
                           data-1p-ignore
                           autoComplete='off'
                         />
-                        <div className="flex flex-wrap gap-1">
-                          {commonClientNames.map((name) => (
-                            <Button
-                              key={name}
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="h-6 text-xs"
-                              onClick={() => field.handleChange(name)}
-                            >
-                              {name}
-                            </Button>
-                          ))}
-                        </div>
                       </div>
                       {field.state.meta.isTouched && field.state.meta.errors[0] && (
                         <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
@@ -420,49 +320,57 @@ export function ClientApiKeysManager() {
             {keys.map((key) => (
               <div
                 key={key.id}
-                className="flex items-center justify-between rounded-lg border p-4"
+                className="rounded-lg border bg-card p-4 transition-colors"
               >
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium">{key.clientName}</span>
-                    <Badge variant="outline" className="text-xs">
-                      ID: {key.id}
-                    </Badge>
-                    {key.instance ? (
-                      <Badge variant="secondary" className="text-xs flex items-center gap-1">
-                        <Server className="h-3 w-3" />
-                        {key.instance.name}
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap items-center gap-2 text-sm">
+                      <span className="font-medium text-base sm:text-lg">{key.clientName}</span>
+                      <Badge variant="outline" className="text-xs">
+                        ID: {key.id}
                       </Badge>
-                    ) : (
-                      <Badge variant="destructive" className="text-xs">
-                        Instance Deleted
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="text-sm text-muted-foreground space-y-1">
-                    <p>
-                      Created: {formatDate(new Date(key.createdAt))}
-                      {key.lastUsedAt && (
-                        <> • Last used: {formatDate(new Date(key.lastUsedAt))}</>
+                      {key.instance ? (
+                        <Badge variant="secondary" className="text-xs flex items-center gap-1">
+                          <Server className="h-3 w-3" />
+                          {key.instance.name}
+                        </Badge>
+                      ) : (
+                        <Badge variant="destructive" className="text-xs">
+                          Instance Deleted
+                        </Badge>
                       )}
-                    </p>
-                    {key.instance && (
-                      <div className="flex items-center gap-1 text-xs">
-                        <Globe className="h-3 w-3" />
-                        <code className="bg-muted px-1 rounded">/proxy/{"{api-key}"}</code>
-                        <span>→</span>
-                        <span>{key.instance.host}</span>
-                      </div>
-                    )}
+                    </div>
+
+                    <div className="space-y-1 text-xs text-muted-foreground">
+                      <p className="flex flex-wrap items-center gap-1">
+                        <span className="text-foreground">Created:</span>
+                        <span>{formatDate(new Date(key.createdAt))}</span>
+                        {key.lastUsedAt && (
+                          <>
+                            <span>•</span>
+                            <span className="text-foreground">Last used:</span>
+                            <span>{formatDate(new Date(key.lastUsedAt))}</span>
+                          </>
+                        )}
+                      </p>
+                      {key.instance?.host && (
+                        <p className="break-all">
+                          <span className="text-foreground">Host:</span> {key.instance.host}
+                        </p>
+                      )}
+                    </div>
                   </div>
+
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-9 w-9 self-end text-destructive hover:text-destructive focus-visible:ring-destructive sm:self-start"
+                    onClick={() => setDeleteKeyId(key.id)}
+                    aria-label={`Delete API key ${key.clientName}`}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
                 </div>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={() => setDeleteKeyId(key.id)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
               </div>
             ))}
 

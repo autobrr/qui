@@ -1073,12 +1073,12 @@ export function TorrentCardsMobile({
                     <ChevronsUpDown className="h-3 w-3 text-muted-foreground ml-1 mt-0.5 opacity-60 flex-shrink-0" />
                   </button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-64" side="bottom" align="start">
+                <DropdownMenuContent className="w-64 mt-2" side="bottom" align="start">
                   <DropdownMenuLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                     Switch Instance
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <div className="max-h-64 overflow-y-auto">
+                  <div className="max-h-64 overflow-y-auto space-y-2">
                     {instances.map((instance) => (
                       <DropdownMenuItem key={instance.id} asChild>
                         <Link
