@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Logo } from "@/components/ui/Logo"
 import { Separator } from "@/components/ui/separator"
 import { SwizzinLogo } from "@/components/ui/SwizzinLogo"
+import { UpdateBanner } from "@/components/ui/UpdateBanner"
 import { useAuth } from "@/hooks/useAuth"
 import { useTheme } from "@/hooks/useTheme"
 import { api } from "@/lib/api"
@@ -130,6 +131,8 @@ export function Sidebar() {
       </nav>
 
       <div className="mt-auto space-y-3 p-3">
+        <UpdateBanner />
+
         <Button
           variant="ghost"
           className="w-full justify-start"

@@ -6,6 +6,8 @@ package polar
 import (
 	"context"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestNewClient(t *testing.T) {
@@ -28,14 +30,10 @@ func TestNewClient(t *testing.T) {
 }
 
 func TestSetOrganizationID(t *testing.T) {
-	client := NewClient()
 	testOrgID := "test-org-123"
+	client := NewClient(WithOrganizationID(testOrgID))
 
-	client.SetOrganizationID(testOrgID)
-
-	if client.organizationID != testOrgID {
-		t.Errorf("Organization ID = %v, want %v", client.organizationID, testOrgID)
-	}
+	assert.Equal(t, testOrgID, client.organizationID)
 }
 
 func TestIsClientConfigured(t *testing.T) {
@@ -58,13 +56,10 @@ func TestIsClientConfigured(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client := NewClient()
-			client.SetOrganizationID(tt.orgID)
+			client := NewClient(WithOrganizationID(tt.orgID))
 
 			result := client.IsClientConfigured()
-			if result != tt.expected {
-				t.Errorf("IsClientConfigured() = %v, want %v", result, tt.expected)
-			}
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
@@ -73,54 +68,9 @@ func TestValidateLicense_NoOrgID(t *testing.T) {
 	client := NewClient()
 	// Don't set organization ID
 
-	result, err := client.ValidateLicense(context.Background(), "test-license")
-	if err != nil {
-		t.Errorf("ValidateLicense() error = %v, want nil", err)
-	}
-
-	if result == nil {
-		t.Fatal("ValidateLicense() returned nil result")
-	}
-
-	if result.Valid {
-		t.Error("License should be invalid when org ID not configured")
-	}
-
-	if result.ErrorMessage != orgIDNotConfigMsg {
-		t.Errorf("Error message = %v, want %v", result.ErrorMessage, orgIDNotConfigMsg)
-	}
-}
-
-func TestMapBenefitToTheme(t *testing.T) {
-	tests := []struct {
-		name      string
-		benefitID string
-		operation string
-		expected  string
-	}{
-		{
-			name:      "empty benefit ID returns unknown",
-			benefitID: "",
-			operation: "validation",
-			expected:  unknownThemeName,
-		},
-		{
-			name:      "non-empty benefit ID returns premium",
-			benefitID: "benefit-123",
-			operation: "activation",
-			expected:  premiumThemeName,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			client := NewClient()
-			result := client.mapBenefitToTheme(tt.benefitID, tt.operation)
-			if result != tt.expected {
-				t.Errorf("mapBenefitToTheme() = %v, want %v", result, tt.expected)
-			}
-		})
-	}
+	result, err := client.Validate(context.Background(), ValidateRequest{})
+	assert.ErrorIs(t, err, ErrBadRequestData)
+	assert.Nil(t, result)
 }
 
 func TestMaskLicenseKey(t *testing.T) {
@@ -149,9 +99,7 @@ func TestMaskLicenseKey(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := maskLicenseKey(tt.key)
-			if result != tt.expected {
-				t.Errorf("maskLicenseKey() = %v, want %v", result, tt.expected)
-			}
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
@@ -182,9 +130,7 @@ func TestMaskID(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := maskID(tt.id)
-			if result != tt.expected {
-				t.Errorf("maskID() = %v, want %v", result, tt.expected)
-			}
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }

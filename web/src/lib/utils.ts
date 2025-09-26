@@ -18,9 +18,87 @@ export function formatBytes(bytes: number): string {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`
 }
 
+const SECOND_FACTOR = 1000
+
+function pad2(value: number): string {
+  return String(value).padStart(2, "0")
+}
+
+function toDate(timestamp: number): Date | null {
+  if (!timestamp || timestamp === 0) return null
+  return new Date(timestamp * SECOND_FACTOR)
+}
+
+function formatDateFromDate(date: Date): string {
+  const year = String(date.getFullYear())
+  const month = pad2(date.getMonth() + 1)
+  const day = pad2(date.getDate())
+  return `${year}/${month}/${day}`
+}
+
+function formatTimeFromDate(date: Date, includeSeconds: boolean): string {
+  const hours = pad2(date.getHours())
+  const minutes = pad2(date.getMinutes())
+  const seconds = pad2(date.getSeconds())
+  return includeSeconds ? `${hours}:${minutes}:${seconds}` : `${hours}:${minutes}`
+}
+
 export function formatTimestamp(timestamp: number): string {
+  const date = toDate(timestamp)
+  if (!date) return "N/A"
+  return formatDateTime(timestamp)
+}
+
+/**
+ * Format a Unix timestamp to YY/MM/dd string (24-hour base format)
+ * @param timestamp - Unix timestamp in seconds
+ */
+export function formatDate(timestamp: number): string {
+  const date = toDate(timestamp)
+  if (!date) return "N/A"
+
+  return formatDateFromDate(date)
+}
+
+/**
+ * Format a Unix timestamp to YY/MM/dd HH:mm[:ss] in 24-hour time.
+ * @param timestamp - Unix timestamp in seconds
+ * @param includeSeconds - Whether to include seconds (default: true)
+ */
+export function formatDateTime(timestamp: number, includeSeconds = true): string {
+  const date = toDate(timestamp)
+  if (!date) return "N/A"
+
+  return `${formatDateFromDate(date)} ${formatTimeFromDate(date, includeSeconds)}`
+}
+
+/**
+ * Format a Unix timestamp to HH:mm[:ss] in 24-hour time.
+ * @param timestamp - Unix timestamp in seconds
+ * @param includeSeconds - Whether to include seconds (default: false)
+ */
+export function formatTime(timestamp: number, includeSeconds = false): string {
+  const date = toDate(timestamp)
+  if (!date) return "N/A"
+
+  return formatTimeFromDate(date, includeSeconds)
+}
+
+/**
+ * Format a Unix timestamp to an ISO 8601 date string (YYYY-MM-DD)
+ * Useful for APIs, sorting, and unambiguous date representation
+ * @param timestamp - Unix timestamp in seconds
+ * @returns ISO formatted date string (e.g., "2024-12-31")
+ */
+export function formatISODate(timestamp: number): string {
   if (!timestamp || timestamp === 0) return "N/A"
-  return new Date(timestamp * 1000).toLocaleString()
+
+  const date = new Date(timestamp * 1000)
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+
+  return `${year}-${month}-${day}`
 }
 
 /**
@@ -62,6 +140,12 @@ export function formatDuration(seconds: number): string {
 
 export function formatErrorMessage(error: string | undefined): string {
   if (!error) return "Unknown error"
-  const cleaned = error.replace(/^(failed to create client: |failed to connect to qBittorrent instance: |connection failed: |error: )/i, "")
+
+  const normalized = error.trim()
+  if (!normalized) return "Unknown error"
+
+  const cleaned = normalized.replace(/^(failed to create client: |failed to connect to qBittorrent instance: |connection failed: |error: )/i, "")
+  if (!cleaned) return "Unknown error"
+
   return cleaned.charAt(0).toUpperCase() + cleaned.slice(1)
 }

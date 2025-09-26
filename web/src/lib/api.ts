@@ -414,7 +414,6 @@ class ApiClient {
       host: string
     }
     proxyUrl: string
-    instructions: string
   }> {
     return this.request("/client-api-keys", {
       method: "POST",
@@ -426,40 +425,52 @@ class ApiClient {
     return this.request(`/client-api-keys/${id}`, { method: "DELETE" })
   }
 
-  // Theme License endpoints
-  async validateThemeLicense(licenseKey: string): Promise<{
+  // License endpoints
+  async activateLicense(licenseKey: string): Promise<{
     valid: boolean
-    themeName?: string
     expiresAt?: string
     message?: string
     error?: string
   }> {
-    return this.request("/themes/license/validate", {
+    return this.request("/license/activate", {
+      method: "POST",
+      body: JSON.stringify({ licenseKey }),
+    })
+  }
+
+  async validateLicense(licenseKey: string): Promise<{
+    valid: boolean
+    productName?: string
+    expiresAt?: string
+    message?: string
+    error?: string
+  }> {
+    return this.request("/license/validate", {
       method: "POST",
       body: JSON.stringify({ licenseKey }),
     })
   }
 
   async getLicensedThemes(): Promise<{ hasPremiumAccess: boolean }> {
-    return this.request("/themes/licensed")
+    return this.request("/license/licensed")
   }
 
   async getAllLicenses(): Promise<Array<{
     licenseKey: string
-    themeName: string
+    productName: string
     status: string
     createdAt: string
   }>> {
-    return this.request("/themes/licenses")
+    return this.request("/license/licenses")
   }
 
 
-  async deleteThemeLicense(licenseKey: string): Promise<{ message: string }> {
-    return this.request(`/themes/license/${licenseKey}`, { method: "DELETE" })
+  async deleteLicense(licenseKey: string): Promise<{ message: string }> {
+    return this.request(`/license/${licenseKey}`, { method: "DELETE" })
   }
 
-  async refreshThemeLicenses(): Promise<{ message: string }> {
-    return this.request("/themes/license/refresh", { method: "POST" })
+  async refreshLicenses(): Promise<{ message: string }> {
+    return this.request("/license/refresh", { method: "POST" })
   }
 
   // Preferences endpoints
@@ -485,6 +496,20 @@ class ApiClient {
     return this.request<{ enabled: boolean }>(`/instances/${instanceId}/alternative-speed-limits/toggle`, {
       method: "POST",
     })
+  }
+
+  async getLatestVersion(): Promise<{
+    tag_name: string
+    name?: string
+    html_url: string
+    published_at: string
+  } | null> {
+    try {
+      return await this.request("/version/latest")
+    } catch (error) {
+      // Return null if no update available (204 status) or any error
+      return null
+    }
   }
 }
 
