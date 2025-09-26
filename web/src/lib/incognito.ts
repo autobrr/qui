@@ -116,6 +116,28 @@ export const LINUX_TRACKERS = [
   "fosshost.org",
 ]
 
+const LINUX_RELEASE_TEAMS = [
+  "Canonical Release Engineering",
+  "Debian CD Images Team",
+  "Fedora QA Collective",
+  "Arch Linux Release Crew",
+  "Gentoo Build Farm",
+  "openSUSE Release Engineering",
+  "EndeavourOS Packaging Team",
+  "Linux Mint ISO Squad",
+]
+
+const LINUX_RELEASE_NOTES = [
+  "Checksum verified against upstream SHA256 manifest.",
+  "Built using reproducible toolchain; see README for package list.",
+  "Preseeded with latest security updates as of 2024-12-01.",
+  "Includes Linux kernel 6.12 and Mesa 24.3 stack.",
+  "Boot media tested on QEMU and bare metal hardware.",
+  "Localized language packs trimmed for minimal footprint.",
+  "Installer ships with default LUKS full-disk encryption profile.",
+  "Live session user password documented in /DOCS/credentials.txt.",
+]
+
 // Linux save paths for incognito mode
 const LINUX_SAVE_PATHS = [
   "/home/downloads/distributions",
@@ -137,6 +159,20 @@ export function getLinuxIsoName(hash: string): string {
     hashSum += hash.charCodeAt(i)
   }
   return linuxIsoNames[hashSum % linuxIsoNames.length]
+}
+
+export function getLinuxFileName(hash: string, index: number): string {
+  if (!hash) {
+    return linuxIsoNames[index % linuxIsoNames.length]
+  }
+
+  let hashSum = 0
+  for (let i = 0; i < hash.length; i++) {
+    hashSum += hash.charCodeAt(i) * (i + 3)
+  }
+
+  const offset = hashSum % linuxIsoNames.length
+  return linuxIsoNames[(offset + index) % linuxIsoNames.length]
 }
 
 // Generate deterministic Linux category based on hash
@@ -181,6 +217,28 @@ export function getLinuxSavePath(hash: string): string {
     hashSum += hash.charCodeAt(i) * (i + 3)
   }
   return LINUX_SAVE_PATHS[hashSum % LINUX_SAVE_PATHS.length]
+}
+
+export function getLinuxCreatedBy(hash: string): string {
+  if (!hash) return LINUX_RELEASE_TEAMS[0]
+
+  let hashSum = 0
+  for (let i = 0; i < hash.length; i++) {
+    hashSum += hash.charCodeAt(i) * (i + 1)
+  }
+
+  return LINUX_RELEASE_TEAMS[hashSum % LINUX_RELEASE_TEAMS.length]
+}
+
+export function getLinuxComment(hash: string): string {
+  if (!hash) return "Release notes hidden in incognito mode."
+
+  let hashSum = 0
+  for (let i = 0; i < hash.length; i++) {
+    hashSum += hash.charCodeAt(i) * (i + 3)
+  }
+
+  return `${LINUX_RELEASE_NOTES[hashSum % LINUX_RELEASE_NOTES.length]}`
 }
 
 // Generate deterministic Linux tracker based on hash
