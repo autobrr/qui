@@ -8,13 +8,13 @@ import type { ReactNode } from "react"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
-import { formatDate } from "@/lib/utils"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Copy, Plus, Trash2, Server, Globe } from "lucide-react"
+import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import {
   Dialog,
   DialogContent,
@@ -129,6 +129,7 @@ export function ClientApiKeysManager() {
   const [deleteKeyId, setDeleteKeyId] = useState<number | null>(null)
   const [newKey, setNewKey] = useState<NewClientAPIKey | null>(null)
   const queryClient = useQueryClient()
+  const { formatDate } = useDateTimeFormatters()
 
   const instructionsContent = useMemo(() => {
     if (!newKey) {
@@ -440,9 +441,9 @@ export function ClientApiKeysManager() {
                   </div>
                   <div className="text-sm text-muted-foreground space-y-1">
                     <p>
-                      Created: {formatDate(new Date(key.createdAt).getTime() / 1000)}
+                      Created: {formatDate(new Date(key.createdAt))}
                       {key.lastUsedAt && (
-                        <> • Last used: {formatDate(new Date(key.lastUsedAt).getTime() / 1000)}</>
+                        <> • Last used: {formatDate(new Date(key.lastUsedAt))}</>
                       )}
                     </p>
                     {key.instance && (

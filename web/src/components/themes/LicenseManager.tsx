@@ -23,11 +23,11 @@ import {
 } from "@/hooks/useLicense"
 import { getLicenseErrorMessage } from "@/lib/license-errors"
 import { POLAR_CHECKOUT_URL, POLAR_PORTAL_URL } from "@/lib/polar-constants"
-import { formatDate } from "@/lib/utils"
 import { useForm } from "@tanstack/react-form"
 import { AlertTriangle, Copy, ExternalLink, Key, RefreshCw, ShoppingCart, Sparkles, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { toast } from "sonner"
+import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 
 // Helper function to mask license keys for display
 function maskLicenseKey(key: string): string {
@@ -39,6 +39,7 @@ function maskLicenseKey(key: string): string {
 
 export function LicenseManager() {
   const [showAddLicense, setShowAddLicense] = useState(false)
+  const { formatDate } = useDateTimeFormatters()
   const [selectedLicenseKey, setSelectedLicenseKey] = useState<string | null>(null)
 
   const { hasPremiumAccess, isLoading } = useHasPremiumAccess()
@@ -144,7 +145,7 @@ export function LicenseManager() {
                         {maskLicenseKey(licenses[0].licenseKey)}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        {licenses[0].productName} • Status: {licenses[0].status} • Added {formatDate(new Date(licenses[0].createdAt).getTime() / 1000)}
+                        {licenses[0].productName} • Status: {licenses[0].status} • Added {formatDate(new Date(licenses[0].createdAt))}
                       </div>
                       {hasInvalidLicense && (
                         <div className="space-y-2">
