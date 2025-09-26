@@ -11,6 +11,7 @@ import { initializeTheme } from "@/utils/theme"
 import { initializePWANativeTheme } from "@/utils/pwaNativeTheme"
 import { Toaster } from "@/components/ui/sonner"
 import { ThemeValidator } from "@/components/themes/ThemeValidator"
+import { useDynamicFavicon } from "@/hooks/useDynamicFavicon"
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -22,6 +23,8 @@ const queryClient = new QueryClient({
 })
 
 function App() {
+  useDynamicFavicon()
+
   useEffect(() => {
     initializeTheme().catch(console.error)
     initializePWANativeTheme()
