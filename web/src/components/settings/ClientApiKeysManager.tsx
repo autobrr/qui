@@ -35,7 +35,7 @@ import {
 } from "@/components/ui/select"
 import { api } from "@/lib/api"
 import { withBasePath } from "@/lib/base-url"
-import { formatDate } from "@/lib/utils"
+import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Copy, Plus, Server, Trash2 } from "lucide-react"
@@ -63,6 +63,7 @@ export function ClientApiKeysManager() {
   const [deleteKeyId, setDeleteKeyId] = useState<number | null>(null)
   const [newKey, setNewKey] = useState<NewClientAPIKey | null>(null)
   const queryClient = useQueryClient()
+  const { formatDate } = useDateTimeFormatters()
 
   // Get the current browser URL to construct full proxy URL
   const getFullProxyUrl = (proxyPath: string) => {
@@ -343,12 +344,12 @@ export function ClientApiKeysManager() {
                     <div className="space-y-1 text-xs text-muted-foreground">
                       <p className="flex flex-wrap items-center gap-1">
                         <span className="text-foreground">Created:</span>
-                        <span>{formatDate(new Date(key.createdAt).getTime() / 1000)}</span>
+                        <span>{formatDate(new Date(key.createdAt))}</span>
                         {key.lastUsedAt && (
                           <>
                             <span>•</span>
                             <span className="text-foreground">Last used:</span>
-                            <span>{formatDate(new Date(key.lastUsedAt).getTime() / 1000)}</span>
+                            <span>{formatDate(new Date(key.lastUsedAt))}</span>
                           </>
                         )}
                       </p>
