@@ -16,8 +16,9 @@ import { Textarea } from "@/components/ui/textarea"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { api } from "@/lib/api"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
+import { formatBytes, formatDuration } from "@/lib/utils"
+import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { resolveTorrentHashes } from "@/lib/torrent-utils"
-import { formatBytes, formatDuration, formatDateTime } from "@/lib/utils"
 import { renderTextWithLinks } from "@/lib/linkUtils"
 import type { Torrent } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
@@ -83,6 +84,7 @@ function getTrackerStatusBadge(status: number) {
 export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceId, torrent }: TorrentDetailsPanelProps) {
   const [activeTab, setActiveTab] = useState("general")
   const [showAddPeersDialog, setShowAddPeersDialog] = useState(false)
+  const { formatTimestamp } = useDateTimeFormatters()
   const [showBanPeerDialog, setShowBanPeerDialog] = useState(false)
   const [peersToAdd, setPeersToAdd] = useState("")
   const [peerToBan, setPeerToBan] = useState<TorrentPeer | null>(null)
@@ -486,15 +488,15 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                           <div className="space-y-1">
                             <p className="text-xs text-muted-foreground">Added</p>
-                            <p className="text-sm">{formatDateTime(properties.addition_date)}</p>
+                            <p className="text-sm">{formatTimestamp(properties.addition_date)}</p>
                           </div>
                           <div className="space-y-1">
                             <p className="text-xs text-muted-foreground">Completed</p>
-                            <p className="text-sm">{formatDateTime(properties.completion_date)}</p>
+                            <p className="text-sm">{formatTimestamp(properties.completion_date)}</p>
                           </div>
                           <div className="space-y-1">
                             <p className="text-xs text-muted-foreground">Created</p>
-                            <p className="text-sm">{formatDateTime(properties.creation_date)}</p>
+                            <p className="text-sm">{formatTimestamp(properties.creation_date)}</p>
                           </div>
                         </div>
                       </div>
