@@ -632,7 +632,9 @@ export const createColumns = (
     accessorKey: "infohash_v1",
     header: "Info Hash v1",
     cell: ({ row }) => {
-      const infoHash = incognitoMode ? getLinuxHash(row.original.infohash_v1) : row.original.infohash_v1
+      const original = row.original.infohash_v1
+      const maskBase = row.original.hash || row.original.infohash_v1 || row.original.infohash_v2 || row.id
+      const infoHash = incognitoMode && original ? getLinuxHash(maskBase || "") : original
       return (
         <div className="overflow-hidden whitespace-nowrap text-sm" title={infoHash}>
           {infoHash || "-"}
@@ -645,7 +647,9 @@ export const createColumns = (
     accessorKey: "infohash_v2",
     header: "Info Hash v2",
     cell: ({ row }) => {
-      const infoHash = incognitoMode ? getLinuxHash(row.original.infohash_v2) : row.original.infohash_v2
+      const original = row.original.infohash_v2
+      const maskBase = row.original.hash || row.original.infohash_v1 || row.original.infohash_v2 || row.id
+      const infoHash = incognitoMode && original ? getLinuxHash(maskBase || "") : original
       return (
         <div className="overflow-hidden whitespace-nowrap text-sm" title={infoHash}>
           {infoHash || "-"}

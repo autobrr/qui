@@ -662,11 +662,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     }, 0)
   }, [table])
 
-  // Derive hidden columns state from table API for accuracy
-  const hasHiddenColumns = useMemo(() => {
-    return table.getAllLeafColumns().filter(c => c.getCanHide()).some(c => !c.getIsVisible())
-  }, [table])
-
   // Reset loaded rows when data changes significantly
   useEffect(() => {
     // Always ensure loadedRows is at least 100 (or total length if less)
@@ -969,9 +964,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                           className="relative"
                         >
                           <Columns3 className="h-4 w-4" />
-                          {hasHiddenColumns && (
-                            <span className="absolute -top-1 -right-1 h-2 w-2 bg-primary rounded-full" />
-                          )}
                           <span className="sr-only">Toggle columns</span>
                         </Button>
                       </DropdownMenuTrigger>
