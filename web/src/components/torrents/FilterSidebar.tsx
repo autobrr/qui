@@ -92,6 +92,8 @@ interface FilterSidebarProps {
   isLoading?: boolean
 }
 
+type TriState = "include" | "exclude" | "neutral"
+
 
 // Define torrent states based on qBittorrent
 const TORRENT_STATES: Array<{ value: string; label: string; icon: LucideIcon }> = [
@@ -296,17 +298,133 @@ const FilterSidebarComponent = ({
   const categoryListRef = useRef<HTMLDivElement>(null)
   const tagListRef = useRef<HTMLDivElement>(null)
   const trackerListRef = useRef<HTMLDivElement>(null)
+  const skipNextToggleRef = useRef<string | null>(null)
+
+  const makeToggleKey = useCallback((group: "status" | "category" | "tag" | "tracker", value: string) => {
+    return `${group}:${value === "" ? "__empty__" : value}`
+  }, [])
+
+  const includeStatusSet = useMemo(() => new Set(selectedFilters.status), [selectedFilters.status])
+  const excludeStatusSet = useMemo(() => new Set(selectedFilters.excludeStatus), [selectedFilters.excludeStatus])
+
+  const includeCategorySet = useMemo(() => new Set(selectedFilters.categories), [selectedFilters.categories])
+  const excludeCategorySet = useMemo(() => new Set(selectedFilters.excludeCategories), [selectedFilters.excludeCategories])
 
   const includeTagSet = useMemo(() => new Set(selectedFilters.tags), [selectedFilters.tags])
   const excludeTagSet = useMemo(() => new Set(selectedFilters.excludeTags), [selectedFilters.excludeTags])
 
-  const getTagState = useCallback((tag: string): "include" | "exclude" | "neutral" => {
+  const includeTrackerSet = useMemo(() => new Set(selectedFilters.trackers), [selectedFilters.trackers])
+  const excludeTrackerSet = useMemo(() => new Set(selectedFilters.excludeTrackers), [selectedFilters.excludeTrackers])
+
+  const getStatusState = useCallback((status: string): TriState => {
+    if (includeStatusSet.has(status)) return "include"
+    if (excludeStatusSet.has(status)) return "exclude"
+    return "neutral"
+  }, [includeStatusSet, excludeStatusSet])
+
+  const setStatusState = useCallback((status: string, state: TriState) => {
+    let nextIncluded = selectedFilters.status
+    let nextExcluded = selectedFilters.excludeStatus
+
+    const isIncluded = includeStatusSet.has(status)
+    const isExcluded = excludeStatusSet.has(status)
+
+    switch (state) {
+      case "include":
+        if (!isIncluded) {
+          nextIncluded = [...selectedFilters.status, status]
+        }
+        if (isExcluded) {
+          nextExcluded = selectedFilters.excludeStatus.filter(s => s !== status)
+        }
+        break
+      case "exclude":
+        if (isIncluded) {
+          nextIncluded = selectedFilters.status.filter(s => s !== status)
+        }
+        if (!isExcluded) {
+          nextExcluded = [...selectedFilters.excludeStatus, status]
+        }
+        break
+      case "neutral":
+        if (isIncluded) {
+          nextIncluded = selectedFilters.status.filter(s => s !== status)
+        }
+        if (isExcluded) {
+          nextExcluded = selectedFilters.excludeStatus.filter(s => s !== status)
+        }
+        break
+    }
+
+    if (nextIncluded === selectedFilters.status && nextExcluded === selectedFilters.excludeStatus) {
+      return
+    }
+
+    onFilterChange({
+      ...selectedFilters,
+      status: nextIncluded,
+      excludeStatus: nextExcluded,
+    })
+  }, [excludeStatusSet, includeStatusSet, onFilterChange, selectedFilters])
+
+  const getCategoryState = useCallback((category: string): TriState => {
+    if (includeCategorySet.has(category)) return "include"
+    if (excludeCategorySet.has(category)) return "exclude"
+    return "neutral"
+  }, [excludeCategorySet, includeCategorySet])
+
+  const setCategoryState = useCallback((category: string, state: TriState) => {
+    let nextIncluded = selectedFilters.categories
+    let nextExcluded = selectedFilters.excludeCategories
+
+    const isIncluded = includeCategorySet.has(category)
+    const isExcluded = excludeCategorySet.has(category)
+
+    switch (state) {
+      case "include":
+        if (!isIncluded) {
+          nextIncluded = [...selectedFilters.categories, category]
+        }
+        if (isExcluded) {
+          nextExcluded = selectedFilters.excludeCategories.filter(c => c !== category)
+        }
+        break
+      case "exclude":
+        if (isIncluded) {
+          nextIncluded = selectedFilters.categories.filter(c => c !== category)
+        }
+        if (!isExcluded) {
+          nextExcluded = [...selectedFilters.excludeCategories, category]
+        }
+        break
+      case "neutral":
+        if (isIncluded) {
+          nextIncluded = selectedFilters.categories.filter(c => c !== category)
+        }
+        if (isExcluded) {
+          nextExcluded = selectedFilters.excludeCategories.filter(c => c !== category)
+        }
+        break
+    }
+
+    if (nextIncluded === selectedFilters.categories && nextExcluded === selectedFilters.excludeCategories) {
+      return
+    }
+
+    onFilterChange({
+      ...selectedFilters,
+      categories: nextIncluded,
+      excludeCategories: nextExcluded,
+    })
+  }, [excludeCategorySet, includeCategorySet, onFilterChange, selectedFilters])
+
+  const getTagState = useCallback((tag: string): TriState => {
     if (includeTagSet.has(tag)) return "include"
     if (excludeTagSet.has(tag)) return "exclude"
     return "neutral"
   }, [includeTagSet, excludeTagSet])
 
-  const setTagState = useCallback((tag: string, state: "include" | "exclude" | "neutral") => {
+  const setTagState = useCallback((tag: string, state: TriState) => {
     let nextIncluded = selectedFilters.tags
     let nextExcluded = selectedFilters.excludeTags
 
@@ -351,59 +469,263 @@ const FilterSidebarComponent = ({
     })
   }, [excludeTagSet, includeTagSet, onFilterChange, selectedFilters])
 
+  const getTrackerState = useCallback((tracker: string): TriState => {
+    if (includeTrackerSet.has(tracker)) return "include"
+    if (excludeTrackerSet.has(tracker)) return "exclude"
+    return "neutral"
+  }, [excludeTrackerSet, includeTrackerSet])
+
+  const setTrackerState = useCallback((tracker: string, state: TriState) => {
+    let nextIncluded = selectedFilters.trackers
+    let nextExcluded = selectedFilters.excludeTrackers
+
+    const isIncluded = includeTrackerSet.has(tracker)
+    const isExcluded = excludeTrackerSet.has(tracker)
+
+    switch (state) {
+      case "include":
+        if (!isIncluded) {
+          nextIncluded = [...selectedFilters.trackers, tracker]
+        }
+        if (isExcluded) {
+          nextExcluded = selectedFilters.excludeTrackers.filter(t => t !== tracker)
+        }
+        break
+      case "exclude":
+        if (isIncluded) {
+          nextIncluded = selectedFilters.trackers.filter(t => t !== tracker)
+        }
+        if (!isExcluded) {
+          nextExcluded = [...selectedFilters.excludeTrackers, tracker]
+        }
+        break
+      case "neutral":
+        if (isIncluded) {
+          nextIncluded = selectedFilters.trackers.filter(t => t !== tracker)
+        }
+        if (isExcluded) {
+          nextExcluded = selectedFilters.excludeTrackers.filter(t => t !== tracker)
+        }
+        break
+    }
+
+    if (nextIncluded === selectedFilters.trackers && nextExcluded === selectedFilters.excludeTrackers) {
+      return
+    }
+
+    onFilterChange({
+      ...selectedFilters,
+      trackers: nextIncluded,
+      excludeTrackers: nextExcluded,
+    })
+  }, [excludeTrackerSet, includeTrackerSet, onFilterChange, selectedFilters])
+
   const getCheckboxVisualState = useCallback((state: "include" | "exclude" | "neutral"): boolean | "indeterminate" => {
     if (state === "include") return true
     if (state === "exclude") return "indeterminate"
     return false
   }, [])
 
-  const handleTagStateCycle = useCallback((tag: string, options?: { forceState?: "include" | "exclude" | "neutral" }) => {
-    if (options?.forceState) {
-      setTagState(tag, options.forceState)
+  const handleStatusIncludeToggle = useCallback((status: string) => {
+    const currentState = getStatusState(status)
+
+    if (currentState === "include" || currentState === "exclude") {
+      setStatusState(status, "neutral")
       return
     }
 
+    setStatusState(status, "include")
+  }, [getStatusState, setStatusState])
+
+  const handleStatusExcludeToggle = useCallback((status: string) => {
+    const currentState = getStatusState(status)
+    const nextState = currentState === "exclude" ? "neutral" : "exclude"
+    setStatusState(status, nextState)
+  }, [getStatusState, setStatusState])
+
+  const handleStatusCheckboxChange = useCallback((status: string) => {
+    const key = makeToggleKey("status", status)
+    if (skipNextToggleRef.current === key) {
+      skipNextToggleRef.current = null
+      return
+    }
+
+    skipNextToggleRef.current = null
+    handleStatusIncludeToggle(status)
+  }, [handleStatusIncludeToggle, makeToggleKey])
+
+  const handleStatusPointerDown = useCallback((event: React.PointerEvent<HTMLElement>, status: string) => {
+    if (event.button !== 0) {
+      skipNextToggleRef.current = null
+      return
+    }
+
+    if (event.metaKey || event.ctrlKey) {
+      event.preventDefault()
+      event.stopPropagation()
+      skipNextToggleRef.current = makeToggleKey("status", status)
+      handleStatusExcludeToggle(status)
+      return
+    }
+
+    skipNextToggleRef.current = null
+  }, [handleStatusExcludeToggle, makeToggleKey])
+
+  const handleCategoryIncludeToggle = useCallback((category: string) => {
+    const currentState = getCategoryState(category)
+
+    if (currentState === "include" || currentState === "exclude") {
+      setCategoryState(category, "neutral")
+      return
+    }
+
+    setCategoryState(category, "include")
+  }, [getCategoryState, setCategoryState])
+
+  const handleCategoryExcludeToggle = useCallback((category: string) => {
+    const currentState = getCategoryState(category)
+    const nextState = currentState === "exclude" ? "neutral" : "exclude"
+    setCategoryState(category, nextState)
+  }, [getCategoryState, setCategoryState])
+
+  const handleCategoryCheckboxChange = useCallback((category: string) => {
+    const key = makeToggleKey("category", category)
+    if (skipNextToggleRef.current === key) {
+      skipNextToggleRef.current = null
+      return
+    }
+
+    skipNextToggleRef.current = null
+    handleCategoryIncludeToggle(category)
+  }, [handleCategoryIncludeToggle, makeToggleKey])
+
+  const handleCategoryPointerDown = useCallback((event: React.PointerEvent<HTMLElement>, category: string) => {
+    if (event.button !== 0) {
+      skipNextToggleRef.current = null
+      return
+    }
+
+    if (event.metaKey || event.ctrlKey) {
+      event.preventDefault()
+      event.stopPropagation()
+      skipNextToggleRef.current = makeToggleKey("category", category)
+      handleCategoryExcludeToggle(category)
+      return
+    }
+
+    skipNextToggleRef.current = null
+  }, [handleCategoryExcludeToggle, makeToggleKey])
+
+  const handleTagIncludeToggle = useCallback((tag: string) => {
     const currentState = getTagState(tag)
-    const nextState = currentState === "neutral" ? "include" : currentState === "include" ? "exclude" : "neutral"
+
+    if (currentState === "include" || currentState === "exclude") {
+      setTagState(tag, "neutral")
+      return
+    }
+
+    setTagState(tag, "include")
+  }, [getTagState, setTagState])
+
+  const handleTagExcludeToggle = useCallback((tag: string) => {
+    const currentState = getTagState(tag)
+    const nextState = currentState === "exclude" ? "neutral" : "exclude"
     setTagState(tag, nextState)
   }, [getTagState, setTagState])
 
+  const handleTagCheckboxChange = useCallback((tag: string) => {
+    const key = makeToggleKey("tag", tag)
+    if (skipNextToggleRef.current === key) {
+      skipNextToggleRef.current = null
+      return
+    }
+
+    skipNextToggleRef.current = null
+    handleTagIncludeToggle(tag)
+  }, [handleTagIncludeToggle, makeToggleKey])
+
   const handleTagPointerDown = useCallback((event: React.PointerEvent<HTMLElement>, tag: string) => {
     if (event.button !== 0) {
-      return
-    }
-    if (!event.shiftKey) {
+      skipNextToggleRef.current = null
       return
     }
 
-    event.preventDefault()
-    event.stopPropagation()
-    handleTagStateCycle(tag, { forceState: "exclude" })
-  }, [handleTagStateCycle])
+    if (event.metaKey || event.ctrlKey) {
+      event.preventDefault()
+      event.stopPropagation()
+      skipNextToggleRef.current = makeToggleKey("tag", tag)
+      handleTagExcludeToggle(tag)
+      return
+    }
+
+    skipNextToggleRef.current = null
+  }, [handleTagExcludeToggle, makeToggleKey])
+
+  const handleTrackerIncludeToggle = useCallback((tracker: string) => {
+    const currentState = getTrackerState(tracker)
+
+    if (currentState === "include" || currentState === "exclude") {
+      setTrackerState(tracker, "neutral")
+      return
+    }
+
+    setTrackerState(tracker, "include")
+  }, [getTrackerState, setTrackerState])
+
+  const handleTrackerExcludeToggle = useCallback((tracker: string) => {
+    const currentState = getTrackerState(tracker)
+    const nextState = currentState === "exclude" ? "neutral" : "exclude"
+    setTrackerState(tracker, nextState)
+  }, [getTrackerState, setTrackerState])
+
+  const handleTrackerCheckboxChange = useCallback((tracker: string) => {
+    const key = makeToggleKey("tracker", tracker)
+    if (skipNextToggleRef.current === key) {
+      skipNextToggleRef.current = null
+      return
+    }
+
+    skipNextToggleRef.current = null
+    handleTrackerIncludeToggle(tracker)
+  }, [handleTrackerIncludeToggle, makeToggleKey])
+
+  const handleTrackerPointerDown = useCallback((event: React.PointerEvent<HTMLElement>, tracker: string) => {
+    if (event.button !== 0) {
+      skipNextToggleRef.current = null
+      return
+    }
+
+    if (event.metaKey || event.ctrlKey) {
+      event.preventDefault()
+      event.stopPropagation()
+      skipNextToggleRef.current = makeToggleKey("tracker", tracker)
+      handleTrackerExcludeToggle(tracker)
+      return
+    }
+
+    skipNextToggleRef.current = null
+  }, [handleTrackerExcludeToggle, makeToggleKey])
 
   const untaggedState = getTagState("")
+  const uncategorizedState = getCategoryState("")
+  const noTrackerState = getTrackerState("")
 
   // Filtered categories for performance
   const filteredCategories = useMemo(() => {
     const categoryEntries = Object.entries(categories) as [string, Category][]
 
-    if (debouncedCategorySearch) {
-      const searchLower = debouncedCategorySearch.toLowerCase()
-      return categoryEntries.filter(([name]) =>
-        name.toLowerCase().includes(searchLower)
+    const matches = debouncedCategorySearch
+      ? categoryEntries.filter(([name]) =>
+        name.toLowerCase().includes(debouncedCategorySearch.toLowerCase())
       )
-    }
+      : categoryEntries
 
-    // Show selected categories first, then others
-    const selectedCategories = categoryEntries.filter(([name]) =>
-      selectedFilters.categories.includes(name)
-    )
-    const unselectedCategories = categoryEntries.filter(([name]) =>
-      !selectedFilters.categories.includes(name)
-    )
+    const included = matches.filter(([name]) => includeCategorySet.has(name))
+    const excluded = matches.filter(([name]) => !includeCategorySet.has(name) && excludeCategorySet.has(name))
+    const neutral = matches.filter(([name]) => !includeCategorySet.has(name) && !excludeCategorySet.has(name))
 
-    return [...selectedCategories, ...unselectedCategories]
-  }, [categories, debouncedCategorySearch, selectedFilters.categories])
+    return [...included, ...excluded, ...neutral]
+  }, [categories, debouncedCategorySearch, excludeCategorySet, includeCategorySet])
 
   // Filtered tags for performance
   const filteredTags = useMemo(() => {
@@ -424,23 +746,18 @@ const FilterSidebarComponent = ({
 
   // Filtered trackers for performance
   const filteredTrackers = useMemo(() => {
-    if (debouncedTrackerSearch) {
-      const searchLower = debouncedTrackerSearch.toLowerCase()
-      return trackers.filter(tracker =>
-        tracker.toLowerCase().includes(searchLower)
+    const baseList = debouncedTrackerSearch
+      ? trackers.filter(tracker =>
+        tracker.toLowerCase().includes(debouncedTrackerSearch.toLowerCase())
       )
-    }
+      : trackers
 
-    // Show selected trackers first, then others
-    const selectedTrackers = trackers.filter(tracker =>
-      selectedFilters.trackers.includes(tracker)
-    )
-    const unselectedTrackers = trackers.filter(tracker =>
-      !selectedFilters.trackers.includes(tracker)
-    )
+    const included = baseList.filter(tracker => includeTrackerSet.has(tracker))
+    const excluded = baseList.filter(tracker => !includeTrackerSet.has(tracker) && excludeTrackerSet.has(tracker))
+    const neutral = baseList.filter(tracker => !includeTrackerSet.has(tracker) && !excludeTrackerSet.has(tracker))
 
-    return [...selectedTrackers, ...unselectedTrackers]
-  }, [trackers, debouncedTrackerSearch, selectedFilters.trackers])
+    return [...included, ...excluded, ...neutral]
+  }, [debouncedTrackerSearch, excludeTrackerSet, includeTrackerSet, trackers])
 
   // Virtual scrolling for categories
   const categoryVirtualizer = useVirtualizer({
@@ -466,55 +783,44 @@ const FilterSidebarComponent = ({
     overscan: 10,
   })
 
-  const handleStatusToggle = useCallback((status: string) => {
-    const newStatus = selectedFilters.status.includes(status)? selectedFilters.status.filter(s => s !== status): [...selectedFilters.status, status]
-
-    onFilterChange({
-      ...selectedFilters,
-      status: newStatus,
-    })
-  }, [selectedFilters, onFilterChange])
-
-  const handleCategoryToggle = useCallback((category: string) => {
-    const newCategories = selectedFilters.categories.includes(category)? selectedFilters.categories.filter(c => c !== category): [...selectedFilters.categories, category]
-
-    onFilterChange({
-      ...selectedFilters,
-      categories: newCategories,
-    })
-  }, [selectedFilters, onFilterChange])
-
-  const handleTrackerToggle = useCallback((tracker: string) => {
-    const newTrackers = selectedFilters.trackers.includes(tracker)? selectedFilters.trackers.filter(t => t !== tracker): [...selectedFilters.trackers, tracker]
-
-    onFilterChange({
-      ...selectedFilters,
-      trackers: newTrackers,
-    })
-  }, [selectedFilters, onFilterChange])
-
   const clearFilters = () => {
     onFilterChange({
       status: [],
+      excludeStatus: [],
       categories: [],
+      excludeCategories: [],
       tags: [],
       excludeTags: [],
       trackers: [],
+      excludeTrackers: [],
     })
     // Optionally reset accordion state to defaults
     // setExpandedItems(['status', 'categories', 'tags'])
   }
 
-  const createClearFilter = <K extends keyof TorrentFilters>(property: K) => () => {
+  const clearStatusFilter = () => {
     onFilterChange({
       ...selectedFilters,
-      [property]: [] as TorrentFilters[K],
+      status: [],
+      excludeStatus: [],
     })
   }
 
-  const clearStatusFilter = createClearFilter("status")
-  const clearCategoriesFilter = createClearFilter("categories")
-  const clearTrackersFilter = createClearFilter("trackers")
+  const clearCategoriesFilter = () => {
+    onFilterChange({
+      ...selectedFilters,
+      categories: [],
+      excludeCategories: [],
+    })
+  }
+
+  const clearTrackersFilter = () => {
+    onFilterChange({
+      ...selectedFilters,
+      trackers: [],
+      excludeTrackers: [],
+    })
+  }
   const clearTagsFilter = () => {
     onFilterChange({
       ...selectedFilters,
@@ -525,10 +831,13 @@ const FilterSidebarComponent = ({
 
   const hasActiveFilters =
     selectedFilters.status.length > 0 ||
+    selectedFilters.excludeStatus.length > 0 ||
     selectedFilters.categories.length > 0 ||
+    selectedFilters.excludeCategories.length > 0 ||
     selectedFilters.tags.length > 0 ||
     selectedFilters.excludeTags.length > 0 ||
-    selectedFilters.trackers.length > 0
+    selectedFilters.trackers.length > 0 ||
+    selectedFilters.excludeTrackers.length > 0
 
   // Simple slide animation - sidebar slides in/out from the left
   return (
@@ -567,9 +876,9 @@ const FilterSidebarComponent = ({
               <AccordionTrigger className="px-3 py-2 hover:no-underline">
                 <div className="flex items-center justify-between w-full">
                   <span className="text-sm font-medium">Status</span>
-                  {selectedFilters.status.length > 0 && (
+                  {selectedFilters.status.length + selectedFilters.excludeStatus.length > 0 && (
                     <FilterBadge
-                      count={selectedFilters.status.length}
+                      count={selectedFilters.status.length + selectedFilters.excludeStatus.length}
                       onClick={clearStatusFilter}
                     />
                   )}
@@ -577,24 +886,43 @@ const FilterSidebarComponent = ({
               </AccordionTrigger>
               <AccordionContent className="px-3 pb-2">
                 <div className="space-y-1">
-                  {TORRENT_STATES.map((state) => (
-                    <label
-                      key={state.value}
-                      className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer"
-                    >
-                      <Checkbox
-                        checked={selectedFilters.status.includes(state.value)}
-                        onCheckedChange={() => handleStatusToggle(state.value)}
-                      />
-                      <span className="text-sm flex-1 flex items-center gap-2">
-                        <state.icon className="h-4 w-4" />
-                        <span>{state.label}</span>
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        {getDisplayCount(`status:${state.value}`)}
-                      </span>
-                    </label>
-                  ))}
+                  {TORRENT_STATES.map((state) => {
+                    const statusState = getStatusState(state.value)
+                    return (
+                      <label
+                        key={state.value}
+                        className={cn(
+                          "flex items-center space-x-2 py-1 px-2 rounded cursor-pointer transition-colors",
+                          statusState === "exclude"
+                            ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
+                            : "hover:bg-muted"
+                        )}
+                        onPointerDown={(event) => handleStatusPointerDown(event, state.value)}
+                      >
+                        <Checkbox
+                          checked={getCheckboxVisualState(statusState)}
+                          onCheckedChange={() => handleStatusCheckboxChange(state.value)}
+                        />
+                        <span
+                          className={cn(
+                            "text-sm flex-1 flex items-center gap-2",
+                            statusState === "exclude" ? "text-destructive" : undefined
+                          )}
+                        >
+                          <state.icon className="h-4 w-4" />
+                          <span>{state.label}</span>
+                        </span>
+                        <span
+                          className={cn(
+                            "text-xs",
+                            statusState === "exclude" ? "text-destructive" : "text-muted-foreground"
+                          )}
+                        >
+                          {getDisplayCount(`status:${state.value}`)}
+                        </span>
+                      </label>
+                    )
+                  })}
                 </div>
               </AccordionContent>
             </AccordionItem>
@@ -604,9 +932,9 @@ const FilterSidebarComponent = ({
               <AccordionTrigger className="px-3 py-2 hover:no-underline">
                 <div className="flex items-center justify-between w-full">
                   <span className="text-sm font-medium">Categories</span>
-                  {selectedFilters.categories.length > 0 && (
+                  {selectedFilters.categories.length + selectedFilters.excludeCategories.length > 0 && (
                     <FilterBadge
-                      count={selectedFilters.categories.length}
+                      count={selectedFilters.categories.length + selectedFilters.excludeCategories.length}
                       onClick={clearCategoriesFilter}
                     />
                   )}
@@ -618,7 +946,6 @@ const FilterSidebarComponent = ({
                   <button
                     className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-1 px-2 w-full cursor-pointer"
                     onClick={() => setShowCreateCategoryDialog(true)}
-                    onPointerDown={(event) => handleTagPointerDown(event, "")}
                   >
                     <Plus className="h-3 w-3" />
                     Add category
@@ -636,16 +963,34 @@ const FilterSidebarComponent = ({
                   </div>
 
                   {/* Uncategorized option */}
-                  <label className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer">
+                  <label
+                    className={cn(
+                      "flex items-center space-x-2 py-1 px-2 rounded cursor-pointer transition-colors",
+                      uncategorizedState === "exclude"
+                        ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
+                        : "hover:bg-muted"
+                    )}
+                    onPointerDown={(event) => handleCategoryPointerDown(event, "")}
+                  >
                     <Checkbox
-                      checked={selectedFilters.categories.includes("")}
-                      onCheckedChange={() => handleCategoryToggle("")}
+                      checked={getCheckboxVisualState(uncategorizedState)}
+                      onCheckedChange={() => handleCategoryCheckboxChange("")}
                       className="rounded border-input"
                     />
-                    <span className="text-sm flex-1 italic text-muted-foreground">
+                    <span
+                      className={cn(
+                        "text-sm flex-1 italic",
+                        uncategorizedState === "exclude" ? "text-destructive" : "text-muted-foreground"
+                      )}
+                    >
                       Uncategorized
                     </span>
-                    <span className="text-xs text-muted-foreground">
+                    <span
+                      className={cn(
+                        "text-xs",
+                        uncategorizedState === "exclude" ? "text-destructive" : "text-muted-foreground"
+                      )}
+                    >
                       {getDisplayCount("category:")}
                     </span>
                   </label>
@@ -681,6 +1026,7 @@ const FilterSidebarComponent = ({
                         {categoryVirtualizer.getVirtualItems().map((virtualRow) => {
                           const [name, category] = filteredCategories[virtualRow.index] || ["", {}]
                           if (!name) return null
+                          const categoryState = getCategoryState(name)
 
                           return (
                             <div
@@ -697,15 +1043,34 @@ const FilterSidebarComponent = ({
                             >
                               <ContextMenu>
                                 <ContextMenuTrigger asChild>
-                                  <label className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer">
+                                  <label
+                                    className={cn(
+                                      "flex items-center space-x-2 py-1 px-2 rounded cursor-pointer transition-colors",
+                                      categoryState === "exclude"
+                                        ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
+                                        : "hover:bg-muted"
+                                    )}
+                                    onPointerDown={(event) => handleCategoryPointerDown(event, name)}
+                                  >
                                     <Checkbox
-                                      checked={selectedFilters.categories.includes(name)}
-                                      onCheckedChange={() => handleCategoryToggle(name)}
+                                      checked={getCheckboxVisualState(categoryState)}
+                                      onCheckedChange={() => handleCategoryCheckboxChange(name)}
                                     />
-                                    <span className="text-sm flex-1 truncate w-8" title={name}>
+                                    <span
+                                      className={cn(
+                                        "text-sm flex-1 truncate w-8",
+                                        categoryState === "exclude" ? "text-destructive" : undefined
+                                      )}
+                                      title={name}
+                                    >
                                       {name}
                                     </span>
-                                    <span className="text-xs text-muted-foreground">
+                                    <span
+                                      className={cn(
+                                        "text-xs",
+                                        categoryState === "exclude" ? "text-destructive" : "text-muted-foreground"
+                                      )}
+                                    >
                                       {getDisplayCount(`category:${name}`, incognitoMode ? getLinuxCount(name, 50) : undefined)}
                                     </span>
                                   </label>
@@ -716,7 +1081,6 @@ const FilterSidebarComponent = ({
                                       setCategoryToEdit(category)
                                       setShowEditCategoryDialog(true)
                                     }}
-                                    onPointerDown={(event) => handleTagPointerDown(event, tag)}
                                   >
                                     <Edit className="mr-2 h-4 w-4" />
                                     Edit Category
@@ -740,46 +1104,68 @@ const FilterSidebarComponent = ({
                       </div>
                     </div>
                   ) : (
-                    filteredCategories.map(([name, category]: [string, Category]) => (
-                      <ContextMenu key={name}>
-                        <ContextMenuTrigger asChild>
-                          <label className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer">
-                            <Checkbox
-                              checked={selectedFilters.categories.includes(name)}
-                              onCheckedChange={() => handleCategoryToggle(name)}
-                            />
-                            <span className="text-sm flex-1 truncate w-8" title={name}>
-                              {name}
-                            </span>
-                            <span className="text-xs text-muted-foreground">
-                              {getDisplayCount(`category:${name}`, incognitoMode ? getLinuxCount(name, 50) : undefined)}
-                            </span>
-                          </label>
-                        </ContextMenuTrigger>
-                        <ContextMenuContent>
-                          <ContextMenuItem
-                            onClick={() => {
-                              setCategoryToEdit(category)
-                              setShowEditCategoryDialog(true)
-                            }}
-                          >
-                            <Edit className="mr-2 h-4 w-4" />
-                            Edit Category
-                          </ContextMenuItem>
-                          <ContextMenuSeparator />
-                          <ContextMenuItem
-                            onClick={() => {
-                              setCategoryToDelete(name)
-                              setShowDeleteCategoryDialog(true)
-                            }}
-                            className="text-destructive"
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Delete Category
-                          </ContextMenuItem>
-                        </ContextMenuContent>
-                      </ContextMenu>
-                    ))
+                    filteredCategories.map(([name, category]: [string, Category]) => {
+                      const categoryState = getCategoryState(name)
+                      return (
+                        <ContextMenu key={name}>
+                          <ContextMenuTrigger asChild>
+                            <label
+                              className={cn(
+                                "flex items-center space-x-2 py-1 px-2 rounded cursor-pointer transition-colors",
+                                categoryState === "exclude"
+                                  ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
+                                  : "hover:bg-muted"
+                              )}
+                              onPointerDown={(event) => handleCategoryPointerDown(event, name)}
+                            >
+                              <Checkbox
+                                checked={getCheckboxVisualState(categoryState)}
+                                onCheckedChange={() => handleCategoryCheckboxChange(name)}
+                              />
+                              <span
+                                className={cn(
+                                  "text-sm flex-1 truncate w-8",
+                                  categoryState === "exclude" ? "text-destructive" : undefined
+                                )}
+                                title={name}
+                              >
+                                {name}
+                              </span>
+                              <span
+                                className={cn(
+                                  "text-xs",
+                                  categoryState === "exclude" ? "text-destructive" : "text-muted-foreground"
+                                )}
+                              >
+                                {getDisplayCount(`category:${name}`, incognitoMode ? getLinuxCount(name, 50) : undefined)}
+                              </span>
+                            </label>
+                          </ContextMenuTrigger>
+                          <ContextMenuContent>
+                            <ContextMenuItem
+                              onClick={() => {
+                                setCategoryToEdit(category)
+                                setShowEditCategoryDialog(true)
+                              }}
+                            >
+                              <Edit className="mr-2 h-4 w-4" />
+                              Edit Category
+                            </ContextMenuItem>
+                            <ContextMenuSeparator />
+                            <ContextMenuItem
+                              onClick={() => {
+                                setCategoryToDelete(name)
+                                setShowDeleteCategoryDialog(true)
+                              }}
+                              className="text-destructive"
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Delete Category
+                            </ContextMenuItem>
+                          </ContextMenuContent>
+                        </ContextMenu>
+                      )
+                    })
                   )}
                 </div>
               </AccordionContent>
@@ -830,7 +1216,7 @@ const FilterSidebarComponent = ({
                   >
                     <Checkbox
                       checked={getCheckboxVisualState(untaggedState)}
-                      onCheckedChange={() => handleTagStateCycle("")}
+                      onCheckedChange={() => handleTagCheckboxChange("")}
                       className="rounded border-input"
                     />
                     <span
@@ -908,7 +1294,7 @@ const FilterSidebarComponent = ({
                                   >
                                     <Checkbox
                                       checked={getCheckboxVisualState(tagState)}
-                                      onCheckedChange={() => handleTagStateCycle(tag)}
+                                      onCheckedChange={() => handleTagCheckboxChange(tag)}
                                     />
                                     <span
                                       className={cn(
@@ -970,7 +1356,7 @@ const FilterSidebarComponent = ({
                             >
                               <Checkbox
                                 checked={getCheckboxVisualState(tagState)}
-                                onCheckedChange={() => handleTagStateCycle(tag)}
+                                onCheckedChange={() => handleTagCheckboxChange(tag)}
                               />
                               <span
                                 className={cn(
@@ -1024,9 +1410,9 @@ const FilterSidebarComponent = ({
               <AccordionTrigger className="px-3 py-2 hover:no-underline">
                 <div className="flex items-center justify-between w-full">
                   <span className="text-sm font-medium">Trackers</span>
-                  {selectedFilters.trackers.length > 0 && (
+                  {selectedFilters.trackers.length + selectedFilters.excludeTrackers.length > 0 && (
                     <FilterBadge
-                      count={selectedFilters.trackers.length}
+                      count={selectedFilters.trackers.length + selectedFilters.excludeTrackers.length}
                       onClick={clearTrackersFilter}
                     />
                   )}
@@ -1046,16 +1432,34 @@ const FilterSidebarComponent = ({
                   </div>
 
                   {/* No tracker option */}
-                  <label className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer">
+                  <label
+                    className={cn(
+                      "flex items-center space-x-2 py-1 px-2 rounded cursor-pointer transition-colors",
+                      noTrackerState === "exclude"
+                        ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
+                        : "hover:bg-muted"
+                    )}
+                    onPointerDown={(event) => handleTrackerPointerDown(event, "")}
+                  >
                     <Checkbox
-                      checked={selectedFilters.trackers.includes("")}
-                      onCheckedChange={() => handleTrackerToggle("")}
+                      checked={getCheckboxVisualState(noTrackerState)}
+                      onCheckedChange={() => handleTrackerCheckboxChange("")}
                       className="rounded border-input"
                     />
-                    <span className="text-sm flex-1 italic text-muted-foreground">
+                    <span
+                      className={cn(
+                        "text-sm flex-1 italic",
+                        noTrackerState === "exclude" ? "text-destructive" : "text-muted-foreground"
+                      )}
+                    >
                       No tracker
                     </span>
-                    <span className="text-xs text-muted-foreground">
+                    <span
+                      className={cn(
+                        "text-xs",
+                        noTrackerState === "exclude" ? "text-destructive" : "text-muted-foreground"
+                      )}
+                    >
                       {getDisplayCount("tracker:")}
                     </span>
                   </label>
@@ -1084,6 +1488,7 @@ const FilterSidebarComponent = ({
                         {trackerVirtualizer.getVirtualItems().map((virtualRow) => {
                           const tracker = filteredTrackers.filter(t => t !== "")[virtualRow.index]
                           if (!tracker) return null
+                          const trackerState = getTrackerState(tracker)
 
                           return (
                             <div
@@ -1100,15 +1505,34 @@ const FilterSidebarComponent = ({
                             >
                               <ContextMenu>
                                 <ContextMenuTrigger asChild>
-                                  <label className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer">
+                                  <label
+                                    className={cn(
+                                      "flex items-center space-x-2 py-1 px-2 rounded cursor-pointer transition-colors",
+                                      trackerState === "exclude"
+                                        ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
+                                        : "hover:bg-muted"
+                                    )}
+                                    onPointerDown={(event) => handleTrackerPointerDown(event, tracker)}
+                                  >
                                     <Checkbox
-                                      checked={selectedFilters.trackers.includes(tracker)}
-                                      onCheckedChange={() => handleTrackerToggle(tracker)}
+                                      checked={getCheckboxVisualState(trackerState)}
+                                      onCheckedChange={() => handleTrackerCheckboxChange(tracker)}
                                     />
-                                    <span className="text-sm flex-1 truncate w-8" title={tracker}>
+                                    <span
+                                      className={cn(
+                                        "text-sm flex-1 truncate w-8",
+                                        trackerState === "exclude" ? "text-destructive" : undefined
+                                      )}
+                                      title={tracker}
+                                    >
                                       {tracker}
                                     </span>
-                                    <span className="text-xs text-muted-foreground">
+                                    <span
+                                      className={cn(
+                                        "text-xs",
+                                        trackerState === "exclude" ? "text-destructive" : "text-muted-foreground"
+                                      )}
+                                    >
                                       {getDisplayCount(`tracker:${tracker}`, incognitoMode ? getLinuxCount(tracker, 100) : undefined)}
                                     </span>
                                   </label>
@@ -1132,36 +1556,58 @@ const FilterSidebarComponent = ({
                       </div>
                     </div>
                   ) : (
-                    filteredTrackers.filter(tracker => tracker !== "").map((tracker) => (
-                      <ContextMenu key={tracker}>
-                        <ContextMenuTrigger asChild>
-                          <label className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer">
-                            <Checkbox
-                              checked={selectedFilters.trackers.includes(tracker)}
-                              onCheckedChange={() => handleTrackerToggle(tracker)}
-                            />
-                            <span className="text-sm flex-1 truncate w-8" title={tracker}>
-                              {tracker}
-                            </span>
-                            <span className="text-xs text-muted-foreground">
-                              {getDisplayCount(`tracker:${tracker}`, incognitoMode ? getLinuxCount(tracker, 100) : undefined)}
-                            </span>
-                          </label>
-                        </ContextMenuTrigger>
-                        <ContextMenuContent>
-                          <ContextMenuItem
-                            onClick={async () => {
-                              setTrackerToEdit(tracker)
-                              await fetchTrackerURLs(tracker)
-                              setShowEditTrackerDialog(true)
-                            }}
-                          >
-                            <Edit className="mr-2 h-4 w-4" />
-                            Edit Tracker URL
-                          </ContextMenuItem>
-                        </ContextMenuContent>
-                      </ContextMenu>
-                    ))
+                    filteredTrackers.filter(tracker => tracker !== "").map((tracker) => {
+                      const trackerState = getTrackerState(tracker)
+                      return (
+                        <ContextMenu key={tracker}>
+                          <ContextMenuTrigger asChild>
+                            <label
+                              className={cn(
+                                "flex items-center space-x-2 py-1 px-2 rounded cursor-pointer transition-colors",
+                                trackerState === "exclude"
+                                  ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
+                                  : "hover:bg-muted"
+                              )}
+                              onPointerDown={(event) => handleTrackerPointerDown(event, tracker)}
+                            >
+                              <Checkbox
+                                checked={getCheckboxVisualState(trackerState)}
+                                onCheckedChange={() => handleTrackerCheckboxChange(tracker)}
+                              />
+                              <span
+                                className={cn(
+                                  "text-sm flex-1 truncate w-8",
+                                  trackerState === "exclude" ? "text-destructive" : undefined
+                                )}
+                                title={tracker}
+                              >
+                                {tracker}
+                              </span>
+                              <span
+                                className={cn(
+                                  "text-xs",
+                                  trackerState === "exclude" ? "text-destructive" : "text-muted-foreground"
+                                )}
+                              >
+                                {getDisplayCount(`tracker:${tracker}`, incognitoMode ? getLinuxCount(tracker, 100) : undefined)}
+                              </span>
+                            </label>
+                          </ContextMenuTrigger>
+                          <ContextMenuContent>
+                            <ContextMenuItem
+                              onClick={async () => {
+                                setTrackerToEdit(tracker)
+                                await fetchTrackerURLs(tracker)
+                                setShowEditTrackerDialog(true)
+                              }}
+                            >
+                              <Edit className="mr-2 h-4 w-4" />
+                              Edit Tracker URL
+                            </ContextMenuItem>
+                          </ContextMenuContent>
+                        </ContextMenu>
+                      )
+                    })
                   )}
                 </div>
               </AccordionContent>

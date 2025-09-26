@@ -14,10 +14,13 @@ export function usePersistedFilters(instanceId: number) {
 
     return {
       status: global.status || [],
+      excludeStatus: global.excludeStatus || [],
       categories: instance.categories || [],
+      excludeCategories: instance.excludeCategories || [],
       tags: instance.tags || [],
       excludeTags: instance.excludeTags || [],
       trackers: instance.trackers || [],
+      excludeTrackers: instance.excludeTrackers || [],
     }
   })
 
@@ -28,21 +31,29 @@ export function usePersistedFilters(instanceId: number) {
 
     setFilters({
       status: global.status || [],
+      excludeStatus: global.excludeStatus || [],
       categories: instance.categories || [],
+      excludeCategories: instance.excludeCategories || [],
       tags: instance.tags || [],
       excludeTags: instance.excludeTags || [],
       trackers: instance.trackers || [],
+      excludeTrackers: instance.excludeTrackers || [],
     })
   }, [instanceId])
 
   // Save filters when they change
   useEffect(() => {
-    localStorage.setItem("qui-filters-global", JSON.stringify({ status: filters.status }))
+    localStorage.setItem("qui-filters-global", JSON.stringify({
+      status: filters.status,
+      excludeStatus: filters.excludeStatus,
+    }))
     localStorage.setItem(`qui-filters-${instanceId}`, JSON.stringify({
       categories: filters.categories,
+      excludeCategories: filters.excludeCategories,
       tags: filters.tags,
       excludeTags: filters.excludeTags,
       trackers: filters.trackers,
+      excludeTrackers: filters.excludeTrackers,
     }))
   }, [filters, instanceId])
 

@@ -124,7 +124,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 	// Get MainData for tracker filtering (if needed)
 	var mainData *qbt.MainData
-	if len(filters.Trackers) > 0 {
+	if len(filters.Trackers) > 0 || len(filters.ExcludeTrackers) > 0 {
 		mainData = syncManager.GetData()
 	}
 
@@ -138,7 +138,10 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	hasMultipleCategoryFilters := len(filters.Categories) > 1
 	hasMultipleTagFilters := len(filters.Tags) > 1
 	hasTrackerFilters := len(filters.Trackers) > 0 // Library doesn't support tracker filtering
+	hasExcludeStatusFilters := len(filters.ExcludeStatus) > 0
+	hasExcludeCategoryFilters := len(filters.ExcludeCategories) > 0
 	hasExcludeTagFilters := len(filters.ExcludeTags) > 0
+	hasExcludeTrackerFilters := len(filters.ExcludeTrackers) > 0
 
 	// Determine if any status filter needs manual filtering
 	needsManualStatusFiltering := false
@@ -162,7 +165,8 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	}
 
 	useManualFiltering = hasMultipleStatusFilters || hasMultipleCategoryFilters || hasMultipleTagFilters ||
-		hasTrackerFilters || hasExcludeTagFilters || needsManualStatusFiltering || needsManualCategoryFiltering || needsManualTagFiltering
+		hasTrackerFilters || hasExcludeStatusFilters || hasExcludeCategoryFilters || hasExcludeTagFilters || hasExcludeTrackerFilters ||
+		needsManualStatusFiltering || needsManualCategoryFiltering || needsManualTagFiltering
 
 	if useManualFiltering {
 		// Use manual filtering - get all torrents and filter manually
@@ -172,7 +176,10 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 			Bool("multipleCategories", hasMultipleCategoryFilters).
 			Bool("multipleTags", hasMultipleTagFilters).
 			Bool("hasTrackers", hasTrackerFilters).
+			Bool("hasExcludeStatus", hasExcludeStatusFilters).
+			Bool("hasExcludeCategories", hasExcludeCategoryFilters).
 			Bool("hasExcludeTags", hasExcludeTagFilters).
+			Bool("hasExcludeTrackers", hasExcludeTrackerFilters).
 			Bool("needsManualStatus", needsManualStatusFiltering).
 			Bool("needsManualCategory", needsManualCategoryFiltering).
 			Bool("needsManualTag", needsManualTagFiltering).
@@ -1271,6 +1278,11 @@ func (sm *SyncManager) applyManualFilters(client *Client, torrents []qbt.Torrent
 		categorySet[c] = struct{}{}
 	}
 
+	excludeCategorySet := make(map[string]struct{}, len(filters.ExcludeCategories))
+	for _, c := range filters.ExcludeCategories {
+		excludeCategorySet[c] = struct{}{}
+	}
+
 	// Prepare tag filter strings (lower-cased/trimmed) to reuse across torrents (avoid per-torrent allocations)
 	includeUntagged := false
 	if len(filters.Tags) > 0 {
@@ -1300,6 +1312,11 @@ func (sm *SyncManager) applyManualFilters(client *Client, torrents []qbt.Torrent
 		trackerFilterSet[t] = struct{}{}
 	}
 
+	excludeTrackerSet := make(map[string]struct{}, len(filters.ExcludeTrackers))
+	for _, t := range filters.ExcludeTrackers {
+		excludeTrackerSet[t] = struct{}{}
+	}
+
 	// Precompute a map from torrent hash -> set of tracker domains using mainData.Trackers
 	// Only keep domains that are present in the tracker filter set (if any filters are provided)
 	torrentHashToDomains := map[string]map[string]struct{}{}
@@ -1307,17 +1324,19 @@ func (sm *SyncManager) applyManualFilters(client *Client, torrents []qbt.Torrent
 	if client != nil {
 		trackerExclusions = client.getTrackerExclusionsCopy()
 	}
-	if mainData != nil && mainData.Trackers != nil && len(filters.Trackers) != 0 {
+	if mainData != nil && mainData.Trackers != nil && (len(filters.Trackers) != 0 || len(filters.ExcludeTrackers) != 0) {
 		for trackerURL, hashes := range mainData.Trackers {
 			domain := sm.extractDomainFromURL(trackerURL)
 			if domain == "" {
 				domain = "Unknown"
 			}
 
-			// If tracker filters are set and this domain isn't in them, skip storing it
-			if len(trackerFilterSet) > 0 {
+			// If filters are set and this domain isn't in either include or exclude sets, skip storing it
+			if len(trackerFilterSet) > 0 || len(excludeTrackerSet) > 0 {
 				if _, ok := trackerFilterSet[domain]; !ok {
-					continue
+					if _, excludeMatch := excludeTrackerSet[domain]; !excludeMatch {
+						continue
+					}
 				}
 			}
 
@@ -1336,6 +1355,7 @@ func (sm *SyncManager) applyManualFilters(client *Client, torrents []qbt.Torrent
 		}
 	}
 
+torrentsLoop:
 	for _, torrent := range torrents {
 		// Status filters (OR logic)
 		if len(filters.Status) > 0 {
@@ -1351,9 +1371,23 @@ func (sm *SyncManager) applyManualFilters(client *Client, torrents []qbt.Torrent
 			}
 		}
 
+		if len(filters.ExcludeStatus) > 0 {
+			for _, status := range filters.ExcludeStatus {
+				if sm.matchTorrentStatus(torrent, status) {
+					continue torrentsLoop
+				}
+			}
+		}
+
 		// Category filters (OR logic)
 		if len(filters.Categories) > 0 {
 			if _, ok := categorySet[torrent.Category]; !ok {
+				continue
+			}
+		}
+
+		if len(excludeCategorySet) > 0 {
+			if _, ok := excludeCategorySet[torrent.Category]; ok {
 				continue
 			}
 		}
@@ -1437,6 +1471,43 @@ func (sm *SyncManager) applyManualFilters(client *Client, torrents []qbt.Torrent
 			}
 		}
 
+		if len(excludeTrackerSet) > 0 {
+			if len(torrentHashToDomains) > 0 {
+				if domains, ok := torrentHashToDomains[torrent.Hash]; ok && len(domains) > 0 {
+					excluded := false
+					for domain := range domains {
+						if _, ok := excludeTrackerSet[domain]; ok {
+							excluded = true
+							break
+						}
+					}
+					if excluded {
+						continue
+					}
+				} else {
+					// No trackers known for this torrent
+					if _, ok := excludeTrackerSet[""]; ok {
+						continue
+					}
+				}
+			} else {
+				// Fallback to torrent.Tracker metadata
+				if torrent.Tracker == "" {
+					if _, ok := excludeTrackerSet[""]; ok {
+						continue
+					}
+				} else {
+					trackerDomain := sm.extractDomainFromURL(torrent.Tracker)
+					if trackerDomain == "" {
+						trackerDomain = "Unknown"
+					}
+					if _, ok := excludeTrackerSet[trackerDomain]; ok {
+						continue
+					}
+				}
+			}
+		}
+
 		// If we reach here, torrent passed all active filters
 		filtered = append(filtered, torrent)
 	}
@@ -1445,9 +1516,13 @@ func (sm *SyncManager) applyManualFilters(client *Client, torrents []qbt.Torrent
 		Int("inputTorrents", len(torrents)).
 		Int("filteredTorrents", len(filtered)).
 		Int("statusFilters", len(filters.Status)).
+		Int("excludeStatusFilters", len(filters.ExcludeStatus)).
 		Int("categoryFilters", len(filters.Categories)).
+		Int("excludeCategoryFilters", len(filters.ExcludeCategories)).
 		Int("tagFilters", len(filters.Tags)).
+		Int("excludeTagFilters", len(filters.ExcludeTags)).
 		Int("trackerFilters", len(filters.Trackers)).
+		Int("excludeTrackerFilters", len(filters.ExcludeTrackers)).
 		Msg("Applied manual filtering with multiple selections")
 
 	return filtered

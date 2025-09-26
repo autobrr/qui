@@ -130,10 +130,13 @@ export interface TorrentCounts {
 
 export interface TorrentFilters {
   status: string[]
+  excludeStatus: string[]
   categories: string[]
+  excludeCategories: string[]
   tags: string[]
   excludeTags: string[]
   trackers: string[]
+  excludeTrackers: string[]
 }
 
 export interface TorrentResponse {
