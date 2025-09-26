@@ -25,7 +25,8 @@ import { getStateLabel } from "@/lib/torrent-state-utils"
 import { formatBytes, formatDateTime, formatDuration, getRatioColor } from "@/lib/utils"
 import type { Torrent } from "@/types"
 import type { ColumnDef } from "@tanstack/react-table"
-import { ListOrdered } from "lucide-react"
+import { Globe, ListOrdered } from "lucide-react"
+import { memo, useEffect, useMemo, useState } from "react"
 
 function formatEta(seconds: number): string {
   if (seconds === 8640000) return "∞"
@@ -65,6 +66,73 @@ function calculateMinWidth(text: string, padding: number = 48): number {
   return Math.max(60, Math.ceil(text.length * charWidth) + padding + extraPadding)
 }
 
+interface TrackerIconCellProps {
+  tracker: string | undefined
+  trackerIconBase?: string
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+const TrackerIconCell = memo(({ tracker, trackerIconBase }: TrackerIconCellProps) => {
+  const [hasError, setHasError] = useState(false)
+
+  const { src, title, fallback } = useMemo(() => {
+    if (!tracker || !trackerIconBase) {
+      const trimmed = tracker?.trim() ?? ""
+      return {
+        src: null as string | null,
+        title: trimmed,
+        fallback: trimmed ? trimmed.charAt(0).toUpperCase() : "#",
+      }
+    }
+
+    const trimmed = tracker.trim()
+    const fallbackLetter = trimmed ? trimmed.charAt(0).toUpperCase() : "#"
+
+    let host = trimmed
+    let iconSrc: string | null = null
+    try {
+      if (trimmed.includes("://")) {
+        const url = new URL(trimmed)
+        host = url.hostname
+        iconSrc = `${trackerIconBase}/${encodeURIComponent(host)}`
+        iconSrc += `?url=${encodeURIComponent(trimmed)}`
+      } else {
+        host = trimmed
+        iconSrc = `${trackerIconBase}/${encodeURIComponent(host)}`
+      }
+    } catch {
+      iconSrc = null
+    }
+
+    return { src: iconSrc, title: host, fallback: fallbackLetter }
+  }, [tracker, trackerIconBase])
+
+  useEffect(() => {
+    setHasError(false)
+  }, [src])
+
+  return (
+    <div className="flex h-full items-center justify-center" title={title}>
+      <div className="flex h-4 w-4 items-center justify-center rounded-sm border border-border/40 bg-muted text-[10px] font-medium uppercase leading-none">
+        {src && !hasError ? (
+          <img
+            src={src}
+            alt=""
+            className="h-full w-full rounded-[2px] object-cover"
+            loading="lazy"
+            draggable={false}
+            onError={() => setHasError(true)}
+          />
+        ) : (
+          <span aria-hidden="true">{fallback}</span>
+        )}
+      </div>
+    </div>
+  )
+})
+
+TrackerIconCell.displayName = "TrackerIconCell"
+
 export const createColumns = (
   incognitoMode: boolean,
   selectionEnhancers?: {
@@ -79,7 +147,8 @@ export const createColumns = (
     isAllSelected?: boolean
     excludedFromSelectAll?: Set<string>
   },
-  speedUnit: SpeedUnit = "bytes"
+  speedUnit: SpeedUnit = "bytes",
+  trackerIconBase?: string
 ): ColumnDef<Torrent>[] => [
   {
     id: "select",
@@ -424,6 +493,34 @@ export const createColumns = (
       )
     },
     size: 200,
+  },
+  {
+    id: "tracker_icon",
+    header: () => (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="flex h-10 w-full items-center justify-center text-muted-foreground">
+            <Globe className="h-4 w-4" aria-hidden="true" />
+            <span className="sr-only">Tracker Icon</span>
+          </div>
+        </TooltipTrigger>
+        <TooltipContent>Tracker Icon</TooltipContent>
+      </Tooltip>
+    ),
+    meta: {
+      headerString: "Tracker Icon",
+    },
+    cell: ({ row }) => {
+      const tracker = incognitoMode ? getLinuxTracker(row.original.hash) : row.original.tracker
+      return (
+        <TrackerIconCell
+          tracker={tracker}
+          trackerIconBase={trackerIconBase}
+        />
+      )
+    },
+    size: 48,
+    enableResizing: true,
   },
   {
     accessorKey: "tracker",

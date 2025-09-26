@@ -22,6 +22,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { SearchInput } from "@/components/ui/SearchInput"
 import { useDebounce } from "@/hooks/useDebounce"
 import { usePersistedAccordion } from "@/hooks/usePersistedAccordion"
+import { getApiBaseUrl } from "@/lib/base-url"
 import { getLinuxCount, LINUX_CATEGORIES, LINUX_TAGS, LINUX_TRACKERS, useIncognitoMode } from "@/lib/incognito"
 import type { Category } from "@/types"
 import { useVirtualizer } from "@tanstack/react-virtual"
@@ -41,7 +42,7 @@ import {
   XCircle,
   type LucideIcon
 } from "lucide-react"
-import { memo, useCallback, useMemo, useRef, useState } from "react"
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   CreateCategoryDialog,
   CreateTagDialog,
@@ -52,8 +53,8 @@ import {
 } from "./TagCategoryManagement"
 import { EditTrackerDialog } from "./TorrentDialogs"
 // import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
-import { useMutation } from "@tanstack/react-query"
 import { api } from "@/lib/api"
+import { useMutation } from "@tanstack/react-query"
 import { toast } from "sonner"
 
 interface FilterBadgeProps {
@@ -119,6 +120,42 @@ const TORRENT_STATES: Array<{ value: string; label: string; icon: LucideIcon }> 
   { value: "moving", label: "Moving", icon: MoveRight },
 ]
 
+interface TrackerIconImageProps {
+  tracker: string
+  iconBase: string
+}
+
+const TrackerIconImage = memo(({ tracker, iconBase }: TrackerIconImageProps) => {
+  const [hasError, setHasError] = useState(false)
+
+  useEffect(() => {
+    setHasError(false)
+  }, [tracker, iconBase])
+
+  const trimmed = tracker.trim()
+  const fallbackLetter = trimmed ? trimmed.charAt(0).toUpperCase() : "#"
+  const src = `${iconBase}/${encodeURIComponent(tracker)}`
+
+  return (
+    <div className="flex h-4 w-4 items-center justify-center rounded-sm border border-border/40 bg-muted text-[10px] font-medium uppercase leading-none">
+      {!hasError ? (
+        <img
+          src={src}
+          alt=""
+          className="h-full w-full rounded-[2px] object-cover"
+          loading="lazy"
+          draggable={false}
+          onError={() => setHasError(true)}
+        />
+      ) : (
+        <span aria-hidden="true">{fallbackLetter}</span>
+      )}
+    </div>
+  )
+})
+
+TrackerIconImage.displayName = "TrackerIconImage"
+
 const FilterSidebarComponent = ({
   instanceId,
   selectedFilters,
@@ -132,6 +169,7 @@ const FilterSidebarComponent = ({
 }: FilterSidebarProps) => {
   // Use incognito mode hook
   const [incognitoMode] = useIncognitoMode()
+  const trackerIconBase = useMemo(() => `${getApiBaseUrl()}/tracker-icons`, [])
 
   // Helper function to get count display - shows 0 when loading to prevent showing stale counts from previous instance
   const getDisplayCount = useCallback((key: string, fallbackCount?: number): string => {
@@ -976,6 +1014,7 @@ const FilterSidebarComponent = ({
                                       checked={selectedFilters.trackers.includes(tracker)}
                                       onCheckedChange={() => handleTrackerToggle(tracker)}
                                     />
+                                    <TrackerIconImage tracker={tracker} iconBase={trackerIconBase} />
                                     <span className="text-sm flex-1 truncate w-8" title={tracker}>
                                       {tracker}
                                     </span>
@@ -1011,6 +1050,7 @@ const FilterSidebarComponent = ({
                               checked={selectedFilters.trackers.includes(tracker)}
                               onCheckedChange={() => handleTrackerToggle(tracker)}
                             />
+                            <TrackerIconImage tracker={tracker} iconBase={trackerIconBase} />
                             <span className="text-sm flex-1 truncate w-8" title={tracker}>
                               {tracker}
                             </span>
