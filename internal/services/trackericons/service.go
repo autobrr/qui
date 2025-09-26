@@ -1,0 +1,644 @@
+// Copyright (c) 2025, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package trackericons
+
+import (
+	"bytes"
+	"context"
+	"encoding/base64"
+	"errors"
+	"fmt"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	"image/png"
+	"io"
+	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"sync"
+	"time"
+
+	ico "github.com/biessek/golang-ico"
+	"golang.org/x/image/draw"
+	"golang.org/x/net/html"
+	"golang.org/x/net/html/charset"
+	"golang.org/x/sync/singleflight"
+	"golang.org/x/text/transform"
+)
+
+const (
+	iconDirName        = "tracker-icons"
+	maxHTMLBytes int64 = 2 << 20 // 2 MiB
+	maxIconBytes int64 = 1 << 20 // 1 MiB
+
+	fetchTimeout    = 15 * time.Second
+	failureCooldown = 30 * time.Minute
+)
+
+var (
+	// ErrIconNotFound is returned when no icon could be fetched for a tracker.
+	ErrIconNotFound = errors.New("tracker icon not found")
+	// ErrInvalidTrackerHost is returned when the requested tracker host is invalid.
+	ErrInvalidTrackerHost = errors.New("invalid tracker host")
+)
+
+// Service handles fetching and caching tracker icons on disk.
+type Service struct {
+	iconDir string
+	client  *http.Client
+	ua      string
+
+	group singleflight.Group
+
+	failureMu   sync.Mutex
+	lastFailure map[string]time.Time
+}
+
+// NewService creates a new tracker icon service rooted in the provided data directory.
+func NewService(dataDir, userAgent string) (*Service, error) {
+	if strings.TrimSpace(dataDir) == "" {
+		return nil, fmt.Errorf("data directory must be provided")
+	}
+
+	iconDir := filepath.Join(dataDir, iconDirName)
+	if err := os.MkdirAll(iconDir, 0o755); err != nil {
+		return nil, fmt.Errorf("create tracker icon directory: %w", err)
+	}
+
+	svc := &Service{
+		iconDir:     iconDir,
+		client:      &http.Client{Timeout: fetchTimeout},
+		lastFailure: make(map[string]time.Time),
+	}
+
+	if trimmed := strings.TrimSpace(userAgent); trimmed != "" {
+		svc.ua = trimmed
+	} else {
+		svc.ua = "qui/dev"
+	}
+
+	return svc, nil
+}
+
+// QueueFetch schedules a background fetch for the given tracker host. trackerURL is optional
+// and may provide a more specific origin URL to discover icons from.
+func (s *Service) QueueFetch(host, trackerURL string) {
+	sanitized := sanitizeHost(host)
+	if sanitized == "" {
+		return
+	}
+
+	path := s.iconPath(sanitized)
+	if _, err := os.Stat(path); err == nil {
+		return
+	}
+
+	if !s.canAttempt(sanitized) {
+		return
+	}
+
+	go func(h string, tracker string) {
+		ctx, cancel := context.WithTimeout(context.Background(), fetchTimeout)
+		defer cancel()
+		if _, err := s.GetIcon(ctx, h, tracker); err != nil {
+			// Intentionally ignore errors here; they are tracked internally for cooldown.
+		}
+	}(sanitized, trackerURL)
+}
+
+// GetIcon ensures an icon is available for the host (fetching if necessary) and returns the file path.
+func (s *Service) GetIcon(ctx context.Context, host, trackerURL string) (string, error) {
+	sanitized := sanitizeHost(host)
+	if sanitized == "" {
+		return "", ErrInvalidTrackerHost
+	}
+
+	iconPath := s.iconPath(sanitized)
+	if _, err := os.Stat(iconPath); err == nil {
+		return iconPath, nil
+	}
+
+	ch := s.group.DoChan(sanitized, func() (any, error) {
+		if _, err := os.Stat(iconPath); err == nil {
+			return iconPath, nil
+		}
+
+		if !s.canAttempt(sanitized) {
+			return "", ErrIconNotFound
+		}
+
+		err := s.fetchAndStoreIcon(ctx, sanitized, trackerURL)
+		if err != nil {
+			if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+				s.recordFailure(sanitized)
+			}
+			if errors.Is(err, ErrIconNotFound) {
+				return "", ErrIconNotFound
+			}
+			return "", fmt.Errorf("fetch tracker icon: %w", err)
+		}
+
+		s.clearFailure(sanitized)
+		return iconPath, nil
+	})
+
+	select {
+	case result := <-ch:
+		if result.Err != nil {
+			return "", result.Err
+		}
+		path, ok := result.Val.(string)
+		if !ok {
+			return "", ErrIconNotFound
+		}
+		return path, nil
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+}
+
+// iconPath returns the on-disk path for the tracker icon.
+func (s *Service) iconPath(host string) string {
+	filename := safeFilename(host) + ".png"
+	return filepath.Join(s.iconDir, filename)
+}
+
+// fetchAndStoreIcon attempts to download, normalise, and cache the icon for the given host.
+func (s *Service) fetchAndStoreIcon(ctx context.Context, host, trackerURL string) error {
+	ctx, cancel := ensureContext(ctx)
+	defer cancel()
+
+	iconPath := s.iconPath(host)
+	attempted := make(map[string]struct{})
+	hostCandidates := generateHostCandidates(host)
+	if len(hostCandidates) == 0 {
+		hostCandidates = []string{sanitizeHost(host)}
+	}
+
+	for idx, candidateHost := range hostCandidates {
+		candidateTrackerURL := trackerURL
+		if idx > 0 {
+			candidateTrackerURL = ""
+		}
+
+		baseURLs := s.buildBaseCandidates(candidateHost, candidateTrackerURL)
+		if len(baseURLs) == 0 {
+			continue
+		}
+
+		localSeen := make(map[string]struct{})
+		var iconURLs []string
+
+		for _, baseURL := range baseURLs {
+			urls, err := s.discoverIcons(ctx, baseURL)
+			if err == nil {
+				for _, iconURL := range urls {
+					if _, ok := attempted[iconURL]; ok {
+						continue
+					}
+					if _, ok := localSeen[iconURL]; ok {
+						continue
+					}
+					localSeen[iconURL] = struct{}{}
+					iconURLs = append(iconURLs, iconURL)
+				}
+			}
+
+			fallback := baseURL.ResolveReference(&url.URL{Path: "/favicon.ico"}).String()
+			if _, ok := attempted[fallback]; !ok {
+				if _, seen := localSeen[fallback]; !seen {
+					localSeen[fallback] = struct{}{}
+					iconURLs = append(iconURLs, fallback)
+				}
+			}
+		}
+
+		for _, iconURL := range iconURLs {
+			attempted[iconURL] = struct{}{}
+
+			data, contentType, err := s.fetchIconBytes(ctx, iconURL)
+			if err != nil {
+				continue
+			}
+
+			img, err := decodeImage(data, contentType, iconURL)
+			if err != nil {
+				continue
+			}
+
+			resized := resizeToSquare(img, 16)
+			if err := s.writePNG(resized, iconPath); err != nil {
+				return err
+			}
+
+			return nil
+		}
+	}
+
+	return ErrIconNotFound
+}
+
+func (s *Service) discoverIcons(ctx context.Context, baseURL *url.URL) ([]string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", s.ua)
+	req.Header.Set("Accept", "text/html,application/xhtml+xml")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= http.StatusBadRequest {
+		return nil, fmt.Errorf("unexpected status %d", resp.StatusCode)
+	}
+
+	limitedReader := io.LimitReader(resp.Body, maxHTMLBytes)
+	rawHTML, err := io.ReadAll(limitedReader)
+	if err != nil {
+		return nil, err
+	}
+
+	encoding, _, _ := charset.DetermineEncoding(rawHTML, resp.Header.Get("Content-Type"))
+	utf8Reader := transform.NewReader(bytes.NewReader(rawHTML), encoding.NewDecoder())
+
+	document, err := html.Parse(utf8Reader)
+	if err != nil {
+		return nil, err
+	}
+
+	var icons []string
+	var walk func(*html.Node)
+	walk = func(n *html.Node) {
+		if n.Type == html.ElementNode && strings.EqualFold(n.Data, "link") {
+			var rel, href string
+			for _, attr := range n.Attr {
+				switch strings.ToLower(attr.Key) {
+				case "rel":
+					rel = attr.Val
+				case "href":
+					href = attr.Val
+				}
+			}
+
+			if href != "" && rel != "" && strings.Contains(strings.ToLower(rel), "icon") {
+				if resolved, err := baseURL.Parse(href); err == nil {
+					icons = append(icons, resolved.String())
+				}
+			}
+		}
+
+		for child := n.FirstChild; child != nil; child = child.NextSibling {
+			walk(child)
+		}
+	}
+
+	walk(document)
+	return icons, nil
+}
+
+func (s *Service) fetchIconBytes(ctx context.Context, iconURL string) ([]byte, string, error) {
+	if strings.HasPrefix(iconURL, "data:") {
+		return parseDataURI(iconURL)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, iconURL, nil)
+	if err != nil {
+		return nil, "", err
+	}
+	req.Header.Set("User-Agent", s.ua)
+	req.Header.Set("Accept", "image/*")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= http.StatusBadRequest {
+		return nil, "", fmt.Errorf("unexpected status %d", resp.StatusCode)
+	}
+
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxIconBytes))
+	if err != nil {
+		return nil, "", err
+	}
+
+	contentType := resp.Header.Get("Content-Type")
+	return data, contentType, nil
+}
+
+func (s *Service) writePNG(img image.Image, path string) error {
+	tmpFile, err := os.CreateTemp(s.iconDir, "tracker-icon-*.png")
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		tmpFile.Close()
+		os.Remove(tmpFile.Name())
+	}()
+
+	if err := png.Encode(tmpFile, img); err != nil {
+		return err
+	}
+
+	if err := tmpFile.Chmod(0o644); err != nil {
+		return err
+	}
+
+	if err := tmpFile.Close(); err != nil {
+		return err
+	}
+
+	return os.Rename(tmpFile.Name(), path)
+}
+
+func (s *Service) buildBaseCandidates(host, trackerURL string) []*url.URL {
+	host = sanitizeHost(host)
+	if host == "" {
+		return nil
+	}
+
+	seen := make(map[string]struct{})
+	add := func(raw string) {
+		u, err := url.Parse(raw)
+		if err != nil || u.Host == "" {
+			return
+		}
+		u.Path = "/"
+		u.RawQuery = ""
+		u.Fragment = ""
+		key := u.String()
+		if _, ok := seen[key]; ok {
+			return
+		}
+		seen[key] = struct{}{}
+	}
+
+	if trackerURL != "" {
+		if u, err := url.Parse(trackerURL); err == nil {
+			switch strings.ToLower(u.Scheme) {
+			case "http", "https":
+				add((&url.URL{Scheme: u.Scheme, Host: u.Host}).String())
+			default:
+				if u.Host != "" {
+					add((&url.URL{Scheme: "https", Host: u.Host}).String())
+					add((&url.URL{Scheme: "http", Host: u.Host}).String())
+				}
+			}
+		}
+	}
+
+	add((&url.URL{Scheme: "https", Host: host}).String())
+	add((&url.URL{Scheme: "http", Host: host}).String())
+
+	var keys []string
+	for raw := range seen {
+		keys = append(keys, raw)
+	}
+	slices.Sort(keys)
+
+	var urls []*url.URL
+	for _, raw := range keys {
+		if u, err := url.Parse(raw); err == nil {
+			urls = append(urls, u)
+		}
+	}
+
+	return urls
+}
+
+func (s *Service) canAttempt(host string) bool {
+	s.failureMu.Lock()
+	defer s.failureMu.Unlock()
+
+	if ts, ok := s.lastFailure[host]; ok {
+		if time.Since(ts) < failureCooldown {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (s *Service) recordFailure(host string) {
+	s.failureMu.Lock()
+	s.lastFailure[host] = time.Now()
+	s.failureMu.Unlock()
+}
+
+func (s *Service) clearFailure(host string) {
+	s.failureMu.Lock()
+	delete(s.lastFailure, host)
+	s.failureMu.Unlock()
+}
+
+func sanitizeHost(host string) string {
+	host = strings.TrimSpace(host)
+	host = strings.Trim(host, "/")
+	if host == "" {
+		return ""
+	}
+	if idx := strings.Index(host, "/"); idx >= 0 {
+		host = host[:idx]
+	}
+	if idx := strings.Index(host, "?"); idx >= 0 {
+		host = host[:idx]
+	}
+	if idx := strings.Index(host, "#"); idx >= 0 {
+		host = host[:idx]
+	}
+	host = strings.ToLower(host)
+	host = strings.ReplaceAll(host, "..", ".")
+	return host
+}
+
+func safeFilename(host string) string {
+	var b strings.Builder
+	for _, r := range host {
+		switch {
+		case r >= 'a' && r <= 'z':
+			b.WriteRune(r)
+		case r >= '0' && r <= '9':
+			b.WriteRune(r)
+		case r == '.' || r == '-' || r == '_':
+			b.WriteRune(r)
+		case r == ':':
+			b.WriteRune('_')
+		default:
+			b.WriteRune('_')
+		}
+	}
+	return b.String()
+}
+
+func generateHostCandidates(host string) []string {
+	sanitized := sanitizeHost(host)
+	if sanitized == "" {
+		return nil
+	}
+
+	seen := make(map[string]struct{})
+	var candidates []string
+
+	add := func(candidate string) {
+		candidate = sanitizeHost(candidate)
+		if candidate == "" {
+			return
+		}
+		if _, exists := seen[candidate]; exists {
+			return
+		}
+		seen[candidate] = struct{}{}
+		candidates = append(candidates, candidate)
+	}
+
+	add(sanitized)
+
+	current := sanitized
+	for {
+		next := trimLeadingLabel(current)
+		if next == "" || next == current {
+			break
+		}
+		if strings.Count(next, ".") == 0 {
+			break
+		}
+		add(next)
+		current = next
+		if strings.Count(current, ".") == 1 {
+			break
+		}
+	}
+
+	if !strings.HasPrefix(sanitized, "www.") && strings.Count(sanitized, ".") == 1 {
+		add("www." + sanitized)
+	}
+
+	return candidates
+}
+
+func trimLeadingLabel(host string) string {
+	idx := strings.Index(host, ".")
+	if idx == -1 {
+		return host
+	}
+	if idx+1 >= len(host) {
+		return ""
+	}
+	return host[idx+1:]
+}
+
+func ensureContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	if ctx == nil {
+		return context.WithTimeout(context.Background(), fetchTimeout)
+	}
+
+	if deadline, ok := ctx.Deadline(); ok {
+		if time.Until(deadline) < fetchTimeout {
+			return context.WithCancel(ctx)
+		}
+	}
+
+	return context.WithTimeout(ctx, fetchTimeout)
+}
+
+func parseDataURI(dataURI string) ([]byte, string, error) {
+	withoutScheme := strings.TrimPrefix(dataURI, "data:")
+	parts := strings.SplitN(withoutScheme, ",", 2)
+	if len(parts) != 2 {
+		return nil, "", fmt.Errorf("invalid data URI")
+	}
+
+	meta := parts[0]
+	payload := parts[1]
+
+	contentType := ""
+	if idx := strings.Index(meta, ";"); idx >= 0 {
+		contentType = meta[:idx]
+		meta = meta[idx+1:]
+	} else if meta != "" {
+		contentType = meta
+		meta = ""
+	}
+
+	if !strings.Contains(meta, "base64") {
+		return nil, "", fmt.Errorf("unsupported data URI encoding")
+	}
+
+	decoded, err := base64.StdEncoding.DecodeString(payload)
+	if err != nil {
+		return nil, "", err
+	}
+
+	return decoded, contentType, nil
+}
+
+func decodeImage(data []byte, contentType, originalURL string) (image.Image, error) {
+	if strings.Contains(strings.ToLower(contentType), "svg") || strings.HasSuffix(strings.ToLower(originalURL), ".svg") {
+		return nil, fmt.Errorf("svg icons are not supported")
+	}
+
+	reader := bytes.NewReader(data)
+
+	tryICO := func() (image.Image, error) {
+		if _, err := reader.Seek(0, io.SeekStart); err != nil {
+			return nil, err
+		}
+		return ico.Decode(reader)
+	}
+
+	tryGeneric := func() (image.Image, error) {
+		if _, err := reader.Seek(0, io.SeekStart); err != nil {
+			return nil, err
+		}
+		img, _, err := image.Decode(reader)
+		return img, err
+	}
+
+	lowerType := strings.ToLower(contentType)
+	if strings.Contains(lowerType, "x-icon") || strings.HasSuffix(strings.ToLower(originalURL), ".ico") {
+		if img, err := tryICO(); err == nil {
+			return img, nil
+		}
+		if img, err := tryGeneric(); err == nil {
+			return img, nil
+		}
+		if img, err := tryICO(); err == nil {
+			return img, nil
+		}
+		return nil, fmt.Errorf("failed to decode icon data")
+	}
+
+	if img, err := tryGeneric(); err == nil {
+		return img, nil
+	}
+	if img, err := tryICO(); err == nil {
+		return img, nil
+	}
+
+	return nil, fmt.Errorf("unsupported image format")
+}
+
+func resizeToSquare(src image.Image, size int) image.Image {
+	if src == nil {
+		return nil
+	}
+	bounds := src.Bounds()
+	if bounds.Dx() == size && bounds.Dy() == size {
+		return src
+	}
+
+	dst := image.NewNRGBA(image.Rect(0, 0, size, size))
+	draw.CatmullRom.Scale(dst, dst.Bounds(), src, bounds, draw.Src, nil)
+	return dst
+}
