@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Switch } from "@/components/ui/switch"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Select,
@@ -833,5 +834,285 @@ export const EditTrackerDialog = memo(function EditTrackerDialog({
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+  )
+})
+
+interface ShareLimitDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  hashCount: number
+  onConfirm: (ratioLimit: number, seedingTimeLimit: number, inactiveSeedingTimeLimit: number) => void
+  isPending?: boolean
+}
+
+export const ShareLimitDialog = memo(function ShareLimitDialog({
+  open,
+  onOpenChange,
+  hashCount,
+  onConfirm,
+  isPending = false,
+}: ShareLimitDialogProps) {
+  const [ratioEnabled, setRatioEnabled] = useState(false)
+  const [ratioLimit, setRatioLimit] = useState(1.5)
+  const [seedingTimeEnabled, setSeedingTimeEnabled] = useState(false)
+  const [seedingTimeLimit, setSeedingTimeLimit] = useState(1440) // 24 hours in minutes
+  const [inactiveSeedingTimeEnabled, setInactiveSeedingTimeEnabled] = useState(false)
+  const [inactiveSeedingTimeLimit, setInactiveSeedingTimeLimit] = useState(10080) // 7 days in minutes
+  const wasOpen = useRef(false)
+
+  // Reset form when dialog opens
+  useEffect(() => {
+    if (open && !wasOpen.current) {
+      setRatioEnabled(false)
+      setRatioLimit(1.5)
+      setSeedingTimeEnabled(false)
+      setSeedingTimeLimit(1440)
+      setInactiveSeedingTimeEnabled(false)
+      setInactiveSeedingTimeLimit(10080)
+    }
+    wasOpen.current = open
+  }, [open])
+
+  const handleConfirm = useCallback((): void => {
+    onConfirm(
+      ratioEnabled ? ratioLimit : -1,
+      seedingTimeEnabled ? seedingTimeLimit : -1,
+      inactiveSeedingTimeEnabled ? inactiveSeedingTimeLimit : -1
+    )
+    // Reset form
+    setRatioEnabled(false)
+    setRatioLimit(1.5)
+    setSeedingTimeEnabled(false)
+    setSeedingTimeLimit(1440)
+    setInactiveSeedingTimeEnabled(false)
+    setInactiveSeedingTimeLimit(10080)
+    onOpenChange(false)
+  }, [onConfirm, ratioEnabled, ratioLimit, seedingTimeEnabled, seedingTimeLimit, inactiveSeedingTimeEnabled, inactiveSeedingTimeLimit, onOpenChange])
+
+  const handleCancel = useCallback((): void => {
+    setRatioEnabled(false)
+    setRatioLimit(1.5)
+    setSeedingTimeEnabled(false)
+    setSeedingTimeLimit(1440)
+    setInactiveSeedingTimeEnabled(false)
+    setInactiveSeedingTimeLimit(10080)
+    onOpenChange(false)
+  }, [onOpenChange])
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Set Share Limits for {hashCount} torrent(s)</DialogTitle>
+          <DialogDescription>
+            Configure seeding limits. Use -1 or disable to remove limits.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="py-2 space-y-4">
+          <div className="space-y-2">
+            <div className="flex items-center space-x-2">
+              <Switch
+                id="ratioEnabled"
+                checked={ratioEnabled}
+                onCheckedChange={setRatioEnabled}
+              />
+              <Label htmlFor="ratioEnabled" className="text-sm">Set ratio limit</Label>
+            </div>
+            <div className="ml-6 space-y-1">
+              <Input
+                id="ratioLimit"
+                type="number"
+                min="0"
+                step="0.1"
+                value={ratioLimit}
+                disabled={!ratioEnabled}
+                onChange={(e) => setRatioLimit(parseFloat(e.target.value) || 0)}
+                placeholder="1.5"
+              />
+              <p className="text-xs text-muted-foreground">
+                Stop seeding when ratio reaches this value
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center space-x-2">
+              <Switch
+                id="seedingTimeEnabled"
+                checked={seedingTimeEnabled}
+                onCheckedChange={setSeedingTimeEnabled}
+              />
+              <Label htmlFor="seedingTimeEnabled" className="text-sm">Set seeding time limit</Label>
+            </div>
+            <div className="ml-6 space-y-1">
+              <Input
+                id="seedingTimeLimit"
+                type="number"
+                min="0"
+                value={seedingTimeLimit}
+                disabled={!seedingTimeEnabled}
+                onChange={(e) => setSeedingTimeLimit(parseInt(e.target.value) || 0)}
+                placeholder="1440"
+              />
+              <p className="text-xs text-muted-foreground">
+                Minutes (1440 = 24 hours)
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center space-x-2">
+              <Switch
+                id="inactiveSeedingTimeEnabled"
+                checked={inactiveSeedingTimeEnabled}
+                onCheckedChange={setInactiveSeedingTimeEnabled}
+              />
+              <Label htmlFor="inactiveSeedingTimeEnabled" className="text-sm">Set inactive seeding limit</Label>
+            </div>
+            <div className="ml-6 space-y-1">
+              <Input
+                id="inactiveSeedingTimeLimit"
+                type="number"
+                min="0"
+                value={inactiveSeedingTimeLimit}
+                disabled={!inactiveSeedingTimeEnabled}
+                onChange={(e) => setInactiveSeedingTimeLimit(parseInt(e.target.value) || 0)}
+                placeholder="10080"
+              />
+              <p className="text-xs text-muted-foreground">
+                Minutes (10080 = 7 days)
+              </p>
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={handleCancel}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleConfirm}
+            disabled={isPending}
+          >
+            {isPending ? "Setting..." : "Apply Limits"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+})
+
+interface SpeedLimitsDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  hashCount: number
+  onConfirm: (uploadLimit: number, downloadLimit: number) => void
+  isPending?: boolean
+}
+
+export const SpeedLimitsDialog = memo(function SpeedLimitsDialog({
+  open,
+  onOpenChange,
+  hashCount,
+  onConfirm,
+  isPending = false,
+}: SpeedLimitsDialogProps) {
+  const [uploadEnabled, setUploadEnabled] = useState(false)
+  const [uploadLimit, setUploadLimit] = useState(1024)
+  const [downloadEnabled, setDownloadEnabled] = useState(false)
+  const [downloadLimit, setDownloadLimit] = useState(1024)
+  const wasOpen = useRef(false)
+
+  // Reset form when dialog opens
+  useEffect(() => {
+    if (open && !wasOpen.current) {
+      setUploadEnabled(false)
+      setUploadLimit(1024)
+      setDownloadEnabled(false)
+      setDownloadLimit(1024)
+    }
+    wasOpen.current = open
+  }, [open])
+
+  const handleConfirm = useCallback((): void => {
+    onConfirm(
+      uploadEnabled ? uploadLimit : -1,
+      downloadEnabled ? downloadLimit : -1
+    )
+    // Reset form
+    setUploadEnabled(false)
+    setUploadLimit(1024)
+    setDownloadEnabled(false)
+    setDownloadLimit(1024)
+  }, [onConfirm, uploadEnabled, uploadLimit, downloadEnabled, downloadLimit])
+
+  const handleCancel = useCallback((): void => {
+    setUploadEnabled(false)
+    setUploadLimit(1024)
+    setDownloadEnabled(false)
+    setDownloadLimit(1024)
+    onOpenChange(false)
+  }, [onOpenChange])
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Set Speed Limits for {hashCount} torrent(s)</DialogTitle>
+          <DialogDescription>
+            Set upload and download speed limits in KB/s. Use -1 or disable to remove limits.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="py-2 space-y-4">
+          <div className="space-y-2">
+            <div className="flex items-center space-x-2">
+              <Switch
+                id="uploadEnabled"
+                checked={uploadEnabled}
+                onCheckedChange={setUploadEnabled}
+              />
+              <Label htmlFor="uploadEnabled">Set upload limit (KB/s)</Label>
+            </div>
+            <Input
+              type="number"
+              min="0"
+              value={uploadLimit}
+              disabled={!uploadEnabled}
+              onChange={(e) => setUploadLimit(parseInt(e.target.value) || 0)}
+              placeholder="1024"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center space-x-2">
+              <Switch
+                id="downloadEnabled"
+                checked={downloadEnabled}
+                onCheckedChange={setDownloadEnabled}
+              />
+              <Label htmlFor="downloadEnabled">Set download limit (KB/s)</Label>
+            </div>
+            <Input
+              type="number"
+              min="0"
+              value={downloadLimit}
+              disabled={!downloadEnabled}
+              onChange={(e) => setDownloadLimit(parseInt(e.target.value) || 0)}
+              placeholder="1024"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={handleCancel}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleConfirm}
+            disabled={isPending}
+          >
+            {isPending ? "Setting..." : "Apply Limits"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 })
