@@ -81,6 +81,8 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
   const [showSetTagsDialog, setShowSetTagsDialog] = useState(false)
   const [showRemoveTagsDialog, setShowRemoveTagsDialog] = useState(false)
   const [showCategoryDialog, setShowCategoryDialog] = useState(false)
+  const [showShareLimitDialog, setShowShareLimitDialog] = useState(false)
+  const [showSpeedLimitDialog, setShowSpeedLimitDialog] = useState(false)
   const [showRecheckDialog, setShowRecheckDialog] = useState(false)
   const [showReannounceDialog, setShowReannounceDialog] = useState(false)
   const [showLocationDialog, setShowLocationDialog] = useState(false)
@@ -404,6 +406,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
       clientHashes,
       clientCount,
     })
+    setShowShareLimitDialog(false)
     setContextHashes([])
     setContextTorrents([])
   }, [mutation])
@@ -449,6 +452,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     if (promises.length > 0) {
       await Promise.all(promises)
     }
+    setShowSpeedLimitDialog(false)
     setContextHashes([])
     setContextTorrents([])
   }, [mutation])
@@ -578,6 +582,18 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     setShowLocationDialog(true)
   }, [])
 
+  const prepareShareLimitAction = useCallback((hashes: string[], torrents?: Torrent[]) => {
+    setContextHashes(hashes)
+    if (torrents) setContextTorrents(torrents)
+    setShowShareLimitDialog(true)
+  }, [])
+
+  const prepareSpeedLimitAction = useCallback((hashes: string[], torrents?: Torrent[]) => {
+    setContextHashes(hashes)
+    if (torrents) setContextTorrents(torrents)
+    setShowSpeedLimitDialog(true)
+  }, [])
+
   return {
     // State
     showDeleteDialog,
@@ -592,6 +608,10 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     setShowRemoveTagsDialog,
     showCategoryDialog,
     setShowCategoryDialog,
+    showShareLimitDialog,
+    setShowShareLimitDialog,
+    showSpeedLimitDialog,
+    setShowSpeedLimitDialog,
     showRecheckDialog,
     setShowRecheckDialog,
     showReannounceDialog,
@@ -621,6 +641,8 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     prepareDeleteAction,
     prepareTagsAction,
     prepareCategoryAction,
+    prepareShareLimitAction,
+    prepareSpeedLimitAction,
     prepareRecheckAction,
     prepareReannounceAction,
     prepareLocationAction,
