@@ -1338,6 +1338,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         open={showShareLimitDialog}
         onOpenChange={setShowShareLimitDialog}
         hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
+        torrents={contextTorrents}
         onConfirm={handleSetShareLimitWrapper}
         isPending={isPending}
       />
@@ -1346,6 +1347,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         open={showSpeedLimitDialog}
         onOpenChange={setShowSpeedLimitDialog}
         hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
+        torrents={contextTorrents}
         onConfirm={handleSetSpeedLimitsWrapper}
         isPending={isPending}
       />
