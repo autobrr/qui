@@ -191,9 +191,13 @@ export function ClientApiKeysManager() {
                           size="icon"
                           variant="outline"
                           className="h-7 w-7 justify-self-start sm:justify-self-end"
-                          onClick={() => {
-                            navigator.clipboard.writeText(getFullProxyUrl(newKey.proxyUrl))
-                            toast.success("Proxy URL copied to clipboard")
+                          onClick={async () => {
+                            try {
+                              await navigator.clipboard.writeText(getFullProxyUrl(newKey.proxyUrl))
+                              toast.success("Proxy URL copied to clipboard")
+                            } catch {
+                              toast.error("Failed to copy to clipboard")
+                            }
                           }}
                           title="Copy proxy URL"
                         >
