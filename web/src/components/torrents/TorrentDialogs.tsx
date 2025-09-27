@@ -34,6 +34,7 @@ import {
   SelectValue
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
+import type { Torrent } from "@/types"
 import { Plus, X } from "lucide-react"
 import type { ChangeEvent, KeyboardEvent } from "react"
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
@@ -844,25 +845,28 @@ const LIMIT_USE_GLOBAL = -2
 const LIMIT_UNLIMITED = -1
 const SPEED_DEFAULT_LIMIT = 0
 
-type ShareLimitTorrentSnapshot = {
-  ratio_limit?: number
-  seeding_time_limit?: number
-  inactive_seeding_time_limit?: number
-  max_ratio?: number
-  max_seeding_time?: number
-  max_inactive_seeding_time?: number
-}
+// Helper function to safely get numeric values with fallback
+const safeNumber = (value: number | undefined, fallback: number) =>
+  typeof value === "number" ? value : fallback
 
-type SpeedLimitTorrentSnapshot = {
-  dl_limit?: number
-  up_limit?: number
-}
+// Single type for torrent limit fields used in dialogs
+type TorrentLimitSnapshot = Pick<
+  Torrent,
+  | "ratio_limit"
+  | "seeding_time_limit"
+  | "inactive_seeding_time_limit"
+  | "max_ratio"
+  | "max_seeding_time"
+  | "max_inactive_seeding_time"
+  | "dl_limit"
+  | "up_limit"
+>
 
 interface ShareLimitDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   hashCount: number
-  torrents?: ShareLimitTorrentSnapshot[]
+  torrents?: TorrentLimitSnapshot[]
   onConfirm: (ratioLimit: number, seedingTimeLimit: number, inactiveSeedingTimeLimit: number) => void
   isPending?: boolean
 }
@@ -876,21 +880,18 @@ interface ShareLimitFormState {
   inactiveSeedingTimeLimit: number
 }
 
-const normalizeShareSignature = (torrent: ShareLimitTorrentSnapshot): string => {
-  const safe = (value: number | undefined, fallback: number) =>
-    typeof value === "number" ? value : fallback
-
+const normalizeShareSignature = (torrent: TorrentLimitSnapshot): string => {
   return [
-    safe(torrent.ratio_limit, LIMIT_USE_GLOBAL),
-    safe(torrent.seeding_time_limit, LIMIT_USE_GLOBAL),
-    safe(torrent.inactive_seeding_time_limit, LIMIT_USE_GLOBAL),
-    safe(torrent.max_ratio, LIMIT_UNLIMITED),
-    safe(torrent.max_seeding_time, LIMIT_UNLIMITED),
-    safe(torrent.max_inactive_seeding_time, LIMIT_UNLIMITED),
+    safeNumber(torrent.ratio_limit, LIMIT_USE_GLOBAL),
+    safeNumber(torrent.seeding_time_limit, LIMIT_USE_GLOBAL),
+    safeNumber(torrent.inactive_seeding_time_limit, LIMIT_USE_GLOBAL),
+    safeNumber(torrent.max_ratio, LIMIT_UNLIMITED),
+    safeNumber(torrent.max_seeding_time, LIMIT_UNLIMITED),
+    safeNumber(torrent.max_inactive_seeding_time, LIMIT_UNLIMITED),
   ].join("|")
 }
 
-const buildShareLimitInitialState = (torrents?: ShareLimitTorrentSnapshot[]): ShareLimitFormState => {
+const buildShareLimitInitialState = (torrents?: TorrentLimitSnapshot[]): ShareLimitFormState => {
   const base: ShareLimitFormState = {
     ratioEnabled: false,
     ratioLimit: SHARE_DEFAULT_RATIO_LIMIT,
@@ -912,9 +913,9 @@ const buildShareLimitInitialState = (torrents?: ShareLimitTorrentSnapshot[]): Sh
   }
 
   const [first] = torrents
-  const ratioLimitValue = typeof first.ratio_limit === "number" ? first.ratio_limit : LIMIT_UNLIMITED
-  const seedingTimeLimitValue = typeof first.seeding_time_limit === "number" ? first.seeding_time_limit : LIMIT_UNLIMITED
-  const inactiveSeedingTimeLimitValue = typeof first.inactive_seeding_time_limit === "number"? first.inactive_seeding_time_limit: LIMIT_UNLIMITED
+  const ratioLimitValue = safeNumber(first.ratio_limit, LIMIT_UNLIMITED)
+  const seedingTimeLimitValue = safeNumber(first.seeding_time_limit, LIMIT_UNLIMITED)
+  const inactiveSeedingTimeLimitValue = safeNumber(first.inactive_seeding_time_limit, LIMIT_UNLIMITED)
 
   return {
     ...base,
@@ -1126,7 +1127,7 @@ interface SpeedLimitsDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   hashCount: number
-  torrents?: SpeedLimitTorrentSnapshot[]
+  torrents?: TorrentLimitSnapshot[]
   onConfirm: (uploadLimit: number, downloadLimit: number) => void
   isPending?: boolean
 }
@@ -1138,7 +1139,7 @@ interface SpeedLimitFormState {
   downloadLimit: number
 }
 
-const buildSpeedLimitInitialState = (torrents?: SpeedLimitTorrentSnapshot[]): SpeedLimitFormState => {
+const buildSpeedLimitInitialState = (torrents?: TorrentLimitSnapshot[]): SpeedLimitFormState => {
   const base: SpeedLimitFormState = {
     uploadEnabled: false,
     uploadLimit: SPEED_DEFAULT_LIMIT,
@@ -1150,8 +1151,8 @@ const buildSpeedLimitInitialState = (torrents?: SpeedLimitTorrentSnapshot[]): Sp
     return base
   }
 
-  const uploadValues = torrents.map((torrent) => (typeof torrent.up_limit === "number" ? torrent.up_limit : 0))
-  const downloadValues = torrents.map((torrent) => (typeof torrent.dl_limit === "number" ? torrent.dl_limit : 0))
+  const uploadValues = torrents.map((torrent) => safeNumber(torrent.up_limit, 0))
+  const downloadValues = torrents.map((torrent) => safeNumber(torrent.dl_limit, 0))
 
   const uploadsMatch = uploadValues.every((value) => value === uploadValues[0])
   const downloadsMatch = downloadValues.every((value) => value === downloadValues[0])
