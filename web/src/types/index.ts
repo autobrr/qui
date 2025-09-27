@@ -4,10 +4,11 @@
  */
 
 export interface User {
-  id: number
+  id?: number
   username: string
-  createdAt: string
-  updatedAt: string
+  createdAt?: string
+  updatedAt?: string
+  auth_method?: string
 }
 
 export interface AuthResponse {

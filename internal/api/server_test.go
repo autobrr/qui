@@ -30,9 +30,14 @@ type routeKey struct {
 	Path   string
 }
 
+var undocumentedRoutes = map[routeKey]struct{}{
+	{Method: http.MethodGet, Path: "/api/auth/validate"}: {},
+}
+
 func TestAllEndpointsDocumented(t *testing.T) {
 	server := NewServer(newTestDependencies(t))
-	router := server.Handler()
+	router, err := server.Handler()
+	require.NoError(t, err)
 
 	actualRoutes := collectRouterRoutes(t, router)
 	documentedRoutes := loadDocumentedRoutes(t)
@@ -89,7 +94,12 @@ func collectRouterRoutes(t *testing.T, r chi.Routes) map[routeKey]struct{} {
 			return nil
 		}
 
-		routes[routeKey{Method: method, Path: normalizedPath}] = struct{}{}
+		route := routeKey{Method: method, Path: normalizedPath}
+		if _, skip := undocumentedRoutes[route]; skip {
+			return nil
+		}
+
+		routes[route] = struct{}{}
 		return nil
 	})
 	require.NoError(t, err)

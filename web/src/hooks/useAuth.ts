@@ -46,6 +46,15 @@ export function useAuth() {
     },
   })
 
+  const setIsAuthenticated = (authenticated: boolean) => {
+    if (authenticated) {
+      // Force refetch of user data
+      queryClient.invalidateQueries({ queryKey: ["auth", "user"] })
+    } else {
+      queryClient.setQueryData(["auth", "user"], null)
+    }
+  }
+
   return {
     user: user as User | undefined,
     isAuthenticated: !!user,
@@ -58,5 +67,6 @@ export function useAuth() {
     isSettingUp: setupMutation.isPending,
     loginError: loginMutation.error,
     setupError: setupMutation.error,
+    setIsAuthenticated,
   }
 }
