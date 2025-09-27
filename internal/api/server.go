@@ -252,6 +252,9 @@ func (s *Server) Handler() *chi.Mux {
 							r.Delete("/trackers", torrentsHandler.RemoveTorrentTrackers)
 							r.Get("/peers", torrentsHandler.GetTorrentPeers)
 							r.Get("/files", torrentsHandler.GetTorrentFiles)
+							r.Put("/rename", torrentsHandler.RenameTorrent)
+							r.Put("/rename-file", torrentsHandler.RenameTorrentFile)
+							r.Put("/rename-folder", torrentsHandler.RenameTorrentFolder)
 						})
 					})
 

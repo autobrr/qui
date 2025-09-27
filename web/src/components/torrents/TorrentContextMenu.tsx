@@ -15,14 +15,17 @@ import {
   CheckCircle,
   Copy,
   Folder,
+  FolderPen,
   FolderOpen,
   Pause,
   Play,
+  FilePen,
   Radio,
   Settings2,
   Sparkles,
   Tag,
-  Trash2
+  Trash2,
+  Pencil
 } from "lucide-react"
 import { toast } from "sonner"
 import type { Torrent } from "@/types"
@@ -49,6 +52,9 @@ interface TorrentContextMenuProps {
   onPrepareRecheck: (hashes: string[], count?: number) => void
   onPrepareReannounce: (hashes: string[], count?: number) => void
   onPrepareLocation: (hashes: string[], torrents?: Torrent[]) => void
+  onPrepareRenameTorrent: (hashes: string[], torrents?: Torrent[]) => void
+  onPrepareRenameFile: (hashes: string[], torrents?: Torrent[]) => void
+  onPrepareRenameFolder: (hashes: string[], torrents?: Torrent[]) => void
   onSetShareLimit: (ratioLimit: number, seedingTimeLimit: number, inactiveSeedingTimeLimit: number, hashes: string[]) => void
   onSetSpeedLimits: (uploadLimit: number, downloadLimit: number, hashes: string[]) => void
   isPending?: boolean
@@ -70,6 +76,9 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   onPrepareRecheck,
   onPrepareReannounce,
   onPrepareLocation,
+  onPrepareRenameTorrent,
+  onPrepareRenameFile,
+  onPrepareRenameFolder,
   onSetShareLimit,
   onSetSpeedLimits,
   isPending = false,
@@ -208,6 +217,27 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
         >
           <FolderOpen className="mr-2 h-4 w-4" />
           Set Location {count > 1 ? `(${count})` : ""}
+        </ContextMenuItem>
+        <ContextMenuItem
+          onClick={() => onPrepareRenameTorrent(hashes, torrents)}
+          disabled={isPending || count !== 1}
+        >
+          <Pencil className="mr-2 h-4 w-4" />
+          Rename Torrent
+        </ContextMenuItem>
+        <ContextMenuItem
+          onClick={() => onPrepareRenameFile(hashes, torrents)}
+          disabled={isPending || count !== 1}
+        >
+          <FilePen className="mr-2 h-4 w-4" />
+          Rename File
+        </ContextMenuItem>
+        <ContextMenuItem
+          onClick={() => onPrepareRenameFolder(hashes, torrents)}
+          disabled={isPending || count !== 1}
+        >
+          <FolderPen className="mr-2 h-4 w-4" />
+          Rename Folder
         </ContextMenuItem>
         <ContextMenuSeparator />
         <ShareLimitSubmenu
