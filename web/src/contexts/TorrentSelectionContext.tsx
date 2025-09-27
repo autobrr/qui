@@ -5,7 +5,7 @@
 
 import { createContext, useContext, useState, useCallback } from "react"
 import type { ReactNode } from "react"
-import type { Torrent } from "@/types"
+import type { Torrent, TorrentFilters } from "@/types"
 
 interface TorrentSelectionContextType {
   isSelectionMode: boolean
@@ -17,12 +17,7 @@ interface TorrentSelectionContextType {
   isAllSelected: boolean
   totalSelectionCount: number
   excludeHashes: string[]
-  filters?: {
-    status: string[]
-    categories: string[]
-    tags: string[]
-    trackers: string[]
-  }
+  filters?: TorrentFilters
   instanceId?: number
   // Management Bar actions
   updateSelection: (

@@ -6,17 +6,12 @@
 import { useState, useEffect, useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { api } from "@/lib/api"
-import type { Torrent, TorrentResponse } from "@/types"
+import type { Torrent, TorrentFilters, TorrentResponse } from "@/types"
 
 interface UseTorrentsListOptions {
   enabled?: boolean
   search?: string
-  filters?: {
-    status: string[]
-    categories: string[]
-    tags: string[]
-    trackers: string[]
-  }
+  filters?: TorrentFilters
   sort?: string
   order?: "asc" | "desc"
 }

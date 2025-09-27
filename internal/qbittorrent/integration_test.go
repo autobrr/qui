@@ -83,6 +83,75 @@ func TestSyncManager_FilteringAndSorting(t *testing.T) {
 	})
 }
 
+func TestSyncManager_ApplyManualFilters_Exclusions(t *testing.T) {
+	sm := &SyncManager{}
+
+	torrents := []qbt.Torrent{
+		{Hash: "hash1", State: qbt.TorrentStateUploading, Category: "movies", Tags: "tagA, tagB", Tracker: "http://trackerA.com/announce"},
+		{Hash: "hash2", State: qbt.TorrentStateDownloading, Category: "tv", Tags: "", Tracker: ""},
+		{Hash: "hash3", State: qbt.TorrentStateUploading, Category: "documentary", Tags: "tagC", Tracker: "udp://trackerb.com:80/announce"},
+		{Hash: "hash4", State: qbt.TorrentStateDownloading, Category: "movies", Tags: "tagC, tagD", Tracker: "https://trackerc.com/announce"},
+	}
+
+	mainData := &qbt.MainData{
+		Trackers: map[string][]string{
+			"http://trackerA.com/announce":        {"hash1"},
+			"udp://trackerb.com:80/announce":      {"hash3"},
+			"https://trackerc.com/announce":       {"hash4"},
+		},
+	}
+
+	hashes := func(ts []qbt.Torrent) []string {
+		result := make([]string, len(ts))
+		for i, torrent := range ts {
+			result[i] = torrent.Hash
+		}
+		return result
+	}
+
+	testCases := []struct {
+		name     string
+		filters  FilterOptions
+		expected []string
+	}{
+		{
+			name:     "exclude status uploading",
+			filters:  FilterOptions{ExcludeStatus: []string{"uploading"}},
+			expected: []string{"hash2", "hash4"},
+		},
+		{
+			name:     "exclude category movies",
+			filters:  FilterOptions{ExcludeCategories: []string{"movies"}},
+			expected: []string{"hash2", "hash3"},
+		},
+		{
+			name:     "exclude tracker domain",
+			filters:  FilterOptions{ExcludeTrackers: []string{"trackerb.com"}},
+			expected: []string{"hash1", "hash2", "hash4"},
+		},
+		{
+			name:     "exclude no tracker",
+			filters:  FilterOptions{ExcludeTrackers: []string{""}},
+			expected: []string{"hash1", "hash3", "hash4"},
+		},
+		{
+			name:     "exclude tag removes matching",
+			filters:  FilterOptions{ExcludeTags: []string{"tagD"}},
+			expected: []string{"hash1", "hash2", "hash3"},
+		},
+		{
+			name:     "combined include and exclude",
+			filters:  FilterOptions{Categories: []string{"movies"}, ExcludeTrackers: []string{"trackerc.com"}},
+			expected: []string{"hash1"},
+		},
+	}
+
+	for _, tc := range testCases {
+		result := sm.applyManualFilters(nil, torrents, tc.filters, mainData)
+		assert.ElementsMatch(t, tc.expected, hashes(result), tc.name)
+	}
+}
+
 // TestSyncManager_SearchFunctionality tests the search and filtering logic
 func TestSyncManager_SearchFunctionality(t *testing.T) {
 	sm := &SyncManager{}

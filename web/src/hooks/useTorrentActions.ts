@@ -4,7 +4,7 @@
  */
 
 import { api } from "@/lib/api"
-import type { Torrent } from "@/types"
+import type { Torrent, TorrentFilters } from "@/types"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useCallback, useState } from "react"
 import { toast } from "sonner"
@@ -53,12 +53,7 @@ interface TorrentActionData {
   downloadLimit?: number
   location?: string
   selectAll?: boolean
-  filters?: {
-    status: string[]
-    categories: string[]
-    tags: string[]
-    trackers: string[]
-  }
+  filters?: TorrentFilters
   search?: string
   excludeHashes?: string[]
   // Client-side metadata used for optimistic updates and toast messages

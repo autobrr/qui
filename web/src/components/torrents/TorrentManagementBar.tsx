@@ -36,7 +36,7 @@ import {
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
 import { api } from "@/lib/api"
 import { getCommonCategory, getCommonSavePath, getCommonTags } from "@/lib/torrent-utils"
-import type { Torrent } from "@/types"
+import type { Torrent, TorrentFilters } from "@/types"
 import { useQuery } from "@tanstack/react-query"
 import { ArrowDown, ArrowUp, ChevronsDown, ChevronsUp, Folder, FolderOpen, List, LoaderCircle, Pause, Play, Radio, Settings2, Share2, Tag, Trash2 } from "lucide-react"
 import type { ChangeEvent } from "react"
@@ -50,12 +50,7 @@ interface TorrentManagementBarProps {
   selectedTorrents?: Torrent[]
   isAllSelected?: boolean
   totalSelectionCount?: number
-  filters?: {
-    status: string[]
-    categories: string[]
-    tags: string[]
-    trackers: string[]
-  }
+  filters?: TorrentFilters
   search?: string
   excludeHashes?: string[]
   onComplete?: () => void
