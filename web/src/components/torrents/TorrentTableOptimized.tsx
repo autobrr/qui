@@ -4,6 +4,7 @@
  */
 
 import { useDebounce } from "@/hooks/useDebounce"
+import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useKeyboardNavigation } from "@/hooks/useKeyboardNavigation"
 import { usePersistedColumnOrder } from "@/hooks/usePersistedColumnOrder"
 import { usePersistedColumnSizing } from "@/hooks/usePersistedColumnSizing"
@@ -126,7 +127,7 @@ const DEFAULT_COLUMN_SIZING = {}
 
 // Helper function to get default column order (module scope for stable reference)
 function getDefaultColumnOrder(): string[] {
-  const cols = createColumns(false, undefined, "bytes")
+  const cols = createColumns(false, undefined, "bytes", undefined)
   return cols.map(col => {
     if ("id" in col && col.id) return col.id
     if ("accessorKey" in col && typeof col.accessorKey === "string") return col.accessorKey
@@ -167,6 +168,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const [speedUnit, setSpeedUnit] = useSpeedUnits()
+  const { formatTimestamp } = useDateTimeFormatters()
 
   // Detect platform for keyboard shortcuts
   const isMac = useMemo(() => {
@@ -469,8 +471,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       onRowSelection: handleRowSelection,
       isAllSelected,
       excludedFromSelectAll,
-    }, speedUnit),
-    [incognitoMode, speedUnit, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, isAllSelected, excludedFromSelectAll]
+    }, speedUnit, formatTimestamp),
+    [incognitoMode, speedUnit, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, isAllSelected, excludedFromSelectAll]
   )
 
   const table = useReactTable({
