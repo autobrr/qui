@@ -62,7 +62,7 @@ export const ShareLimitSubmenu = memo(function ShareLimitSubmenu({
   return (
     <Sub>
       <SubTrigger disabled={isPending}>
-        <Sprout className="mr-2 h-4 w-4" />
+        <Sprout className="mr-4 h-4 w-4" />
         Set Share Limits
       </SubTrigger>
       <SubContent className="w-72">
@@ -200,7 +200,7 @@ export const SpeedLimitsSubmenu = memo(function SpeedLimitsSubmenu({
   return (
     <Sub>
       <SubTrigger disabled={isPending}>
-        <Gauge className="mr-2 h-4 w-4" />
+        <Gauge className="mr-4 h-4 w-4" />
         Set Speed Limits
       </SubTrigger>
       <SubContent className="w-64">

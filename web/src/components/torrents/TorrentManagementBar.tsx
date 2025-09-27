@@ -38,7 +38,23 @@ import { api } from "@/lib/api"
 import { getCommonCategory, getCommonSavePath, getCommonTags } from "@/lib/torrent-utils"
 import type { Torrent } from "@/types"
 import { useQuery } from "@tanstack/react-query"
-import { ArrowDown, ArrowUp, ChevronsDown, ChevronsUp, Folder, FolderOpen, List, LoaderCircle, Pause, Play, Radio, Settings2, Share2, Tag, Trash2 } from "lucide-react"
+import {
+  ArrowDown,
+  ArrowUp,
+  CheckCircle,
+  ChevronsDown,
+  ChevronsUp,
+  Folder,
+  FolderOpen,
+  List,
+  Pause,
+  Play,
+  Radio,
+  Settings2,
+  Share2,
+  Tag,
+  Trash2
+} from "lucide-react"
 import type { ChangeEvent } from "react"
 import { memo, useCallback, useMemo } from "react"
 import { AddTagsDialog, SetCategoryDialog, SetLocationDialog, SetTagsDialog } from "./TorrentDialogs"
@@ -344,7 +360,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
                 onClick={handleRecheckClick}
                 disabled={isPending || isDisabled}
               >
-                <LoaderCircle className="h-4 w-4" />
+                <CheckCircle className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>Force Recheck</TooltipContent>
