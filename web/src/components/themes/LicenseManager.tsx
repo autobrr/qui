@@ -23,6 +23,7 @@ import {
 } from "@/hooks/useLicense"
 import { getLicenseErrorMessage } from "@/lib/license-errors"
 import { POLAR_CHECKOUT_URL, POLAR_PORTAL_URL } from "@/lib/polar-constants"
+import { copyTextToClipboard } from "@/lib/utils"
 import { useForm } from "@tanstack/react-form"
 import { AlertTriangle, Copy, ExternalLink, Key, RefreshCw, ShoppingCart, Sparkles, Trash2 } from "lucide-react"
 import { useState } from "react"
@@ -234,9 +235,14 @@ export function LicenseManager() {
                 variant="outline"
                 size="sm"
                 className="w-full"
-                onClick={() => {
-                  navigator.clipboard.writeText(selectedLicenseKey)
-                  toast.success("License key copied to clipboard")
+                onClick={async () => {
+                  try {
+                    await copyTextToClipboard(selectedLicenseKey)
+                    toast.success("License key copied to clipboard")
+                  } catch (err) {
+                    console.error("Failed to copy license key:", err)
+                    toast.error("Failed to copy license key")
+                  }
                 }}
               >
                 <Copy className="h-4 w-4 mr-2" />

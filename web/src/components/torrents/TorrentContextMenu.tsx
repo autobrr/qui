@@ -33,6 +33,7 @@ import { TORRENT_ACTIONS } from "@/hooks/useTorrentActions"
 import { QueueSubmenu } from "./QueueSubmenu"
 import { getLinuxIsoName, useIncognitoMode } from "@/lib/incognito"
 import { getTorrentDisplayHash } from "@/lib/torrent-utils"
+import { copyTextToClipboard } from "@/lib/utils"
 
 interface TorrentContextMenuProps {
   children: React.ReactNode
@@ -79,10 +80,11 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
 
   const copyToClipboard = useCallback(async (text: string, type: "name" | "hash") => {
     try {
-      await navigator.clipboard.writeText(text)
+      await copyTextToClipboard(text)
       const message = type === "name" ? "Torrent name copied!" : "Torrent hash copied!"
       toast.success(message)
-    } catch {
+    } catch (err) {
+      console.error("Failed to copy to clipboard:", err)
       toast.error("Failed to copy to clipboard")
     }
   }, [])

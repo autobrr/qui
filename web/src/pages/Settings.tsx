@@ -22,6 +22,7 @@ import { ClientApiKeysManager } from "@/components/settings/ClientApiKeysManager
 import { DateTimePreferencesForm } from "@/components/settings/DateTimePreferencesForm"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useSearch } from "@tanstack/react-router"
+import { copyTextToClipboard } from "@/lib/utils"
 import {
   Dialog,
   DialogContent,
@@ -258,9 +259,14 @@ function ApiKeysManager() {
                     <Button
                       size="icon"
                       variant="outline"
-                      onClick={() => {
-                        navigator.clipboard.writeText(newKey.key)
-                        toast.success("API key copied to clipboard")
+                      onClick={async () => {
+                        try {
+                          await copyTextToClipboard(newKey.key)
+                          toast.success("API key copied to clipboard")
+                        } catch (err) {
+                          console.error("Failed to copy API key:", err)
+                          toast.error("Failed to copy API key")
+                        }
                       }}
                     >
                       <Copy className="h-4 w-4" />

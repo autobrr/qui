@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/select"
 import { api } from "@/lib/api"
 import { withBasePath } from "@/lib/base-url"
+import { copyTextToClipboard } from "@/lib/utils"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
@@ -191,9 +192,14 @@ export function ClientApiKeysManager() {
                           size="icon"
                           variant="outline"
                           className="h-7 w-7 justify-self-start sm:justify-self-end"
-                          onClick={() => {
-                            navigator.clipboard.writeText(getFullProxyUrl(newKey.proxyUrl))
-                            toast.success("Proxy URL copied to clipboard")
+                          onClick={async () => {
+                            try {
+                              await copyTextToClipboard(getFullProxyUrl(newKey.proxyUrl))
+                              toast.success("Proxy URL copied to clipboard")
+                            } catch (err) {
+                              console.error("Failed to copy proxy URL:", err)
+                              toast.error("Failed to copy proxy URL")
+                            }
                           }}
                           title="Copy proxy URL"
                         >
