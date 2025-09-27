@@ -4,7 +4,7 @@ Thanks for taking interest in contribution! We welcome anyone who wants to contr
 
 If you have an idea for a bigger feature or a change then we are happy to discuss it before you start working on it.  
 It is usually a good idea to make sure it aligns with the project and is a good fit.  
-Open an issue or post in #dev-general on [Discord](https://discord.gg/WQ2eUycxyT).
+Open an issue or post in #dev-general on [Discord](https://discord.autobrr.com/qui).
 
 This document is a guide to help you through the process of contributing to qui.
 
