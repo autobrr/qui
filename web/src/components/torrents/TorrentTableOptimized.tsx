@@ -4,6 +4,7 @@
  */
 
 import { useDebounce } from "@/hooks/useDebounce"
+import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useKeyboardNavigation } from "@/hooks/useKeyboardNavigation"
 import { usePersistedColumnOrder } from "@/hooks/usePersistedColumnOrder"
 import { usePersistedColumnSizing } from "@/hooks/usePersistedColumnSizing"
@@ -126,7 +127,7 @@ const DEFAULT_COLUMN_SIZING = {}
 
 // Helper function to get default column order (module scope for stable reference)
 function getDefaultColumnOrder(): string[] {
-  const cols = createColumns(false, undefined, "bytes")
+  const cols = createColumns(false, undefined, "bytes", undefined)
   return cols.map(col => {
     if ("id" in col && col.id) return col.id
     if ("accessorKey" in col && typeof col.accessorKey === "string") return col.accessorKey
@@ -160,7 +161,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const [globalFilter, setGlobalFilter] = useState("")
   const [immediateSearch] = useState("")
   const [rowSelection, setRowSelection] = useState({})
-  const [showRefetchIndicator, setShowRefetchIndicator] = useState(false)
 
   // Custom "select all" state for handling large datasets
   const [isAllSelected, setIsAllSelected] = useState(false)
@@ -168,6 +168,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const [speedUnit, setSpeedUnit] = useSpeedUnits()
+  const { formatTimestamp } = useDateTimeFormatters()
 
   // Detect platform for keyboard shortcuts
   const isMac = useMemo(() => {
@@ -312,7 +313,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     tags,
 
     isLoading,
-    isFetching,
     isCachedData,
     isStaleData,
     isLoadingMore,
@@ -386,22 +386,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       torrentsLength: torrents.length,
     }
   }, [counts, categories, tags, totalCount, torrents, isLoading, onFilteredDataUpdate])
-
-
-  // Show refetch indicator only if fetching takes more than 2 seconds
-  useEffect(() => {
-    let timeoutId: ReturnType<typeof setTimeout>
-
-    if (isFetching && !isLoading && torrents.length > 0) {
-      timeoutId = setTimeout(() => {
-        setShowRefetchIndicator(true)
-      }, 2000)
-    } else {
-      setShowRefetchIndicator(false)
-    }
-
-    return () => clearTimeout(timeoutId)
-  }, [isFetching, isLoading, torrents.length])
 
   // Use torrents directly from backend (already sorted)
   const sortedTorrents = torrents
@@ -487,8 +471,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       onRowSelection: handleRowSelection,
       isAllSelected,
       excludedFromSelectAll,
-    }, speedUnit),
-    [incognitoMode, speedUnit, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, isAllSelected, excludedFromSelectAll]
+    }, speedUnit, formatTimestamp),
+    [incognitoMode, speedUnit, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, isAllSelected, excludedFromSelectAll]
   )
 
   const table = useReactTable({
@@ -1225,12 +1209,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                   • Shift+click for range • {isMac ? "Cmd" : "Ctrl"}+click for multiple
                 </span>
               </>
-            )}
-            {showRefetchIndicator && (
-              <span className="ml-2">
-                <Loader2 className="h-3 w-3 animate-spin inline mr-1" />
-                Updating...
-              </span>
             )}
           </div>
 
