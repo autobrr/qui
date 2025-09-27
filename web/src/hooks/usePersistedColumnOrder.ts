@@ -13,7 +13,6 @@ export function usePersistedColumnOrder(
   const baseStorageKey = "qui-column-order"
   const hasInstanceKey = instanceKey !== undefined && instanceKey !== null
   const storageKey = hasInstanceKey ? `${baseStorageKey}:${instanceKey}` : baseStorageKey
-  const legacyKeys = hasInstanceKey ? [baseStorageKey] : []
 
   const mergeWithDefaults = (order: ColumnOrderState): ColumnOrderState => {
     if (!Array.isArray(order) || order.some(item => typeof item !== "string")) {
@@ -38,45 +37,32 @@ export function usePersistedColumnOrder(
   }
 
   const loadOrder = (): ColumnOrderState => {
-    const keysToTry = [storageKey, ...legacyKeys]
-
-    for (const key of keysToTry) {
-      try {
-        const stored = localStorage.getItem(key)
-        if (stored) {
-          const parsed = JSON.parse(stored)
-          const merged = mergeWithDefaults(parsed)
-
-          if (key !== storageKey) {
-            let migrationSucceeded = false
-
-            try {
-              localStorage.setItem(storageKey, JSON.stringify(merged))
-              migrationSucceeded = true
-            } catch (migrationError) {
-              console.error("Failed to migrate legacy column order state:", migrationError)
-            }
-
-            if (migrationSucceeded) {
-              try {
-                localStorage.removeItem(key)
-              } catch (removeError) {
-                console.error("Failed to clear legacy column order state:", removeError)
-              }
-            }
-          }
-
-          return merged
-        }
-      } catch (error) {
-        console.error("Failed to load column order from localStorage:", error)
+    try {
+      const stored = localStorage.getItem(storageKey)
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        return mergeWithDefaults(parsed)
       }
+    } catch (error) {
+      console.error("Failed to load column order from localStorage:", error)
     }
 
     return [...defaultOrder]
   }
 
   const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(() => loadOrder())
+
+  useEffect(() => {
+    if (!hasInstanceKey) {
+      return
+    }
+
+    try {
+      localStorage.removeItem(baseStorageKey)
+    } catch (error) {
+      console.error("Failed to clear legacy column order state:", error)
+    }
+  }, [hasInstanceKey, baseStorageKey])
 
   useEffect(() => {
     setColumnOrder(loadOrder())

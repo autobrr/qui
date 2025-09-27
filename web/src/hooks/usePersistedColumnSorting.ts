@@ -13,47 +13,36 @@ export function usePersistedColumnSorting(
   const baseStorageKey = "qui-column-sorting"
   const hasInstanceKey = instanceKey !== undefined && instanceKey !== null
   const storageKey = hasInstanceKey ? `${baseStorageKey}:${instanceKey}` : baseStorageKey
-  const legacyKeys = hasInstanceKey ? [baseStorageKey] : []
 
   const loadSorting = (): SortingState => {
-    const keysToTry = [storageKey, ...legacyKeys]
-
-    for (const key of keysToTry) {
-      try {
-        const stored = localStorage.getItem(key)
-        if (stored) {
-          const parsed = JSON.parse(stored)
-          if (Array.isArray(parsed)) {
-            if (key !== storageKey) {
-              let migrationSucceeded = false
-
-              try {
-                localStorage.setItem(storageKey, stored)
-                migrationSucceeded = true
-              } catch (migrationError) {
-                console.error("Failed to migrate legacy column sorting state:", migrationError)
-              }
-
-              if (migrationSucceeded) {
-                try {
-                  localStorage.removeItem(key)
-                } catch (removeError) {
-                  console.error("Failed to clear legacy column sorting state:", removeError)
-                }
-              }
-            }
-            return parsed as SortingState
-          }
+    try {
+      const stored = localStorage.getItem(storageKey)
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        if (Array.isArray(parsed)) {
+          return parsed as SortingState
         }
-      } catch (error) {
-        console.error("Failed to load column sorting from localStorage:", error)
       }
+    } catch (error) {
+      console.error("Failed to load column sorting from localStorage:", error)
     }
 
     return [...defaultSorting]
   }
 
   const [sorting, setSorting] = useState<SortingState>(() => loadSorting())
+
+  useEffect(() => {
+    if (!hasInstanceKey) {
+      return
+    }
+
+    try {
+      localStorage.removeItem(baseStorageKey)
+    } catch (error) {
+      console.error("Failed to clear legacy column sorting state:", error)
+    }
+  }, [hasInstanceKey, baseStorageKey])
 
   useEffect(() => {
     setSorting(loadSorting())
