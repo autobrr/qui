@@ -22,7 +22,7 @@ import {
 } from "@/lib/incognito"
 import { formatSpeedWithUnit, type SpeedUnit } from "@/lib/speedUnits"
 import { getStateLabel } from "@/lib/torrent-state-utils"
-import { formatBytes, formatDateTime, formatDuration, getRatioColor } from "@/lib/utils"
+import { formatBytes, formatDuration, getRatioColor } from "@/lib/utils"
 import type { Torrent } from "@/types"
 import type { ColumnDef } from "@tanstack/react-table"
 import { ListOrdered } from "lucide-react"
@@ -79,7 +79,8 @@ export const createColumns = (
     isAllSelected?: boolean
     excludedFromSelectAll?: Set<string>
   },
-  speedUnit: SpeedUnit = "bytes"
+  speedUnit: SpeedUnit = "bytes",
+  formatTimestamp?: (timestamp: number) => string
 ): ColumnDef<Torrent>[] => [
   {
     id: "select",
@@ -405,7 +406,7 @@ export const createColumns = (
       }
 
       return (
-        <div className="overflow-hidden whitespace-nowrap text-sm">{formatDateTime(addedOn)}</div>
+        <div className="overflow-hidden whitespace-nowrap text-sm">{formatTimestamp ? formatTimestamp(addedOn) : new Date(addedOn * 1000).toLocaleString()}</div>
       )
     },
     size: 200,
@@ -420,7 +421,7 @@ export const createColumns = (
       }
 
       return (
-        <div className="overflow-hidden whitespace-nowrap text-sm">{formatDateTime(completionOn)}</div>
+        <div className="overflow-hidden whitespace-nowrap text-sm">{formatTimestamp ? formatTimestamp(completionOn) : new Date(completionOn * 1000).toLocaleString()}</div>
       )
     },
     size: 200,
@@ -597,7 +598,7 @@ export const createColumns = (
       }
 
       return (
-        <div className="overflow-hidden whitespace-nowrap text-sm">{formatDateTime(lastSeenComplete)}</div>
+        <div className="overflow-hidden whitespace-nowrap text-sm">{formatTimestamp ? formatTimestamp(lastSeenComplete) : new Date(lastSeenComplete * 1000).toLocaleString()}</div>
       )
     },
     size: 200,
@@ -612,7 +613,7 @@ export const createColumns = (
       }
 
       return (
-        <div className="overflow-hidden whitespace-nowrap text-sm">{formatDateTime(lastActivity)}</div>
+        <div className="overflow-hidden whitespace-nowrap text-sm">{formatTimestamp ? formatTimestamp(lastActivity) : new Date(lastActivity * 1000).toLocaleString()}</div>
       )
     },
     size: 200,
