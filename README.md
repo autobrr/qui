@@ -50,6 +50,45 @@ chmod +x qui
 
 The web interface will be available at http://localhost:7476
 
+### Seedbox installers
+
+Bytesized installer (NOT TESTED)
+
+```bash
+wget -O installer.sh https://get.autobrr.com/qui/bytesized && chmod +x installer.sh && ./installer.sh
+```
+
+Feral hosting installer
+
+```bash
+wget -O installer.sh https://get.autobrr.com/qui/feral && chmod +x installer.sh && ./installer.sh
+```
+
+HostingByDesign App slots installer
+
+```bash
+wget -O installer.sh https://get.autobrr.com/qui/hostingbydesign && chmod +x installer.sh && ./installer.sh
+```
+
+Seedhost installer (NOT TESTED)
+
+```bash
+wget -O installer.sh https://get.autobrr.com/qui/seedhost && chmod +x installer.sh && ./installer.sh
+```
+
+Ultra.cc installer
+
+```bash
+wget -O installer.sh https://get.autobrr.com/qui/ultra && chmod +x installer.sh && ./installer.sh
+```
+
+Whatbox installer (NOT TESTED)
+
+```bash
+wget -O installer.sh https://get.autobrr.com/qui/whatbox && chmod +x installer.sh && ./installer.sh
+```
+
+
 ### First Setup
 
 1. Open your browser to http://localhost:7476
@@ -87,6 +126,8 @@ QUI__SESSION_SECRET=...  # Auto-generated if not set
 # Logging
 QUI__LOG_LEVEL=INFO      # Options: ERROR, DEBUG, INFO, WARN, TRACE
 QUI__LOG_PATH=...        # Optional: log file path
+QUI__LOG_MAX_SIZE=50     # Optional: rotate when log file exceeds N megabytes (default: 50)
+QUI__LOG_MAX_BACKUPS=3   # Optional: retain N rotated files (default: 3, 0 keeps all)
 
 # Storage
 QUI__DATA_DIR=...        # Optional: custom data directory (default: next to config)
@@ -97,6 +138,8 @@ QUI__METRICS_HOST=127.0.0.1  # Optional: metrics server bind address (default: 1
 QUI__METRICS_PORT=9074       # Optional: metrics server port (default: 9074)
 QUI__METRICS_BASIC_AUTH_USERS=user:hash  # Optional: basic auth for metrics (bcrypt hashed)
 ```
+
+When `logPath` is set the server writes to disk using size-based rotation. Adjust `logMaxSize` and `logMaxBackups` in `config.toml` or the corresponding environment variables shown above to control the rotation thresholds and retention.
 
 ## CLI Commands
 
@@ -250,9 +293,10 @@ qui includes a built-in reverse proxy that allows external applications like aut
 
 The reverse proxy feature:
 - **Handles authentication automatically** - qui manages the qBittorrent login using your configured credentials
-- **Isolates clients** - Each client gets its own API key for security and monitoring  
-- **Works with any qBittorrent security setting** - Even with "bypass authentication for clients on localhost" disabled
+- **Isolates clients** - Each client gets its own API key
 - **Provides transparent access** - Clients see qui as if it were qBittorrent directly
+- **Reduces login thrash** - qui maintains a shared cookie jar and session, so your automation tools stop racing to re-authenticate against qBittorrent. That means fewer failed logins, less load on qBittorrent, and faster announce races because downstream apps reuse the live session instead of waiting for new tokens.
+- **Future-aware sync** - A planned improvement will reuse the proxied responses from other tools to keep qui's own torrent data fresh without waiting for the next poll cycle.
 
 ### Setup Instructions
 
@@ -269,34 +313,30 @@ The reverse proxy feature:
 
 Use qui as the qBittorrent host with the special proxy URL format:
 
-**Example for Sonarr or autobrr:**
-- **Host**: `your-qui-server` (e.g., `localhost` or `192.168.1.100`)
-- **Port**: `7476` (or your qui port)
-- **Username**: *Leave empty*
-- **Password**: *Leave empty*  
-- **URL Base**: `/proxy/YOUR_CLIENT_API_KEY_HERE`
-
 **Complete URL example:**
 ```
 http://localhost:7476/proxy/abc123def456ghi789jkl012mno345pqr678stu901vwx234yz
 ```
 
-#### 3. Test the Connection
+#### Application-Specifics
 
-Your external application should now be able to:
-- Connect successfully to qBittorrent through qui
-- Add torrents, check status, and manage downloads
-- Work without any qBittorrent credentials
+**Sonarr / Radarr**
+- Go to `Settings → Download Clients`
+- Add a new **qBittorrent** client
+- Set the host and port of qui
+- Add URL Base (`/proxy/...`) - remember to include /qui/ if you use custom baseurl
+- Click **Test** and then **Save** once the test succeeds
+
+**autobrr**
+- Open `Settings → Download Clients`
+- Add **qBittorrent** (or edit an existing one)
+- Enter the full url like: `http://localhost:7476/proxy/abc123def456ghi789jkl012mno345pqr678stu901vwx234yz`
+- Leave username/password blank and press **Test**
+- Leave basic auth blank since qui handles that
 
 ### Supported Applications
 
-This reverse proxy works with any application that supports qBittorrent's Web API:
-- **autobrr** - Automatic torrent downloading
-- **Sonarr** - Automatic TV show downloads
-- **Radarr** - Automatic movie downloads  
-- **Lidarr** - Automatic music downloads
-- **Prowlarr** - Indexer management
-- **Custom scripts** - Any application using qBittorrent's API
+This reverse proxy will work with any application that supports qBittorrent's Web API.
 
 ### Security Features
 
@@ -422,6 +462,12 @@ make dev-frontend
 - Minimal memory footprint
 - Fast search and filtering
 - Responsive UI with virtual scrolling
+
+## Community
+
+Join our friendly and welcoming community on [Discord](https://discord.autobrr.com/qui)! Connect with fellow autobrr users, get advice, and share your experiences. 
+Whether you're seeking help, wanting to contribute, or just looking to discuss your ideas, our community is a hub of discussion and support. 
+We're all here to help each other out, so don't hesitate to jump in!
 
 ## Contributing
 

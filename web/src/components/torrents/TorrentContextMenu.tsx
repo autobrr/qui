@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { memo, useCallback, useMemo } from "react"
 import {
   ContextMenu,
   ContextMenuContent,
@@ -11,27 +10,30 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger
 } from "@/components/ui/context-menu"
+import type { TorrentAction } from "@/hooks/useTorrentActions"
+import { TORRENT_ACTIONS } from "@/hooks/useTorrentActions"
+import { getLinuxIsoName, useIncognitoMode } from "@/lib/incognito"
+import { getTorrentDisplayHash } from "@/lib/torrent-utils"
+import { copyTextToClipboard } from "@/lib/utils"
+import type { Torrent } from "@/types"
 import {
   CheckCircle,
   Copy,
   Folder,
   FolderOpen,
+  Gauge,
   Pause,
   Play,
   Radio,
   Settings2,
   Sparkles,
+  Sprout,
   Tag,
   Trash2
 } from "lucide-react"
+import { memo, useCallback, useMemo } from "react"
 import { toast } from "sonner"
-import type { Torrent } from "@/types"
-import type { TorrentAction } from "@/hooks/useTorrentActions"
-import { TORRENT_ACTIONS } from "@/hooks/useTorrentActions"
 import { QueueSubmenu } from "./QueueSubmenu"
-import { ShareLimitSubmenu, SpeedLimitsSubmenu } from "./TorrentLimitSubmenus"
-import { getLinuxIsoName, useIncognitoMode } from "@/lib/incognito"
-import { getTorrentDisplayHash } from "@/lib/torrent-utils"
 
 interface TorrentContextMenuProps {
   children: React.ReactNode
@@ -46,11 +48,11 @@ interface TorrentContextMenuProps {
   onPrepareDelete: (hashes: string[], torrents?: Torrent[]) => void
   onPrepareTags: (action: "add" | "set" | "remove", hashes: string[], torrents?: Torrent[]) => void
   onPrepareCategory: (hashes: string[], torrents?: Torrent[]) => void
+  onPrepareShareLimit: (hashes: string[], torrents?: Torrent[]) => void
+  onPrepareSpeedLimits: (hashes: string[], torrents?: Torrent[]) => void
   onPrepareRecheck: (hashes: string[], count?: number) => void
   onPrepareReannounce: (hashes: string[], count?: number) => void
   onPrepareLocation: (hashes: string[], torrents?: Torrent[]) => void
-  onSetShareLimit: (ratioLimit: number, seedingTimeLimit: number, inactiveSeedingTimeLimit: number, hashes: string[]) => void
-  onSetSpeedLimits: (uploadLimit: number, downloadLimit: number, hashes: string[]) => void
   isPending?: boolean
 }
 
@@ -67,20 +69,19 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   onPrepareDelete,
   onPrepareTags,
   onPrepareCategory,
+  onPrepareShareLimit,
+  onPrepareSpeedLimits,
   onPrepareRecheck,
   onPrepareReannounce,
   onPrepareLocation,
-  onSetShareLimit,
-  onSetSpeedLimits,
   isPending = false,
 }: TorrentContextMenuProps) {
   const [incognitoMode] = useIncognitoMode()
 
   const copyToClipboard = useCallback(async (text: string, type: "name" | "hash") => {
     try {
-      await navigator.clipboard.writeText(text)
-      const message = type === "name" ? "Torrent name copied!" : "Torrent hash copied!"
-      toast.success(message)
+      await copyTextToClipboard(text)
+      toast.success(`Torrent ${type} copied to clipboard`)
     } catch {
       toast.error("Failed to copy to clipboard")
     }
@@ -122,14 +123,6 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   const handleQueueAction = useCallback((action: "topPriority" | "increasePriority" | "decreasePriority" | "bottomPriority") => {
     onAction(action as TorrentAction, hashes)
   }, [onAction, hashes])
-
-  const handleSetShareLimitWrapper = useCallback((ratioLimit: number, seedingTimeLimit: number, inactiveSeedingTimeLimit: number) => {
-    onSetShareLimit(ratioLimit, seedingTimeLimit, inactiveSeedingTimeLimit, hashes)
-  }, [onSetShareLimit, hashes])
-
-  const handleSetSpeedLimitsWrapper = useCallback((uploadLimit: number, downloadLimit: number) => {
-    onSetSpeedLimits(uploadLimit, downloadLimit, hashes)
-  }, [onSetSpeedLimits, hashes])
 
   return (
     <ContextMenu>
@@ -210,18 +203,20 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
           Set Location {count > 1 ? `(${count})` : ""}
         </ContextMenuItem>
         <ContextMenuSeparator />
-        <ShareLimitSubmenu
-          type="context"
-          hashCount={count}
-          onConfirm={handleSetShareLimitWrapper}
-          isPending={isPending}
-        />
-        <SpeedLimitsSubmenu
-          type="context"
-          hashCount={count}
-          onConfirm={handleSetSpeedLimitsWrapper}
-          isPending={isPending}
-        />
+        <ContextMenuItem
+          onClick={() => onPrepareShareLimit(hashes, torrents)}
+          disabled={isPending}
+        >
+          <Sprout className="mr-2 h-4 w-4" />
+          Set Share Limits {count > 1 ? `(${count})` : ""}
+        </ContextMenuItem>
+        <ContextMenuItem
+          onClick={() => onPrepareSpeedLimits(hashes, torrents)}
+          disabled={isPending}
+        >
+          <Gauge className="mr-2 h-4 w-4" />
+          Set Speed Limits {count > 1 ? `(${count})` : ""}
+        </ContextMenuItem>
         <ContextMenuSeparator />
         {mixed ? (
           <>

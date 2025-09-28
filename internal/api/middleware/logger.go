@@ -39,7 +39,7 @@ func Logger(logger zerolog.Logger) func(next http.Handler) http.Handler {
 				l.Trace().
 					Str("type", "access").
 					Timestamp().
-					Fields(map[string]interface{}{
+					Fields(map[string]any{
 						"remote_ip":  r.RemoteAddr,
 						"url":        r.URL.Path,
 						"proto":      r.Proto,

@@ -536,6 +536,7 @@ func (app *Application) runServer() {
 		ClientPool:        clientPool,
 		SyncManager:       syncManager,
 		LicenseService:    licenseService,
+		UpdateService:     updateService,
 	})
 
 	errorChannel := make(chan error)

@@ -203,8 +203,8 @@ func (h *Handler) serveSPA(w http.ResponseWriter, r *http.Request) {
 		baseURL += "/"
 	}
 
-	// Create the script tag to inject
-	scriptTag := fmt.Sprintf(`<script>window.__QUI_BASE_URL__="%s";</script>`, baseURL)
+	// Create the script tag to inject both base URL and version metadata
+	scriptTag := fmt.Sprintf(`<script>window.__QUI_BASE_URL__=%q;window.__QUI_VERSION__=%q;</script>`, baseURL, h.version)
 
 	// Inject before the closing </head> tag
 	modifiedContent := strings.Replace(

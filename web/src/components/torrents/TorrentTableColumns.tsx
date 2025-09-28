@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/tooltip"
 import {
   getLinuxCategory,
+  getLinuxHash,
   getLinuxIsoName,
   getLinuxRatio,
   getLinuxSavePath,
@@ -21,7 +22,7 @@ import {
 } from "@/lib/incognito"
 import { formatSpeedWithUnit, type SpeedUnit } from "@/lib/speedUnits"
 import { getStateLabel } from "@/lib/torrent-state-utils"
-import { formatBytes, getRatioColor } from "@/lib/utils"
+import { formatBytes, formatDuration, getRatioColor } from "@/lib/utils"
 import type { Torrent } from "@/types"
 import type { ColumnDef } from "@tanstack/react-table"
 import { ListOrdered } from "lucide-react"
@@ -40,6 +41,18 @@ function formatEta(seconds: number): string {
 
   if (hours > 0) {
     return `${hours}h ${minutes}m`
+  }
+
+  return `${minutes}m`
+}
+
+function formatReannounce(seconds: number): string {
+  if (seconds < 0) return "-"
+
+  const minutes = Math.floor(seconds / 60)
+
+  if (minutes < 1) {
+    return "< 1m"
   }
 
   return `${minutes}m`
@@ -66,7 +79,8 @@ export const createColumns = (
     isAllSelected?: boolean
     excludedFromSelectAll?: Set<string>
   },
-  speedUnit: SpeedUnit = "bytes"
+  speedUnit: SpeedUnit = "bytes",
+  formatTimestamp?: (timestamp: number) => string
 ): ColumnDef<Torrent>[] => [
   {
     id: "select",
@@ -225,13 +239,23 @@ export const createColumns = (
     size: 85,
   },
   {
+    accessorKey: "total_size",
+    header: "Total Size",
+    cell: ({ row }) => <span className="text-sm overflow-hidden whitespace-nowrap">{formatBytes(row.original.total_size)}</span>,
+    size: 115,
+  },
+  {
     accessorKey: "progress",
     header: "Progress",
     cell: ({ row }) => (
       <div className="flex items-center gap-2">
         <Progress value={row.original.progress * 100} className="w-20" />
         <span className="text-xs text-muted-foreground">
-          {Math.round(row.original.progress * 100)}%
+          {row.original.progress >= 0.99 && row.original.progress < 1 ? (
+            (Math.floor(row.original.progress * 1000) / 10).toFixed(1)
+          ) : (
+            Math.round(row.original.progress * 100)
+          )}%
         </span>
       </div>
     ),
@@ -338,30 +362,16 @@ export const createColumns = (
     size: 80,
   },
   {
-    accessorKey: "added_on",
-    header: "Added",
+    accessorKey: "popularity",
+    header: "Popularity",
     cell: ({ row }) => {
-      const addedOn = row.original.added_on
-      if (!addedOn || addedOn === 0) {
-        return "-"
-      }
-      const date = new Date(addedOn * 1000)
-      const month = date.getMonth() + 1
-      const day = date.getDate()
-      const year = date.getFullYear()
-      const hours = date.getHours()
-      const minutes = date.getMinutes()
-      const seconds = date.getSeconds()
-      const ampm = hours >= 12 ? "PM" : "AM"
-      const displayHours = hours % 12 || 12
-
       return (
         <div className="overflow-hidden whitespace-nowrap text-sm">
-          {month}/{day}/{year}, {displayHours}:{minutes.toString().padStart(2, "0")}:{seconds.toString().padStart(2, "0")} {ampm}
+          {row.original.popularity.toFixed(2)}
         </div>
       )
     },
-    size: 200,
+    size: 115,
   },
   {
     accessorKey: "category",
@@ -391,35 +401,34 @@ export const createColumns = (
     size: 200,
   },
   {
-    accessorKey: "downloaded",
-    header: "Downloaded",
+    accessorKey: "added_on",
+    header: "Added",
     cell: ({ row }) => {
-      const downloaded = row.original.downloaded
-      return <span className="text-sm overflow-hidden whitespace-nowrap">{downloaded === 0 ? "-" : formatBytes(downloaded)}</span>
-    },
-    size: calculateMinWidth("Downloaded"),
-  },
-  {
-    accessorKey: "uploaded",
-    header: "Uploaded",
-    cell: ({ row }) => {
-      const uploaded = row.original.uploaded
-      return <span className="text-sm overflow-hidden whitespace-nowrap">{uploaded === 0 ? "-" : formatBytes(uploaded)}</span>
-    },
-    size: calculateMinWidth("Uploaded"),
-  },
-  {
-    accessorKey: "save_path",
-    header: "Save Path",
-    cell: ({ row }) => {
-      const displayPath = incognitoMode ? getLinuxSavePath(row.original.hash) : row.original.save_path
+      const addedOn = row.original.added_on
+      if (!addedOn || addedOn === 0) {
+        return "-"
+      }
+
       return (
-        <div className="overflow-hidden whitespace-nowrap text-sm" title={displayPath}>
-          {displayPath}
-        </div>
+        <div className="overflow-hidden whitespace-nowrap text-sm">{formatTimestamp ? formatTimestamp(addedOn) : new Date(addedOn * 1000).toLocaleString()}</div>
       )
     },
-    size: 250,
+    size: 200,
+  },
+  {
+    accessorKey: "completion_on",
+    header: "Completed On",
+    cell: ({ row }) => {
+      const completionOn = row.original.completion_on
+      if (!completionOn || completionOn === 0) {
+        return "-"
+      }
+
+      return (
+        <div className="overflow-hidden whitespace-nowrap text-sm">{formatTimestamp ? formatTimestamp(completionOn) : new Date(completionOn * 1000).toLocaleString()}</div>
+      )
+    },
+    size: 200,
   },
   {
     accessorKey: "tracker",
@@ -443,6 +452,238 @@ export const createColumns = (
     },
     size: 150,
   },
+  {
+    accessorKey: "dl_limit",
+    header: "Down Limit",
+    cell: ({ row }) => {
+      const downLimit = row.original.dl_limit
+      const displayDownLimit = downLimit === 0 ? "∞" : formatSpeedWithUnit(downLimit, speedUnit)
+
+      return (
+        <span
+          className="text-sm font-medium overflow-hidden whitespace-nowrap"
+        >
+          {displayDownLimit}
+        </span>
+      )
+    },
+    size: calculateMinWidth("Down Limit", 24),
+  },
+  {
+    accessorKey: "up_limit",
+    header: "Up Limit",
+    cell: ({ row }) => {
+      const upLimit = row.original.up_limit
+      const displayUpLimit = upLimit === 0 ? "∞" : formatSpeedWithUnit(upLimit, speedUnit)
+
+      return (
+        <span
+          className="text-sm font-medium overflow-hidden whitespace-nowrap"
+        >
+          {displayUpLimit}
+        </span>
+      )
+    },
+    size: calculateMinWidth("Up Limit", 24),
+  },
+  {
+    accessorKey: "downloaded",
+    header: "Downloaded",
+    cell: ({ row }) => {
+      const downloaded = row.original.downloaded
+      return <span className="text-sm overflow-hidden whitespace-nowrap">{downloaded === 0 ? "-" : formatBytes(downloaded)}</span>
+    },
+    size: calculateMinWidth("Downloaded"),
+  },
+  {
+    accessorKey: "uploaded",
+    header: "Uploaded",
+    cell: ({ row }) => {
+      const uploaded = row.original.uploaded
+      return <span className="text-sm overflow-hidden whitespace-nowrap">{uploaded === 0 ? "-" : formatBytes(uploaded)}</span>
+    },
+    size: calculateMinWidth("Uploaded"),
+  },
+  {
+    accessorKey: "downloaded_session",
+    header: "Session Downloaded",
+    cell: ({ row }) => {
+      const sessionDownloaded = row.original.downloaded_session
+      return <span className="text-sm overflow-hidden whitespace-nowrap">{sessionDownloaded === 0 ? "-" : formatBytes(sessionDownloaded)}</span>
+    },
+    size: calculateMinWidth("Session Downloaded"),
+  },
+  {
+    accessorKey: "uploaded_session",
+    header: "Session Uploaded",
+    cell: ({ row }) => {
+      const sessionUploaded = row.original.uploaded_session
+      return <span className="text-sm overflow-hidden whitespace-nowrap">{sessionUploaded === 0 ? "-" : formatBytes(sessionUploaded)}</span>
+    },
+    size: calculateMinWidth("Session Uploaded"),
+  },
+  {
+    accessorKey: "amount_left",
+    header: "Remaining",
+    cell: ({ row }) => {
+      const amountLeft = row.original.amount_left
+      return <span className="text-sm overflow-hidden whitespace-nowrap">{amountLeft === 0 ? "-" : formatBytes(amountLeft)}</span>
+    },
+    size: calculateMinWidth("Remaining"),
+  },
+  {
+    accessorKey: "time_active",
+    header: "Time Active",
+    cell: ({ row }) => {
+      const timeActive = row.original.time_active
+      return (
+        <span className="text-sm overflow-hidden whitespace-nowrap">{formatDuration(timeActive)}</span>
+      )
+    },
+    size: 250,
+  },
+  {
+    accessorKey: "seeding_time",
+    header: "Seeding Time",
+    cell: ({ row }) => {
+      const timeSeeded = row.original.seeding_time
+      return (
+        <span className="text-sm overflow-hidden whitespace-nowrap">{formatDuration(timeSeeded)}</span>
+      )
+    },
+    size: 250,
+  },
+  {
+    accessorKey: "save_path",
+    header: "Save Path",
+    cell: ({ row }) => {
+      const displayPath = incognitoMode ? getLinuxSavePath(row.original.hash) : row.original.save_path
+      return (
+        <div className="overflow-hidden whitespace-nowrap text-sm" title={displayPath}>
+          {displayPath}
+        </div>
+      )
+    },
+    size: 250,
+  },
+  {
+    accessorKey: "completed",
+    header: "Completed",
+    cell: ({ row }) => {
+      const completed = row.original.completed
+      return <span className="text-sm overflow-hidden whitespace-nowrap">{completed === 0 ? "-" : formatBytes(completed)}</span>
+    },
+    size: calculateMinWidth("Completed"),
+  },
+  {
+    accessorKey: "ratio_limit",
+    header: "Ratio Limit",
+    cell: ({ row }) => {
+      const ratioLimit = row.original.ratio_limit
+      const displayRatioLimit = ratioLimit === -2 ? "∞" : ratioLimit.toFixed(2)
+
+      return (
+        <span
+          className="text-sm font-medium overflow-hidden whitespace-nowrap"
+        >
+          {displayRatioLimit}
+        </span>
+      )
+    },
+    size: calculateMinWidth("Ratio Limit", 24),
+  },
+  {
+    accessorKey: "seen_complete",
+    header: "Last Seen Complete",
+    cell: ({ row }) => {
+      const lastSeenComplete = row.original.seen_complete
+      if (!lastSeenComplete || lastSeenComplete === 0) {
+        return "-"
+      }
+
+      return (
+        <div className="overflow-hidden whitespace-nowrap text-sm">{formatTimestamp ? formatTimestamp(lastSeenComplete) : new Date(lastSeenComplete * 1000).toLocaleString()}</div>
+      )
+    },
+    size: 200,
+  },
+  {
+    accessorKey: "last_activity",
+    header: "Last Activity",
+    cell: ({ row }) => {
+      const lastActivity = row.original.last_activity
+      if (!lastActivity || lastActivity === 0) {
+        return "-"
+      }
+
+      return (
+        <div className="overflow-hidden whitespace-nowrap text-sm">{formatTimestamp ? formatTimestamp(lastActivity) : new Date(lastActivity * 1000).toLocaleString()}</div>
+      )
+    },
+    size: 200,
+  },
+  {
+    accessorKey: "availability",
+    header: "Availability",
+    cell: ({ row }) => {
+      const availability = row.original.availability
+      return <span className="text-sm overflow-hidden whitespace-nowrap">{availability.toFixed(3)}</span>
+    },
+    size: calculateMinWidth("Availability"),
+  },
+  // incomplete save path is not exposed by the API?
+  {
+    accessorKey: "infohash_v1",
+    header: "Info Hash v1",
+    cell: ({ row }) => {
+      const original = row.original.infohash_v1
+      const maskBase = row.original.hash || row.original.infohash_v1 || row.original.infohash_v2 || row.id
+      const infoHash = incognitoMode && original ? getLinuxHash(maskBase || "") : original
+      return (
+        <div className="overflow-hidden whitespace-nowrap text-sm" title={infoHash}>
+          {infoHash || "-"}
+        </div>
+      )
+    },
+    size: 370,
+  },
+  {
+    accessorKey: "infohash_v2",
+    header: "Info Hash v2",
+    cell: ({ row }) => {
+      const original = row.original.infohash_v2
+      const maskBase = row.original.hash || row.original.infohash_v1 || row.original.infohash_v2 || row.id
+      const infoHash = incognitoMode && original ? getLinuxHash(maskBase || "") : original
+      return (
+        <div className="overflow-hidden whitespace-nowrap text-sm" title={infoHash}>
+          {infoHash || "-"}
+        </div>
+      )
+    },
+    size: 370,
+  },
+  {
+    accessorKey: "reannounce",
+    header: "Reannounce In",
+    cell: ({ row }) => {
+      return (
+        <div className="overflow-hidden whitespace-nowrap text-sm">
+          {formatReannounce(row.original.reannounce)}
+        </div>
+      )
+    },
+    size: calculateMinWidth("Reannounce In"),
+  },
+  {
+    accessorKey: "private",
+    header: "Private",
+    cell: ({ row }) => {
+      return (
+        <div className="overflow-hidden whitespace-nowrap text-sm">
+          {row.original.private ? "Yes" : "No"}
+        </div>
+      )
+    },
+    size: calculateMinWidth("Private"),
+  },
 ]
-
-

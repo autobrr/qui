@@ -25,6 +25,7 @@ import (
 	"github.com/autobrr/qui/internal/proxy"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/license"
+	"github.com/autobrr/qui/internal/update"
 	"github.com/autobrr/qui/internal/web"
 	"github.com/autobrr/qui/internal/web/swagger"
 	webfs "github.com/autobrr/qui/web"
@@ -43,6 +44,7 @@ type Server struct {
 	clientPool        *qbittorrent.ClientPool
 	syncManager       *qbittorrent.SyncManager
 	licenseService    *license.Service
+	updateService     *update.Service
 }
 
 func NewServer(deps *Dependencies) *Server {
@@ -63,6 +65,7 @@ func NewServer(deps *Dependencies) *Server {
 		clientPool:        deps.ClientPool,
 		syncManager:       deps.SyncManager,
 		licenseService:    deps.LicenseService,
+		updateService:     deps.UpdateService,
 	}
 
 	// Create HTTP server with configurable timeouts
@@ -161,6 +164,7 @@ func (s *Server) Handler() *chi.Mux {
 	torrentsHandler := handlers.NewTorrentsHandler(s.syncManager)
 	preferencesHandler := handlers.NewPreferencesHandler(s.syncManager)
 	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(s.clientAPIKeyStore, s.instanceStore)
+	versionHandler := handlers.NewVersionHandler(s.updateService)
 
 	// Create proxy handler
 	proxyHandler := proxy.NewHandler(s.clientPool, s.clientAPIKeyStore, s.instanceStore)
@@ -217,6 +221,9 @@ func (s *Server) Handler() *chi.Mux {
 				r.Post("/", clientAPIKeysHandler.CreateClientAPIKey)
 				r.Delete("/{id}", clientAPIKeysHandler.DeleteClientAPIKey)
 			})
+
+			// Version endpoint for update checks
+			r.Get("/version/latest", versionHandler.GetLatestVersion)
 
 			// Instance management
 			r.Route("/instances", func(r chi.Router) {
@@ -334,4 +341,5 @@ type Dependencies struct {
 	SyncManager       *qbittorrent.SyncManager
 	WebHandler        *web.Handler
 	LicenseService    *license.Service
+	UpdateService     *update.Service
 }
