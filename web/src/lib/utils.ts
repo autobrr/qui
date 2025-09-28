@@ -149,3 +149,66 @@ export function formatErrorMessage(error: string | undefined): string {
 
   return cleaned.charAt(0).toUpperCase() + cleaned.slice(1)
 }
+
+export async function copyTextToClipboard(text: string): Promise<void> {
+  const hasClipboardApi = typeof navigator !== "undefined" && "clipboard" in navigator
+  const canUseAsyncApi = hasClipboardApi && typeof window !== "undefined" && window.isSecureContext
+
+  if (canUseAsyncApi) {
+    try {
+      await navigator.clipboard.writeText(text)
+      return
+    } catch (err) {
+      console.error("Copy to clipboard unsuccessful, falling back to execCommand: ", err)
+      // Fall through to synchronous fallback below.
+    }
+  }
+
+  // Fallback for:
+  // - Browsers without Clipboard API support
+  // - Non-secure contexts (HTTP sites, not localhost)
+  // - Cases where the async Clipboard API rejects (e.g., permission denied)
+  copyTextToClipboardFallback(text)
+}
+
+function copyTextToClipboardFallback(text: string): void {
+  const textarea = document.createElement("textarea")
+  textarea.value = text
+  textarea.setAttribute("readonly", "")
+  textarea.style.position = "absolute"
+  textarea.style.opacity = "0"
+  textarea.style.top = "0"
+  textarea.style.left = "0"
+  document.body.appendChild(textarea)
+  const selection = document.getSelection()
+  const originalRange = selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : null
+  textarea.focus()
+  textarea.select()
+  textarea.setSelectionRange(0, text.length)
+  let listenerTriggered = false
+  const listener = (event: ClipboardEvent) => {
+    if (event.clipboardData) {
+      event.clipboardData.setData("text/plain", text)
+      listenerTriggered = true
+      event.preventDefault()
+    }
+  }
+  document.addEventListener("copy", listener, true)
+  try {
+    const successful = document.execCommand("copy")
+    if (!successful && !listenerTriggered) {
+      throw new Error("Failed to copy text using fallback method")
+    }
+    console.log("Text copied to clipboard successfully using fallback.")
+  } catch (err) {
+    console.error("Failed to copy text using fallback method: ", err)
+    throw err
+  } finally {
+    document.removeEventListener("copy", listener, true)
+    document.body.removeChild(textarea)
+    if (originalRange && selection) {
+      selection.removeAllRanges()
+      selection.addRange(originalRange)
+    }
+  }
+}
