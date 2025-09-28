@@ -644,10 +644,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     },
   })
 
-  // Force virtualizer to recalculate when count or column visibility changes
+  // Force virtualizer to recalculate when count changes
   useEffect(() => {
     virtualizer.measure()
-  }, [safeLoadedRows, virtualizer, columnVisibility])
+  }, [safeLoadedRows, virtualizer])
 
   const virtualRows = virtualizer.getVirtualItems()
 
@@ -656,7 +656,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     return table.getVisibleLeafColumns().reduce((width, col) => {
       return width + col.getSize()
     }, 0)
-  }, [table])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [table, columnVisibility])
 
   // Reset loaded rows when data changes significantly
   useEffect(() => {
