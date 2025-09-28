@@ -3,33 +3,10 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState } from "react"
-import { useForm } from "@tanstack/react-form"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { api } from "@/lib/api"
-import { withBasePath } from "@/lib/base-url"
-import { toast } from "sonner"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Badge } from "@/components/ui/badge"
-import { Copy, Plus, Trash2, ExternalLink } from "lucide-react"
-import { LicenseManager } from "@/components/themes/LicenseManager.tsx"
-import { ThemeSelector } from "@/components/themes/ThemeSelector"
 import { ClientApiKeysManager } from "@/components/settings/ClientApiKeysManager"
 import { DateTimePreferencesForm } from "@/components/settings/DateTimePreferencesForm"
-import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
-import { useSearch } from "@tanstack/react-router"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger
-} from "@/components/ui/dialog"
+import { LicenseManager } from "@/components/themes/LicenseManager.tsx"
+import { ThemeSelector } from "@/components/themes/ThemeSelector"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -40,6 +17,30 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from "@/components/ui/alert-dialog"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
+import { api } from "@/lib/api"
+import { withBasePath } from "@/lib/base-url"
+import { copyTextToClipboard } from "@/lib/utils"
+import { useForm } from "@tanstack/react-form"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useSearch } from "@tanstack/react-router"
+import { Copy, ExternalLink, Plus, Trash2 } from "lucide-react"
+import { useState } from "react"
+import { toast } from "sonner"
 
 function ChangePasswordForm() {
   const mutation = useMutation({
@@ -258,9 +259,13 @@ function ApiKeysManager() {
                     <Button
                       size="icon"
                       variant="outline"
-                      onClick={() => {
-                        navigator.clipboard.writeText(newKey.key)
-                        toast.success("API key copied to clipboard")
+                      onClick={async () => {
+                        try {
+                          await copyTextToClipboard(newKey.key)
+                          toast.success("API key copied to clipboard")
+                        } catch {
+                          toast.error("Failed to copy to clipboard")
+                        }
                       }}
                     >
                       <Copy className="h-4 w-4" />

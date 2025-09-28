@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import {
   useActivateLicense,
   useDeleteLicense,
@@ -23,11 +24,11 @@ import {
 } from "@/hooks/useLicense"
 import { getLicenseErrorMessage } from "@/lib/license-errors"
 import { POLAR_CHECKOUT_URL, POLAR_PORTAL_URL } from "@/lib/polar-constants"
+import { copyTextToClipboard } from "@/lib/utils"
 import { useForm } from "@tanstack/react-form"
 import { AlertTriangle, Copy, ExternalLink, Key, RefreshCw, ShoppingCart, Sparkles, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { toast } from "sonner"
-import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 
 // Helper function to mask license keys for display
 function maskLicenseKey(key: string): string {
@@ -234,9 +235,13 @@ export function LicenseManager() {
                 variant="outline"
                 size="sm"
                 className="w-full"
-                onClick={() => {
-                  navigator.clipboard.writeText(selectedLicenseKey)
-                  toast.success("License key copied to clipboard")
+                onClick={async () => {
+                  try {
+                    await copyTextToClipboard(selectedLicenseKey)
+                    toast.success("License key copied to clipboard")
+                  } catch {
+                    toast.error("Failed to copy to clipboard")
+                  }
                 }}
               >
                 <Copy className="h-4 w-4 mr-2" />

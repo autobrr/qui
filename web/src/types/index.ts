@@ -75,6 +75,7 @@ export interface Torrent {
   magnet_uri: string
   max_ratio: number
   max_seeding_time: number
+  max_inactive_seeding_time?: number
   name: string
   num_complete: number
   num_incomplete: number
@@ -88,6 +89,7 @@ export interface Torrent {
   save_path: string
   seeding_time: number
   seeding_time_limit: number
+  inactive_seeding_time_limit?: number
   seen_complete: number
   seq_dl: boolean
   size: number
