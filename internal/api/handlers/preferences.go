@@ -176,7 +176,7 @@ func validateAutoRunPreferences(prefs map[string]any, instanceID int) (map[strin
 		return prefs, nil
 	}
 
-	// TODO: We need to store quiURL somewhere: database/config/frontend?
+	// TODO: assuming qui_url is saved and returned by the syncManager.
 	quiURL := prefs["qui_url"].(string)
 	if _, err := url.Parse(quiURL); err != nil {
 		return nil, fmt.Errorf("quiURL '%s' must be a valid URL: %w", quiURL, err)
