@@ -20,8 +20,10 @@ import {
 } from "@/components/ui/context-menu"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { SearchInput } from "@/components/ui/SearchInput"
+
 import { useDebounce } from "@/hooks/useDebounce"
 import { usePersistedAccordion } from "@/hooks/usePersistedAccordion"
+import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { getLinuxCount, LINUX_CATEGORIES, LINUX_TAGS, LINUX_TRACKERS, useIncognitoMode } from "@/lib/incognito"
 import { cn } from "@/lib/utils"
 import type { Category, TorrentFilters } from "@/types"
@@ -90,6 +92,7 @@ interface FilterSidebarProps {
   className?: string
   isStaleData?: boolean
   isLoading?: boolean
+  isMobile?: boolean
 }
 
 type TriState = "include" | "exclude" | "neutral"
@@ -122,9 +125,13 @@ const FilterSidebarComponent = ({
   className = "",
   isStaleData = false,
   isLoading = false,
+  isMobile = false,
 }: FilterSidebarProps) => {
   // Use incognito mode hook
   const [incognitoMode] = useIncognitoMode()
+  
+  // Use compact view state hook
+  const { viewMode, cycleViewMode } = usePersistedCompactViewState("normal")
 
   // Helper function to get count display - shows 0 when loading to prevent showing stale counts from previous instance
   const getDisplayCount = useCallback((key: string, fallbackCount?: number): string => {
@@ -864,6 +871,26 @@ const FilterSidebarComponent = ({
               </button>
             )}
           </div>
+
+          {/* View Mode Toggle - only show on mobile */}
+          {isMobile && (
+            <div className="flex items-center justify-between p-3 mb-4 bg-muted/20 rounded-lg">
+              <div className="flex flex-col gap-1">
+                <span className="text-sm font-medium">View Mode</span>
+                <span className="text-xs text-muted-foreground">
+                  {viewMode === "normal" ? "Full torrent cards" :
+                   viewMode === "compact" ? "Compact cards" : "Ultra compact"}
+                </span>
+              </div>
+              <button
+                onClick={cycleViewMode}
+                className="px-3 py-1 text-xs font-medium rounded border bg-background hover:bg-muted transition-colors"
+              >
+                {viewMode === "normal" ? "Normal" :
+                 viewMode === "compact" ? "Compact" : "Ultra"}
+              </button>
+            </div>
+          )}
 
           <Accordion
             type="multiple"

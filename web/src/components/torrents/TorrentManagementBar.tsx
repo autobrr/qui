@@ -38,11 +38,33 @@ import { api } from "@/lib/api"
 import { getCommonCategory, getCommonSavePath, getCommonTags } from "@/lib/torrent-utils"
 import type { Torrent, TorrentFilters } from "@/types"
 import { useQuery } from "@tanstack/react-query"
-import { ArrowDown, ArrowUp, ChevronsDown, ChevronsUp, Folder, FolderOpen, List, LoaderCircle, Pause, Play, Radio, Settings2, Share2, Tag, Trash2 } from "lucide-react"
-import type { ChangeEvent } from "react"
+import {
+  ArrowDown,
+  ArrowUp,
+  CheckCircle,
+  ChevronsDown,
+  ChevronsUp,
+  Folder,
+  FolderOpen, Gauge,
+  List,
+  Pause,
+  Play,
+  Radio,
+  Settings2, Share2,
+  Sprout,
+  Tag,
+  Trash2
+} from "lucide-react"
+import { type ChangeEvent } from "react"
 import { memo, useCallback, useMemo } from "react"
-import { AddTagsDialog, SetCategoryDialog, SetLocationDialog, SetTagsDialog } from "./TorrentDialogs"
-import { ShareLimitSubmenu, SpeedLimitsSubmenu } from "./TorrentLimitSubmenus"
+import {
+  AddTagsDialog,
+  SetCategoryDialog,
+  SetLocationDialog,
+  SetTagsDialog,
+  ShareLimitDialog,
+  SpeedLimitsDialog
+} from "./TorrentDialogs"
 
 interface TorrentManagementBarProps {
   instanceId?: number
@@ -95,6 +117,10 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     setShowSetTagsDialog,
     showCategoryDialog,
     setShowCategoryDialog,
+    showShareLimitDialog,
+    setShowShareLimitDialog,
+    showSpeedLimitDialog,
+    setShowSpeedLimitDialog,
     showLocationDialog,
     setShowLocationDialog,
     showRecheckDialog,
@@ -115,6 +141,8 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     prepareDeleteAction,
     prepareTagsAction,
     prepareCategoryAction,
+    prepareShareLimitAction,
+    prepareSpeedLimitAction,
     prepareLocationAction,
     prepareRecheckAction,
     prepareReannounceAction,
@@ -339,7 +367,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
                 onClick={handleRecheckClick}
                 disabled={isPending || isDisabled}
               >
-                <LoaderCircle className="h-4 w-4" />
+                <CheckCircle className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>Force Recheck</TooltipContent>
@@ -485,19 +513,21 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
               </TooltipTrigger>
               <TooltipContent>Limits</TooltipContent>
             </Tooltip>
-            <DropdownMenuContent align="center" className="w-72">
-              <ShareLimitSubmenu
-                type="dropdown"
-                hashCount={selectionCount}
-                onConfirm={handleSetShareLimitWrapper}
-                isPending={isPending}
-              />
-              <SpeedLimitsSubmenu
-                type="dropdown"
-                hashCount={selectionCount}
-                onConfirm={handleSetSpeedLimitsWrapper}
-                isPending={isPending}
-              />
+            <DropdownMenuContent>
+              <DropdownMenuItem
+                onClick={() => prepareShareLimitAction(selectedHashes, selectedTorrents)}
+                disabled={isPending || isDisabled}
+              >
+                <Sprout className="mr-2 h-4 w-4" />
+                Set Share Limit {selectionCount > 1 ? `(${selectionCount})` : ""}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => prepareSpeedLimitAction(selectedHashes, selectedTorrents)}
+                disabled={isPending || isDisabled}
+              >
+                <Gauge className="mr-2 h-4 w-4" />
+                Set Speed Limit {selectionCount > 1 ? `(${selectionCount})` : ""}
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
@@ -616,6 +646,24 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
         onConfirm={handleSetLocationWrapper}
         isPending={isPending}
         initialLocation={getCommonSavePath(selectedTorrents)}
+      />
+
+      <ShareLimitDialog
+        open={showShareLimitDialog}
+        onOpenChange={setShowShareLimitDialog}
+        hashCount={totalSelectionCount || selectedHashes.length}
+        torrents={selectedTorrents}
+        onConfirm={handleSetShareLimitWrapper}
+        isPending={isPending}
+      />
+
+      <SpeedLimitsDialog
+        open={showSpeedLimitDialog}
+        onOpenChange={setShowSpeedLimitDialog}
+        hashCount={totalSelectionCount || selectedHashes.length}
+        torrents={selectedTorrents}
+        onConfirm={handleSetSpeedLimitsWrapper}
+        isPending={isPending}
       />
 
       {/* Force Recheck Confirmation Dialog */}

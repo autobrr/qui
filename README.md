@@ -293,9 +293,10 @@ qui includes a built-in reverse proxy that allows external applications like aut
 
 The reverse proxy feature:
 - **Handles authentication automatically** - qui manages the qBittorrent login using your configured credentials
-- **Isolates clients** - Each client gets its own API key for security and monitoring  
-- **Works with any qBittorrent security setting** - Even with "bypass authentication for clients on localhost" disabled
+- **Isolates clients** - Each client gets its own API key
 - **Provides transparent access** - Clients see qui as if it were qBittorrent directly
+- **Reduces login thrash** - qui maintains a shared cookie jar and session, so your automation tools stop racing to re-authenticate against qBittorrent. That means fewer failed logins, less load on qBittorrent, and faster announce races because downstream apps reuse the live session instead of waiting for new tokens.
+- **Future-aware sync** - A planned improvement will reuse the proxied responses from other tools to keep qui's own torrent data fresh without waiting for the next poll cycle.
 
 ### Setup Instructions
 
@@ -312,34 +313,30 @@ The reverse proxy feature:
 
 Use qui as the qBittorrent host with the special proxy URL format:
 
-**Example for Sonarr or autobrr:**
-- **Host**: `your-qui-server` (e.g., `localhost` or `192.168.1.100`)
-- **Port**: `7476` (or your qui port)
-- **Username**: *Leave empty*
-- **Password**: *Leave empty*  
-- **URL Base**: `/proxy/YOUR_CLIENT_API_KEY_HERE`
-
 **Complete URL example:**
 ```
 http://localhost:7476/proxy/abc123def456ghi789jkl012mno345pqr678stu901vwx234yz
 ```
 
-#### 3. Test the Connection
+#### Application-Specifics
 
-Your external application should now be able to:
-- Connect successfully to qBittorrent through qui
-- Add torrents, check status, and manage downloads
-- Work without any qBittorrent credentials
+**Sonarr / Radarr**
+- Go to `Settings → Download Clients`
+- Add a new **qBittorrent** client
+- Set the host and port of qui
+- Add URL Base (`/proxy/...`) - remember to include /qui/ if you use custom baseurl
+- Click **Test** and then **Save** once the test succeeds
+
+**autobrr**
+- Open `Settings → Download Clients`
+- Add **qBittorrent** (or edit an existing one)
+- Enter the full url like: `http://localhost:7476/proxy/abc123def456ghi789jkl012mno345pqr678stu901vwx234yz`
+- Leave username/password blank and press **Test**
+- Leave basic auth blank since qui handles that
 
 ### Supported Applications
 
-This reverse proxy works with any application that supports qBittorrent's Web API:
-- **autobrr** - Automatic torrent downloading
-- **Sonarr** - Automatic TV show downloads
-- **Radarr** - Automatic movie downloads  
-- **Lidarr** - Automatic music downloads
-- **Prowlarr** - Indexer management
-- **Custom scripts** - Any application using qBittorrent's API
+This reverse proxy will work with any application that supports qBittorrent's Web API.
 
 ### Security Features
 
@@ -468,7 +465,7 @@ make dev-frontend
 
 ## Community
 
-Join our friendly and welcoming community on [Discord](https://discord.gg/RkeZYfm5ej)! Connect with fellow autobrr users, get advice, and share your experiences. 
+Join our friendly and welcoming community on [Discord](https://discord.autobrr.com/qui)! Connect with fellow autobrr users, get advice, and share your experiences. 
 Whether you're seeking help, wanting to contribute, or just looking to discuss your ideas, our community is a hub of discussion and support. 
 We're all here to help each other out, so don't hesitate to jump in!
 

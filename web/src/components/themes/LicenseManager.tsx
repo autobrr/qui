@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import {
   useActivateLicense,
   useDeleteLicense,
@@ -23,7 +24,7 @@ import {
 } from "@/hooks/useLicense"
 import { getLicenseErrorMessage } from "@/lib/license-errors"
 import { POLAR_CHECKOUT_URL, POLAR_PORTAL_URL } from "@/lib/polar-constants"
-import { formatDate } from "@/lib/utils"
+import { copyTextToClipboard } from "@/lib/utils"
 import { useForm } from "@tanstack/react-form"
 import { AlertTriangle, Copy, ExternalLink, Key, RefreshCw, ShoppingCart, Sparkles, Trash2 } from "lucide-react"
 import { useState } from "react"
@@ -39,6 +40,7 @@ function maskLicenseKey(key: string): string {
 
 export function LicenseManager() {
   const [showAddLicense, setShowAddLicense] = useState(false)
+  const { formatDate } = useDateTimeFormatters()
   const [selectedLicenseKey, setSelectedLicenseKey] = useState<string | null>(null)
 
   const { hasPremiumAccess, isLoading } = useHasPremiumAccess()
@@ -144,7 +146,7 @@ export function LicenseManager() {
                         {maskLicenseKey(licenses[0].licenseKey)}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        {licenses[0].productName} • Status: {licenses[0].status} • Added {formatDate(new Date(licenses[0].createdAt).getTime() / 1000)}
+                        {licenses[0].productName} • Status: {licenses[0].status} • Added {formatDate(new Date(licenses[0].createdAt))}
                       </div>
                       {hasInvalidLicense && (
                         <div className="space-y-2">
@@ -233,9 +235,13 @@ export function LicenseManager() {
                 variant="outline"
                 size="sm"
                 className="w-full"
-                onClick={() => {
-                  navigator.clipboard.writeText(selectedLicenseKey)
-                  toast.success("License key copied to clipboard")
+                onClick={async () => {
+                  try {
+                    await copyTextToClipboard(selectedLicenseKey)
+                    toast.success("License key copied to clipboard")
+                  } catch {
+                    toast.error("Failed to copy to clipboard")
+                  }
                 }}
               >
                 <Copy className="h-4 w-4 mr-2" />

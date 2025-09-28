@@ -22,7 +22,7 @@ import {
 } from "@/lib/incognito"
 import { formatSpeedWithUnit, type SpeedUnit } from "@/lib/speedUnits"
 import { getStateLabel } from "@/lib/torrent-state-utils"
-import { formatBytes, formatDateTime, formatDuration, getRatioColor } from "@/lib/utils"
+import { formatBytes, formatDuration, getRatioColor } from "@/lib/utils"
 import type { Torrent } from "@/types"
 import type { ColumnDef } from "@tanstack/react-table"
 import { ListOrdered } from "lucide-react"
@@ -79,7 +79,8 @@ export const createColumns = (
     isAllSelected?: boolean
     excludedFromSelectAll?: Set<string>
   },
-  speedUnit: SpeedUnit = "bytes"
+  speedUnit: SpeedUnit = "bytes",
+  formatTimestamp?: (timestamp: number) => string
 ): ColumnDef<Torrent>[] => [
   {
     id: "select",
@@ -250,7 +251,11 @@ export const createColumns = (
       <div className="flex items-center gap-2">
         <Progress value={row.original.progress * 100} className="w-20" />
         <span className="text-xs text-muted-foreground">
-          {Math.round(row.original.progress * 100)}%
+          {row.original.progress >= 0.99 && row.original.progress < 1 ? (
+            (Math.floor(row.original.progress * 1000) / 10).toFixed(1)
+          ) : (
+            Math.round(row.original.progress * 100)
+          )}%
         </span>
       </div>
     ),
@@ -405,7 +410,7 @@ export const createColumns = (
       }
 
       return (
-        <div className="overflow-hidden whitespace-nowrap text-sm">{formatDateTime(addedOn)}</div>
+        <div className="overflow-hidden whitespace-nowrap text-sm">{formatTimestamp ? formatTimestamp(addedOn) : new Date(addedOn * 1000).toLocaleString()}</div>
       )
     },
     size: 200,
@@ -420,7 +425,7 @@ export const createColumns = (
       }
 
       return (
-        <div className="overflow-hidden whitespace-nowrap text-sm">{formatDateTime(completionOn)}</div>
+        <div className="overflow-hidden whitespace-nowrap text-sm">{formatTimestamp ? formatTimestamp(completionOn) : new Date(completionOn * 1000).toLocaleString()}</div>
       )
     },
     size: 200,
@@ -597,7 +602,7 @@ export const createColumns = (
       }
 
       return (
-        <div className="overflow-hidden whitespace-nowrap text-sm">{formatDateTime(lastSeenComplete)}</div>
+        <div className="overflow-hidden whitespace-nowrap text-sm">{formatTimestamp ? formatTimestamp(lastSeenComplete) : new Date(lastSeenComplete * 1000).toLocaleString()}</div>
       )
     },
     size: 200,
@@ -612,7 +617,7 @@ export const createColumns = (
       }
 
       return (
-        <div className="overflow-hidden whitespace-nowrap text-sm">{formatDateTime(lastActivity)}</div>
+        <div className="overflow-hidden whitespace-nowrap text-sm">{formatTimestamp ? formatTimestamp(lastActivity) : new Date(lastActivity * 1000).toLocaleString()}</div>
       )
     },
     size: 200,
@@ -631,7 +636,9 @@ export const createColumns = (
     accessorKey: "infohash_v1",
     header: "Info Hash v1",
     cell: ({ row }) => {
-      const infoHash = incognitoMode ? getLinuxHash(row.original.infohash_v1) : row.original.infohash_v1
+      const original = row.original.infohash_v1
+      const maskBase = row.original.hash || row.original.infohash_v1 || row.original.infohash_v2 || row.id
+      const infoHash = incognitoMode && original ? getLinuxHash(maskBase || "") : original
       return (
         <div className="overflow-hidden whitespace-nowrap text-sm" title={infoHash}>
           {infoHash || "-"}
@@ -644,7 +651,9 @@ export const createColumns = (
     accessorKey: "infohash_v2",
     header: "Info Hash v2",
     cell: ({ row }) => {
-      const infoHash = incognitoMode ? getLinuxHash(row.original.infohash_v2) : row.original.infohash_v2
+      const original = row.original.infohash_v2
+      const maskBase = row.original.hash || row.original.infohash_v1 || row.original.infohash_v2 || row.id
+      const infoHash = incognitoMode && original ? getLinuxHash(maskBase || "") : original
       return (
         <div className="overflow-hidden whitespace-nowrap text-sm" title={infoHash}>
           {infoHash || "-"}

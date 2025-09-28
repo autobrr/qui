@@ -4,12 +4,18 @@
 package proxy
 
 import (
+	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog"
@@ -29,8 +35,11 @@ type Handler struct {
 }
 
 const (
-	proxyContextKey   contextKey = "proxy_request_context"
-	proxyErrorPayload string     = `{"error":"Failed to connect to qBittorrent instance"}`
+	proxyContextKey       contextKey = "proxy_request_context"
+	clientHTTPSContextKey contextKey = "client_https"
+	proxyErrorPayload     string     = `{"error":"Failed to connect to qBittorrent instance"}`
+	proxyLoginCookieName  string     = "SID"
+	proxyLoginSuccessBody string     = "Ok."
 )
 
 // missingProxyContextSampler throttles repeated missing-context warnings to avoid log floods.
@@ -61,9 +70,10 @@ func NewHandler(clientPool *qbittorrent.ClientPool, clientAPIKeyStore *models.Cl
 
 	// Configure the reverse proxy
 	h.proxy = &httputil.ReverseProxy{
-		Rewrite:      h.rewriteRequest,
-		BufferPool:   bufferPool,
-		ErrorHandler: h.errorHandler,
+		Rewrite:        h.rewriteRequest,
+		ModifyResponse: h.modifyResponse,
+		BufferPool:     bufferPool,
+		ErrorHandler:   h.errorHandler,
 	}
 
 	return h
@@ -77,8 +87,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	r = r.WithContext(context.WithValue(r.Context(), proxyContextKey, proxyCtx))
-	h.proxy.ServeHTTP(w, r)
+	ctx := context.WithValue(r.Context(), proxyContextKey, proxyCtx)
+	if isHTTPSRequest(r) {
+		ctx = context.WithValue(ctx, clientHTTPSContextKey, true)
+	}
+
+	h.proxy.ServeHTTP(w, r.WithContext(ctx))
 }
 
 // rewriteRequest modifies the outbound request to target the correct qBittorrent instance
@@ -165,6 +179,85 @@ func (h *Handler) rewriteRequest(pr *httputil.ProxyRequest) {
 		pr.Out.Header.Set("X-Forwarded-Host", forwardedHost)
 	}
 	pr.Out.Header.Set("X-Qui-Client", clientAPIKey.ClientName)
+}
+
+func (h *Handler) modifyResponse(resp *http.Response) error {
+	if resp == nil || resp.Request == nil || resp.Request.URL == nil {
+		return nil
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil
+	}
+
+	if !strings.HasSuffix(resp.Request.URL.Path, "/auth/login") {
+		return nil
+	}
+
+	ctx := resp.Request.Context()
+	instanceID := GetInstanceIDFromContext(ctx)
+	clientAPIKey := GetClientAPIKeyFromContext(ctx)
+	if clientAPIKey == nil {
+		return nil
+	}
+
+	if len(resp.Header.Values("Set-Cookie")) > 0 {
+		return nil
+	}
+
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	resp.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+	resp.ContentLength = int64(len(bodyBytes))
+	if len(bodyBytes) > 0 {
+		resp.Header.Set("Content-Length", strconv.Itoa(len(bodyBytes)))
+	} else {
+		resp.Header.Del("Content-Length")
+	}
+	if readErr != nil {
+		log.Error().
+			Err(readErr).
+			Str("client", clientAPIKey.ClientName).
+			Int("instanceId", instanceID).
+			Msg("Failed to read complete proxy login response body")
+		return nil
+	}
+
+	if strings.TrimSpace(string(bodyBytes)) != proxyLoginSuccessBody {
+		return nil
+	}
+
+	cookieValue, err := generateLoginCookieValue()
+	if err != nil {
+		log.Warn().
+			Err(err).
+			Str("client", clientAPIKey.ClientName).
+			Int("instanceId", instanceID).
+			Msg("Falling back to timestamp-based proxy login cookie value")
+		cookieValue = fmt.Sprintf("fallback-%d", time.Now().UnixNano())
+	}
+
+	cookie := &http.Cookie{
+		Name:     proxyLoginCookieName,
+		Value:    cookieValue,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	}
+
+	if clientRequestIsHTTPS(ctx) {
+		cookie.Secure = true
+	}
+
+	resp.Header.Add("Set-Cookie", cookie.String())
+
+	log.Debug().
+		Str("client", clientAPIKey.ClientName).
+		Int("instanceId", instanceID).
+		Str("cookieName", cookie.Name).
+		Msg("Injected proxy login cookie for client request")
+
+	return nil
 }
 
 // stripProxyPrefix removes the proxy prefix from the URL path
@@ -290,4 +383,48 @@ func (h *Handler) writeProxyError(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusBadGateway)
 	_, _ = w.Write([]byte(proxyErrorPayload))
+}
+
+func generateLoginCookieValue() (string, error) {
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(buf), nil
+}
+
+func clientRequestIsHTTPS(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	if v, ok := ctx.Value(clientHTTPSContextKey).(bool); ok {
+		return v
+	}
+	return false
+}
+
+func isHTTPSRequest(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+
+	if proto := strings.ToLower(strings.TrimSpace(r.Header.Get("X-Forwarded-Proto"))); proto != "" {
+		if strings.HasPrefix(proto, "https") {
+			return true
+		}
+	}
+
+	if forwarded := strings.ToLower(r.Header.Get("Forwarded")); strings.Contains(forwarded, "proto=https") {
+		return true
+	}
+
+	if r.TLS != nil {
+		return true
+	}
+
+	if r.URL != nil && strings.EqualFold(r.URL.Scheme, "https") {
+		return true
+	}
+
+	return false
 }
