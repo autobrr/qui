@@ -251,7 +251,11 @@ export const createColumns = (
       <div className="flex items-center gap-2">
         <Progress value={row.original.progress * 100} className="w-20" />
         <span className="text-xs text-muted-foreground">
-          {Math.round(row.original.progress * 100)}%
+          {row.original.progress >= 0.99 && row.original.progress < 1 ? (
+            (Math.floor(row.original.progress * 1000) / 10).toFixed(1)
+          ) : (
+            Math.round(row.original.progress * 100)
+          )}%
         </span>
       </div>
     ),
