@@ -33,9 +33,10 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select"
+import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { api } from "@/lib/api"
 import { withBasePath } from "@/lib/base-url"
-import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
+import { copyTextToClipboard } from "@/lib/utils"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Copy, Plus, Server, Trash2 } from "lucide-react"
@@ -193,7 +194,7 @@ export function ClientApiKeysManager() {
                           className="h-7 w-7 justify-self-start sm:justify-self-end"
                           onClick={async () => {
                             try {
-                              await navigator.clipboard.writeText(getFullProxyUrl(newKey.proxyUrl))
+                              await copyTextToClipboard(getFullProxyUrl(newKey.proxyUrl))
                               toast.success("Proxy URL copied to clipboard")
                             } catch {
                               toast.error("Failed to copy to clipboard")
