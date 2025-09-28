@@ -258,9 +258,13 @@ function ApiKeysManager() {
                     <Button
                       size="icon"
                       variant="outline"
-                      onClick={() => {
-                        navigator.clipboard.writeText(newKey.key)
-                        toast.success("API key copied to clipboard")
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(newKey.key)
+                          toast.success("API key copied to clipboard")
+                        } catch {
+                          toast.error("Failed to copy to clipboard")
+                        }
                       }}
                     >
                       <Copy className="h-4 w-4" />
