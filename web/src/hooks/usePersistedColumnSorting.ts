@@ -3,30 +3,52 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState, useEffect } from "react"
 import type { SortingState } from "@tanstack/react-table"
+import { useEffect, useState } from "react"
 
 export function usePersistedColumnSorting(
-  defaultSorting: SortingState = []
+  defaultSorting: SortingState = [],
+  instanceKey?: string | number
 ) {
-  // Global key shared across all instances
-  const storageKey = "qui-column-sorting"
+  const baseStorageKey = "qui-column-sorting"
+  const hasInstanceKey = instanceKey !== undefined && instanceKey !== null
+  const storageKey = hasInstanceKey ? `${baseStorageKey}:${instanceKey}` : baseStorageKey
 
-  // Initialize state from localStorage or default values
-  const [sorting, setSorting] = useState<SortingState>(() => {
+  const loadSorting = (): SortingState => {
     try {
       const stored = localStorage.getItem(storageKey)
       if (stored) {
-        return JSON.parse(stored)
+        const parsed = JSON.parse(stored)
+        if (Array.isArray(parsed)) {
+          return parsed as SortingState
+        }
       }
     } catch (error) {
       console.error("Failed to load column sorting from localStorage:", error)
     }
 
-    return defaultSorting
-  })
+    return [...defaultSorting]
+  }
 
-  // Persist to localStorage whenever state changes
+  const [sorting, setSorting] = useState<SortingState>(() => loadSorting())
+
+  useEffect(() => {
+    if (!hasInstanceKey) {
+      return
+    }
+
+    try {
+      localStorage.removeItem(baseStorageKey)
+    } catch (error) {
+      console.error("Failed to clear legacy column sorting state:", error)
+    }
+  }, [hasInstanceKey, baseStorageKey])
+
+  useEffect(() => {
+    setSorting(loadSorting())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storageKey])
+
   useEffect(() => {
     try {
       localStorage.setItem(storageKey, JSON.stringify(sorting))
