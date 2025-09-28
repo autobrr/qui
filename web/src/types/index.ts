@@ -364,10 +364,6 @@ export interface AppPreferences {
   alternative_webui_enabled: boolean
   alternative_webui_path: string
   auto_delete_mode: number
-  autorun_enabled: boolean
-  autorun_on_torrent_added_enabled: boolean
-  autorun_on_torrent_added_program: string
-  autorun_program: string
   bypass_auth_subnet_whitelist: string
   bypass_auth_subnet_whitelist_enabled: boolean
   bypass_local_auth: boolean
@@ -385,6 +381,13 @@ export interface AppPreferences {
   slow_torrent_ul_rate_threshold: number
   ssrf_mitigation: boolean
   validate_https_tracker_certificate: boolean
+
+  // Webhooks
+  autorun_enabled: boolean
+  autorun_on_torrent_added_enabled: boolean
+  autorun_on_torrent_added_program: string
+  autorun_program: string
+  qui_url: string
 
   // RSS settings
   rss_auto_downloading_enabled: boolean

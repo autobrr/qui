@@ -13,6 +13,7 @@ import { NetworkDiscoveryForm } from "./NetworkDiscoveryForm"
 import { QueueManagementForm } from "./QueueManagementForm"
 import { SeedingLimitsForm } from "./SeedingLimitsForm"
 import { SpeedLimitsForm } from "./SpeedLimitsForm"
+import { WebhooksForm } from "./WebhooksForm"
 
 interface InstancePreferencesDialogProps {
   open: boolean
@@ -46,7 +47,7 @@ export function InstancePreferencesDialog({
         </DialogHeader>
 
         <Tabs defaultValue="speed" className="w-full">
-          <TabsList className="grid w-full grid-cols-7">
+          <TabsList className="grid w-full grid-cols-8">
             <TabsTrigger value="speed" className="flex items-center gap-2">
               <Gauge className="h-4 w-4" />
               <span className="hidden sm:inline">Speed</span>
@@ -70,6 +71,10 @@ export function InstancePreferencesDialog({
             <TabsTrigger value="discovery" className="flex items-center gap-2">
               <Radar className="h-4 w-4" />
               <span className="hidden sm:inline">Discovery</span>
+            </TabsTrigger>
+            <TabsTrigger value="webhooks" className="flex items-center gap-2">
+              <Settings className="h-4 w-4" />
+              <span className="hidden sm:inline">Webhooks</span>
             </TabsTrigger>
             <TabsTrigger value="advanced" className="flex items-center gap-2">
               <Settings className="h-4 w-4" />
@@ -135,6 +140,16 @@ export function InstancePreferencesDialog({
               </p>
             </div>
             <NetworkDiscoveryForm instanceId={instanceId} onSuccess={handleSuccess} />
+          </TabsContent>
+
+          <TabsContent value="webhooks" className="space-y-4">
+            <div className="space-y-2">
+              <h3 className="text-lg font-medium">Webhooks</h3>
+              <p className="text-sm text-muted-foreground">
+                Configure webhooks for this qBittorrent instance
+              </p>
+            </div>
+            <WebhooksForm instanceId={instanceId} onSuccess={handleSuccess} />
           </TabsContent>
 
           <TabsContent value="advanced" className="space-y-4">
