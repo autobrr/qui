@@ -489,7 +489,11 @@ function SwipeableCard({
               </div>
             )}
             <span className="text-xs font-medium">
-              {Math.round(torrent.progress * 100)}%
+              {torrent.progress >= 0.99 && torrent.progress < 1 ? (
+                (Math.floor(torrent.progress * 1000) / 10).toFixed(1)
+              ) : (
+                Math.round(torrent.progress * 100)
+              )}%
             </span>
           </div>
         </div>
