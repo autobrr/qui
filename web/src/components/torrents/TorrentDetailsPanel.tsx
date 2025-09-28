@@ -20,7 +20,7 @@ import { getLinuxComment, getLinuxCreatedBy, getLinuxFileName, getLinuxHash, get
 import { renderTextWithLinks } from "@/lib/linkUtils"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { resolveTorrentHashes } from "@/lib/torrent-utils"
-import { formatBytes, formatDuration } from "@/lib/utils"
+import { copyTextToClipboard, formatBytes, formatDuration } from "@/lib/utils"
 import type { Torrent } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import "flag-icons/css/flag-icons.min.css"
@@ -99,8 +99,8 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
   const copyToClipboard = useCallback(async (text: string, type: string) => {
     try {
-      await navigator.clipboard.writeText(text)
-      toast.success(`${type} copied!`)
+      await copyTextToClipboard(text)
+      toast.success(`${type} copied to clipboard`)
     } catch {
       toast.error("Failed to copy to clipboard")
     }
@@ -199,13 +199,15 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   })
 
   // Handle copy peer IP:port
-  const handleCopyPeer = useCallback((peer: TorrentPeer) => {
+  const handleCopyPeer = useCallback(async (peer: TorrentPeer) => {
     const peerAddress = `${peer.ip}:${peer.port}`
-    navigator.clipboard.writeText(peerAddress).then(() => {
+    try {
+      await copyTextToClipboard(peerAddress)
       toast.success(`Copied ${peerAddress} to clipboard`)
-    }).catch(() => {
+    } catch (err) {
+      console.error("Failed to copy to clipboard:", err)
       toast.error("Failed to copy to clipboard")
-    })
+    }
   }, [])
 
   // Handle ban peer click
