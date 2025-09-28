@@ -580,7 +580,7 @@ export const createColumns = (
     header: "Ratio Limit",
     cell: ({ row }) => {
       const ratioLimit = row.original.ratio_limit
-      const displayRatioLimit = ratioLimit === -2 ? "∞" : ratioLimit.toFixed(2)
+      const displayRatioLimit = ratioLimit === -2 || -1 ? "∞" : ratioLimit.toFixed(2)
 
       return (
         <span
