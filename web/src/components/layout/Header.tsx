@@ -156,12 +156,12 @@ export function Header({
                 </span>
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-64" side="bottom" align="start">
+            <DropdownMenuContent className="w-64 mt-2" side="bottom" align="start">
               <DropdownMenuLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                 Switch Instance
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <div className="max-h-64 overflow-y-auto">
+              <div className="max-h-64 overflow-y-auto space-y-1">
                 {instances.map((instance) => (
                   <DropdownMenuItem key={instance.id} asChild>
                     <Link

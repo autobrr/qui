@@ -8,7 +8,6 @@ import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import { withBasePath } from "@/lib/base-url"
-import { formatDate } from "@/lib/utils"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -19,6 +18,8 @@ import { Copy, Plus, Trash2, ExternalLink, Shield, Menu, Key, Server } from "luc
 import { LicenseManager } from "@/components/themes/LicenseManager.tsx"
 import { ThemeSelector } from "@/components/themes/ThemeSelector"
 import { ClientApiKeysManager } from "@/components/settings/ClientApiKeysManager"
+import { DateTimePreferencesForm } from "@/components/settings/DateTimePreferencesForm"
+import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useSearch } from "@tanstack/react-router"
 import {
   Dialog,
@@ -174,6 +175,7 @@ function ApiKeysManager() {
   const [deleteKeyId, setDeleteKeyId] = useState<number | null>(null)
   const [newKey, setNewKey] = useState<{ name: string; key: string } | null>(null)
   const queryClient = useQueryClient()
+  const { formatDate } = useDateTimeFormatters()
 
   // Fetch API keys from backend
   const { data: apiKeys, isLoading } = useQuery({
@@ -349,9 +351,9 @@ function ApiKeysManager() {
                     </Badge>
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    Created: {formatDate(new Date(key.createdAt).getTime() / 1000)}
+                    Created: {formatDate(new Date(key.createdAt))}
                     {key.lastUsedAt && (
-                      <> • Last used: {formatDate(new Date(key.lastUsedAt).getTime() / 1000)}</>
+                      <> • Last used: {formatDate(new Date(key.lastUsedAt))}</>
                     )}
                   </p>
                 </div>
@@ -480,6 +482,19 @@ export function Settings() {
               </Card>
             </div>
           )}
+        <TabsContent value="datetime" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Date & Time Preferences</CardTitle>
+              <CardDescription>
+                Configure timezone, date format, and time display preferences
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <DateTimePreferencesForm />
+            </CardContent>
+          </Card>
+        </TabsContent>
 
           {activeTab === 'themes' && (
             <div className="space-y-4">

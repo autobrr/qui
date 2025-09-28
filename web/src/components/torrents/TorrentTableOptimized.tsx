@@ -4,6 +4,7 @@
  */
 
 import { useDebounce } from "@/hooks/useDebounce"
+import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useKeyboardNavigation } from "@/hooks/useKeyboardNavigation"
 import { usePersistedColumnOrder } from "@/hooks/usePersistedColumnOrder"
 import { usePersistedColumnSizing } from "@/hooks/usePersistedColumnSizing"
@@ -79,7 +80,15 @@ import { ArrowUpDown, ChevronDown, ChevronUp, Columns3, Eye, EyeOff, Loader2 } f
 import { createPortal } from "react-dom"
 import { AddTorrentDialog } from "./AddTorrentDialog"
 import { DraggableTableHeader } from "./DraggableTableHeader"
-import { AddTagsDialog, RemoveTagsDialog, SetCategoryDialog, SetLocationDialog, SetTagsDialog } from "./TorrentDialogs"
+import {
+  AddTagsDialog,
+  RemoveTagsDialog,
+  SetCategoryDialog,
+  SetLocationDialog,
+  SetTagsDialog,
+  ShareLimitDialog,
+  SpeedLimitsDialog
+} from "./TorrentDialogs"
 import { createColumns } from "./TorrentTableColumns"
 
 // Default values for persisted state hooks (module scope for stable references)
@@ -126,7 +135,7 @@ const DEFAULT_COLUMN_SIZING = {}
 
 // Helper function to get default column order (module scope for stable reference)
 function getDefaultColumnOrder(): string[] {
-  const cols = createColumns(false, undefined, "bytes")
+  const cols = createColumns(false, undefined, "bytes", undefined)
   return cols.map(col => {
     if ("id" in col && col.id) return col.id
     if ("accessorKey" in col && typeof col.accessorKey === "string") return col.accessorKey
@@ -160,7 +169,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const [globalFilter, setGlobalFilter] = useState("")
   const [immediateSearch] = useState("")
   const [rowSelection, setRowSelection] = useState({})
-  const [showRefetchIndicator, setShowRefetchIndicator] = useState(false)
 
   // Custom "select all" state for handling large datasets
   const [isAllSelected, setIsAllSelected] = useState(false)
@@ -168,6 +176,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const [speedUnit, setSpeedUnit] = useSpeedUnits()
+  const { formatTimestamp } = useDateTimeFormatters()
 
   // Detect platform for keyboard shortcuts
   const isMac = useMemo(() => {
@@ -223,6 +232,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     setShowRemoveTagsDialog,
     showCategoryDialog,
     setShowCategoryDialog,
+    showShareLimitDialog,
+    setShowShareLimitDialog,
+    showSpeedLimitDialog,
+    setShowSpeedLimitDialog,
     showLocationDialog,
     setShowLocationDialog,
     showRecheckDialog,
@@ -246,6 +259,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     prepareDeleteAction,
     prepareTagsAction,
     prepareCategoryAction,
+    prepareShareLimitAction,
+    prepareSpeedLimitAction,
     prepareLocationAction,
     prepareRecheckAction,
     prepareReannounceAction,
@@ -312,7 +327,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     tags,
 
     isLoading,
-    isFetching,
     isCachedData,
     isStaleData,
     isLoadingMore,
@@ -386,22 +400,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       torrentsLength: torrents.length,
     }
   }, [counts, categories, tags, totalCount, torrents, isLoading, onFilteredDataUpdate])
-
-
-  // Show refetch indicator only if fetching takes more than 2 seconds
-  useEffect(() => {
-    let timeoutId: ReturnType<typeof setTimeout>
-
-    if (isFetching && !isLoading && torrents.length > 0) {
-      timeoutId = setTimeout(() => {
-        setShowRefetchIndicator(true)
-      }, 2000)
-    } else {
-      setShowRefetchIndicator(false)
-    }
-
-    return () => clearTimeout(timeoutId)
-  }, [isFetching, isLoading, torrents.length])
 
   // Use torrents directly from backend (already sorted)
   const sortedTorrents = torrents
@@ -487,8 +485,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       onRowSelection: handleRowSelection,
       isAllSelected,
       excludedFromSelectAll,
-    }, speedUnit),
-    [incognitoMode, speedUnit, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, isAllSelected, excludedFromSelectAll]
+    }, speedUnit, formatTimestamp),
+    [incognitoMode, speedUnit, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, isAllSelected, excludedFromSelectAll]
   )
 
   const table = useReactTable({
@@ -658,11 +656,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     return table.getVisibleLeafColumns().reduce((width, col) => {
       return width + col.getSize()
     }, 0)
-  }, [table])
-
-  // Derive hidden columns state from table API for accuracy
-  const hasHiddenColumns = useMemo(() => {
-    return table.getAllLeafColumns().filter(c => c.getCanHide()).some(c => !c.getIsVisible())
   }, [table])
 
   // Reset loaded rows when data changes significantly
@@ -862,47 +855,39 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     )
   }, [handleReannounce, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
 
-  const handleSetShareLimitContext = useCallback((
+  const handleSetShareLimitWrapper = useCallback((
     ratioLimit: number,
     seedingTimeLimit: number,
-    inactiveSeedingTimeLimit: number,
-    hashes: string[]
+    inactiveSeedingTimeLimit: number
   ) => {
     handleSetShareLimit(
       ratioLimit,
       seedingTimeLimit,
       inactiveSeedingTimeLimit,
-      hashes,
+      contextHashes,
       isAllSelected,
       filters,
       effectiveSearch,
       Array.from(excludedFromSelectAll),
-      {
-        clientHashes: hashes,
-        totalSelected: isAllSelected ? effectiveSelectionCount : hashes.length,
-      }
+      contextClientMeta
     )
-  }, [handleSetShareLimit, isAllSelected, filters, effectiveSearch, excludedFromSelectAll, effectiveSelectionCount])
+  }, [handleSetShareLimit, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
 
-  const handleSetSpeedLimitsContext = useCallback((
+  const handleSetSpeedLimitsWrapper = useCallback((
     uploadLimit: number,
-    downloadLimit: number,
-    hashes: string[]
+    downloadLimit: number
   ) => {
     handleSetSpeedLimits(
       uploadLimit,
       downloadLimit,
-      hashes,
+      contextHashes,
       isAllSelected,
       filters,
       effectiveSearch,
       Array.from(excludedFromSelectAll),
-      {
-        clientHashes: hashes,
-        totalSelected: isAllSelected ? effectiveSelectionCount : hashes.length,
-      }
+      contextClientMeta
     )
-  }, [handleSetSpeedLimits, isAllSelected, filters, effectiveSearch, excludedFromSelectAll, effectiveSelectionCount])
+  }, [handleSetSpeedLimits, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
 
 
   // Drag and drop setup
@@ -967,9 +952,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                           className="relative"
                         >
                           <Columns3 className="h-4 w-4" />
-                          {hasHiddenColumns && (
-                            <span className="absolute -top-1 -right-1 h-2 w-2 bg-primary rounded-full" />
-                          )}
                           <span className="sr-only">Toggle columns</span>
                         </Button>
                       </DropdownMenuTrigger>
@@ -1110,11 +1092,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                     onPrepareDelete={prepareDeleteAction}
                     onPrepareTags={prepareTagsAction}
                     onPrepareCategory={prepareCategoryAction}
+                    onPrepareShareLimit={prepareShareLimitAction}
+                    onPrepareSpeedLimits={prepareSpeedLimitAction}
                     onPrepareLocation={prepareLocationAction}
                     onPrepareRecheck={prepareRecheckAction}
                     onPrepareReannounce={prepareReannounceAction}
-                    onSetShareLimit={handleSetShareLimitContext}
-                    onSetSpeedLimits={handleSetSpeedLimitsContext}
                     isPending={isPending}
                   >
                     <div
@@ -1234,12 +1216,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                 </span>
               </>
             )}
-            {showRefetchIndicator && (
-              <span className="ml-2">
-                <Loader2 className="h-3 w-3 animate-spin inline mr-1" />
-                Updating...
-              </span>
-            )}
           </div>
 
 
@@ -1356,6 +1332,22 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         onConfirm={handleSetCategoryWrapper}
         isPending={isPending}
         initialCategory={getCommonCategory(contextTorrents)}
+      />
+
+      <ShareLimitDialog
+        open={showShareLimitDialog}
+        onOpenChange={setShowShareLimitDialog}
+        hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
+        onConfirm={handleSetShareLimitWrapper}
+        isPending={isPending}
+      />
+
+      <SpeedLimitsDialog
+        open={showSpeedLimitDialog}
+        onOpenChange={setShowSpeedLimitDialog}
+        hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
+        onConfirm={handleSetSpeedLimitsWrapper}
+        isPending={isPending}
       />
 
       {/* Set Location Dialog */}
