@@ -13,9 +13,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
-import { Copy, Plus, Trash2, ExternalLink } from "lucide-react"
+import { Copy, Plus, Trash2, ExternalLink, Shield, Menu, Key, Server, Clock } from "lucide-react"
 import { LicenseManager } from "@/components/themes/LicenseManager.tsx"
 import { ThemeSelector } from "@/components/themes/ThemeSelector"
 import { ClientApiKeysManager } from "@/components/settings/ClientApiKeysManager"
@@ -403,6 +402,7 @@ function ApiKeysManager() {
 export function Settings() {
   const search = useSearch({ from: "/_authenticated/settings" })
   const defaultTab = (search as any)?.tab || "security"
+  const [activeTab, setActiveTab] = useState(defaultTab)
 
   return (
     <div className="container mx-auto p-6">
@@ -413,51 +413,112 @@ export function Settings() {
         </p>
       </div>
 
-      <Tabs defaultValue={defaultTab} className="space-y-4">
-        <div className="w-full overflow-x-auto">
-          <TabsList className="inline-flex h-auto min-w-full sm:grid sm:grid-cols-5">
-            <TabsTrigger value="security" className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 py-2 min-w-fit cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform">Security</TabsTrigger>
-            <TabsTrigger value="datetime" className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 py-2 min-w-fit whitespace-nowrap cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform">Date & Time</TabsTrigger>
-            <TabsTrigger value="themes" className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 py-2 min-w-fit cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform">Themes</TabsTrigger>
-            <TabsTrigger value="api" className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 py-2 min-w-fit whitespace-nowrap cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform">API Keys</TabsTrigger>
-            <TabsTrigger value="client-api" className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 py-2 min-w-fit whitespace-nowrap cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform">Client Proxy</TabsTrigger>
-          </TabsList>
+      <div className="flex gap-6">
+        {/* Left Sidebar Navigation */}
+        <div className="w-64 shrink-0">
+          <nav className="space-y-1">
+            <button
+              onClick={() => setActiveTab('security')}
+              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                activeTab === 'security'
+                  ? 'bg-accent text-accent-foreground'
+                  : 'text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground'
+              }`}
+            >
+              <Shield className="w-4 h-4 mr-2" />
+              Security
+            </button>
+            <button
+              onClick={() => setActiveTab('themes')}
+              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                activeTab === 'themes'
+                  ? 'bg-accent text-accent-foreground'
+                  : 'text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground'
+              }`}
+            >
+              <Menu className="w-4 h-4 mr-2" />
+              Context Menu
+            </button>
+            <button
+              onClick={() => setActiveTab('api')}
+              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                activeTab === 'api'
+                  ? 'bg-accent text-accent-foreground'
+                  : 'text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground'
+              }`}
+            >
+              <Key className="w-4 h-4 mr-2" />
+              API Keys
+            </button>
+            <button
+              onClick={() => setActiveTab('datetime')}
+              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                activeTab === 'datetime'
+                  ? 'bg-accent text-accent-foreground'
+                  : 'text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground'
+              }`}
+            >
+              <Clock className="w-4 h-4 mr-2" />
+              Date & Time
+            </button>
+            <button
+              onClick={() => setActiveTab('client-api')}
+              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                activeTab === 'client-api'
+                  ? 'bg-accent text-accent-foreground'
+                  : 'text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground'
+              }`}
+            >
+              <Server className="w-4 h-4 mr-2" />
+              Client Proxy
+            </button>
+          </nav>
         </div>
 
-        <TabsContent value="security" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Change Password</CardTitle>
-              <CardDescription>
-                Update your account password
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ChangePasswordForm />
-            </CardContent>
-          </Card>
-        </TabsContent>
+        {/* Main Content Area */}
+        <div className="flex-1 min-w-0">
 
-        <TabsContent value="datetime" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Date & Time Preferences</CardTitle>
-              <CardDescription>
-                Configure timezone, date format, and time display preferences
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <DateTimePreferencesForm />
-            </CardContent>
-          </Card>
-        </TabsContent>
+          {activeTab === 'security' && (
+            <div className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Change Password</CardTitle>
+                  <CardDescription>
+                    Update your account password
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ChangePasswordForm />
+                </CardContent>
+              </Card>
+            </div>
+          )}
 
-        <TabsContent value="themes" className="space-y-4">
-          <LicenseManager />
-          <ThemeSelector />
-        </TabsContent>
+          {activeTab === 'datetime' && (
+            <div className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Date & Time Preferences</CardTitle>
+                  <CardDescription>
+                    Configure timezone, date format, and time display preferences
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <DateTimePreferencesForm />
+                </CardContent>
+              </Card>
+            </div>
+          )}
 
-        <TabsContent value="api" className="space-y-4">
+          {activeTab === 'themes' && (
+            <div className="space-y-4">
+              <LicenseManager />
+              <ThemeSelector />
+            </div>
+          )}
+
+          {activeTab === 'api' && (
+            <div className="space-y-4">
           <Card>
             <CardHeader>
               <div className="flex items-start justify-between">
@@ -480,25 +541,29 @@ export function Settings() {
               </div>
             </CardHeader>
             <CardContent>
-              <ApiKeysManager />
-            </CardContent>
-          </Card>
-        </TabsContent>
+                <ApiKeysManager />
+              </CardContent>
+            </Card>
+            </div>
+          )}
 
-        <TabsContent value="client-api" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Client Proxy API Keys</CardTitle>
-              <CardDescription>
-                Manage API keys for external applications to connect to qBittorrent instances through qui
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ClientApiKeysManager />
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+          {activeTab === 'client-api' && (
+            <div className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Client Proxy API Keys</CardTitle>
+                  <CardDescription>
+                    Manage API keys for external applications to connect to qBittorrent instances through qui
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ClientApiKeysManager />
+                </CardContent>
+              </Card>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
