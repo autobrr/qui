@@ -896,14 +896,14 @@ export function TorrentCardsMobile({
   const virtualizer = useVirtualizer({
     count: safeLoadedRows,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => viewMode === "ultra-compact" ? 35 : viewMode === "compact" ? 88 : 180, // Size estimates for each view mode
+    estimateSize: () => viewMode === "ultra-compact" ? 39 : viewMode === "compact" ? 88 : 180, // More accurate size estimates for each view mode (35px + 4px padding)
     measureElement: (element) => {
       // Measure actual element height
       if (element) {
         const height = element.getBoundingClientRect().height
         return height
       }
-      return viewMode === "ultra-compact" ? 35 : viewMode === "compact" ? 88 : 180
+      return viewMode === "ultra-compact" ? 39 : viewMode === "compact" ? 88 : 180
     },
     overscan: 5,
     // Provide a key to help with item tracking - use hash with index for uniqueness
@@ -1401,7 +1401,7 @@ export function TorrentCardsMobile({
                   left: 0,
                   width: "100%",
                   transform: `translateY(${virtualItem.start}px)`,
-                  paddingBottom: "8px",
+                  paddingBottom: viewMode === "ultra-compact" ? "4px" : "8px",
                 }}
               >
                 <SwipeableCard
