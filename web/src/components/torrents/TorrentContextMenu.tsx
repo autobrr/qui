@@ -80,8 +80,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   const copyToClipboard = useCallback(async (text: string, type: "name" | "hash") => {
     try {
       await navigator.clipboard.writeText(text)
-      const message = type === "name" ? "Torrent name copied!" : "Torrent hash copied!"
-      toast.success(message)
+      toast.success(`Torrent ${type} copied to clipboard`)
     } catch {
       toast.error("Failed to copy to clipboard")
     }

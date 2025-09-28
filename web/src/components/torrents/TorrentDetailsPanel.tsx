@@ -100,7 +100,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const copyToClipboard = useCallback(async (text: string, type: string) => {
     try {
       await navigator.clipboard.writeText(text)
-      toast.success(`${type} copied!`)
+      toast.success(`${type} copied to clipboard`)
     } catch {
       toast.error("Failed to copy to clipboard")
     }

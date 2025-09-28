@@ -234,9 +234,13 @@ export function LicenseManager() {
                 variant="outline"
                 size="sm"
                 className="w-full"
-                onClick={() => {
-                  navigator.clipboard.writeText(selectedLicenseKey)
-                  toast.success("License key copied to clipboard")
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(selectedLicenseKey)
+                    toast.success("License key copied to clipboard")
+                  } catch {
+                    toast.error("Failed to copy to clipboard")
+                  }
                 }}
               >
                 <Copy className="h-4 w-4 mr-2" />
