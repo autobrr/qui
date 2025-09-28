@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import {
   useActivateLicense,
   useDeleteLicense,
@@ -28,7 +29,6 @@ import { useForm } from "@tanstack/react-form"
 import { AlertTriangle, Copy, ExternalLink, Key, RefreshCw, ShoppingCart, Sparkles, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { toast } from "sonner"
-import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 
 // Helper function to mask license keys for display
 function maskLicenseKey(key: string): string {
@@ -239,9 +239,8 @@ export function LicenseManager() {
                   try {
                     await copyTextToClipboard(selectedLicenseKey)
                     toast.success("License key copied to clipboard")
-                  } catch (err) {
-                    console.error("Failed to copy license key:", err)
-                    toast.error("Failed to copy license key")
+                  } catch {
+                    toast.error("Failed to copy to clipboard")
                   }
                 }}
               >

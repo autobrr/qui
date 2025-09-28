@@ -20,7 +20,7 @@ import { getLinuxComment, getLinuxCreatedBy, getLinuxFileName, getLinuxHash, get
 import { renderTextWithLinks } from "@/lib/linkUtils"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { resolveTorrentHashes } from "@/lib/torrent-utils"
-import { formatBytes, formatDuration, copyTextToClipboard } from "@/lib/utils"
+import { copyTextToClipboard, formatBytes, formatDuration } from "@/lib/utils"
 import type { Torrent } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import "flag-icons/css/flag-icons.min.css"
@@ -100,9 +100,8 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const copyToClipboard = useCallback(async (text: string, type: string) => {
     try {
       await copyTextToClipboard(text)
-      toast.success(`${type} copied!`)
-    } catch (err) {
-      console.error("Failed to copy to clipboard:", err)
+      toast.success(`${type} copied to clipboard`)
+    } catch {
       toast.error("Failed to copy to clipboard")
     }
   }, [])

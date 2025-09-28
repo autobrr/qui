@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { memo, useCallback, useMemo } from "react"
 import {
   ContextMenu,
   ContextMenuContent,
@@ -11,6 +10,12 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger
 } from "@/components/ui/context-menu"
+import type { TorrentAction } from "@/hooks/useTorrentActions"
+import { TORRENT_ACTIONS } from "@/hooks/useTorrentActions"
+import { getLinuxIsoName, useIncognitoMode } from "@/lib/incognito"
+import { getTorrentDisplayHash } from "@/lib/torrent-utils"
+import { copyTextToClipboard } from "@/lib/utils"
+import type { Torrent } from "@/types"
 import {
   CheckCircle,
   Copy,
@@ -26,14 +31,9 @@ import {
   Tag,
   Trash2
 } from "lucide-react"
+import { memo, useCallback, useMemo } from "react"
 import { toast } from "sonner"
-import type { Torrent } from "@/types"
-import type { TorrentAction } from "@/hooks/useTorrentActions"
-import { TORRENT_ACTIONS } from "@/hooks/useTorrentActions"
 import { QueueSubmenu } from "./QueueSubmenu"
-import { getLinuxIsoName, useIncognitoMode } from "@/lib/incognito"
-import { getTorrentDisplayHash } from "@/lib/torrent-utils"
-import { copyTextToClipboard } from "@/lib/utils"
 
 interface TorrentContextMenuProps {
   children: React.ReactNode
@@ -81,10 +81,8 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   const copyToClipboard = useCallback(async (text: string, type: "name" | "hash") => {
     try {
       await copyTextToClipboard(text)
-      const message = type === "name" ? "Torrent name copied!" : "Torrent hash copied!"
-      toast.success(message)
-    } catch (err) {
-      console.error("Failed to copy to clipboard:", err)
+      toast.success(`Torrent ${type} copied to clipboard`)
+    } catch {
       toast.error("Failed to copy to clipboard")
     }
   }, [])

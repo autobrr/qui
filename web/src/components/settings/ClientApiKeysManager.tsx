@@ -33,10 +33,10 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select"
+import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { api } from "@/lib/api"
 import { withBasePath } from "@/lib/base-url"
 import { copyTextToClipboard } from "@/lib/utils"
-import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Copy, Plus, Server, Trash2 } from "lucide-react"
@@ -196,9 +196,8 @@ export function ClientApiKeysManager() {
                             try {
                               await copyTextToClipboard(getFullProxyUrl(newKey.proxyUrl))
                               toast.success("Proxy URL copied to clipboard")
-                            } catch (err) {
-                              console.error("Failed to copy proxy URL:", err)
-                              toast.error("Failed to copy proxy URL")
+                            } catch {
+                              toast.error("Failed to copy to clipboard")
                             }
                           }}
                           title="Copy proxy URL"
