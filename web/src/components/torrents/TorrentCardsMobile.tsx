@@ -482,18 +482,6 @@ function SwipeableCard({
             </div>
           </div>
           
-          {/* State badge - smaller */}
-          <Badge variant={getStatusBadgeVariant(torrent.state)} className="text-[10px] px-1 py-0 h-4 flex-shrink-0">
-            {getStateLabel(torrent.state)}
-          </Badge>
-          
-          {/* Percentage if not 100% */}
-          {torrent.progress * 100 !== 100 && (
-            <span className="text-[10px] text-muted-foreground flex-shrink-0">
-              {Math.round(torrent.progress * 100)}%
-            </span>
-          )}
-          
           {/* Speeds if applicable */}
           {(torrent.dlspeed > 0 || torrent.upspeed > 0) && (
             <div className="flex items-center gap-1 text-[10px] flex-shrink-0">
@@ -508,6 +496,22 @@ function SwipeableCard({
                 </span>
               )}
             </div>
+          )}
+          
+          {/* State badge - smaller */}
+          <Badge variant={getStatusBadgeVariant(torrent.state)} className="text-[10px] px-1 py-0 h-4 flex-shrink-0">
+            {getStateLabel(torrent.state)}
+          </Badge>
+          
+          {/* Percentage if not 100% */}
+          {torrent.progress * 100 !== 100 && (
+            <span className="text-[10px] text-muted-foreground flex-shrink-0">
+              {torrent.progress >= 0.99 && torrent.progress < 1 ? (
+                (Math.floor(torrent.progress * 1000) / 10).toFixed(1)
+              ) : (
+                Math.round(torrent.progress * 100)
+              )}%
+            </span>
           )}
         </div>
       ) : viewMode === "compact" ? (
@@ -574,7 +578,11 @@ function SwipeableCard({
                   </div>
                 )}
                 <span className="text-xs font-medium">
-                  {Math.round(torrent.progress * 100)}%
+                  {torrent.progress >= 0.99 && torrent.progress < 1 ? (
+                    (Math.floor(torrent.progress * 1000) / 10).toFixed(1)
+                  ) : (
+                    Math.round(torrent.progress * 100)
+                  )}%
                 </span>
               </div>
             </div>
@@ -645,7 +653,11 @@ function SwipeableCard({
           {/* Right side: Percentage and Speeds */}
           <div className="flex items-center gap-2 flex-shrink-0">
             <span className="text-muted-foreground">
-              {Math.round(torrent.progress * 100)}%
+              {torrent.progress >= 0.99 && torrent.progress < 1 ? (
+                (Math.floor(torrent.progress * 1000) / 10).toFixed(1)
+              ) : (
+                Math.round(torrent.progress * 100)
+              )}%
             </span>
             {/* Speeds */}
             {(torrent.dlspeed > 0 || torrent.upspeed > 0) && (
