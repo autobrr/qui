@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Copy, Plus, Trash2, ExternalLink, Shield, Menu, Key, Server } from "lucide-react"
+import { Copy, Plus, Trash2, ExternalLink, Shield, Menu, Key, Server, Clock } from "lucide-react"
 import { LicenseManager } from "@/components/themes/LicenseManager.tsx"
 import { ThemeSelector } from "@/components/themes/ThemeSelector"
 import { ClientApiKeysManager } from "@/components/settings/ClientApiKeysManager"
@@ -451,6 +451,17 @@ export function Settings() {
               API Keys
             </button>
             <button
+              onClick={() => setActiveTab('datetime')}
+              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                activeTab === 'datetime'
+                  ? 'bg-accent text-accent-foreground'
+                  : 'text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground'
+              }`}
+            >
+              <Clock className="w-4 h-4 mr-2" />
+              Date & Time
+            </button>
+            <button
               onClick={() => setActiveTab('client-api')}
               className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
                 activeTab === 'client-api'
@@ -482,19 +493,22 @@ export function Settings() {
               </Card>
             </div>
           )}
-        <TabsContent value="datetime" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Date & Time Preferences</CardTitle>
-              <CardDescription>
-                Configure timezone, date format, and time display preferences
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <DateTimePreferencesForm />
-            </CardContent>
-          </Card>
-        </TabsContent>
+
+          {activeTab === 'datetime' && (
+            <div className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Date & Time Preferences</CardTitle>
+                  <CardDescription>
+                    Configure timezone, date format, and time display preferences
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <DateTimePreferencesForm />
+                </CardContent>
+              </Card>
+            </div>
+          )}
 
           {activeTab === 'themes' && (
             <div className="space-y-4">
