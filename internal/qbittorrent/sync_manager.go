@@ -242,6 +242,12 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 		// Use library filtering and sorting
 		filteredTorrents = syncManager.GetTorrents(torrentFilterOptions)
+
+		// qBittorrent returns substring matches for Tag, so enforce exact matches here.
+		if len(filters.Tags) == 1 {
+			tag := strings.TrimSpace(filters.Tags[0])
+			filteredTorrents = filterTorrentsByExactTag(filteredTorrents, tag)
+		}
 	}
 
 	log.Debug().
@@ -1046,42 +1052,39 @@ func normalizeForSearch(text string) string {
 	return strings.Join(strings.Fields(normalized), " ")
 }
 
+// filterTorrentsByExactTag retains only torrents that contain the target tag as a full token.
+func filterTorrentsByExactTag(torrents []qbt.Torrent, tag string) []qbt.Torrent {
+	if len(torrents) == 0 || tag == "" {
+		return torrents
+	}
+
+	cleanTag := strings.TrimSpace(tag)
+	if cleanTag == "" {
+		return torrents
+	}
+
+	kept := torrents[:0]
+	for _, torrent := range torrents {
+		if containsTagNoAlloc(torrent.Tags, cleanTag) {
+			kept = append(kept, torrent)
+		}
+	}
+
+	return kept
+}
+
 // containsTagNoAlloc checks if the comma-separated tags string contains the target tag
-// It avoids allocations by scanning the string and comparing token substrings using strings.EqualFold.
+// It uses strings.SplitSeq for zero-allocation iteration over tags.
 func containsTagNoAlloc(tags string, target string) bool {
 	if tags == "" || target == "" {
 		return false
 	}
 
-	i := 0
-	n := len(tags)
-	for i < n {
-		// skip leading spaces
-		for i < n && tags[i] == ' ' {
-			i++
+	for tag := range strings.SplitSeq(tags, ",") {
+		if strings.TrimSpace(tag) == target {
+			return true
 		}
-		// start of token
-		start := i
-		for i < n && tags[i] != ',' {
-			i++
-		}
-		end := i
-		// trim trailing spaces
-		for end > start && tags[end-1] == ' ' {
-			end--
-		}
-
-		// quick length check
-		if end-start == len(target) {
-			if tags[start:end] == target {
-				return true
-			}
-		}
-
-		// skip comma
-		i++
 	}
-
 	return false
 }
 
