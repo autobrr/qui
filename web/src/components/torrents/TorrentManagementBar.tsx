@@ -657,6 +657,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
         open={showShareLimitDialog}
         onOpenChange={setShowShareLimitDialog}
         hashCount={totalSelectionCount || selectedHashes.length}
+        torrents={selectedTorrents}
         onConfirm={handleSetShareLimitWrapper}
         isPending={isPending}
       />
@@ -665,6 +666,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
         open={showSpeedLimitDialog}
         onOpenChange={setShowSpeedLimitDialog}
         hashCount={totalSelectionCount || selectedHashes.length}
+        torrents={selectedTorrents}
         onConfirm={handleSetSpeedLimitsWrapper}
         isPending={isPending}
       />
