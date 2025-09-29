@@ -6,8 +6,10 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"slices"
 	"sort"
@@ -25,6 +27,8 @@ import (
 type TorrentsHandler struct {
 	syncManager *qbittorrent.SyncManager
 }
+
+const addTorrentMaxFormMemory int64 = 256 << 20 // 256 MiB cap for multi-file uploads
 
 // SortedPeer represents a peer with its key for sorting
 type SortedPeer struct {
@@ -153,8 +157,12 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Parse multipart form
-	err = r.ParseMultipartForm(32 << 20) // 32MB max
+	err = r.ParseMultipartForm(addTorrentMaxFormMemory)
 	if err != nil {
+		if errors.Is(err, multipart.ErrMessageTooLarge) {
+			RespondError(w, http.StatusRequestEntityTooLarge, fmt.Sprintf("Upload exceeded %d MB limit", addTorrentMaxFormMemory>>20))
+			return
+		}
 		RespondError(w, http.StatusBadRequest, "Failed to parse form data")
 		return
 	}
