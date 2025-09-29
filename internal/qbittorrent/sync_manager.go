@@ -593,6 +593,60 @@ func (sm *SyncManager) GetTorrentFiles(ctx context.Context, instanceID int, hash
 	return files, nil
 }
 
+// ExportTorrent returns the raw .torrent data along with a display name suggestion
+func (sm *SyncManager) ExportTorrent(ctx context.Context, instanceID int, hash string) ([]byte, string, string, error) {
+	if hash == "" {
+		return nil, "", "", fmt.Errorf("torrent hash is required")
+	}
+
+	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		return nil, "", "", err
+	}
+
+	// Attempt to derive a human readable name from cached torrent data
+	suggestedName := strings.TrimSpace(hash)
+	trackerDomain := ""
+	if torrents := client.getTorrentsByHashes([]string{hash}); len(torrents) > 0 {
+		torrent := torrents[0]
+		if name := strings.TrimSpace(torrent.Name); name != "" {
+			suggestedName = name
+		}
+
+		trackerDomain = sm.primaryTrackerDomain(torrent)
+	}
+
+	data, err := client.ExportTorrentCtx(ctx, hash)
+	if err != nil {
+		return nil, "", "", fmt.Errorf("failed to export torrent: %w", err)
+	}
+
+	return data, suggestedName, trackerDomain, nil
+}
+
+func (sm *SyncManager) primaryTrackerDomain(torrent qbt.Torrent) string {
+	candidates := []string{torrent.Tracker}
+	for _, tracker := range torrent.Trackers {
+		candidates = append(candidates, tracker.Url)
+	}
+
+	for _, candidate := range candidates {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" {
+			continue
+		}
+
+		domain := strings.TrimSpace(sm.extractDomainFromURL(candidate))
+		if domain == "" || strings.EqualFold(domain, "unknown") {
+			continue
+		}
+
+		return domain
+	}
+
+	return ""
+}
+
 // TorrentCounts represents counts for filtering sidebar
 type TorrentCounts struct {
 	Status     map[string]int `json:"status"`
