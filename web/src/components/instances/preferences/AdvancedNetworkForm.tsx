@@ -12,7 +12,15 @@ import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { Settings, HardDrive, Zap, Ban, Radio } from "lucide-react"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
+import { useQBittorrentFieldVisibility } from "@/hooks/useQBittorrentAppInfo"
 import { toast } from "sonner"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import { HelpCircle } from "lucide-react"
 
 interface AdvancedNetworkFormProps {
   instanceId: number
@@ -88,6 +96,7 @@ function NumberInput({
 
 export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFormProps) {
   const { preferences, isLoading, updatePreferences, isUpdating } = useInstancePreferences(instanceId)
+  const fieldVisibility = useQBittorrentFieldVisibility(instanceId)
 
   const form = useForm({
     defaultValues: {
@@ -272,30 +281,66 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
           </form.Field>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <form.Field name="peer_tos">
+            <form.Field 
+              name="peer_tos"
+              validators={{
+                onChange: ({ value }) => {
+                  if (value < 0 || value > 255) {
+                    return 'Peer ToS must be between 0 and 255'
+                  }
+                  return undefined
+                }
+              }}
+            >
               {(field) => (
-                <NumberInput
-                  label="Peer ToS Byte"
-                  value={field.state.value}
-                  onChange={(value) => field.handleChange(value)}
-                  min={0}
-                  max={255}
-                  description="Type of Service byte for peer connections"
-                />
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Label className="text-sm font-medium">Peer ToS Byte</Label>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p className="max-w-xs">
+                            Sets the Type of Service (ToS) field in IP packets for peer connections. 
+                            Higher values may improve network prioritization. Common values: 
+                            0 (default), 96 (high priority), 160 (low latency).
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={255}
+                    value={field.state.value || ""}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value)
+                      field.handleChange(isNaN(val) ? 0 : val)
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Type of Service byte for peer connections
+                  </p>
+                </div>
               )}
             </form.Field>
 
-            <form.Field name="socket_backlog_size">
-              {(field) => (
-                <NumberInput
-                  label="Socket Backlog Size"
-                  value={field.state.value}
-                  onChange={(value) => field.handleChange(value)}
-                  min={1}
-                  description="Number of pending connections in socket backlog"
-                />
-              )}
-            </form.Field>
+            {fieldVisibility.showSocketBacklogField && (
+              <form.Field name="socket_backlog_size">
+                {(field) => (
+                  <NumberInput
+                    label="Socket Backlog Size"
+                    value={field.state.value}
+                    onChange={(value) => field.handleChange(value)}
+                    min={1}
+                    description="Number of pending connections in socket backlog"
+                  />
+                )}
+              </form.Field>
+            )}
 
             <form.Field name="max_concurrent_http_announces">
               {(field) => (
@@ -310,59 +355,63 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
             </form.Field>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <form.Field name="send_buffer_watermark">
-              {(field) => (
-                <NumberInput
-                  label="Send Buffer Watermark"
-                  unit="KiB"
-                  value={field.state.value}
-                  onChange={(value) => field.handleChange(value)}
-                  min={1}
-                  description="Upper watermark for socket send buffer"
-                />
-              )}
-            </form.Field>
+          {fieldVisibility.showSendBufferFields && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <form.Field name="send_buffer_watermark">
+                {(field) => (
+                  <NumberInput
+                    label="Send Buffer Watermark"
+                    unit="KiB"
+                    value={field.state.value}
+                    onChange={(value) => field.handleChange(value)}
+                    min={1}
+                    description="Upper watermark for socket send buffer"
+                  />
+                )}
+              </form.Field>
 
-            <form.Field name="send_buffer_low_watermark">
-              {(field) => (
-                <NumberInput
-                  label="Send Buffer Low Watermark"
-                  unit="KiB"
-                  value={field.state.value}
-                  onChange={(value) => field.handleChange(value)}
-                  min={1}
-                  description="Lower watermark for socket send buffer"
-                />
-              )}
-            </form.Field>
+              <form.Field name="send_buffer_low_watermark">
+                {(field) => (
+                  <NumberInput
+                    label="Send Buffer Low Watermark"
+                    unit="KiB"
+                    value={field.state.value}
+                    onChange={(value) => field.handleChange(value)}
+                    min={1}
+                    description="Lower watermark for socket send buffer"
+                  />
+                )}
+              </form.Field>
 
-            <form.Field name="send_buffer_watermark_factor">
-              {(field) => (
-                <NumberInput
-                  label="Watermark Factor"
-                  unit="%"
-                  value={field.state.value}
-                  onChange={(value) => field.handleChange(value)}
-                  min={1}
-                  description="Send buffer watermark factor percentage"
-                />
-              )}
-            </form.Field>
-          </div>
+              <form.Field name="send_buffer_watermark_factor">
+                {(field) => (
+                  <NumberInput
+                    label="Watermark Factor"
+                    unit="%"
+                    value={field.state.value}
+                    onChange={(value) => field.handleChange(value)}
+                    min={1}
+                    description="Send buffer watermark factor percentage"
+                  />
+                )}
+              </form.Field>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <form.Field name="request_queue_size">
-              {(field) => (
-                <NumberInput
-                  label="Request Queue Size"
-                  value={field.state.value}
-                  onChange={(value) => field.handleChange(value)}
-                  min={1}
-                  description="Maximum number of queued piece requests"
-                />
-              )}
-            </form.Field>
+            {fieldVisibility.showRequestQueueField && (
+              <form.Field name="request_queue_size">
+                {(field) => (
+                  <NumberInput
+                    label="Request Queue Size"
+                    value={field.state.value}
+                    onChange={(value) => field.handleChange(value)}
+                    min={1}
+                    description="Maximum number of queued piece requests"
+                  />
+                )}
+              </form.Field>
+            )}
 
             <form.Field name="stop_tracker_timeout">
               {(field) => (
@@ -388,16 +437,18 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
         </div>
 
         <div className="space-y-4">
-          <form.Field name="enable_coalesce_read_write">
-            {(field) => (
-              <SwitchSetting
-                label="Coalesce reads & writes"
-                description="Combine adjacent disk reads and writes for better performance"
-                checked={field.state.value}
-                onChange={(checked) => field.handleChange(checked)}
-              />
-            )}
-          </form.Field>
+          {fieldVisibility.showCoalesceReadsWritesField && (
+            <form.Field name="enable_coalesce_read_write">
+              {(field) => (
+                <SwitchSetting
+                  label="Coalesce reads & writes"
+                  description="Combine adjacent disk reads and writes for better performance"
+                  checked={field.state.value}
+                  onChange={(checked) => field.handleChange(checked)}
+                />
+              )}
+            </form.Field>
+          )}
 
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -413,17 +464,19 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
               )}
             </form.Field>
 
-            <form.Field name="hashing_threads">
-              {(field) => (
-                <NumberInput
-                  label="Hashing Threads"
-                  value={field.state.value}
-                  onChange={(value) => field.handleChange(value)}
-                  min={1}
-                  description="Number of threads for piece hash checking"
-                />
-              )}
-            </form.Field>
+            {fieldVisibility.showHashingThreadsField && (
+              <form.Field name="hashing_threads">
+                {(field) => (
+                  <NumberInput
+                    label="Hashing Threads"
+                    value={field.state.value}
+                    onChange={(value) => field.handleChange(value)}
+                    min={1}
+                    description="Number of threads for piece hash checking"
+                  />
+                )}
+              </form.Field>
+            )}
 
             <form.Field name="file_pool_size">
               {(field) => (
@@ -438,33 +491,37 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
             </form.Field>
           </div>
 
+          {fieldVisibility.showDiskCacheFields && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <form.Field name="disk_cache">
+                {(field) => (
+                  <NumberInput
+                    label="Disk Cache Size"
+                    unit="MiB"
+                    value={field.state.value}
+                    onChange={(value) => field.handleChange(value)}
+                    min={-1}
+                    description="Disk cache size (-1 = auto, 0 = disabled)"
+                  />
+                )}
+              </form.Field>
+
+              <form.Field name="disk_cache_ttl">
+                {(field) => (
+                  <NumberInput
+                    label="Disk Cache TTL"
+                    unit="seconds"
+                    value={field.state.value}
+                    onChange={(value) => field.handleChange(value)}
+                    min={1}
+                    description="How long to keep cached data in memory"
+                  />
+                )}
+              </form.Field>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <form.Field name="disk_cache">
-              {(field) => (
-                <NumberInput
-                  label="Disk Cache Size"
-                  unit="MiB"
-                  value={field.state.value}
-                  onChange={(value) => field.handleChange(value)}
-                  min={-1}
-                  description="Disk cache size (-1 = auto, 0 = disabled)"
-                />
-              )}
-            </form.Field>
-
-            <form.Field name="disk_cache_ttl">
-              {(field) => (
-                <NumberInput
-                  label="Disk Cache TTL"
-                  unit="seconds"
-                  value={field.state.value}
-                  onChange={(value) => field.handleChange(value)}
-                  min={1}
-                  description="How long to keep cached data in memory"
-                />
-              )}
-            </form.Field>
-
             <form.Field name="disk_queue_size">
               {(field) => (
                 <NumberInput
@@ -480,32 +537,49 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <form.Field name="checking_memory_use">
+            <form.Field 
+              name="checking_memory_use"
+              validators={{
+                onChange: ({ value }) => {
+                  if (value <= 0 || value > 1024) {
+                    return 'Outstanding memory when checking torrents must be greater than 0 and less than 1024'
+                  }
+                  return undefined
+                }
+              }}
+            >
               {(field) => (
-                <NumberInput
-                  label="Checking Memory Use"
-                  unit="MiB"
-                  value={field.state.value}
-                  onChange={(value) => field.handleChange(value)}
-                  min={1}
-                  max={1024}
-                  description="Maximum memory used for piece checking"
-                />
+                <div className="space-y-2">
+                  <NumberInput
+                    label="Checking Memory Use"
+                    unit="MiB"
+                    value={field.state.value}
+                    onChange={(value) => field.handleChange(value)}
+                    min={1}
+                    max={1024}
+                    description="Maximum memory used for piece checking"
+                  />
+                  {field.state.meta.errors.length > 0 && (
+                    <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                  )}
+                </div>
               )}
             </form.Field>
 
-            <form.Field name="memory_working_set_limit">
-              {(field) => (
-                <NumberInput
-                  label="Working Set Limit"
-                  unit="MiB"
-                  value={field.state.value}
-                  onChange={(value) => field.handleChange(value)}
-                  min={1}
-                  description="Physical memory working set size limit"
-                />
-              )}
-            </form.Field>
+            {fieldVisibility.showMemoryWorkingSetLimit && (
+              <form.Field name="memory_working_set_limit">
+                {(field) => (
+                  <NumberInput
+                    label="Working Set Limit"
+                    unit="MiB"
+                    value={field.state.value}
+                    onChange={(value) => field.handleChange(value)}
+                    min={1}
+                    description="Physical memory working set size limit"
+                  />
+                )}
+              </form.Field>
+            )}
           </div>
         </div>
       </div>
@@ -518,44 +592,90 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <form.Field name="peer_turnover">
+          <form.Field 
+            name="peer_turnover"
+            validators={{
+              onChange: ({ value }) => {
+                if (value < 0 || value > 100) {
+                  return 'Peer turnover must be between 0 and 100'
+                }
+                return undefined
+              }
+            }}
+          >
             {(field) => (
-              <NumberInput
-                label="Peer Turnover"
-                unit="%"
-                value={field.state.value}
-                onChange={(value) => field.handleChange(value)}
-                min={0}
-                max={100}
-                description="Percentage of peers to disconnect/reconnect"
-              />
+              <div className="space-y-2">
+                <NumberInput
+                  label="Peer Turnover"
+                  unit="%"
+                  value={field.state.value}
+                  onChange={(value) => field.handleChange(value)}
+                  min={0}
+                  max={100}
+                  description="Percentage of peers to disconnect/reconnect"
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                )}
+              </div>
             )}
           </form.Field>
 
-          <form.Field name="peer_turnover_cutoff">
+          <form.Field 
+            name="peer_turnover_cutoff"
+            validators={{
+              onChange: ({ value }) => {
+                if (value < 0 || value > 100) {
+                  return 'Peer turnover cutoff must be between 0 and 100'
+                }
+                return undefined
+              }
+            }}
+          >
             {(field) => (
-              <NumberInput
-                label="Turnover Cutoff"
-                unit="%"
-                value={field.state.value}
-                onChange={(value) => field.handleChange(value)}
-                min={0}
-                max={100}
-                description="Peer turnover threshold percentage"
-              />
+              <div className="space-y-2">
+                <NumberInput
+                  label="Turnover Cutoff"
+                  unit="%"
+                  value={field.state.value}
+                  onChange={(value) => field.handleChange(value)}
+                  min={0}
+                  max={100}
+                  description="Peer turnover threshold percentage"
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                )}
+              </div>
             )}
           </form.Field>
 
-          <form.Field name="peer_turnover_interval">
+          <form.Field 
+            name="peer_turnover_interval"
+            validators={{
+              onChange: ({ value }) => {
+                if (value < 0 || value > 3600) {
+                  return 'Peer turnover interval must be greater than or equal to 0 and less than 3600 seconds'
+                }
+                return undefined
+              }
+            }}
+          >
             {(field) => (
-              <NumberInput
-                label="Turnover Interval"
-                unit="seconds"
-                value={field.state.value}
-                onChange={(value) => field.handleChange(value)}
-                min={1}
-                description="How often to perform peer turnover"
-              />
+              <div className="space-y-2">
+                <NumberInput
+                  label="Turnover Interval"
+                  unit="seconds"
+                  value={field.state.value}
+                  onChange={(value) => field.handleChange(value)}
+                  min={0}
+                  max={3600}
+                  description="How often to perform peer turnover"
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                )}
+              </div>
             )}
           </form.Field>
         </div>

@@ -111,19 +111,34 @@ export function SeedingLimitsForm({ instanceId, onSuccess }: SeedingLimitsFormPr
 
         <form.Field name="max_ratio_enabled">
           {(enabledField) => (
-            <form.Field name="max_ratio">
+            <form.Field 
+              name="max_ratio"
+              validators={{
+                onChange: ({ value }) => {
+                  if (value < 0) {
+                    return 'Share ratio limit must not have a negative value'
+                  }
+                  return undefined
+                }
+              }}
+            >
               {(field) => (
-                <NumberInputWithUnlimited
-                  label="Maximum Share Ratio"
-                  value={(field.state.value as number) ?? 2.0}
-                  onChange={field.handleChange}
-                  min={0.1}
-                  max={10}
-                  step="0.1"
-                  description="Stop seeding at this upload/download ratio"
-                  allowUnlimited={true}
-                  disabled={!(enabledField.state.value as boolean)}
-                />
+                <div className="space-y-2">
+                  <NumberInputWithUnlimited
+                    label="Maximum Share Ratio"
+                    value={(field.state.value as number) ?? 2.0}
+                    onChange={field.handleChange}
+                    min={0}
+                    max={10}
+                    step="0.1"
+                    description="Stop seeding at this upload/download ratio"
+                    allowUnlimited={true}
+                    disabled={!(enabledField.state.value as boolean)}
+                  />
+                  {field.state.meta.errors.length > 0 && (
+                    <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                  )}
+                </div>
               )}
             </form.Field>
           )}
@@ -142,18 +157,33 @@ export function SeedingLimitsForm({ instanceId, onSuccess }: SeedingLimitsFormPr
 
         <form.Field name="max_seeding_time_enabled">
           {(enabledField) => (
-            <form.Field name="max_seeding_time">
+            <form.Field 
+              name="max_seeding_time"
+              validators={{
+                onChange: ({ value }) => {
+                  if (value < 0) {
+                    return 'Seeding time limit must not have a negative value'
+                  }
+                  return undefined
+                }
+              }}
+            >
               {(field) => (
-                <NumberInputWithUnlimited
-                  label="Maximum Seeding Time (minutes)"
-                  value={(field.state.value as number) ?? 1440}
-                  onChange={field.handleChange}
-                  min={1}
-                  max={525600} // 1 year in minutes
-                  description="Stop seeding after this many minutes"
-                  allowUnlimited={true}
-                  disabled={!(enabledField.state.value as boolean)}
-                />
+                <div className="space-y-2">
+                  <NumberInputWithUnlimited
+                    label="Maximum Seeding Time (minutes)"
+                    value={(field.state.value as number) ?? 1440}
+                    onChange={field.handleChange}
+                    min={0}
+                    max={525600} // 1 year in minutes
+                    description="Stop seeding after this many minutes"
+                    allowUnlimited={true}
+                    disabled={!(enabledField.state.value as boolean)}
+                  />
+                  {field.state.meta.errors.length > 0 && (
+                    <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                  )}
+                </div>
               )}
             </form.Field>
           )}

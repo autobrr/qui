@@ -165,6 +165,7 @@ func (s *Server) Handler() *chi.Mux {
 	preferencesHandler := handlers.NewPreferencesHandler(s.syncManager)
 	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(s.clientAPIKeyStore, s.instanceStore)
 	versionHandler := handlers.NewVersionHandler(s.updateService)
+	qbittorrentInfoHandler := handlers.NewQBittorrentInfoHandler(s.clientPool)
 
 	// Create proxy handler
 	proxyHandler := proxy.NewHandler(s.clientPool, s.clientAPIKeyStore, s.instanceStore)
@@ -272,6 +273,9 @@ func (s *Server) Handler() *chi.Mux {
 					// Alternative speed limits
 					r.Get("/alternative-speed-limits", preferencesHandler.GetAlternativeSpeedLimitsMode)
 					r.Post("/alternative-speed-limits/toggle", preferencesHandler.ToggleAlternativeSpeedLimits)
+
+					// qBittorrent application info
+					r.Get("/app-info", qbittorrentInfoHandler.GetQBittorrentAppInfo)
 				})
 			})
 

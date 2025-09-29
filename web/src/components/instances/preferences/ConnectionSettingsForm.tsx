@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { Wifi, Server, Globe, Shield } from "lucide-react"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
+import { useQBittorrentFieldVisibility } from "@/hooks/useQBittorrentAppInfo"
 import { NumberInputWithUnlimited } from "@/components/forms/NumberInputWithUnlimited"
 import { toast } from "sonner"
 
@@ -108,6 +109,7 @@ function NumberInput({
 
 export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSettingsFormProps) {
   const { preferences, isLoading, updatePreferences, isUpdating } = useInstancePreferences(instanceId)
+  const fieldVisibility = useQBittorrentFieldVisibility(instanceId)
 
   const form = useForm({
     defaultValues: {
@@ -207,16 +209,31 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
         </div>
 
         <div className="space-y-4">
-          <form.Field name="listen_port">
+          <form.Field 
+            name="listen_port"
+            validators={{
+              onChange: ({ value }) => {
+                if (value < 0 || value > 65535) {
+                  return 'The port used for incoming connections must be between 0 and 65535'
+                }
+                return undefined
+              }
+            }}
+          >
             {(field) => (
-              <NumberInput
-                label="Port for incoming connections"
-                value={field.state.value}
-                onChange={(value) => field.handleChange(value)}
-                min={1024}
-                max={65535}
-                description="Port used for incoming BitTorrent connections"
-              />
+              <div className="space-y-2">
+                <NumberInput
+                  label="Port for incoming connections"
+                  value={field.state.value}
+                  onChange={(value) => field.handleChange(value)}
+                  min={0}
+                  max={65535}
+                  description="Port used for incoming BitTorrent connections"
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                )}
+              </div>
             )}
           </form.Field>
 
@@ -242,17 +259,19 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
             )}
           </form.Field>
 
-          <form.Field name="upnp_lease_duration">
-            {(field) => (
-              <NumberInput
-                label="UPnP lease duration (0 = permanent)"
-                value={field.state.value}
-                onChange={(value) => field.handleChange(value)}
-                min={0}
-                description="Duration in minutes for UPnP lease (0 for permanent)"
-              />
-            )}
-          </form.Field>
+          {fieldVisibility.showUpnpLeaseField && (
+            <form.Field name="upnp_lease_duration">
+              {(field) => (
+                <NumberInput
+                  label="UPnP lease duration (0 = permanent)"
+                  value={field.state.value}
+                  onChange={(value) => field.handleChange(value)}
+                  min={0}
+                  description="Duration in minutes for UPnP lease (0 for permanent, libtorrent 2.x only)"
+                />
+              )}
+            </form.Field>
+          )}
         </div>
       </div>
 
@@ -405,51 +424,111 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
         <h3 className="text-lg font-medium">Connection Limits</h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <form.Field name="max_connec">
+          <form.Field 
+            name="max_connec"
+            validators={{
+              onChange: ({ value }) => {
+                if (value !== -1 && value !== 0 && value <= 0) {
+                  return 'Maximum number of connections limit must be greater than 0 or disabled'
+                }
+                return undefined
+              }
+            }}
+          >
             {(field) => (
-              <NumberInputWithUnlimited
-                label="Global maximum connections"
-                value={field.state.value}
-                onChange={(value) => field.handleChange(value)}
-                allowUnlimited={true}
-                description="Maximum connections across all torrents"
-              />
+              <div className="space-y-2">
+                <NumberInputWithUnlimited
+                  label="Global maximum connections"
+                  value={field.state.value}
+                  onChange={(value) => field.handleChange(value)}
+                  allowUnlimited={true}
+                  description="Maximum connections across all torrents"
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                )}
+              </div>
             )}
           </form.Field>
 
-          <form.Field name="max_connec_per_torrent">
+          <form.Field 
+            name="max_connec_per_torrent"
+            validators={{
+              onChange: ({ value }) => {
+                if (value !== -1 && value !== 0 && value <= 0) {
+                  return 'Maximum number of connections per torrent limit must be greater than 0 or disabled'
+                }
+                return undefined
+              }
+            }}
+          >
             {(field) => (
-              <NumberInputWithUnlimited
-                label="Maximum connections per torrent"
-                value={field.state.value}
-                onChange={(value) => field.handleChange(value)}
-                allowUnlimited={true}
-                description="Maximum connections per individual torrent"
-              />
+              <div className="space-y-2">
+                <NumberInputWithUnlimited
+                  label="Maximum connections per torrent"
+                  value={field.state.value}
+                  onChange={(value) => field.handleChange(value)}
+                  allowUnlimited={true}
+                  description="Maximum connections per individual torrent"
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                )}
+              </div>
             )}
           </form.Field>
 
-          <form.Field name="max_uploads">
+          <form.Field 
+            name="max_uploads"
+            validators={{
+              onChange: ({ value }) => {
+                if (value !== -1 && value !== 0 && value <= 0) {
+                  return 'Global number of upload slots limit must be greater than 0 or disabled'
+                }
+                return undefined
+              }
+            }}
+          >
             {(field) => (
-              <NumberInputWithUnlimited
-                label="Global maximum upload slots"
-                value={field.state.value}
-                onChange={(value) => field.handleChange(value)}
-                allowUnlimited={true}
-                description="Maximum upload slots across all torrents"
-              />
+              <div className="space-y-2">
+                <NumberInputWithUnlimited
+                  label="Global maximum upload slots"
+                  value={field.state.value}
+                  onChange={(value) => field.handleChange(value)}
+                  allowUnlimited={true}
+                  description="Maximum upload slots across all torrents"
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                )}
+              </div>
             )}
           </form.Field>
 
-          <form.Field name="max_uploads_per_torrent">
+          <form.Field 
+            name="max_uploads_per_torrent"
+            validators={{
+              onChange: ({ value }) => {
+                if (value !== -1 && value !== 0 && value <= 0) {
+                  return 'Maximum number of upload slots per torrent limit must be greater than 0 or disabled'
+                }
+                return undefined
+              }
+            }}
+          >
             {(field) => (
-              <NumberInputWithUnlimited
-                label="Maximum upload slots per torrent"
-                value={field.state.value}
-                onChange={(value) => field.handleChange(value)}
-                allowUnlimited={true}
-                description="Maximum upload slots per individual torrent"
-              />
+              <div className="space-y-2">
+                <NumberInputWithUnlimited
+                  label="Maximum upload slots per torrent"
+                  value={field.state.value}
+                  onChange={(value) => field.handleChange(value)}
+                  allowUnlimited={true}
+                  description="Maximum upload slots per individual torrent"
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                )}
+              </div>
             )}
           </form.Field>
         </div>
@@ -471,29 +550,59 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
         <h3 className="text-lg font-medium">Outgoing Ports</h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <form.Field name="outgoing_ports_min">
+          <form.Field 
+            name="outgoing_ports_min"
+            validators={{
+              onChange: ({ value }) => {
+                if (value < 0 || value > 65535) {
+                  return 'Outgoing port range minimum must be between 0 and 65535'
+                }
+                return undefined
+              }
+            }}
+          >
             {(field) => (
-              <NumberInput
-                label="Outgoing ports (Min)"
-                value={field.state.value}
-                onChange={(value) => field.handleChange(value)}
-                min={0}
-                max={65535}
-                description="Minimum port for outgoing connections (0 = no limit)"
-              />
+              <div className="space-y-2">
+                <NumberInput
+                  label="Outgoing ports (Min)"
+                  value={field.state.value}
+                  onChange={(value) => field.handleChange(value)}
+                  min={0}
+                  max={65535}
+                  description="Minimum port for outgoing connections (0 = no limit)"
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                )}
+              </div>
             )}
           </form.Field>
 
-          <form.Field name="outgoing_ports_max">
+          <form.Field 
+            name="outgoing_ports_max"
+            validators={{
+              onChange: ({ value }) => {
+                if (value < 0 || value > 65535) {
+                  return 'Outgoing port range maximum must be between 0 and 65535'
+                }
+                return undefined
+              }
+            }}
+          >
             {(field) => (
-              <NumberInput
-                label="Outgoing ports (Max)"
-                value={field.state.value}
-                onChange={(value) => field.handleChange(value)}
-                min={0}
-                max={65535}
-                description="Maximum port for outgoing connections (0 = no limit)"
-              />
+              <div className="space-y-2">
+                <NumberInput
+                  label="Outgoing ports (Max)"
+                  value={field.state.value}
+                  onChange={(value) => field.handleChange(value)}
+                  min={0}
+                  max={65535}
+                  description="Maximum port for outgoing connections (0 = no limit)"
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                )}
+              </div>
             )}
           </form.Field>
         </div>

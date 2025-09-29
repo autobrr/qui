@@ -417,3 +417,18 @@ export interface AppPreferences {
   // Add catch-all for any additional fields from the API
   [key: string]: unknown
 }
+
+// qBittorrent application information
+export interface QBittorrentBuildInfo {
+  qt: string
+  libtorrent: string
+  boost: string
+  openssl: string
+  bitness: number
+  platform?: string
+}
+
+export interface QBittorrentAppInfo {
+  version: string
+  buildInfo?: QBittorrentBuildInfo
+}

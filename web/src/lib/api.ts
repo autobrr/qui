@@ -9,6 +9,7 @@ import type {
   Category,
   InstanceFormData,
   InstanceResponse,
+  QBittorrentAppInfo,
   TorrentResponse,
   User
 } from "@/types"
@@ -496,6 +497,10 @@ class ApiClient {
     return this.request<{ enabled: boolean }>(`/instances/${instanceId}/alternative-speed-limits/toggle`, {
       method: "POST",
     })
+  }
+
+  async getQBittorrentAppInfo(instanceId: number): Promise<QBittorrentAppInfo> {
+    return this.request<QBittorrentAppInfo>(`/instances/${instanceId}/app-info`)
   }
 
   async getLatestVersion(): Promise<{
