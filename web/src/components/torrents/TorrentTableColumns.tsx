@@ -86,7 +86,7 @@ export const createColumns = (
   {
     id: "select",
     header: ({ table }) => (
-      <div className="flex items-center justify-center p-1 -m-1">
+      <div className="flex items-center justify-center ml-3 h-full w-full">
         <Checkbox
           checked={selectionEnhancers?.customSelectAll?.isIndeterminate ? "indeterminate" : selectionEnhancers?.customSelectAll?.isAllSelected || false}
           onCheckedChange={(checked) => {
@@ -118,7 +118,7 @@ export const createColumns = (
       })()
 
       return (
-        <div className="flex items-center justify-center p-1 -m-1">
+        <div className="flex items-center justify-center h-full w-full">
           <Checkbox
             checked={isRowSelected}
             onPointerDown={(e) => {
