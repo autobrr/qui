@@ -1046,45 +1046,6 @@ func normalizeForSearch(text string) string {
 	return strings.Join(strings.Fields(normalized), " ")
 }
 
-// containsTagNoAlloc checks if the comma-separated tags string contains the target tag
-// It avoids allocations by scanning the string and comparing token substrings using strings.EqualFold.
-func containsTagNoAlloc(tags string, target string) bool {
-	if tags == "" || target == "" {
-		return false
-	}
-
-	i := 0
-	n := len(tags)
-	for i < n {
-		// skip leading spaces
-		for i < n && tags[i] == ' ' {
-			i++
-		}
-		// start of token
-		start := i
-		for i < n && tags[i] != ',' {
-			i++
-		}
-		end := i
-		// trim trailing spaces
-		for end > start && tags[end-1] == ' ' {
-			end--
-		}
-
-		// quick length check
-		if end-start == len(target) {
-			if tags[start:end] == target {
-				return true
-			}
-		}
-
-		// skip comma
-		i++
-	}
-
-	return false
-}
-
 // filterTorrentsBySearch filters torrents by search string with smart matching
 func (sm *SyncManager) filterTorrentsBySearch(torrents []qbt.Torrent, search string) []qbt.Torrent {
 	if search == "" {
@@ -1353,8 +1314,13 @@ func (sm *SyncManager) applyManualFilters(client *Client, torrents []qbt.Torrent
 			} else {
 				tagMatched := false
 				for _, ft := range filters.Tags {
-					if containsTagNoAlloc(torrent.Tags, ft) {
-						tagMatched = true
+					for tag := range strings.SplitSeq(torrent.Tags, ",") {
+						if strings.TrimSpace(tag) == ft {
+							tagMatched = true
+							break
+						}
+					}
+					if tagMatched {
 						break
 					}
 				}
