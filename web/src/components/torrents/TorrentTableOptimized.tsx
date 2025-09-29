@@ -91,6 +91,7 @@ import {
   SpeedLimitsDialog
 } from "./TorrentDialogs"
 import { createColumns } from "./TorrentTableColumns"
+import { useInstancePreferences } from "@/hooks/useInstancePreferences.ts";
 
 // Default values for persisted state hooks (module scope for stable references)
 const DEFAULT_COLUMN_VISIBILITY = {
@@ -179,6 +180,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const { exportTorrents, isExporting: isExportingTorrent } = useTorrentExporter({ instanceId, incognitoMode })
   const [speedUnit, setSpeedUnit] = useSpeedUnits()
   const { formatTimestamp } = useDateTimeFormatters()
+  const { preferences } = useInstancePreferences(instanceId)
 
   // Detect platform for keyboard shortcuts
   const isMac = useMemo(() => {
@@ -490,8 +492,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       onRowSelection: handleRowSelection,
       isAllSelected,
       excludedFromSelectAll,
-    }, speedUnit, formatTimestamp),
-    [incognitoMode, speedUnit, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, isAllSelected, excludedFromSelectAll]
+    }, speedUnit, formatTimestamp, preferences),
+    [incognitoMode, speedUnit, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, isAllSelected, excludedFromSelectAll, preferences]
   )
 
   const table = useReactTable({
