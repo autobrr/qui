@@ -345,7 +345,6 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
                   value={field.state.value}
                   onChange={(value) => field.handleChange(value)}
                   min={1}
-                  max={100}
                   description="Send buffer watermark factor percentage"
                 />
               )}
@@ -489,6 +488,7 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
                   value={field.state.value}
                   onChange={(value) => field.handleChange(value)}
                   min={1}
+                  max={1024}
                   description="Maximum memory used for piece checking"
                 />
               )}
