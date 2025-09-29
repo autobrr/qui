@@ -19,6 +19,7 @@ import type { Torrent } from "@/types"
 import {
   CheckCircle,
   Copy,
+  Download,
   Folder,
   FolderOpen,
   Gauge,
@@ -54,6 +55,8 @@ interface TorrentContextMenuProps {
   onPrepareReannounce: (hashes: string[], count?: number) => void
   onPrepareLocation: (hashes: string[], torrents?: Torrent[]) => void
   isPending?: boolean
+  onExport?: (hashes: string[], torrents: Torrent[]) => Promise<void> | void
+  isExporting?: boolean
 }
 
 export const TorrentContextMenu = memo(function TorrentContextMenu({
@@ -75,6 +78,8 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   onPrepareReannounce,
   onPrepareLocation,
   isPending = false,
+  onExport,
+  isExporting = false,
 }: TorrentContextMenuProps) {
   const [incognitoMode] = useIncognitoMode()
 
@@ -111,6 +116,13 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
     useSelection ? selectedTorrents : [torrent],
   [useSelection, selectedTorrents, torrent]
   )
+
+  const handleExport = useCallback(() => {
+    if (!onExport) {
+      return
+    }
+    void onExport(hashes, torrents)
+  }, [hashes, onExport, torrents])
 
   const count = isAllSelected ? effectiveSelectionCount : hashes.length
 
@@ -254,6 +266,13 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
           </ContextMenuItem>
         )}
         <ContextMenuSeparator />
+        <ContextMenuItem
+          onClick={handleExport}
+          disabled={isExporting}
+        >
+          <Download className="mr-2 h-4 w-4" />
+          {count > 1 ? `Export Torrents (${count})` : "Export Torrent"}
+        </ContextMenuItem>
         <ContextMenuItem
           onClick={() => copyToClipboard(incognitoMode ? getLinuxIsoName(torrent.hash) : torrent.name, "name")}
         >
