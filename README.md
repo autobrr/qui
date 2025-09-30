@@ -334,6 +334,20 @@ http://localhost:7476/proxy/abc123def456ghi789jkl012mno345pqr678stu901vwx234yz
 - Leave username/password blank and press **Test**
 - Leave basic auth blank since qui handles that
 
+**cross-seed**
+- Open cross-seed config file
+- Add or edit the `torrentClients` section.
+- Append the full url following the documentation
+- `torrentClients: ["qbittorrent:http://localhost:7476/proxy/abc123def456ghi789jkl012mno345pqr678stu901vwx234yz"],`
+- Save the config file and restart cross-seed
+
+**Upload Assistant**
+- Open the Upload Assistant config file
+- Add or edit `qui_proxy_url` under the qBitTorrent client settings.
+- Append the full url like `"qui_proxy_url": "http://localhost:7476/proxy/abc123def456ghi789jkl012mno345pqr678stu901vwx234yz",`
+- All other auth type can remain unchanged
+- Save the config file
+
 ### Supported Applications
 
 This reverse proxy will work with any application that supports qBittorrent's Web API.
