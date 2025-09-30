@@ -1347,6 +1347,10 @@ func (h *TorrentsHandler) CreateTorrent(w http.ResponseWriter, r *http.Request) 
 			RespondError(w, http.StatusConflict, "Too many active torrent creation tasks")
 			return
 		}
+		if errors.Is(err, qbt.ErrUnsupportedVersion) {
+			RespondError(w, http.StatusBadRequest, "Torrent creation requires qBittorrent v5.0.0 or later. Please upgrade your qBittorrent instance.")
+			return
+		}
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to create torrent")
 		RespondError(w, http.StatusInternalServerError, "Failed to create torrent")
 		return
@@ -1369,6 +1373,10 @@ func (h *TorrentsHandler) GetTorrentCreationStatus(w http.ResponseWriter, r *htt
 	if err != nil {
 		if errors.Is(err, qbt.ErrTorrentCreationTaskNotFound) {
 			RespondError(w, http.StatusNotFound, "Torrent creation task not found")
+			return
+		}
+		if errors.Is(err, qbt.ErrUnsupportedVersion) {
+			RespondError(w, http.StatusBadRequest, "Torrent creation requires qBittorrent v5.0.0 or later. Please upgrade your qBittorrent instance.")
 			return
 		}
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get torrent creation status")
@@ -1407,6 +1415,10 @@ func (h *TorrentsHandler) DownloadTorrentCreationFile(w http.ResponseWriter, r *
 			RespondError(w, http.StatusConflict, "Torrent creation failed")
 			return
 		}
+		if errors.Is(err, qbt.ErrUnsupportedVersion) {
+			RespondError(w, http.StatusBadRequest, "Torrent creation requires qBittorrent v5.0.0 or later. Please upgrade your qBittorrent instance.")
+			return
+		}
 		log.Error().Err(err).Int("instanceID", instanceID).Str("taskID", taskID).Msg("Failed to download torrent file")
 		RespondError(w, http.StatusInternalServerError, "Failed to download torrent file")
 		return
@@ -1441,6 +1453,10 @@ func (h *TorrentsHandler) DeleteTorrentCreationTask(w http.ResponseWriter, r *ht
 	if err != nil {
 		if errors.Is(err, qbt.ErrTorrentCreationTaskNotFound) {
 			RespondError(w, http.StatusNotFound, "Torrent creation task not found")
+			return
+		}
+		if errors.Is(err, qbt.ErrUnsupportedVersion) {
+			RespondError(w, http.StatusBadRequest, "Torrent creation requires qBittorrent v5.0.0 or later. Please upgrade your qBittorrent instance.")
 			return
 		}
 		log.Error().Err(err).Int("instanceID", instanceID).Str("taskID", taskID).Msg("Failed to delete torrent creation task")
