@@ -1387,6 +1387,19 @@ func (h *TorrentsHandler) GetTorrentCreationStatus(w http.ResponseWriter, r *htt
 	RespondJSON(w, http.StatusOK, tasks)
 }
 
+// GetActiveTaskCount returns the number of active torrent creation tasks
+// This is a lightweight endpoint optimized for polling the badge count
+func (h *TorrentsHandler) GetActiveTaskCount(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	count := h.syncManager.GetActiveTaskCount(r.Context(), instanceID)
+	RespondJSON(w, http.StatusOK, map[string]int{"count": count})
+}
+
 // DownloadTorrentCreationFile downloads the torrent file for a completed task
 func (h *TorrentsHandler) DownloadTorrentCreationFile(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))

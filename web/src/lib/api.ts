@@ -358,6 +358,11 @@ class ApiClient {
     return this.request(`/instances/${instanceId}/torrent-creator/status${query}`)
   }
 
+  async getActiveTaskCount(instanceId: number): Promise<number> {
+    const response = await this.request<{ count: number }>(`/instances/${instanceId}/torrent-creator/count`)
+    return response.count
+  }
+
   async downloadTorrentFile(instanceId: number, taskID: string): Promise<void> {
     const response = await fetch(
       `${API_BASE}/instances/${instanceId}/torrent-creator/${encodeURIComponent(taskID)}/file`,

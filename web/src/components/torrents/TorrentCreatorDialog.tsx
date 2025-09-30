@@ -31,7 +31,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { api } from "@/lib/api"
 import type { TorrentCreationParams, TorrentFormat } from "@/types"
 import { useForm } from "@tanstack/react-form"
-import { useMutation } from "@tanstack/react-query"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { AlertCircle, ChevronDown, Loader2 } from "lucide-react"
 import { useState } from "react"
 
@@ -44,6 +44,7 @@ interface TorrentCreatorDialogProps {
 export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: TorrentCreatorDialogProps) {
   const [error, setError] = useState<string | null>(null)
   const [advancedOpen, setAdvancedOpen] = useState(false)
+  const queryClient = useQueryClient()
 
   const mutation = useMutation({
     mutationFn: async (data: TorrentCreationParams) => {
@@ -53,6 +54,9 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
       setError(null)
       onOpenChange(false)
       form.reset()
+      // Invalidate tasks and badge count so polling views update immediately
+      queryClient.invalidateQueries({ queryKey: ["torrent-creation-tasks", instanceId] })
+      queryClient.invalidateQueries({ queryKey: ["active-task-count", instanceId] })
     },
     onError: (err: Error) => {
       setError(err.message)

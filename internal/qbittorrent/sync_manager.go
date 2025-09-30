@@ -2242,6 +2242,31 @@ func (sm *SyncManager) GetTorrentCreationStatus(ctx context.Context, instanceID 
 	return client.GetTorrentCreationStatusCtx(ctx, taskID)
 }
 
+// GetActiveTaskCount returns the number of active (Running or Queued) torrent creation tasks
+// This is optimized for frequent polling by only counting active tasks
+func (sm *SyncManager) GetActiveTaskCount(ctx context.Context, instanceID int) int {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return 0
+	}
+
+	tasks, err := client.GetTorrentCreationStatusCtx(ctx, "")
+	if err != nil {
+		// Return 0 on error to avoid breaking the response
+		// This is expected if qBittorrent version doesn't support torrent creation
+		return 0
+	}
+
+	count := 0
+	for _, task := range tasks {
+		if task.Status == qbt.TorrentCreationStatusRunning || task.Status == qbt.TorrentCreationStatusQueued {
+			count++
+		}
+	}
+
+	return count
+}
+
 // GetTorrentCreationFile downloads the torrent file for a completed torrent creation task
 func (sm *SyncManager) GetTorrentCreationFile(ctx context.Context, instanceID int, taskID string) ([]byte, error) {
 	client, err := sm.clientPool.GetClient(ctx, instanceID)

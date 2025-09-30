@@ -298,7 +298,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
 
       {/* Torrent Creation Tasks Modal */}
       <Dialog open={isTasksModalOpen} onOpenChange={handleTasksModalChange}>
-        <DialogContent className="!max-w-[90vw] !w-[90vw] max-h-[85vh] overflow-hidden flex flex-col">
+        <DialogContent className="w-full sm:max-w-screen-sm md:max-w-screen-md lg:max-w-screen-lg xl:max-w-screen-lg max-h-[85vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>Torrent Creation Tasks</DialogTitle>
           </DialogHeader>

@@ -1065,6 +1065,28 @@ paths:
         '404':
           description: Torrent creation task not found
 
+  /api/instances/{instanceId}/torrent-creator/count:
+    get:
+      tags:
+        - Torrents
+      summary: Get active torrent creation task count
+      description: Get the number of active (running or queued) torrent creation tasks.
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+      responses:
+        '200':
+          description: Active torrent creation task count
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                    description: Number of active torrent creation tasks
+        '400':
+          description: Invalid instance ID
+
   /api/instances/{instanceId}/torrent-creator/{taskID}:
     delete:
       tags:

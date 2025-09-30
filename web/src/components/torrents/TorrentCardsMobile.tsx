@@ -799,15 +799,13 @@ export function TorrentCardsMobile({
     return instances?.find(i => i.id === instanceId)?.name ?? null
   }, [instances, instanceId])
 
-  // Query torrent creation tasks for badge count
-  const { data: tasks } = useQuery({
-    queryKey: ["torrent-creation-tasks", instanceId],
-    queryFn: () => api.getTorrentCreationTasks(instanceId),
-    refetchInterval: 5000, // Poll every 5 seconds for badge updates
+  // Query active task count for badge (lightweight endpoint)
+  const { data: activeTaskCount = 0 } = useQuery({
+    queryKey: ["active-task-count", instanceId],
+    queryFn: () => api.getActiveTaskCount(instanceId),
+    refetchInterval: 30000, // Poll every 30 seconds (lightweight check)
+    refetchIntervalInBackground: true,
   })
-
-  // Count active tasks (queued or running)
-  const activeTaskCount = tasks?.filter((t) => t.status === "Running" || t.status === "Queued").length || 0
 
   // Columns controls removed on mobile
 
@@ -1342,25 +1340,23 @@ export function TorrentCardsMobile({
             </Button>
 
             {/* Tasks button */}
-            {tasks && tasks.length > 0 && (
-              <Button
-                size="icon"
-                variant="outline"
-                onClick={() => {
-                  const next = { ...(routeSearch || {}), modal: "tasks" }
-                  navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
-                }}
-                title="Torrent creation tasks"
-                className="relative"
-              >
-                <ListTodo className="h-4 w-4"/>
-                {activeTaskCount > 0 && (
-                  <Badge variant="default" className="absolute -top-1 -right-1 h-5 min-w-5 flex items-center justify-center p-0 text-xs">
-                    {activeTaskCount}
-                  </Badge>
-                )}
-              </Button>
-            )}
+            <Button
+              size="icon"
+              variant="outline"
+              onClick={() => {
+                const next = { ...(routeSearch || {}), modal: "tasks" }
+                navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
+              }}
+              title="Torrent creation tasks"
+              className="relative"
+            >
+              <ListTodo className="h-4 w-4"/>
+              {activeTaskCount > 0 && (
+                <Badge variant="default" className="absolute -top-1 -right-1 h-5 min-w-5 flex items-center justify-center p-0 text-xs">
+                  {activeTaskCount}
+                </Badge>
+              )}
+            </Button>
           </div>
         </div>
 

@@ -260,6 +260,7 @@ func (s *Server) Handler() *chi.Mux {
 					r.Route("/torrent-creator", func(r chi.Router) {
 						r.Post("/", torrentsHandler.CreateTorrent)
 						r.Get("/status", torrentsHandler.GetTorrentCreationStatus)
+						r.Get("/count", torrentsHandler.GetActiveTaskCount)
 						r.Get("/{taskID}/file", torrentsHandler.DownloadTorrentCreationFile)
 						r.Delete("/{taskID}", torrentsHandler.DeleteTorrentCreationTask)
 					})

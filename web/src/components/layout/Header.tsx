@@ -131,17 +131,14 @@ export function Header({
   )
   const { theme } = useTheme()
 
-  // TODO: I dont like this
-  // Query torrent creation tasks for badge count (only for instance routes)
-  const { data: tasks } = useQuery({
-    queryKey: ["torrent-creation-tasks", selectedInstanceId],
-    queryFn: () => selectedInstanceId !== null ? api.getTorrentCreationTasks(selectedInstanceId) : Promise.resolve([]),
+  // Query active task count for badge (lightweight endpoint, only for instance routes)
+  const { data: activeTaskCount = 0 } = useQuery({
+    queryKey: ["active-task-count", selectedInstanceId],
+    queryFn: () => selectedInstanceId !== null ? api.getActiveTaskCount(selectedInstanceId) : Promise.resolve(0),
     enabled: selectedInstanceId !== null,
-    refetchInterval: 5000, // Poll every 5 seconds for badge updates
+    refetchInterval: 30000, // Poll every 30 seconds (lightweight check)
+    refetchIntervalInBackground: true,
   })
-
-  // Count active tasks (queued or running)
-  const activeTaskCount = tasks?.filter((t) => t.status === "Running" || t.status === "Queued").length || 0
 
   return (
     <header className="sticky top-0 z-50 flex flex-wrap lg:flex-nowrap items-start lg:items-center justify-between sm:border-b bg-background pl-2 pr-4 md:pl-4 md:pr-4 lg:pl-0 lg:static py-2 lg:py-0 lg:h-16">
@@ -280,8 +277,8 @@ export function Header({
               </TooltipTrigger>
               <TooltipContent>Create torrent</TooltipContent>
             </Tooltip>
-            {/* Tasks button */}
-            {tasks && tasks.length > 0 && (
+            {/* Tasks button - always visible on instance routes */}
+            {isInstanceRoute && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
