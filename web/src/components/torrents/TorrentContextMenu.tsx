@@ -8,11 +8,14 @@ import {
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
   ContextMenuTrigger
 } from "@/components/ui/context-menu"
 import type { TorrentAction } from "@/hooks/useTorrentActions"
 import { TORRENT_ACTIONS } from "@/hooks/useTorrentActions"
-import { getLinuxIsoName, useIncognitoMode } from "@/lib/incognito"
+import { getLinuxIsoName, getLinuxSavePath, useIncognitoMode } from "@/lib/incognito"
 import { getTorrentDisplayHash } from "@/lib/torrent-utils"
 import { copyTextToClipboard } from "@/lib/utils"
 import type { Torrent } from "@/types"
@@ -83,7 +86,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
 }: TorrentContextMenuProps) {
   const [incognitoMode] = useIncognitoMode()
 
-  const copyToClipboard = useCallback(async (text: string, type: "name" | "hash") => {
+  const copyToClipboard = useCallback(async (text: string, type: "name" | "hash" | "full path") => {
     try {
       await copyTextToClipboard(text)
       toast.success(`Torrent ${type} copied to clipboard`)
@@ -102,6 +105,13 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
     }
     void copyToClipboard(value, "hash")
   }, [copyToClipboard, displayHash, torrent.hash])
+
+  const copyFullPath = useCallback(() => {
+    const name = incognitoMode ? getLinuxIsoName(torrent.hash) : torrent.name
+    const savePath = incognitoMode ? getLinuxSavePath(torrent.hash) : torrent.save_path
+    const fullPath = `${savePath}/${name}`
+    void copyToClipboard(fullPath, "full path")
+  }, [copyToClipboard, incognitoMode, torrent.hash, torrent.name, torrent.save_path])
 
   // Determine if we should use selection or just this torrent
   const useSelection = isSelected || isAllSelected
@@ -273,16 +283,25 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
           <Download className="mr-2 h-4 w-4" />
           {count > 1 ? `Export Torrents (${count})` : "Export Torrent"}
         </ContextMenuItem>
-        <ContextMenuItem
-          onClick={() => copyToClipboard(incognitoMode ? getLinuxIsoName(torrent.hash) : torrent.name, "name")}
-        >
-          <Copy className="mr-2 h-4 w-4" />
-          Copy Name
-        </ContextMenuItem>
-        <ContextMenuItem onClick={copyHash}>
-          <Copy className="mr-2 h-4 w-4" />
-          Copy Hash
-        </ContextMenuItem>
+        <ContextMenuSub>
+          <ContextMenuSubTrigger>
+            <Copy className="mr-4 h-4 w-4" />
+            Copy...
+          </ContextMenuSubTrigger>
+          <ContextMenuSubContent>
+            <ContextMenuItem
+              onClick={() => copyToClipboard(incognitoMode ? getLinuxIsoName(torrent.hash) : torrent.name, "name")}
+            >
+              Copy Name
+            </ContextMenuItem>
+            <ContextMenuItem onClick={copyHash}>
+              Copy Hash
+            </ContextMenuItem>
+            <ContextMenuItem onClick={copyFullPath}>
+              Copy Full Path
+            </ContextMenuItem>
+          </ContextMenuSubContent>
+        </ContextMenuSub>
         <ContextMenuSeparator />
         <ContextMenuItem
           onClick={() => onPrepareDelete(hashes, torrents)}
