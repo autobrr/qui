@@ -25,10 +25,10 @@ interface TorrentCreationTasksProps {
 }
 
 const STATUS_COLORS: Record<TorrentCreationStatus, string> = {
-  Queued: "bg-yellow-500",
-  Running: "bg-blue-500",
-  Finished: "bg-green-500",
-  Failed: "bg-red-500",
+  Queued: "bg-yellow-500 p-1",
+  Running: "bg-blue-500 p-1",
+  Finished: "bg-green-500 p-1",
+  Failed: "bg-red-500 p-1",
 }
 
 const STATUS_ICONS: Record<TorrentCreationStatus, React.ReactNode> = {
@@ -95,7 +95,7 @@ export function TorrentCreationTasks({ instanceId }: TorrentCreationTasksProps) 
                 <div className="font-medium text-sm break-words" title={task.sourcePath}>
                   {task.sourcePath.split("/").pop() || task.sourcePath}
                 </div>
-                <div className="flex flex-wrap gap-2 items-center">
+                <div className="flex flex-wrap gap-2items-center">
                   <Badge variant="outline" className={STATUS_COLORS[task.status]}>
                     <span className="flex items-center gap-1">
                       {STATUS_ICONS[task.status]}
