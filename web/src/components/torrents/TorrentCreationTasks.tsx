@@ -19,6 +19,7 @@ import { getTorrentTaskPollInterval } from "@/lib/torrent-task-polling"
 import type { TorrentCreationStatus, TorrentCreationTask } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { CheckCircle2, Clock, Download, Loader2, Trash2, XCircle } from "lucide-react"
+import { toast } from "sonner"
 
 interface TorrentCreationTasksProps {
   instanceId: number
@@ -54,6 +55,12 @@ export function TorrentCreationTasks({ instanceId }: TorrentCreationTasksProps) 
 
   const downloadMutation = useMutation({
     mutationFn: (taskID: string) => api.downloadTorrentFile(instanceId, taskID),
+    onSuccess: () => {
+      toast.success("Torrent file download started")
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Failed to download torrent file")
+    },
   })
 
   const deleteMutation = useMutation({
@@ -61,6 +68,10 @@ export function TorrentCreationTasks({ instanceId }: TorrentCreationTasksProps) 
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["torrent-creation-tasks", instanceId] })
       queryClient.invalidateQueries({ queryKey: ["active-task-count", instanceId] })
+      toast.success("Torrent creation task deleted")
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Failed to delete torrent creation task")
     },
   })
 

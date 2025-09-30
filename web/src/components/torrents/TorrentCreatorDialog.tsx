@@ -34,6 +34,7 @@ import { useForm } from "@tanstack/react-form"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { AlertCircle, ChevronDown, Loader2 } from "lucide-react"
 import { useState } from "react"
+import { toast } from "sonner"
 
 interface TorrentCreatorDialogProps {
   instanceId: number
@@ -57,9 +58,11 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
       // Invalidate tasks and badge count so polling views update immediately
       queryClient.invalidateQueries({ queryKey: ["torrent-creation-tasks", instanceId] })
       queryClient.invalidateQueries({ queryKey: ["active-task-count", instanceId] })
+      toast.success("Torrent creation task queued")
     },
     onError: (err: Error) => {
       setError(err.message)
+      toast.error(err.message || "Failed to create torrent task")
     },
   })
 
