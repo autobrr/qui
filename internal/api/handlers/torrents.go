@@ -1321,3 +1321,132 @@ func shortTorrentHash(hash string) string {
 
 	return builder.String()
 }
+
+// CreateTorrent creates a new torrent file from source path
+func (h *TorrentsHandler) CreateTorrent(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	var req qbt.TorrentCreationParams
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if req.SourcePath == "" {
+		RespondError(w, http.StatusBadRequest, "sourcePath is required")
+		return
+	}
+
+	resp, err := h.syncManager.CreateTorrent(r.Context(), instanceID, req)
+	if err != nil {
+		if errors.Is(err, qbt.ErrTorrentCreationTooManyActiveTasks) {
+			RespondError(w, http.StatusConflict, "Too many active torrent creation tasks")
+			return
+		}
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to create torrent")
+		RespondError(w, http.StatusInternalServerError, "Failed to create torrent")
+		return
+	}
+
+	RespondJSON(w, http.StatusCreated, resp)
+}
+
+// GetTorrentCreationStatus gets status of torrent creation tasks
+func (h *TorrentsHandler) GetTorrentCreationStatus(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	taskID := r.URL.Query().Get("taskID")
+
+	tasks, err := h.syncManager.GetTorrentCreationStatus(r.Context(), instanceID, taskID)
+	if err != nil {
+		if errors.Is(err, qbt.ErrTorrentCreationTaskNotFound) {
+			RespondError(w, http.StatusNotFound, "Torrent creation task not found")
+			return
+		}
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get torrent creation status")
+		RespondError(w, http.StatusInternalServerError, "Failed to get torrent creation status")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, tasks)
+}
+
+// DownloadTorrentCreationFile downloads the torrent file for a completed task
+func (h *TorrentsHandler) DownloadTorrentCreationFile(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	taskID := chi.URLParam(r, "taskID")
+	if taskID == "" {
+		RespondError(w, http.StatusBadRequest, "Task ID is required")
+		return
+	}
+
+	data, err := h.syncManager.GetTorrentCreationFile(r.Context(), instanceID, taskID)
+	if err != nil {
+		if errors.Is(err, qbt.ErrTorrentCreationTaskNotFound) {
+			RespondError(w, http.StatusNotFound, "Torrent creation task not found")
+			return
+		}
+		if errors.Is(err, qbt.ErrTorrentCreationUnfinished) {
+			RespondError(w, http.StatusConflict, "Torrent creation is still in progress")
+			return
+		}
+		if errors.Is(err, qbt.ErrTorrentCreationFailed) {
+			RespondError(w, http.StatusConflict, "Torrent creation failed")
+			return
+		}
+		log.Error().Err(err).Int("instanceID", instanceID).Str("taskID", taskID).Msg("Failed to download torrent file")
+		RespondError(w, http.StatusInternalServerError, "Failed to download torrent file")
+		return
+	}
+
+	filename := fmt.Sprintf("%s.torrent", taskID)
+	w.Header().Set("Content-Type", "application/x-bittorrent")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+	w.WriteHeader(http.StatusOK)
+
+	if _, err := w.Write(data); err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Str("taskID", taskID).Msg("Failed to write torrent file response")
+	}
+}
+
+// DeleteTorrentCreationTask deletes a torrent creation task
+func (h *TorrentsHandler) DeleteTorrentCreationTask(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	taskID := chi.URLParam(r, "taskID")
+	if taskID == "" {
+		RespondError(w, http.StatusBadRequest, "Task ID is required")
+		return
+	}
+
+	err = h.syncManager.DeleteTorrentCreationTask(r.Context(), instanceID, taskID)
+	if err != nil {
+		if errors.Is(err, qbt.ErrTorrentCreationTaskNotFound) {
+			RespondError(w, http.StatusNotFound, "Torrent creation task not found")
+			return
+		}
+		log.Error().Err(err).Int("instanceID", instanceID).Str("taskID", taskID).Msg("Failed to delete torrent creation task")
+		RespondError(w, http.StatusInternalServerError, "Failed to delete torrent creation task")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, map[string]string{"message": "Torrent creation task deleted successfully"})
+}

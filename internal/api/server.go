@@ -256,6 +256,14 @@ func (s *Server) Handler() *chi.Mux {
 						})
 					})
 
+					// Torrent creator
+					r.Route("/torrent-creator", func(r chi.Router) {
+						r.Post("/", torrentsHandler.CreateTorrent)
+						r.Get("/status", torrentsHandler.GetTorrentCreationStatus)
+						r.Get("/{taskID}/file", torrentsHandler.DownloadTorrentCreationFile)
+						r.Delete("/{taskID}", torrentsHandler.DeleteTorrentCreationTask)
+					})
+
 					// Categories and tags
 					r.Get("/categories", torrentsHandler.GetCategories)
 					r.Post("/categories", torrentsHandler.CreateCategory)

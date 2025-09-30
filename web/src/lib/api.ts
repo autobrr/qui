@@ -9,6 +9,9 @@ import type {
   Category,
   InstanceFormData,
   InstanceResponse,
+  TorrentCreationParams,
+  TorrentCreationTask,
+  TorrentCreationTaskResponse,
   TorrentResponse,
   User
 } from "@/types"
@@ -339,6 +342,60 @@ class ApiClient {
     return this.request(`/instances/${instanceId}/torrents/ban-peers`, {
       method: "POST",
       body: JSON.stringify({ peers }),
+    })
+  }
+
+  // Torrent Creator
+  async createTorrent(instanceId: number, params: TorrentCreationParams): Promise<TorrentCreationTaskResponse> {
+    return this.request(`/instances/${instanceId}/torrent-creator`, {
+      method: "POST",
+      body: JSON.stringify(params),
+    })
+  }
+
+  async getTorrentCreationTasks(instanceId: number, taskID?: string): Promise<TorrentCreationTask[]> {
+    const query = taskID ? `?taskID=${encodeURIComponent(taskID)}` : ""
+    return this.request(`/instances/${instanceId}/torrent-creator/status${query}`)
+  }
+
+  async downloadTorrentFile(instanceId: number, taskID: string): Promise<void> {
+    const response = await fetch(
+      `${API_BASE}/instances/${instanceId}/torrent-creator/${encodeURIComponent(taskID)}/file`,
+      {
+        method: "GET",
+        credentials: "include",
+      }
+    )
+
+    if (!response.ok) {
+      throw new Error(`Failed to download torrent file: ${response.statusText}`)
+    }
+
+    // Get filename from Content-Disposition header
+    const contentDisposition = response.headers.get("Content-Disposition")
+    let filename = `${taskID}.torrent`
+    if (contentDisposition) {
+      const filenameMatch = contentDisposition.match(/filename="?([^";]+)"?/)
+      if (filenameMatch) {
+        filename = filenameMatch[1]
+      }
+    }
+
+    // Create blob and download
+    const blob = await response.blob()
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    window.URL.revokeObjectURL(url)
+  }
+
+  async deleteTorrentCreationTask(instanceId: number, taskID: string): Promise<{ message: string }> {
+    return this.request(`/instances/${instanceId}/torrent-creator/${encodeURIComponent(taskID)}`, {
+      method: "DELETE",
     })
   }
 

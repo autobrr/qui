@@ -2220,3 +2220,44 @@ func (sm *SyncManager) BulkRemoveTrackers(ctx context.Context, instanceID int, h
 
 	return nil
 }
+
+// CreateTorrent creates a new torrent creation task
+func (sm *SyncManager) CreateTorrent(ctx context.Context, instanceID int, params qbt.TorrentCreationParams) (*qbt.TorrentCreationTaskResponse, error) {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client: %w", err)
+	}
+
+	return client.CreateTorrentCtx(ctx, params)
+}
+
+// GetTorrentCreationStatus retrieves the status of torrent creation tasks
+// If taskID is empty, returns all tasks
+func (sm *SyncManager) GetTorrentCreationStatus(ctx context.Context, instanceID int, taskID string) ([]qbt.TorrentCreationTask, error) {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client: %w", err)
+	}
+
+	return client.GetTorrentCreationStatusCtx(ctx, taskID)
+}
+
+// GetTorrentCreationFile downloads the torrent file for a completed torrent creation task
+func (sm *SyncManager) GetTorrentCreationFile(ctx context.Context, instanceID int, taskID string) ([]byte, error) {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client: %w", err)
+	}
+
+	return client.GetTorrentFileCtx(ctx, taskID)
+}
+
+// DeleteTorrentCreationTask deletes a torrent creation task
+func (sm *SyncManager) DeleteTorrentCreationTask(ctx context.Context, instanceID int, taskID string) error {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	return client.DeleteTorrentCreationTaskCtx(ctx, taskID)
+}

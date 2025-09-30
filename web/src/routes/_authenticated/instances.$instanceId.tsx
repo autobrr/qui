@@ -9,7 +9,7 @@ import { useInstances } from "@/hooks/useInstances"
 import { z } from "zod"
 
 const instanceSearchSchema = z.object({
-  modal: z.enum(["add-torrent"]).optional(),
+  modal: z.enum(["add-torrent", "create-torrent"]).optional(),
 })
 
 export const Route = createFileRoute("/_authenticated/instances/$instanceId")({
@@ -23,7 +23,7 @@ function InstanceTorrents() {
   const navigate = Route.useNavigate()
   const { instances, isLoading } = useInstances()
 
-  const handleSearchChange = (newSearch: { modal?: "add-torrent" | undefined }) => {
+  const handleSearchChange = (newSearch: { modal?: "add-torrent" | "create-torrent" | undefined }) => {
     navigate({
       search: newSearch,
       replace: true,
