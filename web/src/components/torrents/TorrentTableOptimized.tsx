@@ -34,7 +34,7 @@ import {
   useReactTable
 } from "@tanstack/react-table"
 import { useVirtualizer } from "@tanstack/react-virtual"
-import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { TorrentContextMenu } from "./TorrentContextMenu"
 
 import {
@@ -160,10 +160,9 @@ interface TorrentTableOptimizedProps {
   onAddTorrentModalChange?: (open: boolean) => void
   onFilteredDataUpdate?: (torrents: Torrent[], total: number, counts?: TorrentCounts, categories?: Record<string, Category>, tags?: string[]) => void
   onSelectionChange?: (selectedHashes: string[], selectedTorrents: Torrent[], isAllSelected: boolean, totalSelectionCount: number, excludeHashes: string[]) => void
-  filterButton?: React.ReactNode
 }
 
-export const TorrentTableOptimized = memo(function TorrentTableOptimized({ instanceId, filters, selectedTorrent, onTorrentSelect, addTorrentModalOpen, onAddTorrentModalChange, onFilteredDataUpdate, onSelectionChange, filterButton }: TorrentTableOptimizedProps) {
+export const TorrentTableOptimized = memo(function TorrentTableOptimized({ instanceId, filters, selectedTorrent, onTorrentSelect, addTorrentModalOpen, onAddTorrentModalChange, onFilteredDataUpdate, onSelectionChange }: TorrentTableOptimizedProps) {
   // State management
   // Move default values outside the component for stable references
   // (This should be at module scope, not inside the component)
@@ -954,12 +953,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       <div className="flex flex-col gap-2 flex-shrink-0">
         {/* Search bar row */}
         <div className="flex items-center gap-1 sm:gap-2">
-          {/* Filter button - only on desktop */}
-          {filterButton && (
-            <div className="hidden xl:block">
-              {filterButton}
-            </div>
-          )}
           {/* Action buttons - now handled by Management Bar in Header */}
           <div className="flex gap-1 sm:gap-2 flex-shrink-0">
 

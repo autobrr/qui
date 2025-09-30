@@ -41,7 +41,7 @@ import { Switch } from "@/components/ui/switch"
 import { useDebounce } from "@/hooks/useDebounce"
 import { TORRENT_ACTIONS, useTorrentActions, type TorrentAction } from "@/hooks/useTorrentActions"
 import { useTorrentsList } from "@/hooks/useTorrentsList"
-import { Link, useSearch } from "@tanstack/react-router"
+import { Link, useNavigate, useSearch } from "@tanstack/react-router"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import {
   ArrowUpDown,
@@ -52,11 +52,13 @@ import {
   Clock,
   Eye,
   EyeOff,
+  FileEdit,
   Filter,
   Folder,
   FolderOpen,
   Gauge,
   HardDrive,
+  ListTodo,
   Loader2,
   MoreVertical,
   Pause,
@@ -78,12 +80,14 @@ import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata.ts"
 import { useInstances } from "@/hooks/useInstances"
 import { usePersistedCompactViewState, type ViewMode } from "@/hooks/usePersistedCompactViewState"
+import { api } from "@/lib/api"
 import { getLinuxCategory, getLinuxIsoName, getLinuxRatio, getLinuxTags, useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits, type SpeedUnit } from "@/lib/speedUnits"
 import { getStateLabel } from "@/lib/torrent-state-utils"
 import { getCommonCategory, getCommonSavePath, getCommonTags } from "@/lib/torrent-utils"
 import { cn, formatBytes } from "@/lib/utils"
 import type { Category, Torrent, TorrentCounts } from "@/types"
+import { useQuery } from "@tanstack/react-query"
 
 // Mobile-friendly Share Limits Dialog
 function MobileShareLimitsDialog({
@@ -481,7 +485,7 @@ function SwipeableCard({
               </h3>
             </div>
           </div>
-          
+
           {/* Speeds if applicable */}
           {(torrent.dlspeed > 0 || torrent.upspeed > 0) && (
             <div className="flex items-center gap-1 text-[10px] flex-shrink-0">
@@ -497,12 +501,12 @@ function SwipeableCard({
               )}
             </div>
           )}
-          
+
           {/* State badge - smaller */}
           <Badge variant={getStatusBadgeVariant(torrent.state)} className="text-[10px] px-1 py-0 h-4 flex-shrink-0">
             {getStateLabel(torrent.state)}
           </Badge>
-          
+
           {/* Percentage if not 100% */}
           {torrent.progress * 100 !== 100 && (
             <span className="text-[10px] text-muted-foreground flex-shrink-0">
@@ -533,7 +537,7 @@ function SwipeableCard({
               {getStateLabel(torrent.state)}
             </Badge>
           </div>
-          
+
           {/* Downloaded/Size and Ratio */}
           <div className="flex items-center justify-between text-xs">
             <span className="text-muted-foreground">
@@ -649,7 +653,7 @@ function SwipeableCard({
               </div>
             )}
           </div>
-          
+
           {/* Right side: Percentage and Speeds */}
           <div className="flex items-center gap-2 flex-shrink-0">
             <span className="text-muted-foreground">
@@ -784,15 +788,26 @@ export function TorrentCardsMobile({
   const availableCategories = metadata?.categories || {}
 
   const debouncedSearch = useDebounce(globalFilter, 1000)
-  const routeSearch = useSearch({ strict: false }) as { q?: string }
+  const routeSearch = useSearch({ strict: false }) as { q?: string; modal?: string }
   const searchFromRoute = routeSearch?.q || ""
 
   const effectiveSearch = searchFromRoute || immediateSearch || debouncedSearch
+  const navigate = useNavigate()
 
   const { instances } = useInstances()
   const instanceName = useMemo(() => {
     return instances?.find(i => i.id === instanceId)?.name ?? null
   }, [instances, instanceId])
+
+  // Query torrent creation tasks for badge count
+  const { data: tasks } = useQuery({
+    queryKey: ["torrent-creation-tasks", instanceId],
+    queryFn: () => api.getTorrentCreationTasks(instanceId),
+    refetchInterval: 5000, // Poll every 5 seconds for badge updates
+  })
+
+  // Count active tasks (queued or running)
+  const activeTaskCount = tasks?.filter((t) => t.status === "Running" || t.status === "Queued").length || 0
 
   // Columns controls removed on mobile
 
@@ -1308,9 +1323,44 @@ export function TorrentCardsMobile({
               size="icon"
               variant="outline"
               onClick={() => onAddTorrentModalChange?.(true)}
+              title="Add torrent"
             >
               <Plus className="h-4 w-4"/>
             </Button>
+
+            {/* Create Torrent button */}
+            <Button
+              size="icon"
+              variant="outline"
+              onClick={() => {
+                const next = { ...(routeSearch || {}), modal: "create-torrent" }
+                navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
+              }}
+              title="Create torrent"
+            >
+              <FileEdit className="h-4 w-4"/>
+            </Button>
+
+            {/* Tasks button */}
+            {tasks && tasks.length > 0 && (
+              <Button
+                size="icon"
+                variant="outline"
+                onClick={() => {
+                  const next = { ...(routeSearch || {}), modal: "tasks" }
+                  navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
+                }}
+                title="Torrent creation tasks"
+                className="relative"
+              >
+                <ListTodo className="h-4 w-4"/>
+                {activeTaskCount > 0 && (
+                  <Badge variant="default" className="absolute -top-1 -right-1 h-5 min-w-5 flex items-center justify-center p-0 text-xs">
+                    {activeTaskCount}
+                  </Badge>
+                )}
+              </Button>
+            )}
           </div>
         </div>
 

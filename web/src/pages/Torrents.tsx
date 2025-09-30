@@ -11,22 +11,17 @@ import { TorrentCreationTasks } from "@/components/torrents/TorrentCreationTasks
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { VisuallyHidden } from "@/components/ui/visually-hidden"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { usePersistedFilters } from "@/hooks/usePersistedFilters"
 import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSidebarState"
 import { cn } from "@/lib/utils"
-import { FileEdit, ListTodo } from "lucide-react"
 import type { Category, Torrent, TorrentCounts } from "@/types"
 import { useCallback, useEffect, useRef, useState } from "react"
-import { useQuery } from "@tanstack/react-query"
-import { api } from "@/lib/api"
 
 interface TorrentsProps {
   instanceId: number
   instanceName: string
-  search: { modal?: "add-torrent" | "create-torrent" | undefined }
-  onSearchChange: (search: { modal?: "add-torrent" | "create-torrent" | undefined }) => void
+  search: { modal?: "add-torrent" | "create-torrent" | "tasks" | undefined }
+  onSearchChange: (search: { modal?: "add-torrent" | "create-torrent" | "tasks" | undefined }) => void
 }
 
 export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) {
@@ -34,18 +29,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
   const [filterSidebarCollapsed] = usePersistedFilterSidebarState(false)
   const [selectedTorrent, setSelectedTorrent] = useState<Torrent | null>(null)
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false)
-  const [tasksModalOpen, setTasksModalOpen] = useState(false)
   // Navigation is handled by parent component via onSearchChange prop
-
-  // Query torrent creation tasks for badge count
-  const { data: tasks } = useQuery({
-    queryKey: ["torrent-creation-tasks", instanceId],
-    queryFn: () => api.getTorrentCreationTasks(instanceId),
-    refetchInterval: 5000, // Poll every 5 seconds for badge updates
-  })
-
-  // Count active tasks (queued or running)
-  const activeTaskCount = tasks?.filter((t) => t.status === "Running" || t.status === "Queued").length || 0
 
   // Debounced filter updates to prevent excessive API calls during rapid filter changes
   const filterTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -78,6 +62,20 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
   const handleCreateTorrentModalChange = (open: boolean) => {
     if (open) {
       onSearchChange({ ...search, modal: "create-torrent" })
+    } else {
+      const rest = Object.fromEntries(
+        Object.entries(search).filter(([key]) => key !== "modal")
+      )
+      onSearchChange(rest)
+    }
+  }
+
+  // Check if tasks modal should be open
+  const isTasksModalOpen = search?.modal === "tasks"
+
+  const handleTasksModalChange = (open: boolean) => {
+    if (open) {
+      onSearchChange({ ...search, modal: "tasks" })
     } else {
       const rest = Object.fromEntries(
         Object.entries(search).filter(([key]) => key !== "modal")
@@ -258,35 +256,6 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
               addTorrentModalOpen={isAddTorrentModalOpen}
               onAddTorrentModalChange={handleAddTorrentModalChange}
               onFilteredDataUpdate={handleFilteredDataUpdate}
-              filterButton={
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleCreateTorrentModalChange(true)}
-                    className="gap-1.5"
-                  >
-                    <FileEdit className="h-4 w-4" />
-                    <span className="hidden sm:inline">Create Torrent</span>
-                  </Button>
-                  {tasks && tasks.length > 0 && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setTasksModalOpen(true)}
-                      className="gap-1.5 relative"
-                    >
-                      <ListTodo className="h-4 w-4" />
-                      <span className="hidden sm:inline">Tasks</span>
-                      {activeTaskCount > 0 && (
-                        <Badge variant="default" className="absolute -top-1 -right-1 h-5 min-w-5 flex items-center justify-center p-0 text-xs">
-                          {activeTaskCount}
-                        </Badge>
-                      )}
-                    </Button>
-                  )}
-                </div>
-              }
             />
           </div>
         </div>
@@ -328,7 +297,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
       />
 
       {/* Torrent Creation Tasks Modal */}
-      <Dialog open={tasksModalOpen} onOpenChange={setTasksModalOpen}>
+      <Dialog open={isTasksModalOpen} onOpenChange={handleTasksModalChange}>
         <DialogContent className="!max-w-[90vw] !w-[90vw] max-h-[85vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>Torrent Creation Tasks</DialogTitle>
