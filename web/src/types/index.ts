@@ -48,6 +48,16 @@ export interface InstanceResponse extends Instance {
   recentErrors?: InstanceError[]
 }
 
+export interface TorrentTracker {
+  url: string
+  status: number
+  num_peers: number
+  num_seeds: number
+  num_leechers: number
+  num_downloaded: number
+  msg: string
+}
+
 export interface Torrent {
   added_on: number
   amount_left: number
@@ -99,6 +109,7 @@ export interface Torrent {
   total_size: number
   tracker: string
   trackers_count: number
+  trackers?: TorrentTracker[]
   up_limit: number
   uploaded: number
   uploaded_session: number

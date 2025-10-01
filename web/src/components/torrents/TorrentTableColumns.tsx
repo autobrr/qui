@@ -22,7 +22,8 @@ import {
 } from "@/lib/incognito"
 import { formatSpeedWithUnit, type SpeedUnit } from "@/lib/speedUnits"
 import { getStateLabel } from "@/lib/torrent-state-utils"
-import { formatBytes, formatDuration, getRatioColor } from "@/lib/utils"
+import { getTrackerHealth } from "@/lib/tracker-status-utils"
+import { cn, formatBytes, formatDuration, getRatioColor } from "@/lib/utils"
 import type { AppPreferences, Torrent } from "@/types"
 import type { ColumnDef } from "@tanstack/react-table"
 import { ListOrdered } from "lucide-react"
@@ -274,18 +275,37 @@ export const createColumns = (
       const variant =
         state === "downloading" ? "default" :state === "stalledDL" ? "secondary" :state === "uploading" ? "default" :state === "stalledUP" ? "secondary" :state === "pausedDL" || state === "pausedUP" ? "secondary" :state === "queuedDL" || state === "queuedUP" ? "secondary" :state === "error" || state === "missingFiles" ? "destructive" :"outline"
 
+      const trackerHealth = getTrackerHealth(row.original)
+      let badgeVariant: "default" | "secondary" | "destructive" | "outline" = variant
+      let badgeClass = ""
+      let displayLabel = label
+
+      if (trackerHealth === "tracker_down") {
+        displayLabel = "Down"
+        badgeVariant = "outline"
+        badgeClass = "text-yellow-500 border-yellow-500/40 bg-yellow-500/10"
+      } else if (trackerHealth === "unregistered") {
+        displayLabel = "Unregistered"
+        badgeVariant = "outline"
+        badgeClass = "text-destructive border-destructive/40 bg-destructive/10"
+      }
+
       if (isQueued && priority > 0) {
         return (
           <div className="flex items-center gap-1">
-            <Badge variant={variant} className="text-xs">
-              {label}
+            <Badge variant={badgeVariant} className={cn("text-xs", badgeClass)}>
+              {displayLabel}
             </Badge>
             <span className="text-xs text-muted-foreground">#{priority}</span>
           </div>
         )
       }
 
-      return <Badge variant={variant} className="text-xs">{label}</Badge>
+      return (
+        <Badge variant={badgeVariant} className={cn("text-xs", badgeClass)}>
+          {displayLabel}
+        </Badge>
+      )
     },
     size: 130,
   },

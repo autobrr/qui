@@ -240,6 +240,9 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	useManualFiltering = hasMultipleStatusFilters || hasMultipleCategoryFilters || hasMultipleTagFilters ||
 		hasTrackerFilters || needsManualStatusFiltering || needsManualCategoryFiltering || needsManualTagFiltering
 
+	var trackerMap map[string][]qbt.TorrentTracker
+	var counts *TorrentCounts
+
 	if useManualFiltering {
 		// Use manual filtering - get all torrents and filter manually
 		log.Debug().
@@ -261,7 +264,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		filteredTorrents = syncManager.GetTorrents(torrentFilterOptions)
 
 		// Apply manual filtering for multiple selections
-		filteredTorrents = sm.applyManualFilters(ctx, client, filteredTorrents, filters, mainData)
+		filteredTorrents, trackerMap = sm.applyManualFilters(ctx, client, filteredTorrents, filters, mainData, trackerMap)
 	} else {
 		// Use library filtering for single selections
 		log.Debug().
@@ -337,6 +340,9 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		Int("filtered", len(filteredTorrents)).
 		Msg("Applied search filtering")
 
+	// Ensure tracker metadata is present for downstream consumers (status badges, counts, etc.)
+	filteredTorrents, trackerMap = sm.enrichTorrentsWithTrackerData(ctx, client, filteredTorrents, trackerMap)
+
 	// Apply custom sorting for priority field
 	// qBittorrent's native sorting treats 0 as lowest, but we want it as highest (no priority)
 	if sort == "priority" {
@@ -372,7 +378,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 	// Get MainData for accurate tracker information
 	mainData = syncManager.GetData()
-	counts := sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents, mainData)
+	counts, trackerMap = sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents, mainData, trackerMap)
 
 	// Fetch categories and tags (cached separately for 60s)
 	categories, err := sm.GetCategories(ctx, instanceID)
@@ -773,27 +779,29 @@ func (sm *SyncManager) torrentTrackerIsDown(torrent qbt.Torrent) bool {
 	return false
 }
 
-func (sm *SyncManager) enrichTorrentsWithTrackerData(ctx context.Context, client *Client, torrents []qbt.Torrent) []qbt.Torrent {
+func (sm *SyncManager) enrichTorrentsWithTrackerData(ctx context.Context, client *Client, torrents []qbt.Torrent, trackerMap map[string][]qbt.TorrentTracker) ([]qbt.Torrent, map[string][]qbt.TorrentTracker) {
 	if client == nil || len(torrents) == 0 {
-		return torrents
+		return torrents, trackerMap
 	}
 
-	trackerData, err := client.Client.GetTorrentsCtx(ctx, qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll, IncludeTrackers: true})
-	if err != nil {
-		log.Warn().Err(err).Msg("Failed to fetch tracker details for enrichment")
-		return torrents
-	}
-
-	trackerMap := make(map[string][]qbt.TorrentTracker, len(trackerData))
-	for i := range trackerData {
-		if len(trackerData[i].Trackers) == 0 {
-			continue
+	if trackerMap == nil {
+		trackerData, err := client.Client.GetTorrentsCtx(ctx, qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll, IncludeTrackers: true})
+		if err != nil {
+			log.Warn().Err(err).Msg("Failed to fetch tracker details for enrichment")
+			return torrents, trackerMap
 		}
-		trackerMap[trackerData[i].Hash] = trackerData[i].Trackers
+
+		trackerMap = make(map[string][]qbt.TorrentTracker, len(trackerData))
+		for i := range trackerData {
+			if len(trackerData[i].Trackers) == 0 {
+				continue
+			}
+			trackerMap[trackerData[i].Hash] = trackerData[i].Trackers
+		}
 	}
 
 	if len(trackerMap) == 0 {
-		return torrents
+		return torrents, trackerMap
 	}
 
 	for i := range torrents {
@@ -802,7 +810,7 @@ func (sm *SyncManager) enrichTorrentsWithTrackerData(ctx context.Context, client
 		}
 	}
 
-	return torrents
+	return torrents, trackerMap
 }
 
 // TorrentCounts represents counts for filtering sidebar
@@ -926,8 +934,12 @@ func (sm *SyncManager) countTorrentStatuses(torrent qbt.Torrent, counts map[stri
 
 // calculateCountsFromTorrentsWithTrackers calculates counts using MainData's tracker information
 // This gives us the REAL tracker-to-torrent mapping from qBittorrent
-func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(ctx context.Context, client *Client, allTorrents []qbt.Torrent, mainData *qbt.MainData) *TorrentCounts {
-	allTorrents = sm.enrichTorrentsWithTrackerData(ctx, client, allTorrents)
+
+func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(ctx context.Context, client *Client, allTorrents []qbt.Torrent, mainData *qbt.MainData, trackerMap map[string][]qbt.TorrentTracker) (*TorrentCounts, map[string][]qbt.TorrentTracker) {
+	var enriched []qbt.Torrent
+	enriched, trackerMap = sm.enrichTorrentsWithTrackerData(ctx, client, allTorrents, trackerMap)
+	allTorrents = enriched
+
 	// Initialize counts
 	counts := &TorrentCounts{
 		Status: map[string]int{
@@ -1039,7 +1051,7 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(ctx context.Conte
 		}
 	}
 
-	return counts
+	return counts, trackerMap
 }
 
 // GetTorrentCounts gets all torrent counts for the filter sidebar
@@ -1062,7 +1074,7 @@ func (sm *SyncManager) GetTorrentCounts(ctx context.Context, instanceID int) (*T
 	mainData := syncManager.GetData()
 
 	// Calculate counts using the shared function - pass mainData for tracker information
-	counts := sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents, mainData)
+	counts, _ := sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents, mainData, nil)
 
 	// Don't cache counts separately - they're always derived from the cached torrent data
 	// This ensures sidebar and table are always in sync
@@ -1162,7 +1174,9 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 	torrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{})
 
 	// Enrich torrents with tracker data so downstream calculations can inspect tracker errors
-	torrents = sm.enrichTorrentsWithTrackerData(ctx, client, torrents)
+	if enriched, _ := sm.enrichTorrentsWithTrackerData(ctx, client, torrents, nil); len(enriched) > 0 {
+		torrents = enriched
+	}
 
 	// Build a map for O(1) lookups during optimistic updates
 	torrentMap := make(map[string]*qbt.Torrent, len(torrents))
@@ -1445,7 +1459,7 @@ func (sm *SyncManager) filterTorrentsByGlob(torrents []qbt.Torrent, pattern stri
 }
 
 // applyManualFilters applies all filters manually when library filtering is insufficient
-func (sm *SyncManager) applyManualFilters(ctx context.Context, client *Client, torrents []qbt.Torrent, filters FilterOptions, mainData *qbt.MainData) []qbt.Torrent {
+func (sm *SyncManager) applyManualFilters(ctx context.Context, client *Client, torrents []qbt.Torrent, filters FilterOptions, mainData *qbt.MainData, trackerMap map[string][]qbt.TorrentTracker) ([]qbt.Torrent, map[string][]qbt.TorrentTracker) {
 	var filtered []qbt.Torrent
 
 	// Category set for O(1) lookups
@@ -1516,7 +1530,9 @@ func (sm *SyncManager) applyManualFilters(ctx context.Context, client *Client, t
 	}
 
 	if needTrackerStatus {
-		torrents = sm.enrichTorrentsWithTrackerData(ctx, client, torrents)
+		var enriched []qbt.Torrent
+		enriched, trackerMap = sm.enrichTorrentsWithTrackerData(ctx, client, torrents, trackerMap)
+		torrents = enriched
 	}
 
 	for _, torrent := range torrents {
@@ -1618,7 +1634,7 @@ func (sm *SyncManager) applyManualFilters(ctx context.Context, client *Client, t
 		Int("trackerFilters", len(filters.Trackers)).
 		Msg("Applied manual filtering with multiple selections")
 
-	return filtered
+	return filtered, trackerMap
 }
 
 // Torrent state categories for fast lookup
