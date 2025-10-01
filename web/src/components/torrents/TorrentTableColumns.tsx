@@ -281,7 +281,7 @@ export const createColumns = (
       let displayLabel = label
 
       if (trackerHealth === "tracker_down") {
-        displayLabel = "Down"
+        displayLabel = "Tracker Down"
         badgeVariant = "outline"
         badgeClass = "text-yellow-500 border-yellow-500/40 bg-yellow-500/10"
       } else if (trackerHealth === "unregistered") {
