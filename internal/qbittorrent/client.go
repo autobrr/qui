@@ -28,6 +28,7 @@ type Client struct {
 	// optimisticUpdates stores temporary optimistic state changes for this instance
 	optimisticUpdates *ttlcache.Cache[string, *OptimisticTorrentUpdate]
 	trackerExclusions map[string]map[string]struct{} // Domains to hide hashes from until fresh sync arrives
+	trackerCache      *ttlcache.Cache[string, map[string][]qbt.TorrentTracker]
 	mu                sync.RWMutex
 	healthMu          sync.RWMutex
 }
@@ -85,6 +86,8 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 			SetDefaultTTL(30 * time.Second)), // Updates expire after 30 seconds
 		trackerExclusions: make(map[string]map[string]struct{}),
 		peerSyncManager:   make(map[string]*qbt.PeerSyncManager),
+		trackerCache: ttlcache.New(ttlcache.Options[string, map[string][]qbt.TorrentTracker]{}.
+			SetDefaultTTL(time.Minute)),
 	}
 
 	// Initialize sync manager with default options
@@ -190,6 +193,48 @@ func (c *Client) GetSyncManager() *qbt.SyncManager {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.syncManager
+}
+
+func (c *Client) getCachedTrackerMap(ctx context.Context) (map[string][]qbt.TorrentTracker, error) {
+	c.mu.RLock()
+	cache := c.trackerCache
+	c.mu.RUnlock()
+
+	if cache == nil {
+		return nil, fmt.Errorf("tracker cache not initialized")
+	}
+
+	if cached, ok := cache.Get("all"); ok {
+		return cached, nil
+	}
+
+	trackerData, err := c.Client.GetTorrentsCtx(ctx, qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll, IncludeTrackers: true})
+	if err != nil {
+		return nil, err
+	}
+
+	trackerMap := make(map[string][]qbt.TorrentTracker, len(trackerData))
+	for i := range trackerData {
+		if len(trackerData[i].Trackers) == 0 {
+			continue
+		}
+		trackerMap[trackerData[i].Hash] = trackerData[i].Trackers
+	}
+
+	cache.Set("all", trackerMap, ttlcache.DefaultTTL)
+	return trackerMap, nil
+}
+
+func (c *Client) invalidateTrackerCache() {
+	c.mu.RLock()
+	cache := c.trackerCache
+	c.mu.RUnlock()
+
+	if cache == nil {
+		return
+	}
+
+	cache.Delete("all")
 }
 
 func (c *Client) StartSyncManager(ctx context.Context) error {

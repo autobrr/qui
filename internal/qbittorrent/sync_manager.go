@@ -785,18 +785,11 @@ func (sm *SyncManager) enrichTorrentsWithTrackerData(ctx context.Context, client
 	}
 
 	if trackerMap == nil {
-		trackerData, err := client.Client.GetTorrentsCtx(ctx, qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll, IncludeTrackers: true})
+		var err error
+		trackerMap, err = client.getCachedTrackerMap(ctx)
 		if err != nil {
 			log.Warn().Err(err).Msg("Failed to fetch tracker details for enrichment")
 			return torrents, trackerMap
-		}
-
-		trackerMap = make(map[string][]qbt.TorrentTracker, len(trackerData))
-		for i := range trackerData {
-			if len(trackerData[i].Trackers) == 0 {
-				continue
-			}
-			trackerMap[trackerData[i].Hash] = trackerData[i].Trackers
 		}
 	}
 
@@ -2303,6 +2296,8 @@ func (sm *SyncManager) EditTorrentTracker(ctx context.Context, instanceID int, h
 		return fmt.Errorf("failed to edit tracker: %w", err)
 	}
 
+	client.invalidateTrackerCache()
+
 	sm.recordTrackerTransition(client, oldURL, newURL, []string{hash})
 
 	// Force a sync so cached tracker lists reflect the change immediately
@@ -2328,6 +2323,8 @@ func (sm *SyncManager) AddTorrentTrackers(ctx context.Context, instanceID int, h
 		return fmt.Errorf("failed to add trackers: %w", err)
 	}
 
+	client.invalidateTrackerCache()
+
 	sm.syncAfterModification(instanceID, client, "add_trackers")
 
 	return nil
@@ -2349,6 +2346,8 @@ func (sm *SyncManager) RemoveTorrentTrackers(ctx context.Context, instanceID int
 	if err := client.RemoveTrackersCtx(ctx, hash, urls); err != nil {
 		return fmt.Errorf("failed to remove trackers: %w", err)
 	}
+
+	client.invalidateTrackerCache()
 
 	sm.syncAfterModification(instanceID, client, "remove_trackers")
 
@@ -2388,6 +2387,8 @@ func (sm *SyncManager) BulkEditTrackers(ctx context.Context, instanceID int, has
 		}
 		return fmt.Errorf("failed to edit trackers")
 	}
+
+	client.invalidateTrackerCache()
 
 	sm.recordTrackerTransition(client, oldURL, newURL, updatedHashes)
 
@@ -2430,6 +2431,8 @@ func (sm *SyncManager) BulkAddTrackers(ctx context.Context, instanceID int, hash
 		return fmt.Errorf("failed to add trackers")
 	}
 
+	client.invalidateTrackerCache()
+
 	sm.syncAfterModification(instanceID, client, "bulk_add_trackers")
 
 	return nil
@@ -2467,6 +2470,8 @@ func (sm *SyncManager) BulkRemoveTrackers(ctx context.Context, instanceID int, h
 		}
 		return fmt.Errorf("failed to remove trackers")
 	}
+
+	client.invalidateTrackerCache()
 
 	sm.syncAfterModification(instanceID, client, "bulk_remove_trackers")
 
