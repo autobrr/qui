@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/url"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -1908,9 +1907,6 @@ func (sm *SyncManager) GetAppPreferences(ctx context.Context, instanceID int) (q
 		return qbt.AppPreferences{}, fmt.Errorf("failed to get app preferences: %w", err)
 	}
 
-	// TODO: consider adding the quiURL to the qbit.AppPreferences struct.
-	prefs.QuiURL = extractQuiURL(prefs)
-
 	return prefs, nil
 }
 
@@ -2276,34 +2272,4 @@ func (sm *SyncManager) BulkRemoveTrackers(ctx context.Context, instanceID int, h
 	sm.syncAfterModification(instanceID, client, "bulk_remove_trackers")
 
 	return nil
-}
-
-// extractQuiURL extracts the quiURL from the autorun program.
-// It could be that the user has a custom program not set by qui,
-// so this function does not return an error.
-func extractQuiURL(prefs qbt.AppPreferences) string {
-	re := regexp.MustCompile(`curl -s ([^\s]+)/api/instances/(\d+)/webhooks`)
-
-	if prefs.AutorunProgram == "" && prefs.AutorunOnTorrentAddedProgram == "" {
-		return ""
-	}
-
-	var program string
-	// They both should have the same quiURL if set by qui, so it doesn't matter which one we use.
-	if prefs.AutorunEnabled && prefs.AutorunProgram != "" {
-		program = prefs.AutorunProgram
-	}
-	if prefs.AutorunOnTorrentAddedEnabled && prefs.AutorunOnTorrentAddedProgram != "" {
-		program = prefs.AutorunOnTorrentAddedProgram
-	}
-
-	matches := re.FindStringSubmatch(program)
-
-	if len(matches) != 3 {
-		return ""
-	}
-
-	baseURL := matches[1]
-
-	return baseURL
 }

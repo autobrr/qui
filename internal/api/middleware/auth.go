@@ -10,16 +10,30 @@ import (
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/autobrr/qui/internal/auth"
+	"github.com/autobrr/qui/internal/models"
 	"github.com/rs/zerolog/log"
 )
 
 // IsAuthenticated middleware checks if the user is authenticated
-func IsAuthenticated(authService *auth.Service, sessionManager *scs.SessionManager) func(http.Handler) http.Handler {
+func IsAuthenticated(authService *auth.Service, sessionManager *scs.SessionManager, clientAPIKeyStore *models.ClientAPIKeyStore) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Check for API key first
 			if apiKey := r.Header.Get("X-API-Key"); apiKey != "" {
+				// TODO: using clientApiKeyStore for webhooks...
+				if strings.HasSuffix(r.URL.Path, "/webhooks") && r.Method == "POST" {
+					clientAPIKey, err := clientAPIKeyStore.ValidateKey(r.Context(), apiKey)
+					if err != nil {
+						log.Warn().Err(err).Msg("Invalid webhook API key")
+						http.Error(w, "Unauthorized", http.StatusUnauthorized)
+						return
+					}
+					log.Debug().Int("clientAPIKeyID", clientAPIKey.ID).Msg("Webhook API key authenticated")
+					next.ServeHTTP(w, r)
+					return
+				}
 				// Validate API key
+				log.Info().Str("apiKey", apiKey).Msg(r.URL.Path + " " + r.Method)
 				apiKeyModel, err := authService.ValidateAPIKey(r.Context(), apiKey)
 				if err != nil {
 					log.Warn().Err(err).Msg("Invalid API key")

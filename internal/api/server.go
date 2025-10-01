@@ -165,7 +165,7 @@ func (s *Server) Handler() *chi.Mux {
 	preferencesHandler := handlers.NewPreferencesHandler(s.syncManager)
 	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(s.clientAPIKeyStore, s.instanceStore)
 	versionHandler := handlers.NewVersionHandler(s.updateService)
-	webhooksHandler := handlers.NewWebhooksHandler(s.instanceStore)
+	webhooksHandler := handlers.NewWebhooksHandler(s.clientAPIKeyStore, s.syncManager, s.instanceStore)
 
 	// Create proxy handler
 	proxyHandler := proxy.NewHandler(s.clientPool, s.clientAPIKeyStore, s.instanceStore)
@@ -197,7 +197,7 @@ func (s *Server) Handler() *chi.Mux {
 
 		// Protected routes
 		r.Group(func(r chi.Router) {
-			r.Use(middleware.IsAuthenticated(s.authService, s.sessionManager))
+			r.Use(middleware.IsAuthenticated(s.authService, s.sessionManager, s.clientAPIKeyStore))
 
 			// Auth routes
 			r.Post("/auth/logout", authHandler.Logout)
@@ -230,6 +230,8 @@ func (s *Server) Handler() *chi.Mux {
 			r.Route("/instances", func(r chi.Router) {
 				r.Get("/", instancesHandler.ListInstances)
 				r.Post("/", instancesHandler.CreateInstance)
+
+				r.Get("/webhooks", webhooksHandler.GetAllWebhooks)
 
 				r.Route("/{instanceID}", func(r chi.Router) {
 					r.Put("/", instancesHandler.UpdateInstance)
@@ -276,6 +278,7 @@ func (s *Server) Handler() *chi.Mux {
 					r.Post("/alternative-speed-limits/toggle", preferencesHandler.ToggleAlternativeSpeedLimits)
 
 					// Webhooks
+					r.Patch("/webhooks", webhooksHandler.UpdateWebhookPreferences)
 					r.Post("/webhooks", webhooksHandler.PostWebhook)
 				})
 			})
