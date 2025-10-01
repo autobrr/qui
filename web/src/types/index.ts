@@ -382,13 +382,6 @@ export interface AppPreferences {
   ssrf_mitigation: boolean
   validate_https_tracker_certificate: boolean
 
-  // Webhooks
-  autorun_enabled: boolean
-  autorun_on_torrent_added_enabled: boolean
-  autorun_on_torrent_added_program: string
-  autorun_program: string
-  qui_url: string
-
   // RSS settings
   rss_auto_downloading_enabled: boolean
   rss_download_repack_proper_episodes: boolean
@@ -419,4 +412,15 @@ export interface AppPreferences {
 
   // Add catch-all for any additional fields from the API
   [key: string]: unknown
+}
+
+export interface WebhookPreferences {
+  enabled: boolean
+  api_key: string
+  api_key_id?: number
+  instance_id: string
+  instance_name: string
+  autorun_enabled: boolean
+  autorun_on_torrent_added_enabled: boolean
+  qui_url: string
 }
