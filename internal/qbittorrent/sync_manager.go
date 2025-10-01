@@ -24,6 +24,79 @@ import (
 // Global URL cache for domain extraction - shared across all sync managers
 var urlCache = ttlcache.New(ttlcache.Options[string, string]{}.SetDefaultTTL(5 * time.Minute))
 
+var defaultUnregisteredStatuses = []string{
+	"complete season uploaded",
+	"dead",
+	"dupe",
+	"i'm sorry dave, i can't do that",
+	"infohash not found",
+	"internal available",
+	"not exist",
+	"not registered",
+	"nuked",
+	"pack is available",
+	"packs are available",
+	"problem with description",
+	"problem with file",
+	"problem with pack",
+	"retitled",
+	"season pack",
+	"specifically banned",
+	"torrent does not exist",
+	"torrent existiert nicht",
+	"torrent has been deleted",
+	"torrent has been nuked",
+	"torrent is not authorized for use on this tracker",
+	"torrent is not found",
+	"torrent nicht gefunden",
+	"tracker nicht registriert",
+	"torrent not found",
+	"trump",
+	"unknown",
+	"unregistered",
+	"upgraded",
+	"uploaded",
+}
+
+var trackerDownStatuses = []string{
+	"continue",
+	"multiple choices",
+	"not modified",
+	"bad request",
+	"unauthorized",
+	"forbidden",
+	"internal server error",
+	"not implemented",
+	"bad gateway",
+	"service unavailable",
+	"moved permanently",
+	"moved temporarily",
+	"(unknown http error)",
+	"down",
+	"maintenance",
+	"tracker is down",
+	"tracker unavailable",
+	"truncated",
+	"unreachable",
+	"not working",
+	"not responding",
+	"timeout",
+	"refused",
+	"no connection",
+	"cannot connect",
+	"connection failed",
+	"ssl error",
+	"no data",
+	"timed out",
+	"temporarily disabled",
+	"unresolvable",
+	"host not found",
+	"offline",
+	"your request could not be processed, please try again later",
+	"unable to process your request",
+	"<none>",
+}
+
 // CacheMetadata provides information about cache state
 type CacheMetadata struct {
 	Source      string `json:"source"`      // "cache" or "fresh"
@@ -147,6 +220,10 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 			case qbt.TorrentFilterActive, qbt.TorrentFilterInactive, qbt.TorrentFilterChecking, qbt.TorrentFilterMoving, qbt.TorrentFilterError, qbt.TorrentFilterDownloading, qbt.TorrentFilterUploading:
 				needsManualStatusFiltering = true
 			}
+
+			if status == "unregistered" || status == "tracker_down" {
+				needsManualStatusFiltering = true
+			}
 		}
 	}
 
@@ -184,7 +261,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		filteredTorrents = syncManager.GetTorrents(torrentFilterOptions)
 
 		// Apply manual filtering for multiple selections
-		filteredTorrents = sm.applyManualFilters(client, filteredTorrents, filters, mainData)
+		filteredTorrents = sm.applyManualFilters(ctx, client, filteredTorrents, filters, mainData)
 	} else {
 		// Use library filtering for single selections
 		log.Debug().
@@ -295,7 +372,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 	// Get MainData for accurate tracker information
 	mainData = syncManager.GetData()
-	counts := sm.calculateCountsFromTorrentsWithTrackers(client, allTorrents, mainData)
+	counts := sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents, mainData)
 
 	// Fetch categories and tags (cached separately for 60s)
 	categories, err := sm.GetCategories(ctx, instanceID)
@@ -653,6 +730,81 @@ func (sm *SyncManager) primaryTrackerDomain(torrent qbt.Torrent) string {
 	return ""
 }
 
+func trackerMessageMatches(message string, patterns []string) bool {
+	text := strings.TrimSpace(strings.ToLower(message))
+	if text == "" {
+		return false
+	}
+
+	for _, pattern := range patterns {
+		if strings.Contains(text, pattern) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (sm *SyncManager) torrentIsUnregistered(torrent qbt.Torrent) bool {
+	for _, tracker := range torrent.Trackers {
+		if tracker.Status != qbt.TrackerStatusNotWorking {
+			continue
+		}
+
+		if trackerMessageMatches(tracker.Message, defaultUnregisteredStatuses) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (sm *SyncManager) torrentTrackerIsDown(torrent qbt.Torrent) bool {
+	for _, tracker := range torrent.Trackers {
+		if tracker.Status != qbt.TrackerStatusNotWorking {
+			continue
+		}
+
+		if trackerMessageMatches(tracker.Message, trackerDownStatuses) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (sm *SyncManager) enrichTorrentsWithTrackerData(ctx context.Context, client *Client, torrents []qbt.Torrent) []qbt.Torrent {
+	if client == nil || len(torrents) == 0 {
+		return torrents
+	}
+
+	trackerData, err := client.Client.GetTorrentsCtx(ctx, qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll, IncludeTrackers: true})
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to fetch tracker details for enrichment")
+		return torrents
+	}
+
+	trackerMap := make(map[string][]qbt.TorrentTracker, len(trackerData))
+	for i := range trackerData {
+		if len(trackerData[i].Trackers) == 0 {
+			continue
+		}
+		trackerMap[trackerData[i].Hash] = trackerData[i].Trackers
+	}
+
+	if len(trackerMap) == 0 {
+		return torrents
+	}
+
+	for i := range torrents {
+		if trackers, ok := trackerMap[torrents[i].Hash]; ok {
+			torrents[i].Trackers = trackers
+		}
+	}
+
+	return torrents
+}
+
 // TorrentCounts represents counts for filtering sidebar
 type TorrentCounts struct {
 	Status     map[string]int `json:"status"`
@@ -723,6 +875,14 @@ func (sm *SyncManager) countTorrentStatuses(torrent qbt.Torrent, counts map[stri
 	// Count "all"
 	counts["all"]++
 
+	if sm.torrentIsUnregistered(torrent) {
+		counts["unregistered"]++
+	}
+
+	if sm.torrentTrackerIsDown(torrent) {
+		counts["tracker_down"]++
+	}
+
 	// Count "completed"
 	if torrent.Progress == 1 {
 		counts["completed"]++
@@ -766,14 +926,15 @@ func (sm *SyncManager) countTorrentStatuses(torrent qbt.Torrent, counts map[stri
 
 // calculateCountsFromTorrentsWithTrackers calculates counts using MainData's tracker information
 // This gives us the REAL tracker-to-torrent mapping from qBittorrent
-func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(client *Client, allTorrents []qbt.Torrent, mainData *qbt.MainData) *TorrentCounts {
+func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(ctx context.Context, client *Client, allTorrents []qbt.Torrent, mainData *qbt.MainData) *TorrentCounts {
+	allTorrents = sm.enrichTorrentsWithTrackerData(ctx, client, allTorrents)
 	// Initialize counts
 	counts := &TorrentCounts{
 		Status: map[string]int{
 			"all": 0, "downloading": 0, "seeding": 0, "completed": 0, "paused": 0,
 			"active": 0, "inactive": 0, "resumed": 0, "running": 0, "stopped": 0, "stalled": 0,
 			"stalled_uploading": 0, "stalled_downloading": 0, "errored": 0,
-			"checking": 0, "moving": 0,
+			"checking": 0, "moving": 0, "unregistered": 0, "tracker_down": 0,
 		},
 		Categories: make(map[string]int),
 		Tags:       make(map[string]int),
@@ -901,7 +1062,7 @@ func (sm *SyncManager) GetTorrentCounts(ctx context.Context, instanceID int) (*T
 	mainData := syncManager.GetData()
 
 	// Calculate counts using the shared function - pass mainData for tracker information
-	counts := sm.calculateCountsFromTorrentsWithTrackers(client, allTorrents, mainData)
+	counts := sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents, mainData)
 
 	// Don't cache counts separately - they're always derived from the cached torrent data
 	// This ensures sidebar and table are always in sync
@@ -999,6 +1160,9 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 
 	// Get all torrents from sync manager
 	torrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{})
+
+	// Enrich torrents with tracker data so downstream calculations can inspect tracker errors
+	torrents = sm.enrichTorrentsWithTrackerData(ctx, client, torrents)
 
 	// Build a map for O(1) lookups during optimistic updates
 	torrentMap := make(map[string]*qbt.Torrent, len(torrents))
@@ -1281,7 +1445,7 @@ func (sm *SyncManager) filterTorrentsByGlob(torrents []qbt.Torrent, pattern stri
 }
 
 // applyManualFilters applies all filters manually when library filtering is insufficient
-func (sm *SyncManager) applyManualFilters(client *Client, torrents []qbt.Torrent, filters FilterOptions, mainData *qbt.MainData) []qbt.Torrent {
+func (sm *SyncManager) applyManualFilters(ctx context.Context, client *Client, torrents []qbt.Torrent, filters FilterOptions, mainData *qbt.MainData) []qbt.Torrent {
 	var filtered []qbt.Torrent
 
 	// Category set for O(1) lookups
@@ -1341,6 +1505,18 @@ func (sm *SyncManager) applyManualFilters(client *Client, torrents []qbt.Torrent
 				torrentHashToDomains[h][domain] = struct{}{}
 			}
 		}
+	}
+
+	needTrackerStatus := false
+	for _, status := range filters.Status {
+		if status == "unregistered" || status == "tracker_down" {
+			needTrackerStatus = true
+			break
+		}
+	}
+
+	if needTrackerStatus {
+		torrents = sm.enrichTorrentsWithTrackerData(ctx, client, torrents)
 	}
 
 	for _, torrent := range torrents {
@@ -1510,6 +1686,13 @@ func (sm *SyncManager) shouldClearOptimisticUpdate(currentState qbt.TorrentState
 
 // matchTorrentStatus checks if a torrent matches a specific status filter
 func (sm *SyncManager) matchTorrentStatus(torrent qbt.Torrent, status string) bool {
+	switch strings.ToLower(status) {
+	case "unregistered":
+		return sm.torrentIsUnregistered(torrent)
+	case "tracker_down":
+		return sm.torrentTrackerIsDown(torrent)
+	}
+
 	// Handle special cases first
 	switch qbt.TorrentFilter(status) {
 	case qbt.TorrentFilterAll:

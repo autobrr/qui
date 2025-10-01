@@ -120,6 +120,8 @@ const TORRENT_STATES: Array<{ value: string; label: string; icon: LucideIcon }> 
   { value: "errored", label: "Error", icon: XCircle },
   { value: "checking", label: "Checking", icon: RotateCw },
   { value: "moving", label: "Moving", icon: MoveRight },
+  { value: "unregistered", label: "Unregistered torrents", icon: XCircle },
+  { value: "tracker_down", label: "Tracker Down", icon: AlertCircle },
 ]
 
 const FilterSidebarComponent = ({
