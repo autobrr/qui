@@ -728,12 +728,6 @@ export function Dashboard() {
               {/* Mobile: Vertical stack layout for all instances */}
               <div className="block sm:hidden">
                 <div className="space-y-4">
-                  {/* Debug info - remove this after testing */}
-                  {process.env.NODE_ENV === 'development' && (
-                    <div className="fixed top-16 right-4 bg-black/80 text-white p-2 rounded text-xs z-50">
-                      Instances: {allInstances.length}
-                    </div>
-                  )}
                   {allInstances.map(instance => (
                     <InstanceCard
                       key={instance.id}
