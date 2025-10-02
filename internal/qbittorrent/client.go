@@ -6,6 +6,7 @@ package qbittorrent
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -389,6 +390,8 @@ func (c *Client) scheduleTrackerWarmup(hashes []string, batchSize int) {
 		batchSize = trackerWarmupBatchSize
 	}
 
+	c.orderHashesByAddedOnDesc(filtered)
+
 	go c.runTrackerWarmup(filtered, batchSize)
 }
 
@@ -418,6 +421,31 @@ func (c *Client) runTrackerWarmup(hashes []string, batchSize int) {
 			time.Sleep(trackerWarmupDelay)
 		}
 	}
+}
+
+func (c *Client) orderHashesByAddedOnDesc(hashes []string) {
+	if len(hashes) <= 1 {
+		return
+	}
+
+	torrents := c.getTorrentsByHashes(hashes)
+	if len(torrents) == 0 {
+		return
+	}
+
+	addedOnByHash := make(map[string]int64, len(torrents))
+	for _, torrent := range torrents {
+		addedOnByHash[torrent.Hash] = torrent.AddedOn
+	}
+
+	sort.SliceStable(hashes, func(i, j int) bool {
+		left := addedOnByHash[hashes[i]]
+		right := addedOnByHash[hashes[j]]
+		if left == right {
+			return hashes[i] < hashes[j]
+		}
+		return left > right
+	})
 }
 
 func deduplicateHashes(hashes []string) []string {
