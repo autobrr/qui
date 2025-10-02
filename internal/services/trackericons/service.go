@@ -615,7 +615,22 @@ func decodeImage(data []byte, contentType, originalURL string) (image.Image, err
 		return nil, fmt.Errorf("svg icons are not supported")
 	}
 
+	const maxDimension = 1024
+
 	reader := bytes.NewReader(data)
+
+	// Check dimensions before expensive decode to avoid decompression bombs
+	cfg, _, err := image.DecodeConfig(reader)
+	if err == nil {
+		if cfg.Width > maxDimension || cfg.Height > maxDimension {
+			return nil, fmt.Errorf("icon dimensions too large: %dx%d (max %d)", cfg.Width, cfg.Height, maxDimension)
+		}
+	}
+
+	// Reset reader for full decode
+	if _, err := reader.Seek(0, io.SeekStart); err != nil {
+		return nil, fmt.Errorf("failed to reset reader: %w", err)
+	}
 
 	// Try standard formats first (PNG, JPEG, GIF)
 	if img, _, err := image.Decode(reader); err == nil {
@@ -623,7 +638,20 @@ func decodeImage(data []byte, contentType, originalURL string) (image.Image, err
 	}
 
 	// Fallback to ICO
-	reader.Seek(0, io.SeekStart)
+	if _, err := reader.Seek(0, io.SeekStart); err != nil {
+		return nil, fmt.Errorf("failed to reset reader for ico decode: %w", err)
+	}
+
+	if cfg, err := ico.DecodeConfig(reader); err == nil {
+		if cfg.Width > maxDimension || cfg.Height > maxDimension {
+			return nil, fmt.Errorf("icon dimensions too large: %dx%d (max %d)", cfg.Width, cfg.Height, maxDimension)
+		}
+	}
+
+	if _, err := reader.Seek(0, io.SeekStart); err != nil {
+		return nil, fmt.Errorf("failed to reset reader after ico config: %w", err)
+	}
+
 	return ico.Decode(reader)
 }
 
