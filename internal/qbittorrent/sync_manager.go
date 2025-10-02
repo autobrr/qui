@@ -24,6 +24,8 @@ import (
 // Global URL cache for domain extraction - shared across all sync managers
 var urlCache = ttlcache.New(ttlcache.Options[string, string]{}.SetDefaultTTL(5 * time.Minute))
 
+const trackerFetchUnlimited = -1
+
 var defaultUnregisteredStatuses = []string{
 	"complete season uploaded",
 	"dead",
@@ -241,6 +243,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		hasTrackerFilters || needsManualStatusFiltering || needsManualCategoryFiltering || needsManualTagFiltering
 
 	var trackerMap map[string][]qbt.TorrentTracker
+	var pendingTrackerHydration []string
 	var counts *TorrentCounts
 
 	if useManualFiltering {
@@ -264,7 +267,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		filteredTorrents = syncManager.GetTorrents(torrentFilterOptions)
 
 		// Apply manual filtering for multiple selections
-		filteredTorrents, trackerMap = sm.applyManualFilters(ctx, client, filteredTorrents, filters, mainData, trackerMap)
+		filteredTorrents, trackerMap, pendingTrackerHydration = sm.applyManualFilters(ctx, client, filteredTorrents, filters, mainData, trackerMap)
 	} else {
 		// Use library filtering for single selections
 		log.Debug().
@@ -340,9 +343,6 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		Int("filtered", len(filteredTorrents)).
 		Msg("Applied search filtering")
 
-	// Ensure tracker metadata is present for downstream consumers (status badges, counts, etc.)
-	filteredTorrents, trackerMap = sm.enrichTorrentsWithTrackerData(ctx, client, filteredTorrents, trackerMap, 0)
-
 	// Apply custom sorting for priority field
 	// qBittorrent's native sorting treats 0 as lowest, but we want it as highest (no priority)
 	if sort == "priority" {
@@ -367,6 +367,12 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 			end = len(filteredTorrents)
 		}
 		paginatedTorrents = filteredTorrents[start:end]
+	}
+
+	// Ensure tracker metadata is present for the paginated results used by the UI
+	if len(paginatedTorrents) > 0 {
+		pageLimit := len(paginatedTorrents)
+		paginatedTorrents, trackerMap, _ = sm.enrichTorrentsWithTrackerData(ctx, client, paginatedTorrents, trackerMap, pageLimit, true)
 	}
 
 	// Check if there are more pages
@@ -421,6 +427,21 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 			// Get server state from sync manager for Dashboard
 			serverStateData := syncManager.GetServerState()
 			serverState = &serverStateData
+		}
+	}
+
+	if len(pendingTrackerHydration) > 0 {
+		refreshAt := time.Now().Add(2 * time.Second).Format(time.RFC3339)
+		if cacheMetadata == nil {
+			cacheMetadata = &CacheMetadata{
+				Source:      "cache",
+				Age:         0,
+				IsStale:     true,
+				NextRefresh: refreshAt,
+			}
+		} else {
+			cacheMetadata.IsStale = true
+			cacheMetadata.NextRefresh = refreshAt
 		}
 	}
 
@@ -780,17 +801,26 @@ func (sm *SyncManager) torrentTrackerIsDown(torrent qbt.Torrent) bool {
 	return false
 }
 
-func (sm *SyncManager) enrichTorrentsWithTrackerData(ctx context.Context, client *Client, torrents []qbt.Torrent, trackerMap map[string][]qbt.TorrentTracker, fetchLimit int) ([]qbt.Torrent, map[string][]qbt.TorrentTracker) {
+func (sm *SyncManager) enrichTorrentsWithTrackerData(ctx context.Context, client *Client, torrents []qbt.Torrent, trackerMap map[string][]qbt.TorrentTracker, fetchLimit int, allowFetch bool) ([]qbt.Torrent, map[string][]qbt.TorrentTracker, []string) {
 	if client == nil || len(torrents) == 0 {
-		return torrents, trackerMap
-	}
-
-	if fetchLimit == 0 && !client.includeTrackers {
-		fetchLimit = trackerFetchChunkDefault
+		return torrents, trackerMap, nil
 	}
 
 	if trackerMap == nil {
 		trackerMap = make(map[string][]qbt.TorrentTracker)
+	}
+
+	forceUnlimited := fetchLimit == trackerFetchUnlimited
+	if forceUnlimited {
+		fetchLimit = 0
+	}
+
+	if fetchLimit == 0 && !client.includeTrackers && !forceUnlimited && allowFetch {
+		fetchLimit = trackerFetchChunkDefault
+	}
+
+	if fetchLimit < 0 {
+		fetchLimit = trackerFetchChunkDefault
 	}
 
 	needed := make([]string, 0, len(torrents))
@@ -808,11 +838,11 @@ func (sm *SyncManager) enrichTorrentsWithTrackerData(ctx context.Context, client
 	}
 
 	if len(needed) == 0 {
-		return torrents, trackerMap
+		return torrents, trackerMap, nil
 	}
 
-	trackerData, remaining, err := client.getTrackersForHashes(ctx, needed, true, fetchLimit)
-	if err != nil {
+	trackerData, remaining, err := client.getTrackersForHashes(ctx, needed, allowFetch, fetchLimit)
+	if err != nil && allowFetch {
 		log.Debug().Err(err).Int("count", len(needed)).Msg("Failed to fetch tracker details for enrichment")
 	}
 
@@ -827,12 +857,12 @@ func (sm *SyncManager) enrichTorrentsWithTrackerData(ctx context.Context, client
 		}
 	}
 
-	if len(remaining) > 0 {
+	if len(remaining) > 0 && allowFetch {
 		log.Debug().Int("remaining", len(remaining)).Msg("Tracker enrichment partial; scheduling background warmup")
 		client.scheduleTrackerWarmup(remaining, trackerWarmupBatchSize)
 	}
 
-	return torrents, trackerMap
+	return torrents, trackerMap, remaining
 }
 
 // TorrentCounts represents counts for filtering sidebar
@@ -959,7 +989,7 @@ func (sm *SyncManager) countTorrentStatuses(torrent qbt.Torrent, counts map[stri
 
 func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(ctx context.Context, client *Client, allTorrents []qbt.Torrent, mainData *qbt.MainData, trackerMap map[string][]qbt.TorrentTracker) (*TorrentCounts, map[string][]qbt.TorrentTracker) {
 	var enriched []qbt.Torrent
-	enriched, trackerMap = sm.enrichTorrentsWithTrackerData(ctx, client, allTorrents, trackerMap, trackerFetchChunkForCounts)
+	enriched, trackerMap, _ = sm.enrichTorrentsWithTrackerData(ctx, client, allTorrents, trackerMap, trackerFetchChunkForCounts, true)
 	allTorrents = enriched
 
 	// Initialize counts
@@ -1196,7 +1226,7 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 	torrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{})
 
 	// Enrich torrents with tracker data so downstream calculations can inspect tracker errors
-	if enriched, _ := sm.enrichTorrentsWithTrackerData(ctx, client, torrents, nil, trackerFetchChunkForCounts); len(enriched) > 0 {
+	if enriched, _, _ := sm.enrichTorrentsWithTrackerData(ctx, client, torrents, nil, trackerFetchChunkForCounts, true); len(enriched) > 0 {
 		torrents = enriched
 	}
 
@@ -1481,8 +1511,9 @@ func (sm *SyncManager) filterTorrentsByGlob(torrents []qbt.Torrent, pattern stri
 }
 
 // applyManualFilters applies all filters manually when library filtering is insufficient
-func (sm *SyncManager) applyManualFilters(ctx context.Context, client *Client, torrents []qbt.Torrent, filters FilterOptions, mainData *qbt.MainData, trackerMap map[string][]qbt.TorrentTracker) ([]qbt.Torrent, map[string][]qbt.TorrentTracker) {
+func (sm *SyncManager) applyManualFilters(ctx context.Context, client *Client, torrents []qbt.Torrent, filters FilterOptions, mainData *qbt.MainData, trackerMap map[string][]qbt.TorrentTracker) ([]qbt.Torrent, map[string][]qbt.TorrentTracker, []string) {
 	var filtered []qbt.Torrent
+	var pendingTrackerHashes []string
 
 	// Category set for O(1) lookups
 	categorySet := make(map[string]struct{}, len(filters.Categories))
@@ -1553,7 +1584,11 @@ func (sm *SyncManager) applyManualFilters(ctx context.Context, client *Client, t
 
 	if needTrackerStatus {
 		var enriched []qbt.Torrent
-		enriched, trackerMap = sm.enrichTorrentsWithTrackerData(ctx, client, torrents, trackerMap, 0)
+		var missing []string
+		enriched, trackerMap, missing = sm.enrichTorrentsWithTrackerData(ctx, client, torrents, trackerMap, trackerFetchUnlimited, false)
+		if len(missing) > 0 {
+			pendingTrackerHashes = append(pendingTrackerHashes, missing...)
+		}
 		torrents = enriched
 	}
 
@@ -1656,7 +1691,11 @@ func (sm *SyncManager) applyManualFilters(ctx context.Context, client *Client, t
 		Int("trackerFilters", len(filters.Trackers)).
 		Msg("Applied manual filtering with multiple selections")
 
-	return filtered, trackerMap
+	if len(pendingTrackerHashes) > 0 && client != nil {
+		client.scheduleTrackerWarmup(pendingTrackerHashes, trackerWarmupBatchSize)
+	}
+
+	return filtered, trackerMap, pendingTrackerHashes
 }
 
 // Torrent state categories for fast lookup
