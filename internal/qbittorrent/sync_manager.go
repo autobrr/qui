@@ -341,7 +341,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		Msg("Applied search filtering")
 
 	// Ensure tracker metadata is present for downstream consumers (status badges, counts, etc.)
-	filteredTorrents, trackerMap = sm.enrichTorrentsWithTrackerData(ctx, client, filteredTorrents, trackerMap)
+	filteredTorrents, trackerMap = sm.enrichTorrentsWithTrackerData(ctx, client, filteredTorrents, trackerMap, 0)
 
 	// Apply custom sorting for priority field
 	// qBittorrent's native sorting treats 0 as lowest, but we want it as highest (no priority)
@@ -780,32 +780,56 @@ func (sm *SyncManager) torrentTrackerIsDown(torrent qbt.Torrent) bool {
 	return false
 }
 
-func (sm *SyncManager) enrichTorrentsWithTrackerData(ctx context.Context, client *Client, torrents []qbt.Torrent, trackerMap map[string][]qbt.TorrentTracker) ([]qbt.Torrent, map[string][]qbt.TorrentTracker) {
+func (sm *SyncManager) enrichTorrentsWithTrackerData(ctx context.Context, client *Client, torrents []qbt.Torrent, trackerMap map[string][]qbt.TorrentTracker, fetchLimit int) ([]qbt.Torrent, map[string][]qbt.TorrentTracker) {
 	if client == nil || len(torrents) == 0 {
 		return torrents, trackerMap
 	}
 
-	if !client.includeTrackers {
-		return torrents, trackerMap
+	if fetchLimit == 0 && !client.includeTrackers {
+		fetchLimit = trackerFetchChunkDefault
 	}
 
 	if trackerMap == nil {
-		var err error
-		trackerMap, err = client.getCachedTrackerMap(ctx)
-		if err != nil {
-			log.Warn().Err(err).Msg("Failed to fetch tracker details for enrichment")
-			return torrents, trackerMap
-		}
+		trackerMap = make(map[string][]qbt.TorrentTracker)
 	}
 
-	if len(trackerMap) == 0 {
+	needed := make([]string, 0, len(torrents))
+	for i := range torrents {
+		hash := torrents[i].Hash
+		if trackers, ok := trackerMap[hash]; ok {
+			torrents[i].Trackers = trackers
+			continue
+		}
+		if len(torrents[i].Trackers) > 0 {
+			trackerMap[hash] = torrents[i].Trackers
+			continue
+		}
+		needed = append(needed, hash)
+	}
+
+	if len(needed) == 0 {
 		return torrents, trackerMap
 	}
 
-	for i := range torrents {
-		if trackers, ok := trackerMap[torrents[i].Hash]; ok {
-			torrents[i].Trackers = trackers
+	trackerData, remaining, err := client.getTrackersForHashes(ctx, needed, true, fetchLimit)
+	if err != nil {
+		log.Debug().Err(err).Int("count", len(needed)).Msg("Failed to fetch tracker details for enrichment")
+	}
+
+	if len(trackerData) > 0 {
+		for hash, trackers := range trackerData {
+			trackerMap[hash] = trackers
 		}
+		for i := range torrents {
+			if trackers, ok := trackerMap[torrents[i].Hash]; ok {
+				torrents[i].Trackers = trackers
+			}
+		}
+	}
+
+	if len(remaining) > 0 {
+		log.Debug().Int("remaining", len(remaining)).Msg("Tracker enrichment partial; scheduling background warmup")
+		client.scheduleTrackerWarmup(remaining, trackerWarmupBatchSize)
 	}
 
 	return torrents, trackerMap
@@ -935,7 +959,7 @@ func (sm *SyncManager) countTorrentStatuses(torrent qbt.Torrent, counts map[stri
 
 func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(ctx context.Context, client *Client, allTorrents []qbt.Torrent, mainData *qbt.MainData, trackerMap map[string][]qbt.TorrentTracker) (*TorrentCounts, map[string][]qbt.TorrentTracker) {
 	var enriched []qbt.Torrent
-	enriched, trackerMap = sm.enrichTorrentsWithTrackerData(ctx, client, allTorrents, trackerMap)
+	enriched, trackerMap = sm.enrichTorrentsWithTrackerData(ctx, client, allTorrents, trackerMap, trackerFetchChunkForCounts)
 	allTorrents = enriched
 
 	// Initialize counts
@@ -1172,7 +1196,7 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 	torrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{})
 
 	// Enrich torrents with tracker data so downstream calculations can inspect tracker errors
-	if enriched, _ := sm.enrichTorrentsWithTrackerData(ctx, client, torrents, nil); len(enriched) > 0 {
+	if enriched, _ := sm.enrichTorrentsWithTrackerData(ctx, client, torrents, nil, trackerFetchChunkForCounts); len(enriched) > 0 {
 		torrents = enriched
 	}
 
@@ -1529,7 +1553,7 @@ func (sm *SyncManager) applyManualFilters(ctx context.Context, client *Client, t
 
 	if needTrackerStatus {
 		var enriched []qbt.Torrent
-		enriched, trackerMap = sm.enrichTorrentsWithTrackerData(ctx, client, torrents, trackerMap)
+		enriched, trackerMap = sm.enrichTorrentsWithTrackerData(ctx, client, torrents, trackerMap, 0)
 		torrents = enriched
 	}
 
@@ -2301,7 +2325,7 @@ func (sm *SyncManager) EditTorrentTracker(ctx context.Context, instanceID int, h
 		return fmt.Errorf("failed to edit tracker: %w", err)
 	}
 
-	client.invalidateTrackerCache()
+	client.invalidateTrackerCache(hash)
 
 	sm.recordTrackerTransition(client, oldURL, newURL, []string{hash})
 
@@ -2328,7 +2352,7 @@ func (sm *SyncManager) AddTorrentTrackers(ctx context.Context, instanceID int, h
 		return fmt.Errorf("failed to add trackers: %w", err)
 	}
 
-	client.invalidateTrackerCache()
+	client.invalidateTrackerCache(hash)
 
 	sm.syncAfterModification(instanceID, client, "add_trackers")
 
@@ -2352,7 +2376,7 @@ func (sm *SyncManager) RemoveTorrentTrackers(ctx context.Context, instanceID int
 		return fmt.Errorf("failed to remove trackers: %w", err)
 	}
 
-	client.invalidateTrackerCache()
+	client.invalidateTrackerCache(hash)
 
 	sm.syncAfterModification(instanceID, client, "remove_trackers")
 
@@ -2393,7 +2417,7 @@ func (sm *SyncManager) BulkEditTrackers(ctx context.Context, instanceID int, has
 		return fmt.Errorf("failed to edit trackers")
 	}
 
-	client.invalidateTrackerCache()
+	client.invalidateTrackerCache(updatedHashes...)
 
 	sm.recordTrackerTransition(client, oldURL, newURL, updatedHashes)
 
@@ -2436,7 +2460,7 @@ func (sm *SyncManager) BulkAddTrackers(ctx context.Context, instanceID int, hash
 		return fmt.Errorf("failed to add trackers")
 	}
 
-	client.invalidateTrackerCache()
+	client.invalidateTrackerCache(hashes...)
 
 	sm.syncAfterModification(instanceID, client, "bulk_add_trackers")
 
@@ -2476,7 +2500,7 @@ func (sm *SyncManager) BulkRemoveTrackers(ctx context.Context, instanceID int, h
 		return fmt.Errorf("failed to remove trackers")
 	}
 
-	client.invalidateTrackerCache()
+	client.invalidateTrackerCache(hashes...)
 
 	sm.syncAfterModification(instanceID, client, "bulk_remove_trackers")
 

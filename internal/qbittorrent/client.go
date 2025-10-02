@@ -6,6 +6,7 @@ package qbittorrent
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,6 +15,15 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
+)
+
+const (
+	trackerCacheTTL            = 30 * time.Minute
+	trackerFetchChunkDefault   = 40
+	trackerFetchChunkForCounts = 25
+	trackerWarmupDelay         = 2 * time.Second
+	trackerWarmupTimeout       = 45 * time.Second
+	trackerWarmupBatchSize     = 200
 )
 
 type Client struct {
@@ -27,11 +37,14 @@ type Client struct {
 	syncManager     *qbt.SyncManager
 	peerSyncManager map[string]*qbt.PeerSyncManager // Map of torrent hash to PeerSyncManager
 	// optimisticUpdates stores temporary optimistic state changes for this instance
-	optimisticUpdates *ttlcache.Cache[string, *OptimisticTorrentUpdate]
-	trackerExclusions map[string]map[string]struct{} // Domains to hide hashes from until fresh sync arrives
-	trackerCache      *ttlcache.Cache[string, map[string][]qbt.TorrentTracker]
-	mu                sync.RWMutex
-	healthMu          sync.RWMutex
+	optimisticUpdates    *ttlcache.Cache[string, *OptimisticTorrentUpdate]
+	trackerExclusions    map[string]map[string]struct{} // Domains to hide hashes from until fresh sync arrives
+	trackerCache         *ttlcache.Cache[string, []qbt.TorrentTracker]
+	trackerFetcher       *qbt.TrackerFetcher
+	trackerWarmupMu      sync.Mutex
+	trackerWarmupPending map[string]struct{}
+	mu                   sync.RWMutex
+	healthMu             sync.RWMutex
 }
 
 func NewClient(instanceID int, instanceHost, username, password string, basicUsername, basicPassword *string, tlsSkipVerify bool) (*Client, error) {
@@ -90,8 +103,9 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 			SetDefaultTTL(30 * time.Second)), // Updates expire after 30 seconds
 		trackerExclusions: make(map[string]map[string]struct{}),
 		peerSyncManager:   make(map[string]*qbt.PeerSyncManager),
-		trackerCache: ttlcache.New(ttlcache.Options[string, map[string][]qbt.TorrentTracker]{}.
-			SetDefaultTTL(time.Minute)),
+		trackerCache: ttlcache.New(ttlcache.Options[string, []qbt.TorrentTracker]{}.
+			SetDefaultTTL(trackerCacheTTL)),
+		trackerWarmupPending: make(map[string]struct{}),
 	}
 
 	// Initialize sync manager with default options
@@ -125,7 +139,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 			Int("instanceID", instanceID).
 			Str("host", instanceHost).
 			Str("webAPIVersion", webAPIVersion).
-			Msg("qBittorrent instance does not support includeTrackers; tracker status filters will be disabled")
+			Msg("qBittorrent instance does not support includeTrackers; using fallback tracker queries for status detection")
 	}
 
 	return client, nil
@@ -208,41 +222,227 @@ func (c *Client) GetSyncManager() *qbt.SyncManager {
 	return c.syncManager
 }
 
-func (c *Client) getCachedTrackerMap(ctx context.Context) (map[string][]qbt.TorrentTracker, error) {
+func (c *Client) getTrackersForHashes(ctx context.Context, hashes []string, allowFetch bool, fetchLimit int) (map[string][]qbt.TorrentTracker, []string, error) {
 	c.mu.RLock()
 	cache := c.trackerCache
 	c.mu.RUnlock()
 
-	if !c.includeTrackers {
-		return nil, fmt.Errorf("instance does not support includeTrackers")
+	if cache == nil || len(hashes) == 0 {
+		return map[string][]qbt.TorrentTracker{}, nil, nil
 	}
 
-	if cache == nil {
-		return nil, fmt.Errorf("tracker cache not initialized")
-	}
+	deduped := deduplicateHashes(hashes)
+	results := make(map[string][]qbt.TorrentTracker, len(deduped))
+	missing := make([]string, 0, len(deduped))
 
-	if cached, ok := cache.Get("all"); ok {
-		return cached, nil
-	}
-
-	trackerData, err := c.Client.GetTorrentsCtx(ctx, qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll, IncludeTrackers: true})
-	if err != nil {
-		return nil, err
-	}
-
-	trackerMap := make(map[string][]qbt.TorrentTracker, len(trackerData))
-	for i := range trackerData {
-		if len(trackerData[i].Trackers) == 0 {
+	for _, hash := range deduped {
+		if trackers, ok := cache.Get(hash); ok {
+			results[hash] = trackers
 			continue
 		}
-		trackerMap[trackerData[i].Hash] = trackerData[i].Trackers
+		missing = append(missing, hash)
 	}
 
-	cache.Set("all", trackerMap, ttlcache.DefaultTTL)
-	return trackerMap, nil
+	if !allowFetch || len(missing) == 0 {
+		return results, missing, nil
+	}
+
+	toFetch := missing
+	remaining := make([]string, 0)
+	if fetchLimit > 0 && len(toFetch) > fetchLimit {
+		remaining = append(remaining, toFetch[fetchLimit:]...)
+		toFetch = toFetch[:fetchLimit]
+	}
+
+	fetched, err := c.fetchAndCacheTrackers(ctx, toFetch)
+	for hash, trackers := range fetched {
+		results[hash] = trackers
+	}
+
+	for _, hash := range toFetch {
+		if _, ok := fetched[hash]; !ok {
+			remaining = append(remaining, hash)
+		}
+	}
+
+	return results, remaining, err
 }
 
-func (c *Client) invalidateTrackerCache() {
+func (c *Client) fetchAndCacheTrackers(ctx context.Context, hashes []string) (map[string][]qbt.TorrentTracker, error) {
+	hashes = deduplicateHashes(hashes)
+	if len(hashes) == 0 {
+		return map[string][]qbt.TorrentTracker{}, nil
+	}
+
+	var (
+		fetched map[string][]qbt.TorrentTracker
+		err     error
+	)
+
+	if c.includeTrackers {
+		fetched, err = c.fetchTrackersViaInclude(ctx, hashes)
+	} else {
+		fetcher := c.ensureTrackerFetcher()
+		fetched, err = fetcher.Fetch(ctx, hashes)
+	}
+
+	if len(fetched) > 0 {
+		c.mu.RLock()
+		cache := c.trackerCache
+		c.mu.RUnlock()
+		if cache != nil {
+			for hash, trackers := range fetched {
+				cache.Set(hash, trackers, ttlcache.DefaultTTL)
+			}
+		}
+	}
+
+	return fetched, err
+}
+
+func (c *Client) fetchTrackersViaInclude(ctx context.Context, hashes []string) (map[string][]qbt.TorrentTracker, error) {
+	if len(hashes) == 0 {
+		return map[string][]qbt.TorrentTracker{}, nil
+	}
+
+	result := make(map[string][]qbt.TorrentTracker, len(hashes))
+	const chunkSize = 50
+	var firstErr error
+
+	for start := 0; start < len(hashes); start += chunkSize {
+		end := start + chunkSize
+		if end > len(hashes) {
+			end = len(hashes)
+		}
+
+		opts := qbt.TorrentFilterOptions{Hashes: hashes[start:end], IncludeTrackers: true}
+		torrents, err := c.Client.GetTorrentsCtx(ctx, opts)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+
+		for _, torrent := range torrents {
+			result[torrent.Hash] = torrent.Trackers
+		}
+		for _, hash := range opts.Hashes {
+			if _, ok := result[hash]; !ok {
+				result[hash] = nil
+			}
+		}
+	}
+
+	return result, firstErr
+}
+
+func (c *Client) ensureTrackerFetcher() *qbt.TrackerFetcher {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.trackerFetcher == nil {
+		c.trackerFetcher = qbt.NewTrackerFetcher(c.Client, qbt.WithTrackerFetcherConcurrency(4))
+	}
+	return c.trackerFetcher
+}
+
+func (c *Client) scheduleTrackerWarmup(hashes []string, batchSize int) {
+	hashes = deduplicateHashes(hashes)
+	if len(hashes) == 0 {
+		return
+	}
+
+	c.mu.RLock()
+	cache := c.trackerCache
+	c.mu.RUnlock()
+
+	pending := make([]string, 0, len(hashes))
+	for _, hash := range hashes {
+		if cache != nil {
+			if _, ok := cache.Get(hash); ok {
+				continue
+			}
+		}
+		pending = append(pending, hash)
+	}
+
+	if len(pending) == 0 {
+		return
+	}
+
+	c.trackerWarmupMu.Lock()
+	filtered := make([]string, 0, len(pending))
+	for _, hash := range pending {
+		if _, exists := c.trackerWarmupPending[hash]; exists {
+			continue
+		}
+		c.trackerWarmupPending[hash] = struct{}{}
+		filtered = append(filtered, hash)
+	}
+	c.trackerWarmupMu.Unlock()
+
+	if len(filtered) == 0 {
+		return
+	}
+
+	if batchSize <= 0 {
+		batchSize = trackerWarmupBatchSize
+	}
+
+	go c.runTrackerWarmup(filtered, batchSize)
+}
+
+func (c *Client) runTrackerWarmup(hashes []string, batchSize int) {
+	defer func() {
+		c.trackerWarmupMu.Lock()
+		for _, hash := range hashes {
+			delete(c.trackerWarmupPending, hash)
+		}
+		c.trackerWarmupMu.Unlock()
+	}()
+
+	for start := 0; start < len(hashes); start += batchSize {
+		end := start + batchSize
+		if end > len(hashes) {
+			end = len(hashes)
+		}
+
+		batch := hashes[start:end]
+		ctx, cancel := context.WithTimeout(context.Background(), trackerWarmupTimeout)
+		if _, err := c.fetchAndCacheTrackers(ctx, batch); err != nil {
+			log.Debug().Err(err).Int("batch", len(batch)).Msg("tracker warmup batch failed")
+		}
+		cancel()
+
+		if end < len(hashes) {
+			time.Sleep(trackerWarmupDelay)
+		}
+	}
+}
+
+func deduplicateHashes(hashes []string) []string {
+	if len(hashes) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]struct{}, len(hashes))
+	unique := make([]string, 0, len(hashes))
+	for _, hash := range hashes {
+		hash = strings.TrimSpace(hash)
+		if hash == "" {
+			continue
+		}
+		if _, ok := seen[hash]; ok {
+			continue
+		}
+		seen[hash] = struct{}{}
+		unique = append(unique, hash)
+	}
+
+	return unique
+}
+
+func (c *Client) invalidateTrackerCache(hashes ...string) {
 	c.mu.RLock()
 	cache := c.trackerCache
 	c.mu.RUnlock()
@@ -251,7 +451,23 @@ func (c *Client) invalidateTrackerCache() {
 		return
 	}
 
-	cache.Delete("all")
+	if len(hashes) == 0 {
+		for _, key := range cache.GetKeys() {
+			if key == "" {
+				continue
+			}
+			cache.Delete(key)
+		}
+		return
+	}
+
+	for _, hash := range hashes {
+		hash = strings.TrimSpace(hash)
+		if hash == "" {
+			continue
+		}
+		cache.Delete(hash)
+	}
 }
 
 func (c *Client) StartSyncManager(ctx context.Context) error {
