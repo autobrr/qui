@@ -125,6 +125,7 @@ export interface TorrentStats {
   error: number
   totalDownloadSpeed?: number
   totalUploadSpeed?: number
+  totalSize?: number
 }
 
 export interface CacheMetadata {

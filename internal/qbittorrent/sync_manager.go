@@ -140,14 +140,15 @@ type TorrentResponse struct {
 
 // TorrentStats represents aggregated torrent statistics
 type TorrentStats struct {
-	Total              int `json:"total"`
-	Downloading        int `json:"downloading"`
-	Seeding            int `json:"seeding"`
-	Paused             int `json:"paused"`
-	Error              int `json:"error"`
-	Checking           int `json:"checking"`
-	TotalDownloadSpeed int `json:"totalDownloadSpeed"`
-	TotalUploadSpeed   int `json:"totalUploadSpeed"`
+	Total              int   `json:"total"`
+	Downloading        int   `json:"downloading"`
+	Seeding            int   `json:"seeding"`
+	Paused             int   `json:"paused"`
+	Error              int   `json:"error"`
+	Checking           int   `json:"checking"`
+	TotalDownloadSpeed int   `json:"totalDownloadSpeed"`
+	TotalUploadSpeed   int   `json:"totalUploadSpeed"`
+	TotalSize          int64 `json:"totalSize"`
 }
 
 // SyncManager manages torrent operations
@@ -1887,6 +1888,9 @@ func (sm *SyncManager) calculateStats(torrents []qbt.Torrent) *TorrentStats {
 		// Add speeds
 		stats.TotalDownloadSpeed += int(torrent.DlSpeed)
 		stats.TotalUploadSpeed += int(torrent.UpSpeed)
+
+		// Add size
+		stats.TotalSize += torrent.Size
 
 		// Count states
 		switch torrent.State {
