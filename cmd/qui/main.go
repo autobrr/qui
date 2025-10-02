@@ -438,6 +438,8 @@ func (app *Application) runServer() {
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to prepare tracker icon cache")
 	}
+	// Make tracker icon service globally accessible for background fetching
+	trackericons.SetGlobal(trackerIconService)
 
 	// init polar client
 	polarClient := polar.NewClient(polar.WithOrganizationID(app.polarOrgID), polar.WithEnvironment(os.Getenv("QUI__POLAR_ENVIRONMENT")), polar.WithUserAgent(buildinfo.UserAgent))
@@ -481,7 +483,7 @@ func (app *Application) runServer() {
 	defer clientPool.Close()
 
 	// Initialize managers
-	syncManager := qbittorrent.NewSyncManager(clientPool, trackerIconService)
+	syncManager := qbittorrent.NewSyncManager(clientPool)
 
 	updateService := update.NewService(log.Logger, cfg.Config.CheckForUpdates, buildinfo.Version, buildinfo.UserAgent)
 	cfg.RegisterReloadListener(func(conf *domain.Config) {

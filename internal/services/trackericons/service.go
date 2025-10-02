@@ -45,6 +45,9 @@ var (
 	ErrIconNotFound = errors.New("tracker icon not found")
 	// ErrInvalidTrackerHost is returned when the requested tracker host is invalid.
 	ErrInvalidTrackerHost = errors.New("invalid tracker host")
+
+	globalService *Service
+	globalMu      sync.RWMutex
 )
 
 // Service handles fetching and caching tracker icons on disk.
@@ -83,6 +86,47 @@ func NewService(dataDir, userAgent string) (*Service, error) {
 	}
 
 	return svc, nil
+}
+
+func SetGlobal(svc *Service) {
+	globalMu.Lock()
+	globalService = svc
+	globalMu.Unlock()
+}
+
+func QueueFetch(host, trackerURL string) {
+	globalMu.RLock()
+	svc := globalService
+	globalMu.RUnlock()
+
+	if svc == nil {
+		return
+	}
+
+	sanitized := sanitizeHost(host)
+	if sanitized == "" {
+		return
+	}
+
+	// Check if already cached
+	path := svc.iconPath(sanitized)
+	if _, err := os.Stat(path); err == nil {
+		return
+	}
+
+	// Check cooldown
+	if !svc.canAttempt(sanitized) {
+		return
+	}
+
+	// Queue background fetch
+	go func(h string, tracker string) {
+		ctx, cancel := context.WithTimeout(context.Background(), fetchTimeout)
+		defer cancel()
+		if _, err := svc.GetIcon(ctx, h, tracker); err != nil {
+			// Intentionally ignore errors here; they are tracked internally for cooldown.
+		}
+	}(sanitized, trackerURL)
 }
 
 // ListIcons returns all cached tracker icons as base64-encoded data URLs.
