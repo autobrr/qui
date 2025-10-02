@@ -26,7 +26,7 @@ var urlCache = ttlcache.New(ttlcache.Options[string, string]{}.SetDefaultTTL(5 *
 
 // TrackerIconFetcher queues tracker icon fetch requests.
 type TrackerIconFetcher interface {
-	QueueFetch(host, trackerURL string)
+	GetIcon(ctx context.Context, host, trackerURL string) (string, error)
 }
 
 // CacheMetadata provides information about cache state
@@ -715,7 +715,11 @@ func (sm *SyncManager) queueTrackerIcon(trackerURL string) {
 		return
 	}
 
-	sm.trackerIcons.QueueFetch(domain, trackerURL)
+	go func(host, url string) {
+		if _, err := sm.trackerIcons.GetIcon(context.Background(), host, url); err != nil {
+			// Intentionally ignore errors here; they are tracked internally by the tracker icon service.
+		}
+	}(domain, trackerURL)
 }
 
 // recordTrackerTransition records temporary exclusions for the old domain while
@@ -863,10 +867,8 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(client *Client, a
 			}
 		}
 
-		if trackerDomainSources != nil {
-			for domain, trackerURL := range trackerDomainSources {
-				sm.trackerIcons.QueueFetch(domain, trackerURL)
-			}
+		for _, trackerURL := range trackerDomainSources {
+			sm.queueTrackerIcon(trackerURL)
 		}
 
 		var domainsToClear []string

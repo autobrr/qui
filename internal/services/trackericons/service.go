@@ -85,32 +85,6 @@ func NewService(dataDir, userAgent string) (*Service, error) {
 	return svc, nil
 }
 
-// QueueFetch schedules a background fetch for the given tracker host. trackerURL is optional
-// and may provide a more specific origin URL to discover icons from.
-func (s *Service) QueueFetch(host, trackerURL string) {
-	sanitized := sanitizeHost(host)
-	if sanitized == "" {
-		return
-	}
-
-	path := s.iconPath(sanitized)
-	if _, err := os.Stat(path); err == nil {
-		return
-	}
-
-	if !s.canAttempt(sanitized) {
-		return
-	}
-
-	go func(h string, tracker string) {
-		ctx, cancel := context.WithTimeout(context.Background(), fetchTimeout)
-		defer cancel()
-		if _, err := s.GetIcon(ctx, h, tracker); err != nil {
-			// Intentionally ignore errors here; they are tracked internally for cooldown.
-		}
-	}(sanitized, trackerURL)
-}
-
 // GetIcon ensures an icon is available for the host (fetching if necessary) and returns the file path.
 func (s *Service) GetIcon(ctx context.Context, host, trackerURL string) (string, error) {
 	sanitized := sanitizeHost(host)
