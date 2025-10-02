@@ -24,7 +24,7 @@ import { SearchInput } from "@/components/ui/SearchInput"
 import { useDebounce } from "@/hooks/useDebounce"
 import { usePersistedAccordion } from "@/hooks/usePersistedAccordion"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
-import { getApiBaseUrl } from "@/lib/base-url"
+import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { getLinuxCount, LINUX_CATEGORIES, LINUX_TAGS, LINUX_TRACKERS, useIncognitoMode } from "@/lib/incognito"
 import type { Category } from "@/types"
 import { useVirtualizer } from "@tanstack/react-virtual"
@@ -125,23 +125,23 @@ const TORRENT_STATES: Array<{ value: string; label: string; icon: LucideIcon }> 
 
 interface TrackerIconImageProps {
   tracker: string
-  iconBase: string
+  trackerIcons?: Record<string, string>
 }
 
-const TrackerIconImage = memo(({ tracker, iconBase }: TrackerIconImageProps) => {
+const TrackerIconImage = memo(({ tracker, trackerIcons }: TrackerIconImageProps) => {
   const [hasError, setHasError] = useState(false)
 
   useEffect(() => {
     setHasError(false)
-  }, [tracker, iconBase])
+  }, [tracker, trackerIcons])
 
   const trimmed = tracker.trim()
   const fallbackLetter = trimmed ? trimmed.charAt(0).toUpperCase() : "#"
-  const src = `${iconBase}/${encodeURIComponent(tracker)}`
+  const src = trackerIcons?.[trimmed] ?? null
 
   return (
     <div className="flex h-4 w-4 items-center justify-center rounded-sm border border-border/40 bg-muted text-[10px] font-medium uppercase leading-none">
-      {!hasError ? (
+      {src && !hasError ? (
         <img
           src={src}
           alt=""
@@ -173,7 +173,7 @@ const FilterSidebarComponent = ({
 }: FilterSidebarProps) => {
   // Use incognito mode hook
   const [incognitoMode] = useIncognitoMode()
-  const trackerIconBase = useMemo(() => `${getApiBaseUrl()}/tracker-icons`, [])
+  const { data: trackerIcons } = useTrackerIcons()
 
   // Use compact view state hook
   const { viewMode, cycleViewMode } = usePersistedCompactViewState("normal")
@@ -1015,7 +1015,7 @@ const FilterSidebarComponent = ({
                                       checked={selectedFilters.trackers.includes(tracker)}
                                       onCheckedChange={() => handleTrackerToggle(tracker)}
                                     />
-                                    <TrackerIconImage tracker={tracker} iconBase={trackerIconBase} />
+                                    <TrackerIconImage tracker={tracker} trackerIcons={trackerIcons} />
                                     <span className="text-sm flex-1 truncate w-8" title={tracker}>
                                       {tracker}
                                     </span>
@@ -1051,7 +1051,7 @@ const FilterSidebarComponent = ({
                               checked={selectedFilters.trackers.includes(tracker)}
                               onCheckedChange={() => handleTrackerToggle(tracker)}
                             />
-                            <TrackerIconImage tracker={tracker} iconBase={trackerIconBase} />
+                            <TrackerIconImage tracker={tracker} trackerIcons={trackerIcons} />
                             <span className="text-sm flex-1 truncate w-8" title={tracker}>
                               {tracker}
                             </span>

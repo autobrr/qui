@@ -85,6 +85,34 @@ func NewService(dataDir, userAgent string) (*Service, error) {
 	return svc, nil
 }
 
+// ListIcons returns all cached tracker icons as base64-encoded data URLs.
+func (s *Service) ListIcons(ctx context.Context) (map[string]string, error) {
+	entries, err := os.ReadDir(s.iconDir)
+	if err != nil {
+		return nil, fmt.Errorf("read icon directory: %w", err)
+	}
+
+	icons := make(map[string]string)
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".png") {
+			continue
+		}
+
+		iconPath := filepath.Join(s.iconDir, entry.Name())
+		data, err := os.ReadFile(iconPath)
+		if err != nil {
+			continue
+		}
+
+		// Extract tracker name from filename (remove .png extension)
+		trackerName := strings.TrimSuffix(entry.Name(), ".png")
+		encoded := base64.StdEncoding.EncodeToString(data)
+		icons[trackerName] = "data:image/png;base64," + encoded
+	}
+
+	return icons, nil
+}
+
 // GetIcon ensures an icon is available for the host (fetching if necessary) and returns the file path.
 func (s *Service) GetIcon(ctx context.Context, host, trackerURL string) (string, error) {
 	sanitized := sanitizeHost(host)

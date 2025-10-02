@@ -68,20 +68,19 @@ function calculateMinWidth(text: string, padding: number = 48): number {
 
 interface TrackerIconCellProps {
   tracker: string | undefined
-  trackerIconBase?: string
+  trackerIcons?: Record<string, string>
 }
 
 // eslint-disable-next-line react-refresh/only-export-components
-const TrackerIconCell = memo(({ tracker, trackerIconBase }: TrackerIconCellProps) => {
+const TrackerIconCell = memo(({ tracker, trackerIcons }: TrackerIconCellProps) => {
   const [hasError, setHasError] = useState(false)
 
   const { src, title, fallback } = useMemo(() => {
-    if (!tracker || !trackerIconBase) {
-      const trimmed = tracker?.trim() ?? ""
+    if (!tracker) {
       return {
         src: null as string | null,
-        title: trimmed,
-        fallback: trimmed ? trimmed.charAt(0).toUpperCase() : "#",
+        title: "",
+        fallback: "#",
       }
     }
 
@@ -89,23 +88,20 @@ const TrackerIconCell = memo(({ tracker, trackerIconBase }: TrackerIconCellProps
     const fallbackLetter = trimmed ? trimmed.charAt(0).toUpperCase() : "#"
 
     let host = trimmed
-    let iconSrc: string | null = null
     try {
       if (trimmed.includes("://")) {
         const url = new URL(trimmed)
         host = url.hostname
-        iconSrc = `${trackerIconBase}/${encodeURIComponent(host)}`
-        iconSrc += `?url=${encodeURIComponent(trimmed)}`
-      } else {
-        host = trimmed
-        iconSrc = `${trackerIconBase}/${encodeURIComponent(host)}`
       }
     } catch {
-      iconSrc = null
+      // Keep host as trimmed value if URL parsing fails
     }
 
+    // Look up icon from cached tracker icons
+    const iconSrc = trackerIcons?.[host] ?? null
+
     return { src: iconSrc, title: host, fallback: fallbackLetter }
-  }, [tracker, trackerIconBase])
+  }, [tracker, trackerIcons])
 
   useEffect(() => {
     setHasError(false)
@@ -148,7 +144,7 @@ export const createColumns = (
     excludedFromSelectAll?: Set<string>
   },
   speedUnit: SpeedUnit = "bytes",
-  trackerIconBase?: string,
+  trackerIcons?: Record<string, string>,
   formatTimestamp?: (timestamp: number) => string,
   instancePreferences?: AppPreferences | null
 ): ColumnDef<Torrent>[] => [
@@ -521,7 +517,7 @@ export const createColumns = (
       return (
         <TrackerIconCell
           tracker={tracker}
-          trackerIconBase={trackerIconBase}
+          trackerIcons={trackerIcons}
         />
       )
     },

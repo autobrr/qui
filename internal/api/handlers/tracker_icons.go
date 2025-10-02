@@ -5,19 +5,15 @@ package handlers
 
 import (
 	"context"
-	"errors"
+	"encoding/json"
 	"net/http"
-	"strings"
 	"time"
-
-	"github.com/go-chi/chi/v5"
-
-	"github.com/autobrr/qui/internal/services/trackericons"
 )
 
 // TrackerIconProvider defines the behaviour required to serve tracker icons.
 type TrackerIconProvider interface {
 	GetIcon(ctx context.Context, host, trackerURL string) (string, error)
+	ListIcons(ctx context.Context) (map[string]string, error)
 }
 
 // TrackerIconHandler serves cached tracker favicons via the API.
@@ -30,37 +26,22 @@ func NewTrackerIconHandler(service TrackerIconProvider) *TrackerIconHandler {
 	return &TrackerIconHandler{service: service}
 }
 
-// GetTrackerIcon resolves or fetches a tracker icon and streams it back to the client.
-func (h *TrackerIconHandler) GetTrackerIcon(w http.ResponseWriter, r *http.Request) {
-	tracker := strings.TrimSpace(chi.URLParam(r, "tracker"))
-	if tracker == "" {
-		http.Error(w, "tracker parameter is required", http.StatusBadRequest)
-		return
-	}
-
-	trackerURL := r.URL.Query().Get("url")
-
-	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+// GetTrackerIcons returns all cached tracker icons as a JSON map.
+func (h *TrackerIconHandler) GetTrackerIcons(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	iconPath, err := h.service.GetIcon(ctx, tracker, trackerURL)
+	icons, err := h.service.ListIcons(ctx)
 	if err != nil {
-		switch {
-		case errors.Is(err, trackericons.ErrInvalidTrackerHost):
-			http.Error(w, "invalid tracker host", http.StatusBadRequest)
-		case errors.Is(err, trackericons.ErrIconNotFound):
-			http.NotFound(w, r)
-		case errors.Is(err, context.DeadlineExceeded):
-			http.Error(w, "tracker icon fetch timed out", http.StatusGatewayTimeout)
-		case errors.Is(err, context.Canceled):
-			http.Error(w, "tracker icon fetch canceled", http.StatusRequestTimeout)
-		default:
-			http.Error(w, "failed to fetch tracker icon", http.StatusBadGateway)
-		}
+		http.Error(w, "failed to list tracker icons", http.StatusInternalServerError)
 		return
 	}
 
-	w.Header().Set("Content-Type", "image/png")
-	w.Header().Set("Cache-Control", "public, max-age=86400")
-	http.ServeFile(w, r, iconPath)
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+
+	if err := json.NewEncoder(w).Encode(icons); err != nil {
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+		return
+	}
 }

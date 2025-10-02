@@ -206,7 +206,7 @@ func (s *Server) Handler() *chi.Mux {
 			r.Use(middleware.IsAuthenticated(s.authService, s.sessionManager))
 
 			if trackerIconHandler != nil {
-				r.Get("/tracker-icons/{tracker}", trackerIconHandler.GetTrackerIcon)
+				r.Get("/tracker-icons", trackerIconHandler.GetTrackerIcons)
 			}
 
 			// Auth routes
