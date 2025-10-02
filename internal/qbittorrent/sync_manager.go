@@ -989,7 +989,11 @@ func (sm *SyncManager) countTorrentStatuses(torrent qbt.Torrent, counts map[stri
 
 func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(ctx context.Context, client *Client, allTorrents []qbt.Torrent, mainData *qbt.MainData, trackerMap map[string][]qbt.TorrentTracker) (*TorrentCounts, map[string][]qbt.TorrentTracker) {
 	var enriched []qbt.Torrent
-	enriched, trackerMap, _ = sm.enrichTorrentsWithTrackerData(ctx, client, allTorrents, trackerMap, trackerFetchChunkForCounts, true)
+	countsFetchLimit := trackerFetchChunkForCounts
+	if client != nil && client.includeTrackers {
+		countsFetchLimit = trackerFetchUnlimited
+	}
+	enriched, trackerMap, _ = sm.enrichTorrentsWithTrackerData(ctx, client, allTorrents, trackerMap, countsFetchLimit, true)
 	allTorrents = enriched
 
 	// Initialize counts
@@ -1226,7 +1230,11 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 	torrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{})
 
 	// Enrich torrents with tracker data so downstream calculations can inspect tracker errors
-	if enriched, _, _ := sm.enrichTorrentsWithTrackerData(ctx, client, torrents, nil, trackerFetchChunkForCounts, true); len(enriched) > 0 {
+	statsFetchLimit := trackerFetchChunkForCounts
+	if client != nil && client.includeTrackers {
+		statsFetchLimit = trackerFetchUnlimited
+	}
+	if enriched, _, _ := sm.enrichTorrentsWithTrackerData(ctx, client, torrents, nil, statsFetchLimit, true); len(enriched) > 0 {
 		torrents = enriched
 	}
 
@@ -1585,7 +1593,8 @@ func (sm *SyncManager) applyManualFilters(ctx context.Context, client *Client, t
 	if needTrackerStatus {
 		var enriched []qbt.Torrent
 		var missing []string
-		enriched, trackerMap, missing = sm.enrichTorrentsWithTrackerData(ctx, client, torrents, trackerMap, trackerFetchUnlimited, false)
+		allowTrackerFetch := client != nil && client.includeTrackers
+		enriched, trackerMap, missing = sm.enrichTorrentsWithTrackerData(ctx, client, torrents, trackerMap, trackerFetchUnlimited, allowTrackerFetch)
 		if len(missing) > 0 {
 			pendingTrackerHashes = append(pendingTrackerHashes, missing...)
 		}

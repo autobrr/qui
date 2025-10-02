@@ -135,7 +135,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 		Msg("qBittorrent client created successfully")
 
 	if !includeTrackers {
-		log.Warn().
+		log.Debug().
 			Int("instanceID", instanceID).
 			Str("host", instanceHost).
 			Str("webAPIVersion", webAPIVersion).
