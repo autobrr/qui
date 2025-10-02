@@ -489,23 +489,24 @@ func sanitizeHost(host string) string {
 	return host
 }
 
+// safeFilename converts a host to a safe filename using filepath stdlib.
 func safeFilename(host string) string {
-	var b strings.Builder
-	for _, r := range host {
-		switch {
-		case r >= 'a' && r <= 'z':
-			b.WriteRune(r)
-		case r >= '0' && r <= '9':
-			b.WriteRune(r)
-		case r == '.' || r == '-' || r == '_':
-			b.WriteRune(r)
-		case r == ':':
-			b.WriteRune('_')
-		default:
-			b.WriteRune('_')
-		}
+	// Use filepath.Base to handle any remaining path components
+	base := filepath.Base(host)
+
+	// Clean it to remove any path traversal attempts
+	cleaned := filepath.Clean(base)
+
+	// Ensure no directory separators remain
+	cleaned = strings.ReplaceAll(cleaned, string(filepath.Separator), "_")
+	cleaned = strings.ReplaceAll(cleaned, "..", "_")
+
+	// Handle edge cases
+	if cleaned == "." || cleaned == "" {
+		return "_invalid_"
 	}
-	return b.String()
+
+	return cleaned
 }
 
 func generateHostCandidates(host string) []string {
