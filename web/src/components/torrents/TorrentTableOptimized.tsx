@@ -505,7 +505,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       onRowSelection: handleRowSelection,
       isAllSelected,
       excludedFromSelectAll,
-    }, speedUnit, formatTimestamp, preferences, trackerIconBase),
+    }, speedUnit, trackerIconBase, formatTimestamp, preferences),
     [incognitoMode, speedUnit, formatTimestamp, trackerIconBase, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, isAllSelected, excludedFromSelectAll, preferences]
   )
 

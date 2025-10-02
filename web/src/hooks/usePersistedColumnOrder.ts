@@ -24,16 +24,27 @@ export function usePersistedColumnOrder(
       return [...order]
     }
 
-    const stateIndex = order.indexOf("state")
-    const dlspeedIndex = order.indexOf("dlspeed")
+    const result = [...order]
 
-    if (stateIndex !== -1 && dlspeedIndex !== -1 && dlspeedIndex >= stateIndex) {
-      const result = [...order]
-      result.splice(stateIndex + 1, 0, ...missingColumns)
-      return result
-    }
+    missingColumns.forEach(columnId => {
+      if (columnId === "tracker_icon") {
+        const priorityIndex = result.indexOf("priority")
+        if (priorityIndex !== -1) {
+          result.splice(priorityIndex + 1, 0, columnId)
+          return
+        }
+      }
 
-    return [...order, ...missingColumns]
+      const stateIndex = result.indexOf("state")
+      const dlspeedIndex = result.indexOf("dlspeed")
+      if (stateIndex !== -1 && dlspeedIndex !== -1 && columnId !== "tracker_icon") {
+        result.splice(stateIndex + 1, 0, columnId)
+      } else {
+        result.push(columnId)
+      }
+    })
+
+    return result
   }
 
   const loadOrder = (): ColumnOrderState => {
@@ -41,37 +52,7 @@ export function usePersistedColumnOrder(
       const stored = localStorage.getItem(storageKey)
       if (stored) {
         const parsed = JSON.parse(stored)
-<<<<<<< HEAD
-        // Validate that it's an array of strings
-        if (Array.isArray(parsed) && parsed.every(item => typeof item === "string")) {
-          // Merge missing columns from defaultOrder into parsed order
-          // This handles cases where new columns are added to the app
-          const result = [...parsed]
-          const missingColumns = defaultOrder.filter(col => !parsed.includes(col))
-          if (missingColumns.length > 0) {
-            missingColumns.forEach(columnId => {
-              if (columnId === "tracker_icon") {
-                const priorityIndex = result.indexOf("priority")
-                if (priorityIndex !== -1) {
-                  result.splice(priorityIndex + 1, 0, columnId)
-                  return
-                }
-              }
-
-              const stateIndex = result.indexOf("state")
-              const dlspeedIndex = result.indexOf("dlspeed")
-              if (stateIndex !== -1 && dlspeedIndex !== -1 && columnId !== "tracker_icon") {
-                result.splice(stateIndex + 1, 0, columnId)
-              } else {
-                result.push(columnId)
-              }
-            })
-          }
-          return result
-        }
-=======
         return mergeWithDefaults(parsed)
->>>>>>> main
       }
     } catch (error) {
       console.error("Failed to load column order from localStorage:", error)
