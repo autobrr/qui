@@ -69,7 +69,7 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
   const form = useForm({
     defaultValues: {
       sourcePath: "",
-      private: false,
+      private: true,
       trackers: "",
       comment: "",
       source: "",
@@ -153,7 +153,7 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
                   required
                 />
                 <p className="text-sm text-muted-foreground">
-                  Full path on the server where qBittorrent is running
+                  Full path on the server where qBittorrent is running. Windows users: use double backslashes (e.g., C:\\Data\\folder)
                 </p>
               </div>
             )}
