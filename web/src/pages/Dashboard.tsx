@@ -83,14 +83,11 @@ function useAllInstanceStats(instances: InstanceResponse[]) {
 
 function InstanceCard({
   instance,
-  isAdvancedMetricsOpen,
-  setIsAdvancedMetricsOpen,
 }: {
   instance: InstanceResponse
-  isAdvancedMetricsOpen: boolean
-  setIsAdvancedMetricsOpen: (open: boolean) => void
 }) {
   const [showSpeedLimitDialog, setShowSpeedLimitDialog] = useState(false)
+  const [isAdvancedMetricsOpen, setIsAdvancedMetricsOpen] = useState(false)
 
   // Use shared TorrentResponse cache for optimized performance
   const { data: torrentData, isLoading, error } = useQuery<TorrentResponse>({
@@ -255,8 +252,8 @@ function InstanceCard({
             </div>
           ) : (
             /* Show normal stats */
-            <div className="space-y-3">
-              <div className="mb-6">
+            <div className="space-y-2 sm:space-y-3">
+              <div className="mb-3 sm:mb-6">
                 <div className="flex items-center justify-center mb-1">
                   <span className="flex-1 text-center text-xs text-muted-foreground">Downloading</span>
                   <span className="flex-1 text-center text-xs text-muted-foreground">Active</span>
@@ -264,40 +261,42 @@ function InstanceCard({
                   <span className="flex-1 text-center text-xs text-muted-foreground">Total</span>
                 </div>
                 <div className="flex items-center justify-center">
-                  <span className="flex-1 text-center text-lg font-semibold">
+                  <span className="flex-1 text-center text-base sm:text-lg font-semibold">
                     {torrentCounts?.status?.downloading || 0}
                   </span>
-                  <span className="flex-1 text-center text-lg font-semibold">{torrentCounts?.status?.active || 0}</span>
-                  <span className={`flex-1 text-center text-lg font-semibold ${(torrentCounts?.status?.errored || 0) > 0 ? "text-destructive" : ""}`}>
+                  <span className="flex-1 text-center text-base sm:text-lg font-semibold">{torrentCounts?.status?.active || 0}</span>
+                  <span className={`flex-1 text-center text-base sm:text-lg font-semibold ${(torrentCounts?.status?.errored || 0) > 0 ? "text-destructive" : ""}`}>
                     {torrentCounts?.status?.errored || 0}
                   </span>
-                  <span className="flex-1 text-center text-lg font-semibold">{torrentCounts?.total || 0}</span>
+                  <span className="flex-1 text-center text-base sm:text-lg font-semibold">{torrentCounts?.total || 0}</span>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 text-xs">
-                <Download className="h-3 w-3 text-muted-foreground" />
-                <span className="text-muted-foreground">Download</span>
-                <span className="ml-auto font-medium">{formatSpeedWithUnit(stats?.totalDownloadSpeed || 0, speedUnit)}</span>
-              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-1 gap-1 sm:gap-2">
+                <div className="flex items-center gap-2 text-xs">
+                  <Download className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                  <span className="text-muted-foreground">Download</span>
+                  <span className="ml-auto font-medium truncate">{formatSpeedWithUnit(stats?.totalDownloadSpeed || 0, speedUnit)}</span>
+                </div>
 
-              <div className="flex items-center gap-2 text-xs">
-                <Upload className="h-3 w-3 text-muted-foreground" />
-                <span className="text-muted-foreground">Upload</span>
-                <span className="ml-auto font-medium">{formatSpeedWithUnit(stats?.totalUploadSpeed || 0, speedUnit)}</span>
-              </div>
+                <div className="flex items-center gap-2 text-xs">
+                  <Upload className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                  <span className="text-muted-foreground">Upload</span>
+                  <span className="ml-auto font-medium truncate">{formatSpeedWithUnit(stats?.totalUploadSpeed || 0, speedUnit)}</span>
+                </div>
 
-              <div className="flex items-center gap-2 text-xs">
-                <HardDrive className="h-3 w-3 text-muted-foreground" />
-                <span className="text-muted-foreground">Total Size</span>
-                <span className="ml-auto font-medium">{formatBytes(stats?.totalSize || 0)}</span>
+                <div className="flex items-center gap-2 text-xs">
+                  <HardDrive className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                  <span className="text-muted-foreground">Total Size</span>
+                  <span className="ml-auto font-medium truncate">{formatBytes(stats?.totalSize || 0)}</span>
+                </div>
               </div>
 
               {serverState?.free_space_on_disk !== undefined && serverState.free_space_on_disk > 0 && (
-                <div className="flex items-center gap-2 text-xs">
-                  <HardDrive className="h-3 w-3 text-muted-foreground" />
+                <div className="flex items-center gap-2 text-xs mt-1 sm:mt-2">
+                  <HardDrive className="h-3 w-3 text-muted-foreground flex-shrink-0" />
                   <span className="text-muted-foreground">Free Space</span>
-                  <span className="ml-auto font-medium">{formatBytes(serverState.free_space_on_disk)}</span>
+                  <span className="ml-auto font-medium truncate">{formatBytes(serverState.free_space_on_disk)}</span>
                 </div>
               )}
 
@@ -663,7 +662,6 @@ function QuickActionsDropdown({ statsData }: { statsData: Array<{ instance: Inst
 }
 
 export function Dashboard() {
-  const [isAdvancedMetricsOpen, setIsAdvancedMetricsOpen] = useState(false)
   const { instances, isLoading } = useInstances()
   const allInstances = instances || []
 
@@ -727,13 +725,29 @@ export function Dashboard() {
           {allInstances.length > 0 && (
             <div>
               <h2 className="text-xl font-semibold mb-4">Instances</h2>
-              <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+              {/* Mobile: Vertical stack layout for all instances */}
+              <div className="block sm:hidden">
+                <div className="space-y-4">
+                  {/* Debug info - remove this after testing */}
+                  {process.env.NODE_ENV === 'development' && (
+                    <div className="fixed top-16 right-4 bg-black/80 text-white p-2 rounded text-xs z-50">
+                      Instances: {allInstances.length}
+                    </div>
+                  )}
+                  {allInstances.map(instance => (
+                    <InstanceCard
+                      key={instance.id}
+                      instance={instance}
+                    />
+                  ))}
+                </div>
+              </div>
+              {/* Desktop: Grid layout */}
+              <div className="hidden sm:grid gap-4 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
                 {allInstances.map(instance => (
                   <InstanceCard
                     key={instance.id}
                     instance={instance}
-                    isAdvancedMetricsOpen={isAdvancedMetricsOpen}
-                    setIsAdvancedMetricsOpen={setIsAdvancedMetricsOpen}
                   />
                 ))}
               </div>
