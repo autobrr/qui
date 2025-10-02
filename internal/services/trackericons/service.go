@@ -337,29 +337,45 @@ func (s *Service) fetchIconBytes(ctx context.Context, iconURL string) ([]byte, s
 }
 
 func (s *Service) writePNG(img image.Image, path string) error {
+	// Encode in memory first - fails fast without any disk I/O
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		return fmt.Errorf("encode png: %w", err)
+	}
+
+	// Create temp file for atomic write
 	tmpFile, err := os.CreateTemp(s.iconDir, "tracker-icon-*.png")
 	if err != nil {
 		return err
 	}
+	tmpName := tmpFile.Name()
+	tmpFile.Close()
 
+	// Cleanup on failure
+	var success bool
 	defer func() {
-		tmpFile.Close()
-		os.Remove(tmpFile.Name())
+		if !success {
+			os.Remove(tmpName)
+		}
 	}()
 
-	if err := png.Encode(tmpFile, img); err != nil {
+	// Write complete buffer atomically
+	if err := os.WriteFile(tmpName, buf.Bytes(), 0o644); err != nil {
 		return err
 	}
 
-	if err := tmpFile.Chmod(0o644); err != nil {
+	// Ensure final permissions are 0644 regardless of CreateTemp defaults
+	if err := os.Chmod(tmpName, 0o644); err != nil {
 		return err
 	}
 
-	if err := tmpFile.Close(); err != nil {
+	// Atomic rename to final location
+	if err := os.Rename(tmpName, path); err != nil {
 		return err
 	}
 
-	return os.Rename(tmpFile.Name(), path)
+	success = true
+	return nil
 }
 
 func (s *Service) buildBaseCandidates(host, trackerURL string) []*url.URL {
