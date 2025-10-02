@@ -22,8 +22,8 @@ import {
 } from "@/lib/incognito"
 import { formatSpeedWithUnit, type SpeedUnit } from "@/lib/speedUnits"
 import { getStateLabel } from "@/lib/torrent-state-utils"
-import { formatBytes, formatDateTime, formatDuration, getRatioColor } from "@/lib/utils"
-import type { Torrent } from "@/types"
+import { formatBytes, formatDuration, getRatioColor } from "@/lib/utils"
+import type { AppPreferences, Torrent } from "@/types"
 import type { ColumnDef } from "@tanstack/react-table"
 import { Globe, ListOrdered } from "lucide-react"
 import { memo, useEffect, useMemo, useState } from "react"
@@ -148,7 +148,9 @@ export const createColumns = (
     excludedFromSelectAll?: Set<string>
   },
   speedUnit: SpeedUnit = "bytes",
-  trackerIconBase?: string
+  trackerIconBase?: string,
+  formatTimestamp?: (timestamp: number) => string,
+  instancePreferences?: AppPreferences | null
 ): ColumnDef<Torrent>[] => [
   {
     id: "select",
@@ -319,7 +321,11 @@ export const createColumns = (
       <div className="flex items-center gap-2">
         <Progress value={row.original.progress * 100} className="w-20" />
         <span className="text-xs text-muted-foreground">
-          {Math.round(row.original.progress * 100)}%
+          {row.original.progress >= 0.99 && row.original.progress < 1 ? (
+            (Math.floor(row.original.progress * 1000) / 10).toFixed(1)
+          ) : (
+            Math.round(row.original.progress * 100)
+          )}%
         </span>
       </div>
     ),
@@ -474,7 +480,7 @@ export const createColumns = (
       }
 
       return (
-        <div className="overflow-hidden whitespace-nowrap text-sm">{formatDateTime(addedOn)}</div>
+        <div className="overflow-hidden whitespace-nowrap text-sm">{formatTimestamp ? formatTimestamp(addedOn) : new Date(addedOn * 1000).toLocaleString()}</div>
       )
     },
     size: 200,
@@ -489,7 +495,7 @@ export const createColumns = (
       }
 
       return (
-        <div className="overflow-hidden whitespace-nowrap text-sm">{formatDateTime(completionOn)}</div>
+        <div className="overflow-hidden whitespace-nowrap text-sm">{formatTimestamp ? formatTimestamp(completionOn) : new Date(completionOn * 1000).toLocaleString()}</div>
       )
     },
     size: 200,
@@ -672,7 +678,8 @@ export const createColumns = (
     header: "Ratio Limit",
     cell: ({ row }) => {
       const ratioLimit = row.original.ratio_limit
-      const displayRatioLimit = ratioLimit === -2 ? "∞" : ratioLimit.toFixed(2)
+      const instanceRatioLimit = instancePreferences?.max_ratio
+      const displayRatioLimit = ratioLimit === -2 ? (instanceRatioLimit === -1 ? "∞" : instanceRatioLimit?.toFixed(2) || "∞") :ratioLimit === -1 ? "∞" :ratioLimit.toFixed(2)
 
       return (
         <span
@@ -694,7 +701,7 @@ export const createColumns = (
       }
 
       return (
-        <div className="overflow-hidden whitespace-nowrap text-sm">{formatDateTime(lastSeenComplete)}</div>
+        <div className="overflow-hidden whitespace-nowrap text-sm">{formatTimestamp ? formatTimestamp(lastSeenComplete) : new Date(lastSeenComplete * 1000).toLocaleString()}</div>
       )
     },
     size: 200,
@@ -709,7 +716,7 @@ export const createColumns = (
       }
 
       return (
-        <div className="overflow-hidden whitespace-nowrap text-sm">{formatDateTime(lastActivity)}</div>
+        <div className="overflow-hidden whitespace-nowrap text-sm">{formatTimestamp ? formatTimestamp(lastActivity) : new Date(lastActivity * 1000).toLocaleString()}</div>
       )
     },
     size: 200,

@@ -20,7 +20,7 @@ import { getLinuxComment, getLinuxCreatedBy, getLinuxFileName, getLinuxHash, get
 import { renderTextWithLinks } from "@/lib/linkUtils"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { resolveTorrentHashes } from "@/lib/torrent-utils"
-import { formatBytes, formatDuration } from "@/lib/utils"
+import { copyTextToClipboard, formatBytes, formatDuration } from "@/lib/utils"
 import type { Torrent } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import "flag-icons/css/flag-icons.min.css"
@@ -99,8 +99,8 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
   const copyToClipboard = useCallback(async (text: string, type: string) => {
     try {
-      await navigator.clipboard.writeText(text)
-      toast.success(`${type} copied!`)
+      await copyTextToClipboard(text)
+      toast.success(`${type} copied to clipboard`)
     } catch {
       toast.error("Failed to copy to clipboard")
     }
@@ -199,13 +199,15 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   })
 
   // Handle copy peer IP:port
-  const handleCopyPeer = useCallback((peer: TorrentPeer) => {
+  const handleCopyPeer = useCallback(async (peer: TorrentPeer) => {
     const peerAddress = `${peer.ip}:${peer.port}`
-    navigator.clipboard.writeText(peerAddress).then(() => {
+    try {
+      await copyTextToClipboard(peerAddress)
       toast.success(`Copied ${peerAddress} to clipboard`)
-    }).catch(() => {
+    } catch (err) {
+      console.error("Failed to copy to clipboard:", err)
       toast.error("Failed to copy to clipboard")
-    })
+    }
   }, [])
 
   // Handle ban peer click
@@ -237,6 +239,16 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const displayInfohashV1 = incognitoMode && resolvedInfohashV1 ? incognitoHash : resolvedInfohashV1
   const displayInfohashV2 = incognitoMode && resolvedInfohashV2 ? incognitoHash : resolvedInfohashV2
   const displaySavePath = incognitoMode && properties?.save_path ? getLinuxSavePath(torrent.hash) : properties?.save_path
+
+  const formatLimitLabel = (limit: number | null | undefined) => {
+    if (limit == null || !Number.isFinite(limit) || limit <= 0) {
+      return "∞"
+    }
+    return formatSpeedWithUnit(limit, speedUnit)
+  }
+
+  const downloadLimitLabel = formatLimitLabel(properties?.dl_limit ?? torrent.dl_limit)
+  const uploadLimitLabel = formatLimitLabel(properties?.up_limit ?? torrent.up_limit)
 
   // Show minimal loading state while waiting for initial data
   const isInitialLoad = !isReady || (loadingProperties && !properties)
@@ -342,11 +354,13 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                             <p className="text-xs text-muted-foreground">Download Speed</p>
                             <p className="text-base font-semibold text-green-500">{formatSpeedWithUnit(properties.dl_speed || 0, speedUnit)}</p>
                             <p className="text-xs text-muted-foreground">avg: {formatSpeedWithUnit(properties.dl_speed_avg || 0, speedUnit)}</p>
+                            <p className="text-xs text-muted-foreground">Limit: {downloadLimitLabel}</p>
                           </div>
                           <div className="space-y-1">
                             <p className="text-xs text-muted-foreground">Upload Speed</p>
                             <p className="text-base font-semibold text-blue-500">{formatSpeedWithUnit(properties.up_speed || 0, speedUnit)}</p>
                             <p className="text-xs text-muted-foreground">avg: {formatSpeedWithUnit(properties.up_speed_avg || 0, speedUnit)}</p>
+                            <p className="text-xs text-muted-foreground">Limit: {uploadLimitLabel}</p>
                           </div>
                         </div>
                       </div>

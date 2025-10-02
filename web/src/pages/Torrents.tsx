@@ -185,6 +185,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
             tags={tags}
             isStaleData={lastInstanceId !== null && lastInstanceId !== instanceId}
             isLoading={lastInstanceId !== null && lastInstanceId !== instanceId}
+            isMobile={false}
           />
         </div>
       </div>
@@ -206,6 +207,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
               tags={tags}
               isStaleData={lastInstanceId !== null && lastInstanceId !== instanceId}
               isLoading={lastInstanceId !== null && lastInstanceId !== instanceId}
+              isMobile={true}
             />
           </div>
         </SheetContent>

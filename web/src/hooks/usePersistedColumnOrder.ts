@@ -3,21 +3,45 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState, useEffect } from "react"
 import type { ColumnOrderState } from "@tanstack/react-table"
+import { useEffect, useState } from "react"
 
 export function usePersistedColumnOrder(
-  defaultOrder: ColumnOrderState = []
+  defaultOrder: ColumnOrderState = [],
+  instanceKey?: string | number
 ) {
-  // Global key shared across all instances
-  const storageKey = "qui-column-order"
+  const baseStorageKey = "qui-column-order"
+  const hasInstanceKey = instanceKey !== undefined && instanceKey !== null
+  const storageKey = hasInstanceKey ? `${baseStorageKey}:${instanceKey}` : baseStorageKey
 
-  // Initialize state from localStorage or default values
-  const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(() => {
+  const mergeWithDefaults = (order: ColumnOrderState): ColumnOrderState => {
+    if (!Array.isArray(order) || order.some(item => typeof item !== "string")) {
+      return [...defaultOrder]
+    }
+
+    const missingColumns = defaultOrder.filter(col => !order.includes(col))
+    if (missingColumns.length === 0) {
+      return [...order]
+    }
+
+    const stateIndex = order.indexOf("state")
+    const dlspeedIndex = order.indexOf("dlspeed")
+
+    if (stateIndex !== -1 && dlspeedIndex !== -1 && dlspeedIndex >= stateIndex) {
+      const result = [...order]
+      result.splice(stateIndex + 1, 0, ...missingColumns)
+      return result
+    }
+
+    return [...order, ...missingColumns]
+  }
+
+  const loadOrder = (): ColumnOrderState => {
     try {
       const stored = localStorage.getItem(storageKey)
       if (stored) {
         const parsed = JSON.parse(stored)
+<<<<<<< HEAD
         // Validate that it's an array of strings
         if (Array.isArray(parsed) && parsed.every(item => typeof item === "string")) {
           // Merge missing columns from defaultOrder into parsed order
@@ -45,15 +69,36 @@ export function usePersistedColumnOrder(
           }
           return result
         }
+=======
+        return mergeWithDefaults(parsed)
+>>>>>>> main
       }
     } catch (error) {
       console.error("Failed to load column order from localStorage:", error)
     }
 
-    return defaultOrder
-  })
+    return [...defaultOrder]
+  }
 
-  // Persist to localStorage whenever state changes
+  const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(() => loadOrder())
+
+  useEffect(() => {
+    if (!hasInstanceKey) {
+      return
+    }
+
+    try {
+      localStorage.removeItem(baseStorageKey)
+    } catch (error) {
+      console.error("Failed to clear legacy column order state:", error)
+    }
+  }, [hasInstanceKey, baseStorageKey])
+
+  useEffect(() => {
+    setColumnOrder(loadOrder())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storageKey, JSON.stringify(defaultOrder)])
+
   useEffect(() => {
     try {
       localStorage.setItem(storageKey, JSON.stringify(columnOrder))
