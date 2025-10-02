@@ -11,6 +11,7 @@ import { usePersistedColumnSizing } from "@/hooks/usePersistedColumnSizing"
 import { usePersistedColumnSorting } from "@/hooks/usePersistedColumnSorting"
 import { usePersistedColumnVisibility } from "@/hooks/usePersistedColumnVisibility"
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
+import { useTorrentExporter } from "@/hooks/useTorrentExporter"
 import { useTorrentsList } from "@/hooks/useTorrentsList"
 import {
   DndContext,
@@ -90,6 +91,7 @@ import {
   SpeedLimitsDialog
 } from "./TorrentDialogs"
 import { createColumns } from "./TorrentTableColumns"
+import { useInstancePreferences } from "@/hooks/useInstancePreferences.ts";
 
 // Default values for persisted state hooks (module scope for stable references)
 const DEFAULT_COLUMN_VISIBILITY = {
@@ -165,7 +167,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   // State management
   // Move default values outside the component for stable references
   // (This should be at module scope, not inside the component)
-  const [sorting, setSorting] = usePersistedColumnSorting([])
+  const [sorting, setSorting] = usePersistedColumnSorting([], instanceId)
   const [globalFilter, setGlobalFilter] = useState("")
   const [immediateSearch] = useState("")
   const [rowSelection, setRowSelection] = useState({})
@@ -175,8 +177,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const [excludedFromSelectAll, setExcludedFromSelectAll] = useState<Set<string>>(new Set())
 
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
+  const { exportTorrents, isExporting: isExportingTorrent } = useTorrentExporter({ instanceId, incognitoMode })
   const [speedUnit, setSpeedUnit] = useSpeedUnits()
   const { formatTimestamp } = useDateTimeFormatters()
+  const { preferences } = useInstancePreferences(instanceId)
 
   // Detect platform for keyboard shortcuts
   const isMac = useMemo(() => {
@@ -205,9 +209,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   // const DEFAULT_COLUMN_VISIBILITY, DEFAULT_COLUMN_ORDER, DEFAULT_COLUMN_SIZING
 
   // Column visibility with persistence
-  const [columnVisibility, setColumnVisibility] = usePersistedColumnVisibility(DEFAULT_COLUMN_VISIBILITY)
+  const [columnVisibility, setColumnVisibility] = usePersistedColumnVisibility(DEFAULT_COLUMN_VISIBILITY, instanceId)
   // Column order with persistence (get default order at runtime to avoid initialization order issues)
-  const [columnOrder, setColumnOrder] = usePersistedColumnOrder(getDefaultColumnOrder())
+  const [columnOrder, setColumnOrder] = usePersistedColumnOrder(getDefaultColumnOrder(), instanceId)
   // Column sizing with persistence
   const [columnSizing, setColumnSizing] = usePersistedColumnSizing(DEFAULT_COLUMN_SIZING)
 
@@ -317,6 +321,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     return columnId || "added_on"
   }
 
+  const activeSortField = sorting.length > 0 ? getBackendSortField(sorting[0].id) : "added_on"
+  const activeSortOrder: "asc" | "desc" = sorting.length > 0 ? (sorting[0].desc ? "desc" : "asc") : "desc"
+
   // Fetch torrents data with backend sorting
   const {
     torrents,
@@ -335,8 +342,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   } = useTorrentsList(instanceId, {
     search: effectiveSearch,
     filters,
-    sort: sorting.length > 0 ? getBackendSortField(sorting[0].id) : "added_on",
-    order: sorting.length > 0 ? (sorting[0].desc ? "desc" : "asc") : "desc",
+    sort: activeSortField,
+    order: activeSortOrder,
   })
 
   // Delayed loading state to avoid flicker on fast loads
@@ -485,8 +492,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       onRowSelection: handleRowSelection,
       isAllSelected,
       excludedFromSelectAll,
-    }, speedUnit, formatTimestamp),
-    [incognitoMode, speedUnit, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, isAllSelected, excludedFromSelectAll]
+    }, speedUnit, formatTimestamp, preferences),
+    [incognitoMode, speedUnit, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, isAllSelected, excludedFromSelectAll, preferences]
   )
 
   const table = useReactTable({
@@ -656,7 +663,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     return table.getVisibleLeafColumns().reduce((width, col) => {
       return width + col.getSize()
     }, 0)
-  }, [table])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [table, columnVisibility])
 
   // Reset loaded rows when data changes significantly
   useEffect(() => {
@@ -761,6 +769,29 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       ...extra,
     })
   }, [handleAction, isAllSelected, selectAllOptions, selectedHashes, effectiveSelectionCount])
+
+  const handleExportWrapper = useCallback((hashes: string[], torrentsForSelection: Torrent[]) => {
+    exportTorrents({
+      hashes,
+      torrents: torrentsForSelection,
+      isAllSelected,
+      totalSelected: effectiveSelectionCount,
+      filters,
+      search: effectiveSearch,
+      excludeHashes: Array.from(excludedFromSelectAll),
+      sortField: activeSortField,
+      sortOrder: activeSortOrder,
+    })
+  }, [
+    exportTorrents,
+    isAllSelected,
+    effectiveSelectionCount,
+    filters,
+    effectiveSearch,
+    excludedFromSelectAll,
+    activeSortField,
+    activeSortOrder,
+  ])
 
   const handleDeleteWrapper = useCallback(() => {
     handleDelete(
@@ -1098,6 +1129,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                     onPrepareRecheck={prepareRecheckAction}
                     onPrepareReannounce={prepareReannounceAction}
                     isPending={isPending}
+                    onExport={handleExportWrapper}
+                    isExporting={isExportingTorrent}
                   >
                     <div
                       className={`flex border-b cursor-pointer hover:bg-muted/50 ${row.getIsSelected() ? "bg-muted/50" : ""} ${isSelected ? "bg-accent" : ""}`}

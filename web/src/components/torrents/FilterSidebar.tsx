@@ -20,8 +20,10 @@ import {
 } from "@/components/ui/context-menu"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { SearchInput } from "@/components/ui/SearchInput"
+
 import { useDebounce } from "@/hooks/useDebounce"
 import { usePersistedAccordion } from "@/hooks/usePersistedAccordion"
+import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { getLinuxCount, LINUX_CATEGORIES, LINUX_TAGS, LINUX_TRACKERS, useIncognitoMode } from "@/lib/incognito"
 import type { Category } from "@/types"
 import { useVirtualizer } from "@tanstack/react-virtual"
@@ -52,8 +54,8 @@ import {
 } from "./TagCategoryManagement"
 import { EditTrackerDialog } from "./TorrentDialogs"
 // import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
-import { useMutation } from "@tanstack/react-query"
 import { api } from "@/lib/api"
+import { useMutation } from "@tanstack/react-query"
 import { toast } from "sonner"
 
 interface FilterBadgeProps {
@@ -99,6 +101,7 @@ interface FilterSidebarProps {
   className?: string
   isStaleData?: boolean
   isLoading?: boolean
+  isMobile?: boolean
 }
 
 
@@ -129,9 +132,13 @@ const FilterSidebarComponent = ({
   className = "",
   isStaleData = false,
   isLoading = false,
+  isMobile = false,
 }: FilterSidebarProps) => {
   // Use incognito mode hook
   const [incognitoMode] = useIncognitoMode()
+
+  // Use compact view state hook
+  const { viewMode, cycleViewMode } = usePersistedCompactViewState("normal")
 
   // Helper function to get count display - shows 0 when loading to prevent showing stale counts from previous instance
   const getDisplayCount = useCallback((key: string, fallbackCount?: number): string => {
@@ -310,63 +317,39 @@ const FilterSidebarComponent = ({
   const filteredCategories = useMemo(() => {
     const categoryEntries = Object.entries(categories) as [string, Category][]
 
-    if (debouncedCategorySearch) {
-      const searchLower = debouncedCategorySearch.toLowerCase()
-      return categoryEntries.filter(([name]) =>
-        name.toLowerCase().includes(searchLower)
-      )
+    if (!debouncedCategorySearch) {
+      return categoryEntries
     }
 
-    // Show selected categories first, then others
-    const selectedCategories = categoryEntries.filter(([name]) =>
-      selectedFilters.categories.includes(name)
+    const searchLower = debouncedCategorySearch.toLowerCase()
+    return categoryEntries.filter(([name]) =>
+      name.toLowerCase().includes(searchLower)
     )
-    const unselectedCategories = categoryEntries.filter(([name]) =>
-      !selectedFilters.categories.includes(name)
-    )
-
-    return [...selectedCategories, ...unselectedCategories]
-  }, [categories, debouncedCategorySearch, selectedFilters.categories])
+  }, [categories, debouncedCategorySearch])
 
   // Filtered tags for performance
   const filteredTags = useMemo(() => {
-    if (debouncedTagSearch) {
-      const searchLower = debouncedTagSearch.toLowerCase()
-      return tags.filter(tag =>
-        tag.toLowerCase().includes(searchLower)
-      )
+    if (!debouncedTagSearch) {
+      return tags
     }
 
-    // Show selected tags first, then others
-    const selectedTags = tags.filter(tag =>
-      selectedFilters.tags.includes(tag)
+    const searchLower = debouncedTagSearch.toLowerCase()
+    return tags.filter(tag =>
+      tag.toLowerCase().includes(searchLower)
     )
-    const unselectedTags = tags.filter(tag =>
-      !selectedFilters.tags.includes(tag)
-    )
-
-    return [...selectedTags, ...unselectedTags]
-  }, [tags, debouncedTagSearch, selectedFilters.tags])
+  }, [tags, debouncedTagSearch])
 
   // Filtered trackers for performance
   const filteredTrackers = useMemo(() => {
-    if (debouncedTrackerSearch) {
-      const searchLower = debouncedTrackerSearch.toLowerCase()
-      return trackers.filter(tracker =>
-        tracker.toLowerCase().includes(searchLower)
-      )
+    if (!debouncedTrackerSearch) {
+      return trackers
     }
 
-    // Show selected trackers first, then others
-    const selectedTrackers = trackers.filter(tracker =>
-      selectedFilters.trackers.includes(tracker)
+    const searchLower = debouncedTrackerSearch.toLowerCase()
+    return trackers.filter(tracker =>
+      tracker.toLowerCase().includes(searchLower)
     )
-    const unselectedTrackers = trackers.filter(tracker =>
-      !selectedFilters.trackers.includes(tracker)
-    )
-
-    return [...selectedTrackers, ...unselectedTrackers]
-  }, [trackers, debouncedTrackerSearch, selectedFilters.trackers])
+  }, [trackers, debouncedTrackerSearch])
 
   // Virtual scrolling for categories
   const categoryVirtualizer = useVirtualizer({
@@ -482,6 +465,24 @@ const FilterSidebarComponent = ({
               </button>
             )}
           </div>
+
+          {/* View Mode Toggle - only show on mobile */}
+          {isMobile && (
+            <div className="flex items-center justify-between p-3 mb-4 bg-muted/20 rounded-lg">
+              <div className="flex flex-col gap-1">
+                <span className="text-sm font-medium">View Mode</span>
+                <span className="text-xs text-muted-foreground">
+                  {viewMode === "normal" ? "Full torrent cards" :viewMode === "compact" ? "Compact cards" : "Ultra compact"}
+                </span>
+              </div>
+              <button
+                onClick={cycleViewMode}
+                className="px-3 py-1 text-xs font-medium rounded border bg-background hover:bg-muted transition-colors"
+              >
+                {viewMode === "normal" ? "Normal" :viewMode === "compact" ? "Compact" : "Ultra"}
+              </button>
+            </div>
+          )}
 
           <Accordion
             type="multiple"

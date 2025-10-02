@@ -260,6 +260,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 
 						r.Route("/{hash}", func(r chi.Router) {
 							// Torrent details
+							r.Get("/export", torrentsHandler.ExportTorrent)
 							r.Get("/properties", torrentsHandler.GetTorrentProperties)
 							r.Get("/trackers", torrentsHandler.GetTorrentTrackers)
 							r.Put("/trackers", torrentsHandler.EditTorrentTracker)
