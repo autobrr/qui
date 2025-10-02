@@ -19,11 +19,11 @@ import (
 
 const (
 	trackerCacheTTL            = 30 * time.Minute
-	trackerFetchChunkDefault   = 40
-	trackerFetchChunkForCounts = 25
+	trackerFetchChunkDefault   = 300
+	trackerFetchChunkForCounts = 300
 	trackerWarmupDelay         = 2 * time.Second
 	trackerWarmupTimeout       = 45 * time.Second
-	trackerWarmupBatchSize     = 200
+	trackerWarmupBatchSize     = 1000
 )
 
 type Client struct {
