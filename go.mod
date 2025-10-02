@@ -7,7 +7,7 @@ require (
 	github.com/Masterminds/semver/v3 v3.4.0
 	github.com/alexedwards/scs/v2 v2.9.0
 	github.com/autobrr/autobrr v1.67.0
-	github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20250929195222-590593359982
+	github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20251002125540-41b634862943
 	github.com/creativeprojects/go-selfupdate v1.5.1
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-chi/chi/v5 v5.2.3
@@ -79,5 +79,3 @@ require (
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
 )
-
-replace github.com/autobrr/go-qbittorrent => ../go-qbittorrent
