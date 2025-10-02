@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useDebounce } from "@/hooks/useDebounce"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
+import { useDebounce } from "@/hooks/useDebounce"
 import { useKeyboardNavigation } from "@/hooks/useKeyboardNavigation"
 import { usePersistedColumnOrder } from "@/hooks/usePersistedColumnOrder"
 import { usePersistedColumnSizing } from "@/hooks/usePersistedColumnSizing"
@@ -72,6 +72,7 @@ import {
   TooltipTrigger
 } from "@/components/ui/tooltip"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
+import { useInstancePreferences } from "@/hooks/useInstancePreferences.ts"
 import { useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { getCommonCategory, getCommonSavePath, getCommonTags } from "@/lib/torrent-utils"
@@ -83,6 +84,7 @@ import { AddTorrentDialog } from "./AddTorrentDialog"
 import { DraggableTableHeader } from "./DraggableTableHeader"
 import {
   AddTagsDialog,
+  CreateAndAssignCategoryDialog,
   RemoveTagsDialog,
   SetCategoryDialog,
   SetLocationDialog,
@@ -91,7 +93,6 @@ import {
   SpeedLimitsDialog
 } from "./TorrentDialogs"
 import { createColumns } from "./TorrentTableColumns"
-import { useInstancePreferences } from "@/hooks/useInstancePreferences.ts";
 
 // Default values for persisted state hooks (module scope for stable references)
 const DEFAULT_COLUMN_VISIBILITY = {
@@ -236,6 +237,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     setShowRemoveTagsDialog,
     showCategoryDialog,
     setShowCategoryDialog,
+    showCreateCategoryDialog,
+    setShowCreateCategoryDialog,
     showShareLimitDialog,
     setShowShareLimitDialog,
     showSpeedLimitDialog,
@@ -263,6 +266,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     prepareDeleteAction,
     prepareTagsAction,
     prepareCategoryAction,
+    prepareCreateCategoryAction,
     prepareShareLimitAction,
     prepareSpeedLimitAction,
     prepareLocationAction,
@@ -840,6 +844,19 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     )
   }, [handleSetCategory, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
 
+  // Direct category handler for context menu submenu
+  const handleSetCategoryDirect = useCallback((category: string, hashes: string[]) => {
+    handleSetCategory(
+      category,
+      hashes,
+      false, // Not using select all when directly setting from context menu
+      undefined,
+      undefined,
+      Array.from(excludedFromSelectAll),
+      undefined
+    )
+  }, [handleSetCategory, excludedFromSelectAll])
+
   const handleSetLocationWrapper = useCallback((location: string) => {
     handleSetLocation(
       location,
@@ -1123,11 +1140,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                     onPrepareDelete={prepareDeleteAction}
                     onPrepareTags={prepareTagsAction}
                     onPrepareCategory={prepareCategoryAction}
+                    onPrepareCreateCategory={prepareCreateCategoryAction}
                     onPrepareShareLimit={prepareShareLimitAction}
                     onPrepareSpeedLimits={prepareSpeedLimitAction}
                     onPrepareLocation={prepareLocationAction}
                     onPrepareRecheck={prepareRecheckAction}
                     onPrepareReannounce={prepareReannounceAction}
+                    availableCategories={availableCategories}
+                    onSetCategory={handleSetCategoryDirect}
                     isPending={isPending}
                     onExport={handleExportWrapper}
                     isExporting={isExportingTorrent}
@@ -1365,6 +1385,15 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         onConfirm={handleSetCategoryWrapper}
         isPending={isPending}
         initialCategory={getCommonCategory(contextTorrents)}
+      />
+
+      {/* Create and Assign Category Dialog */}
+      <CreateAndAssignCategoryDialog
+        open={showCreateCategoryDialog}
+        onOpenChange={setShowCreateCategoryDialog}
+        hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
+        onConfirm={handleSetCategoryWrapper}
+        isPending={isPending}
       />
 
       <ShareLimitDialog
