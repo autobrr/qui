@@ -21,7 +21,6 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { Progress } from "@/components/ui/progress"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useInstances } from "@/hooks/useInstances"
@@ -288,6 +287,12 @@ function InstanceCard({
                 <span className="ml-auto font-medium">{formatSpeedWithUnit(stats?.totalUploadSpeed || 0, speedUnit)}</span>
               </div>
 
+              <div className="flex items-center gap-2 text-xs">
+                <HardDrive className="h-3 w-3 text-muted-foreground" />
+                <span className="text-muted-foreground">Total Size</span>
+                <span className="ml-auto font-medium">{formatBytes(stats?.totalSize || 0)}</span>
+              </div>
+
               {serverState?.free_space_on_disk !== undefined && serverState.free_space_on_disk > 0 && (
                 <div className="flex items-center gap-2 text-xs">
                   <HardDrive className="h-3 w-3 text-muted-foreground" />
@@ -367,6 +372,8 @@ function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: Instance
       sum + (stats?.totalUploadSpeed || 0), 0)
     const totalErrors = statsData.reduce((sum, { torrentCounts }) =>
       sum + (torrentCounts?.status?.errored || 0), 0)
+    const totalSize = statsData.reduce((sum, { stats }) =>
+      sum + (stats?.totalSize || 0), 0)
 
     // Calculate server stats
     const alltimeDl = statsData.reduce((sum, { serverState }) =>
@@ -390,6 +397,7 @@ function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: Instance
       totalDownload,
       totalUpload,
       totalErrors,
+      totalSize,
       alltimeDl,
       alltimeUl,
       globalRatio,
@@ -409,10 +417,6 @@ function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: Instance
           <p className="text-xs text-muted-foreground">
             Connected instances
           </p>
-          <Progress
-            value={(globalStats.connected / globalStats.total) * 100}
-            className="mt-2 h-1"
-          />
         </CardContent>
       </Card>
 
@@ -424,7 +428,7 @@ function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: Instance
         <CardContent>
           <div className="text-2xl font-bold">{globalStats.totalTorrents}</div>
           <p className="text-xs text-muted-foreground">
-            {globalStats.activeTorrents} active
+            {globalStats.activeTorrents} active - <span className="text-xs">{formatBytes(globalStats.totalSize)} total size</span>
           </p>
         </CardContent>
       </Card>
