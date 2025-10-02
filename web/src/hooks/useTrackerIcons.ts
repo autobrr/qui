@@ -16,9 +16,9 @@ export function useTrackerIcons() {
     queryFn: async () => {
       return api.getTrackerIcons()
     },
-    staleTime: 300000, // 5 minutes - icons don't change often
+    staleTime: 60000, // 1 minute
     gcTime: 1800000, // Keep in cache for 30 minutes
-    refetchInterval: 300000, // Refetch every 5 minutes
+    refetchInterval: 60000, // Refetch every 1 minute
     refetchIntervalInBackground: false,
     placeholderData: (previousData) => previousData,
   })
