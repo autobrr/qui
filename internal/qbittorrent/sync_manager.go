@@ -48,14 +48,15 @@ type TorrentResponse struct {
 
 // TorrentStats represents aggregated torrent statistics
 type TorrentStats struct {
-	Total              int `json:"total"`
-	Downloading        int `json:"downloading"`
-	Seeding            int `json:"seeding"`
-	Paused             int `json:"paused"`
-	Error              int `json:"error"`
-	Checking           int `json:"checking"`
-	TotalDownloadSpeed int `json:"totalDownloadSpeed"`
-	TotalUploadSpeed   int `json:"totalUploadSpeed"`
+	Total              int   `json:"total"`
+	Downloading        int   `json:"downloading"`
+	Seeding            int   `json:"seeding"`
+	Paused             int   `json:"paused"`
+	Error              int   `json:"error"`
+	Checking           int   `json:"checking"`
+	TotalDownloadSpeed int   `json:"totalDownloadSpeed"`
+	TotalUploadSpeed   int   `json:"totalUploadSpeed"`
+	TotalSize          int64 `json:"totalSize"`
 }
 
 // SyncManager manages torrent operations
@@ -264,6 +265,12 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	// qBittorrent's native sorting treats 0 as lowest, but we want it as highest (no priority)
 	if sort == "priority" {
 		sm.sortTorrentsByPriority(filteredTorrents, order == "desc")
+	}
+
+	// Apply custom sorting for ETA field
+	// Treat infinity ETA (8640000) as the largest value, placing it at the end
+	if sort == "eta" {
+		sm.sortTorrentsByETA(filteredTorrents, order == "desc")
 	}
 
 	// Calculate stats from filtered torrents
@@ -1556,6 +1563,53 @@ func (sm *SyncManager) sortTorrentsByPriority(torrents []qbt.Torrent, desc bool)
 	})
 }
 
+// sortTorrentsByETA sorts torrents by ETA with special handling for infinity values
+// ETA value of 8640000 represents infinity (stalled/no activity)
+// We always place infinity values at the end, regardless of sort order
+// This prevents stalled torrents from splitting active torrents into two groups
+func (sm *SyncManager) sortTorrentsByETA(torrents []qbt.Torrent, desc bool) {
+	const infinityETA int64 = 8640000
+
+	slices.SortStableFunc(torrents, func(a, b qbt.Torrent) int {
+		aIsInfinity := a.ETA == infinityETA
+		bIsInfinity := b.ETA == infinityETA
+
+		// Both infinity - equal
+		if aIsInfinity && bIsInfinity {
+			return 0
+		}
+
+		// Always place infinity values at the end
+		if aIsInfinity {
+			return 1
+		}
+		if bIsInfinity {
+			return -1
+		}
+
+		// Both are finite values - sort normally
+		if desc {
+			// Descending: larger ETA first
+			if a.ETA > b.ETA {
+				return -1
+			}
+			if a.ETA < b.ETA {
+				return 1
+			}
+			return 0
+		}
+
+		// Ascending: smaller ETA first
+		if a.ETA < b.ETA {
+			return -1
+		}
+		if a.ETA > b.ETA {
+			return 1
+		}
+		return 0
+	})
+}
+
 // calculateStats calculates torrent statistics from a list of torrents
 func (sm *SyncManager) calculateStats(torrents []qbt.Torrent) *TorrentStats {
 	stats := &TorrentStats{
@@ -1566,6 +1620,9 @@ func (sm *SyncManager) calculateStats(torrents []qbt.Torrent) *TorrentStats {
 		// Add speeds
 		stats.TotalDownloadSpeed += int(torrent.DlSpeed)
 		stats.TotalUploadSpeed += int(torrent.UpSpeed)
+
+		// Add size
+		stats.TotalSize += torrent.Size
 
 		// Count states
 		switch torrent.State {
