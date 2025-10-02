@@ -22,7 +22,6 @@ import {
 } from "@/lib/incognito"
 import { formatSpeedWithUnit, type SpeedUnit } from "@/lib/speedUnits"
 import { getStateLabel } from "@/lib/torrent-state-utils"
-import { getTrackerHealth } from "@/lib/tracker-status-utils"
 import { cn, formatBytes, formatDuration, getRatioColor } from "@/lib/utils"
 import type { AppPreferences, Torrent } from "@/types"
 import type { ColumnDef } from "@tanstack/react-table"
@@ -275,7 +274,7 @@ export const createColumns = (
       const variant =
         state === "downloading" ? "default" :state === "stalledDL" ? "secondary" :state === "uploading" ? "default" :state === "stalledUP" ? "secondary" :state === "pausedDL" || state === "pausedUP" ? "secondary" :state === "queuedDL" || state === "queuedUP" ? "secondary" :state === "error" || state === "missingFiles" ? "destructive" :"outline"
 
-      const trackerHealth = getTrackerHealth(row.original)
+      const trackerHealth = row.original.tracker_health ?? null
       let badgeVariant: "default" | "secondary" | "destructive" | "outline" = variant
       let badgeClass = ""
       let displayLabel = label

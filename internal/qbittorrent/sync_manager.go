@@ -112,8 +112,21 @@ type CacheMetadata struct {
 }
 
 // TorrentResponse represents a response containing torrents with stats
+type TrackerHealth string
+
+const (
+	TrackerHealthUnregistered TrackerHealth = "unregistered"
+	TrackerHealthDown         TrackerHealth = "tracker_down"
+)
+
+// TorrentView extends qBittorrent's torrent with UI-specific metadata.
+type TorrentView struct {
+	qbt.Torrent
+	TrackerHealth TrackerHealth `json:"tracker_health,omitempty"`
+}
+
 type TorrentResponse struct {
-	Torrents      []qbt.Torrent           `json:"torrents"`
+	Torrents      []TorrentView           `json:"torrents"`
 	Total         int                     `json:"total"`
 	Stats         *TorrentStats           `json:"stats,omitempty"`
 	Counts        *TorrentCounts          `json:"counts,omitempty"`      // Include counts for sidebar
@@ -384,6 +397,19 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		paginatedTorrents, trackerMap, _ = sm.enrichTorrentsWithTrackerData(ctx, client, paginatedTorrents, trackerMap, pageLimit, true)
 	}
 
+	// Convert to UI view models with tracker health metadata
+	var paginatedViews []TorrentView
+	if len(paginatedTorrents) > 0 {
+		paginatedViews = make([]TorrentView, len(paginatedTorrents))
+		for i, torrent := range paginatedTorrents {
+			view := TorrentView{Torrent: torrent}
+			if health := sm.determineTrackerHealth(torrent); health != "" {
+				view.TrackerHealth = health
+			}
+			paginatedViews[i] = view
+		}
+	}
+
 	// Check if there are more pages
 	hasMore := end < len(filteredTorrents)
 
@@ -440,7 +466,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	}
 
 	response := &TorrentResponse{
-		Torrents:      paginatedTorrents,
+		Torrents:      paginatedViews,
 		Total:         len(filteredTorrents),
 		Stats:         stats,
 		Counts:        counts,      // Include counts for sidebar
@@ -457,7 +483,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 	log.Debug().
 		Int("instanceID", instanceID).
-		Int("count", len(paginatedTorrents)).
+		Int("count", len(paginatedViews)).
 		Int("total", len(filteredTorrents)).
 		Str("search", search).
 		Interface("filters", filters).
@@ -804,6 +830,18 @@ func (sm *SyncManager) torrentTrackerIsDown(torrent qbt.Torrent) bool {
 	}
 
 	return false
+}
+
+func (sm *SyncManager) determineTrackerHealth(torrent qbt.Torrent) TrackerHealth {
+	if sm.torrentIsUnregistered(torrent) {
+		return TrackerHealthUnregistered
+	}
+
+	if sm.torrentTrackerIsDown(torrent) {
+		return TrackerHealthDown
+	}
+
+	return ""
 }
 
 func (sm *SyncManager) enrichTorrentsWithTrackerData(ctx context.Context, client *Client, torrents []qbt.Torrent, trackerMap map[string][]qbt.TorrentTracker, fetchLimit int, allowFetch bool) ([]qbt.Torrent, map[string][]qbt.TorrentTracker, []string) {

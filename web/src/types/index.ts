@@ -110,6 +110,7 @@ export interface Torrent {
   tracker: string
   trackers_count: number
   trackers?: TorrentTracker[]
+  tracker_health?: "unregistered" | "tracker_down"
   up_limit: number
   uploaded: number
   uploaded_session: number
