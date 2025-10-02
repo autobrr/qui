@@ -286,20 +286,48 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
                 )}
               </form.Field>
 
-              {/* Piece Size */}
+              {/* Piece Size
+                  https://github.com/qbittorrent/qBittorrent/blob/master/src/gui/torrentcreatordialog.cpp#L86-L92
+
+                  m_ui->comboPieceSize->addItem(tr("Auto"), 0);
+                  for (int i = 4; i <= 17; ++i)
+                  {
+                      const int size = 1024 << i;
+                      const QString displaySize = Utils::Misc::friendlyUnit(size, false, 0);
+                      m_ui->comboPieceSize->addItem(displaySize, size);
+                  }
+              */}
               <form.Field name="pieceSize">
                 {(field) => (
                   <div className="space-y-2">
-                    <Label htmlFor="pieceSize">Piece Size (bytes)</Label>
-                    <Input
-                      id="pieceSize"
-                      type="number"
-                      placeholder="Auto (leave empty)"
-                      value={field.state.value}
-                      onChange={(e) => field.handleChange(e.target.value)}
-                    />
+                    <Label htmlFor="pieceSize">Piece Size</Label>
+                    <Select
+                      value={field.state.value || "0"}
+                      onValueChange={field.handleChange}
+                    >
+                      <SelectTrigger id="pieceSize">
+                        <SelectValue placeholder="Auto (recommended)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="0">Auto (recommended)</SelectItem>
+                        <SelectItem value="16384">16 KiB</SelectItem>
+                        <SelectItem value="32768">32 KiB</SelectItem>
+                        <SelectItem value="65536">64 KiB</SelectItem>
+                        <SelectItem value="131072">128 KiB</SelectItem>
+                        <SelectItem value="262144">256 KiB</SelectItem>
+                        <SelectItem value="524288">512 KiB</SelectItem>
+                        <SelectItem value="1048576">1 MiB</SelectItem>
+                        <SelectItem value="2097152">2 MiB</SelectItem>
+                        <SelectItem value="4194304">4 MiB</SelectItem>
+                        <SelectItem value="8388608">8 MiB</SelectItem>
+                        <SelectItem value="16777216">16 MiB</SelectItem>
+                        <SelectItem value="33554432">32 MiB</SelectItem>
+                        <SelectItem value="67108864">64 MiB</SelectItem>
+                        <SelectItem value="134217728">128 MiB</SelectItem>
+                      </SelectContent>
+                    </Select>
                     <p className="text-sm text-muted-foreground">
-                      Leave empty for auto (recommended). Common: 16384, 32768, 65536, 131072, 262144
+                      Auto calculates optimal size based on content
                     </p>
                   </div>
                 )}
