@@ -6,7 +6,6 @@ package qbittorrent
 import (
 	"context"
 	"fmt"
-	"maps"
 	"net/url"
 	"path/filepath"
 	"slices"
@@ -25,7 +24,11 @@ import (
 // Global URL cache for domain extraction - shared across all sync managers
 var urlCache = ttlcache.New(ttlcache.Options[string, string]{}.SetDefaultTTL(5 * time.Minute))
 
-const trackerFetchUnlimited = -1
+const (
+	trackerFetchUnlimited      = int(qbt.TrackerFetchUnlimited)
+	trackerFetchChunkDefault   = 300
+	trackerFetchChunkForCounts = 300
+)
 
 var defaultUnregisteredStatuses = []string{
 	"complete season uploaded",
@@ -245,7 +248,6 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		hasTrackerFilters || needsManualStatusFiltering || needsManualCategoryFiltering || needsManualTagFiltering
 
 	var trackerMap map[string][]qbt.TorrentTracker
-	var pendingTrackerHydration []string
 	var counts *TorrentCounts
 
 	if useManualFiltering {
@@ -270,11 +272,8 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 		// Apply manual filtering for multiple selections
 		if trackerStatusFilters {
-			allowTrackerFetch := client != nil && client.includeTrackers
-			filteredTorrents, trackerMap, pendingTrackerHydration = sm.enrichTorrentsWithTrackerData(ctx, client, filteredTorrents, trackerMap, trackerFetchUnlimited, allowTrackerFetch)
-			if len(pendingTrackerHydration) > 0 && client != nil && !allowTrackerFetch {
-				client.scheduleTrackerWarmup(pendingTrackerHydration, trackerWarmupBatchSize)
-			}
+			allowTrackerFetch := client != nil && client.supportsTrackerInclude()
+			filteredTorrents, trackerMap, _ = sm.enrichTorrentsWithTrackerData(ctx, client, filteredTorrents, trackerMap, trackerFetchUnlimited, allowTrackerFetch)
 		}
 
 		filteredTorrents = sm.applyManualFilters(client, filteredTorrents, filters, mainData)
@@ -437,21 +436,6 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 			// Get server state from sync manager for Dashboard
 			serverStateData := syncManager.GetServerState()
 			serverState = &serverStateData
-		}
-	}
-
-	if len(pendingTrackerHydration) > 0 {
-		refreshAt := time.Now().Add(2 * time.Second).Format(time.RFC3339)
-		if cacheMetadata == nil {
-			cacheMetadata = &CacheMetadata{
-				Source:      "cache",
-				Age:         0,
-				IsStale:     true,
-				NextRefresh: refreshAt,
-			}
-		} else {
-			cacheMetadata.IsStale = true
-			cacheMetadata.NextRefresh = refreshAt
 		}
 	}
 
@@ -831,57 +815,38 @@ func (sm *SyncManager) enrichTorrentsWithTrackerData(ctx context.Context, client
 		trackerMap = make(map[string][]qbt.TorrentTracker)
 	}
 
-	forceUnlimited := fetchLimit == trackerFetchUnlimited
-	if forceUnlimited {
-		fetchLimit = 0
-	}
-
-	if fetchLimit == 0 && !client.includeTrackers && !forceUnlimited && allowFetch {
-		fetchLimit = trackerFetchChunkDefault
-	}
-
-	if fetchLimit < 0 {
-		fetchLimit = trackerFetchChunkDefault
-	}
-
-	needed := make([]string, 0, len(torrents))
 	for i := range torrents {
-		hash := torrents[i].Hash
-		if trackers, ok := trackerMap[hash]; ok {
-			torrents[i].Trackers = trackers
-			continue
-		}
 		if len(torrents[i].Trackers) > 0 {
-			trackerMap[hash] = torrents[i].Trackers
-			continue
+			trackerMap[torrents[i].Hash] = torrents[i].Trackers
 		}
-		needed = append(needed, hash)
 	}
 
-	if len(needed) == 0 {
-		return torrents, trackerMap, nil
+	limit := fetchLimit
+	if limit == trackerFetchUnlimited {
+		limit = qbt.TrackerFetchUnlimited
+	} else if limit == 0 && allowFetch && !client.supportsTrackerInclude() {
+		limit = trackerFetchChunkDefault
+	} else if limit < 0 {
+		limit = trackerFetchChunkDefault
 	}
 
-	trackerData, remaining, err := client.getTrackersForHashes(ctx, needed, allowFetch, fetchLimit)
+	warmup := allowFetch
+	enriched, trackerData, remaining, err := client.hydrateTorrentsWithTrackers(ctx, torrents, limit, allowFetch, warmup)
 	if err != nil && allowFetch {
-		log.Debug().Err(err).Int("count", len(needed)).Msg("Failed to fetch tracker details for enrichment")
+		log.Debug().Err(err).Int("count", len(torrents)).Msg("Failed to fetch tracker details for enrichment")
 	}
 
-	if len(trackerData) > 0 {
-		maps.Copy(trackerMap, trackerData)
-		for i := range torrents {
-			if trackers, ok := trackerMap[torrents[i].Hash]; ok {
-				torrents[i].Trackers = trackers
-			}
+	for hash, trackers := range trackerData {
+		trackerMap[hash] = trackers
+	}
+
+	for i := range enriched {
+		if trackers, ok := trackerMap[enriched[i].Hash]; ok {
+			enriched[i].Trackers = trackers
 		}
 	}
 
-	if len(remaining) > 0 && allowFetch {
-		log.Debug().Int("remaining", len(remaining)).Msg("Tracker enrichment partial; scheduling background warmup")
-		client.scheduleTrackerWarmup(remaining, trackerWarmupBatchSize)
-	}
-
-	return torrents, trackerMap, remaining
+	return enriched, trackerMap, remaining
 }
 
 // TorrentCounts represents counts for filtering sidebar
@@ -1009,7 +974,7 @@ func (sm *SyncManager) countTorrentStatuses(torrent qbt.Torrent, counts map[stri
 func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(ctx context.Context, client *Client, allTorrents []qbt.Torrent, mainData *qbt.MainData, trackerMap map[string][]qbt.TorrentTracker) (*TorrentCounts, map[string][]qbt.TorrentTracker) {
 	var enriched []qbt.Torrent
 	countsFetchLimit := trackerFetchChunkForCounts
-	if client != nil && client.includeTrackers {
+	if client != nil && client.supportsTrackerInclude() {
 		countsFetchLimit = trackerFetchUnlimited
 	}
 	enriched, trackerMap, _ = sm.enrichTorrentsWithTrackerData(ctx, client, allTorrents, trackerMap, countsFetchLimit, true)
@@ -1250,7 +1215,7 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 
 	// Enrich torrents with tracker data so downstream calculations can inspect tracker errors
 	statsFetchLimit := trackerFetchChunkForCounts
-	if client != nil && client.includeTrackers {
+	if client != nil && client.supportsTrackerInclude() {
 		statsFetchLimit = trackerFetchUnlimited
 	}
 	if enriched, _, _ := sm.enrichTorrentsWithTrackerData(ctx, client, torrents, nil, statsFetchLimit, true); len(enriched) > 0 {
