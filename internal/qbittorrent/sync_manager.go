@@ -378,7 +378,8 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 	// Get MainData for accurate tracker information
 	mainData = syncManager.GetData()
-	counts, trackerMap = sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents, mainData, trackerMap)
+
+	counts, _ = sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents, mainData, trackerMap)
 
 	// Fetch categories and tags (cached separately for 60s)
 	categories, err := sm.GetCategories(ctx, instanceID)
@@ -781,6 +782,10 @@ func (sm *SyncManager) torrentTrackerIsDown(torrent qbt.Torrent) bool {
 
 func (sm *SyncManager) enrichTorrentsWithTrackerData(ctx context.Context, client *Client, torrents []qbt.Torrent, trackerMap map[string][]qbt.TorrentTracker) ([]qbt.Torrent, map[string][]qbt.TorrentTracker) {
 	if client == nil || len(torrents) == 0 {
+		return torrents, trackerMap
+	}
+
+	if !client.includeTrackers {
 		return torrents, trackerMap
 	}
 

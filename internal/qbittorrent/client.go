@@ -21,6 +21,7 @@ type Client struct {
 	instanceID      int
 	webAPIVersion   string
 	supportsSetTags bool
+	includeTrackers bool
 	lastHealthCheck time.Time
 	isHealthy       bool
 	syncManager     *qbt.SyncManager
@@ -68,10 +69,12 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 	}
 
 	supportsSetTags := false
+	includeTrackers := false
 	if webAPIVersion != "" {
 		if v, err := semver.NewVersion(webAPIVersion); err == nil {
-			minVersion := semver.MustParse("2.11.4")
-			supportsSetTags = !v.LessThan(minVersion)
+			required := semver.MustParse("2.11.4")
+			supportsSetTags = !v.LessThan(required)
+			includeTrackers = supportsSetTags
 		}
 	}
 
@@ -80,6 +83,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 		instanceID:      instanceID,
 		webAPIVersion:   webAPIVersion,
 		supportsSetTags: supportsSetTags,
+		includeTrackers: includeTrackers,
 		lastHealthCheck: time.Now(),
 		isHealthy:       true,
 		optimisticUpdates: ttlcache.New(ttlcache.Options[string, *OptimisticTorrentUpdate]{}.
@@ -112,8 +116,17 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 		Str("host", instanceHost).
 		Str("webAPIVersion", webAPIVersion).
 		Bool("supportsSetTags", supportsSetTags).
+		Bool("includeTrackers", includeTrackers).
 		Bool("tlsSkipVerify", tlsSkipVerify).
 		Msg("qBittorrent client created successfully")
+
+	if !includeTrackers {
+		log.Warn().
+			Int("instanceID", instanceID).
+			Str("host", instanceHost).
+			Str("webAPIVersion", webAPIVersion).
+			Msg("qBittorrent instance does not support includeTrackers; tracker status filters will be disabled")
+	}
 
 	return client, nil
 }
@@ -199,6 +212,10 @@ func (c *Client) getCachedTrackerMap(ctx context.Context) (map[string][]qbt.Torr
 	c.mu.RLock()
 	cache := c.trackerCache
 	c.mu.RUnlock()
+
+	if !c.includeTrackers {
+		return nil, fmt.Errorf("instance does not support includeTrackers")
+	}
 
 	if cache == nil {
 		return nil, fmt.Errorf("tracker cache not initialized")
