@@ -215,16 +215,17 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	hasTrackerFilters := len(filters.Trackers) > 0 // Library doesn't support tracker filtering
 
 	// Determine if any status filter needs manual filtering
-	needsManualStatusFiltering := false
-	if len(filters.Status) > 0 {
+	trackerStatusFilters := statusFiltersRequireTrackerData(filters.Status)
+	needsManualStatusFiltering := trackerStatusFilters
+	if !needsManualStatusFiltering && len(filters.Status) > 0 {
 		for _, status := range filters.Status {
 			switch qbt.TorrentFilter(status) {
 			case qbt.TorrentFilterActive, qbt.TorrentFilterInactive, qbt.TorrentFilterChecking, qbt.TorrentFilterMoving, qbt.TorrentFilterError, qbt.TorrentFilterDownloading, qbt.TorrentFilterUploading:
 				needsManualStatusFiltering = true
 			}
 
-			if status == "unregistered" || status == "tracker_down" {
-				needsManualStatusFiltering = true
+			if needsManualStatusFiltering {
+				break
 			}
 		}
 	}
@@ -267,7 +268,15 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		filteredTorrents = syncManager.GetTorrents(torrentFilterOptions)
 
 		// Apply manual filtering for multiple selections
-		filteredTorrents, trackerMap, pendingTrackerHydration = sm.applyManualFilters(ctx, client, filteredTorrents, filters, mainData, trackerMap)
+		if trackerStatusFilters {
+			allowTrackerFetch := client != nil && client.includeTrackers
+			filteredTorrents, trackerMap, pendingTrackerHydration = sm.enrichTorrentsWithTrackerData(ctx, client, filteredTorrents, trackerMap, trackerFetchUnlimited, allowTrackerFetch)
+			if len(pendingTrackerHydration) > 0 && client != nil && !allowTrackerFetch {
+				client.scheduleTrackerWarmup(pendingTrackerHydration, trackerWarmupBatchSize)
+			}
+		}
+
+		filteredTorrents = sm.applyManualFilters(client, filteredTorrents, filters, mainData)
 	} else {
 		// Use library filtering for single selections
 		log.Debug().
@@ -766,6 +775,17 @@ func trackerMessageMatches(message string, patterns []string) bool {
 
 	for _, pattern := range patterns {
 		if strings.Contains(text, pattern) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func statusFiltersRequireTrackerData(statuses []string) bool {
+	for _, status := range statuses {
+		switch status {
+		case "unregistered", "tracker_down":
 			return true
 		}
 	}
@@ -1518,10 +1538,10 @@ func (sm *SyncManager) filterTorrentsByGlob(torrents []qbt.Torrent, pattern stri
 	return filtered
 }
 
-// applyManualFilters applies all filters manually when library filtering is insufficient
-func (sm *SyncManager) applyManualFilters(ctx context.Context, client *Client, torrents []qbt.Torrent, filters FilterOptions, mainData *qbt.MainData, trackerMap map[string][]qbt.TorrentTracker) ([]qbt.Torrent, map[string][]qbt.TorrentTracker, []string) {
+// applyManualFilters applies all filters manually when library filtering is insufficient.
+// Callers hydrate tracker data beforehand when status filters depend on tracker health.
+func (sm *SyncManager) applyManualFilters(client *Client, torrents []qbt.Torrent, filters FilterOptions, mainData *qbt.MainData) []qbt.Torrent {
 	var filtered []qbt.Torrent
-	var pendingTrackerHashes []string
 
 	// Category set for O(1) lookups
 	categorySet := make(map[string]struct{}, len(filters.Categories))
@@ -1580,25 +1600,6 @@ func (sm *SyncManager) applyManualFilters(ctx context.Context, client *Client, t
 				torrentHashToDomains[h][domain] = struct{}{}
 			}
 		}
-	}
-
-	needTrackerStatus := false
-	for _, status := range filters.Status {
-		if status == "unregistered" || status == "tracker_down" {
-			needTrackerStatus = true
-			break
-		}
-	}
-
-	if needTrackerStatus {
-		var enriched []qbt.Torrent
-		var missing []string
-		allowTrackerFetch := client != nil && client.includeTrackers
-		enriched, trackerMap, missing = sm.enrichTorrentsWithTrackerData(ctx, client, torrents, trackerMap, trackerFetchUnlimited, allowTrackerFetch)
-		if len(missing) > 0 {
-			pendingTrackerHashes = append(pendingTrackerHashes, missing...)
-		}
-		torrents = enriched
 	}
 
 	for _, torrent := range torrents {
@@ -1700,11 +1701,7 @@ func (sm *SyncManager) applyManualFilters(ctx context.Context, client *Client, t
 		Int("trackerFilters", len(filters.Trackers)).
 		Msg("Applied manual filtering with multiple selections")
 
-	if len(pendingTrackerHashes) > 0 && client != nil {
-		client.scheduleTrackerWarmup(pendingTrackerHashes, trackerWarmupBatchSize)
-	}
-
-	return filtered, trackerMap, pendingTrackerHashes
+	return filtered
 }
 
 // Torrent state categories for fast lookup
