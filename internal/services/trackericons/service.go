@@ -23,7 +23,7 @@ import (
 	"sync"
 	"time"
 
-	ico "github.com/biessek/golang-ico"
+	"github.com/mat/besticon/ico"
 	"golang.org/x/image/draw"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/charset"
@@ -617,43 +617,14 @@ func decodeImage(data []byte, contentType, originalURL string) (image.Image, err
 
 	reader := bytes.NewReader(data)
 
-	tryICO := func() (image.Image, error) {
-		if _, err := reader.Seek(0, io.SeekStart); err != nil {
-			return nil, err
-		}
-		return ico.Decode(reader)
-	}
-
-	tryGeneric := func() (image.Image, error) {
-		if _, err := reader.Seek(0, io.SeekStart); err != nil {
-			return nil, err
-		}
-		img, _, err := image.Decode(reader)
-		return img, err
-	}
-
-	lowerType := strings.ToLower(contentType)
-	if strings.Contains(lowerType, "x-icon") || strings.HasSuffix(strings.ToLower(originalURL), ".ico") {
-		if img, err := tryICO(); err == nil {
-			return img, nil
-		}
-		if img, err := tryGeneric(); err == nil {
-			return img, nil
-		}
-		if img, err := tryICO(); err == nil {
-			return img, nil
-		}
-		return nil, fmt.Errorf("failed to decode icon data")
-	}
-
-	if img, err := tryGeneric(); err == nil {
-		return img, nil
-	}
-	if img, err := tryICO(); err == nil {
+	// Try standard formats first (PNG, JPEG, GIF)
+	if img, _, err := image.Decode(reader); err == nil {
 		return img, nil
 	}
 
-	return nil, fmt.Errorf("unsupported image format")
+	// Fallback to ICO
+	reader.Seek(0, io.SeekStart)
+	return ico.Decode(reader)
 }
 
 func resizeToSquare(src image.Image, size int) image.Image {

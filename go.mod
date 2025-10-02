@@ -8,13 +8,13 @@ require (
 	github.com/alexedwards/scs/v2 v2.9.0
 	github.com/autobrr/autobrr v1.66.1
 	github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20250929195222-590593359982
-	github.com/biessek/golang-ico v0.0.0-20250805151044-6d8ea19fb761
 	github.com/creativeprojects/go-selfupdate v1.5.1
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-chi/chi/v5 v5.2.3
 	github.com/hashicorp/go-version v1.7.0
 	github.com/keygen-sh/machineid v1.1.1
 	github.com/lithammer/fuzzysearch v1.1.8
+	github.com/mat/besticon v3.12.0+incompatible
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.23.2
 	github.com/rs/zerolog v1.34.0
@@ -25,7 +25,6 @@ require (
 	golang.org/x/image v0.31.0
 	golang.org/x/net v0.43.0
 	golang.org/x/sync v0.17.0
-	golang.org/x/net v0.43.0
 	golang.org/x/term v0.35.0
 	golang.org/x/text v0.29.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
@@ -52,7 +51,6 @@ require (
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-retryablehttp v0.7.8 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
-	github.com/jsummers/gobmp v0.0.0-20230614200233-a9de23ed2e25 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
