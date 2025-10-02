@@ -107,7 +107,16 @@ func (s *Service) ListIcons(ctx context.Context) (map[string]string, error) {
 		// Extract tracker name from filename (remove .png extension)
 		trackerName := strings.TrimSuffix(entry.Name(), ".png")
 		encoded := base64.StdEncoding.EncodeToString(data)
-		icons[trackerName] = "data:image/png;base64," + encoded
+		dataURL := "data:image/png;base64," + encoded
+		icons[trackerName] = dataURL
+		if strings.HasPrefix(trackerName, "www.") {
+			trimmed := strings.TrimPrefix(trackerName, "www.")
+			if trimmed != "" {
+				if _, exists := icons[trimmed]; !exists {
+					icons[trimmed] = dataURL
+				}
+			}
+		}
 	}
 
 	return icons, nil
