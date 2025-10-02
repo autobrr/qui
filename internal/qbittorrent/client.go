@@ -6,6 +6,7 @@ package qbittorrent
 import (
 	"context"
 	"fmt"
+	"maps"
 	"sort"
 	"strings"
 	"sync"
@@ -256,9 +257,7 @@ func (c *Client) getTrackersForHashes(ctx context.Context, hashes []string, allo
 	}
 
 	fetched, err := c.fetchAndCacheTrackers(ctx, toFetch)
-	for hash, trackers := range fetched {
-		results[hash] = trackers
-	}
+	maps.Copy(results, fetched)
 
 	for _, hash := range toFetch {
 		if _, ok := fetched[hash]; !ok {
@@ -311,10 +310,7 @@ func (c *Client) fetchTrackersViaInclude(ctx context.Context, hashes []string) (
 	var firstErr error
 
 	for start := 0; start < len(hashes); start += chunkSize {
-		end := start + chunkSize
-		if end > len(hashes) {
-			end = len(hashes)
-		}
+		end := min(start+chunkSize, len(hashes))
 
 		opts := qbt.TorrentFilterOptions{Hashes: hashes[start:end], IncludeTrackers: true}
 		torrents, err := c.Client.GetTorrentsCtx(ctx, opts)
@@ -405,10 +401,7 @@ func (c *Client) runTrackerWarmup(hashes []string, batchSize int) {
 	}()
 
 	for start := 0; start < len(hashes); start += batchSize {
-		end := start + batchSize
-		if end > len(hashes) {
-			end = len(hashes)
-		}
+		end := min(start+batchSize, len(hashes))
 
 		batch := hashes[start:end]
 		ctx, cancel := context.WithTimeout(context.Background(), trackerWarmupTimeout)

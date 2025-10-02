@@ -6,6 +6,7 @@ package qbittorrent
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net/url"
 	"path/filepath"
 	"slices"
@@ -867,9 +868,7 @@ func (sm *SyncManager) enrichTorrentsWithTrackerData(ctx context.Context, client
 	}
 
 	if len(trackerData) > 0 {
-		for hash, trackers := range trackerData {
-			trackerMap[hash] = trackers
-		}
+		maps.Copy(trackerMap, trackerData)
 		for i := range torrents {
 			if trackers, ok := trackerMap[torrents[i].Hash]; ok {
 				torrents[i].Trackers = trackers
