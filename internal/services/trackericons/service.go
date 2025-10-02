@@ -519,38 +519,56 @@ func sanitizeHost(host string) string {
 	if host == "" {
 		return ""
 	}
-	if idx := strings.Index(host, "/"); idx >= 0 {
-		host = host[:idx]
+
+	// url.Parse treats values without a scheme as paths; prefix with // to coerce host parsing.
+	parsed, err := url.Parse(host)
+	if err != nil || parsed.Host == "" {
+		parsed, err = url.Parse("//" + host)
+		if err != nil {
+			return ""
+		}
 	}
-	if idx := strings.Index(host, "?"); idx >= 0 {
-		host = host[:idx]
+
+	hostname := strings.Trim(strings.ToLower(parsed.Hostname()), ".")
+	if hostname == "" {
+		return ""
 	}
-	if idx := strings.Index(host, "#"); idx >= 0 {
-		host = host[:idx]
+
+	if strings.Contains(hostname, ":") {
+		return "[" + hostname + "]"
 	}
-	host = strings.ToLower(host)
-	host = strings.ReplaceAll(host, "..", ".")
-	return host
+
+	return hostname
 }
 
-// safeFilename converts a host to a safe filename using filepath stdlib.
+// safeFilename normalises a host into a filesystem-friendly base name.
 func safeFilename(host string) string {
-	// Use filepath.Base to handle any remaining path components
-	base := filepath.Base(host)
-
-	// Clean it to remove any path traversal attempts
-	cleaned := filepath.Clean(base)
-
-	// Ensure no directory separators remain
-	cleaned = strings.ReplaceAll(cleaned, string(filepath.Separator), "_")
-	cleaned = strings.ReplaceAll(cleaned, "..", "_")
-
-	// Handle edge cases
-	if cleaned == "." || cleaned == "" {
+	sanitized := sanitizeHost(host)
+	if sanitized == "" {
 		return "_invalid_"
 	}
 
-	return cleaned
+	name := strings.Map(func(r rune) rune {
+		if r >= 'a' && r <= 'z' {
+			return r
+		}
+		if r >= '0' && r <= '9' {
+			return r
+		}
+		switch r {
+		case '.', '-', '_':
+			return r
+		default:
+			return '_'
+		}
+	}, sanitized)
+
+	name = strings.Trim(name, "._-")
+	if name == "" {
+		return "_invalid_"
+	}
+
+	return name
 }
 
 func generateHostCandidates(host string) []string {
