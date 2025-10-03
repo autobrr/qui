@@ -679,15 +679,28 @@ func decodeImage(data []byte, contentType, originalURL string) (image.Image, err
 	}
 
 	const maxDimension = 1024
+	validateDimensions := func(width, height int) error {
+		switch {
+		case width < 1 || height < 1:
+			return fmt.Errorf("icon dimensions invalid: %dx%d (min 1)", width, height)
+		case width > maxDimension || height > maxDimension:
+			return fmt.Errorf("icon dimensions too large: %dx%d (max %d)", width, height, maxDimension)
+		default:
+			return nil
+		}
+	}
 
 	reader := bytes.NewReader(data)
 
 	// Check dimensions before expensive decode to avoid decompression bombs
+	// If validation succeeds here we can skip re-checking the same dimensions later.
+	validated := false
 	cfg, _, err := image.DecodeConfig(reader)
 	if err == nil {
-		if cfg.Width > maxDimension || cfg.Height > maxDimension {
-			return nil, fmt.Errorf("icon dimensions too large: %dx%d (max %d)", cfg.Width, cfg.Height, maxDimension)
+		if err := validateDimensions(cfg.Width, cfg.Height); err != nil {
+			return nil, err
 		}
+		validated = true
 	}
 
 	// Reset reader for full decode
@@ -697,6 +710,11 @@ func decodeImage(data []byte, contentType, originalURL string) (image.Image, err
 
 	// Try standard formats first (PNG, JPEG, GIF)
 	if img, _, err := image.Decode(reader); err == nil {
+		if !validated {
+			if err := validateDimensions(img.Bounds().Dx(), img.Bounds().Dy()); err != nil {
+				return nil, err
+			}
+		}
 		return img, nil
 	}
 
@@ -705,10 +723,12 @@ func decodeImage(data []byte, contentType, originalURL string) (image.Image, err
 		return nil, fmt.Errorf("failed to reset reader for ico decode: %w", err)
 	}
 
-	if cfg, err := ico.DecodeConfig(reader); err == nil {
-		if cfg.Width > maxDimension || cfg.Height > maxDimension {
-			return nil, fmt.Errorf("icon dimensions too large: %dx%d (max %d)", cfg.Width, cfg.Height, maxDimension)
-		}
+	icoCfg, err := ico.DecodeConfig(reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode ico config: %w", err)
+	}
+	if err := validateDimensions(icoCfg.Width, icoCfg.Height); err != nil {
+		return nil, err
 	}
 
 	if _, err := reader.Seek(0, io.SeekStart); err != nil {
