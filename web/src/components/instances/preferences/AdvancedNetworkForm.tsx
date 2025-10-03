@@ -265,36 +265,16 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
           </form.Field>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <form.Field 
-              name="peer_tos"
-              validators={{
-                onChange: ({ value }) => {
-                  if (value < 0 || value > 255) {
-                    return 'Peer ToS must be between 0 and 255'
-                  }
-                  return undefined
-                }
-              }}
-            >
+            <form.Field name="peer_tos">
               {(field) => (
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Label className="text-sm font-medium">Peer ToS Byte</Label>
-                  </div>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={255}
-                    value={field.state.value || ""}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value)
-                      field.handleChange(isNaN(val) ? 0 : val)
-                    }}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Type of Service byte for peer connections
-                  </p>
-                </div>
+                <NumberInput
+                  label="Peer ToS Byte"
+                  value={field.state.value}
+                  onChange={(value) => field.handleChange(value)}
+                  min={0}
+                  max={255}
+                  description="Type of Service byte for peer connections"
+                />
               )}
             </form.Field>
 
