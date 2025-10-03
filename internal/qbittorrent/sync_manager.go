@@ -843,19 +843,27 @@ func (sm *SyncManager) torrentIsUnregistered(torrent qbt.Torrent) bool {
 }
 
 func (sm *SyncManager) torrentTrackerIsDown(torrent qbt.Torrent) bool {
-	foundDown := false
+	var hasWorking bool
+	var hasDown bool
 
 	for _, tracker := range torrent.Trackers {
-		if tracker.Status != qbt.TrackerStatusNotWorking {
-			return false
-		}
-
-		if trackerMessageMatches(tracker.Message, trackerDownStatuses) {
-			foundDown = true
+		switch tracker.Status {
+		case qbt.TrackerStatusDisabled:
+			// Skip synthesised entries like DHT/PeX which report as disabled (0).
+			continue
+		case qbt.TrackerStatusOK, qbt.TrackerStatusUpdating:
+			hasWorking = true
+		case qbt.TrackerStatusNotWorking:
+			if trackerMessageMatches(tracker.Message, trackerDownStatuses) {
+				hasDown = true
+			}
+		default:
+			// Other statuses (e.g. not contacted yet) neither confirm nor deny a failure.
+			continue
 		}
 	}
 
-	return foundDown
+	return hasDown && !hasWorking
 }
 
 func (sm *SyncManager) determineTrackerHealth(torrent qbt.Torrent) TrackerHealth {
