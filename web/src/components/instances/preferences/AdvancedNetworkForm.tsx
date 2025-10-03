@@ -76,7 +76,7 @@ function NumberInput({
         type="number"
         min={min}
         max={max}
-        value={value || ""}
+        value={value ?? ""}
         onChange={(e) => {
           const val = parseInt(e.target.value)
           onChange(isNaN(val) ? 0 : val)
