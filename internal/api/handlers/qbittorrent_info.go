@@ -31,6 +31,7 @@ type QBittorrentBuildInfo struct {
 	Libtorrent string `json:"libtorrent"`
 	Boost      string `json:"boost"`
 	OpenSSL    string `json:"openssl"`
+	Zlib       string `json:"zlib"`
 	Bitness    int    `json:"bitness"`
 	Platform   string `json:"platform,omitempty"`
 }
@@ -73,17 +74,34 @@ func (h *QBittorrentInfoHandler) GetQBittorrentAppInfo(w http.ResponseWriter, r 
 
 // getQBittorrentAppInfo fetches application info from qBittorrent API
 func (h *QBittorrentInfoHandler) getQBittorrentAppInfo(ctx context.Context, client *internalqbittorrent.Client) (*QBittorrentAppInfo, error) {
-	appInfo := &QBittorrentAppInfo{
-		Version: client.GetWebAPIVersion(),
+	// Get qBittorrent version
+	version, err := client.GetWebAPIVersionCtx(ctx)
+	if err != nil {
+		return nil, err
 	}
 
-	// TODO: Implement actual qBittorrent API calls to get build info
-	// For now, we'll provide sensible defaults that assume modern qBittorrent/libtorrent
-	// This allows the UI to work while we implement proper version detection
-	appInfo.BuildInfo = &QBittorrentBuildInfo{
-		Libtorrent: "1.2.0",   // Assume modern libtorrent 2.x for now
-		Platform:   "windows", // Default platform, could be detected from preferences
-		Bitness:    64,
+	// Get build information from qBittorrent API
+	buildInfo, err := client.GetBuildInfoCtx(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Log the buildinfo
+	log.Info().Msgf("qBittorrent BuildInfo - Version: %s, Platform: %s, Libtorrent: %s, Qt: %s, Bitness: %d",
+		version, buildInfo.Platform, buildInfo.Libtorrent, buildInfo.Qt, buildInfo.Bitness)
+
+	// Convert from go-qbittorrent BuildInfo to our QBittorrentBuildInfo
+	appInfo := &QBittorrentAppInfo{
+		Version: version,
+		BuildInfo: &QBittorrentBuildInfo{
+			Qt:         buildInfo.Qt,
+			Libtorrent: buildInfo.Libtorrent,
+			Boost:      buildInfo.Boost,
+			OpenSSL:    buildInfo.Openssl,
+			Zlib:       buildInfo.Zlib,
+			Bitness:    buildInfo.Bitness,
+			Platform:   buildInfo.Platform,
+		},
 	}
 
 	return appInfo, nil
