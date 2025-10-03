@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState, useEffect } from "react"
+import { useEffect, useState } from "react"
 
 export type ViewMode = "normal" | "compact" | "ultra-compact"
 
@@ -24,13 +24,19 @@ export function usePersistedCompactViewState(defaultMode: ViewMode = "normal") {
     return defaultMode
   })
 
-  // Persist to localStorage whenever view mode changes
+  // Persist to localStorage and broadcast whenever view mode changes
   useEffect(() => {
     try {
       localStorage.setItem(storageKey, viewMode)
     } catch (error) {
       console.error("Failed to save view mode state to localStorage:", error)
     }
+
+    window.dispatchEvent(
+      new CustomEvent(storageKey, {
+        detail: { viewMode },
+      })
+    )
   }, [viewMode])
 
   // Listen for cross-component updates via CustomEvent within the same tab
@@ -48,17 +54,18 @@ export function usePersistedCompactViewState(defaultMode: ViewMode = "normal") {
   // Cycle through view modes: normal -> compact -> ultra-compact -> normal
   const cycleViewMode = () => {
     setViewModeState((prev: ViewMode) => {
-      const nextMode = prev === "normal" ? "compact" : 
-                     prev === "compact" ? "ultra-compact" : "normal"
-      
-      try {
-        localStorage.setItem(storageKey, nextMode)
-      } catch (error) {
-        console.error("Failed to save view mode state to localStorage:", error)
+      let nextMode: ViewMode
+
+      if (prev === "normal") {
+        nextMode = "compact"
+      } else if (prev === "compact") {
+        nextMode = "ultra-compact"
+      } else {
+        nextMode = "normal"
       }
-      
-      const evt = new CustomEvent(storageKey, { detail: { viewMode: nextMode } })
-      window.dispatchEvent(evt)
+
+      // Don't manually call localStorage.setItem here - the useEffect handles it
+
       return nextMode
     })
   }
@@ -66,6 +73,6 @@ export function usePersistedCompactViewState(defaultMode: ViewMode = "normal") {
   return {
     viewMode,
     setViewMode: setViewModeState,
-    cycleViewMode
+    cycleViewMode,
   } as const
 }

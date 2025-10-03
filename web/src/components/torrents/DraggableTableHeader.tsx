@@ -3,17 +3,34 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import type { ViewMode } from "@/hooks/usePersistedCompactViewState"
+import { cn } from "@/lib/utils"
+import type { Torrent } from "@/types"
 import { useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { flexRender, type Header } from "@tanstack/react-table"
-import { ChevronUp, ChevronDown } from "lucide-react"
-import type { Torrent } from "@/types"
+import { ChevronDown, ChevronUp } from "lucide-react"
+
+// Pre-computed header classNames for performance (avoid cn() calls in render loop)
+const HEADER_CLASSNAMES = {
+  select: {
+    normal: "font-medium text-muted-foreground flex items-center justify-center h-10",
+    compact: "font-medium text-muted-foreground flex items-center justify-center h-8",
+    "ultra-compact": "font-medium text-muted-foreground flex items-center justify-center h-7",
+  },
+  default: {
+    normal: "font-medium text-muted-foreground flex items-center text-left px-3 h-10",
+    compact: "font-medium text-muted-foreground flex items-center text-left px-2 h-8",
+    "ultra-compact": "font-medium text-muted-foreground flex items-center text-left px-1 h-7",
+  },
+} as const
 
 interface DraggableTableHeaderProps {
   header: Header<Torrent, unknown>
+  viewMode?: ViewMode
 }
 
-export function DraggableTableHeader({ header }: DraggableTableHeaderProps) {
+export function DraggableTableHeader({ header, viewMode = "normal" }: DraggableTableHeaderProps) {
   const { column } = header
 
   const {
@@ -44,18 +61,18 @@ export function DraggableTableHeader({ header }: DraggableTableHeaderProps) {
       className="group overflow-hidden"
     >
       <div
-        className={`px-3 h-10 text-left text-sm font-medium text-muted-foreground flex items-center ${
-          column.getCanSort() ? "cursor-pointer select-none" : ""
-        } ${
-          column.id !== "select" ? "cursor-grab active:cursor-grabbing" : ""
-        }`}
+        className={cn(
+          HEADER_CLASSNAMES[column.id === "select" ? "select" : "default"][viewMode],
+          column.getCanSort() && "cursor-pointer select-none",
+          column.id !== "select" && "cursor-grab active:cursor-grabbing"
+        )}
         onClick={column.id !== "select" && column.getCanSort() ? column.getToggleSortingHandler() : undefined}
         {...(column.id !== "select" ? attributes : {})}
         {...(column.id !== "select" ? listeners : {})}
       >
         {/* Header content */}
         <div
-          className={`flex items-center gap-1 flex-1 min-w-0 ${column.id === "select" ? "justify-center" : ""}`}
+          className="flex items-center gap-1 flex-1 min-w-0"
         >
           <span className={`overflow-hidden whitespace-nowrap ${column.id === "select" ? "flex items-center" : ""}`}>
             {header.isPlaceholder? null: flexRender(

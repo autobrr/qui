@@ -10,6 +10,7 @@ import { usePersistedColumnOrder } from "@/hooks/usePersistedColumnOrder"
 import { usePersistedColumnSizing } from "@/hooks/usePersistedColumnSizing"
 import { usePersistedColumnSorting } from "@/hooks/usePersistedColumnSorting"
 import { usePersistedColumnVisibility } from "@/hooks/usePersistedColumnVisibility"
+import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
 import { useTorrentExporter } from "@/hooks/useTorrentExporter"
 import { useTorrentsList } from "@/hooks/useTorrentsList"
@@ -76,9 +77,10 @@ import { useInstancePreferences } from "@/hooks/useInstancePreferences.ts"
 import { useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { getCommonCategory, getCommonSavePath, getCommonTags } from "@/lib/torrent-utils"
+import { cn } from "@/lib/utils"
 import type { Category, Torrent, TorrentCounts } from "@/types"
 import { useSearch } from "@tanstack/react-router"
-import { ArrowUpDown, ChevronDown, ChevronUp, Columns3, Eye, EyeOff, Loader2 } from "lucide-react"
+import { ArrowUpDown, ChevronDown, ChevronUp, Columns3, Eye, EyeOff, Loader2, Rows3 } from "lucide-react"
 import { createPortal } from "react-dom"
 import { AddTorrentDialog } from "./AddTorrentDialog"
 import { DraggableTableHeader } from "./DraggableTableHeader"
@@ -136,6 +138,27 @@ const DEFAULT_COLUMN_VISIBILITY = {
 }
 const DEFAULT_COLUMN_SIZING = {}
 
+// Row heights for different view modes
+const ROW_HEIGHTS = {
+  normal: 40,
+  compact: 32,
+  "ultra-compact": 28,
+} as const
+
+// Pre-computed cell classNames for performance (avoid cn() calls in render loop)
+const CELL_CLASSNAMES = {
+  select: {
+    normal: "flex items-center overflow-hidden min-w-0 justify-center py-2",
+    compact: "flex items-center overflow-hidden min-w-0 justify-center py-1",
+    "ultra-compact": "flex items-center overflow-hidden min-w-0 justify-center py-0.5",
+  },
+  default: {
+    normal: "flex items-center overflow-hidden min-w-0 px-3 py-2",
+    compact: "flex items-center overflow-hidden min-w-0 px-2 py-1",
+    "ultra-compact": "flex items-center overflow-hidden min-w-0 px-1 py-0.5",
+  },
+} as const
+
 // Helper function to get default column order (module scope for stable reference)
 function getDefaultColumnOrder(): string[] {
   const cols = createColumns(false, undefined, "bytes", undefined)
@@ -180,6 +203,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const { exportTorrents, isExporting: isExportingTorrent } = useTorrentExporter({ instanceId, incognitoMode })
   const [speedUnit, setSpeedUnit] = useSpeedUnits()
+  const { viewMode, cycleViewMode } = usePersistedCompactViewState("normal")
   const { formatTimestamp } = useDateTimeFormatters()
   const { preferences } = useInstancePreferences(instanceId)
 
@@ -628,7 +652,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const virtualizer = useVirtualizer({
     count: safeLoadedRows,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 40,
+    estimateSize: () => ROW_HEIGHTS[viewMode],
     // Optimized overscan based on TanStack Virtual recommendations
     // Start small and adjust based on dataset size and performance
     overscan: sortedTorrents.length > 50000 ? 3 : sortedTorrents.length > 10000 ? 5 : sortedTorrents.length > 1000 ? 10 : 15,
@@ -726,6 +750,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       }, 0)
     }
   }, [filters, effectiveSearch, instanceId, virtualizer, sortedTorrents.length, setRowSelection, lastUserAction])
+
+  // Recalculate virtualizer when view mode changes
+  useEffect(() => {
+    // Single measure call after view mode change - virtualizer handles remeasurement automatically
+    virtualizer.measure()
+  }, [viewMode, virtualizer])
 
   // Clear selection handler for keyboard navigation
   const clearSelection = useCallback(() => {
@@ -1078,7 +1108,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
           <div style={{ position: "relative", minWidth: "min-content" }}>
             {/* Header */}
-            <div className="sticky top-0 bg-background border-b" style={{ zIndex: 50 }}>
+            <div className={cn(
+              "sticky top-0 bg-background border-b",
+              viewMode === "ultra-compact" && "text-xs",
+              viewMode === "compact" && "text-sm"
+            )} style={{ zIndex: 50 }}>
               <DndContext
                 sensors={sensors}
                 collisionDetection={closestCenter}
@@ -1102,6 +1136,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                           <DraggableTableHeader
                             key={header.id}
                             header={header}
+                            viewMode={viewMode}
                           />
                         ))}
                       </div>
@@ -1153,7 +1188,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                     isExporting={isExportingTorrent}
                   >
                     <div
-                      className={`flex border-b cursor-pointer hover:bg-muted/50 ${row.getIsSelected() ? "bg-muted/50" : ""} ${isSelected ? "bg-accent" : ""}`}
+                      className={cn(
+                        "flex border-b cursor-pointer hover:bg-muted/50",
+                        row.getIsSelected() && "bg-muted/50",
+                        isSelected && "bg-accent",
+                        viewMode === "ultra-compact" && "text-xs",
+                        viewMode === "compact" && "text-sm"
+                      )}
                       style={{
                         position: "absolute",
                         top: 0,
@@ -1219,7 +1260,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                             width: cell.column.getSize(),
                             flexShrink: 0,
                           }}
-                          className="px-3 py-2 flex items-center overflow-hidden min-w-0"
+                          className={CELL_CLASSNAMES[cell.column.id === "select" ? "select" : "default"][viewMode]}
                         >
                           {flexRender(
                             cell.column.columnDef.cell,
@@ -1317,6 +1358,23 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
               </TooltipTrigger>
               <TooltipContent>
                 {incognitoMode ? "Exit incognito mode" : "Enable incognito mode"}
+              </TooltipContent>
+            </Tooltip>
+            {/* View mode toggle */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={cycleViewMode}
+                  className="flex items-center gap-1 px-2 py-0.5 rounded-sm transition-all hover:bg-muted/50"
+                >
+                  <Rows3 className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">
+                    {viewMode === "normal" ? "Normal" :viewMode === "compact" ? "Compact" : "Ultra"}
+                  </span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                Cycle view density: {viewMode} → {viewMode === "normal" ? "compact" : viewMode === "compact" ? "ultra-compact" : "normal"}
               </TooltipContent>
             </Tooltip>
           </div>
