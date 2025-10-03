@@ -322,6 +322,7 @@ http://localhost:7476/proxy/abc123def456ghi789jkl012mno345pqr678stu901vwx234yz
 
 **Sonarr / Radarr**
 - Go to `Settings → Download Clients`
+- Select `Show Advanced`
 - Add a new **qBittorrent** client
 - Set the host and port of qui
 - Add URL Base (`/proxy/...`) - remember to include /qui/ if you use custom baseurl
