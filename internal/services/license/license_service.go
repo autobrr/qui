@@ -25,13 +25,15 @@ type Service struct {
 	db          *database.DB
 	licenseRepo *database.LicenseRepo
 	polarClient *polar.Client
+	configDir   string
 }
 
 // NewLicenseService creates a new license service
-func NewLicenseService(repo *database.LicenseRepo, polarClient *polar.Client) *Service {
+func NewLicenseService(repo *database.LicenseRepo, polarClient *polar.Client, configDir string) *Service {
 	return &Service{
 		licenseRepo: repo,
 		polarClient: polarClient,
+		configDir:   configDir,
 	}
 }
 
@@ -48,7 +50,7 @@ func (s *Service) ActivateAndStoreLicense(ctx context.Context, licenseKey string
 		return nil, fmt.Errorf("failed to check existing license: %w", err)
 	}
 
-	fingerprint, err := GetDeviceID("qui-premium", username)
+	fingerprint, err := GetDeviceID("qui-premium", username, s.configDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get machine ID: %w", err)
 	}
@@ -153,7 +155,7 @@ func (s *Service) ValidateAndStoreLicense(ctx context.Context, licenseKey string
 		return nil, err
 	}
 
-	fingerprint, err := GetDeviceID("qui-premium", username)
+	fingerprint, err := GetDeviceID("qui-premium", username, s.configDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get machine ID: %w", err)
 	}
@@ -218,7 +220,7 @@ func (s *Service) RefreshAllLicenses(ctx context.Context) error {
 			continue
 		}
 
-		fingerprint, err := GetDeviceID("qui-premium", license.Username)
+		fingerprint, err := GetDeviceID("qui-premium", license.Username, s.configDir)
 		if err != nil {
 			return fmt.Errorf("failed to get machine ID: %w", err)
 		}
@@ -346,7 +348,7 @@ func (s *Service) ValidateLicenses(ctx context.Context) (bool, error) {
 			continue
 		}
 
-		fingerprint, err := GetDeviceID("qui-premium", license.Username)
+		fingerprint, err := GetDeviceID("qui-premium", license.Username, s.configDir)
 		if err != nil {
 			return false, fmt.Errorf("failed to get machine ID: %w", err)
 		}
