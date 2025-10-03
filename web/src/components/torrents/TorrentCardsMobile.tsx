@@ -312,6 +312,7 @@ interface TorrentCardsMobileProps {
   addTorrentModalOpen?: boolean
   onAddTorrentModalChange?: (open: boolean) => void
   onFilteredDataUpdate?: (torrents: Torrent[], total: number, counts?: TorrentCounts, categories?: Record<string, Category>, tags?: string[], trackerHealthSupported?: boolean) => void
+  trackerHealthSupported?: boolean
 }
 
 function formatEta(seconds: number): string {
@@ -354,6 +355,32 @@ function getStatusBadgeVariant(state: string): "default" | "secondary" | "destru
   }
 }
 
+function getStatusBadgeProps(torrent: Torrent, trackerHealthSupported: boolean): {
+  variant: "default" | "secondary" | "destructive" | "outline"
+  label: string
+  className: string
+} {
+  const baseVariant = getStatusBadgeVariant(torrent.state)
+  let variant = baseVariant
+  let label = getStateLabel(torrent.state)
+  let className = ""
+
+  if (trackerHealthSupported) {
+    const trackerHealth = torrent.tracker_health ?? null
+    if (trackerHealth === "tracker_down") {
+      label = "Tracker Down"
+      variant = "outline"
+      className = "text-yellow-500 border-yellow-500/40 bg-yellow-500/10"
+    } else if (trackerHealth === "unregistered") {
+      label = "Unregistered"
+      variant = "outline"
+      className = "text-destructive border-destructive/40 bg-destructive/10"
+    }
+  }
+
+  return { variant, label, className }
+}
+
 // Swipeable card component with gesture support
 function SwipeableCard({
   torrent,
@@ -365,6 +392,7 @@ function SwipeableCard({
   selectionMode,
   speedUnit,
   viewMode,
+  trackerHealthSupported,
 }: {
   torrent: Torrent
   isSelected: boolean
@@ -375,6 +403,7 @@ function SwipeableCard({
   selectionMode: boolean
   speedUnit: SpeedUnit
   viewMode: ViewMode
+  trackerHealthSupported: boolean
 }) {
 
   // Use number for timeoutId in browser
@@ -431,6 +460,10 @@ function SwipeableCard({
   const displayCategory = incognitoMode ? getLinuxCategory(torrent.hash) : torrent.category
   const displayTags = incognitoMode ? getLinuxTags(torrent.hash) : torrent.tags
   const displayRatio = incognitoMode ? getLinuxRatio(torrent.hash) : torrent.ratio
+  const { variant: statusBadgeVariant, label: statusBadgeLabel, className: statusBadgeClass } = useMemo(
+    () => getStatusBadgeProps(torrent, trackerHealthSupported),
+    [torrent, trackerHealthSupported]
+  )
 
   return (
     <div
@@ -499,8 +532,8 @@ function SwipeableCard({
           )}
 
           {/* State badge - smaller */}
-          <Badge variant={getStatusBadgeVariant(torrent.state)} className="text-[10px] px-1 py-0 h-4 flex-shrink-0">
-            {getStateLabel(torrent.state)}
+          <Badge variant={statusBadgeVariant} className={cn("text-[10px] px-1 py-0 h-4 flex-shrink-0", statusBadgeClass)}>
+            {statusBadgeLabel}
           </Badge>
 
           {/* Percentage if not 100% */}
@@ -529,8 +562,8 @@ function SwipeableCard({
                 </h3>
               </div>
             </div>
-            <Badge variant={getStatusBadgeVariant(torrent.state)} className="text-xs flex-shrink-0">
-              {getStateLabel(torrent.state)}
+            <Badge variant={statusBadgeVariant} className={cn("text-xs flex-shrink-0", statusBadgeClass)}>
+              {statusBadgeLabel}
             </Badge>
           </div>
 
@@ -621,8 +654,8 @@ function SwipeableCard({
             </div>
 
             {/* State badge on the right */}
-            <Badge variant={getStatusBadgeVariant(torrent.state)} className="text-xs">
-              {getStateLabel(torrent.state)}
+            <Badge variant={statusBadgeVariant} className={cn("text-xs", statusBadgeClass)}>
+              {statusBadgeLabel}
             </Badge>
           </div>
         </>
@@ -1414,8 +1447,8 @@ export function TorrentCardsMobile({
                   incognitoMode={incognitoMode}
                   selectionMode={selectionMode}
                   speedUnit={speedUnit}
-
                   viewMode={viewMode}
+                  trackerHealthSupported={trackerHealthSupported}
                 />
               </div>
             )
