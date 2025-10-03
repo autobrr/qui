@@ -28,8 +28,6 @@ require (
 	modernc.org/sqlite v1.39.0
 )
 
-replace github.com/autobrr/go-qbittorrent => ../go-qbittorrent
-
 require (
 	code.gitea.io/sdk/gitea v0.22.0 // indirect
 	github.com/42wim/httpsig v1.2.3 // indirect
