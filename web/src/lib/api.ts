@@ -290,6 +290,41 @@ class ApiClient {
     return this.request(`/instances/${instanceId}/torrents/${hash}/files`)
   }
 
+  async exportTorrent(instanceId: number, hash: string): Promise<{ blob: Blob; filename: string | null }> {
+    const encodedHash = encodeURIComponent(hash)
+    const response = await fetch(`${API_BASE}/instances/${instanceId}/torrents/${encodedHash}/export`, {
+      method: "GET",
+      credentials: "include",
+    })
+
+    if (!response.ok) {
+      if (response.status === 401 && !window.location.pathname.startsWith(withBasePath("/login")) && !window.location.pathname.startsWith(withBasePath("/setup"))) {
+        window.location.href = withBasePath("/login")
+        throw new Error("Session expired")
+      }
+
+      let errorMessage = `HTTP error! status: ${response.status}`
+      try {
+        const errorData = await response.json()
+        errorMessage = errorData.error || errorData.message || errorMessage
+      } catch {
+        try {
+          const errorText = await response.text()
+          errorMessage = errorText || errorMessage
+        } catch {
+          // nothing to see here
+        }
+      }
+      throw new Error(errorMessage)
+    }
+
+    const blob = await response.blob()
+    const disposition = response.headers.get("content-disposition")
+    const filename = parseContentDispositionFilename(disposition)
+
+    return { blob, filename }
+  }
+
   async getTorrentPeers(instanceId: number, hash: string): Promise<any> {
     return this.request(`/instances/${instanceId}/torrents/${hash}/peers`)
   }
@@ -527,3 +562,25 @@ class ApiClient {
 }
 
 export const api = new ApiClient()
+
+function parseContentDispositionFilename(header: string | null): string | null {
+  if (!header) {
+    return null
+  }
+
+  const utf8Match = header.match(/filename\*=UTF-8''([^;]+)/i)
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1])
+    } catch {
+      return utf8Match[1]
+    }
+  }
+
+  const quotedMatch = header.match(/filename="?([^";]+)"?/i)
+  if (quotedMatch?.[1]) {
+    return quotedMatch[1]
+  }
+
+  return null
+}

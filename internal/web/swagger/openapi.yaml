@@ -670,6 +670,28 @@ paths:
           description: Action performed successfully
 
 
+  /api/instances/{instanceId}/torrents/{hash}/export:
+    get:
+      tags:
+        - Torrent Details
+      summary: Export torrent file
+      description: Download the .torrent file for a specific torrent
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/hash'
+      responses:
+        '200':
+          description: Torrent file
+          content:
+            application/x-bittorrent:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Invalid request
+        '500':
+          description: Failed to export torrent
+
   /api/instances/{instanceId}/torrents/{hash}/properties:
     get:
       tags:

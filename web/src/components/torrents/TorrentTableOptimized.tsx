@@ -3,14 +3,15 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useDebounce } from "@/hooks/useDebounce"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
+import { useDebounce } from "@/hooks/useDebounce"
 import { useKeyboardNavigation } from "@/hooks/useKeyboardNavigation"
 import { usePersistedColumnOrder } from "@/hooks/usePersistedColumnOrder"
 import { usePersistedColumnSizing } from "@/hooks/usePersistedColumnSizing"
 import { usePersistedColumnSorting } from "@/hooks/usePersistedColumnSorting"
 import { usePersistedColumnVisibility } from "@/hooks/usePersistedColumnVisibility"
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
+import { useTorrentExporter } from "@/hooks/useTorrentExporter"
 import { useTorrentsList } from "@/hooks/useTorrentsList"
 import {
   DndContext,
@@ -71,6 +72,7 @@ import {
   TooltipTrigger
 } from "@/components/ui/tooltip"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
+import { useInstancePreferences } from "@/hooks/useInstancePreferences.ts"
 import { useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { getCommonCategory, getCommonSavePath, getCommonTags } from "@/lib/torrent-utils"
@@ -82,6 +84,7 @@ import { AddTorrentDialog } from "./AddTorrentDialog"
 import { DraggableTableHeader } from "./DraggableTableHeader"
 import {
   AddTagsDialog,
+  CreateAndAssignCategoryDialog,
   RemoveTagsDialog,
   SetCategoryDialog,
   SetLocationDialog,
@@ -175,8 +178,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const [excludedFromSelectAll, setExcludedFromSelectAll] = useState<Set<string>>(new Set())
 
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
+  const { exportTorrents, isExporting: isExportingTorrent } = useTorrentExporter({ instanceId, incognitoMode })
   const [speedUnit, setSpeedUnit] = useSpeedUnits()
   const { formatTimestamp } = useDateTimeFormatters()
+  const { preferences } = useInstancePreferences(instanceId)
 
   // Detect platform for keyboard shortcuts
   const isMac = useMemo(() => {
@@ -232,6 +237,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     setShowRemoveTagsDialog,
     showCategoryDialog,
     setShowCategoryDialog,
+    showCreateCategoryDialog,
+    setShowCreateCategoryDialog,
     showShareLimitDialog,
     setShowShareLimitDialog,
     showSpeedLimitDialog,
@@ -259,6 +266,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     prepareDeleteAction,
     prepareTagsAction,
     prepareCategoryAction,
+    prepareCreateCategoryAction,
     prepareShareLimitAction,
     prepareSpeedLimitAction,
     prepareLocationAction,
@@ -317,6 +325,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     return columnId || "added_on"
   }
 
+  const activeSortField = sorting.length > 0 ? getBackendSortField(sorting[0].id) : "added_on"
+  const activeSortOrder: "asc" | "desc" = sorting.length > 0 ? (sorting[0].desc ? "desc" : "asc") : "desc"
+
   // Fetch torrents data with backend sorting
   const {
     torrents,
@@ -335,8 +346,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   } = useTorrentsList(instanceId, {
     search: effectiveSearch,
     filters,
-    sort: sorting.length > 0 ? getBackendSortField(sorting[0].id) : "added_on",
-    order: sorting.length > 0 ? (sorting[0].desc ? "desc" : "asc") : "desc",
+    sort: activeSortField,
+    order: activeSortOrder,
   })
 
   // Delayed loading state to avoid flicker on fast loads
@@ -485,8 +496,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       onRowSelection: handleRowSelection,
       isAllSelected,
       excludedFromSelectAll,
-    }, speedUnit, formatTimestamp),
-    [incognitoMode, speedUnit, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, isAllSelected, excludedFromSelectAll]
+    }, speedUnit, formatTimestamp, preferences),
+    [incognitoMode, speedUnit, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, isAllSelected, excludedFromSelectAll, preferences]
   )
 
   const table = useReactTable({
@@ -763,6 +774,29 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     })
   }, [handleAction, isAllSelected, selectAllOptions, selectedHashes, effectiveSelectionCount])
 
+  const handleExportWrapper = useCallback((hashes: string[], torrentsForSelection: Torrent[]) => {
+    exportTorrents({
+      hashes,
+      torrents: torrentsForSelection,
+      isAllSelected,
+      totalSelected: effectiveSelectionCount,
+      filters,
+      search: effectiveSearch,
+      excludeHashes: Array.from(excludedFromSelectAll),
+      sortField: activeSortField,
+      sortOrder: activeSortOrder,
+    })
+  }, [
+    exportTorrents,
+    isAllSelected,
+    effectiveSelectionCount,
+    filters,
+    effectiveSearch,
+    excludedFromSelectAll,
+    activeSortField,
+    activeSortOrder,
+  ])
+
   const handleDeleteWrapper = useCallback(() => {
     handleDelete(
       contextHashes,
@@ -809,6 +843,19 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       contextClientMeta
     )
   }, [handleSetCategory, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
+
+  // Direct category handler for context menu submenu
+  const handleSetCategoryDirect = useCallback((category: string, hashes: string[]) => {
+    handleSetCategory(
+      category,
+      hashes,
+      false, // Not using select all when directly setting from context menu
+      undefined,
+      undefined,
+      Array.from(excludedFromSelectAll),
+      undefined
+    )
+  }, [handleSetCategory, excludedFromSelectAll])
 
   const handleSetLocationWrapper = useCallback((location: string) => {
     handleSetLocation(
@@ -1093,12 +1140,17 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                     onPrepareDelete={prepareDeleteAction}
                     onPrepareTags={prepareTagsAction}
                     onPrepareCategory={prepareCategoryAction}
+                    onPrepareCreateCategory={prepareCreateCategoryAction}
                     onPrepareShareLimit={prepareShareLimitAction}
                     onPrepareSpeedLimits={prepareSpeedLimitAction}
                     onPrepareLocation={prepareLocationAction}
                     onPrepareRecheck={prepareRecheckAction}
                     onPrepareReannounce={prepareReannounceAction}
+                    availableCategories={availableCategories}
+                    onSetCategory={handleSetCategoryDirect}
                     isPending={isPending}
+                    onExport={handleExportWrapper}
+                    isExporting={isExportingTorrent}
                   >
                     <div
                       className={`flex border-b cursor-pointer hover:bg-muted/50 ${row.getIsSelected() ? "bg-muted/50" : ""} ${isSelected ? "bg-accent" : ""}`}
@@ -1333,6 +1385,15 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         onConfirm={handleSetCategoryWrapper}
         isPending={isPending}
         initialCategory={getCommonCategory(contextTorrents)}
+      />
+
+      {/* Create and Assign Category Dialog */}
+      <CreateAndAssignCategoryDialog
+        open={showCreateCategoryDialog}
+        onOpenChange={setShowCreateCategoryDialog}
+        hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
+        onConfirm={handleSetCategoryWrapper}
+        isPending={isPending}
       />
 
       <ShareLimitDialog

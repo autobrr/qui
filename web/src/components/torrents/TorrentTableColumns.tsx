@@ -23,7 +23,7 @@ import {
 import { formatSpeedWithUnit, type SpeedUnit } from "@/lib/speedUnits"
 import { getStateLabel } from "@/lib/torrent-state-utils"
 import { formatBytes, formatDuration, getRatioColor } from "@/lib/utils"
-import type { Torrent } from "@/types"
+import type { AppPreferences, Torrent } from "@/types"
 import type { ColumnDef } from "@tanstack/react-table"
 import { ListOrdered } from "lucide-react"
 
@@ -80,7 +80,8 @@ export const createColumns = (
     excludedFromSelectAll?: Set<string>
   },
   speedUnit: SpeedUnit = "bytes",
-  formatTimestamp?: (timestamp: number) => string
+  formatTimestamp?: (timestamp: number) => string,
+  instancePreferences?: AppPreferences | null
 ): ColumnDef<Torrent>[] => [
   {
     id: "select",
@@ -580,7 +581,8 @@ export const createColumns = (
     header: "Ratio Limit",
     cell: ({ row }) => {
       const ratioLimit = row.original.ratio_limit
-      const displayRatioLimit = ratioLimit === -2 ? "∞" : ratioLimit.toFixed(2)
+      const instanceRatioLimit = instancePreferences?.max_ratio
+      const displayRatioLimit = ratioLimit === -2 ? (instanceRatioLimit === -1 ? "∞" : instanceRatioLimit?.toFixed(2) || "∞") :ratioLimit === -1 ? "∞" :ratioLimit.toFixed(2)
 
       return (
         <span

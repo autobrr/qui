@@ -19,7 +19,7 @@ import type { Torrent } from "@/types"
 import {
   CheckCircle,
   Copy,
-  Folder,
+  Download,
   FolderOpen,
   Gauge,
   Pause,
@@ -33,6 +33,7 @@ import {
 } from "lucide-react"
 import { memo, useCallback, useMemo } from "react"
 import { toast } from "sonner"
+import { CategorySubmenu } from "./CategorySubmenu"
 import { QueueSubmenu } from "./QueueSubmenu"
 
 interface TorrentContextMenuProps {
@@ -48,12 +49,17 @@ interface TorrentContextMenuProps {
   onPrepareDelete: (hashes: string[], torrents?: Torrent[]) => void
   onPrepareTags: (action: "add" | "set" | "remove", hashes: string[], torrents?: Torrent[]) => void
   onPrepareCategory: (hashes: string[], torrents?: Torrent[]) => void
+  onPrepareCreateCategory: (hashes: string[], torrents?: Torrent[]) => void
   onPrepareShareLimit: (hashes: string[], torrents?: Torrent[]) => void
   onPrepareSpeedLimits: (hashes: string[], torrents?: Torrent[]) => void
   onPrepareRecheck: (hashes: string[], count?: number) => void
   onPrepareReannounce: (hashes: string[], count?: number) => void
   onPrepareLocation: (hashes: string[], torrents?: Torrent[]) => void
+  availableCategories?: Record<string, unknown>
+  onSetCategory?: (category: string, hashes: string[]) => void
   isPending?: boolean
+  onExport?: (hashes: string[], torrents: Torrent[]) => Promise<void> | void
+  isExporting?: boolean
 }
 
 export const TorrentContextMenu = memo(function TorrentContextMenu({
@@ -68,13 +74,17 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   onAction,
   onPrepareDelete,
   onPrepareTags,
-  onPrepareCategory,
+  onPrepareCreateCategory,
   onPrepareShareLimit,
   onPrepareSpeedLimits,
   onPrepareRecheck,
   onPrepareReannounce,
   onPrepareLocation,
+  availableCategories = {},
+  onSetCategory,
   isPending = false,
+  onExport,
+  isExporting = false,
 }: TorrentContextMenuProps) {
   const [incognitoMode] = useIncognitoMode()
 
@@ -112,6 +122,13 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   [useSelection, selectedTorrents, torrent]
   )
 
+  const handleExport = useCallback(() => {
+    if (!onExport) {
+      return
+    }
+    void onExport(hashes, torrents)
+  }, [hashes, onExport, torrents])
+
   const count = isAllSelected ? effectiveSelectionCount : hashes.length
 
   // TMM state calculation
@@ -123,6 +140,16 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   const handleQueueAction = useCallback((action: "topPriority" | "increasePriority" | "decreasePriority" | "bottomPriority") => {
     onAction(action as TorrentAction, hashes)
   }, [onAction, hashes])
+
+  const handleSetCategory = useCallback((category: string) => {
+    if (onSetCategory) {
+      onSetCategory(category, hashes)
+    }
+  }, [onSetCategory, hashes])
+
+  const handleCreateCategory = useCallback(() => {
+    onPrepareCreateCategory(hashes, torrents)
+  }, [onPrepareCreateCategory, hashes, torrents])
 
   return (
     <ContextMenu>
@@ -188,13 +215,15 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
           <Tag className="mr-2 h-4 w-4" />
           Replace Tags {count > 1 ? `(${count})` : ""}
         </ContextMenuItem>
-        <ContextMenuItem
-          onClick={() => onPrepareCategory(hashes, torrents)}
-          disabled={isPending}
-        >
-          <Folder className="mr-2 h-4 w-4" />
-          Set Category {count > 1 ? `(${count})` : ""}
-        </ContextMenuItem>
+        <CategorySubmenu
+          type="context"
+          hashCount={count}
+          availableCategories={availableCategories}
+          onSetCategory={handleSetCategory}
+          onCreateCategory={handleCreateCategory}
+          isPending={isPending}
+          currentCategory={torrent.category}
+        />
         <ContextMenuItem
           onClick={() => onPrepareLocation(hashes, torrents)}
           disabled={isPending}
@@ -254,6 +283,13 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
           </ContextMenuItem>
         )}
         <ContextMenuSeparator />
+        <ContextMenuItem
+          onClick={handleExport}
+          disabled={isExporting}
+        >
+          <Download className="mr-2 h-4 w-4" />
+          {count > 1 ? `Export Torrents (${count})` : "Export Torrent"}
+        </ContextMenuItem>
         <ContextMenuItem
           onClick={() => copyToClipboard(incognitoMode ? getLinuxIsoName(torrent.hash) : torrent.name, "name")}
         >
