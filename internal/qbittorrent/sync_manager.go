@@ -848,17 +848,19 @@ func (sm *SyncManager) torrentIsUnregistered(torrent qbt.Torrent) bool {
 }
 
 func (sm *SyncManager) torrentTrackerIsDown(torrent qbt.Torrent) bool {
+	foundDown := false
+
 	for _, tracker := range torrent.Trackers {
 		if tracker.Status != qbt.TrackerStatusNotWorking {
-			continue
+			return false
 		}
 
 		if trackerMessageMatches(tracker.Message, trackerDownStatuses) {
-			return true
+			foundDown = true
 		}
 	}
 
-	return false
+	return foundDown
 }
 
 func (sm *SyncManager) determineTrackerHealth(torrent qbt.Torrent) TrackerHealth {
