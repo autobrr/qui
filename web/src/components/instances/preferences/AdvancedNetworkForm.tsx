@@ -14,13 +14,6 @@ import { Settings, HardDrive, Zap, Ban, Radio } from "lucide-react"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { useQBittorrentFieldVisibility } from "@/hooks/useQBittorrentAppInfo"
 import { toast } from "sonner"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
-import { HelpCircle } from "lucide-react"
 
 interface AdvancedNetworkFormProps {
   instanceId: number
@@ -296,20 +289,6 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
                     <Label className="text-sm font-medium">Peer ToS Byte</Label>
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p className="max-w-xs">
-                            Sets the Type of Service (ToS) field in IP packets for peer connections. 
-                            Higher values may improve network prioritization. Common values: 
-                            0 (default), 96 (high priority), 160 (low latency).
-                          </p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
                   </div>
                   <Input
                     type="number"
