@@ -40,7 +40,9 @@ type Server struct {
 	authService       *auth.Service
 	sessionManager    *scs.SessionManager
 	instanceStore     *models.InstanceStore
+	apiKeyStore       *models.APIKeyStore
 	clientAPIKeyStore *models.ClientAPIKeyStore
+	webhookStore      *models.WebhookStore
 	clientPool        *qbittorrent.ClientPool
 	syncManager       *qbittorrent.SyncManager
 	licenseService    *license.Service
@@ -61,7 +63,9 @@ func NewServer(deps *Dependencies) *Server {
 		authService:       deps.AuthService,
 		sessionManager:    deps.SessionManager,
 		instanceStore:     deps.InstanceStore,
+		apiKeyStore:       deps.APIKeyStore,
 		clientAPIKeyStore: deps.ClientAPIKeyStore,
+		webhookStore:      deps.WebhookStore,
 		clientPool:        deps.ClientPool,
 		syncManager:       deps.SyncManager,
 		licenseService:    deps.LicenseService,
@@ -165,7 +169,7 @@ func (s *Server) Handler() *chi.Mux {
 	preferencesHandler := handlers.NewPreferencesHandler(s.syncManager)
 	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(s.clientAPIKeyStore, s.instanceStore)
 	versionHandler := handlers.NewVersionHandler(s.updateService)
-	webhooksHandler := handlers.NewWebhooksHandler(s.clientAPIKeyStore, s.syncManager, s.instanceStore)
+	webhooksHandler := handlers.NewWebhooksHandler(s.webhookStore, s.apiKeyStore, s.syncManager, s.instanceStore)
 
 	// Create proxy handler
 	proxyHandler := proxy.NewHandler(s.clientPool, s.clientAPIKeyStore, s.instanceStore)
@@ -197,7 +201,7 @@ func (s *Server) Handler() *chi.Mux {
 
 		// Protected routes
 		r.Group(func(r chi.Router) {
-			r.Use(middleware.IsAuthenticated(s.authService, s.sessionManager, s.clientAPIKeyStore))
+			r.Use(middleware.IsAuthenticated(s.authService, s.sessionManager))
 
 			// Auth routes
 			r.Post("/auth/logout", authHandler.Logout)
@@ -344,7 +348,9 @@ type Dependencies struct {
 	AuthService       *auth.Service
 	SessionManager    *scs.SessionManager
 	InstanceStore     *models.InstanceStore
+	APIKeyStore       *models.APIKeyStore
 	ClientAPIKeyStore *models.ClientAPIKeyStore
+	WebhookStore      *models.WebhookStore
 	ClientPool        *qbittorrent.ClientPool
 	SyncManager       *qbittorrent.SyncManager
 	WebHandler        *web.Handler

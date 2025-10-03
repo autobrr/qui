@@ -455,7 +455,9 @@ func (app *Application) runServer() {
 		log.Fatal().Err(err).Msg("Failed to initialize instance store")
 	}
 
+	apiKeyStore := models.NewAPIKeyStore(db.Conn())
 	clientAPIKeyStore := models.NewClientAPIKeyStore(db.Conn())
+	webhookStore := models.NewWebhookStore(db.Conn())
 	errorStore := models.NewInstanceErrorStore(db.Conn())
 
 	// Initialize services
@@ -532,7 +534,9 @@ func (app *Application) runServer() {
 		AuthService:       authService,
 		SessionManager:    sessionManager,
 		InstanceStore:     instanceStore,
+		APIKeyStore:       apiKeyStore,
 		ClientAPIKeyStore: clientAPIKeyStore,
+		WebhookStore:      webhookStore,
 		ClientPool:        clientPool,
 		SyncManager:       syncManager,
 		LicenseService:    licenseService,
