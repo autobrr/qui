@@ -61,27 +61,36 @@ export function useQBittorrentFieldVisibility(instanceId: number | undefined) {
   const { versionInfo } = useQBittorrentAppInfo(instanceId)
 
   return useMemo(() => {
-    const { isLibtorrent2, isWindows, isMacOS, isLinux } = versionInfo
+    const { isLibtorrent2, isWindows, isMacOS, isLinux, platform } = versionInfo
 
+    // Fields that are HIDDEN based on version/platform conditions
+    // All other fields are always shown
     return {
-      // Connection & Network fields
-      showUpnpLeaseField: isLibtorrent2, // Only show UPNP lease duration for libtorrent 2.x
-      showProtocolFields: true, // Always show protocol fields
-      showInterfaceFields: true, // Always show interface fields (though they may be read-only)
+      // libtorrent >= 2.x: These fields are HIDDEN
+      showDiskCacheFields: !isLibtorrent2, // rowDiskCache + rowDiskCacheExpiryInterval hidden for lt>=2
+      showCoalesceReadsWritesField: !isLibtorrent2, // rowCoalesceReadsAndWrites hidden for lt>=2
       
-      // Advanced Network fields
-      showSocketBacklogField: isLibtorrent2, // Socket backlog size only for libtorrent 2.x
-      showSendBufferFields: isLibtorrent2, // Send buffer settings only for libtorrent 2.x
-      showRequestQueueField: isLibtorrent2, // Request queue size only for libtorrent 2.x
+      // libtorrent < 2.x: These fields are HIDDEN  
+      showI2pFields: isLibtorrent2, // fieldsetI2p hidden for lt<2
+      showMemoryWorkingSetLimit: isLibtorrent2 && !(platform === "linux" || platform === "macos"), // Hidden for lt<2 OR linux/macos
+      showHashingThreadsField: isLibtorrent2, // rowHashingThreads hidden for lt<2
+      showDiskIoTypeField: isLibtorrent2, // rowDiskIOType hidden for lt<2
+      showI2pInboundQuantity: isLibtorrent2, // rowI2pInboundQuantity hidden for lt<2
+      showI2pOutboundQuantity: isLibtorrent2, // rowI2pOutboundQuantity hidden for lt<2
+      showI2pInboundLength: isLibtorrent2, // rowI2pInboundLength hidden for lt<2
+      showI2pOutboundLength: isLibtorrent2, // rowI2pOutboundLength hidden for lt<2
       
-      // Performance & Disk I/O fields (based on qBittorrent WebUI logic)
-      showMemoryWorkingSetLimit: isLibtorrent2 && isWindows, // Only for libtorrent 2.x AND Windows
-      showHashingThreadsField: isLibtorrent2, // Only for libtorrent 2.x
-      showDiskIoTypeField: isLibtorrent2, // Only for libtorrent 2.x
-      showDiskCacheFields: !isLibtorrent2, // Hidden for libtorrent 2.x, shown for < 2.x
-      showCoalesceReadsWritesField: !isLibtorrent2, // Hidden for libtorrent 2.x, shown for < 2.x
+      // Platform-specific visibility
+      showMarkOfTheWeb: platform === "macos" || platform === "windows", // Hidden unless macos/windows
       
-      // Platform-specific fields
+      // Fields that are always shown
+      // These include most network, peer management, and basic settings
+      showSocketBacklogField: true,
+      showSendBufferFields: true, 
+      showRequestQueueField: true,
+      showProtocolFields: true,
+      showInterfaceFields: true,
+      showUpnpLeaseField: true,
       showWindowsSpecificFields: isWindows,
       showMacSpecificFields: isMacOS,
       showLinuxSpecificFields: isLinux,
