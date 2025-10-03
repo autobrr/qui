@@ -311,7 +311,7 @@ interface TorrentCardsMobileProps {
   onTorrentSelect?: (torrent: Torrent | null) => void
   addTorrentModalOpen?: boolean
   onAddTorrentModalChange?: (open: boolean) => void
-  onFilteredDataUpdate?: (torrents: Torrent[], total: number, counts?: TorrentCounts, categories?: Record<string, Category>, tags?: string[]) => void
+  onFilteredDataUpdate?: (torrents: Torrent[], total: number, counts?: TorrentCounts, categories?: Record<string, Category>, tags?: string[], trackerHealthSupported?: boolean) => void
 }
 
 function formatEta(seconds: number): string {
@@ -481,7 +481,7 @@ function SwipeableCard({
               </h3>
             </div>
           </div>
-          
+
           {/* Speeds if applicable */}
           {(torrent.dlspeed > 0 || torrent.upspeed > 0) && (
             <div className="flex items-center gap-1 text-[10px] flex-shrink-0">
@@ -497,12 +497,12 @@ function SwipeableCard({
               )}
             </div>
           )}
-          
+
           {/* State badge - smaller */}
           <Badge variant={getStatusBadgeVariant(torrent.state)} className="text-[10px] px-1 py-0 h-4 flex-shrink-0">
             {getStateLabel(torrent.state)}
           </Badge>
-          
+
           {/* Percentage if not 100% */}
           {torrent.progress * 100 !== 100 && (
             <span className="text-[10px] text-muted-foreground flex-shrink-0">
@@ -533,7 +533,7 @@ function SwipeableCard({
               {getStateLabel(torrent.state)}
             </Badge>
           </div>
-          
+
           {/* Downloaded/Size and Ratio */}
           <div className="flex items-center justify-between text-xs">
             <span className="text-muted-foreground">
@@ -649,7 +649,7 @@ function SwipeableCard({
               </div>
             )}
           </div>
-          
+
           {/* Right side: Percentage and Speeds */}
           <div className="flex items-center gap-2 flex-shrink-0">
             <span className="text-muted-foreground">
@@ -829,6 +829,7 @@ export function TorrentCardsMobile({
     counts,
     categories,
     tags,
+    trackerHealthSupported,
 
     isLoading,
     isLoadingMore,
@@ -842,10 +843,10 @@ export function TorrentCardsMobile({
   // Call the callback when filtered data updates
   useEffect(() => {
     if (onFilteredDataUpdate && torrents && totalCount !== undefined && !isLoading) {
-      onFilteredDataUpdate(torrents, totalCount, counts, categories, tags)
+      onFilteredDataUpdate(torrents, totalCount, counts, categories, tags, trackerHealthSupported)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [totalCount, isLoading, torrents.length, counts, categories, tags, onFilteredDataUpdate]) // Update when data changes
+  }, [totalCount, isLoading, torrents.length, counts, categories, tags, trackerHealthSupported, onFilteredDataUpdate]) // Update when data changes
 
   // Calculate the effective selection count for display
   const effectiveSelectionCount = useMemo(() => {

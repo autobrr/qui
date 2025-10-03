@@ -159,7 +159,7 @@ interface TorrentTableOptimizedProps {
   onTorrentSelect?: (torrent: Torrent | null) => void
   addTorrentModalOpen?: boolean
   onAddTorrentModalChange?: (open: boolean) => void
-  onFilteredDataUpdate?: (torrents: Torrent[], total: number, counts?: TorrentCounts, categories?: Record<string, Category>, tags?: string[]) => void
+  onFilteredDataUpdate?: (torrents: Torrent[], total: number, counts?: TorrentCounts, categories?: Record<string, Category>, tags?: string[], trackerHealthSupported?: boolean) => void
   onSelectionChange?: (selectedHashes: string[], selectedTorrents: Torrent[], isAllSelected: boolean, totalSelectionCount: number, excludeHashes: string[]) => void
   filterButton?: React.ReactNode
 }
@@ -199,6 +199,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     tags?: string[]
     totalCount?: number
     torrentsLength?: number
+    trackerHealthSupported?: boolean
   }>({})
 
   // State for range select capabilities for checkboxes
@@ -336,6 +337,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     counts,
     categories,
     tags,
+    trackerHealthSupported,
 
     isLoading,
     isCachedData,
@@ -381,6 +383,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     const nextCategories = categories ?? lastMetadataRef.current.categories
     const nextTags = tags ?? lastMetadataRef.current.tags
     const nextTotalCount = totalCount
+    const nextTrackerHealthSupported = trackerHealthSupported
 
     const hasAnyMetadata = nextCounts !== undefined || nextCategories !== undefined || nextTags !== undefined
     const hasExistingTorrents = torrents.length > 0
@@ -393,7 +396,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       nextCounts !== lastMetadataRef.current.counts ||
       nextCategories !== lastMetadataRef.current.categories ||
       nextTags !== lastMetadataRef.current.tags ||
-      nextTotalCount !== lastMetadataRef.current.totalCount
+      nextTotalCount !== lastMetadataRef.current.totalCount ||
+      nextTrackerHealthSupported !== lastMetadataRef.current.trackerHealthSupported
 
     const torrentsLengthChanged = torrents.length !== (lastMetadataRef.current.torrentsLength ?? -1)
 
@@ -401,7 +405,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       return
     }
 
-    onFilteredDataUpdate(torrents, totalCount, nextCounts, nextCategories, nextTags)
+    onFilteredDataUpdate(torrents, totalCount, nextCounts, nextCategories, nextTags, trackerHealthSupported)
 
     lastMetadataRef.current = {
       counts: nextCounts,
@@ -409,8 +413,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       tags: nextTags,
       totalCount: nextTotalCount,
       torrentsLength: torrents.length,
+      trackerHealthSupported: nextTrackerHealthSupported,
     }
-  }, [counts, categories, tags, totalCount, torrents, isLoading, onFilteredDataUpdate])
+  }, [counts, categories, tags, totalCount, torrents, trackerHealthSupported, isLoading, onFilteredDataUpdate])
 
   // Use torrents directly from backend (already sorted)
   const sortedTorrents = torrents

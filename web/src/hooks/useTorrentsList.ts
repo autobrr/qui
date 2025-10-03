@@ -209,6 +209,7 @@ export function useTorrentsList(
     counts: data?.counts,
     categories: data?.categories,
     tags: data?.tags,
+    trackerHealthSupported: data?.trackerHealthSupported ?? false,
     serverState: null, // Server state is fetched separately by Dashboard
     isLoading: isLoading && currentPage === 0,
     isFetching,

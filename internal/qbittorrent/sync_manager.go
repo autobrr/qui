@@ -25,9 +25,9 @@ import (
 var urlCache = ttlcache.New(ttlcache.Options[string, string]{}.SetDefaultTTL(5 * time.Minute))
 
 const (
-	trackerFetchUnlimited      = int(qbt.TrackerFetchUnlimited)
-	trackerFetchChunkDefault   = 300
-	trackerFetchChunkForCounts = 300
+	trackerFetchUnlimited = int(qbt.TrackerFetchUnlimited)
+	// trackerFetchChunkDefault   = 300 // Legacy fallback disabled for now
+	// trackerFetchChunkForCounts = 300 // Legacy fallback disabled for now
 )
 
 var defaultUnregisteredStatuses = []string{
@@ -126,16 +126,17 @@ type TorrentView struct {
 }
 
 type TorrentResponse struct {
-	Torrents      []TorrentView           `json:"torrents"`
-	Total         int                     `json:"total"`
-	Stats         *TorrentStats           `json:"stats,omitempty"`
-	Counts        *TorrentCounts          `json:"counts,omitempty"`      // Include counts for sidebar
-	Categories    map[string]qbt.Category `json:"categories,omitempty"`  // Include categories for sidebar
-	Tags          []string                `json:"tags,omitempty"`        // Include tags for sidebar
-	ServerState   *qbt.ServerState        `json:"serverState,omitempty"` // Include server state for Dashboard
-	HasMore       bool                    `json:"hasMore"`               // Whether more pages are available
-	SessionID     string                  `json:"sessionId,omitempty"`   // Optional session tracking
-	CacheMetadata *CacheMetadata          `json:"cacheMetadata,omitempty"`
+	Torrents               []TorrentView           `json:"torrents"`
+	Total                  int                     `json:"total"`
+	Stats                  *TorrentStats           `json:"stats,omitempty"`
+	Counts                 *TorrentCounts          `json:"counts,omitempty"`      // Include counts for sidebar
+	Categories             map[string]qbt.Category `json:"categories,omitempty"`  // Include categories for sidebar
+	Tags                   []string                `json:"tags,omitempty"`        // Include tags for sidebar
+	ServerState            *qbt.ServerState        `json:"serverState,omitempty"` // Include server state for Dashboard
+	HasMore                bool                    `json:"hasMore"`               // Whether more pages are available
+	SessionID              string                  `json:"sessionId,omitempty"`   // Optional session tracking
+	CacheMetadata          *CacheMetadata          `json:"cacheMetadata,omitempty"`
+	TrackerHealthSupported bool                    `json:"trackerHealthSupported"`
 }
 
 // TorrentStats represents aggregated torrent statistics
@@ -215,6 +216,8 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		return nil, err
 	}
 
+	trackerHealthSupported := client != nil && client.supportsTrackerInclude()
+
 	// Get MainData for tracker filtering (if needed)
 	var mainData *qbt.MainData
 	if len(filters.Trackers) > 0 {
@@ -285,9 +288,8 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		filteredTorrents = syncManager.GetTorrents(torrentFilterOptions)
 
 		// Apply manual filtering for multiple selections
-		if trackerStatusFilters {
-			allowTrackerFetch := client != nil && client.supportsTrackerInclude()
-			filteredTorrents, trackerMap, _ = sm.enrichTorrentsWithTrackerData(ctx, client, filteredTorrents, trackerMap, trackerFetchUnlimited, allowTrackerFetch)
+		if trackerStatusFilters && trackerHealthSupported {
+			filteredTorrents, trackerMap, _ = sm.enrichTorrentsWithTrackerData(ctx, client, filteredTorrents, trackerMap, trackerFetchUnlimited, true)
 		}
 
 		filteredTorrents = sm.applyManualFilters(client, filteredTorrents, filters, mainData)
@@ -392,10 +394,47 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		paginatedTorrents = filteredTorrents[start:end]
 	}
 
-	// Ensure tracker metadata is present for the paginated results used by the UI
-	if len(paginatedTorrents) > 0 {
-		pageLimit := len(paginatedTorrents)
-		paginatedTorrents, trackerMap, _ = sm.enrichTorrentsWithTrackerData(ctx, client, paginatedTorrents, trackerMap, pageLimit, true)
+	// Check if there are more pages
+	hasMore := end < len(filteredTorrents)
+
+	// Calculate counts from ALL torrents (not filtered) for sidebar
+	// This uses the same cached data, so it's very fast
+	allTorrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{})
+
+	// Get MainData for accurate tracker information
+	mainData = syncManager.GetData()
+
+	counts, trackerMap, enrichedAll := sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents, mainData, trackerMap, trackerHealthSupported)
+
+	// Reuse enriched tracker data for paginated torrents to avoid duplicate fetches
+	if len(paginatedTorrents) > 0 && trackerHealthSupported {
+		var enrichedLookup map[string]qbt.Torrent
+		for i := range paginatedTorrents {
+			hash := paginatedTorrents[i].Hash
+			if trackers, ok := trackerMap[hash]; ok && len(trackers) > 0 {
+				paginatedTorrents[i].Trackers = trackers
+				continue
+			}
+
+			if len(paginatedTorrents[i].Trackers) > 0 {
+				continue
+			}
+
+			if len(enrichedAll) == 0 {
+				continue
+			}
+
+			if enrichedLookup == nil {
+				enrichedLookup = make(map[string]qbt.Torrent, len(enrichedAll))
+				for _, torrent := range enrichedAll {
+					enrichedLookup[torrent.Hash] = torrent
+				}
+			}
+
+			if torrent, ok := enrichedLookup[hash]; ok && len(torrent.Trackers) > 0 {
+				paginatedTorrents[i].Trackers = torrent.Trackers
+			}
+		}
 	}
 
 	// Convert to UI view models with tracker health metadata
@@ -410,18 +449,6 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 			paginatedViews[i] = view
 		}
 	}
-
-	// Check if there are more pages
-	hasMore := end < len(filteredTorrents)
-
-	// Calculate counts from ALL torrents (not filtered) for sidebar
-	// This uses the same cached data, so it's very fast
-	allTorrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{})
-
-	// Get MainData for accurate tracker information
-	mainData = syncManager.GetData()
-
-	counts, _ = sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents, mainData, trackerMap)
 
 	// Fetch categories and tags (cached separately for 60s)
 	categories, err := sm.GetCategories(ctx, instanceID)
@@ -467,15 +494,16 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	}
 
 	response := &TorrentResponse{
-		Torrents:      paginatedViews,
-		Total:         len(filteredTorrents),
-		Stats:         stats,
-		Counts:        counts,      // Include counts for sidebar
-		Categories:    categories,  // Include categories for sidebar
-		Tags:          tags,        // Include tags for sidebar
-		ServerState:   serverState, // Include server state for Dashboard
-		HasMore:       hasMore,
-		CacheMetadata: cacheMetadata,
+		Torrents:               paginatedViews,
+		Total:                  len(filteredTorrents),
+		Stats:                  stats,
+		Counts:                 counts,      // Include counts for sidebar
+		Categories:             categories,  // Include categories for sidebar
+		Tags:                   tags,        // Include tags for sidebar
+		ServerState:            serverState, // Include server state for Dashboard
+		HasMore:                hasMore,
+		CacheMetadata:          cacheMetadata,
+		TrackerHealthSupported: trackerHealthSupported,
 	}
 
 	// Always compute from fresh all_torrents data
@@ -850,6 +878,11 @@ func (sm *SyncManager) enrichTorrentsWithTrackerData(ctx context.Context, client
 		return torrents, trackerMap, nil
 	}
 
+	// Tracker health enrichment requires qBittorrent >= 5.1 (includeTrackers support).
+	if !client.supportsTrackerInclude() {
+		return torrents, trackerMap, nil
+	}
+
 	if trackerMap == nil {
 		trackerMap = make(map[string][]qbt.TorrentTracker)
 	}
@@ -863,13 +896,10 @@ func (sm *SyncManager) enrichTorrentsWithTrackerData(ctx context.Context, client
 	limit := fetchLimit
 	if limit == trackerFetchUnlimited {
 		limit = qbt.TrackerFetchUnlimited
-	} else if limit == 0 && allowFetch && !client.supportsTrackerInclude() {
-		limit = trackerFetchChunkDefault
-	} else if limit < 0 {
-		limit = trackerFetchChunkDefault
 	}
 
-	warmup := allowFetch
+	// Warmup path only benefited legacy tracker fetches; disable until we reintroduce backward compatibility.
+	warmup := false
 	enriched, trackerData, remaining, err := client.hydrateTorrentsWithTrackers(ctx, torrents, limit, allowFetch, warmup)
 	if err != nil && allowFetch {
 		log.Debug().Err(err).Int("count", len(torrents)).Msg("Failed to fetch tracker details for enrichment")
@@ -1010,14 +1040,13 @@ func (sm *SyncManager) countTorrentStatuses(torrent qbt.Torrent, counts map[stri
 // calculateCountsFromTorrentsWithTrackers calculates counts using MainData's tracker information
 // This gives us the REAL tracker-to-torrent mapping from qBittorrent
 
-func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(ctx context.Context, client *Client, allTorrents []qbt.Torrent, mainData *qbt.MainData, trackerMap map[string][]qbt.TorrentTracker) (*TorrentCounts, map[string][]qbt.TorrentTracker) {
+func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(ctx context.Context, client *Client, allTorrents []qbt.Torrent, mainData *qbt.MainData, trackerMap map[string][]qbt.TorrentTracker, trackerHealthSupported bool) (*TorrentCounts, map[string][]qbt.TorrentTracker, []qbt.Torrent) {
 	var enriched []qbt.Torrent
-	countsFetchLimit := trackerFetchChunkForCounts
-	if client != nil && client.supportsTrackerInclude() {
-		countsFetchLimit = trackerFetchUnlimited
+	if trackerHealthSupported {
+		countsFetchLimit := trackerFetchUnlimited // Legacy chunking disabled; rely on includeTrackers.
+		enriched, trackerMap, _ = sm.enrichTorrentsWithTrackerData(ctx, client, allTorrents, trackerMap, countsFetchLimit, true)
+		allTorrents = enriched
 	}
-	enriched, trackerMap, _ = sm.enrichTorrentsWithTrackerData(ctx, client, allTorrents, trackerMap, countsFetchLimit, true)
-	allTorrents = enriched
 
 	// Initialize counts
 	counts := &TorrentCounts{
@@ -1130,7 +1159,7 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(ctx context.Conte
 		}
 	}
 
-	return counts, trackerMap
+	return counts, trackerMap, allTorrents
 }
 
 // GetTorrentCounts gets all torrent counts for the filter sidebar
@@ -1153,7 +1182,8 @@ func (sm *SyncManager) GetTorrentCounts(ctx context.Context, instanceID int) (*T
 	mainData := syncManager.GetData()
 
 	// Calculate counts using the shared function - pass mainData for tracker information
-	counts, _ := sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents, mainData, nil)
+	trackerHealthSupported := client != nil && client.supportsTrackerInclude()
+	counts, _, _ := sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents, mainData, nil, trackerHealthSupported)
 
 	// Don't cache counts separately - they're always derived from the cached torrent data
 	// This ensures sidebar and table are always in sync
@@ -1253,10 +1283,7 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 	torrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{})
 
 	// Enrich torrents with tracker data so downstream calculations can inspect tracker errors
-	statsFetchLimit := trackerFetchChunkForCounts
-	if client != nil && client.supportsTrackerInclude() {
-		statsFetchLimit = trackerFetchUnlimited
-	}
+	statsFetchLimit := trackerFetchUnlimited // Legacy chunking disabled; rely on includeTrackers.
 	if enriched, _, _ := sm.enrichTorrentsWithTrackerData(ctx, client, torrents, nil, statsFetchLimit, true); len(enriched) > 0 {
 		torrents = enriched
 	}

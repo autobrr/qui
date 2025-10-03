@@ -7,7 +7,7 @@ require (
 	github.com/Masterminds/semver/v3 v3.4.0
 	github.com/alexedwards/scs/v2 v2.9.0
 	github.com/autobrr/autobrr v1.67.0
-	github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20251002125540-41b634862943
+	github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20251003173928-bff8b8178781
 	github.com/creativeprojects/go-selfupdate v1.5.1
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-chi/chi/v5 v5.2.3
@@ -27,6 +27,8 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.39.0
 )
+
+replace github.com/autobrr/go-qbittorrent => ../go-qbittorrent
 
 require (
 	code.gitea.io/sdk/gitea v0.22.0 // indirect

@@ -102,11 +102,12 @@ interface FilterSidebarProps {
   isStaleData?: boolean
   isLoading?: boolean
   isMobile?: boolean
+  trackerHealthSupported?: boolean
 }
 
 
 // Define torrent states based on qBittorrent
-const TORRENT_STATES: Array<{ value: string; label: string; icon: LucideIcon }> = [
+const TORRENT_STATES: Array<{ value: string; label: string; icon: LucideIcon; requiresTrackerHealth?: boolean }> = [
   { value: "downloading", label: "Downloading", icon: Download },
   { value: "uploading", label: "Seeding", icon: Upload },
   { value: "completed", label: "Completed", icon: CheckCircle2 },
@@ -120,8 +121,8 @@ const TORRENT_STATES: Array<{ value: string; label: string; icon: LucideIcon }> 
   { value: "errored", label: "Error", icon: XCircle },
   { value: "checking", label: "Checking", icon: RotateCw },
   { value: "moving", label: "Moving", icon: MoveRight },
-  { value: "unregistered", label: "Unregistered torrents", icon: XCircle },
-  { value: "tracker_down", label: "Tracker Down", icon: AlertCircle },
+  { value: "unregistered", label: "Unregistered torrents", icon: XCircle, requiresTrackerHealth: true },
+  { value: "tracker_down", label: "Tracker Down", icon: AlertCircle, requiresTrackerHealth: true },
 ]
 
 const FilterSidebarComponent = ({
@@ -135,6 +136,7 @@ const FilterSidebarComponent = ({
   isStaleData = false,
   isLoading = false,
   isMobile = false,
+  trackerHealthSupported = true,
 }: FilterSidebarProps) => {
   // Use incognito mode hook
   const [incognitoMode] = useIncognitoMode()
@@ -184,6 +186,13 @@ const FilterSidebarComponent = ({
   const [trackerToEdit, setTrackerToEdit] = useState("")
   const [trackerFullURLs, setTrackerFullURLs] = useState<string[]>([])
   const [loadingTrackerURLs, setLoadingTrackerURLs] = useState(false)
+
+  const visibleTorrentStates = useMemo(() => {
+    if (trackerHealthSupported) {
+      return TORRENT_STATES
+    }
+    return TORRENT_STATES.filter(state => !state.requiresTrackerHealth)
+  }, [trackerHealthSupported])
 
   // Get selected torrents from context (not used for tracker editing, but keeping for future use)
   // const { selectedHashes } = useTorrentSelection()
@@ -507,7 +516,7 @@ const FilterSidebarComponent = ({
               </AccordionTrigger>
               <AccordionContent className="px-3 pb-2">
                 <div className="space-y-1">
-                  {TORRENT_STATES.map((state) => (
+                  {visibleTorrentStates.map((state) => (
                     <label
                       key={state.value}
                       className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer"
@@ -1119,6 +1128,7 @@ export const FilterSidebar = memo(FilterSidebarComponent, (prevProps, nextProps)
     JSON.stringify(prevProps.tags) === JSON.stringify(nextProps.tags) &&
     prevProps.className === nextProps.className &&
     prevProps.isStaleData === nextProps.isStaleData &&
-    prevProps.isLoading === nextProps.isLoading
+    prevProps.isLoading === nextProps.isLoading &&
+    prevProps.trackerHealthSupported === nextProps.trackerHealthSupported
   )
 })
