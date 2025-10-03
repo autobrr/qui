@@ -219,21 +219,15 @@ func (c *Client) supportsTrackerInclude() bool {
 	return false
 }
 
-func (c *Client) hydrateTorrentsWithTrackers(ctx context.Context, torrents []qbt.Torrent, fetchLimit int, allowFetch bool, warmup bool) ([]qbt.Torrent, map[string][]qbt.TorrentTracker, []string, error) {
+func (c *Client) hydrateTorrentsWithTrackers(ctx context.Context, torrents []qbt.Torrent, allowFetch bool) ([]qbt.Torrent, map[string][]qbt.TorrentTracker, []string, error) {
 	tm := c.trackerManager()
 	if tm == nil {
 		return torrents, nil, nil, fmt.Errorf("tracker manager unavailable")
 	}
 
-	opts := make([]qbt.TrackerHydrateOption, 0, 3)
-	if fetchLimit != 0 {
-		opts = append(opts, qbt.WithTrackerFetchLimit(fetchLimit))
-	}
+	opts := make([]qbt.TrackerHydrateOption, 0, 2)
 	if !allowFetch {
 		opts = append(opts, qbt.WithTrackerAllowFetch(false))
-	}
-	if !warmup {
-		opts = append(opts, qbt.WithTrackerWarmup(false))
 	}
 
 	return tm.HydrateTorrents(ctx, torrents, opts...)

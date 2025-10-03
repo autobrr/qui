@@ -6,6 +6,7 @@ package qbittorrent
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net/url"
 	"path/filepath"
 	"slices"
@@ -23,12 +24,6 @@ import (
 
 // Global URL cache for domain extraction - shared across all sync managers
 var urlCache = ttlcache.New(ttlcache.Options[string, string]{}.SetDefaultTTL(5 * time.Minute))
-
-const (
-	trackerFetchUnlimited = int(qbt.TrackerFetchUnlimited)
-	// trackerFetchChunkDefault   = 300 // Legacy fallback disabled for now
-	// trackerFetchChunkForCounts = 300 // Legacy fallback disabled for now
-)
 
 var defaultUnregisteredStatuses = []string{
 	"complete season uploaded",
@@ -289,7 +284,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 		// Apply manual filtering for multiple selections
 		if trackerStatusFilters && trackerHealthSupported {
-			filteredTorrents, trackerMap, _ = sm.enrichTorrentsWithTrackerData(ctx, client, filteredTorrents, trackerMap, trackerFetchUnlimited, true)
+			filteredTorrents, trackerMap, _ = sm.enrichTorrentsWithTrackerData(ctx, client, filteredTorrents, trackerMap, true)
 		}
 
 		filteredTorrents = sm.applyManualFilters(client, filteredTorrents, filters, mainData)
@@ -875,7 +870,7 @@ func (sm *SyncManager) determineTrackerHealth(torrent qbt.Torrent) TrackerHealth
 	return ""
 }
 
-func (sm *SyncManager) enrichTorrentsWithTrackerData(ctx context.Context, client *Client, torrents []qbt.Torrent, trackerMap map[string][]qbt.TorrentTracker, fetchLimit int, allowFetch bool) ([]qbt.Torrent, map[string][]qbt.TorrentTracker, []string) {
+func (sm *SyncManager) enrichTorrentsWithTrackerData(ctx context.Context, client *Client, torrents []qbt.Torrent, trackerMap map[string][]qbt.TorrentTracker, allowFetch bool) ([]qbt.Torrent, map[string][]qbt.TorrentTracker, []string) {
 	if client == nil || len(torrents) == 0 {
 		return torrents, trackerMap, nil
 	}
@@ -895,21 +890,12 @@ func (sm *SyncManager) enrichTorrentsWithTrackerData(ctx context.Context, client
 		}
 	}
 
-	limit := fetchLimit
-	if limit == trackerFetchUnlimited {
-		limit = qbt.TrackerFetchUnlimited
-	}
-
-	// Warmup path only benefited legacy tracker fetches; disable until we reintroduce backward compatibility.
-	warmup := false
-	enriched, trackerData, remaining, err := client.hydrateTorrentsWithTrackers(ctx, torrents, limit, allowFetch, warmup)
+	enriched, trackerData, remaining, err := client.hydrateTorrentsWithTrackers(ctx, torrents, allowFetch)
 	if err != nil && allowFetch {
 		log.Debug().Err(err).Int("count", len(torrents)).Msg("Failed to fetch tracker details for enrichment")
 	}
 
-	for hash, trackers := range trackerData {
-		trackerMap[hash] = trackers
-	}
+	maps.Copy(trackerMap, trackerData)
 
 	for i := range enriched {
 		if trackers, ok := trackerMap[enriched[i].Hash]; ok {
@@ -1045,8 +1031,7 @@ func (sm *SyncManager) countTorrentStatuses(torrent qbt.Torrent, counts map[stri
 func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(ctx context.Context, client *Client, allTorrents []qbt.Torrent, mainData *qbt.MainData, trackerMap map[string][]qbt.TorrentTracker, trackerHealthSupported bool) (*TorrentCounts, map[string][]qbt.TorrentTracker, []qbt.Torrent) {
 	var enriched []qbt.Torrent
 	if trackerHealthSupported {
-		countsFetchLimit := trackerFetchUnlimited // Legacy chunking disabled; rely on includeTrackers.
-		enriched, trackerMap, _ = sm.enrichTorrentsWithTrackerData(ctx, client, allTorrents, trackerMap, countsFetchLimit, true)
+		enriched, trackerMap, _ = sm.enrichTorrentsWithTrackerData(ctx, client, allTorrents, trackerMap, true)
 		allTorrents = enriched
 	}
 
@@ -1285,8 +1270,7 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 	torrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{})
 
 	// Enrich torrents with tracker data so downstream calculations can inspect tracker errors
-	statsFetchLimit := trackerFetchUnlimited // Legacy chunking disabled; rely on includeTrackers.
-	if enriched, _, _ := sm.enrichTorrentsWithTrackerData(ctx, client, torrents, nil, statsFetchLimit, true); len(enriched) > 0 {
+	if enriched, _, _ := sm.enrichTorrentsWithTrackerData(ctx, client, torrents, nil, true); len(enriched) > 0 {
 		torrents = enriched
 	}
 
