@@ -9,7 +9,6 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
-import { Textarea } from "@/components/ui/textarea"
 import { Settings, HardDrive, Zap, Ban, Radio } from "lucide-react"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { useQBittorrentFieldVisibility } from "@/hooks/useQBittorrentAppInfo"
@@ -129,10 +128,6 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
       peer_turnover_interval: 0,
 
       // Security & filtering
-      ip_filter_enabled: false,
-      ip_filter_path: "",
-      ip_filter_trackers: false,
-      banned_IPs: "",
       block_peers_on_privileged_ports: false,
     },
     onSubmit: async ({ value }) => {
@@ -185,10 +180,6 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
       form.setFieldValue("peer_turnover_interval", preferences.peer_turnover_interval)
 
       // Security & filtering
-      form.setFieldValue("ip_filter_enabled", preferences.ip_filter_enabled)
-      form.setFieldValue("ip_filter_path", preferences.ip_filter_path)
-      form.setFieldValue("ip_filter_trackers", preferences.ip_filter_trackers)
-      form.setFieldValue("banned_IPs", preferences.banned_IPs)
       form.setFieldValue("block_peers_on_privileged_ports", preferences.block_peers_on_privileged_ports)
     }
   }, [preferences, form])
@@ -668,67 +659,6 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
         </div>
 
         <div className="space-y-4">
-          <form.Field name="ip_filter_enabled">
-            {(field) => (
-              <SwitchSetting
-                label="Enable IP filtering"
-                description="Filter connections using IP blacklist/whitelist"
-                checked={field.state.value}
-                onChange={(checked) => field.handleChange(checked)}
-              />
-            )}
-          </form.Field>
-
-          {form.getFieldValue("ip_filter_enabled") && (
-            <>
-              <form.Field name="ip_filter_path">
-                {(field) => (
-                  <div className="space-y-2">
-                    <Label htmlFor="ip_filter_path">IP Filter File Path</Label>
-                    <Input
-                      id="ip_filter_path"
-                      value={field.state.value}
-                      onChange={(e) => field.handleChange(e.target.value)}
-                      placeholder="/path/to/ipfilter.dat"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Path to IP filter file (supports P2P, eMule, and PeerGuardian formats)
-                    </p>
-                  </div>
-                )}
-              </form.Field>
-
-              <form.Field name="ip_filter_trackers">
-                {(field) => (
-                  <SwitchSetting
-                    label="Filter trackers too"
-                    description="Apply IP filtering to tracker connections"
-                    checked={field.state.value}
-                    onChange={(checked) => field.handleChange(checked)}
-                  />
-                )}
-              </form.Field>
-            </>
-          )}
-
-          <form.Field name="banned_IPs">
-            {(field) => (
-              <div className="space-y-2">
-                <Label htmlFor="banned_IPs">Banned IP Addresses</Label>
-                <Textarea
-                  id="banned_IPs"
-                  value={field.state.value}
-                  onChange={(e) => field.handleChange(e.target.value)}
-                  placeholder="192.168.1.100&#10;10.0.0.0/8&#10;192.168.0.0/16"
-                  rows={4}
-                />
-                <p className="text-xs text-muted-foreground">
-                  List of banned IP addresses or ranges (one per line). Supports CIDR notation.
-                </p>
-              </div>
-            )}
-          </form.Field>
-
           <form.Field name="block_peers_on_privileged_ports">
             {(field) => (
               <SwitchSetting
