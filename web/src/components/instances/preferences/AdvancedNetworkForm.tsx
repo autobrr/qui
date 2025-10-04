@@ -231,39 +231,43 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
         </div>
 
         <div className="space-y-4">
-          <form.Field name="limit_lan_peers">
-            {(field) => (
-              <SwitchSetting
-                label="Apply rate limit to μTP protocol"
-                description="Limit μTP connections to prevent flooding LAN peers"
-                checked={field.state.value}
-                onChange={(checked) => field.handleChange(checked)}
-              />
-            )}
-          </form.Field>
+          {/* Switch Settings */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <form.Field name="limit_lan_peers">
+              {(field) => (
+                <SwitchSetting
+                  label="Apply rate limit to μTP protocol"
+                  description="Limit μTP connections to prevent flooding LAN peers"
+                  checked={field.state.value}
+                  onChange={(checked) => field.handleChange(checked)}
+                />
+              )}
+            </form.Field>
 
-          <form.Field name="limit_tcp_overhead">
-            {(field) => (
-              <SwitchSetting
-                label="Apply rate limit to transport overhead"
-                description="Include protocol overhead in rate limiting calculations"
-                checked={field.state.value}
-                onChange={(checked) => field.handleChange(checked)}
-              />
-            )}
-          </form.Field>
+            <form.Field name="limit_tcp_overhead">
+              {(field) => (
+                <SwitchSetting
+                  label="Apply rate limit to transport overhead"
+                  description="Include protocol overhead in rate limiting calculations"
+                  checked={field.state.value}
+                  onChange={(checked) => field.handleChange(checked)}
+                />
+              )}
+            </form.Field>
 
-          <form.Field name="limit_utp_rate">
-            {(field) => (
-              <SwitchSetting
-                label="Apply rate limit to μTP connections"
-                description="Apply upload/download limits to μTP connections"
-                checked={field.state.value}
-                onChange={(checked) => field.handleChange(checked)}
-              />
-            )}
-          </form.Field>
+            <form.Field name="limit_utp_rate">
+              {(field) => (
+                <SwitchSetting
+                  label="Apply rate limit to μTP connections"
+                  description="Apply upload/download limits to μTP connections"
+                  checked={field.state.value}
+                  onChange={(checked) => field.handleChange(checked)}
+                />
+              )}
+            </form.Field>
+          </div>
 
+          {/* Number input fields - combined for proper flow */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <form.Field name="peer_tos">
               {(field) => (
@@ -274,6 +278,31 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
                   min={0}
                   max={255}
                   description="Type of Service byte for peer connections"
+                />
+              )}
+            </form.Field>
+
+            <form.Field name="max_concurrent_http_announces">
+              {(field) => (
+                <NumberInput
+                  label="Max HTTP Announces"
+                  value={field.state.value}
+                  onChange={(value) => field.handleChange(value)}
+                  min={1}
+                  description="Maximum concurrent HTTP tracker announces"
+                />
+              )}
+            </form.Field>
+
+            <form.Field name="stop_tracker_timeout">
+              {(field) => (
+                <NumberInput
+                  label="Stop Tracker Timeout"
+                  unit="seconds"
+                  value={field.state.value}
+                  onChange={(value) => field.handleChange(value)}
+                  min={1}
+                  description="Timeout for tracker stop announcements"
                 />
               )}
             </form.Field>
@@ -292,63 +321,6 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
               </form.Field>
             )}
 
-            <form.Field name="max_concurrent_http_announces">
-              {(field) => (
-                <NumberInput
-                  label="Max HTTP Announces"
-                  value={field.state.value}
-                  onChange={(value) => field.handleChange(value)}
-                  min={1}
-                  description="Maximum concurrent HTTP tracker announces"
-                />
-              )}
-            </form.Field>
-          </div>
-
-          {fieldVisibility.showSendBufferFields && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <form.Field name="send_buffer_watermark">
-                {(field) => (
-                  <NumberInput
-                    label="Send Buffer Watermark"
-                    unit="KiB"
-                    value={field.state.value}
-                    onChange={(value) => field.handleChange(value)}
-                    min={1}
-                    description="Upper watermark for socket send buffer"
-                  />
-                )}
-              </form.Field>
-
-              <form.Field name="send_buffer_low_watermark">
-                {(field) => (
-                  <NumberInput
-                    label="Send Buffer Low Watermark"
-                    unit="KiB"
-                    value={field.state.value}
-                    onChange={(value) => field.handleChange(value)}
-                    min={1}
-                    description="Lower watermark for socket send buffer"
-                  />
-                )}
-              </form.Field>
-
-              <form.Field name="send_buffer_watermark_factor">
-                {(field) => (
-                  <NumberInput
-                    label="Watermark Factor"
-                    unit="%"
-                    value={field.state.value}
-                    onChange={(value) => field.handleChange(value)}
-                    min={1}
-                    description="Send buffer watermark factor percentage"
-                  />
-                )}
-              </form.Field>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {fieldVisibility.showRequestQueueField && (
               <form.Field name="request_queue_size">
                 {(field) => (
@@ -363,18 +335,49 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
               </form.Field>
             )}
 
-            <form.Field name="stop_tracker_timeout">
-              {(field) => (
-                <NumberInput
-                  label="Stop Tracker Timeout"
-                  unit="seconds"
-                  value={field.state.value}
-                  onChange={(value) => field.handleChange(value)}
-                  min={1}
-                  description="Timeout for tracker stop announcements"
-                />
-              )}
-            </form.Field>
+            {/* Send Buffer Fields - moved into main grid for proper flow */}
+            {fieldVisibility.showSendBufferFields && (
+              <>
+                <form.Field name="send_buffer_watermark">
+                  {(field) => (
+                    <NumberInput
+                      label="Send Buffer Watermark"
+                      unit="KiB"
+                      value={field.state.value}
+                      onChange={(value) => field.handleChange(value)}
+                      min={1}
+                      description="Upper watermark for socket send buffer"
+                    />
+                  )}
+                </form.Field>
+
+                <form.Field name="send_buffer_low_watermark">
+                  {(field) => (
+                    <NumberInput
+                      label="Send Buffer Low Watermark"
+                      unit="KiB"
+                      value={field.state.value}
+                      onChange={(value) => field.handleChange(value)}
+                      min={1}
+                      description="Lower watermark for socket send buffer"
+                    />
+                  )}
+                </form.Field>
+
+                <form.Field name="send_buffer_watermark_factor">
+                  {(field) => (
+                    <NumberInput
+                      label="Watermark Factor"
+                      unit="%"
+                      value={field.state.value}
+                      onChange={(value) => field.handleChange(value)}
+                      min={1}
+                      description="Send buffer watermark factor percentage"
+                    />
+                  )}
+                </form.Field>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -387,21 +390,25 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
         </div>
 
         <div className="space-y-4">
+          {/* Coalesce switch at top */}
           {fieldVisibility.showCoalesceReadsWritesField && (
-            <form.Field name="enable_coalesce_read_write">
-              {(field) => (
-                <SwitchSetting
-                  label="Coalesce reads & writes"
-                  description="Combine adjacent disk reads and writes for better performance"
-                  checked={field.state.value}
-                  onChange={(checked) => field.handleChange(checked)}
-                />
-              )}
-            </form.Field>
+            <div className="space-y-3">
+              <form.Field name="enable_coalesce_read_write">
+                {(field) => (
+                  <SwitchSetting
+                    label="Coalesce reads & writes"
+                    description="Combine adjacent disk reads and writes for better performance"
+                    checked={field.state.value}
+                    onChange={(checked) => field.handleChange(checked)}
+                  />
+                )}
+              </form.Field>
+            </div>
           )}
 
-
+          {/* All fields combined in single grid for proper flow */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {/* Always visible fields */}
             <form.Field name="async_io_threads">
               {(field) => (
                 <NumberInput
@@ -414,20 +421,6 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
               )}
             </form.Field>
 
-            {fieldVisibility.showHashingThreadsField && (
-              <form.Field name="hashing_threads">
-                {(field) => (
-                  <NumberInput
-                    label="Hashing Threads"
-                    value={field.state.value}
-                    onChange={(value) => field.handleChange(value)}
-                    min={1}
-                    description="Number of threads for piece hash checking"
-                  />
-                )}
-              </form.Field>
-            )}
-
             <form.Field name="file_pool_size">
               {(field) => (
                 <NumberInput
@@ -439,39 +432,7 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
                 />
               )}
             </form.Field>
-          </div>
 
-          {fieldVisibility.showDiskCacheFields && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              <form.Field name="disk_cache">
-                {(field) => (
-                  <NumberInput
-                    label="Disk Cache Size"
-                    unit="MiB"
-                    value={field.state.value}
-                    onChange={(value) => field.handleChange(value)}
-                    min={-1}
-                    description="Disk cache size (-1 = auto, 0 = disabled)"
-                  />
-                )}
-              </form.Field>
-
-              <form.Field name="disk_cache_ttl">
-                {(field) => (
-                  <NumberInput
-                    label="Disk Cache TTL"
-                    unit="seconds"
-                    value={field.state.value}
-                    onChange={(value) => field.handleChange(value)}
-                    min={1}
-                    description="How long to keep cached data in memory"
-                  />
-                )}
-              </form.Field>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <form.Field name="disk_queue_size">
               {(field) => (
                 <NumberInput
@@ -484,9 +445,7 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
                 />
               )}
             </form.Field>
-          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <form.Field 
               name="checking_memory_use"
               validators={{
@@ -515,6 +474,51 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
                 </div>
               )}
             </form.Field>
+
+            {/* Version-dependent fields - flow with always-visible fields */}
+            {fieldVisibility.showHashingThreadsField && (
+              <form.Field name="hashing_threads">
+                {(field) => (
+                  <NumberInput
+                    label="Hashing Threads"
+                    value={field.state.value}
+                    onChange={(value) => field.handleChange(value)}
+                    min={1}
+                    description="Number of threads for piece hash checking"
+                  />
+                )}
+              </form.Field>
+            )}
+
+            {fieldVisibility.showDiskCacheFields && (
+              <>
+                <form.Field name="disk_cache">
+                  {(field) => (
+                    <NumberInput
+                      label="Disk Cache Size"
+                      unit="MiB"
+                      value={field.state.value}
+                      onChange={(value) => field.handleChange(value)}
+                      min={-1}
+                      description="Disk cache size (-1 = auto, 0 = disabled)"
+                    />
+                  )}
+                </form.Field>
+
+                <form.Field name="disk_cache_ttl">
+                  {(field) => (
+                    <NumberInput
+                      label="Disk Cache TTL"
+                      unit="seconds"
+                      value={field.state.value}
+                      onChange={(value) => field.handleChange(value)}
+                      min={1}
+                      description="How long to keep cached data in memory"
+                    />
+                  )}
+                </form.Field>
+              </>
+            )}
 
             {fieldVisibility.showMemoryWorkingSetLimit && (
               <form.Field name="memory_working_set_limit">
@@ -639,16 +643,18 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
         </div>
 
         <div className="space-y-4">
-          <form.Field name="block_peers_on_privileged_ports">
-            {(field) => (
-              <SwitchSetting
-                label="Block peers on privileged ports"
-                description="Block connections from peers using ports below 1024"
-                checked={field.state.value}
-                onChange={(checked) => field.handleChange(checked)}
-              />
-            )}
-          </form.Field>
+          <div className="space-y-3">
+            <form.Field name="block_peers_on_privileged_ports">
+              {(field) => (
+                <SwitchSetting
+                  label="Block peers on privileged ports"
+                  description="Block connections from peers using ports below 1024"
+                  checked={field.state.value}
+                  onChange={(checked) => field.handleChange(checked)}
+                />
+              )}
+            </form.Field>
+          </div>
         </div>
       </div>
 
