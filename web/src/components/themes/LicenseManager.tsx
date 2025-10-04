@@ -15,18 +15,20 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import {
-  useDeleteThemeLicense,
+  useActivateLicense,
+  useDeleteLicense,
   useHasPremiumAccess,
-  useLicenseDetails,
-  useValidateThemeLicense
-} from "@/hooks/useThemeLicense"
-import { getLicenseErrorMessage } from "@/lib/theme-license-errors"
+  useLicenseDetails
+} from "@/hooks/useLicense"
+import { getLicenseErrorMessage } from "@/lib/license-errors"
+import { POLAR_CHECKOUT_URL, POLAR_PORTAL_URL } from "@/lib/polar-constants"
+import { copyTextToClipboard } from "@/lib/utils"
 import { useForm } from "@tanstack/react-form"
-import { Copy, ExternalLink, Key, ShoppingCart, Sparkles, Trash2 } from "lucide-react"
+import { AlertTriangle, Copy, ExternalLink, Key, RefreshCw, ShoppingCart, Sparkles, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { toast } from "sonner"
-import { POLAR_PURCHASE_URL } from "../premium/constants"
 
 // Helper function to mask license keys for display
 function maskLicenseKey(key: string): string {
@@ -36,21 +38,26 @@ function maskLicenseKey(key: string): string {
   return key.slice(0, 8) + "-***-***-***-***"
 }
 
-export function ThemeLicenseManager() {
+export function LicenseManager() {
   const [showAddLicense, setShowAddLicense] = useState(false)
+  const { formatDate } = useDateTimeFormatters()
   const [selectedLicenseKey, setSelectedLicenseKey] = useState<string | null>(null)
 
   const { hasPremiumAccess, isLoading } = useHasPremiumAccess()
   const { data: licenses } = useLicenseDetails()
-  const validateLicense = useValidateThemeLicense()
-  const deleteLicense = useDeleteThemeLicense()
+  const activateLicense = useActivateLicense()
+  // const validateLicense = useValidateThemeLicense()
+  const deleteLicense = useDeleteLicense()
+
+  // Check if we have an invalid license (exists but not active)
+  const hasInvalidLicense = licenses && licenses.length > 0 && licenses[0].status !== "active"
 
   const form = useForm({
     defaultValues: {
       licenseKey: "",
     },
     onSubmit: async ({ value }) => {
-      await validateLicense.mutateAsync(value.licenseKey)
+      await activateLicense.mutateAsync(value.licenseKey)
       form.reset()
       setShowAddLicense(false)
     },
@@ -126,28 +133,61 @@ export function ThemeLicenseManager() {
                 <Sparkles className={hasPremiumAccess ? "h-5 w-5 text-primary flex-shrink-0 mt-0.5" : "h-5 w-5 text-muted-foreground flex-shrink-0 mt-0.5"} />
                 <div className="min-w-0 space-y-1 flex-1">
                   <p className="font-medium text-base">
-                    {hasPremiumAccess ? "Premium Access Active" : "Unlock Premium Themes"}
+                    {hasPremiumAccess ? "Premium Access Active" :hasInvalidLicense ? "License Activation Required" :"Unlock Premium Themes"}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    {hasPremiumAccess ? "You have access to all current and future premium themes" : "One-time purchase • $9.99 • All themes"}
+                    {hasPremiumAccess ? "You have access to all current and future premium themes" :hasInvalidLicense ? "Your license needs to be activated on this machine" :"One-time purchase • $9.99 • All themes"}
                   </p>
 
-                  {/* License Key Details - Integrated */}
-                  {hasPremiumAccess && licenses && licenses.length > 0 && (
+                  {/* License Key Details - Show for both active and invalid licenses */}
+                  {licenses && licenses.length > 0 && (
                     <div className="mt-3 pt-3 border-t border-border/50 space-y-2">
                       <div className="font-mono text-xs break-all text-muted-foreground">
                         {maskLicenseKey(licenses[0].licenseKey)}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        {licenses[0].themeName} • Added {new Date(licenses[0].createdAt).toLocaleDateString()}
+                        {licenses[0].productName} • Status: {licenses[0].status} • Added {formatDate(new Date(licenses[0].createdAt))}
                       </div>
+                      {hasInvalidLicense && (
+                        <div className="space-y-2">
+                          <div className="text-xs text-amber-600 dark:text-amber-500 mt-2 flex items-start gap-1">
+                            <AlertTriangle className="h-3 w-3 flex-shrink-0 mt-0.5" />
+                            <span>License validation failed. This may occur if the license was activated on another machine or if the database was copied. To deactivate on another machine, visit{" "}
+                              <a
+                                href={POLAR_PORTAL_URL}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="underline hover:no-underline inline-flex items-center gap-0.5"
+                              >
+                                {POLAR_PORTAL_URL.replace("https://", "")}
+                                <ExternalLink className="h-2.5 w-2.5" />
+                              </a>
+                            </span>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              // Re-attempt activation with the existing license key
+                              if (licenses && licenses[0]) {
+                                activateLicense.mutate(licenses[0].licenseKey)
+                              }
+                            }}
+                            disabled={activateLicense.isPending}
+                            className="h-7 text-xs"
+                          >
+                            <RefreshCw className={`h-3 w-3 mr-1 ${activateLicense.isPending ? "animate-spin" : ""}`} />
+                            {activateLicense.isPending ? "Activating..." : "Re-activate License"}
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
               </div>
 
               <div className="flex gap-2 flex-shrink-0">
-                {hasPremiumAccess && licenses && licenses.length > 0 && (
+                {licenses && licenses.length > 0 && (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -158,9 +198,9 @@ export function ThemeLicenseManager() {
                     Remove
                   </Button>
                 )}
-                {!hasPremiumAccess && (
+                {!hasPremiumAccess && !hasInvalidLicense && (
                   <Button size="sm" asChild>
-                    <a href={POLAR_PURCHASE_URL} target="_blank" rel="noopener noreferrer">
+                    <a href={POLAR_CHECKOUT_URL} target="_blank" rel="noopener noreferrer">
                       <ShoppingCart className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                       Buy license
                     </a>
@@ -195,9 +235,13 @@ export function ThemeLicenseManager() {
                 variant="outline"
                 size="sm"
                 className="w-full"
-                onClick={() => {
-                  navigator.clipboard.writeText(selectedLicenseKey)
-                  toast.success("License key copied to clipboard")
+                onClick={async () => {
+                  try {
+                    await copyTextToClipboard(selectedLicenseKey)
+                    toast.success("License key copied to clipboard")
+                  } catch {
+                    toast.error("Failed to copy to clipboard")
+                  }
                 }}
               >
                 <Copy className="h-4 w-4 mr-2" />
@@ -207,7 +251,7 @@ export function ThemeLicenseManager() {
               <div className="text-sm text-muted-foreground">
                 If needed, you can recover it later from your{" "}
                 <a
-                  href="https://polar.sh/qbitwebui/portal/request"
+                  href={POLAR_PORTAL_URL}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-primary underline inline-flex items-center gap-1"
@@ -273,9 +317,9 @@ export function ThemeLicenseManager() {
                   {field.state.meta.isTouched && field.state.meta.errors[0] && (
                     <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
                   )}
-                  {validateLicense.isError && (
+                  {activateLicense.isError && (
                     <p className="text-sm text-destructive">
-                      {getLicenseErrorMessage(validateLicense.error)}
+                      {getLicenseErrorMessage(activateLicense.error)}
                     </p>
                   )}
                 </div>
@@ -284,7 +328,7 @@ export function ThemeLicenseManager() {
 
             <DialogFooter className="flex flex-col sm:flex-row sm:items-center gap-3">
               <Button variant="outline" asChild className="sm:mr-auto">
-                <a href="https://polar.sh/qbitwebui/portal/request" target="_blank" rel="noopener noreferrer">
+                <a href={POLAR_PORTAL_URL} target="_blank" rel="noopener noreferrer">
                   Recover key?
                 </a>
               </Button>
@@ -304,10 +348,10 @@ export function ThemeLicenseManager() {
                   {([canSubmit, isSubmitting]) => (
                     <Button
                       type="submit"
-                      disabled={!canSubmit || isSubmitting || validateLicense.isPending}
+                      disabled={!canSubmit || isSubmitting || activateLicense.isPending}
                       className="flex-1 sm:flex-none"
                     >
-                      {isSubmitting || validateLicense.isPending ? "Validating..." : "Activate License"}
+                      {isSubmitting || activateLicense.isPending ? "Validating..." : "Activate License"}
                     </Button>
                   )}
                 </form.Subscribe>

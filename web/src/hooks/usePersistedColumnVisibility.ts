@@ -3,30 +3,53 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState, useEffect } from "react"
 import type { VisibilityState } from "@tanstack/react-table"
+import { useEffect, useState } from "react"
 
 export function usePersistedColumnVisibility(
-  defaultVisibility: VisibilityState = {}
+  defaultVisibility: VisibilityState = {},
+  instanceKey?: string | number
 ) {
-  // Global key shared across all instances
-  const storageKey = "qui-column-visibility"
+  const baseStorageKey = "qui-column-visibility"
+  const hasInstanceKey = instanceKey !== undefined && instanceKey !== null
+  const storageKey = hasInstanceKey ? `${baseStorageKey}:${instanceKey}` : baseStorageKey
 
-  // Initialize state from localStorage or default values
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(() => {
+  const loadVisibility = (): VisibilityState => {
     try {
       const stored = localStorage.getItem(storageKey)
       if (stored) {
-        return JSON.parse(stored)
+        const parsed = JSON.parse(stored)
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          return parsed as VisibilityState
+        }
       }
     } catch (error) {
       console.error("Failed to load column visibility from localStorage:", error)
     }
 
-    return defaultVisibility
-  })
+    return { ...defaultVisibility }
+  }
 
-  // Persist to localStorage whenever state changes
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(() => loadVisibility())
+
+  useEffect(() => {
+    if (!hasInstanceKey) {
+      return
+    }
+
+    try {
+      localStorage.removeItem(baseStorageKey)
+    } catch (error) {
+      console.error("Failed to clear legacy column visibility state:", error)
+    }
+  }, [hasInstanceKey, baseStorageKey])
+
+  useEffect(() => {
+    setColumnVisibility(loadVisibility())
+    // We only want to reload when the storage key changes (instance switch)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storageKey])
+
   useEffect(() => {
     try {
       localStorage.setItem(storageKey, JSON.stringify(columnVisibility))

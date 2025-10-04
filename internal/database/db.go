@@ -11,10 +11,11 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog/log"
-	_ "modernc.org/sqlite"
+	"modernc.org/sqlite"
 )
 
 //go:embed migrations/*.sql
@@ -22,6 +23,50 @@ var migrationsFS embed.FS
 
 type DB struct {
 	conn *sql.DB
+}
+
+const (
+	defaultBusyTimeout       = 5 * time.Second
+	defaultBusyTimeoutMillis = int(defaultBusyTimeout / time.Millisecond)
+	connectionSetupTimeout   = 5 * time.Second
+)
+
+var driverInit sync.Once
+
+type pragmaExecFn func(ctx context.Context, stmt string) error
+
+func registerConnectionHook() {
+	driverInit.Do(func() {
+		sqlite.RegisterConnectionHook(func(conn sqlite.ExecQuerierContext, dsn string) error {
+			ctx, cancel := context.WithTimeout(context.Background(), connectionSetupTimeout)
+			defer cancel()
+
+			return applyConnectionPragmas(ctx, func(ctx context.Context, stmt string) error {
+				_, err := conn.ExecContext(ctx, stmt, nil)
+				if err != nil {
+					return fmt.Errorf("connection hook exec %q: %w", stmt, err)
+				}
+				return nil
+			})
+		})
+	})
+}
+
+func applyConnectionPragmas(ctx context.Context, exec pragmaExecFn) error {
+	pragmas := []string{
+		"PRAGMA journal_mode = WAL",
+		"PRAGMA foreign_keys = ON",
+		fmt.Sprintf("PRAGMA busy_timeout = %d", defaultBusyTimeoutMillis),
+		"PRAGMA analysis_limit = 400",
+	}
+
+	for _, pragma := range pragmas {
+		if err := exec(ctx, pragma); err != nil {
+			return fmt.Errorf("apply connection pragma %q: %w", pragma, err)
+		}
+	}
+
+	return nil
 }
 
 func New(databasePath string) (*DB, error) {
@@ -33,6 +78,8 @@ func New(databasePath string) (*DB, error) {
 		return nil, fmt.Errorf("failed to create database directory %s: %w", dir, err)
 	}
 	log.Debug().Msgf("Database directory ensured: %s", dir)
+
+	registerConnectionHook()
 
 	// Open connection for migrations with single connection only
 	// This prevents any connection pool issues during schema changes
@@ -46,21 +93,19 @@ func New(databasePath string) (*DB, error) {
 	conn.SetMaxIdleConns(1)
 	log.Debug().Msg("Database connection opened for migrations")
 
-	// Enable foreign keys and WAL mode for better performance
-	if _, err := conn.Exec("PRAGMA foreign_keys = ON"); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), connectionSetupTimeout)
+	defer cancel()
+	if err := applyConnectionPragmas(ctx, func(ctx context.Context, stmt string) error {
+		_, execErr := conn.ExecContext(ctx, stmt)
+		return execErr
+	}); err != nil {
 		conn.Close()
-		return nil, fmt.Errorf("failed to enable foreign keys: %w", err)
+		return nil, err
 	}
 
-	if _, err := conn.Exec("PRAGMA journal_mode = WAL"); err != nil {
+	if _, err := conn.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
 		conn.Close()
-		return nil, fmt.Errorf("failed to enable WAL mode: %w", err)
-	}
-
-	// Set busy timeout to 10 seconds
-	if _, err := conn.Exec("PRAGMA busy_timeout = 10000"); err != nil {
-		conn.Close()
-		return nil, fmt.Errorf("failed to set busy timeout: %w", err)
+		return nil, fmt.Errorf("apply wal checkpoint: %w", err)
 	}
 
 	db := &DB{
@@ -73,11 +118,10 @@ func New(databasePath string) (*DB, error) {
 		return nil, fmt.Errorf("failed to run migrations: %w", err)
 	}
 
-	// After migrations, allow connection pooling for normal operations
-	conn.SetMaxOpenConns(25)
-	conn.SetMaxIdleConns(25)
-	// 5 minute lifetime prevents stale connections from accumulating
-	conn.SetConnMaxLifetime(5 * time.Minute)
+	// Restore default connection pool configuration after migration lock-down
+	conn.SetMaxOpenConns(0)
+	conn.SetMaxIdleConns(2)
+	conn.SetConnMaxLifetime(0)
 
 	// Verify database file was created
 	if _, err := os.Stat(databasePath); err != nil {
@@ -90,6 +134,11 @@ func New(databasePath string) (*DB, error) {
 }
 
 func (db *DB) Close() error {
+	ctx, cancel := context.WithTimeout(context.Background(), connectionSetupTimeout)
+	defer cancel()
+	if _, err := db.conn.ExecContext(ctx, "PRAGMA optimize"); err != nil {
+		log.Warn().Err(err).Msg("failed to run PRAGMA optimize during close")
+	}
 	return db.conn.Close()
 }
 

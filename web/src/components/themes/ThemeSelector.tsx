@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { themes, isThemePremium, type Theme } from "@/config/themes"
-import { useHasPremiumAccess } from "@/hooks/useThemeLicense"
+import { useHasPremiumAccess } from "@/hooks/useLicense.ts"
 import { useTheme } from "@/hooks/useTheme"
 import { Sparkles, Lock, Check, Palette, AlertTriangle } from "lucide-react"
 import { toast } from "sonner"

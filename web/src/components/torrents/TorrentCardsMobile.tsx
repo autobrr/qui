@@ -41,6 +41,7 @@ import { Switch } from "@/components/ui/switch"
 import { useDebounce } from "@/hooks/useDebounce"
 import { TORRENT_ACTIONS, useTorrentActions, type TorrentAction } from "@/hooks/useTorrentActions"
 import { useTorrentsList } from "@/hooks/useTorrentsList"
+import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { Link, useSearch } from "@tanstack/react-router"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import {
@@ -77,7 +78,8 @@ import { RemoveTagsDialog, SetCategoryDialog, SetLocationDialog, SetTagsDialog }
 import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata.ts"
 import { useInstances } from "@/hooks/useInstances"
-import { getLinuxCategory, getLinuxIsoName, getLinuxRatio, getLinuxTags, useIncognitoMode } from "@/lib/incognito"
+import { usePersistedCompactViewState, type ViewMode } from "@/hooks/usePersistedCompactViewState"
+import { getLinuxCategory, getLinuxIsoName, getLinuxRatio, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits, type SpeedUnit } from "@/lib/speedUnits"
 import { getStateLabel } from "@/lib/torrent-state-utils"
 import { getCommonCategory, getCommonSavePath, getCommonTags } from "@/lib/torrent-utils"
@@ -353,6 +355,111 @@ function getStatusBadgeVariant(state: string): "default" | "secondary" | "destru
   }
 }
 
+function shallowEqualTrackerIcons(
+  prev?: Record<string, string>,
+  next?: Record<string, string>
+): boolean {
+  if (prev === next) {
+    return true
+  }
+
+  if (!prev || !next) {
+    return false
+  }
+
+  const prevKeys = Object.keys(prev)
+  const nextKeys = Object.keys(next)
+
+  if (prevKeys.length !== nextKeys.length) {
+    return false
+  }
+
+  for (const key of prevKeys) {
+    if (prev[key] !== next[key]) {
+      return false
+    }
+  }
+
+  return true
+}
+
+const trackerIconSizeClasses = {
+  xs: "h-3 w-3 text-[8px]",
+  sm: "h-[14px] w-[14px] text-[9px]",
+  md: "h-4 w-4 text-[10px]",
+} as const
+
+type TrackerIconSize = keyof typeof trackerIconSizeClasses
+
+interface TrackerIconProps {
+  title: string
+  fallback: string
+  src: string | null
+  size?: TrackerIconSize
+  className?: string
+}
+
+const TrackerIcon = ({ title, fallback, src, size = "md", className }: TrackerIconProps) => {
+  const [hasError, setHasError] = useState(false)
+
+  useEffect(() => {
+    setHasError(false)
+  }, [src])
+
+  return (
+    <div className={cn("flex items-center justify-center", className)} title={title}>
+      <div
+        className={cn(
+          "flex items-center justify-center rounded-sm border border-border/40 bg-muted font-medium uppercase leading-none select-none",
+          trackerIconSizeClasses[size]
+        )}
+      >
+        {src && !hasError ? (
+          <img
+            src={src}
+            alt=""
+            className="h-full w-full rounded-[2px] object-cover"
+            loading="lazy"
+            draggable={false}
+            onError={() => setHasError(true)}
+          />
+        ) : (
+          <span aria-hidden="true">{fallback}</span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+const getTrackerDisplayMeta = (tracker?: string) => {
+  if (!tracker) {
+    return {
+      host: "",
+      fallback: "#",
+      title: "",
+    }
+  }
+
+  const trimmed = tracker.trim()
+  const fallbackLetter = trimmed ? trimmed.charAt(0).toUpperCase() : "#"
+
+  let host = trimmed
+  try {
+    if (trimmed.includes("://")) {
+      const url = new URL(trimmed)
+      host = url.hostname
+    }
+  } catch {
+    // Keep host as trimmed value if URL parsing fails
+  }
+
+  return {
+    host,
+    fallback: fallbackLetter,
+    title: host,
+  }
+}
+
 // Swipeable card component with gesture support
 function SwipeableCard({
   torrent,
@@ -363,6 +470,8 @@ function SwipeableCard({
   incognitoMode,
   selectionMode,
   speedUnit,
+  viewMode,
+  trackerIcons,
 }: {
   torrent: Torrent
   isSelected: boolean
@@ -372,6 +481,8 @@ function SwipeableCard({
   incognitoMode: boolean
   selectionMode: boolean
   speedUnit: SpeedUnit
+  viewMode: ViewMode
+  trackerIcons?: Record<string, string>
 }) {
 
   // Use number for timeoutId in browser
@@ -428,11 +539,15 @@ function SwipeableCard({
   const displayCategory = incognitoMode ? getLinuxCategory(torrent.hash) : torrent.category
   const displayTags = incognitoMode ? getLinuxTags(torrent.hash) : torrent.tags
   const displayRatio = incognitoMode ? getLinuxRatio(torrent.hash) : torrent.ratio
+  const trackerValue = incognitoMode ? getLinuxTracker(torrent.hash) : torrent.tracker
+  const trackerMeta = useMemo(() => getTrackerDisplayMeta(trackerValue), [trackerValue])
+  const trackerIconSrc = trackerMeta.host ? trackerIcons?.[trackerMeta.host] ?? null : null
 
   return (
     <div
       className={cn(
-        "bg-card rounded-lg border p-4 cursor-pointer transition-all relative overflow-hidden select-none",
+        "bg-card rounded-lg border cursor-pointer transition-all relative overflow-hidden select-none",
+        viewMode === "ultra-compact" ? "px-3 py-1" : viewMode === "compact" ? "p-2" : "p-4",
         isSelected && "bg-accent/50",
         !selectionMode && "active:scale-[0.98]"
       )}
@@ -464,97 +579,269 @@ function SwipeableCard({
         </div>
       )}
 
-      {/* Torrent name */}
-      <div className="mb-3">
-        <h3 className={cn(
-          "font-medium text-sm line-clamp-2 break-all",
-          selectionMode && "pr-8"
-        )}>
-          {displayName}
-        </h3>
-      </div>
+      {viewMode === "ultra-compact" ? (
+        /* Ultra Compact Layout - Single Line */
+        <div className="flex items-center gap-2">
+          <div className="flex-1 min-w-0 overflow-hidden">
+            <div className="w-full overflow-x-auto scrollbar-thin">
+              <div className="flex items-center gap-1 whitespace-nowrap">
+                <TrackerIcon
+                  title={trackerMeta.title}
+                  fallback={trackerMeta.fallback}
+                  src={trackerIconSrc}
+                  size="xs"
+                  className="flex-shrink-0"
+                />
+                <h3 className={cn(
+                  "font-medium text-xs inline-block",
+                  selectionMode && "pr-8"
+                )} title={displayName}>
+                  {displayName}
+                </h3>
+              </div>
+            </div>
+          </div>
 
-      {/* Progress bar */}
-      <div className="mb-3">
-        <div className="flex items-center justify-between mb-1">
-          <span className="text-xs text-muted-foreground">
-            {formatBytes(torrent.downloaded)} / {formatBytes(torrent.size)}
-          </span>
-          <div className="flex items-center gap-2">
-            {/* ETA */}
-            {torrent.eta > 0 && torrent.eta !== 8640000 && (
-              <div className="flex items-center gap-1">
-                <Clock className="h-3 w-3 text-muted-foreground"/>
-                <span className="text-xs text-muted-foreground">{formatEta(torrent.eta)}</span>
+          {/* Speeds if applicable */}
+          {(torrent.dlspeed > 0 || torrent.upspeed > 0) && (
+            <div className="flex items-center gap-1 text-[10px] flex-shrink-0">
+              {torrent.dlspeed > 0 && (
+                <span className="text-chart-2 font-medium">
+                  ↓{formatSpeedWithUnit(torrent.dlspeed, speedUnit)}
+                </span>
+              )}
+              {torrent.upspeed > 0 && (
+                <span className="text-chart-3 font-medium">
+                  ↑{formatSpeedWithUnit(torrent.upspeed, speedUnit)}
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* State badge - smaller */}
+          <Badge variant={getStatusBadgeVariant(torrent.state)} className="text-[10px] px-1 py-0 h-4 flex-shrink-0">
+            {getStateLabel(torrent.state)}
+          </Badge>
+
+          {/* Percentage if not 100% */}
+          {torrent.progress * 100 !== 100 && (
+            <span className="text-[10px] text-muted-foreground flex-shrink-0">
+              {torrent.progress >= 0.99 && torrent.progress < 1 ? (
+                (Math.floor(torrent.progress * 1000) / 10).toFixed(1)
+              ) : (
+                Math.round(torrent.progress * 100)
+              )}%
+            </span>
+          )}
+        </div>
+      ) : viewMode === "compact" ? (
+        /* Compact Layout */
+        <>
+          {/* Name with progress inline */}
+          <div className="flex items-center gap-2 mb-1">
+            <div className="flex-1 min-w-0 overflow-hidden">
+              <div className="w-full overflow-x-auto scrollbar-thin">
+                <div className="flex items-center gap-1 whitespace-nowrap">
+                  <TrackerIcon
+                    title={trackerMeta.title}
+                    fallback={trackerMeta.fallback}
+                    src={trackerIconSrc}
+                    size="sm"
+                    className="flex-shrink-0"
+                  />
+                  <h3 className={cn(
+                    "font-medium text-sm inline-block",
+                    selectionMode && "pr-8"
+                  )} title={displayName}>
+                    {displayName}
+                  </h3>
+                </div>
+              </div>
+            </div>
+            <Badge variant={getStatusBadgeVariant(torrent.state)} className="text-xs flex-shrink-0">
+              {getStateLabel(torrent.state)}
+            </Badge>
+          </div>
+
+          {/* Downloaded/Size and Ratio */}
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-muted-foreground">
+              {formatBytes(torrent.downloaded)} / {formatBytes(torrent.size)}
+            </span>
+            <div className="flex items-center gap-1">
+              <span className="text-muted-foreground">Ratio:</span>
+              <span className={cn(
+                "font-medium",
+                displayRatio >= 1 ? "[color:var(--chart-3)]" : "[color:var(--chart-4)]"
+              )}>
+                {displayRatio === -1 ? "∞" : displayRatio.toFixed(2)}
+              </span>
+            </div>
+          </div>
+        </>
+      ) : (
+        /* Full Layout */
+        <>
+          {/* Torrent name */}
+          <div className="mb-3">
+            <h3 className={cn(
+              "font-medium text-sm line-clamp-2 break-all",
+              selectionMode && "pr-8"
+            )}>
+              {displayName}
+            </h3>
+            {trackerMeta.title && (
+              <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground truncate">
+                <TrackerIcon
+                  title={trackerMeta.title}
+                  fallback={trackerMeta.fallback}
+                  src={trackerIconSrc}
+                  size="xs"
+                />
+                <span className="truncate" title={trackerMeta.title}>
+                  {trackerMeta.title}
+                </span>
               </div>
             )}
-            <span className="text-xs font-medium">
-              {Math.round(torrent.progress * 100)}%
+          </div>
+
+          {/* Progress bar */}
+          <div className="mb-3">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs text-muted-foreground">
+                {formatBytes(torrent.downloaded)} / {formatBytes(torrent.size)}
+              </span>
+              <div className="flex items-center gap-2">
+                {/* ETA */}
+                {torrent.eta > 0 && torrent.eta !== 8640000 && (
+                  <div className="flex items-center gap-1">
+                    <Clock className="h-3 w-3 text-muted-foreground"/>
+                    <span className="text-xs text-muted-foreground">{formatEta(torrent.eta)}</span>
+                  </div>
+                )}
+                <span className="text-xs font-medium">
+                  {torrent.progress >= 0.99 && torrent.progress < 1 ? (
+                    (Math.floor(torrent.progress * 1000) / 10).toFixed(1)
+                  ) : (
+                    Math.round(torrent.progress * 100)
+                  )}%
+                </span>
+              </div>
+            </div>
+            <Progress value={torrent.progress * 100} className="h-2"/>
+          </div>
+
+          {/* Speed, Ratio and State row */}
+          <div className="flex items-center justify-between text-xs mb-2">
+            <div className="flex items-center gap-3">
+              {/* Ratio on the left */}
+              <div className="flex items-center gap-1">
+                <span className="text-muted-foreground">Ratio:</span>
+                <span className={cn(
+                  "font-medium",
+                  displayRatio >= 1 ? "[color:var(--chart-3)]" : "[color:var(--chart-4)]"
+                )}>
+                  {displayRatio === -1 ? "∞" : displayRatio.toFixed(2)}
+                </span>
+              </div>
+
+              {/* Download speed */}
+              {torrent.dlspeed > 0 && (
+                <div className="flex items-center gap-1">
+                  <ChevronDown className="h-3 w-3 [color:var(--chart-2)]"/>
+                  <span className="font-medium">{formatSpeedWithUnit(torrent.dlspeed, speedUnit)}</span>
+                </div>
+              )}
+
+              {/* Upload speed */}
+              {torrent.upspeed > 0 && (
+                <div className="flex items-center gap-1">
+                  <ChevronUp className="h-3 w-3 [color:var(--chart-3)]"/>
+                  <span className="font-medium">{formatSpeedWithUnit(torrent.upspeed, speedUnit)}</span>
+                </div>
+              )}
+            </div>
+
+            {/* State badge on the right */}
+            <Badge variant={getStatusBadgeVariant(torrent.state)} className="text-xs">
+              {getStateLabel(torrent.state)}
+            </Badge>
+          </div>
+        </>
+      )}
+
+      {/* Bottom row: Category/Tags and Status/Speeds - only for compact and full views */}
+      {viewMode === "compact" ? (
+        /* Compact version: Category/tags on left, percentage/speeds on right */
+        <div className="flex items-center justify-between gap-2 text-xs mt-1">
+          {/* Left side: Category and Tags */}
+          <div className="flex items-center gap-2 text-muted-foreground min-w-0 overflow-hidden">
+            {displayCategory && (
+              <span className="flex items-center gap-1 flex-shrink-0">
+                <Folder className="h-3 w-3"/>
+                {displayCategory}
+              </span>
+            )}
+            {displayTags && (
+              <div className="flex items-center gap-1 min-w-0 overflow-hidden">
+                <Tag className="h-3 w-3 flex-shrink-0"/>
+                <span className="truncate">
+                  {Array.isArray(displayTags) ? displayTags.join(", ") : displayTags}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Right side: Percentage and Speeds */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <span className="text-muted-foreground">
+              {torrent.progress >= 0.99 && torrent.progress < 1 ? (
+                (Math.floor(torrent.progress * 1000) / 10).toFixed(1)
+              ) : (
+                Math.round(torrent.progress * 100)
+              )}%
             </span>
+            {/* Speeds */}
+            {(torrent.dlspeed > 0 || torrent.upspeed > 0) && (
+              <div className="flex items-center gap-1">
+                {torrent.dlspeed > 0 && (
+                  <span className="text-chart-2 font-medium">
+                    ↓{formatSpeedWithUnit(torrent.dlspeed, speedUnit)}
+                  </span>
+                )}
+                {torrent.upspeed > 0 && (
+                  <span className="text-chart-3 font-medium">
+                    ↑{formatSpeedWithUnit(torrent.upspeed, speedUnit)}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         </div>
-        <Progress value={torrent.progress * 100} className="h-2"/>
-      </div>
-
-      {/* Speed, Ratio and State row */}
-      <div className="flex items-center justify-between text-xs mb-2">
-        <div className="flex items-center gap-3">
-          {/* Ratio on the left */}
-          <div className="flex items-center gap-1">
-            <span className="text-muted-foreground">Ratio:</span>
-            <span className={cn(
-              "font-medium",
-              displayRatio >= 1 ? "[color:var(--chart-3)]" : "[color:var(--chart-4)]"
-            )}>
-              {displayRatio === -1 ? "∞" : displayRatio.toFixed(2)}
-            </span>
-          </div>
-
-          {/* Download speed */}
-          {torrent.dlspeed > 0 && (
-            <div className="flex items-center gap-1">
-              <ChevronDown className="h-3 w-3 [color:var(--chart-2)]"/>
-              <span className="font-medium">{formatSpeedWithUnit(torrent.dlspeed, speedUnit)}</span>
+      ) : viewMode === "normal" ? (
+        /* Full version: Original layout */
+        <div className="flex items-center justify-between gap-2 min-h-[20px]">
+          {/* Category */}
+          {displayCategory && (
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <Folder className="h-3 w-3 text-muted-foreground"/>
+              <span className="text-xs text-muted-foreground">{displayCategory}</span>
             </div>
           )}
 
-          {/* Upload speed */}
-          {torrent.upspeed > 0 && (
-            <div className="flex items-center gap-1">
-              <ChevronUp className="h-3 w-3 [color:var(--chart-3)]"/>
-              <span className="font-medium">{formatSpeedWithUnit(torrent.upspeed, speedUnit)}</span>
+          {/* Tags - aligned to the right */}
+          {displayTags && (
+            <div className="flex items-center gap-1 flex-wrap justify-end ml-auto">
+              <Tag className="h-3 w-3 text-muted-foreground flex-shrink-0"/>
+              {(Array.isArray(displayTags) ? displayTags : displayTags.split(",")).map((tag, i) => (
+                <Badge key={i} variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
+                  {tag.trim()}
+                </Badge>
+              ))}
             </div>
           )}
         </div>
-
-        {/* State badge on the right */}
-        <Badge variant={getStatusBadgeVariant(torrent.state)} className="text-xs">
-          {getStateLabel(torrent.state)}
-        </Badge>
-      </div>
-
-      {/* Bottom row: Category and Tags */}
-      <div className="flex items-center justify-between gap-2 min-h-[20px]">
-        {/* Category */}
-        {displayCategory && (
-          <div className="flex items-center gap-1 flex-shrink-0">
-            <Folder className="h-3 w-3 text-muted-foreground"/>
-            <span className="text-xs text-muted-foreground">{displayCategory}</span>
-          </div>
-        )}
-
-        {/* Tags - aligned to the right */}
-        {displayTags && (
-          <div className="flex items-center gap-1 flex-wrap justify-end ml-auto">
-            <Tag className="h-3 w-3 text-muted-foreground flex-shrink-0"/>
-            {(Array.isArray(displayTags) ? displayTags : displayTags.split(",")).map((tag, i) => (
-              <Badge key={i} variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
-                {tag.trim()}
-              </Badge>
-            ))}
-          </div>
-        )}
-      </div>
+      ) : null /* Ultra-compact has no bottom row */}
     </div>
   )
 }
@@ -587,6 +874,23 @@ export function TorrentCardsMobile({
 
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const [speedUnit, setSpeedUnit] = useSpeedUnits()
+  const { viewMode } = usePersistedCompactViewState("normal")
+  const trackerIconsQuery = useTrackerIcons()
+  const trackerIconsRef = useRef<Record<string, string> | undefined>(undefined)
+  const trackerIcons = useMemo(() => {
+    const latest = trackerIconsQuery.data
+    if (!latest) {
+      return trackerIconsRef.current
+    }
+
+    const previous = trackerIconsRef.current
+    if (previous && shallowEqualTrackerIcons(previous, latest)) {
+      return previous
+    }
+
+    trackerIconsRef.current = latest
+    return latest
+  }, [trackerIconsQuery.data])
 
   // Track user-initiated actions to differentiate from automatic data updates
   const [lastUserAction, setLastUserAction] = useState<{ type: string; timestamp: number } | null>(null)
@@ -750,13 +1054,14 @@ export function TorrentCardsMobile({
   const virtualizer = useVirtualizer({
     count: safeLoadedRows,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 180, // Default estimate for card height
+    estimateSize: () => viewMode === "ultra-compact" ? 39 : viewMode === "compact" ? 88 : 180, // More accurate size estimates for each view mode (35px + 4px padding)
     measureElement: (element) => {
       // Measure actual element height
       if (element) {
-        return element.getBoundingClientRect().height
+        const height = element.getBoundingClientRect().height
+        return height
       }
-      return 180
+      return viewMode === "ultra-compact" ? 39 : viewMode === "compact" ? 88 : 180
     },
     overscan: 5,
     // Provide a key to help with item tracking - use hash with index for uniqueness
@@ -857,15 +1162,43 @@ export function TorrentCardsMobile({
         setTimeout(() => {
           virtualizer.scrollToOffset(0)
           virtualizer.measure()
+          // Additional force after a short delay to ensure all items are remeasured
+          setTimeout(() => virtualizer.measure(), 100)
         }, 0)
       }
     } else {
-      // Data update only: just remeasure without resetting loadedRows
+      // Data update: aggressive remeasurement for dynamic content
+      setTimeout(() => {
+        virtualizer.measure()
+        // Second pass to catch any missed items
+        setTimeout(() => virtualizer.measure(), 50)
+      }, 0)
+    }
+  }, [filters, effectiveSearch, instanceId, virtualizer, setIsSelectionMode, torrents.length, lastUserAction])
+
+  // Recalculate virtualizer when view mode changes
+  useEffect(() => {
+    // Force complete remeasurement when view mode changes
+    if (virtualizer) {
+      setTimeout(() => {
+        virtualizer.measure()
+        // Multiple passes to ensure all items are properly measured
+        setTimeout(() => virtualizer.measure(), 50)
+        setTimeout(() => virtualizer.measure(), 150)
+      }, 0)
+    }
+  }, [viewMode, virtualizer])
+
+  // Additional effect to handle torrent content changes that affect height
+  useEffect(() => {
+    // Remeasure when the actual torrent data changes (not just count)
+    if (virtualizer && torrents.length > 0) {
       setTimeout(() => {
         virtualizer.measure()
       }, 0)
     }
-  }, [filters, effectiveSearch, instanceId, virtualizer, setIsSelectionMode, torrents.length, lastUserAction])
+  }, [torrents, virtualizer])
+
 
 
   // Handlers
@@ -923,68 +1256,127 @@ export function TorrentCardsMobile({
     }
   }, [isAllSelected, effectiveSelectionCount, selectedHashes.size, torrents, totalCount])
 
-  const handleBulkAction = useCallback((action: TorrentAction) => {
+  const triggerSelectionAction = useCallback((action: TorrentAction, extra?: Parameters<typeof handleAction>[2]) => {
     const hashes = isAllSelected ? [] : Array.from(selectedHashes)
+    const visibleHashes = isAllSelected? torrents.filter(t => !excludedFromSelectAll.has(t.hash)).map(t => t.hash): Array.from(selectedHashes)
+    const clientCount = isAllSelected ? effectiveSelectionCount : visibleHashes.length || 1
+
     handleAction(action, hashes, {
       selectAll: isAllSelected,
       filters: isAllSelected ? filters : undefined,
       search: isAllSelected ? effectiveSearch : undefined,
       excludeHashes: isAllSelected ? Array.from(excludedFromSelectAll) : undefined,
+      clientHashes: visibleHashes,
+      clientCount,
+      ...extra,
     })
+  }, [handleAction, isAllSelected, selectedHashes, torrents, excludedFromSelectAll, effectiveSelectionCount, filters, effectiveSearch])
+
+  const handleBulkAction = useCallback((action: TorrentAction) => {
+    triggerSelectionAction(action)
     setShowActionsSheet(false)
-  }, [selectedHashes, handleAction, isAllSelected, filters, effectiveSearch, excludedFromSelectAll])
+  }, [triggerSelectionAction])
 
   const handleDeleteWrapper = useCallback(async () => {
-    const hashes = torrentToDelete ? [torrentToDelete.hash] : (isAllSelected ? [] : Array.from(selectedHashes))
+    let hashes: string[]
+    if (torrentToDelete) {
+      hashes = [torrentToDelete.hash]
+    } else if (isAllSelected) {
+      hashes = []
+    } else {
+      hashes = Array.from(selectedHashes)
+    }
+
+    let visibleHashes: string[]
+    if (torrentToDelete) {
+      visibleHashes = [torrentToDelete.hash]
+    } else if (isAllSelected) {
+      visibleHashes = torrents
+        .filter(t => !excludedFromSelectAll.has(t.hash))
+        .map(t => t.hash)
+    } else {
+      visibleHashes = Array.from(selectedHashes)
+    }
+
+    let totalSelected: number
+    if (torrentToDelete) {
+      totalSelected = 1
+    } else if (isAllSelected) {
+      totalSelected = effectiveSelectionCount
+    } else {
+      totalSelected = visibleHashes.length
+    }
 
     await handleDelete(
       hashes,
       !torrentToDelete && isAllSelected,
       !torrentToDelete && isAllSelected ? filters : undefined,
       !torrentToDelete && isAllSelected ? effectiveSearch : undefined,
-      !torrentToDelete && isAllSelected ? Array.from(excludedFromSelectAll) : undefined
+      !torrentToDelete && isAllSelected ? Array.from(excludedFromSelectAll) : undefined,
+      {
+        clientHashes: visibleHashes,
+        totalSelected,
+      }
     )
     setTorrentToDelete(null)
-  }, [torrentToDelete, isAllSelected, selectedHashes, handleDelete, filters, effectiveSearch, excludedFromSelectAll])
+  }, [torrentToDelete, isAllSelected, selectedHashes, handleDelete, filters, effectiveSearch, excludedFromSelectAll, torrents, effectiveSelectionCount])
 
   const handleSetTagsWrapper = useCallback(async (tags: string[]) => {
     const hashes = isAllSelected ? [] : actionTorrents.map(t => t.hash)
+    const visibleHashes = isAllSelected? torrents.filter(t => !excludedFromSelectAll.has(t.hash)).map(t => t.hash): actionTorrents.map(t => t.hash)
+    const totalSelected = isAllSelected ? effectiveSelectionCount : visibleHashes.length
     await handleSetTags(
       tags,
       hashes,
       isAllSelected,
       isAllSelected ? filters : undefined,
       isAllSelected ? effectiveSearch : undefined,
-      isAllSelected ? Array.from(excludedFromSelectAll) : undefined
+      isAllSelected ? Array.from(excludedFromSelectAll) : undefined,
+      {
+        clientHashes: visibleHashes,
+        totalSelected,
+      }
     )
     setActionTorrents([])
-  }, [isAllSelected, actionTorrents, handleSetTags, filters, effectiveSearch, excludedFromSelectAll])
+  }, [isAllSelected, actionTorrents, handleSetTags, filters, effectiveSearch, excludedFromSelectAll, torrents, effectiveSelectionCount])
 
   const handleSetCategoryWrapper = useCallback(async (category: string) => {
     const hashes = isAllSelected ? [] : actionTorrents.map(t => t.hash)
+    const visibleHashes = isAllSelected? torrents.filter(t => !excludedFromSelectAll.has(t.hash)).map(t => t.hash): actionTorrents.map(t => t.hash)
+    const totalSelected = isAllSelected ? effectiveSelectionCount : visibleHashes.length
     await handleSetCategory(
       category,
       hashes,
       isAllSelected,
       isAllSelected ? filters : undefined,
       isAllSelected ? effectiveSearch : undefined,
-      isAllSelected ? Array.from(excludedFromSelectAll) : undefined
+      isAllSelected ? Array.from(excludedFromSelectAll) : undefined,
+      {
+        clientHashes: visibleHashes,
+        totalSelected,
+      }
     )
     setActionTorrents([])
-  }, [isAllSelected, actionTorrents, handleSetCategory, filters, effectiveSearch, excludedFromSelectAll])
+  }, [isAllSelected, actionTorrents, handleSetCategory, filters, effectiveSearch, excludedFromSelectAll, torrents, effectiveSelectionCount])
 
   const handleSetLocationWrapper = useCallback(async (location: string) => {
     const hashes = isAllSelected ? [] : actionTorrents.map(t => t.hash)
+    const visibleHashes = isAllSelected? torrents.filter(t => !excludedFromSelectAll.has(t.hash)).map(t => t.hash): actionTorrents.map(t => t.hash)
+    const totalSelected = isAllSelected ? effectiveSelectionCount : visibleHashes.length
     await handleSetLocation(
       location,
       hashes,
       isAllSelected,
       isAllSelected ? filters : undefined,
       isAllSelected ? effectiveSearch : undefined,
-      isAllSelected ? Array.from(excludedFromSelectAll) : undefined
+      isAllSelected ? Array.from(excludedFromSelectAll) : undefined,
+      {
+        clientHashes: visibleHashes,
+        totalSelected,
+      }
     )
     setActionTorrents([])
-  }, [isAllSelected, actionTorrents, handleSetLocation, filters, effectiveSearch, excludedFromSelectAll])
+  }, [isAllSelected, actionTorrents, handleSetLocation, filters, effectiveSearch, excludedFromSelectAll, torrents, effectiveSelectionCount])
 
   const getSelectedTorrents = useMemo(() => {
     if (isAllSelected) {
@@ -1014,12 +1406,12 @@ export function TorrentCardsMobile({
                     <ChevronsUpDown className="h-3 w-3 text-muted-foreground ml-1 mt-0.5 opacity-60 flex-shrink-0" />
                   </button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-64" side="bottom" align="start">
+                <DropdownMenuContent className="w-64 mt-2" side="bottom" align="start">
                   <DropdownMenuLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                     Switch Instance
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <div className="max-h-64 overflow-y-auto">
+                  <div className="max-h-64 overflow-y-auto space-y-2">
                     {instances.map((instance) => (
                       <DropdownMenuItem key={instance.id} asChild>
                         <Link
@@ -1167,7 +1559,7 @@ export function TorrentCardsMobile({
                   left: 0,
                   width: "100%",
                   transform: `translateY(${virtualItem.start}px)`,
-                  paddingBottom: "12px",
+                  paddingBottom: viewMode === "ultra-compact" ? "4px" : "8px",
                 }}
               >
                 <SwipeableCard
@@ -1179,6 +1571,9 @@ export function TorrentCardsMobile({
                   incognitoMode={incognitoMode}
                   selectionMode={selectionMode}
                   speedUnit={speedUnit}
+
+                  viewMode={viewMode}
+                  trackerIcons={trackerIcons}
                 />
               </div>
             )
@@ -1336,7 +1731,7 @@ export function TorrentCardsMobile({
                     <Button
                       variant="outline"
                       onClick={() => {
-                        handleAction(TORRENT_ACTIONS.TOGGLE_AUTO_TMM, isAllSelected ? [] : Array.from(selectedHashes), { enable: true })
+                        triggerSelectionAction(TORRENT_ACTIONS.TOGGLE_AUTO_TMM, { enable: true })
                         setShowActionsSheet(false)
                       }}
                       className="justify-start"
@@ -1347,7 +1742,7 @@ export function TorrentCardsMobile({
                     <Button
                       variant="outline"
                       onClick={() => {
-                        handleAction(TORRENT_ACTIONS.TOGGLE_AUTO_TMM, isAllSelected ? [] : Array.from(selectedHashes), { enable: false })
+                        triggerSelectionAction(TORRENT_ACTIONS.TOGGLE_AUTO_TMM, { enable: false })
                         setShowActionsSheet(false)
                       }}
                       className="justify-start"
@@ -1363,7 +1758,7 @@ export function TorrentCardsMobile({
                 <Button
                   variant="outline"
                   onClick={() => {
-                    handleAction(TORRENT_ACTIONS.TOGGLE_AUTO_TMM, isAllSelected ? [] : Array.from(selectedHashes), { enable: !allEnabled })
+                    triggerSelectionAction(TORRENT_ACTIONS.TOGGLE_AUTO_TMM, { enable: !allEnabled })
                     setShowActionsSheet(false)
                   }}
                   className="justify-start"
@@ -1497,13 +1892,19 @@ export function TorrentCardsMobile({
         hashCount={actionTorrents.length}
         onConfirm={async (tags) => {
           const hashes = isAllSelected ? [] : actionTorrents.map(t => t.hash)
+          const visibleHashes = isAllSelected? torrents.filter(t => !excludedFromSelectAll.has(t.hash)).map(t => t.hash): actionTorrents.map(t => t.hash)
+          const totalSelected = isAllSelected ? effectiveSelectionCount : visibleHashes.length
           await handleRemoveTags(
             tags,
             hashes,
             isAllSelected,
             isAllSelected ? filters : undefined,
             isAllSelected ? effectiveSearch : undefined,
-            isAllSelected ? Array.from(excludedFromSelectAll) : undefined
+            isAllSelected ? Array.from(excludedFromSelectAll) : undefined,
+            {
+              clientHashes: visibleHashes,
+              totalSelected,
+            }
           )
           setActionTorrents([])
         }}
@@ -1517,11 +1918,21 @@ export function TorrentCardsMobile({
         hashCount={effectiveSelectionCount}
         onConfirm={async (ratioLimit, seedingTimeLimit, inactiveSeedingTimeLimit) => {
           const hashes = isAllSelected ? [] : Array.from(selectedHashes)
+          const visibleHashes = isAllSelected? torrents.filter(t => !excludedFromSelectAll.has(t.hash)).map(t => t.hash): Array.from(selectedHashes)
+          const totalSelected = isAllSelected ? effectiveSelectionCount : visibleHashes.length || 1
           await handleSetShareLimit(
             ratioLimit,
             seedingTimeLimit,
             inactiveSeedingTimeLimit,
-            hashes
+            hashes,
+            isAllSelected,
+            isAllSelected ? filters : undefined,
+            isAllSelected ? effectiveSearch : undefined,
+            isAllSelected ? Array.from(excludedFromSelectAll) : undefined,
+            {
+              clientHashes: visibleHashes,
+              totalSelected,
+            }
           )
           setShowShareLimitDialog(false)
         }}
@@ -1535,7 +1946,21 @@ export function TorrentCardsMobile({
         hashCount={effectiveSelectionCount}
         onConfirm={async (uploadLimit, downloadLimit) => {
           const hashes = isAllSelected ? [] : Array.from(selectedHashes)
-          await handleSetSpeedLimits(uploadLimit, downloadLimit, hashes)
+          const visibleHashes = isAllSelected? torrents.filter(t => !excludedFromSelectAll.has(t.hash)).map(t => t.hash): Array.from(selectedHashes)
+          const totalSelected = isAllSelected ? effectiveSelectionCount : visibleHashes.length || 1
+          await handleSetSpeedLimits(
+            uploadLimit,
+            downloadLimit,
+            hashes,
+            isAllSelected,
+            isAllSelected ? filters : undefined,
+            isAllSelected ? effectiveSearch : undefined,
+            isAllSelected ? Array.from(excludedFromSelectAll) : undefined,
+            {
+              clientHashes: visibleHashes,
+              totalSelected,
+            }
+          )
           setShowSpeedLimitDialog(false)
         }}
         isPending={isPending}
@@ -1562,7 +1987,7 @@ export function TorrentCardsMobile({
       <div className="sm:hidden">
         <ScrollToTopButton
           scrollContainerRef={parentRef}
-          className="bottom-24 right-4"
+          className="bottom-28 right-4"
         />
       </div>
     </div>

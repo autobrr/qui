@@ -27,20 +27,22 @@ type Client struct {
 	peerSyncManager map[string]*qbt.PeerSyncManager // Map of torrent hash to PeerSyncManager
 	// optimisticUpdates stores temporary optimistic state changes for this instance
 	optimisticUpdates *ttlcache.Cache[string, *OptimisticTorrentUpdate]
+	trackerExclusions map[string]map[string]struct{} // Domains to hide hashes from until fresh sync arrives
 	mu                sync.RWMutex
 	healthMu          sync.RWMutex
 }
 
-func NewClient(instanceID int, instanceHost, username, password string, basicUsername, basicPassword *string) (*Client, error) {
-	return NewClientWithTimeout(instanceID, instanceHost, username, password, basicUsername, basicPassword, 60*time.Second)
+func NewClient(instanceID int, instanceHost, username, password string, basicUsername, basicPassword *string, tlsSkipVerify bool) (*Client, error) {
+	return NewClientWithTimeout(instanceID, instanceHost, username, password, basicUsername, basicPassword, tlsSkipVerify, 60*time.Second)
 }
 
-func NewClientWithTimeout(instanceID int, instanceHost, username, password string, basicUsername, basicPassword *string, timeout time.Duration) (*Client, error) {
+func NewClientWithTimeout(instanceID int, instanceHost, username, password string, basicUsername, basicPassword *string, tlsSkipVerify bool, timeout time.Duration) (*Client, error) {
 	cfg := qbt.Config{
-		Host:     instanceHost,
-		Username: username,
-		Password: password,
-		Timeout:  int(timeout.Seconds()),
+		Host:          instanceHost,
+		Username:      username,
+		Password:      password,
+		Timeout:       int(timeout.Seconds()),
+		TLSSkipVerify: tlsSkipVerify,
 	}
 
 	if basicUsername != nil && *basicUsername != "" {
@@ -81,7 +83,8 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 		isHealthy:       true,
 		optimisticUpdates: ttlcache.New(ttlcache.Options[string, *OptimisticTorrentUpdate]{}.
 			SetDefaultTTL(30 * time.Second)), // Updates expire after 30 seconds
-		peerSyncManager: make(map[string]*qbt.PeerSyncManager),
+		trackerExclusions: make(map[string]map[string]struct{}),
+		peerSyncManager:   make(map[string]*qbt.PeerSyncManager),
 	}
 
 	// Initialize sync manager with default options
@@ -106,6 +109,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 		Str("host", instanceHost).
 		Str("webAPIVersion", webAPIVersion).
 		Bool("supportsSetTags", supportsSetTags).
+		Bool("tlsSkipVerify", tlsSkipVerify).
 		Msg("qBittorrent client created successfully")
 
 	return client, nil
@@ -250,6 +254,92 @@ func (c *Client) applyOptimisticCacheUpdate(hashes []string, action string, _ ma
 	}
 
 	log.Debug().Int("instanceID", c.instanceID).Str("action", action).Int("hashCount", len(hashes)).Msg("Completed optimistic cache update")
+}
+
+// addTrackerExclusions records hashes that should be temporarily excluded from a tracker domain.
+func (c *Client) addTrackerExclusions(domain string, hashes []string) {
+	if domain == "" || len(hashes) == 0 {
+		return
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	set, ok := c.trackerExclusions[domain]
+	if !ok {
+		set = make(map[string]struct{})
+		c.trackerExclusions[domain] = set
+	}
+
+	for _, hash := range hashes {
+		if hash == "" {
+			continue
+		}
+		set[hash] = struct{}{}
+	}
+}
+
+// removeTrackerExclusions removes specific hashes from the exclusion map for a domain.
+// If no hashes are provided, the entire domain entry is cleared.
+func (c *Client) removeTrackerExclusions(domain string, hashes []string) {
+	if domain == "" {
+		return
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if len(hashes) == 0 {
+		delete(c.trackerExclusions, domain)
+		return
+	}
+
+	set, ok := c.trackerExclusions[domain]
+	if !ok {
+		return
+	}
+
+	for _, hash := range hashes {
+		delete(set, hash)
+	}
+
+	if len(set) == 0 {
+		delete(c.trackerExclusions, domain)
+	}
+}
+
+// getTrackerExclusionsCopy returns a deep copy of tracker exclusions for safe iteration.
+func (c *Client) getTrackerExclusionsCopy() map[string]map[string]struct{} {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if len(c.trackerExclusions) == 0 {
+		return nil
+	}
+
+	copyMap := make(map[string]map[string]struct{}, len(c.trackerExclusions))
+	for domain, hashes := range c.trackerExclusions {
+		inner := make(map[string]struct{}, len(hashes))
+		for hash := range hashes {
+			inner[hash] = struct{}{}
+		}
+		copyMap[domain] = inner
+	}
+	return copyMap
+}
+
+// clearTrackerExclusions removes domains from the temporary exclusion map.
+func (c *Client) clearTrackerExclusions(domains []string) {
+	if len(domains) == 0 {
+		return
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	for _, domain := range domains {
+		delete(c.trackerExclusions, domain)
+	}
 }
 
 // getOptimisticUpdates returns all current optimistic updates

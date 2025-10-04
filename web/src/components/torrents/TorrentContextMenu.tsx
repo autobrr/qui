@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { memo, useCallback } from "react"
 import {
   ContextMenu,
   ContextMenuContent,
@@ -11,27 +10,31 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger
 } from "@/components/ui/context-menu"
+import type { TorrentAction } from "@/hooks/useTorrentActions"
+import { TORRENT_ACTIONS } from "@/hooks/useTorrentActions"
+import { getLinuxIsoName, useIncognitoMode } from "@/lib/incognito"
+import { getTorrentDisplayHash } from "@/lib/torrent-utils"
+import { copyTextToClipboard } from "@/lib/utils"
+import type { Torrent } from "@/types"
 import {
   CheckCircle,
   Copy,
-  Folder,
+  Download,
   FolderOpen,
+  Gauge,
   Pause,
   Play,
   Radio,
   Settings2,
   Sparkles,
+  Sprout,
   Tag,
   Trash2
 } from "lucide-react"
+import { memo, useCallback, useMemo } from "react"
 import { toast } from "sonner"
-import type { Torrent } from "@/types"
-import type { TorrentAction } from "@/hooks/useTorrentActions"
-import { TORRENT_ACTIONS } from "@/hooks/useTorrentActions"
+import { CategorySubmenu } from "./CategorySubmenu"
 import { QueueSubmenu } from "./QueueSubmenu"
-import { ShareLimitSubmenu, SpeedLimitsSubmenu } from "./TorrentLimitSubmenus"
-import { getLinuxIsoName, useIncognitoMode } from "@/lib/incognito"
-import { useMemo } from "react"
 
 interface TorrentContextMenuProps {
   children: React.ReactNode
@@ -46,12 +49,17 @@ interface TorrentContextMenuProps {
   onPrepareDelete: (hashes: string[], torrents?: Torrent[]) => void
   onPrepareTags: (action: "add" | "set" | "remove", hashes: string[], torrents?: Torrent[]) => void
   onPrepareCategory: (hashes: string[], torrents?: Torrent[]) => void
+  onPrepareCreateCategory: (hashes: string[], torrents?: Torrent[]) => void
+  onPrepareShareLimit: (hashes: string[], torrents?: Torrent[]) => void
+  onPrepareSpeedLimits: (hashes: string[], torrents?: Torrent[]) => void
   onPrepareRecheck: (hashes: string[], count?: number) => void
   onPrepareReannounce: (hashes: string[], count?: number) => void
   onPrepareLocation: (hashes: string[], torrents?: Torrent[]) => void
-  onSetShareLimit: (ratioLimit: number, seedingTimeLimit: number, inactiveSeedingTimeLimit: number, hashes: string[]) => void
-  onSetSpeedLimits: (uploadLimit: number, downloadLimit: number, hashes: string[]) => void
+  availableCategories?: Record<string, unknown>
+  onSetCategory?: (category: string, hashes: string[]) => void
   isPending?: boolean
+  onExport?: (hashes: string[], torrents: Torrent[]) => Promise<void> | void
+  isExporting?: boolean
 }
 
 export const TorrentContextMenu = memo(function TorrentContextMenu({
@@ -66,25 +74,39 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   onAction,
   onPrepareDelete,
   onPrepareTags,
-  onPrepareCategory,
+  onPrepareCreateCategory,
+  onPrepareShareLimit,
+  onPrepareSpeedLimits,
   onPrepareRecheck,
   onPrepareReannounce,
   onPrepareLocation,
-  onSetShareLimit,
-  onSetSpeedLimits,
+  availableCategories = {},
+  onSetCategory,
   isPending = false,
+  onExport,
+  isExporting = false,
 }: TorrentContextMenuProps) {
   const [incognitoMode] = useIncognitoMode()
 
   const copyToClipboard = useCallback(async (text: string, type: "name" | "hash") => {
     try {
-      await navigator.clipboard.writeText(text)
-      const message = type === "name" ? "Torrent name copied!" : "Torrent hash copied!"
-      toast.success(message)
+      await copyTextToClipboard(text)
+      toast.success(`Torrent ${type} copied to clipboard`)
     } catch {
       toast.error("Failed to copy to clipboard")
     }
   }, [])
+
+  const displayHash = useMemo(() => getTorrentDisplayHash(torrent), [torrent])
+
+  const copyHash = useCallback(() => {
+    const value = displayHash || torrent.hash
+    if (!value) {
+      toast.error("Hash not available")
+      return
+    }
+    void copyToClipboard(value, "hash")
+  }, [copyToClipboard, displayHash, torrent.hash])
 
   // Determine if we should use selection or just this torrent
   const useSelection = isSelected || isAllSelected
@@ -100,6 +122,13 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   [useSelection, selectedTorrents, torrent]
   )
 
+  const handleExport = useCallback(() => {
+    if (!onExport) {
+      return
+    }
+    void onExport(hashes, torrents)
+  }, [hashes, onExport, torrents])
+
   const count = isAllSelected ? effectiveSelectionCount : hashes.length
 
   // TMM state calculation
@@ -112,13 +141,15 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
     onAction(action as TorrentAction, hashes)
   }, [onAction, hashes])
 
-  const handleSetShareLimitWrapper = useCallback((ratioLimit: number, seedingTimeLimit: number, inactiveSeedingTimeLimit: number) => {
-    onSetShareLimit(ratioLimit, seedingTimeLimit, inactiveSeedingTimeLimit, hashes)
-  }, [onSetShareLimit, hashes])
+  const handleSetCategory = useCallback((category: string) => {
+    if (onSetCategory) {
+      onSetCategory(category, hashes)
+    }
+  }, [onSetCategory, hashes])
 
-  const handleSetSpeedLimitsWrapper = useCallback((uploadLimit: number, downloadLimit: number) => {
-    onSetSpeedLimits(uploadLimit, downloadLimit, hashes)
-  }, [onSetSpeedLimits, hashes])
+  const handleCreateCategory = useCallback(() => {
+    onPrepareCreateCategory(hashes, torrents)
+  }, [onPrepareCreateCategory, hashes, torrents])
 
   return (
     <ContextMenu>
@@ -184,13 +215,15 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
           <Tag className="mr-2 h-4 w-4" />
           Replace Tags {count > 1 ? `(${count})` : ""}
         </ContextMenuItem>
-        <ContextMenuItem
-          onClick={() => onPrepareCategory(hashes, torrents)}
-          disabled={isPending}
-        >
-          <Folder className="mr-2 h-4 w-4" />
-          Set Category {count > 1 ? `(${count})` : ""}
-        </ContextMenuItem>
+        <CategorySubmenu
+          type="context"
+          hashCount={count}
+          availableCategories={availableCategories}
+          onSetCategory={handleSetCategory}
+          onCreateCategory={handleCreateCategory}
+          isPending={isPending}
+          currentCategory={torrent.category}
+        />
         <ContextMenuItem
           onClick={() => onPrepareLocation(hashes, torrents)}
           disabled={isPending}
@@ -199,18 +232,20 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
           Set Location {count > 1 ? `(${count})` : ""}
         </ContextMenuItem>
         <ContextMenuSeparator />
-        <ShareLimitSubmenu
-          type="context"
-          hashCount={count}
-          onConfirm={handleSetShareLimitWrapper}
-          isPending={isPending}
-        />
-        <SpeedLimitsSubmenu
-          type="context"
-          hashCount={count}
-          onConfirm={handleSetSpeedLimitsWrapper}
-          isPending={isPending}
-        />
+        <ContextMenuItem
+          onClick={() => onPrepareShareLimit(hashes, torrents)}
+          disabled={isPending}
+        >
+          <Sprout className="mr-2 h-4 w-4" />
+          Set Share Limits {count > 1 ? `(${count})` : ""}
+        </ContextMenuItem>
+        <ContextMenuItem
+          onClick={() => onPrepareSpeedLimits(hashes, torrents)}
+          disabled={isPending}
+        >
+          <Gauge className="mr-2 h-4 w-4" />
+          Set Speed Limits {count > 1 ? `(${count})` : ""}
+        </ContextMenuItem>
         <ContextMenuSeparator />
         {mixed ? (
           <>
@@ -249,12 +284,19 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
         )}
         <ContextMenuSeparator />
         <ContextMenuItem
+          onClick={handleExport}
+          disabled={isExporting}
+        >
+          <Download className="mr-2 h-4 w-4" />
+          {count > 1 ? `Export Torrents (${count})` : "Export Torrent"}
+        </ContextMenuItem>
+        <ContextMenuItem
           onClick={() => copyToClipboard(incognitoMode ? getLinuxIsoName(torrent.hash) : torrent.name, "name")}
         >
           <Copy className="mr-2 h-4 w-4" />
           Copy Name
         </ContextMenuItem>
-        <ContextMenuItem onClick={() => copyToClipboard(torrent.hash, "hash")}>
+        <ContextMenuItem onClick={copyHash}>
           <Copy className="mr-2 h-4 w-4" />
           Copy Hash
         </ContextMenuItem>

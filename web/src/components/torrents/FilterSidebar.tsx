@@ -20,8 +20,11 @@ import {
 } from "@/components/ui/context-menu"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { SearchInput } from "@/components/ui/SearchInput"
+
 import { useDebounce } from "@/hooks/useDebounce"
 import { usePersistedAccordion } from "@/hooks/usePersistedAccordion"
+import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
+import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { getLinuxCount, LINUX_CATEGORIES, LINUX_TAGS, LINUX_TRACKERS, useIncognitoMode } from "@/lib/incognito"
 import type { Category } from "@/types"
 import { useVirtualizer } from "@tanstack/react-virtual"
@@ -41,7 +44,7 @@ import {
   XCircle,
   type LucideIcon
 } from "lucide-react"
-import { memo, useCallback, useMemo, useRef, useState } from "react"
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   CreateCategoryDialog,
   CreateTagDialog,
@@ -50,6 +53,11 @@ import {
   DeleteUnusedTagsDialog,
   EditCategoryDialog
 } from "./TagCategoryManagement"
+import { EditTrackerDialog } from "./TorrentDialogs"
+// import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
+import { api } from "@/lib/api"
+import { useMutation } from "@tanstack/react-query"
+import { toast } from "sonner"
 
 interface FilterBadgeProps {
   count: number
@@ -94,6 +102,7 @@ interface FilterSidebarProps {
   className?: string
   isStaleData?: boolean
   isLoading?: boolean
+  isMobile?: boolean
 }
 
 
@@ -114,6 +123,42 @@ const TORRENT_STATES: Array<{ value: string; label: string; icon: LucideIcon }> 
   { value: "moving", label: "Moving", icon: MoveRight },
 ]
 
+interface TrackerIconImageProps {
+  tracker: string
+  trackerIcons?: Record<string, string>
+}
+
+const TrackerIconImage = memo(({ tracker, trackerIcons }: TrackerIconImageProps) => {
+  const [hasError, setHasError] = useState(false)
+
+  useEffect(() => {
+    setHasError(false)
+  }, [tracker, trackerIcons])
+
+  const trimmed = tracker.trim()
+  const fallbackLetter = trimmed ? trimmed.charAt(0).toUpperCase() : "#"
+  const src = trackerIcons?.[trimmed] ?? null
+
+  return (
+    <div className="flex h-4 w-4 items-center justify-center rounded-sm border border-border/40 bg-muted text-[10px] font-medium uppercase leading-none">
+      {src && !hasError ? (
+        <img
+          src={src}
+          alt=""
+          className="h-full w-full rounded-[2px] object-cover"
+          loading="lazy"
+          draggable={false}
+          onError={() => setHasError(true)}
+        />
+      ) : (
+        <span aria-hidden="true">{fallbackLetter}</span>
+      )}
+    </div>
+  )
+})
+
+TrackerIconImage.displayName = "TrackerIconImage"
+
 const FilterSidebarComponent = ({
   instanceId,
   selectedFilters,
@@ -124,9 +169,14 @@ const FilterSidebarComponent = ({
   className = "",
   isStaleData = false,
   isLoading = false,
+  isMobile = false,
 }: FilterSidebarProps) => {
   // Use incognito mode hook
   const [incognitoMode] = useIncognitoMode()
+  const { data: trackerIcons } = useTrackerIcons()
+
+  // Use compact view state hook
+  const { viewMode, cycleViewMode } = usePersistedCompactViewState("normal")
 
   // Helper function to get count display - shows 0 when loading to prevent showing stale counts from previous instance
   const getDisplayCount = useCallback((key: string, fallbackCount?: number): string => {
@@ -164,6 +214,90 @@ const FilterSidebarComponent = ({
   const [categorySearch, setCategorySearch] = useState("")
   const [tagSearch, setTagSearch] = useState("")
   const [trackerSearch, setTrackerSearch] = useState("")
+
+  // Tracker dialog states
+  const [showEditTrackerDialog, setShowEditTrackerDialog] = useState(false)
+  const [trackerToEdit, setTrackerToEdit] = useState("")
+  const [trackerFullURLs, setTrackerFullURLs] = useState<string[]>([])
+  const [loadingTrackerURLs, setLoadingTrackerURLs] = useState(false)
+
+  // Get selected torrents from context (not used for tracker editing, but keeping for future use)
+  // const { selectedHashes } = useTorrentSelection()
+
+  // Function to fetch tracker URLs for a specific tracker domain
+  const fetchTrackerURLs = useCallback(async (trackerDomain: string) => {
+    setLoadingTrackerURLs(true)
+    setTrackerFullURLs([])
+
+    try {
+      // Find torrents using this tracker
+      const torrentsList = await api.getTorrents(instanceId, {
+        filters: {
+          status: [],
+          categories: [],
+          tags: [],
+          trackers: [trackerDomain],
+        },
+        limit: 1, // We only need one torrent to get the tracker URL
+      })
+
+      if (torrentsList.torrents && torrentsList.torrents.length > 0) {
+        // Get trackers for the first torrent
+        const firstTorrentHash = torrentsList.torrents[0].hash
+        const trackers = await api.getTorrentTrackers(instanceId, firstTorrentHash)
+
+        // Find all unique tracker URLs for this domain
+        const urls = trackers
+          .filter((t: { url: string }) => {
+            try {
+              const url = new URL(t.url)
+              return url.hostname === trackerDomain
+            } catch {
+              return false
+            }
+          })
+          .map((t: { url: string }) => t.url)
+          .filter((url: string, index: number, self: string[]) => self.indexOf(url) === index) // Remove duplicates
+
+        setTrackerFullURLs(urls)
+      }
+    } catch (error) {
+      console.error("Failed to fetch tracker URLs:", error)
+      toast.error("Failed to fetch tracker URLs")
+    } finally {
+      setLoadingTrackerURLs(false)
+    }
+  }, [instanceId])
+
+  // Mutation for editing trackers
+  const editTrackersMutation = useMutation({
+    mutationFn: async ({ oldURL, newURL, tracker }: { oldURL: string; newURL: string; tracker: string }) => {
+      // Use selectAll with tracker filter to update all torrents with this tracker
+      await api.bulkAction(instanceId, {
+        hashes: [], // Empty when using selectAll
+        action: "editTrackers",
+        trackerOldURL: oldURL,
+        trackerNewURL: newURL,
+        selectAll: true,
+        filters: {
+          status: [],
+          categories: [],
+          tags: [],
+          trackers: [tracker], // Filter to only torrents with this tracker
+        },
+      })
+    },
+    onSuccess: () => {
+      toast.success("Updated tracker URL across all affected torrents")
+      setShowEditTrackerDialog(false)
+      setTrackerFullURLs([])
+    },
+    onError: (error: Error) => {
+      toast.error("Failed to update tracker", {
+        description: error.message,
+      })
+    },
+  })
 
   // Debounce search terms for better performance
   const debouncedCategorySearch = useDebounce(categorySearch, 300)
@@ -210,7 +344,7 @@ const FilterSidebarComponent = ({
   }, [incognitoMode, torrentCounts, isLoading, isStaleData])
 
   // Use virtual scrolling for large lists to handle performance efficiently
-  const VIRTUAL_THRESHOLD = 100 // Use virtual scrolling for lists > 100 items
+  const VIRTUAL_THRESHOLD = 30 // Use virtual scrolling for lists > 30 items
 
   // Refs for virtual scrolling
   const categoryListRef = useRef<HTMLDivElement>(null)
@@ -221,63 +355,39 @@ const FilterSidebarComponent = ({
   const filteredCategories = useMemo(() => {
     const categoryEntries = Object.entries(categories) as [string, Category][]
 
-    if (debouncedCategorySearch) {
-      const searchLower = debouncedCategorySearch.toLowerCase()
-      return categoryEntries.filter(([name]) =>
-        name.toLowerCase().includes(searchLower)
-      )
+    if (!debouncedCategorySearch) {
+      return categoryEntries
     }
 
-    // Show selected categories first, then others
-    const selectedCategories = categoryEntries.filter(([name]) =>
-      selectedFilters.categories.includes(name)
+    const searchLower = debouncedCategorySearch.toLowerCase()
+    return categoryEntries.filter(([name]) =>
+      name.toLowerCase().includes(searchLower)
     )
-    const unselectedCategories = categoryEntries.filter(([name]) =>
-      !selectedFilters.categories.includes(name)
-    )
-
-    return [...selectedCategories, ...unselectedCategories]
-  }, [categories, debouncedCategorySearch, selectedFilters.categories])
+  }, [categories, debouncedCategorySearch])
 
   // Filtered tags for performance
   const filteredTags = useMemo(() => {
-    if (debouncedTagSearch) {
-      const searchLower = debouncedTagSearch.toLowerCase()
-      return tags.filter(tag =>
-        tag.toLowerCase().includes(searchLower)
-      )
+    if (!debouncedTagSearch) {
+      return tags
     }
 
-    // Show selected tags first, then others
-    const selectedTags = tags.filter(tag =>
-      selectedFilters.tags.includes(tag)
+    const searchLower = debouncedTagSearch.toLowerCase()
+    return tags.filter(tag =>
+      tag.toLowerCase().includes(searchLower)
     )
-    const unselectedTags = tags.filter(tag =>
-      !selectedFilters.tags.includes(tag)
-    )
-
-    return [...selectedTags, ...unselectedTags]
-  }, [tags, debouncedTagSearch, selectedFilters.tags])
+  }, [tags, debouncedTagSearch])
 
   // Filtered trackers for performance
   const filteredTrackers = useMemo(() => {
-    if (debouncedTrackerSearch) {
-      const searchLower = debouncedTrackerSearch.toLowerCase()
-      return trackers.filter(tracker =>
-        tracker.toLowerCase().includes(searchLower)
-      )
+    if (!debouncedTrackerSearch) {
+      return trackers
     }
 
-    // Show selected trackers first, then others
-    const selectedTrackers = trackers.filter(tracker =>
-      selectedFilters.trackers.includes(tracker)
+    const searchLower = debouncedTrackerSearch.toLowerCase()
+    return trackers.filter(tracker =>
+      tracker.toLowerCase().includes(searchLower)
     )
-    const unselectedTrackers = trackers.filter(tracker =>
-      !selectedFilters.trackers.includes(tracker)
-    )
-
-    return [...selectedTrackers, ...unselectedTrackers]
-  }, [trackers, debouncedTrackerSearch, selectedFilters.trackers])
+  }, [trackers, debouncedTrackerSearch])
 
   // Virtual scrolling for categories
   const categoryVirtualizer = useVirtualizer({
@@ -393,6 +503,24 @@ const FilterSidebarComponent = ({
               </button>
             )}
           </div>
+
+          {/* View Mode Toggle - only show on mobile */}
+          {isMobile && (
+            <div className="flex items-center justify-between p-3 mb-4 bg-muted/20 rounded-lg">
+              <div className="flex flex-col gap-1">
+                <span className="text-sm font-medium">View Mode</span>
+                <span className="text-xs text-muted-foreground">
+                  {viewMode === "normal" ? "Full torrent cards" :viewMode === "compact" ? "Compact cards" : "Ultra compact"}
+                </span>
+              </div>
+              <button
+                onClick={cycleViewMode}
+                className="px-3 py-1 text-xs font-medium rounded border bg-background hover:bg-muted transition-colors"
+              >
+                {viewMode === "normal" ? "Normal" :viewMode === "compact" ? "Compact" : "Ultra"}
+              </button>
+            </div>
+          )}
 
           <Accordion
             type="multiple"
@@ -880,18 +1008,35 @@ const FilterSidebarComponent = ({
                                 transform: `translateY(${virtualRow.start}px)`,
                               }}
                             >
-                              <label className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer">
-                                <Checkbox
-                                  checked={selectedFilters.trackers.includes(tracker)}
-                                  onCheckedChange={() => handleTrackerToggle(tracker)}
-                                />
-                                <span className="text-sm flex-1 truncate w-8" title={tracker}>
-                                  {tracker}
-                                </span>
-                                <span className="text-xs text-muted-foreground">
-                                  {getDisplayCount(`tracker:${tracker}`, incognitoMode ? getLinuxCount(tracker, 100) : undefined)}
-                                </span>
-                              </label>
+                              <ContextMenu>
+                                <ContextMenuTrigger asChild>
+                                  <label className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer">
+                                    <Checkbox
+                                      checked={selectedFilters.trackers.includes(tracker)}
+                                      onCheckedChange={() => handleTrackerToggle(tracker)}
+                                    />
+                                    <TrackerIconImage tracker={tracker} trackerIcons={trackerIcons} />
+                                    <span className="text-sm flex-1 truncate w-8" title={tracker}>
+                                      {tracker}
+                                    </span>
+                                    <span className="text-xs text-muted-foreground">
+                                      {getDisplayCount(`tracker:${tracker}`, incognitoMode ? getLinuxCount(tracker, 100) : undefined)}
+                                    </span>
+                                  </label>
+                                </ContextMenuTrigger>
+                                <ContextMenuContent>
+                                  <ContextMenuItem
+                                    onClick={async () => {
+                                      setTrackerToEdit(tracker)
+                                      await fetchTrackerURLs(tracker)
+                                      setShowEditTrackerDialog(true)
+                                    }}
+                                  >
+                                    <Edit className="mr-2 h-4 w-4" />
+                                    Edit Tracker URL
+                                  </ContextMenuItem>
+                                </ContextMenuContent>
+                              </ContextMenu>
                             </div>
                           )
                         })}
@@ -899,21 +1044,35 @@ const FilterSidebarComponent = ({
                     </div>
                   ) : (
                     filteredTrackers.filter(tracker => tracker !== "").map((tracker) => (
-                      <label
-                        key={tracker}
-                        className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer"
-                      >
-                        <Checkbox
-                          checked={selectedFilters.trackers.includes(tracker)}
-                          onCheckedChange={() => handleTrackerToggle(tracker)}
-                        />
-                        <span className="text-sm flex-1 truncate w-8" title={tracker}>
-                          {tracker}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          {getDisplayCount(`tracker:${tracker}`, incognitoMode ? getLinuxCount(tracker, 100) : undefined)}
-                        </span>
-                      </label>
+                      <ContextMenu key={tracker}>
+                        <ContextMenuTrigger asChild>
+                          <label className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer">
+                            <Checkbox
+                              checked={selectedFilters.trackers.includes(tracker)}
+                              onCheckedChange={() => handleTrackerToggle(tracker)}
+                            />
+                            <TrackerIconImage tracker={tracker} trackerIcons={trackerIcons} />
+                            <span className="text-sm flex-1 truncate w-8" title={tracker}>
+                              {tracker}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              {getDisplayCount(`tracker:${tracker}`, incognitoMode ? getLinuxCount(tracker, 100) : undefined)}
+                            </span>
+                          </label>
+                        </ContextMenuTrigger>
+                        <ContextMenuContent>
+                          <ContextMenuItem
+                            onClick={async () => {
+                              setTrackerToEdit(tracker)
+                              await fetchTrackerURLs(tracker)
+                              setShowEditTrackerDialog(true)
+                            }}
+                          >
+                            <Edit className="mr-2 h-4 w-4" />
+                            Edit Tracker URL
+                          </ContextMenuItem>
+                        </ContextMenuContent>
+                      </ContextMenu>
                     ))
                   )}
                 </div>
@@ -965,6 +1124,23 @@ const FilterSidebarComponent = ({
         instanceId={instanceId}
         tags={tags}
         torrentCounts={torrentCounts}
+      />
+
+      <EditTrackerDialog
+        open={showEditTrackerDialog}
+        onOpenChange={(open) => {
+          setShowEditTrackerDialog(open)
+          if (!open) {
+            setTrackerFullURLs([])
+          }
+        }}
+        instanceId={instanceId}
+        tracker={trackerToEdit}
+        trackerURLs={trackerFullURLs}
+        loadingURLs={loadingTrackerURLs}
+        selectedHashes={[]} // Not using selected hashes, will update all torrents with this tracker
+        onConfirm={(oldURL, newURL) => editTrackersMutation.mutate({ oldURL, newURL, tracker: trackerToEdit })}
+        isPending={editTrackersMutation.isPending}
       />
     </div>
   )
