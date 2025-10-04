@@ -7,9 +7,11 @@ import { Button } from "@/components/ui/button"
 import { Logo } from "@/components/ui/Logo"
 import { Separator } from "@/components/ui/separator"
 import { SwizzinLogo } from "@/components/ui/SwizzinLogo"
+import { UpdateBanner } from "@/components/ui/UpdateBanner"
 import { useAuth } from "@/hooks/useAuth"
 import { useTheme } from "@/hooks/useTheme"
 import { api } from "@/lib/api"
+import { getAppVersion } from "@/lib/build-info"
 import { cn } from "@/lib/utils"
 import { useQuery } from "@tanstack/react-query"
 import { Link, useLocation } from "@tanstack/react-router"
@@ -62,6 +64,8 @@ export function Sidebar() {
     queryKey: ["instances"],
     queryFn: () => api.getInstances(),
   })
+
+  const appVersion = getAppVersion()
 
   return (
     <div className="flex h-full w-64 flex-col border-r bg-sidebar border-sidebar-border">
@@ -136,6 +140,8 @@ export function Sidebar() {
       </nav>
 
       <div className="mt-auto space-y-3 p-3">
+        <UpdateBanner />
+
         <Button
           variant="ghost"
           className="w-full justify-start"
@@ -148,8 +154,9 @@ export function Sidebar() {
         <Separator className="mx-3 mb-3" />
 
         <div className="flex items-center justify-between px-3 pb-3">
-          <div className="flex items-center gap-1.5">
-            <div className="flex items-center gap-1 text-[10px] text-sidebar-foreground/40 select-none">
+          <div className="flex flex-col gap-1 text-[10px] text-sidebar-foreground/40 select-none">
+            <span className="font-medium text-sidebar-foreground/50">Version {appVersion}</span>
+            <div className="flex items-center gap-1">
               <Copyright className="h-2.5 w-2.5" />
               <span>{new Date().getFullYear()} autobrr</span>
             </div>

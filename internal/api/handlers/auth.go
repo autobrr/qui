@@ -4,26 +4,43 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
+	"github.com/alexedwards/scs/v2"
 	"github.com/go-chi/chi/v5"
-	"github.com/gorilla/sessions"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/auth"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
 type AuthHandler struct {
-	authService *auth.Service
+	authService    *auth.Service
+	sessionManager *scs.SessionManager
+	instanceStore  *models.InstanceStore
+	clientPool     *qbittorrent.ClientPool
+	syncManager    *qbittorrent.SyncManager
 }
 
-func NewAuthHandler(authService *auth.Service) *AuthHandler {
+func NewAuthHandler(
+	authService *auth.Service,
+	sessionManager *scs.SessionManager,
+	instanceStore *models.InstanceStore,
+	clientPool *qbittorrent.ClientPool,
+	syncManager *qbittorrent.SyncManager,
+) *AuthHandler {
 	return &AuthHandler{
-		authService: authService,
+		authService:    authService,
+		sessionManager: sessionManager,
+		instanceStore:  instanceStore,
+		clientPool:     clientPool,
+		syncManager:    syncManager,
 	}
 }
 
@@ -35,8 +52,9 @@ type SetupRequest struct {
 
 // LoginRequest represents a login request
 type LoginRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
+	Username   string `json:"username"`
+	Password   string `json:"password"`
+	RememberMe bool   `json:"remember_me"`
 }
 
 // ChangePasswordRequest represents a password change request
@@ -80,32 +98,15 @@ func (h *AuthHandler) Setup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create session
-	session, _ := h.authService.GetSessionStore().Get(r, auth.SessionName)
-	session.Values["authenticated"] = true
-	session.Values["user_id"] = user.ID
-	session.Values["username"] = user.Username
-
-	// Configure cookie security
-	isSecure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
-
-	session.Options = &sessions.Options{
-		Path:     "/",
-		MaxAge:   86400 * 7, // 7 days
-		HttpOnly: true,
-		Secure:   isSecure,
-		SameSite: http.SameSiteLaxMode,
+	// Create session using SCS
+	// Renew token to prevent session fixation attacks
+	if err := h.sessionManager.RenewToken(r.Context()); err != nil {
+		log.Error().Err(err).Msg("Failed to renew session token")
 	}
 
-	if isSecure {
-		session.Options.SameSite = http.SameSiteStrictMode
-	}
-
-	if err := session.Save(r, w); err != nil {
-		log.Error().Err(err).Msg("Failed to save session")
-		RespondError(w, http.StatusInternalServerError, "Failed to create session")
-		return
-	}
+	h.sessionManager.Put(r.Context(), "authenticated", true)
+	h.sessionManager.Put(r.Context(), "user_id", user.ID)
+	h.sessionManager.Put(r.Context(), "username", user.Username)
 
 	RespondJSON(w, http.StatusCreated, map[string]any{
 		"message": "Setup completed successfully",
@@ -114,6 +115,71 @@ func (h *AuthHandler) Setup(w http.ResponseWriter, r *http.Request) {
 			"username": user.Username,
 		},
 	})
+}
+
+// warmSession prefetches data to improve perceived performance after login
+func (h *AuthHandler) warmSession(ctx context.Context) {
+	instances, err := h.instanceStore.List(ctx)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to list instances for session warming")
+		return
+	}
+
+	// Warm instance connections concurrently
+	for _, instance := range instances {
+		go func(inst *models.Instance) {
+			// Derive context from parent to respect cancellation
+			warmCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+			defer cancel()
+
+			_, err := h.clientPool.GetClientWithTimeout(warmCtx, inst.ID, 3*time.Second)
+			if err != nil {
+				log.Error().
+					Int("instance_id", inst.ID).
+					Str("instance_name", inst.Name).
+					Err(err).
+					Msg("Failed to warm instance connection")
+				return
+			}
+
+			log.Debug().
+				Int("instance_id", inst.ID).
+				Str("instance_name", inst.Name).
+				Msg("Successfully warmed instance connection")
+		}(instance)
+	}
+
+	// Prefetch torrent data for the first instance
+	if len(instances) == 0 {
+		return
+	}
+
+	go func() {
+		warmCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+
+		_, err := h.syncManager.GetTorrentsWithFilters(
+			warmCtx,
+			instances[0].ID,
+			1,
+			0,
+			"added_on",
+			"desc",
+			"",
+			qbittorrent.FilterOptions{},
+		)
+		if err != nil {
+			log.Error().
+				Int("instance_id", instances[0].ID).
+				Err(err).
+				Msg("Failed to prefetch torrents during session warming")
+			return
+		}
+
+		log.Debug().
+			Int("instance_id", instances[0].ID).
+			Msg("Successfully prefetched torrents during session warming")
+	}()
 }
 
 // Login handles user login
@@ -140,32 +206,22 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create session
-	session, _ := h.authService.GetSessionStore().Get(r, auth.SessionName)
-	session.Values["authenticated"] = true
-	session.Values["user_id"] = user.ID
-	session.Values["username"] = user.Username
-
-	// Configure cookie security
-	isSecure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
-
-	session.Options = &sessions.Options{
-		Path:     "/",
-		MaxAge:   86400 * 7, // 7 days
-		HttpOnly: true,
-		Secure:   isSecure,
-		SameSite: http.SameSiteLaxMode,
+	// Create session using SCS
+	// Renew token to prevent session fixation attacks
+	if err := h.sessionManager.RenewToken(r.Context()); err != nil {
+		log.Error().Err(err).Msg("Failed to renew session token")
 	}
 
-	if isSecure {
-		session.Options.SameSite = http.SameSiteStrictMode
-	}
+	h.sessionManager.Put(r.Context(), "authenticated", true)
+	h.sessionManager.Put(r.Context(), "user_id", user.ID)
+	h.sessionManager.Put(r.Context(), "username", user.Username)
 
-	if err := session.Save(r, w); err != nil {
-		log.Error().Err(err).Msg("Failed to save session")
-		RespondError(w, http.StatusInternalServerError, "Failed to create session")
-		return
-	}
+	// Handle remember_me functionality
+	h.sessionManager.RememberMe(r.Context(), req.RememberMe)
+
+	// Warm the session by prefetching data in the background
+	// Use a detached context since this should continue even after the HTTP request completes
+	go h.warmSession(context.Background())
 
 	RespondJSON(w, http.StatusOK, map[string]any{
 		"message": "Login successful",
@@ -178,14 +234,9 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 // Logout handles user logout
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
-	session, _ := h.authService.GetSessionStore().Get(r, auth.SessionName)
-
-	// Clear session values
-	session.Values["authenticated"] = false
-	session.Options.MaxAge = -1
-
-	if err := session.Save(r, w); err != nil {
-		log.Error().Err(err).Msg("Failed to clear session")
+	// Destroy the session
+	if err := h.sessionManager.Destroy(r.Context()); err != nil {
+		log.Error().Err(err).Msg("Failed to destroy session")
 		RespondError(w, http.StatusInternalServerError, "Failed to logout")
 		return
 	}
@@ -197,16 +248,14 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 
 // GetCurrentUser returns the current user information
 func (h *AuthHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
-	session, _ := h.authService.GetSessionStore().Get(r, auth.SessionName)
-
-	userID, ok := session.Values["user_id"].(int)
-	if !ok {
+	userID := h.sessionManager.GetInt(r.Context(), "user_id")
+	if userID == 0 {
 		RespondError(w, http.StatusUnauthorized, "Not authenticated")
 		return
 	}
 
-	username, ok := session.Values["username"].(string)
-	if !ok {
+	username := h.sessionManager.GetString(r.Context(), "username")
+	if username == "" {
 		RespondError(w, http.StatusInternalServerError, "Invalid session data")
 		return
 	}

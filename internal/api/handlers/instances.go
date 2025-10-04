@@ -15,6 +15,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
 	internalqbittorrent "github.com/autobrr/qui/internal/qbittorrent"
 )
@@ -64,6 +65,7 @@ func (h *InstancesHandler) buildInstanceResponsesParallel(ctx context.Context, i
 				Host:               instances[i].Host,
 				Username:           instances[i].Username,
 				BasicUsername:      instances[i].BasicUsername,
+				TLSSkipVerify:      instances[i].TLSSkipVerify,
 				Connected:          false,
 				HasDecryptionError: false,
 			}
@@ -88,6 +90,7 @@ func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *
 		Host:               instance.Host,
 		Username:           instance.Username,
 		BasicUsername:      instance.BasicUsername,
+		TLSSkipVerify:      instance.TLSSkipVerify,
 		Connected:          healthy,
 		HasDecryptionError: hasDecryptionError,
 	}
@@ -114,6 +117,7 @@ func (h *InstancesHandler) buildQuickInstanceResponse(instance *models.Instance)
 		Host:               instance.Host,
 		Username:           instance.Username,
 		BasicUsername:      instance.BasicUsername,
+		TLSSkipVerify:      instance.TLSSkipVerify,
 		Connected:          false, // Will be updated asynchronously
 		HasDecryptionError: false,
 	}
@@ -148,6 +152,7 @@ type CreateInstanceRequest struct {
 	Password      string  `json:"password"`
 	BasicUsername *string `json:"basicUsername,omitempty"`
 	BasicPassword *string `json:"basicPassword,omitempty"`
+	TLSSkipVerify bool    `json:"tlsSkipVerify,omitempty"`
 }
 
 // UpdateInstanceRequest represents a request to update an instance
@@ -158,6 +163,7 @@ type UpdateInstanceRequest struct {
 	Password      string  `json:"password,omitempty"` // Optional for updates
 	BasicUsername *string `json:"basicUsername,omitempty"`
 	BasicPassword *string `json:"basicPassword,omitempty"`
+	TLSSkipVerify *bool   `json:"tlsSkipVerify,omitempty"`
 }
 
 // InstanceResponse represents an instance in API responses
@@ -167,6 +173,7 @@ type InstanceResponse struct {
 	Host               string                 `json:"host"`
 	Username           string                 `json:"username"`
 	BasicUsername      *string                `json:"basicUsername,omitempty"`
+	TLSSkipVerify      bool                   `json:"tlsSkipVerify"`
 	Connected          bool                   `json:"connected"`
 	HasDecryptionError bool                   `json:"hasDecryptionError"`
 	RecentErrors       []models.InstanceError `json:"recentErrors,omitempty"`
@@ -213,7 +220,7 @@ func (h *InstancesHandler) CreateInstance(w http.ResponseWriter, r *http.Request
 	}
 
 	// Create instance
-	instance, err := h.instanceStore.Create(r.Context(), req.Name, req.Host, req.Username, req.Password, req.BasicUsername, req.BasicPassword)
+	instance, err := h.instanceStore.Create(r.Context(), req.Name, req.Host, req.Username, req.Password, req.BasicUsername, req.BasicPassword, req.TLSSkipVerify)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create instance")
 		RespondError(w, http.StatusInternalServerError, "Failed to create instance")
@@ -250,8 +257,30 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Fetch existing instance to handle redacted values
+	existingInstance, err := h.instanceStore.Get(r.Context(), instanceID)
+	if err != nil {
+		if errors.Is(err, models.ErrInstanceNotFound) {
+			RespondError(w, http.StatusNotFound, "Instance not found")
+			return
+		}
+		log.Error().Err(err).Msg("Failed to fetch existing instance")
+		RespondError(w, http.StatusInternalServerError, "Failed to fetch instance")
+		return
+	}
+
+	// Handle redacted password - if redacted, use existing password
+	if req.Password != "" && domain.IsRedactedString(req.Password) {
+		req.Password = existingInstance.PasswordEncrypted
+	}
+
+	// Handle redacted basic password - if redacted, use existing basic password
+	if req.BasicPassword != nil && *req.BasicPassword != "" && domain.IsRedactedString(*req.BasicPassword) {
+		req.BasicPassword = existingInstance.BasicPasswordEncrypted
+	}
+
 	// Update instance
-	instance, err := h.instanceStore.Update(r.Context(), instanceID, req.Name, req.Host, req.Username, req.Password, req.BasicUsername, req.BasicPassword)
+	instance, err := h.instanceStore.Update(r.Context(), instanceID, req.Name, req.Host, req.Username, req.Password, req.BasicUsername, req.BasicPassword, req.TLSSkipVerify)
 	if err != nil {
 		if errors.Is(err, models.ErrInstanceNotFound) {
 			RespondError(w, http.StatusNotFound, "Instance not found")

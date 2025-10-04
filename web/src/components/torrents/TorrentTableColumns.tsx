@@ -3,27 +3,30 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import type { ColumnDef } from "@tanstack/react-table"
-import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Progress } from "@/components/ui/progress"
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger
 } from "@/components/ui/tooltip"
-import { ListOrdered } from "lucide-react"
-import type { Torrent } from "@/types"
 import {
-  getLinuxIsoName,
   getLinuxCategory,
-  getLinuxTags,
+  getLinuxHash,
+  getLinuxIsoName,
+  getLinuxRatio,
   getLinuxSavePath,
-  getLinuxTracker,
-  getLinuxRatio
+  getLinuxTags,
+  getLinuxTracker
 } from "@/lib/incognito"
-import { formatBytes, formatSpeed, getRatioColor } from "@/lib/utils"
+import { formatSpeedWithUnit, type SpeedUnit } from "@/lib/speedUnits"
 import { getStateLabel } from "@/lib/torrent-state-utils"
+import { formatBytes, formatDuration, getRatioColor } from "@/lib/utils"
+import type { AppPreferences, Torrent } from "@/types"
+import type { ColumnDef } from "@tanstack/react-table"
+import { Globe, ListOrdered } from "lucide-react"
+import { memo, useEffect, useState } from "react"
 
 function formatEta(seconds: number): string {
   if (seconds === 8640000) return "∞"
@@ -44,12 +47,89 @@ function formatEta(seconds: number): string {
   return `${minutes}m`
 }
 
+function formatReannounce(seconds: number): string {
+  if (seconds < 0) return "-"
+
+  const minutes = Math.floor(seconds / 60)
+
+  if (minutes < 1) {
+    return "< 1m"
+  }
+
+  return `${minutes}m`
+}
+
 // Calculate minimum column width based on header text
 function calculateMinWidth(text: string, padding: number = 48): number {
   const charWidth = 7.5
   const extraPadding = 20
   return Math.max(60, Math.ceil(text.length * charWidth) + padding + extraPadding)
 }
+
+interface TrackerIconCellProps {
+  title: string
+  fallback: string
+  src: string | null
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+const TrackerIconCell = memo(({ title, fallback, src }: TrackerIconCellProps) => {
+  const [hasError, setHasError] = useState(false)
+
+  useEffect(() => {
+    setHasError(false)
+  }, [src])
+
+  return (
+    <div className="flex h-full items-center justify-center" title={title}>
+      <div className="flex h-4 w-4 items-center justify-center rounded-sm border border-border/40 bg-muted text-[10px] font-medium uppercase leading-none">
+        {src && !hasError ? (
+          <img
+            src={src}
+            alt=""
+            className="h-full w-full rounded-[2px] object-cover"
+            draggable={false}
+            decoding="async"
+            onError={() => setHasError(true)}
+          />
+        ) : (
+          <span aria-hidden="true">{fallback}</span>
+        )}
+      </div>
+    </div>
+  )
+})
+
+const getTrackerDisplayMeta = (tracker?: string) => {
+  if (!tracker) {
+    return {
+      host: "",
+      fallback: "#",
+      title: "",
+    }
+  }
+
+  const trimmed = tracker.trim()
+  const fallbackLetter = trimmed ? trimmed.charAt(0).toUpperCase() : "#"
+
+  let host = trimmed
+  try {
+    if (trimmed.includes("://")) {
+      const url = new URL(trimmed)
+      host = url.hostname
+    }
+  } catch {
+    // Keep host as trimmed value if URL parsing fails
+  }
+
+  return {
+    host,
+    fallback: fallbackLetter,
+    title: host,
+  }
+}
+
+TrackerIconCell.displayName = "TrackerIconCell"
 
 export const createColumns = (
   incognitoMode: boolean,
@@ -64,7 +144,11 @@ export const createColumns = (
     onRowSelection?: (hash: string, checked: boolean, rowId?: string) => void
     isAllSelected?: boolean
     excludedFromSelectAll?: Set<string>
-  }
+  },
+  speedUnit: SpeedUnit = "bytes",
+  trackerIcons?: Record<string, string>,
+  formatTimestamp?: (timestamp: number) => string,
+  instancePreferences?: AppPreferences | null
 ): ColumnDef<Torrent>[] => [
   {
     id: "select",
@@ -209,7 +293,7 @@ export const createColumns = (
     cell: ({ row }) => {
       const displayName = incognitoMode ? getLinuxIsoName(row.original.hash) : row.original.name
       return (
-        <div className="truncate text-sm" title={displayName}>
+        <div className="overflow-hidden whitespace-nowrap text-sm" title={displayName}>
           {displayName}
         </div>
       )
@@ -219,8 +303,14 @@ export const createColumns = (
   {
     accessorKey: "size",
     header: "Size",
-    cell: ({ row }) => <span className="text-sm truncate">{formatBytes(row.original.size)}</span>,
+    cell: ({ row }) => <span className="text-sm overflow-hidden whitespace-nowrap">{formatBytes(row.original.size)}</span>,
     size: 85,
+  },
+  {
+    accessorKey: "total_size",
+    header: "Total Size",
+    cell: ({ row }) => <span className="text-sm overflow-hidden whitespace-nowrap">{formatBytes(row.original.total_size)}</span>,
+    size: 115,
   },
   {
     accessorKey: "progress",
@@ -229,7 +319,11 @@ export const createColumns = (
       <div className="flex items-center gap-2">
         <Progress value={row.original.progress * 100} className="w-20" />
         <span className="text-xs text-muted-foreground">
-          {Math.round(row.original.progress * 100)}%
+          {row.original.progress >= 0.99 && row.original.progress < 1 ? (
+            (Math.floor(row.original.progress * 1000) / 10).toFixed(1)
+          ) : (
+            Math.round(row.original.progress * 100)
+          )}%
         </span>
       </div>
     ),
@@ -263,21 +357,57 @@ export const createColumns = (
     size: 130,
   },
   {
+    accessorKey: "num_seeds",
+    header: "Seeds",
+    cell: ({ row }) => {
+      const connected = row.original.num_seeds >= 0 ? row.original.num_seeds : 0
+      const total = row.original.num_complete >= 0 ? row.original.num_complete : 0
+      if (total < 0 && connected < 0) return <span className="text-sm overflow-hidden whitespace-nowrap">-</span>
+      return (
+        <span className="text-sm overflow-hidden whitespace-nowrap">
+          {connected} ({total})
+        </span>
+      )
+    },
+    size: 85,
+  },
+  {
+    accessorKey: "num_leechs",
+    header: "Peers",
+    cell: ({ row }) => {
+      const connected = row.original.num_leechs >= 0 ? row.original.num_leechs : 0
+      const total = row.original.num_incomplete >= 0 ? row.original.num_incomplete : 0
+      if (total < 0 && connected < 0) return <span className="text-sm overflow-hidden whitespace-nowrap">-</span>
+      return (
+        <span className="text-sm overflow-hidden whitespace-nowrap">
+          {connected} ({total})
+        </span>
+      )
+    },
+    size: 85,
+  },
+  {
     accessorKey: "dlspeed",
     header: "Down Speed",
-    cell: ({ row }) => <span className="text-sm truncate">{formatSpeed(row.original.dlspeed)}</span>,
+    cell: ({ row }) => {
+      const speed = row.original.dlspeed
+      return <span className="text-sm overflow-hidden whitespace-nowrap">{speed === 0 ? "-" : formatSpeedWithUnit(speed, speedUnit)}</span>
+    },
     size: calculateMinWidth("Down Speed"),
   },
   {
     accessorKey: "upspeed",
     header: "Up Speed",
-    cell: ({ row }) => <span className="text-sm truncate">{formatSpeed(row.original.upspeed)}</span>,
+    cell: ({ row }) => {
+      const speed = row.original.upspeed
+      return <span className="text-sm overflow-hidden whitespace-nowrap">{speed === 0 ? "-" : formatSpeedWithUnit(speed, speedUnit)}</span>
+    },
     size: calculateMinWidth("Up Speed"),
   },
   {
     accessorKey: "eta",
     header: "ETA",
-    cell: ({ row }) => <span className="text-sm truncate">{formatEta(row.original.eta)}</span>,
+    cell: ({ row }) => <span className="text-sm overflow-hidden whitespace-nowrap">{formatEta(row.original.eta)}</span>,
     size: 80,
   },
   {
@@ -290,7 +420,7 @@ export const createColumns = (
 
       return (
         <span
-          className="text-sm font-medium"
+          className="text-sm font-medium overflow-hidden whitespace-nowrap"
           style={{ color: colorVar }}
         >
           {displayRatio}
@@ -300,30 +430,16 @@ export const createColumns = (
     size: 80,
   },
   {
-    accessorKey: "added_on",
-    header: "Added",
+    accessorKey: "popularity",
+    header: "Popularity",
     cell: ({ row }) => {
-      const addedOn = row.original.added_on
-      if (!addedOn || addedOn === 0) {
-        return "-"
-      }
-      const date = new Date(addedOn * 1000)
-      const month = date.getMonth() + 1
-      const day = date.getDate()
-      const year = date.getFullYear()
-      const hours = date.getHours()
-      const minutes = date.getMinutes()
-      const seconds = date.getSeconds()
-      const ampm = hours >= 12 ? "PM" : "AM"
-      const displayHours = hours % 12 || 12
-
       return (
-        <div className="whitespace-nowrap text-sm">
-          {month}/{day}/{year}, {displayHours}:{minutes.toString().padStart(2, "0")}:{seconds.toString().padStart(2, "0")} {ampm}
+        <div className="overflow-hidden whitespace-nowrap text-sm">
+          {row.original.popularity.toFixed(2)}
         </div>
       )
     },
-    size: 200,
+    size: 115,
   },
   {
     accessorKey: "category",
@@ -331,8 +447,8 @@ export const createColumns = (
     cell: ({ row }) => {
       const displayCategory = incognitoMode ? getLinuxCategory(row.original.hash) : row.original.category
       return (
-        <div className="truncate text-sm" title={displayCategory || "-"}>
-          {displayCategory || "-"}
+        <div className="overflow-hidden whitespace-nowrap text-sm" title={displayCategory || ""}>
+          {displayCategory || ""}
         </div>
       )
     },
@@ -343,9 +459,9 @@ export const createColumns = (
     header: "Tags",
     cell: ({ row }) => {
       const tags = incognitoMode ? getLinuxTags(row.original.hash) : row.original.tags
-      const displayTags = Array.isArray(tags) ? tags.join(", ") : tags || "-"
+      const displayTags = Array.isArray(tags) ? tags.join(", ") : tags || ""
       return (
-        <div className="truncate text-sm" title={displayTags}>
+        <div className="overflow-hidden whitespace-nowrap text-sm" title={displayTags}>
           {displayTags}
         </div>
       )
@@ -353,29 +469,66 @@ export const createColumns = (
     size: 200,
   },
   {
-    accessorKey: "downloaded",
-    header: "Downloaded",
-    cell: ({ row }) => <span className="text-sm truncate">{formatBytes(row.original.downloaded)}</span>,
-    size: calculateMinWidth("Downloaded"),
-  },
-  {
-    accessorKey: "uploaded",
-    header: "Uploaded",
-    cell: ({ row }) => <span className="text-sm truncate">{formatBytes(row.original.uploaded)}</span>,
-    size: calculateMinWidth("Uploaded"),
-  },
-  {
-    accessorKey: "save_path",
-    header: "Save Path",
+    accessorKey: "added_on",
+    header: "Added",
     cell: ({ row }) => {
-      const displayPath = incognitoMode ? getLinuxSavePath(row.original.hash) : row.original.save_path
+      const addedOn = row.original.added_on
+      if (!addedOn || addedOn === 0) {
+        return "-"
+      }
+
       return (
-        <div className="truncate text-sm" title={displayPath}>
-          {displayPath}
-        </div>
+        <div className="overflow-hidden whitespace-nowrap text-sm">{formatTimestamp ? formatTimestamp(addedOn) : new Date(addedOn * 1000).toLocaleString()}</div>
       )
     },
-    size: 250,
+    size: 200,
+  },
+  {
+    accessorKey: "completion_on",
+    header: "Completed On",
+    cell: ({ row }) => {
+      const completionOn = row.original.completion_on
+      if (!completionOn || completionOn === 0) {
+        return "-"
+      }
+
+      return (
+        <div className="overflow-hidden whitespace-nowrap text-sm">{formatTimestamp ? formatTimestamp(completionOn) : new Date(completionOn * 1000).toLocaleString()}</div>
+      )
+    },
+    size: 200,
+  },
+  {
+    id: "tracker_icon",
+    header: () => (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="flex h-10 w-full items-center justify-center text-muted-foreground">
+            <Globe className="h-4 w-4" aria-hidden="true" />
+            <span className="sr-only">Tracker Icon</span>
+          </div>
+        </TooltipTrigger>
+        <TooltipContent>Tracker Icon</TooltipContent>
+      </Tooltip>
+    ),
+    meta: {
+      headerString: "Tracker Icon",
+    },
+    cell: ({ row }) => {
+      const tracker = incognitoMode ? getLinuxTracker(row.original.hash) : row.original.tracker
+      const { host, fallback, title } = getTrackerDisplayMeta(tracker)
+      const iconSrc = host ? trackerIcons?.[host] ?? null : null
+
+      return (
+        <TrackerIconCell
+          title={title}
+          fallback={fallback}
+          src={iconSrc}
+        />
+      )
+    },
+    size: 48,
+    enableResizing: true,
   },
   {
     accessorKey: "tracker",
@@ -392,13 +545,246 @@ export const createColumns = (
         // ignore
       }
       return (
-        <div className="truncate text-sm" title={tracker}>
+        <div className="overflow-hidden whitespace-nowrap text-sm" title={tracker}>
           {displayTracker || "-"}
         </div>
       )
     },
     size: 150,
   },
+  {
+    accessorKey: "dl_limit",
+    header: "Down Limit",
+    cell: ({ row }) => {
+      const downLimit = row.original.dl_limit
+      const displayDownLimit = downLimit === 0 ? "∞" : formatSpeedWithUnit(downLimit, speedUnit)
+
+      return (
+        <span
+          className="text-sm font-medium overflow-hidden whitespace-nowrap"
+        >
+          {displayDownLimit}
+        </span>
+      )
+    },
+    size: calculateMinWidth("Down Limit", 24),
+  },
+  {
+    accessorKey: "up_limit",
+    header: "Up Limit",
+    cell: ({ row }) => {
+      const upLimit = row.original.up_limit
+      const displayUpLimit = upLimit === 0 ? "∞" : formatSpeedWithUnit(upLimit, speedUnit)
+
+      return (
+        <span
+          className="text-sm font-medium overflow-hidden whitespace-nowrap"
+        >
+          {displayUpLimit}
+        </span>
+      )
+    },
+    size: calculateMinWidth("Up Limit", 24),
+  },
+  {
+    accessorKey: "downloaded",
+    header: "Downloaded",
+    cell: ({ row }) => {
+      const downloaded = row.original.downloaded
+      return <span className="text-sm overflow-hidden whitespace-nowrap">{downloaded === 0 ? "-" : formatBytes(downloaded)}</span>
+    },
+    size: calculateMinWidth("Downloaded"),
+  },
+  {
+    accessorKey: "uploaded",
+    header: "Uploaded",
+    cell: ({ row }) => {
+      const uploaded = row.original.uploaded
+      return <span className="text-sm overflow-hidden whitespace-nowrap">{uploaded === 0 ? "-" : formatBytes(uploaded)}</span>
+    },
+    size: calculateMinWidth("Uploaded"),
+  },
+  {
+    accessorKey: "downloaded_session",
+    header: "Session Downloaded",
+    cell: ({ row }) => {
+      const sessionDownloaded = row.original.downloaded_session
+      return <span className="text-sm overflow-hidden whitespace-nowrap">{sessionDownloaded === 0 ? "-" : formatBytes(sessionDownloaded)}</span>
+    },
+    size: calculateMinWidth("Session Downloaded"),
+  },
+  {
+    accessorKey: "uploaded_session",
+    header: "Session Uploaded",
+    cell: ({ row }) => {
+      const sessionUploaded = row.original.uploaded_session
+      return <span className="text-sm overflow-hidden whitespace-nowrap">{sessionUploaded === 0 ? "-" : formatBytes(sessionUploaded)}</span>
+    },
+    size: calculateMinWidth("Session Uploaded"),
+  },
+  {
+    accessorKey: "amount_left",
+    header: "Remaining",
+    cell: ({ row }) => {
+      const amountLeft = row.original.amount_left
+      return <span className="text-sm overflow-hidden whitespace-nowrap">{amountLeft === 0 ? "-" : formatBytes(amountLeft)}</span>
+    },
+    size: calculateMinWidth("Remaining"),
+  },
+  {
+    accessorKey: "time_active",
+    header: "Time Active",
+    cell: ({ row }) => {
+      const timeActive = row.original.time_active
+      return (
+        <span className="text-sm overflow-hidden whitespace-nowrap">{formatDuration(timeActive)}</span>
+      )
+    },
+    size: 250,
+  },
+  {
+    accessorKey: "seeding_time",
+    header: "Seeding Time",
+    cell: ({ row }) => {
+      const timeSeeded = row.original.seeding_time
+      return (
+        <span className="text-sm overflow-hidden whitespace-nowrap">{formatDuration(timeSeeded)}</span>
+      )
+    },
+    size: 250,
+  },
+  {
+    accessorKey: "save_path",
+    header: "Save Path",
+    cell: ({ row }) => {
+      const displayPath = incognitoMode ? getLinuxSavePath(row.original.hash) : row.original.save_path
+      return (
+        <div className="overflow-hidden whitespace-nowrap text-sm" title={displayPath}>
+          {displayPath}
+        </div>
+      )
+    },
+    size: 250,
+  },
+  {
+    accessorKey: "completed",
+    header: "Completed",
+    cell: ({ row }) => {
+      const completed = row.original.completed
+      return <span className="text-sm overflow-hidden whitespace-nowrap">{completed === 0 ? "-" : formatBytes(completed)}</span>
+    },
+    size: calculateMinWidth("Completed"),
+  },
+  {
+    accessorKey: "ratio_limit",
+    header: "Ratio Limit",
+    cell: ({ row }) => {
+      const ratioLimit = row.original.ratio_limit
+      const instanceRatioLimit = instancePreferences?.max_ratio
+      const displayRatioLimit = ratioLimit === -2 ? (instanceRatioLimit === -1 ? "∞" : instanceRatioLimit?.toFixed(2) || "∞") :ratioLimit === -1 ? "∞" :ratioLimit.toFixed(2)
+
+      return (
+        <span
+          className="text-sm font-medium overflow-hidden whitespace-nowrap"
+        >
+          {displayRatioLimit}
+        </span>
+      )
+    },
+    size: calculateMinWidth("Ratio Limit", 24),
+  },
+  {
+    accessorKey: "seen_complete",
+    header: "Last Seen Complete",
+    cell: ({ row }) => {
+      const lastSeenComplete = row.original.seen_complete
+      if (!lastSeenComplete || lastSeenComplete === 0) {
+        return "-"
+      }
+
+      return (
+        <div className="overflow-hidden whitespace-nowrap text-sm">{formatTimestamp ? formatTimestamp(lastSeenComplete) : new Date(lastSeenComplete * 1000).toLocaleString()}</div>
+      )
+    },
+    size: 200,
+  },
+  {
+    accessorKey: "last_activity",
+    header: "Last Activity",
+    cell: ({ row }) => {
+      const lastActivity = row.original.last_activity
+      if (!lastActivity || lastActivity === 0) {
+        return "-"
+      }
+
+      return (
+        <div className="overflow-hidden whitespace-nowrap text-sm">{formatTimestamp ? formatTimestamp(lastActivity) : new Date(lastActivity * 1000).toLocaleString()}</div>
+      )
+    },
+    size: 200,
+  },
+  {
+    accessorKey: "availability",
+    header: "Availability",
+    cell: ({ row }) => {
+      const availability = row.original.availability
+      return <span className="text-sm overflow-hidden whitespace-nowrap">{availability.toFixed(3)}</span>
+    },
+    size: calculateMinWidth("Availability"),
+  },
+  // incomplete save path is not exposed by the API?
+  {
+    accessorKey: "infohash_v1",
+    header: "Info Hash v1",
+    cell: ({ row }) => {
+      const original = row.original.infohash_v1
+      const maskBase = row.original.hash || row.original.infohash_v1 || row.original.infohash_v2 || row.id
+      const infoHash = incognitoMode && original ? getLinuxHash(maskBase || "") : original
+      return (
+        <div className="overflow-hidden whitespace-nowrap text-sm" title={infoHash}>
+          {infoHash || "-"}
+        </div>
+      )
+    },
+    size: 370,
+  },
+  {
+    accessorKey: "infohash_v2",
+    header: "Info Hash v2",
+    cell: ({ row }) => {
+      const original = row.original.infohash_v2
+      const maskBase = row.original.hash || row.original.infohash_v1 || row.original.infohash_v2 || row.id
+      const infoHash = incognitoMode && original ? getLinuxHash(maskBase || "") : original
+      return (
+        <div className="overflow-hidden whitespace-nowrap text-sm" title={infoHash}>
+          {infoHash || "-"}
+        </div>
+      )
+    },
+    size: 370,
+  },
+  {
+    accessorKey: "reannounce",
+    header: "Reannounce In",
+    cell: ({ row }) => {
+      return (
+        <div className="overflow-hidden whitespace-nowrap text-sm">
+          {formatReannounce(row.original.reannounce)}
+        </div>
+      )
+    },
+    size: calculateMinWidth("Reannounce In"),
+  },
+  {
+    accessorKey: "private",
+    header: "Private",
+    cell: ({ row }) => {
+      return (
+        <div className="overflow-hidden whitespace-nowrap text-sm">
+          {row.original.private ? "Yes" : "No"}
+        </div>
+      )
+    },
+    size: calculateMinWidth("Private"),
+  },
 ]
-
-

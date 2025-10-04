@@ -3,31 +3,10 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState } from "react"
-import { useForm } from "@tanstack/react-form"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { api } from "@/lib/api"
-import { withBasePath } from "@/lib/base-url"
-import { toast } from "sonner"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Badge } from "@/components/ui/badge"
-import { Copy, Plus, Trash2, ExternalLink } from "lucide-react"
-import { ThemeLicenseManager } from "@/components/themes/ThemeLicenseManager"
-import { ThemeSelector } from "@/components/themes/ThemeSelector"
 import { ClientApiKeysManager } from "@/components/settings/ClientApiKeysManager"
-import { useSearch } from "@tanstack/react-router"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger
-} from "@/components/ui/dialog"
+import { DateTimePreferencesForm } from "@/components/settings/DateTimePreferencesForm"
+import { LicenseManager } from "@/components/themes/LicenseManager.tsx"
+import { ThemeSelector } from "@/components/themes/ThemeSelector"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -38,6 +17,30 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from "@/components/ui/alert-dialog"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
+import { api } from "@/lib/api"
+import { withBasePath } from "@/lib/base-url"
+import { copyTextToClipboard } from "@/lib/utils"
+import { useForm } from "@tanstack/react-form"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useSearch } from "@tanstack/react-router"
+import { Copy, ExternalLink, Plus, Trash2 } from "lucide-react"
+import { useState } from "react"
+import { toast } from "sonner"
 
 function ChangePasswordForm() {
   const mutation = useMutation({
@@ -174,6 +177,7 @@ function ApiKeysManager() {
   const [deleteKeyId, setDeleteKeyId] = useState<number | null>(null)
   const [newKey, setNewKey] = useState<{ name: string; key: string } | null>(null)
   const queryClient = useQueryClient()
+  const { formatDate } = useDateTimeFormatters()
 
   // Fetch API keys from backend
   const { data: apiKeys, isLoading } = useQuery({
@@ -255,9 +259,13 @@ function ApiKeysManager() {
                     <Button
                       size="icon"
                       variant="outline"
-                      onClick={() => {
-                        navigator.clipboard.writeText(newKey.key)
-                        toast.success("API key copied to clipboard")
+                      onClick={async () => {
+                        try {
+                          await copyTextToClipboard(newKey.key)
+                          toast.success("API key copied to clipboard")
+                        } catch {
+                          toast.error("Failed to copy to clipboard")
+                        }
                       }}
                     >
                       <Copy className="h-4 w-4" />
@@ -349,9 +357,9 @@ function ApiKeysManager() {
                     </Badge>
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    Created: {new Date(key.createdAt).toLocaleDateString()}
+                    Created: {formatDate(new Date(key.createdAt))}
                     {key.lastUsedAt && (
-                      <> • Last used: {new Date(key.lastUsedAt).toLocaleDateString()}</>
+                      <> • Last used: {formatDate(new Date(key.lastUsedAt))}</>
                     )}
                   </p>
                 </div>
@@ -412,8 +420,9 @@ export function Settings() {
 
       <Tabs defaultValue={defaultTab} className="space-y-4">
         <div className="w-full overflow-x-auto">
-          <TabsList className="inline-flex h-auto min-w-full sm:grid sm:grid-cols-4">
+          <TabsList className="inline-flex h-auto min-w-full sm:grid sm:grid-cols-5">
             <TabsTrigger value="security" className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 py-2 min-w-fit cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform">Security</TabsTrigger>
+            <TabsTrigger value="datetime" className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 py-2 min-w-fit whitespace-nowrap cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform">Date & Time</TabsTrigger>
             <TabsTrigger value="themes" className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 py-2 min-w-fit cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform">Themes</TabsTrigger>
             <TabsTrigger value="api" className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 py-2 min-w-fit whitespace-nowrap cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform">API Keys</TabsTrigger>
             <TabsTrigger value="client-api" className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 py-2 min-w-fit whitespace-nowrap cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform">Client Proxy</TabsTrigger>
@@ -434,9 +443,22 @@ export function Settings() {
           </Card>
         </TabsContent>
 
+        <TabsContent value="datetime" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Date & Time Preferences</CardTitle>
+              <CardDescription>
+                Configure timezone, date format, and time display preferences
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <DateTimePreferencesForm />
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         <TabsContent value="themes" className="space-y-4">
-          <ThemeLicenseManager />
+          <LicenseManager />
           <ThemeSelector />
         </TabsContent>
 

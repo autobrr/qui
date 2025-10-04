@@ -10,10 +10,34 @@ import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Wifi, Server, Globe } from "lucide-react"
+import { Textarea } from "@/components/ui/textarea"
+import { Wifi, Server, Globe, Shield } from "lucide-react"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { NumberInputWithUnlimited } from "@/components/forms/NumberInputWithUnlimited"
 import { toast } from "sonner"
+
+const sanitizeBtProtocol = (value: unknown): 0 | 1 | 2 => {
+  const numeric = typeof value === "number" ? value : parseInt(String(value), 10)
+
+  if (Number.isNaN(numeric)) {
+    return 0
+  }
+
+  return Math.min(2, Math.max(0, numeric)) as 0 | 1 | 2
+}
+
+const sanitizeUtpTcpMixedMode = (value: unknown): 0 | 1 => {
+  const numeric = typeof value === "number" ? value : parseInt(String(value), 10)
+  return numeric === 1 ? 1 : 0
+}
+
+const scheduleMicrotask = (callback: () => void) => {
+  if (typeof queueMicrotask === "function") {
+    queueMicrotask(callback)
+  } else {
+    setTimeout(callback, 0)
+  }
+}
 
 interface ConnectionSettingsFormProps {
   instanceId: number
@@ -103,6 +127,10 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
       enable_multi_connections_from_same_ip: false,
       outgoing_ports_min: 0,
       outgoing_ports_max: 0,
+      ip_filter_enabled: false,
+      ip_filter_path: "",
+      ip_filter_trackers: false,
+      banned_IPs: "",
     },
     onSubmit: async ({ value }) => {
       try {
@@ -122,8 +150,8 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
       form.setFieldValue("random_port", preferences.random_port)
       form.setFieldValue("upnp", preferences.upnp)
       form.setFieldValue("upnp_lease_duration", preferences.upnp_lease_duration)
-      form.setFieldValue("bittorrent_protocol", preferences.bittorrent_protocol)
-      form.setFieldValue("utp_tcp_mixed_mode", preferences.utp_tcp_mixed_mode)
+      form.setFieldValue("bittorrent_protocol", sanitizeBtProtocol(preferences.bittorrent_protocol))
+      form.setFieldValue("utp_tcp_mixed_mode", sanitizeUtpTcpMixedMode(preferences.utp_tcp_mixed_mode))
       form.setFieldValue("current_network_interface", preferences.current_network_interface)
       form.setFieldValue("current_interface_address", preferences.current_interface_address)
       form.setFieldValue("reannounce_when_address_changed", preferences.reannounce_when_address_changed)
@@ -134,6 +162,10 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
       form.setFieldValue("enable_multi_connections_from_same_ip", preferences.enable_multi_connections_from_same_ip)
       form.setFieldValue("outgoing_ports_min", preferences.outgoing_ports_min)
       form.setFieldValue("outgoing_ports_max", preferences.outgoing_ports_max)
+      form.setFieldValue("ip_filter_enabled", preferences.ip_filter_enabled)
+      form.setFieldValue("ip_filter_path", preferences.ip_filter_path)
+      form.setFieldValue("ip_filter_trackers", preferences.ip_filter_trackers)
+      form.setFieldValue("banned_IPs", preferences.banned_IPs)
     }
   }, [preferences, form])
 
@@ -233,50 +265,79 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <form.Field name="bittorrent_protocol">
-            {(field) => (
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">BitTorrent Protocol</Label>
-                <Select
-                  value={field.state.value.toString()}
-                  onValueChange={(value) => field.handleChange(parseInt(value))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="0">{getBittorrentProtocolLabel(0)}</SelectItem>
-                    <SelectItem value="1">{getBittorrentProtocolLabel(1)}</SelectItem>
-                    <SelectItem value="2">{getBittorrentProtocolLabel(2)}</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  Protocol to use for peer connections
-                </p>
-              </div>
-            )}
+            {(field) => {
+              const sanitizedValue = sanitizeBtProtocol(field.state.value)
+
+              if (field.state.value !== sanitizedValue) {
+                scheduleMicrotask(() => field.handleChange(sanitizedValue))
+              }
+
+              return (
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">BitTorrent Protocol</Label>
+                  <Select
+                    value={sanitizedValue.toString()}
+                    onValueChange={(value) => {
+                      const parsed = parseInt(value, 10)
+
+                      if (!Number.isNaN(parsed)) {
+                        field.handleChange(sanitizeBtProtocol(parsed))
+                      }
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="0">{getBittorrentProtocolLabel(0)}</SelectItem>
+                      <SelectItem value="1">{getBittorrentProtocolLabel(1)}</SelectItem>
+                      <SelectItem value="2">{getBittorrentProtocolLabel(2)}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Protocol to use for peer connections
+                  </p>
+                </div>
+              )
+            }}
           </form.Field>
 
           <form.Field name="utp_tcp_mixed_mode">
-            {(field) => (
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">μTP-TCP Mixed Mode</Label>
-                <Select
-                  value={field.state.value.toString()}
-                  onValueChange={(value) => field.handleChange(parseInt(value))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="0">{getUtpTcpMixedModeLabel(0)}</SelectItem>
-                    <SelectItem value="1">{getUtpTcpMixedModeLabel(1)}</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  How to handle mixed μTP/TCP connections
-                </p>
-              </div>
-            )}
+            {(field) => {
+              const sanitizedValue = sanitizeUtpTcpMixedMode(field.state.value)
+
+              // Coerce the form state whenever we fall back to the sanitized value
+              if (field.state.value !== sanitizedValue) {
+                scheduleMicrotask(() => field.handleChange(sanitizedValue))
+              }
+
+              return (
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">μTP-TCP Mixed Mode</Label>
+                  <Select
+                    value={sanitizedValue.toString()}
+                    onValueChange={(value) => {
+                      const parsed = parseInt(value, 10)
+
+                      if (!Number.isNaN(parsed)) {
+                        field.handleChange(sanitizeUtpTcpMixedMode(parsed))
+                      }
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select mode" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="0">{getUtpTcpMixedModeLabel(0)}</SelectItem>
+                      <SelectItem value="1">{getUtpTcpMixedModeLabel(1)}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    How to handle mixed μTP/TCP connections
+                  </p>
+                </div>
+              )
+            }}
           </form.Field>
         </div>
 
@@ -433,6 +494,76 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
                 max={65535}
                 description="Maximum port for outgoing connections (0 = no limit)"
               />
+            )}
+          </form.Field>
+        </div>
+      </div>
+
+      {/* IP Filtering Section */}
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <Shield className="h-4 w-4" />
+          <h3 className="text-lg font-medium">IP Filtering</h3>
+        </div>
+
+        <div className="space-y-4">
+          <form.Field name="ip_filter_enabled">
+            {(field) => (
+              <SwitchSetting
+                label="Enable IP filtering"
+                description="Filter specific IP addresses from connecting"
+                checked={field.state.value}
+                onChange={(checked) => field.handleChange(checked)}
+              />
+            )}
+          </form.Field>
+
+          <form.Field name="ip_filter_path">
+            {(field) => (
+              <div className="space-y-2">
+                <Label htmlFor="ip_filter_path">IP filter file path</Label>
+                <Input
+                  id="ip_filter_path"
+                  value={field.state.value}
+                  onChange={(e) => field.handleChange(e.target.value)}
+                  placeholder="/path/to/filter.dat"
+                  disabled={!form.state.values.ip_filter_enabled}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Path to IP filter file (.dat, .p2p, .p2b formats)
+                </p>
+              </div>
+            )}
+          </form.Field>
+
+          <form.Field name="ip_filter_trackers">
+            {(field) => (
+              <SwitchSetting
+                label="Apply IP filter to trackers"
+                description="Also filter tracker connections based on IP filter rules"
+                checked={field.state.value}
+                onChange={(checked) => field.handleChange(checked)}
+              />
+            )}
+          </form.Field>
+
+          <form.Field name="banned_IPs">
+            {(field) => (
+              <div className="space-y-2">
+                <Label>Manually banned IP addresses</Label>
+                <Textarea
+                  value={field.state.value}
+                  onChange={(e) => field.handleChange(e.target.value)}
+                  placeholder={`Enter IP addresses to ban (one per line):
+192.168.1.100
+10.0.0.50
+2001:db8::1`}
+                  className="min-h-[100px] font-mono text-sm"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Add IP addresses to permanently ban from connecting (one per line)
+                </p>
+              </div>
             )}
           </form.Field>
         </div>

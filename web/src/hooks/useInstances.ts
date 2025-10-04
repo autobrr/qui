@@ -18,7 +18,28 @@ export function useInstances() {
 
   const createMutation = useMutation({
     mutationFn: (data: InstanceFormData) => api.createInstance(data),
-    onSuccess: () => {
+    onSuccess: async (newInstance) => {
+      // Immediately add the new instance to cache
+      queryClient.setQueryData<InstanceResponse[]>(["instances"], (old) => {
+        if (!old) return [newInstance]
+        return [...old.filter(i => i.id !== newInstance.id), newInstance]
+      })
+
+      // Test connection immediately to get actual status
+      try {
+        const status = await api.testConnection(newInstance.id)
+        // Update the instance with the actual connection status
+        queryClient.setQueryData<InstanceResponse[]>(["instances"], (old) => {
+          if (!old) return []
+          return old.map(i =>
+            i.id === newInstance.id? { ...i, connected: status.connected }: i
+          )
+        })
+      } catch (error) {
+        console.error("Failed to test connection after creation:", error)
+      }
+
+      // Invalidate to ensure consistency with backend
       queryClient.invalidateQueries({ queryKey: ["instances"] })
     },
   })
@@ -28,7 +49,28 @@ export function useInstances() {
       id: number
       data: Partial<InstanceFormData>
     }) => api.updateInstance(id, data),
-    onSuccess: () => {
+    onSuccess: async (updatedInstance) => {
+      // Immediately update the instance in cache
+      queryClient.setQueryData<InstanceResponse[]>(["instances"], (old) => {
+        if (!old) return [updatedInstance]
+        return old.map(i => i.id === updatedInstance.id ? updatedInstance : i)
+      })
+
+      // Test connection immediately to get actual status
+      try {
+        const status = await api.testConnection(updatedInstance.id)
+        // Update the instance with the actual connection status
+        queryClient.setQueryData<InstanceResponse[]>(["instances"], (old) => {
+          if (!old) return []
+          return old.map(i =>
+            i.id === updatedInstance.id? { ...i, connected: status.connected }: i
+          )
+        })
+      } catch (error) {
+        console.error("Failed to test connection after update:", error)
+      }
+
+      // Invalidate to ensure consistency with backend
       queryClient.invalidateQueries({ queryKey: ["instances"] })
     },
   })

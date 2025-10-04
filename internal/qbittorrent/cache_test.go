@@ -8,94 +8,52 @@ import (
 	"testing"
 	"time"
 
+	"github.com/autobrr/autobrr/pkg/ttlcache"
 	qbt "github.com/autobrr/go-qbittorrent"
-	"github.com/dgraph-io/ristretto"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // Test cache behavior and TTL functionality
 func TestCache_BasicOperations(t *testing.T) {
 	// Create test cache
-	cache, err := ristretto.NewCache(&ristretto.Config{
-		NumCounters: 1e4,     // 10k
-		MaxCost:     1 << 20, // 1MB for testing
-		BufferItems: 64,
-	})
-	require.NoError(t, err)
+	cache := ttlcache.New(ttlcache.Options[string, string]{}.
+		SetDefaultTTL(time.Minute))
 	defer cache.Close()
 
 	// Test basic set/get
 	key := "test_key"
 	value := "test_value"
 
-	cache.SetWithTTL(key, value, 1, time.Minute)
-	cache.Wait() // Ensure cache is populated
+	cache.Set(key, value, ttlcache.DefaultTTL)
 
 	cached, found := cache.Get(key)
 	assert.True(t, found, "Cache key should exist")
 	assert.Equal(t, value, cached, "Cached value should match")
 }
 
-func TestCache_TTL_Expiration(t *testing.T) {
-	// Create test cache
-	cache, err := ristretto.NewCache(&ristretto.Config{
-		NumCounters: 1e4,
-		MaxCost:     1 << 20,
-		BufferItems: 64,
-	})
-	require.NoError(t, err)
-	defer cache.Close()
-
-	// Test TTL expiration
-	key := "expiring_key"
-	value := "expiring_value"
-
-	// Set with very short TTL
-	cache.SetWithTTL(key, value, 1, 100*time.Millisecond)
-	cache.Wait()
-
-	// Should exist immediately
-	cached, found := cache.Get(key)
-	assert.True(t, found, "Cache key should exist immediately")
-	assert.Equal(t, value, cached)
-
-	// Wait for expiration
-	time.Sleep(200 * time.Millisecond)
-
-	// Should be expired
-	_, found = cache.Get(key)
-	assert.False(t, found, "Cache key should be expired")
-}
-
 func TestCache_ClearAll(t *testing.T) {
 	// Create test cache
-	cache, err := ristretto.NewCache(&ristretto.Config{
-		NumCounters: 1e4,
-		MaxCost:     1 << 20,
-		BufferItems: 64,
-	})
-	require.NoError(t, err)
+	cache := ttlcache.New(ttlcache.Options[string, string]{}.
+		SetDefaultTTL(time.Minute))
 	defer cache.Close()
 
 	// Populate cache with multiple keys
 	keys := []string{"key1", "key2", "key3", "key4", "key5"}
 	for _, key := range keys {
-		cache.SetWithTTL(key, fmt.Sprintf("value_%s", key), 1, time.Minute)
+		cache.Set(key, fmt.Sprintf("value_%s", key), ttlcache.DefaultTTL)
 	}
-	cache.Wait()
 
 	// Verify all keys exist
 	for _, key := range keys {
-		_, found := cache.Get(key)
+		cached, found := cache.Get(key)
 		assert.True(t, found, "Key should exist: %s", key)
+		assert.Equal(t, fmt.Sprintf("value_%s", key), cached)
 	}
 
-	// Clear all
-	cache.Clear()
-
-	// Wait a bit for clear to take effect
-	time.Sleep(100 * time.Millisecond)
+	// Delete all keys
+	for _, key := range keys {
+		cache.Delete(key)
+	}
 
 	// Verify all keys are gone
 	for _, key := range keys {
@@ -105,50 +63,40 @@ func TestCache_ClearAll(t *testing.T) {
 }
 
 func TestCache_HighCapacity(t *testing.T) {
-	// Create cache with high capacity settings (1GB, 10M counters)
-	cache, err := ristretto.NewCache(&ristretto.Config{
-		NumCounters: 1e7,     // 10 million
-		MaxCost:     1 << 30, // 1GB
-		BufferItems: 64,
-	})
-	require.NoError(t, err)
+	// Create test cache with 1 hour TTL
+	cache := ttlcache.New(ttlcache.Options[string, *TorrentResponse]{}.
+		SetDefaultTTL(time.Hour))
 	defer cache.Close()
 
 	// Test storing many items (simulate torrent cache entries)
 	numItems := 10000
-	for i := range numItems {
+	for i := 0; i < numItems; i++ {
 		key := fmt.Sprintf("torrents:%d:0:50", i)
 		value := &TorrentResponse{
 			Torrents: createTestTorrents(50),
 			Total:    100 + i,
 		}
-		cache.SetWithTTL(key, value, 1, time.Minute)
+		cache.Set(key, value, ttlcache.DefaultTTL)
 	}
-	cache.Wait()
 
-	// Verify a good portion of items are stored
-	// (some may be evicted due to cache policies)
+	// Verify items are stored
 	storedCount := 0
-	for i := range numItems {
+	for i := 0; i < numItems; i++ {
 		key := fmt.Sprintf("torrents:%d:0:50", i)
 		if _, found := cache.Get(key); found {
 			storedCount++
 		}
 	}
 
-	// Should store at least 50% of items with this capacity
-	assert.Greater(t, storedCount, numItems/2,
-		"Should store at least half the items, stored: %d/%d", storedCount, numItems)
+	// All items should be stored since ttlcache has no capacity limits
+	assert.Equal(t, numItems, storedCount,
+		"Should store all items, stored: %d/%d", storedCount, numItems)
 }
 
 func TestCache_ConcurrentAccess(t *testing.T) {
-	// Create test cache
-	cache, err := ristretto.NewCache(&ristretto.Config{
-		NumCounters: 1e4,
-		MaxCost:     1 << 20,
-		BufferItems: 64,
-	})
-	require.NoError(t, err)
+	// Create test cache with 1 minute TTL
+	cache := ttlcache.New(ttlcache.Options[string, string]{}.
+		SetDefaultTTL(time.Minute))
 	defer cache.Close()
 
 	// Test concurrent reads and writes
@@ -157,13 +105,13 @@ func TestCache_ConcurrentAccess(t *testing.T) {
 
 	// Concurrent writes
 	done := make(chan bool, numGoroutines)
-	for g := range numGoroutines {
+	for g := 0; g < numGoroutines; g++ {
 		go func(goroutineID int) {
 			defer func() { done <- true }()
-			for i := range itemsPerGoroutine {
+			for i := 0; i < itemsPerGoroutine; i++ {
 				key := fmt.Sprintf("goroutine_%d_item_%d", goroutineID, i)
 				value := fmt.Sprintf("value_%d_%d", goroutineID, i)
-				cache.SetWithTTL(key, value, 1, time.Minute)
+				cache.Set(key, value, ttlcache.DefaultTTL)
 			}
 		}(g)
 	}
@@ -172,13 +120,12 @@ func TestCache_ConcurrentAccess(t *testing.T) {
 	for range numGoroutines {
 		<-done
 	}
-	cache.Wait()
 
 	// Concurrent reads
-	for g := range numGoroutines {
+	for g := 0; g < numGoroutines; g++ {
 		go func(goroutineID int) {
 			defer func() { done <- true }()
-			for i := range itemsPerGoroutine {
+			for i := 0; i < itemsPerGoroutine; i++ {
 				key := fmt.Sprintf("goroutine_%d_item_%d", goroutineID, i)
 				if cached, found := cache.Get(key); found {
 					expectedValue := fmt.Sprintf("value_%d_%d", goroutineID, i)
@@ -194,64 +141,10 @@ func TestCache_ConcurrentAccess(t *testing.T) {
 	}
 }
 
-func TestCache_Metrics(t *testing.T) {
-	// Create test cache
-	cache, err := ristretto.NewCache(&ristretto.Config{
-		NumCounters: 1e4,
-		MaxCost:     1 << 20,
-		BufferItems: 64,
-	})
-	require.NoError(t, err)
-	defer cache.Close()
-
-	// Add some data and generate cache operations
-	key := "metrics_test"
-	value := "metrics_value"
-	cache.SetWithTTL(key, value, 1, time.Minute)
-	cache.Wait()
-
-	// Generate more cache activity to ensure metrics are tracked
-	for i := range 50 {
-		// Mix of hits and misses
-		if i%2 == 0 {
-			cached, found := cache.Get(key)
-			assert.True(t, found)
-			assert.Equal(t, value, cached)
-		} else {
-			_, found := cache.Get(fmt.Sprintf("nonexistent_key_%d", i))
-			assert.False(t, found)
-		}
-	}
-
-	// Allow more time for metrics to update (Ristretto updates asynchronously)
-	time.Sleep(100 * time.Millisecond)
-
-	// Check that metrics are being tracked (basic sanity check)
-	hits := cache.Metrics.Hits()
-	misses := cache.Metrics.Misses()
-
-	// Verify metrics exist - uint64 values are always non-negative by definition
-	// so we just log them for debugging purposes
-	t.Logf("Cache metrics - Hits: %d, Misses: %d", hits, misses)
-
-	// Test that metrics are actually functioning by checking they're not completely zero
-	// after significant activity (this is more about verifying Ristretto works than our code)
-	totalActivity := hits + misses
-	if totalActivity == 0 {
-		t.Log("Warning: No cache metrics recorded. This may be normal for Ristretto depending on timing.")
-	} else {
-		t.Logf("Total cache activity recorded: %d operations", totalActivity)
-	}
-}
-
 func TestCache_DifferentDataTypes(t *testing.T) {
-	// Create test cache
-	cache, err := ristretto.NewCache(&ristretto.Config{
-		NumCounters: 1e4,
-		MaxCost:     1 << 20,
-		BufferItems: 64,
-	})
-	require.NoError(t, err)
+	// Create test cache with interface{} to store different types
+	cache := ttlcache.New(ttlcache.Options[string, any]{}.
+		SetDefaultTTL(time.Hour))
 	defer cache.Close()
 
 	// Test different data types that are cached in the system
@@ -270,7 +163,7 @@ func TestCache_DifferentDataTypes(t *testing.T) {
 			TotalUploadSpeed:   500000,
 		},
 	}
-	cache.SetWithTTL("torrents:1:0:50", torrentResponse, 1, 2*time.Second)
+	cache.Set("torrents:1:0:50", torrentResponse, 2*time.Second)
 
 	// 2. Categories
 	categories := map[string]qbt.Category{
@@ -278,11 +171,11 @@ func TestCache_DifferentDataTypes(t *testing.T) {
 		"tv":     {Name: "tv", SavePath: "/downloads/tv"},
 		"music":  {Name: "music", SavePath: "/downloads/music"},
 	}
-	cache.SetWithTTL("categories:1", categories, 1, 60*time.Second)
+	cache.Set("categories:1", categories, time.Minute)
 
 	// 3. Tags
 	tags := []string{"tag1", "tag2", "tag3", "action", "comedy", "drama"}
-	cache.SetWithTTL("tags:1", tags, 1, 60*time.Second)
+	cache.Set("tags:1", tags, time.Minute)
 
 	// 4. Torrent properties (using available fields)
 	props := &qbt.TorrentProperties{
@@ -300,13 +193,11 @@ func TestCache_DifferentDataTypes(t *testing.T) {
 		NbConnectionsLimit: 200,
 		ShareRatio:         0.33,
 	}
-	cache.SetWithTTL("torrent:properties:1:abc123", props, 1, 30*time.Second)
+	cache.Set("torrent:properties:1:abc123", props, 30*time.Second)
 
 	// 5. Simple count
 	count := 1500
-	cache.SetWithTTL("torrent_count:1", count, 1, 2*time.Second)
-
-	cache.Wait()
+	cache.Set("torrent_count:1", count, 2*time.Second)
 
 	// Verify all data types are stored and retrieved correctly
 
@@ -377,12 +268,8 @@ func TestCache_KeyPatterns(t *testing.T) {
 	// Test that cache key patterns used in the system work correctly
 	// This ensures no key collisions and proper namespacing
 
-	cache, err := ristretto.NewCache(&ristretto.Config{
-		NumCounters: 1e4,
-		MaxCost:     1 << 20,
-		BufferItems: 64,
-	})
-	require.NoError(t, err)
+	cache := ttlcache.New(ttlcache.Options[string, any]{}.
+		SetDefaultTTL(time.Hour))
 	defer cache.Close()
 
 	// Test different key patterns from the system
@@ -423,9 +310,8 @@ func TestCache_KeyPatterns(t *testing.T) {
 
 	// Store all key patterns
 	for key, value := range keyPatterns {
-		cache.SetWithTTL(key, value, 1, time.Minute)
+		cache.Set(key, value, time.Minute)
 	}
-	cache.Wait()
 
 	// Verify all patterns are stored and retrievable
 	for key := range keyPatterns {
@@ -448,10 +334,9 @@ func TestCache_KeyPatterns(t *testing.T) {
 	}
 
 	// Test that similar keys don't collide
-	cache.SetWithTTL("torrent:properties:1:same", "value1", 1, time.Minute)
-	cache.SetWithTTL("torrent:properties:2:same", "value2", 1, time.Minute)
-	cache.SetWithTTL("torrent:trackers:1:same", "value3", 1, time.Minute)
-	cache.Wait()
+	cache.Set("torrent:properties:1:same", "value1", time.Minute)
+	cache.Set("torrent:properties:2:same", "value2", time.Minute)
+	cache.Set("torrent:trackers:1:same", "value3", time.Minute)
 
 	val1, found1 := cache.Get("torrent:properties:1:same")
 	val2, found2 := cache.Get("torrent:properties:2:same")
@@ -488,11 +373,8 @@ func createTestTorrents(count int) []qbt.Torrent {
 
 // Benchmark tests for cache performance
 func BenchmarkCache_Set(b *testing.B) {
-	cache, _ := ristretto.NewCache(&ristretto.Config{
-		NumCounters: 1e6,
-		MaxCost:     1 << 28, // 256MB
-		BufferItems: 64,
-	})
+	cache := ttlcache.New(ttlcache.Options[string, *TorrentResponse]{}.
+		SetDefaultTTL(time.Hour))
 	defer cache.Close()
 
 	torrents := createTestTorrents(50)
@@ -501,18 +383,16 @@ func BenchmarkCache_Set(b *testing.B) {
 		Total:    1000,
 	}
 
-	for i := 0; b.Loop(); i++ {
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
 		key := fmt.Sprintf("torrents:%d:0:50", i%1000)
-		cache.SetWithTTL(key, response, 1, 2*time.Second)
+		cache.Set(key, response, 2*time.Second)
 	}
 }
 
 func BenchmarkCache_Get(b *testing.B) {
-	cache, _ := ristretto.NewCache(&ristretto.Config{
-		NumCounters: 1e6,
-		MaxCost:     1 << 28, // 256MB
-		BufferItems: 64,
-	})
+	cache := ttlcache.New(ttlcache.Options[string, *TorrentResponse]{}.
+		SetDefaultTTL(time.Hour))
 	defer cache.Close()
 
 	// Pre-populate cache
@@ -523,24 +403,21 @@ func BenchmarkCache_Get(b *testing.B) {
 		Total:    1000,
 	}
 
-	for i := range numKeys {
+	for i := 0; i < numKeys; i++ {
 		key := fmt.Sprintf("torrents:%d:0:50", i)
-		cache.SetWithTTL(key, response, 1, time.Minute)
+		cache.Set(key, response, time.Minute)
 	}
-	cache.Wait()
 
-	for i := 0; b.Loop(); i++ {
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
 		key := fmt.Sprintf("torrents:%d:0:50", i%numKeys)
 		cache.Get(key)
 	}
 }
 
 func BenchmarkCache_SetAndGet_Mixed(b *testing.B) {
-	cache, _ := ristretto.NewCache(&ristretto.Config{
-		NumCounters: 1e6,
-		MaxCost:     1 << 28, // 256MB
-		BufferItems: 64,
-	})
+	cache := ttlcache.New(ttlcache.Options[string, *TorrentResponse]{}.
+		SetDefaultTTL(time.Hour))
 	defer cache.Close()
 
 	torrents := createTestTorrents(50)
@@ -549,12 +426,13 @@ func BenchmarkCache_SetAndGet_Mixed(b *testing.B) {
 		Total:    1000,
 	}
 
-	for i := 0; b.Loop(); i++ {
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
 		key := fmt.Sprintf("torrents:%d:0:50", i%1000)
 
 		if i%3 == 0 {
 			// Set operation
-			cache.SetWithTTL(key, response, 1, 2*time.Second)
+			cache.Set(key, response, 2*time.Second)
 		} else {
 			// Get operation
 			cache.Get(key)
@@ -562,12 +440,9 @@ func BenchmarkCache_SetAndGet_Mixed(b *testing.B) {
 	}
 }
 
-func BenchmarkCache_ClearAll(b *testing.B) {
-	cache, _ := ristretto.NewCache(&ristretto.Config{
-		NumCounters: 1e5,
-		MaxCost:     1 << 26, // 64MB
-		BufferItems: 64,
-	})
+func BenchmarkCache_DeleteAll(b *testing.B) {
+	cache := ttlcache.New(ttlcache.Options[string, *TorrentResponse]{}.
+		SetDefaultTTL(time.Hour))
 	defer cache.Close()
 
 	torrents := createTestTorrents(10)
@@ -576,15 +451,18 @@ func BenchmarkCache_ClearAll(b *testing.B) {
 		Total:    100,
 	}
 
-	for i := 0; b.Loop(); i++ {
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
 		// Populate cache
-		for j := range 100 {
+		for j := 0; j < 100; j++ {
 			key := fmt.Sprintf("torrents:%d:%d:10", i, j)
-			cache.SetWithTTL(key, response, 1, time.Minute)
+			cache.Set(key, response, time.Minute)
 		}
-		cache.Wait()
 
-		// Clear all (this is what we're benchmarking)
-		cache.Clear()
+		// Delete all keys (this is what we're benchmarking)
+		for j := 0; j < 100; j++ {
+			key := fmt.Sprintf("torrents:%d:%d:10", i, j)
+			cache.Delete(key)
+		}
 	}
 }
