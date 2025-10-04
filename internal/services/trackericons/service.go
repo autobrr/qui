@@ -721,6 +721,10 @@ func decodeImage(data []byte, contentType, originalURL string) (image.Image, err
 		return nil, err
 	}
 
+	if err := validateDimensions(cfg.Width, cfg.Height); err != nil {
+		return nil, err
+	}
+
 	// Reset reader for full decode
 	if _, err := reader.Seek(0, io.SeekStart); err != nil {
 		return nil, fmt.Errorf("failed to reset reader: %w", err)
