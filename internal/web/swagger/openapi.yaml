@@ -542,6 +542,62 @@ paths:
           description: Torrent added successfully
 
 
+  /api/instances/{instanceId}/torrents/racing:
+    get:
+      tags:
+        - Torrents
+      summary: Get racing dashboard
+      description: Get racing dashboard data showing fastest completed torrents, best ratios, and tracker statistics
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 5
+            maximum: 50
+          description: Number of torrents to show in each category
+        - name: trackers
+          in: query
+          schema:
+            type: string
+          description: Comma-separated list of trackers to filter by
+        - name: minRatio
+          in: query
+          schema:
+            type: number
+            minimum: 0
+          description: Minimum ratio to include
+        - name: minSize
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+          description: Minimum size in bytes
+        - name: maxSize
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+          description: Maximum size in bytes
+        - name: categories
+          in: query
+          schema:
+            type: string
+          description: Comma-separated list of categories to filter by
+      responses:
+        '200':
+          description: Racing dashboard data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RacingDashboard'
+        '400':
+          description: Invalid request parameters
+        '500':
+          description: Internal server error
+
+
   /api/instances/{instanceId}/torrents/bulk-action:
     post:
       tags:
@@ -1674,6 +1730,100 @@ components:
           format: date-time
           description: When the release was published
           example: "2025-09-23T10:30:00Z"
+
+    RacingTorrent:
+      type: object
+      properties:
+        hash:
+          type: string
+        name:
+          type: string
+        size:
+          type: integer
+          format: int64
+        tracker:
+          type: string
+        trackerDomain:
+          type: string
+        ratio:
+          type: number
+          format: float
+        completionTime:
+          type: integer
+          format: int64
+          nullable: true
+          description: Time to complete in seconds
+        addedOn:
+          type: string
+          format: date-time
+        completedOn:
+          type: string
+          format: date-time
+          nullable: true
+        state:
+          type: string
+        category:
+          type: string
+        tags:
+          type: string
+
+    TrackerData:
+      type: object
+      properties:
+        totalTorrents:
+          type: integer
+        completedTorrents:
+          type: integer
+        averageRatio:
+          type: number
+          format: float
+        averageCompletionTime:
+          type: integer
+          format: int64
+          nullable: true
+
+    TrackerStats:
+      type: object
+      properties:
+        totalTorrents:
+          type: integer
+        completedTorrents:
+          type: integer
+        averageRatio:
+          type: number
+          format: float
+        averageCompletionTime:
+          type: integer
+          format: int64
+          nullable: true
+        byTracker:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/TrackerData'
+
+    RacingDashboard:
+      type: object
+      properties:
+        topFastest:
+          type: array
+          items:
+            $ref: '#/components/schemas/RacingTorrent'
+          description: Torrents that completed quickest
+        topRatios:
+          type: array
+          items:
+            $ref: '#/components/schemas/RacingTorrent'
+          description: Torrents with highest ratio
+        bottomRatios:
+          type: array
+          items:
+            $ref: '#/components/schemas/RacingTorrent'
+          description: Torrents with lowest ratio
+        trackerStats:
+          $ref: '#/components/schemas/TrackerStats'
+        lastUpdated:
+          type: string
+          format: date-time
 
 tags:
   - name: Authentication

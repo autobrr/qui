@@ -1090,6 +1090,104 @@ func (h *TorrentsHandler) ExportTorrent(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
+// GetRacingDashboard returns racing dashboard data for one or more instances
+func (h *TorrentsHandler) GetRacingDashboard(w http.ResponseWriter, r *http.Request) {
+	// Get instance ID from URL (for backward compatibility)
+	instanceIDStr := chi.URLParam(r, "instanceID")
+	var singleInstanceID int
+	if instanceIDStr != "" {
+		var err error
+		singleInstanceID, err = strconv.Atoi(instanceIDStr)
+		if err != nil {
+			RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+			return
+		}
+	}
+
+	// Parse query parameters for options
+	options := qbittorrent.RacingDashboardOptions{
+		Limit: 5, // Default limit
+	}
+
+	// Check for multiple instance IDs in query params
+	if instanceIDsStr := r.URL.Query().Get("instanceIds"); instanceIDsStr != "" {
+		instanceIDStrs := strings.SplitSeq(instanceIDsStr, ",")
+		for idStr := range instanceIDStrs {
+			id, err := strconv.Atoi(strings.TrimSpace(idStr))
+			if err == nil && id > 0 {
+				options.InstanceIDs = append(options.InstanceIDs, id)
+			}
+		}
+	} else if singleInstanceID > 0 {
+		// Use the single instance ID from URL if no multiple IDs provided
+		options.InstanceIDs = []int{singleInstanceID}
+	}
+
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if limit, err := strconv.Atoi(limitStr); err == nil && limit > 0 && limit <= 50 {
+			options.Limit = limit
+		}
+	}
+
+	if trackersStr := r.URL.Query().Get("trackers"); trackersStr != "" {
+		options.TrackerFilter = strings.Split(trackersStr, ",")
+		// Trim spaces
+		for i, tracker := range options.TrackerFilter {
+			options.TrackerFilter[i] = strings.TrimSpace(tracker)
+		}
+	}
+
+	if minRatioStr := r.URL.Query().Get("minRatio"); minRatioStr != "" {
+		if minRatio, err := strconv.ParseFloat(minRatioStr, 64); err == nil && minRatio >= 0 {
+			options.MinRatio = minRatio
+		}
+	}
+
+	if minSizeStr := r.URL.Query().Get("minSize"); minSizeStr != "" {
+		if minSize, err := strconv.ParseInt(minSizeStr, 10, 64); err == nil && minSize >= 0 {
+			options.MinSize = minSize
+		}
+	}
+
+	if maxSizeStr := r.URL.Query().Get("maxSize"); maxSizeStr != "" {
+		if maxSize, err := strconv.ParseInt(maxSizeStr, 10, 64); err == nil && maxSize >= 0 {
+			options.MaxSize = maxSize
+		}
+	}
+
+	if categoriesStr := r.URL.Query().Get("categories"); categoriesStr != "" {
+		options.CategoryFilter = strings.Split(categoriesStr, ",")
+		// Trim spaces
+		for i, category := range options.CategoryFilter {
+			options.CategoryFilter[i] = strings.TrimSpace(category)
+		}
+	}
+
+	// Time filtering parameters
+	if timeRange := r.URL.Query().Get("timeRange"); timeRange != "" {
+		options.TimeRange = timeRange
+		log.Debug().Str("timeRange", timeRange).Msg("Racing dashboard time range filter")
+	}
+
+	if startDate := r.URL.Query().Get("startDate"); startDate != "" {
+		options.StartDate = startDate
+	}
+
+	if endDate := r.URL.Query().Get("endDate"); endDate != "" {
+		options.EndDate = endDate
+	}
+
+	// Get racing dashboard data
+	dashboard, err := h.syncManager.GetRacingDashboard(r.Context(), singleInstanceID, options)
+	if err != nil {
+		log.Error().Err(err).Ints("instanceIDs", options.InstanceIDs).Msg("Failed to get racing dashboard")
+		RespondError(w, http.StatusInternalServerError, "Failed to get racing dashboard")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, dashboard)
+}
+
 // AddPeers adds peers to torrents
 func (h *TorrentsHandler) AddPeers(w http.ResponseWriter, r *http.Request) {
 	// Get instance ID from URL
