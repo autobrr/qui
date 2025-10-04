@@ -552,16 +552,35 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     [incognitoMode, speedUnit, trackerIcons, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, isAllSelected, excludedFromSelectAll, preferences]
   )
 
+  const torrentIdentityCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+
+    for (const torrent of sortedTorrents) {
+      const baseIdentity = torrent.hash ?? torrent.infohash_v1 ?? torrent.infohash_v2
+      if (!baseIdentity) continue
+      counts.set(baseIdentity, (counts.get(baseIdentity) ?? 0) + 1)
+    }
+
+    return counts
+  }, [sortedTorrents])
+
   const table = useReactTable({
     data: sortedTorrents,
     columns,
     getCoreRowModel: getCoreRowModel(),
-    // Prefer stable torrent hash for row identity to avoid remount flicker during updates
+    // Prefer stable torrent hash for row identity while keeping duplicates unique
     getRowId: (row: Torrent, index: number) => {
-      if (row.hash) return row.hash
-      if (row.infohash_v1) return row.infohash_v1
-      if (row.infohash_v2) return row.infohash_v2
-      return `row-${index}`
+      const baseIdentity = row.hash ?? row.infohash_v1 ?? row.infohash_v2
+
+      if (!baseIdentity) {
+        return `row-${index}`
+      }
+
+      if ((torrentIdentityCounts.get(baseIdentity) ?? 0) > 1) {
+        return `${baseIdentity}-${index}`
+      }
+
+      return baseIdentity
     },
     // State management
     state: {
