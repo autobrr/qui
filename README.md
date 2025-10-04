@@ -285,6 +285,12 @@ scrape_configs:
 
 All metrics are labeled with `instance_id` and `instance_name` for multi-instance monitoring.
 
+## Tracker Icons
+
+- Cached icons live in your data directory under `tracker-icons/` (next to `qui.db` by default). To override one, drop a PNG named after the tracker host—for example `tracker.example.com.png`.
+- Downloads are saved as 16×16 PNGs (anything larger than 1 024×1 024 is rejected). Manual files are served untouched, so resize and convert them to PNG before copying them in.
+- After a failed download qui waits 30 minutes before retrying the same host. The next retry happens automatically the next time your tracker list references that host.
+
 ## Reverse Proxy for External Applications
 
 qui includes a built-in reverse proxy that allows external applications like autobrr, Sonarr, Radarr, and other tools to connect to your qBittorrent instances **without needing qBittorrent credentials**. qui handles authentication transparently, making integration seamless.

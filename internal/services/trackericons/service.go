@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"image"
@@ -61,6 +62,23 @@ type Service struct {
 	failureMu   sync.Mutex
 	lastFailure map[string]time.Time
 }
+
+// Flow overview:
+//   * tracker syncs call QueueFetch when they encounter a host; the helper skips
+//     work if a PNG already exists on disk or the host is still in cooldown.
+//   * GetIcon handles the actual fetch pipeline with singleflight so only one
+//     goroutine ever attempts a download for a given host at a time.
+//   * fetchAndStoreIcon probes a bounded set of candidate URLs, deduplicates
+//     them, attempts each icon once, and stops after the first success. Images
+//     are decoded (falling back to ICO when needed), resized, and written
+//     atomically.
+//   * ListIcons simply streams whatever PNGs already live on disk; the frontend
+//     polls that endpoint but never triggers new fetch attempts.
+//   * Example: encountering "cdn.trackers.example.org" produces host
+//     candidates `["cdn.trackers.example.org", "trackers.example.org",
+//     "example.org"]`. For each we probe `https://…/` and `http://…/`, scrape
+//     any `<link rel="icon">` references, append `/favicon.ico`, and stop at
+//     the first icon that decodes successfully.
 
 // NewService creates a new tracker icon service rooted in the provided data directory.
 func NewService(dataDir, userAgent string) (*Service, error) {
@@ -695,12 +713,15 @@ func decodeImage(data []byte, contentType, originalURL string) (image.Image, err
 	// Check dimensions before expensive decode to avoid decompression bombs
 	// If validation succeeds here we can skip re-checking the same dimensions later.
 	validated := false
-	cfg, _, err := image.DecodeConfig(reader)
-	if err == nil {
+	if cfg, _, err := image.DecodeConfig(reader); err == nil {
+		// ICO images and other non-standard formats trigger an error here; allow
+		// those to fall through so the specialized decoders can run instead.
 		if err := validateDimensions(cfg.Width, cfg.Height); err != nil {
 			return nil, err
 		}
 		validated = true
+	} else if !isLikelyICO(contentType, originalURL, data) {
+		return nil, fmt.Errorf("failed to decode image config: %w", err)
 	}
 
 	// Reset reader for full decode
@@ -736,6 +757,22 @@ func decodeImage(data []byte, contentType, originalURL string) (image.Image, err
 	}
 
 	return ico.Decode(reader)
+}
+
+func isLikelyICO(contentType, originalURL string, data []byte) bool {
+	lowerType := strings.ToLower(contentType)
+	if strings.Contains(lowerType, "ico") {
+		return true
+	}
+	if strings.HasSuffix(strings.ToLower(originalURL), ".ico") {
+		return true
+	}
+	if len(data) >= 6 { // https://en.wikipedia.org/wiki/List_of_file_signatures
+		if binary.LittleEndian.Uint16(data[0:2]) == 0 && binary.LittleEndian.Uint16(data[2:4]) == 1 && binary.LittleEndian.Uint16(data[4:6]) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func resizeToSquare(src image.Image, size int) image.Image {
