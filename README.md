@@ -285,6 +285,38 @@ scrape_configs:
 
 All metrics are labeled with `instance_id` and `instance_name` for multi-instance monitoring.
 
+## Tracker Icons
+
+Cached icons live in your data directory under `tracker-icons/` (next to `qui.db`). Icons are stored as normalised 16×16 PNGs; anything larger than 1 024×1 024 is rejected, so resize first if you are supplying files manually. qui automatically attempts to download a favicon the first time it encounters a tracker host, caching the result for future sessions. After a failed download it waits 30 minutes before retrying the same host, and the next retry is triggered automatically the next time that host appears in your tracker list.
+
+### Add icons manually
+
+- Copy PNGs named after each tracker host (e.g. `tracker.example.com.png`) into the `tracker-icons/` directory. Files are served as-is, so trimming or resizing is up to you, but matching the built-in size (16×16) keeps them crisp and avoids extra scaling.
+
+### Preload a bundle of icons
+
+If you already have a library of icons (for example, exported from another installation) you can preload them via a mapping file placed alongside the directory: `tracker-icons/preload.json`, `tracker-icons/preload.js`, `tracker-icons/tracker-icons.json`, `tracker-icons/tracker-icons.js`, or `tracker-icons/tracker-icons.txt`.
+
+- The file can be either a plain JSON object or a snippet exported as `const trackerIcons = { ... };`.
+- Keys must be the real tracker hostnames (e.g. `tracker.example.org`). If you include a `www.*` host, qui automatically mirrors the icon to the bare hostname when missing.
+- On startup qui decodes each data URL, normalises the image to 16×16, and writes the PNG to `<host>.png`.
+
+  ```json
+  {
+    "tracker.example.org": "data:image/png;base64,AAA...",
+    "www.tracker.org": "data:image/png;base64,BBB..."
+  }
+  ```
+
+  ```js
+  const trackerIcons = {
+    "tracker.example.org": "data:image/png;base64,CCC...",
+    "www.tracker.org": "data:image/png;base64,DDD..."
+  };
+  ```
+
+- Example: [Audionut/add-trackers](https://github.com/Audionut/add-trackers/blob/8db05c0e822f9b3afa46ca784644c4e7e400c92b/ptp-add-filter-all-releases-anut.js#L768)
+
 ## Reverse Proxy for External Applications
 
 qui includes a built-in reverse proxy that allows external applications like autobrr, Sonarr, Radarr, and other tools to connect to your qBittorrent instances **without needing qBittorrent credentials**. qui handles authentication transparently, making integration seamless.
@@ -293,9 +325,10 @@ qui includes a built-in reverse proxy that allows external applications like aut
 
 The reverse proxy feature:
 - **Handles authentication automatically** - qui manages the qBittorrent login using your configured credentials
-- **Isolates clients** - Each client gets its own API key for security and monitoring  
-- **Works with any qBittorrent security setting** - Even with "bypass authentication for clients on localhost" disabled
+- **Isolates clients** - Each client gets its own API key
 - **Provides transparent access** - Clients see qui as if it were qBittorrent directly
+- **Reduces login thrash** - qui maintains a shared cookie jar and session, so your automation tools stop racing to re-authenticate against qBittorrent. That means fewer failed logins, less load on qBittorrent, and faster announce races because downstream apps reuse the live session instead of waiting for new tokens.
+- **Future-aware sync** - A planned improvement will reuse the proxied responses from other tools to keep qui's own torrent data fresh without waiting for the next poll cycle.
 
 ### Setup Instructions
 
@@ -312,34 +345,45 @@ The reverse proxy feature:
 
 Use qui as the qBittorrent host with the special proxy URL format:
 
-**Example for Sonarr or autobrr:**
-- **Host**: `your-qui-server` (e.g., `localhost` or `192.168.1.100`)
-- **Port**: `7476` (or your qui port)
-- **Username**: *Leave empty*
-- **Password**: *Leave empty*  
-- **URL Base**: `/proxy/YOUR_CLIENT_API_KEY_HERE`
-
 **Complete URL example:**
 ```
 http://localhost:7476/proxy/abc123def456ghi789jkl012mno345pqr678stu901vwx234yz
 ```
 
-#### 3. Test the Connection
+#### Application-Specifics
 
-Your external application should now be able to:
-- Connect successfully to qBittorrent through qui
-- Add torrents, check status, and manage downloads
-- Work without any qBittorrent credentials
+**Sonarr / Radarr**
+- Go to `Settings → Download Clients`
+- Select `Show Advanced`
+- Add a new **qBittorrent** client
+- Set the host and port of qui
+- Add URL Base (`/proxy/...`) - remember to include /qui/ if you use custom baseurl
+- Click **Test** and then **Save** once the test succeeds
+
+**autobrr**
+- Open `Settings → Download Clients`
+- Add **qBittorrent** (or edit an existing one)
+- Enter the full url like: `http://localhost:7476/proxy/abc123def456ghi789jkl012mno345pqr678stu901vwx234yz`
+- Leave username/password blank and press **Test**
+- Leave basic auth blank since qui handles that
+
+**cross-seed**
+- Open cross-seed config file
+- Add or edit the `torrentClients` section.
+- Append the full url following the documentation
+- `torrentClients: ["qbittorrent:http://localhost:7476/proxy/abc123def456ghi789jkl012mno345pqr678stu901vwx234yz"],`
+- Save the config file and restart cross-seed
+
+**Upload Assistant**
+- Open the Upload Assistant config file
+- Add or edit `qui_proxy_url` under the qBitTorrent client settings.
+- Append the full url like `"qui_proxy_url": "http://localhost:7476/proxy/abc123def456ghi789jkl012mno345pqr678stu901vwx234yz",`
+- All other auth type can remain unchanged
+- Save the config file
 
 ### Supported Applications
 
-This reverse proxy works with any application that supports qBittorrent's Web API:
-- **autobrr** - Automatic torrent downloading
-- **Sonarr** - Automatic TV show downloads
-- **Radarr** - Automatic movie downloads  
-- **Lidarr** - Automatic music downloads
-- **Prowlarr** - Indexer management
-- **Custom scripts** - Any application using qBittorrent's API
+This reverse proxy will work with any application that supports qBittorrent's Web API.
 
 ### Security Features
 
@@ -468,7 +512,7 @@ make dev-frontend
 
 ## Community
 
-Join our friendly and welcoming community on [Discord](https://discord.gg/RkeZYfm5ej)! Connect with fellow autobrr users, get advice, and share your experiences. 
+Join our friendly and welcoming community on [Discord](https://discord.autobrr.com/qui)! Connect with fellow autobrr users, get advice, and share your experiences. 
 Whether you're seeking help, wanting to contribute, or just looking to discuss your ideas, our community is a hub of discussion and support. 
 We're all here to help each other out, so don't hesitate to jump in!
 

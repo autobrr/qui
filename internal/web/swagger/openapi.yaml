@@ -670,6 +670,28 @@ paths:
           description: Action performed successfully
 
 
+  /api/instances/{instanceId}/torrents/{hash}/export:
+    get:
+      tags:
+        - Torrent Details
+      summary: Export torrent file
+      description: Download the .torrent file for a specific torrent
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/hash'
+      responses:
+        '200':
+          description: Torrent file
+          content:
+            application/x-bittorrent:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Invalid request
+        '500':
+          description: Failed to export torrent
+
   /api/instances/{instanceId}/torrents/{hash}/properties:
     get:
       tags:
@@ -1397,6 +1419,25 @@ paths:
                     type: string
         '500':
           description: Failed to refresh licenses
+
+  /api/tracker-icons:
+    get:
+      tags:
+        - Tracker Icons
+      summary: List tracker icons
+      description: Retrieve cached tracker favicons as data URLs keyed by tracker hostname
+      responses:
+        '200':
+          description: Cached tracker icons
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+                  description: Base64-encoded PNG data URL for the tracker favicon
+        '500':
+          description: Failed to list tracker icons
 
   /api/version/latest:
     get:

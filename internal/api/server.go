@@ -25,6 +25,7 @@ import (
 	"github.com/autobrr/qui/internal/proxy"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/license"
+	"github.com/autobrr/qui/internal/services/trackericons"
 	"github.com/autobrr/qui/internal/update"
 	"github.com/autobrr/qui/internal/web"
 	"github.com/autobrr/qui/internal/web/swagger"
@@ -37,14 +38,15 @@ type Server struct {
 	config  *config.AppConfig
 	version string
 
-	authService       *auth.Service
-	sessionManager    *scs.SessionManager
-	instanceStore     *models.InstanceStore
-	clientAPIKeyStore *models.ClientAPIKeyStore
-	clientPool        *qbittorrent.ClientPool
-	syncManager       *qbittorrent.SyncManager
-	licenseService    *license.Service
-	updateService     *update.Service
+	authService        *auth.Service
+	sessionManager     *scs.SessionManager
+	instanceStore      *models.InstanceStore
+	clientAPIKeyStore  *models.ClientAPIKeyStore
+	clientPool         *qbittorrent.ClientPool
+	syncManager        *qbittorrent.SyncManager
+	licenseService     *license.Service
+	updateService      *update.Service
+	trackerIconService *trackericons.Service
 }
 
 func NewServer(deps *Dependencies) *Server {
@@ -55,17 +57,18 @@ func NewServer(deps *Dependencies) *Server {
 			WriteTimeout:      120 * time.Second,
 			IdleTimeout:       180 * time.Second,
 		},
-		logger:            log.Logger.With().Str("module", "api").Logger(),
-		config:            deps.Config,
-		version:           deps.Version,
-		authService:       deps.AuthService,
-		sessionManager:    deps.SessionManager,
-		instanceStore:     deps.InstanceStore,
-		clientAPIKeyStore: deps.ClientAPIKeyStore,
-		clientPool:        deps.ClientPool,
-		syncManager:       deps.SyncManager,
-		licenseService:    deps.LicenseService,
-		updateService:     deps.UpdateService,
+		logger:             log.Logger.With().Str("module", "api").Logger(),
+		config:             deps.Config,
+		version:            deps.Version,
+		authService:        deps.AuthService,
+		sessionManager:     deps.SessionManager,
+		instanceStore:      deps.InstanceStore,
+		clientAPIKeyStore:  deps.ClientAPIKeyStore,
+		clientPool:         deps.ClientPool,
+		syncManager:        deps.SyncManager,
+		licenseService:     deps.LicenseService,
+		updateService:      deps.UpdateService,
+		trackerIconService: deps.TrackerIconService,
 	}
 
 	// Create HTTP server with configurable timeouts
@@ -165,6 +168,10 @@ func (s *Server) Handler() *chi.Mux {
 	preferencesHandler := handlers.NewPreferencesHandler(s.syncManager)
 	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(s.clientAPIKeyStore, s.instanceStore)
 	versionHandler := handlers.NewVersionHandler(s.updateService)
+	var trackerIconHandler *handlers.TrackerIconHandler
+	if s.trackerIconService != nil {
+		trackerIconHandler = handlers.NewTrackerIconHandler(s.trackerIconService)
+	}
 
 	// Create proxy handler
 	proxyHandler := proxy.NewHandler(s.clientPool, s.clientAPIKeyStore, s.instanceStore)
@@ -197,6 +204,10 @@ func (s *Server) Handler() *chi.Mux {
 		// Protected routes
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.IsAuthenticated(s.authService, s.sessionManager))
+
+			if trackerIconHandler != nil {
+				r.Get("/tracker-icons", trackerIconHandler.GetTrackerIcons)
+			}
 
 			// Auth routes
 			r.Post("/auth/logout", authHandler.Logout)
@@ -245,6 +256,7 @@ func (s *Server) Handler() *chi.Mux {
 
 						r.Route("/{hash}", func(r chi.Router) {
 							// Torrent details
+							r.Get("/export", torrentsHandler.ExportTorrent)
 							r.Get("/properties", torrentsHandler.GetTorrentProperties)
 							r.Get("/trackers", torrentsHandler.GetTorrentTrackers)
 							r.Put("/trackers", torrentsHandler.EditTorrentTracker)
@@ -334,15 +346,16 @@ func (s *Server) Handler() *chi.Mux {
 
 // Dependencies holds all the dependencies needed for the API
 type Dependencies struct {
-	Config            *config.AppConfig
-	Version           string
-	AuthService       *auth.Service
-	SessionManager    *scs.SessionManager
-	InstanceStore     *models.InstanceStore
-	ClientAPIKeyStore *models.ClientAPIKeyStore
-	ClientPool        *qbittorrent.ClientPool
-	SyncManager       *qbittorrent.SyncManager
-	WebHandler        *web.Handler
-	LicenseService    *license.Service
-	UpdateService     *update.Service
+	Config             *config.AppConfig
+	Version            string
+	AuthService        *auth.Service
+	SessionManager     *scs.SessionManager
+	InstanceStore      *models.InstanceStore
+	ClientAPIKeyStore  *models.ClientAPIKeyStore
+	ClientPool         *qbittorrent.ClientPool
+	SyncManager        *qbittorrent.SyncManager
+	WebHandler         *web.Handler
+	LicenseService     *license.Service
+	UpdateService      *update.Service
+	TrackerIconService *trackericons.Service
 }

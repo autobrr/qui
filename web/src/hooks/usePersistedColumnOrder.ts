@@ -3,53 +3,83 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState, useEffect } from "react"
 import type { ColumnOrderState } from "@tanstack/react-table"
+import { useEffect, useState } from "react"
 
 export function usePersistedColumnOrder(
-  defaultOrder: ColumnOrderState = []
+  defaultOrder: ColumnOrderState = [],
+  instanceKey?: string | number
 ) {
-  // Global key shared across all instances
-  const storageKey = "qui-column-order"
+  const baseStorageKey = "qui-column-order"
+  const hasInstanceKey = instanceKey !== undefined && instanceKey !== null
+  const storageKey = hasInstanceKey ? `${baseStorageKey}:${instanceKey}` : baseStorageKey
 
-  // Initialize state from localStorage or default values
-  const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(() => {
+  const mergeWithDefaults = (order: ColumnOrderState): ColumnOrderState => {
+    if (!Array.isArray(order) || order.some(item => typeof item !== "string")) {
+      return [...defaultOrder]
+    }
+
+    const missingColumns = defaultOrder.filter(col => !order.includes(col))
+    if (missingColumns.length === 0) {
+      return [...order]
+    }
+
+    const result = [...order]
+
+    missingColumns.forEach(columnId => {
+      if (columnId === "tracker_icon") {
+        const priorityIndex = result.indexOf("priority")
+        if (priorityIndex !== -1) {
+          result.splice(priorityIndex + 1, 0, columnId)
+          return
+        }
+      }
+
+      const stateIndex = result.indexOf("state")
+      const dlspeedIndex = result.indexOf("dlspeed")
+      if (stateIndex !== -1 && dlspeedIndex !== -1 && columnId !== "tracker_icon") {
+        result.splice(stateIndex + 1, 0, columnId)
+      } else {
+        result.push(columnId)
+      }
+    })
+
+    return result
+  }
+
+  const loadOrder = (): ColumnOrderState => {
     try {
       const stored = localStorage.getItem(storageKey)
       if (stored) {
         const parsed = JSON.parse(stored)
-        // Validate that it's an array of strings
-        if (Array.isArray(parsed) && parsed.every(item => typeof item === "string")) {
-          // Merge missing columns from defaultOrder into parsed order
-          // This handles cases where new columns are added to the app
-          const missingColumns = defaultOrder.filter(col => !parsed.includes(col))
-          if (missingColumns.length > 0) {
-            // Find the position where num_seeds and num_leechs should be inserted
-            // They should come after "state" and before "dlspeed" based on typical column order
-            const stateIndex = parsed.indexOf("state")
-            const dlspeedIndex = parsed.indexOf("dlspeed")
-
-            if (stateIndex !== -1 && dlspeedIndex !== -1) {
-              // Insert missing columns between state and dlspeed
-              const result = [...parsed]
-              result.splice(stateIndex + 1, 0, ...missingColumns)
-              return result
-            } else {
-              // Fallback: append missing columns at the end
-              return [...parsed, ...missingColumns]
-            }
-          }
-          return parsed
-        }
+        return mergeWithDefaults(parsed)
       }
     } catch (error) {
       console.error("Failed to load column order from localStorage:", error)
     }
 
-    return defaultOrder
-  })
+    return [...defaultOrder]
+  }
 
-  // Persist to localStorage whenever state changes
+  const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(() => loadOrder())
+
+  useEffect(() => {
+    if (!hasInstanceKey) {
+      return
+    }
+
+    try {
+      localStorage.removeItem(baseStorageKey)
+    } catch (error) {
+      console.error("Failed to clear legacy column order state:", error)
+    }
+  }, [hasInstanceKey, baseStorageKey])
+
+  useEffect(() => {
+    setColumnOrder(loadOrder())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storageKey, JSON.stringify(defaultOrder)])
+
   useEffect(() => {
     try {
       localStorage.setItem(storageKey, JSON.stringify(columnOrder))

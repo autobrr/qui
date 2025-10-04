@@ -7,13 +7,14 @@ require (
 	github.com/Masterminds/semver/v3 v3.4.0
 	github.com/alexedwards/scs/v2 v2.9.0
 	github.com/autobrr/autobrr v1.66.1
-	github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20250924072341-79e00669bb9b
+	github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20250929195222-590593359982
 	github.com/creativeprojects/go-selfupdate v1.5.1
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-chi/chi/v5 v5.2.3
 	github.com/hashicorp/go-version v1.7.0
 	github.com/keygen-sh/machineid v1.1.1
 	github.com/lithammer/fuzzysearch v1.1.8
+	github.com/mat/besticon/v3 v3.21.0
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.23.2
 	github.com/rs/zerolog v1.34.0
@@ -21,7 +22,11 @@ require (
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/crypto v0.42.0
+	golang.org/x/image v0.31.0
+	golang.org/x/net v0.43.0
+	golang.org/x/sync v0.17.0
 	golang.org/x/term v0.35.0
+	golang.org/x/text v0.29.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.39.0
@@ -69,10 +74,8 @@ require (
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/exp v0.0.0-20250819193227-8b4c13bb791b // indirect
-	golang.org/x/net v0.43.0 // indirect
 	golang.org/x/oauth2 v0.30.0 // indirect
 	golang.org/x/sys v0.36.0 // indirect
-	golang.org/x/text v0.29.0 // indirect
 	golang.org/x/time v0.12.0 // indirect
 	google.golang.org/protobuf v1.36.8 // indirect
 	modernc.org/libc v1.66.8 // indirect

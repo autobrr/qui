@@ -22,10 +22,11 @@ import {
 } from "@/lib/incognito"
 import { formatSpeedWithUnit, type SpeedUnit } from "@/lib/speedUnits"
 import { getStateLabel } from "@/lib/torrent-state-utils"
-import { formatBytes, formatDateTime, formatDuration, getRatioColor } from "@/lib/utils"
-import type { Torrent } from "@/types"
+import { formatBytes, formatDuration, getRatioColor } from "@/lib/utils"
+import type { AppPreferences, Torrent } from "@/types"
 import type { ColumnDef } from "@tanstack/react-table"
-import { ListOrdered } from "lucide-react"
+import { Globe, ListOrdered } from "lucide-react"
+import { memo, useEffect, useState } from "react"
 
 function formatEta(seconds: number): string {
   if (seconds === 8640000) return "∞"
@@ -65,6 +66,71 @@ function calculateMinWidth(text: string, padding: number = 48): number {
   return Math.max(60, Math.ceil(text.length * charWidth) + padding + extraPadding)
 }
 
+interface TrackerIconCellProps {
+  title: string
+  fallback: string
+  src: string | null
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+const TrackerIconCell = memo(({ title, fallback, src }: TrackerIconCellProps) => {
+  const [hasError, setHasError] = useState(false)
+
+  useEffect(() => {
+    setHasError(false)
+  }, [src])
+
+  return (
+    <div className="flex h-full items-center justify-center" title={title}>
+      <div className="flex h-4 w-4 items-center justify-center rounded-sm border border-border/40 bg-muted text-[10px] font-medium uppercase leading-none">
+        {src && !hasError ? (
+          <img
+            src={src}
+            alt=""
+            className="h-full w-full rounded-[2px] object-cover"
+            loading="lazy"
+            draggable={false}
+            onError={() => setHasError(true)}
+          />
+        ) : (
+          <span aria-hidden="true">{fallback}</span>
+        )}
+      </div>
+    </div>
+  )
+})
+
+const getTrackerDisplayMeta = (tracker?: string) => {
+  if (!tracker) {
+    return {
+      host: "",
+      fallback: "#",
+      title: "",
+    }
+  }
+
+  const trimmed = tracker.trim()
+  const fallbackLetter = trimmed ? trimmed.charAt(0).toUpperCase() : "#"
+
+  let host = trimmed
+  try {
+    if (trimmed.includes("://")) {
+      const url = new URL(trimmed)
+      host = url.hostname
+    }
+  } catch {
+    // Keep host as trimmed value if URL parsing fails
+  }
+
+  return {
+    host,
+    fallback: fallbackLetter,
+    title: host,
+  }
+}
+
+TrackerIconCell.displayName = "TrackerIconCell"
+
 export const createColumns = (
   incognitoMode: boolean,
   selectionEnhancers?: {
@@ -79,7 +145,10 @@ export const createColumns = (
     isAllSelected?: boolean
     excludedFromSelectAll?: Set<string>
   },
-  speedUnit: SpeedUnit = "bytes"
+  speedUnit: SpeedUnit = "bytes",
+  trackerIcons?: Record<string, string>,
+  formatTimestamp?: (timestamp: number) => string,
+  instancePreferences?: AppPreferences | null
 ): ColumnDef<Torrent>[] => [
   {
     id: "select",
@@ -250,7 +319,11 @@ export const createColumns = (
       <div className="flex items-center gap-2">
         <Progress value={row.original.progress * 100} className="w-20" />
         <span className="text-xs text-muted-foreground">
-          {Math.round(row.original.progress * 100)}%
+          {row.original.progress >= 0.99 && row.original.progress < 1 ? (
+            (Math.floor(row.original.progress * 1000) / 10).toFixed(1)
+          ) : (
+            Math.round(row.original.progress * 100)
+          )}%
         </span>
       </div>
     ),
@@ -405,7 +478,7 @@ export const createColumns = (
       }
 
       return (
-        <div className="overflow-hidden whitespace-nowrap text-sm">{formatDateTime(addedOn)}</div>
+        <div className="overflow-hidden whitespace-nowrap text-sm">{formatTimestamp ? formatTimestamp(addedOn) : new Date(addedOn * 1000).toLocaleString()}</div>
       )
     },
     size: 200,
@@ -420,10 +493,42 @@ export const createColumns = (
       }
 
       return (
-        <div className="overflow-hidden whitespace-nowrap text-sm">{formatDateTime(completionOn)}</div>
+        <div className="overflow-hidden whitespace-nowrap text-sm">{formatTimestamp ? formatTimestamp(completionOn) : new Date(completionOn * 1000).toLocaleString()}</div>
       )
     },
     size: 200,
+  },
+  {
+    id: "tracker_icon",
+    header: () => (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="flex h-10 w-full items-center justify-center text-muted-foreground">
+            <Globe className="h-4 w-4" aria-hidden="true" />
+            <span className="sr-only">Tracker Icon</span>
+          </div>
+        </TooltipTrigger>
+        <TooltipContent>Tracker Icon</TooltipContent>
+      </Tooltip>
+    ),
+    meta: {
+      headerString: "Tracker Icon",
+    },
+    cell: ({ row }) => {
+      const tracker = incognitoMode ? getLinuxTracker(row.original.hash) : row.original.tracker
+      const { host, fallback, title } = getTrackerDisplayMeta(tracker)
+      const iconSrc = host ? trackerIcons?.[host] ?? null : null
+
+      return (
+        <TrackerIconCell
+          title={title}
+          fallback={fallback}
+          src={iconSrc}
+        />
+      )
+    },
+    size: 48,
+    enableResizing: true,
   },
   {
     accessorKey: "tracker",
@@ -575,7 +680,8 @@ export const createColumns = (
     header: "Ratio Limit",
     cell: ({ row }) => {
       const ratioLimit = row.original.ratio_limit
-      const displayRatioLimit = ratioLimit === -2 ? "∞" : ratioLimit.toFixed(2)
+      const instanceRatioLimit = instancePreferences?.max_ratio
+      const displayRatioLimit = ratioLimit === -2 ? (instanceRatioLimit === -1 ? "∞" : instanceRatioLimit?.toFixed(2) || "∞") :ratioLimit === -1 ? "∞" :ratioLimit.toFixed(2)
 
       return (
         <span
@@ -597,7 +703,7 @@ export const createColumns = (
       }
 
       return (
-        <div className="overflow-hidden whitespace-nowrap text-sm">{formatDateTime(lastSeenComplete)}</div>
+        <div className="overflow-hidden whitespace-nowrap text-sm">{formatTimestamp ? formatTimestamp(lastSeenComplete) : new Date(lastSeenComplete * 1000).toLocaleString()}</div>
       )
     },
     size: 200,
@@ -612,7 +718,7 @@ export const createColumns = (
       }
 
       return (
-        <div className="overflow-hidden whitespace-nowrap text-sm">{formatDateTime(lastActivity)}</div>
+        <div className="overflow-hidden whitespace-nowrap text-sm">{formatTimestamp ? formatTimestamp(lastActivity) : new Date(lastActivity * 1000).toLocaleString()}</div>
       )
     },
     size: 200,
@@ -631,7 +737,9 @@ export const createColumns = (
     accessorKey: "infohash_v1",
     header: "Info Hash v1",
     cell: ({ row }) => {
-      const infoHash = incognitoMode ? getLinuxHash(row.original.infohash_v1) : row.original.infohash_v1
+      const original = row.original.infohash_v1
+      const maskBase = row.original.hash || row.original.infohash_v1 || row.original.infohash_v2 || row.id
+      const infoHash = incognitoMode && original ? getLinuxHash(maskBase || "") : original
       return (
         <div className="overflow-hidden whitespace-nowrap text-sm" title={infoHash}>
           {infoHash || "-"}
@@ -644,7 +752,9 @@ export const createColumns = (
     accessorKey: "infohash_v2",
     header: "Info Hash v2",
     cell: ({ row }) => {
-      const infoHash = incognitoMode ? getLinuxHash(row.original.infohash_v2) : row.original.infohash_v2
+      const original = row.original.infohash_v2
+      const maskBase = row.original.hash || row.original.infohash_v1 || row.original.infohash_v2 || row.id
+      const infoHash = incognitoMode && original ? getLinuxHash(maskBase || "") : original
       return (
         <div className="overflow-hidden whitespace-nowrap text-sm" title={infoHash}>
           {infoHash || "-"}
