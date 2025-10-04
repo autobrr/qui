@@ -23,7 +23,6 @@ import {
   CheckCircle,
   Copy,
   Download,
-  Folder,
   FolderOpen,
   Gauge,
   Pause,
@@ -37,6 +36,7 @@ import {
 } from "lucide-react"
 import { memo, useCallback, useMemo } from "react"
 import { toast } from "sonner"
+import { CategorySubmenu } from "./CategorySubmenu"
 import { QueueSubmenu } from "./QueueSubmenu"
 
 interface TorrentContextMenuProps {
@@ -52,11 +52,14 @@ interface TorrentContextMenuProps {
   onPrepareDelete: (hashes: string[], torrents?: Torrent[]) => void
   onPrepareTags: (action: "add" | "set" | "remove", hashes: string[], torrents?: Torrent[]) => void
   onPrepareCategory: (hashes: string[], torrents?: Torrent[]) => void
+  onPrepareCreateCategory: (hashes: string[], torrents?: Torrent[]) => void
   onPrepareShareLimit: (hashes: string[], torrents?: Torrent[]) => void
   onPrepareSpeedLimits: (hashes: string[], torrents?: Torrent[]) => void
   onPrepareRecheck: (hashes: string[], count?: number) => void
   onPrepareReannounce: (hashes: string[], count?: number) => void
   onPrepareLocation: (hashes: string[], torrents?: Torrent[]) => void
+  availableCategories?: Record<string, unknown>
+  onSetCategory?: (category: string, hashes: string[]) => void
   isPending?: boolean
   onExport?: (hashes: string[], torrents: Torrent[]) => Promise<void> | void
   isExporting?: boolean
@@ -74,12 +77,14 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   onAction,
   onPrepareDelete,
   onPrepareTags,
-  onPrepareCategory,
+  onPrepareCreateCategory,
   onPrepareShareLimit,
   onPrepareSpeedLimits,
   onPrepareRecheck,
   onPrepareReannounce,
   onPrepareLocation,
+  availableCategories = {},
+  onSetCategory,
   isPending = false,
   onExport,
   isExporting = false,
@@ -146,6 +151,16 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
     onAction(action as TorrentAction, hashes)
   }, [onAction, hashes])
 
+  const handleSetCategory = useCallback((category: string) => {
+    if (onSetCategory) {
+      onSetCategory(category, hashes)
+    }
+  }, [onSetCategory, hashes])
+
+  const handleCreateCategory = useCallback(() => {
+    onPrepareCreateCategory(hashes, torrents)
+  }, [onPrepareCreateCategory, hashes, torrents])
+
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
@@ -210,13 +225,15 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
           <Tag className="mr-2 h-4 w-4" />
           Replace Tags {count > 1 ? `(${count})` : ""}
         </ContextMenuItem>
-        <ContextMenuItem
-          onClick={() => onPrepareCategory(hashes, torrents)}
-          disabled={isPending}
-        >
-          <Folder className="mr-2 h-4 w-4" />
-          Set Category {count > 1 ? `(${count})` : ""}
-        </ContextMenuItem>
+        <CategorySubmenu
+          type="context"
+          hashCount={count}
+          availableCategories={availableCategories}
+          onSetCategory={handleSetCategory}
+          onCreateCategory={handleCreateCategory}
+          isPending={isPending}
+          currentCategory={torrent.category}
+        />
         <ContextMenuItem
           onClick={() => onPrepareLocation(hashes, torrents)}
           disabled={isPending}

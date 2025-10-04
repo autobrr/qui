@@ -1529,6 +1529,25 @@ paths:
         '500':
           description: Failed to refresh licenses
 
+  /api/tracker-icons:
+    get:
+      tags:
+        - Tracker Icons
+      summary: List tracker icons
+      description: Retrieve cached tracker favicons as data URLs keyed by tracker hostname
+      responses:
+        '200':
+          description: Cached tracker icons
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+                  description: Base64-encoded PNG data URL for the tracker favicon
+        '500':
+          description: Failed to list tracker icons
+
   /api/version/latest:
     get:
       tags:

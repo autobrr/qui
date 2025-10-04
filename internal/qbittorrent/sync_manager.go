@@ -19,6 +19,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/services/trackericons"
 )
 
 // Global URL cache for domain extraction - shared across all sync managers
@@ -560,6 +561,16 @@ func (sm *SyncManager) GetTorrentTrackers(ctx context.Context, instanceID int, h
 		return nil, fmt.Errorf("failed to get torrent trackers: %w", err)
 	}
 
+	// Queue icon fetches for discovered trackers
+	for _, tracker := range trackers {
+		if tracker.Url != "" {
+			domain := sm.extractDomainFromURL(tracker.Url)
+			if domain != "" && domain != "Unknown" {
+				trackericons.QueueFetch(domain, tracker.Url)
+			}
+		}
+	}
+
 	return trackers, nil
 }
 
@@ -802,12 +813,19 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(client *Client, a
 
 		// Count torrents per tracker domain
 		trackerDomainCounts := make(map[string]map[string]bool) // domain -> set of torrent hashes
-
+		trackerDomainSources := make(map[string]string)         // domain -> example tracker URL for icon fetching
 		for trackerURL, torrentHashes := range mainData.Trackers {
 			// Extract domain from tracker URL
 			domain := sm.extractDomainFromURL(trackerURL)
 			if domain == "" {
 				domain = "Unknown"
+			}
+
+			// Track one tracker URL per domain for icon fetching
+			if domain != "" && domain != "Unknown" {
+				if _, exists := trackerDomainSources[domain]; !exists {
+					trackerDomainSources[domain] = trackerURL
+				}
 			}
 
 			// Initialize domain set if needed
@@ -827,6 +845,11 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(client *Client, a
 					trackerDomainCounts[domain][hash] = true
 				}
 			}
+		}
+
+		// Queue icon fetches for discovered tracker domains
+		for domain, trackerURL := range trackerDomainSources {
+			trackericons.QueueFetch(domain, trackerURL)
 		}
 
 		var domainsToClear []string
@@ -2110,6 +2133,11 @@ func (sm *SyncManager) EditTorrentTracker(ctx context.Context, instanceID int, h
 
 	sm.recordTrackerTransition(client, oldURL, newURL, []string{hash})
 
+	// Queue icon fetch for the new tracker
+	if newDomain := sm.extractDomainFromURL(newURL); newDomain != "" && newDomain != "Unknown" {
+		trackericons.QueueFetch(newDomain, newURL)
+	}
+
 	// Force a sync so cached tracker lists reflect the change immediately
 	sm.syncAfterModification(instanceID, client, "edit_tracker")
 
@@ -2131,6 +2159,17 @@ func (sm *SyncManager) AddTorrentTrackers(ctx context.Context, instanceID int, h
 	// Add the trackers
 	if err := client.AddTrackersCtx(ctx, hash, urls); err != nil {
 		return fmt.Errorf("failed to add trackers: %w", err)
+	}
+
+	// Queue icon fetches for newly added trackers
+	for trackerURL := range strings.SplitSeq(urls, "\n") {
+		trackerURL = strings.TrimSpace(trackerURL)
+		if trackerURL == "" {
+			continue
+		}
+		if domain := sm.extractDomainFromURL(trackerURL); domain != "" && domain != "Unknown" {
+			trackericons.QueueFetch(domain, trackerURL)
+		}
 	}
 
 	sm.syncAfterModification(instanceID, client, "add_trackers")
