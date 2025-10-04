@@ -83,11 +83,14 @@ function useAllInstanceStats(instances: InstanceResponse[]) {
 
 function InstanceCard({
   instance,
+  isAdvancedMetricsOpen,
+  setIsAdvancedMetricsOpen,
 }: {
   instance: InstanceResponse
+  isAdvancedMetricsOpen: boolean
+  setIsAdvancedMetricsOpen: (open: boolean) => void
 }) {
   const [showSpeedLimitDialog, setShowSpeedLimitDialog] = useState(false)
-  const [isAdvancedMetricsOpen, setIsAdvancedMetricsOpen] = useState(false)
 
   // Use shared TorrentResponse cache for optimized performance
   const { data: torrentData, isLoading, error } = useQuery<TorrentResponse>({
@@ -149,16 +152,16 @@ function InstanceCard({
     <>
       <Card className="hover:shadow-lg transition-shadow">
         <CardHeader className={!isFirstLoad ? "gap-0" : ""}>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 sm:gap-3">
             <Link
               to={linkTo}
               params={linkParams}
-              className="flex items-center gap-2 hover:underline truncate max-w-40"
+              className="flex flex-1 items-center gap-2 hover:underline min-w-0"
             >
-              <CardTitle className="text-lg truncate">{instance.name}</CardTitle>
-              <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+              <CardTitle className="text-lg truncate min-w-0 max-w-[80px] sm:max-w-[90px] md:max-w-[90px] lg:max-w-[90px] xl:max-w-[120px] 2xl:max-w-[250px]">{instance.name}</CardTitle>
+              <ExternalLink className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
             </Link>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
               {instance.connected && !isFirstLoad && (
                 <>
                   <Tooltip>
@@ -217,13 +220,13 @@ function InstanceCard({
                   instanceName={instance.name}
                 />
               )}
-              <Badge variant={badgeVariant}>
+              <Badge variant={badgeVariant} className="whitespace-nowrap">
                 {badgeText}
               </Badge>
             </div>
           </div>
-          <CardDescription className={`flex items-center gap-1 ${!isFirstLoad ? "text-xs" : ""}`}>
-            <span className={`${incognitoMode ? "blur-sm select-none" : ""} truncate`} style={incognitoMode ? { filter: "blur(8px)" } : {}} title={displayUrl}>
+          <CardDescription className={`flex items-center gap-1 min-w-0 ${!isFirstLoad ? "text-xs" : ""}`}>
+            <span className={`${incognitoMode ? "blur-sm select-none" : ""} truncate min-w-0`} style={incognitoMode ? { filter: "blur(8px)" } : {}} title={displayUrl}>
               {displayUrl}
             </span>
             <Button
@@ -664,6 +667,7 @@ function QuickActionsDropdown({ statsData }: { statsData: Array<{ instance: Inst
 export function Dashboard() {
   const { instances, isLoading } = useInstances()
   const allInstances = instances || []
+  const [isAdvancedMetricsOpen, setIsAdvancedMetricsOpen] = useState(false)
 
   // Use safe hook that always calls the same number of hooks
   const statsData = useAllInstanceStats(allInstances)
@@ -725,23 +729,14 @@ export function Dashboard() {
           {allInstances.length > 0 && (
             <div>
               <h2 className="text-xl font-semibold mb-4">Instances</h2>
-              {/* Mobile: Vertical stack layout for all instances */}
-              <div className="block sm:hidden">
-                <div className="space-y-4">
-                  {allInstances.map(instance => (
-                    <InstanceCard
-                      key={instance.id}
-                      instance={instance}
-                    />
-                  ))}
-                </div>
-              </div>
-              {/* Desktop: Grid layout */}
-              <div className="hidden sm:grid gap-4 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+              {/* Responsive layout so each instance mounts once */}
+              <div className="flex flex-col gap-4 sm:grid sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
                 {allInstances.map(instance => (
                   <InstanceCard
                     key={instance.id}
                     instance={instance}
+                    isAdvancedMetricsOpen={isAdvancedMetricsOpen}
+                    setIsAdvancedMetricsOpen={setIsAdvancedMetricsOpen}
                   />
                 ))}
               </div>
