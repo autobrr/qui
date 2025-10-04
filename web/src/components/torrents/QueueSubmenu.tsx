@@ -39,7 +39,7 @@ export const QueueSubmenu = memo(function QueueSubmenu({
   return (
     <Sub>
       <SubTrigger disabled={isPending}>
-        <List className="mr-2 h-4 w-4" />
+        <List className="mr-4 h-4 w-4" />
         Queue
       </SubTrigger>
       <SubContent>

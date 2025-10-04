@@ -5,7 +5,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Download, Upload } from "lucide-react"
-import { formatSpeed } from "@/lib/utils"
+import { useSpeedUnits, formatSpeedWithUnit } from "@/lib/speedUnits"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 
 interface DashboardSpeedLimitsProps {
@@ -20,8 +20,9 @@ export function DashboardSpeedLimits({
   currentUploadSpeed,
 }: DashboardSpeedLimitsProps) {
   const { preferences } = useInstancePreferences(instanceId)
+  const [speedUnit] = useSpeedUnits()
 
-  const formatLimit = (limit: number) => limit === 0 ? "Unlimited" : formatSpeed(limit * 1024) // API returns KB/s, formatSpeed expects B/s
+  const formatLimit = (limit: number) => limit === 0 ? "Unlimited" : formatSpeedWithUnit(limit * 1024, speedUnit) // API returns KB/s, formatSpeedWithUnit expects B/s
 
   return (
     <Card>
@@ -41,7 +42,7 @@ export function DashboardSpeedLimits({
               {formatLimit(preferences?.dl_limit || 0)}
             </p>
             <p className="text-xs text-muted-foreground">
-              Current: {formatSpeed(currentDownloadSpeed)}
+              Current: {formatSpeedWithUnit(currentDownloadSpeed, speedUnit)}
             </p>
           </div>
           <div className="space-y-1">
@@ -53,7 +54,7 @@ export function DashboardSpeedLimits({
               {formatLimit(preferences?.up_limit || 0)}
             </p>
             <p className="text-xs text-muted-foreground">
-              Current: {formatSpeed(currentUploadSpeed)}
+              Current: {formatSpeedWithUnit(currentUploadSpeed, speedUnit)}
             </p>
           </div>
         </div>

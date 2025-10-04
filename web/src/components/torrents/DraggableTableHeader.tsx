@@ -40,7 +40,7 @@ export function DraggableTableHeader<T>({ header }: DraggableTableHeaderProps<T>
     <div
       ref={setNodeRef}
       style={style}
-      className="group"
+      className="group overflow-hidden"
     >
       <div
         className={`px-3 h-10 text-left text-sm font-medium text-muted-foreground flex items-center ${
@@ -54,9 +54,9 @@ export function DraggableTableHeader<T>({ header }: DraggableTableHeaderProps<T>
       >
         {/* Header content */}
         <div
-          className={`flex items-center gap-1 flex-1 ${column.id === "select" ? "justify-center" : ""}`}
+          className={`flex items-center gap-1 flex-1 min-w-0 ${column.id === "select" ? "justify-center" : ""}`}
         >
-          <span className={`truncate ${column.id === "select" ? "flex items-center" : ""}`}>
+          <span className={`overflow-hidden whitespace-nowrap ${column.id === "select" ? "flex items-center" : ""}`}>
             {header.isPlaceholder? null: flexRender(
               column.columnDef.header,
               header.getContext()

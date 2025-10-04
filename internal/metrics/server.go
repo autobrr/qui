@@ -1,26 +1,44 @@
 // Copyright (c) 2025, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-package http
+package metrics
 
 import (
+	"context"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog/log"
-
-	"github.com/autobrr/qui/internal/metrics"
 )
 
-type MetricsServer struct {
-	server  *http.Server
-	manager *metrics.MetricsManager
+type Server struct {
+	server         *http.Server
+	basicAuthUsers map[string]string
+	manager        *MetricsManager
 }
 
-func NewMetricsServer(manager *metrics.MetricsManager, host string, port int, basicAuthUsers map[string]string) *MetricsServer {
+func NewMetricsServer(manager *MetricsManager, host string, port int, basicAuthUsersConfig string) *Server {
+	s := &Server{
+		basicAuthUsers: make(map[string]string),
+		manager:        manager,
+	}
+
+	// Parse basic auth users
+	if basicAuthUsersConfig != "" {
+		for cred := range strings.SplitSeq(basicAuthUsersConfig, ",") {
+			parts := strings.Split(strings.TrimSpace(cred), ":")
+			if len(parts) == 2 {
+				s.basicAuthUsers[parts[0]] = parts[1]
+			} else {
+				log.Warn().Msgf("Invalid metrics basic auth credentials: %s", cred)
+			}
+		}
+	}
+
 	router := chi.NewRouter()
 
 	// Add standard middleware
@@ -29,8 +47,8 @@ func NewMetricsServer(manager *metrics.MetricsManager, host string, port int, ba
 	router.Use(middleware.Recoverer)
 
 	// Add basic auth if configured
-	if len(basicAuthUsers) > 0 {
-		router.Use(BasicAuth("metrics", basicAuthUsers))
+	if len(s.basicAuthUsers) > 0 {
+		router.Use(BasicAuth("metrics", s.basicAuthUsers))
 	}
 
 	// Create metrics handler
@@ -47,18 +65,15 @@ func NewMetricsServer(manager *metrics.MetricsManager, host string, port int, ba
 	})
 
 	addr := fmt.Sprintf("%s:%d", host, port)
-	server := &http.Server{
+	s.server = &http.Server{
 		Addr:    addr,
 		Handler: router,
 	}
 
-	return &MetricsServer{
-		server:  server,
-		manager: manager,
-	}
+	return s
 }
 
-func (s *MetricsServer) Start() error {
+func (s *Server) ListenAndServe() error {
 	log.Info().
 		Str("address", s.server.Addr).
 		Msg("Starting Prometheus metrics server")
@@ -66,8 +81,12 @@ func (s *MetricsServer) Start() error {
 	return s.server.ListenAndServe()
 }
 
-func (s *MetricsServer) Stop() error {
+func (s *Server) Stop() error {
 	return s.server.Close()
+}
+
+func (s *Server) Shutdown(ctx context.Context) error {
+	return s.server.Shutdown(ctx)
 }
 
 // BasicAuth middleware for metrics endpoint (matches autobrr implementation)

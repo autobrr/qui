@@ -10,11 +10,15 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/url"
 	"strings"
+	"time"
+
+	"github.com/autobrr/qui/internal/domain"
 )
 
 var ErrInstanceNotFound = errors.New("instance not found")
@@ -27,6 +31,84 @@ type Instance struct {
 	PasswordEncrypted      string  `json:"-"`
 	BasicUsername          *string `json:"basic_username,omitempty"`
 	BasicPasswordEncrypted *string `json:"-"`
+	TLSSkipVerify          bool    `json:"tlsSkipVerify"`
+}
+
+func (i Instance) MarshalJSON() ([]byte, error) {
+	// Create the JSON structure with redacted password fields
+	return json.Marshal(&struct {
+		ID              int        `json:"id"`
+		Name            string     `json:"name"`
+		Host            string     `json:"host"`
+		Username        string     `json:"username"`
+		Password        string     `json:"password,omitempty"`
+		BasicUsername   *string    `json:"basic_username,omitempty"`
+		BasicPassword   string     `json:"basic_password,omitempty"`
+		TLSSkipVerify   bool       `json:"tlsSkipVerify"`
+		IsActive        bool       `json:"is_active"`
+		LastConnectedAt *time.Time `json:"last_connected_at,omitempty"`
+		CreatedAt       time.Time  `json:"created_at"`
+		UpdatedAt       time.Time  `json:"updated_at"`
+	}{
+		ID:            i.ID,
+		Name:          i.Name,
+		Host:          i.Host,
+		Username:      i.Username,
+		Password:      domain.RedactString(i.PasswordEncrypted),
+		BasicUsername: i.BasicUsername,
+		BasicPassword: func() string {
+			if i.BasicPasswordEncrypted != nil {
+				return domain.RedactString(*i.BasicPasswordEncrypted)
+			}
+			return ""
+		}(),
+		TLSSkipVerify: i.TLSSkipVerify,
+	})
+}
+
+func (i *Instance) UnmarshalJSON(data []byte) error {
+	// Temporary struct for unmarshaling
+	var temp struct {
+		ID              int        `json:"id"`
+		Name            string     `json:"name"`
+		Host            string     `json:"host"`
+		Username        string     `json:"username"`
+		Password        string     `json:"password,omitempty"`
+		BasicUsername   *string    `json:"basic_username,omitempty"`
+		BasicPassword   string     `json:"basic_password,omitempty"`
+		TLSSkipVerify   *bool      `json:"tlsSkipVerify,omitempty"`
+		IsActive        bool       `json:"is_active"`
+		LastConnectedAt *time.Time `json:"last_connected_at,omitempty"`
+		CreatedAt       time.Time  `json:"created_at"`
+		UpdatedAt       time.Time  `json:"updated_at"`
+	}
+
+	if err := json.Unmarshal(data, &temp); err != nil {
+		return err
+	}
+
+	// Copy non-secret fields
+	i.ID = temp.ID
+	i.Name = temp.Name
+	i.Host = temp.Host
+	i.Username = temp.Username
+	i.BasicUsername = temp.BasicUsername
+
+	if temp.TLSSkipVerify != nil {
+		i.TLSSkipVerify = *temp.TLSSkipVerify
+	}
+
+	// Handle password - don't overwrite if redacted
+	if temp.Password != "" && !domain.IsRedactedString(temp.Password) {
+		i.PasswordEncrypted = temp.Password
+	}
+
+	// Handle basic password - don't overwrite if redacted
+	if temp.BasicPassword != "" && !domain.IsRedactedString(temp.BasicPassword) {
+		i.BasicPasswordEncrypted = &temp.BasicPassword
+	}
+
+	return nil
 }
 
 type InstanceStore struct {
@@ -131,7 +213,7 @@ func validateAndNormalizeHost(rawHost string) (string, error) {
 	return u.String(), nil
 }
 
-func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, password string, basicUsername, basicPassword *string) (*Instance, error) {
+func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, password string, basicUsername, basicPassword *string, tlsSkipVerify bool) (*Instance, error) {
 	// Validate and normalize the host
 	normalizedHost, err := validateAndNormalizeHost(rawHost)
 	if err != nil {
@@ -154,13 +236,13 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 	}
 
 	query := `
-		INSERT INTO instances (name, host, username, password_encrypted, basic_username, basic_password_encrypted) 
-		VALUES (?, ?, ?, ?, ?, ?)
-		RETURNING id, name, host, username, password_encrypted, basic_username, basic_password_encrypted
+		INSERT INTO instances (name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify) 
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+		RETURNING id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify
 	`
 
 	instance := &Instance{}
-	err = s.db.QueryRowContext(ctx, query, name, normalizedHost, username, encryptedPassword, basicUsername, encryptedBasicPassword).Scan(
+	err = s.db.QueryRowContext(ctx, query, name, normalizedHost, username, encryptedPassword, basicUsername, encryptedBasicPassword, tlsSkipVerify).Scan(
 		&instance.ID,
 		&instance.Name,
 		&instance.Host,
@@ -168,6 +250,7 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 		&instance.PasswordEncrypted,
 		&instance.BasicUsername,
 		&instance.BasicPasswordEncrypted,
+		&instance.TLSSkipVerify,
 	)
 
 	if err != nil {
@@ -179,7 +262,7 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 
 func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 	query := `
-		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted 
+		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify 
 		FROM instances 
 		WHERE id = ?
 	`
@@ -193,6 +276,7 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 		&instance.PasswordEncrypted,
 		&instance.BasicUsername,
 		&instance.BasicPasswordEncrypted,
+		&instance.TLSSkipVerify,
 	)
 
 	if err != nil {
@@ -207,7 +291,7 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 
 func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 	query := `
-		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted 
+		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify 
 		FROM instances
 		ORDER BY name ASC
 	`
@@ -229,6 +313,7 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 			&instance.PasswordEncrypted,
 			&instance.BasicUsername,
 			&instance.BasicPasswordEncrypted,
+			&instance.TLSSkipVerify,
 		)
 		if err != nil {
 			return nil, err
@@ -239,7 +324,7 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 	return instances, rows.Err()
 }
 
-func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, username, password string, basicUsername, basicPassword *string) (*Instance, error) {
+func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, username, password string, basicUsername, basicPassword *string, tlsSkipVerify *bool) (*Instance, error) {
 	// Validate and normalize the host
 	normalizedHost, err := validateAndNormalizeHost(rawHost)
 	if err != nil {
@@ -250,7 +335,7 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 	query := `UPDATE instances SET name = ?, host = ?, username = ?, basic_username = ?`
 	args := []any{name, normalizedHost, username, basicUsername}
 
-	// Only update password if provided
+	// Handle password update - encrypt if provided
 	if password != "" {
 		encryptedPassword, err := s.encrypt(password)
 		if err != nil {
@@ -260,17 +345,25 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 		args = append(args, encryptedPassword)
 	}
 
-	// Only update basic password if provided
-	if basicPassword != nil && *basicPassword != "" {
-		encryptedBasicPassword, err := s.encrypt(*basicPassword)
-		if err != nil {
-			return nil, fmt.Errorf("failed to encrypt basic auth password: %w", err)
+	// Handle basic password update
+	if basicPassword != nil {
+		if *basicPassword == "" {
+			// Empty string explicitly provided - clear the basic password
+			query += ", basic_password_encrypted = NULL"
+		} else {
+			// Basic password provided - encrypt and update
+			encryptedBasicPassword, err := s.encrypt(*basicPassword)
+			if err != nil {
+				return nil, fmt.Errorf("failed to encrypt basic auth password: %w", err)
+			}
+			query += ", basic_password_encrypted = ?"
+			args = append(args, encryptedBasicPassword)
 		}
-		query += ", basic_password_encrypted = ?"
-		args = append(args, encryptedBasicPassword)
-	} else if basicPassword != nil && *basicPassword == "" {
-		// Clear basic password if empty string provided
-		query += ", basic_password_encrypted = NULL"
+	}
+
+	if tlsSkipVerify != nil {
+		query += ", tls_skip_verify = ?"
+		args = append(args, *tlsSkipVerify)
 	}
 
 	query += " WHERE id = ?"

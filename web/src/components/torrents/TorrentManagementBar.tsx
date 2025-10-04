@@ -35,14 +35,36 @@ import {
 } from "@/components/ui/tooltip"
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
 import { api } from "@/lib/api"
-import { getCommonCategory, getCommonTags } from "@/lib/torrent-utils"
+import { getCommonCategory, getCommonSavePath, getCommonTags } from "@/lib/torrent-utils"
 import type { Torrent } from "@/types"
 import { useQuery } from "@tanstack/react-query"
-import { ArrowDown, ArrowUp, ChevronsDown, ChevronsUp, Folder, List, LoaderCircle, Pause, Play, Radio, Settings2, Share2, Tag, Trash2 } from "lucide-react"
-import type { ChangeEvent } from "react"
-import { memo, useCallback } from "react"
-import { AddTagsDialog, SetCategoryDialog, SetTagsDialog } from "./TorrentDialogs"
-import { ShareLimitSubmenu, SpeedLimitsSubmenu } from "./TorrentLimitSubmenus"
+import {
+  ArrowDown,
+  ArrowUp,
+  CheckCircle,
+  ChevronsDown,
+  ChevronsUp,
+  Folder,
+  FolderOpen, Gauge,
+  List,
+  Pause,
+  Play,
+  Radio,
+  Settings2, Share2,
+  Sprout,
+  Tag,
+  Trash2
+} from "lucide-react"
+import { type ChangeEvent } from "react"
+import { memo, useCallback, useMemo } from "react"
+import {
+  AddTagsDialog,
+  SetCategoryDialog,
+  SetLocationDialog,
+  SetTagsDialog,
+  ShareLimitDialog,
+  SpeedLimitsDialog
+} from "./TorrentDialogs"
 
 interface TorrentManagementBarProps {
   instanceId?: number
@@ -100,6 +122,12 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     setShowSetTagsDialog,
     showCategoryDialog,
     setShowCategoryDialog,
+    showShareLimitDialog,
+    setShowShareLimitDialog,
+    showSpeedLimitDialog,
+    setShowSpeedLimitDialog,
+    showLocationDialog,
+    setShowLocationDialog,
     showRecheckDialog,
     setShowRecheckDialog,
     showReannounceDialog,
@@ -110,6 +138,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     handleAddTags,
     handleSetTags,
     handleSetCategory,
+    handleSetLocation,
     handleSetShareLimit,
     handleSetSpeedLimits,
     handleRecheck,
@@ -117,6 +146,9 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     prepareDeleteAction,
     prepareTagsAction,
     prepareCategoryAction,
+    prepareShareLimitAction,
+    prepareSpeedLimitAction,
+    prepareLocationAction,
     prepareRecheckAction,
     prepareReannounceAction,
   } = useTorrentActions({
@@ -124,16 +156,41 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     onActionComplete: onComplete,
   })
 
+  const selectionCount = totalSelectionCount || selectedHashes.length
+
   // Wrapper functions to adapt hook handlers to component needs
+  const actionHashes = useMemo(() => (isAllSelected ? [] : selectedHashes), [isAllSelected, selectedHashes])
+  const actionOptions = useMemo(() => ({
+    selectAll: isAllSelected,
+    filters: isAllSelected ? filters : undefined,
+    search: isAllSelected ? search : undefined,
+    excludeHashes: isAllSelected ? excludeHashes : undefined,
+    clientHashes: selectedHashes,
+    clientCount: selectionCount,
+  }), [isAllSelected, filters, search, excludeHashes, selectedHashes, selectionCount])
+
+  const clientMeta = useMemo(() => ({
+    clientHashes: selectedHashes,
+    totalSelected: selectionCount,
+  }), [selectedHashes, selectionCount])
+
+  const triggerAction = useCallback((action: (typeof TORRENT_ACTIONS)[keyof typeof TORRENT_ACTIONS], extra?: Parameters<typeof handleAction>[2]) => {
+    handleAction(action, actionHashes, {
+      ...actionOptions,
+      ...extra,
+    })
+  }, [handleAction, actionHashes, actionOptions])
+
   const handleDeleteWrapper = useCallback(() => {
     handleDelete(
       selectedHashes,
       isAllSelected,
       filters,
       search,
-      excludeHashes
+      excludeHashes,
+      clientMeta
     )
-  }, [handleDelete, selectedHashes, isAllSelected, filters, search, excludeHashes])
+  }, [handleDelete, selectedHashes, isAllSelected, filters, search, excludeHashes, clientMeta])
 
   const handleAddTagsWrapper = useCallback((tags: string[]) => {
     handleAddTags(
@@ -142,9 +199,10 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
       isAllSelected,
       filters,
       search,
-      excludeHashes
+      excludeHashes,
+      clientMeta
     )
-  }, [handleAddTags, selectedHashes, isAllSelected, filters, search, excludeHashes])
+  }, [handleAddTags, selectedHashes, isAllSelected, filters, search, excludeHashes, clientMeta])
 
   const handleSetTagsWrapper = useCallback((tags: string[]) => {
     handleSetTags(
@@ -153,9 +211,10 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
       isAllSelected,
       filters,
       search,
-      excludeHashes
+      excludeHashes,
+      clientMeta
     )
-  }, [handleSetTags, selectedHashes, isAllSelected, filters, search, excludeHashes])
+  }, [handleSetTags, selectedHashes, isAllSelected, filters, search, excludeHashes, clientMeta])
 
   const handleSetCategoryWrapper = useCallback((category: string) => {
     handleSetCategory(
@@ -164,9 +223,22 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
       isAllSelected,
       filters,
       search,
-      excludeHashes
+      excludeHashes,
+      clientMeta
     )
-  }, [handleSetCategory, selectedHashes, isAllSelected, filters, search, excludeHashes])
+  }, [handleSetCategory, selectedHashes, isAllSelected, filters, search, excludeHashes, clientMeta])
+
+  const handleSetLocationWrapper = useCallback((location: string) => {
+    handleSetLocation(
+      location,
+      selectedHashes,
+      isAllSelected,
+      filters,
+      search,
+      excludeHashes,
+      clientMeta
+    )
+  }, [handleSetLocation, selectedHashes, isAllSelected, filters, search, excludeHashes, clientMeta])
 
   const handleRecheckWrapper = useCallback(() => {
     handleRecheck(
@@ -174,9 +246,10 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
       isAllSelected,
       filters,
       search,
-      excludeHashes
+      excludeHashes,
+      clientMeta
     )
-  }, [handleRecheck, selectedHashes, isAllSelected, filters, search, excludeHashes])
+  }, [handleRecheck, selectedHashes, isAllSelected, filters, search, excludeHashes, clientMeta])
 
   const handleReannounceWrapper = useCallback(() => {
     handleReannounce(
@@ -184,27 +257,28 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
       isAllSelected,
       filters,
       search,
-      excludeHashes
+      excludeHashes,
+      clientMeta
     )
-  }, [handleReannounce, selectedHashes, isAllSelected, filters, search, excludeHashes])
+  }, [handleReannounce, selectedHashes, isAllSelected, filters, search, excludeHashes, clientMeta])
 
   const handleRecheckClick = useCallback(() => {
     const count = totalSelectionCount || selectedHashes.length
     if (count > 1) {
       prepareRecheckAction(selectedHashes, count)
     } else {
-      handleAction(TORRENT_ACTIONS.RECHECK, selectedHashes)
+      triggerAction(TORRENT_ACTIONS.RECHECK)
     }
-  }, [totalSelectionCount, selectedHashes, prepareRecheckAction, handleAction])
+  }, [totalSelectionCount, selectedHashes, prepareRecheckAction, triggerAction])
 
   const handleReannounceClick = useCallback(() => {
     const count = totalSelectionCount || selectedHashes.length
     if (count > 1) {
       prepareReannounceAction(selectedHashes, count)
     } else {
-      handleAction(TORRENT_ACTIONS.REANNOUNCE, selectedHashes)
+      triggerAction(TORRENT_ACTIONS.REANNOUNCE)
     }
-  }, [totalSelectionCount, selectedHashes, prepareReannounceAction, handleAction])
+  }, [totalSelectionCount, selectedHashes, prepareReannounceAction, triggerAction])
 
   const handleQueueAction = useCallback((action: "topPriority" | "increasePriority" | "decreasePriority" | "bottomPriority") => {
     const actionMap = {
@@ -213,18 +287,36 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
       decreasePriority: TORRENT_ACTIONS.DECREASE_PRIORITY,
       bottomPriority: TORRENT_ACTIONS.BOTTOM_PRIORITY,
     }
-    handleAction(actionMap[action], selectedHashes)
-  }, [handleAction, selectedHashes])
+    triggerAction(actionMap[action])
+  }, [triggerAction])
 
   const handleSetShareLimitWrapper = useCallback((ratioLimit: number, seedingTimeLimit: number, inactiveSeedingTimeLimit: number) => {
-    handleSetShareLimit(ratioLimit, seedingTimeLimit, inactiveSeedingTimeLimit, selectedHashes)
-  }, [handleSetShareLimit, selectedHashes])
+    handleSetShareLimit(
+      ratioLimit,
+      seedingTimeLimit,
+      inactiveSeedingTimeLimit,
+      selectedHashes,
+      isAllSelected,
+      filters,
+      search,
+      excludeHashes,
+      clientMeta
+    )
+  }, [handleSetShareLimit, selectedHashes, isAllSelected, filters, search, excludeHashes, clientMeta])
 
   const handleSetSpeedLimitsWrapper = useCallback((uploadLimit: number, downloadLimit: number) => {
-    handleSetSpeedLimits(uploadLimit, downloadLimit, selectedHashes)
-  }, [handleSetSpeedLimits, selectedHashes])
+    handleSetSpeedLimits(
+      uploadLimit,
+      downloadLimit,
+      selectedHashes,
+      isAllSelected,
+      filters,
+      search,
+      excludeHashes,
+      clientMeta
+    )
+  }, [handleSetSpeedLimits, selectedHashes, isAllSelected, filters, search, excludeHashes, clientMeta])
 
-  const selectionCount = totalSelectionCount || selectedHashes.length
   const hasSelection = selectionCount > 0 || isAllSelected
   const isDisabled = !instanceId || !hasSelection
 
@@ -232,7 +324,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   return (
     <>
       <div
-        className="flex items-center h-9 dark:bg-input/30 border border-input rounded-md px-3 py-2 gap-3 shadow-xs transition-all duration-200"
+        className="flex items-center h-9 dark:bg-input/30 border border-input rounded-md mr-2 px-3 py-2 gap-3 shadow-xs transition-all duration-200"
         role="toolbar"
         aria-label={`${selectionCount} torrent${selectionCount !== 1 ? "s" : ""} selected - Bulk actions available`}
       >
@@ -249,7 +341,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => handleAction(TORRENT_ACTIONS.RESUME, selectedHashes)}
+                onClick={() => triggerAction(TORRENT_ACTIONS.RESUME)}
                 disabled={isPending || isDisabled}
               >
                 <Play className="h-4 w-4" />
@@ -263,7 +355,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => handleAction(TORRENT_ACTIONS.PAUSE, selectedHashes)}
+                onClick={() => triggerAction(TORRENT_ACTIONS.PAUSE)}
                 disabled={isPending || isDisabled}
               >
                 <Pause className="h-4 w-4" />
@@ -280,7 +372,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
                 onClick={handleRecheckClick}
                 disabled={isPending || isDisabled}
               >
-                <LoaderCircle className="h-4 w-4" />
+                <CheckCircle className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>Force Recheck</TooltipContent>
@@ -348,6 +440,20 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
             <TooltipContent>Set Category</TooltipContent>
           </Tooltip>
 
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => prepareLocationAction(selectedHashes, selectedTorrents)}
+                disabled={isPending || isDisabled}
+              >
+                <FolderOpen className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Set Location</TooltipContent>
+          </Tooltip>
+
           {/* Queue Priority */}
           <DropdownMenu>
             <Tooltip>
@@ -412,19 +518,21 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
               </TooltipTrigger>
               <TooltipContent>Limits</TooltipContent>
             </Tooltip>
-            <DropdownMenuContent align="center" className="w-72">
-              <ShareLimitSubmenu
-                type="dropdown"
-                hashCount={selectionCount}
-                onConfirm={handleSetShareLimitWrapper}
-                isPending={isPending}
-              />
-              <SpeedLimitsSubmenu
-                type="dropdown"
-                hashCount={selectionCount}
-                onConfirm={handleSetSpeedLimitsWrapper}
-                isPending={isPending}
-              />
+            <DropdownMenuContent>
+              <DropdownMenuItem
+                onClick={() => prepareShareLimitAction(selectedHashes, selectedTorrents)}
+                disabled={isPending || isDisabled}
+              >
+                <Sprout className="mr-2 h-4 w-4" />
+                Set Share Limit {selectionCount > 1 ? `(${selectionCount})` : ""}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => prepareSpeedLimitAction(selectedHashes, selectedTorrents)}
+                disabled={isPending || isDisabled}
+              >
+                <Gauge className="mr-2 h-4 w-4" />
+                Set Speed Limit {selectionCount > 1 ? `(${selectionCount})` : ""}
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
@@ -440,7 +548,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => handleAction(TORRENT_ACTIONS.TOGGLE_AUTO_TMM, selectedHashes, { enable: !allEnabled })}
+                    onClick={() => triggerAction(TORRENT_ACTIONS.TOGGLE_AUTO_TMM, { enable: !allEnabled })}
                     disabled={isPending || isDisabled}
                   >
                     <Settings2 className="h-4 w-4" />
@@ -533,6 +641,34 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
         onConfirm={handleSetCategoryWrapper}
         isPending={isPending}
         initialCategory={getCommonCategory(selectedTorrents)}
+      />
+
+      {/* Set Location Dialog */}
+      <SetLocationDialog
+        open={showLocationDialog}
+        onOpenChange={setShowLocationDialog}
+        hashCount={totalSelectionCount || selectedHashes.length}
+        onConfirm={handleSetLocationWrapper}
+        isPending={isPending}
+        initialLocation={getCommonSavePath(selectedTorrents)}
+      />
+
+      <ShareLimitDialog
+        open={showShareLimitDialog}
+        onOpenChange={setShowShareLimitDialog}
+        hashCount={totalSelectionCount || selectedHashes.length}
+        torrents={selectedTorrents}
+        onConfirm={handleSetShareLimitWrapper}
+        isPending={isPending}
+      />
+
+      <SpeedLimitsDialog
+        open={showSpeedLimitDialog}
+        onOpenChange={setShowSpeedLimitDialog}
+        hashCount={totalSelectionCount || selectedHashes.length}
+        torrents={selectedTorrents}
+        onConfirm={handleSetSpeedLimitsWrapper}
+        isPending={isPending}
       />
 
       {/* Force Recheck Confirmation Dialog */}

@@ -3,10 +3,10 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { useNavigate } from "@tanstack/react-router"
 import { api } from "@/lib/api"
 import type { User } from "@/types"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useNavigate } from "@tanstack/react-router"
 
 export function useAuth() {
   const navigate = useNavigate()
@@ -20,8 +20,8 @@ export function useAuth() {
   })
 
   const loginMutation = useMutation({
-    mutationFn: ({ username, password }: { username: string; password: string }) =>
-      api.login(username, password),
+    mutationFn: ({ username, password, rememberMe = false }: { username: string; password: string; rememberMe?: boolean }) =>
+      api.login(username, password, rememberMe),
     onSuccess: (data) => {
       queryClient.setQueryData(["auth", "user"], data.user)
       navigate({ to: "/dashboard" })
