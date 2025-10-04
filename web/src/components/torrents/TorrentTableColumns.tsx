@@ -26,7 +26,7 @@ import { formatBytes, formatDuration, getRatioColor } from "@/lib/utils"
 import type { AppPreferences, Torrent } from "@/types"
 import type { ColumnDef } from "@tanstack/react-table"
 import { Globe, ListOrdered } from "lucide-react"
-import { memo, useEffect, useMemo, useState } from "react"
+import { memo, useEffect, useState } from "react"
 
 function formatEta(seconds: number): string {
   if (seconds === 8640000) return "∞"
@@ -67,41 +67,14 @@ function calculateMinWidth(text: string, padding: number = 48): number {
 }
 
 interface TrackerIconCellProps {
-  tracker: string | undefined
-  trackerIcons?: Record<string, string>
+  title: string
+  fallback: string
+  src: string | null
 }
 
 // eslint-disable-next-line react-refresh/only-export-components
-const TrackerIconCell = memo(({ tracker, trackerIcons }: TrackerIconCellProps) => {
+const TrackerIconCell = memo(({ title, fallback, src }: TrackerIconCellProps) => {
   const [hasError, setHasError] = useState(false)
-
-  const { src, title, fallback } = useMemo(() => {
-    if (!tracker) {
-      return {
-        src: null as string | null,
-        title: "",
-        fallback: "#",
-      }
-    }
-
-    const trimmed = tracker.trim()
-    const fallbackLetter = trimmed ? trimmed.charAt(0).toUpperCase() : "#"
-
-    let host = trimmed
-    try {
-      if (trimmed.includes("://")) {
-        const url = new URL(trimmed)
-        host = url.hostname
-      }
-    } catch {
-      // Keep host as trimmed value if URL parsing fails
-    }
-
-    // Look up icon from cached tracker icons
-    const iconSrc = trackerIcons?.[host] ?? null
-
-    return { src: iconSrc, title: host, fallback: fallbackLetter }
-  }, [tracker, trackerIcons])
 
   useEffect(() => {
     setHasError(false)
@@ -126,6 +99,35 @@ const TrackerIconCell = memo(({ tracker, trackerIcons }: TrackerIconCellProps) =
     </div>
   )
 })
+
+const getTrackerDisplayMeta = (tracker?: string) => {
+  if (!tracker) {
+    return {
+      host: "",
+      fallback: "#",
+      title: "",
+    }
+  }
+
+  const trimmed = tracker.trim()
+  const fallbackLetter = trimmed ? trimmed.charAt(0).toUpperCase() : "#"
+
+  let host = trimmed
+  try {
+    if (trimmed.includes("://")) {
+      const url = new URL(trimmed)
+      host = url.hostname
+    }
+  } catch {
+    // Keep host as trimmed value if URL parsing fails
+  }
+
+  return {
+    host,
+    fallback: fallbackLetter,
+    title: host,
+  }
+}
 
 TrackerIconCell.displayName = "TrackerIconCell"
 
@@ -514,10 +516,14 @@ export const createColumns = (
     },
     cell: ({ row }) => {
       const tracker = incognitoMode ? getLinuxTracker(row.original.hash) : row.original.tracker
+      const { host, fallback, title } = getTrackerDisplayMeta(tracker)
+      const iconSrc = host ? trackerIcons?.[host] ?? null : null
+
       return (
         <TrackerIconCell
-          tracker={tracker}
-          trackerIcons={trackerIcons}
+          title={title}
+          fallback={fallback}
+          src={iconSrc}
         />
       )
     },
