@@ -431,5 +431,6 @@ export interface QBittorrentBuildInfo {
 
 export interface QBittorrentAppInfo {
   version: string
+  webAPIVersion?: string
   buildInfo?: QBittorrentBuildInfo
 }

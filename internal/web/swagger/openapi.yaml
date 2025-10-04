@@ -1737,6 +1737,10 @@ components:
           type: string
           description: qBittorrent version
           example: "4.6.0"
+        webAPIVersion:
+          type: string
+          description: qBittorrent Web API version
+          example: "2.11.4"
         buildInfo:
           $ref: '#/components/schemas/QBittorrentBuildInfo'
 

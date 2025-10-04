@@ -25,6 +25,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useInstances } from "@/hooks/useInstances"
 import { usePersistedAccordionState } from "@/hooks/usePersistedAccordionState"
+import { useQBittorrentAppInfo } from "@/hooks/useQBittorrentAppInfo"
 import { api } from "@/lib/api"
 import { formatBytes, getRatioColor } from "@/lib/utils"
 import type { InstanceResponse, ServerState, TorrentCounts, TorrentResponse, TorrentStats } from "@/types"
@@ -110,8 +111,14 @@ function InstanceCard({
   })
 
   const { enabled: altSpeedEnabled, toggle: toggleAltSpeed, isToggling } = useAlternativeSpeedLimits(instance.id)
+  const {
+    data: qbittorrentAppInfo,
+    versionInfo: qbittorrentVersionInfo,
+  } = useQBittorrentAppInfo(instance.id)
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const [speedUnit] = useSpeedUnits()
+  const appVersion = qbittorrentAppInfo?.version || qbittorrentVersionInfo?.appVersion || ""
+  const webAPIVersion = qbittorrentAppInfo?.webAPIVersion || qbittorrentVersionInfo?.webAPIVersion || ""
   const displayUrl = instance.host
 
   // Use TorrentStats directly - no more conversion needed
@@ -151,7 +158,7 @@ function InstanceCard({
   return (
     <>
       <Card className="hover:shadow-lg transition-shadow">
-        <CardHeader className={!isFirstLoad ? "gap-0" : ""}>
+        <CardHeader className={!isFirstLoad ? "gap-1" : ""}>
           <div className="flex items-center gap-2 sm:gap-3">
             <Link
               to={linkTo}
@@ -225,24 +232,43 @@ function InstanceCard({
               </Badge>
             </div>
           </div>
-          <CardDescription className={`flex items-center gap-1 min-w-0 ${!isFirstLoad ? "text-xs" : ""}`}>
-            <span className={`${incognitoMode ? "blur-sm select-none" : ""} truncate min-w-0`} style={incognitoMode ? { filter: "blur(8px)" } : {}} title={displayUrl}>
-              {displayUrl}
-            </span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className={`${!isFirstLoad ? "h-4 w-4" : "h-5 w-5"} p-0 ${isFirstLoad ? "hover:bg-muted/50" : ""} shrink-0`}
-              onClick={(e) => {
-                if (isFirstLoad) {
-                  e.preventDefault()
-                  e.stopPropagation()
-                }
-                setIncognitoMode(!incognitoMode)
-              }}
-            >
-              {incognitoMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-            </Button>
+          {(appVersion || webAPIVersion) && (
+            <CardDescription className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              {appVersion && (
+                <span>
+                  qBit <code className="font-mono text-[11px]">{appVersion}</code>
+                </span>
+              )}
+              {appVersion && webAPIVersion && (
+                <span aria-hidden="true">&bull;</span>
+              )}
+              {webAPIVersion && (
+                <span>
+                  API v<code className="font-mono text-[11px]">{webAPIVersion}</code>
+                </span>
+              )}
+            </CardDescription>
+          )}
+          <CardDescription className="text-xs">
+            <div className="flex items-center gap-1 min-w-0">
+              <span className={`${incognitoMode ? "blur-sm select-none" : ""} truncate min-w-0`} style={incognitoMode ? { filter: "blur(8px)" } : {}} title={displayUrl}>
+                {displayUrl}
+              </span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className={`${!isFirstLoad ? "h-4 w-4" : "h-5 w-5"} p-0 ${isFirstLoad ? "hover:bg-muted/50" : ""} shrink-0`}
+                onClick={(e) => {
+                  if (isFirstLoad) {
+                    e.preventDefault()
+                    e.stopPropagation()
+                  }
+                  setIncognitoMode(!incognitoMode)
+                }}
+              >
+                {incognitoMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+              </Button>
+            </div>
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -354,6 +380,8 @@ function InstanceCard({
               <InstanceErrorDisplay instance={instance} compact />
             </div>
           )}
+
+          {/* Version footer - always show if we have version info */}
         </CardContent>
       </Card>
     </>

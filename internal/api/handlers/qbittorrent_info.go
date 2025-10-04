@@ -38,8 +38,9 @@ type QBittorrentBuildInfo struct {
 
 // QBittorrentAppInfo represents qBittorrent application information
 type QBittorrentAppInfo struct {
-	Version   string                `json:"version"`
-	BuildInfo *QBittorrentBuildInfo `json:"buildInfo,omitempty"`
+	Version       string                `json:"version"`
+	WebAPIVersion string                `json:"webAPIVersion,omitempty"`
+	BuildInfo     *QBittorrentBuildInfo `json:"buildInfo,omitempty"`
 }
 
 // GetQBittorrentAppInfo returns qBittorrent application version and build information
@@ -74,8 +75,14 @@ func (h *QBittorrentInfoHandler) GetQBittorrentAppInfo(w http.ResponseWriter, r 
 
 // getQBittorrentAppInfo fetches application info from qBittorrent API
 func (h *QBittorrentInfoHandler) getQBittorrentAppInfo(ctx context.Context, client *internalqbittorrent.Client) (*QBittorrentAppInfo, error) {
-	// Get qBittorrent version
-	version, err := client.GetWebAPIVersionCtx(ctx)
+	// Get qBittorrent application version
+	version, err := client.GetAppVersionCtx(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get qBittorrent Web API version
+	webAPIVersion, err := client.GetWebAPIVersionCtx(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -87,12 +94,13 @@ func (h *QBittorrentInfoHandler) getQBittorrentAppInfo(ctx context.Context, clie
 	}
 
 	// Log the buildinfo
-	log.Info().Msgf("qBittorrent BuildInfo - Version: %s, Platform: %s, Libtorrent: %s, Qt: %s, Bitness: %d",
-		version, buildInfo.Platform, buildInfo.Libtorrent, buildInfo.Qt, buildInfo.Bitness)
+	log.Info().Msgf("qBittorrent BuildInfo - App Version: %s, Web API Version: %s, Platform: %s, Libtorrent: %s, Qt: %s, Bitness: %d",
+		version, webAPIVersion, buildInfo.Platform, buildInfo.Libtorrent, buildInfo.Qt, buildInfo.Bitness)
 
 	// Convert from go-qbittorrent BuildInfo to our QBittorrentBuildInfo
 	appInfo := &QBittorrentAppInfo{
-		Version: version,
+		Version:       version,
+		WebAPIVersion: webAPIVersion,
 		BuildInfo: &QBittorrentBuildInfo{
 			Qt:         buildInfo.Qt,
 			Libtorrent: buildInfo.Libtorrent,

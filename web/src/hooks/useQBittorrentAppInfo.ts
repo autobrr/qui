@@ -20,8 +20,13 @@ export function useQBittorrentAppInfo(instanceId: number | undefined) {
   })
 
   const versionInfo = useMemo(() => {
+    const appVersion = query.data?.version || ""
+    const webAPIVersion = query.data?.webAPIVersion || ""
+
     if (!query.data?.buildInfo) {
       return {
+        appVersion,
+        webAPIVersion,
         libtorrentMajorVersion: 2, // Default to v2 for modern clients
         isLibtorrent2: true,
         platform: "linux", // Default platform
@@ -33,12 +38,14 @@ export function useQBittorrentAppInfo(instanceId: number | undefined) {
 
     const libtorrentVersion = query.data.buildInfo.libtorrent || "2.0.0"
     const platform = query.data.buildInfo.platform?.toLowerCase() || "linux"
-    
+
     // Parse libtorrent version to get major version
     const versionMatch = libtorrentVersion.match(/^(\d+)\./)
     const libtorrentMajorVersion = versionMatch ? parseInt(versionMatch[1], 10) : 2
 
     return {
+      appVersion,
+      webAPIVersion,
       libtorrentMajorVersion,
       isLibtorrent2: libtorrentMajorVersion >= 2,
       platform,
@@ -69,8 +76,8 @@ export function useQBittorrentFieldVisibility(instanceId: number | undefined) {
       // libtorrent >= 2.x: These fields are HIDDEN
       showDiskCacheFields: !isLibtorrent2, // rowDiskCache + rowDiskCacheExpiryInterval hidden for lt>=2
       showCoalesceReadsWritesField: !isLibtorrent2, // rowCoalesceReadsAndWrites hidden for lt>=2
-      
-      // libtorrent < 2.x: These fields are HIDDEN  
+
+      // libtorrent < 2.x: These fields are HIDDEN
       showI2pFields: isLibtorrent2, // fieldsetI2p hidden for lt<2
       showMemoryWorkingSetLimit: isLibtorrent2 && !(platform === "linux" || platform === "macos"), // Hidden for lt<2 OR linux/macos
       showHashingThreadsField: isLibtorrent2, // rowHashingThreads hidden for lt<2
@@ -79,14 +86,14 @@ export function useQBittorrentFieldVisibility(instanceId: number | undefined) {
       showI2pOutboundQuantity: isLibtorrent2, // rowI2pOutboundQuantity hidden for lt<2
       showI2pInboundLength: isLibtorrent2, // rowI2pInboundLength hidden for lt<2
       showI2pOutboundLength: isLibtorrent2, // rowI2pOutboundLength hidden for lt<2
-      
+
       // Platform-specific visibility
       showMarkOfTheWeb: platform === "macos" || platform === "windows", // Hidden unless macos/windows
-      
+
       // Fields that are always shown
       // These include most network, peer management, and basic settings
       showSocketBacklogField: true,
-      showSendBufferFields: true, 
+      showSendBufferFields: true,
       showRequestQueueField: true,
       showProtocolFields: true,
       showInterfaceFields: true,
@@ -94,7 +101,7 @@ export function useQBittorrentFieldVisibility(instanceId: number | undefined) {
       showWindowsSpecificFields: isWindows,
       showMacSpecificFields: isMacOS,
       showLinuxSpecificFields: isLinux,
-      
+
       // Version info for debugging
       versionInfo,
     }
