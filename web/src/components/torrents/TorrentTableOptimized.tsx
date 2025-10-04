@@ -556,8 +556,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     data: sortedTorrents,
     columns,
     getCoreRowModel: getCoreRowModel(),
-    // Use torrent hash with index as unique row ID to handle duplicates
-    getRowId: (row: Torrent, index: number) => `${row.hash}-${index}`,
+    // Prefer stable torrent hash for row identity to avoid remount flicker during updates
+    getRowId: (row: Torrent, index: number) => {
+      if (row.hash) return row.hash
+      if (row.infohash_v1) return row.infohash_v1
+      if (row.infohash_v2) return row.infohash_v2
+      return `row-${index}`
+    },
     // State management
     state: {
       sorting,
@@ -687,7 +692,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     // Provide a key to help with item tracking - use hash with index for uniqueness
     getItemKey: useCallback((index: number) => {
       const row = rows[index]
-      return row?.original?.hash ? `${row.original.hash}-${index}` : `loading-${index}`
+      if (!row) return `loading-${index}`
+      return row.id
     }, [rows]),
     // Optimized onChange handler following TanStack Virtual best practices
     onChange: (instance, sync) => {
@@ -1193,7 +1199,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                 // Use memoized minTableWidth
                 return (
                   <TorrentContextMenu
-                    key={`${torrent.hash}-${virtualRow.index}`}
+                    key={row.id}
                     torrent={torrent}
                     isSelected={row.getIsSelected()}
                     isAllSelected={isAllSelected}
