@@ -24,7 +24,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mat/besticon/ico"
+	"github.com/mat/besticon/v3/ico"
 	"golang.org/x/image/draw"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/charset"
