@@ -578,6 +578,82 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
   )
 })
 
+interface CreateAndAssignCategoryDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  hashCount: number
+  onConfirm: (category: string) => void
+  isPending?: boolean
+}
+
+export const CreateAndAssignCategoryDialog = memo(function CreateAndAssignCategoryDialog({
+  open,
+  onOpenChange,
+  hashCount,
+  onConfirm,
+  isPending = false,
+}: CreateAndAssignCategoryDialogProps) {
+  const [categoryName, setCategoryName] = useState("")
+  const wasOpen = useRef(false)
+
+  // Reset when dialog opens
+  useEffect(() => {
+    if (open && !wasOpen.current) {
+      setCategoryName("")
+    }
+    wasOpen.current = open
+  }, [open])
+
+  const handleConfirm = useCallback(() => {
+    if (categoryName.trim()) {
+      onConfirm(categoryName.trim())
+      setCategoryName("")
+    }
+  }, [categoryName, onConfirm])
+
+  const handleCancel = useCallback(() => {
+    setCategoryName("")
+    onOpenChange(false)
+  }, [onOpenChange])
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Create New Category</DialogTitle>
+          <DialogDescription>
+            Enter a name for the new category. It will be created and assigned to {hashCount} torrent(s).
+          </DialogDescription>
+        </DialogHeader>
+        <div className="py-4 space-y-2">
+          <Label htmlFor="categoryName">Category Name</Label>
+          <Input
+            id="categoryName"
+            placeholder="Enter category name"
+            value={categoryName}
+            onChange={(e: ChangeEvent<HTMLInputElement>) => setCategoryName(e.target.value)}
+            onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
+              if (e.key === "Enter" && categoryName.trim()) {
+                handleConfirm()
+              }
+            }}
+            autoFocus
+          />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={handleCancel}>Cancel</Button>
+          <Button
+            onClick={handleConfirm}
+            disabled={isPending || !categoryName.trim()}
+          >
+            Create and Assign
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+})
+
 interface RemoveTagsDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
