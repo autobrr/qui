@@ -13,7 +13,7 @@ import (
 	"image"
 	_ "image/gif"
 	_ "image/jpeg"
-	_ "image/png"
+	"image/png"
 	"io"
 	"net/http"
 	"net/url"
@@ -730,7 +730,8 @@ func decodeImage(data []byte, contentType, originalURL string) (image.Image, err
 		return nil, fmt.Errorf("failed to reset reader: %w", err)
 	}
 
-	return image.Decode(reader)
+	img, _, err := image.Decode(reader)
+	return img, err
 }
 
 func isLikelyICO(contentType, originalURL string, data []byte) bool {
