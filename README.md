@@ -15,6 +15,13 @@ A fast, modern web interface for qBittorrent. Supports managing multiple qBittor
 - **Multiple Themes**: Choose from various color themes
 - **Base URL Support**: Serve from a subdirectory (e.g., `/qui/`) for reverse proxy setups
 
+## Feature Compatibility Overview
+
+| Feature | Supported Versions | Unsupported Versions | Notes |
+| --- | --- | --- | --- |
+| Torrent creation | 5.0.0-beta1 and newer (5.0.x, 5.1.x) | 4.x and earlier | Introduced in [PR #20366](https://github.com/qbittorrent/qBittorrent/pull/20366). |
+| Tracker health checks (`TrackerDown` / `Unregistered`) | 5.1.0 and newer | 5.0.x and earlier | Introduced in [PR #22128](https://github.com/qbittorrent/qBittorrent/pull/22128) |
+
 ## Installation
 
 ### Quick Install (Linux x86_64)
