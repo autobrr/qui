@@ -287,9 +287,35 @@ All metrics are labeled with `instance_id` and `instance_name` for multi-instanc
 
 ## Tracker Icons
 
-- Cached icons live in your data directory under `tracker-icons/` (next to `qui.db` by default). To override one, drop a PNG named after the tracker host—for example `tracker.example.com.png`.
-- Downloads are saved as 16×16 PNGs (anything larger than 1 024×1 024 is rejected). Manual files are served untouched, so resize and convert them to PNG before copying them in.
-- After a failed download qui waits 30 minutes before retrying the same host. The next retry happens automatically the next time your tracker list references that host.
+Cached icons live in your data directory under `tracker-icons/` (next to `qui.db`). Icons are stored as normalised 16×16 PNGs; anything larger than 1 024×1 024 is rejected, so resize first if you are supplying files manually. qui automatically attempts to download a favicon the first time it encounters a tracker host, caching the result for future sessions. After a failed download it waits 30 minutes before retrying the same host, and the next retry is triggered automatically the next time that host appears in your tracker list.
+
+### Add icons manually
+
+- Copy PNGs named after each tracker host (e.g. `tracker.example.com.png`) into the `tracker-icons/` directory. Files are served as-is, so trimming or resizing is up to you, but matching the built-in size (16×16) keeps them crisp and avoids extra scaling.
+
+### Preload a bundle of icons
+
+If you already have a library of icons (for example, exported from another installation) you can preload them via a mapping file placed alongside the directory: `tracker-icons/preload.json`, `tracker-icons/preload.js`, `tracker-icons/tracker-icons.json`, `tracker-icons/tracker-icons.js`, or `tracker-icons/tracker-icons.txt`.
+
+- The file can be either a plain JSON object or a snippet exported as `const trackerIcons = { ... };`.
+- Keys must be the real tracker hostnames (e.g. `tracker.example.org`). If you include a `www.*` host, qui automatically mirrors the icon to the bare hostname when missing.
+- On startup qui decodes each data URL, normalises the image to 16×16, and writes the PNG to `<host>.png`.
+
+  ```json
+  {
+    "tracker.example.org": "data:image/png;base64,AAA...",
+    "www.tracker.org": "data:image/png;base64,BBB..."
+  }
+  ```
+
+  ```js
+  const trackerIcons = {
+    "tracker.example.org": "data:image/png;base64,CCC...",
+    "www.tracker.org": "data:image/png;base64,DDD..."
+  };
+  ```
+
+- Example: [Audionut/add-trackers](https://github.com/Audionut/add-trackers/blob/8db05c0e822f9b3afa46ca784644c4e7e400c92b/ptp-add-filter-all-releases-anut.js#L768)
 
 ## Reverse Proxy for External Applications
 

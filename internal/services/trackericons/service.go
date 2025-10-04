@@ -103,6 +103,10 @@ func NewService(dataDir, userAgent string) (*Service, error) {
 		svc.ua = "qui/dev"
 	}
 
+	if err := svc.preloadIconsFromDisk(); err != nil {
+		return nil, err
+	}
+
 	return svc, nil
 }
 
@@ -171,8 +175,8 @@ func (s *Service) ListIcons(ctx context.Context) (map[string]string, error) {
 		encoded := base64.StdEncoding.EncodeToString(data)
 		dataURL := "data:image/png;base64," + encoded
 		icons[trackerName] = dataURL
-		if strings.HasPrefix(trackerName, "www.") {
-			trimmed := strings.TrimPrefix(trackerName, "www.")
+		if after, ok := strings.CutPrefix(trackerName, "www."); ok {
+			trimmed := after
 			if trimmed != "" {
 				if _, exists := icons[trimmed]; !exists {
 					icons[trimmed] = dataURL
@@ -727,6 +731,22 @@ func decodeImage(data []byte, contentType, originalURL string) (image.Image, err
 	// Reset reader for full decode
 	if _, err := reader.Seek(0, io.SeekStart); err != nil {
 		return nil, fmt.Errorf("failed to reset reader: %w", err)
+	}
+
+	lowerContentType := strings.ToLower(contentType)
+
+	if strings.Contains(lowerContentType, "png") {
+		if img, err := png.Decode(reader); err == nil {
+			if !validated {
+				if err := validateDimensions(img.Bounds().Dx(), img.Bounds().Dy()); err != nil {
+					return nil, err
+				}
+			}
+			return img, nil
+		}
+		if _, err := reader.Seek(0, io.SeekStart); err != nil {
+			return nil, fmt.Errorf("failed to reset reader after png decode: %w", err)
+		}
 	}
 
 	// Try standard formats first (PNG, JPEG, GIF)
