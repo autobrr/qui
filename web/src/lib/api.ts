@@ -559,6 +559,10 @@ class ApiClient {
       return null
     }
   }
+
+  async getTrackerIcons(): Promise<Record<string, string>> {
+    return this.request<Record<string, string>>("/tracker-icons")
+  }
 }
 
 export const api = new ApiClient()
