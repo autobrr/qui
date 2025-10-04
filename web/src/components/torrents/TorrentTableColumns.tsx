@@ -88,8 +88,8 @@ const TrackerIconCell = memo(({ title, fallback, src }: TrackerIconCellProps) =>
             src={src}
             alt=""
             className="h-full w-full rounded-[2px] object-cover"
-            loading="lazy"
             draggable={false}
+            decoding="async"
             onError={() => setHasError(true)}
           />
         ) : (
