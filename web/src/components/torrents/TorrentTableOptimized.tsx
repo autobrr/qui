@@ -551,12 +551,36 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     [incognitoMode, speedUnit, trackerIcons, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, isAllSelected, excludedFromSelectAll, preferences]
   )
 
+  const torrentIdentityCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+
+    for (const torrent of sortedTorrents) {
+      const baseIdentity = torrent.hash ?? torrent.infohash_v1 ?? torrent.infohash_v2
+      if (!baseIdentity) continue
+      counts.set(baseIdentity, (counts.get(baseIdentity) ?? 0) + 1)
+    }
+
+    return counts
+  }, [sortedTorrents])
+
   const table = useReactTable({
     data: sortedTorrents,
     columns,
     getCoreRowModel: getCoreRowModel(),
-    // Use torrent hash with index as unique row ID to handle duplicates
-    getRowId: (row: Torrent, index: number) => `${row.hash}-${index}`,
+    // Prefer stable torrent hash for row identity while keeping duplicates unique
+    getRowId: (row: Torrent, index: number) => {
+      const baseIdentity = row.hash ?? row.infohash_v1 ?? row.infohash_v2
+
+      if (!baseIdentity) {
+        return `row-${index}`
+      }
+
+      if ((torrentIdentityCounts.get(baseIdentity) ?? 0) > 1) {
+        return `${baseIdentity}-${index}`
+      }
+
+      return baseIdentity
+    },
     // State management
     state: {
       sorting,
@@ -686,7 +710,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     // Provide a key to help with item tracking - use hash with index for uniqueness
     getItemKey: useCallback((index: number) => {
       const row = rows[index]
-      return row?.original?.hash ? `${row.original.hash}-${index}` : `loading-${index}`
+      if (!row) return `loading-${index}`
+      return row.id
     }, [rows]),
     // Optimized onChange handler following TanStack Virtual best practices
     onChange: (instance, sync) => {
@@ -1186,7 +1211,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                 // Use memoized minTableWidth
                 return (
                   <TorrentContextMenu
-                    key={`${torrent.hash}-${virtualRow.index}`}
+                    key={row.id}
                     torrent={torrent}
                     isSelected={row.getIsSelected()}
                     isAllSelected={isAllSelected}
