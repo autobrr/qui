@@ -418,3 +418,102 @@ export interface AppPreferences {
   // Add catch-all for any additional fields from the API
   [key: string]: unknown
 }
+
+
+// Economy-related types
+export interface EconomyScore {
+  hash: string
+  name: string
+  size: number
+  seeds: number
+  peers: number
+  ratio: number
+  age: number
+  economyScore: number
+  storageValue: number
+  rarityBonus: number
+  deduplicationFactor: number
+  reviewPriority: number
+  duplicates?: string[]
+  tracker: string
+  state: string
+  category: string
+  lastActivity: number
+}
+
+export interface EconomyStats {
+  totalTorrents: number
+  totalStorage: number
+  deduplicatedStorage: number
+  storageSavings: number
+  averageEconomyScore: number
+  highValueTorrents: number
+  rareContentCount: number
+  wellSeededOldContent: number
+}
+
+export interface OptimizationOpportunity {
+  type: string
+  title: string
+  description: string
+  priority: "high" | "medium" | "low"
+  savings: number
+  impact: number
+  torrents: string[]
+  category: "storage" | "seeding" | "ratio"
+}
+
+export interface StorageOptimization {
+  totalPotentialSavings: number
+  deduplicationSavings: number
+  oldContentCleanupSavings: number
+  ratioOptimizationSavings: number
+  unusedContentSavings: number
+}
+
+export interface PaginationInfo {
+  page: number
+  pageSize: number
+  totalItems: number
+  totalPages: number
+  hasNextPage: boolean
+  hasPrevPage: boolean
+}
+
+export interface TorrentGroup {
+  id: string
+  torrents: EconomyScore[]
+  primaryTorrent: EconomyScore
+  groupType: "duplicate" | "unique" | "last_seed"
+  totalSize: number
+  deduplicatedSize: number
+  potentialSavings: number
+  recommendedAction: "keep_all" | "keep_best" | "preserve" | "review"
+  priority: number
+}
+
+export interface PaginatedReviewTorrents {
+  torrents: EconomyScore[]
+  groups: EconomyScore[][]
+  torrentGroups: TorrentGroup[]
+  groupingEnabled: boolean
+  pagination: PaginationInfo
+}
+
+export interface EconomyAnalysis {
+  scores: EconomyScore[]
+  stats: EconomyStats
+  topValuable: EconomyScore[]
+  duplicates: Record<string, string[]>
+  optimizations: OptimizationOpportunity[]
+  storageOptimization: StorageOptimization
+  reviewTorrents: PaginatedReviewTorrents
+  reviewThreshold: number
+}
+
+export interface FilterOptions {
+  status: string[]
+  categories: string[]
+  tags: string[]
+  trackers: string[]
+}

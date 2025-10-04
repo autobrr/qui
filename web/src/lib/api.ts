@@ -7,6 +7,10 @@ import type {
   AppPreferences,
   AuthResponse,
   Category,
+  EconomyAnalysis,
+  EconomyScore,
+  EconomyStats,
+  FilterOptions,
   InstanceFormData,
   InstanceResponse,
   TorrentResponse,
@@ -14,7 +18,25 @@ import type {
 } from "@/types"
 import { getApiBaseUrl, withBasePath } from "./base-url"
 
+class ApiError extends Error {
+  status: number
+
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = "ApiError"
+    this.status = status
+  }
+}
+
 const API_BASE = getApiBaseUrl()
+
+// Configuration for API defaults
+const API_DEFAULTS = {
+  ECONOMY_ANALYSIS: {
+    PAGE_SIZE: 25,
+    PAGE: 1,
+  },
+} as const
 
 class ApiClient {
   private async request<T>(
@@ -48,7 +70,7 @@ class ApiClient {
           // nothing to see here
         }
       }
-      throw new Error(errorMessage)
+      throw new ApiError(errorMessage, response.status)
     }
 
     // Handle empty responses (like 204 No Content)
@@ -557,6 +579,49 @@ class ApiClient {
 
   async getTrackerIcons(): Promise<Record<string, string>> {
     return this.request<Record<string, string>>("/tracker-icons")
+  }
+
+  // Economy endpoints
+  async getEconomyAnalysis(instanceId: number, page?: number, pageSize?: number, sort?: string, order?: "asc" | "desc", filters?: FilterOptions): Promise<EconomyAnalysis> {
+    const searchParams = new URLSearchParams()
+
+    // Always include page parameter, defaulting to configured value if not provided
+    const pageValue = page || API_DEFAULTS.ECONOMY_ANALYSIS.PAGE
+    searchParams.set("page", pageValue.toString())
+
+    // Always include pageSize parameter, defaulting to configured value if not provided
+    const pageSizeValue = pageSize || API_DEFAULTS.ECONOMY_ANALYSIS.PAGE_SIZE
+    searchParams.set("pageSize", pageSizeValue.toString())
+
+    // Include sorting parameters if provided
+    if (sort) {
+      searchParams.set("sort", sort)
+    }
+    if (order) {
+      searchParams.set("order", order)
+    }
+
+    // Include filters if provided
+    if (filters) {
+      searchParams.set("filters", JSON.stringify(filters))
+    }
+
+    const query = searchParams.toString()
+    const url = `/instances/${instanceId}/torrents/economy?${query}`
+    return this.request<EconomyAnalysis>(url)
+  }
+
+  async getEconomyStats(instanceId: number): Promise<EconomyStats> {
+    return this.request<EconomyStats>(`/instances/${instanceId}/torrents/economy/stats`)
+  }
+
+  async getTopValuableTorrents(instanceId: number, limit?: number): Promise<EconomyScore[]> {
+    const searchParams = new URLSearchParams()
+    if (limit) searchParams.set("limit", limit.toString())
+
+    return this.request<EconomyScore[]>(
+      `/instances/${instanceId}/torrents/economy/top-valuable?${searchParams}`
+    )
   }
 }
 
