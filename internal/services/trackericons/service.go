@@ -30,6 +30,8 @@ import (
 	"golang.org/x/net/html/charset"
 	"golang.org/x/sync/singleflight"
 	"golang.org/x/text/transform"
+
+	"github.com/autobrr/qui/pkg/httphelpers"
 )
 
 const (
@@ -332,10 +334,9 @@ func (s *Service) discoverIcons(ctx context.Context, baseURL *url.URL) ([]string
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer httphelpers.DrainAndClose(resp)
 	limitedReader := io.LimitReader(resp.Body, maxHTMLBytes)
-	io.Copy(io.Discard, resp.Body)
-	
+
 	if resp.StatusCode >= http.StatusBadRequest {
 		return nil, fmt.Errorf("unexpected status %d", resp.StatusCode)
 	}
@@ -382,7 +383,6 @@ func (s *Service) discoverIcons(ctx context.Context, baseURL *url.URL) ([]string
 	walk(document)
 	return icons, nil
 }
-
 func (s *Service) fetchIconBytes(ctx context.Context, iconURL string) ([]byte, string, error) {
 	if strings.HasPrefix(iconURL, "data:") {
 		return parseDataURI(iconURL)
@@ -399,10 +399,9 @@ func (s *Service) fetchIconBytes(ctx context.Context, iconURL string) ([]byte, s
 	if err != nil {
 		return nil, "", err
 	}
-	defer resp.Body.Close()
+	defer httphelpers.DrainAndClose(resp)
 
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxIconBytes))
-	io.Copy(io.Discard, resp.Body)
 	if err != nil {
 		return nil, "", err
 	}
