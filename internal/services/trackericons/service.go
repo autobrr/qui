@@ -333,12 +333,13 @@ func (s *Service) discoverIcons(ctx context.Context, baseURL *url.URL) ([]string
 		return nil, err
 	}
 	defer resp.Body.Close()
-
+	limitedReader := io.LimitReader(resp.Body, maxHTMLBytes)
+	io.Copy(io.Discard, resp.Body)
+	
 	if resp.StatusCode >= http.StatusBadRequest {
 		return nil, fmt.Errorf("unexpected status %d", resp.StatusCode)
 	}
 
-	limitedReader := io.LimitReader(resp.Body, maxHTMLBytes)
 	rawHTML, err := io.ReadAll(limitedReader)
 	if err != nil {
 		return nil, err
@@ -401,6 +402,7 @@ func (s *Service) fetchIconBytes(ctx context.Context, iconURL string) ([]byte, s
 	defer resp.Body.Close()
 
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxIconBytes))
+	io.Copy(io.Discard, resp.Body)
 	if err != nil {
 		return nil, "", err
 	}
