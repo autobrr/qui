@@ -28,11 +28,12 @@ import {
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { api } from "@/lib/api"
 import type { TorrentCreationParams, TorrentFormat } from "@/types"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { AlertCircle, ChevronDown, Loader2 } from "lucide-react"
+import { AlertCircle, ChevronDown, Info, Loader2 } from "lucide-react"
 import { useState } from "react"
 import { toast } from "sonner"
 import { pieceSizeOptions, TorrentPieceSize } from "./piece-size"
@@ -116,7 +117,7 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Create Torrent</DialogTitle>
           <DialogDescription>
@@ -153,9 +154,17 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
                   onChange={(e) => field.handleChange(e.target.value)}
                   required
                 />
-                <p className="text-sm text-muted-foreground">
-                  Full path on the server where qBittorrent is running. Windows users: use double backslashes (e.g., C:\\Data\\folder)
-                </p>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <span>Full path on the server where qBittorrent is running</span>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Info className="h-4 w-4 cursor-help shrink-0" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Windows users: use double backslashes (e.g., C:\\Data\\folder)</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
               </div>
             )}
           </form.Field>
@@ -335,9 +344,17 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
                       value={field.state.value}
                       onChange={(e) => field.handleChange(e.target.value)}
                     />
-                    <p className="text-sm text-muted-foreground">
-                      Where to save the .torrent file on the server
-                    </p>
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <span>Where to save the .torrent file on the server</span>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Info className="h-4 w-4 cursor-help shrink-0" />
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs">
+                          <p>qBittorrent needs write access to this directory. Best to leave blank and download the .torrent file from the tasks modal later.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
                   </div>
                 )}
               </form.Field>
