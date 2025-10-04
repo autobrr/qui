@@ -286,6 +286,9 @@ func (s *Server) Handler() *chi.Mux {
 					r.Post("/tags", torrentsHandler.CreateTags)
 					r.Delete("/tags", torrentsHandler.DeleteTags)
 
+					// Trackers
+					r.Get("/trackers", torrentsHandler.GetActiveTrackers)
+
 					// Preferences
 					r.Get("/preferences", preferencesHandler.GetPreferences)
 					r.Patch("/preferences", preferencesHandler.UpdatePreferences)

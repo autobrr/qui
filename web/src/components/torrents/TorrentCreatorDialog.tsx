@@ -32,9 +32,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { api } from "@/lib/api"
 import type { TorrentCreationParams, TorrentFormat } from "@/types"
 import { useForm } from "@tanstack/react-form"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { AlertCircle, ChevronDown, Info, Loader2 } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import { pieceSizeOptions, TorrentPieceSize } from "./piece-size"
 
@@ -48,6 +48,13 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
   const [error, setError] = useState<string | null>(null)
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const queryClient = useQueryClient()
+
+  // Fetch active trackers for the select dropdown
+  const { data: activeTrackers } = useQuery({
+    queryKey: ["active-trackers", instanceId],
+    queryFn: () => api.getActiveTrackers(instanceId),
+    enabled: open, // Only fetch when dialog is open
+  })
 
   const mutation = useMutation({
     mutationFn: async (data: TorrentCreationParams) => {
@@ -114,6 +121,15 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
       mutation.mutate(params)
     },
   })
+
+  // Reset form and error state when dialog closes
+  useEffect(() => {
+    if (!open) {
+      form.reset()
+      setError(null)
+      setAdvancedOpen(false)
+    }
+  }, [open, form])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -193,6 +209,34 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
             {(field) => (
               <div className="space-y-2">
                 <Label htmlFor="trackers">Trackers</Label>
+                {activeTrackers && Object.keys(activeTrackers).length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-sm text-muted-foreground">
+                      Select from your active trackers or paste custom URLs below
+                    </p>
+                    <Select
+                      value=""
+                      onValueChange={(trackerUrl) => {
+                        const currentTrackers = field.state.value
+                        const newTrackers = currentTrackers? `${currentTrackers}\n${trackerUrl}`: trackerUrl
+                        field.handleChange(newTrackers)
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Add tracker from your active torrents" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(activeTrackers)
+                          .sort(([domainA], [domainB]) => domainA.localeCompare(domainB))
+                          .map(([domain, url]) => (
+                            <SelectItem key={domain} value={url}>
+                              {domain}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
                 <p className="text-sm text-muted-foreground">
                   One tracker URL per line
                 </p>

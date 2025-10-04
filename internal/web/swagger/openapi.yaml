@@ -1289,6 +1289,28 @@ paths:
         '200':
           description: Tags deleted
 
+  /api/instances/{instanceId}/trackers:
+    get:
+      tags:
+        - Trackers
+      summary: List active trackers
+      description: Get active tracker domains and representative tracker URLs for an instance
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+      responses:
+        '200':
+          description: Active tracker domains mapped to a tracker URL
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+        '400':
+          description: Invalid instance ID
+        '500':
+          description: Failed to get active trackers
+
   /api/instances/{instanceId}/preferences:
     get:
       tags:

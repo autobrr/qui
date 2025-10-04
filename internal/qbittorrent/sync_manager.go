@@ -2022,6 +2022,51 @@ func (sm *SyncManager) ToggleAlternativeSpeedLimits(ctx context.Context, instanc
 	return nil
 }
 
+// GetActiveTrackers returns all active tracker domains with their URLs and counts
+func (sm *SyncManager) GetActiveTrackers(ctx context.Context, instanceID int) (map[string]string, error) {
+	client, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		return nil, err
+	}
+
+	mainData := syncManager.GetData()
+	if mainData == nil || mainData.Trackers == nil {
+		return make(map[string]string), nil
+	}
+
+	// Map of domain -> example tracker URL
+	trackerMap := make(map[string]string)
+	trackerExclusions := client.getTrackerExclusionsCopy()
+
+	for trackerURL, hashes := range mainData.Trackers {
+		domain := sm.extractDomainFromURL(trackerURL)
+		if domain == "" || domain == "Unknown" {
+			continue
+		}
+
+		// Skip if all hashes are excluded
+		hasValidHash := false
+		for _, hash := range hashes {
+			if hashesToSkip, ok := trackerExclusions[domain]; ok {
+				if _, skip := hashesToSkip[hash]; skip {
+					continue
+				}
+			}
+			hasValidHash = true
+			break
+		}
+
+		if hasValidHash {
+			// Store the first valid tracker URL we find for this domain
+			if _, exists := trackerMap[domain]; !exists {
+				trackerMap[domain] = trackerURL
+			}
+		}
+	}
+
+	return trackerMap, nil
+}
+
 // SetTorrentShareLimit sets share limits (ratio, seeding time) for torrents
 func (sm *SyncManager) SetTorrentShareLimit(ctx context.Context, instanceID int, hashes []string, ratioLimit float64, seedingTimeLimit, inactiveSeedingTimeLimit int64) error {
 	// Get client and sync manager

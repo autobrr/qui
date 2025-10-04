@@ -700,6 +700,26 @@ func (h *TorrentsHandler) GetTags(w http.ResponseWriter, r *http.Request) {
 	RespondJSON(w, http.StatusOK, tags)
 }
 
+// GetActiveTrackers returns all active tracker domains with their URLs
+func (h *TorrentsHandler) GetActiveTrackers(w http.ResponseWriter, r *http.Request) {
+	// Get instance ID from URL
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	// Get active trackers
+	trackers, err := h.syncManager.GetActiveTrackers(r.Context(), instanceID)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get active trackers")
+		RespondError(w, http.StatusInternalServerError, "Failed to get active trackers")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, trackers)
+}
+
 // CreateTags creates new tags
 func (h *TorrentsHandler) CreateTags(w http.ResponseWriter, r *http.Request) {
 	// Get instance ID from URL

@@ -448,6 +448,10 @@ class ApiClient {
     })
   }
 
+  async getActiveTrackers(instanceId: number): Promise<Record<string, string>> {
+    return this.request(`/instances/${instanceId}/trackers`)
+  }
+
   // User endpoints
   async changePassword(currentPassword: string, newPassword: string): Promise<void> {
     return this.request("/auth/change-password", {
