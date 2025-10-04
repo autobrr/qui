@@ -29,6 +29,7 @@ func NewClientAPIKeysHandler(clientAPIKeyStore *models.ClientAPIKeyStore, instan
 type CreateClientAPIKeyRequest struct {
 	ClientName string `json:"clientName"`
 	InstanceID int    `json:"instanceId"`
+	IsWebhook  bool   `json:"isWebhook"`
 }
 
 type CreateClientAPIKeyResponse struct {
@@ -77,7 +78,7 @@ func (h *ClientAPIKeysHandler) CreateClientAPIKey(w http.ResponseWriter, r *http
 	}
 
 	// Create the client API key
-	rawKey, clientAPIKey, err := h.clientAPIKeyStore.Create(ctx, req.ClientName, req.InstanceID)
+	rawKey, clientAPIKey, err := h.clientAPIKeyStore.Create(ctx, req.ClientName, req.InstanceID, req.IsWebhook)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create client API key")
 		http.Error(w, "Failed to create API key", http.StatusInternalServerError)

@@ -10,7 +10,8 @@ import type {
   InstanceFormData,
   InstanceResponse,
   TorrentResponse,
-  User
+  User,
+  WebhookPreferences
 } from "@/types"
 import { getApiBaseUrl, withBasePath } from "./base-url"
 
@@ -435,6 +436,7 @@ class ApiClient {
   async createClientApiKey(data: {
     clientName: string
     instanceId: number
+    isWebhook?: boolean
   }): Promise<{
     key: string
     clientApiKey: {
@@ -530,6 +532,21 @@ class ApiClient {
   async toggleAlternativeSpeedLimits(instanceId: number): Promise<{ enabled: boolean }> {
     return this.request<{ enabled: boolean }>(`/instances/${instanceId}/alternative-speed-limits/toggle`, {
       method: "POST",
+    })
+  }
+
+  // Webhook endpoints
+  async getAllWebhooks(): Promise<WebhookPreferences[]> {
+    return this.request<WebhookPreferences[]>("/instances/webhooks")
+  }
+
+  async updateWebhookPreferences(
+    instanceId: number,
+    preferences: Partial<WebhookPreferences>
+  ): Promise<WebhookPreferences> {
+    return this.request<WebhookPreferences>(`/instances/${instanceId}/webhooks`, {
+      method: "PATCH",
+      body: JSON.stringify(preferences),
     })
   }
 

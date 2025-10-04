@@ -20,6 +20,7 @@ func IsAuthenticated(authService *auth.Service, sessionManager *scs.SessionManag
 			// Check for API key first
 			if apiKey := r.Header.Get("X-API-Key"); apiKey != "" {
 				// Validate API key
+				log.Info().Str("apiKey", apiKey).Msg(r.URL.Path + " " + r.Method)
 				apiKeyModel, err := authService.ValidateAPIKey(r.Context(), apiKey)
 				if err != nil {
 					log.Warn().Err(err).Msg("Invalid API key")

@@ -18,6 +18,7 @@ type ClientAPIKey struct {
 	KeyHash    string     `json:"-"`
 	ClientName string     `json:"clientName"`
 	InstanceID int        `json:"instanceId"`
+	IsWebhook  bool       `json:"isWebhook"`
 	CreatedAt  time.Time  `json:"createdAt"`
 	LastUsedAt *time.Time `json:"lastUsedAt,omitempty"`
 }
@@ -30,7 +31,7 @@ func NewClientAPIKeyStore(db *sql.DB) *ClientAPIKeyStore {
 	return &ClientAPIKeyStore{db: db}
 }
 
-func (s *ClientAPIKeyStore) Create(ctx context.Context, clientName string, instanceID int) (string, *ClientAPIKey, error) {
+func (s *ClientAPIKeyStore) Create(ctx context.Context, clientName string, instanceID int, isWebhook bool) (string, *ClientAPIKey, error) {
 	// Generate new API key
 	rawKey, err := GenerateAPIKey()
 	if err != nil {
@@ -41,17 +42,18 @@ func (s *ClientAPIKeyStore) Create(ctx context.Context, clientName string, insta
 	keyHash := HashAPIKey(rawKey)
 
 	query := `
-		INSERT INTO client_api_keys (key_hash, client_name, instance_id) 
-		VALUES (?, ?, ?)
-		RETURNING id, key_hash, client_name, instance_id, created_at, last_used_at
+		INSERT INTO client_api_keys (key_hash, client_name, instance_id, is_webhook) 
+		VALUES (?, ?, ?, ?)
+		RETURNING id, key_hash, client_name, instance_id, is_webhook, created_at, last_used_at
 	`
 
 	clientAPIKey := &ClientAPIKey{}
-	err = s.db.QueryRowContext(ctx, query, keyHash, clientName, instanceID).Scan(
+	err = s.db.QueryRowContext(ctx, query, keyHash, clientName, instanceID, isWebhook).Scan(
 		&clientAPIKey.ID,
 		&clientAPIKey.KeyHash,
 		&clientAPIKey.ClientName,
 		&clientAPIKey.InstanceID,
+		&clientAPIKey.IsWebhook,
 		&clientAPIKey.CreatedAt,
 		&clientAPIKey.LastUsedAt,
 	)
@@ -66,8 +68,9 @@ func (s *ClientAPIKeyStore) Create(ctx context.Context, clientName string, insta
 
 func (s *ClientAPIKeyStore) GetAll(ctx context.Context) ([]*ClientAPIKey, error) {
 	query := `
-		SELECT id, key_hash, client_name, instance_id, created_at, last_used_at 
+		SELECT id, key_hash, client_name, instance_id, is_webhook, created_at, last_used_at 
 		FROM client_api_keys 
+		WHERE is_webhook = false OR is_webhook IS NULL
 		ORDER BY created_at DESC
 	`
 
@@ -85,6 +88,7 @@ func (s *ClientAPIKeyStore) GetAll(ctx context.Context) ([]*ClientAPIKey, error)
 			&key.KeyHash,
 			&key.ClientName,
 			&key.InstanceID,
+			&key.IsWebhook,
 			&key.CreatedAt,
 			&key.LastUsedAt,
 		)
@@ -99,7 +103,7 @@ func (s *ClientAPIKeyStore) GetAll(ctx context.Context) ([]*ClientAPIKey, error)
 
 func (s *ClientAPIKeyStore) GetByKeyHash(ctx context.Context, keyHash string) (*ClientAPIKey, error) {
 	query := `
-		SELECT id, key_hash, client_name, instance_id, created_at, last_used_at 
+		SELECT id, key_hash, client_name, instance_id, is_webhook, created_at, last_used_at 
 		FROM client_api_keys 
 		WHERE key_hash = ?
 	`
@@ -110,6 +114,36 @@ func (s *ClientAPIKeyStore) GetByKeyHash(ctx context.Context, keyHash string) (*
 		&key.KeyHash,
 		&key.ClientName,
 		&key.InstanceID,
+		&key.IsWebhook,
+		&key.CreatedAt,
+		&key.LastUsedAt,
+	)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrClientAPIKeyNotFound
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return key, nil
+}
+
+func (s *ClientAPIKeyStore) GetByInstanceIDAndIsWebhook(ctx context.Context, instanceID int) (*ClientAPIKey, error) {
+	query := `
+		SELECT id, key_hash, client_name, instance_id, is_webhook, created_at, last_used_at 
+		FROM client_api_keys 
+		WHERE instance_id = ? AND is_webhook = true
+	`
+
+	key := &ClientAPIKey{}
+	err := s.db.QueryRowContext(ctx, query, instanceID).Scan(
+		&key.ID,
+		&key.KeyHash,
+		&key.ClientName,
+		&key.InstanceID,
+		&key.IsWebhook,
 		&key.CreatedAt,
 		&key.LastUsedAt,
 	)

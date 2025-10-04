@@ -22,7 +22,8 @@ import {
   Home,
   LogOut,
   Server,
-  Settings
+  Settings,
+  Webhook
 } from "lucide-react"
 
 interface NavItem {
@@ -41,6 +42,11 @@ const navigation: NavItem[] = [
     title: "Instances",
     href: "/instances",
     icon: Server,
+  },
+  {
+    title: "Webhooks",
+    href: "/webhooks",
+    icon: Webhook,
   },
   {
     title: "Settings",

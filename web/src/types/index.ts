@@ -365,10 +365,6 @@ export interface AppPreferences {
   alternative_webui_enabled: boolean
   alternative_webui_path: string
   auto_delete_mode: number
-  autorun_enabled: boolean
-  autorun_on_torrent_added_enabled: boolean
-  autorun_on_torrent_added_program: string
-  autorun_program: string
   bypass_auth_subnet_whitelist: string
   bypass_auth_subnet_whitelist_enabled: boolean
   bypass_local_auth: boolean
@@ -417,4 +413,14 @@ export interface AppPreferences {
 
   // Add catch-all for any additional fields from the API
   [key: string]: unknown
+}
+
+export interface WebhookPreferences {
+  enabled: boolean
+  api_key_id: number
+  instance_id: string
+  instance_name: string
+  autorun_enabled: boolean
+  autorun_on_torrent_added_enabled: boolean
+  qui_url: string
 }

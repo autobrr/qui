@@ -40,7 +40,9 @@ type Server struct {
 	authService       *auth.Service
 	sessionManager    *scs.SessionManager
 	instanceStore     *models.InstanceStore
+	apiKeyStore       *models.APIKeyStore
 	clientAPIKeyStore *models.ClientAPIKeyStore
+	webhookStore      *models.WebhookStore
 	clientPool        *qbittorrent.ClientPool
 	syncManager       *qbittorrent.SyncManager
 	licenseService    *license.Service
@@ -61,7 +63,9 @@ func NewServer(deps *Dependencies) *Server {
 		authService:       deps.AuthService,
 		sessionManager:    deps.SessionManager,
 		instanceStore:     deps.InstanceStore,
+		apiKeyStore:       deps.APIKeyStore,
 		clientAPIKeyStore: deps.ClientAPIKeyStore,
+		webhookStore:      deps.WebhookStore,
 		clientPool:        deps.ClientPool,
 		syncManager:       deps.SyncManager,
 		licenseService:    deps.LicenseService,
@@ -165,6 +169,7 @@ func (s *Server) Handler() *chi.Mux {
 	preferencesHandler := handlers.NewPreferencesHandler(s.syncManager)
 	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(s.clientAPIKeyStore, s.instanceStore)
 	versionHandler := handlers.NewVersionHandler(s.updateService)
+	webhooksHandler := handlers.NewWebhooksHandler(s.webhookStore, s.apiKeyStore, s.syncManager, s.instanceStore)
 
 	// Create proxy handler
 	proxyHandler := proxy.NewHandler(s.clientPool, s.clientAPIKeyStore, s.instanceStore)
@@ -230,6 +235,8 @@ func (s *Server) Handler() *chi.Mux {
 				r.Get("/", instancesHandler.ListInstances)
 				r.Post("/", instancesHandler.CreateInstance)
 
+				r.Get("/webhooks", webhooksHandler.GetAllWebhooks)
+
 				r.Route("/{instanceID}", func(r chi.Router) {
 					r.Put("/", instancesHandler.UpdateInstance)
 					r.Delete("/", instancesHandler.DeleteInstance)
@@ -273,6 +280,10 @@ func (s *Server) Handler() *chi.Mux {
 					// Alternative speed limits
 					r.Get("/alternative-speed-limits", preferencesHandler.GetAlternativeSpeedLimitsMode)
 					r.Post("/alternative-speed-limits/toggle", preferencesHandler.ToggleAlternativeSpeedLimits)
+
+					// Webhooks
+					r.Patch("/webhooks", webhooksHandler.UpdateWebhookPreferences)
+					r.Post("/webhooks", webhooksHandler.PostWebhook)
 				})
 			})
 
@@ -337,7 +348,9 @@ type Dependencies struct {
 	AuthService       *auth.Service
 	SessionManager    *scs.SessionManager
 	InstanceStore     *models.InstanceStore
+	APIKeyStore       *models.APIKeyStore
 	ClientAPIKeyStore *models.ClientAPIKeyStore
+	WebhookStore      *models.WebhookStore
 	ClientPool        *qbittorrent.ClientPool
 	SyncManager       *qbittorrent.SyncManager
 	WebHandler        *web.Handler

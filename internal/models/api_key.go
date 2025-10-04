@@ -108,6 +108,36 @@ func (s *APIKeyStore) GetByHash(ctx context.Context, keyHash string) (*APIKey, e
 	return apiKey, nil
 }
 
+func (s *APIKeyStore) GetByID(ctx context.Context, id int) (*APIKey, error) {
+	if id == 0 {
+		return nil, ErrAPIKeyNotFound
+	}
+
+	query := `
+		SELECT id, key_hash, name, created_at, last_used_at 
+		FROM api_keys 
+		WHERE id = ?
+	`
+
+	apiKey := &APIKey{}
+	err := s.db.QueryRowContext(ctx, query, id).Scan(
+		&apiKey.ID,
+		&apiKey.KeyHash,
+		&apiKey.Name,
+		&apiKey.CreatedAt,
+		&apiKey.LastUsedAt,
+	)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrAPIKeyNotFound
+		}
+		return nil, err
+	}
+
+	return apiKey, nil
+}
+
 func (s *APIKeyStore) List(ctx context.Context) ([]*APIKey, error) {
 	query := `
 		SELECT id, key_hash, name, created_at, last_used_at 
