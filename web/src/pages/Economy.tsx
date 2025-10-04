@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import { EconomyTable } from "@/components/economy/EconomyTable"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -29,18 +29,23 @@ export function Economy() {
   const [sortField, setSortField] = useState<string>("economyScore")
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc")
 
-  // Set default instance when instances load
-  useState(() => {
-    if (instances && instances.length > 0 && !selectedInstanceId) {
+  useEffect(() => {
+    if (!instances || instances.length === 0) return
+
+    const hasSelectedInstance =
+      selectedInstanceId !== null &&
+      instances.some((instance) => instance.id === selectedInstanceId)
+
+    if (!hasSelectedInstance) {
       setSelectedInstanceId(instances[0].id)
     }
-  })
+  }, [instances, selectedInstanceId])
 
   // Fetch economy data
-  const { data: economyData, isLoading: economyLoading, refetch } = useQuery({
+  const { data: economyData, isLoading: economyLoading, refetch, error: economyError } = useQuery({
     queryKey: ["economy", selectedInstanceId, currentPage, pageSize, sortField, sortOrder, filters],
     queryFn: () => {
-      if (!selectedInstanceId) return null
+      if (selectedInstanceId === null) return null
       return api.getEconomyAnalysis(
         selectedInstanceId,
         currentPage,
@@ -50,18 +55,18 @@ export function Economy() {
         filters
       )
     },
-    enabled: !!selectedInstanceId,
+    enabled: selectedInstanceId !== null,
     refetchInterval: 30000, // Refresh every 30 seconds
   })
 
   // Fetch economy stats
-  const { data: statsData } = useQuery({
+  const { data: statsData, error: statsError } = useQuery({
     queryKey: ["economy-stats", selectedInstanceId],
     queryFn: () => {
-      if (!selectedInstanceId) return null
+      if (selectedInstanceId === null) return null
       return api.getEconomyStats(selectedInstanceId)
     },
-    enabled: !!selectedInstanceId,
+    enabled: selectedInstanceId !== null,
     refetchInterval: 60000, // Refresh every minute
   })
 
@@ -104,11 +109,6 @@ export function Economy() {
     )
   }
 
-  // Automatically select first instance if none selected
-  if (!selectedInstanceId && instances.length > 0) {
-    setSelectedInstanceId(instances[0].id)
-  }
-
   const stats = statsData || economyData?.stats
 
   return (
@@ -123,7 +123,7 @@ export function Economy() {
                 Analyze torrent value and optimize storage usage
               </p>
             </div>
-            <Select value={selectedInstanceId?.toString()} onValueChange={handleInstanceChange}>
+            <Select value={selectedInstanceId !== null ? selectedInstanceId.toString() : undefined} onValueChange={handleInstanceChange}>
               <SelectTrigger className="w-[200px]">
                 <SelectValue placeholder="Select instance" />
               </SelectTrigger>
@@ -254,7 +254,7 @@ export function Economy() {
 
       {/* Table */}
       <div className="flex-1 overflow-hidden">
-        {selectedInstanceId && (
+        {selectedInstanceId !== null && (
           <EconomyTable
             instanceId={selectedInstanceId}
             data={economyData}
@@ -268,6 +268,7 @@ export function Economy() {
             sortOrder={sortOrder}
             onSortChange={handleSortChange}
             onRefresh={() => refetch()}
+            error={economyError || statsError}
           />
         )}
       </div>

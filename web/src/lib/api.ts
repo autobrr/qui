@@ -18,6 +18,16 @@ import type {
 } from "@/types"
 import { getApiBaseUrl, withBasePath } from "./base-url"
 
+class ApiError extends Error {
+  status: number
+
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = "ApiError"
+    this.status = status
+  }
+}
+
 const API_BASE = getApiBaseUrl()
 
 // Configuration for API defaults
@@ -60,7 +70,7 @@ class ApiClient {
           // nothing to see here
         }
       }
-      throw new Error(errorMessage)
+      throw new ApiError(errorMessage, response.status)
     }
 
     // Handle empty responses (like 204 No Content)
@@ -598,7 +608,6 @@ class ApiClient {
 
     const query = searchParams.toString()
     const url = `/instances/${instanceId}/torrents/economy?${query}`
-
     return this.request<EconomyAnalysis>(url)
   }
 

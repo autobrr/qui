@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { PaginationWrapper } from "@/components/economy/pagination-wrapper"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -13,7 +14,6 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
-import { PaginationWrapper } from "@/components/economy/pagination-wrapper"
 import {
   Table,
   TableBody,
@@ -29,7 +29,7 @@ import {
 } from "@/components/ui/tooltip"
 import { getLinuxIsoName, useIncognitoMode } from "@/lib/incognito"
 import { cn } from "@/lib/utils"
-import type { EconomyAnalysis, EconomyScore } from "@/types"
+import type { EconomyAnalysis, EconomyScore, FilterOptions } from "@/types"
 import {
   flexRender,
   getCoreRowModel,
@@ -53,8 +53,8 @@ interface EconomyTableProps {
   instanceId: number
   data: EconomyAnalysis | null | undefined
   isLoading: boolean
-  filters: unknown
-  onFilterChange: unknown
+  filters: FilterOptions
+  onFilterChange: (filters: FilterOptions) => void
   currentPage: number
   pageSize: number
   onPageChange: (page: number, pageSize?: number) => void
@@ -62,6 +62,7 @@ interface EconomyTableProps {
   sortOrder: "asc" | "desc"
   onSortChange: (field: string, order: "asc" | "desc") => void
   onRefresh: () => void
+  error?: unknown
 }
 
 export function EconomyTable({
@@ -72,6 +73,7 @@ export function EconomyTable({
   sortOrder,
   onSortChange,
   onRefresh,
+  error,
 }: EconomyTableProps) {
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const [globalFilter, setGlobalFilter] = useState("")
@@ -180,6 +182,9 @@ export function EconomyTable({
       .filter(Boolean)
   }, [rowSelection, tableData])
 
+  const hasError = Boolean(error)
+  const errorMessage = error instanceof Error ? error.message : undefined
+
   if (isLoading && !data) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -192,6 +197,12 @@ export function EconomyTable({
 
   return (
     <div className="flex flex-col h-full">
+      {hasError ? (
+        <div className="px-6 py-3 border-b bg-destructive/10 text-sm text-destructive">
+          Failed to load economy data. Try refreshing the page or reloading the instance.
+          {errorMessage && ` (${errorMessage})`}
+        </div>
+      ) : null}
       {/* Toolbar */}
       <div className="px-6 py-3 border-b bg-background">
         <div className="flex items-center justify-between gap-4">

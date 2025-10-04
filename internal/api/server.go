@@ -265,6 +265,11 @@ func (s *Server) Handler() *chi.Mux {
 							r.Get("/peers", torrentsHandler.GetTorrentPeers)
 							r.Get("/files", torrentsHandler.GetTorrentFiles)
 						})
+
+						// Economy analysis routes
+						r.Get("/economy", torrentsHandler.GetEconomyAnalysis)
+						r.Get("/economy/stats", torrentsHandler.GetEconomyStats)
+						r.Get("/economy/top-valuable", torrentsHandler.GetTopValuableTorrents)
 					})
 
 					// Categories and tags
