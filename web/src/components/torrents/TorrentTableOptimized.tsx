@@ -1093,7 +1093,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       {/* Table container */}
       <div className="flex flex-col flex-1 min-h-0 mt-2 sm:mt-0 overflow-hidden">
         <div
-          className="relative flex-1 overflow-auto scrollbar-thin select-none"
+          className="relative flex-1 overflow-auto scrollbar-thin select-none will-change-transform"
           ref={parentRef}
           role="grid"
           aria-label="Torrents table"
