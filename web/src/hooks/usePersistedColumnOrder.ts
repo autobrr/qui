@@ -24,16 +24,27 @@ export function usePersistedColumnOrder(
       return [...order]
     }
 
-    const stateIndex = order.indexOf("state")
-    const dlspeedIndex = order.indexOf("dlspeed")
+    const result = [...order]
 
-    if (stateIndex !== -1 && dlspeedIndex !== -1 && dlspeedIndex >= stateIndex) {
-      const result = [...order]
-      result.splice(stateIndex + 1, 0, ...missingColumns)
-      return result
-    }
+    missingColumns.forEach(columnId => {
+      if (columnId === "tracker_icon") {
+        const priorityIndex = result.indexOf("priority")
+        if (priorityIndex !== -1) {
+          result.splice(priorityIndex + 1, 0, columnId)
+          return
+        }
+      }
 
-    return [...order, ...missingColumns]
+      const stateIndex = result.indexOf("state")
+      const dlspeedIndex = result.indexOf("dlspeed")
+      if (stateIndex !== -1 && dlspeedIndex !== -1 && columnId !== "tracker_icon") {
+        result.splice(stateIndex + 1, 0, columnId)
+      } else {
+        result.push(columnId)
+      }
+    })
+
+    return result
   }
 
   const loadOrder = (): ColumnOrderState => {
