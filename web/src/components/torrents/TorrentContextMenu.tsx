@@ -20,12 +20,9 @@ import {
   CheckCircle,
   Copy,
   Download,
-  FilePen,
   FolderOpen,
-  FolderPen,
   Gauge,
   Pause,
-  Pencil,
   Play,
   Radio,
   Settings2,
@@ -38,6 +35,7 @@ import { memo, useCallback, useMemo } from "react"
 import { toast } from "sonner"
 import { CategorySubmenu } from "./CategorySubmenu"
 import { QueueSubmenu } from "./QueueSubmenu"
+import { RenameSubmenu } from "./RenameSubmenu"
 
 interface TorrentContextMenuProps {
   children: React.ReactNode
@@ -240,27 +238,14 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
           <FolderOpen className="mr-2 h-4 w-4" />
           Set Location {count > 1 ? `(${count})` : ""}
         </ContextMenuItem>
-        <ContextMenuItem
-          onClick={() => onPrepareRenameTorrent(hashes, torrents)}
-          disabled={isPending || count !== 1}
-        >
-          <Pencil className="mr-2 h-4 w-4" />
-          Rename Torrent
-        </ContextMenuItem>
-        <ContextMenuItem
-          onClick={() => onPrepareRenameFile(hashes, torrents)}
-          disabled={isPending || count !== 1}
-        >
-          <FilePen className="mr-2 h-4 w-4" />
-          Rename File
-        </ContextMenuItem>
-        <ContextMenuItem
-          onClick={() => onPrepareRenameFolder(hashes, torrents)}
-          disabled={isPending || count !== 1}
-        >
-          <FolderPen className="mr-2 h-4 w-4" />
-          Rename Folder
-        </ContextMenuItem>
+        <RenameSubmenu
+          type="context"
+          hashCount={count}
+          onRenameTorrent={() => onPrepareRenameTorrent(hashes, torrents)}
+          onRenameFile={() => onPrepareRenameFile(hashes, torrents)}
+          onRenameFolder={() => onPrepareRenameFolder(hashes, torrents)}
+          isPending={isPending}
+        />
         <ContextMenuSeparator />
         <ContextMenuItem
           onClick={() => onPrepareShareLimit(hashes, torrents)}
