@@ -42,6 +42,7 @@ export function MobileFooterNav() {
   const isOnInstancePage = location.pathname.startsWith("/instances/")
   const currentInstanceId = isOnInstancePage? location.pathname.split("/")[2]: null
   const currentInstance = instances?.find(i => i.id.toString() === currentInstanceId)
+  const currentInstanceLabel = currentInstance ? currentInstance.name : "Clients"
 
   if (isSelectionMode) {
     return null
@@ -94,8 +95,11 @@ export function MobileFooterNav() {
                   </Badge>
                 )}
               </div>
-              <span className="truncate">
-                {currentInstance ? currentInstance.name : "Clients"}
+              <span
+                className="block max-w-[7.5rem] truncate text-center"
+                title={currentInstanceLabel}
+              >
+                {currentInstanceLabel}
               </span>
             </button>
           </DropdownMenuTrigger>
@@ -107,10 +111,15 @@ export function MobileFooterNav() {
                 <Link
                   to="/instances/$instanceId"
                   params={{ instanceId: instance.id.toString() }}
-                  className="flex items-center gap-2"
+                  className="flex items-center gap-2 min-w-0"
                 >
                   <HardDrive className="h-4 w-4" />
-                  <span className="flex-1 truncate">{instance.name}</span>
+                  <span
+                    className="flex-1 min-w-0 truncate"
+                    title={instance.name}
+                  >
+                    {instance.name}
+                  </span>
                   <span
                     className={cn(
                       "h-2 w-2 rounded-full",
