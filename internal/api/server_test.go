@@ -21,6 +21,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/license"
+	"github.com/autobrr/qui/internal/services/trackericons"
 	"github.com/autobrr/qui/internal/web"
 	"github.com/autobrr/qui/internal/web/swagger"
 )
@@ -56,21 +57,25 @@ func newTestDependencies(t *testing.T) *Dependencies {
 
 	sessionManager := scs.New()
 
+	trackerIconService, err := trackericons.NewService(t.TempDir(), "qui-test")
+	require.NoError(t, err)
+
 	return &Dependencies{
 		Config: &config.AppConfig{
 			Config: &domain.Config{
 				BaseURL: "/",
 			},
 		},
-		Version:           "test",
-		AuthService:       &auth.Service{},
-		SessionManager:    sessionManager,
-		InstanceStore:     &models.InstanceStore{},
-		ClientAPIKeyStore: &models.ClientAPIKeyStore{},
-		ClientPool:        &qbittorrent.ClientPool{},
-		SyncManager:       &qbittorrent.SyncManager{},
-		WebHandler:        &web.Handler{},
-		LicenseService:    &license.Service{},
+		Version:            "test",
+		AuthService:        &auth.Service{},
+		SessionManager:     sessionManager,
+		InstanceStore:      &models.InstanceStore{},
+		ClientAPIKeyStore:  &models.ClientAPIKeyStore{},
+		ClientPool:         &qbittorrent.ClientPool{},
+		SyncManager:        &qbittorrent.SyncManager{},
+		WebHandler:         &web.Handler{},
+		LicenseService:     &license.Service{},
+		TrackerIconService: trackerIconService,
 	}
 }
 

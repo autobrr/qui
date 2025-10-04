@@ -41,6 +41,7 @@ import { Switch } from "@/components/ui/switch"
 import { useDebounce } from "@/hooks/useDebounce"
 import { TORRENT_ACTIONS, useTorrentActions, type TorrentAction } from "@/hooks/useTorrentActions"
 import { useTorrentsList } from "@/hooks/useTorrentsList"
+import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { Link, useSearch } from "@tanstack/react-router"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import {
@@ -78,7 +79,7 @@ import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata.ts"
 import { useInstances } from "@/hooks/useInstances"
 import { usePersistedCompactViewState, type ViewMode } from "@/hooks/usePersistedCompactViewState"
-import { getLinuxCategory, getLinuxIsoName, getLinuxRatio, getLinuxTags, useIncognitoMode } from "@/lib/incognito"
+import { getLinuxCategory, getLinuxIsoName, getLinuxRatio, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits, type SpeedUnit } from "@/lib/speedUnits"
 import { getStateLabel } from "@/lib/torrent-state-utils"
 import { getCommonCategory, getCommonSavePath, getCommonTags } from "@/lib/torrent-utils"
@@ -381,6 +382,111 @@ function getStatusBadgeProps(torrent: Torrent, trackerHealthSupported: boolean):
   return { variant, label, className }
 }
 
+function shallowEqualTrackerIcons(
+  prev?: Record<string, string>,
+  next?: Record<string, string>
+): boolean {
+  if (prev === next) {
+    return true
+  }
+
+  if (!prev || !next) {
+    return false
+  }
+
+  const prevKeys = Object.keys(prev)
+  const nextKeys = Object.keys(next)
+
+  if (prevKeys.length !== nextKeys.length) {
+    return false
+  }
+
+  for (const key of prevKeys) {
+    if (prev[key] !== next[key]) {
+      return false
+    }
+  }
+
+  return true
+}
+
+const trackerIconSizeClasses = {
+  xs: "h-3 w-3 text-[8px]",
+  sm: "h-[14px] w-[14px] text-[9px]",
+  md: "h-4 w-4 text-[10px]",
+} as const
+
+type TrackerIconSize = keyof typeof trackerIconSizeClasses
+
+interface TrackerIconProps {
+  title: string
+  fallback: string
+  src: string | null
+  size?: TrackerIconSize
+  className?: string
+}
+
+const TrackerIcon = ({ title, fallback, src, size = "md", className }: TrackerIconProps) => {
+  const [hasError, setHasError] = useState(false)
+
+  useEffect(() => {
+    setHasError(false)
+  }, [src])
+
+  return (
+    <div className={cn("flex items-center justify-center", className)} title={title}>
+      <div
+        className={cn(
+          "flex items-center justify-center rounded-sm border border-border/40 bg-muted font-medium uppercase leading-none select-none",
+          trackerIconSizeClasses[size]
+        )}
+      >
+        {src && !hasError ? (
+          <img
+            src={src}
+            alt=""
+            className="h-full w-full rounded-[2px] object-cover"
+            loading="lazy"
+            draggable={false}
+            onError={() => setHasError(true)}
+          />
+        ) : (
+          <span aria-hidden="true">{fallback}</span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+const getTrackerDisplayMeta = (tracker?: string) => {
+  if (!tracker) {
+    return {
+      host: "",
+      fallback: "#",
+      title: "",
+    }
+  }
+
+  const trimmed = tracker.trim()
+  const fallbackLetter = trimmed ? trimmed.charAt(0).toUpperCase() : "#"
+
+  let host = trimmed
+  try {
+    if (trimmed.includes("://")) {
+      const url = new URL(trimmed)
+      host = url.hostname
+    }
+  } catch {
+    // Keep host as trimmed value if URL parsing fails
+  }
+
+  return {
+    host,
+    fallback: fallbackLetter,
+    title: host,
+  }
+}
+
 // Swipeable card component with gesture support
 function SwipeableCard({
   torrent,
@@ -393,6 +499,7 @@ function SwipeableCard({
   speedUnit,
   viewMode,
   trackerHealthSupported,
+  trackerIcons,
 }: {
   torrent: Torrent
   isSelected: boolean
@@ -404,6 +511,7 @@ function SwipeableCard({
   speedUnit: SpeedUnit
   viewMode: ViewMode
   trackerHealthSupported: boolean
+  trackerIcons?: Record<string, string>
 }) {
 
   // Use number for timeoutId in browser
@@ -464,6 +572,9 @@ function SwipeableCard({
     () => getStatusBadgeProps(torrent, trackerHealthSupported),
     [torrent, trackerHealthSupported]
   )
+  const trackerValue = incognitoMode ? getLinuxTracker(torrent.hash) : torrent.tracker
+  const trackerMeta = useMemo(() => getTrackerDisplayMeta(trackerValue), [trackerValue])
+  const trackerIconSrc = trackerMeta.host ? trackerIcons?.[trackerMeta.host] ?? null : null
 
   return (
     <div
@@ -506,12 +617,21 @@ function SwipeableCard({
         <div className="flex items-center gap-2">
           <div className="flex-1 min-w-0 overflow-hidden">
             <div className="w-full overflow-x-auto scrollbar-thin">
-              <h3 className={cn(
-                "font-medium text-xs whitespace-nowrap inline-block",
-                selectionMode && "pr-8"
-              )} title={displayName}>
-                {displayName}
-              </h3>
+              <div className="flex items-center gap-1 whitespace-nowrap">
+                <TrackerIcon
+                  title={trackerMeta.title}
+                  fallback={trackerMeta.fallback}
+                  src={trackerIconSrc}
+                  size="xs"
+                  className="flex-shrink-0"
+                />
+                <h3 className={cn(
+                  "font-medium text-xs inline-block",
+                  selectionMode && "pr-8"
+                )} title={displayName}>
+                  {displayName}
+                </h3>
+              </div>
             </div>
           </div>
 
@@ -554,12 +674,21 @@ function SwipeableCard({
           <div className="flex items-center gap-2 mb-1">
             <div className="flex-1 min-w-0 overflow-hidden">
               <div className="w-full overflow-x-auto scrollbar-thin">
-                <h3 className={cn(
-                  "font-medium text-sm whitespace-nowrap inline-block",
-                  selectionMode && "pr-8"
-                )} title={displayName}>
-                  {displayName}
-                </h3>
+                <div className="flex items-center gap-1 whitespace-nowrap">
+                  <TrackerIcon
+                    title={trackerMeta.title}
+                    fallback={trackerMeta.fallback}
+                    src={trackerIconSrc}
+                    size="sm"
+                    className="flex-shrink-0"
+                  />
+                  <h3 className={cn(
+                    "font-medium text-sm inline-block",
+                    selectionMode && "pr-8"
+                  )} title={displayName}>
+                    {displayName}
+                  </h3>
+                </div>
               </div>
             </div>
             <Badge variant={statusBadgeVariant} className={cn("text-xs flex-shrink-0", statusBadgeClass)}>
@@ -594,6 +723,19 @@ function SwipeableCard({
             )}>
               {displayName}
             </h3>
+            {trackerMeta.title && (
+              <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground truncate">
+                <TrackerIcon
+                  title={trackerMeta.title}
+                  fallback={trackerMeta.fallback}
+                  src={trackerIconSrc}
+                  size="xs"
+                />
+                <span className="truncate" title={trackerMeta.title}>
+                  {trackerMeta.title}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Progress bar */}
@@ -766,6 +908,22 @@ export function TorrentCardsMobile({
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const [speedUnit, setSpeedUnit] = useSpeedUnits()
   const { viewMode } = usePersistedCompactViewState("normal")
+  const trackerIconsQuery = useTrackerIcons()
+  const trackerIconsRef = useRef<Record<string, string> | undefined>(undefined)
+  const trackerIcons = useMemo(() => {
+    const latest = trackerIconsQuery.data
+    if (!latest) {
+      return trackerIconsRef.current
+    }
+
+    const previous = trackerIconsRef.current
+    if (previous && shallowEqualTrackerIcons(previous, latest)) {
+      return previous
+    }
+
+    trackerIconsRef.current = latest
+    return latest
+  }, [trackerIconsQuery.data])
 
   // Track user-initiated actions to differentiate from automatic data updates
   const [lastUserAction, setLastUserAction] = useState<{ type: string; timestamp: number } | null>(null)
@@ -1449,6 +1607,7 @@ export function TorrentCardsMobile({
                   speedUnit={speedUnit}
                   viewMode={viewMode}
                   trackerHealthSupported={trackerHealthSupported}
+                  trackerIcons={trackerIcons}
                 />
               </div>
             )

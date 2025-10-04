@@ -10,6 +10,7 @@ import { usePersistedColumnOrder } from "@/hooks/usePersistedColumnOrder"
 import { usePersistedColumnSizing } from "@/hooks/usePersistedColumnSizing"
 import { usePersistedColumnSorting } from "@/hooks/usePersistedColumnSorting"
 import { usePersistedColumnVisibility } from "@/hooks/usePersistedColumnVisibility"
+import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
 import { useTorrentExporter } from "@/hooks/useTorrentExporter"
 import { useTorrentsList } from "@/hooks/useTorrentsList"
@@ -19,8 +20,7 @@ import {
   TouchSensor,
   closestCenter,
   useSensor,
-  useSensors,
-  type DragEndEvent
+  useSensors
 } from "@dnd-kit/core"
 import { restrictToHorizontalAxis } from "@dnd-kit/modifiers"
 import {
@@ -97,6 +97,7 @@ import { createColumns } from "./TorrentTableColumns"
 // Default values for persisted state hooks (module scope for stable references)
 const DEFAULT_COLUMN_VISIBILITY = {
   priority: true,
+  tracker_icon: true,
   name: true,
   size: true,
   total_size: false,
@@ -138,12 +139,47 @@ const DEFAULT_COLUMN_SIZING = {}
 
 // Helper function to get default column order (module scope for stable reference)
 function getDefaultColumnOrder(): string[] {
-  const cols = createColumns(false, undefined, "bytes", undefined)
-  return cols.map(col => {
+  const cols = createColumns(false, undefined, "bytes", undefined, undefined, undefined)
+  const order = cols.map(col => {
     if ("id" in col && col.id) return col.id
     if ("accessorKey" in col && typeof col.accessorKey === "string") return col.accessorKey
     return null
   }).filter((v): v is string => typeof v === "string")
+
+  const trackerIconIndex = order.indexOf("tracker_icon")
+  if (trackerIconIndex > -1 && trackerIconIndex !== 2) {
+    order.splice(2, 0, order.splice(trackerIconIndex, 1)[0])
+  }
+
+  return order
+}
+
+function shallowEqualTrackerIcons(
+  prev?: Record<string, string>,
+  next?: Record<string, string>
+): boolean {
+  if (prev === next) {
+    return true
+  }
+
+  if (!prev || !next) {
+    return false
+  }
+
+  const prevKeys = Object.keys(prev)
+  const nextKeys = Object.keys(next)
+
+  if (prevKeys.length !== nextKeys.length) {
+    return false
+  }
+
+  for (const key of prevKeys) {
+    if (prev[key] !== next[key]) {
+      return false
+    }
+  }
+
+  return true
 }
 
 
@@ -182,6 +218,22 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const [speedUnit, setSpeedUnit] = useSpeedUnits()
   const { formatTimestamp } = useDateTimeFormatters()
   const { preferences } = useInstancePreferences(instanceId)
+  const trackerIconsQuery = useTrackerIcons()
+  const trackerIconsRef = useRef<Record<string, string> | undefined>(undefined)
+  const trackerIcons = useMemo(() => {
+    const latest = trackerIconsQuery.data
+    if (!latest) {
+      return trackerIconsRef.current
+    }
+
+    const previous = trackerIconsRef.current
+    if (previous && shallowEqualTrackerIcons(previous, latest)) {
+      return previous
+    }
+
+    trackerIconsRef.current = latest
+    return latest
+  }, [trackerIconsQuery.data])
 
   // Detect platform for keyboard shortcuts
   const isMac = useMemo(() => {
@@ -501,8 +553,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       onRowSelection: handleRowSelection,
       isAllSelected,
       excludedFromSelectAll,
-    }, speedUnit, formatTimestamp, preferences),
-    [incognitoMode, speedUnit, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, isAllSelected, excludedFromSelectAll, preferences]
+    }, speedUnit, trackerIcons, formatTimestamp, preferences),
+    [incognitoMode, speedUnit, trackerIcons, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, isAllSelected, excludedFromSelectAll, preferences]
   )
 
   const table = useReactTable({
@@ -959,17 +1011,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     })
   )
 
-  const handleDragEnd = useCallback((event: DragEndEvent) => {
-    const { active, over } = event
-    if (active && over && active.id !== over.id) {
-      setColumnOrder((currentOrder: string[]) => {
-        const oldIndex = currentOrder.indexOf(active.id as string)
-        const newIndex = currentOrder.indexOf(over.id as string)
-        return arrayMove(currentOrder, oldIndex, newIndex)
-      })
-    }
-  }, [setColumnOrder])
-
   return (
     <div className="h-full flex flex-col">
       {/* Search and Actions */}
@@ -1087,7 +1128,31 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
               <DndContext
                 sensors={sensors}
                 collisionDetection={closestCenter}
-                onDragEnd={handleDragEnd}
+                onDragEnd={(event) => {
+                  const { active, over } = event
+                  if (!active || !over || active.id === over.id) {
+                    return
+                  }
+
+                  setColumnOrder((currentOrder: string[]) => {
+                    const allColumnIds = table.getAllLeafColumns().map((col) => col.id)
+
+                    // Normalize current order to include all current columns exactly once
+                    const sanitizedOrder = [
+                      ...currentOrder.filter((id) => allColumnIds.includes(id)),
+                      ...allColumnIds.filter((id) => !currentOrder.includes(id)),
+                    ]
+
+                    const oldIndex = sanitizedOrder.indexOf(active.id as string)
+                    const newIndex = sanitizedOrder.indexOf(over.id as string)
+
+                    if (oldIndex === -1 || newIndex === -1) {
+                      return sanitizedOrder
+                    }
+
+                    return arrayMove(sanitizedOrder, oldIndex, newIndex)
+                  })
+                }}
                 modifiers={[restrictToHorizontalAxis]}
               >
                 {table.getHeaderGroups().map(headerGroup => {
