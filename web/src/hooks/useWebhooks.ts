@@ -63,31 +63,6 @@ export function useWebhooks() {
     },
   })
 
-  const createApiKeyMutation = useMutation({
-    mutationFn: ({ instanceId, instanceName }: {
-      instanceId: number
-      instanceName: string
-    }) => api.createClientApiKey({
-      clientName: `Webhook - ${instanceName}`,
-      instanceId,
-      isWebhook: true,
-    }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["webhooks"],
-      })
-    },
-  })
-
-  const deleteApiKeyMutation = useMutation({
-    mutationFn: (apiKeyId: number) => api.deleteClientApiKey(apiKeyId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["webhooks"],
-      })
-    },
-  })
-
   return {
     webhooks: webhooks as WebhookPreferences[] | undefined,
     isLoading,
@@ -95,12 +70,6 @@ export function useWebhooks() {
     updateWebhook: updateMutation.mutate,
     updateWebhookAsync: updateMutation.mutateAsync,
     isUpdating: updateMutation.isPending,
-    createApiKey: createApiKeyMutation.mutate,
-    createApiKeyAsync: createApiKeyMutation.mutateAsync,
-    isCreatingApiKey: createApiKeyMutation.isPending,
-    deleteApiKey: deleteApiKeyMutation.mutate,
-    deleteApiKeyAsync: deleteApiKeyMutation.mutateAsync,
-    isDeletingApiKey: deleteApiKeyMutation.isPending,
   }
 }
 

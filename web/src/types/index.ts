@@ -416,8 +416,7 @@ export interface AppPreferences {
 
 export interface WebhookPreferences {
   enabled: boolean
-  api_key: string
-  api_key_id?: number
+  api_key_id: number
   instance_id: string
   instance_name: string
   autorun_enabled: boolean
