@@ -285,6 +285,38 @@ scrape_configs:
 
 All metrics are labeled with `instance_id` and `instance_name` for multi-instance monitoring.
 
+## Tracker Icons
+
+Cached icons live in your data directory under `tracker-icons/` (next to `qui.db`). Icons are stored as normalised 16×16 PNGs; anything larger than 1 024×1 024 is rejected, so resize first if you are supplying files manually. qui automatically attempts to download a favicon the first time it encounters a tracker host, caching the result for future sessions. After a failed download it waits 30 minutes before retrying the same host, and the next retry is triggered automatically the next time that host appears in your tracker list.
+
+### Add icons manually
+
+- Copy PNGs named after each tracker host (e.g. `tracker.example.com.png`) into the `tracker-icons/` directory. Files are served as-is, so trimming or resizing is up to you, but matching the built-in size (16×16) keeps them crisp and avoids extra scaling.
+
+### Preload a bundle of icons
+
+If you already have a library of icons (for example, exported from another installation) you can preload them via a mapping file placed alongside the directory: `tracker-icons/preload.json`, `tracker-icons/preload.js`, `tracker-icons/tracker-icons.json`, `tracker-icons/tracker-icons.js`, or `tracker-icons/tracker-icons.txt`.
+
+- The file can be either a plain JSON object or a snippet exported as `const trackerIcons = { ... };`.
+- Keys must be the real tracker hostnames (e.g. `tracker.example.org`). If you include a `www.*` host, qui automatically mirrors the icon to the bare hostname when missing.
+- On startup qui decodes each data URL, normalises the image to 16×16, and writes the PNG to `<host>.png`.
+
+  ```json
+  {
+    "tracker.example.org": "data:image/png;base64,AAA...",
+    "www.tracker.org": "data:image/png;base64,BBB..."
+  }
+  ```
+
+  ```js
+  const trackerIcons = {
+    "tracker.example.org": "data:image/png;base64,CCC...",
+    "www.tracker.org": "data:image/png;base64,DDD..."
+  };
+  ```
+
+- Example: [Audionut/add-trackers](https://github.com/Audionut/add-trackers/blob/8db05c0e822f9b3afa46ca784644c4e7e400c92b/ptp-add-filter-all-releases-anut.js#L768)
+
 ## Reverse Proxy for External Applications
 
 qui includes a built-in reverse proxy that allows external applications like autobrr, Sonarr, Radarr, and other tools to connect to your qBittorrent instances **without needing qBittorrent credentials**. qui handles authentication transparently, making integration seamless.
@@ -322,6 +354,7 @@ http://localhost:7476/proxy/abc123def456ghi789jkl012mno345pqr678stu901vwx234yz
 
 **Sonarr / Radarr**
 - Go to `Settings → Download Clients`
+- Select `Show Advanced`
 - Add a new **qBittorrent** client
 - Set the host and port of qui
 - Add URL Base (`/proxy/...`) - remember to include /qui/ if you use custom baseurl
@@ -333,6 +366,20 @@ http://localhost:7476/proxy/abc123def456ghi789jkl012mno345pqr678stu901vwx234yz
 - Enter the full url like: `http://localhost:7476/proxy/abc123def456ghi789jkl012mno345pqr678stu901vwx234yz`
 - Leave username/password blank and press **Test**
 - Leave basic auth blank since qui handles that
+
+**cross-seed**
+- Open cross-seed config file
+- Add or edit the `torrentClients` section.
+- Append the full url following the documentation
+- `torrentClients: ["qbittorrent:http://localhost:7476/proxy/abc123def456ghi789jkl012mno345pqr678stu901vwx234yz"],`
+- Save the config file and restart cross-seed
+
+**Upload Assistant**
+- Open the Upload Assistant config file
+- Add or edit `qui_proxy_url` under the qBitTorrent client settings.
+- Append the full url like `"qui_proxy_url": "http://localhost:7476/proxy/abc123def456ghi789jkl012mno345pqr678stu901vwx234yz",`
+- All other auth type can remain unchanged
+- Save the config file
 
 ### Supported Applications
 
