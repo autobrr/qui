@@ -16,6 +16,7 @@ interface TorrentTableResponsiveProps {
     categories: string[]
     tags: string[]
     trackers: string[]
+    expr?: string
   }
   selectedTorrent?: Torrent | null
   onTorrentSelect?: (torrent: Torrent | null) => void

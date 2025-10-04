@@ -36,6 +36,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
     }
     filterTimeoutRef.current = setTimeout(() => {
       setFilters(newFilters)
+      console.log("debouncedSetFilters", newFilters)
     }, 150) // 150ms delay to batch rapid filter changes
   }, [setFilters])
 

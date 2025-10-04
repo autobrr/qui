@@ -15,6 +15,8 @@ import (
 
 	"github.com/autobrr/autobrr/pkg/ttlcache"
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/expr-lang/expr"
+	"github.com/expr-lang/expr/vm"
 	"github.com/lithammer/fuzzysearch/fuzzy"
 	"github.com/rs/zerolog/log"
 
@@ -139,6 +141,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	hasMultipleCategoryFilters := len(filters.Categories) > 1
 	hasMultipleTagFilters := len(filters.Tags) > 1
 	hasTrackerFilters := len(filters.Trackers) > 0 // Library doesn't support tracker filtering
+	hasExprFilters := len(filters.Expr) > 0
 
 	// Determine if any status filter needs manual filtering
 	needsManualStatusFiltering := false
@@ -162,7 +165,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	}
 
 	useManualFiltering = hasMultipleStatusFilters || hasMultipleCategoryFilters || hasMultipleTagFilters ||
-		hasTrackerFilters || needsManualStatusFiltering || needsManualCategoryFiltering || needsManualTagFiltering
+		hasTrackerFilters || hasExprFilters || needsManualStatusFiltering || needsManualCategoryFiltering || needsManualTagFiltering
 
 	if useManualFiltering {
 		// Use manual filtering - get all torrents and filter manually
@@ -172,6 +175,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 			Bool("multipleCategories", hasMultipleCategoryFilters).
 			Bool("multipleTags", hasMultipleTagFilters).
 			Bool("hasTrackers", hasTrackerFilters).
+			Bool("hasExpr", hasExprFilters).
 			Bool("needsManualStatus", needsManualStatusFiltering).
 			Bool("needsManualCategory", needsManualCategoryFiltering).
 			Bool("needsManualTag", needsManualTagFiltering).
@@ -1344,6 +1348,15 @@ func (sm *SyncManager) applyManualFilters(client *Client, torrents []qbt.Torrent
 		}
 	}
 
+	var program *vm.Program
+	var compileErr error
+	if len(filters.Expr) > 0 {
+		program, compileErr = expr.Compile(filters.Expr, expr.Env(qbt.Torrent{}), expr.AsBool())
+		if compileErr != nil {
+			log.Error().Err(compileErr).Msg("Failed to compile expression")
+		}
+	}
+
 	for _, torrent := range torrents {
 		// Status filters (OR logic)
 		if len(filters.Status) > 0 {
@@ -1427,6 +1440,24 @@ func (sm *SyncManager) applyManualFilters(client *Client, torrents []qbt.Torrent
 						continue
 					}
 				}
+			}
+		}
+
+		if len(filters.Expr) > 0 && compileErr == nil {
+			result, err := expr.Run(program, torrent)
+			if err != nil {
+				log.Error().Err(err).Msg("Failed to evaluate expression")
+				continue
+			}
+
+			expResult, ok := result.(bool)
+			if !ok {
+				log.Error().Err(err).Msg("Expression result is not a boolean")
+				continue
+			}
+
+			if !expResult {
+				continue
 			}
 		}
 

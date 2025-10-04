@@ -8,12 +8,16 @@ import { CSS } from "@dnd-kit/utilities"
 import { flexRender, type Header } from "@tanstack/react-table"
 import { ChevronUp, ChevronDown } from "lucide-react"
 import type { Torrent } from "@/types"
+import { ColumnFilterPopover, type ColumnFilter } from "./ColumnFilterPopover"
+import { getColumnType } from "@/lib/column-filter-utils"
 
 interface DraggableTableHeaderProps {
   header: Header<Torrent, unknown>
+  columnFilters?: ColumnFilter[]
+  onFilterChange?: (columnId: string, filter: ColumnFilter | null) => void
 }
 
-export function DraggableTableHeader({ header }: DraggableTableHeaderProps) {
+export function DraggableTableHeader({ header, columnFilters = [], onFilterChange }: DraggableTableHeaderProps) {
   const { column } = header
 
   const {
@@ -69,6 +73,17 @@ export function DraggableTableHeader({ header }: DraggableTableHeaderProps) {
             ) : (
               <ChevronDown className="h-4 w-4 flex-shrink-0" />
             )
+          )}
+          {/* Column filter button - only show for filterable columns */}
+          {column.id !== "select" && column.id !== "priority" && onFilterChange && (
+            <ColumnFilterPopover
+              columnId={column.id}
+              columnName={(column.columnDef.meta as { headerString?: string })?.headerString ||
+                         (typeof column.columnDef.header === "string" ? column.columnDef.header : column.id)}
+              columnType={getColumnType(column.id)}
+              currentFilter={columnFilters.find(f => f.columnId === column.id)}
+              onApply={(filter) => onFilterChange(column.id, filter)}
+            />
           )}
         </div>
       </div>
