@@ -191,8 +191,8 @@ export function Header({
                       to="/instances/$instanceId"
                       params={{ instanceId: instance.id.toString() }}
                       className={cn(
-                        "flex items-center gap-2 cursor-pointer rounded-sm px-2 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
-                        instance.id === selectedInstanceId? "bg-accent text-accent-foreground font-medium": "hover:bg-accent/80 data-[highlighted]:bg-accent/80 focus-visible:bg-accent/20 text-foreground"
+                        "flex items-center gap-2 cursor-pointer rounded-sm px-2 py-1.5 text-sm focus-visible:outline-none",
+                        instance.id === selectedInstanceId? "bg-accent text-accent-foreground font-medium": "hover:bg-accent/80 data-[highlighted]:bg-accent/80 text-foreground"
                       )}
                     >
                       <HardDrive className="h-4 w-4 flex-shrink-0" />
