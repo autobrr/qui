@@ -209,69 +209,75 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
         </div>
 
         <div className="space-y-4">
-          <form.Field 
-            name="listen_port"
-            validators={{
-              onChange: ({ value }) => {
-                if (value < 0 || value > 65535) {
-                  return 'The port used for incoming connections must be between 0 and 65535'
+          {/* Input boxes row */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <form.Field 
+              name="listen_port"
+              validators={{
+                onChange: ({ value }) => {
+                  if (value < 0 || value > 65535) {
+                    return 'The port used for incoming connections must be between 0 and 65535'
+                  }
+                  return undefined
                 }
-                return undefined
-              }
-            }}
-          >
-            {(field) => (
-              <div className="space-y-2">
-                <NumberInput
-                  label="Port for incoming connections"
-                  value={field.state.value}
-                  onChange={(value) => field.handleChange(value)}
-                  min={0}
-                  max={65535}
-                  description="Port used for incoming BitTorrent connections"
-                />
-                {field.state.meta.errors.length > 0 && (
-                  <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
-                )}
-              </div>
-            )}
-          </form.Field>
-
-          <form.Field name="random_port">
-            {(field) => (
-              <SwitchSetting
-                label="Use random port on each startup"
-                description="Randomly select a port when qBittorrent starts"
-                checked={field.state.value}
-                onChange={(checked) => field.handleChange(checked)}
-              />
-            )}
-          </form.Field>
-
-          <form.Field name="upnp">
-            {(field) => (
-              <SwitchSetting
-                label="Enable UPnP/NAT-PMP port forwarding"
-                description="Automatically forward port through your router"
-                checked={field.state.value}
-                onChange={(checked) => field.handleChange(checked)}
-              />
-            )}
-          </form.Field>
-
-          {fieldVisibility.showUpnpLeaseField && (
-            <form.Field name="upnp_lease_duration">
+              }}
+            >
               {(field) => (
-                <NumberInput
-                  label="UPnP lease duration (0 = permanent)"
-                  value={field.state.value}
-                  onChange={(value) => field.handleChange(value)}
-                  min={0}
-                  description="Duration in minutes for UPnP lease (0 for permanent, libtorrent 2.x only)"
+                <div className="space-y-2">
+                  <NumberInput
+                    label="Port for incoming connections"
+                    value={field.state.value}
+                    onChange={(value) => field.handleChange(value)}
+                    min={0}
+                    max={65535}
+                    description="Port used for incoming BitTorrent connections"
+                  />
+                  {field.state.meta.errors.length > 0 && (
+                    <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                  )}
+                </div>
+              )}
+            </form.Field>
+
+            {fieldVisibility.showUpnpLeaseField && (
+              <form.Field name="upnp_lease_duration">
+                {(field) => (
+                  <NumberInput
+                    label="UPnP lease duration (0 = permanent)"
+                    value={field.state.value}
+                    onChange={(value) => field.handleChange(value)}
+                    min={0}
+                    description="Duration in minutes for UPnP lease (0 for permanent, libtorrent 2.x only)"
+                  />
+                )}
+              </form.Field>
+            )}
+          </div>
+
+          {/* Toggles row */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <form.Field name="random_port">
+              {(field) => (
+                <SwitchSetting
+                  label="Use random port on each startup"
+                  description="Randomly select a port when qBittorrent starts"
+                  checked={field.state.value}
+                  onChange={(checked) => field.handleChange(checked)}
                 />
               )}
             </form.Field>
-          )}
+
+            <form.Field name="upnp">
+              {(field) => (
+                <SwitchSetting
+                  label="Enable UPnP/NAT-PMP port forwarding"
+                  description="Automatically forward port through your router"
+                  checked={field.state.value}
+                  onChange={(checked) => field.handleChange(checked)}
+                />
+              )}
+            </form.Field>
+          </div>
         </div>
       </div>
 
@@ -370,41 +376,43 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
         </div>
 
         <div className="space-y-4">
-          <form.Field name="current_network_interface">
-            {(field) => (
-              <div className="space-y-2">
-                <Label htmlFor="network_interface">Network Interface (Read-Only)</Label>
-                <Input
-                  id="network_interface"
-                  value={field.state.value || "Auto-detect"}
-                  readOnly
-                  className="bg-muted"
-                  disabled
-                />
-                <p className="text-xs text-muted-foreground">
-                  Currently active network interface. Configuration requires missing API endpoints.
-                </p>
-              </div>
-            )}
-          </form.Field>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <form.Field name="current_network_interface">
+              {(field) => (
+                <div className="space-y-2">
+                  <Label htmlFor="network_interface">Network Interface (Read-Only)</Label>
+                  <Input
+                    id="network_interface"
+                    value={field.state.value || "Auto-detect"}
+                    readOnly
+                    className="bg-muted"
+                    disabled
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Currently active network interface. Configuration requires missing API endpoints.
+                  </p>
+                </div>
+              )}
+            </form.Field>
 
-          <form.Field name="current_interface_address">
-            {(field) => (
-              <div className="space-y-2">
-                <Label htmlFor="interface_address">Interface IP Address (Read-Only)</Label>
-                <Input
-                  id="interface_address"
-                  value={field.state.value || "Auto-detect"}
-                  readOnly
-                  disabled
-                  className="bg-muted"
-                />
-                <p className="text-xs text-muted-foreground">
-                  IP address of the current interface. Configuration requires missing API endpoints.
-                </p>
-              </div>
-            )}
-          </form.Field>
+            <form.Field name="current_interface_address">
+              {(field) => (
+                <div className="space-y-2">
+                  <Label htmlFor="interface_address">Interface IP Address (Read-Only)</Label>
+                  <Input
+                    id="interface_address"
+                    value={field.state.value || "Auto-detect"}
+                    readOnly
+                    disabled
+                    className="bg-muted"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    IP address of the current interface. Configuration requires missing API endpoints.
+                  </p>
+                </div>
+              )}
+            </form.Field>
+          </div>
 
           <form.Field name="reannounce_when_address_changed">
             {(field) => (
