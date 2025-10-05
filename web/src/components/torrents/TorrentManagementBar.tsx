@@ -45,18 +45,19 @@ import {
   ChevronsDown,
   ChevronsUp,
   Folder,
-  FolderOpen, Gauge,
+  FolderOpen,
+  Gauge,
   List,
   Pause,
   Play,
   Radio,
-  Settings2, Share2,
+  Settings2,
+  Share2,
   Sprout,
   Tag,
   Trash2
 } from "lucide-react"
-import { type ChangeEvent } from "react"
-import { memo, useCallback, useMemo } from "react"
+import { memo, useCallback, useMemo, type ChangeEvent } from "react"
 import {
   AddTagsDialog,
   SetCategoryDialog,
