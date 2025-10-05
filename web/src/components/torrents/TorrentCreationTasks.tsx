@@ -15,7 +15,7 @@ import {
   TableRow
 } from "@/components/ui/table"
 import { api } from "@/lib/api"
-import { formatDate } from "@/lib/dateTimeUtils"
+import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { getTorrentTaskPollInterval } from "@/lib/torrent-task-polling"
 import type { TorrentCreationStatus, TorrentCreationTask } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
@@ -42,6 +42,7 @@ const STATUS_ICONS: Record<TorrentCreationStatus, React.ReactNode> = {
 
 export function TorrentCreationTasks({ instanceId }: TorrentCreationTasksProps) {
   const queryClient = useQueryClient()
+  const { formatDate } = useDateTimeFormatters()
 
   // Keep table responsive while tasks run and ease off polling once queue clears
   const { data: tasks, isLoading } = useQuery({
