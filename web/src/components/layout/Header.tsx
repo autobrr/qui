@@ -57,6 +57,7 @@ export function Header({
     selectedTorrents,
     isAllSelected,
     totalSelectionCount,
+    selectedTotalSize,
     excludeHashes,
     filters,
     clearSelection,
@@ -324,6 +325,7 @@ export function Header({
                 selectedTorrents={selectedTorrents}
                 isAllSelected={isAllSelected}
                 totalSelectionCount={totalSelectionCount}
+                totalSelectionSize={selectedTotalSize}
                 filters={filters}
                 search={routeSearch?.q}
                 excludeHashes={excludeHashes}

@@ -78,10 +78,10 @@ import { RemoveTagsDialog, SetCategoryDialog, SetLocationDialog, SetTagsDialog }
 // import { createPortal } from 'react-dom'
 // Columns dropdown removed on mobile
 import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
+import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata.ts"
 import { useInstances } from "@/hooks/useInstances"
 import { usePersistedCompactViewState, type ViewMode } from "@/hooks/usePersistedCompactViewState"
-import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { api } from "@/lib/api"
 import { getLinuxCategory, getLinuxIsoName, getLinuxRatio, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits, type SpeedUnit } from "@/lib/speedUnits"
@@ -1033,6 +1033,7 @@ export function TorrentCardsMobile({
     counts,
     categories,
     tags,
+    stats,
 
     isLoading,
     isLoadingMore,
@@ -1065,6 +1066,40 @@ export function TorrentCardsMobile({
       return selectedHashes.size
     }
   }, [isAllSelected, totalCount, excludedFromSelectAll.size, selectedHashes.size])
+
+  const selectedTotalSize = useMemo(() => {
+    if (isAllSelected) {
+      const aggregateTotalSize = stats?.totalSize ?? 0
+
+      if (aggregateTotalSize <= 0) {
+        return 0
+      }
+
+      if (excludedFromSelectAll.size === 0) {
+        return aggregateTotalSize
+      }
+
+      const excludedSize = torrents.reduce((total, torrent) => {
+        if (excludedFromSelectAll.has(torrent.hash)) {
+          return total + (torrent.size || 0)
+        }
+        return total
+      }, 0)
+
+      return Math.max(aggregateTotalSize - excludedSize, 0)
+    }
+
+    let total = 0
+    torrents.forEach(torrent => {
+      if (selectedHashes.has(torrent.hash)) {
+        total += torrent.size || 0
+      }
+    })
+
+    return total
+  }, [isAllSelected, stats?.totalSize, excludedFromSelectAll, torrents, selectedHashes])
+
+  const selectedFormattedSize = useMemo(() => formatBytes(selectedTotalSize), [selectedTotalSize])
 
   // Load more rows as user scrolls (progressive loading + backend pagination)
   const loadMore = useCallback((): void => {
@@ -1607,8 +1642,13 @@ export function TorrentCardsMobile({
               >
                 <X className="h-4 w-4"/>
               </button>
-              <span className="text-sm font-medium">
+              <span className="text-sm font-medium flex items-center gap-2">
                 {isAllSelected ? `All ${effectiveSelectionCount}` : effectiveSelectionCount} selected
+                {selectedTotalSize > 0 && (
+                  <span className="text-xs text-primary-foreground/80">
+                    • {selectedFormattedSize}
+                  </span>
+                )}
               </span>
             </div>
             <button
@@ -1925,6 +1965,11 @@ export function TorrentCardsMobile({
             </AlertDialogTitle>
             <AlertDialogDescription>
               This action cannot be undone.
+              {selectedTotalSize > 0 && (
+                <span className="block mt-2 text-xs text-muted-foreground">
+                  Total size: {selectedFormattedSize}
+                </span>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="flex items-center space-x-2 py-4">
