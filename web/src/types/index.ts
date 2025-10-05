@@ -48,6 +48,12 @@ export interface InstanceResponse extends Instance {
   recentErrors?: InstanceError[]
 }
 
+export interface InstanceCapabilities {
+  supportsTorrentCreation: boolean
+  supportsSetTags: boolean
+  webAPIVersion?: string
+}
+
 export interface Torrent {
   added_on: number
   amount_left: number

@@ -449,6 +449,27 @@ paths:
           description: Connection failed
 
 
+  /api/instances/{instanceId}/capabilities:
+    get:
+      tags:
+        - Instances
+      summary: Get instance capabilities
+      description: Retrieve lightweight capability metadata for a qBittorrent instance.
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+      responses:
+        '200':
+          description: Instance capabilities
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstanceCapabilities'
+        '400':
+          description: Invalid instance ID
+        '503':
+          description: Instance unavailable
+
+
   /api/instances/{instanceId}/torrents:
     get:
       tags:
@@ -1753,6 +1774,21 @@ components:
         tlsSkipVerify:
           type: boolean
           description: When true, TLS certificate errors from the upstream qBittorrent instance are ignored.
+
+
+    InstanceCapabilities:
+      type: object
+      properties:
+        supportsTorrentCreation:
+          type: boolean
+          description: Whether the instance supports creating torrents via the Web API.
+        supportsSetTags:
+          type: boolean
+          description: Whether the instance supports replacing tags on torrents.
+        webAPIVersion:
+          type: string
+          nullable: true
+          description: Reported qBittorrent Web API version for the instance.
 
 
     Torrent:

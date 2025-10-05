@@ -8,6 +8,7 @@ import type {
   AuthResponse,
   Category,
   InstanceFormData,
+  InstanceCapabilities,
   InstanceResponse,
   TorrentCreationParams,
   TorrentCreationTask,
@@ -126,6 +127,10 @@ class ApiClient {
 
   async testConnection(id: number): Promise<{ connected: boolean; message: string }> {
     return this.request(`/instances/${id}/test`, { method: "POST" })
+  }
+
+  async getInstanceCapabilities(id: number): Promise<InstanceCapabilities> {
+    return this.request<InstanceCapabilities>(`/instances/${id}/capabilities`)
   }
 
 

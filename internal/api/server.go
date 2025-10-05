@@ -267,6 +267,8 @@ func (s *Server) Handler() *chi.Mux {
 						})
 					})
 
+					r.Get("/capabilities", instancesHandler.GetInstanceCapabilities)
+
 					// Torrent creator
 					r.Route("/torrent-creator", func(r chi.Router) {
 						r.Post("/", torrentsHandler.CreateTorrent)

@@ -1000,6 +1000,7 @@ export function TorrentCardsMobile({
     counts,
     categories,
     tags,
+    supportsTorrentCreation,
 
     isLoading,
     isLoadingMore,
@@ -1484,37 +1485,41 @@ export function TorrentCardsMobile({
               <Plus className="h-4 w-4"/>
             </Button>
 
-            {/* Create Torrent button */}
-            <Button
-              size="icon"
-              variant="outline"
-              onClick={() => {
-                const next = { ...(routeSearch || {}), modal: "create-torrent" }
-                navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
-              }}
-              title="Create torrent"
-            >
-              <FileEdit className="h-4 w-4"/>
-            </Button>
+            {/* Create Torrent button - only show if instance supports it */}
+            {supportsTorrentCreation && (
+              <Button
+                size="icon"
+                variant="outline"
+                onClick={() => {
+                  const next = { ...(routeSearch || {}), modal: "create-torrent" }
+                  navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
+                }}
+                title="Create torrent"
+              >
+                <FileEdit className="h-4 w-4"/>
+              </Button>
+            )}
 
-            {/* Tasks button */}
-            <Button
-              size="icon"
-              variant="outline"
-              onClick={() => {
-                const next = { ...(routeSearch || {}), modal: "tasks" }
-                navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
-              }}
-              title="Torrent creation tasks"
-              className="relative"
-            >
-              <ListTodo className="h-4 w-4"/>
-              {activeTaskCount > 0 && (
-                <Badge variant="default" className="absolute -top-1 -right-1 h-5 min-w-5 flex items-center justify-center p-0 text-xs">
-                  {activeTaskCount}
-                </Badge>
-              )}
-            </Button>
+            {/* Tasks button - only show if instance supports torrent creation */}
+            {supportsTorrentCreation && (
+              <Button
+                size="icon"
+                variant="outline"
+                onClick={() => {
+                  const next = { ...(routeSearch || {}), modal: "tasks" }
+                  navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
+                }}
+                title="Torrent creation tasks"
+                className="relative"
+              >
+                <ListTodo className="h-4 w-4"/>
+                {activeTaskCount > 0 && (
+                  <Badge variant="default" className="absolute -top-1 -right-1 h-5 min-w-5 flex items-center justify-center p-0 text-xs">
+                    {activeTaskCount}
+                  </Badge>
+                )}
+              </Button>
+            )}
           </div>
         </div>
 

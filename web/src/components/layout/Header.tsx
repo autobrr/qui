@@ -31,6 +31,7 @@ import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSideba
 import { useTheme } from "@/hooks/useTheme"
 import { api } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import type { InstanceCapabilities } from "@/types"
 import { useQuery } from "@tanstack/react-query"
 import { Link, useNavigate, useRouterState, useSearch } from "@tanstack/react-router"
 import { ChevronsUpDown, FileEdit, FunnelPlus, FunnelX, HardDrive, Home, Info, ListTodo, LogOut, Menu, Plus, Search, Server, Settings, X } from "lucide-react"
@@ -139,6 +140,16 @@ export function Header({
     refetchInterval: 30000, // Poll every 30 seconds (lightweight check)
     refetchIntervalInBackground: true,
   })
+
+  // Query instance capabilities via the dedicated lightweight endpoint
+  const { data: instanceCapabilities } = useQuery<InstanceCapabilities>({
+    queryKey: ["instance-capabilities", selectedInstanceId],
+    queryFn: () => api.getInstanceCapabilities(selectedInstanceId!),
+    enabled: selectedInstanceId !== null,
+    staleTime: 300000, // Cache for 5 minutes (capabilities don't change often)
+  })
+
+  const supportsTorrentCreation = instanceCapabilities?.supportsTorrentCreation ?? true
 
   return (
     <header className="sticky top-0 z-50 flex flex-wrap lg:flex-nowrap items-start lg:items-center justify-between sm:border-b bg-background pl-2 pr-4 md:pl-4 md:pr-4 lg:pl-0 lg:static py-2 lg:py-0 lg:h-16">
@@ -260,25 +271,27 @@ export function Header({
               </TooltipTrigger>
               <TooltipContent>Add torrent</TooltipContent>
             </Tooltip>
-            {/* Create Torrent button */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="hidden md:inline-flex"
-                  onClick={() => {
-                    const next = { ...(routeSearch || {}), modal: "create-torrent" }
-                    navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
-                  }}
-                >
-                  <FileEdit className="h-4 w-4"/>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Create torrent</TooltipContent>
-            </Tooltip>
-            {/* Tasks button - always visible on instance routes */}
-            {isInstanceRoute && (
+            {/* Create Torrent button - only show if instance supports it */}
+            {supportsTorrentCreation && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="hidden md:inline-flex"
+                    onClick={() => {
+                      const next = { ...(routeSearch || {}), modal: "create-torrent" }
+                      navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
+                    }}
+                  >
+                    <FileEdit className="h-4 w-4"/>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Create torrent</TooltipContent>
+              </Tooltip>
+            )}
+            {/* Tasks button - only show on instance routes if torrent creation is supported */}
+            {isInstanceRoute && supportsTorrentCreation && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
