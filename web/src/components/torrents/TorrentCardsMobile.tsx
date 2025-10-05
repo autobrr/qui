@@ -2095,8 +2095,9 @@ export function TorrentCardsMobile({
       {!selectionMode && (
         <div
           className={cn(
-            "fixed bottom-16 left-0 right-0 z-50 lg:hidden bg-background/80 backdrop-blur-md border-t border-border/50"
+            "fixed left-0 right-0 z-50 lg:hidden bg-background/80 backdrop-blur-md border-t border-border/50"
           )}
+          style={{ bottom: "calc(4rem + env(safe-area-inset-bottom))" }}
         >
           <div className="flex items-center justify-around h-14 px-2">
             <button
