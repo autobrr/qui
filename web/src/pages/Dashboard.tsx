@@ -29,7 +29,7 @@ import { useQBittorrentAppInfo } from "@/hooks/useQBittorrentAppInfo"
 import { api } from "@/lib/api"
 import { formatBytes, getRatioColor } from "@/lib/utils"
 import type { InstanceResponse, ServerState, TorrentCounts, TorrentResponse, TorrentStats } from "@/types"
-import { useQueries, useQuery } from "@tanstack/react-query"
+import { useQueries, useMutation, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
 import { Activity, ChevronDown, ChevronUp, Download, ExternalLink, Eye, EyeOff, HardDrive, Minus, Plus, Rabbit, Turtle, Upload, Zap } from "lucide-react"
 import { useMemo, useState } from "react"
@@ -42,7 +42,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
-import { useAlternativeSpeedLimits } from "@/hooks/useAlternativeSpeedLimits"
+
 import { useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 
@@ -71,46 +71,56 @@ function useAllInstanceStats(instances: InstanceResponse[]) {
 
   return instances.map((instance, index) => {
     const data = dashboardQueries[index].data
+    const query = dashboardQueries[index]
     return {
       instance,
       // Return TorrentStats directly - no more backwards compatibility conversion
       stats: data?.stats || null,
       serverState: data?.serverState || null,
       torrentCounts: data?.counts,
+      // Include alt speed status from server state to avoid separate API call
+      altSpeedEnabled: data?.serverState?.use_alt_speed_limits || false,
+      // Include loading/error state for individual instances
+      isLoading: query.isLoading,
+      error: query.error,
     }
   })
 }
 
 
 function InstanceCard({
-  instance,
+  instanceData,
   isAdvancedMetricsOpen,
   setIsAdvancedMetricsOpen,
 }: {
-  instance: InstanceResponse
+  instanceData: {
+    instance: InstanceResponse
+    stats: any
+    serverState: any
+    torrentCounts: any
+    altSpeedEnabled: boolean
+    isLoading: boolean
+    error: any
+  }
   isAdvancedMetricsOpen: boolean
   setIsAdvancedMetricsOpen: (open: boolean) => void
 }) {
+  const { instance, stats, serverState, torrentCounts, altSpeedEnabled, isLoading, error } = instanceData
   const [showSpeedLimitDialog, setShowSpeedLimitDialog] = useState(false)
 
-  // Use shared TorrentResponse cache for optimized performance
-  const { data: torrentData, isLoading, error } = useQuery<TorrentResponse>({
-    queryKey: ["torrents-list", instance.id, 0, undefined, undefined, "added_on", "desc"],
-    queryFn: () => api.getTorrents(instance.id, {
-      page: 0,
-      limit: 1, // Only need metadata, not actual torrents
-      sort: "added_on",
-      order: "desc" as const,
-    }),
-    enabled: true,
-    refetchInterval: 5000, // Match TorrentTable polling
-    staleTime: 2000,
-    gcTime: 300000, // Match TorrentTable cache time
-    retry: 1,
-    retryDelay: 1000,
+  // Alternative speed limits toggle - no need to track state, just provide toggle function
+  const queryClient = useQueryClient()
+  const { mutate: toggleAltSpeed, isPending: isToggling } = useMutation({
+    mutationFn: () => api.toggleAlternativeSpeedLimits(instance.id),
+    onSuccess: () => {
+      // Invalidate torrent queries to refresh server state
+      queryClient.invalidateQueries({
+        queryKey: ["torrents-list", instance.id]
+      })
+    }
   })
 
-  const { enabled: altSpeedEnabled, toggle: toggleAltSpeed, isToggling } = useAlternativeSpeedLimits(instance.id)
+  // Still need app info for version display - keep this separate as it's cached well
   const {
     data: qbittorrentAppInfo,
     versionInfo: qbittorrentVersionInfo,
@@ -120,11 +130,6 @@ function InstanceCard({
   const appVersion = qbittorrentAppInfo?.version || qbittorrentVersionInfo?.appVersion || ""
   const webAPIVersion = qbittorrentAppInfo?.webAPIVersion || qbittorrentVersionInfo?.webAPIVersion || ""
   const displayUrl = instance.host
-
-  // Use TorrentStats directly - no more conversion needed
-  const stats = torrentData?.stats
-  const torrentCounts = torrentData?.counts
-  const serverState = torrentData?.serverState
 
   // Determine card state
   const isFirstLoad = isLoading && !stats
@@ -759,10 +764,10 @@ export function Dashboard() {
               <h2 className="text-xl font-semibold mb-4">Instances</h2>
               {/* Responsive layout so each instance mounts once */}
               <div className="flex flex-col gap-4 sm:grid sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-                {allInstances.map(instance => (
+                {statsData.map(instanceData => (
                   <InstanceCard
-                    key={instance.id}
-                    instance={instance}
+                    key={instanceData.instance.id}
+                    instanceData={instanceData}
                     isAdvancedMetricsOpen={isAdvancedMetricsOpen}
                     setIsAdvancedMetricsOpen={setIsAdvancedMetricsOpen}
                   />
