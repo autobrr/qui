@@ -18,13 +18,14 @@ import (
 
 type Client struct {
 	*qbt.Client
-	instanceID      int
-	webAPIVersion   string
-	supportsSetTags bool
-	lastHealthCheck time.Time
-	isHealthy       bool
-	syncManager     *qbt.SyncManager
-	peerSyncManager map[string]*qbt.PeerSyncManager // Map of torrent hash to PeerSyncManager
+	instanceID              int
+	webAPIVersion           string
+	supportsSetTags         bool
+	supportsTorrentCreation bool
+	lastHealthCheck         time.Time
+	isHealthy               bool
+	syncManager             *qbt.SyncManager
+	peerSyncManager         map[string]*qbt.PeerSyncManager // Map of torrent hash to PeerSyncManager
 	// optimisticUpdates stores temporary optimistic state changes for this instance
 	optimisticUpdates *ttlcache.Cache[string, *OptimisticTorrentUpdate]
 	trackerExclusions map[string]map[string]struct{} // Domains to hide hashes from until fresh sync arrives
@@ -67,20 +68,25 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 	}
 
 	supportsSetTags := false
+	supportsTorrentCreation := false
 	if webAPIVersion != "" {
 		if v, err := semver.NewVersion(webAPIVersion); err == nil {
-			required := semver.MustParse("2.11.4")
-			supportsSetTags = !v.LessThan(required)
+			setTagsMinVersion := semver.MustParse("2.11.4")
+			supportsSetTags = !v.LessThan(setTagsMinVersion)
+
+			torrentCreationMinVersion := semver.MustParse("2.11.2")
+			supportsTorrentCreation = !v.LessThan(torrentCreationMinVersion)
 		}
 	}
 
 	client := &Client{
-		Client:          qbtClient,
-		instanceID:      instanceID,
-		webAPIVersion:   webAPIVersion,
-		supportsSetTags: supportsSetTags,
-		lastHealthCheck: time.Now(),
-		isHealthy:       true,
+		Client:                  qbtClient,
+		instanceID:              instanceID,
+		webAPIVersion:           webAPIVersion,
+		supportsSetTags:         supportsSetTags,
+		supportsTorrentCreation: supportsTorrentCreation,
+		lastHealthCheck:         time.Now(),
+		isHealthy:               true,
 		optimisticUpdates: ttlcache.New(ttlcache.Options[string, *OptimisticTorrentUpdate]{}.
 			SetDefaultTTL(30 * time.Second)), // Updates expire after 30 seconds
 		trackerExclusions: make(map[string]map[string]struct{}),
@@ -111,6 +117,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 		Str("host", instanceHost).
 		Str("webAPIVersion", webAPIVersion).
 		Bool("supportsSetTags", supportsSetTags).
+		Bool("supportsTorrentCreation", supportsTorrentCreation).
 		Bool("includeTrackers", supportsInclude).
 		Bool("tlsSkipVerify", tlsSkipVerify).
 		Msg("qBittorrent client created successfully")
@@ -156,6 +163,12 @@ func (c *Client) IsHealthy() bool {
 	c.healthMu.RLock()
 	defer c.healthMu.RUnlock()
 	return c.isHealthy
+}
+
+func (c *Client) SupportsTorrentCreation() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.supportsTorrentCreation
 }
 
 // getTorrentsByHashes returns multiple torrents by their hashes (O(n) where n is number of requested hashes)

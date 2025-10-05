@@ -48,6 +48,12 @@ export interface InstanceResponse extends Instance {
   recentErrors?: InstanceError[]
 }
 
+export interface InstanceCapabilities {
+  supportsTorrentCreation: boolean
+  supportsSetTags: boolean
+  webAPIVersion?: string
+}
+
 export interface TorrentTracker {
   url: string
   status: number
@@ -429,4 +435,48 @@ export interface AppPreferences {
 
   // Add catch-all for any additional fields from the API
   [key: string]: unknown
+}
+
+// Torrent Creation Types
+export type TorrentFormat = "v1" | "v2" | "hybrid"
+export type TorrentCreationStatus = "Queued" | "Running" | "Finished" | "Failed"
+
+export interface TorrentCreationParams {
+  sourcePath: string
+  torrentFilePath?: string
+  private?: boolean
+  format?: TorrentFormat
+  optimizeAlignment?: boolean
+  paddedFileSizeLimit?: number
+  pieceSize?: number
+  comment?: string
+  source?: string
+  trackers?: string[]
+  urlSeeds?: string[]
+  startSeeding?: boolean
+}
+
+export interface TorrentCreationTask {
+  taskID: string
+  sourcePath: string
+  torrentFilePath?: string
+  pieceSize: number
+  private: boolean
+  format?: TorrentFormat
+  optimizeAlignment?: boolean
+  paddedFileSizeLimit?: number
+  status: TorrentCreationStatus
+  comment?: string
+  source?: string
+  trackers?: string[]
+  urlSeeds?: string[]
+  timeAdded: string
+  timeStarted?: string
+  timeFinished?: string
+  progress?: number
+  errorMessage?: string
+}
+
+export interface TorrentCreationTaskResponse {
+  taskID: string
 }

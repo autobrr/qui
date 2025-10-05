@@ -42,7 +42,7 @@ import { useDebounce } from "@/hooks/useDebounce"
 import { TORRENT_ACTIONS, useTorrentActions, type TorrentAction } from "@/hooks/useTorrentActions"
 import { useTorrentsList } from "@/hooks/useTorrentsList"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
-import { Link, useSearch } from "@tanstack/react-router"
+import { Link, useNavigate, useSearch } from "@tanstack/react-router"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import {
   ArrowUpDown,
@@ -53,11 +53,13 @@ import {
   Clock,
   Eye,
   EyeOff,
+  FileEdit,
   Filter,
   Folder,
   FolderOpen,
   Gauge,
   HardDrive,
+  ListTodo,
   Loader2,
   MoreVertical,
   Pause,
@@ -79,12 +81,14 @@ import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata.ts"
 import { useInstances } from "@/hooks/useInstances"
 import { usePersistedCompactViewState, type ViewMode } from "@/hooks/usePersistedCompactViewState"
+import { api } from "@/lib/api"
 import { getLinuxCategory, getLinuxIsoName, getLinuxRatio, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits, type SpeedUnit } from "@/lib/speedUnits"
 import { getStateLabel } from "@/lib/torrent-state-utils"
 import { getCommonCategory, getCommonSavePath, getCommonTags } from "@/lib/torrent-utils"
 import { cn, formatBytes } from "@/lib/utils"
 import type { Category, Torrent, TorrentCounts } from "@/types"
+import { useQuery } from "@tanstack/react-query"
 
 // Mobile-friendly Share Limits Dialog
 function MobileShareLimitsDialog({
@@ -970,15 +974,24 @@ export function TorrentCardsMobile({
   const availableCategories = metadata?.categories || {}
 
   const debouncedSearch = useDebounce(globalFilter, 1000)
-  const routeSearch = useSearch({ strict: false }) as { q?: string }
+  const routeSearch = useSearch({ strict: false }) as { q?: string; modal?: string }
   const searchFromRoute = routeSearch?.q || ""
 
   const effectiveSearch = searchFromRoute || immediateSearch || debouncedSearch
+  const navigate = useNavigate()
 
   const { instances } = useInstances()
   const instanceName = useMemo(() => {
     return instances?.find(i => i.id === instanceId)?.name ?? null
   }, [instances, instanceId])
+
+  // Query active task count for badge (lightweight endpoint)
+  const { data: activeTaskCount = 0 } = useQuery({
+    queryKey: ["active-task-count", instanceId],
+    queryFn: () => api.getActiveTaskCount(instanceId),
+    refetchInterval: 30000, // Poll every 30 seconds (lightweight check)
+    refetchIntervalInBackground: true,
+  })
 
   // Columns controls removed on mobile
 
@@ -1015,6 +1028,7 @@ export function TorrentCardsMobile({
     counts,
     categories,
     tags,
+    supportsTorrentCreation,
 
     isLoading,
     isLoadingMore,
@@ -1494,9 +1508,46 @@ export function TorrentCardsMobile({
               size="icon"
               variant="outline"
               onClick={() => onAddTorrentModalChange?.(true)}
+              title="Add torrent"
             >
               <Plus className="h-4 w-4"/>
             </Button>
+
+            {/* Create Torrent button - only show if instance supports it */}
+            {supportsTorrentCreation && (
+              <Button
+                size="icon"
+                variant="outline"
+                onClick={() => {
+                  const next = { ...(routeSearch || {}), modal: "create-torrent" }
+                  navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
+                }}
+                title="Create torrent"
+              >
+                <FileEdit className="h-4 w-4"/>
+              </Button>
+            )}
+
+            {/* Tasks button - only show if instance supports torrent creation */}
+            {supportsTorrentCreation && (
+              <Button
+                size="icon"
+                variant="outline"
+                onClick={() => {
+                  const next = { ...(routeSearch || {}), modal: "tasks" }
+                  navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
+                }}
+                title="Torrent creation tasks"
+                className="relative"
+              >
+                <ListTodo className="h-4 w-4"/>
+                {activeTaskCount > 0 && (
+                  <Badge variant="default" className="absolute -top-1 -right-1 h-5 min-w-5 flex items-center justify-center p-0 text-xs">
+                    {activeTaskCount}
+                  </Badge>
+                )}
+              </Button>
+            )}
           </div>
         </div>
 
