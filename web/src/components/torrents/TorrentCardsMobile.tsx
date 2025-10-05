@@ -1460,6 +1460,21 @@ export function TorrentCardsMobile({
     }
   }, [torrents, selectedHashes, isAllSelected, excludedFromSelectAll])
 
+  const handleClearSearch = useCallback(() => {
+    setGlobalFilter("")
+
+    if (routeSearch && Object.prototype.hasOwnProperty.call(routeSearch, "q")) {
+      const next = { ...(routeSearch || {}) }
+      delete next.q
+      navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
+    }
+  }, [navigate, routeSearch])
+
+  const handleClearSearchAndClose = useCallback(() => {
+    handleClearSearch()
+    setShowSearchModal(false)
+  }, [handleClearSearch])
+
   return (
     <div className="relative flex h-full min-h-0 flex-col overflow-hidden">
       {/* Header with stats */}
@@ -1495,6 +1510,27 @@ export function TorrentCardsMobile({
             </button>
           </div>
         </div>
+
+        {effectiveSearch && (
+          <div className="mb-3 flex items-center justify-between gap-2 rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
+            <div className="flex min-w-0 items-center gap-2">
+              <Search className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+              <span className="truncate text-sm text-foreground" title={effectiveSearch}>
+                {effectiveSearch}
+              </span>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleClearSearch}
+              className="h-7 px-2 text-xs font-medium text-primary hover:text-primary"
+              aria-label="Clear search filter"
+            >
+              Clear
+              <X className="ml-1 h-3 w-3" aria-hidden="true" />
+            </Button>
+          </div>
+        )}
 
         {/* Selection mode header */}
         {selectionMode && (
@@ -2001,7 +2037,7 @@ export function TorrentCardsMobile({
                   if (e.key === "Enter") {
                     setShowSearchModal(false)
                   } else if (e.key === "Escape") {
-                    setGlobalFilter("")
+                    handleClearSearch()
                     setShowSearchModal(false)
                   }
                 }}
@@ -2014,7 +2050,8 @@ export function TorrentCardsMobile({
                 <button
                   type="button"
                   className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-muted rounded-sm transition-colors"
-                  onClick={() => setGlobalFilter("")}
+                  onClick={handleClearSearch}
+                  aria-label="Clear search"
                 >
                   <X className="h-3.5 w-3.5 text-muted-foreground"/>
                 </button>
@@ -2037,10 +2074,7 @@ export function TorrentCardsMobile({
             </div>
           </div>
           <DialogFooter className="sm:justify-between">
-            <Button variant="outline" onClick={() => {
-              setGlobalFilter("")
-              setShowSearchModal(false)
-            }}>
+            <Button variant="outline" onClick={handleClearSearchAndClose}>
               Clear
             </Button>
             <Button onClick={() => setShowSearchModal(false)}>
