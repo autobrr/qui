@@ -1880,6 +1880,15 @@ components:
         supportsSetTags:
           type: boolean
           description: Whether the instance supports replacing tags on torrents.
+        supportsRenameTorrent:
+          type: boolean
+          description: Whether the instance supports renaming torrents (requires WebAPI 2.0.0+, qBittorrent 4.1.0+).
+        supportsRenameFile:
+          type: boolean
+          description: Whether the instance supports renaming files within torrents (requires WebAPI 2.6.0+, qBittorrent 4.3.0+).
+        supportsRenameFolder:
+          type: boolean
+          description: Whether the instance supports renaming folders within torrents (requires WebAPI 2.8.4+, qBittorrent 4.4.0+).
         webAPIVersion:
           type: string
           nullable: true

@@ -15,6 +15,7 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger
 } from "@/components/ui/dropdown-menu"
+import type { InstanceCapabilities } from "@/types"
 import { FilePen, FolderPen, Pencil } from "lucide-react"
 import { memo } from "react"
 
@@ -27,6 +28,7 @@ interface RenameSubmenuProps {
   onRenameFile: () => void
   onRenameFolder: () => void
   isPending?: boolean
+  capabilities?: InstanceCapabilities
 }
 
 export const RenameSubmenu = memo(function RenameSubmenu({
@@ -36,6 +38,7 @@ export const RenameSubmenu = memo(function RenameSubmenu({
   onRenameFile,
   onRenameFolder,
   isPending = false,
+  capabilities,
 }: RenameSubmenuProps) {
   const Sub = type === "context" ? ContextMenuSub : DropdownMenuSub
   const SubTrigger = type === "context" ? ContextMenuSubTrigger : DropdownMenuSubTrigger
@@ -43,6 +46,15 @@ export const RenameSubmenu = memo(function RenameSubmenu({
   const MenuItem = type === "context" ? ContextMenuItem : DropdownMenuItem
 
   const disableRename = isPending || hashCount !== 1
+  const supportsRenameTorrent = capabilities?.supportsRenameTorrent ?? true
+  const supportsRenameFile = capabilities?.supportsRenameFile ?? true
+  const supportsRenameFolder = capabilities?.supportsRenameFolder ?? true
+
+  // Hide entire submenu if no rename operations are supported
+  const hasAnyRenameSupport = supportsRenameTorrent || supportsRenameFile || supportsRenameFolder
+  if (!hasAnyRenameSupport) {
+    return null
+  }
 
   return (
     <Sub>
@@ -51,18 +63,24 @@ export const RenameSubmenu = memo(function RenameSubmenu({
         Rename
       </SubTrigger>
       <SubContent>
-        <MenuItem onClick={onRenameTorrent} disabled={disableRename}>
-          <Pencil className="mr-2 h-4 w-4" />
-          Rename Torrent
-        </MenuItem>
-        <MenuItem onClick={onRenameFile} disabled={disableRename}>
-          <FilePen className="mr-2 h-4 w-4" />
-          Rename File
-        </MenuItem>
-        <MenuItem onClick={onRenameFolder} disabled={disableRename}>
-          <FolderPen className="mr-2 h-4 w-4" />
-          Rename Folder
-        </MenuItem>
+        {supportsRenameTorrent && (
+          <MenuItem onClick={onRenameTorrent} disabled={disableRename}>
+            <Pencil className="mr-2 h-4 w-4" />
+            Rename Torrent
+          </MenuItem>
+        )}
+        {supportsRenameFile && (
+          <MenuItem onClick={onRenameFile} disabled={disableRename}>
+            <FilePen className="mr-2 h-4 w-4" />
+            Rename File
+          </MenuItem>
+        )}
+        {supportsRenameFolder && (
+          <MenuItem onClick={onRenameFolder} disabled={disableRename}>
+            <FolderPen className="mr-2 h-4 w-4" />
+            Rename Folder
+          </MenuItem>
+        )}
       </SubContent>
     </Sub>
   )

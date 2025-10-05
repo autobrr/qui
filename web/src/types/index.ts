@@ -51,6 +51,9 @@ export interface InstanceResponse extends Instance {
 export interface InstanceCapabilities {
   supportsTorrentCreation: boolean
   supportsSetTags: boolean
+  supportsRenameTorrent: boolean
+  supportsRenameFile: boolean
+  supportsRenameFolder: boolean
   webAPIVersion?: string
 }
 

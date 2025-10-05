@@ -22,6 +22,9 @@ type Client struct {
 	webAPIVersion           string
 	supportsSetTags         bool
 	supportsTorrentCreation bool
+	supportsRenameTorrent   bool
+	supportsRenameFile      bool
+	supportsRenameFolder    bool
 	lastHealthCheck         time.Time
 	isHealthy               bool
 	syncManager             *qbt.SyncManager
@@ -69,6 +72,9 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 
 	supportsSetTags := false
 	supportsTorrentCreation := false
+	supportsRenameTorrent := false
+	supportsRenameFile := false
+	supportsRenameFolder := false
 	if webAPIVersion != "" {
 		if v, err := semver.NewVersion(webAPIVersion); err == nil {
 			setTagsMinVersion := semver.MustParse("2.11.4")
@@ -76,6 +82,18 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 
 			torrentCreationMinVersion := semver.MustParse("2.11.2")
 			supportsTorrentCreation = !v.LessThan(torrentCreationMinVersion)
+
+			// Rename torrent: qBittorrent 4.1.0+ (WebAPI 2.0.0+)
+			renameTorrentMinVersion := semver.MustParse("2.0.0")
+			supportsRenameTorrent = !v.LessThan(renameTorrentMinVersion)
+
+			// Rename file: qBittorrent 4.2.1+ (WebAPI 2.4.0+)
+			renameFileMinVersion := semver.MustParse("2.4.0")
+			supportsRenameFile = !v.LessThan(renameFileMinVersion)
+
+			// Rename folder: qBittorrent 4.4.0+ (WebAPI 2.8.4+)
+			renameFolderMinVersion := semver.MustParse("2.8.4")
+			supportsRenameFolder = !v.LessThan(renameFolderMinVersion)
 		}
 	}
 
@@ -85,6 +103,9 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 		webAPIVersion:           webAPIVersion,
 		supportsSetTags:         supportsSetTags,
 		supportsTorrentCreation: supportsTorrentCreation,
+		supportsRenameTorrent:   supportsRenameTorrent,
+		supportsRenameFile:      supportsRenameFile,
+		supportsRenameFolder:    supportsRenameFolder,
 		lastHealthCheck:         time.Now(),
 		isHealthy:               true,
 		optimisticUpdates: ttlcache.New(ttlcache.Options[string, *OptimisticTorrentUpdate]{}.
@@ -158,6 +179,24 @@ func (c *Client) SupportsTorrentCreation() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.supportsTorrentCreation
+}
+
+func (c *Client) SupportsRenameTorrent() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.supportsRenameTorrent
+}
+
+func (c *Client) SupportsRenameFile() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.supportsRenameFile
+}
+
+func (c *Client) SupportsRenameFolder() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.supportsRenameFolder
 }
 
 // getTorrentsByHashes returns multiple torrents by their hashes (O(n) where n is number of requested hashes)

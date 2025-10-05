@@ -36,6 +36,7 @@ import {
 } from "lucide-react"
 import { memo, useCallback, useMemo } from "react"
 import { toast } from "sonner"
+import type { InstanceCapabilities } from "@/types"
 import { CategorySubmenu } from "./CategorySubmenu"
 import { QueueSubmenu } from "./QueueSubmenu"
 import { RenameSubmenu } from "./RenameSubmenu"
@@ -67,6 +68,7 @@ interface TorrentContextMenuProps {
   isPending?: boolean
   onExport?: (hashes: string[], torrents: Torrent[]) => Promise<void> | void
   isExporting?: boolean
+  capabilities?: InstanceCapabilities
 }
 
 export const TorrentContextMenu = memo(function TorrentContextMenu({
@@ -95,6 +97,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   isPending = false,
   onExport,
   isExporting = false,
+  capabilities,
 }: TorrentContextMenuProps) {
   const [incognitoMode] = useIncognitoMode()
 
@@ -255,6 +258,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
           onRenameFile={() => onPrepareRenameFile(hashes, torrents)}
           onRenameFolder={() => onPrepareRenameFolder(hashes, torrents)}
           isPending={isPending}
+          capabilities={capabilities}
         />
         <ContextMenuSeparator />
         <ContextMenuItem

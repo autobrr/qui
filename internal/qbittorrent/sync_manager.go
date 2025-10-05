@@ -2166,6 +2166,10 @@ func (sm *SyncManager) RenameTorrent(ctx context.Context, instanceID int, hash, 
 		return err
 	}
 
+	if !client.SupportsRenameTorrent() {
+		return fmt.Errorf("qBittorrent instance does not support torrent renaming (requires WebAPI 2.0.0+, qBittorrent 4.1.0+)")
+	}
+
 	if err := sm.validateTorrentsExist(client, []string{hash}, "rename torrent"); err != nil {
 		return err
 	}
@@ -2189,6 +2193,10 @@ func (sm *SyncManager) RenameTorrentFile(ctx context.Context, instanceID int, ha
 	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
 		return err
+	}
+
+	if !client.SupportsRenameFile() {
+		return fmt.Errorf("qBittorrent instance does not support file renaming (requires WebAPI 2.4.0+, qBittorrent 4.2.1+)")
 	}
 
 	if err := sm.validateTorrentsExist(client, []string{hash}, "rename file"); err != nil {
@@ -2217,6 +2225,10 @@ func (sm *SyncManager) RenameTorrentFolder(ctx context.Context, instanceID int, 
 	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
 		return err
+	}
+
+	if !client.SupportsRenameFolder() {
+		return fmt.Errorf("qBittorrent instance does not support folder renaming (requires WebAPI 2.8.4+, qBittorrent 4.4.0+)")
 	}
 
 	if err := sm.validateTorrentsExist(client, []string{hash}, "rename folder"); err != nil {

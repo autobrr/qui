@@ -439,7 +439,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     counts,
     categories,
     tags,
-
+    capabilities,
     isLoading,
     isCachedData,
     isStaleData,
@@ -1315,6 +1315,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                     isPending={isPending}
                     onExport={handleExportWrapper}
                     isExporting={isExportingTorrent}
+                    capabilities={capabilities}
                   >
                     <div
                       className={`flex border-b cursor-pointer hover:bg-muted/50 ${row.getIsSelected() ? "bg-muted/50" : ""} ${isSelected ? "bg-accent" : ""}`}
