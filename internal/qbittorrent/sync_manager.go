@@ -840,17 +840,24 @@ func statusFiltersRequireTrackerData(statuses []string) bool {
 }
 
 func (sm *SyncManager) torrentIsUnregistered(torrent qbt.Torrent) bool {
-	for _, tracker := range torrent.Trackers {
-		if tracker.Status != qbt.TrackerStatusNotWorking {
-			continue
-		}
+	var hasWorking bool
+	var hasUnregistered bool
 
-		if trackerMessageMatches(tracker.Message, defaultUnregisteredStatuses) {
-			return true
+	for _, tracker := range torrent.Trackers {
+		switch tracker.Status {
+		case qbt.TrackerStatusDisabled:
+			// Skip DHT/PeX entries
+			continue
+		case qbt.TrackerStatusOK, qbt.TrackerStatusUpdating:
+			hasWorking = true
+		case qbt.TrackerStatusNotWorking:
+			if trackerMessageMatches(tracker.Message, defaultUnregisteredStatuses) {
+				hasUnregistered = true
+			}
 		}
 	}
 
-	return false
+	return hasUnregistered && !hasWorking
 }
 
 func (sm *SyncManager) torrentTrackerIsDown(torrent qbt.Torrent) bool {
@@ -860,7 +867,7 @@ func (sm *SyncManager) torrentTrackerIsDown(torrent qbt.Torrent) bool {
 	for _, tracker := range torrent.Trackers {
 		switch tracker.Status {
 		case qbt.TrackerStatusDisabled:
-			// Skip synthesised entries like DHT/PeX which report as disabled (0).
+			// Skip DHT/PeX entries
 			continue
 		case qbt.TrackerStatusOK, qbt.TrackerStatusUpdating:
 			hasWorking = true
