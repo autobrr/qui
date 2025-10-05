@@ -153,21 +153,22 @@ func (h *WebhooksHandler) UpdateWebhookPreferences(w http.ResponseWriter, r *htt
 	}
 
 	// Make sure the API Key still exists.
-	_, err = h.apiKeyStore.GetByID(r.Context(), preferences.APIKeyID)
-	if errors.Is(err, models.ErrAPIKeyNotFound) {
-		// If it doesn't, create it.
-		rawKey, apiKey, err := h.apiKeyStore.Create(r.Context(), preferences.rawApiKey)
-		if err != nil {
-			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to create API key")
-			http.Error(w, "Failed to create API key", http.StatusInternalServerError)
+	if _, err = h.apiKeyStore.GetByID(r.Context(), preferences.APIKeyID); err != nil {
+		if errors.Is(err, models.ErrAPIKeyNotFound) {
+			// If it doesn't exist, create it.
+			rawKey, apiKey, err := h.apiKeyStore.Create(r.Context(), preferences.rawApiKey)
+			if err != nil {
+				log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to create API key")
+				http.Error(w, "Failed to create API key", http.StatusInternalServerError)
+				return
+			}
+			preferences.APIKeyID = apiKey.ID
+			preferences.rawApiKey = rawKey
+		} else {
+			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get API key")
+			http.Error(w, "Failed to get API key", http.StatusInternalServerError)
 			return
 		}
-		preferences.APIKeyID = apiKey.ID
-		preferences.rawApiKey = rawKey
-	} else if err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get API key")
-		http.Error(w, "Failed to get API key", http.StatusInternalServerError)
-		return
 	}
 
 	_, err = h.webhookStore.Upsert(r.Context(),
@@ -188,8 +189,8 @@ func (h *WebhooksHandler) UpdateWebhookPreferences(w http.ResponseWriter, r *htt
 	// This can happen when the user is updating an existing webhook.
 	// No need to retrieve the API key if the webhook is being disabled.
 	if preferences.rawApiKey == "" && preferences.Enabled {
-		// qBittorrent doesn't return programs when they are not enabled.
-		// So we need to set the programs to true and then get the preferences again.
+		// qBittorrent doesn't return programs when they are disabled in the preferences.
+		// So we need to set the autoruns to true and then get the preferences again.
 		err = h.syncManager.SetAppPreferences(r.Context(), instanceID, map[string]any{
 			"autorun_enabled":                  true,
 			"autorun_on_torrent_added_enabled": true,
@@ -207,35 +208,30 @@ func (h *WebhooksHandler) UpdateWebhookPreferences(w http.ResponseWriter, r *htt
 			return
 		}
 
-		webhookPreferences := getWebhookPreferences(prefs)
-		if webhookPreferences == nil {
-			log.Error().Int("instanceID", instanceID).Msg("Failed to get webhook preferences")
-			http.Error(w, "Failed to get webhook preferences", http.StatusInternalServerError)
-			return
-		}
-		preferences.rawApiKey = webhookPreferences.rawApiKey
+		preferences.rawApiKey = getRawApiKeyFromAppPreferences(prefs)
 	}
 
-	qbitPrefs, err := validateWebhookPreferences(preferences)
-	if errors.Is(err, errAPIKeyRequired) {
-		// If we get to this point and we don't have an API key, delete it.
-		// This can happen if the user has manually altered the program in qBittorrent preferences.
-		err = h.apiKeyStore.Delete(r.Context(), preferences.APIKeyID)
-		if err != nil {
-			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to delete API key")
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+	var appPrefs map[string]any
+	if appPrefs, err = validateAndBuildAppPreferences(preferences); err != nil {
+		if errors.Is(err, errAPIKeyRequired) {
+			// If we get to this point and we don't have a raw API key, delete the the api key.
+			// This can happen if the user has manually altered the program in qBittorrent preferences.
+			err = h.apiKeyStore.Delete(r.Context(), preferences.APIKeyID)
+			if err != nil {
+				log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to delete API key")
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			http.Error(w, errAPIKeyRequired.Error(), http.StatusConflict)
 			return
 		}
-		http.Error(w, errAPIKeyRequired.Error(), http.StatusConflict)
-		return
-	}
-	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to validate webhook preferences")
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
+
 	}
 
-	if err := h.syncManager.SetAppPreferences(r.Context(), instanceID, qbitPrefs); err != nil {
+	if err := h.syncManager.SetAppPreferences(r.Context(), instanceID, appPrefs); err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to set app preferences")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -274,39 +270,28 @@ func (h *WebhooksHandler) PostWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// getWebhookPreferences validates the qbit preferences and returns the webhook preferences.
-// It could be that the user has custom programs not set by qui,
-// so this function checks if the programs follow the correct qui URL format.
-// If yes, then the webhook preferences are returned.
-func getWebhookPreferences(prefs qbt.AppPreferences) *WebhookPreferences {
-
-	webhookPreferences := &WebhookPreferences{}
-
+// getRawApiKeyFromPreferences parses the qBit preferences and returns the raw API key.
+func getRawApiKeyFromAppPreferences(prefs qbt.AppPreferences) string {
 	if prefs.AutorunEnabled {
 		matches := programRegex.FindStringSubmatch(prefs.AutorunProgram)
 		if len(matches) == 4 {
-			webhookPreferences.AutorunEnabled = true
-			webhookPreferences.QuiURL = matches[1]
-			webhookPreferences.InstanceID = matches[2]
-			webhookPreferences.rawApiKey = matches[3]
+			return matches[3]
 		}
 	}
 
 	if prefs.AutorunOnTorrentAddedEnabled {
 		matches := programRegex.FindStringSubmatch(prefs.AutorunOnTorrentAddedProgram)
 		if len(matches) == 4 {
-			webhookPreferences.AutorunOnTorrentAddedEnabled = true
-			webhookPreferences.QuiURL = matches[1]
-			webhookPreferences.InstanceID = matches[2]
-			webhookPreferences.rawApiKey = matches[3]
+			return matches[3]
 		}
 	}
 
-	return webhookPreferences
+	return ""
 }
 
-// validateWebhookPreferences performs sanity checks on the webhook preferences.
-func validateWebhookPreferences(prefs WebhookPreferences) (map[string]any, error) {
+// validateAndBuildAppPreferences performs sanity checks on the WebHookPreferences and
+// returns the app preferences to be set in qBittorrent.
+func validateAndBuildAppPreferences(prefs WebhookPreferences) (map[string]any, error) {
 	if prefs.AutorunEnabled && prefs.QuiURL == "" {
 		return nil, fmt.Errorf("quiURL is required when autorun_enabled is true")
 	}
@@ -328,21 +313,17 @@ func validateWebhookPreferences(prefs WebhookPreferences) (map[string]any, error
 	}
 
 	qbitPrefs := map[string]any{}
-	if prefs.AutorunEnabled {
-		// Don't set program if the webhook is disabled
-		if prefs.Enabled {
-			qbitPrefs["autorun_program"] = fmt.Sprintf(
-				programFmt, prefs.QuiURL, prefs.InstanceID, prefs.rawApiKey, WebhookTypeTorrentCompleted)
-		}
-		qbitPrefs["autorun_enabled"] = prefs.AutorunEnabled && prefs.Enabled
+	qbitPrefs["autorun_enabled"] = prefs.AutorunEnabled && prefs.Enabled
+	qbitPrefs["autorun_on_torrent_added_enabled"] = prefs.AutorunOnTorrentAddedEnabled && prefs.Enabled
+
+	if prefs.AutorunEnabled && prefs.Enabled {
+		qbitPrefs["autorun_program"] = fmt.Sprintf(
+			programFmt, prefs.QuiURL, prefs.InstanceID, prefs.rawApiKey, WebhookTypeTorrentCompleted)
 	}
-	if prefs.AutorunOnTorrentAddedEnabled {
-		// Don't set program if the webhook is disabled
-		if prefs.Enabled {
-			qbitPrefs["autorun_on_torrent_added_program"] = fmt.Sprintf(
-				programFmt, prefs.QuiURL, prefs.InstanceID, prefs.rawApiKey, WebhookTypeTorrentAdded)
-		}
-		qbitPrefs["autorun_on_torrent_added_enabled"] = prefs.AutorunOnTorrentAddedEnabled && prefs.Enabled
+
+	if prefs.AutorunOnTorrentAddedEnabled && prefs.Enabled {
+		qbitPrefs["autorun_on_torrent_added_program"] = fmt.Sprintf(
+			programFmt, prefs.QuiURL, prefs.InstanceID, prefs.rawApiKey, WebhookTypeTorrentAdded)
 	}
 
 	return qbitPrefs, nil
