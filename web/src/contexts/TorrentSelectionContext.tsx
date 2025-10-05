@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { createContext, useContext, useState, useCallback } from "react"
-import type { ReactNode } from "react"
 import type { Torrent } from "@/types"
+import type { ReactNode } from "react"
+import { createContext, useCallback, useContext, useState } from "react"
 
 interface TorrentSelectionContextType {
   isSelectionMode: boolean
@@ -16,6 +16,7 @@ interface TorrentSelectionContextType {
   selectedTorrents: Torrent[]
   isAllSelected: boolean
   totalSelectionCount: number
+  selectedTotalSize: number
   excludeHashes: string[]
   filters?: {
     status: string[]
@@ -30,7 +31,8 @@ interface TorrentSelectionContextType {
     selectedTorrents: Torrent[],
     isAllSelected: boolean,
     totalSelectionCount: number,
-    excludeHashes: string[]
+    excludeHashes: string[],
+    selectedTotalSize: number
   ) => void
   clearSelection: () => void
   setFiltersAndInstance: (filters: TorrentSelectionContextType["filters"], instanceId: number) => void
@@ -44,6 +46,7 @@ export function TorrentSelectionProvider({ children }: { children: ReactNode }) 
   const [selectedTorrents, setSelectedTorrents] = useState<Torrent[]>([])
   const [isAllSelected, setIsAllSelected] = useState(false)
   const [totalSelectionCount, setTotalSelectionCount] = useState(0)
+  const [selectedTotalSize, setSelectedTotalSize] = useState(0)
   const [excludeHashes, setExcludeHashes] = useState<string[]>([])
   const [filters, setFilters] = useState<TorrentSelectionContextType["filters"]>()
   const [instanceId, setInstanceId] = useState<number>()
@@ -56,13 +59,15 @@ export function TorrentSelectionProvider({ children }: { children: ReactNode }) 
     newSelectedTorrents: Torrent[],
     newIsAllSelected: boolean,
     newTotalSelectionCount: number,
-    newExcludeHashes: string[]
+    newExcludeHashes: string[],
+    newSelectedTotalSize: number
   ) => {
     setSelectedHashes(newSelectedHashes)
     setSelectedTorrents(newSelectedTorrents)
     setIsAllSelected(newIsAllSelected)
     setTotalSelectionCount(newTotalSelectionCount)
     setExcludeHashes(newExcludeHashes)
+    setSelectedTotalSize(newSelectedTotalSize)
   }, [])
 
   const clearSelection = useCallback(() => {
@@ -71,6 +76,7 @@ export function TorrentSelectionProvider({ children }: { children: ReactNode }) 
     setIsAllSelected(false)
     setTotalSelectionCount(0)
     setExcludeHashes([])
+    setSelectedTotalSize(0)
   }, [])
 
   const setFiltersAndInstance = useCallback((newFilters: TorrentSelectionContextType["filters"], newInstanceId: number) => {
@@ -87,6 +93,7 @@ export function TorrentSelectionProvider({ children }: { children: ReactNode }) 
       selectedTorrents,
       isAllSelected,
       totalSelectionCount,
+      selectedTotalSize,
       excludeHashes,
       filters,
       instanceId,
