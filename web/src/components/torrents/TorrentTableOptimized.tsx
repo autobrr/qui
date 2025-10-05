@@ -10,10 +10,11 @@ import { usePersistedColumnOrder } from "@/hooks/usePersistedColumnOrder"
 import { usePersistedColumnSizing } from "@/hooks/usePersistedColumnSizing"
 import { usePersistedColumnSorting } from "@/hooks/usePersistedColumnSorting"
 import { usePersistedColumnVisibility } from "@/hooks/usePersistedColumnVisibility"
-import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
 import { useTorrentExporter } from "@/hooks/useTorrentExporter"
 import { useTorrentsList } from "@/hooks/useTorrentsList"
+import { useTrackerIcons } from "@/hooks/useTrackerIcons"
+import { formatBytes } from "@/lib/utils"
 import {
   DndContext,
   MouseSensor,
@@ -71,11 +72,12 @@ import {
   TooltipContent,
   TooltipTrigger
 } from "@/components/ui/tooltip"
+import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences.ts"
 import { useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
-import { getCommonCategory, getCommonSavePath, getCommonTags } from "@/lib/torrent-utils"
+import { getCommonCategory, getCommonSavePath, getCommonTags, getTotalSize } from "@/lib/torrent-utils"
 import type { Category, Torrent, TorrentCounts } from "@/types"
 import { useSearch } from "@tanstack/react-router"
 import { ArrowUpDown, ChevronDown, ChevronUp, Columns3, Eye, EyeOff, Loader2 } from "lucide-react"
@@ -196,7 +198,14 @@ interface TorrentTableOptimizedProps {
   addTorrentModalOpen?: boolean
   onAddTorrentModalChange?: (open: boolean) => void
   onFilteredDataUpdate?: (torrents: Torrent[], total: number, counts?: TorrentCounts, categories?: Record<string, Category>, tags?: string[]) => void
-  onSelectionChange?: (selectedHashes: string[], selectedTorrents: Torrent[], isAllSelected: boolean, totalSelectionCount: number, excludeHashes: string[]) => void
+  onSelectionChange?: (
+    selectedHashes: string[],
+    selectedTorrents: Torrent[],
+    isAllSelected: boolean,
+    totalSelectionCount: number,
+    excludeHashes: string[],
+    selectedTotalSize: number
+  ) => void
 }
 
 export const TorrentTableOptimized = memo(function TorrentTableOptimized({ instanceId, filters, selectedTorrent, onTorrentSelect, addTorrentModalOpen, onAddTorrentModalChange, onFilteredDataUpdate, onSelectionChange }: TorrentTableOptimizedProps) {
@@ -217,6 +226,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const [speedUnit, setSpeedUnit] = useSpeedUnits()
   const { formatTimestamp } = useDateTimeFormatters()
   const { preferences } = useInstancePreferences(instanceId)
+  const { data: capabilities } = useInstanceCapabilities(instanceId)
+  const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? true
   const trackerIconsQuery = useTrackerIcons()
   const trackerIconsRef = useRef<Record<string, string> | undefined>(undefined)
   const trackerIcons = useMemo(() => {
@@ -547,8 +558,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       onRowSelection: handleRowSelection,
       isAllSelected,
       excludedFromSelectAll,
-    }, speedUnit, trackerIcons, formatTimestamp, preferences),
-    [incognitoMode, speedUnit, trackerIcons, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, isAllSelected, excludedFromSelectAll, preferences]
+    }, speedUnit, trackerIcons, formatTimestamp, preferences, supportsTrackerHealth),
+    [incognitoMode, speedUnit, trackerIcons, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, isAllSelected, excludedFromSelectAll, preferences, supportsTrackerHealth]
   )
 
   const torrentIdentityCounts = useMemo(() => {
@@ -648,6 +659,55 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     }
   }, [selectedHashes, sortedTorrents, isAllSelected, excludedFromSelectAll])
 
+  // Calculate total size of selected torrents
+  const selectedTotalSize = useMemo(() => {
+    if (isAllSelected) {
+      const aggregateTotalSize = stats?.totalSize ?? 0
+
+      if (aggregateTotalSize <= 0) {
+        return 0
+      }
+
+      if (excludedFromSelectAll.size === 0) {
+        return aggregateTotalSize
+      }
+
+      const excludedSize = sortedTorrents.reduce((total, torrent) => {
+        if (excludedFromSelectAll.has(torrent.hash)) {
+          return total + (torrent.size || 0)
+        }
+        return total
+      }, 0)
+
+      return Math.max(aggregateTotalSize - excludedSize, 0)
+    }
+
+    return getTotalSize(selectedTorrents)
+  }, [isAllSelected, stats?.totalSize, excludedFromSelectAll, sortedTorrents, selectedTorrents])
+  const selectedFormattedSize = useMemo(() => formatBytes(selectedTotalSize), [selectedTotalSize])
+
+  // Size shown in destructive dialogs - prefer the aggregate when select-all is active
+  const deleteDialogTotalSize = useMemo(() => {
+    if (isAllSelected) {
+      if (selectedTotalSize > 0) {
+        return selectedTotalSize
+      }
+
+      if (contextTorrents.length > 0) {
+        return getTotalSize(contextTorrents)
+      }
+
+      return 0
+    }
+
+    if (contextTorrents.length > 0) {
+      return getTotalSize(contextTorrents)
+    }
+
+    return selectedTotalSize
+  }, [isAllSelected, selectedTotalSize, contextTorrents])
+  const deleteDialogFormattedSize = useMemo(() => formatBytes(deleteDialogTotalSize), [deleteDialogTotalSize])
+
   // Call the callback when selection state changes
   useEffect(() => {
     if (onSelectionChange) {
@@ -656,10 +716,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         selectedTorrents,
         isAllSelected,
         effectiveSelectionCount,
-        Array.from(excludedFromSelectAll)
+        Array.from(excludedFromSelectAll),
+        selectedTotalSize
       )
     }
-  }, [onSelectionChange, selectedHashes, selectedTorrents, isAllSelected, effectiveSelectionCount, excludedFromSelectAll])
+  }, [onSelectionChange, selectedHashes, selectedTorrents, isAllSelected, effectiveSelectionCount, excludedFromSelectAll, selectedTotalSize])
 
   // Virtualization setup with progressive loading
   const { rows } = table.getRowModel()
@@ -1336,7 +1397,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                 ) : isLoadingMore ? (
                   "Loading more torrents..."
                 ) : (
-                  `${torrents.length} of ${totalCount} torrents loaded • Scroll to load more`
+                  `${torrents.length} of ${totalCount} torrents loaded`
                 )}
                 {hasLoadedAll && safeLoadedRows < rows.length && " (scroll for more)"}
               </>
@@ -1344,12 +1405,23 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
             {effectiveSelectionCount > 0 && (
               <>
                 <span className="ml-2">
-                  ({isAllSelected && excludedFromSelectAll.size === 0 ? `All ${effectiveSelectionCount}` : effectiveSelectionCount} selected)
+                  ({isAllSelected && excludedFromSelectAll.size === 0 ? `All ${effectiveSelectionCount}` : effectiveSelectionCount} selected
+                  {selectedTotalSize > 0 && <> • {selectedFormattedSize}</>})
                 </span>
                 {/* Keyboard shortcuts helper - only show on desktop */}
-                <span className="hidden sm:inline-block ml-2 text-xs opacity-70">
-                  • Shift+click for range • {isMac ? "Cmd" : "Ctrl"}+click for multiple
-                </span>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="hidden sm:inline-block ml-2 text-xs opacity-70 cursor-help">
+                      • Selection shortcuts
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <div className="text-xs">
+                      <div>Shift+click for range</div>
+                      <div>{isMac ? "Cmd" : "Ctrl"}+click for multiple</div>
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
               </>
             )}
           </div>
@@ -1412,6 +1484,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
             <AlertDialogTitle>Delete {isAllSelected ? effectiveSelectionCount : contextHashes.length} torrent(s)?</AlertDialogTitle>
             <AlertDialogDescription>
               This action cannot be undone. The torrents will be removed from qBittorrent.
+              {deleteDialogTotalSize > 0 && (
+                <span className="block mt-2 text-xs text-muted-foreground">
+                  Total size: {deleteDialogFormattedSize}
+                </span>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="flex items-center space-x-2 py-4">

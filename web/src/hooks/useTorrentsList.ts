@@ -5,8 +5,9 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
+import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { api } from "@/lib/api"
-import type { InstanceCapabilities, Torrent, TorrentResponse } from "@/types"
+import type { Torrent, TorrentResponse } from "@/types"
 
 interface UseTorrentsListOptions {
   enabled?: boolean
@@ -75,12 +76,7 @@ export function useTorrentsList(
     enabled,
   })
 
-  const { data: capabilities } = useQuery<InstanceCapabilities>({
-    queryKey: ["instance-capabilities", instanceId],
-    queryFn: () => api.getInstanceCapabilities(instanceId),
-    enabled,
-    staleTime: 300000,
-  })
+  const { data: capabilities } = useInstanceCapabilities(instanceId, { enabled })
 
   // Update torrents when data arrives or changes (including optimistic updates)
   useEffect(() => {
@@ -188,6 +184,7 @@ export function useTorrentsList(
         error: data.stats.error || 0,
         totalDownloadSpeed: data.stats.totalDownloadSpeed || 0,
         totalUploadSpeed: data.stats.totalUploadSpeed || 0,
+        totalSize: data.stats.totalSize || 0,
       }
     }
 
@@ -199,6 +196,7 @@ export function useTorrentsList(
       error: 0,
       totalDownloadSpeed: 0,
       totalUploadSpeed: 0,
+      totalSize: data?.stats?.totalSize || 0,
     }
   }, [data])
 
