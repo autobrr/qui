@@ -24,14 +24,6 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger
-} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
@@ -42,14 +34,13 @@ import { useDebounce } from "@/hooks/useDebounce"
 import { TORRENT_ACTIONS, useTorrentActions, type TorrentAction } from "@/hooks/useTorrentActions"
 import { useTorrentsList } from "@/hooks/useTorrentsList"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
-import { Link, useNavigate, useSearch } from "@tanstack/react-router"
+import { useNavigate, useSearch } from "@tanstack/react-router"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import {
   ArrowUpDown,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
-  ChevronsUpDown,
   Clock,
   Eye,
   EyeOff,
@@ -58,7 +49,7 @@ import {
   Folder,
   FolderOpen,
   Gauge,
-  HardDrive,
+  Info,
   ListTodo,
   Loader2,
   MoreVertical,
@@ -66,6 +57,7 @@ import {
   Play,
   Plus,
   Radio,
+  Search,
   Settings2,
   Sprout,
   Tag,
@@ -80,7 +72,6 @@ import { RemoveTagsDialog, SetCategoryDialog, SetLocationDialog, SetTagsDialog }
 import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata.ts"
-import { useInstances } from "@/hooks/useInstances"
 import { usePersistedCompactViewState, type ViewMode } from "@/hooks/usePersistedCompactViewState"
 import { api } from "@/lib/api"
 import { getLinuxCategory, getLinuxIsoName, getLinuxRatio, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
@@ -904,6 +895,7 @@ export function TorrentCardsMobile({
   const [actionTorrents, setActionTorrents] = useState<Torrent[]>([]);
   const [showShareLimitDialog, setShowShareLimitDialog] = useState(false)
   const [showSpeedLimitDialog, setShowSpeedLimitDialog] = useState(false)
+  const [showSearchModal, setShowSearchModal] = useState(false)
 
   // Custom "select all" state for handling large datasets
   const [isAllSelected, setIsAllSelected] = useState(false)
@@ -984,11 +976,6 @@ export function TorrentCardsMobile({
 
   const effectiveSearch = searchFromRoute || immediateSearch || debouncedSearch
   const navigate = useNavigate()
-
-  const { instances } = useInstances()
-  const instanceName = useMemo(() => {
-    return instances?.find(i => i.id === instanceId)?.name ?? null
-  }, [instances, instanceId])
 
   // Query active task count for badge (lightweight endpoint)
   const { data: activeTaskCount = 0 } = useQuery({
@@ -1477,123 +1464,6 @@ export function TorrentCardsMobile({
     <div className="h-full flex flex-col relative">
       {/* Header with stats */}
       <div className="sticky top-0 z-40 bg-background">
-        <div className="pb-3">
-          <div className="flex items-center gap-2">
-            {instanceName && instances && instances.length > 1 ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    className="flex items-center text-lg font-semibold max-w-[55%] hover:opacity-80 transition-opacity rounded-sm px-1 -mx-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                    aria-label={`Current instance: ${instanceName}. Tap to switch instances.`}
-                    aria-haspopup="menu"
-                  >
-                    <span className="truncate">{instanceName}</span>
-                    <ChevronsUpDown className="h-3 w-3 text-muted-foreground ml-1 mt-0.5 opacity-60 flex-shrink-0" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-64 mt-2" side="bottom" align="start">
-                  <DropdownMenuLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                    Switch Instance
-                  </DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <div className="max-h-64 overflow-y-auto space-y-2">
-                    {instances.map((instance) => (
-                      <DropdownMenuItem key={instance.id} asChild>
-                        <Link
-                          to="/instances/$instanceId"
-                          params={{ instanceId: instance.id.toString() }}
-                          className={cn(
-                            "flex items-center gap-2 cursor-pointer",
-                            instance.id === instanceId && "font-medium"
-                          )}
-                        >
-                          <HardDrive className="h-4 w-4 flex-shrink-0" />
-                          <span className="flex-1 truncate">{instance.name}</span>
-                          <span
-                            className={cn(
-                              "h-2 w-2 rounded-full flex-shrink-0",
-                              instance.connected ? "bg-green-500" : "bg-red-500"
-                            )}
-                            aria-label={instance.connected ? "Connected" : "Disconnected"}
-                          />
-                        </Link>
-                      </DropdownMenuItem>
-                    ))}
-                  </div>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : (
-              <div className="text-lg font-semibold truncate max-w-[55%]">
-                {instanceName ?? ""}
-              </div>
-            )}
-            <div className="flex-1"/>
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() => setIncognitoMode(!incognitoMode)}
-              title={incognitoMode ? "Disable incognito mode" : "Enable incognito mode"}
-            >
-              {incognitoMode ? <EyeOff className="h-4 w-4"/> : <Eye className="h-4 w-4"/>}
-            </Button>
-            {/* Columns control hidden on mobile */}
-            {/* Filters button (opens mobile filters sheet) */}
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => window.dispatchEvent(new Event("qui-open-mobile-filters"))}
-              title="Filters"
-            >
-              <Filter className="h-4 w-4"/>
-            </Button>
-
-            <Button
-              size="icon"
-              variant="outline"
-              onClick={() => onAddTorrentModalChange?.(true)}
-              title="Add torrent"
-            >
-              <Plus className="h-4 w-4"/>
-            </Button>
-
-            {/* Create Torrent button - only show if instance supports it */}
-            {supportsTorrentCreation && (
-              <Button
-                size="icon"
-                variant="outline"
-                onClick={() => {
-                  const next = { ...(routeSearch || {}), modal: "create-torrent" }
-                  navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
-                }}
-                title="Create torrent"
-              >
-                <FileEdit className="h-4 w-4"/>
-              </Button>
-            )}
-
-            {/* Tasks button - only show if instance supports torrent creation */}
-            {supportsTorrentCreation && (
-              <Button
-                size="icon"
-                variant="outline"
-                onClick={() => {
-                  const next = { ...(routeSearch || {}), modal: "tasks" }
-                  navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
-                }}
-                title="Torrent creation tasks"
-                className="relative"
-              >
-                <ListTodo className="h-4 w-4"/>
-                {activeTaskCount > 0 && (
-                  <Badge variant="default" className="absolute -top-1 -right-1 h-5 min-w-5 flex items-center justify-center p-0 text-xs">
-                    {activeTaskCount}
-                  </Badge>
-                )}
-              </Button>
-            )}
-          </div>
-        </div>
-
         {/* Stats bar */}
         <div className="flex items-center justify-between text-xs mb-3">
           <div className="text-muted-foreground">
@@ -1663,7 +1533,7 @@ export function TorrentCardsMobile({
 
       {/* Torrent cards with virtual scrolling */}
       <div ref={parentRef} className="flex-1 overflow-auto"
-        style={{ paddingBottom: "calc(5rem + env(safe-area-inset-bottom))" }}>
+        style={{ paddingBottom: "calc(8rem + env(safe-area-inset-bottom))" }}>
         <div
           style={{
             height: `${virtualizer.getTotalSize()}px`,
@@ -2108,6 +1978,75 @@ export function TorrentCardsMobile({
         isPending={isPending}
       />
 
+      {/* Search Modal */}
+      <Dialog open={showSearchModal} onOpenChange={setShowSearchModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Search Torrents</DialogTitle>
+            <DialogDescription>
+              Search by name, category, or tags. Supports glob patterns like *.mkv or *1080p*.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"/>
+              <Input
+                placeholder="Search torrents..."
+                value={globalFilter}
+                onChange={(e) => setGlobalFilter(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    setShowSearchModal(false)
+                  } else if (e.key === "Escape") {
+                    setGlobalFilter("")
+                    setShowSearchModal(false)
+                  }
+                }}
+                className={`w-full pl-9 ${
+                  globalFilter ? "ring-1 ring-primary/50" : ""
+                } ${globalFilter && /[*?[\]]/.test(globalFilter) ? "ring-1 ring-primary" : ""}`}
+                autoFocus
+              />
+              {globalFilter && (
+                <button
+                  type="button"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-muted rounded-sm transition-colors"
+                  onClick={() => setGlobalFilter("")}
+                >
+                  <X className="h-3.5 w-3.5 text-muted-foreground"/>
+                </button>
+              )}
+            </div>
+
+            <div className="space-y-2 text-xs text-muted-foreground bg-muted/50 rounded-lg p-3">
+              <div className="flex items-start gap-2">
+                <Info className="h-4 w-4 flex-shrink-0 mt-0.5"/>
+                <div className="space-y-1">
+                  <p className="font-semibold">Search Features:</p>
+                  <ul className="space-y-1 ml-2">
+                    <li>• <strong>Glob patterns:</strong> *.mkv, *1080p*, S??E??</li>
+                    <li>• <strong>Fuzzy matching:</strong> "breaking bad" finds "Breaking.Bad"</li>
+                    <li>• Searches name, category, and tags</li>
+                    <li>• Auto-searches after typing</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+          <DialogFooter className="sm:justify-between">
+            <Button variant="outline" onClick={() => {
+              setGlobalFilter("")
+              setShowSearchModal(false)
+            }}>
+              Clear
+            </Button>
+            <Button onClick={() => setShowSearchModal(false)}>
+              Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Add torrent dialog */}
       <AddTorrentDialog
         instanceId={instanceId}
@@ -2115,11 +2054,85 @@ export function TorrentCardsMobile({
         onOpenChange={onAddTorrentModalChange}
       />
 
+      {/* Fixed bottom navbar - only visible when not in selection mode */}
+      {!selectionMode && (
+        <div
+          className={cn(
+            "fixed bottom-16 left-0 right-0 z-50 lg:hidden bg-background/80 backdrop-blur-md border-t border-border/50"
+          )}
+        >
+          <div className="flex items-center justify-around h-14 px-2">
+            <button
+              onClick={() => setShowSearchModal(true)}
+              className="flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground active:scale-95"
+            >
+              <Search className="h-5 w-5"/>
+              <span className="truncate text-[10px]">Search</span>
+            </button>
+
+            <button
+              onClick={() => setIncognitoMode(!incognitoMode)}
+              className="flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground active:scale-95"
+            >
+              {incognitoMode ? <EyeOff className="h-5 w-5"/> : <Eye className="h-5 w-5"/>}
+              <span className="truncate text-[10px]">Incognito</span>
+            </button>
+
+            <button
+              onClick={() => window.dispatchEvent(new Event("qui-open-mobile-filters"))}
+              className="flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground active:scale-95"
+            >
+              <Filter className="h-5 w-5"/>
+              <span className="truncate text-[10px]">Filters</span>
+            </button>
+
+            <button
+              onClick={() => onAddTorrentModalChange?.(true)}
+              className="flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground active:scale-95"
+            >
+              <Plus className="h-5 w-5"/>
+              <span className="truncate text-[10px]">Add</span>
+            </button>
+
+            {supportsTorrentCreation && (
+              <button
+                onClick={() => {
+                  const next = { ...(routeSearch || {}), modal: "create-torrent" }
+                  navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
+                }}
+                className="flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground active:scale-95"
+              >
+                <FileEdit className="h-5 w-5"/>
+                <span className="truncate text-[10px]">Create</span>
+              </button>
+            )}
+
+            {supportsTorrentCreation && (
+              <button
+                onClick={() => {
+                  const next = { ...(routeSearch || {}), modal: "tasks" }
+                  navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
+                }}
+                className="flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground active:scale-95 relative"
+              >
+                <ListTodo className="h-5 w-5"/>
+                {activeTaskCount > 0 && (
+                  <Badge variant="default" className="absolute top-0 right-1 h-4 min-w-4 flex items-center justify-center p-0 text-[9px]">
+                    {activeTaskCount}
+                  </Badge>
+                )}
+                <span className="truncate text-[10px]">Tasks</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Scroll to top button - only on mobile */}
       <div className="sm:hidden">
         <ScrollToTopButton
           scrollContainerRef={parentRef}
-          className="bottom-28 right-4"
+          className="bottom-32 right-4"
         />
       </div>
     </div>
