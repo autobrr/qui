@@ -840,6 +840,13 @@ func statusFiltersRequireTrackerData(statuses []string) bool {
 }
 
 func (sm *SyncManager) torrentIsUnregistered(torrent qbt.Torrent) bool {
+	if torrent.AddedOn > 0 {
+		addedAt := time.Unix(torrent.AddedOn, 0)
+		if time.Since(addedAt) < time.Hour {
+			return false
+		}
+	}
+
 	var hasWorking bool
 	var hasUnregistered bool
 
