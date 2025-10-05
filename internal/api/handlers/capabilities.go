@@ -8,6 +8,7 @@ import (
 type InstanceCapabilitiesResponse struct {
 	SupportsTorrentCreation bool   `json:"supportsTorrentCreation"`
 	SupportsSetTags         bool   `json:"supportsSetTags"`
+	SupportsTrackerHealth   bool   `json:"supportsTrackerHealth"`
 	WebAPIVersion           string `json:"webAPIVersion,omitempty"`
 }
 
@@ -16,6 +17,7 @@ func NewInstanceCapabilitiesResponse(client *internalqbittorrent.Client) Instanc
 	capabilities := InstanceCapabilitiesResponse{
 		SupportsTorrentCreation: client.SupportsTorrentCreation(),
 		SupportsSetTags:         client.SupportsSetTags(),
+		SupportsTrackerHealth:   client.SupportsTrackerHealth(),
 	}
 
 	if version := client.GetWebAPIVersion(); version != "" {

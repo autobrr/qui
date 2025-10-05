@@ -51,6 +51,7 @@ export interface InstanceResponse extends Instance {
 export interface InstanceCapabilities {
   supportsTorrentCreation: boolean
   supportsSetTags: boolean
+  supportsTrackerHealth: boolean
   webAPIVersion?: string
 }
 

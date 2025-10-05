@@ -148,7 +148,8 @@ export const createColumns = (
   speedUnit: SpeedUnit = "bytes",
   trackerIcons?: Record<string, string>,
   formatTimestamp?: (timestamp: number) => string,
-  instancePreferences?: AppPreferences | null
+  instancePreferences?: AppPreferences | null,
+  supportsTrackerHealth: boolean = true
 ): ColumnDef<Torrent>[] => [
   {
     id: "select",
@@ -346,14 +347,16 @@ export const createColumns = (
       let badgeClass = ""
       let displayLabel = label
 
-      if (trackerHealth === "tracker_down") {
-        displayLabel = "Tracker Down"
-        badgeVariant = "outline"
-        badgeClass = "text-yellow-500 border-yellow-500/40 bg-yellow-500/10"
-      } else if (trackerHealth === "unregistered") {
-        displayLabel = "Unregistered"
-        badgeVariant = "outline"
-        badgeClass = "text-destructive border-destructive/40 bg-destructive/10"
+      if (supportsTrackerHealth) {
+        if (trackerHealth === "tracker_down") {
+          displayLabel = "Tracker Down"
+          badgeVariant = "outline"
+          badgeClass = "text-yellow-500 border-yellow-500/40 bg-yellow-500/10"
+        } else if (trackerHealth === "unregistered") {
+          displayLabel = "Unregistered"
+          badgeVariant = "outline"
+          badgeClass = "text-destructive border-destructive/40 bg-destructive/10"
+        }
       }
 
       if (isQueued && priority > 0) {

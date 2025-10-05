@@ -204,6 +204,10 @@ func (c *Client) SupportsSetTags() bool {
 	return c.supportsSetTags
 }
 
+func (c *Client) SupportsTrackerHealth() bool {
+	return c.supportsTrackerInclude()
+}
+
 func (c *Client) GetWebAPIVersion() string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()

@@ -1785,6 +1785,9 @@ components:
         supportsSetTags:
           type: boolean
           description: Whether the instance supports replacing tags on torrents.
+        supportsTrackerHealth:
+          type: boolean
+          description: Whether the instance exposes tracker health metadata (unregistered/tracker down states).
         webAPIVersion:
           type: string
           nullable: true
