@@ -50,8 +50,7 @@ export function NumberInputWithUnlimited({
     
     // If we stepped down to exactly 0 from a positive value, transition to unlimited
     if (prevValue > 0 && currentValue === 0) {
-      // Small delay to let the UI update, then transition to unlimited
-      setTimeout(() => onChange(-1), 50)
+      onChange(-1)
     }
     
     prevValueRef.current = value
