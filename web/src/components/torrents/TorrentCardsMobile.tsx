@@ -903,7 +903,7 @@ export function TorrentCardsMobile({
 
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const [speedUnit, setSpeedUnit] = useSpeedUnits()
-  const { viewMode } = usePersistedCompactViewState("normal")
+  const { viewMode } = usePersistedCompactViewState("compact")
   const trackerIconsQuery = useTrackerIcons()
   const trackerIconsRef = useRef<Record<string, string> | undefined>(undefined)
   const trackerIcons = useMemo(() => {
@@ -1461,7 +1461,7 @@ export function TorrentCardsMobile({
   }, [torrents, selectedHashes, isAllSelected, excludedFromSelectAll])
 
   return (
-    <div className="h-full flex flex-col relative">
+    <div className="relative flex h-full min-h-0 flex-col overflow-hidden">
       {/* Header with stats */}
       <div className="sticky top-0 z-40 bg-background">
         {/* Stats bar */}
@@ -1532,8 +1532,11 @@ export function TorrentCardsMobile({
       </div>
 
       {/* Torrent cards with virtual scrolling */}
-      <div ref={parentRef} className="flex-1 overflow-auto"
-        style={{ paddingBottom: "calc(8rem + env(safe-area-inset-bottom))" }}>
+      <div
+        ref={parentRef}
+        className="flex-1 overflow-y-auto overscroll-contain"
+        style={{ paddingBottom: "calc(8rem + env(safe-area-inset-bottom))" }}
+      >
         <div
           style={{
             height: `${virtualizer.getTotalSize()}px`,
