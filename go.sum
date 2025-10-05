@@ -13,10 +13,10 @@ github.com/alexedwards/scs/v2 v2.9.0/go.mod h1:ToaROZxyKukJKT/xLcVQAChi5k6+Pn1Gv
 github.com/andybalholm/brotli v1.0.5/go.mod h1:fO7iG3H7G2nSZ7m0zPUDn85XEX2GTukHGRSepvi9Eig=
 github.com/andybalholm/brotli v1.2.0 h1:ukwgCxwYrmACq68yiUqwIWnGY0cTPox/M94sVwToPjQ=
 github.com/andybalholm/brotli v1.2.0/go.mod h1:rzTDkvFWvIrjDXZHkuS16NPggd91W3kUSvPlQ1pLaKY=
-github.com/autobrr/autobrr v1.66.1 h1:BRHHR6XzdGXGil0/yYJm32pEkDgLs4CoySZucnoe0cs=
-github.com/autobrr/autobrr v1.66.1/go.mod h1:K+tIezuXcQr04ntKb8wE3Gq3PVL2ZkTvcXeGvA/VwBY=
-github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20250930090117-9150109e3685 h1:LXcAhDhYxJm91tuRL3YikXfJxRClX8YIJZgcZ3+Ki8k=
-github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20250930090117-9150109e3685/go.mod h1:GY9yW+L45etf6xobkKz4hODqL/EfSw/CWPC9SzS2q8U=
+github.com/autobrr/autobrr v1.67.0 h1:P1QLJTBEEDKyQKfkC+qsdmyzahZthL2drp3MDZ0661U=
+github.com/autobrr/autobrr v1.67.0/go.mod h1:olJkJfOB69e/dlm1679VBZ1oXSLducmxAYx1j/9AOxI=
+github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20251004215124-dc15e9057f6f h1:lHRxh7ir1aXYjJh8XplmeIRthI1V4rHk20Dbgk4oNug=
+github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20251004215124-dc15e9057f6f/go.mod h1:W94ybAaevcwO2Ljy5fCZbH4QmuArQ3ISEuL3c/nMJKE=
 github.com/avast/retry-go v3.0.0+incompatible h1:4SOWQ7Qs+oroOTQOYnAHqelpCO0biHSxpiH9JdtuBj0=
 github.com/avast/retry-go v3.0.0+incompatible/go.mod h1:XtSnn+n/sHqQIpZ10K1qAevBhOOCWBLXXy3hyiqqBrY=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
