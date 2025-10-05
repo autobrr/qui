@@ -57,7 +57,6 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
   const [torrentCounts, setTorrentCounts] = useState<Record<string, number> | undefined>(undefined)
   const [categories, setCategories] = useState<Record<string, Category> | undefined>(undefined)
   const [tags, setTags] = useState<string[] | undefined>(undefined)
-  const [trackerHealthSupported, setTrackerHealthSupported] = useState(true)
   const [lastInstanceId, setLastInstanceId] = useState<number | null>(null)
 
   const handleTorrentSelect = (torrent: Torrent | null) => {
@@ -78,7 +77,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
   }, [instanceId])
 
   // Callback when filtered data updates - now receives counts, categories, and tags from backend
-  const handleFilteredDataUpdate = useCallback((_torrents: Torrent[], _total: number, counts?: TorrentCounts, categoriesData?: Record<string, Category>, tagsData?: string[], trackerHealthSupportedFlag?: boolean) => {
+  const handleFilteredDataUpdate = useCallback((_torrents: Torrent[], _total: number, counts?: TorrentCounts, categoriesData?: Record<string, Category>, tagsData?: string[]) => {
     // Update the last instance ID when we receive new data
     setLastInstanceId(instanceId)
 
@@ -117,9 +116,6 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
       setTags(tagsData)
     }
 
-    if (trackerHealthSupportedFlag !== undefined) {
-      setTrackerHealthSupported(trackerHealthSupportedFlag)
-    }
   }, [instanceId])
 
   // Calculate total active filters for badge
@@ -188,7 +184,6 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
             torrentCounts={torrentCounts}
             categories={categories}
             tags={tags}
-            trackerHealthSupported={trackerHealthSupported}
             isStaleData={lastInstanceId !== null && lastInstanceId !== instanceId}
             isLoading={lastInstanceId !== null && lastInstanceId !== instanceId}
             isMobile={false}
@@ -211,7 +206,6 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
               torrentCounts={torrentCounts}
               categories={categories}
               tags={tags}
-              trackerHealthSupported={trackerHealthSupported}
               isStaleData={lastInstanceId !== null && lastInstanceId !== instanceId}
               isLoading={lastInstanceId !== null && lastInstanceId !== instanceId}
               isMobile={true}

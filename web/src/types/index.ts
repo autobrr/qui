@@ -153,7 +153,6 @@ export interface TorrentResponse {
   serverState?: ServerState
   cacheMetadata?: CacheMetadata
   hasMore?: boolean
-  trackerHealthSupported?: boolean
 }
 
 // Simplified MainData - only used for Dashboard server stats
