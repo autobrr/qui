@@ -226,6 +226,8 @@ func (h *WebhooksHandler) UpdateWebhookPreferences(w http.ResponseWriter, r *htt
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		http.Error(w, errAPIKeyRequired.Error(), http.StatusConflict)
+		return
 	}
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to validate webhook preferences")
