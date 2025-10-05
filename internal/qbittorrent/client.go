@@ -79,7 +79,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 			torrentCreationMinVersion := semver.MustParse("2.11.2")
 			supportsTorrentCreation = !v.LessThan(torrentCreationMinVersion)
 
-			trackerEditingMinVersion := semver.MustParse("2.3.0")
+			trackerEditingMinVersion := semver.MustParse("2.2.0")
 			supportsTrackerEditing = !v.LessThan(trackerEditingMinVersion)
 		}
 	}
