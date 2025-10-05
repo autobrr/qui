@@ -2022,6 +2022,51 @@ func (sm *SyncManager) ToggleAlternativeSpeedLimits(ctx context.Context, instanc
 	return nil
 }
 
+// GetActiveTrackers returns all active tracker domains with their URLs and counts
+func (sm *SyncManager) GetActiveTrackers(ctx context.Context, instanceID int) (map[string]string, error) {
+	client, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		return nil, err
+	}
+
+	mainData := syncManager.GetData()
+	if mainData == nil || mainData.Trackers == nil {
+		return make(map[string]string), nil
+	}
+
+	// Map of domain -> example tracker URL
+	trackerMap := make(map[string]string)
+	trackerExclusions := client.getTrackerExclusionsCopy()
+
+	for trackerURL, hashes := range mainData.Trackers {
+		domain := sm.extractDomainFromURL(trackerURL)
+		if domain == "" || domain == "Unknown" {
+			continue
+		}
+
+		// Skip if all hashes are excluded
+		hasValidHash := false
+		for _, hash := range hashes {
+			if hashesToSkip, ok := trackerExclusions[domain]; ok {
+				if _, skip := hashesToSkip[hash]; skip {
+					continue
+				}
+			}
+			hasValidHash = true
+			break
+		}
+
+		if hasValidHash {
+			// Store the first valid tracker URL we find for this domain
+			if _, exists := trackerMap[domain]; !exists {
+				trackerMap[domain] = trackerURL
+			}
+		}
+	}
+
+	return trackerMap, nil
+}
+
 // SetTorrentShareLimit sets share limits (ratio, seeding time) for torrents
 func (sm *SyncManager) SetTorrentShareLimit(ctx context.Context, instanceID int, hashes []string, ratioLimit float64, seedingTimeLimit, inactiveSeedingTimeLimit int64) error {
 	// Get client and sync manager
@@ -2315,4 +2360,70 @@ func (sm *SyncManager) BulkRemoveTrackers(ctx context.Context, instanceID int, h
 	sm.syncAfterModification(instanceID, client, "bulk_remove_trackers")
 
 	return nil
+}
+
+// CreateTorrent creates a new torrent creation task
+func (sm *SyncManager) CreateTorrent(ctx context.Context, instanceID int, params qbt.TorrentCreationParams) (*qbt.TorrentCreationTaskResponse, error) {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client: %w", err)
+	}
+
+	return client.CreateTorrentCtx(ctx, params)
+}
+
+// GetTorrentCreationStatus retrieves the status of torrent creation tasks
+// If taskID is empty, returns all tasks
+func (sm *SyncManager) GetTorrentCreationStatus(ctx context.Context, instanceID int, taskID string) ([]qbt.TorrentCreationTask, error) {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client: %w", err)
+	}
+
+	return client.GetTorrentCreationStatusCtx(ctx, taskID)
+}
+
+// GetActiveTaskCount returns the number of active (Running or Queued) torrent creation tasks
+// This is optimized for frequent polling by only counting active tasks
+func (sm *SyncManager) GetActiveTaskCount(ctx context.Context, instanceID int) int {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return 0
+	}
+
+	tasks, err := client.GetTorrentCreationStatusCtx(ctx, "")
+	if err != nil {
+		// Return 0 on error to avoid breaking the response
+		// This is expected if qBittorrent version doesn't support torrent creation
+		return 0
+	}
+
+	count := 0
+	for _, task := range tasks {
+		if task.Status == qbt.TorrentCreationStatusRunning || task.Status == qbt.TorrentCreationStatusQueued {
+			count++
+		}
+	}
+
+	return count
+}
+
+// GetTorrentCreationFile downloads the torrent file for a completed torrent creation task
+func (sm *SyncManager) GetTorrentCreationFile(ctx context.Context, instanceID int, taskID string) ([]byte, error) {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client: %w", err)
+	}
+
+	return client.GetTorrentFileCtx(ctx, taskID)
+}
+
+// DeleteTorrentCreationTask deletes a torrent creation task
+func (sm *SyncManager) DeleteTorrentCreationTask(ctx context.Context, instanceID int, taskID string) error {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	return client.DeleteTorrentCreationTaskCtx(ctx, taskID)
 }
