@@ -34,6 +34,31 @@ func NewInstancesHandler(instanceStore *models.InstanceStore, clientPool *intern
 	}
 }
 
+// GetInstanceCapabilities returns lightweight capability metadata for an instance.
+func (h *InstancesHandler) GetInstanceCapabilities(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+
+	client, err := h.clientPool.GetClientOffline(ctx, instanceID)
+	if err != nil {
+		client, err = h.clientPool.GetClientWithTimeout(ctx, instanceID, 15*time.Second)
+		if err != nil {
+			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client for capabilities")
+			RespondError(w, http.StatusServiceUnavailable, "Failed to load instance capabilities")
+			return
+		}
+	}
+
+	capabilities := NewInstanceCapabilitiesResponse(client)
+	RespondJSON(w, http.StatusOK, capabilities)
+}
+
 func (h *InstancesHandler) buildInstanceResponsesParallel(ctx context.Context, instances []*models.Instance) []InstanceResponse {
 	if len(instances) == 0 {
 		return []InstanceResponse{}
