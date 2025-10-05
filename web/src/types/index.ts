@@ -439,6 +439,7 @@ export interface QBittorrentAppInfo {
   version: string
   webAPIVersion?: string
   buildInfo?: QBittorrentBuildInfo
+}
 
 // Torrent Creation Types
 export type TorrentFormat = "v1" | "v2" | "hybrid"
