@@ -46,8 +46,13 @@ function getRelativeTime(date: Date): string {
   if (diffHour < 24) return `${diffHour} hour${diffHour !== 1 ? "s" : ""} ago`
   if (diffDay < 7) return `${diffDay} day${diffDay !== 1 ? "s" : ""} ago`
   if (diffWeek < 4) return `${diffWeek} week${diffWeek !== 1 ? "s" : ""} ago`
-  if (diffMonth < 12) return `${diffMonth} month${diffMonth !== 1 ? "s" : ""} ago`
-  return `${diffYear} year${diffYear !== 1 ? "s" : ""} ago`
+  if (diffMonth < 12 && diffMonth > 0) return `${diffMonth} month${diffMonth !== 1 ? "s" : ""} ago`
+  if (diffYear > 0) return `${diffYear} year${diffYear !== 1 ? "s" : ""} ago`
+  
+  // Fallback for edge cases (like exactly 0 months but some weeks)
+  if (diffWeek > 0) return `${diffWeek} week${diffWeek !== 1 ? "s" : ""} ago`
+  if (diffDay > 0) return `${diffDay} day${diffDay !== 1 ? "s" : ""} ago`
+  return "Just now"
 }
 
 /**

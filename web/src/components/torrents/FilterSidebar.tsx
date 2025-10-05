@@ -24,6 +24,7 @@ import { SearchInput } from "@/components/ui/SearchInput"
 import { useDebounce } from "@/hooks/useDebounce"
 import { usePersistedAccordion } from "@/hooks/usePersistedAccordion"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
+import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { getLinuxCount, LINUX_CATEGORIES, LINUX_TAGS, LINUX_TRACKERS, useIncognitoMode } from "@/lib/incognito"
 import type { Category } from "@/types"
@@ -123,6 +124,8 @@ const TORRENT_STATES: Array<{ value: string; label: string; icon: LucideIcon }> 
   { value: "errored", label: "Error", icon: XCircle },
   { value: "checking", label: "Checking", icon: RotateCw },
   { value: "moving", label: "Moving", icon: MoveRight },
+  { value: "unregistered", label: "Unregistered torrents", icon: XCircle },
+  { value: "tracker_down", label: "Tracker Down", icon: AlertCircle },
 ]
 
 interface TrackerIconImageProps {
@@ -176,6 +179,9 @@ const FilterSidebarComponent = ({
   // Use incognito mode hook
   const [incognitoMode] = useIncognitoMode()
   const { data: trackerIcons } = useTrackerIcons()
+  const { data: capabilities } = useInstanceCapabilities(instanceId)
+  const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? true
+  const supportsTrackerEditing = capabilities?.supportsTrackerEditing ?? true
 
   // Use compact view state hook
   const { viewMode, cycleViewMode } = usePersistedCompactViewState("normal")
@@ -223,13 +229,26 @@ const FilterSidebarComponent = ({
   const [trackerFullURLs, setTrackerFullURLs] = useState<string[]>([])
   const [loadingTrackerURLs, setLoadingTrackerURLs] = useState(false)
 
+  const visibleTorrentStates = useMemo(() => {
+    if (supportsTrackerHealth) {
+      return TORRENT_STATES
+    }
+    return TORRENT_STATES.filter(state => state.value !== "unregistered" && state.value !== "tracker_down")
+  }, [supportsTrackerHealth])
+
   // Get selected torrents from context (not used for tracker editing, but keeping for future use)
   // const { selectedHashes } = useTorrentSelection()
 
   // Function to fetch tracker URLs for a specific tracker domain
   const fetchTrackerURLs = useCallback(async (trackerDomain: string) => {
-    setLoadingTrackerURLs(true)
     setTrackerFullURLs([])
+
+    if (!supportsTrackerHealth) {
+      setLoadingTrackerURLs(false)
+      return
+    }
+
+    setLoadingTrackerURLs(true)
 
     try {
       // Find torrents using this tracker
@@ -269,7 +288,7 @@ const FilterSidebarComponent = ({
     } finally {
       setLoadingTrackerURLs(false)
     }
-  }, [instanceId])
+  }, [instanceId, supportsTrackerHealth])
 
   // Mutation for editing trackers
   const editTrackersMutation = useMutation({
@@ -545,7 +564,7 @@ const FilterSidebarComponent = ({
               </AccordionTrigger>
               <AccordionContent className="px-3 pb-2">
                 <div className="space-y-1">
-                  {TORRENT_STATES.map((state) => (
+                  {visibleTorrentStates.map((state) => (
                     <label
                       key={state.value}
                       className="flex items-center space-x-2 py-1 px-2 hover:bg-muted rounded cursor-pointer"
@@ -1028,7 +1047,11 @@ const FilterSidebarComponent = ({
                                 </ContextMenuTrigger>
                                 <ContextMenuContent>
                                   <ContextMenuItem
+                                    disabled={!supportsTrackerEditing}
                                     onClick={async () => {
+                                      if (!supportsTrackerEditing) {
+                                        return
+                                      }
                                       setTrackerToEdit(tracker)
                                       await fetchTrackerURLs(tracker)
                                       setShowEditTrackerDialog(true)
@@ -1064,7 +1087,11 @@ const FilterSidebarComponent = ({
                         </ContextMenuTrigger>
                         <ContextMenuContent>
                           <ContextMenuItem
+                            disabled={!supportsTrackerEditing}
                             onClick={async () => {
+                              if (!supportsTrackerEditing) {
+                                return
+                              }
                               setTrackerToEdit(tracker)
                               await fetchTrackerURLs(tracker)
                               setShowEditTrackerDialog(true)

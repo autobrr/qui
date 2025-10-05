@@ -24,12 +24,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mat/besticon/v3/ico"
+	_ "github.com/mat/besticon/v3/ico"
 	"golang.org/x/image/draw"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/charset"
 	"golang.org/x/sync/singleflight"
 	"golang.org/x/text/transform"
+
+	"github.com/autobrr/qui/pkg/httphelpers"
 )
 
 const (
@@ -332,13 +334,13 @@ func (s *Service) discoverIcons(ctx context.Context, baseURL *url.URL) ([]string
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer httphelpers.DrainAndClose(resp)
+	limitedReader := io.LimitReader(resp.Body, maxHTMLBytes)
 
 	if resp.StatusCode >= http.StatusBadRequest {
 		return nil, fmt.Errorf("unexpected status %d", resp.StatusCode)
 	}
 
-	limitedReader := io.LimitReader(resp.Body, maxHTMLBytes)
 	rawHTML, err := io.ReadAll(limitedReader)
 	if err != nil {
 		return nil, err
@@ -381,7 +383,6 @@ func (s *Service) discoverIcons(ctx context.Context, baseURL *url.URL) ([]string
 	walk(document)
 	return icons, nil
 }
-
 func (s *Service) fetchIconBytes(ctx context.Context, iconURL string) ([]byte, string, error) {
 	if strings.HasPrefix(iconURL, "data:") {
 		return parseDataURI(iconURL)
@@ -398,15 +399,15 @@ func (s *Service) fetchIconBytes(ctx context.Context, iconURL string) ([]byte, s
 	if err != nil {
 		return nil, "", err
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= http.StatusBadRequest {
-		return nil, "", fmt.Errorf("unexpected status %d", resp.StatusCode)
-	}
+	defer httphelpers.DrainAndClose(resp)
 
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxIconBytes))
 	if err != nil {
 		return nil, "", err
+	}
+
+	if resp.StatusCode >= http.StatusBadRequest {
+		return nil, "", fmt.Errorf("unexpected status %d", resp.StatusCode)
 	}
 
 	contentType := resp.Header.Get("Content-Type")
@@ -716,16 +717,13 @@ func decodeImage(data []byte, contentType, originalURL string) (image.Image, err
 
 	// Check dimensions before expensive decode to avoid decompression bombs
 	// If validation succeeds here we can skip re-checking the same dimensions later.
-	validated := false
-	if cfg, _, err := image.DecodeConfig(reader); err == nil {
-		// ICO images and other non-standard formats trigger an error here; allow
-		// those to fall through so the specialized decoders can run instead.
-		if err := validateDimensions(cfg.Width, cfg.Height); err != nil {
-			return nil, err
-		}
-		validated = true
-	} else if !isLikelyICO(contentType, originalURL, data) {
-		return nil, fmt.Errorf("failed to decode image config: %w", err)
+	cfg, _, err := image.DecodeConfig(reader)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := validateDimensions(cfg.Width, cfg.Height); err != nil {
+		return nil, err
 	}
 
 	// Reset reader for full decode
@@ -733,50 +731,8 @@ func decodeImage(data []byte, contentType, originalURL string) (image.Image, err
 		return nil, fmt.Errorf("failed to reset reader: %w", err)
 	}
 
-	lowerContentType := strings.ToLower(contentType)
-
-	if strings.Contains(lowerContentType, "png") {
-		if img, err := png.Decode(reader); err == nil {
-			if !validated {
-				if err := validateDimensions(img.Bounds().Dx(), img.Bounds().Dy()); err != nil {
-					return nil, err
-				}
-			}
-			return img, nil
-		}
-		if _, err := reader.Seek(0, io.SeekStart); err != nil {
-			return nil, fmt.Errorf("failed to reset reader after png decode: %w", err)
-		}
-	}
-
-	// Try standard formats first (PNG, JPEG, GIF)
-	if img, _, err := image.Decode(reader); err == nil {
-		if !validated {
-			if err := validateDimensions(img.Bounds().Dx(), img.Bounds().Dy()); err != nil {
-				return nil, err
-			}
-		}
-		return img, nil
-	}
-
-	// Fallback to ICO
-	if _, err := reader.Seek(0, io.SeekStart); err != nil {
-		return nil, fmt.Errorf("failed to reset reader for ico decode: %w", err)
-	}
-
-	icoCfg, err := ico.DecodeConfig(reader)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode ico config: %w", err)
-	}
-	if err := validateDimensions(icoCfg.Width, icoCfg.Height); err != nil {
-		return nil, err
-	}
-
-	if _, err := reader.Seek(0, io.SeekStart); err != nil {
-		return nil, fmt.Errorf("failed to reset reader after ico config: %w", err)
-	}
-
-	return ico.Decode(reader)
+	img, _, err := image.Decode(reader)
+	return img, err
 }
 
 func isLikelyICO(contentType, originalURL string, data []byte) bool {

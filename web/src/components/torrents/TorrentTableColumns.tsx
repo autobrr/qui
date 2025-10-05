@@ -22,7 +22,7 @@ import {
 } from "@/lib/incognito"
 import { formatSpeedWithUnit, type SpeedUnit } from "@/lib/speedUnits"
 import { getStateLabel } from "@/lib/torrent-state-utils"
-import { formatBytes, formatDuration, getRatioColor } from "@/lib/utils"
+import { cn, formatBytes, formatDuration, getRatioColor } from "@/lib/utils"
 import type { AppPreferences, Torrent } from "@/types"
 import type { ColumnDef } from "@tanstack/react-table"
 import { Globe, ListOrdered } from "lucide-react"
@@ -88,8 +88,8 @@ const TrackerIconCell = memo(({ title, fallback, src }: TrackerIconCellProps) =>
             src={src}
             alt=""
             className="h-full w-full rounded-[2px] object-cover"
-            loading="lazy"
             draggable={false}
+            decoding="async"
             onError={() => setHasError(true)}
           />
         ) : (
@@ -148,7 +148,8 @@ export const createColumns = (
   speedUnit: SpeedUnit = "bytes",
   trackerIcons?: Record<string, string>,
   formatTimestamp?: (timestamp: number) => string,
-  instancePreferences?: AppPreferences | null
+  instancePreferences?: AppPreferences | null,
+  supportsTrackerHealth: boolean = true
 ): ColumnDef<Torrent>[] => [
   {
     id: "select",
@@ -341,18 +342,39 @@ export const createColumns = (
       const variant =
         state === "downloading" ? "default" :state === "stalledDL" ? "secondary" :state === "uploading" ? "default" :state === "stalledUP" ? "secondary" :state === "pausedDL" || state === "pausedUP" ? "secondary" :state === "queuedDL" || state === "queuedUP" ? "secondary" :state === "error" || state === "missingFiles" ? "destructive" :"outline"
 
+      const trackerHealth = row.original.tracker_health ?? null
+      let badgeVariant: "default" | "secondary" | "destructive" | "outline" = variant
+      let badgeClass = ""
+      let displayLabel = label
+
+      if (supportsTrackerHealth) {
+        if (trackerHealth === "tracker_down") {
+          displayLabel = "Tracker Down"
+          badgeVariant = "outline"
+          badgeClass = "text-yellow-500 border-yellow-500/40 bg-yellow-500/10"
+        } else if (trackerHealth === "unregistered") {
+          displayLabel = "Unregistered"
+          badgeVariant = "outline"
+          badgeClass = "text-destructive border-destructive/40 bg-destructive/10"
+        }
+      }
+
       if (isQueued && priority > 0) {
         return (
           <div className="flex items-center gap-1">
-            <Badge variant={variant} className="text-xs">
-              {label}
+            <Badge variant={badgeVariant} className={cn("text-xs", badgeClass)}>
+              {displayLabel}
             </Badge>
             <span className="text-xs text-muted-foreground">#{priority}</span>
           </div>
         )
       }
 
-      return <Badge variant={variant} className="text-xs">{label}</Badge>
+      return (
+        <Badge variant={badgeVariant} className={cn("text-xs", badgeClass)}>
+          {displayLabel}
+        </Badge>
+      )
     },
     size: 130,
   },

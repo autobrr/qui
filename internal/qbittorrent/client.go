@@ -18,13 +18,15 @@ import (
 
 type Client struct {
 	*qbt.Client
-	instanceID      int
-	webAPIVersion   string
-	supportsSetTags bool
-	lastHealthCheck time.Time
-	isHealthy       bool
-	syncManager     *qbt.SyncManager
-	peerSyncManager map[string]*qbt.PeerSyncManager // Map of torrent hash to PeerSyncManager
+	instanceID              int
+	webAPIVersion           string
+	supportsSetTags         bool
+	supportsTorrentCreation bool
+	supportsTrackerEditing  bool
+	lastHealthCheck         time.Time
+	isHealthy               bool
+	syncManager             *qbt.SyncManager
+	peerSyncManager         map[string]*qbt.PeerSyncManager // Map of torrent hash to PeerSyncManager
 	// optimisticUpdates stores temporary optimistic state changes for this instance
 	optimisticUpdates *ttlcache.Cache[string, *OptimisticTorrentUpdate]
 	trackerExclusions map[string]map[string]struct{} // Domains to hide hashes from until fresh sync arrives
@@ -67,20 +69,30 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 	}
 
 	supportsSetTags := false
+	supportsTorrentCreation := false
+	supportsTrackerEditing := false
 	if webAPIVersion != "" {
 		if v, err := semver.NewVersion(webAPIVersion); err == nil {
-			minVersion := semver.MustParse("2.11.4")
-			supportsSetTags = !v.LessThan(minVersion)
+			setTagsMinVersion := semver.MustParse("2.11.4")
+			supportsSetTags = !v.LessThan(setTagsMinVersion)
+
+			torrentCreationMinVersion := semver.MustParse("2.11.2")
+			supportsTorrentCreation = !v.LessThan(torrentCreationMinVersion)
+
+			trackerEditingMinVersion := semver.MustParse("2.3.0")
+			supportsTrackerEditing = !v.LessThan(trackerEditingMinVersion)
 		}
 	}
 
 	client := &Client{
-		Client:          qbtClient,
-		instanceID:      instanceID,
-		webAPIVersion:   webAPIVersion,
-		supportsSetTags: supportsSetTags,
-		lastHealthCheck: time.Now(),
-		isHealthy:       true,
+		Client:                  qbtClient,
+		instanceID:              instanceID,
+		webAPIVersion:           webAPIVersion,
+		supportsSetTags:         supportsSetTags,
+		supportsTorrentCreation: supportsTorrentCreation,
+		supportsTrackerEditing:  supportsTrackerEditing,
+		lastHealthCheck:         time.Now(),
+		isHealthy:               true,
 		optimisticUpdates: ttlcache.New(ttlcache.Options[string, *OptimisticTorrentUpdate]{}.
 			SetDefaultTTL(30 * time.Second)), // Updates expire after 30 seconds
 		trackerExclusions: make(map[string]map[string]struct{}),
@@ -104,13 +116,26 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 
 	client.syncManager = qbtClient.NewSyncManager(syncOpts)
 
+	supportsInclude := client.supportsTrackerInclude()
+
 	log.Debug().
 		Int("instanceID", instanceID).
 		Str("host", instanceHost).
 		Str("webAPIVersion", webAPIVersion).
 		Bool("supportsSetTags", supportsSetTags).
+		Bool("supportsTorrentCreation", supportsTorrentCreation).
+		Bool("supportsTrackerEditing", supportsTrackerEditing).
+		Bool("includeTrackers", supportsInclude).
 		Bool("tlsSkipVerify", tlsSkipVerify).
 		Msg("qBittorrent client created successfully")
+
+	if !supportsInclude {
+		log.Debug().
+			Int("instanceID", instanceID).
+			Str("host", instanceHost).
+			Str("webAPIVersion", webAPIVersion).
+			Msg("qBittorrent instance does not support includeTrackers; using fallback tracker queries for status detection")
+	}
 
 	return client, nil
 }
@@ -147,6 +172,18 @@ func (c *Client) IsHealthy() bool {
 	return c.isHealthy
 }
 
+func (c *Client) SupportsTorrentCreation() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.supportsTorrentCreation
+}
+
+func (c *Client) SupportsTrackerEditing() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.supportsTrackerEditing
+}
+
 // getTorrentsByHashes returns multiple torrents by their hashes (O(n) where n is number of requested hashes)
 func (c *Client) getTorrentsByHashes(hashes []string) []qbt.Torrent {
 	c.mu.RLock()
@@ -180,6 +217,10 @@ func (c *Client) SupportsSetTags() bool {
 	return c.supportsSetTags
 }
 
+func (c *Client) SupportsTrackerHealth() bool {
+	return c.supportsTrackerInclude()
+}
+
 func (c *Client) GetWebAPIVersion() string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -190,6 +231,42 @@ func (c *Client) GetSyncManager() *qbt.SyncManager {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.syncManager
+}
+
+func (c *Client) trackerManager() *qbt.TrackerManager {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.syncManager == nil {
+		return nil
+	}
+	return c.syncManager.Trackers()
+}
+
+func (c *Client) supportsTrackerInclude() bool {
+	if tm := c.trackerManager(); tm != nil {
+		return tm.SupportsIncludeTrackers()
+	}
+	return false
+}
+
+func (c *Client) hydrateTorrentsWithTrackers(ctx context.Context, torrents []qbt.Torrent, allowFetch bool) ([]qbt.Torrent, map[string][]qbt.TorrentTracker, []string, error) {
+	tm := c.trackerManager()
+	if tm == nil {
+		return torrents, nil, nil, fmt.Errorf("tracker manager unavailable")
+	}
+
+	opts := make([]qbt.TrackerHydrateOption, 0, 2)
+	if !allowFetch {
+		opts = append(opts, qbt.WithTrackerAllowFetch(false))
+	}
+
+	return tm.HydrateTorrents(ctx, torrents, opts...)
+}
+
+func (c *Client) invalidateTrackerCache(hashes ...string) {
+	if tm := c.trackerManager(); tm != nil {
+		tm.Invalidate(hashes...)
+	}
 }
 
 func (c *Client) StartSyncManager(ctx context.Context) error {

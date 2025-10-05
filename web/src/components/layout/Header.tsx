@@ -4,6 +4,7 @@
  */
 
 import { TorrentManagementBar } from "@/components/torrents/TorrentManagementBar"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -28,9 +29,12 @@ import { useDebounce } from "@/hooks/useDebounce"
 import { useInstances } from "@/hooks/useInstances"
 import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSidebarState"
 import { useTheme } from "@/hooks/useTheme"
+import { api } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import type { InstanceCapabilities } from "@/types"
+import { useQuery } from "@tanstack/react-query"
 import { Link, useNavigate, useRouterState, useSearch } from "@tanstack/react-router"
-import { ChevronsUpDown, FunnelPlus, FunnelX, HardDrive, Home, Info, LogOut, Menu, Plus, Search, Server, Settings, X } from "lucide-react"
+import { ChevronsUpDown, FileEdit, FunnelPlus, FunnelX, HardDrive, Home, Info, ListTodo, LogOut, Menu, Plus, Search, Server, Settings, X } from "lucide-react"
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useHotkeys } from "react-hotkeys-hook"
 
@@ -128,9 +132,28 @@ export function Header({
   )
   const { theme } = useTheme()
 
+  // Query active task count for badge (lightweight endpoint, only for instance routes)
+  const { data: activeTaskCount = 0 } = useQuery({
+    queryKey: ["active-task-count", selectedInstanceId],
+    queryFn: () => selectedInstanceId !== null ? api.getActiveTaskCount(selectedInstanceId) : Promise.resolve(0),
+    enabled: selectedInstanceId !== null,
+    refetchInterval: 30000, // Poll every 30 seconds (lightweight check)
+    refetchIntervalInBackground: true,
+  })
+
+  // Query instance capabilities via the dedicated lightweight endpoint
+  const { data: instanceCapabilities } = useQuery<InstanceCapabilities>({
+    queryKey: ["instance-capabilities", selectedInstanceId],
+    queryFn: () => api.getInstanceCapabilities(selectedInstanceId!),
+    enabled: selectedInstanceId !== null,
+    staleTime: 300000, // Cache for 5 minutes (capabilities don't change often)
+  })
+
+  const supportsTorrentCreation = instanceCapabilities?.supportsTorrentCreation ?? true
+
   return (
-    <header className="sticky top-0 z-50 flex h-16 items-center justify-between sm:border-b bg-background pl-1 pr-4 sm:pr-6 lg:static">
-      <div className="flex items-center gap-2 mr-2">
+    <header className="sticky top-0 z-50 flex flex-wrap lg:flex-nowrap items-start lg:items-center justify-between sm:border-b bg-background pl-2 pr-4 md:pl-4 md:pr-4 lg:pl-0 lg:static py-2 lg:py-0 lg:h-16">
+      <div className="hidden md:flex items-center gap-2 mr-2 h-12 lg:h-auto order-1 lg:order-none">
         {children}
         {instanceName && instances && instances.length > 1 ? (
           <DropdownMenu>
@@ -168,8 +191,8 @@ export function Header({
                       to="/instances/$instanceId"
                       params={{ instanceId: instance.id.toString() }}
                       className={cn(
-                        "flex items-center gap-2 cursor-pointer rounded-sm px-2 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
-                        instance.id === selectedInstanceId? "bg-accent text-accent-foreground font-medium": "hover:bg-accent/80 data-[highlighted]:bg-accent/80 focus-visible:bg-accent/20 text-foreground"
+                        "flex items-center gap-2 cursor-pointer rounded-sm px-2 py-1.5 text-sm focus-visible:outline-none",
+                        instance.id === selectedInstanceId? "bg-accent text-accent-foreground font-medium": "hover:bg-accent/80 data-[highlighted]:bg-accent/80 text-foreground"
                       )}
                     >
                       <HardDrive className="h-4 w-4 flex-shrink-0" />
@@ -206,50 +229,95 @@ export function Header({
         )}
       </div>
 
-      {/* Filter button and management bar always show on instance routes */}
+      {/* Filter button and action buttons - always on first row */}
       {isInstanceRoute && (
-        <div className={cn(
-          "hidden sm:flex items-center gap-2",
-          sidebarCollapsed && "ml-2"
-        )}>
-          {/* Filter button */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="outline"
-                size="icon"
-                className="hidden md:inline-flex"
-                onClick={handleToggleFilters}
-              >
-                {filterSidebarCollapsed ? (
-                  <FunnelPlus className="h-4 w-4"/>
-                ) : (
-                  <FunnelX className="h-4 w-4"/>
-                )}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{filterSidebarCollapsed ? "Show filters" : "Hide filters"}</TooltipContent>
-          </Tooltip>
-          {/* Add Torrent button */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="outline"
-                size="icon"
-                className="hidden md:inline-flex"
-                onClick={() => {
-                  const next = { ...(routeSearch || {}), modal: "add-torrent" }
-                  navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
-                }}
-              >
-                <Plus className="h-4 w-4"/>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Add torrent</TooltipContent>
-          </Tooltip>
-          {/* Conditional Management Bar with smooth animations */}
-          {(selectedHashes.length > 0 || isAllSelected) ? (
-            <div className="animate-in fade-in duration-400 ease-out motion-reduce:animate-none motion-reduce:duration-0">
+        <>
+          <div className={cn(
+            "hidden md:flex items-center gap-2 h-12 lg:h-auto order-2 lg:order-none",
+            sidebarCollapsed && "lg:ml-2"
+          )}>
+            {/* Filter button */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="hidden md:inline-flex"
+                  onClick={handleToggleFilters}
+                >
+                  {filterSidebarCollapsed ? (
+                    <FunnelPlus className="h-4 w-4"/>
+                  ) : (
+                    <FunnelX className="h-4 w-4"/>
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{filterSidebarCollapsed ? "Show filters" : "Hide filters"}</TooltipContent>
+            </Tooltip>
+            {/* Add Torrent button */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="hidden md:inline-flex"
+                  onClick={() => {
+                    const next = { ...(routeSearch || {}), modal: "add-torrent" }
+                    navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
+                  }}
+                >
+                  <Plus className="h-4 w-4"/>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Add torrent</TooltipContent>
+            </Tooltip>
+            {/* Create Torrent button - only show if instance supports it */}
+            {supportsTorrentCreation && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="hidden md:inline-flex"
+                    onClick={() => {
+                      const next = { ...(routeSearch || {}), modal: "create-torrent" }
+                      navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
+                    }}
+                  >
+                    <FileEdit className="h-4 w-4"/>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Create torrent</TooltipContent>
+              </Tooltip>
+            )}
+            {/* Tasks button - only show on instance routes if torrent creation is supported */}
+            {isInstanceRoute && supportsTorrentCreation && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="hidden md:inline-flex relative"
+                    onClick={() => {
+                      const next = { ...(routeSearch || {}), modal: "tasks" }
+                      navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
+                    }}
+                  >
+                    <ListTodo className="h-4 w-4"/>
+                    {activeTaskCount > 0 && (
+                      <Badge variant="default" className="absolute -top-1 -right-1 h-5 min-w-5 flex items-center justify-center p-0 text-xs">
+                        {activeTaskCount}
+                      </Badge>
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Torrent creation tasks</TooltipContent>
+              </Tooltip>
+            )}
+          </div>
+          {/* Management Bar - only shows when torrents selected, wraps to new line on tablet */}
+          {(selectedHashes.length > 0 || isAllSelected) && (
+            <div className="sm:w-full sm:basis-full lg:basis-auto lg:w-auto sm:order-5 lg:order-none flex justify-center lg:justify-start lg:ml-2 animate-in fade-in duration-400 ease-out motion-reduce:animate-none motion-reduce:duration-0">
               <TorrentManagementBar
                 instanceId={selectedInstanceId || undefined}
                 selectedHashes={selectedHashes}
@@ -262,19 +330,17 @@ export function Header({
                 onComplete={clearSelection}
               />
             </div>
-          ) : (
-            <div className="h-9" aria-hidden="true" />
           )}
-        </div>
+        </>
       )}
       {/* Instance route - search on right */}
       {isInstanceRoute && (
-        <div className="flex items-center flex-1 gap-2">
+        <div className="flex items-center flex-1 gap-2 sm:order-3 lg:order-none sm:h-12 lg:h-auto">
 
           {/* Right side: Filter button and Search bar */}
           <div className="flex items-center gap-2 flex-1 justify-end mr-2">
             {/* Search bar */}
-            <div className="relative w-62 focus-within:w-full max-w-md transition-[width] duration-100 ease-out will-change-[width]">
+            <div className="relative w-full md:w-62 md:focus-within:w-full max-w-md transition-[width] duration-100 ease-out will-change-[width]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none transition-opacity duration-300"/>
               <Input
                 ref={searchInputRef}
@@ -358,7 +424,7 @@ export function Header({
       )}
 
 
-      <div className="grid grid-cols-[auto_auto] items-center gap-1 transition-all duration-300 ease-out">
+      <div className="grid grid-cols-[auto_auto] items-center gap-1 transition-all duration-300 ease-out sm:order-4 lg:order-none sm:h-12 lg:h-auto">
         <ThemeToggle/>
         <div className={cn(
           "transition-all duration-300 ease-out overflow-hidden",
