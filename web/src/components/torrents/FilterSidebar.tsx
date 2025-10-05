@@ -1042,11 +1042,7 @@ const FilterSidebarComponent = ({
                                 </ContextMenuTrigger>
                                 <ContextMenuContent>
                                   <ContextMenuItem
-                                    disabled={!supportsTrackerHealth}
                                     onClick={async () => {
-                                      if (!supportsTrackerHealth) {
-                                        return
-                                      }
                                       setTrackerToEdit(tracker)
                                       await fetchTrackerURLs(tracker)
                                       setShowEditTrackerDialog(true)
@@ -1082,11 +1078,7 @@ const FilterSidebarComponent = ({
                         </ContextMenuTrigger>
                         <ContextMenuContent>
                           <ContextMenuItem
-                            disabled={!supportsTrackerHealth}
                             onClick={async () => {
-                              if (!supportsTrackerHealth) {
-                                return
-                              }
                               setTrackerToEdit(tracker)
                               await fetchTrackerURLs(tracker)
                               setShowEditTrackerDialog(true)
