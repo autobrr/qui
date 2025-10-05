@@ -51,7 +51,19 @@ export interface InstanceResponse extends Instance {
 export interface InstanceCapabilities {
   supportsTorrentCreation: boolean
   supportsSetTags: boolean
+  supportsTrackerHealth: boolean
+  supportsTrackerEditing: boolean
   webAPIVersion?: string
+}
+
+export interface TorrentTracker {
+  url: string
+  status: number
+  num_peers: number
+  num_seeds: number
+  num_leechers: number
+  num_downloaded: number
+  msg: string
 }
 
 export interface Torrent {
@@ -105,6 +117,8 @@ export interface Torrent {
   total_size: number
   tracker: string
   trackers_count: number
+  trackers?: TorrentTracker[]
+  tracker_health?: "unregistered" | "tracker_down"
   up_limit: number
   uploaded: number
   uploaded_session: number
