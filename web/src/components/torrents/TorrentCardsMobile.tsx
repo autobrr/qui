@@ -1045,6 +1045,7 @@ export function TorrentCardsMobile({
 
   const { data: capabilities } = useInstanceCapabilities(instanceId)
   const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? true
+  const supportsTorrentCreation = capabilities?.supportsTorrentCreation ?? true
 
   // Call the callback when filtered data updates
   useEffect(() => {
