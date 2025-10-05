@@ -10,6 +10,7 @@ import { usePersistedColumnOrder } from "@/hooks/usePersistedColumnOrder"
 import { usePersistedColumnSizing } from "@/hooks/usePersistedColumnSizing"
 import { usePersistedColumnSorting } from "@/hooks/usePersistedColumnSorting"
 import { usePersistedColumnVisibility } from "@/hooks/usePersistedColumnVisibility"
+import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
 import { useTorrentExporter } from "@/hooks/useTorrentExporter"
 import { useTorrentsList } from "@/hooks/useTorrentsList"
@@ -19,8 +20,7 @@ import {
   TouchSensor,
   closestCenter,
   useSensor,
-  useSensors,
-  type DragEndEvent
+  useSensors
 } from "@dnd-kit/core"
 import { restrictToHorizontalAxis } from "@dnd-kit/modifiers"
 import {
@@ -34,7 +34,7 @@ import {
   useReactTable
 } from "@tanstack/react-table"
 import { useVirtualizer } from "@tanstack/react-virtual"
-import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { TorrentContextMenu } from "./TorrentContextMenu"
 
 import {
@@ -97,6 +97,7 @@ import { createColumns } from "./TorrentTableColumns"
 // Default values for persisted state hooks (module scope for stable references)
 const DEFAULT_COLUMN_VISIBILITY = {
   priority: true,
+  tracker_icon: true,
   name: true,
   size: true,
   total_size: false,
@@ -138,12 +139,47 @@ const DEFAULT_COLUMN_SIZING = {}
 
 // Helper function to get default column order (module scope for stable reference)
 function getDefaultColumnOrder(): string[] {
-  const cols = createColumns(false, undefined, "bytes", undefined)
-  return cols.map(col => {
+  const cols = createColumns(false, undefined, "bytes", undefined, undefined, undefined)
+  const order = cols.map(col => {
     if ("id" in col && col.id) return col.id
     if ("accessorKey" in col && typeof col.accessorKey === "string") return col.accessorKey
     return null
   }).filter((v): v is string => typeof v === "string")
+
+  const trackerIconIndex = order.indexOf("tracker_icon")
+  if (trackerIconIndex > -1 && trackerIconIndex !== 2) {
+    order.splice(2, 0, order.splice(trackerIconIndex, 1)[0])
+  }
+
+  return order
+}
+
+function shallowEqualTrackerIcons(
+  prev?: Record<string, string>,
+  next?: Record<string, string>
+): boolean {
+  if (prev === next) {
+    return true
+  }
+
+  if (!prev || !next) {
+    return false
+  }
+
+  const prevKeys = Object.keys(prev)
+  const nextKeys = Object.keys(next)
+
+  if (prevKeys.length !== nextKeys.length) {
+    return false
+  }
+
+  for (const key of prevKeys) {
+    if (prev[key] !== next[key]) {
+      return false
+    }
+  }
+
+  return true
 }
 
 
@@ -161,10 +197,9 @@ interface TorrentTableOptimizedProps {
   onAddTorrentModalChange?: (open: boolean) => void
   onFilteredDataUpdate?: (torrents: Torrent[], total: number, counts?: TorrentCounts, categories?: Record<string, Category>, tags?: string[]) => void
   onSelectionChange?: (selectedHashes: string[], selectedTorrents: Torrent[], isAllSelected: boolean, totalSelectionCount: number, excludeHashes: string[]) => void
-  filterButton?: React.ReactNode
 }
 
-export const TorrentTableOptimized = memo(function TorrentTableOptimized({ instanceId, filters, selectedTorrent, onTorrentSelect, addTorrentModalOpen, onAddTorrentModalChange, onFilteredDataUpdate, onSelectionChange, filterButton }: TorrentTableOptimizedProps) {
+export const TorrentTableOptimized = memo(function TorrentTableOptimized({ instanceId, filters, selectedTorrent, onTorrentSelect, addTorrentModalOpen, onAddTorrentModalChange, onFilteredDataUpdate, onSelectionChange }: TorrentTableOptimizedProps) {
   // State management
   // Move default values outside the component for stable references
   // (This should be at module scope, not inside the component)
@@ -182,6 +217,22 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const [speedUnit, setSpeedUnit] = useSpeedUnits()
   const { formatTimestamp } = useDateTimeFormatters()
   const { preferences } = useInstancePreferences(instanceId)
+  const trackerIconsQuery = useTrackerIcons()
+  const trackerIconsRef = useRef<Record<string, string> | undefined>(undefined)
+  const trackerIcons = useMemo(() => {
+    const latest = trackerIconsQuery.data
+    if (!latest) {
+      return trackerIconsRef.current
+    }
+
+    const previous = trackerIconsRef.current
+    if (previous && shallowEqualTrackerIcons(previous, latest)) {
+      return previous
+    }
+
+    trackerIconsRef.current = latest
+    return latest
+  }, [trackerIconsQuery.data])
 
   // Detect platform for keyboard shortcuts
   const isMac = useMemo(() => {
@@ -496,16 +547,40 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       onRowSelection: handleRowSelection,
       isAllSelected,
       excludedFromSelectAll,
-    }, speedUnit, formatTimestamp, preferences),
-    [incognitoMode, speedUnit, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, isAllSelected, excludedFromSelectAll, preferences]
+    }, speedUnit, trackerIcons, formatTimestamp, preferences),
+    [incognitoMode, speedUnit, trackerIcons, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, isAllSelected, excludedFromSelectAll, preferences]
   )
+
+  const torrentIdentityCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+
+    for (const torrent of sortedTorrents) {
+      const baseIdentity = torrent.hash ?? torrent.infohash_v1 ?? torrent.infohash_v2
+      if (!baseIdentity) continue
+      counts.set(baseIdentity, (counts.get(baseIdentity) ?? 0) + 1)
+    }
+
+    return counts
+  }, [sortedTorrents])
 
   const table = useReactTable({
     data: sortedTorrents,
     columns,
     getCoreRowModel: getCoreRowModel(),
-    // Use torrent hash with index as unique row ID to handle duplicates
-    getRowId: (row: Torrent, index: number) => `${row.hash}-${index}`,
+    // Prefer stable torrent hash for row identity while keeping duplicates unique
+    getRowId: (row: Torrent, index: number) => {
+      const baseIdentity = row.hash ?? row.infohash_v1 ?? row.infohash_v2
+
+      if (!baseIdentity) {
+        return `row-${index}`
+      }
+
+      if ((torrentIdentityCounts.get(baseIdentity) ?? 0) > 1) {
+        return `${baseIdentity}-${index}`
+      }
+
+      return baseIdentity
+    },
     // State management
     state: {
       sorting,
@@ -635,7 +710,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     // Provide a key to help with item tracking - use hash with index for uniqueness
     getItemKey: useCallback((index: number) => {
       const row = rows[index]
-      return row?.original?.hash ? `${row.original.hash}-${index}` : `loading-${index}`
+      if (!row) return `loading-${index}`
+      return row.id
     }, [rows]),
     // Optimized onChange handler following TanStack Virtual best practices
     onChange: (instance, sync) => {
@@ -954,29 +1030,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     })
   )
 
-  const handleDragEnd = useCallback((event: DragEndEvent) => {
-    const { active, over } = event
-    if (active && over && active.id !== over.id) {
-      setColumnOrder((currentOrder: string[]) => {
-        const oldIndex = currentOrder.indexOf(active.id as string)
-        const newIndex = currentOrder.indexOf(over.id as string)
-        return arrayMove(currentOrder, oldIndex, newIndex)
-      })
-    }
-  }, [setColumnOrder])
-
   return (
     <div className="h-full flex flex-col">
       {/* Search and Actions */}
       <div className="flex flex-col gap-2 flex-shrink-0">
         {/* Search bar row */}
         <div className="flex items-center gap-1 sm:gap-2">
-          {/* Filter button - only on desktop */}
-          {filterButton && (
-            <div className="hidden xl:block">
-              {filterButton}
-            </div>
-          )}
           {/* Action buttons - now handled by Management Bar in Header */}
           <div className="flex gap-1 sm:gap-2 flex-shrink-0">
 
@@ -1082,7 +1141,31 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
               <DndContext
                 sensors={sensors}
                 collisionDetection={closestCenter}
-                onDragEnd={handleDragEnd}
+                onDragEnd={(event) => {
+                  const { active, over } = event
+                  if (!active || !over || active.id === over.id) {
+                    return
+                  }
+
+                  setColumnOrder((currentOrder: string[]) => {
+                    const allColumnIds = table.getAllLeafColumns().map((col) => col.id)
+
+                    // Normalize current order to include all current columns exactly once
+                    const sanitizedOrder = [
+                      ...currentOrder.filter((id) => allColumnIds.includes(id)),
+                      ...allColumnIds.filter((id) => !currentOrder.includes(id)),
+                    ]
+
+                    const oldIndex = sanitizedOrder.indexOf(active.id as string)
+                    const newIndex = sanitizedOrder.indexOf(over.id as string)
+
+                    if (oldIndex === -1 || newIndex === -1) {
+                      return sanitizedOrder
+                    }
+
+                    return arrayMove(sanitizedOrder, oldIndex, newIndex)
+                  })
+                }}
                 modifiers={[restrictToHorizontalAxis]}
               >
                 {table.getHeaderGroups().map(headerGroup => {
@@ -1128,7 +1211,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                 // Use memoized minTableWidth
                 return (
                   <TorrentContextMenu
-                    key={`${torrent.hash}-${virtualRow.index}`}
+                    key={row.id}
                     torrent={torrent}
                     isSelected={row.getIsSelected()}
                     isAllSelected={isAllSelected}

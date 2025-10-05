@@ -6,7 +6,7 @@
 import { useState, useEffect, useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { api } from "@/lib/api"
-import type { Torrent, TorrentResponse } from "@/types"
+import type { InstanceCapabilities, Torrent, TorrentResponse } from "@/types"
 
 interface UseTorrentsListOptions {
   enabled?: boolean
@@ -73,6 +73,13 @@ export function useTorrentsList(
     refetchInterval: currentPage === 0 ? 3000 : false,
     refetchIntervalInBackground: false, // Don't poll when tab is not active
     enabled,
+  })
+
+  const { data: capabilities } = useQuery<InstanceCapabilities>({
+    queryKey: ["instance-capabilities", instanceId],
+    queryFn: () => api.getInstanceCapabilities(instanceId),
+    enabled,
+    staleTime: 300000,
   })
 
   // Update torrents when data arrives or changes (including optimistic updates)
@@ -209,6 +216,7 @@ export function useTorrentsList(
     counts: data?.counts,
     categories: data?.categories,
     tags: data?.tags,
+    supportsTorrentCreation: capabilities?.supportsTorrentCreation ?? true,
     serverState: null, // Server state is fetched separately by Dashboard
     isLoading: isLoading && currentPage === 0,
     isFetching,
