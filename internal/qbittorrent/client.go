@@ -22,6 +22,7 @@ type Client struct {
 	webAPIVersion           string
 	supportsSetTags         bool
 	supportsTorrentCreation bool
+	supportsTrackerEditing  bool
 	lastHealthCheck         time.Time
 	isHealthy               bool
 	syncManager             *qbt.SyncManager
@@ -69,6 +70,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 
 	supportsSetTags := false
 	supportsTorrentCreation := false
+	supportsTrackerEditing := false
 	if webAPIVersion != "" {
 		if v, err := semver.NewVersion(webAPIVersion); err == nil {
 			setTagsMinVersion := semver.MustParse("2.11.4")
@@ -76,6 +78,9 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 
 			torrentCreationMinVersion := semver.MustParse("2.11.2")
 			supportsTorrentCreation = !v.LessThan(torrentCreationMinVersion)
+
+			trackerEditingMinVersion := semver.MustParse("2.3.0")
+			supportsTrackerEditing = !v.LessThan(trackerEditingMinVersion)
 		}
 	}
 
@@ -85,6 +90,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 		webAPIVersion:           webAPIVersion,
 		supportsSetTags:         supportsSetTags,
 		supportsTorrentCreation: supportsTorrentCreation,
+		supportsTrackerEditing:  supportsTrackerEditing,
 		lastHealthCheck:         time.Now(),
 		isHealthy:               true,
 		optimisticUpdates: ttlcache.New(ttlcache.Options[string, *OptimisticTorrentUpdate]{}.
@@ -118,6 +124,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 		Str("webAPIVersion", webAPIVersion).
 		Bool("supportsSetTags", supportsSetTags).
 		Bool("supportsTorrentCreation", supportsTorrentCreation).
+		Bool("supportsTrackerEditing", supportsTrackerEditing).
 		Bool("includeTrackers", supportsInclude).
 		Bool("tlsSkipVerify", tlsSkipVerify).
 		Msg("qBittorrent client created successfully")
@@ -169,6 +176,12 @@ func (c *Client) SupportsTorrentCreation() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.supportsTorrentCreation
+}
+
+func (c *Client) SupportsTrackerEditing() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.supportsTrackerEditing
 }
 
 // getTorrentsByHashes returns multiple torrents by their hashes (O(n) where n is number of requested hashes)

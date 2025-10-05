@@ -179,6 +179,7 @@ const FilterSidebarComponent = ({
   const { data: trackerIcons } = useTrackerIcons()
   const { data: capabilities } = useInstanceCapabilities(instanceId)
   const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? true
+  const supportsTrackerEditing = capabilities?.supportsTrackerEditing ?? true
 
   // Use compact view state hook
   const { viewMode, cycleViewMode } = usePersistedCompactViewState("normal")
@@ -238,12 +239,14 @@ const FilterSidebarComponent = ({
 
   // Function to fetch tracker URLs for a specific tracker domain
   const fetchTrackerURLs = useCallback(async (trackerDomain: string) => {
+    setTrackerFullURLs([])
+
     if (!supportsTrackerHealth) {
+      setLoadingTrackerURLs(false)
       return
     }
 
     setLoadingTrackerURLs(true)
-    setTrackerFullURLs([])
 
     try {
       // Find torrents using this tracker
@@ -1042,7 +1045,11 @@ const FilterSidebarComponent = ({
                                 </ContextMenuTrigger>
                                 <ContextMenuContent>
                                   <ContextMenuItem
+                                    disabled={!supportsTrackerEditing}
                                     onClick={async () => {
+                                      if (!supportsTrackerEditing) {
+                                        return
+                                      }
                                       setTrackerToEdit(tracker)
                                       await fetchTrackerURLs(tracker)
                                       setShowEditTrackerDialog(true)
@@ -1078,7 +1085,11 @@ const FilterSidebarComponent = ({
                         </ContextMenuTrigger>
                         <ContextMenuContent>
                           <ContextMenuItem
+                            disabled={!supportsTrackerEditing}
                             onClick={async () => {
+                              if (!supportsTrackerEditing) {
+                                return
+                              }
                               setTrackerToEdit(tracker)
                               await fetchTrackerURLs(tracker)
                               setShowEditTrackerDialog(true)

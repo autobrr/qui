@@ -2560,6 +2560,10 @@ func (sm *SyncManager) BulkEditTrackers(ctx context.Context, instanceID int, has
 		return err
 	}
 
+	if !client.SupportsTrackerEditing() {
+		return fmt.Errorf("tracker editing is not supported by this qBittorrent instance")
+	}
+
 	// Validate that torrents exist
 	if err := sm.validateTorrentsExist(client, hashes, "bulk edit trackers"); err != nil {
 		return err

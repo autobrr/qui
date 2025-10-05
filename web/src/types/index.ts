@@ -52,6 +52,7 @@ export interface InstanceCapabilities {
   supportsTorrentCreation: boolean
   supportsSetTags: boolean
   supportsTrackerHealth: boolean
+  supportsTrackerEditing: boolean
   webAPIVersion?: string
 }
 
