@@ -449,6 +449,27 @@ paths:
           description: Connection failed
 
 
+  /api/instances/{instanceId}/capabilities:
+    get:
+      tags:
+        - Instances
+      summary: Get instance capabilities
+      description: Retrieve lightweight capability metadata for a qBittorrent instance.
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+      responses:
+        '200':
+          description: Instance capabilities
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstanceCapabilities'
+        '400':
+          description: Invalid instance ID
+        '503':
+          description: Instance unavailable
+
+
   /api/instances/{instanceId}/torrents:
     get:
       tags:
@@ -1029,6 +1050,210 @@ paths:
         '200':
           description: Peers banned successfully
 
+  /api/instances/{instanceId}/torrent-creator:
+    post:
+      tags:
+        - Torrents
+      summary: Create torrent
+      description: Create a new torrent file from a source path. Requires qBittorrent v5.0.0 or later.
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - sourcePath
+              properties:
+                sourcePath:
+                  type: string
+                  description: Path to the source file or directory
+                torrentFilePath:
+                  type: string
+                  description: Custom path for saving the torrent file
+                private:
+                  type: boolean
+                  description: Create a private torrent
+                format:
+                  type: string
+                  enum: [v1, v2, hybrid]
+                  description: Torrent format
+                optimizeAlignment:
+                  type: boolean
+                  description: Optimize piece alignment
+                paddedFileSizeLimit:
+                  type: integer
+                  description: Padded file size limit
+                pieceSize:
+                  type: integer
+                  description: Piece size in bytes
+                comment:
+                  type: string
+                  description: Comment for the torrent
+                source:
+                  type: string
+                  description: Source string for the torrent
+                trackers:
+                  type: array
+                  items:
+                    type: string
+                  description: List of tracker URLs
+                urlSeeds:
+                  type: array
+                  items:
+                    type: string
+                  description: List of URL seeds
+                startSeeding:
+                  type: boolean
+                  description: Start seeding after creation
+      responses:
+        '201':
+          description: Torrent creation task created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  taskID:
+                    type: string
+                  sourcePath:
+                    type: string
+                  status:
+                    type: string
+                  timeAdded:
+                    type: string
+        '400':
+          description: Invalid request or unsupported qBittorrent version
+        '409':
+          description: Too many active torrent creation tasks
+
+  /api/instances/{instanceId}/torrent-creator/status:
+    get:
+      tags:
+        - Torrents
+      summary: Get torrent creation status
+      description: Get status of torrent creation tasks. Query parameter taskID can be used to filter by specific task.
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+        - name: taskID
+          in: query
+          schema:
+            type: string
+          description: Optional task ID to filter by
+      responses:
+        '200':
+          description: List of torrent creation tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    taskID:
+                      type: string
+                    sourcePath:
+                      type: string
+                    torrentFilePath:
+                      type: string
+                    pieceSize:
+                      type: integer
+                    private:
+                      type: boolean
+                    format:
+                      type: string
+                    status:
+                      type: string
+                    timeAdded:
+                      type: string
+                    timeStarted:
+                      type: string
+                    timeFinished:
+                      type: string
+                    progress:
+                      type: number
+                    errorMessage:
+                      type: string
+        '400':
+          description: Invalid request or unsupported qBittorrent version
+        '404':
+          description: Torrent creation task not found
+
+  /api/instances/{instanceId}/torrent-creator/count:
+    get:
+      tags:
+        - Torrents
+      summary: Get active torrent creation task count
+      description: Get the number of active (running or queued) torrent creation tasks.
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+      responses:
+        '200':
+          description: Active torrent creation task count
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                    description: Number of active torrent creation tasks
+        '400':
+          description: Invalid instance ID
+
+  /api/instances/{instanceId}/torrent-creator/{taskID}:
+    delete:
+      tags:
+        - Torrents
+      summary: Delete torrent creation task
+      description: Delete a torrent creation task
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+        - name: taskID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Task ID to delete
+      responses:
+        '200':
+          description: Torrent creation task deleted successfully
+        '400':
+          description: Invalid request or unsupported qBittorrent version
+        '404':
+          description: Torrent creation task not found
+
+  /api/instances/{instanceId}/torrent-creator/{taskID}/file:
+    get:
+      tags:
+        - Torrents
+      summary: Download created torrent file
+      description: Download the torrent file for a completed torrent creation task
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+        - name: taskID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Task ID of the completed torrent
+      responses:
+        '200':
+          description: Torrent file downloaded successfully
+          content:
+            application/x-bittorrent:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Invalid request or unsupported qBittorrent version
+        '404':
+          description: Torrent creation task not found
+        '409':
+          description: Torrent creation is still in progress or failed
+
   /api/instances/{instanceId}/categories:
     get:
       tags:
@@ -1179,6 +1404,28 @@ paths:
       responses:
         '200':
           description: Tags deleted
+
+  /api/instances/{instanceId}/trackers:
+    get:
+      tags:
+        - Trackers
+      summary: List active trackers
+      description: Get active tracker domains and representative tracker URLs for an instance
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+      responses:
+        '200':
+          description: Active tracker domains mapped to a tracker URL
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+        '400':
+          description: Invalid instance ID
+        '500':
+          description: Failed to get active trackers
 
   /api/instances/{instanceId}/preferences:
     get:
@@ -1622,6 +1869,21 @@ components:
         tlsSkipVerify:
           type: boolean
           description: When true, TLS certificate errors from the upstream qBittorrent instance are ignored.
+
+
+    InstanceCapabilities:
+      type: object
+      properties:
+        supportsTorrentCreation:
+          type: boolean
+          description: Whether the instance supports creating torrents via the Web API.
+        supportsSetTags:
+          type: boolean
+          description: Whether the instance supports replacing tags on torrents.
+        webAPIVersion:
+          type: string
+          nullable: true
+          description: Reported qBittorrent Web API version for the instance.
 
 
     Torrent:
