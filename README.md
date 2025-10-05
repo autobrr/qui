@@ -512,10 +512,10 @@ make dev-frontend
 
 ## qBittorrent Version Compatibility
 
-qui automatically detects the features available on each qBittorrent instance and adjusts the interface accordingly. Certain features require newer qBittorrent versions and will be disabled when connecting to older instances:
-
 > [!NOTE]
 > qui officially supports qBittorrent 4.3.9 and newer as the baseline. The features below may require newer builds as noted, and anything older than 4.3.9 might still connect, but functionality is not guaranteed.
+
+qui automatically detects the features available on each qBittorrent instance and adjusts the interface accordingly. Certain features require newer qBittorrent versions and will be disabled when connecting to older instances:
 
 | Feature | Minimum Version | Notes |
 | --- | --- | --- |
