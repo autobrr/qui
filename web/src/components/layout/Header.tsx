@@ -153,7 +153,7 @@ export function Header({
   const supportsTorrentCreation = instanceCapabilities?.supportsTorrentCreation ?? true
 
   return (
-    <header className="sticky top-0 z-50 flex flex-wrap lg:flex-nowrap items-start lg:items-center justify-between sm:border-b bg-background pl-2 pr-4 md:pl-4 md:pr-4 lg:pl-0 lg:static py-2 lg:py-0 lg:h-16">
+    <header className="sticky top-0 z-50 hidden md:flex flex-wrap lg:flex-nowrap items-start lg:items-center justify-between sm:border-b bg-background pl-2 pr-4 md:pl-4 md:pr-4 lg:pl-0 lg:static py-2 lg:py-0 lg:h-16">
       <div className="hidden md:flex items-center gap-2 mr-2 h-12 lg:h-auto order-1 lg:order-none">
         {children}
         {instanceName && instances && instances.length > 1 ? (
@@ -341,8 +341,8 @@ export function Header({
 
           {/* Right side: Filter button and Search bar */}
           <div className="flex items-center gap-2 flex-1 justify-end mr-2">
-            {/* Search bar */}
-            <div className="relative w-full md:w-62 md:focus-within:w-full max-w-md transition-[width] duration-100 ease-out will-change-[width]">
+            {/* Search bar - hidden on mobile (< lg), use modal search button instead */}
+            <div className="relative w-full md:w-62 md:focus-within:w-full max-w-md transition-[width] duration-100 ease-out will-change-[width] hidden md:block">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none transition-opacity duration-300"/>
               <Input
                 ref={searchInputRef}
