@@ -8,6 +8,8 @@ import (
 type InstanceCapabilitiesResponse struct {
 	SupportsTorrentCreation bool   `json:"supportsTorrentCreation"`
 	SupportsSetTags         bool   `json:"supportsSetTags"`
+	SupportsTrackerHealth   bool   `json:"supportsTrackerHealth"`
+	SupportsTrackerEditing  bool   `json:"supportsTrackerEditing"`
 	SupportsRenameTorrent   bool   `json:"supportsRenameTorrent"`
 	SupportsRenameFile      bool   `json:"supportsRenameFile"`
 	SupportsRenameFolder    bool   `json:"supportsRenameFolder"`
@@ -19,6 +21,8 @@ func NewInstanceCapabilitiesResponse(client *internalqbittorrent.Client) Instanc
 	capabilities := InstanceCapabilitiesResponse{
 		SupportsTorrentCreation: client.SupportsTorrentCreation(),
 		SupportsSetTags:         client.SupportsSetTags(),
+		SupportsTrackerHealth:   client.SupportsTrackerHealth(),
+		SupportsTrackerEditing:  client.SupportsTrackerEditing(),
 		SupportsRenameTorrent:   client.SupportsRenameTorrent(),
 		SupportsRenameFile:      client.SupportsRenameFile(),
 		SupportsRenameFolder:    client.SupportsRenameFolder(),

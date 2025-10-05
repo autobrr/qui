@@ -81,6 +81,7 @@ import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata.ts"
 import { useInstances } from "@/hooks/useInstances"
 import { usePersistedCompactViewState, type ViewMode } from "@/hooks/usePersistedCompactViewState"
+import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { api } from "@/lib/api"
 import { getLinuxCategory, getLinuxIsoName, getLinuxRatio, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits, type SpeedUnit } from "@/lib/speedUnits"
@@ -359,6 +360,32 @@ function getStatusBadgeVariant(state: string): "default" | "secondary" | "destru
   }
 }
 
+function getStatusBadgeProps(torrent: Torrent, supportsTrackerHealth: boolean): {
+  variant: "default" | "secondary" | "destructive" | "outline"
+  label: string
+  className: string
+} {
+  const baseVariant = getStatusBadgeVariant(torrent.state)
+  let variant = baseVariant
+  let label = getStateLabel(torrent.state)
+  let className = ""
+
+  if (supportsTrackerHealth) {
+    const trackerHealth = torrent.tracker_health ?? null
+    if (trackerHealth === "tracker_down") {
+      label = "Tracker Down"
+      variant = "outline"
+      className = "text-yellow-500 border-yellow-500/40 bg-yellow-500/10"
+    } else if (trackerHealth === "unregistered") {
+      label = "Unregistered"
+      variant = "outline"
+      className = "text-destructive border-destructive/40 bg-destructive/10"
+    }
+  }
+
+  return { variant, label, className }
+}
+
 function shallowEqualTrackerIcons(
   prev?: Record<string, string>,
   next?: Record<string, string>
@@ -475,6 +502,7 @@ function SwipeableCard({
   selectionMode,
   speedUnit,
   viewMode,
+  supportsTrackerHealth,
   trackerIcons,
 }: {
   torrent: Torrent
@@ -486,6 +514,7 @@ function SwipeableCard({
   selectionMode: boolean
   speedUnit: SpeedUnit
   viewMode: ViewMode
+  supportsTrackerHealth: boolean
   trackerIcons?: Record<string, string>
 }) {
 
@@ -543,6 +572,10 @@ function SwipeableCard({
   const displayCategory = incognitoMode ? getLinuxCategory(torrent.hash) : torrent.category
   const displayTags = incognitoMode ? getLinuxTags(torrent.hash) : torrent.tags
   const displayRatio = incognitoMode ? getLinuxRatio(torrent.hash) : torrent.ratio
+  const { variant: statusBadgeVariant, label: statusBadgeLabel, className: statusBadgeClass } = useMemo(
+    () => getStatusBadgeProps(torrent, supportsTrackerHealth),
+    [torrent, supportsTrackerHealth]
+  )
   const trackerValue = incognitoMode ? getLinuxTracker(torrent.hash) : torrent.tracker
   const trackerMeta = useMemo(() => getTrackerDisplayMeta(trackerValue), [trackerValue])
   const trackerIconSrc = trackerMeta.host ? trackerIcons?.[trackerMeta.host] ?? null : null
@@ -623,8 +656,8 @@ function SwipeableCard({
           )}
 
           {/* State badge - smaller */}
-          <Badge variant={getStatusBadgeVariant(torrent.state)} className="text-[10px] px-1 py-0 h-4 flex-shrink-0">
-            {getStateLabel(torrent.state)}
+          <Badge variant={statusBadgeVariant} className={cn("text-[10px] px-1 py-0 h-4 flex-shrink-0", statusBadgeClass)}>
+            {statusBadgeLabel}
           </Badge>
 
           {/* Percentage if not 100% */}
@@ -662,8 +695,8 @@ function SwipeableCard({
                 </div>
               </div>
             </div>
-            <Badge variant={getStatusBadgeVariant(torrent.state)} className="text-xs flex-shrink-0">
-              {getStateLabel(torrent.state)}
+            <Badge variant={statusBadgeVariant} className={cn("text-xs flex-shrink-0", statusBadgeClass)}>
+              {statusBadgeLabel}
             </Badge>
           </div>
 
@@ -767,8 +800,8 @@ function SwipeableCard({
             </div>
 
             {/* State badge on the right */}
-            <Badge variant={getStatusBadgeVariant(torrent.state)} className="text-xs">
-              {getStateLabel(torrent.state)}
+            <Badge variant={statusBadgeVariant} className={cn("text-xs", statusBadgeClass)}>
+              {statusBadgeLabel}
             </Badge>
           </div>
         </>
@@ -1000,7 +1033,6 @@ export function TorrentCardsMobile({
     counts,
     categories,
     tags,
-    supportsTorrentCreation,
 
     isLoading,
     isLoadingMore,
@@ -1010,6 +1042,10 @@ export function TorrentCardsMobile({
     search: effectiveSearch,
     filters,
   })
+
+  const { data: capabilities } = useInstanceCapabilities(instanceId)
+  const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? true
+  const supportsTorrentCreation = capabilities?.supportsTorrentCreation ?? true
 
   // Call the callback when filtered data updates
   useEffect(() => {
@@ -1622,8 +1658,8 @@ export function TorrentCardsMobile({
                   incognitoMode={incognitoMode}
                   selectionMode={selectionMode}
                   speedUnit={speedUnit}
-
                   viewMode={viewMode}
+                  supportsTrackerHealth={supportsTrackerHealth}
                   trackerIcons={trackerIcons}
                 />
               </div>

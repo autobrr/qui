@@ -1880,6 +1880,12 @@ components:
         supportsSetTags:
           type: boolean
           description: Whether the instance supports replacing tags on torrents.
+        supportsTrackerHealth:
+          type: boolean
+          description: Whether the instance exposes tracker health metadata (unregistered/tracker down states).
+        supportsTrackerEditing:
+          type: boolean
+          description: Whether the instance can edit tracker URLs via the Web API (requires WebAPI v2.3.0+).
         supportsRenameTorrent:
           type: boolean
           description: Whether the instance supports renaming torrents (requires WebAPI 2.0.0+, qBittorrent 4.1.0+).

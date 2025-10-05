@@ -146,6 +146,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
     if (tagsData !== undefined) {
       setTags(tagsData)
     }
+
   }, [instanceId])
 
   // Calculate total active filters for badge

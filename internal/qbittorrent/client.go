@@ -22,6 +22,7 @@ type Client struct {
 	webAPIVersion           string
 	supportsSetTags         bool
 	supportsTorrentCreation bool
+	supportsTrackerEditing  bool
 	supportsRenameTorrent   bool
 	supportsRenameFile      bool
 	supportsRenameFolder    bool
@@ -72,6 +73,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 
 	supportsSetTags := false
 	supportsTorrentCreation := false
+	supportsTrackerEditing := false
 	supportsRenameTorrent := false
 	supportsRenameFile := false
 	supportsRenameFolder := false
@@ -82,6 +84,9 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 
 			torrentCreationMinVersion := semver.MustParse("2.11.2")
 			supportsTorrentCreation = !v.LessThan(torrentCreationMinVersion)
+
+			trackerEditingMinVersion := semver.MustParse("2.3.0")
+			supportsTrackerEditing = !v.LessThan(trackerEditingMinVersion)
 
 			// Rename torrent: qBittorrent 4.1.0+ (WebAPI 2.0.0+)
 			renameTorrentMinVersion := semver.MustParse("2.0.0")
@@ -103,6 +108,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 		webAPIVersion:           webAPIVersion,
 		supportsSetTags:         supportsSetTags,
 		supportsTorrentCreation: supportsTorrentCreation,
+		supportsTrackerEditing:  supportsTrackerEditing,
 		supportsRenameTorrent:   supportsRenameTorrent,
 		supportsRenameFile:      supportsRenameFile,
 		supportsRenameFolder:    supportsRenameFolder,
@@ -131,14 +137,26 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 
 	client.syncManager = qbtClient.NewSyncManager(syncOpts)
 
+	supportsInclude := client.supportsTrackerInclude()
+
 	log.Debug().
 		Int("instanceID", instanceID).
 		Str("host", instanceHost).
 		Str("webAPIVersion", webAPIVersion).
 		Bool("supportsSetTags", supportsSetTags).
 		Bool("supportsTorrentCreation", supportsTorrentCreation).
+		Bool("supportsTrackerEditing", supportsTrackerEditing).
+		Bool("includeTrackers", supportsInclude).
 		Bool("tlsSkipVerify", tlsSkipVerify).
 		Msg("qBittorrent client created successfully")
+
+	if !supportsInclude {
+		log.Debug().
+			Int("instanceID", instanceID).
+			Str("host", instanceHost).
+			Str("webAPIVersion", webAPIVersion).
+			Msg("qBittorrent instance does not support includeTrackers; using fallback tracker queries for status detection")
+	}
 
 	return client, nil
 }
@@ -179,6 +197,12 @@ func (c *Client) SupportsTorrentCreation() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.supportsTorrentCreation
+}
+
+func (c *Client) SupportsTrackerEditing() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.supportsTrackerEditing
 }
 
 func (c *Client) SupportsRenameTorrent() bool {
@@ -232,6 +256,10 @@ func (c *Client) SupportsSetTags() bool {
 	return c.supportsSetTags
 }
 
+func (c *Client) SupportsTrackerHealth() bool {
+	return c.supportsTrackerInclude()
+}
+
 func (c *Client) GetWebAPIVersion() string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -242,6 +270,42 @@ func (c *Client) GetSyncManager() *qbt.SyncManager {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.syncManager
+}
+
+func (c *Client) trackerManager() *qbt.TrackerManager {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.syncManager == nil {
+		return nil
+	}
+	return c.syncManager.Trackers()
+}
+
+func (c *Client) supportsTrackerInclude() bool {
+	if tm := c.trackerManager(); tm != nil {
+		return tm.SupportsIncludeTrackers()
+	}
+	return false
+}
+
+func (c *Client) hydrateTorrentsWithTrackers(ctx context.Context, torrents []qbt.Torrent, allowFetch bool) ([]qbt.Torrent, map[string][]qbt.TorrentTracker, []string, error) {
+	tm := c.trackerManager()
+	if tm == nil {
+		return torrents, nil, nil, fmt.Errorf("tracker manager unavailable")
+	}
+
+	opts := make([]qbt.TrackerHydrateOption, 0, 2)
+	if !allowFetch {
+		opts = append(opts, qbt.WithTrackerAllowFetch(false))
+	}
+
+	return tm.HydrateTorrents(ctx, torrents, opts...)
+}
+
+func (c *Client) invalidateTrackerCache(hashes ...string) {
+	if tm := c.trackerManager(); tm != nil {
+		tm.Invalidate(hashes...)
+	}
 }
 
 func (c *Client) StartSyncManager(ctx context.Context) error {
