@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import { useForm } from "@tanstack/react-form"
+import { useTranslation } from "react-i18next";
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import { Button } from "@/components/ui/button"
@@ -71,6 +72,7 @@ interface FormData {
 }
 
 export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChange }: AddTorrentDialogProps) {
+  const { t } = useTranslation();
   const [internalOpen, setInternalOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<TabValue>("file")
   const [selectedTags, setSelectedTags] = useState<string[]>([])
@@ -195,15 +197,15 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
         <DialogTrigger asChild>
           <Button>
             <Plus className="mr-2 h-4 w-4 transition-transform duration-200" />
-            Add Torrent
+            {t("add_torrent_dialog.add_torrent_button")}
           </Button>
         </DialogTrigger>
       )}
       <DialogContent className="flex flex-col w-full max-w-[95vw] sm:max-w-lg md:max-w-xl lg:max-w-2xl max-h-[90vh] sm:max-h-[85vh] p-0 !translate-y-0 !top-[5vh] sm:!top-[7.5vh]">
         <DialogHeader className="px-6 pt-6 pb-4 flex-shrink-0">
-          <DialogTitle>Add New Torrent</DialogTitle>
+          <DialogTitle>{t("add_torrent_dialog.title")}</DialogTitle>
           <DialogDescription>
-            Add a torrent file or magnet link to start downloading
+            {t("add_torrent_dialog.description")}
           </DialogDescription>
         </DialogHeader>
 
@@ -225,7 +227,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                 }`}
               >
                 <Upload className="mr-2 h-4 w-4" />
-                File
+                {t("add_torrent_dialog.tabs.file")}
               </button>
               <button
                 type="button"
@@ -235,15 +237,15 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                 }`}
               >
                 <Link className="mr-2 h-4 w-4" />
-                URL
+                {t("common.url")}
               </button>
             </div>
 
             {/* Main Content Tabs */}
             <Tabs defaultValue="basic" className="w-full">
               <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="basic">Basic</TabsTrigger>
-                <TabsTrigger value="advanced">Advanced</TabsTrigger>
+                <TabsTrigger value="basic">{t("add_torrent_dialog.tabs.basic")}</TabsTrigger>
+                <TabsTrigger value="advanced">{t("add_torrent_dialog.tabs.advanced")}</TabsTrigger>
               </TabsList>
 
               <TabsContent value="basic" className="space-y-4 mt-4">
@@ -254,7 +256,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                     validators={{
                       onChange: ({ value }) => {
                         if ((!value || value.length === 0) && activeTab === "file") {
-                          return "Please select at least one torrent file"
+                          return t("add_torrent_dialog.file_input.validation")
                         }
                         return undefined
                       },
@@ -262,7 +264,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                   >
                     {(field) => (
                       <div className="space-y-2">
-                        <Label htmlFor="torrentFiles">Torrent Files</Label>
+                        <Label htmlFor="torrentFiles">{t("add_torrent_dialog.file_input.label")}</Label>
                         <Input
                           ref={fileInputRef}
                           id="torrentFiles"
@@ -282,12 +284,12 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                           className="w-full"
                         >
                           <Upload className="mr-2 h-4 w-4" />
-                          Browse for Torrent Files
+                          {t("add_torrent_dialog.file_input.button")}
                         </Button>
                         {field.state.value && field.state.value.length > 0 && (
                           <div className="flex items-center gap-2 text-sm text-muted-foreground">
                             <span>
-                              {field.state.value.length} file{field.state.value.length > 1 ? "s" : ""} selected
+                              {t(field.state.value.length > 1 ? "add_torrent_dialog.file_input.files_selected_other" : "add_torrent_dialog.file_input.files_selected_one", { count: field.state.value.length })}
                             </span>
                             <Tooltip>
                               <TooltipTrigger asChild>
@@ -296,7 +298,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                                   className="text-xs underline hover:text-foreground"
                                   onClick={() => setShowFileList(!showFileList)}
                                 >
-                                  {showFileList ? "Hide" : "Show"} files
+                                  {showFileList ? t("add_torrent_dialog.file_input.hide_files") : t("add_torrent_dialog.file_input.show_files")}
                                 </button>
                               </TooltipTrigger>
                               <TooltipContent>
@@ -305,7 +307,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                                     <div key={index} className="text-xs truncate">• {file.name}</div>
                                   ))}
                                   {field.state.value.length > 3 && (
-                                    <div className="text-xs">... and {field.state.value.length - 3} more</div>
+                                    <div className="text-xs">{t("add_torrent_dialog.file_input.and_more", { count: field.state.value.length - 3 })}</div>
                                   )}
                                 </div>
                               </TooltipContent>
@@ -333,18 +335,18 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                     validators={{
                       onChange: ({ value }) => {
                         if (!value && activeTab === "url") {
-                          return "Please enter at least one URL or magnet link"
+                          return t("add_torrent_dialog.url_input.validation");
                         }
-                        return undefined
+                        return undefined;
                       },
                     }}
                   >
                     {(field) => (
                       <div className="space-y-2">
-                        <Label htmlFor="urls">URLs / Magnet Links</Label>
+                        <Label htmlFor="urls">{t("add_torrent_dialog.url_input.label")}</Label>
                         <Textarea
                           id="urls"
-                          placeholder="Enter URLs or magnet links (one per line)"
+                          placeholder={t("add_torrent_dialog.url_input.placeholder")}
                           rows={4}
                           value={field.state.value}
                           onBlur={field.handleBlur}
@@ -368,7 +370,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                           checked={field.state.value}
                           onCheckedChange={field.handleChange}
                         />
-                        <Label htmlFor="startPaused-left">Start paused</Label>
+                        <Label htmlFor="startPaused-left">{t("add_torrent_dialog.toggles.start_paused")}</Label>
                       </div>
                     )}
                   </form.Field>
@@ -383,7 +385,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                           checked={field.state.value}
                           onCheckedChange={field.handleChange}
                         />
-                        <Label htmlFor="skipHashCheck-left">Skip hash check</Label>
+                        <Label htmlFor="skipHashCheck-left">{t("add_torrent_dialog.toggles.skip_hash_check")}</Label>
                       </div>
                     )}
                   </form.Field>
@@ -396,12 +398,12 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                       <>
                         {/* Header with search */}
                         <div className="flex items-center gap-2 w-full">
-                          <Label className="shrink-0">Category</Label>
+                          <Label className="shrink-0">{t("common.category")}</Label>
                           <Input
                             id="categorySearch"
                             value={categorySearch}
                             onChange={(e) => setCategorySearch(e.target.value)}
-                            placeholder="Search categories..."
+                            placeholder={t("add_torrent_dialog.category.search_placeholder")}
                             className="h-8 text-sm flex-1 min-w-0"
                             onKeyDown={(e) => {
                               if (e.key === "Enter" && categorySearch.trim()) {
@@ -428,7 +430,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                         {categories && Object.entries(categories).length > 0 && (
                           <div className="space-y-2">
                             <Label className="text-xs text-muted-foreground">
-                              Available Categories (click to select) {categorySearch && `- filtering: "${categorySearch}"`}
+                              {t("add_torrent_dialog.category.available_categories")} {categorySearch && t("add_torrent_dialog.category.filtering", { search: categorySearch })}
                             </Label>
                             <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto">
                               {[
@@ -456,7 +458,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                             </div>
                             {/* eslint-disable-next-line @typescript-eslint/no-unused-vars */}
                             {categorySearch && Object.entries(categories).filter(([_key, cat]) => cat.name.toLowerCase().includes(categorySearch.toLowerCase())).length === 0 && (
-                              <p className="text-xs text-muted-foreground">No categories match "{categorySearch}"</p>
+                              <p className="text-xs text-muted-foreground">{t("add_torrent_dialog.category.no_match", { search: categorySearch })}</p>
                             )}
                           </div>
                         )}
@@ -468,7 +470,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                 {/* Tags */}
                 <div className="space-y-3 pt-2">
                   <div className="flex items-center gap-2 w-full">
-                    <Label className="shrink-0">Tags</Label>
+                    <Label className="shrink-0">{t("common.tags")}</Label>
                     <Input
                       id="newTag"
                       value={newTag}
@@ -477,7 +479,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                         setNewTag(value)
                         setTagSearch(value) // Update search filter
                       }}
-                      placeholder="Create new tag or search available tags..."
+                      placeholder={t("add_torrent_dialog.tags.search_placeholder")}
                       className="h-8 text-sm flex-1 min-w-0"
                       onKeyDown={(e) => {
                         if (e.key === "Enter" && newTag.trim()) {
@@ -530,7 +532,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                         onClick={() => setSelectedTags([])}
                         className="h-8 px-2 text-xs"
                       >
-                        Clear All
+                        {t("add_torrent_dialog.tags.clear_all")}
                       </Button>
                     )}
                   </div>
@@ -539,7 +541,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                   {allAvailableTags && allAvailableTags.length > 0 && (
                     <div className="space-y-2">
                       <Label className="text-xs text-muted-foreground">
-                        Available Tags (click to select/deselect) {tagSearch && `- filtering: "${tagSearch}"`}
+                        {t("add_torrent_dialog.tags.available_tags")} {tagSearch && t("add_torrent_dialog.category.filtering", { search: tagSearch })}
                       </Label>
                       <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto">
                         {[...selectedTags.filter(tag => tagSearch === "" || tag.toLowerCase().includes(tagSearch.toLowerCase())),
@@ -561,7 +563,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                             >
                               {tag}
                               {!allAvailableTags.includes(tag) && (
-                                <span className="ml-1 text-[10px] opacity-70">(new)</span>
+                                <span className="ml-1 text-[10px] opacity-70">{t("add_torrent_dialog.tags.new")}</span>
                               )}
                             </Badge>
                           ))}
@@ -570,7 +572,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                         [...selectedTags, ...allAvailableTags]
                           .filter(tag => tagSearch === "" || tag.toLowerCase().includes(tagSearch.toLowerCase()))
                           .length === 0 && (
-                        <p className="text-xs text-muted-foreground">No tags match "{tagSearch}"</p>
+                        <p className="text-xs text-muted-foreground">{t("add_torrent_dialog.tags.no_match", { search: tagSearch })}</p>
                       )}
                     </div>
                   )}
@@ -588,7 +590,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                         checked={field.state.value}
                         onCheckedChange={field.handleChange}
                       />
-                      <Label htmlFor="autoTMM">Automatic Torrent Management</Label>
+                      <Label htmlFor="autoTMM">{t("add_torrent_dialog.advanced.auto_tmm")}</Label>
                     </div>
                   )}
                 </form.Field>
@@ -601,26 +603,26 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                         <form.Field name="savePath">
                           {(field) => (
                             <div className="space-y-2">
-                              <Label htmlFor="savePath">Save Path</Label>
+                              <Label htmlFor="savePath">{t("add_torrent_dialog.advanced.save_path.label")}</Label>
                               <Input
                                 id="savePath"
-                                placeholder={preferences?.save_path || "Leave empty for default"}
+                                placeholder={preferences?.save_path || t("add_torrent_dialog.advanced.save_path.placeholder")}
                                 value={field.state.value}
                                 onBlur={field.handleBlur}
                                 onChange={(e) => field.handleChange(e.target.value)}
                               />
                               <p className="text-xs text-muted-foreground">
-                                Manual save path (TMM disabled)
+                                {t("add_torrent_dialog.advanced.save_path.description")}
                               </p>
                             </div>
                           )}
                         </form.Field>
                       ) : (
                         <div className="space-y-2">
-                          <Label>Save Path</Label>
+                          <Label>{t("add_torrent_dialog.advanced.save_path.label")}</Label>
                           <div className="px-3 py-2 bg-muted rounded-md">
                             <p className="text-sm text-muted-foreground">
-                              Automatic Torrent Management is enabled. Save path will be determined by category settings.
+                              {t("add_torrent_dialog.advanced.save_path.tmm_enabled")}
                             </p>
                           </div>
                         </div>
@@ -632,7 +634,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
 
                 {/* Advanced Options */}
                 <div className="space-y-4">
-                  <Label className="text-sm font-medium">Advanced Options</Label>
+                  <Label className="text-sm font-medium">{t("add_torrent_dialog.advanced.advanced_options")}</Label>
                   {/* Sequential Download & First/Last Piece Priority */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <form.Field name="sequentialDownload">
@@ -643,9 +645,9 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                             checked={field.state.value}
                             onCheckedChange={field.handleChange}
                           />
-                          <Label htmlFor="sequentialDownload">Sequential download</Label>
+                          <Label htmlFor="sequentialDownload">{t("add_torrent_dialog.advanced.sequential_download.label")}</Label>
                           <span className="text-xs text-muted-foreground ml-2">
-                            (useful for media files)
+                            {t("add_torrent_dialog.advanced.sequential_download.description")}
                           </span>
                         </div>
                       )}
@@ -660,9 +662,9 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                             checked={field.state.value}
                             onCheckedChange={field.handleChange}
                           />
-                          <Label htmlFor="firstLastPiecePrio">First/last piece priority</Label>
+                          <Label htmlFor="firstLastPiecePrio">{t("add_torrent_dialog.advanced.first_last_prio.label")}</Label>
                           <span className="text-xs text-muted-foreground ml-2">
-                            (start playback faster)
+                            {t("add_torrent_dialog.advanced.first_last_prio.description")}
                           </span>
                         </div>
                       )}
@@ -675,12 +677,12 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                     <form.Field name="limitDownloadSpeed">
                       {(field) => (
                         <div className="space-y-2">
-                          <Label htmlFor="limitDownloadSpeed">Download limit (KB/s)</Label>
+                          <Label htmlFor="limitDownloadSpeed">{t("add_torrent_dialog.advanced.speed_limits.download")}</Label>
                           <Input
                             id="limitDownloadSpeed"
                             type="number"
                             min="0"
-                            placeholder="0 = unlimited"
+                            placeholder={t("add_torrent_dialog.advanced.speed_limits.placeholder")}
                             value={field.state.value || ""}
                             onChange={(e) => field.handleChange(parseInt(e.target.value) || 0)}
                           />
@@ -691,12 +693,12 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                     <form.Field name="limitUploadSpeed">
                       {(field) => (
                         <div className="space-y-2">
-                          <Label htmlFor="limitUploadSpeed">Upload limit (KB/s)</Label>
+                          <Label htmlFor="limitUploadSpeed">{t("add_torrent_dialog.advanced.speed_limits.upload")}</Label>
                           <Input
                             id="limitUploadSpeed"
                             type="number"
                             min="0"
-                            placeholder="0 = unlimited"
+                            placeholder={t("add_torrent_dialog.advanced.speed_limits.placeholder")}
                             value={field.state.value || ""}
                             onChange={(e) => field.handleChange(parseInt(e.target.value) || 0)}
                           />
@@ -710,13 +712,13 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                     <form.Field name="limitRatio">
                       {(field) => (
                         <div className="space-y-2">
-                          <Label htmlFor="limitRatio">Ratio limit</Label>
+                          <Label htmlFor="limitRatio">{t("add_torrent_dialog.advanced.seeding_limits.ratio")}</Label>
                           <Input
                             id="limitRatio"
                             type="number"
                             min="0"
                             step="0.1"
-                            placeholder="0 = use global"
+                            placeholder={t("add_torrent_dialog.advanced.seeding_limits.placeholder")}
                             value={field.state.value || ""}
                             onChange={(e) => field.handleChange(parseFloat(e.target.value) || 0)}
                           />
@@ -727,12 +729,12 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                     <form.Field name="limitSeedTime">
                       {(field) => (
                         <div className="space-y-2">
-                          <Label htmlFor="limitSeedTime">Seed time limit (minutes)</Label>
+                          <Label htmlFor="limitSeedTime">{t("add_torrent_dialog.advanced.seeding_limits.time")}</Label>
                           <Input
                             id="limitSeedTime"
                             type="number"
                             min="0"
-                            placeholder="0 = use global"
+                            placeholder={t("add_torrent_dialog.advanced.seeding_limits.placeholder")}
                             value={field.state.value || ""}
                             onChange={(e) => field.handleChange(parseInt(e.target.value) || 0)}
                           />
@@ -746,19 +748,19 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                     <form.Field name="contentLayout">
                       {(field) => (
                         <div className="space-y-2">
-                          <Label>Content layout</Label>
+                          <Label>{t("add_torrent_dialog.advanced.content_layout.label")}</Label>
                           <Select
                             value={field.state.value}
                             onValueChange={field.handleChange}
                           >
                             <SelectTrigger id="contentLayout">
-                              <SelectValue placeholder="Use global setting" />
+                              <SelectValue placeholder={t("add_torrent_dialog.advanced.content_layout.global")} />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="__global__">Use global setting</SelectItem>
-                              <SelectItem value="Original">Original</SelectItem>
-                              <SelectItem value="Subfolder">Create subfolder</SelectItem>
-                              <SelectItem value="NoSubfolder">Don't create subfolder</SelectItem>
+                              <SelectItem value="__global__">{t("add_torrent_dialog.advanced.content_layout.global")}</SelectItem>
+                              <SelectItem value="Original">{t("add_torrent_dialog.advanced.content_layout.original")}</SelectItem>
+                              <SelectItem value="Subfolder">{t("add_torrent_dialog.advanced.content_layout.subfolder")}</SelectItem>
+                              <SelectItem value="NoSubfolder">{t("add_torrent_dialog.advanced.content_layout.no_subfolder")}</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
@@ -769,10 +771,10 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                     <form.Field name="rename">
                       {(field) => (
                         <div className="space-y-2">
-                          <Label htmlFor="rename">Rename torrent</Label>
+                          <Label htmlFor="rename">{t("add_torrent_dialog.advanced.rename.label")}</Label>
                           <Input
                             id="rename"
-                            placeholder="Leave empty to use original name"
+                            placeholder={t("add_torrent_dialog.advanced.rename.placeholder")}
                             value={field.state.value}
                             onChange={(e) => field.handleChange(e.target.value)}
                           />
@@ -787,13 +789,13 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
             {/* Auto-applied Settings Info - Compact */}
             {(preferences?.add_trackers_enabled && preferences?.add_trackers) || preferences?.excluded_file_names_enabled ? (
               <div className="bg-muted rounded-md p-3 text-xs text-muted-foreground">
-                <p className="font-medium mb-1">Auto-applied:</p>
+                <p className="font-medium mb-1">{t("add_torrent_dialog.advanced.auto_applied.label")}</p>
                 <div className="space-y-0.5">
                   {preferences?.add_trackers_enabled && preferences?.add_trackers && (
-                    <div>• Auto-add trackers</div>
+                    <div>• {t("add_torrent_dialog.advanced.auto_applied.trackers")}</div>
                   )}
                   {preferences?.excluded_file_names_enabled && preferences?.excluded_file_names && (
-                    <div>• File exclusions: {preferences.excluded_file_names}</div>
+                    <div>• {t("add_torrent_dialog.advanced.auto_applied.exclusions", { exclusions: preferences.excluded_file_names })}</div>
                   )}
                 </div>
               </div>
@@ -815,7 +817,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                   className="w-full sm:flex-1 h-11 sm:h-10 order-1 sm:order-2"
                   onClick={() => form.handleSubmit()}
                 >
-                  {isSubmitting || mutation.isPending ? "Adding..." : "Add Torrent"}
+                  {isSubmitting || mutation.isPending ? t("add_torrent_dialog.adding") : t("add_torrent_dialog.add_torrent_button")}
                 </Button>
               )}
             </form.Subscribe>
@@ -825,7 +827,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
               className="w-full sm:w-auto px-6 sm:px-4 h-11 sm:h-10 order-2 sm:order-1"
               onClick={() => setOpen(false)}
             >
-              Cancel
+              {t("common.cancel")}
             </Button>
           </div>
         </div>

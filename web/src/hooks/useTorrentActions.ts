@@ -7,6 +7,7 @@ import { api } from "@/lib/api"
 import type { Torrent } from "@/types"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useCallback, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 // Const object for better developer experience and refactoring safety
@@ -72,6 +73,7 @@ interface ClientMeta {
 }
 
 export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentActionsProps) {
+  const { t } = useTranslation()
   const queryClient = useQueryClient()
 
   // Dialog states
@@ -195,7 +197,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
       if (typeof variables.clientCount === "number") {
         toastCount = variables.clientCount
       }
-      showSuccessToast(variables.action, Math.max(1, toastCount), variables.deleteFiles, variables.enable)
+      showSuccessToast(t, variables.action, Math.max(1, toastCount), variables.deleteFiles, variables.enable)
 
       // Close dialogs after successful action
       if (variables.action === "delete") {
@@ -225,9 +227,8 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     },
     onError: (error: Error, variables) => {
       const count = variables.hashes.length || 1
-      const torrentText = count === 1 ? "torrent" : "torrents"
-      toast.error(`Failed to ${variables.action} ${count} ${torrentText}`, {
-        description: error.message || "An unexpected error occurred",
+      toast.error(t("hooks.useTorrentActions.failedToAction", { action: variables.action, count }), {
+        description: error.message || t("hooks.useTorrentActions.unexpectedError"),
       })
     },
   })
@@ -684,63 +685,75 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
 }
 
 // Helper function for success toasts
-function showSuccessToast(action: TorrentAction, count: number, deleteFiles?: boolean, enable?: boolean) {
-  const torrentText = count === 1 ? "torrent" : "torrents"
-
+function showSuccessToast(
+  t: (key: string, options?: object) => string,
+  action: TorrentAction,
+  count: number,
+  deleteFiles?: boolean,
+  enable?: boolean
+) {
   switch (action) {
     case "resume":
-      toast.success(`Resumed ${count} ${torrentText}`)
+      toast.success(t("hooks.useTorrentActions.resumed", { count }))
       break
     case "pause":
-      toast.success(`Paused ${count} ${torrentText}`)
+      toast.success(t("hooks.useTorrentActions.paused", { count }))
       break
     case "delete":
-      toast.success(`Deleted ${count} ${torrentText}${deleteFiles ? " and files" : ""}`)
+      if (deleteFiles) {
+        toast.success(t("hooks.useTorrentActions.deletedAndFiles", { count }))
+      } else {
+        toast.success(t("hooks.useTorrentActions.deleted", { count }))
+      }
       break
     case "recheck":
-      toast.success(`Started recheck for ${count} ${torrentText}`)
+      toast.success(t("hooks.useTorrentActions.rechecked", { count }))
       break
     case "reannounce":
-      toast.success(`Reannounced ${count} ${torrentText}`)
+      toast.success(t("hooks.useTorrentActions.reannounced", { count }))
       break
     case "increasePriority":
-      toast.success(`Increased priority for ${count} ${torrentText}`)
+      toast.success(t("hooks.useTorrentActions.increasedPriority", { count }))
       break
     case "decreasePriority":
-      toast.success(`Decreased priority for ${count} ${torrentText}`)
+      toast.success(t("hooks.useTorrentActions.decreasedPriority", { count }))
       break
     case "topPriority":
-      toast.success(`Set ${count} ${torrentText} to top priority`)
+      toast.success(t("hooks.useTorrentActions.topPriority", { count }))
       break
     case "bottomPriority":
-      toast.success(`Set ${count} ${torrentText} to bottom priority`)
+      toast.success(t("hooks.useTorrentActions.bottomPriority", { count }))
       break
     case "addTags":
-      toast.success(`Added tags to ${count} ${torrentText}`)
+      toast.success(t("hooks.useTorrentActions.addedTags", { count }))
       break
     case "removeTags":
-      toast.success(`Removed tags from ${count} ${torrentText}`)
+      toast.success(t("hooks.useTorrentActions.removedTags", { count }))
       break
     case "setTags":
-      toast.success(`Replaced tags for ${count} ${torrentText}`)
+      toast.success(t("hooks.useTorrentActions.replacedTags", { count }))
       break
     case "setCategory":
-      toast.success(`Set category for ${count} ${torrentText}`)
+      toast.success(t("hooks.useTorrentActions.setCategory", { count }))
       break
     case "toggleAutoTMM":
-      toast.success(`${enable ? "Enabled" : "Disabled"} Auto TMM for ${count} ${torrentText}`)
+      if (enable) {
+        toast.success(t("hooks.useTorrentActions.enabledAutoTMM", { count }))
+      } else {
+        toast.success(t("hooks.useTorrentActions.disabledAutoTMM", { count }))
+      }
       break
     case "setShareLimit":
-      toast.success(`Set share limits for ${count} ${torrentText}`)
+      toast.success(t("hooks.useTorrentActions.setShareLimits", { count }))
       break
     case "setUploadLimit":
-      toast.success(`Set upload limit for ${count} ${torrentText}`)
+      toast.success(t("hooks.useTorrentActions.setUploadLimit", { count }))
       break
     case "setDownloadLimit":
-      toast.success(`Set download limit for ${count} ${torrentText}`)
+      toast.success(t("hooks.useTorrentActions.setDownloadLimit", { count }))
       break
     case "setLocation":
-      toast.success(`Set location for ${count} ${torrentText}`)
+      toast.success(t("hooks.useTorrentActions.setLocation", { count }))
       break
   }
 }

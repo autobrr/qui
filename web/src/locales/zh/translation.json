@@ -437,7 +437,8 @@
         "title_other": "删除 {{count}} 个种子？",
         "description": "此操作无法撤销。种子将从 qBittorrent 中移除。",
         "delete_files_label": "同时删除磁盘上的文件",
-        "delete_button": "删除"
+        "delete_button": "删除",
+        "description_with_size": "此操作无法撤销。总大小：{{size}}"
       },
       "recheck": {
         "title_one": "强制重新校验 {{count}} 个种子？",
@@ -510,6 +511,12 @@
       "copied_success": "种子 {{type}} 已复制到剪贴板",
       "copy_failed": "复制到剪贴板失败",
       "hash_not_available": "哈希不可用"
+    },
+    "copy_options": {
+      "title": "复制...",
+      "name": "复制名称",
+      "hash": "复制哈希",
+      "full_path": "复制完整路径"
     }
   },
   "torrent_table_optimized": {
@@ -540,11 +547,17 @@
     "reannounce_torrents_title_other": "重新汇报 {{count}} 个种子？",
     "reannounce_torrents_body": "这将强制所选种子向其所有 Tracker 重新汇报。当 Tracker 无响应或您想刷新连接时，此功能很有用。",
     "reannounce": "重新汇报",
-    "loading_from_instance": "正在从实例加载种子... (无可用缓存)"
+    "loading_from_instance": "正在从实例加载种子... (无可用缓存)",
+    "all_selected_with_size": "已全选 {{count}} 个 • {{size}}",
+    "count_selected_with_size": "已选择 {{count}} 个 • {{size}}",
+    "keyboard_shortcuts_with_size": "按住 Shift 并单击可选择范围，按住 {{key}} 并单击可多选 • {{size}}",
+    "delete_torrents_body_with_size": "此操作无法撤销。种子将从 qBittorrent 中移除。总大小：{{size}}"
   },
   "instances": {
     "add": "添加实例",
     "loading": "正在加载实例...",
+    "instance_connected": "实例已连接",
+    "instance_disconnected": "实例已断开",
     "description": "管理您的 qBittorrent 连接设置",
     "empty": {
       "addFirst": "添加您的第一个实例"
@@ -1145,7 +1158,9 @@
       "stalled_downloading": "暂停下载",
       "errored": "错误",
       "checking": "校验中",
-      "moving": "移动中"
+      "moving": "移动中",
+      "unregistered": "未注册",
+      "tracker_down": "Tracker 故障"
     },
     "categories": {
       "title": "分类",
@@ -1249,6 +1264,7 @@
       "settings": "设置",
       "instances": "实例"
     },
+    "filters": "过滤器",
     "messages": {
       "noInstancesConfigured": "未配置实例"
     },

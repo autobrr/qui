@@ -437,7 +437,8 @@
         "title_other": "Delete {{count}} torrents?",
         "description": "This action cannot be undone. The torrents will be removed from qBittorrent.",
         "delete_files_label": "Also delete files from disk",
-        "delete_button": "Delete"
+        "delete_button": "Delete",
+        "description_with_size": "This action cannot be undone. Total size: {{size}}"
       },
       "recheck": {
         "title_one": "Force Recheck {{count}} torrent?",
@@ -510,6 +511,12 @@
       "copied_success": "Torrent {{type}} copied to clipboard",
       "copy_failed": "Failed to copy to clipboard",
       "hash_not_available": "Hash not available"
+    },
+    "copy_options": {
+      "title": "Copy...",
+      "name": "Copy Name",
+      "hash": "Copy Hash",
+      "full_path": "Copy Full Path"
     }
   },
   "torrent_table_optimized": {
@@ -540,11 +547,17 @@
     "reannounce_torrents_title_other": "Reannounce {{count}} torrents?",
     "reannounce_torrents_body": "This will force the selected torrents to reannounce to all their trackers. This is useful when trackers are not responding or you want to refresh your connection.",
     "reannounce": "Reannounce",
-    "loading_from_instance": "Loading torrents from instance... (no cache available)"
+    "loading_from_instance": "Loading torrents from instance... (no cache available)",
+    "all_selected_with_size": "All {{count}} selected • {{size}}",
+    "count_selected_with_size": "{{count}} selected • {{size}}",
+    "keyboard_shortcuts_with_size": "Shift+click for range, {{key}}+click for multiple • {{size}}",
+    "delete_torrents_body_with_size": "This action cannot be undone. The torrents will be removed from qBittorrent. Total size: {{size}}"
   },
   "instances": {
     "add": "Add Instance",
     "loading": "Loading instances...",
+    "instance_connected": "Instance connected",
+    "instance_disconnected": "Instance disconnected",
     "description": "Manage your qBittorrent connection settings",
     "empty": {
       "addFirst": "Add your first instance"
@@ -1145,7 +1158,9 @@
       "stalled_downloading": "Stalled Downloading",
       "errored": "Error",
       "checking": "Checking",
-      "moving": "Moving"
+      "moving": "Moving",
+      "unregistered": "Unregistered",
+      "tracker_down": "Tracker Down"
     },
     "categories": {
       "title": "Categories",
@@ -1252,6 +1267,7 @@
     "messages": {
       "noInstancesConfigured": "No instances configured"
     },
+    "filters": "Filters",
     "load_more": "Load More",
     "more": "More",
     "yes": "Yes",

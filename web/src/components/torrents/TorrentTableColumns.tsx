@@ -26,6 +26,7 @@ import { cn, formatBytes, formatDuration, getRatioColor } from "@/lib/utils"
 import type { AppPreferences, Torrent } from "@/types"
 import type { ColumnDef } from "@tanstack/react-table"
 import { Globe, ListOrdered } from "lucide-react"
+import type { TFunction } from "i18next"
 import { memo, useEffect, useState } from "react"
 
 function formatEta(seconds: number): string {
@@ -133,6 +134,7 @@ TrackerIconCell.displayName = "TrackerIconCell"
 
 export const createColumns = (
   incognitoMode: boolean,
+  t: TFunction = ((key: string) => key) as TFunction,
   selectionEnhancers?: {
     shiftPressedRef: { current: boolean }
     lastSelectedIndexRef: { current: number | null }
@@ -165,7 +167,7 @@ export const createColumns = (
               table.toggleAllPageRowsSelected(!!checked)
             }
           }}
-          aria-label="Select all"
+          aria-label={t("torrent_table.header.select_all")}
           className="hover:border-ring cursor-pointer transition-colors"
         />
       </div>
@@ -238,7 +240,7 @@ export const createColumns = (
                 selectionEnhancers.shiftPressedRef.current = false
               }
             }}
-            aria-label="Select row"
+            aria-label={t("torrent_table.header.select_row")}
             className="hover:border-ring cursor-pointer transition-colors"
           />
         </div>
@@ -256,11 +258,11 @@ export const createColumns = (
             <ListOrdered className="h-4 w-4" />
           </div>
         </TooltipTrigger>
-        <TooltipContent>Priority</TooltipContent>
+        <TooltipContent>{t("torrent_table.columns.priority")}</TooltipContent>
       </Tooltip>
     ),
     meta: {
-      headerString: "Priority",
+      headerString: t("torrent_table.columns.priority"),
     },
     cell: ({ row }) => {
       const priority = row.original.priority
@@ -290,8 +292,7 @@ export const createColumns = (
   },
   {
     accessorKey: "name",
-    header: "Name",
-    cell: ({ row }) => {
+          header: t("common.name"),    cell: ({ row }) => {
       const displayName = incognitoMode ? getLinuxIsoName(row.original.hash) : row.original.name
       return (
         <div className="overflow-hidden whitespace-nowrap text-sm" title={displayName}>
@@ -303,19 +304,19 @@ export const createColumns = (
   },
   {
     accessorKey: "size",
-    header: "Size",
+    header: t("torrent_table.columns.size"),
     cell: ({ row }) => <span className="text-sm overflow-hidden whitespace-nowrap">{formatBytes(row.original.size)}</span>,
     size: 85,
   },
   {
     accessorKey: "total_size",
-    header: "Total Size",
+    header: t("torrent_table.columns.total_size"),
     cell: ({ row }) => <span className="text-sm overflow-hidden whitespace-nowrap">{formatBytes(row.original.total_size)}</span>,
     size: 115,
   },
   {
     accessorKey: "progress",
-    header: "Progress",
+    header: t("torrent_table.columns.progress"),
     cell: ({ row }) => (
       <div className="flex items-center gap-2">
         <Progress value={row.original.progress * 100} className="w-20" />
@@ -332,8 +333,7 @@ export const createColumns = (
   },
   {
     accessorKey: "state",
-    header: "Status",
-    cell: ({ row }) => {
+          header: t("common.status"),    cell: ({ row }) => {
       const state = row.original.state
       const priority = row.original.priority
       const label = getStateLabel(state)
@@ -380,7 +380,7 @@ export const createColumns = (
   },
   {
     accessorKey: "num_seeds",
-    header: "Seeds",
+    header: t("torrent_table.columns.seeds"),
     cell: ({ row }) => {
       const connected = row.original.num_seeds >= 0 ? row.original.num_seeds : 0
       const total = row.original.num_complete >= 0 ? row.original.num_complete : 0
@@ -395,7 +395,7 @@ export const createColumns = (
   },
   {
     accessorKey: "num_leechs",
-    header: "Peers",
+    header: t("torrent_table.columns.peers"),
     cell: ({ row }) => {
       const connected = row.original.num_leechs >= 0 ? row.original.num_leechs : 0
       const total = row.original.num_incomplete >= 0 ? row.original.num_incomplete : 0
@@ -410,31 +410,31 @@ export const createColumns = (
   },
   {
     accessorKey: "dlspeed",
-    header: "Down Speed",
+    header: t("torrent_table.columns.down_speed"),
     cell: ({ row }) => {
       const speed = row.original.dlspeed
       return <span className="text-sm overflow-hidden whitespace-nowrap">{speed === 0 ? "-" : formatSpeedWithUnit(speed, speedUnit)}</span>
     },
-    size: calculateMinWidth("Down Speed"),
+    size: calculateMinWidth(t("torrent_table.columns.down_speed")),
   },
   {
     accessorKey: "upspeed",
-    header: "Up Speed",
+    header: t("torrent_table.columns.up_speed"),
     cell: ({ row }) => {
       const speed = row.original.upspeed
       return <span className="text-sm overflow-hidden whitespace-nowrap">{speed === 0 ? "-" : formatSpeedWithUnit(speed, speedUnit)}</span>
     },
-    size: calculateMinWidth("Up Speed"),
+    size: calculateMinWidth(t("torrent_table.columns.up_speed")),
   },
   {
     accessorKey: "eta",
-    header: "ETA",
+    header: t("torrent_table.columns.eta"),
     cell: ({ row }) => <span className="text-sm overflow-hidden whitespace-nowrap">{formatEta(row.original.eta)}</span>,
     size: 80,
   },
   {
     accessorKey: "ratio",
-    header: "Ratio",
+    header: t("torrent_table.columns.ratio"),
     cell: ({ row }) => {
       const ratio = incognitoMode ? getLinuxRatio(row.original.hash) : row.original.ratio
       const displayRatio = ratio === -1 ? "∞" : ratio.toFixed(2)
@@ -453,7 +453,7 @@ export const createColumns = (
   },
   {
     accessorKey: "popularity",
-    header: "Popularity",
+    header: t("torrent_table.columns.popularity"),
     cell: ({ row }) => {
       return (
         <div className="overflow-hidden whitespace-nowrap text-sm">
@@ -465,8 +465,7 @@ export const createColumns = (
   },
   {
     accessorKey: "category",
-    header: "Category",
-    cell: ({ row }) => {
+          header: t("common.category"),    cell: ({ row }) => {
       const displayCategory = incognitoMode ? getLinuxCategory(row.original.hash) : row.original.category
       return (
         <div className="overflow-hidden whitespace-nowrap text-sm" title={displayCategory || ""}>
@@ -478,8 +477,7 @@ export const createColumns = (
   },
   {
     accessorKey: "tags",
-    header: "Tags",
-    cell: ({ row }) => {
+          header: t("common.tags"),    cell: ({ row }) => {
       const tags = incognitoMode ? getLinuxTags(row.original.hash) : row.original.tags
       const displayTags = Array.isArray(tags) ? tags.join(", ") : tags || ""
       return (
@@ -492,7 +490,7 @@ export const createColumns = (
   },
   {
     accessorKey: "added_on",
-    header: "Added",
+    header: t("torrent_table.columns.added"),
     cell: ({ row }) => {
       const addedOn = row.original.added_on
       if (!addedOn || addedOn === 0) {
@@ -507,7 +505,7 @@ export const createColumns = (
   },
   {
     accessorKey: "completion_on",
-    header: "Completed On",
+    header: t("torrent_table.columns.completed_on"),
     cell: ({ row }) => {
       const completionOn = row.original.completion_on
       if (!completionOn || completionOn === 0) {
@@ -527,14 +525,14 @@ export const createColumns = (
         <TooltipTrigger asChild>
           <div className="flex h-10 w-full items-center justify-center text-muted-foreground">
             <Globe className="h-4 w-4" aria-hidden="true" />
-            <span className="sr-only">Tracker Icon</span>
+            <span className="sr-only">{t("torrent_table.columns.tracker_icon")}</span>
           </div>
         </TooltipTrigger>
-        <TooltipContent>Tracker Icon</TooltipContent>
+        <TooltipContent>{t("torrent_table.columns.tracker_icon")}</TooltipContent>
       </Tooltip>
     ),
     meta: {
-      headerString: "Tracker Icon",
+      headerString: t("torrent_table.columns.tracker_icon"),
     },
     cell: ({ row }) => {
       const tracker = incognitoMode ? getLinuxTracker(row.original.hash) : row.original.tracker
@@ -554,7 +552,7 @@ export const createColumns = (
   },
   {
     accessorKey: "tracker",
-    header: "Tracker",
+    header: t("torrent_table.columns.tracker"),
     cell: ({ row }) => {
       const tracker = incognitoMode ? getLinuxTracker(row.original.hash) : row.original.tracker
       let displayTracker = tracker
@@ -576,7 +574,7 @@ export const createColumns = (
   },
   {
     accessorKey: "dl_limit",
-    header: "Down Limit",
+    header: t("torrent_table.columns.down_limit"),
     cell: ({ row }) => {
       const downLimit = row.original.dl_limit
       const displayDownLimit = downLimit === 0 ? "∞" : formatSpeedWithUnit(downLimit, speedUnit)
@@ -589,11 +587,11 @@ export const createColumns = (
         </span>
       )
     },
-    size: calculateMinWidth("Down Limit", 24),
+    size: calculateMinWidth(t("torrent_table.columns.down_limit"), 24),
   },
   {
     accessorKey: "up_limit",
-    header: "Up Limit",
+    header: t("torrent_table.columns.up_limit"),
     cell: ({ row }) => {
       const upLimit = row.original.up_limit
       const displayUpLimit = upLimit === 0 ? "∞" : formatSpeedWithUnit(upLimit, speedUnit)
@@ -606,56 +604,56 @@ export const createColumns = (
         </span>
       )
     },
-    size: calculateMinWidth("Up Limit", 24),
+    size: calculateMinWidth(t("torrent_table.columns.up_limit"), 24),
   },
   {
     accessorKey: "downloaded",
-    header: "Downloaded",
+    header: t("torrent_table.columns.downloaded"),
     cell: ({ row }) => {
       const downloaded = row.original.downloaded
       return <span className="text-sm overflow-hidden whitespace-nowrap">{downloaded === 0 ? "-" : formatBytes(downloaded)}</span>
     },
-    size: calculateMinWidth("Downloaded"),
+    size: calculateMinWidth(t("torrent_table.columns.downloaded")),
   },
   {
     accessorKey: "uploaded",
-    header: "Uploaded",
+    header: t("torrent_table.columns.uploaded"),
     cell: ({ row }) => {
       const uploaded = row.original.uploaded
       return <span className="text-sm overflow-hidden whitespace-nowrap">{uploaded === 0 ? "-" : formatBytes(uploaded)}</span>
     },
-    size: calculateMinWidth("Uploaded"),
+    size: calculateMinWidth(t("torrent_table.columns.uploaded")),
   },
   {
     accessorKey: "downloaded_session",
-    header: "Session Downloaded",
+    header: t("torrent_table.columns.session_downloaded"),
     cell: ({ row }) => {
       const sessionDownloaded = row.original.downloaded_session
       return <span className="text-sm overflow-hidden whitespace-nowrap">{sessionDownloaded === 0 ? "-" : formatBytes(sessionDownloaded)}</span>
     },
-    size: calculateMinWidth("Session Downloaded"),
+    size: calculateMinWidth(t("torrent_table.columns.session_downloaded")),
   },
   {
     accessorKey: "uploaded_session",
-    header: "Session Uploaded",
+    header: t("torrent_table.columns.session_uploaded"),
     cell: ({ row }) => {
       const sessionUploaded = row.original.uploaded_session
       return <span className="text-sm overflow-hidden whitespace-nowrap">{sessionUploaded === 0 ? "-" : formatBytes(sessionUploaded)}</span>
     },
-    size: calculateMinWidth("Session Uploaded"),
+    size: calculateMinWidth(t("torrent_table.columns.session_uploaded")),
   },
   {
     accessorKey: "amount_left",
-    header: "Remaining",
+    header: t("torrent_table.columns.remaining"),
     cell: ({ row }) => {
       const amountLeft = row.original.amount_left
       return <span className="text-sm overflow-hidden whitespace-nowrap">{amountLeft === 0 ? "-" : formatBytes(amountLeft)}</span>
     },
-    size: calculateMinWidth("Remaining"),
+    size: calculateMinWidth(t("torrent_table.columns.remaining")),
   },
   {
     accessorKey: "time_active",
-    header: "Time Active",
+    header: t("torrent_table.columns.time_active"),
     cell: ({ row }) => {
       const timeActive = row.original.time_active
       return (
@@ -666,7 +664,7 @@ export const createColumns = (
   },
   {
     accessorKey: "seeding_time",
-    header: "Seeding Time",
+    header: t("torrent_table.columns.seeding_time"),
     cell: ({ row }) => {
       const timeSeeded = row.original.seeding_time
       return (
@@ -677,7 +675,7 @@ export const createColumns = (
   },
   {
     accessorKey: "save_path",
-    header: "Save Path",
+    header: t("torrent_table.columns.save_path"),
     cell: ({ row }) => {
       const displayPath = incognitoMode ? getLinuxSavePath(row.original.hash) : row.original.save_path
       return (
@@ -690,16 +688,16 @@ export const createColumns = (
   },
   {
     accessorKey: "completed",
-    header: "Completed",
+    header: t("torrent_table.columns.completed"),
     cell: ({ row }) => {
       const completed = row.original.completed
       return <span className="text-sm overflow-hidden whitespace-nowrap">{completed === 0 ? "-" : formatBytes(completed)}</span>
     },
-    size: calculateMinWidth("Completed"),
+    size: calculateMinWidth(t("torrent_table.columns.completed")),
   },
   {
     accessorKey: "ratio_limit",
-    header: "Ratio Limit",
+    header: t("torrent_table.columns.ratio_limit"),
     cell: ({ row }) => {
       const ratioLimit = row.original.ratio_limit
       const instanceRatioLimit = instancePreferences?.max_ratio
@@ -713,11 +711,11 @@ export const createColumns = (
         </span>
       )
     },
-    size: calculateMinWidth("Ratio Limit", 24),
+    size: calculateMinWidth(t("torrent_table.columns.ratio_limit"), 24),
   },
   {
     accessorKey: "seen_complete",
-    header: "Last Seen Complete",
+    header: t("torrent_table.columns.last_seen_complete"),
     cell: ({ row }) => {
       const lastSeenComplete = row.original.seen_complete
       if (!lastSeenComplete || lastSeenComplete === 0) {
@@ -732,7 +730,7 @@ export const createColumns = (
   },
   {
     accessorKey: "last_activity",
-    header: "Last Activity",
+    header: t("torrent_table.columns.last_activity"),
     cell: ({ row }) => {
       const lastActivity = row.original.last_activity
       if (!lastActivity || lastActivity === 0) {
@@ -747,17 +745,17 @@ export const createColumns = (
   },
   {
     accessorKey: "availability",
-    header: "Availability",
+    header: t("torrent_table.columns.availability"),
     cell: ({ row }) => {
       const availability = row.original.availability
       return <span className="text-sm overflow-hidden whitespace-nowrap">{availability.toFixed(3)}</span>
     },
-    size: calculateMinWidth("Availability"),
+    size: calculateMinWidth(t("torrent_table.columns.availability")),
   },
   // incomplete save path is not exposed by the API?
   {
     accessorKey: "infohash_v1",
-    header: "Info Hash v1",
+    header: t("torrent_table.columns.infohash_v1"),
     cell: ({ row }) => {
       const original = row.original.infohash_v1
       const maskBase = row.original.hash || row.original.infohash_v1 || row.original.infohash_v2 || row.id
@@ -772,7 +770,7 @@ export const createColumns = (
   },
   {
     accessorKey: "infohash_v2",
-    header: "Info Hash v2",
+    header: t("torrent_table.columns.infohash_v2"),
     cell: ({ row }) => {
       const original = row.original.infohash_v2
       const maskBase = row.original.hash || row.original.infohash_v1 || row.original.infohash_v2 || row.id
@@ -787,7 +785,7 @@ export const createColumns = (
   },
   {
     accessorKey: "reannounce",
-    header: "Reannounce In",
+    header: t("torrent_table.columns.reannounce_in"),
     cell: ({ row }) => {
       return (
         <div className="overflow-hidden whitespace-nowrap text-sm">
@@ -795,18 +793,19 @@ export const createColumns = (
         </div>
       )
     },
-    size: calculateMinWidth("Reannounce In"),
+    size: calculateMinWidth(t("torrent_table.columns.reannounce_in")),
   },
   {
     accessorKey: "private",
-    header: "Private",
+    header: t("torrent_table.columns.private"),
     cell: ({ row }) => {
       return (
         <div className="overflow-hidden whitespace-nowrap text-sm">
-          {row.original.private ? "Yes" : "No"}
+          {row.original.private ? t("common.yes") : t("common.no")}
         </div>
       )
     },
-    size: calculateMinWidth("Private"),
+    size: calculateMinWidth(t("torrent_table.columns.private")),
   },
 ]
+}

@@ -15,6 +15,7 @@ import { useTorrentExporter } from "@/hooks/useTorrentExporter"
 import { useTorrentsList } from "@/hooks/useTorrentsList"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { formatBytes } from "@/lib/utils"
+import { useTranslation } from "react-i18next"
 import {
   DndContext,
   MouseSensor,
@@ -141,7 +142,7 @@ const DEFAULT_COLUMN_SIZING = {}
 
 // Helper function to get default column order (module scope for stable reference)
 function getDefaultColumnOrder(): string[] {
-  const cols = createColumns(false, undefined, "bytes", undefined, undefined, undefined)
+  const cols = createColumns(false)
   const order = cols.map(col => {
     if ("id" in col && col.id) return col.id
     if ("accessorKey" in col && typeof col.accessorKey === "string") return col.accessorKey
@@ -209,6 +210,8 @@ interface TorrentTableOptimizedProps {
 }
 
 export const TorrentTableOptimized = memo(function TorrentTableOptimized({ instanceId, filters, selectedTorrent, onTorrentSelect, addTorrentModalOpen, onAddTorrentModalChange, onFilteredDataUpdate, onSelectionChange }: TorrentTableOptimizedProps) {
+  const { t } = useTranslation()
+
   // State management
   // Move default values outside the component for stable references
   // (This should be at module scope, not inside the component)
@@ -546,7 +549,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
   // Memoize columns to avoid unnecessary recalculations
   const columns = useMemo(
-    () => createColumns(incognitoMode, {
+    () => createColumns(incognitoMode, t, {
       shiftPressedRef,
       lastSelectedIndexRef,
       // Pass custom selection handlers
@@ -559,7 +562,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       isAllSelected,
       excludedFromSelectAll,
     }, speedUnit, trackerIcons, formatTimestamp, preferences, supportsTrackerHealth),
-    [incognitoMode, speedUnit, trackerIcons, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, isAllSelected, excludedFromSelectAll, preferences, supportsTrackerHealth]
+    [incognitoMode, t, speedUnit, trackerIcons, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, isAllSelected, excludedFromSelectAll, preferences, supportsTrackerHealth]
   )
 
   const torrentIdentityCounts = useMemo(() => {
@@ -1124,10 +1127,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                         </Button>
                       </DropdownMenuTrigger>
                     </TooltipTrigger>
-                    <TooltipContent>Toggle columns</TooltipContent>
+                    <TooltipContent>{t("torrent_table_optimized.toggle_columns")}</TooltipContent>
                   </Tooltip>
                   <DropdownMenuContent align="end" className="w-48">
-                    <DropdownMenuLabel>Toggle columns</DropdownMenuLabel>
+                    <DropdownMenuLabel>{t("torrent_table_optimized.toggle_columns")}</DropdownMenuLabel>
                     <DropdownMenuSeparator />
                     {table
                       .getAllColumns()
@@ -1184,14 +1187,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
             <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm z-50 animate-in fade-in duration-300">
               <div className="text-center animate-in zoom-in-95 duration-300">
                 <Logo className="h-12 w-12 animate-pulse mx-auto mb-3" />
-                <p>Loading torrents...</p>
+                <p>{t("torrent_table_optimized.loading_torrents")}</p>
               </div>
             </div>
           )}
           {torrents.length === 0 && !isLoading && (
             <div className="absolute inset-0 flex items-center justify-center z-40 animate-in fade-in duration-300 pointer-events-none">
               <div className="text-center animate-in zoom-in-95 duration-300 text-muted-foreground">
-                <p>No torrents found</p>
+                <p>{t("torrent_table_optimized.no_torrents_found")}</p>
               </div>
             </div>
           )}
@@ -1386,26 +1389,26 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
             {isLoading && !isCachedData && !isStaleData && torrents.length === 0 ? (
               <>
                 <Loader2 className="h-3 w-3 animate-spin inline mr-1" />
-                Loading torrents from instance... (no cache available)
+                {t("torrent_table_optimized.loading_from_instance")}
               </>
             ) : totalCount === 0 ? (
-              "No torrents found"
+              t("torrent_table_optimized.no_torrents_found")
             ) : (
               <>
                 {hasLoadedAll ? (
                   `${torrents.length} torrent${torrents.length !== 1 ? "s" : ""}`
                 ) : isLoadingMore ? (
-                  "Loading more torrents..."
+                  t("torrent_table_optimized.loading_more_torrents")
                 ) : (
-                  `${torrents.length} of ${totalCount} torrents loaded`
+                  t("torrent_table_optimized.torrents_loaded_of_total", { loaded: torrents.length, total: totalCount })
                 )}
-                {hasLoadedAll && safeLoadedRows < rows.length && " (scroll for more)"}
+                {hasLoadedAll && safeLoadedRows < rows.length && t("torrent_table_optimized.scroll_for_more")}
               </>
             )}
             {effectiveSelectionCount > 0 && (
               <>
                 <span className="ml-2">
-                  ({isAllSelected && excludedFromSelectAll.size === 0 ? `All ${effectiveSelectionCount}` : effectiveSelectionCount} selected
+                  ({isAllSelected && excludedFromSelectAll.size === 0 ? t("torrent_table_optimized.all_selected", { count: effectiveSelectionCount }) : t("torrent_table_optimized.count_selected", { count: effectiveSelectionCount })}
                   {selectedTotalSize > 0 && <> • {selectedFormattedSize}</>})
                 </span>
                 {/* Keyboard shortcuts helper - only show on desktop */}
@@ -1453,7 +1456,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                 </button>
               </TooltipTrigger>
               <TooltipContent>
-                {speedUnit === "bytes" ? "Switch to bits per second (bps)" : "Switch to bytes per second (B/s)"}
+                {speedUnit === "bytes" ? t("torrent_table_optimized.switch_to_bps") : t("torrent_table_optimized.switch_to_Bps")}
               </TooltipContent>
             </Tooltip>
             {/* Incognito mode toggle */}
@@ -1471,7 +1474,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                 </button>
               </TooltipTrigger>
               <TooltipContent>
-                {incognitoMode ? "Exit incognito mode" : "Enable incognito mode"}
+                {incognitoMode ? t("torrent_table_optimized.exit_incognito") : t("torrent_table_optimized.enable_incognito")}
               </TooltipContent>
             </Tooltip>
           </div>
@@ -1481,9 +1484,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete {isAllSelected ? effectiveSelectionCount : contextHashes.length} torrent(s)?</AlertDialogTitle>
+            <AlertDialogTitle>{t("torrent_table_optimized.delete_torrents_title", { count: isAllSelected ? effectiveSelectionCount : contextHashes.length })}</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. The torrents will be removed from qBittorrent.
+              {t("torrent_table_optimized.delete_torrents_body")}
               {deleteDialogTotalSize > 0 && (
                 <span className="block mt-2 text-xs text-muted-foreground">
                   Total size: {deleteDialogFormattedSize}
@@ -1500,16 +1503,16 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
               className="rounded border-input"
             />
             <label htmlFor="deleteFiles" className="text-sm font-medium">
-              Also delete files from disk
+              {t("torrent_table_optimized.delete_files_from_disk")}
             </label>
           </div>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteWrapper}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete
+              {t("common.buttons.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1599,17 +1602,17 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       <Dialog open={showRecheckDialog} onOpenChange={setShowRecheckDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Force Recheck {isAllSelected ? effectiveSelectionCount : contextHashes.length} torrent(s)?</DialogTitle>
+            <DialogTitle>{t("torrent_table_optimized.recheck_torrents_title", { count: isAllSelected ? effectiveSelectionCount : contextHashes.length })}</DialogTitle>
             <DialogDescription>
-              This will force qBittorrent to recheck all pieces of the selected torrents. This process may take some time and will temporarily pause the torrents.
+              {t("torrent_table_optimized.recheck_torrents_body")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowRecheckDialog(false)}>
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button onClick={handleRecheckWrapper} disabled={isPending}>
-              Force Recheck
+              {t("torrent_table_optimized.force_recheck")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1619,17 +1622,17 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       <Dialog open={showReannounceDialog} onOpenChange={setShowReannounceDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Reannounce {isAllSelected ? effectiveSelectionCount : contextHashes.length} torrent(s)?</DialogTitle>
+            <DialogTitle>{t("torrent_table_optimized.reannounce_torrents_title", { count: isAllSelected ? effectiveSelectionCount : contextHashes.length })}</DialogTitle>
             <DialogDescription>
-              This will force the selected torrents to reannounce to all their trackers. This is useful when trackers are not responding or you want to refresh your connection.
+              {t("torrent_table_optimized.reannounce_torrents_body")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowReannounceDialog(false)}>
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button onClick={handleReannounceWrapper} disabled={isPending}>
-              Reannounce
+              {t("torrent_table_optimized.reannounce")}
             </Button>
           </DialogFooter>
         </DialogContent>
