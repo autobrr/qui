@@ -17,8 +17,10 @@ import { api } from "@/lib/api"
 import { useForm } from "@tanstack/react-form"
 import { useNavigate } from "@tanstack/react-router"
 import { useEffect } from "react"
+import { useTranslation } from "react-i18next"
 
 export function Login() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const { login, isLoggingIn, loginError } = useAuth()
 
@@ -55,7 +57,7 @@ export function Login() {
               qui
             </CardTitle>
             <CardDescription className="pointer-events-none select-none">
-              qBittorrent management interface
+              {t("login.description")}
             </CardDescription>
           </CardHeader>
           <CardContent className="pt-6">
@@ -70,21 +72,21 @@ export function Login() {
                 name="username"
                 validators={{
                   onChange: ({ value }) => {
-                    if (!value) return "Username is required"
+                    if (!value) return t("login.username.required")
                     return undefined
                   },
                 }}
               >
                 {(field) => (
                   <div className="space-y-2">
-                    <Label htmlFor={field.name}>Username</Label>
+                  <FormLabel>{t("common.username")}</FormLabel>
                     <Input
                       id={field.name}
                       type="text"
                       value={field.state.value}
                       onBlur={field.handleBlur}
                       onChange={(e) => field.handleChange(e.target.value)}
-                      placeholder="Enter your username"
+                      placeholder={t("login.username.placeholder")}
                     />
                     {field.state.meta.isTouched && field.state.meta.errors[0] && (
                       <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
@@ -97,21 +99,21 @@ export function Login() {
                 name="password"
                 validators={{
                   onChange: ({ value }) => {
-                    if (!value) return "Password is required"
+                    if (!value) return t("login.password.required")
                     return undefined
                   },
                 }}
               >
                 {(field) => (
                   <div className="space-y-2">
-                    <Label htmlFor={field.name}>Password</Label>
+                    <Label htmlFor={field.name}>{t("common.password")}</Label>
                     <Input
                       id={field.name}
                       type="password"
                       value={field.state.value}
                       onBlur={field.handleBlur}
                       onChange={(e) => field.handleChange(e.target.value)}
-                      placeholder="Enter your password"
+                      placeholder={t("login.password.placeholder")}
                     />
                     {field.state.meta.isTouched && field.state.meta.errors[0] && (
                       <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
@@ -132,7 +134,7 @@ export function Login() {
                       htmlFor={field.name}
                       className="text-sm font-normal leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                     >
-                      Remember me
+                      {t("login.rememberMe")}
                     </Label>
                   </div>
                 )}
@@ -140,7 +142,12 @@ export function Login() {
 
               {loginError && (
                 <div className="bg-destructive/10 border border-destructive/20 text-destructive px-4 py-3 rounded-md text-sm">
-                  {typeof loginError === "string"? loginError: loginError.message?.includes("Invalid credentials") || loginError.message?.includes("401")? "Invalid username or password": loginError.message || "Login failed. Please try again."}
+                  {typeof loginError === "string"
+                    ? loginError
+                    : loginError.message?.includes("Invalid credentials") ||
+                      loginError.message?.includes("401")
+                    ? t("login.error.invalidCredentials")
+                    : loginError.message || t("login.error.generic")}
                 </div>
               )}
 
@@ -154,7 +161,7 @@ export function Login() {
                     size="lg"
                     disabled={!canSubmit || isSubmitting || isLoggingIn}
                   >
-                    {isLoggingIn ? "Logging in..." : "Sign in"}
+                    {isLoggingIn ? t("login.buttons.loggingIn") : t("login.buttons.signIn")}
                   </Button>
                 )}
               </form.Subscribe>
