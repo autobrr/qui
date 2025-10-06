@@ -272,6 +272,15 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 		sort.Strings(snapshotTags)
 	}
 
+	webAPIVersion := ""
+	patchTrackers := false
+	if version, err := s.syncManager.GetInstanceWebAPIVersion(ctx, j.instanceID); err != nil {
+		log.Debug().Err(err).Int("instanceID", j.instanceID).Msg("Unable to determine qBittorrent API version for tracker patching")
+	} else {
+		webAPIVersion = version
+		patchTrackers = shouldInjectTrackerMetadata(version)
+	}
+
 	timestamp := s.now().UTC().Format("20060102T150405Z")
 	archiveName := fmt.Sprintf("qui-backup_instance-%d_%s_%s.zip", j.instanceID, j.kind, timestamp)
 	archiveAbsPath := filepath.Join(baseAbs, archiveName)
@@ -341,13 +350,16 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 			trackerDomain = tracker
 		}
 
-		if patched, changed, err := patchTorrentTrackers(data, gatherTrackerURLs(ctx, s.syncManager, j.instanceID, torrent)); err != nil {
-			log.Warn().Err(err).Str("hash", torrent.Hash).Int("instanceID", j.instanceID).Msg("Failed to patch exported torrent trackers")
-		} else if changed {
-			data = patched
-			// ensure cached entry is rebuilt with the corrected payload
-			blobRelPath = nil
-			log.Debug().Str("hash", torrent.Hash).Int("instanceID", j.instanceID).Msg("Injected tracker metadata into exported torrent")
+		if patchTrackers {
+			trackers := gatherTrackerURLs(ctx, s.syncManager, j.instanceID, torrent)
+			if patched, changed, err := patchTorrentTrackers(data, trackers); err != nil {
+				log.Warn().Err(err).Str("hash", torrent.Hash).Int("instanceID", j.instanceID).Msg("Failed to patch exported torrent trackers")
+			} else if changed {
+				data = patched
+				// ensure cached entry is rebuilt with the corrected payload
+				blobRelPath = nil
+				log.Debug().Str("hash", torrent.Hash).Int("instanceID", j.instanceID).Str("webAPIVersion", webAPIVersion).Msg("Injected tracker metadata into exported torrent")
+			}
 		}
 
 		filename := torrentname.SanitizeExportFilename(suggestedName, torrent.Hash, trackerDomain, torrent.Hash)

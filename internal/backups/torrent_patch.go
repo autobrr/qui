@@ -13,6 +13,12 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
+var trackerPatchWebAPIVersions = map[string]struct{}{
+	"2.9.1": {},
+	"2.9.2": {},
+	"2.9.3": {},
+}
+
 // patchTorrentTrackers ensures the exported .torrent includes tracker metadata.
 // Some qBittorrent 4.6.x builds omit tracker information when exporting a
 // torrent. When detected, we inject the trackers retrieved from the API into
@@ -54,6 +60,16 @@ func patchTorrentTrackers(data []byte, trackers []string) ([]byte, bool, error) 
 	}
 
 	return encoded, true, nil
+}
+
+func shouldInjectTrackerMetadata(apiVersion string) bool {
+	apiVersion = strings.TrimSpace(apiVersion)
+	if apiVersion == "" {
+		return false
+	}
+
+	_, ok := trackerPatchWebAPIVersions[apiVersion]
+	return ok
 }
 
 func needAnnounceListUpdate(existing interface{}, trackers []string) bool {

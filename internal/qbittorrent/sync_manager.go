@@ -104,6 +104,24 @@ func (sm *SyncManager) GetErrorStore() *models.InstanceErrorStore {
 	return sm.clientPool.GetErrorStore()
 }
 
+// GetInstanceWebAPIVersion returns the qBittorrent web API version for the provided instance.
+func (sm *SyncManager) GetInstanceWebAPIVersion(ctx context.Context, instanceID int) (string, error) {
+	if sm == nil || sm.clientPool == nil {
+		return "", fmt.Errorf("client pool unavailable")
+	}
+
+	if client, err := sm.clientPool.GetClientOffline(ctx, instanceID); err == nil {
+		return strings.TrimSpace(client.GetWebAPIVersion()), nil
+	}
+
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return "", err
+	}
+
+	return strings.TrimSpace(client.GetWebAPIVersion()), nil
+}
+
 // getClientAndSyncManager gets both client and sync manager with error handling
 func (sm *SyncManager) getClientAndSyncManager(ctx context.Context, instanceID int) (*Client, *qbt.SyncManager, error) {
 	// Get client
