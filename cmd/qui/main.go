@@ -468,7 +468,7 @@ func (app *Application) runServer() {
 
 	// Initialize services
 	authService := auth.NewService(db.Conn())
-	licenseService := license.NewLicenseService(licenseRepo, polarClient)
+	licenseService := license.NewLicenseService(licenseRepo, polarClient, cfg.GetConfigDir())
 
 	go func() {
 		checker := license.NewLicenseChecker(licenseService)
