@@ -235,7 +235,7 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 		return &backupResult{torrentCount: 0, totalBytes: 0, categoryCounts: map[string]int{}, items: nil, settings: settings}, nil
 	}
 
-	baseAbs, baseRel, err := s.resolveBasePaths(settings, j.instanceID)
+	baseAbs, baseRel, err := s.resolveBasePaths(ctx, settings, j.instanceID)
 	if err != nil {
 		return nil, err
 	}
@@ -504,17 +504,34 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 	}, nil
 }
 
-func (s *Service) resolveBasePaths(settings *models.BackupSettings, instanceID int) (string, string, error) {
-	base := filepath.Join("backups", fmt.Sprintf("instance-%d", instanceID))
+func (s *Service) resolveBasePaths(ctx context.Context, settings *models.BackupSettings, instanceID int) (string, string, error) {
+	baseSegment := fmt.Sprintf("instance-%d", instanceID)
+
 	if settings.CustomPath != nil {
 		custom := strings.TrimSpace(*settings.CustomPath)
 		if custom != "" {
 			if filepath.IsAbs(custom) {
 				return "", "", errors.New("custom backup path must be relative to data dir")
 			}
-			base = filepath.Clean(custom)
+			base := filepath.Clean(custom)
+			if s.cfg.DataDir == "" {
+				return "", "", errors.New("data directory not configured")
+			}
+			abs := filepath.Join(s.cfg.DataDir, base)
+			return abs, base, nil
 		}
 	}
+
+	if name, err := s.store.GetInstanceName(ctx, instanceID); err == nil && name != "" {
+		slug := safeSegment(name)
+		if slug != "" {
+			baseSegment = fmt.Sprintf("instance-%d_%s", instanceID, slug)
+		}
+	} else if err != nil && !errors.Is(err, models.ErrInstanceNotFound) {
+		return "", "", err
+	}
+
+	base := filepath.Join("backups", baseSegment)
 
 	if s.cfg.DataDir == "" {
 		return "", "", errors.New("data directory not configured")

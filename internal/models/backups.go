@@ -812,6 +812,18 @@ func (s *BackupStore) FindCachedTorrentBlob(ctx context.Context, instanceID int,
 	return &trimmed, nil
 }
 
+func (s *BackupStore) GetInstanceName(ctx context.Context, instanceID int) (string, error) {
+	var name string
+	err := s.db.QueryRowContext(ctx, "SELECT name FROM instances WHERE id = ?", instanceID).Scan(&name)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", ErrInstanceNotFound
+		}
+		return "", err
+	}
+	return strings.TrimSpace(name), nil
+}
+
 func (s *BackupStore) ListRunsByKind(ctx context.Context, instanceID int, kind BackupRunKind, limit int) ([]*BackupRun, error) {
 	if limit <= 0 {
 		limit = 10
