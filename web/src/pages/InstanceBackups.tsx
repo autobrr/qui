@@ -32,7 +32,6 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import {
@@ -54,7 +53,7 @@ import {
 } from "@/hooks/useInstanceBackups"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
-import type { BackupRun, BackupRunKind, BackupRunStatus } from "@/types"
+import type { BackupCategorySnapshot, BackupRun, BackupRunKind, BackupRunStatus } from "@/types"
 
 interface InstanceBackupsProps {
   instanceId: number
@@ -106,8 +105,58 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
   const [formState, setFormState] = useState<SettingsFormState | null>(null)
   const [manifestRunId, setManifestRunId] = useState<number | undefined>()
   const [manifestOpen, setManifestOpen] = useState(false)
+  const [manifestSearch, setManifestSearch] = useState("")
 
   const { data: manifest, isLoading: manifestLoading } = useBackupManifest(instanceId, manifestRunId)
+
+  const manifestCategoryEntries = useMemo(() => {
+    if (!manifest?.categories) return [] as Array<[string, BackupCategorySnapshot]>
+    const entries = Object.entries(manifest.categories) as Array<[string, BackupCategorySnapshot]>
+    entries.sort((a, b) => a[0].localeCompare(b[0], undefined, { sensitivity: "base" }))
+    return entries
+  }, [manifest])
+
+  const manifestTags = useMemo(() => {
+    if (!manifest?.tags) return [] as string[]
+    const tagsList = [...manifest.tags]
+    tagsList.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
+    return tagsList
+  }, [manifest])
+
+  const displayedCategoryEntries = useMemo(() => manifestCategoryEntries.slice(0, 12), [manifestCategoryEntries])
+  const remainingCategoryCount = manifestCategoryEntries.length - displayedCategoryEntries.length
+
+  const displayedTags = useMemo(() => manifestTags.slice(0, 30), [manifestTags])
+  const remainingTagCount = manifestTags.length - displayedTags.length
+
+  useEffect(() => {
+    if (!manifestOpen) {
+      setManifestSearch("")
+    }
+  }, [manifestOpen])
+
+  useEffect(() => {
+    setManifestSearch("")
+  }, [manifestRunId])
+
+  const filteredManifestItems = useMemo(() => {
+    if (!manifest) return []
+    const query = manifestSearch.trim().toLowerCase()
+    if (!query) return manifest.items
+
+    return manifest.items.filter(item => {
+      const haystack = [
+        item.name,
+        item.category ?? "",
+        item.tags?.join(", ") ?? "",
+        item.hash,
+      ]
+        .join(" ")
+        .toLowerCase()
+
+      return haystack.includes(query)
+    })
+  }, [manifest, manifestSearch])
 
   useEffect(() => {
     if (settings) {
@@ -246,7 +295,7 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
             <Download className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <p className="text-sm font-semibold">{instance?.name ?? `Instance ${instanceId}`}</p>
+            <p className="text-sm truncate font-semibold">{instance?.name ?? `Instance ${instanceId}`}</p>
             <p className="text-xs text-muted-foreground break-all">{instance?.host}</p>
           </CardContent>
         </Card>
@@ -462,7 +511,7 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
           setManifestRunId(undefined)
         }
       }}>
-        <DialogContent className="!max-w-4xl overflow-hidden">
+        <DialogContent className="!w-[96vw] !max-w-7xl !md:w-[90vw] !h-[92vh] md:!h-[80vh] lg:!h-[75vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>Backup manifest</DialogTitle>
             <DialogDescription>
@@ -472,28 +521,101 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
           {manifestLoading ? (
             <p className="text-sm text-muted-foreground">Loading manifest...</p>
           ) : manifest ? (
-            <ScrollArea className="max-h-96">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead>Tags</TableHead>
-                    <TableHead>Size</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {manifest.items.map(item => (
-                    <TableRow key={item.hash + item.archivePath}>
-                      <TableCell className="font-medium !max-w-md truncate">{item.name}</TableCell>
-                      <TableCell>{item.category ?? "—"}</TableCell>
-                      <TableCell className="max-w-sm truncate">{item.tags && item.tags.length > 0 ? item.tags.join(", ") : "—"}</TableCell>
-                      <TableCell>{formatBytes(item.sizeBytes)}</TableCell>
+            <div className="space-y-4 flex-1 flex flex-col min-h-0">
+              <div className="space-y-3 text-sm">
+                <div className="flex flex-wrap gap-3 text-muted-foreground">
+                  <span className="font-medium text-foreground">Torrents: {manifest.torrentCount}</span>
+                  {manifestCategoryEntries.length > 0 && (
+                    <span>Categories: {manifestCategoryEntries.length}</span>
+                  )}
+                  {manifestTags.length > 0 && <span>Tags: {manifestTags.length}</span>}
+                  <span>Generated {formatDateSafe(manifest.generatedAt, formatDate)}</span>
+                </div>
+                {displayedCategoryEntries.length > 0 && (
+                  <div>
+                    <p className="font-medium text-foreground mb-2">Categories</p>
+                    <div className="flex flex-wrap gap-2">
+                      {displayedCategoryEntries.map(([name, snapshot]) => (
+                        <Badge key={name} variant="secondary" title={snapshot?.savePath ?? undefined}>
+                          {name}
+                        </Badge>
+                      ))}
+                      {remainingCategoryCount > 0 && (
+                        <Badge variant="outline">+{remainingCategoryCount} more</Badge>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {displayedTags.length > 0 && (
+                  <div>
+                    <p className="font-medium text-foreground mb-2">Tags</p>
+                    <div className="flex flex-wrap gap-2">
+                      {displayedTags.map(tag => (
+                        <Badge key={tag} variant="outline">{tag}</Badge>
+                      ))}
+                      {remainingTagCount > 0 && (
+                        <Badge variant="outline">+{remainingTagCount} more</Badge>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="flex w-full justify-end">
+                <Input
+                  value={manifestSearch}
+                  onChange={event => setManifestSearch(event.target.value)}
+                  placeholder="Search torrents, tags, categories..."
+                  className="w-full sm:w-[18rem] md:w-[16rem]"
+                  aria-label="Search backup manifest"
+                />
+              </div>
+              <div className="flex-1 overflow-auto pr-1">
+                <Table className="min-w-[640px] w-full">
+                  <TableHeader className="sticky top-0 z-10 bg-background">
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Category</TableHead>
+                      <TableHead>Tags</TableHead>
+                      <TableHead className="text-right">Size</TableHead>
+                      <TableHead className="text-right">Cached Torrent</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </ScrollArea>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredManifestItems.length > 0 ? (
+                      filteredManifestItems.map(item => (
+                        <TableRow key={item.hash + item.archivePath}>
+                          <TableCell className="font-medium !max-w-md truncate">{item.name}</TableCell>
+                          <TableCell>{item.category ?? "—"}</TableCell>
+                          <TableCell className="max-w-sm truncate">{item.tags && item.tags.length > 0 ? item.tags.join(", ") : "—"}</TableCell>
+                          <TableCell className="text-right">{formatBytes(item.sizeBytes)}</TableCell>
+                          <TableCell className="text-right">
+                            {item.torrentBlob && manifestRunId ? (
+                              <Button variant="ghost" size="icon" asChild>
+                                <a
+                                  href={api.getBackupTorrentDownloadUrl(instanceId, manifestRunId, item.hash)}
+                                  download
+                                  aria-label={`Download ${item.name} torrent`}
+                                >
+                                  <Download className="h-4 w-4" />
+                                </a>
+                              </Button>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={5} className="py-6 text-center text-sm text-muted-foreground">
+                          {manifestSearch ? `No torrents match "${manifestSearch}".` : "No torrents found."}
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
           ) : (
             <p className="text-sm text-muted-foreground">Manifest unavailable.</p>
           )}

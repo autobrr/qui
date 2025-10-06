@@ -314,6 +314,7 @@ func (s *Server) Handler() *chi.Mux {
 							r.Get("/runs", backupsHandler.ListRuns)
 							r.Get("/runs/{runID}/manifest", backupsHandler.GetManifest)
 							r.Get("/runs/{runID}/download", backupsHandler.DownloadRun)
+							r.Get("/runs/{runID}/items/{torrentHash}/download", backupsHandler.DownloadTorrentBlob)
 							r.Delete("/runs/{runID}", backupsHandler.DeleteRun)
 						})
 					}

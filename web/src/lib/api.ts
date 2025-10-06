@@ -152,6 +152,7 @@ class ApiClient {
     keepWeekly: number
     keepMonthly: number
     includeCategories: boolean
+    includeTags: boolean
     customPath?: string | null
   }): Promise<BackupSettings> {
     return this.request<BackupSettings>(`/instances/${instanceId}/backups/settings`, {
@@ -189,6 +190,11 @@ class ApiClient {
 
   getBackupDownloadUrl(instanceId: number, runId: number): string {
     return withBasePath(`/api/instances/${instanceId}/backups/runs/${runId}/download`)
+  }
+
+  getBackupTorrentDownloadUrl(instanceId: number, runId: number, torrentHash: string): string {
+    const encodedHash = encodeURIComponent(torrentHash)
+    return withBasePath(`/api/instances/${instanceId}/backups/runs/${runId}/items/${encodedHash}/download`)
   }
 
 

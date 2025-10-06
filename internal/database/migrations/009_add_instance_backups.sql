@@ -41,6 +41,8 @@ CREATE TABLE IF NOT EXISTS instance_backup_runs (
     total_bytes INTEGER NOT NULL DEFAULT 0,
     torrent_count INTEGER NOT NULL DEFAULT 0,
     category_counts_json TEXT,
+    categories_json TEXT,
+    tags_json TEXT,
     error_message TEXT,
     FOREIGN KEY (instance_id) REFERENCES instances(id) ON DELETE CASCADE
 );
@@ -63,6 +65,7 @@ CREATE TABLE IF NOT EXISTS instance_backup_items (
     infohash_v1 TEXT,
     infohash_v2 TEXT,
     tags TEXT,
+    torrent_blob_path TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (run_id) REFERENCES instance_backup_runs(id) ON DELETE CASCADE
 );

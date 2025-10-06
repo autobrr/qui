@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 )
 
@@ -72,34 +73,43 @@ const (
 )
 
 type BackupRun struct {
-	ID             int64           `json:"id"`
-	InstanceID     int             `json:"instanceId"`
-	Kind           BackupRunKind   `json:"kind"`
-	Status         BackupRunStatus `json:"status"`
-	RequestedBy    string          `json:"requestedBy"`
-	RequestedAt    time.Time       `json:"requestedAt"`
-	StartedAt      *time.Time      `json:"startedAt,omitempty"`
-	CompletedAt    *time.Time      `json:"completedAt,omitempty"`
-	ArchivePath    *string         `json:"archivePath,omitempty"`
-	ManifestPath   *string         `json:"manifestPath,omitempty"`
-	TotalBytes     int64           `json:"totalBytes"`
-	TorrentCount   int             `json:"torrentCount"`
-	CategoryCounts map[string]int  `json:"categoryCounts,omitempty"`
-	ErrorMessage   *string         `json:"errorMessage,omitempty"`
+	ID             int64                       `json:"id"`
+	InstanceID     int                         `json:"instanceId"`
+	Kind           BackupRunKind               `json:"kind"`
+	Status         BackupRunStatus             `json:"status"`
+	RequestedBy    string                      `json:"requestedBy"`
+	RequestedAt    time.Time                   `json:"requestedAt"`
+	StartedAt      *time.Time                  `json:"startedAt,omitempty"`
+	CompletedAt    *time.Time                  `json:"completedAt,omitempty"`
+	ArchivePath    *string                     `json:"archivePath,omitempty"`
+	ManifestPath   *string                     `json:"manifestPath,omitempty"`
+	TotalBytes     int64                       `json:"totalBytes"`
+	TorrentCount   int                         `json:"torrentCount"`
+	CategoryCounts map[string]int              `json:"categoryCounts,omitempty"`
+	ErrorMessage   *string                     `json:"errorMessage,omitempty"`
+	Categories     map[string]CategorySnapshot `json:"categories,omitempty"`
+	Tags           []string                    `json:"tags,omitempty"`
+	categoriesJSON *string
+	tagsJSON       *string
 }
 
 type BackupItem struct {
-	ID             int64     `json:"id"`
-	RunID          int64     `json:"runId"`
-	TorrentHash    string    `json:"torrentHash"`
-	Name           string    `json:"name"`
-	Category       *string   `json:"category,omitempty"`
-	SizeBytes      int64     `json:"sizeBytes"`
-	ArchiveRelPath *string   `json:"archiveRelPath,omitempty"`
-	InfoHashV1     *string   `json:"infohashV1,omitempty"`
-	InfoHashV2     *string   `json:"infohashV2,omitempty"`
-	Tags           *string   `json:"tags,omitempty"`
-	CreatedAt      time.Time `json:"createdAt"`
+	ID              int64     `json:"id"`
+	RunID           int64     `json:"runId"`
+	TorrentHash     string    `json:"torrentHash"`
+	Name            string    `json:"name"`
+	Category        *string   `json:"category,omitempty"`
+	SizeBytes       int64     `json:"sizeBytes"`
+	ArchiveRelPath  *string   `json:"archiveRelPath,omitempty"`
+	InfoHashV1      *string   `json:"infohashV1,omitempty"`
+	InfoHashV2      *string   `json:"infohashV2,omitempty"`
+	Tags            *string   `json:"tags,omitempty"`
+	TorrentBlobPath *string   `json:"torrentBlobPath,omitempty"`
+	CreatedAt       time.Time `json:"createdAt"`
+}
+
+type CategorySnapshot struct {
+	SavePath string `json:"savePath,omitempty"`
 }
 
 type BackupStore struct {
@@ -204,12 +214,12 @@ func (s *BackupStore) UpsertSettings(ctx context.Context, settings *BackupSettin
 		maxInt(settings.KeepLast, 0),
 		maxInt(settings.KeepHourly, 0),
 		maxInt(settings.KeepDaily, 0),
-        maxInt(settings.KeepWeekly, 0),
-        maxInt(settings.KeepMonthly, 0),
-        settings.IncludeCategories,
-        settings.IncludeTags,
-        settings.CustomPath,
-    )
+		maxInt(settings.KeepWeekly, 0),
+		maxInt(settings.KeepMonthly, 0),
+		settings.IncludeCategories,
+		settings.IncludeTags,
+		settings.CustomPath,
+	)
 
 	return err
 }
@@ -229,8 +239,8 @@ func (s *BackupStore) CreateRun(ctx context.Context, run *BackupRun) error {
 	query := `
         INSERT INTO instance_backup_runs (
             instance_id, kind, status, requested_by, requested_at, started_at, completed_at,
-            archive_path, manifest_path, total_bytes, torrent_count, category_counts_json, error_message
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            archive_path, manifest_path, total_bytes, torrent_count, category_counts_json, categories_json, tags_json, error_message
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `
 
 	categoryJSON, err := marshalCategoryCounts(run.CategoryCounts)
@@ -253,6 +263,8 @@ func (s *BackupStore) CreateRun(ctx context.Context, run *BackupRun) error {
 		run.TotalBytes,
 		run.TorrentCount,
 		categoryJSON,
+		run.categoriesJSON,
+		run.tagsJSON,
 		run.ErrorMessage,
 	)
 	if err != nil {
@@ -292,6 +304,56 @@ func unmarshalCategoryCounts(raw sql.NullString) (map[string]int, error) {
 	return counts, nil
 }
 
+func marshalCategories(categories map[string]CategorySnapshot) (*string, error) {
+	if len(categories) == 0 {
+		return nil, nil
+	}
+
+	data, err := json.Marshal(categories)
+	if err != nil {
+		return nil, err
+	}
+	s := string(data)
+	return &s, nil
+}
+
+func unmarshalCategories(raw sql.NullString) (map[string]CategorySnapshot, error) {
+	if !raw.Valid || raw.String == "" {
+		return nil, nil
+	}
+
+	var categories map[string]CategorySnapshot
+	if err := json.Unmarshal([]byte(raw.String), &categories); err != nil {
+		return nil, err
+	}
+	return categories, nil
+}
+
+func marshalTags(tags []string) (*string, error) {
+	if len(tags) == 0 {
+		return nil, nil
+	}
+
+	data, err := json.Marshal(tags)
+	if err != nil {
+		return nil, err
+	}
+	s := string(data)
+	return &s, nil
+}
+
+func unmarshalTags(raw sql.NullString) ([]string, error) {
+	if !raw.Valid || raw.String == "" {
+		return nil, nil
+	}
+
+	var tags []string
+	if err := json.Unmarshal([]byte(raw.String), &tags); err != nil {
+		return nil, err
+	}
+	return tags, nil
+}
+
 func (s *BackupStore) UpdateRunMetadata(ctx context.Context, runID int64, updateFn func(*BackupRun) error) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -328,9 +390,23 @@ func (s *BackupStore) UpdateRunMetadata(ctx context.Context, runID int64, update
             total_bytes = ?,
             torrent_count = ?,
             category_counts_json = ?,
+            categories_json = ?,
+            tags_json = ?,
             error_message = ?
         WHERE id = ?
     `
+
+	categoriesJSON, err := marshalCategories(run.Categories)
+	if err != nil {
+		return err
+	}
+	run.categoriesJSON = categoriesJSON
+
+	tagsJSON, err := marshalTags(run.Tags)
+	if err != nil {
+		return err
+	}
+	run.tagsJSON = tagsJSON
 
 	_, err = tx.ExecContext(
 		ctx,
@@ -343,6 +419,8 @@ func (s *BackupStore) UpdateRunMetadata(ctx context.Context, runID int64, update
 		run.TotalBytes,
 		run.TorrentCount,
 		categoryJSON,
+		categoriesJSON,
+		tagsJSON,
 		run.ErrorMessage,
 		run.ID,
 	)
@@ -356,7 +434,7 @@ func (s *BackupStore) UpdateRunMetadata(ctx context.Context, runID int64, update
 func (s *BackupStore) getRunForUpdate(ctx context.Context, tx *sql.Tx, runID int64) (*BackupRun, error) {
 	query := `
 		SELECT id, instance_id, kind, status, requested_by, requested_at, started_at, completed_at,
-		       archive_path, manifest_path, total_bytes, torrent_count, category_counts_json, error_message
+		       archive_path, manifest_path, total_bytes, torrent_count, category_counts_json, categories_json, tags_json, error_message
 		FROM instance_backup_runs
 		WHERE id = ?
 	`
@@ -370,6 +448,8 @@ func (s *BackupStore) getRunForUpdate(ctx context.Context, tx *sql.Tx, runID int
 	var manifestPath sql.NullString
 	var errorMessage sql.NullString
 	var categoryJSON sql.NullString
+	var categoriesJSON sql.NullString
+	var tagsJSON sql.NullString
 
 	err := row.Scan(
 		&run.ID,
@@ -385,6 +465,8 @@ func (s *BackupStore) getRunForUpdate(ctx context.Context, tx *sql.Tx, runID int
 		&run.TotalBytes,
 		&run.TorrentCount,
 		&categoryJSON,
+		&categoriesJSON,
+		&tagsJSON,
 		&errorMessage,
 	)
 	if err != nil {
@@ -413,6 +495,25 @@ func (s *BackupStore) getRunForUpdate(ctx context.Context, tx *sql.Tx, runID int
 	}
 	run.CategoryCounts = counts
 
+	if categories, err := unmarshalCategories(categoriesJSON); err != nil {
+		return nil, err
+	} else {
+		run.Categories = categories
+	}
+
+	if tagList, err := unmarshalTags(tagsJSON); err != nil {
+		return nil, err
+	} else {
+		run.Tags = tagList
+	}
+
+	if categoriesJSON.Valid {
+		run.categoriesJSON = &categoriesJSON.String
+	}
+	if tagsJSON.Valid {
+		run.tagsJSON = &tagsJSON.String
+	}
+
 	return &run, nil
 }
 
@@ -423,7 +524,7 @@ func (s *BackupStore) ListRuns(ctx context.Context, instanceID int, limit, offse
 
 	query := `
         SELECT id, instance_id, kind, status, requested_by, requested_at, started_at, completed_at,
-               archive_path, manifest_path, total_bytes, torrent_count, category_counts_json, error_message
+               archive_path, manifest_path, total_bytes, torrent_count, category_counts_json, categories_json, tags_json, error_message
         FROM instance_backup_runs
         WHERE instance_id = ?
         ORDER BY requested_at DESC
@@ -446,6 +547,8 @@ func (s *BackupStore) ListRuns(ctx context.Context, instanceID int, limit, offse
 		var manifestPath sql.NullString
 		var errorMessage sql.NullString
 		var categoryJSON sql.NullString
+		var categoriesJSON sql.NullString
+		var tagsJSON sql.NullString
 
 		if err := rows.Scan(
 			&run.ID,
@@ -461,6 +564,8 @@ func (s *BackupStore) ListRuns(ctx context.Context, instanceID int, limit, offse
 			&run.TotalBytes,
 			&run.TorrentCount,
 			&categoryJSON,
+			&categoriesJSON,
+			&tagsJSON,
 			&errorMessage,
 		); err != nil {
 			return nil, err
@@ -486,6 +591,22 @@ func (s *BackupStore) ListRuns(ctx context.Context, instanceID int, limit, offse
 			return nil, err
 		}
 		run.CategoryCounts = counts
+		if categories, err := unmarshalCategories(categoriesJSON); err != nil {
+			return nil, err
+		} else {
+			run.Categories = categories
+		}
+		if tagList, err := unmarshalTags(tagsJSON); err != nil {
+			return nil, err
+		} else {
+			run.Tags = tagList
+		}
+		if categoriesJSON.Valid {
+			run.categoriesJSON = &categoriesJSON.String
+		}
+		if tagsJSON.Valid {
+			run.tagsJSON = &tagsJSON.String
+		}
 
 		results = append(results, &run)
 	}
@@ -510,8 +631,8 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO instance_backup_items (
-			run_id, torrent_hash, name, category, size_bytes, archive_rel_path, infohash_v1, infohash_v2, tags
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			run_id, torrent_hash, name, category, size_bytes, archive_rel_path, infohash_v1, infohash_v2, tags, torrent_blob_path
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		_ = tx.Rollback()
@@ -531,6 +652,7 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 			item.InfoHashV1,
 			item.InfoHashV2,
 			item.Tags,
+			item.TorrentBlobPath,
 		)
 		if err != nil {
 			_ = tx.Rollback()
@@ -543,7 +665,7 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 
 func (s *BackupStore) ListItems(ctx context.Context, runID int64) ([]*BackupItem, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, run_id, torrent_hash, name, category, size_bytes, archive_rel_path, infohash_v1, infohash_v2, tags, created_at
+		SELECT id, run_id, torrent_hash, name, category, size_bytes, archive_rel_path, infohash_v1, infohash_v2, tags, torrent_blob_path, created_at
 		FROM instance_backup_items
 		WHERE run_id = ?
 		ORDER BY name COLLATE NOCASE
@@ -562,6 +684,7 @@ func (s *BackupStore) ListItems(ctx context.Context, runID int64) ([]*BackupItem
 		var infohashV1 sql.NullString
 		var infohashV2 sql.NullString
 		var tags sql.NullString
+		var blobPath sql.NullString
 		if err := rows.Scan(
 			&item.ID,
 			&item.RunID,
@@ -573,6 +696,7 @@ func (s *BackupStore) ListItems(ctx context.Context, runID int64) ([]*BackupItem
 			&infohashV1,
 			&infohashV2,
 			&tags,
+			&blobPath,
 			&item.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -592,10 +716,100 @@ func (s *BackupStore) ListItems(ctx context.Context, runID int64) ([]*BackupItem
 		if tags.Valid {
 			item.Tags = &tags.String
 		}
+		if blobPath.Valid {
+			item.TorrentBlobPath = &blobPath.String
+		}
 		items = append(items, &item)
 	}
 
 	return items, rows.Err()
+}
+
+func (s *BackupStore) GetItemByHash(ctx context.Context, runID int64, hash string) (*BackupItem, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, run_id, torrent_hash, name, category, size_bytes, archive_rel_path, infohash_v1, infohash_v2, tags, torrent_blob_path, created_at
+		FROM instance_backup_items
+		WHERE run_id = ? AND torrent_hash = ?
+		LIMIT 1
+	`, runID, hash)
+
+	var item BackupItem
+	var category sql.NullString
+	var relPath sql.NullString
+	var infohashV1 sql.NullString
+	var infohashV2 sql.NullString
+	var tags sql.NullString
+	var blobPath sql.NullString
+
+	if err := row.Scan(
+		&item.ID,
+		&item.RunID,
+		&item.TorrentHash,
+		&item.Name,
+		&category,
+		&item.SizeBytes,
+		&relPath,
+		&infohashV1,
+		&infohashV2,
+		&tags,
+		&blobPath,
+		&item.CreatedAt,
+	); err != nil {
+		return nil, err
+	}
+
+	if category.Valid {
+		item.Category = &category.String
+	}
+	if relPath.Valid {
+		item.ArchiveRelPath = &relPath.String
+	}
+	if infohashV1.Valid {
+		item.InfoHashV1 = &infohashV1.String
+	}
+	if infohashV2.Valid {
+		item.InfoHashV2 = &infohashV2.String
+	}
+	if tags.Valid {
+		item.Tags = &tags.String
+	}
+	if blobPath.Valid {
+		item.TorrentBlobPath = &blobPath.String
+	}
+
+	return &item, nil
+}
+
+func (s *BackupStore) FindCachedTorrentBlob(ctx context.Context, instanceID int, hash string) (*string, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT i.torrent_blob_path
+		FROM instance_backup_items i
+		JOIN instance_backup_runs r ON r.id = i.run_id
+		WHERE r.instance_id = ?
+		  AND i.torrent_hash = ?
+		  AND i.torrent_blob_path IS NOT NULL
+		ORDER BY i.created_at DESC
+		LIMIT 1
+	`, instanceID, hash)
+
+	var path sql.NullString
+	if err := row.Scan(&path); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	if !path.Valid {
+		return nil, nil
+	}
+
+	trimmed := strings.TrimSpace(path.String)
+	if trimmed == "" {
+		return nil, nil
+	}
+
+	return &trimmed, nil
 }
 
 func (s *BackupStore) ListRunsByKind(ctx context.Context, instanceID int, kind BackupRunKind, limit int) ([]*BackupRun, error) {
@@ -604,13 +818,13 @@ func (s *BackupStore) ListRunsByKind(ctx context.Context, instanceID int, kind B
 	}
 
 	query := `
-        SELECT id, instance_id, kind, status, requested_by, requested_at, started_at, completed_at,
-               archive_path, manifest_path, total_bytes, torrent_count, category_counts_json, error_message
-        FROM instance_backup_runs
-        WHERE instance_id = ? AND kind = ?
-        ORDER BY requested_at DESC
-        LIMIT ?
-    `
+		SELECT id, instance_id, kind, status, requested_by, requested_at, started_at, completed_at,
+		       archive_path, manifest_path, total_bytes, torrent_count, category_counts_json, categories_json, tags_json, error_message
+		FROM instance_backup_runs
+		WHERE instance_id = ? AND kind = ?
+		ORDER BY requested_at DESC
+		LIMIT ?
+	`
 
 	rows, err := s.db.QueryContext(ctx, query, instanceID, string(kind), limit)
 	if err != nil {
@@ -627,6 +841,8 @@ func (s *BackupStore) ListRunsByKind(ctx context.Context, instanceID int, kind B
 		var manifestPath sql.NullString
 		var errorMessage sql.NullString
 		var categoryJSON sql.NullString
+		var categoriesJSON sql.NullString
+		var tagsJSON sql.NullString
 
 		if err := rows.Scan(
 			&run.ID,
@@ -642,6 +858,8 @@ func (s *BackupStore) ListRunsByKind(ctx context.Context, instanceID int, kind B
 			&run.TotalBytes,
 			&run.TorrentCount,
 			&categoryJSON,
+			&categoriesJSON,
+			&tagsJSON,
 			&errorMessage,
 		); err != nil {
 			return nil, err
@@ -668,6 +886,22 @@ func (s *BackupStore) ListRunsByKind(ctx context.Context, instanceID int, kind B
 			return nil, err
 		}
 		run.CategoryCounts = counts
+		if categories, err := unmarshalCategories(categoriesJSON); err != nil {
+			return nil, err
+		} else {
+			run.Categories = categories
+		}
+		if tagList, err := unmarshalTags(tagsJSON); err != nil {
+			return nil, err
+		} else {
+			run.Tags = tagList
+		}
+		if categoriesJSON.Valid {
+			run.categoriesJSON = &categoriesJSON.String
+		}
+		if tagsJSON.Valid {
+			run.tagsJSON = &tagsJSON.String
+		}
 
 		runs = append(runs, &run)
 	}
@@ -678,7 +912,7 @@ func (s *BackupStore) ListRunsByKind(ctx context.Context, instanceID int, kind B
 func (s *BackupStore) GetRun(ctx context.Context, runID int64) (*BackupRun, error) {
 	query := `
         SELECT id, instance_id, kind, status, requested_by, requested_at, started_at, completed_at,
-               archive_path, manifest_path, total_bytes, torrent_count, category_counts_json, error_message
+               archive_path, manifest_path, total_bytes, torrent_count, category_counts_json, categories_json, tags_json, error_message
         FROM instance_backup_runs
         WHERE id = ?
     `
@@ -690,6 +924,8 @@ func (s *BackupStore) GetRun(ctx context.Context, runID int64) (*BackupRun, erro
 	var manifestPath sql.NullString
 	var errorMessage sql.NullString
 	var categoryJSON sql.NullString
+	var categoriesJSON sql.NullString
+	var tagsJSON sql.NullString
 
 	err := s.db.QueryRowContext(ctx, query, runID).Scan(
 		&run.ID,
@@ -705,6 +941,8 @@ func (s *BackupStore) GetRun(ctx context.Context, runID int64) (*BackupRun, erro
 		&run.TotalBytes,
 		&run.TorrentCount,
 		&categoryJSON,
+		&categoriesJSON,
+		&tagsJSON,
 		&errorMessage,
 	)
 	if err != nil {
@@ -732,6 +970,22 @@ func (s *BackupStore) GetRun(ctx context.Context, runID int64) (*BackupRun, erro
 		return nil, err
 	}
 	run.CategoryCounts = counts
+	if categories, err := unmarshalCategories(categoriesJSON); err != nil {
+		return nil, err
+	} else {
+		run.Categories = categories
+	}
+	if tagList, err := unmarshalTags(tagsJSON); err != nil {
+		return nil, err
+	} else {
+		run.Tags = tagList
+	}
+	if categoriesJSON.Valid {
+		run.categoriesJSON = &categoriesJSON.String
+	}
+	if tagsJSON.Valid {
+		run.tagsJSON = &tagsJSON.String
+	}
 
 	return &run, nil
 }

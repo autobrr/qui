@@ -239,6 +239,8 @@ export interface BackupRun {
   totalBytes: number
   torrentCount: number
   categoryCounts?: Record<string, number>
+  categories?: Record<string, BackupCategorySnapshot>
+  tags?: string[]
   errorMessage?: string | null
 }
 
@@ -251,6 +253,11 @@ export interface BackupManifestItem {
   infohashV1?: string | null
   infohashV2?: string | null
   tags?: string[]
+  torrentBlob?: string
+}
+
+export interface BackupCategorySnapshot {
+  savePath?: string | null
 }
 
 export interface BackupManifest {
@@ -258,6 +265,8 @@ export interface BackupManifest {
   kind: BackupRunKind
   generatedAt: string
   torrentCount: number
+  categories?: Record<string, BackupCategorySnapshot>
+  tags?: string[]
   items: BackupManifestItem[]
 }
 

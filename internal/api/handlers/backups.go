@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/autobrr/qui/internal/backups"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/torrentname"
 )
 
 type BackupsHandler struct {
@@ -274,6 +276,121 @@ func (h *BackupsHandler) DownloadRun(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("Content-Disposition", "attachment; filename=\""+filepath.Base(absolutePath)+"\"")
 	http.ServeContent(w, r, filepath.Base(absolutePath), run.RequestedAt, file)
+}
+
+func (h *BackupsHandler) DownloadTorrentBlob(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	runID, err := strconv.ParseInt(chi.URLParam(r, "runID"), 10, 64)
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid run ID")
+		return
+	}
+
+	torrentHash := strings.ToLower(strings.TrimSpace(chi.URLParam(r, "torrentHash")))
+	if torrentHash == "" {
+		RespondError(w, http.StatusBadRequest, "Invalid torrent hash")
+		return
+	}
+
+	run, err := h.service.GetRun(r.Context(), runID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			RespondError(w, http.StatusNotFound, "Backup run not found")
+			return
+		}
+		RespondError(w, http.StatusInternalServerError, "Failed to load backup run")
+		return
+	}
+
+	if run.InstanceID != instanceID {
+		RespondError(w, http.StatusNotFound, "Backup run not found")
+		return
+	}
+
+	item, err := h.service.GetItem(r.Context(), runID, torrentHash)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			RespondError(w, http.StatusNotFound, "Torrent not found in backup")
+			return
+		}
+		RespondError(w, http.StatusInternalServerError, "Failed to load backup item")
+		return
+	}
+
+	if item.TorrentBlobPath == nil || strings.TrimSpace(*item.TorrentBlobPath) == "" {
+		RespondError(w, http.StatusNotFound, "Cached torrent unavailable")
+		return
+	}
+
+	dataDir := strings.TrimSpace(h.service.DataDir())
+	if dataDir == "" {
+		RespondError(w, http.StatusInternalServerError, "Backup data directory unavailable")
+		return
+	}
+
+	rel := filepath.Clean(*item.TorrentBlobPath)
+	absTarget, err := filepath.Abs(filepath.Join(dataDir, rel))
+	if err != nil {
+		RespondError(w, http.StatusInternalServerError, "Failed to resolve torrent path")
+		return
+	}
+
+	baseDir, err := filepath.Abs(dataDir)
+	if err != nil {
+		RespondError(w, http.StatusInternalServerError, "Failed to resolve data directory")
+		return
+	}
+
+	relCheck, err := filepath.Rel(baseDir, absTarget)
+	if err != nil || strings.HasPrefix(relCheck, "..") {
+		RespondError(w, http.StatusNotFound, "Cached torrent unavailable")
+		return
+	}
+
+	file, err := os.Open(absTarget)
+	if err != nil {
+		if os.IsNotExist(err) {
+			altRel := filepath.ToSlash(filepath.Join("backups", rel))
+			altAbs := filepath.Join(dataDir, altRel)
+			if altFile, altErr := os.Open(altAbs); altErr == nil {
+				file = altFile
+				defer file.Close()
+				absTarget = altAbs
+				rel = altRel
+				goto serve
+			}
+			RespondError(w, http.StatusNotFound, "Cached torrent file missing")
+			return
+		}
+		RespondError(w, http.StatusInternalServerError, "Failed to open torrent file")
+		return
+	}
+	defer file.Close()
+
+serve:
+
+	info, err := file.Stat()
+	if err != nil {
+		RespondError(w, http.StatusInternalServerError, "Failed to inspect torrent file")
+		return
+	}
+
+	filename := ""
+	if item.ArchiveRelPath != nil && strings.TrimSpace(*item.ArchiveRelPath) != "" {
+		filename = filepath.Base(filepath.ToSlash(*item.ArchiveRelPath))
+	}
+	if filename == "" {
+		filename = torrentname.SanitizeExportFilename(item.Name, item.TorrentHash, "", item.TorrentHash)
+	}
+
+	w.Header().Set("Content-Type", "application/x-bittorrent")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
+	http.ServeContent(w, r, filename, info.ModTime(), file)
 }
 
 func (h *BackupsHandler) DeleteRun(w http.ResponseWriter, r *http.Request) {

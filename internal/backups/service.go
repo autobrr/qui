@@ -6,18 +6,23 @@ package backups
 import (
 	"archive/zip"
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/rs/zerolog/log"
 
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/pkg/torrentname"
@@ -39,6 +44,7 @@ type Service struct {
 	store       *models.BackupStore
 	syncManager *qbittorrent.SyncManager
 	cfg         Config
+	cacheDir    string
 
 	jobs   chan job
 	wg     sync.WaitGroup
@@ -59,11 +65,13 @@ type job struct {
 
 // Manifest captures details about a backup run and its contents for API responses and archived metadata.
 type Manifest struct {
-	InstanceID   int            `json:"instanceId"`
-	Kind         string         `json:"kind"`
-	GeneratedAt  time.Time      `json:"generatedAt"`
-	TorrentCount int            `json:"torrentCount"`
-	Items        []ManifestItem `json:"items"`
+	InstanceID   int                                `json:"instanceId"`
+	Kind         string                             `json:"kind"`
+	GeneratedAt  time.Time                          `json:"generatedAt"`
+	TorrentCount int                                `json:"torrentCount"`
+	Categories   map[string]models.CategorySnapshot `json:"categories,omitempty"`
+	Tags         []string                           `json:"tags,omitempty"`
+	Items        []ManifestItem                     `json:"items"`
 }
 
 // ManifestItem describes a single torrent contained in a backup archive.
@@ -76,6 +84,7 @@ type ManifestItem struct {
 	InfoHashV1  *string  `json:"infohashV1,omitempty"`
 	InfoHashV2  *string  `json:"infohashV2,omitempty"`
 	Tags        []string `json:"tags,omitempty"`
+	TorrentBlob string   `json:"torrentBlob,omitempty"`
 }
 
 func NewService(store *models.BackupStore, syncManager *qbittorrent.SyncManager, cfg Config) *Service {
@@ -86,10 +95,19 @@ func NewService(store *models.BackupStore, syncManager *qbittorrent.SyncManager,
 		cfg.PollInterval = time.Minute
 	}
 
+	cacheDir := ""
+	if strings.TrimSpace(cfg.DataDir) != "" {
+		cacheDir = filepath.Join(cfg.DataDir, "backups", "torrents")
+		if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+			log.Warn().Err(err).Str("cacheDir", cacheDir).Msg("Failed to prepare torrent cache directory")
+		}
+	}
+
 	return &Service{
 		store:       store,
 		syncManager: syncManager,
 		cfg:         cfg,
+		cacheDir:    cacheDir,
 		jobs:        make(chan job, cfg.WorkerCount*2),
 		inflight:    make(map[int]int64),
 		now:         time.Now,
@@ -168,6 +186,8 @@ func (s *Service) handleJob(ctx context.Context, j job) {
 			run.TotalBytes = result.totalBytes
 			run.TorrentCount = result.torrentCount
 			run.CategoryCounts = result.categoryCounts
+			run.Categories = result.categories
+			run.Tags = result.tags
 			run.ErrorMessage = nil
 			return nil
 		})
@@ -196,6 +216,8 @@ type backupResult struct {
 	categoryCounts  map[string]int
 	items           []models.BackupItem
 	settings        *models.BackupSettings
+	categories      map[string]models.CategorySnapshot
+	tags            []string
 }
 
 func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, error) {
@@ -220,6 +242,34 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 
 	if err := os.MkdirAll(baseAbs, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to prepare backup directory: %w", err)
+	}
+
+	var snapshotCategories map[string]models.CategorySnapshot
+	if settings.IncludeCategories {
+		categories, err := s.syncManager.GetCategories(ctx, j.instanceID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load categories: %w", err)
+		}
+		if len(categories) > 0 {
+			snapshotCategories = make(map[string]models.CategorySnapshot, len(categories))
+			for name, cat := range categories {
+				snapshotCategories[name] = models.CategorySnapshot{SavePath: strings.TrimSpace(cat.SavePath)}
+			}
+		}
+	}
+
+	var snapshotTags []string
+	if settings.IncludeTags {
+		tags, err := s.syncManager.GetTags(ctx, j.instanceID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load tags: %w", err)
+		}
+		if len(tags) > 0 {
+			snapshotTags = append(snapshotTags, tags...)
+		}
+	}
+	if len(snapshotTags) > 1 {
+		sort.Strings(snapshotTags)
 	}
 
 	timestamp := s.now().UTC().Format("20060102T150405Z")
@@ -253,7 +303,7 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 	items := make([]models.BackupItem, 0, len(torrents))
 	manifestItems := make([]ManifestItem, 0, len(torrents))
 	usedPaths := make(map[string]int)
-	categories := make(map[string]int)
+	categoryCounts := make(map[string]int)
 	var totalBytes int64
 
 	for _, torrent := range torrents {
@@ -263,9 +313,32 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 		default:
 		}
 
-		data, suggestedName, trackerDomain, err := s.syncManager.ExportTorrent(ctx, j.instanceID, torrent.Hash)
+		var (
+			data          []byte
+			suggestedName string
+			trackerDomain string
+			blobRelPath   *string
+		)
+
+		cachedTorrent, err := s.loadCachedTorrent(ctx, j.instanceID, torrent.Hash)
 		if err != nil {
-			return nil, fmt.Errorf("export torrent %s: %w", torrent.Hash, err)
+			log.Warn().Err(err).Str("hash", torrent.Hash).Msg("Failed to load cached torrent blob")
+		}
+		if cachedTorrent != nil {
+			data = cachedTorrent.data
+			suggestedName = torrent.Name
+			trackerDomain = trackerDomainFromTorrent(torrent)
+			rel := cachedTorrent.relPath
+			blobRelPath = &rel
+		}
+
+		if data == nil {
+			var tracker string
+			data, suggestedName, tracker, err = s.syncManager.ExportTorrent(ctx, j.instanceID, torrent.Hash)
+			if err != nil {
+				return nil, fmt.Errorf("export torrent %s: %w", torrent.Hash, err)
+			}
+			trackerDomain = tracker
 		}
 
 		filename := torrentname.SanitizeExportFilename(suggestedName, torrent.Hash, trackerDomain, torrent.Hash)
@@ -273,9 +346,9 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 		var categoryPtr *string
 		if category != "" {
 			categoryPtr = &category
-			categories[category]++
+			categoryCounts[category]++
 		} else {
-			categories["(uncategorized)"]++
+			categoryCounts["(uncategorized)"]++
 		}
 
 		rawTags := ""
@@ -289,6 +362,19 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 		}
 
 		uniquePath := ensureUniquePath(archivePath, usedPaths)
+
+		if blobRelPath == nil && s.cacheDir != "" {
+			sum := sha256.Sum256(data)
+			blobName := hex.EncodeToString(sum[:]) + ".torrent"
+			absBlob := filepath.Join(s.cacheDir, blobName)
+			if _, err := os.Stat(absBlob); errors.Is(err, os.ErrNotExist) {
+				if err := os.WriteFile(absBlob, data, 0o644); err != nil && !errors.Is(err, os.ErrExist) {
+					return nil, fmt.Errorf("cache torrent blob: %w", err)
+				}
+			}
+			rel := filepath.ToSlash(filepath.Join("backups", "torrents", blobName))
+			blobRelPath = &rel
+		}
 
 		header := &zip.FileHeader{
 			Name:   uniquePath,
@@ -332,6 +418,9 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 		if rawTags != "" {
 			item.Tags = &rawTags
 		}
+		if blobRelPath != nil {
+			item.TorrentBlobPath = blobRelPath
+		}
 		items = append(items, item)
 
 		manifestItem := ManifestItem{
@@ -352,6 +441,9 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 		if rawTags != "" {
 			manifestItem.Tags = splitTags(rawTags)
 		}
+		if blobRelPath != nil {
+			manifestItem.TorrentBlob = *blobRelPath
+		}
 		manifestItems = append(manifestItems, manifestItem)
 	}
 
@@ -360,6 +452,8 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 		Kind:         string(j.kind),
 		GeneratedAt:  s.now().UTC(),
 		TorrentCount: len(manifestItems),
+		Categories:   snapshotCategories,
+		Tags:         snapshotTags,
 		Items:        manifestItems,
 	}
 
@@ -402,7 +496,9 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 		manifestRelPath: manifestPointer,
 		totalBytes:      totalBytes,
 		torrentCount:    len(manifestItems),
-		categoryCounts:  categories,
+		categoryCounts:  categoryCounts,
+		categories:      snapshotCategories,
+		tags:            snapshotTags,
 		items:           items,
 		settings:        settings,
 	}, nil
@@ -488,6 +584,9 @@ func splitTags(raw string) []string {
 	}
 	if len(result) == 0 {
 		return nil
+	}
+	if len(result) > 1 {
+		sort.Strings(result)
 	}
 	return result
 }
@@ -693,6 +792,10 @@ func (s *Service) GetRun(ctx context.Context, runID int64) (*models.BackupRun, e
 	return s.store.GetRun(ctx, runID)
 }
 
+func (s *Service) GetItem(ctx context.Context, runID int64, hash string) (*models.BackupItem, error) {
+	return s.store.GetItemByHash(ctx, runID, hash)
+}
+
 func (s *Service) DeleteRun(ctx context.Context, runID int64) error {
 	run, err := s.store.GetRun(ctx, runID)
 	if err != nil {
@@ -725,6 +828,8 @@ func (s *Service) LoadManifest(ctx context.Context, runID int64) (*Manifest, err
 		Kind:         string(run.Kind),
 		GeneratedAt:  run.RequestedAt,
 		TorrentCount: len(items),
+		Categories:   run.Categories,
+		Tags:         run.Tags,
 		Items:        make([]ManifestItem, 0, len(items)),
 	}
 
@@ -750,6 +855,9 @@ func (s *Service) LoadManifest(ctx context.Context, runID int64) (*Manifest, err
 		if item.Tags != nil {
 			entry.Tags = splitTags(*item.Tags)
 		}
+		if item.TorrentBlobPath != nil {
+			entry.TorrentBlob = *item.TorrentBlobPath
+		}
 		manifest.Items = append(manifest.Items, entry)
 	}
 
@@ -759,4 +867,74 @@ func (s *Service) LoadManifest(ctx context.Context, runID int64) (*Manifest, err
 // DataDir returns the base data directory used for backups.
 func (s *Service) DataDir() string {
 	return s.cfg.DataDir
+}
+
+type cachedTorrent struct {
+	data    []byte
+	relPath string
+}
+
+func (s *Service) loadCachedTorrent(ctx context.Context, instanceID int, hash string) (*cachedTorrent, error) {
+	if s.cacheDir == "" || strings.TrimSpace(s.cfg.DataDir) == "" {
+		return nil, nil
+	}
+
+	rel, err := s.store.FindCachedTorrentBlob(ctx, instanceID, hash)
+	if err != nil {
+		return nil, err
+	}
+	if rel == nil {
+		return nil, nil
+	}
+
+	absPath := filepath.Join(s.cfg.DataDir, *rel)
+	data, err := os.ReadFile(absPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			altRel := filepath.ToSlash(filepath.Join("backups", *rel))
+			altAbs := filepath.Join(s.cfg.DataDir, altRel)
+			if altData, altErr := os.ReadFile(altAbs); altErr == nil {
+				return &cachedTorrent{data: altData, relPath: altRel}, nil
+			} else if errors.Is(altErr, os.ErrNotExist) {
+				return nil, nil
+			} else {
+				return nil, altErr
+			}
+		}
+		return nil, err
+	}
+
+	return &cachedTorrent{data: data, relPath: *rel}, nil
+}
+
+func trackerDomainFromTorrent(t qbt.Torrent) string {
+	if host := hostFromURL(t.Tracker); host != "" {
+		return host
+	}
+
+	for _, tracker := range t.Trackers {
+		if host := hostFromURL(tracker.Url); host != "" {
+			return host
+		}
+	}
+
+	return ""
+}
+
+func hostFromURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+
+	if !strings.Contains(raw, "://") {
+		raw = "http://" + raw
+	}
+
+	u, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+
+	return u.Hostname()
 }
