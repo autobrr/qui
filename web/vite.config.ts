@@ -13,17 +13,20 @@ import { fileURLToPath } from "node:url"
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // https://vite.dev/config/
-export default defineConfig(({ mode }) => ({
+export default defineConfig(() => ({
   plugins: [
     react({
       // React 19 requires the new JSX transform
       jsxRuntime: "automatic",
     }),
     tailwindcss(),
-    ...(mode === "production" ? [
-      VitePWA({
-        registerType: "autoUpdate",
-        workbox: {
+    VitePWA({
+      registerType: "autoUpdate",
+      injectRegister: null,
+      devOptions: {
+        enabled: false,
+      },
+      workbox: {
           globPatterns: ["**/*.{js,css,html,ico,png,svg,webp}"],
           maximumFileSizeToCacheInBytes: 3 * 1024 * 1024, // 3 MiB
           runtimeCaching: [
@@ -52,40 +55,39 @@ export default defineConfig(({ mode }) => ({
             },
           ],
         },
-        includeAssets: ["favicon.png", "apple-touch-icon.png"],
-        manifest: {
-          name: "qui",
-          short_name: "qui",
-          description: "Alternative WebUI for qBittorrent - manage your torrents with a modern interface",
-          theme_color: "#000000", // Will be updated dynamically by PWA theme manager
-          background_color: "#000000",
-          display: "standalone",
-          scope: "/",
-          start_url: "/",
-          categories: ["utilities", "productivity"],
-          icons: [
-            {
-              src: "pwa-192x192.png",
-              sizes: "192x192",
-              type: "image/png",
-              purpose: "any",
-            },
-            {
-              src: "pwa-512x512.png",
-              sizes: "512x512",
-              type: "image/png",
-              purpose: "any",
-            },
-            {
-              src: "pwa-512x512.png",
-              sizes: "512x512",
-              type: "image/png",
-              purpose: "maskable",
-            },
-          ],
-        },
-      }),
-    ] : []),
+      includeAssets: ["favicon.png", "apple-touch-icon.png"],
+      manifest: {
+        name: "qui",
+        short_name: "qui",
+        description: "Alternative WebUI for qBittorrent - manage your torrents with a modern interface",
+        theme_color: "#000000", // Will be updated dynamically by PWA theme manager
+        background_color: "#000000",
+        display: "standalone",
+        scope: "/",
+        start_url: "/",
+        categories: ["utilities", "productivity"],
+        icons: [
+          {
+            src: "pwa-192x192.png",
+            sizes: "192x192",
+            type: "image/png",
+            purpose: "any",
+          },
+          {
+            src: "pwa-512x512.png",
+            sizes: "512x512",
+            type: "image/png",
+            purpose: "any",
+          },
+          {
+            src: "pwa-512x512.png",
+            sizes: "512x512",
+            type: "image/png",
+            purpose: "maskable",
+          },
+        ],
+      },
+    }),
   ],
   resolve: {
     alias: {

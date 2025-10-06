@@ -184,7 +184,7 @@ const FilterSidebarComponent = ({
   const supportsTrackerEditing = capabilities?.supportsTrackerEditing ?? true
 
   // Use compact view state hook
-  const { viewMode, cycleViewMode } = usePersistedCompactViewState("normal")
+  const { viewMode, cycleViewMode } = usePersistedCompactViewState("compact")
 
   // Helper function to get count display - shows 0 when loading to prevent showing stale counts from previous instance
   const getDisplayCount = useCallback((key: string, fallbackCount?: number): string => {
