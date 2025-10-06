@@ -14,6 +14,7 @@ import (
 	"github.com/CAFxX/httpcompression"
 	"github.com/alexedwards/scs/v2"
 	"github.com/go-chi/chi/v5"
+	"github.com/rs/cors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
@@ -156,12 +157,17 @@ func (s *Server) Handler() (*chi.Mux, error) {
 		r.Use(compressor)
 	}
 
-	// CORS - configure based on your needs
-	allowedOrigins := []string{"http://localhost:3000", "http://localhost:5173"}
-	if s.config.Config.BaseURL != "" {
-		allowedOrigins = append(allowedOrigins, s.config.Config.BaseURL)
-	}
-	r.Use(middleware.CORSWithCredentials(allowedOrigins))
+	// CORS - mirror autobrr's permissive credentials setup
+	corsMiddleware := cors.New(cors.Options{
+		AllowCredentials:   true,
+		AllowedMethods:     []string{"HEAD", "OPTIONS", "GET", "POST", "PUT", "PATCH", "DELETE"},
+		AllowedHeaders:     []string{"Accept", "Authorization", "Content-Type", "X-API-Key"},
+		AllowOriginFunc:    func(origin string) bool { return true },
+		OptionsPassthrough: true,
+		MaxAge:             300,
+		Debug:              false,
+	})
+	r.Use(corsMiddleware.Handler)
 
 	// Session middleware - must be added before any session-dependent middleware
 	r.Use(s.sessionManager.LoadAndSave)
