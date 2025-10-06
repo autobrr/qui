@@ -136,6 +136,7 @@ export function columnFilterToExpr(filter: ColumnFilter): string | null {
   const isDurationColumn = columnType === "duration"
   const isDateColumn = columnType === "date"
   const isBooleanColumn = columnType === "boolean"
+  const isProgressColumn = filter.columnId === "progress"
 
   if (filter.operation === "between") {
     if (!filter.value2) {
@@ -183,6 +184,11 @@ export function columnFilterToExpr(filter: ColumnFilter): string | null {
       console.warn(`Invalid numeric values for column ${filter.columnId}`)
       return null
     }
+    if (isProgressColumn) {
+      const fractionValue1 = numericValue1 / 100
+      const fractionValue2 = numericValue2 / 100
+      return `(${fieldName} >= ${fractionValue1} && ${fieldName} <= ${fractionValue2})`
+    }
     return `(${fieldName} >= ${numericValue1} && ${fieldName} <= ${numericValue2})`
   }
 
@@ -218,6 +224,16 @@ export function columnFilterToExpr(filter: ColumnFilter): string | null {
   if (isBooleanColumn) {
     const boolValue = filter.value.toLowerCase() === "true"
     return `${fieldName} ${operator} ${boolValue}`
+  }
+
+  if (isProgressColumn) {
+    const numericValue = Number(filter.value)
+    if (isNaN(numericValue)) {
+      console.warn(`Invalid numeric value for progress column ${filter.columnId}: ${filter.value}`)
+      return null
+    }
+    const fractionValue = numericValue / 100
+    return `${fieldName} ${operator} ${fractionValue}`
   }
 
   const needsQuotes = isNaN(Number(filter.value)) ||
