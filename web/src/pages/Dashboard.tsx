@@ -132,9 +132,6 @@ function InstanceCard({
   const libtorrentVersion = qbittorrentAppInfo?.buildInfo?.libtorrent || ""
   const displayUrl = instance.host
   
-  // Get external IP address, preferring IPv4 over IPv6
-  const externalIP = serverState?.last_external_address_v4 || serverState?.last_external_address_v6 || ""
-
   // Determine card state
   const isFirstLoad = isLoading && !stats
   const isDisconnected = (stats && !instance.connected) || (!isFirstLoad && !instance.connected)
@@ -241,7 +238,7 @@ function InstanceCard({
               </Badge>
             </div>
           </div>
-          {(appVersion || webAPIVersion || libtorrentVersion || externalIP) && (
+          {(appVersion || webAPIVersion || libtorrentVersion) && (
             <CardDescription className="flex flex-wrap items-center gap-1.5 text-xs">
               {appVersion && (
                 <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">
