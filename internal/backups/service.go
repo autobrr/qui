@@ -660,6 +660,12 @@ func (s *Service) QueueRun(ctx context.Context, instanceID int, kind models.Back
 	select {
 	case <-ctx.Done():
 		s.clearInstance(instanceID, run.ID)
+
+		cleanupCtx, cancelCleanup := context.WithTimeout(context.Background(), 5*time.Second)
+		if err := s.store.DeleteRun(cleanupCtx, run.ID); err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Int64("runID", run.ID).Msg("Failed to remove canceled backup run")
+		}
+		cancelCleanup()
 		return nil, ctx.Err()
 	case s.jobs <- job{runID: run.ID, instanceID: instanceID, kind: kind}:
 	}
