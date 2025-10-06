@@ -3,12 +3,12 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import tailwindcss from "@tailwindcss/vite"
+import { defineConfig } from "vite"
 import react from "@vitejs/plugin-react"
+import tailwindcss from "@tailwindcss/vite"
+import { VitePWA } from "vite-plugin-pwa"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
-import { defineConfig } from "vite"
-import { VitePWA } from "vite-plugin-pwa"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -97,9 +97,8 @@ export default defineConfig(() => ({
   server: {
     proxy: {
       "/api": {
-        target: "http://127.0.0.1:7476",
+        target: "http://localhost:7476",
         changeOrigin: true,
-        secure: false,
       },
     },
   },
