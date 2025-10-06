@@ -43,12 +43,13 @@ import { useDebounce } from "@/hooks/useDebounce"
 import { TORRENT_ACTIONS, useTorrentActions, type TorrentAction } from "@/hooks/useTorrentActions"
 import { useTorrentsList } from "@/hooks/useTorrentsList"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
-import { useNavigate, useSearch } from "@tanstack/react-router"
+import { Link, useNavigate, useSearch } from "@tanstack/react-router"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import {
   ArrowUpDown,
   CheckCircle2,
   ChevronDown,
+  ChevronsUpDown,
   ChevronUp,
   Clock,
   Eye,
@@ -58,6 +59,7 @@ import {
   Folder,
   FolderOpen,
   Gauge,
+  HardDrive,
   Info,
   ListTodo,
   Loader2,
@@ -88,7 +90,7 @@ import { formatSpeedWithUnit, useSpeedUnits, type SpeedUnit } from "@/lib/speedU
 import { getStateLabel } from "@/lib/torrent-state-utils"
 import { getCommonCategory, getCommonSavePath, getCommonTags } from "@/lib/torrent-utils"
 import { cn, formatBytes } from "@/lib/utils"
-import type { Category, Torrent, TorrentCounts } from "@/types"
+import type { Category, InstanceResponse, Torrent, TorrentCounts } from "@/types"
 import { useQuery } from "@tanstack/react-query"
 
 // Mobile-friendly Share Limits Dialog
@@ -1492,85 +1494,7 @@ export function TorrentCardsMobile({
   return (
     <div className="relative flex h-full min-h-0 flex-col overflow-hidden">
       {/* Header with stats */}
-        <div className="pb-3">
-          <div className="flex items-center gap-2">
-            {instanceName && instances && instances.length > 1 ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    className="flex items-center text-lg font-semibold max-w-[55%] hover:opacity-80 transition-opacity rounded-sm px-1 -mx-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                    aria-label={`Current instance: ${instanceName}. Tap to switch instances.`}
-                    aria-haspopup="menu"
-                  >
-                    <span className="truncate">{instanceName}</span>
-                    <ChevronsUpDown className="h-3 w-3 text-muted-foreground ml-1 mt-0.5 opacity-60 flex-shrink-0" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-64 mt-2" side="bottom" align="start">
-                  <DropdownMenuLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                    {t("common.titles.instances")}
-                  </DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <div className="max-h-64 overflow-y-auto space-y-2">
-                    {instances.map((instance) => (
-                      <DropdownMenuItem key={instance.id} asChild>
-                        <Link
-                          to="/instances/$instanceId"
-                          params={{ instanceId: instance.id.toString() }}
-                          className={cn(
-                            "flex items-center gap-2 cursor-pointer",
-                            instance.id === instanceId && "font-medium"
-                          )}
-                        >
-                          <HardDrive className="h-4 w-4 flex-shrink-0" />
-                          <span className="flex-1 truncate">{instance.name}</span>
-                          <span
-                            className={cn(
-                              "h-2 w-2 rounded-full flex-shrink-0",
-                              instance.connected ? "bg-green-500" : "bg-red-500"
-                            )}
-                            aria-label={instance.connected ? t("instances.instance_connected") : t("instances.instance_disconnected")}
-                          />
-                        </Link>
-                      </DropdownMenuItem>
-                    ))}
-                  </div>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : (
-              <div className="text-lg font-semibold truncate max-w-[55%]">
-                {instanceName ?? ""}
-              </div>
-            )}
-            <div className="flex-1"/>
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() => setIncognitoMode(!incognitoMode)}
-              title={incognitoMode ? t("torrent_table_optimized.exit_incognito") : t("torrent_table_optimized.enable_incognito")}
-            >
-              {incognitoMode ? <EyeOff className="h-4 w-4"/> : <Eye className="h-4 w-4"/>}
-            </Button>
-            {/* Columns control hidden on mobile */}
-            {/* Filters button (opens mobile filters sheet) */}
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => window.dispatchEvent(new Event("qui-open-mobile-filters"))}
-              title={t("common.filters")}
-            >
-              <Filter className="h-4 w-4"/>
-            </Button>
-
-            <Button
-              size="icon"
-              variant="outline"
-              onClick={() => onAddTorrentModalChange?.(true)}
-            >
-              <Plus className="h-4 w-4"/>
-            </Button>
-          </div>
-        </div>
+      <div className="sticky top-0 z-40 bg-background">
         {/* Stats bar */}
         <div className="flex items-center justify-between text-xs mb-3">
           <div className="text-muted-foreground">
@@ -1618,7 +1542,7 @@ export function TorrentCardsMobile({
               className="h-7 px-2 text-xs font-medium text-primary hover:text-primary"
               aria-label="Clear search filter"
             >
-              Clear
+              {t("common.buttons.clear")}
               <X className="ml-1 h-3 w-3" aria-hidden="true" />
             </Button>
           </div>
@@ -2120,16 +2044,16 @@ export function TorrentCardsMobile({
       <Dialog open={showSearchModal} onOpenChange={setShowSearchModal}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Search Torrents</DialogTitle>
+            <DialogTitle>{t("torrent_dialogs.search.title")}</DialogTitle>
             <DialogDescription>
-              Search by name, category, or tags. Supports glob patterns like *.mkv or *1080p*.
+              {t("torrent_dialogs.search.description")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"/>
               <Input
-                placeholder="Search torrents..."
+                placeholder={t("torrent_dialogs.search.placeholder")}
                 value={globalFilter}
                 onChange={(e) => setGlobalFilter(e.target.value)}
                 onKeyDown={(e) => {
@@ -2161,12 +2085,12 @@ export function TorrentCardsMobile({
               <div className="flex items-start gap-2">
                 <Info className="h-4 w-4 flex-shrink-0 mt-0.5"/>
                 <div className="space-y-1">
-                  <p className="font-semibold">Search Features:</p>
+                  <p className="font-semibold">{t("torrent_dialogs.search.features_title")}</p>
                   <ul className="space-y-1 ml-2">
-                    <li>• <strong>Glob patterns:</strong> *.mkv, *1080p*, S??E??</li>
-                    <li>• <strong>Fuzzy matching:</strong> "breaking bad" finds "Breaking.Bad"</li>
-                    <li>• Searches name, category, and tags</li>
-                    <li>• Auto-searches after typing</li>
+                    <li>• <strong>{t("torrent_dialogs.search.glob_patterns_title")}:</strong> *.mkv, *1080p*, S??E??</li>
+                    <li>• <strong>{t("torrent_dialogs.search.fuzzy_matching_title")}:</strong> "breaking bad" finds "Breaking.Bad"</li>
+                    <li>• {t("torrent_dialogs.search.searches_in_fields")}</li>
+                    <li>• {t("torrent_dialogs.search.auto_searches")}</li>
                   </ul>
                 </div>
               </div>
@@ -2174,10 +2098,10 @@ export function TorrentCardsMobile({
           </div>
           <DialogFooter className="sm:justify-between">
             <Button variant="outline" onClick={handleClearSearchAndClose}>
-              Clear
+              {t("common.buttons.clear")}
             </Button>
             <Button onClick={() => setShowSearchModal(false)}>
-              Done
+              {t("common.buttons.done")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2204,7 +2128,7 @@ export function TorrentCardsMobile({
               className="flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground active:scale-95"
             >
               <Search className="h-5 w-5"/>
-              <span className="truncate text-[10px]">Search</span>
+              <span className="truncate text-[10px]">{t("bottom_nav.search")}</span>
             </button>
 
             <button
@@ -2212,7 +2136,7 @@ export function TorrentCardsMobile({
               className="flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground active:scale-95"
             >
               {incognitoMode ? <EyeOff className="h-5 w-5"/> : <Eye className="h-5 w-5"/>}
-              <span className="truncate text-[10px]">Incognito</span>
+              <span className="truncate text-[10px]">{t("bottom_nav.incognito")}</span>
             </button>
 
             <button
@@ -2220,7 +2144,7 @@ export function TorrentCardsMobile({
               className="flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground active:scale-95"
             >
               <Filter className="h-5 w-5"/>
-              <span className="truncate text-[10px]">Filters</span>
+              <span className="truncate text-[10px]">{t("common.filters")}</span>
             </button>
 
             <button
@@ -2228,7 +2152,7 @@ export function TorrentCardsMobile({
               className="flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground active:scale-95"
             >
               <Plus className="h-5 w-5"/>
-              <span className="truncate text-[10px]">Add</span>
+              <span className="truncate text-[10px]">{t("bottom_nav.add")}</span>
             </button>
 
             {supportsTorrentCreation && (
@@ -2240,7 +2164,7 @@ export function TorrentCardsMobile({
                 className="flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground active:scale-95"
               >
                 <FileEdit className="h-5 w-5"/>
-                <span className="truncate text-[10px]">Create</span>
+                <span className="truncate text-[10px]">{t("bottom_nav.create")}</span>
               </button>
             )}
 
@@ -2258,7 +2182,7 @@ export function TorrentCardsMobile({
                     {activeTaskCount}
                   </Badge>
                 )}
-                <span className="truncate text-[10px]">Tasks</span>
+                <span className="truncate text-[10px]">{t("bottom_nav.tasks")}</span>
               </button>
             )}
           </div>

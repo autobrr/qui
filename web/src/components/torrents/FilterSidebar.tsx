@@ -108,8 +108,6 @@ interface FilterSidebarProps {
 }
 
 
-// Define torrent states based on qBittorrent
-<<<<<<< HEAD
 const TORRENT_STATES: Array<{ value: string; icon: LucideIcon }> = [
   { value: "downloading", icon: Download },
   { value: "uploading", icon: Upload },
