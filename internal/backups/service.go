@@ -779,6 +779,11 @@ func (s *Service) cleanupRunFiles(ctx context.Context, runIDs []int64) error {
 			continue
 		}
 
+		items, err := s.store.ListItems(ctx, runID)
+		if err != nil {
+			log.Warn().Err(err).Int64("runID", runID).Msg("Failed to list backup items for cleanup")
+		}
+
 		if run.ManifestPath != nil {
 			_ = os.Remove(filepath.Join(s.cfg.DataDir, *run.ManifestPath))
 		}
@@ -788,6 +793,8 @@ func (s *Service) cleanupRunFiles(ctx context.Context, runIDs []int64) error {
 		if err := s.store.CleanupRun(ctx, runID); err != nil {
 			log.Warn().Err(err).Int64("runID", runID).Msg("Failed to cleanup run from database")
 		}
+
+		s.cleanupTorrentBlobs(ctx, items)
 	}
 
 	return nil
@@ -819,6 +826,12 @@ func (s *Service) DeleteRun(ctx context.Context, runID int64) error {
 		return err
 	}
 
+	items, err := s.store.ListItems(ctx, runID)
+	if err != nil {
+		log.Warn().Err(err).Int64("runID", runID).Msg("Failed to list backup items before delete")
+		items = nil
+	}
+
 	if run.ManifestPath != nil {
 		_ = os.Remove(filepath.Join(s.cfg.DataDir, *run.ManifestPath))
 	}
@@ -826,7 +839,13 @@ func (s *Service) DeleteRun(ctx context.Context, runID int64) error {
 		_ = os.Remove(filepath.Join(s.cfg.DataDir, *run.ArchivePath))
 	}
 
-	return s.store.CleanupRun(ctx, runID)
+	if err := s.store.CleanupRun(ctx, runID); err != nil {
+		return err
+	}
+
+	s.cleanupTorrentBlobs(ctx, items)
+
+	return nil
 }
 
 func (s *Service) LoadManifest(ctx context.Context, runID int64) (*Manifest, error) {
@@ -922,6 +941,49 @@ func (s *Service) loadCachedTorrent(ctx context.Context, instanceID int, hash st
 	}
 
 	return &cachedTorrent{data: data, relPath: *rel}, nil
+}
+
+func (s *Service) cleanupTorrentBlobs(ctx context.Context, items []*models.BackupItem) {
+	if len(items) == 0 {
+		return
+	}
+
+	seen := make(map[string]struct{})
+
+	for _, item := range items {
+		if item == nil || item.TorrentBlobPath == nil {
+			continue
+		}
+
+		rel := strings.TrimSpace(*item.TorrentBlobPath)
+		if rel == "" {
+			continue
+		}
+		if _, ok := seen[rel]; ok {
+			continue
+		}
+
+		seen[rel] = struct{}{}
+
+		count, err := s.store.CountBlobReferences(ctx, rel)
+		if err != nil {
+			log.Warn().Err(err).Str("blob", rel).Msg("Failed to count torrent blob references")
+			continue
+		}
+		if count > 0 {
+			continue
+		}
+
+		if s.cfg.DataDir == "" {
+			log.Warn().Str("blob", rel).Msg("Cannot cleanup torrent blob without data directory")
+			continue
+		}
+
+		abs := filepath.Join(s.cfg.DataDir, rel)
+		if err := os.Remove(abs); err != nil && !errors.Is(err, os.ErrNotExist) {
+			log.Warn().Err(err).Str("blob", rel).Msg("Failed to delete torrent blob")
+		}
+	}
 }
 
 func trackerDomainFromTorrent(t qbt.Torrent) string {

@@ -812,6 +812,16 @@ func (s *BackupStore) FindCachedTorrentBlob(ctx context.Context, instanceID int,
 	return &trimmed, nil
 }
 
+func (s *BackupStore) CountBlobReferences(ctx context.Context, relPath string) (int, error) {
+	var count int
+	err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM instance_backup_items
+		WHERE torrent_blob_path = ?
+	`, relPath).Scan(&count)
+	return count, err
+}
+
 func (s *BackupStore) GetInstanceName(ctx context.Context, instanceID int) (string, error) {
 	var name string
 	err := s.db.QueryRowContext(ctx, "SELECT name FROM instances WHERE id = ?", instanceID).Scan(&name)
