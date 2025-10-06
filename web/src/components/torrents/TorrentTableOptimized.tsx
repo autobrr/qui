@@ -276,7 +276,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   // Column order with persistence (get default order at runtime to avoid initialization order issues)
   const [columnOrder, setColumnOrder] = usePersistedColumnOrder(getDefaultColumnOrder(), instanceId)
   // Column sizing with persistence
-  const [columnSizing, setColumnSizing] = usePersistedColumnSizing(DEFAULT_COLUMN_SIZING)
+  const [columnSizing, setColumnSizing] = usePersistedColumnSizing(DEFAULT_COLUMN_SIZING, instanceId)
 
   // Progressive loading state with async management
   const [loadedRows, setLoadedRows] = useState(100)
