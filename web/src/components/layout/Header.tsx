@@ -37,6 +37,7 @@ import { Link, useNavigate, useRouterState, useSearch } from "@tanstack/react-ro
 import { ChevronsUpDown, FileEdit, FunnelPlus, FunnelX, HardDrive, Home, Info, ListTodo, LogOut, Menu, Plus, Search, Server, Settings, X } from "lucide-react"
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useHotkeys } from "react-hotkeys-hook"
+import { useTranslation, Trans } from "react-i18next";
 
 interface HeaderProps {
   children?: ReactNode
@@ -47,6 +48,7 @@ export function Header({
   children,
   sidebarCollapsed = false,
 }: HeaderProps) {
+  const { t } = useTranslation();
   const { logout } = useAuth()
   const navigate = useNavigate()
   const routeSearch = useSearch({ strict: false }) as { q?: string; modal?: string; [key: string]: unknown }
@@ -166,7 +168,7 @@ export function Header({
                   sidebarCollapsed && "lg:flex", // Visible on desktop when sidebar collapsed
                   !shouldShowQuiOnMobile && "hidden sm:flex" // Hide on mobile when on instance routes
                 )}
-                aria-label={`Current instance: ${instanceName}. Click to switch instances.`}
+                aria-label={t("header.switchInstanceAriaLabel", { instanceName })}
                 aria-haspopup="menu"
               >
                 {theme === "swizzin" ? (
@@ -182,7 +184,7 @@ export function Header({
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-64 mt-2" side="bottom" align="start">
               <DropdownMenuLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                Switch Instance
+                {t("header.switchInstance")}
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <div className="max-h-64 overflow-y-auto space-y-1">
@@ -203,7 +205,7 @@ export function Header({
                           "h-2 w-2 rounded-full flex-shrink-0",
                           instance.connected ? "bg-green-500" : "bg-red-500"
                         )}
-                        aria-label={instance.connected ? "Connected" : "Disconnected"}
+                        aria-label={t(instance.connected ? "instances.card.connected" : "instances.card.disconnected")}
                       />
                     </Link>
                   </DropdownMenuItem>
@@ -253,7 +255,7 @@ export function Header({
                   )}
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>{filterSidebarCollapsed ? "Show filters" : "Hide filters"}</TooltipContent>
+              <TooltipContent>{t(filterSidebarCollapsed ? "common.showFilters" : "common.hideFilters")}</TooltipContent>
             </Tooltip>
             {/* Add Torrent button */}
             <Tooltip>
@@ -270,7 +272,7 @@ export function Header({
                   <Plus className="h-4 w-4"/>
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Add torrent</TooltipContent>
+              <TooltipContent>{t("dashboard.quickActions.addTorrent")}</TooltipContent>
             </Tooltip>
             {/* Create Torrent button - only show if instance supports it */}
             {supportsTorrentCreation && (
@@ -288,7 +290,7 @@ export function Header({
                     <FileEdit className="h-4 w-4"/>
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Create torrent</TooltipContent>
+                <TooltipContent>{t("dashboard.quickActions.createTorrent")}</TooltipContent>
               </Tooltip>
             )}
             {/* Tasks button - only show on instance routes if torrent creation is supported */}
@@ -312,7 +314,7 @@ export function Header({
                     )}
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Torrent creation tasks</TooltipContent>
+                <TooltipContent>{t("dashboard.quickActions.tasks")}</TooltipContent>
               </Tooltip>
             )}
           </div>
@@ -346,7 +348,7 @@ export function Header({
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none transition-opacity duration-300"/>
               <Input
                 ref={searchInputRef}
-                placeholder={isGlobSearch ? "Glob pattern..." : `Search torrents... (${shortcutKey})`}
+                placeholder={t(isGlobSearch ? "search.placeholder_glob" : "search.placeholder", { shortcutKey })}
                 value={searchValue}
                 onChange={(e) => setSearchValue(e.target.value)}
                 onKeyDown={(e) => {
@@ -390,7 +392,7 @@ export function Header({
                         <X className="h-3.5 w-3.5 text-muted-foreground"/>
                       </button>
                     </TooltipTrigger>
-                    <TooltipContent>Clear search</TooltipContent>
+                    <TooltipContent>{t("search.clear_tooltip")}</TooltipContent>
                   </Tooltip>
                 )}
                 {/* Info tooltip */}
@@ -406,14 +408,14 @@ export function Header({
                   </TooltipTrigger>
                   <TooltipContent className="max-w-xs">
                     <div className="space-y-2 text-xs">
-                      <p className="font-semibold">Smart Search Features:</p>
+                      <p className="font-semibold">{t("search.info_tooltip.title")}</p>
                       <ul className="space-y-1 ml-2">
-                        <li>• <strong>Glob patterns:</strong> *.mkv, *1080p*, S??E??</li>
-                        <li>• <strong>Fuzzy matching:</strong> "breaking bad" finds "Breaking.Bad"</li>
-                        <li>• Handles dots, underscores, and brackets</li>
-                        <li>• Searches name, category, and tags</li>
-                        <li>• Press Enter for instant search</li>
-                        <li>• Auto-searches after 500ms pause</li>
+                        <li>• <Trans i18nKey="search.info_tooltip.glob" components={{ strong: <strong /> }} /></li>
+                        <li>• <Trans i18nKey="search.info_tooltip.fuzzy" components={{ strong: <strong /> }} /></li>
+                        <li>• {t("search.info_tooltip.syntax")}</li>
+                        <li>• {t("search.info_tooltip.scope")}</li>
+                        <li>• {t("search.info_tooltip.instant")}</li>
+                        <li>• {t("search.info_tooltip.auto")}</li>
                       </ul>
                     </div>
                   </TooltipContent>
@@ -445,7 +447,7 @@ export function Header({
                   className="flex cursor-pointer"
                 >
                   <Home className="mr-2 h-4 w-4"/>
-                  Dashboard
+                  {t("nav.dashboard")}
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
@@ -454,7 +456,7 @@ export function Header({
                   className="flex cursor-pointer"
                 >
                   <Server className="mr-2 h-4 w-4"/>
-                  Instances
+                  {t("common.titles.instances")}
                 </Link>
               </DropdownMenuItem>
               {instances && instances.length > 0 && (
@@ -486,13 +488,13 @@ export function Header({
                   className="flex cursor-pointer"
                 >
                   <Settings className="mr-2 h-4 w-4"/>
-                  Settings
+                  {t("common.titles.settings")}
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator/>
               <DropdownMenuItem onClick={() => logout()}>
                 <LogOut className="mr-2 h-4 w-4"/>
-                Logout
+                {t("nav.logout")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

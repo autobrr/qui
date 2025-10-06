@@ -63,7 +63,21 @@
     "qBittorrentClients": "qBittorrent Clients",
     "generalSettings": "General Settings",
     "manageInstances": "Manage Instances",
-    "github": "GitHub"
+    "github": "GitHub",
+    "appearance": {
+      "title": "Appearance",
+      "mode": "Mode",
+      "light": "Light",
+      "dark": "Dark",
+      "system": "System",
+      "theme": "Theme",
+      "premium": "Premium",
+      "toast": {
+        "switchMode": "Switched to {{mode}} mode",
+        "switchTheme": "Switched to {{theme}} them",
+        "premiumError": "This is a premium theme. Please purchase a license to use it."
+      }
+    }
   },
   "pages": {
     "instance": {
@@ -720,7 +734,9 @@
     "quickActions": {
       "title": "Quick Actions",
       "addTorrentTo": "Add to {{name}}",
-      "addTorrent": "Add Torrent"
+      "addTorrent": "Add Torrent",
+      "createTorrent": "Create torrent",
+      "tasks": "Torrent creation tasks"
     }
   },
   "instancePreferences": {

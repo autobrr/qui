@@ -63,7 +63,21 @@
     "qBittorrentClients": "qBittorrent 客户端",
     "generalSettings": "通用设置",
     "manageInstances": "管理实例",
-    "github": "GitHub"
+    "github": "GitHub",
+    "appearance": {
+      "title": "外观",
+      "mode": "模式",
+      "light": "浅色",
+      "dark": "深色",
+      "system": "系统",
+      "theme": "主题",
+      "premium": "高级",
+      "toast": {
+        "switchMode": "已切换到 {{mode}} 模式",
+        "switchTheme": "已切换到 {{theme}} 主题",
+        "premiumError": "这是一个高级主题。请购买许可证后使用。"
+      }
+    }
   },
   "pages": {
     "instance": {
@@ -720,7 +734,9 @@
     "quickActions": {
       "title": "快捷操作",
       "addTorrentTo": "添加到 {{name}}",
-      "addTorrent": "添加种子"
+      "addTorrent": "添加种子",
+      "createTorrent": "创建种子",
+      "tasks": "种子创建任务"
     }
   },
   "instancePreferences": {
