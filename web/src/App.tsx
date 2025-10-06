@@ -3,15 +3,17 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { RouterProvider } from "@tanstack/react-router"
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { router } from "./router"
-import { useEffect } from "react"
-import { initializeTheme } from "@/utils/theme"
-import { initializePWANativeTheme } from "@/utils/pwaNativeTheme"
-import { Toaster } from "@/components/ui/sonner"
 import { ThemeValidator } from "@/components/themes/ThemeValidator"
+import { Toaster } from "@/components/ui/sonner"
 import { useDynamicFavicon } from "@/hooks/useDynamicFavicon"
+import { initializePWANativeTheme } from "@/utils/pwaNativeTheme"
+import { initializeTheme } from "@/utils/theme"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { RouterProvider } from "@tanstack/react-router"
+import { useEffect } from "react"
+import { setupPWAAutoUpdate } from "./pwa"
+import { router } from "./router"
+
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -28,6 +30,10 @@ function App() {
   useEffect(() => {
     initializeTheme().catch(console.error)
     initializePWANativeTheme()
+
+    if (import.meta.env.PROD) {
+      setupPWAAutoUpdate()
+    }
   }, [])
 
   return (
