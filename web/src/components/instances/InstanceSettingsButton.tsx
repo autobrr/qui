@@ -4,6 +4,7 @@
  */
 
 import { useState } from "react"
+import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
 import { InstancePreferencesDialog } from "./preferences/InstancePreferencesDialog"
@@ -20,6 +21,7 @@ export function InstanceSettingsButton({
   instanceName,
   onClick,
 }: InstanceSettingsButtonProps) {
+  const { t } = useTranslation()
   const [preferencesOpen, setPreferencesOpen] = useState(false)
 
   const handleClick = (e: React.MouseEvent) => {
@@ -43,7 +45,7 @@ export function InstanceSettingsButton({
           </Button>
         </TooltipTrigger>
         <TooltipContent>
-          Instance Settings
+          {t("instances.settingsButton.tooltip")}
         </TooltipContent>
       </Tooltip>
 

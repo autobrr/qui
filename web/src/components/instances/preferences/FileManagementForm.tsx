@@ -19,6 +19,7 @@ import {
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { usePersistedStartPaused } from "@/hooks/usePersistedStartPaused"
 import { toast } from "sonner"
+import { useTranslation } from "react-i18next"
 
 function SwitchSetting({
   label,
@@ -50,6 +51,7 @@ interface FileManagementFormProps {
 }
 
 export function FileManagementForm({ instanceId, onSuccess }: FileManagementFormProps) {
+  const { t } = useTranslation()
   const { preferences, isLoading, updatePreferences, isUpdating } = useInstancePreferences(instanceId)
   const [startPausedEnabled, setStartPausedEnabled] = usePersistedStartPaused(instanceId, false)
 
@@ -73,10 +75,10 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
           torrent_content_layout: value.torrent_content_layout ?? "Original",
         }
         updatePreferences(qbittorrentPrefs)
-        toast.success("File management settings updated successfully")
+        toast.success(t("instancePreferences.content.fileManagement.notifications.saveSuccess"))
         onSuccess?.()
       } catch {
-        toast.error("Failed to update file management settings")
+        toast.error(t("instancePreferences.content.fileManagement.notifications.saveError"))
       }
     },
   })
@@ -98,7 +100,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
   if (isLoading) {
     return (
       <div className="text-center py-8">
-        <p className="text-sm text-muted-foreground">Loading file management settings...</p>
+        <p className="text-sm text-muted-foreground">{t("instancePreferences.content.fileManagement.loading")}</p>
       </div>
     )
   }
@@ -106,7 +108,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
   if (!preferences) {
     return (
       <div className="text-center py-8">
-        <p className="text-sm text-muted-foreground">Failed to load preferences</p>
+        <p className="text-sm text-muted-foreground">{t("instancePreferences.content.fileManagement.failed")}</p>
       </div>
     )
   }
@@ -123,10 +125,10 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
         <form.Field name="auto_tmm_enabled">
           {(field) => (
             <SwitchSetting
-              label="Automatic Torrent Management"
+              label={t("instancePreferences.content.fileManagement.autoTMM")}
               checked={field.state.value as boolean}
               onCheckedChange={field.handleChange}
-              description="Use category-based paths for downloads"
+              description={t("instancePreferences.content.fileManagement.autoTMMDescription")}
             />
           )}
         </form.Field>
@@ -134,10 +136,10 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
         <form.Field name="start_paused_enabled">
           {(field) => (
             <SwitchSetting
-              label="Start Torrents Paused"
+              label={t("instancePreferences.content.fileManagement.startPaused")}
               checked={field.state.value as boolean}
               onCheckedChange={field.handleChange}
-              description="New torrents start in paused state"
+              description={t("instancePreferences.content.fileManagement.startPausedDescription")}
             />
           )}
         </form.Field>
@@ -145,14 +147,14 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
         <form.Field name="save_path">
           {(field) => (
             <div className="space-y-2">
-              <Label className="text-sm font-medium">Default Save Path</Label>
+              <Label className="text-sm font-medium">{t("instancePreferences.content.fileManagement.defaultSavePath")}</Label>
               <p className="text-xs text-muted-foreground">
-                Default directory for downloading files
+                {t("instancePreferences.content.fileManagement.defaultSavePathDescription")}
               </p>
               <Input
                 value={field.state.value as string}
                 onChange={(e) => field.handleChange(e.target.value)}
-                placeholder="/downloads"
+                placeholder={t("instancePreferences.content.fileManagement.placeholderPath")}
               />
             </div>
           )}
@@ -161,21 +163,21 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
         <form.Field name="torrent_content_layout">
           {(field) => (
             <div className="space-y-2">
-              <Label className="text-sm font-medium">Default Content Layout</Label>
+              <Label className="text-sm font-medium">{t("instancePreferences.content.fileManagement.defaultContentLayout")}</Label>
               <p className="text-xs text-muted-foreground">
-                How torrent files are organized within the save directory
+                {t("instancePreferences.content.fileManagement.defaultContentLayoutDescription")}
               </p>
               <Select
                 value={field.state.value as string}
                 onValueChange={field.handleChange}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select content layout" />
+                  <SelectValue placeholder={t("instancePreferences.content.fileManagement.selectContentLayout")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Original">Original</SelectItem>
-                  <SelectItem value="Subfolder">Create subfolder</SelectItem>
-                  <SelectItem value="NoSubfolder">Don't create subfolder</SelectItem>
+                  <SelectItem value="Original">{t("instancePreferences.content.fileManagement.layoutOptions.original")}</SelectItem>
+                  <SelectItem value="Subfolder">{t("instancePreferences.content.fileManagement.layoutOptions.subfolder")}</SelectItem>
+                  <SelectItem value="NoSubfolder">{t("instancePreferences.content.fileManagement.layoutOptions.noSubfolder")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -193,7 +195,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
               disabled={!canSubmit || isSubmitting || isUpdating}
               className="min-w-32"
             >
-              {isSubmitting || isUpdating ? "Saving..." : "Save Changes"}
+              {isSubmitting || isUpdating ? t("instancePreferences.content.fileManagement.savingButton") : t("instancePreferences.content.fileManagement.saveButton")}
             </Button>
           )}
         </form.Subscribe>
