@@ -3,8 +3,20 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import type { ColumnFilter, DurationUnit, FilterOperation, SizeUnit } from "@/components/torrents/ColumnFilterPopover"
-import { DATE_COLUMNS, DURATION_COLUMNS, SIZE_COLUMNS } from "@/lib/column-constants"
+import type { ColumnFilter, DurationUnit, SizeUnit } from "@/components/torrents/ColumnFilterPopover"
+import {
+  BOOLEAN_COLUMNS,
+  BOOLEAN_OPERATIONS,
+  type ColumnType,
+  DATE_COLUMNS,
+  DATE_OPERATIONS,
+  DURATION_COLUMNS,
+  type FilterOperation,
+  NUMERIC_COLUMNS,
+  NUMERIC_OPERATIONS,
+  SIZE_COLUMNS,
+  STRING_OPERATIONS
+} from "@/lib/column-constants"
 import type { Torrent } from "@/types"
 
 const COLUMN_TO_QB_FIELD: Partial<Record<keyof Torrent, string>> = {
@@ -119,13 +131,19 @@ export function columnFilterToExpr(filter: ColumnFilter): string | null {
     return null
   }
 
+  const columnType = getColumnType(filter.columnId)
+  const isSizeColumn = columnType === "size"
+  const isDurationColumn = columnType === "duration"
+  const isDateColumn = columnType === "date"
+  const isBooleanColumn = columnType === "boolean"
+
   if (filter.operation === "between") {
     if (!filter.value2) {
       console.warn(`Between operation requires value2 for column ${filter.columnId}`)
       return null
     }
 
-    if (SIZE_COLUMNS.includes(filter.columnId as typeof SIZE_COLUMNS[number]) && filter.sizeUnit) {
+    if (isSizeColumn && filter.sizeUnit) {
       const numericValue1 = Number(filter.value)
       const numericValue2 = Number(filter.value2)
       if (isNaN(numericValue1) || isNaN(numericValue2)) {
@@ -137,7 +155,7 @@ export function columnFilterToExpr(filter: ColumnFilter): string | null {
       return `(${fieldName} >= ${bytesValue1} && ${fieldName} <= ${bytesValue2})`
     }
 
-    if (DURATION_COLUMNS.includes(filter.columnId as typeof DURATION_COLUMNS[number]) && filter.durationUnit) {
+    if (isDurationColumn && filter.durationUnit) {
       const numericValue1 = Number(filter.value)
       const numericValue2 = Number(filter.value2)
       if (isNaN(numericValue1) || isNaN(numericValue2)) {
@@ -149,7 +167,7 @@ export function columnFilterToExpr(filter: ColumnFilter): string | null {
       return `(${fieldName} >= ${secondsValue1} && ${fieldName} <= ${secondsValue2})`
     }
 
-    if (DATE_COLUMNS.includes(filter.columnId as typeof DATE_COLUMNS[number])) {
+    if (isDateColumn) {
       const timestamp1 = convertDateToTimestamp(filter.value)
       const timestamp2 = convertDateToTimestamp(filter.value2)
       if (isNaN(timestamp1) || isNaN(timestamp2)) {
@@ -168,7 +186,7 @@ export function columnFilterToExpr(filter: ColumnFilter): string | null {
     return `(${fieldName} >= ${numericValue1} && ${fieldName} <= ${numericValue2})`
   }
 
-  if (SIZE_COLUMNS.includes(filter.columnId as typeof SIZE_COLUMNS[number]) && filter.sizeUnit) {
+  if (isSizeColumn && filter.sizeUnit) {
     const numericValue = Number(filter.value)
     if (isNaN(numericValue)) {
       console.warn(`Invalid numeric value for size column ${filter.columnId}: ${filter.value}`)
@@ -178,7 +196,7 @@ export function columnFilterToExpr(filter: ColumnFilter): string | null {
     return `${fieldName} ${operator} ${bytesValue}`
   }
 
-  if (DURATION_COLUMNS.includes(filter.columnId as typeof DURATION_COLUMNS[number]) && filter.durationUnit) {
+  if (isDurationColumn && filter.durationUnit) {
     const numericValue = Number(filter.value)
     if (isNaN(numericValue)) {
       console.warn(`Invalid numeric value for duration column ${filter.columnId}: ${filter.value}`)
@@ -188,13 +206,18 @@ export function columnFilterToExpr(filter: ColumnFilter): string | null {
     return `${fieldName} ${operator} ${secondsValue}`
   }
 
-  if (DATE_COLUMNS.includes(filter.columnId as typeof DATE_COLUMNS[number])) {
+  if (isDateColumn) {
     const timestamp = convertDateToTimestamp(filter.value)
     if (isNaN(timestamp)) {
       console.warn(`Invalid date value for date column ${filter.columnId}: ${filter.value}`)
       return null
     }
     return `${fieldName} ${operator} ${timestamp}`
+  }
+
+  if (isBooleanColumn) {
+    const boolValue = filter.value.toLowerCase() === "true"
+    return `${fieldName} ${operator} ${boolValue}`
   }
 
   const needsQuotes = isNaN(Number(filter.value)) ||
@@ -244,27 +267,56 @@ export function columnFiltersToExpr(filters: ColumnFilter[], operator: string = 
   return exprParts.join(` ${operator} `)
 }
 
-export function getColumnType(columnId: string): "number" | "string" | "date" {
-  const numericColumns = [
-    "size", "total_size", "progress", "num_seeds", "num_complete",
-    "num_leechs", "num_incomplete", "dlspeed", "upspeed", "eta",
-    "ratio", "ratio_limit", "dl_limit", "up_limit", "downloaded",
-    "uploaded", "downloaded_session", "uploaded_session", "amount_left",
-    "time_active", "seeding_time", "completed", "availability",
-    "reannounce", "priority", "popularity",
-  ]
+export function getColumnType(columnId: string): ColumnType {
+  if (SIZE_COLUMNS.includes(columnId as typeof SIZE_COLUMNS[number])) {
+    return "size"
+  }
 
-  const dateColumns = [
-    "added_on", "completion_on", "seen_complete", "last_activity",
-  ]
+  if (DURATION_COLUMNS.includes(columnId as typeof DURATION_COLUMNS[number])) {
+    return "duration"
+  }
 
-  if (numericColumns.includes(columnId)) {
+  if (NUMERIC_COLUMNS.includes(columnId as typeof NUMERIC_COLUMNS[number])) {
     return "number"
   }
 
-  if (dateColumns.includes(columnId)) {
+  if (DATE_COLUMNS.includes(columnId as typeof DATE_COLUMNS[number])) {
     return "date"
   }
 
+
+  if (BOOLEAN_COLUMNS.includes(columnId as typeof BOOLEAN_COLUMNS[number])) {
+    return "boolean"
+  }
+
   return "string"
+}
+
+export function getDefaultOperation(columnType: ColumnType): FilterOperation {
+  switch (columnType) {
+    case "size":
+    case "duration":
+    case "number":
+    case "date":
+      return "gt"
+    case "boolean":
+      return "eq"
+    default:
+      return "contains"
+  }
+}
+
+export function getOperations(columnType: ColumnType) {
+  switch (columnType) {
+    case "size":
+    case "duration":
+    case "number":
+      return NUMERIC_OPERATIONS
+    case "date":
+      return DATE_OPERATIONS
+    case "boolean":
+      return BOOLEAN_OPERATIONS
+    default:
+      return STRING_OPERATIONS
+  }
 }

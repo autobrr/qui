@@ -80,6 +80,7 @@ type TorrentStats struct {
 // SyncManager manages torrent operations
 type SyncManager struct {
 	clientPool *ClientPool
+	exprCache  *ttlcache.Cache[string, *vm.Program]
 }
 
 // OptimisticTorrentUpdate represents a temporary optimistic update to a torrent
@@ -94,6 +95,7 @@ type OptimisticTorrentUpdate struct {
 func NewSyncManager(clientPool *ClientPool) *SyncManager {
 	return &SyncManager{
 		clientPool: clientPool,
+		exprCache:  ttlcache.New(ttlcache.Options[string, *vm.Program]{}.SetDefaultTTL(5 * time.Minute)),
 	}
 }
 
@@ -1597,9 +1599,16 @@ func (sm *SyncManager) applyManualFilters(client *Client, torrents []qbt.Torrent
 	var program *vm.Program
 	var compileErr error
 	if len(filters.Expr) > 0 {
-		program, compileErr = expr.Compile(filters.Expr, expr.Env(qbt.Torrent{}), expr.AsBool())
-		if compileErr != nil {
-			log.Error().Err(compileErr).Msg("Failed to compile expression")
+		if p, ok := sm.exprCache.Get(filters.Expr); ok {
+			log.Debug().Str("expr", filters.Expr).Msg("Using cached expression")
+			program = p
+		} else {
+			program, compileErr = expr.Compile(filters.Expr, expr.Env(qbt.Torrent{}), expr.AsBool())
+			if compileErr != nil {
+				log.Error().Err(compileErr).Msg("Failed to compile expression")
+			} else if ok := sm.exprCache.Set(filters.Expr, program, 5*time.Minute); !ok {
+				log.Warn().Str("expr", filters.Expr).Msg("Failed to cache expression")
+			}
 		}
 	}
 
@@ -1698,7 +1707,7 @@ func (sm *SyncManager) applyManualFilters(client *Client, torrents []qbt.Torrent
 
 			expResult, ok := result.(bool)
 			if !ok {
-				log.Error().Err(err).Msg("Expression result is not a boolean")
+				log.Error().Msg("Expression result is not a boolean")
 				continue
 			}
 

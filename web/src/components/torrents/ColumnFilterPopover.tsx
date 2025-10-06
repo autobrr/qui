@@ -8,22 +8,10 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { DURATION_COLUMNS, SIZE_COLUMNS } from "@/lib/column-constants"
+import { type ColumnType, type FilterOperation } from "@/lib/column-constants"
+import { getDefaultOperation, getOperations } from "@/lib/column-filter-utils"
 import { Filter, X } from "lucide-react"
-import { useState } from "react"
-
-export type FilterOperation =
-  | "eq" // equals
-  | "ne" // not equals
-  | "gt" // greater than
-  | "ge" // greater than or equal
-  | "lt" // less than
-  | "le" // less than or equal
-  | "between"
-  | "contains"
-  | "notContains"
-  | "startsWith"
-  | "endsWith"
+import { type KeyboardEvent, useState } from "react"
 
 export type SizeUnit = "B" | "KiB" | "MiB" | "GiB" | "TiB"
 
@@ -43,36 +31,10 @@ export interface ColumnFilter {
 interface ColumnFilterPopoverProps {
   columnId: string
   columnName: string
-  columnType: "number" | "string" | "date"
+  columnType: ColumnType
   currentFilter?: ColumnFilter
   onApply: (filter: ColumnFilter | null) => void
 }
-
-const NUMERIC_OPERATIONS: { value: FilterOperation; label: string }[] = [
-  { value: "eq", label: "Equal to" },
-  { value: "ne", label: "Not equal to" },
-  { value: "gt", label: "Greater than" },
-  { value: "ge", label: "Greater than or equal" },
-  { value: "lt", label: "Less than" },
-  { value: "le", label: "Less than or equal" },
-  { value: "between", label: "Between" },
-]
-
-const STRING_OPERATIONS: { value: FilterOperation; label: string }[] = [
-  { value: "eq", label: "Equals" },
-  { value: "ne", label: "Not equals" },
-  { value: "contains", label: "Contains" },
-  { value: "notContains", label: "Does not contain" },
-  { value: "startsWith", label: "Starts with" },
-  { value: "endsWith", label: "Ends with" },
-]
-
-const DATE_OPERATIONS: { value: FilterOperation; label: string }[] = [
-  { value: "eq", label: "On" },
-  { value: "gt", label: "After" },
-  { value: "lt", label: "Before" },
-  { value: "between", label: "Between" },
-]
 
 const SIZE_UNITS: { value: SizeUnit; label: string }[] = [
   { value: "B", label: "B" },
@@ -89,6 +51,107 @@ const DURATION_UNITS: { value: DurationUnit; label: string }[] = [
   { value: "days", label: "Days" },
 ]
 
+interface ValueInputProps {
+  columnType: ColumnType
+  value: string
+  onChange: (value: string) => void
+  unit?: { value: SizeUnit | DurationUnit; onChange: (unit: SizeUnit | DurationUnit) => void }
+  onKeyDown: (e: KeyboardEvent) => void
+}
+
+function ValueInput({ columnType, value, onChange, unit, onKeyDown }: ValueInputProps) {
+  const isSizeColumn = columnType === "size"
+  const isDurationColumn = columnType === "duration"
+  const isBooleanColumn = columnType === "boolean"
+
+  if (isSizeColumn && unit) {
+    return (
+      <div className="flex gap-2">
+        <Input
+          type="number"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="Enter size..."
+          onKeyDown={onKeyDown}
+          className="flex-1"
+        />
+        <Select
+          value={unit.value as string}
+          onValueChange={(v) => unit.onChange(v as SizeUnit)}
+        >
+          <SelectTrigger className="w-24">
+            <SelectValue/>
+          </SelectTrigger>
+          <SelectContent>
+            {SIZE_UNITS.map((u) => (
+              <SelectItem key={u.value} value={u.value}>
+                {u.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    )
+  }
+
+  if (isDurationColumn && unit) {
+    return (
+      <div className="flex gap-2">
+        <Input
+          type="number"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="Enter duration..."
+          onKeyDown={onKeyDown}
+          className="flex-1"
+        />
+        <Select
+          value={unit.value as string}
+          onValueChange={(v) => unit.onChange(v as DurationUnit)}
+        >
+          <SelectTrigger className="w-28">
+            <SelectValue/>
+          </SelectTrigger>
+          <SelectContent>
+            {DURATION_UNITS.map((u) => (
+              <SelectItem key={u.value} value={u.value}>
+                {u.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    )
+  }
+
+  if (isBooleanColumn) {
+    return (
+      <Select
+        value={value}
+        onValueChange={onChange}
+      >
+        <SelectTrigger>
+          <SelectValue placeholder="Select value"/>
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="true">True</SelectItem>
+          <SelectItem value="false">False</SelectItem>
+        </SelectContent>
+      </Select>
+    )
+  }
+
+  return (
+    <Input
+      type={columnType === "number" ? "number" : columnType === "date" ? "date" : "text"}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={`Enter ${columnType === "number" ? "number" : "value"}...`}
+      onKeyDown={onKeyDown}
+    />
+  )
+}
+
 export function ColumnFilterPopover({
   columnId,
   columnName,
@@ -98,9 +161,9 @@ export function ColumnFilterPopover({
 }: ColumnFilterPopoverProps) {
   const [open, setOpen] = useState(false)
   const [operation, setOperation] = useState<FilterOperation>(
-    currentFilter?.operation || (columnType === "number" ? "gt" : columnType === "date" ? "gt" : "contains")
+    currentFilter?.operation || getDefaultOperation(columnType)
   )
-  const [value, setValue] = useState(currentFilter?.value || "")
+  const [value, setValue] = useState(currentFilter?.value || (columnType === "boolean" ? "true" : ""))
   const [value2, setValue2] = useState(currentFilter?.value2 || "")
   const [sizeUnit, setSizeUnit] = useState<SizeUnit>(
     currentFilter?.sizeUnit || "MiB"
@@ -115,12 +178,11 @@ export function ColumnFilterPopover({
     currentFilter?.durationUnit2 || "hours"
   )
 
-  const isSizeColumn = SIZE_COLUMNS.includes(columnId as typeof SIZE_COLUMNS[number])
-  const isDurationColumn = DURATION_COLUMNS.includes(columnId as typeof DURATION_COLUMNS[number])
+  const isSizeColumn = columnType === "size"
+  const isDurationColumn = columnType === "duration"
   const isBetweenOperation = operation === "between"
 
-  const operations =
-    columnType === "number" ? NUMERIC_OPERATIONS : columnType === "date" ? DATE_OPERATIONS : STRING_OPERATIONS
+  const operations = getOperations(columnType)
 
   const handleApply = () => {
     if (value.trim() === "" || (isBetweenOperation && value2.trim() === "")) {
@@ -155,12 +217,19 @@ export function ColumnFilterPopover({
     setOpen(false)
   }
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      handleApply()
+    }
+    e.stopPropagation()
+  }
+
   const handleClear = () => {
     setValue("")
     setValue2("")
     setSizeUnit("MiB")
     setDurationUnit("hours")
-    setOperation(columnType === "number" ? "gt" : "contains")
+    setOperation(getDefaultOperation(columnType))
     onApply(null)
     setOpen(false)
   }
@@ -215,168 +284,40 @@ export function ColumnFilterPopover({
           </div>
           <div className="grid gap-2">
             <Label htmlFor="value">{isBetweenOperation ? "From" : "Value"}</Label>
-            {isSizeColumn ? (
-              <div className="flex gap-2">
-                <Input
-                  id="value"
-                  type="number"
-                  value={value}
-                  onChange={(e) => setValue(e.target.value)}
-                  placeholder="Enter size..."
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      handleApply()
-                    }
-                    e.stopPropagation()
-                  }}
-                  className="flex-1"
-                />
-                <Select
-                  value={sizeUnit}
-                  onValueChange={(value) => setSizeUnit(value as SizeUnit)}
-                >
-                  <SelectTrigger className="w-24">
-                    <SelectValue/>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SIZE_UNITS.map((unit) => (
-                      <SelectItem key={unit.value} value={unit.value}>
-                        {unit.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            ) : isDurationColumn ? (
-              <div className="flex gap-2">
-                <Input
-                  id="value"
-                  type="number"
-                  value={value}
-                  onChange={(e) => setValue(e.target.value)}
-                  placeholder="Enter duration..."
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      handleApply()
-                    }
-                    e.stopPropagation()
-                  }}
-                  className="flex-1"
-                />
-                <Select
-                  value={durationUnit}
-                  onValueChange={(value) => setDurationUnit(value as DurationUnit)}
-                >
-                  <SelectTrigger className="w-28">
-                    <SelectValue/>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {DURATION_UNITS.map((unit) => (
-                      <SelectItem key={unit.value} value={unit.value}>
-                        {unit.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            ) : (
-              <Input
-                id="value"
-                type={columnType === "number" ? "number" : columnType === "date" ? "date" : "text"}
-                value={value}
-                onChange={(e) => setValue(e.target.value)}
-                placeholder={`Enter ${columnType === "number" ? "number" : "value"}...`}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    handleApply()
-                  }
-                  e.stopPropagation()
-                }}
-              />
-            )}
+            <ValueInput
+              columnType={columnType}
+              value={value}
+              onChange={setValue}
+              unit={
+                isSizeColumn ? {
+                  value: sizeUnit,
+                  onChange: (u) => setSizeUnit(u as SizeUnit),
+                } : isDurationColumn ? {
+                  value: durationUnit,
+                  onChange: (u) => setDurationUnit(u as DurationUnit),
+                } : undefined
+              }
+              onKeyDown={handleKeyDown}
+            />
           </div>
           {isBetweenOperation && (
             <div className="grid gap-2">
               <Label htmlFor="value2">To</Label>
-              {isSizeColumn ? (
-                <div className="flex gap-2">
-                  <Input
-                    id="value2"
-                    type="number"
-                    value={value2}
-                    onChange={(e) => setValue2(e.target.value)}
-                    placeholder="Enter size..."
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        handleApply()
-                      }
-                      e.stopPropagation()
-                    }}
-                    className="flex-1"
-                  />
-                  <Select
-                    value={sizeUnit2}
-                    onValueChange={(value) => setSizeUnit2(value as SizeUnit)}
-                  >
-                    <SelectTrigger className="w-24">
-                      <SelectValue/>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {SIZE_UNITS.map((unit) => (
-                        <SelectItem key={unit.value} value={unit.value}>
-                          {unit.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              ) : isDurationColumn ? (
-                <div className="flex gap-2">
-                  <Input
-                    id="value2"
-                    type="number"
-                    value={value2}
-                    onChange={(e) => setValue2(e.target.value)}
-                    placeholder="Enter duration..."
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        handleApply()
-                      }
-                      e.stopPropagation()
-                    }}
-                    className="flex-1"
-                  />
-                  <Select
-                    value={durationUnit2}
-                    onValueChange={(value) => setDurationUnit2(value as DurationUnit)}
-                  >
-                    <SelectTrigger className="w-28">
-                      <SelectValue/>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {DURATION_UNITS.map((unit) => (
-                        <SelectItem key={unit.value} value={unit.value}>
-                          {unit.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              ) : (
-                <Input
-                  id="value2"
-                  type={columnType === "number" ? "number" : columnType === "date" ? "date" : "text"}
-                  value={value2}
-                  onChange={(e) => setValue2(e.target.value)}
-                  placeholder={`Enter ${columnType === "number" ? "number" : "value"}...`}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      handleApply()
-                    }
-                    e.stopPropagation()
-                  }}
-                />
-              )}
+              <ValueInput
+                columnType={columnType}
+                value={value2}
+                onChange={setValue2}
+                unit={
+                  isSizeColumn ? {
+                    value: sizeUnit2,
+                    onChange: (u) => setSizeUnit2(u as SizeUnit),
+                  } : isDurationColumn ? {
+                    value: durationUnit2,
+                    onChange: (u) => setDurationUnit2(u as DurationUnit),
+                  } : undefined
+                }
+                onKeyDown={handleKeyDown}
+              />
             </div>
           )}
           <div className="flex gap-2">

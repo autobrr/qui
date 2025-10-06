@@ -449,7 +449,7 @@ export const createColumns = (
         </span>
       )
     },
-    size: 80,
+    size: 90,
   },
   {
     accessorKey: "popularity",
@@ -461,7 +461,7 @@ export const createColumns = (
         </div>
       )
     },
-    size: 115,
+    size: 120,
   },
   {
     accessorKey: "category",
@@ -589,7 +589,7 @@ export const createColumns = (
         </span>
       )
     },
-    size: calculateMinWidth("Down Limit", 24),
+    size: calculateMinWidth("Down Limit", 30),
   },
   {
     accessorKey: "up_limit",
@@ -606,7 +606,7 @@ export const createColumns = (
         </span>
       )
     },
-    size: calculateMinWidth("Up Limit", 24),
+    size: calculateMinWidth("Up Limit", 30),
   },
   {
     accessorKey: "downloaded",

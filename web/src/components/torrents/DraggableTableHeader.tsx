@@ -3,13 +3,13 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { getColumnType } from "@/lib/column-filter-utils"
+import type { Torrent } from "@/types"
 import { useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { flexRender, type Header } from "@tanstack/react-table"
-import { ChevronUp, ChevronDown } from "lucide-react"
-import type { Torrent } from "@/types"
-import { ColumnFilterPopover, type ColumnFilter } from "./ColumnFilterPopover"
-import { getColumnType } from "@/lib/column-filter-utils"
+import { ChevronDown, ChevronUp } from "lucide-react"
+import { type ColumnFilter, ColumnFilterPopover } from "./ColumnFilterPopover"
 
 interface DraggableTableHeaderProps {
   header: Header<Torrent, unknown>
@@ -62,24 +62,24 @@ export function DraggableTableHeader({ header, columnFilters = [], onFilterChang
           className={`flex items-center gap-1 flex-1 min-w-0 ${column.id === "select" ? "justify-center" : ""}`}
         >
           <span className={`overflow-hidden whitespace-nowrap ${column.id === "select" ? "flex items-center" : ""}`}>
-            {header.isPlaceholder? null: flexRender(
+            {header.isPlaceholder ? null : flexRender(
               column.columnDef.header,
               header.getContext()
             )}
           </span>
           {column.id !== "select" && column.getIsSorted() && (
             column.getIsSorted() === "asc" ? (
-              <ChevronUp className="h-4 w-4 flex-shrink-0" />
+              <ChevronUp className="h-4 w-4 flex-shrink-0"/>
             ) : (
-              <ChevronDown className="h-4 w-4 flex-shrink-0" />
+              <ChevronDown className="h-4 w-4 flex-shrink-0"/>
             )
           )}
           {/* Column filter button - only show for filterable columns */}
-          {column.id !== "select" && column.id !== "priority" && onFilterChange && (
+          {column.id !== "select" && column.id !== "priority" && column.id !== "tracker_icon" && onFilterChange && (
             <ColumnFilterPopover
               columnId={column.id}
               columnName={(column.columnDef.meta as { headerString?: string })?.headerString ||
-                         (typeof column.columnDef.header === "string" ? column.columnDef.header : column.id)}
+                (typeof column.columnDef.header === "string" ? column.columnDef.header : column.id)}
               columnType={getColumnType(column.id)}
               currentFilter={columnFilters.find(f => f.columnId === column.id)}
               onApply={(filter) => onFilterChange(column.id, filter)}
@@ -97,7 +97,7 @@ export function DraggableTableHeader({ header, columnFilters = [], onFilterChang
         >
           <div
             className={`h-full w-px ${
-              column.getIsResizing()? "bg-primary": "bg-border group-hover/resize:bg-primary/50"
+              column.getIsResizing() ? "bg-primary" : "bg-border group-hover/resize:bg-primary/50"
             }`}
           />
         </div>
