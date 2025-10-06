@@ -61,7 +61,7 @@ export function DraggableTableHeader({ header, columnFilters = [], onFilterChang
         <div
           className={`flex items-center gap-1 flex-1 min-w-0 ${column.id === "select" ? "justify-center" : ""}`}
         >
-          <span className={`overflow-hidden whitespace-nowrap ${column.id === "select" ? "flex items-center" : ""}`}>
+          <span className={`overflow-hidden whitespace-nowrap ${column.id !== "priority" && column.id !== "tracker_icon" ? "flex-1 min-w-0" : ""} ${column.id === "select" ? "flex items-center" : ""}`}>
             {header.isPlaceholder ? null : flexRender(
               column.columnDef.header,
               header.getContext()
