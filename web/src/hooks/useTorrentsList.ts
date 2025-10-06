@@ -17,6 +17,7 @@ interface UseTorrentsListOptions {
     categories: string[]
     tags: string[]
     trackers: string[]
+    expr?: string
   }
   sort?: string
   order?: "asc" | "desc"
