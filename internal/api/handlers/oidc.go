@@ -311,10 +311,10 @@ func (h *OIDCHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 		h.sessionManager.Cookie.Path = "/"
 	}
 
-	// If forwarded protocol is https then set cookie secure.
-	// Keep SameSite=Lax so the session survives the IdP -> callback cross-site redirect.
+	// If forwarded protocol is https then set cookie secure
 	if r.Header.Get("X-Forwarded-Proto") == "https" {
 		h.sessionManager.Cookie.Secure = true
+		h.sessionManager.Cookie.SameSite = http.SameSiteStrictMode
 	}
 
 	// Set session values using sessionManager
