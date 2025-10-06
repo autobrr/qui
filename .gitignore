@@ -63,4 +63,5 @@ config.toml
 components.json
 .cache/
 tracker-icons/*
+.device-id-*
 backups/*

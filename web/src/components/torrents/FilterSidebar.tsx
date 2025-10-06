@@ -90,12 +90,14 @@ interface FilterSidebarProps {
     categories: string[]
     tags: string[]
     trackers: string[]
+    expr?: string
   }
   onFilterChange: (filters: {
     status: string[]
     categories: string[]
     tags: string[]
     trackers: string[]
+    expr?: string
   }) => void
   torrentCounts?: Record<string, number>
   categories?: Record<string, Category>
