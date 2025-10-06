@@ -22,10 +22,11 @@ import {
 } from "@/lib/incognito"
 import { formatSpeedWithUnit, type SpeedUnit } from "@/lib/speedUnits"
 import { getStateLabel } from "@/lib/torrent-state-utils"
-import { formatBytes, formatDuration, getRatioColor } from "@/lib/utils"
+import { cn, formatBytes, formatDuration, getRatioColor } from "@/lib/utils"
 import type { AppPreferences, Torrent } from "@/types"
 import type { ColumnDef } from "@tanstack/react-table"
-import { ListOrdered } from "lucide-react"
+import { Globe, ListOrdered } from "lucide-react"
+import { memo, useEffect, useState } from "react"
 
 function formatEta(seconds: number): string {
   if (seconds === 8640000) return "∞"
@@ -65,6 +66,71 @@ function calculateMinWidth(text: string, padding: number = 48): number {
   return Math.max(60, Math.ceil(text.length * charWidth) + padding + extraPadding)
 }
 
+interface TrackerIconCellProps {
+  title: string
+  fallback: string
+  src: string | null
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+const TrackerIconCell = memo(({ title, fallback, src }: TrackerIconCellProps) => {
+  const [hasError, setHasError] = useState(false)
+
+  useEffect(() => {
+    setHasError(false)
+  }, [src])
+
+  return (
+    <div className="flex h-full items-center justify-center" title={title}>
+      <div className="flex h-4 w-4 items-center justify-center rounded-sm border border-border/40 bg-muted text-[10px] font-medium uppercase leading-none">
+        {src && !hasError ? (
+          <img
+            src={src}
+            alt=""
+            className="h-full w-full rounded-[2px] object-cover"
+            draggable={false}
+            decoding="async"
+            onError={() => setHasError(true)}
+          />
+        ) : (
+          <span aria-hidden="true">{fallback}</span>
+        )}
+      </div>
+    </div>
+  )
+})
+
+const getTrackerDisplayMeta = (tracker?: string) => {
+  if (!tracker) {
+    return {
+      host: "",
+      fallback: "#",
+      title: "",
+    }
+  }
+
+  const trimmed = tracker.trim()
+  const fallbackLetter = trimmed ? trimmed.charAt(0).toUpperCase() : "#"
+
+  let host = trimmed
+  try {
+    if (trimmed.includes("://")) {
+      const url = new URL(trimmed)
+      host = url.hostname
+    }
+  } catch {
+    // Keep host as trimmed value if URL parsing fails
+  }
+
+  return {
+    host,
+    fallback: fallbackLetter,
+    title: host,
+  }
+}
+
+TrackerIconCell.displayName = "TrackerIconCell"
+
 export const createColumns = (
   incognitoMode: boolean,
   selectionEnhancers?: {
@@ -80,8 +146,10 @@ export const createColumns = (
     excludedFromSelectAll?: Set<string>
   },
   speedUnit: SpeedUnit = "bytes",
+  trackerIcons?: Record<string, string>,
   formatTimestamp?: (timestamp: number) => string,
-  instancePreferences?: AppPreferences | null
+  instancePreferences?: AppPreferences | null,
+  supportsTrackerHealth: boolean = true
 ): ColumnDef<Torrent>[] => [
   {
     id: "select",
@@ -274,18 +342,39 @@ export const createColumns = (
       const variant =
         state === "downloading" ? "default" :state === "stalledDL" ? "secondary" :state === "uploading" ? "default" :state === "stalledUP" ? "secondary" :state === "pausedDL" || state === "pausedUP" ? "secondary" :state === "queuedDL" || state === "queuedUP" ? "secondary" :state === "error" || state === "missingFiles" ? "destructive" :"outline"
 
+      const trackerHealth = row.original.tracker_health ?? null
+      let badgeVariant: "default" | "secondary" | "destructive" | "outline" = variant
+      let badgeClass = ""
+      let displayLabel = label
+
+      if (supportsTrackerHealth) {
+        if (trackerHealth === "tracker_down") {
+          displayLabel = "Tracker Down"
+          badgeVariant = "outline"
+          badgeClass = "text-yellow-500 border-yellow-500/40 bg-yellow-500/10"
+        } else if (trackerHealth === "unregistered") {
+          displayLabel = "Unregistered"
+          badgeVariant = "outline"
+          badgeClass = "text-destructive border-destructive/40 bg-destructive/10"
+        }
+      }
+
       if (isQueued && priority > 0) {
         return (
           <div className="flex items-center gap-1">
-            <Badge variant={variant} className="text-xs">
-              {label}
+            <Badge variant={badgeVariant} className={cn("text-xs", badgeClass)}>
+              {displayLabel}
             </Badge>
             <span className="text-xs text-muted-foreground">#{priority}</span>
           </div>
         )
       }
 
-      return <Badge variant={variant} className="text-xs">{label}</Badge>
+      return (
+        <Badge variant={badgeVariant} className={cn("text-xs", badgeClass)}>
+          {displayLabel}
+        </Badge>
+      )
     },
     size: 130,
   },
@@ -430,6 +519,38 @@ export const createColumns = (
       )
     },
     size: 200,
+  },
+  {
+    id: "tracker_icon",
+    header: () => (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="flex h-10 w-full items-center justify-center text-muted-foreground">
+            <Globe className="h-4 w-4" aria-hidden="true" />
+            <span className="sr-only">Tracker Icon</span>
+          </div>
+        </TooltipTrigger>
+        <TooltipContent>Tracker Icon</TooltipContent>
+      </Tooltip>
+    ),
+    meta: {
+      headerString: "Tracker Icon",
+    },
+    cell: ({ row }) => {
+      const tracker = incognitoMode ? getLinuxTracker(row.original.hash) : row.original.tracker
+      const { host, fallback, title } = getTrackerDisplayMeta(tracker)
+      const iconSrc = host ? trackerIcons?.[host] ?? null : null
+
+      return (
+        <TrackerIconCell
+          title={title}
+          fallback={fallback}
+          src={iconSrc}
+        />
+      )
+    },
+    size: 48,
+    enableResizing: true,
   },
   {
     accessorKey: "tracker",

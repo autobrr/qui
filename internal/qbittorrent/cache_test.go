@@ -73,7 +73,7 @@ func TestCache_HighCapacity(t *testing.T) {
 	for i := 0; i < numItems; i++ {
 		key := fmt.Sprintf("torrents:%d:0:50", i)
 		value := &TorrentResponse{
-			Torrents: createTestTorrents(50),
+			Torrents: createTestTorrentViews(50),
 			Total:    100 + i,
 		}
 		cache.Set(key, value, ttlcache.DefaultTTL)
@@ -151,7 +151,7 @@ func TestCache_DifferentDataTypes(t *testing.T) {
 
 	// 1. TorrentResponse
 	torrentResponse := &TorrentResponse{
-		Torrents: createTestTorrents(5),
+		Torrents: createTestTorrentViews(5),
 		Total:    100,
 		Stats: &TorrentStats{
 			Total:              100,
@@ -371,6 +371,18 @@ func createTestTorrents(count int) []qbt.Torrent {
 	return torrents
 }
 
+func createTestTorrentViews(count int) []TorrentView {
+	return createTestTorrentViewsFromSlice(createTestTorrents(count))
+}
+
+func createTestTorrentViewsFromSlice(torrents []qbt.Torrent) []TorrentView {
+	views := make([]TorrentView, len(torrents))
+	for i, torrent := range torrents {
+		views[i] = TorrentView{Torrent: torrent}
+	}
+	return views
+}
+
 // Benchmark tests for cache performance
 func BenchmarkCache_Set(b *testing.B) {
 	cache := ttlcache.New(ttlcache.Options[string, *TorrentResponse]{}.
@@ -379,7 +391,7 @@ func BenchmarkCache_Set(b *testing.B) {
 
 	torrents := createTestTorrents(50)
 	response := &TorrentResponse{
-		Torrents: torrents,
+		Torrents: createTestTorrentViewsFromSlice(torrents),
 		Total:    1000,
 	}
 
@@ -399,7 +411,7 @@ func BenchmarkCache_Get(b *testing.B) {
 	numKeys := 1000
 	torrents := createTestTorrents(50)
 	response := &TorrentResponse{
-		Torrents: torrents,
+		Torrents: createTestTorrentViewsFromSlice(torrents),
 		Total:    1000,
 	}
 
@@ -422,7 +434,7 @@ func BenchmarkCache_SetAndGet_Mixed(b *testing.B) {
 
 	torrents := createTestTorrents(50)
 	response := &TorrentResponse{
-		Torrents: torrents,
+		Torrents: createTestTorrentViewsFromSlice(torrents),
 		Total:    1000,
 	}
 
@@ -447,7 +459,7 @@ func BenchmarkCache_DeleteAll(b *testing.B) {
 
 	torrents := createTestTorrents(10)
 	response := &TorrentResponse{
-		Torrents: torrents,
+		Torrents: createTestTorrentViewsFromSlice(torrents),
 		Total:    100,
 	}
 
