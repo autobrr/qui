@@ -3,26 +3,44 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState, useEffect } from "react"
 import type { ColumnSizingState } from "@tanstack/react-table"
+import { useEffect, useState } from "react"
 
 export function usePersistedColumnSizing(
-  defaultSizing: ColumnSizingState = {}
+  defaultSizing: ColumnSizingState = {},
+  instanceKey?: string | number
 ) {
-  // Global key shared across all instances
-  const storageKey = "qui-column-sizing"
+  const baseStorageKey = "qui-column-sizing"
+  const hasInstanceKey = instanceKey !== undefined && instanceKey !== null
+  const storageKey = hasInstanceKey ? `${baseStorageKey}:${instanceKey}` : baseStorageKey
 
-  // Initialize state from localStorage or default values
-  const [columnSizing, setColumnSizing] = useState<ColumnSizingState>(() => {
+  const parseSizing = (value: unknown): ColumnSizingState | undefined => {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      const entries = Object.values(value as Record<string, unknown>)
+      if (entries.every(entry => typeof entry === "number")) {
+        return value as ColumnSizingState
+      }
+    }
+
+    return undefined
+  }
+
+  const loadSizing = (): ColumnSizingState => {
     try {
       const stored = localStorage.getItem(storageKey)
       if (stored) {
-        const parsed = JSON.parse(stored)
-        // Validate that it's an object with numeric values
-        if (typeof parsed === "object" && parsed !== null) {
-          const isValid = Object.values(parsed).every(val => typeof val === "number")
-          if (isValid) {
-            return parsed
+        const parsed = parseSizing(JSON.parse(stored))
+        if (parsed) {
+          return parsed
+        }
+      }
+
+      if (hasInstanceKey) {
+        const legacyStored = localStorage.getItem(baseStorageKey)
+        if (legacyStored) {
+          const parsedLegacy = parseSizing(JSON.parse(legacyStored))
+          if (parsedLegacy) {
+            return parsedLegacy
           }
         }
       }
@@ -30,10 +48,28 @@ export function usePersistedColumnSizing(
       console.error("Failed to load column sizing from localStorage:", error)
     }
 
-    return defaultSizing
-  })
+    return { ...defaultSizing }
+  }
 
-  // Persist to localStorage whenever state changes
+  const [columnSizing, setColumnSizing] = useState<ColumnSizingState>(() => loadSizing())
+
+  useEffect(() => {
+    if (!hasInstanceKey) {
+      return
+    }
+
+    try {
+      localStorage.removeItem(baseStorageKey)
+    } catch (error) {
+      console.error("Failed to clear legacy column sizing state:", error)
+    }
+  }, [hasInstanceKey, baseStorageKey])
+
+  useEffect(() => {
+    setColumnSizing(loadSizing())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storageKey])
+
   useEffect(() => {
     try {
       localStorage.setItem(storageKey, JSON.stringify(columnSizing))
