@@ -79,8 +79,7 @@ export function Login() {
               >
                 {(field) => (
                   <div className="space-y-2">
-                  <FormLabel>{t("common.username")}</FormLabel>
-                    <Input
+                                      <Label htmlFor={field.name}>{t("common.username")}</Label>                    <Input
                       id={field.name}
                       type="text"
                       value={field.state.value}

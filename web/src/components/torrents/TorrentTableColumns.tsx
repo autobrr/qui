@@ -292,7 +292,8 @@ export const createColumns = (
   },
   {
     accessorKey: "name",
-          header: t("common.name"),    cell: ({ row }) => {
+    header: t("common.name"),
+    cell: ({ row }) => {
       const displayName = incognitoMode ? getLinuxIsoName(row.original.hash) : row.original.name
       return (
         <div className="overflow-hidden whitespace-nowrap text-sm" title={displayName}>
@@ -333,7 +334,8 @@ export const createColumns = (
   },
   {
     accessorKey: "state",
-          header: t("common.status"),    cell: ({ row }) => {
+    header: t("common.status"),
+    cell: ({ row }) => {
       const state = row.original.state
       const priority = row.original.priority
       const label = getStateLabel(state)
@@ -465,7 +467,8 @@ export const createColumns = (
   },
   {
     accessorKey: "category",
-          header: t("common.category"),    cell: ({ row }) => {
+    header: t("common.category"),
+    cell: ({ row }) => {
       const displayCategory = incognitoMode ? getLinuxCategory(row.original.hash) : row.original.category
       return (
         <div className="overflow-hidden whitespace-nowrap text-sm" title={displayCategory || ""}>
@@ -477,7 +480,8 @@ export const createColumns = (
   },
   {
     accessorKey: "tags",
-          header: t("common.tags"),    cell: ({ row }) => {
+    header: t("common.tags"),
+    cell: ({ row }) => {
       const tags = incognitoMode ? getLinuxTags(row.original.hash) : row.original.tags
       const displayTags = Array.isArray(tags) ? tags.join(", ") : tags || ""
       return (

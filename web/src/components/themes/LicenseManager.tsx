@@ -266,7 +266,9 @@ export function LicenseManager() {
           )}
 
           <DialogFooter>
-            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
+            <Button variant="outline" onClick={() => setSelectedLicenseKey(null)}>
+              {t("common.cancel")}
+            </Button>
             <Button
               variant="destructive"
               onClick={confirmDeleteLicense}

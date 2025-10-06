@@ -7,6 +7,7 @@ import { api } from "@/lib/api"
 import type { Torrent } from "@/types"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useCallback, useState } from "react"
+import type { TFunction } from "i18next"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
@@ -686,7 +687,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
 
 // Helper function for success toasts
 function showSuccessToast(
-  t: (key: string, options?: object) => string,
+  t: TFunction<"translation", undefined>,
   action: TorrentAction,
   count: number,
   deleteFiles?: boolean,

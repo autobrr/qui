@@ -111,7 +111,7 @@ const TIMEZONES_BY_REGION = {
     "Africa/Nairobi",        // Kenya
     "Africa/Casablanca",     // Morocco
     "Africa/Algiers",        // Algeria
-    "Africa/Tunist",          // Tunisia
+    "Africa/Tunis",          // Tunisia
     "Africa/Tripoli",        // Libya
     "Africa/Khartoum",       // Sudan
     "Africa/Addis_Ababa",    // Ethiopia

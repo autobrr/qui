@@ -292,7 +292,8 @@ export function ProxySettingsForm({ instanceId, onSuccess }: ProxySettingsFormPr
               <form.Field name="proxy_password">
                 {(field) => (
                   <div className="space-y-2">
-                                          <Label htmlFor="proxy_password">{t("common.password")}</Label>                    <Input
+                    <Label htmlFor="proxy_password">{t("common.password")}</Label>
+                    <Input
                       id="proxy_password"
                       type="password"
                       value={field.state.value}

@@ -14,6 +14,7 @@ import {
 import { themes, isThemePremium } from "@/config/themes";
 import { Sun, Moon, Monitor, Check, Palette } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import {
   DropdownMenu,

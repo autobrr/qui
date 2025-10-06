@@ -98,7 +98,8 @@ export function Sidebar() {
 
         <div className="space-y-1">
           <p className="px-3 text-xs font-semibold text-sidebar-foreground/70 uppercase tracking-wider">
-                          {t("common.titles.instances")}          </p>
+            {t("common.titles.instances")}
+          </p>
           {instances?.map((instance) => {
             const instancePath = `/instances/${instance.id}`
             const isActive = location.pathname === instancePath

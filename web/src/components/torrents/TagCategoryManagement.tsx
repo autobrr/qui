@@ -223,7 +223,8 @@ export function CreateCategoryDialog({ open, onOpenChange, instanceId }: CreateC
             onClick={handleCreate}
             disabled={!name.trim() || mutation.isPending}
           >
-                                  {t("common.buttons.create")}          </AlertDialogAction>
+            {t("common.buttons.create")}
+          </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
@@ -308,7 +309,8 @@ export function EditCategoryDialog({ open, onOpenChange, instanceId, category }:
             onClick={handleSave}
             disabled={mutation.isPending}
           >
-                              {t("common.buttons.save")}          </AlertDialogAction>
+            {t("common.buttons.save")}
+          </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

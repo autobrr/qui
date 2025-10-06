@@ -758,7 +758,8 @@ export function Dashboard() {
             <Link to="/instances" search={{ modal: "add-instance" }}>
               <Button>
                 <Plus className="h-4 w-4 mr-2" />
-                                  {t("instances.add")}              </Button>
+                {t("instances.add")}
+              </Button>
             </Link>
           </div>
         </Card>

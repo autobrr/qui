@@ -263,7 +263,7 @@ function MobileSpeedLimitsDialog({
                 checked={uploadEnabled}
                 onCheckedChange={setUploadEnabled}
               />
-<Label htmlFor="uploadEnabled">{t("torrent_dialogs.speed_limits.set_upload_limit_label")}</Label>
+              <Label htmlFor="uploadEnabled">{t("torrent_dialogs.speed_limits.set_upload_limit_label")}</Label>
             </div>
             {uploadEnabled && (
               <Input
@@ -301,9 +301,8 @@ function MobileSpeedLimitsDialog({
             {t("common.cancel")}
           </Button>
           <Button onClick={handleSubmit} disabled={isPending}>
-            {isPending
-              ? t("torrent_dialogs.share_limits.saving_button")
-                                    : t("common.buttons.save")}          </Button>
+            {isPending ? t("torrent_dialogs.share_limits.saving_button") : t("common.buttons.save")}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -1656,9 +1655,8 @@ export function TorrentCardsMobile({
               onClick={handleSelectAll}
               className="text-sm font-medium"
             >
-                                {effectiveSelectionCount === totalCount
-                                  ? t("torrent_table.header.deselect_all")
-                                  : t("torrent_table.header.select_all")}            </button>
+              {effectiveSelectionCount === totalCount ? t("torrent_table.header.deselect_all") : t("torrent_table.header.select_all")}
+            </button>
           </div>
         )}
       </div>
@@ -1769,7 +1767,8 @@ export function TorrentCardsMobile({
               className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground"
             >
               <Folder className="h-5 w-5"/>
-                                    <span className="truncate">{t("common.category")}</span>            </button>
+              <span className="truncate">{t("common.category")}</span>
+            </button>
 
             <button
               onClick={() => {
@@ -1779,7 +1778,8 @@ export function TorrentCardsMobile({
               className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground"
             >
               <Tag className="h-5 w-5"/>
-                                    <span className="truncate">{t("common.tags")}</span>            </button>
+              <span className="truncate">{t("common.tags")}</span>
+            </button>
 
             <button
               onClick={() => setShowActionsSheet(true)}

@@ -1198,7 +1198,8 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
             onClick={handleConfirm}
             disabled={isPending}
           >
-                          {isPending ? t("torrent_dialogs.share_limits.saving_button") : t("common.buttons.save")}          </Button>
+            {isPending ? t("torrent_dialogs.share_limits.saving_button") : t("common.buttons.save")}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -1355,7 +1356,8 @@ export const SpeedLimitsDialog = memo(function SpeedLimitsDialog({
             onClick={handleConfirm}
             disabled={isPending}
           >
-                          {isPending ? t("torrent_dialogs.speed_limits.saving_button") : t("common.buttons.save")}          </Button>
+            {isPending ? t("torrent_dialogs.speed_limits.saving_button") : t("common.buttons.save")}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

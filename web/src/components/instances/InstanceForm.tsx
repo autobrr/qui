@@ -180,7 +180,8 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
         >
           {(field) => (
             <div className="space-y-2">
-                                <Label htmlFor={field.name}>{t("common.url")}</Label>              <Input
+              <Label htmlFor={field.name}>{t("common.url")}</Label>
+              <Input
                 id={field.name}
                 value={field.state.value}
                 onBlur={field.handleBlur}
@@ -233,7 +234,8 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
             <form.Field name="username">
               {(field) => (
                 <div className="space-y-2">
-                                        <Label htmlFor={field.name}>{t("common.username")}</Label>                  <Input
+                  <Label htmlFor={field.name}>{t("common.username")}</Label>
+                  <Input
                     id={field.name}
                     value={field.state.value}
                     onBlur={field.handleBlur}
@@ -251,7 +253,8 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
             >
               {(field) => (
                 <div className="space-y-2">
-                                        <Label htmlFor={field.name}>{t("common.password")}</Label>                  <Input
+                  <Label htmlFor={field.name}>{t("common.password")}</Label>
+                  <Input
                     id={field.name}
                     type="password"
                     value={field.state.value}
