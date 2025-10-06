@@ -129,7 +129,11 @@ function InstanceCard({
   const [speedUnit] = useSpeedUnits()
   const appVersion = qbittorrentAppInfo?.version || qbittorrentVersionInfo?.appVersion || ""
   const webAPIVersion = qbittorrentAppInfo?.webAPIVersion || qbittorrentVersionInfo?.webAPIVersion || ""
+  const libtorrentVersion = qbittorrentAppInfo?.buildInfo?.libtorrent || ""
   const displayUrl = instance.host
+  
+  // Get external IP address, preferring IPv4 over IPv6
+  const externalIP = serverState?.last_external_address_v4 || serverState?.last_external_address_v6 || ""
 
   // Determine card state
   const isFirstLoad = isLoading && !stats
@@ -237,20 +241,22 @@ function InstanceCard({
               </Badge>
             </div>
           </div>
-          {(appVersion || webAPIVersion) && (
-            <CardDescription className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          {(appVersion || webAPIVersion || libtorrentVersion || externalIP) && (
+            <CardDescription className="flex flex-wrap items-center gap-1.5 text-xs">
               {appVersion && (
-                <span>
-                  qBit <code className="font-mono text-[11px]">{appVersion}</code>
-                </span>
-              )}
-              {appVersion && webAPIVersion && (
-                <span aria-hidden="true">&bull;</span>
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">
+                  qBit {appVersion}
+                </Badge>
               )}
               {webAPIVersion && (
-                <span>
-                  API v<code className="font-mono text-[11px]">{webAPIVersion}</code>
-                </span>
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">
+                  API v{webAPIVersion}
+                </Badge>
+              )}
+              {libtorrentVersion && (
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">
+                  lt {libtorrentVersion}
+                </Badge>
               )}
             </CardDescription>
           )}
@@ -377,6 +383,22 @@ function InstanceCard({
                       <Zap className="h-3 w-3 text-muted-foreground" />
                       <span className="text-muted-foreground">Avg Queue Time</span>
                       <span className="ml-auto font-medium">{serverState.average_time_queue}ms</span>
+                    </div>
+                  )}
+
+                  {serverState?.last_external_address_v4 && (
+                    <div className="flex items-center gap-2 text-xs">
+                      <ExternalLink className="h-3 w-3 text-muted-foreground" />
+                      <span className="text-muted-foreground">External IPv4</span>
+                      <span className={`ml-auto font-medium font-mono ${incognitoMode ? "blur-sm select-none" : ""}`} style={incognitoMode ? { filter: "blur(8px)" } : {}}>{serverState.last_external_address_v4}</span>
+                    </div>
+                  )}
+
+                  {serverState?.last_external_address_v6 && (
+                    <div className="flex items-center gap-2 text-xs">
+                      <ExternalLink className="h-3 w-3 text-muted-foreground" />
+                      <span className="text-muted-foreground">External IPv6</span>
+                      <span className={`ml-auto font-medium font-mono text-[10px] ${incognitoMode ? "blur-sm select-none" : ""}`} style={incognitoMode ? { filter: "blur(8px)" } : {}}>{serverState.last_external_address_v6}</span>
                     </div>
                   )}
                 </CollapsibleContent>

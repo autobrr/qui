@@ -200,6 +200,8 @@ export interface ServerState {
   total_buffers_size?: number
   total_queued_size?: number
   write_cache_overload?: string
+  last_external_address_v4?: string
+  last_external_address_v6?: string
 }
 
 export interface AppPreferences {
