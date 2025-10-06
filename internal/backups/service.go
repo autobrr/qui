@@ -1,0 +1,762 @@
+// Copyright (c) 2025, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package backups
+
+import (
+	"archive/zip"
+	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/rs/zerolog/log"
+
+	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/torrentname"
+)
+
+var (
+	// ErrInstanceBusy is returned when a backup is already running for the instance.
+	ErrInstanceBusy = errors.New("backup already running for this instance")
+)
+
+// Config controls background backup scheduling.
+type Config struct {
+	DataDir      string
+	PollInterval time.Duration
+	WorkerCount  int
+}
+
+type Service struct {
+	store       *models.BackupStore
+	syncManager *qbittorrent.SyncManager
+	cfg         Config
+
+	jobs   chan job
+	wg     sync.WaitGroup
+	cancel context.CancelFunc
+	once   sync.Once
+
+	inflight   map[int]int64
+	inflightMu sync.Mutex
+
+	now func() time.Time
+}
+
+type job struct {
+	runID      int64
+	instanceID int
+	kind       models.BackupRunKind
+}
+
+// Manifest captures details about a backup run and its contents for API responses and archived metadata.
+type Manifest struct {
+	InstanceID   int            `json:"instanceId"`
+	Kind         string         `json:"kind"`
+	GeneratedAt  time.Time      `json:"generatedAt"`
+	TorrentCount int            `json:"torrentCount"`
+	Items        []ManifestItem `json:"items"`
+}
+
+// ManifestItem describes a single torrent contained in a backup archive.
+type ManifestItem struct {
+	Hash        string   `json:"hash"`
+	Name        string   `json:"name"`
+	Category    *string  `json:"category,omitempty"`
+	SizeBytes   int64    `json:"sizeBytes"`
+	ArchivePath string   `json:"archivePath"`
+	InfoHashV1  *string  `json:"infohashV1,omitempty"`
+	InfoHashV2  *string  `json:"infohashV2,omitempty"`
+	Tags        []string `json:"tags,omitempty"`
+}
+
+func NewService(store *models.BackupStore, syncManager *qbittorrent.SyncManager, cfg Config) *Service {
+	if cfg.WorkerCount <= 0 {
+		cfg.WorkerCount = 1
+	}
+	if cfg.PollInterval <= 0 {
+		cfg.PollInterval = time.Minute
+	}
+
+	return &Service{
+		store:       store,
+		syncManager: syncManager,
+		cfg:         cfg,
+		jobs:        make(chan job, cfg.WorkerCount*2),
+		inflight:    make(map[int]int64),
+		now:         time.Now,
+	}
+}
+
+func (s *Service) Start(ctx context.Context) {
+	ctx, cancel := context.WithCancel(ctx)
+	s.cancel = cancel
+
+	for i := 0; i < s.cfg.WorkerCount; i++ {
+		s.wg.Add(1)
+		go s.worker(ctx)
+	}
+
+	s.wg.Add(1)
+	go s.scheduler(ctx)
+}
+
+func (s *Service) Stop() {
+	s.once.Do(func() {
+		if s.cancel != nil {
+			s.cancel()
+		}
+		s.wg.Wait()
+	})
+}
+
+func (s *Service) worker(ctx context.Context) {
+	defer s.wg.Done()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case job := <-s.jobs:
+			s.handleJob(ctx, job)
+		}
+	}
+}
+
+func (s *Service) handleJob(ctx context.Context, j job) {
+	start := s.now()
+	err := s.store.UpdateRunMetadata(ctx, j.runID, func(run *models.BackupRun) error {
+		run.Status = models.BackupRunStatusRunning
+		run.ErrorMessage = nil
+		run.StartedAt = &start
+		return nil
+	})
+	if err != nil {
+		s.clearInstance(j.instanceID, j.runID)
+		log.Error().Err(err).Int("instanceID", j.instanceID).Msg("Failed to mark backup run as running")
+		return
+	}
+
+	result, execErr := s.executeBackup(ctx, j)
+	if execErr != nil {
+		msg := execErr.Error()
+		now := s.now()
+		_ = s.store.UpdateRunMetadata(ctx, j.runID, func(run *models.BackupRun) error {
+			run.Status = models.BackupRunStatusFailed
+			run.CompletedAt = &now
+			run.ErrorMessage = &msg
+			return nil
+		})
+		log.Error().Err(execErr).Int("instanceID", j.instanceID).Int64("runID", j.runID).Msg("Backup run failed")
+	} else {
+		now := s.now()
+		_ = s.store.UpdateRunMetadata(ctx, j.runID, func(run *models.BackupRun) error {
+			run.Status = models.BackupRunStatusSuccess
+			run.CompletedAt = &now
+			run.ArchivePath = &result.archiveRelPath
+			if result.manifestRelPath != nil {
+				run.ManifestPath = result.manifestRelPath
+			}
+			run.TotalBytes = result.totalBytes
+			run.TorrentCount = result.torrentCount
+			run.CategoryCounts = result.categoryCounts
+			run.ErrorMessage = nil
+			return nil
+		})
+
+		if len(result.items) > 0 {
+			if err := s.store.InsertItems(ctx, j.runID, result.items); err != nil {
+				log.Warn().Err(err).Int64("runID", j.runID).Msg("Failed to persist backup manifest items")
+			}
+		}
+
+		if result.settings != nil {
+			if err := s.applyRetention(ctx, j.instanceID, result.settings); err != nil {
+				log.Warn().Err(err).Int("instanceID", j.instanceID).Msg("Failed to apply backup retention")
+			}
+		}
+	}
+
+	s.clearInstance(j.instanceID, j.runID)
+}
+
+type backupResult struct {
+	archiveRelPath  string
+	manifestRelPath *string
+	totalBytes      int64
+	torrentCount    int
+	categoryCounts  map[string]int
+	items           []models.BackupItem
+	settings        *models.BackupSettings
+}
+
+func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, error) {
+	settings, err := s.store.GetSettings(ctx, j.instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load backup settings: %w", err)
+	}
+
+	torrents, err := s.syncManager.GetAllTorrents(ctx, j.instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load torrents: %w", err)
+	}
+
+	if len(torrents) == 0 {
+		return &backupResult{torrentCount: 0, totalBytes: 0, categoryCounts: map[string]int{}, items: nil, settings: settings}, nil
+	}
+
+	baseAbs, baseRel, err := s.resolveBasePaths(settings, j.instanceID)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := os.MkdirAll(baseAbs, 0o755); err != nil {
+		return nil, fmt.Errorf("failed to prepare backup directory: %w", err)
+	}
+
+	timestamp := s.now().UTC().Format("20060102T150405Z")
+	archiveName := fmt.Sprintf("qui-backup_instance-%d_%s_%s.zip", j.instanceID, j.kind, timestamp)
+	archiveAbsPath := filepath.Join(baseAbs, archiveName)
+	archiveRelPath := filepath.Join(baseRel, archiveName)
+
+	manifestFileName := fmt.Sprintf("%s_manifest.json", strings.TrimSuffix(archiveName, ".zip"))
+	manifestAbsPath := filepath.Join(baseAbs, manifestFileName)
+	manifestRelPath := filepath.Join(baseRel, manifestFileName)
+
+	archiveFile, err := os.Create(archiveAbsPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create archive: %w", err)
+	}
+	defer func() {
+		_ = archiveFile.Close()
+	}()
+	cleanupArchive := true
+	defer func() {
+		if cleanupArchive {
+			_ = os.Remove(archiveAbsPath)
+		}
+	}()
+
+	zipWriter := zip.NewWriter(archiveFile)
+	defer func() {
+		_ = zipWriter.Close()
+	}()
+
+	items := make([]models.BackupItem, 0, len(torrents))
+	manifestItems := make([]ManifestItem, 0, len(torrents))
+	usedPaths := make(map[string]int)
+	categories := make(map[string]int)
+	var totalBytes int64
+
+	for _, torrent := range torrents {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+
+		data, suggestedName, trackerDomain, err := s.syncManager.ExportTorrent(ctx, j.instanceID, torrent.Hash)
+		if err != nil {
+			return nil, fmt.Errorf("export torrent %s: %w", torrent.Hash, err)
+		}
+
+		filename := torrentname.SanitizeExportFilename(suggestedName, torrent.Hash, trackerDomain, torrent.Hash)
+		category := strings.TrimSpace(torrent.Category)
+		var categoryPtr *string
+		if category != "" {
+			categoryPtr = &category
+			categories[category]++
+		} else {
+			categories["(uncategorized)"]++
+		}
+
+		rawTags := ""
+		if settings.IncludeTags {
+			rawTags = strings.TrimSpace(torrent.Tags)
+		}
+
+		archivePath := filename
+		if settings.IncludeCategories && category != "" {
+			archivePath = filepath.ToSlash(filepath.Join(safeSegment(category), filename))
+		}
+
+		uniquePath := ensureUniquePath(archivePath, usedPaths)
+
+		header := &zip.FileHeader{
+			Name:   uniquePath,
+			Method: zip.Deflate,
+		}
+		header.Modified = s.now()
+
+		writer, err := zipWriter.CreateHeader(header)
+		if err != nil {
+			return nil, fmt.Errorf("create zip entry: %w", err)
+		}
+
+		if _, err := writer.Write(data); err != nil {
+			return nil, fmt.Errorf("write zip entry: %w", err)
+		}
+
+		totalBytes += int64(len(data))
+
+		infohashV1 := strings.TrimSpace(torrent.InfohashV1)
+		infohashV2 := strings.TrimSpace(torrent.InfohashV2)
+
+		item := models.BackupItem{
+			RunID:       j.runID,
+			TorrentHash: torrent.Hash,
+			Name:        torrent.Name,
+			SizeBytes:   torrent.TotalSize,
+		}
+		if categoryPtr != nil {
+			item.Category = categoryPtr
+		}
+		if uniquePath != "" {
+			rel := uniquePath
+			item.ArchiveRelPath = &rel
+		}
+		if infohashV1 != "" {
+			item.InfoHashV1 = &infohashV1
+		}
+		if infohashV2 != "" {
+			item.InfoHashV2 = &infohashV2
+		}
+		if rawTags != "" {
+			item.Tags = &rawTags
+		}
+		items = append(items, item)
+
+		manifestItem := ManifestItem{
+			Hash:        torrent.Hash,
+			Name:        torrent.Name,
+			ArchivePath: uniquePath,
+			SizeBytes:   torrent.TotalSize,
+		}
+		if categoryPtr != nil {
+			manifestItem.Category = categoryPtr
+		}
+		if infohashV1 != "" {
+			manifestItem.InfoHashV1 = &infohashV1
+		}
+		if infohashV2 != "" {
+			manifestItem.InfoHashV2 = &infohashV2
+		}
+		if rawTags != "" {
+			manifestItem.Tags = splitTags(rawTags)
+		}
+		manifestItems = append(manifestItems, manifestItem)
+	}
+
+	manifest := Manifest{
+		InstanceID:   j.instanceID,
+		Kind:         string(j.kind),
+		GeneratedAt:  s.now().UTC(),
+		TorrentCount: len(manifestItems),
+		Items:        manifestItems,
+	}
+
+	manifestData, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("marshal manifest: %w", err)
+	}
+
+	manifestHeader := &zip.FileHeader{
+		Name:   "manifest.json",
+		Method: zip.Deflate,
+	}
+	manifestHeader.Modified = s.now()
+	manifestWriter, err := zipWriter.CreateHeader(manifestHeader)
+	if err != nil {
+		return nil, fmt.Errorf("create manifest entry: %w", err)
+	}
+	if _, err := manifestWriter.Write(manifestData); err != nil {
+		return nil, fmt.Errorf("write manifest entry: %w", err)
+	}
+
+	if err := zipWriter.Close(); err != nil {
+		return nil, fmt.Errorf("finalize archive: %w", err)
+	}
+
+	if err := archiveFile.Close(); err != nil {
+		return nil, fmt.Errorf("close archive: %w", err)
+	}
+
+	manifestPointer := &manifestRelPath
+	if err := os.WriteFile(manifestAbsPath, manifestData, 0o644); err != nil {
+		log.Warn().Err(err).Str("path", manifestAbsPath).Msg("Failed to write manifest to disk")
+		manifestPointer = nil
+	}
+
+	cleanupArchive = false
+
+	return &backupResult{
+		archiveRelPath:  archiveRelPath,
+		manifestRelPath: manifestPointer,
+		totalBytes:      totalBytes,
+		torrentCount:    len(manifestItems),
+		categoryCounts:  categories,
+		items:           items,
+		settings:        settings,
+	}, nil
+}
+
+func (s *Service) resolveBasePaths(settings *models.BackupSettings, instanceID int) (string, string, error) {
+	base := filepath.Join("backups", fmt.Sprintf("instance-%d", instanceID))
+	if settings.CustomPath != nil {
+		custom := strings.TrimSpace(*settings.CustomPath)
+		if custom != "" {
+			if filepath.IsAbs(custom) {
+				return "", "", errors.New("custom backup path must be relative to data dir")
+			}
+			base = filepath.Clean(custom)
+		}
+	}
+
+	if s.cfg.DataDir == "" {
+		return "", "", errors.New("data directory not configured")
+	}
+
+	abs := filepath.Join(s.cfg.DataDir, base)
+	return abs, base, nil
+}
+
+func ensureUniquePath(path string, used map[string]int) string {
+	if _, exists := used[path]; !exists {
+		used[path] = 1
+		return path
+	}
+
+	ext := filepath.Ext(path)
+	base := strings.TrimSuffix(path, ext)
+
+	idx := used[path]
+	for {
+		candidate := fmt.Sprintf("%s_%d%s", base, idx, ext)
+		if _, exists := used[candidate]; !exists {
+			used[path] = idx + 1
+			used[candidate] = 1
+			return candidate
+		}
+		idx++
+	}
+}
+
+func safeSegment(input string) string {
+	cleaned := strings.TrimSpace(input)
+	if cleaned == "" {
+		return "uncategorized"
+	}
+
+	sanitized := strings.Map(func(r rune) rune {
+		switch {
+		case r == '/', r == '\\', r == ':', r == '*', r == '?', r == '"', r == '<', r == '>', r == '|':
+			return '_'
+		case r < 32 || r == 127:
+			return -1
+		}
+		return r
+	}, cleaned)
+
+	sanitized = strings.Trim(sanitized, " .")
+	if sanitized == "" {
+		return "uncategorized"
+	}
+
+	sanitized = torrentname.TruncateUTF8(sanitized, 100)
+	return sanitized
+}
+
+func splitTags(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+func (s *Service) clearInstance(instanceID int, runID int64) {
+	s.inflightMu.Lock()
+	defer s.inflightMu.Unlock()
+	if current, ok := s.inflight[instanceID]; ok && current == runID {
+		delete(s.inflight, instanceID)
+	}
+}
+
+func (s *Service) markInstance(instanceID int, runID int64) bool {
+	s.inflightMu.Lock()
+	defer s.inflightMu.Unlock()
+	if _, exists := s.inflight[instanceID]; exists {
+		return false
+	}
+	s.inflight[instanceID] = runID
+	return true
+}
+
+func (s *Service) QueueRun(ctx context.Context, instanceID int, kind models.BackupRunKind, requestedBy string) (*models.BackupRun, error) {
+	if !s.markInstance(instanceID, 0) {
+		return nil, ErrInstanceBusy
+	}
+
+	run := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        kind,
+		Status:      models.BackupRunStatusPending,
+		RequestedBy: requestedBy,
+		RequestedAt: s.now(),
+	}
+
+	if err := s.store.CreateRun(ctx, run); err != nil {
+		s.clearInstance(instanceID, 0)
+		return nil, err
+	}
+
+	s.inflightMu.Lock()
+	s.inflight[instanceID] = run.ID
+	s.inflightMu.Unlock()
+
+	select {
+	case <-ctx.Done():
+		s.clearInstance(instanceID, run.ID)
+		return nil, ctx.Err()
+	case s.jobs <- job{runID: run.ID, instanceID: instanceID, kind: kind}:
+	}
+
+	return run, nil
+}
+
+func (s *Service) scheduler(ctx context.Context) {
+	defer s.wg.Done()
+
+	ticker := time.NewTicker(s.cfg.PollInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := s.scheduleDueBackups(ctx); err != nil {
+				log.Warn().Err(err).Msg("Backup scheduler tick failed")
+			}
+		}
+	}
+}
+
+func (s *Service) scheduleDueBackups(ctx context.Context) error {
+	settings, err := s.store.ListEnabledSettings(ctx)
+	if err != nil {
+		return err
+	}
+
+	now := s.now()
+
+	for _, cfg := range settings {
+		if !cfg.Enabled {
+			continue
+		}
+
+		evaluate := func(kind models.BackupRunKind, enabled bool, interval time.Duration, monthly bool) {
+			if !enabled {
+				return
+			}
+			lastRun, err := s.store.LatestRunByKind(ctx, cfg.InstanceID, kind)
+			if err == nil {
+				if lastRun.Status == models.BackupRunStatusRunning {
+					return
+				}
+				ref := lastRun.CompletedAt
+				if ref == nil {
+					ref = &lastRun.RequestedAt
+				}
+				if monthly {
+					next := ref.AddDate(0, 1, 0)
+					if now.Before(next) {
+						return
+					}
+				} else if ref.Add(interval).After(now) {
+					return
+				}
+			}
+			if err != nil && !errors.Is(err, sql.ErrNoRows) {
+				log.Warn().Err(err).Int("instanceID", cfg.InstanceID).Msg("Failed to check last backup run")
+				return
+			}
+
+			if _, err := s.QueueRun(ctx, cfg.InstanceID, kind, "scheduler"); err != nil {
+				if !errors.Is(err, ErrInstanceBusy) {
+					log.Warn().Err(err).Int("instanceID", cfg.InstanceID).Msg("Failed to queue scheduled backup")
+				}
+			}
+		}
+
+		evaluate(models.BackupRunKindHourly, cfg.HourlyEnabled, time.Hour, false)
+		evaluate(models.BackupRunKindDaily, cfg.DailyEnabled, 24*time.Hour, false)
+		evaluate(models.BackupRunKindWeekly, cfg.WeeklyEnabled, 7*24*time.Hour, false)
+		evaluate(models.BackupRunKindMonthly, cfg.MonthlyEnabled, 0, true)
+	}
+
+	return nil
+}
+
+func (s *Service) applyRetention(ctx context.Context, instanceID int, settings *models.BackupSettings) error {
+	kinds := []struct {
+		kind models.BackupRunKind
+		keep int
+	}{
+		{models.BackupRunKindHourly, settings.KeepHourly},
+		{models.BackupRunKindDaily, settings.KeepDaily},
+		{models.BackupRunKindWeekly, settings.KeepWeekly},
+		{models.BackupRunKindMonthly, settings.KeepMonthly},
+	}
+
+	for _, cfg := range kinds {
+		runIDs, err := s.store.DeleteRunsOlderThan(ctx, instanceID, cfg.kind, cfg.keep)
+		if err != nil {
+			return err
+		}
+		if err := s.cleanupRunFiles(ctx, runIDs); err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to cleanup old backup files")
+		}
+	}
+
+	totalIDs, err := s.store.DeleteRunsBeyondTotal(ctx, instanceID, settings.KeepLast)
+	if err != nil {
+		return err
+	}
+	if err := s.cleanupRunFiles(ctx, totalIDs); err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to cleanup pruned backups")
+	}
+
+	return nil
+}
+
+func (s *Service) cleanupRunFiles(ctx context.Context, runIDs []int64) error {
+	if len(runIDs) == 0 {
+		return nil
+	}
+
+	for _, runID := range runIDs {
+		run, err := s.store.GetRun(ctx, runID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
+			log.Warn().Err(err).Int64("runID", runID).Msg("Failed to lookup run for cleanup")
+			continue
+		}
+
+		if run.ManifestPath != nil {
+			_ = os.Remove(filepath.Join(s.cfg.DataDir, *run.ManifestPath))
+		}
+		if run.ArchivePath != nil {
+			_ = os.Remove(filepath.Join(s.cfg.DataDir, *run.ArchivePath))
+		}
+		if err := s.store.CleanupRun(ctx, runID); err != nil {
+			log.Warn().Err(err).Int64("runID", runID).Msg("Failed to cleanup run from database")
+		}
+	}
+
+	return nil
+}
+
+func (s *Service) GetSettings(ctx context.Context, instanceID int) (*models.BackupSettings, error) {
+	return s.store.GetSettings(ctx, instanceID)
+}
+
+func (s *Service) UpdateSettings(ctx context.Context, settings *models.BackupSettings) error {
+	return s.store.UpsertSettings(ctx, settings)
+}
+
+func (s *Service) ListRuns(ctx context.Context, instanceID int, limit, offset int) ([]*models.BackupRun, error) {
+	return s.store.ListRuns(ctx, instanceID, limit, offset)
+}
+
+func (s *Service) GetRun(ctx context.Context, runID int64) (*models.BackupRun, error) {
+	return s.store.GetRun(ctx, runID)
+}
+
+func (s *Service) DeleteRun(ctx context.Context, runID int64) error {
+	run, err := s.store.GetRun(ctx, runID)
+	if err != nil {
+		return err
+	}
+
+	if run.ManifestPath != nil {
+		_ = os.Remove(filepath.Join(s.cfg.DataDir, *run.ManifestPath))
+	}
+	if run.ArchivePath != nil {
+		_ = os.Remove(filepath.Join(s.cfg.DataDir, *run.ArchivePath))
+	}
+
+	return s.store.CleanupRun(ctx, runID)
+}
+
+func (s *Service) LoadManifest(ctx context.Context, runID int64) (*Manifest, error) {
+	items, err := s.store.ListItems(ctx, runID)
+	if err != nil {
+		return nil, err
+	}
+
+	run, err := s.store.GetRun(ctx, runID)
+	if err != nil {
+		return nil, err
+	}
+
+	manifest := &Manifest{
+		InstanceID:   run.InstanceID,
+		Kind:         string(run.Kind),
+		GeneratedAt:  run.RequestedAt,
+		TorrentCount: len(items),
+		Items:        make([]ManifestItem, 0, len(items)),
+	}
+
+	for _, item := range items {
+		entry := ManifestItem{
+			Hash:        item.TorrentHash,
+			Name:        item.Name,
+			ArchivePath: "",
+			SizeBytes:   item.SizeBytes,
+		}
+		if item.Category != nil {
+			entry.Category = item.Category
+		}
+		if item.ArchiveRelPath != nil {
+			entry.ArchivePath = *item.ArchiveRelPath
+		}
+		if item.InfoHashV1 != nil {
+			entry.InfoHashV1 = item.InfoHashV1
+		}
+		if item.InfoHashV2 != nil {
+			entry.InfoHashV2 = item.InfoHashV2
+		}
+		if item.Tags != nil {
+			entry.Tags = splitTags(*item.Tags)
+		}
+		manifest.Items = append(manifest.Items, entry)
+	}
+
+	return manifest, nil
+}
+
+// DataDir returns the base data directory used for backups.
+func (s *Service) DataDir() string {
+	return s.cfg.DataDir
+}

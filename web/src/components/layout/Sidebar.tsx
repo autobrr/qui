@@ -102,7 +102,7 @@ export function Sidebar() {
           </p>
           {instances?.map((instance) => {
             const instancePath = `/instances/${instance.id}`
-            const isActive = location.pathname === instancePath
+            const isActive = location.pathname === instancePath || location.pathname.startsWith(`${instancePath}/`)
 
             return (
               <Link

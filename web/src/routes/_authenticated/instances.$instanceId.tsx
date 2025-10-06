@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { createFileRoute, Navigate } from "@tanstack/react-router"
-import { Torrents } from "@/pages/Torrents"
 import { useInstances } from "@/hooks/useInstances"
+import { Torrents } from "@/pages/Torrents"
+import { createFileRoute, Navigate } from "@tanstack/react-router"
 import { z } from "zod"
 
 const instanceSearchSchema = z.object({
@@ -31,10 +31,11 @@ function InstanceTorrents() {
   }
 
   if (isLoading) {
-    return <div>Loading instances...</div>
+    return <div className="p-6">Loading instances...</div>
   }
 
-  const instance = instances?.find(i => i.id === parseInt(instanceId))
+  const instanceIdNumber = parseInt(instanceId)
+  const instance = instances?.find(i => i.id === instanceIdNumber)
 
   if (!instance) {
     return (
@@ -49,10 +50,11 @@ function InstanceTorrents() {
 
   return (
     <Torrents
-      instanceId={parseInt(instanceId)}
+      instanceId={instanceIdNumber}
       instanceName={instance.name}
       search={search}
       onSearchChange={handleSearchChange}
     />
   )
 }
+

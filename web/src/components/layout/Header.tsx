@@ -34,7 +34,7 @@ import { cn } from "@/lib/utils"
 import type { InstanceCapabilities } from "@/types"
 import { useQuery } from "@tanstack/react-query"
 import { Link, useNavigate, useRouterState, useSearch } from "@tanstack/react-router"
-import { ChevronsUpDown, FileEdit, FunnelPlus, FunnelX, HardDrive, Home, Info, ListTodo, LogOut, Menu, Plus, Search, Server, Settings, X } from "lucide-react"
+import { Archive, ChevronsUpDown, FileEdit, FunnelPlus, FunnelX, HardDrive, Home, Info, ListTodo, LogOut, Menu, Plus, Search, Server, Settings, X } from "lucide-react"
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useHotkeys } from "react-hotkeys-hook"
 
@@ -64,7 +64,14 @@ export function Header({
   } = useTorrentSelection()
 
   const instanceId = useRouterState({
-    select: (s) => s.matches.find((m) => m.routeId === "/_authenticated/instances/$instanceId")?.params?.instanceId as string | undefined,
+    select: (s) => {
+      const match = s.matches.find(
+        (m) =>
+          m.routeId === "/_authenticated/instances/$instanceId" ||
+          m.routeId === "/_authenticated/instances/$instanceId/backups"
+      )
+      return (match?.params as { instanceId?: string } | undefined)?.instanceId
+    },
   })
   const selectedInstanceId = useMemo(() => {
     const parsed = instanceId ? parseInt(instanceId, 10) : NaN
@@ -313,6 +320,24 @@ export function Header({
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>Torrent creation tasks</TooltipContent>
+              </Tooltip>
+            )}
+            {isInstanceRoute && selectedInstanceId !== null && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="hidden md:inline-flex"
+                    onClick={() => navigate({
+                      to: "/instances/$instanceId/backups",
+                      params: { instanceId: selectedInstanceId.toString() },
+                    })}
+                  >
+                    <Archive className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Backups</TooltipContent>
               </Tooltip>
             )}
           </div>

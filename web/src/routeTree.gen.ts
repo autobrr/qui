@@ -14,15 +14,16 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as SetupRouteImport } from './routes/setup'
-import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
-import { Route as IndexRouteImport } from './routes/index'
-import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
-import { Route as AuthenticatedInstancesRouteImport } from './routes/_authenticated/instances'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
-import { Route as AuthenticatedInstancesIndexRouteImport } from './routes/_authenticated/instances.index'
+import { Route as AuthenticatedInstancesRouteImport } from './routes/_authenticated/instances'
 import { Route as AuthenticatedInstancesInstanceIdRouteImport } from './routes/_authenticated/instances.$instanceId'
+import { Route as AuthenticatedInstancesInstanceIdBackupsRouteImport } from './routes/_authenticated/instances.$instanceId.backups'
+import { Route as AuthenticatedInstancesIndexRouteImport } from './routes/_authenticated/instances.index'
+import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
+import { Route as IndexRouteImport } from './routes/index'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as SetupRouteImport } from './routes/setup'
 
 const SetupRoute = SetupRouteImport.update({
   id: '/setup',
@@ -70,6 +71,12 @@ const AuthenticatedInstancesInstanceIdRoute =
     path: '/$instanceId',
     getParentRoute: () => AuthenticatedInstancesRoute,
   } as any)
+const AuthenticatedInstancesInstanceIdBackupsRoute =
+  AuthenticatedInstancesInstanceIdBackupsRouteImport.update({
+    id: '/$instanceId/backups',
+    path: '/$instanceId/backups',
+    getParentRoute: () => AuthenticatedInstancesRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -79,6 +86,7 @@ export interface FileRoutesByFullPath {
   '/instances': typeof AuthenticatedInstancesRouteWithChildren
   '/settings': typeof AuthenticatedSettingsRoute
   '/instances/$instanceId': typeof AuthenticatedInstancesInstanceIdRoute
+  '/instances/$instanceId/backups': typeof AuthenticatedInstancesInstanceIdBackupsRoute
   '/instances/': typeof AuthenticatedInstancesIndexRoute
 }
 export interface FileRoutesByTo {
@@ -88,6 +96,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/instances/$instanceId': typeof AuthenticatedInstancesInstanceIdRoute
+  '/instances/$instanceId/backups': typeof AuthenticatedInstancesInstanceIdBackupsRoute
   '/instances': typeof AuthenticatedInstancesIndexRoute
 }
 export interface FileRoutesById {
@@ -100,6 +109,7 @@ export interface FileRoutesById {
   '/_authenticated/instances': typeof AuthenticatedInstancesRouteWithChildren
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/instances/$instanceId': typeof AuthenticatedInstancesInstanceIdRoute
+  '/_authenticated/instances/$instanceId/backups': typeof AuthenticatedInstancesInstanceIdBackupsRoute
   '/_authenticated/instances/': typeof AuthenticatedInstancesIndexRoute
 }
 export interface FileRouteTypes {
@@ -112,6 +122,7 @@ export interface FileRouteTypes {
     | '/instances'
     | '/settings'
     | '/instances/$instanceId'
+    | '/instances/$instanceId/backups'
     | '/instances/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -121,6 +132,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/settings'
     | '/instances/$instanceId'
+    | '/instances/$instanceId/backups'
     | '/instances'
   id:
     | '__root__'
@@ -132,6 +144,7 @@ export interface FileRouteTypes {
     | '/_authenticated/instances'
     | '/_authenticated/settings'
     | '/_authenticated/instances/$instanceId'
+    | '/_authenticated/instances/$instanceId/backups'
     | '/_authenticated/instances/'
   fileRoutesById: FileRoutesById
 }
@@ -207,11 +220,19 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedInstancesInstanceIdRouteImport
       parentRoute: typeof AuthenticatedInstancesRoute
     }
+    '/_authenticated/instances/$instanceId/backups': {
+      id: '/_authenticated/instances/$instanceId/backups'
+      path: '/$instanceId/backups'
+      fullPath: '/instances/$instanceId/backups'
+      preLoaderRoute: typeof AuthenticatedInstancesInstanceIdBackupsRouteImport
+      parentRoute: typeof AuthenticatedInstancesRoute
+    }
   }
 }
 
 interface AuthenticatedInstancesRouteChildren {
   AuthenticatedInstancesInstanceIdRoute: typeof AuthenticatedInstancesInstanceIdRoute
+  AuthenticatedInstancesInstanceIdBackupsRoute: typeof AuthenticatedInstancesInstanceIdBackupsRoute
   AuthenticatedInstancesIndexRoute: typeof AuthenticatedInstancesIndexRoute
 }
 
@@ -219,6 +240,8 @@ const AuthenticatedInstancesRouteChildren: AuthenticatedInstancesRouteChildren =
   {
     AuthenticatedInstancesInstanceIdRoute:
       AuthenticatedInstancesInstanceIdRoute,
+    AuthenticatedInstancesInstanceIdBackupsRoute:
+      AuthenticatedInstancesInstanceIdBackupsRoute,
     AuthenticatedInstancesIndexRoute: AuthenticatedInstancesIndexRoute,
   }
 

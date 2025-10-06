@@ -1341,6 +1341,11 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 	return torrents, nil
 }
 
+// GetAllTorrents returns the current torrent list for an instance without pagination.
+func (sm *SyncManager) GetAllTorrents(ctx context.Context, instanceID int) ([]qbt.Torrent, error) {
+	return sm.getAllTorrentsForStats(ctx, instanceID, "")
+}
+
 func normalizeForSearch(text string) string {
 	// Replace common torrent separators with spaces
 	replacers := []string{".", "_", "-", "[", "]", "(", ")", "{", "}"}

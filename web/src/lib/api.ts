@@ -6,9 +6,12 @@
 import type {
   AppPreferences,
   AuthResponse,
+  BackupManifest,
+  BackupRun,
+  BackupSettings,
   Category,
-  InstanceFormData,
   InstanceCapabilities,
+  InstanceFormData,
   InstanceResponse,
   TorrentCreationParams,
   TorrentCreationTask,
@@ -131,6 +134,61 @@ class ApiClient {
 
   async getInstanceCapabilities(id: number): Promise<InstanceCapabilities> {
     return this.request<InstanceCapabilities>(`/instances/${id}/capabilities`)
+  }
+
+  async getBackupSettings(instanceId: number): Promise<BackupSettings> {
+    return this.request<BackupSettings>(`/instances/${instanceId}/backups/settings`)
+  }
+
+  async updateBackupSettings(instanceId: number, payload: {
+    enabled: boolean
+    hourlyEnabled: boolean
+    dailyEnabled: boolean
+    weeklyEnabled: boolean
+    monthlyEnabled: boolean
+    keepLast: number
+    keepHourly: number
+    keepDaily: number
+    keepWeekly: number
+    keepMonthly: number
+    includeCategories: boolean
+    customPath?: string | null
+  }): Promise<BackupSettings> {
+    return this.request<BackupSettings>(`/instances/${instanceId}/backups/settings`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async triggerBackup(instanceId: number, payload: { kind?: string; requestedBy?: string } = {}): Promise<BackupRun> {
+    return this.request<BackupRun>(`/instances/${instanceId}/backups/run`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async listBackupRuns(instanceId: number, params?: { limit?: number; offset?: number }): Promise<BackupRun[]> {
+    const search = new URLSearchParams()
+    if (params?.limit !== undefined) search.set("limit", params.limit.toString())
+    if (params?.offset !== undefined) search.set("offset", params.offset.toString())
+
+    const query = search.toString()
+    const suffix = query ? `?${query}` : ""
+    return this.request<BackupRun[]>(`/instances/${instanceId}/backups/runs${suffix}`)
+  }
+
+  async getBackupManifest(instanceId: number, runId: number): Promise<BackupManifest> {
+    return this.request<BackupManifest>(`/instances/${instanceId}/backups/runs/${runId}/manifest`)
+  }
+
+  async deleteBackupRun(instanceId: number, runId: number): Promise<{ deleted: boolean }> {
+    return this.request<{ deleted: boolean }>(`/instances/${instanceId}/backups/runs/${runId}`, {
+      method: "DELETE",
+    })
+  }
+
+  getBackupDownloadUrl(instanceId: number, runId: number): string {
+    return withBasePath(`/api/instances/${instanceId}/backups/runs/${runId}/download`)
   }
 
 

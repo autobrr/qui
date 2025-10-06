@@ -4,16 +4,6 @@
  */
 
 import { InstanceErrorDisplay } from "@/components/instances/InstanceErrorDisplay"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger
-} from "@/components/ui/dropdown-menu"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,11 +14,23 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from "@/components/ui/alert-dialog"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu"
 import { useInstances } from "@/hooks/useInstances"
 import { useIncognitoMode } from "@/lib/incognito"
 import { cn, formatErrorMessage } from "@/lib/utils"
 import type { InstanceResponse } from "@/types"
+import { Link } from "@tanstack/react-router"
 import {
+  Archive,
   CheckCircle,
   Edit,
   Eye,
@@ -126,6 +128,15 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
                 <DropdownMenuItem onClick={handleTest} disabled={isTesting}>
                   <RefreshCw className="mr-2 h-4 w-4" />
                   Test Connection
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link
+                    to="/instances/$instanceId/backups"
+                    params={{ instanceId: instance.id.toString() }}
+                  >
+                    <Archive className="mr-2 h-4 w-4" />
+                    View Backups
+                  </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem

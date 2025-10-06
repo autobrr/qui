@@ -202,6 +202,65 @@ export interface ServerState {
   write_cache_overload?: string
 }
 
+export type BackupRunKind = "manual" | "hourly" | "daily" | "weekly" | "monthly"
+
+export type BackupRunStatus = "pending" | "running" | "success" | "failed" | "canceled"
+
+export interface BackupSettings {
+  instanceId: number
+  enabled: boolean
+  hourlyEnabled: boolean
+  dailyEnabled: boolean
+  weeklyEnabled: boolean
+  monthlyEnabled: boolean
+  keepLast: number
+  keepHourly: number
+  keepDaily: number
+  keepWeekly: number
+  keepMonthly: number
+  includeCategories: boolean
+  includeTags: boolean
+  customPath?: string | null
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface BackupRun {
+  id: number
+  instanceId: number
+  kind: BackupRunKind
+  status: BackupRunStatus
+  requestedBy: string
+  requestedAt: string
+  startedAt?: string
+  completedAt?: string
+  archivePath?: string | null
+  manifestPath?: string | null
+  totalBytes: number
+  torrentCount: number
+  categoryCounts?: Record<string, number>
+  errorMessage?: string | null
+}
+
+export interface BackupManifestItem {
+  hash: string
+  name: string
+  category?: string | null
+  sizeBytes: number
+  archivePath: string
+  infohashV1?: string | null
+  infohashV2?: string | null
+  tags?: string[]
+}
+
+export interface BackupManifest {
+  instanceId: number
+  kind: BackupRunKind
+  generatedAt: string
+  torrentCount: number
+  items: BackupManifestItem[]
+}
+
 export interface AppPreferences {
   // Core limits and speeds (fully supported)
   dl_limit: number
