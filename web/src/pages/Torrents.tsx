@@ -305,7 +305,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
       <Dialog open={isTasksModalOpen} onOpenChange={handleTasksModalChange}>
         <DialogContent className="w-full sm:max-w-screen-sm md:max-w-screen-md lg:max-w-screen-xl xl:max-w-screen-xl max-h-[85vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle>Torrent Creation Tasks</DialogTitle>
+            <DialogTitle>{t("dashboard.quickActions.tasks")}</DialogTitle>
           </DialogHeader>
           <div className="flex-1 overflow-auto">
             <TorrentCreationTasks instanceId={instanceId} />

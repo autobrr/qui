@@ -607,7 +607,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
               {t("torrent_management_bar.dialogs.delete.description")}
               {deleteDialogTotalSize > 0 && (
                 <span className="block mt-2 text-xs text-muted-foreground">
-                  Total size: {deleteDialogFormattedSize}
+                  {t("torrent_management_bar.dialogs.delete.total_size")} {deleteDialogFormattedSize}
                 </span>
               )}
             </AlertDialogDescription>

@@ -438,7 +438,8 @@
         "description": "This action cannot be undone. The torrents will be removed from qBittorrent.",
         "delete_files_label": "Also delete files from disk",
         "delete_button": "Delete",
-        "description_with_size": "This action cannot be undone. Total size: {{size}}"
+        "description_with_size": "This action cannot be undone. Total size: {{size}}",
+        "total_size": "Total size:"
       },
       "recheck": {
         "title_one": "Force Recheck {{count}} torrent?",
@@ -551,7 +552,12 @@
     "all_selected_with_size": "All {{count}} selected • {{size}}",
     "count_selected_with_size": "{{count}} selected • {{size}}",
     "keyboard_shortcuts_with_size": "Shift+click for range, {{key}}+click for multiple • {{size}}",
-    "delete_torrents_body_with_size": "This action cannot be undone. The torrents will be removed from qBittorrent. Total size: {{size}}"
+    "delete_torrents_body_with_size": "This action cannot be undone. The torrents will be removed from qBittorrent. Total size: {{size}}",
+    "selection_shortcuts": {
+      "title": "Selection shortcuts",
+      "range": "Shift+click for range",
+      "multiple": "{{key}}+click for multiple"
+    }
   },
   "instances": {
     "add": "Add Instance",
@@ -1191,6 +1197,11 @@
       "loading": "Loading trackers...",
       "no_match": "No trackers found matching \"{{search}}\"",
       "edit_url": "Edit Tracker URL"
+    },
+    "toasts": {
+      "fetch_urls_failed": "Failed to fetch tracker URLs",
+      "update_url_success": "Updated tracker URL across all affected torrents",
+      "update_url_failed": "Failed to update tracker"
     }
   },
   "tag_category_management_dialogs": {
@@ -1644,6 +1655,17 @@
       "dismiss": "Dismiss"
     }
   },
+  "pwa": {
+    "reload": "Reload",
+    "updateAvailable": {
+      "title": "Update available",
+      "description": "Reload to apply the latest qui release."
+      },
+    "updated": {
+      "title": "qui updated",
+      "description": "Reload when convenient to finish installing the latest release."
+    }
+  },
   "hooks": {
     "useLicense": {
       "premiumAccessActivated": "Premium access activated! Thank you!",
@@ -1699,6 +1721,100 @@
       "setDownloadLimit_other": "Set download limit for {{count}} torrents",
       "setLocation_one": "Set location for {{count}} torrent",
       "setLocation_other": "Set location for {{count}} torrents"
+    }
+  },
+  "torrent_creation_tasks": {
+    "loading": "Loading tasks...",
+    "empty": "No torrent creation tasks found",
+    "private": "Private",
+    "status": {
+      "queued": "Queued",
+      "running": "Running",
+      "finished": "Finished",
+      "failed": "Failed"
+    },
+    "table": {
+      "source": "Source",
+      "status": "Status",
+      "progress": "Progress",
+      "added": "Added",
+      "actions": "Actions"
+    },
+    "toasts": {
+      "download_started": "Torrent file download started",
+      "download_failed": "Failed to download torrent file",
+      "delete_success": "Torrent creation task deleted",
+      "delete_failed": "Failed to delete torrent creation task"
+    }
+  },
+  "torrent_creator_dialog": {
+    "title": "Create Torrent",
+    "description": "Create a new .torrent file from a file or folder on the server",
+    "toasts": {
+      "queued": "Torrent creation task queued",
+      "failed": "Failed to create torrent task"
+    },
+    "source_path": {
+      "label": "Source Path",
+      "placeholder": "/path/to/file/or/folder",
+      "description": "Full path on the server where qBittorrent is running",
+      "tooltip": "Windows users: use double backslashes (e.g., C:\\\\Data\\\\folder)"
+    },
+    "private": {
+      "label": "Private torrent",
+      "description": "Disable DHT, PEX, and local peer discovery"
+    },
+    "trackers": {
+      "label": "Trackers",
+      "description": "Select from your active trackers or paste custom URLs below",
+      "placeholder": "Add tracker from your active torrents",
+      "line_by_line": "One tracker URL per line",
+      "textarea_placeholder": "https://tracker.example.com:443/announce\nudp://tracker.example2.com:6969/announce"
+    },
+    "comment": {
+      "label": "Comment",
+      "placeholder": "Optional comment"
+    },
+    "source": {
+      "label": "Source",
+      "placeholder": "Optional source tag"
+    },
+    "start_seeding": {
+      "label": "Add to qBittorrent",
+      "description": "Add the created torrent to qBittorrent and start seeding. If disabled, only creates the .torrent file for download."
+    },
+    "advanced_options": {
+      "title": "Advanced Options",
+      "format": {
+        "label": "Torrent Format",
+        "placeholder": "Auto (v1)",
+        "v1": "v1 (Compatible)",
+        "v2": "v2 (Modern)",
+        "hybrid": "Hybrid (v1 + v2)",
+        "description": "v1 for maximum compatibility, v2 for modern clients, hybrid for both"
+      },
+      "piece_size": {
+        "label": "Piece Size",
+        "placeholder": "Auto (recommended)",
+        "description": "Auto calculates optimal size based on content",
+        "options": {
+          "auto": "Auto (recommended)"
+        }
+      },
+      "save_path": {
+        "label": "Save .torrent to (optional)",
+        "placeholder": "/path/to/save/file.torrent",
+        "description": "Where to save the .torrent file on the server",
+        "tooltip": "qBittorrent needs write access to this directory. Best to leave blank and download the .torrent file from the tasks modal later."
+      },
+      "web_seeds": {
+        "label": "Web Seeds (HTTP/HTTPS)",
+        "placeholder": "https://mirror1.example.com/path\nhttps://mirror2.example.com/path",
+        "description": "HTTP/HTTPS URLs where the content can be downloaded. One URL per line."
+      }
+    },
+    "actions": {
+      "submit": "Create Torrent"
     }
   },
   "lib": {

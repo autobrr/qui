@@ -438,7 +438,8 @@
         "description": "此操作无法撤销。种子将从 qBittorrent 中移除。",
         "delete_files_label": "同时删除磁盘上的文件",
         "delete_button": "删除",
-        "description_with_size": "此操作无法撤销。总大小：{{size}}"
+        "description_with_size": "此操作无法撤销。总大小：{{size}}",
+        "total_size": "总大小:"
       },
       "recheck": {
         "title_one": "强制重新校验 {{count}} 个种子？",
@@ -551,7 +552,12 @@
     "all_selected_with_size": "已全选 {{count}} 个 • {{size}}",
     "count_selected_with_size": "已选择 {{count}} 个 • {{size}}",
     "keyboard_shortcuts_with_size": "按住 Shift 并单击可选择范围，按住 {{key}} 并单击可多选 • {{size}}",
-    "delete_torrents_body_with_size": "此操作无法撤销。种子将从 qBittorrent 中移除。总大小：{{size}}"
+    "delete_torrents_body_with_size": "此操作无法撤销。种子将从 qBittorrent 中移除。总大小：{{size}}",
+    "selection_shortcuts": {
+      "title": "选择快捷键",
+      "range": "Shift+单击选择范围",
+      "multiple": "{{key}}+单击进行多选"
+    }
   },
   "instances": {
     "add": "添加实例",
@@ -1191,6 +1197,11 @@
       "loading": "正在加载 Tracker...",
       "no_match": "未找到匹配 \"{{search}}\" 的 Tracker",
       "edit_url": "编辑 Tracker URL"
+    },
+    "toasts": {
+      "fetch_urls_failed": "获取 Tracker URL 失败",
+      "update_url_success": "已更新所有受影响种子的 Tracker URL",
+      "update_url_failed": "更新 Tracker 失败"
     }
   },
   "tag_category_management_dialogs": {
@@ -1644,6 +1655,17 @@
       "dismiss": "忽略"
     }
   },
+  "pwa": {
+    "reload": "重新加载",
+    "updateAvailable": {
+      "title": "有可用更新",
+      "description": "重新加载以应用最新的 qui 版本。"
+    },
+    "updated": {
+      "title": "qui 已更新",
+      "description": "在方便时重新加载以完成最新版本的安装。"
+    }
+  },
   "hooks": {
     "useLicense": {
       "premiumAccessActivated": "高级访问已激活！谢谢！",
@@ -1699,6 +1721,100 @@
       "setDownloadLimit_other": "已为 {{count}} 个种子设置下载限制",
       "setLocation_one": "已为 {{count}} 个种子设置位置",
       "setLocation_other": "已为 {{count}} 个种子设置位置"
+    }
+  },
+  "torrent_creation_tasks": {
+    "loading": "正在加载任务...",
+    "empty": "未找到种子创建任务",
+    "private": "私有",
+    "status": {
+      "queued": "排队中",
+      "running": "运行中",
+      "finished": "已完成",
+      "failed": "失败"
+    },
+    "table": {
+      "source": "来源",
+      "status": "状态",
+      "progress": "进度",
+      "added": "已添加",
+      "actions": "操作"
+    },
+    "toasts": {
+      "download_started": "种子文件下载已开始",
+      "download_failed": "下载种子文件失败",
+      "delete_success": "种子创建任务已删除",
+      "delete_failed": "删除种子创建任务失败"
+    }
+  },
+  "torrent_creator_dialog": {
+    "title": "创建种子",
+    "description": "从服务器上的文件或文件夹创建新的 .torrent 文件",
+    "toasts": {
+      "queued": "已将创建种子的任务加入队列",
+      "failed": "创建种子任务失败"
+    },
+    "source_path": {
+      "label": "来源路径",
+      "placeholder": "/path/to/file/or/folder",
+      "description": "qBittorrent 所在服务器上的完整路径",
+      "tooltip": "Windows 用户：请使用双反斜杠（例如 C:\\\\Data\\\\folder）"
+    },
+    "private": {
+      "label": "私有种子",
+      "description": "禁用 DHT、PEX 和本地对等点发现"
+    },
+    "trackers": {
+      "label": "Trackers",
+      "description": "从您的活动 Trackers 中选择或在下方粘贴自定义 URL",
+      "placeholder": "从您活动的种子中添加 Tracker",
+      "line_by_line": "每行一个 Tracker URL",
+      "textarea_placeholder": "https://tracker.example.com:443/announce\nudp://tracker.example2.com:6969/announce"
+    },
+    "comment": {
+      "label": "注释",
+      "placeholder": "可选注释"
+    },
+    "source": {
+      "label": "来源",
+      "placeholder": "可选的来源标签"
+    },
+    "start_seeding": {
+      "label": "添加到 qBittorrent",
+      "description": "将创建的种子添加到 qBittorrent 并开始做种。如果禁用，则仅创建 .torrent 文件以供下载。"
+    },
+    "advanced_options": {
+      "title": "高级选项",
+      "format": {
+        "label": "种子格式",
+        "placeholder": "自动 (v1)",
+        "v1": "v1 (兼容)",
+        "v2": "v2 (现代)",
+        "hybrid": "混合 (v1 + v2)",
+        "description": "v1 提供最大兼容性，v2 适用于现代客户端，混合两者皆可"
+      },
+      "piece_size": {
+        "label": "区块大小",
+        "placeholder": "自动 (推荐)",
+        "description": "根据内容自动计算最佳大小",
+        "options": {
+          "auto": "自动 (推荐)"
+        }
+      },
+      "save_path": {
+        "label": "将 .torrent 保存到 (可选)",
+        "placeholder": "/path/to/save/file.torrent",
+        "description": "在服务器上保存 .torrent 文件的位置",
+        "tooltip": "qBittorrent 需要对该目录的写权限。最好留空，稍后从任务模式下载 .torrent 文件。"
+      },
+      "web_seeds": {
+        "label": "Web 种子 (HTTP/HTTPS)",
+        "placeholder": "https://mirror1.example.com/path\nhttps://mirror2.example.com/path",
+        "description": "可以下载内容的 HTTP/HTTPS URL。每行一个 URL。"
+      }
+    },
+    "actions": {
+      "submit": "创建种子"
     }
   },
   "lib": {

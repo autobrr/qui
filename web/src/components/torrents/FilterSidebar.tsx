@@ -283,7 +283,7 @@ const FilterSidebarComponent = ({
       }
     } catch (error) {
       console.error("Failed to fetch tracker URLs:", error)
-      toast.error("Failed to fetch tracker URLs")
+      toast.error(t("filter_sidebar.toasts.fetch_urls_failed"))
     } finally {
       setLoadingTrackerURLs(false)
     }
@@ -308,12 +308,12 @@ const FilterSidebarComponent = ({
       })
     },
     onSuccess: () => {
-      toast.success("Updated tracker URL across all affected torrents")
+      toast.success(t("filter_sidebar.toasts.update_url_success"))
       setShowEditTrackerDialog(false)
       setTrackerFullURLs([])
     },
     onError: (error: Error) => {
-      toast.error("Failed to update tracker", {
+      toast.error(t("filter_sidebar.toasts.update_url_failed"), {
         description: error.message,
       })
     },

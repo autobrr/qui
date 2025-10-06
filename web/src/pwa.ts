@@ -5,6 +5,7 @@
 
 import { toast } from "sonner"
 import { getBaseUrl, withBasePath } from "./lib/base-url"
+import i18n from "./i18n"
 
 let hasRegistered = false
 
@@ -47,7 +48,7 @@ export function setupPWAAutoUpdate(): void {
       description,
       duration: Number.POSITIVE_INFINITY,
       action: {
-        label: "Reload",
+        label: i18n.t("pwa.reload"),
         onClick: () => {
           dismissUpdateToast()
           onConfirm()
@@ -65,8 +66,8 @@ export function setupPWAAutoUpdate(): void {
 
       const promptForUpdate = () => {
         showUpdateToast({
-          title: "Update available",
-          description: "Reload to apply the latest qui release.",
+          title: i18n.t("pwa.updateAvailable.title"),
+          description: i18n.t("pwa.updateAvailable.description"),
           onConfirm: () => {
             shouldReloadAfterActivation = true
 
@@ -93,8 +94,8 @@ export function setupPWAAutoUpdate(): void {
 
         if (event.isUpdate || event.isExternal) {
           showUpdateToast({
-            title: "qui updated",
-            description: "Reload when convenient to finish installing the latest release.",
+            title: i18n.t("pwa.updated.title"),
+            description: i18n.t("pwa.updated.description"),
             onConfirm: () => {
               reload()
             },

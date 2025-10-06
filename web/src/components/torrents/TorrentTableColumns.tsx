@@ -409,11 +409,11 @@ export const createColumns = (
 
       if (supportsTrackerHealth) {
         if (trackerHealth === "tracker_down") {
-          displayLabel = "Tracker Down";
+          displayLabel = t("filter_sidebar.status.tracker_down");
           badgeVariant = "outline";
           badgeClass = "text-yellow-500 border-yellow-500/40 bg-yellow-500/10";
         } else if (trackerHealth === "unregistered") {
-          displayLabel = "Unregistered";
+          displayLabel = t("filter_sidebar.status.unregistered");
           badgeVariant = "outline";
           badgeClass =
             "text-destructive border-destructive/40 bg-destructive/10";

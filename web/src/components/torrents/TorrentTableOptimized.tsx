@@ -1396,7 +1396,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
             ) : (
               <>
                 {hasLoadedAll ? (
-                  `${torrents.length} torrent${torrents.length !== 1 ? "s" : ""}`
+                  t("torrent_table_optimized.torrents_count", { count: torrents.length })
                 ) : isLoadingMore ? (
                   t("torrent_table_optimized.loading_more_torrents")
                 ) : (
@@ -1415,13 +1415,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span className="hidden sm:inline-block ml-2 text-xs opacity-70 cursor-help">
-                      • Selection shortcuts
+                      • {t("torrent_table_optimized.selection_shortcuts.title")}
                     </span>
                   </TooltipTrigger>
                   <TooltipContent>
                     <div className="text-xs">
-                      <div>Shift+click for range</div>
-                      <div>{isMac ? "Cmd" : "Ctrl"}+click for multiple</div>
+                      <div>{t("torrent_table_optimized.selection_shortcuts.range")}</div>
+                      <div>{t("torrent_table_optimized.selection_shortcuts.multiple", { key: isMac ? "Cmd" : "Ctrl" })}</div>
                     </div>
                   </TooltipContent>
                 </Tooltip>
