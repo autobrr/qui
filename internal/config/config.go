@@ -603,6 +603,15 @@ func (c *AppConfig) SetDataDir(dir string) {
 	c.dataDir = dir
 }
 
+// GetConfigDir returns the directory containing the config file
+func (c *AppConfig) GetConfigDir() string {
+	if c.viper.ConfigFileUsed() != "" {
+		return filepath.Dir(c.viper.ConfigFileUsed())
+	}
+	// Fallback to default config directory when no config file is explicitly used
+	return GetDefaultConfigDir()
+}
+
 const encryptionKeySize = 32
 
 func WriteDefaultConfig(path string) error {
