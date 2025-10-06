@@ -341,6 +341,15 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 			trackerDomain = tracker
 		}
 
+		if patched, changed, err := patchTorrentTrackers(data, gatherTrackerURLs(ctx, s.syncManager, j.instanceID, torrent)); err != nil {
+			log.Warn().Err(err).Str("hash", torrent.Hash).Int("instanceID", j.instanceID).Msg("Failed to patch exported torrent trackers")
+		} else if changed {
+			data = patched
+			// ensure cached entry is rebuilt with the corrected payload
+			blobRelPath = nil
+			log.Debug().Str("hash", torrent.Hash).Int("instanceID", j.instanceID).Msg("Injected tracker metadata into exported torrent")
+		}
+
 		filename := torrentname.SanitizeExportFilename(suggestedName, torrent.Hash, trackerDomain, torrent.Hash)
 		category := strings.TrimSpace(torrent.Category)
 		var categoryPtr *string
