@@ -340,7 +340,15 @@ func (s *Server) Handler() (*chi.Mux, error) {
 		baseURL = "/"
 	}
 
+	// Mount API routes BEFORE web handler to prevent catch-all from intercepting API requests
+	r.Get("/health", healthHandler.HandleHealth)
+	r.Get("/healthz/readiness", healthHandler.HandleReady)
+	r.Get("/healthz/liveness", healthHandler.HandleLiveness)
+
+	r.Mount(baseURL+"api", apiRouter)
+
 	// Initialize web handler (for embedded frontend)
+	// This MUST be registered AFTER API routes to avoid catch-all intercepting /api/* paths
 	webHandler := web.NewHandler(s.version, s.config.Config.BaseURL, webfs.DistDirFS)
 
 	if baseURL != "/" {
@@ -355,12 +363,6 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	} else {
 		webHandler.RegisterRoutes(r)
 	}
-
-	r.Get("/health", healthHandler.HandleHealth)
-	r.Get("/healthz/readiness", healthHandler.HandleReady)
-	r.Get("/healthz/liveness", healthHandler.HandleLiveness)
-
-	r.Mount(baseURL+"api", apiRouter)
 
 	if baseURL != "/" {
 		r.Get("/", func(w http.ResponseWriter, request *http.Request) {
