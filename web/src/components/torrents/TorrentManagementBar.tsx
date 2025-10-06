@@ -35,7 +35,8 @@ import {
 } from "@/components/ui/tooltip"
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
 import { api } from "@/lib/api"
-import { getCommonCategory, getCommonSavePath, getCommonTags } from "@/lib/torrent-utils"
+import { formatBytes } from "@/lib/utils"
+import { getCommonCategory, getCommonSavePath, getCommonTags, getTotalSize } from "@/lib/torrent-utils"
 import type { Torrent } from "@/types"
 import { useQuery } from "@tanstack/react-query"
 import {
@@ -73,6 +74,7 @@ interface TorrentManagementBarProps {
   selectedTorrents?: Torrent[]
   isAllSelected?: boolean
   totalSelectionCount?: number
+  totalSelectionSize?: number
   filters?: {
     status: string[]
     categories: string[]
@@ -90,6 +92,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   selectedTorrents = [],
   isAllSelected = false,
   totalSelectionCount = 0,
+  totalSelectionSize = 0,
   filters,
   search,
   excludeHashes = [],
@@ -174,6 +177,19 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     clientHashes: selectedHashes,
     totalSelected: selectionCount,
   }), [selectedHashes, selectionCount])
+
+  const deleteDialogTotalSize = useMemo(() => {
+    if (totalSelectionSize > 0) {
+      return totalSelectionSize
+    }
+
+    if (selectedTorrents.length > 0) {
+      return getTotalSize(selectedTorrents)
+    }
+
+    return 0
+  }, [totalSelectionSize, selectedTorrents])
+  const deleteDialogFormattedSize = useMemo(() => formatBytes(deleteDialogTotalSize), [deleteDialogTotalSize])
 
   const triggerAction = useCallback((action: (typeof TORRENT_ACTIONS)[keyof typeof TORRENT_ACTIONS], extra?: Parameters<typeof handleAction>[2]) => {
     handleAction(action, actionHashes, {
@@ -586,6 +602,11 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
             <AlertDialogTitle>Delete {totalSelectionCount || selectedHashes.length} torrent(s)?</AlertDialogTitle>
             <AlertDialogDescription>
               This action cannot be undone. The torrents will be removed from qBittorrent.
+              {deleteDialogTotalSize > 0 && (
+                <span className="block mt-2 text-xs text-muted-foreground">
+                  Total size: {deleteDialogFormattedSize}
+                </span>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="flex items-center space-x-2 py-4">

@@ -15,6 +15,7 @@ import {
   TableRow
 } from "@/components/ui/table"
 import { api } from "@/lib/api"
+import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { getTorrentTaskPollInterval } from "@/lib/torrent-task-polling"
 import type { TorrentCreationStatus, TorrentCreationTask } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
@@ -41,6 +42,7 @@ const STATUS_ICONS: Record<TorrentCreationStatus, React.ReactNode> = {
 
 export function TorrentCreationTasks({ instanceId }: TorrentCreationTasksProps) {
   const queryClient = useQueryClient()
+  const { formatDate } = useDateTimeFormatters()
 
   // Keep table responsive while tasks run and ease off polling once queue clears
   const { data: tasks, isLoading } = useQuery({
@@ -142,7 +144,7 @@ export function TorrentCreationTasks({ instanceId }: TorrentCreationTasksProps) 
             {/* Footer with date and actions */}
             <div className="flex items-center justify-between gap-3 pt-2 border-t">
               <div className="text-xs text-muted-foreground">
-                {new Date(task.timeAdded).toLocaleString()}
+                {formatDate(new Date(task.timeAdded))}
               </div>
               <div className="flex gap-2">
                 {task.status === "Finished" && (
@@ -221,7 +223,7 @@ export function TorrentCreationTasks({ instanceId }: TorrentCreationTasksProps) 
                 </TableCell>
                 <TableCell>
                   <div className="text-sm">
-                    {new Date(task.timeAdded).toLocaleString()}
+                    {formatDate(new Date(task.timeAdded))}
                   </div>
                 </TableCell>
                 <TableCell className="text-right">
