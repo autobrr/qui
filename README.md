@@ -534,6 +534,18 @@ make dev-frontend
 - Fast search and filtering
 - Responsive UI with virtual scrolling
 
+## qBittorrent Version Compatibility
+
+> [!NOTE]
+> qui officially supports qBittorrent 4.3.9 and newer as the baseline. The features below may require newer builds as noted, and anything older than 4.3.9 might still connect, but functionality is not guaranteed.
+
+qui automatically detects the features available on each qBittorrent instance and adjusts the interface accordingly. Certain features require newer qBittorrent versions and will be disabled when connecting to older instances:
+
+| Feature | Minimum Version | Notes |
+| --- | --- | --- |
+| **Torrent Creation** | 5.0.0+ (Web API 2.11.2+) | |
+| **Tracker Health Status** | 5.1.0+ (Web API 2.11.4+) | Automatically marks torrents that are either unregistered or has a tracker issue |
+
 ## Community
 
 Join our friendly and welcoming community on [Discord](https://discord.autobrr.com/qui)! Connect with fellow autobrr users, get advice, and share your experiences. 
