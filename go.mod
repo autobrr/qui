@@ -10,6 +10,7 @@ require (
 	github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20251004215124-dc15e9057f6f
 	github.com/coreos/go-oidc/v3 v3.15.0
 	github.com/creativeprojects/go-selfupdate v1.5.1
+	github.com/expr-lang/expr v1.17.6
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-chi/chi/v5 v5.2.3
 	github.com/hashicorp/go-version v1.7.0
