@@ -10,10 +10,12 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { type ColumnType, type FilterOperation } from "@/lib/column-constants"
 import { getDefaultOperation, getOperations } from "@/lib/column-filter-utils"
-import { Filter, X } from "lucide-react"
+import { CaseSensitive, Filter, X } from "lucide-react"
 import { type KeyboardEvent, useState } from "react"
 
 export type SizeUnit = "B" | "KiB" | "MiB" | "GiB" | "TiB"
+
+export type SpeedUnit = "B/s" | "KiB/s" | "MiB/s" | "GiB/s" | "TiB/s"
 
 export type DurationUnit = "seconds" | "minutes" | "hours" | "days"
 
@@ -24,8 +26,11 @@ export interface ColumnFilter {
   value2?: string
   sizeUnit?: SizeUnit
   sizeUnit2?: SizeUnit
+  speedUnit?: SpeedUnit
+  speedUnit2?: SpeedUnit
   durationUnit?: DurationUnit
   durationUnit2?: DurationUnit
+  caseSensitive?: boolean
 }
 
 interface ColumnFilterPopoverProps {
@@ -44,6 +49,14 @@ const SIZE_UNITS: { value: SizeUnit; label: string }[] = [
   { value: "TiB", label: "TiB" },
 ]
 
+const SPEED_UNITS: { value: SpeedUnit; label: string }[] = [
+  { value: "B/s", label: "B/s" },
+  { value: "KiB/s", label: "KiB/s" },
+  { value: "MiB/s", label: "MiB/s" },
+  { value: "GiB/s", label: "GiB/s" },
+  { value: "TiB/s", label: "TiB/s" },
+]
+
 const DURATION_UNITS: { value: DurationUnit; label: string }[] = [
   { value: "seconds", label: "Seconds" },
   { value: "minutes", label: "Minutes" },
@@ -51,18 +64,56 @@ const DURATION_UNITS: { value: DurationUnit; label: string }[] = [
   { value: "days", label: "Days" },
 ]
 
+const TORRENT_STATES: { value: string; label: string }[] = [
+  { value: "downloading", label: "Downloading" },
+  { value: "uploading", label: "Seeding" },
+  { value: "forcedUP", label: "Forced (UP)" },
+  { value: "forcedDL", label: "Forced (DL)" },
+  { value: "pausedUP", label: "Paused (UP)" },
+  { value: "pausedDL", label: "Paused (DL)" },
+  { value: "stoppedUP", label: "Stopped (UP)" },
+  { value: "stoppedDL", label: "Stopped (DL)" },
+  { value: "queuedUP", label: "Queued (UP)" },
+  { value: "queuedDL", label: "Queued (DL)" },
+  { value: "stalledUP", label: "Stalled (UP)" },
+  { value: "stalledDL", label: "Stalled (DL)" },
+  { value: "error", label: "Error" },
+  { value: "missingFiles", label: "Missing Files" },
+  { value: "checkingUP", label: "Checking (UP)" },
+  { value: "checkingDL", label: "Checking (DL)" },
+  { value: "moving", label: "Moving" },
+  { value: "checkingResumeData", label: "Checking Resume Data" },
+  { value: "allocating", label: "Allocating" },
+  { value: "metaDL", label: "Fetching Metadata" },
+  { value: "unknown", label: "Unknown" },
+]
+
 interface ValueInputProps {
   columnType: ColumnType
   value: string
   onChange: (value: string) => void
-  unit?: { value: SizeUnit | DurationUnit; onChange: (unit: SizeUnit | DurationUnit) => void }
+  unit?: { value: SizeUnit | SpeedUnit | DurationUnit; onChange: (unit: SizeUnit | SpeedUnit | DurationUnit) => void }
   onKeyDown: (e: KeyboardEvent) => void
+  caseSensitive?: boolean
+  onCaseSensitiveChange?: (value: boolean) => void
 }
 
-function ValueInput({ columnType, value, onChange, unit, onKeyDown }: ValueInputProps) {
+function ValueInput({
+  columnType,
+  value,
+  onChange,
+  unit,
+  onKeyDown,
+  caseSensitive,
+  onCaseSensitiveChange,
+}: ValueInputProps) {
   const isSizeColumn = columnType === "size"
+  const isSpeedColumn = columnType === "speed"
   const isDurationColumn = columnType === "duration"
+  const isPercentageColumn = columnType === "percentage"
   const isBooleanColumn = columnType === "boolean"
+  const isEnumColumn = columnType === "enum"
+  const isStringColumn = columnType === "string"
 
   if (isSizeColumn && unit) {
     return (
@@ -84,6 +135,36 @@ function ValueInput({ columnType, value, onChange, unit, onKeyDown }: ValueInput
           </SelectTrigger>
           <SelectContent>
             {SIZE_UNITS.map((u) => (
+              <SelectItem key={u.value} value={u.value}>
+                {u.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    )
+  }
+
+  if (isSpeedColumn && unit) {
+    return (
+      <div className="flex gap-2">
+        <Input
+          type="number"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="Enter speed..."
+          onKeyDown={onKeyDown}
+          className="flex-1"
+        />
+        <Select
+          value={unit.value as string}
+          onValueChange={(v) => unit.onChange(v as SizeUnit)}
+        >
+          <SelectTrigger className="w-24">
+            <SelectValue/>
+          </SelectTrigger>
+          <SelectContent>
+            {SPEED_UNITS.map((u) => (
               <SelectItem key={u.value} value={u.value}>
                 {u.label}
               </SelectItem>
@@ -124,6 +205,24 @@ function ValueInput({ columnType, value, onChange, unit, onKeyDown }: ValueInput
     )
   }
 
+  if (isPercentageColumn) {
+    return (
+      <div className="relative">
+        <Input
+          type="number"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="Enter percentage..."
+          onKeyDown={onKeyDown}
+          className="pr-8"
+        />
+        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-muted-foreground">
+          %
+        </div>
+      </div>
+    )
+  }
+
   if (isBooleanColumn) {
     return (
       <Select
@@ -138,6 +237,50 @@ function ValueInput({ columnType, value, onChange, unit, onKeyDown }: ValueInput
           <SelectItem value="false">False</SelectItem>
         </SelectContent>
       </Select>
+    )
+  }
+
+  if (isEnumColumn) {
+    return (
+      <Select
+        value={value}
+        onValueChange={onChange}
+      >
+        <SelectTrigger>
+          <SelectValue placeholder="Select status"/>
+        </SelectTrigger>
+        <SelectContent>
+          {TORRENT_STATES.map((state) => (
+            <SelectItem key={state.value} value={state.value}>
+              {state.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    )
+  }
+
+  if (isStringColumn && onCaseSensitiveChange) {
+    return (
+      <div className="flex gap-2">
+        <Input
+          type="text"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="Enter value..."
+          onKeyDown={onKeyDown}
+          className="flex-1"
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className={`${caseSensitive ? "text-primary hover:text-primary/80" : "text-muted-foreground"}`}
+          onClick={() => onCaseSensitiveChange(!caseSensitive)}
+        >
+          <CaseSensitive className="size-4"/>
+        </Button>
+      </div>
     )
   }
 
@@ -163,7 +306,10 @@ export function ColumnFilterPopover({
   const [operation, setOperation] = useState<FilterOperation>(
     currentFilter?.operation || getDefaultOperation(columnType)
   )
-  const [value, setValue] = useState(currentFilter?.value || (columnType === "boolean" ? "true" : ""))
+  const [value, setValue] = useState(
+    currentFilter?.value ||
+    (columnType === "boolean" ? "true" : columnType === "enum" ? "downloading" : "")
+  )
   const [value2, setValue2] = useState(currentFilter?.value2 || "")
   const [sizeUnit, setSizeUnit] = useState<SizeUnit>(
     currentFilter?.sizeUnit || "MiB"
@@ -171,15 +317,26 @@ export function ColumnFilterPopover({
   const [sizeUnit2, setSizeUnit2] = useState<SizeUnit>(
     currentFilter?.sizeUnit2 || "MiB"
   )
+  const [speedUnit, setSpeedUnit] = useState<SpeedUnit>(
+    currentFilter?.speedUnit || "MiB/s"
+  )
+  const [speedUnit2, setSpeedUnit2] = useState<SpeedUnit>(
+    currentFilter?.speedUnit2 || "MiB/s"
+  )
   const [durationUnit, setDurationUnit] = useState<DurationUnit>(
     currentFilter?.durationUnit || "hours"
   )
   const [durationUnit2, setDurationUnit2] = useState<DurationUnit>(
     currentFilter?.durationUnit2 || "hours"
   )
+  const [caseSensitive, setCaseSensitive] = useState<boolean>(
+    currentFilter?.caseSensitive ?? true
+  )
 
   const isSizeColumn = columnType === "size"
+  const isSpeedColumn = columnType === "speed"
   const isDurationColumn = columnType === "duration"
+  const isStringColumn = columnType === "string"
   const isBetweenOperation = operation === "between"
 
   const operations = getOperations(columnType)
@@ -205,6 +362,13 @@ export function ColumnFilterPopover({
         }
       }
 
+      if (isSpeedColumn) {
+        filter.speedUnit = speedUnit
+        if (isBetweenOperation) {
+          filter.speedUnit2 = speedUnit2
+        }
+      }
+
       if (isDurationColumn) {
         filter.durationUnit = durationUnit
         if (isBetweenOperation) {
@@ -212,12 +376,16 @@ export function ColumnFilterPopover({
         }
       }
 
+      if (isStringColumn) {
+        filter.caseSensitive = caseSensitive
+      }
+
       onApply(filter)
     }
     setOpen(false)
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: KeyboardEvent) => {
     if (e.key === "Enter") {
       handleApply()
     }
@@ -228,7 +396,9 @@ export function ColumnFilterPopover({
     setValue("")
     setValue2("")
     setSizeUnit("MiB")
+    setSpeedUnit("MiB/s")
     setDurationUnit("hours")
+    setCaseSensitive(true)
     setOperation(getDefaultOperation(columnType))
     onApply(null)
     setOpen(false)
@@ -256,6 +426,8 @@ export function ColumnFilterPopover({
         align="center"
         onClick={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        onDragStart={(e) => e.preventDefault()}
       >
         <div className="grid gap-4">
           <div className="space-y-2">
@@ -292,12 +464,17 @@ export function ColumnFilterPopover({
                 isSizeColumn ? {
                   value: sizeUnit,
                   onChange: (u) => setSizeUnit(u as SizeUnit),
+                } : isSpeedColumn ? {
+                  value: speedUnit,
+                  onChange: (u) => setSpeedUnit(u as SpeedUnit),
                 } : isDurationColumn ? {
                   value: durationUnit,
                   onChange: (u) => setDurationUnit(u as DurationUnit),
                 } : undefined
               }
               onKeyDown={handleKeyDown}
+              caseSensitive={caseSensitive}
+              onCaseSensitiveChange={setCaseSensitive}
             />
           </div>
           {isBetweenOperation && (
@@ -311,12 +488,17 @@ export function ColumnFilterPopover({
                   isSizeColumn ? {
                     value: sizeUnit2,
                     onChange: (u) => setSizeUnit2(u as SizeUnit),
+                  } : isSpeedColumn ? {
+                    value: speedUnit2,
+                    onChange: (u) => setSpeedUnit2(u as SpeedUnit),
                   } : isDurationColumn ? {
                     value: durationUnit2,
                     onChange: (u) => setDurationUnit2(u as DurationUnit),
                   } : undefined
                 }
                 onKeyDown={handleKeyDown}
+                caseSensitive={caseSensitive}
+                onCaseSensitiveChange={setCaseSensitive}
               />
             </div>
           )}
