@@ -6,30 +6,26 @@
 import type { Torrent } from "@/types"
 
 export const NUMERIC_COLUMNS = [
-  "size",
-  "total_size",
-  "progress",
+  // "size",
+  // "total_size",
+  // "progress",
   "num_seeds",
   "num_complete",
   "num_leechs",
   "num_incomplete",
-  "dlspeed",
-  "upspeed",
-  "eta",
+  // "eta",
   "ratio",
   "ratio_limit",
-  "dl_limit",
-  "up_limit",
-  "downloaded",
-  "uploaded",
-  "downloaded_session",
-  "uploaded_session",
-  "amount_left",
-  "time_active",
-  "seeding_time",
-  "completed",
+  // "downloaded",
+  // "uploaded",
+  // "downloaded_session",
+  // "uploaded_session",
+  // "amount_left",
+  // "time_active",
+  // "seeding_time",
+  // "completed",
   "availability",
-  "reannounce",
+  // "reannounce",
   "priority",
   "popularity",
 ] as const satisfies readonly (keyof Torrent)[]
@@ -45,11 +41,11 @@ export const SIZE_COLUMNS = [
   "completed",
 ] as const satisfies readonly (keyof Torrent)[]
 
-export const DATE_COLUMNS = [
-  "added_on",
-  "completion_on",
-  "seen_complete",
-  "last_activity",
+export const SPEED_COLUMNS = [
+  "dlspeed",
+  "upspeed",
+  "dl_limit",
+  "up_limit",
 ] as const satisfies readonly (keyof Torrent)[]
 
 export const DURATION_COLUMNS = [
@@ -59,11 +55,36 @@ export const DURATION_COLUMNS = [
   "reannounce",
 ] as const satisfies readonly (keyof Torrent)[]
 
+export const PERCENTAGE_COLUMNS = [
+  "progress",
+] as const satisfies readonly (keyof Torrent)[]
+
+export const DATE_COLUMNS = [
+  "added_on",
+  "completion_on",
+  "seen_complete",
+  "last_activity",
+] as const satisfies readonly (keyof Torrent)[]
+
 export const BOOLEAN_COLUMNS = [
   "private",
 ] as const satisfies readonly (keyof Torrent)[]
 
-export type ColumnType = "number" | "size" | "date" | "duration" | "boolean" | "string"
+export const ENUM_COLUMNS = [
+  "state",
+] as const satisfies readonly (keyof Torrent)[]
+
+
+export type ColumnType =
+  "number"
+  | "size"
+  | "speed"
+  | "duration"
+  | "percentage"
+  | "date"
+  | "boolean"
+  | "enum"
+  | "string"
 
 export type FilterOperation =
   | "eq" // equals
