@@ -29,7 +29,7 @@ import { useQBittorrentAppInfo } from "@/hooks/useQBittorrentAppInfo"
 import { api } from "@/lib/api"
 import { formatBytes, getRatioColor } from "@/lib/utils"
 import type { InstanceResponse, ServerState, TorrentCounts, TorrentResponse, TorrentStats } from "@/types"
-import { useQueries, useMutation, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
 import { Activity, ChevronDown, ChevronUp, Download, ExternalLink, Eye, EyeOff, HardDrive, Minus, Plus, Rabbit, Turtle, Upload, Zap } from "lucide-react"
 import { useMemo, useState } from "react"
@@ -115,9 +115,9 @@ function InstanceCard({
     onSuccess: () => {
       // Invalidate torrent queries to refresh server state
       queryClient.invalidateQueries({
-        queryKey: ["torrents-list", instance.id]
+        queryKey: ["torrents-list", instance.id],
       })
-    }
+    },
   })
 
   // Still need app info for version display - keep this separate as it's cached well
@@ -131,7 +131,7 @@ function InstanceCard({
   const webAPIVersion = qbittorrentAppInfo?.webAPIVersion || qbittorrentVersionInfo?.webAPIVersion || ""
   const libtorrentVersion = qbittorrentAppInfo?.buildInfo?.libtorrent || ""
   const displayUrl = instance.host
-  
+
   // Determine card state
   const isFirstLoad = isLoading && !stats
   const isDisconnected = (stats && !instance.connected) || (!isFirstLoad && !instance.connected)
