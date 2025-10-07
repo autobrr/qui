@@ -4,7 +4,7 @@
  */
 
 import { Link } from "@tanstack/react-router"
-import { ArrowDownToLine, Clock, Download, FileText, RefreshCw, Trash } from "lucide-react"
+import { ArrowDownToLine, Clock, Download, FileText, ListChecks, RefreshCw, Trash, Undo2 } from "lucide-react"
 import type { ChangeEvent } from "react"
 import { useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
@@ -32,6 +32,13 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import {
@@ -48,12 +55,23 @@ import {
   useBackupRuns,
   useBackupSettings,
   useDeleteBackupRun,
+  useExecuteRestore,
+  usePreviewRestore,
   useTriggerBackup,
   useUpdateBackupSettings
 } from "@/hooks/useInstanceBackups"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
-import type { BackupCategorySnapshot, BackupRun, BackupRunKind, BackupRunStatus } from "@/types"
+import type {
+  BackupCategorySnapshot,
+  BackupRun,
+  BackupRunKind,
+  BackupRunStatus,
+  RestoreDiffChange,
+  RestoreMode,
+  RestorePlan,
+  RestoreResult
+} from "@/types"
 
 interface InstanceBackupsProps {
   instanceId: number
@@ -100,12 +118,23 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
   const updateSettings = useUpdateBackupSettings(instanceId)
   const triggerBackup = useTriggerBackup(instanceId)
   const deleteRun = useDeleteBackupRun(instanceId)
+  const previewRestore = usePreviewRestore(instanceId)
+  const executeRestore = useExecuteRestore(instanceId)
   const { formatDate } = useDateTimeFormatters()
 
   const [formState, setFormState] = useState<SettingsFormState | null>(null)
   const [manifestRunId, setManifestRunId] = useState<number | undefined>()
   const [manifestOpen, setManifestOpen] = useState(false)
   const [manifestSearch, setManifestSearch] = useState("")
+
+  const [restoreDialogOpen, setRestoreDialogOpen] = useState(false)
+  const [restoreTargetRun, setRestoreTargetRun] = useState<BackupRun | null>(null)
+  const [restoreMode, setRestoreMode] = useState<RestoreMode>("incremental")
+  const [restoreDryRun, setRestoreDryRun] = useState(true)
+  const [restorePlan, setRestorePlan] = useState<RestorePlan | null>(null)
+  const [restorePlanLoading, setRestorePlanLoading] = useState(false)
+  const [restorePlanError, setRestorePlanError] = useState<string | null>(null)
+  const [restoreResult, setRestoreResult] = useState<RestoreResult | null>(null)
 
   const { data: manifest, isLoading: manifestLoading } = useBackupManifest(instanceId, manifestRunId)
 
@@ -128,6 +157,29 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
 
   const displayedTags = useMemo(() => manifestTags.slice(0, 30), [manifestTags])
   const remainingTagCount = manifestTags.length - displayedTags.length
+
+  const restoreUnsupportedChanges = useMemo(() => {
+    if (!restorePlan) return [] as Array<{ hash: string; change: RestoreDiffChange }>
+    const updates = restorePlan.torrents.update ?? []
+    return updates.flatMap(update => (update.changes ?? []).filter(change => !change.supported).map(change => ({ hash: update.hash, change })))
+  }, [restorePlan])
+
+  const restorePlanHasActions = useMemo(() => {
+    if (!restorePlan) return false
+    const categories = restorePlan.categories
+    const tags = restorePlan.tags
+    const torrents = restorePlan.torrents
+    return Boolean(
+      categories.create?.length ||
+      categories.update?.length ||
+      categories.delete?.length ||
+      tags.create?.length ||
+      tags.delete?.length ||
+      torrents.add?.length ||
+      torrents.update?.length ||
+      torrents.delete?.length
+    )
+  }, [restorePlan])
 
   useEffect(() => {
     if (!manifestOpen) {
@@ -231,6 +283,69 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
   const openManifest = (runId: number) => {
     setManifestRunId(runId)
     setManifestOpen(true)
+  }
+
+  const loadRestorePlan = async (mode: RestoreMode, run: BackupRun) => {
+    setRestorePlanLoading(true)
+    setRestorePlanError(null)
+    setRestorePlan(null)
+    try {
+      const plan = await previewRestore.mutateAsync({ runId: run.id, mode })
+      setRestorePlan(plan)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to load restore plan"
+      setRestorePlanError(message)
+    } finally {
+      setRestorePlanLoading(false)
+    }
+  }
+
+  const openRestore = async (run: BackupRun) => {
+    setRestoreTargetRun(run)
+    setRestoreMode("incremental")
+    setRestoreDryRun(true)
+    setRestoreResult(null)
+    setRestorePlan(null)
+    setRestorePlanError(null)
+    setRestoreDialogOpen(true)
+    await loadRestorePlan("incremental", run)
+  }
+
+  const handleRestoreModeChange = async (value: string) => {
+    if (!restoreTargetRun) return
+    const nextMode = value as RestoreMode
+    setRestoreMode(nextMode)
+    setRestoreResult(null)
+    await loadRestorePlan(nextMode, restoreTargetRun)
+  }
+
+  const handleExecuteRestore = async () => {
+    if (!restoreTargetRun) return
+    try {
+      const result = await executeRestore.mutateAsync({
+        runId: restoreTargetRun.id,
+        mode: restoreMode,
+        dryRun: restoreDryRun,
+      })
+      setRestoreResult(result)
+      setRestorePlan(result.plan)
+      setRestorePlanError(null)
+      const message = restoreDryRun ? "Restore dry-run completed" : "Restore executed"
+      toast.success(message)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to execute restore"
+      toast.error(message)
+    }
+  }
+
+  const closeRestoreDialog = () => {
+    setRestoreDialogOpen(false)
+    setRestoreTargetRun(null)
+    setRestorePlan(null)
+    setRestorePlanError(null)
+    setRestoreResult(null)
+    previewRestore.reset()
+    executeRestore.reset()
   }
 
   return (
@@ -409,6 +524,334 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
         </CardContent>
       </Card>
 
+      <Dialog open={restoreDialogOpen} onOpenChange={(open) => {
+        if (!open) {
+          closeRestoreDialog()
+        }
+      }}>
+        <DialogContent className="!w-[96vw] !max-w-6xl !md:w-[90vw] !h-[92vh] md:!h-[80vh] lg:!h-[75vh] overflow-hidden flex flex-col gap-4">
+          <DialogHeader>
+            <DialogTitle>Restore backup</DialogTitle>
+            <DialogDescription>
+              {restoreTargetRun ? `Run #${restoreTargetRun.id} (${runKindLabels[restoreTargetRun.kind]})` : "Select a backup to restore"}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium">Mode</span>
+              <Select
+                value={restoreMode}
+                onValueChange={handleRestoreModeChange}
+                disabled={restorePlanLoading || !restoreTargetRun}
+              >
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Select restore mode" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="incremental">Incremental</SelectItem>
+                  <SelectItem value="overwrite">Overwrite</SelectItem>
+                  <SelectItem value="complete">Complete</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Switch
+                id="restore-dry-run"
+                checked={restoreDryRun}
+                onCheckedChange={setRestoreDryRun}
+              />
+              <Label htmlFor="restore-dry-run">Dry run</Label>
+            </div>
+
+            <div className="ml-auto flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => restoreTargetRun && loadRestorePlan(restoreMode, restoreTargetRun)}
+                disabled={restorePlanLoading || !restoreTargetRun}
+              >
+                <ListChecks className="mr-2 h-4 w-4" /> Refresh plan
+              </Button>
+              <Button
+                onClick={handleExecuteRestore}
+                disabled={!restoreTargetRun || restorePlanLoading || executeRestore.isPending}
+              >
+                {executeRestore.isPending ? "Executing..." : restoreDryRun ? "Run dry-run" : "Execute restore"}
+              </Button>
+            </div>
+          </div>
+
+          <Separator />
+
+
+
+          <div className="flex-1 overflow-y-auto space-y-6">
+            {restorePlanLoading ? (
+              <p className="text-sm text-muted-foreground">Loading restore plan...</p>
+            ) : restorePlanError ? (
+              <p className="text-sm text-destructive">{restorePlanError}</p>
+            ) : restorePlan ? (
+              <div className="space-y-6">
+                {restorePlanHasActions ? (
+                  <>
+                    <section className="space-y-2">
+                      <h4 className="text-sm font-semibold">Categories</h4>
+                      {(restorePlan.categories.create?.length ||
+                        restorePlan.categories.update?.length ||
+                        restorePlan.categories.delete?.length) ? (
+                          <div className="space-y-3">
+                            {restorePlan.categories.create?.length ? (
+                              <div>
+                                <p className="text-xs font-medium text-muted-foreground mb-1">Create</p>
+                                <ul className="space-y-1 text-sm">
+                                  {restorePlan.categories.create.map(item => (
+                                    <li key={`cat-create-${item.name}`} className="flex flex-wrap items-center gap-2">
+                                      <Badge variant="outline" className="text-[10px] uppercase">create</Badge>
+                                      <span>{item.name}</span>
+                                      {item.savePath ? (
+                                        <span className="text-xs text-muted-foreground">({item.savePath})</span>
+                                      ) : null}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            ) : null}
+                            {restorePlan.categories.update?.length ? (
+                              <div>
+                                <p className="text-xs font-medium text-muted-foreground mb-1">Update</p>
+                                <ul className="space-y-1 text-sm">
+                                  {restorePlan.categories.update.map(item => (
+                                    <li key={`cat-update-${item.name}`} className="flex flex-wrap items-center gap-2">
+                                      <Badge variant="secondary" className="text-[10px] uppercase">update</Badge>
+                                      <span>{item.name}</span>
+                                      <span className="text-xs text-muted-foreground">
+                                        {item.currentPath || "—"} → {item.desiredPath || "—"}
+                                      </span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            ) : null}
+                            {restorePlan.categories.delete?.length ? (
+                              <div>
+                                <p className="text-xs font-medium text-muted-foreground mb-1">Delete</p>
+                                <ul className="space-y-1 text-sm">
+                                  {restorePlan.categories.delete.map(name => (
+                                    <li key={`cat-delete-${name}`} className="flex items-center gap-2">
+                                      <Badge variant="destructive" className="text-[10px] uppercase">delete</Badge>
+                                      <span>{name}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">No category changes.</p>
+                        )}
+                    </section>
+
+                    <section className="space-y-2">
+                      <h4 className="text-sm font-semibold">Tags</h4>
+                      {(restorePlan.tags.create?.length || restorePlan.tags.delete?.length) ? (
+                        <div className="space-y-3">
+                          {restorePlan.tags.create?.length ? (
+                            <div>
+                              <p className="text-xs font-medium text-muted-foreground mb-1">Create</p>
+                              <ul className="flex flex-wrap gap-2 text-sm">
+                                {restorePlan.tags.create.map(item => (
+                                  <li key={`tag-create-${item.name}`}>
+                                    <Badge variant="outline">{item.name}</Badge>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          ) : null}
+                          {restorePlan.tags.delete?.length ? (
+                            <div>
+                              <p className="text-xs font-medium text-muted-foreground mb-1">Delete</p>
+                              <ul className="flex flex-wrap gap-2 text-sm">
+                                {restorePlan.tags.delete.map(name => (
+                                  <li key={`tag-delete-${name}`}>
+                                    <Badge variant="destructive">{name}</Badge>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No tag changes.</p>
+                      )}
+                    </section>
+
+                    <section className="space-y-2">
+                      <h4 className="text-sm font-semibold">Torrents</h4>
+                      {(restorePlan.torrents.add?.length ||
+                        restorePlan.torrents.update?.length ||
+                        restorePlan.torrents.delete?.length) ? (
+                          <div className="space-y-4">
+                            {restorePlan.torrents.add?.length ? (
+                              <div>
+                                <p className="text-xs font-medium text-muted-foreground mb-1">
+                                  Add ({restorePlan.torrents.add.length})
+                                </p>
+                                <ul className="space-y-1 text-sm">
+                                  {restorePlan.torrents.add.map(item => (
+                                    <li key={`torrent-add-${item.manifest.hash}`} className="flex flex-wrap items-center gap-2">
+                                      <Badge variant="outline" className="text-[10px] uppercase">add</Badge>
+                                      <span className="font-medium">{item.manifest.name || item.manifest.hash}</span>
+                                      <code className="text-xs text-muted-foreground">{item.manifest.hash}</code>
+                                      {item.manifest.category ? (
+                                        <span className="text-xs text-muted-foreground">• {item.manifest.category}</span>
+                                      ) : null}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            ) : null}
+                            {restorePlan.torrents.update?.length ? (
+                              <div>
+                                <p className="text-xs font-medium text-muted-foreground mb-1">
+                                  Update ({restorePlan.torrents.update.length})
+                                </p>
+                                <div className="space-y-3">
+                                  {restorePlan.torrents.update.map(update => (
+                                    <div key={`torrent-update-${update.hash}`} className="rounded-md border p-3 space-y-2">
+                                      <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <div className="flex flex-col">
+                                          <span className="text-sm font-medium">{update.desired.name || update.current.name || update.hash}</span>
+                                          <span className="text-xs text-muted-foreground">
+                                            Current category: {update.current.category || "—"}
+                                          </span>
+                                        </div>
+                                        <code className="text-xs text-muted-foreground">{update.hash}</code>
+                                      </div>
+                                      <div className="space-y-1">
+                                        {update.changes.map(change => (
+                                          <div key={`${update.hash}-${change.field}`} className="flex flex-wrap items-center gap-2 text-sm">
+                                            <Badge
+                                              variant={change.supported ? "secondary" : "outline"}
+                                              className="text-[10px] uppercase"
+                                            >
+                                              {change.supported ? "auto" : "manual"}
+                                            </Badge>
+                                            <span className="font-medium capitalize">{humanizeChangeField(change.field)}</span>
+                                            <span className="text-xs text-muted-foreground">
+                                              {formatChangeValue(change.current)} → {formatChangeValue(change.desired)}
+                                            </span>
+                                            {change.message ? (
+                                              <span className="text-xs text-muted-foreground">{change.message}</span>
+                                            ) : null}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : null}
+                            {restorePlan.torrents.delete?.length ? (
+                              <div>
+                                <p className="text-xs font-medium text-muted-foreground mb-1">
+                                  Delete ({restorePlan.torrents.delete.length})
+                                </p>
+                                <ul className="flex flex-wrap gap-2 text-sm">
+                                  {restorePlan.torrents.delete.map(hash => (
+                                    <li key={`torrent-delete-${hash}`}>
+                                      <Badge variant="destructive">{hash}</Badge>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">No torrent changes.</p>
+                        )}
+                    </section>
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No changes are required for this restore mode.</p>
+                )}
+
+                {restoreUnsupportedChanges.length > 0 && (
+                  <div className="rounded-md border border-amber-200 bg-amber-50 p-3 space-y-2 text-sm text-amber-900">
+                    <p className="font-medium">Manual follow-up required</p>
+                    <ul className="list-disc pl-5 space-y-1">
+                      {restoreUnsupportedChanges.map(({ hash, change }, index) => (
+                        <li key={`unsupported-${hash}-${change.field}-${index}`}>
+                          <code className="text-xs">{hash}</code> • {humanizeChangeField(change.field)}
+                          {change.message ? <span> — {change.message}</span> : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">Select a backup to restore.</p>
+            )}
+          </div>
+
+          {restoreResult && (
+            <div className="rounded-md border p-4 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h4 className="text-sm font-semibold">Last execution</h4>
+                <Badge variant={restoreResult.dryRun ? "outline" : "default"} className="text-xs">
+                  {restoreResult.dryRun ? "Dry run" : "Applied"}
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">Mode: {restoreResult.mode}</p>
+              <div className="grid gap-3 md:grid-cols-3 text-sm">
+                <div>
+                  <p className="font-medium">Categories</p>
+                  <p className="text-xs text-muted-foreground">
+                    +{countItems(restoreResult.applied.categories.created)} / Δ{countItems(restoreResult.applied.categories.updated)} / −{countItems(restoreResult.applied.categories.deleted)}
+                  </p>
+                </div>
+                <div>
+                  <p className="font-medium">Tags</p>
+                  <p className="text-xs text-muted-foreground">
+                    +{countItems(restoreResult.applied.tags.created)} / −{countItems(restoreResult.applied.tags.deleted)}
+                  </p>
+                </div>
+                <div>
+                  <p className="font-medium">Torrents</p>
+                  <p className="text-xs text-muted-foreground">
+                    +{countItems(restoreResult.applied.torrents.added)} / Δ{countItems(restoreResult.applied.torrents.updated)} / −{countItems(restoreResult.applied.torrents.deleted)}
+                  </p>
+                </div>
+              </div>
+              {restoreResult.warnings?.length ? (
+                <div className="rounded-md border border-amber-200 bg-amber-50 p-3 space-y-1 text-sm text-amber-900">
+                  <p className="font-medium">Warnings</p>
+                  <ul className="list-disc pl-5 space-y-1">
+                    {restoreResult.warnings.map((warning, index) => (
+                      <li key={`restore-warning-${index}`}>{warning}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              {restoreResult.errors?.length ? (
+                <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 space-y-1 text-sm text-destructive">
+                  <p className="font-medium">Errors</p>
+                  <ul className="list-disc pl-5 space-y-1">
+                    {restoreResult.errors.map((errorItem, index) => (
+                      <li key={`restore-error-${index}`}>
+                        {errorItem.operation}: {errorItem.target} — {errorItem.message}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -453,6 +896,14 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
                         aria-label="View manifest"
                       >
                         <FileText className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => openRestore(run)}
+                        aria-label="Restore from backup"
+                      >
+                        <Undo2 className="h-4 w-4" />
                       </Button>
                       {run.archivePath ? (
                         <Button
@@ -672,6 +1123,36 @@ function ScheduleControl({
       <p className="text-xs text-muted-foreground">{description}</p>
     </div>
   )
+}
+
+function humanizeChangeField(field: string): string {
+  const mappings: Record<string, string> = {
+    sizeBytes: "Size",
+    infohash_v1: "Infohash v1",
+    infohash_v2: "Infohash v2",
+  }
+  if (mappings[field]) return mappings[field]
+  return field
+    .replace(/_/g, " ")
+    .replace(/([A-Z])/g, " $1")
+    .trim()
+    .replace(/^./, char => char.toUpperCase())
+}
+
+function formatChangeValue(value: unknown): string {
+  if (value === null || value === undefined) return "—"
+  if (Array.isArray(value)) {
+    return value.length > 0 ? value.map(item => formatChangeValue(item)).join(", ") : "—"
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim()
+    return trimmed === "" ? "—" : trimmed
+  }
+  return String(value)
+}
+
+function countItems<T>(items?: T[] | null): number {
+  return items?.length ?? 0
 }
 
 function formatBytes(bytes: number): string {

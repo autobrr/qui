@@ -4,6 +4,7 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -109,6 +110,11 @@ func (h *BackupsHandler) UpdateSettings(w http.ResponseWriter, r *http.Request) 
 type triggerBackupRequest struct {
 	Kind        string `json:"kind"`
 	RequestedBy string `json:"requestedBy"`
+}
+
+type restoreRequest struct {
+	Mode   string `json:"mode"`
+	DryRun bool   `json:"dryRun"`
 }
 
 func (h *BackupsHandler) TriggerBackup(w http.ResponseWriter, r *http.Request) {
@@ -427,4 +433,101 @@ func (h *BackupsHandler) DeleteRun(w http.ResponseWriter, r *http.Request) {
 	}
 
 	RespondJSON(w, http.StatusOK, map[string]bool{"deleted": true})
+}
+
+func (h *BackupsHandler) PreviewRestore(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	runID, err := strconv.ParseInt(chi.URLParam(r, "runID"), 10, 64)
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid run ID")
+		return
+	}
+
+	if err := h.ensureRunOwnership(r.Context(), instanceID, runID); err != nil {
+		h.respondRunError(w, err)
+		return
+	}
+
+	var req restoreRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	mode, err := backups.ParseRestoreMode(req.Mode)
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	plan, err := h.service.PlanRestoreDiff(r.Context(), runID, mode)
+	if err != nil {
+		RespondError(w, http.StatusInternalServerError, "Failed to build restore plan")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, plan)
+}
+
+func (h *BackupsHandler) ExecuteRestore(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	runID, err := strconv.ParseInt(chi.URLParam(r, "runID"), 10, 64)
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid run ID")
+		return
+	}
+
+	if err := h.ensureRunOwnership(r.Context(), instanceID, runID); err != nil {
+		h.respondRunError(w, err)
+		return
+	}
+
+	var req restoreRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	mode, err := backups.ParseRestoreMode(req.Mode)
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	result, err := h.service.ExecuteRestore(r.Context(), runID, mode, backups.RestoreOptions{DryRun: req.DryRun})
+	if err != nil {
+		RespondError(w, http.StatusInternalServerError, "Failed to execute restore")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, result)
+}
+
+func (h *BackupsHandler) ensureRunOwnership(ctx context.Context, instanceID int, runID int64) error {
+	run, err := h.service.GetRun(ctx, runID)
+	if err != nil {
+		return err
+	}
+	if run.InstanceID != instanceID {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+func (h *BackupsHandler) respondRunError(w http.ResponseWriter, err error) {
+	if errors.Is(err, sql.ErrNoRows) {
+		RespondError(w, http.StatusNotFound, "Backup run not found")
+		return
+	}
+	RespondError(w, http.StatusInternalServerError, "Failed to load backup run")
 }

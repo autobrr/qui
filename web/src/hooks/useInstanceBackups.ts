@@ -6,7 +6,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
 import { api } from "@/lib/api"
-import type { BackupRun, BackupSettings } from "@/types"
+import type { BackupRun, BackupSettings, RestoreMode, RestorePlan, RestoreResult } from "@/types"
 
 export function useBackupSettings(instanceId: number) {
   return useQuery({
@@ -83,6 +83,23 @@ export function useDeleteBackupRun(instanceId: number) {
 
   return useMutation({
     mutationFn: (runId: number) => api.deleteBackupRun(instanceId, runId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["instance-backups", instanceId, "runs"] })
+    },
+  })
+}
+
+export function usePreviewRestore(instanceId: number) {
+  return useMutation<RestorePlan, Error, { runId: number; mode: RestoreMode }>({
+    mutationFn: ({ runId, mode }) => api.previewRestore(instanceId, runId, { mode }),
+  })
+}
+
+export function useExecuteRestore(instanceId: number) {
+  const queryClient = useQueryClient()
+
+  return useMutation<RestoreResult, Error, { runId: number; mode: RestoreMode; dryRun: boolean }>({
+    mutationFn: ({ runId, mode, dryRun }) => api.executeRestore(instanceId, runId, { mode, dryRun }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["instance-backups", instanceId, "runs"] })
     },

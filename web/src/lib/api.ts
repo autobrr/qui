@@ -13,6 +13,9 @@ import type {
   InstanceCapabilities,
   InstanceFormData,
   InstanceResponse,
+  RestoreMode,
+  RestorePlan,
+  RestoreResult,
   TorrentCreationParams,
   TorrentCreationTask,
   TorrentCreationTaskResponse,
@@ -217,6 +220,20 @@ class ApiClient {
   async deleteBackupRun(instanceId: number, runId: number): Promise<{ deleted: boolean }> {
     return this.request<{ deleted: boolean }>(`/instances/${instanceId}/backups/runs/${runId}`, {
       method: "DELETE",
+    })
+  }
+
+  async previewRestore(instanceId: number, runId: number, payload: { mode?: RestoreMode } = {}): Promise<RestorePlan> {
+    return this.request<RestorePlan>(`/instances/${instanceId}/backups/runs/${runId}/restore/preview`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async executeRestore(instanceId: number, runId: number, payload: { mode: RestoreMode; dryRun?: boolean }): Promise<RestoreResult> {
+    return this.request<RestoreResult>(`/instances/${instanceId}/backups/runs/${runId}/restore`, {
+      method: "POST",
+      body: JSON.stringify(payload),
     })
   }
 
