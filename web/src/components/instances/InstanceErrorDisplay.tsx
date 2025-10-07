@@ -126,8 +126,8 @@ export function InstanceErrorDisplay({ instance, onEdit, showEditButton = false,
           <div className="flex items-start gap-2 text-sm text-foreground">
             <XCircle className="h-4 w-4 mt-0.5 flex-shrink-0 text-destructive" />
             <div className="flex-1">
-              <div class="font-medium mb-1 text-destructive">{t("instances.errorDisplay.passwordRequired")}</div>
-              <div class="text-muted-foreground mb-2">
+              <div className="font-medium mb-1 text-destructive">{t("instances.errorDisplay.passwordRequired")}</div>
+              <div className="text-muted-foreground mb-2">
                 {t("instances.errorDisplay.decryptionError")}
               </div>
               {showEditButton && onEdit && (
@@ -150,7 +150,7 @@ export function InstanceErrorDisplay({ instance, onEdit, showEditButton = false,
           <div className="flex items-start gap-2 text-sm">
             <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0 text-destructive" />
             <div className="flex-1">
-              <div class="font-medium mb-2 text-destructive">
+              <div className="font-medium mb-2 text-destructive">
                 {t("instances.errorDisplay.recentErrorsCount", { count: instance.recentErrors.length })}
               </div>
               <div className="space-y-3">

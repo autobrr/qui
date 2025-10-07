@@ -25,14 +25,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { useTranslation } from "react-i18next"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
@@ -43,13 +35,12 @@ import { useDebounce } from "@/hooks/useDebounce"
 import { TORRENT_ACTIONS, useTorrentActions, type TorrentAction } from "@/hooks/useTorrentActions"
 import { useTorrentsList } from "@/hooks/useTorrentsList"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
-import { Link, useNavigate, useSearch } from "@tanstack/react-router"
+import { useNavigate, useSearch } from "@tanstack/react-router"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import {
   ArrowUpDown,
   CheckCircle2,
   ChevronDown,
-  ChevronsUpDown,
   ChevronUp,
   Clock,
   Eye,
@@ -59,7 +50,6 @@ import {
   Folder,
   FolderOpen,
   Gauge,
-  HardDrive,
   Info,
   ListTodo,
   Loader2,
@@ -90,7 +80,7 @@ import { formatSpeedWithUnit, useSpeedUnits, type SpeedUnit } from "@/lib/speedU
 import { getStateLabel } from "@/lib/torrent-state-utils"
 import { getCommonCategory, getCommonSavePath, getCommonTags } from "@/lib/torrent-utils"
 import { cn, formatBytes } from "@/lib/utils"
-import type { Category, InstanceResponse, Torrent, TorrentCounts } from "@/types"
+import type { Category, Torrent, TorrentCounts } from "@/types"
 import { useQuery } from "@tanstack/react-query"
 
 // Mobile-friendly Share Limits Dialog
