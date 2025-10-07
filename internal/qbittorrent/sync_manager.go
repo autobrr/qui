@@ -784,16 +784,23 @@ func (sm *SyncManager) torrentIsUnregistered(torrent qbt.Torrent) bool {
 	var hasUnregistered bool
 
 	for _, tracker := range torrent.Trackers {
-		switch tracker.Status {
-		case qbt.TrackerStatusDisabled:
+		if tracker.Status == qbt.TrackerStatusDisabled {
 			// Skip DHT/PeX entries
 			continue
+		}
+
+		if trackerMessageMatches(tracker.Message, defaultUnregisteredStatuses) {
+			hasUnregistered = true
+			// Even if qBittorrent reports the tracker as working, prefer the failure message.
+			continue
+		}
+
+		switch tracker.Status {
 		case qbt.TrackerStatusOK, qbt.TrackerStatusUpdating:
 			hasWorking = true
 		case qbt.TrackerStatusNotWorking:
-			if trackerMessageMatches(tracker.Message, defaultUnregisteredStatuses) {
-				hasUnregistered = true
-			}
+			// No matching message, treat as working only if some other tracker says so.
+			continue
 		}
 	}
 
@@ -805,16 +812,20 @@ func (sm *SyncManager) torrentTrackerIsDown(torrent qbt.Torrent) bool {
 	var hasDown bool
 
 	for _, tracker := range torrent.Trackers {
-		switch tracker.Status {
-		case qbt.TrackerStatusDisabled:
+		if tracker.Status == qbt.TrackerStatusDisabled {
 			// Skip DHT/PeX entries
 			continue
+		}
+
+		if trackerMessageMatches(tracker.Message, trackerDownStatuses) {
+			hasDown = true
+			// Respect the failure message even if the aggregated status is "working".
+			continue
+		}
+
+		switch tracker.Status {
 		case qbt.TrackerStatusOK, qbt.TrackerStatusUpdating:
 			hasWorking = true
-		case qbt.TrackerStatusNotWorking:
-			if trackerMessageMatches(tracker.Message, trackerDownStatuses) {
-				hasDown = true
-			}
 		default:
 			// Other statuses (e.g. not contacted yet) neither confirm nor deny a failure.
 			continue

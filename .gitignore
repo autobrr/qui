@@ -64,3 +64,4 @@ components.json
 .cache/
 tracker-icons/*
 .device-id-*
+backups/*
