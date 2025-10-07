@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { type ColumnType, type FilterOperation } from "@/lib/column-constants"
 import { getDefaultOperation, getOperations } from "@/lib/column-filter-utils"
 import { CaseSensitive, Filter, X } from "lucide-react"
@@ -271,15 +272,20 @@ function ValueInput({
           onKeyDown={onKeyDown}
           className="flex-1"
         />
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          className={`${caseSensitive ? "text-primary hover:text-primary/80" : "text-muted-foreground"}`}
-          onClick={() => onCaseSensitiveChange(!caseSensitive)}
-        >
-          <CaseSensitive className="size-4"/>
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className={`${caseSensitive ? "text-primary hover:text-primary/80" : "text-muted-foreground"}`}
+              onClick={() => onCaseSensitiveChange(!caseSensitive)}
+            >
+              <CaseSensitive className="size-4"/>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{caseSensitive ? "Match case (click to ignore)" : "Ignore case (click to match)"}</TooltipContent>
+        </Tooltip>
       </div>
     )
   }
