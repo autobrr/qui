@@ -23,38 +23,16 @@ export default defineConfig(() => ({
     VitePWA({
       registerType: "autoUpdate",
       injectRegister: null,
+      minify: false,
       devOptions: {
         enabled: false,
       },
       workbox: {
-          globPatterns: ["**/*.{js,css,html,ico,png,svg,webp}"],
-          maximumFileSizeToCacheInBytes: 3 * 1024 * 1024, // 3 MiB
-          runtimeCaching: [
-            {
-              urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
-              handler: "CacheFirst",
-              options: {
-                cacheName: "google-fonts-cache",
-                expiration: {
-                  maxEntries: 10,
-                  maxAgeSeconds: 60 * 60 * 24 * 365, // 1 year
-                },
-              },
-            },
-            {
-              urlPattern: /^\/api\/.*/i,
-              handler: "NetworkFirst",
-              options: {
-                cacheName: "api-cache",
-                networkTimeoutSeconds: 10,
-                expiration: {
-                  maxEntries: 100,
-                  maxAgeSeconds: 60 * 5, // 5 minutes
-                },
-              },
-            },
-          ],
-        },
+        globPatterns: ["**/*.{js,css,html,ico,png,svg,webp}"],
+        maximumFileSizeToCacheInBytes: 3 * 1024 * 1024, // Allow larger bundles to be precached
+        sourcemap: true,
+        navigateFallbackDenylist: [/^\/api/],
+      },
       includeAssets: ["favicon.png", "apple-touch-icon.png"],
       manifest: {
         name: "qui",

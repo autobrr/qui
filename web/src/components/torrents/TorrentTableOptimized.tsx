@@ -10,6 +10,8 @@ import { usePersistedColumnOrder } from "@/hooks/usePersistedColumnOrder"
 import { usePersistedColumnSizing } from "@/hooks/usePersistedColumnSizing"
 import { usePersistedColumnSorting } from "@/hooks/usePersistedColumnSorting"
 import { usePersistedColumnVisibility } from "@/hooks/usePersistedColumnVisibility"
+import { usePersistedColumnFilters } from "@/hooks/usePersistedColumnFilters"
+import { columnFiltersToExpr } from "@/lib/column-filter-utils"
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
 import { useTorrentExporter } from "@/hooks/useTorrentExporter"
 import { useTorrentsList } from "@/hooks/useTorrentsList"
@@ -193,6 +195,7 @@ interface TorrentTableOptimizedProps {
     categories: string[]
     tags: string[]
     trackers: string[]
+    expr?: string
   }
   selectedTorrent?: Torrent | null
   onTorrentSelect?: (torrent: Torrent | null) => void
@@ -280,6 +283,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const [columnOrder, setColumnOrder] = usePersistedColumnOrder(getDefaultColumnOrder(), instanceId)
   // Column sizing with persistence
   const [columnSizing, setColumnSizing] = usePersistedColumnSizing(DEFAULT_COLUMN_SIZING, instanceId)
+  // Column filters with persistence
+  const [columnFilters, setColumnFilters] = usePersistedColumnFilters(instanceId)
 
   // Progressive loading state with async management
   const [loadedRows, setLoadedRows] = useState(100)
@@ -366,6 +371,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchFromRoute])
 
+  // Convert column filters to expr format for backend
+  const columnFiltersExpr = useMemo(() => columnFiltersToExpr(columnFilters), [columnFilters])
+
   // Detect user-initiated changes
   useEffect(() => {
     const filtersChanged = JSON.stringify(previousFiltersRef.current) !== JSON.stringify(filters)
@@ -410,7 +418,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     loadMore: backendLoadMore,
   } = useTorrentsList(instanceId, {
     search: effectiveSearch,
-    filters,
+    filters: {
+      status: filters?.status || [],
+      categories: filters?.categories || [],
+      tags: filters?.tags || [],
+      trackers: filters?.trackers || [],
+      expr: columnFiltersExpr || undefined,
+    },
     sort: activeSortField,
     order: activeSortOrder,
   })
@@ -1249,6 +1263,21 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                           <DraggableTableHeader
                             key={header.id}
                             header={header}
+                            columnFilters={columnFilters}
+                            onFilterChange={(columnId, filter) => {
+                              if (filter === null) {
+                                setColumnFilters(columnFilters.filter(f => f.columnId !== columnId))
+                              } else {
+                                const existing = columnFilters.findIndex(f => f.columnId === columnId)
+                                if (existing >= 0) {
+                                  const newFilters = [...columnFilters]
+                                  newFilters[existing] = filter
+                                  setColumnFilters(newFilters)
+                                } else {
+                                  setColumnFilters([...columnFilters, filter])
+                                }
+                              }
+                            }}
                           />
                         ))}
                       </div>

@@ -533,7 +533,7 @@ export const createColumns = (
         </span>
       );
     },
-    size: 80,
+    size: 90,
   },
   {
     accessorKey: "popularity",
@@ -545,7 +545,7 @@ export const createColumns = (
         </div>
       );
     },
-    size: 115,
+    size: 120,
   },
   {
     accessorKey: "category",
@@ -695,7 +695,8 @@ export const createColumns = (
         </span>
       );
     },
-    size: calculateMinWidth(t("torrent_table.columns.down_limit"), 24),
+    size: calculateMinWidth(t("torrent_table.columns.down_limit"), 30),
+
   },
   {
     accessorKey: "up_limit",
@@ -711,7 +712,8 @@ export const createColumns = (
         </span>
       );
     },
-    size: calculateMinWidth(t("torrent_table.columns.up_limit"), 24),
+    size: calculateMinWidth(t("torrent_table.columns.up_limit"), 30),
+
   },
   {
     accessorKey: "downloaded",
