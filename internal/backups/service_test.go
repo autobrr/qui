@@ -30,6 +30,24 @@ func setupTestBackupDB(t *testing.T) *sql.DB {
 		    id INTEGER PRIMARY KEY AUTOINCREMENT,
 		    name TEXT NOT NULL
 		)`,
+		`CREATE TABLE IF NOT EXISTS instance_backup_settings (
+		    instance_id INTEGER PRIMARY KEY,
+		    enabled BOOLEAN NOT NULL DEFAULT 0,
+		    hourly_enabled BOOLEAN NOT NULL DEFAULT 0,
+		    daily_enabled BOOLEAN NOT NULL DEFAULT 0,
+		    weekly_enabled BOOLEAN NOT NULL DEFAULT 0,
+		    monthly_enabled BOOLEAN NOT NULL DEFAULT 0,
+		    keep_last INTEGER NOT NULL DEFAULT 3,
+		    keep_hourly INTEGER NOT NULL DEFAULT 0,
+		    keep_daily INTEGER NOT NULL DEFAULT 7,
+		    keep_weekly INTEGER NOT NULL DEFAULT 4,
+		    keep_monthly INTEGER NOT NULL DEFAULT 12,
+		    include_categories BOOLEAN NOT NULL DEFAULT 1,
+		    include_tags BOOLEAN NOT NULL DEFAULT 1,
+		    custom_path TEXT,
+		    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)`,
 		`CREATE TABLE IF NOT EXISTS instance_backup_runs (
 		    id INTEGER PRIMARY KEY AUTOINCREMENT,
 		    instance_id INTEGER NOT NULL,
@@ -128,4 +146,105 @@ func TestQueueRunCleansPendingRunOnContextCancel(t *testing.T) {
 	_, exists := svc.inflight[instanceID]
 	svc.inflightMu.Unlock()
 	require.False(t, exists, "instance inflight marker should be cleared")
+}
+
+func TestUpdateSettingsNormalizesRetention(t *testing.T) {
+	db := setupTestBackupDB(t)
+
+	ctx := context.Background()
+	result, err := db.ExecContext(ctx, "INSERT INTO instances (name) VALUES (?)", "retention-instance")
+	require.NoError(t, err)
+
+	instanceID64, err := result.LastInsertId()
+	require.NoError(t, err)
+	instanceID := int(instanceID64)
+
+	store := models.NewBackupStore(db)
+	svc := NewService(store, nil, Config{WorkerCount: 1})
+	svc.jobs = make(chan job)
+	svc.now = func() time.Time { return time.Unix(0, 0).UTC() }
+
+	settings := &models.BackupSettings{
+		InstanceID:        instanceID,
+		Enabled:           true,
+		HourlyEnabled:     true,
+		DailyEnabled:      true,
+		WeeklyEnabled:     false,
+		MonthlyEnabled:    true,
+		KeepLast:          5,
+		KeepHourly:        0,
+		KeepDaily:         -2,
+		KeepWeekly:        0,
+		KeepMonthly:       0,
+		IncludeCategories: true,
+		IncludeTags:       true,
+	}
+
+	require.NoError(t, svc.UpdateSettings(ctx, settings))
+
+	saved, err := svc.GetSettings(ctx, instanceID)
+	require.NoError(t, err)
+	require.Equal(t, 1, saved.KeepHourly)
+	require.Equal(t, 1, saved.KeepDaily)
+	require.Equal(t, 0, saved.KeepWeekly)
+	require.Equal(t, 1, saved.KeepMonthly)
+
+	_, err = db.ExecContext(ctx, `
+		UPDATE instance_backup_settings
+		SET keep_hourly = 0, keep_daily = 0, keep_monthly = 0
+		WHERE instance_id = ?
+	`, instanceID)
+	require.NoError(t, err)
+
+	reloaded, err := svc.GetSettings(ctx, instanceID)
+	require.NoError(t, err)
+	require.Equal(t, 1, reloaded.KeepHourly)
+	require.Equal(t, 1, reloaded.KeepDaily)
+	require.Equal(t, 1, reloaded.KeepMonthly)
+}
+
+func TestNormalizeAndPersistSettingsRepairsLegacyValues(t *testing.T) {
+	db := setupTestBackupDB(t)
+
+	ctx := context.Background()
+	result, err := db.ExecContext(ctx, "INSERT INTO instances (name) VALUES (?)", "legacy-retention")
+	require.NoError(t, err)
+
+	instanceID64, err := result.LastInsertId()
+	require.NoError(t, err)
+	instanceID := int(instanceID64)
+
+	store := models.NewBackupStore(db)
+	svc := NewService(store, nil, Config{WorkerCount: 1})
+
+	legacy := &models.BackupSettings{
+		InstanceID:     instanceID,
+		Enabled:        true,
+		HourlyEnabled:  true,
+		DailyEnabled:   true,
+		MonthlyEnabled: true,
+		KeepLast:       0,
+		KeepHourly:     0,
+		KeepDaily:      0,
+		KeepMonthly:    0,
+	}
+	require.NoError(t, store.UpsertSettings(ctx, legacy))
+
+	loaded, err := store.GetSettings(ctx, instanceID)
+	require.NoError(t, err)
+	require.Equal(t, 0, loaded.KeepHourly)
+	require.Equal(t, 0, loaded.KeepDaily)
+	require.Equal(t, 0, loaded.KeepMonthly)
+
+	changed := svc.normalizeAndPersistSettings(ctx, loaded)
+	require.True(t, changed)
+	require.Equal(t, 1, loaded.KeepHourly)
+	require.Equal(t, 1, loaded.KeepDaily)
+	require.Equal(t, 1, loaded.KeepMonthly)
+
+	saved, err := store.GetSettings(ctx, instanceID)
+	require.NoError(t, err)
+	require.Equal(t, 1, saved.KeepHourly)
+	require.Equal(t, 1, saved.KeepDaily)
+	require.Equal(t, 1, saved.KeepMonthly)
 }

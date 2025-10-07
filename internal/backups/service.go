@@ -114,6 +114,71 @@ func NewService(store *models.BackupStore, syncManager *qbittorrent.SyncManager,
 	}
 }
 
+func normalizeBackupSettings(settings *models.BackupSettings) bool {
+	if settings == nil {
+		return false
+	}
+
+	changed := false
+
+	if settings.KeepHourly < 0 {
+		settings.KeepHourly = 0
+		changed = true
+	}
+	if settings.KeepDaily < 0 {
+		settings.KeepDaily = 0
+		changed = true
+	}
+	if settings.KeepWeekly < 0 {
+		settings.KeepWeekly = 0
+		changed = true
+	}
+	if settings.KeepMonthly < 0 {
+		settings.KeepMonthly = 0
+		changed = true
+	}
+	if settings.KeepLast < 0 {
+		settings.KeepLast = 0
+		changed = true
+	}
+
+	if settings.HourlyEnabled && settings.KeepHourly < 1 {
+		settings.KeepHourly = 1
+		changed = true
+	}
+	if settings.DailyEnabled && settings.KeepDaily < 1 {
+		settings.KeepDaily = 1
+		changed = true
+	}
+	if settings.WeeklyEnabled && settings.KeepWeekly < 1 {
+		settings.KeepWeekly = 1
+		changed = true
+	}
+	if settings.MonthlyEnabled && settings.KeepMonthly < 1 {
+		settings.KeepMonthly = 1
+		changed = true
+	}
+
+	return changed
+}
+
+func (s *Service) normalizeAndPersistSettings(ctx context.Context, settings *models.BackupSettings) bool {
+	if settings == nil {
+		return false
+	}
+
+	changed := normalizeBackupSettings(settings)
+	if !changed {
+		return false
+	}
+
+	if err := s.store.UpsertSettings(ctx, settings); err != nil {
+		log.Warn().Err(err).Int("instanceID", settings.InstanceID).Msg("Failed to persist normalized backup settings")
+	}
+
+	return true
+}
+
 func (s *Service) Start(ctx context.Context) {
 	ctx, cancel := context.WithCancel(ctx)
 	s.cancel = cancel
@@ -225,6 +290,7 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 	if err != nil {
 		return nil, fmt.Errorf("failed to load backup settings: %w", err)
 	}
+	s.normalizeAndPersistSettings(ctx, settings)
 
 	torrents, err := s.syncManager.GetAllTorrents(ctx, j.instanceID)
 	if err != nil {
@@ -712,6 +778,8 @@ func (s *Service) scheduleDueBackups(ctx context.Context) error {
 	now := s.now()
 
 	for _, cfg := range settings {
+		s.normalizeAndPersistSettings(ctx, cfg)
+
 		if !cfg.Enabled {
 			continue
 		}
@@ -828,10 +896,18 @@ func (s *Service) cleanupRunFiles(ctx context.Context, runIDs []int64) error {
 }
 
 func (s *Service) GetSettings(ctx context.Context, instanceID int) (*models.BackupSettings, error) {
-	return s.store.GetSettings(ctx, instanceID)
+	settings, err := s.store.GetSettings(ctx, instanceID)
+	if err != nil {
+		return nil, err
+	}
+
+	s.normalizeAndPersistSettings(ctx, settings)
+
+	return settings, nil
 }
 
 func (s *Service) UpdateSettings(ctx context.Context, settings *models.BackupSettings) error {
+	normalizeBackupSettings(settings)
 	return s.store.UpsertSettings(ctx, settings)
 }
 

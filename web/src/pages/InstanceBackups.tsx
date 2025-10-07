@@ -94,6 +94,17 @@ type SettingsFormState = {
   customPath?: string | null
 }
 
+type SettingsToggleKey =
+  | "enabled"
+  | "hourlyEnabled"
+  | "dailyEnabled"
+  | "weeklyEnabled"
+  | "monthlyEnabled"
+  | "includeCategories"
+  | "includeTags"
+
+type SettingsNumericKey = "keepLast" | "keepHourly" | "keepDaily" | "keepWeekly" | "keepMonthly"
+
 const runKindLabels: Record<BackupRunKind, string> = {
   manual: "Manual",
   hourly: "Hourly",
@@ -242,13 +253,57 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
 
   const saveDisabled = !formState || updateSettings.isPending || requiresCadenceSelection
 
-  const handleToggle = (key: keyof SettingsFormState) => (checked: boolean) => {
-    setFormState(prev => (prev ? { ...prev, [key]: checked } : prev))
+  const handleToggle = (key: SettingsToggleKey) => (checked: boolean) => {
+    setFormState(prev => {
+      if (!prev) return prev
+
+      const next: SettingsFormState = { ...prev, [key]: checked }
+
+      if (checked) {
+        switch (key) {
+          case "hourlyEnabled":
+            if (next.keepHourly < 1) next.keepHourly = 1
+            break
+          case "dailyEnabled":
+            if (next.keepDaily < 1) next.keepDaily = 1
+            break
+          case "weeklyEnabled":
+            if (next.keepWeekly < 1) next.keepWeekly = 1
+            break
+          case "monthlyEnabled":
+            if (next.keepMonthly < 1) next.keepMonthly = 1
+            break
+        }
+      }
+
+      return next
+    })
   }
 
-  const handleNumberChange = (key: keyof SettingsFormState) => (event: ChangeEvent<HTMLInputElement>) => {
-    const value = parseInt(event.target.value, 10)
-    setFormState(prev => (prev ? { ...prev, [key]: Number.isNaN(value) ? 0 : value } : prev))
+  const handleNumberChange = (key: SettingsNumericKey) => (event: ChangeEvent<HTMLInputElement>) => {
+    const parsed = parseInt(event.target.value, 10)
+    const rawValue = Number.isNaN(parsed) ? 0 : Math.max(parsed, 0)
+
+    setFormState(prev => {
+      if (!prev) return prev
+
+      const next: SettingsFormState = { ...prev, [key]: rawValue }
+
+      if (key === "keepHourly" && prev.hourlyEnabled && next.keepHourly < 1) {
+        next.keepHourly = 1
+      }
+      if (key === "keepDaily" && prev.dailyEnabled && next.keepDaily < 1) {
+        next.keepDaily = 1
+      }
+      if (key === "keepWeekly" && prev.weeklyEnabled && next.keepWeekly < 1) {
+        next.keepWeekly = 1
+      }
+      if (key === "keepMonthly" && prev.monthlyEnabled && next.keepMonthly < 1) {
+        next.keepMonthly = 1
+      }
+
+      return next
+    })
   }
 
   const handlePathChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -1200,7 +1255,7 @@ function ScheduleControl({
         </div>
         <Switch checked={checked} onCheckedChange={onCheckedChange} />
       </div>
-      <Input type="number" min={0} value={value} onChange={onValueChange} disabled={!checked} />
+      <Input type="number" min={checked ? 1 : 0} value={value} onChange={onValueChange} disabled={!checked} />
       <p className="text-xs text-muted-foreground">{description}</p>
     </div>
   )
