@@ -66,7 +66,14 @@ export function useBackupRuns(instanceId: number, options?: { limit?: number; of
     queryKey: ["instance-backups", instanceId, "runs", { limit, offset }],
     queryFn: () => api.listBackupRuns(instanceId, { limit, offset }),
     enabled: instanceId > 0,
-    refetchInterval: 60_000,
+    refetchInterval: (query) => {
+      const runs = query.state.data as BackupRun[] | undefined
+      if (!runs) {
+        return 5_000
+      }
+      const hasActiveRun = runs.some((run: BackupRun) => run.status === "pending" || run.status === "running")
+      return hasActiveRun ? 3_000 : 15_000
+    },
   })
 }
 
