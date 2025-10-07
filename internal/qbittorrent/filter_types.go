@@ -9,4 +9,5 @@ type FilterOptions struct {
 	Categories []string `json:"categories"`
 	Tags       []string `json:"tags"`
 	Trackers   []string `json:"trackers"`
+	Expr       string   `json:"expr"`
 }

@@ -10,6 +10,7 @@ interface Filters {
   categories: string[]
   tags: string[]
   trackers: string[]
+  expr?: string
 }
 
 export function usePersistedFilters(instanceId: number) {
@@ -23,6 +24,7 @@ export function usePersistedFilters(instanceId: number) {
       categories: instance.categories || [],
       tags: instance.tags || [],
       trackers: instance.trackers || [],
+      expr: instance.expr || "",
     }
   })
 
@@ -36,6 +38,7 @@ export function usePersistedFilters(instanceId: number) {
       categories: instance.categories || [],
       tags: instance.tags || [],
       trackers: instance.trackers || [],
+      expr: instance.expr || "",
     })
   }, [instanceId])
 
@@ -46,6 +49,7 @@ export function usePersistedFilters(instanceId: number) {
       categories: filters.categories,
       tags: filters.tags,
       trackers: filters.trackers,
+      expr: filters.expr,
     }))
   }, [filters, instanceId])
 
