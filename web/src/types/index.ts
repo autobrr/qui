@@ -201,6 +201,8 @@ export interface ServerState {
   total_buffers_size?: number
   total_queued_size?: number
   write_cache_overload?: string
+  last_external_address_v4?: string
+  last_external_address_v6?: string
 }
 
 export type BackupRunKind = "manual" | "hourly" | "daily" | "weekly" | "monthly"
@@ -607,6 +609,22 @@ export interface AppPreferences {
 
   // Add catch-all for any additional fields from the API
   [key: string]: unknown
+}
+
+// qBittorrent application information
+export interface QBittorrentBuildInfo {
+  qt: string
+  libtorrent: string
+  boost: string
+  openssl: string
+  bitness: number
+  platform?: string
+}
+
+export interface QBittorrentAppInfo {
+  version: string
+  webAPIVersion?: string
+  buildInfo?: QBittorrentBuildInfo
 }
 
 // Torrent Creation Types
