@@ -4,7 +4,7 @@
  */
 
 import { Link } from "@tanstack/react-router"
-import { ArrowDownToLine, Clock, Download, FileText, ListChecks, RefreshCw, Trash, Undo2 } from "lucide-react"
+import { ArrowDownToLine, CircleHelp, Clock, Download, FileText, ListChecks, RefreshCw, Trash, Undo2 } from "lucide-react"
 import type { ChangeEvent } from "react"
 import { useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
@@ -49,6 +49,7 @@ import {
   TableHeader,
   TableRow
 } from "@/components/ui/table"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import {
   useBackupManifest,
@@ -524,124 +525,178 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
         </CardContent>
       </Card>
 
-      <Dialog open={restoreDialogOpen} onOpenChange={(open) => {
-        if (!open) {
-          closeRestoreDialog()
-        }
-      }}>
-        <DialogContent className="!w-[96vw] !max-w-6xl !md:w-[90vw] !h-[92vh] md:!h-[80vh] lg:!h-[75vh] overflow-hidden flex flex-col gap-4">
-          <DialogHeader>
-            <DialogTitle>Restore backup</DialogTitle>
-            <DialogDescription>
-              {restoreTargetRun ? `Run #${restoreTargetRun.id} (${runKindLabels[restoreTargetRun.kind]})` : "Select a backup to restore"}
-            </DialogDescription>
-          </DialogHeader>
+      <TooltipProvider>
+        <Dialog open={restoreDialogOpen} onOpenChange={(open) => {
+          if (!open) {
+            closeRestoreDialog()
+          }
+        }}>
+          <DialogContent className="!w-[96vw] !max-w-6xl !md:w-[90vw] !h-[92vh] md:!h-[80vh] lg:!h-[75vh] overflow-hidden flex flex-col gap-4">
+            <DialogHeader>
+              <DialogTitle>Restore backup</DialogTitle>
+              <DialogDescription>
+                {restoreTargetRun ? `Run #${restoreTargetRun.id} (${runKindLabels[restoreTargetRun.kind]})` : "Select a backup to restore"}
+              </DialogDescription>
+            </DialogHeader>
 
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium">Mode</span>
-              <Select
-                value={restoreMode}
-                onValueChange={handleRestoreModeChange}
-                disabled={restorePlanLoading || !restoreTargetRun}
-              >
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Select restore mode" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="incremental">Incremental</SelectItem>
-                  <SelectItem value="overwrite">Overwrite</SelectItem>
-                  <SelectItem value="complete">Complete</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium">Mode</span>
+                <div className="flex items-center gap-2">
+                  <Select
+                    value={restoreMode}
+                    onValueChange={handleRestoreModeChange}
+                    disabled={restorePlanLoading || !restoreTargetRun}
+                  >
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue placeholder="Select restore mode" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="incremental">Incremental</SelectItem>
+                      <SelectItem value="overwrite">Overwrite</SelectItem>
+                      <SelectItem value="complete">Complete</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span
+                        className="inline-flex h-8 w-8 cursor-help items-center justify-center rounded-full text-muted-foreground hover:text-foreground"
+                      >
+                        <CircleHelp className="h-4 w-4" />
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent align="start" className="max-w-sm text-xs">
+                      <p className="font-bold">Incremental</p>
+                      <p className="mb-2">Adds missing categories, tags, and torrents without touching existing data.</p>
+                      <p className="font-bold">Overwrite</p>
+                      <p className="mb-2">Adds missing items and updates existing categories/torrents to match the snapshot.</p>
+                      <p className="font-bold">Complete</p>
+                      <p>Same as overwrite, then removes anything not recorded in the backup.</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="restore-dry-run"
+                  checked={restoreDryRun}
+                  onCheckedChange={setRestoreDryRun}
+                />
+                <Label htmlFor="restore-dry-run">Dry run</Label>
+              </div>
+
+              <div className="ml-auto flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => restoreTargetRun && loadRestorePlan(restoreMode, restoreTargetRun)}
+                  disabled={restorePlanLoading || !restoreTargetRun}
+                >
+                  <ListChecks className="mr-2 h-4 w-4" /> Refresh plan
+                </Button>
+                <Button
+                  onClick={handleExecuteRestore}
+                  disabled={!restoreTargetRun || restorePlanLoading || executeRestore.isPending}
+                >
+                  {executeRestore.isPending ? "Executing..." : restoreDryRun ? "Run dry-run" : "Execute restore"}
+                </Button>
+              </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <Switch
-                id="restore-dry-run"
-                checked={restoreDryRun}
-                onCheckedChange={setRestoreDryRun}
-              />
-              <Label htmlFor="restore-dry-run">Dry run</Label>
-            </div>
-
-            <div className="ml-auto flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => restoreTargetRun && loadRestorePlan(restoreMode, restoreTargetRun)}
-                disabled={restorePlanLoading || !restoreTargetRun}
-              >
-                <ListChecks className="mr-2 h-4 w-4" /> Refresh plan
-              </Button>
-              <Button
-                onClick={handleExecuteRestore}
-                disabled={!restoreTargetRun || restorePlanLoading || executeRestore.isPending}
-              >
-                {executeRestore.isPending ? "Executing..." : restoreDryRun ? "Run dry-run" : "Execute restore"}
-              </Button>
-            </div>
-          </div>
-
-          <Separator />
+            <Separator />
 
 
 
-          <div className="flex-1 overflow-y-auto space-y-6">
-            {restorePlanLoading ? (
-              <p className="text-sm text-muted-foreground">Loading restore plan...</p>
-            ) : restorePlanError ? (
-              <p className="text-sm text-destructive">{restorePlanError}</p>
-            ) : restorePlan ? (
-              <div className="space-y-6">
-                {restorePlanHasActions ? (
-                  <>
-                    <section className="space-y-2">
-                      <h4 className="text-sm font-semibold">Categories</h4>
-                      {(restorePlan.categories.create?.length ||
+            <div className="flex-1 overflow-y-auto space-y-6">
+              {restorePlanLoading ? (
+                <p className="text-sm text-muted-foreground">Loading restore plan...</p>
+              ) : restorePlanError ? (
+                <p className="text-sm text-destructive">{restorePlanError}</p>
+              ) : restorePlan ? (
+                <div className="space-y-6">
+                  {restorePlanHasActions ? (
+                    <>
+                      <section className="space-y-2">
+                        <h4 className="text-sm font-semibold">Categories</h4>
+                        {(restorePlan.categories.create?.length ||
                         restorePlan.categories.update?.length ||
                         restorePlan.categories.delete?.length) ? (
+                            <div className="space-y-3">
+                              {restorePlan.categories.create?.length ? (
+                                <div>
+                                  <p className="text-xs font-medium text-muted-foreground mb-1">Create</p>
+                                  <ul className="space-y-1 text-sm">
+                                    {restorePlan.categories.create.map(item => (
+                                      <li key={`cat-create-${item.name}`} className="flex flex-wrap items-center gap-2">
+                                        <Badge variant="outline" className="text-[10px] uppercase">create</Badge>
+                                        <span>{item.name}</span>
+                                        {item.savePath ? (
+                                          <span className="text-xs text-muted-foreground">({item.savePath})</span>
+                                        ) : null}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              ) : null}
+                              {restorePlan.categories.update?.length ? (
+                                <div>
+                                  <p className="text-xs font-medium text-muted-foreground mb-1">Update</p>
+                                  <ul className="space-y-1 text-sm">
+                                    {restorePlan.categories.update.map(item => (
+                                      <li key={`cat-update-${item.name}`} className="flex flex-wrap items-center gap-2">
+                                        <Badge variant="secondary" className="text-[10px] uppercase">update</Badge>
+                                        <span>{item.name}</span>
+                                        <span className="text-xs text-muted-foreground">
+                                          {item.currentPath || "—"} → {item.desiredPath || "—"}
+                                        </span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              ) : null}
+                              {restorePlan.categories.delete?.length ? (
+                                <div>
+                                  <p className="text-xs font-medium text-muted-foreground mb-1">Delete</p>
+                                  <ul className="space-y-1 text-sm">
+                                    {restorePlan.categories.delete.map(name => (
+                                      <li key={`cat-delete-${name}`} className="flex items-center gap-2">
+                                        <Badge variant="destructive" className="text-[10px] uppercase">delete</Badge>
+                                        <span>{name}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">No category changes.</p>
+                          )}
+                      </section>
+
+                      <section className="space-y-2">
+                        <h4 className="text-sm font-semibold">Tags</h4>
+                        {(restorePlan.tags.create?.length || restorePlan.tags.delete?.length) ? (
                           <div className="space-y-3">
-                            {restorePlan.categories.create?.length ? (
+                            {restorePlan.tags.create?.length ? (
                               <div>
                                 <p className="text-xs font-medium text-muted-foreground mb-1">Create</p>
-                                <ul className="space-y-1 text-sm">
-                                  {restorePlan.categories.create.map(item => (
-                                    <li key={`cat-create-${item.name}`} className="flex flex-wrap items-center gap-2">
-                                      <Badge variant="outline" className="text-[10px] uppercase">create</Badge>
-                                      <span>{item.name}</span>
-                                      {item.savePath ? (
-                                        <span className="text-xs text-muted-foreground">({item.savePath})</span>
-                                      ) : null}
+                                <ul className="flex flex-wrap gap-2 text-sm">
+                                  {restorePlan.tags.create.map(item => (
+                                    <li key={`tag-create-${item.name}`}>
+                                      <Badge variant="outline">{item.name}</Badge>
                                     </li>
                                   ))}
                                 </ul>
                               </div>
                             ) : null}
-                            {restorePlan.categories.update?.length ? (
-                              <div>
-                                <p className="text-xs font-medium text-muted-foreground mb-1">Update</p>
-                                <ul className="space-y-1 text-sm">
-                                  {restorePlan.categories.update.map(item => (
-                                    <li key={`cat-update-${item.name}`} className="flex flex-wrap items-center gap-2">
-                                      <Badge variant="secondary" className="text-[10px] uppercase">update</Badge>
-                                      <span>{item.name}</span>
-                                      <span className="text-xs text-muted-foreground">
-                                        {item.currentPath || "—"} → {item.desiredPath || "—"}
-                                      </span>
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            ) : null}
-                            {restorePlan.categories.delete?.length ? (
+                            {restorePlan.tags.delete?.length ? (
                               <div>
                                 <p className="text-xs font-medium text-muted-foreground mb-1">Delete</p>
-                                <ul className="space-y-1 text-sm">
-                                  {restorePlan.categories.delete.map(name => (
-                                    <li key={`cat-delete-${name}`} className="flex items-center gap-2">
-                                      <Badge variant="destructive" className="text-[10px] uppercase">delete</Badge>
-                                      <span>{name}</span>
+                                <ul className="flex flex-wrap gap-2 text-sm">
+                                  {restorePlan.tags.delete.map(name => (
+                                    <li key={`tag-delete-${name}`}>
+                                      <Badge variant="destructive">{name}</Badge>
                                     </li>
                                   ))}
                                 </ul>
@@ -649,208 +704,175 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
                             ) : null}
                           </div>
                         ) : (
-                          <p className="text-sm text-muted-foreground">No category changes.</p>
+                          <p className="text-sm text-muted-foreground">No tag changes.</p>
                         )}
-                    </section>
+                      </section>
 
-                    <section className="space-y-2">
-                      <h4 className="text-sm font-semibold">Tags</h4>
-                      {(restorePlan.tags.create?.length || restorePlan.tags.delete?.length) ? (
-                        <div className="space-y-3">
-                          {restorePlan.tags.create?.length ? (
-                            <div>
-                              <p className="text-xs font-medium text-muted-foreground mb-1">Create</p>
-                              <ul className="flex flex-wrap gap-2 text-sm">
-                                {restorePlan.tags.create.map(item => (
-                                  <li key={`tag-create-${item.name}`}>
-                                    <Badge variant="outline">{item.name}</Badge>
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          ) : null}
-                          {restorePlan.tags.delete?.length ? (
-                            <div>
-                              <p className="text-xs font-medium text-muted-foreground mb-1">Delete</p>
-                              <ul className="flex flex-wrap gap-2 text-sm">
-                                {restorePlan.tags.delete.map(name => (
-                                  <li key={`tag-delete-${name}`}>
-                                    <Badge variant="destructive">{name}</Badge>
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          ) : null}
-                        </div>
-                      ) : (
-                        <p className="text-sm text-muted-foreground">No tag changes.</p>
-                      )}
-                    </section>
-
-                    <section className="space-y-2">
-                      <h4 className="text-sm font-semibold">Torrents</h4>
-                      {(restorePlan.torrents.add?.length ||
+                      <section className="space-y-2">
+                        <h4 className="text-sm font-semibold">Torrents</h4>
+                        {(restorePlan.torrents.add?.length ||
                         restorePlan.torrents.update?.length ||
                         restorePlan.torrents.delete?.length) ? (
-                          <div className="space-y-4">
-                            {restorePlan.torrents.add?.length ? (
-                              <div>
-                                <p className="text-xs font-medium text-muted-foreground mb-1">
-                                  Add ({restorePlan.torrents.add.length})
-                                </p>
-                                <ul className="space-y-1 text-sm">
-                                  {restorePlan.torrents.add.map(item => (
-                                    <li key={`torrent-add-${item.manifest.hash}`} className="flex flex-wrap items-center gap-2">
-                                      <Badge variant="outline" className="text-[10px] uppercase">add</Badge>
-                                      <span className="font-medium">{item.manifest.name || item.manifest.hash}</span>
-                                      <code className="text-xs text-muted-foreground">{item.manifest.hash}</code>
-                                      {item.manifest.category ? (
-                                        <span className="text-xs text-muted-foreground">• {item.manifest.category}</span>
-                                      ) : null}
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            ) : null}
-                            {restorePlan.torrents.update?.length ? (
-                              <div>
-                                <p className="text-xs font-medium text-muted-foreground mb-1">
-                                  Update ({restorePlan.torrents.update.length})
-                                </p>
-                                <div className="space-y-3">
-                                  {restorePlan.torrents.update.map(update => (
-                                    <div key={`torrent-update-${update.hash}`} className="rounded-md border p-3 space-y-2">
-                                      <div className="flex flex-wrap items-center justify-between gap-2">
-                                        <div className="flex flex-col">
-                                          <span className="text-sm font-medium">{update.desired.name || update.current.name || update.hash}</span>
-                                          <span className="text-xs text-muted-foreground">
-                                            Current category: {update.current.category || "—"}
-                                          </span>
-                                        </div>
-                                        <code className="text-xs text-muted-foreground">{update.hash}</code>
-                                      </div>
-                                      <div className="space-y-1">
-                                        {update.changes.map(change => (
-                                          <div key={`${update.hash}-${change.field}`} className="flex flex-wrap items-center gap-2 text-sm">
-                                            <Badge
-                                              variant={change.supported ? "secondary" : "outline"}
-                                              className="text-[10px] uppercase"
-                                            >
-                                              {change.supported ? "auto" : "manual"}
-                                            </Badge>
-                                            <span className="font-medium capitalize">{humanizeChangeField(change.field)}</span>
-                                            <span className="text-xs text-muted-foreground">
-                                              {formatChangeValue(change.current)} → {formatChangeValue(change.desired)}
-                                            </span>
-                                            {change.message ? (
-                                              <span className="text-xs text-muted-foreground">{change.message}</span>
-                                            ) : null}
-                                          </div>
-                                        ))}
-                                      </div>
-                                    </div>
-                                  ))}
+                            <div className="space-y-4">
+                              {restorePlan.torrents.add?.length ? (
+                                <div>
+                                  <p className="text-xs font-medium text-muted-foreground mb-1">
+                                    Add ({restorePlan.torrents.add.length})
+                                  </p>
+                                  <ul className="space-y-1 text-sm">
+                                    {restorePlan.torrents.add.map(item => (
+                                      <li key={`torrent-add-${item.manifest.hash}`} className="flex flex-wrap items-center gap-2">
+                                        <Badge variant="outline" className="text-[10px] uppercase">add</Badge>
+                                        <span className="font-medium">{item.manifest.name || item.manifest.hash}</span>
+                                        <code className="text-xs text-muted-foreground">{item.manifest.hash}</code>
+                                        {item.manifest.category ? (
+                                          <span className="text-xs text-muted-foreground">• {item.manifest.category}</span>
+                                        ) : null}
+                                      </li>
+                                    ))}
+                                  </ul>
                                 </div>
-                              </div>
-                            ) : null}
-                            {restorePlan.torrents.delete?.length ? (
-                              <div>
-                                <p className="text-xs font-medium text-muted-foreground mb-1">
-                                  Delete ({restorePlan.torrents.delete.length})
-                                </p>
-                                <ul className="flex flex-wrap gap-2 text-sm">
-                                  {restorePlan.torrents.delete.map(hash => (
-                                    <li key={`torrent-delete-${hash}`}>
-                                      <Badge variant="destructive">{hash}</Badge>
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            ) : null}
-                          </div>
-                        ) : (
-                          <p className="text-sm text-muted-foreground">No torrent changes.</p>
-                        )}
-                    </section>
-                  </>
-                ) : (
-                  <p className="text-sm text-muted-foreground">No changes are required for this restore mode.</p>
-                )}
+                              ) : null}
+                              {restorePlan.torrents.update?.length ? (
+                                <div>
+                                  <p className="text-xs font-medium text-muted-foreground mb-1">
+                                    Update ({restorePlan.torrents.update.length})
+                                  </p>
+                                  <div className="space-y-3">
+                                    {restorePlan.torrents.update.map(update => (
+                                      <div key={`torrent-update-${update.hash}`} className="rounded-md border p-3 space-y-2">
+                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                          <div className="flex flex-col">
+                                            <span className="text-sm font-medium">{update.desired.name || update.current.name || update.hash}</span>
+                                            <span className="text-xs text-muted-foreground">
+                                              Current category: {update.current.category || "—"}
+                                            </span>
+                                          </div>
+                                          <code className="text-xs text-muted-foreground">{update.hash}</code>
+                                        </div>
+                                        <div className="space-y-1">
+                                          {update.changes.map(change => (
+                                            <div key={`${update.hash}-${change.field}`} className="flex flex-wrap items-center gap-2 text-sm">
+                                              <Badge
+                                                variant={change.supported ? "secondary" : "outline"}
+                                                className="text-[10px] uppercase"
+                                              >
+                                                {change.supported ? "auto" : "manual"}
+                                              </Badge>
+                                              <span className="font-medium capitalize">{humanizeChangeField(change.field)}</span>
+                                              <span className="text-xs text-muted-foreground">
+                                                {formatChangeValue(change.current)} → {formatChangeValue(change.desired)}
+                                              </span>
+                                              {change.message ? (
+                                                <span className="text-xs text-muted-foreground">{change.message}</span>
+                                              ) : null}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              ) : null}
+                              {restorePlan.torrents.delete?.length ? (
+                                <div>
+                                  <p className="text-xs font-medium text-muted-foreground mb-1">
+                                    Delete ({restorePlan.torrents.delete.length})
+                                  </p>
+                                  <ul className="flex flex-wrap gap-2 text-sm">
+                                    {restorePlan.torrents.delete.map(hash => (
+                                      <li key={`torrent-delete-${hash}`}>
+                                        <Badge variant="destructive">{hash}</Badge>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">No torrent changes.</p>
+                          )}
+                      </section>
+                    </>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No changes are required for this restore mode.</p>
+                  )}
 
-                {restoreUnsupportedChanges.length > 0 && (
-                  <div className="rounded-md border border-amber-200 bg-amber-50 p-3 space-y-2 text-sm text-amber-900">
-                    <p className="font-medium">Manual follow-up required</p>
+                  {restoreUnsupportedChanges.length > 0 && (
+                    <div className="rounded-md border border-amber-200 bg-amber-50 p-3 space-y-2 text-sm text-amber-900">
+                      <p className="font-medium">Manual follow-up required</p>
+                      <ul className="list-disc pl-5 space-y-1">
+                        {restoreUnsupportedChanges.map(({ hash, change }, index) => (
+                          <li key={`unsupported-${hash}-${change.field}-${index}`}>
+                            <code className="text-xs">{hash}</code> • {humanizeChangeField(change.field)}
+                            {change.message ? <span> — {change.message}</span> : null}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">Select a backup to restore.</p>
+              )}
+            </div>
+
+            {restoreResult && (
+              <div className="rounded-md border p-4 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h4 className="text-sm font-semibold">Last execution</h4>
+                  <Badge variant={restoreResult.dryRun ? "outline" : "default"} className="text-xs">
+                    {restoreResult.dryRun ? "Dry run" : "Applied"}
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted-foreground">Mode: {restoreResult.mode}</p>
+                <div className="grid gap-3 md:grid-cols-3 text-sm">
+                  <div>
+                    <p className="font-medium">Categories</p>
+                    <p className="text-xs text-muted-foreground">
+                      +{countItems(restoreResult.applied.categories.created)} / Δ{countItems(restoreResult.applied.categories.updated)} / −{countItems(restoreResult.applied.categories.deleted)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="font-medium">Tags</p>
+                    <p className="text-xs text-muted-foreground">
+                      +{countItems(restoreResult.applied.tags.created)} / −{countItems(restoreResult.applied.tags.deleted)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="font-medium">Torrents</p>
+                    <p className="text-xs text-muted-foreground">
+                      +{countItems(restoreResult.applied.torrents.added)} / Δ{countItems(restoreResult.applied.torrents.updated)} / −{countItems(restoreResult.applied.torrents.deleted)}
+                    </p>
+                  </div>
+                </div>
+                {restoreResult.warnings?.length ? (
+                  <div className="rounded-md border border-amber-200 bg-amber-50 p-3 space-y-1 text-sm text-amber-900">
+                    <p className="font-medium">Warnings</p>
                     <ul className="list-disc pl-5 space-y-1">
-                      {restoreUnsupportedChanges.map(({ hash, change }, index) => (
-                        <li key={`unsupported-${hash}-${change.field}-${index}`}>
-                          <code className="text-xs">{hash}</code> • {humanizeChangeField(change.field)}
-                          {change.message ? <span> — {change.message}</span> : null}
+                      {restoreResult.warnings.map((warning, index) => (
+                        <li key={`restore-warning-${index}`}>{warning}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                {restoreResult.errors?.length ? (
+                  <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 space-y-1 text-sm text-destructive">
+                    <p className="font-medium">Errors</p>
+                    <ul className="list-disc pl-5 space-y-1">
+                      {restoreResult.errors.map((errorItem, index) => (
+                        <li key={`restore-error-${index}`}>
+                          {errorItem.operation}: {errorItem.target} — {errorItem.message}
                         </li>
                       ))}
                     </ul>
                   </div>
-                )}
+                ) : null}
               </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">Select a backup to restore.</p>
             )}
-          </div>
-
-          {restoreResult && (
-            <div className="rounded-md border p-4 space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h4 className="text-sm font-semibold">Last execution</h4>
-                <Badge variant={restoreResult.dryRun ? "outline" : "default"} className="text-xs">
-                  {restoreResult.dryRun ? "Dry run" : "Applied"}
-                </Badge>
-              </div>
-              <p className="text-xs text-muted-foreground">Mode: {restoreResult.mode}</p>
-              <div className="grid gap-3 md:grid-cols-3 text-sm">
-                <div>
-                  <p className="font-medium">Categories</p>
-                  <p className="text-xs text-muted-foreground">
-                    +{countItems(restoreResult.applied.categories.created)} / Δ{countItems(restoreResult.applied.categories.updated)} / −{countItems(restoreResult.applied.categories.deleted)}
-                  </p>
-                </div>
-                <div>
-                  <p className="font-medium">Tags</p>
-                  <p className="text-xs text-muted-foreground">
-                    +{countItems(restoreResult.applied.tags.created)} / −{countItems(restoreResult.applied.tags.deleted)}
-                  </p>
-                </div>
-                <div>
-                  <p className="font-medium">Torrents</p>
-                  <p className="text-xs text-muted-foreground">
-                    +{countItems(restoreResult.applied.torrents.added)} / Δ{countItems(restoreResult.applied.torrents.updated)} / −{countItems(restoreResult.applied.torrents.deleted)}
-                  </p>
-                </div>
-              </div>
-              {restoreResult.warnings?.length ? (
-                <div className="rounded-md border border-amber-200 bg-amber-50 p-3 space-y-1 text-sm text-amber-900">
-                  <p className="font-medium">Warnings</p>
-                  <ul className="list-disc pl-5 space-y-1">
-                    {restoreResult.warnings.map((warning, index) => (
-                      <li key={`restore-warning-${index}`}>{warning}</li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-              {restoreResult.errors?.length ? (
-                <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 space-y-1 text-sm text-destructive">
-                  <p className="font-medium">Errors</p>
-                  <ul className="list-disc pl-5 space-y-1">
-                    {restoreResult.errors.map((errorItem, index) => (
-                      <li key={`restore-error-${index}`}>
-                        {errorItem.operation}: {errorItem.target} — {errorItem.message}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+          </DialogContent>
+        </Dialog>
+      </TooltipProvider>
 
       <Card>
         <CardHeader>
