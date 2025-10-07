@@ -3,18 +3,19 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import React from "react"
-import { useForm } from "@tanstack/react-form"
+import { NumberInputWithUnlimited } from "@/components/forms/NumberInputWithUnlimited"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
-import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
-import { Switch } from "@/components/ui/switch"
+import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
-import { Wifi, Server, Globe, Shield } from "lucide-react"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { useQBittorrentFieldVisibility } from "@/hooks/useQBittorrentAppInfo"
-import { NumberInputWithUnlimited } from "@/components/forms/NumberInputWithUnlimited"
+import { useForm } from "@tanstack/react-form"
+import { AlertTriangle, Globe, Server, Shield, Wifi } from "lucide-react"
+import React from "react"
 import { toast } from "sonner"
 
 const sanitizeBtProtocol = (value: unknown): 0 | 1 | 2 => {
@@ -201,6 +202,17 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
       }}
       className="space-y-6"
     >
+      {fieldVisibility.isUnknown && (
+        <Alert className="border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-400/70 dark:bg-amber-950/50">
+          <AlertTriangle className="h-4 w-4 text-amber-600" />
+          <AlertTitle>Limited version details</AlertTitle>
+          <AlertDescription>
+            We couldn&apos;t confirm this instance&apos;s qBittorrent build details, so all connection
+            options are visible. Double-check applicability before applying changes.
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Listening Port Section */}
       <div className="space-y-4">
         <div className="flex items-center gap-2">
@@ -211,15 +223,15 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
         <div className="space-y-4">
           {/* Input boxes row */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <form.Field 
+            <form.Field
               name="listen_port"
               validators={{
                 onChange: ({ value }) => {
                   if (value < 0 || value > 65535) {
-                    return 'The port used for incoming connections must be between 0 and 65535'
+                    return "The port used for incoming connections must be between 0 and 65535"
                   }
                   return undefined
-                }
+                },
               }}
             >
               {(field) => (
@@ -432,15 +444,15 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
         <h3 className="text-lg font-medium">Connection Limits</h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <form.Field 
+          <form.Field
             name="max_connec"
             validators={{
               onChange: ({ value }) => {
                 if (value !== -1 && value !== 0 && value <= 0) {
-                  return 'Maximum number of connections limit must be greater than 0 or disabled'
+                  return "Maximum number of connections limit must be greater than 0 or disabled"
                 }
                 return undefined
-              }
+              },
             }}
           >
             {(field) => (
@@ -459,15 +471,15 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
             )}
           </form.Field>
 
-          <form.Field 
+          <form.Field
             name="max_connec_per_torrent"
             validators={{
               onChange: ({ value }) => {
                 if (value !== -1 && value !== 0 && value <= 0) {
-                  return 'Maximum number of connections per torrent limit must be greater than 0 or disabled'
+                  return "Maximum number of connections per torrent limit must be greater than 0 or disabled"
                 }
                 return undefined
-              }
+              },
             }}
           >
             {(field) => (
@@ -486,15 +498,15 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
             )}
           </form.Field>
 
-          <form.Field 
+          <form.Field
             name="max_uploads"
             validators={{
               onChange: ({ value }) => {
                 if (value !== -1 && value !== 0 && value <= 0) {
-                  return 'Global number of upload slots limit must be greater than 0 or disabled'
+                  return "Global number of upload slots limit must be greater than 0 or disabled"
                 }
                 return undefined
-              }
+              },
             }}
           >
             {(field) => (
@@ -513,15 +525,15 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
             )}
           </form.Field>
 
-          <form.Field 
+          <form.Field
             name="max_uploads_per_torrent"
             validators={{
               onChange: ({ value }) => {
                 if (value !== -1 && value !== 0 && value <= 0) {
-                  return 'Maximum number of upload slots per torrent limit must be greater than 0 or disabled'
+                  return "Maximum number of upload slots per torrent limit must be greater than 0 or disabled"
                 }
                 return undefined
-              }
+              },
             }}
           >
             {(field) => (
@@ -558,15 +570,15 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
         <h3 className="text-lg font-medium">Outgoing Ports</h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <form.Field 
+          <form.Field
             name="outgoing_ports_min"
             validators={{
               onChange: ({ value }) => {
                 if (value < 0 || value > 65535) {
-                  return 'Outgoing port range minimum must be between 0 and 65535'
+                  return "Outgoing port range minimum must be between 0 and 65535"
                 }
                 return undefined
-              }
+              },
             }}
           >
             {(field) => (
@@ -586,15 +598,15 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
             )}
           </form.Field>
 
-          <form.Field 
+          <form.Field
             name="outgoing_ports_max"
             validators={{
               onChange: ({ value }) => {
                 if (value < 0 || value > 65535) {
-                  return 'Outgoing port range maximum must be between 0 and 65535'
+                  return "Outgoing port range maximum must be between 0 and 65535"
                 }
                 return undefined
-              }
+              },
             }}
           >
             {(field) => (

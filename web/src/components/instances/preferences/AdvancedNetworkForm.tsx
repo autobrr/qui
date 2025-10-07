@@ -9,7 +9,8 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
-import { Settings, HardDrive, Zap, Ban, Radio } from "lucide-react"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Settings, HardDrive, Zap, Ban, Radio, AlertTriangle } from "lucide-react"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { useQBittorrentFieldVisibility } from "@/hooks/useQBittorrentAppInfo"
 import { toast } from "sonner"
@@ -196,6 +197,17 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
       }}
       className="space-y-6"
     >
+      {fieldVisibility.isUnknown && (
+        <Alert className="border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-400/70 dark:bg-amber-950/50">
+          <AlertTriangle className="h-4 w-4 text-amber-600" />
+          <AlertTitle>Showing all advanced options</AlertTitle>
+          <AlertDescription>
+            We couldn&apos;t determine this instance&apos;s qBittorrent version, so every advanced
+            setting is displayed. Some options might not apply to your environment.
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Tracker Settings */}
       <div className="space-y-4">
         <div className="flex items-center gap-2">
