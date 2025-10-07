@@ -233,6 +233,15 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
 
   const lastRun = useMemo(() => (runs && runs.length > 0 ? runs[0] : undefined), [runs])
 
+  const hasActiveCadence = useMemo(() => {
+    if (!formState) return false
+    return formState.hourlyEnabled || formState.dailyEnabled || formState.weeklyEnabled || formState.monthlyEnabled
+  }, [formState])
+
+  const requiresCadenceSelection = Boolean(formState?.enabled && !hasActiveCadence)
+
+  const saveDisabled = !formState || updateSettings.isPending || requiresCadenceSelection
+
   const handleToggle = (key: keyof SettingsFormState) => (checked: boolean) => {
     setFormState(prev => (prev ? { ...prev, [key]: checked } : prev))
   }
@@ -350,182 +359,216 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
   }
 
   return (
-    <div className="space-y-6 p-4 lg:p-6">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold">Backups</h1>
-          <p className="text-sm text-muted-foreground">
-            Manage torrent backups for {instance?.name ?? `instance ${instanceId}`}
-          </p>
+    <TooltipProvider>
+      <div className="space-y-6 p-4 lg:p-6">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold">Backups</h1>
+            <p className="text-sm text-muted-foreground">
+              Manage torrent backups for {instance?.name ?? `instance ${instanceId}`}
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" asChild>
+              <Link to="/instances/$instanceId" params={{ instanceId: instanceId.toString() }}>
+                Back to Torrents
+              </Link>
+            </Button>
+          </div>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" asChild>
-            <Link to="/instances/$instanceId" params={{ instanceId: instanceId.toString() }}>
-              Back to Torrents
-            </Link>
-          </Button>
-        </div>
-      </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Last backup</CardTitle>
+              <Clock className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              {runsLoading ? (
+                <p className="text-sm text-muted-foreground">Loading...</p>
+              ) : lastRun ? (
+                <div className="space-y-2">
+                  <Badge variant={statusVariants[lastRun.status]}>{runKindLabels[lastRun.kind]}</Badge>
+                  <p className="text-sm">
+                    {formatDateSafe(lastRun.completedAt ?? lastRun.requestedAt, formatDate)}
+                  </p>
+                  <p className="text-xs text-muted-foreground capitalize">Status: {lastRun.status}</p>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No backups yet</p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Queued backups</CardTitle>
+              <RefreshCw className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              {runsLoading ? (
+                <p className="text-sm text-muted-foreground">Loading...</p>
+              ) : (
+                <p className="text-2xl font-bold">{runs?.filter(run => run.status === "running" || run.status === "pending").length ?? 0}</p>
+              )}
+              <p className="text-xs text-muted-foreground">Pending or running backups</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Instance</CardTitle>
+              <Download className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm truncate font-semibold">{instance?.name ?? `Instance ${instanceId}`}</p>
+              <p className="text-xs text-muted-foreground break-all">{instance?.host}</p>
+            </CardContent>
+          </Card>
+        </div>
+
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Last backup</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
+          <CardHeader>
+            <CardTitle>Backup settings</CardTitle>
           </CardHeader>
-          <CardContent>
-            {runsLoading ? (
-              <p className="text-sm text-muted-foreground">Loading...</p>
-            ) : lastRun ? (
-              <div className="space-y-2">
-                <Badge variant={statusVariants[lastRun.status]}>{runKindLabels[lastRun.kind]}</Badge>
-                <p className="text-sm">
-                  {formatDateSafe(lastRun.completedAt ?? lastRun.requestedAt, formatDate)}
-                </p>
-                <p className="text-xs text-muted-foreground capitalize">Status: {lastRun.status}</p>
-              </div>
+          <CardContent className="space-y-6">
+            {settingsLoading || !formState ? (
+              <p className="text-sm text-muted-foreground">Loading settings...</p>
             ) : (
-              <p className="text-sm text-muted-foreground">No backups yet</p>
+              <div className="space-y-6">
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  <SettingToggle
+                    label="Enable backups"
+                    description="Turn on automatic backups for this instance. Pick at least one cadence below; leave this off for manual-only backups."
+                    checked={formState.enabled}
+                    onCheckedChange={handleToggle("enabled")}
+                  />
+                  <SettingToggle
+                    label="Include categories"
+                    description="Group torrents inside the archive by their category"
+                    checked={formState.includeCategories}
+                    onCheckedChange={handleToggle("includeCategories")}
+                  />
+                  <SettingToggle
+                    label="Include tags"
+                    description="Store torrent tags in the manifest"
+                    checked={formState.includeTags}
+                    onCheckedChange={handleToggle("includeTags")}
+                  />
+                </div>
+
+                <Separator />
+
+                <div className="space-y-4">
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium">Automatic cadences</p>
+                    <p className="text-xs text-muted-foreground">
+                      Hourly, daily, weekly, and monthly runs start after the previous backup finishes and their interval has elapsed. Leave them all off if you only trigger backups manually.
+                    </p>
+                  </div>
+                  <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+                    <ScheduleControl
+                      label="Hourly"
+                      checked={formState.hourlyEnabled}
+                      onCheckedChange={handleToggle("hourlyEnabled")}
+                      value={formState.keepHourly}
+                      onValueChange={handleNumberChange("keepHourly")}
+                      description="How many hourly snapshots to keep before older ones are pruned."
+                      tooltip="Runs roughly once per hour when backups are enabled and at least an hour has passed since the last run."
+                    />
+                    <ScheduleControl
+                      label="Daily"
+                      checked={formState.dailyEnabled}
+                      onCheckedChange={handleToggle("dailyEnabled")}
+                      value={formState.keepDaily}
+                      onValueChange={handleNumberChange("keepDaily")}
+                      description="How many daily snapshots to keep before rotation."
+                      tooltip="Runs about once every 24 hours after the previous job finishes."
+                    />
+                    <ScheduleControl
+                      label="Weekly"
+                      checked={formState.weeklyEnabled}
+                      onCheckedChange={handleToggle("weeklyEnabled")}
+                      value={formState.keepWeekly}
+                      onValueChange={handleNumberChange("keepWeekly")}
+                      description="How many weekly snapshots to keep before rotation."
+                      tooltip="Runs once the last backup is at least seven days old."
+                    />
+                    <ScheduleControl
+                      label="Monthly"
+                      checked={formState.monthlyEnabled}
+                      onCheckedChange={handleToggle("monthlyEnabled")}
+                      value={formState.keepMonthly}
+                      onValueChange={handleNumberChange("keepMonthly")}
+                      description="How many monthly snapshots to keep before rotation."
+                      tooltip="Runs when the previous run is from an earlier calendar month."
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="keep-last">Keep latest backups</Label>
+                    <Input
+                      id="keep-last"
+                      type="number"
+                      min={0}
+                      value={formState.keepLast}
+                      onChange={handleNumberChange("keepLast")}
+                    />
+                    <p className="text-xs text-muted-foreground">Maximum total backups to retain across all schedules</p>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="custom-path">Custom backup path</Label>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span
+                            className="inline-flex h-5 w-5 cursor-help items-center justify-center rounded-full text-muted-foreground hover:text-foreground"
+                          >
+                            <CircleHelp className="h-3.5 w-3.5" />
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Windows users: use double backslashes (e.g., backups\\instance-1)</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+                    <Input
+                      id="custom-path"
+                      value={formState.customPath ?? ""}
+                      onChange={handlePathChange}
+                      placeholder="backups/instance-1"
+                    />
+                    <p className="text-xs text-muted-foreground">Relative to qui data directory. Leave empty to use default.</p>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex flex-wrap gap-2">
+                    <Button onClick={() => handleTrigger("manual")} disabled={triggerBackup.isPending}>
+                      <ArrowDownToLine className="mr-2 h-4 w-4" /> Run manual backup
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={handleSave}
+                      disabled={saveDisabled}
+                      title={requiresCadenceSelection ? "Select at least one cadence to enable automatic backups." : undefined}
+                    >
+                      Save changes
+                    </Button>
+                  </div>
+                  {requiresCadenceSelection ? (
+                    <p className="text-xs text-destructive">Select at least one cadence (hourly, daily, weekly, or monthly) before saving.</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">Changes apply to future backups as soon as you save.</p>
+                  )}
+                </div>
+              </div>
             )}
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Queued backups</CardTitle>
-            <RefreshCw className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            {runsLoading ? (
-              <p className="text-sm text-muted-foreground">Loading...</p>
-            ) : (
-              <p className="text-2xl font-bold">{runs?.filter(run => run.status === "running" || run.status === "pending").length ?? 0}</p>
-            )}
-            <p className="text-xs text-muted-foreground">Pending or running backups</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Instance</CardTitle>
-            <Download className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm truncate font-semibold">{instance?.name ?? `Instance ${instanceId}`}</p>
-            <p className="text-xs text-muted-foreground break-all">{instance?.host}</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Backup settings</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {settingsLoading || !formState ? (
-            <p className="text-sm text-muted-foreground">Loading settings...</p>
-          ) : (
-            <div className="space-y-6">
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                <SettingToggle
-                  label="Enable backups"
-                  description="Allow scheduled backups to run for this instance"
-                  checked={formState.enabled}
-                  onCheckedChange={handleToggle("enabled")}
-                />
-                <SettingToggle
-                  label="Include categories"
-                  description="Group torrents inside the archive by their category"
-                  checked={formState.includeCategories}
-                  onCheckedChange={handleToggle("includeCategories")}
-                />
-                <SettingToggle
-                  label="Include tags"
-                  description="Store torrent tags in the manifest"
-                  checked={formState.includeTags}
-                  onCheckedChange={handleToggle("includeTags")}
-                />
-              </div>
-
-              <Separator />
-
-              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-                <ScheduleControl
-                  label="Hourly"
-                  checked={formState.hourlyEnabled}
-                  onCheckedChange={handleToggle("hourlyEnabled")}
-                  value={formState.keepHourly}
-                  onValueChange={handleNumberChange("keepHourly")}
-                  description="Backups each hour"
-                />
-                <ScheduleControl
-                  label="Daily"
-                  checked={formState.dailyEnabled}
-                  onCheckedChange={handleToggle("dailyEnabled")}
-                  value={formState.keepDaily}
-                  onValueChange={handleNumberChange("keepDaily")}
-                  description="Backups per day"
-                />
-                <ScheduleControl
-                  label="Weekly"
-                  checked={formState.weeklyEnabled}
-                  onCheckedChange={handleToggle("weeklyEnabled")}
-                  value={formState.keepWeekly}
-                  onValueChange={handleNumberChange("keepWeekly")}
-                  description="Backups per week"
-                />
-                <ScheduleControl
-                  label="Monthly"
-                  checked={formState.monthlyEnabled}
-                  onCheckedChange={handleToggle("monthlyEnabled")}
-                  value={formState.keepMonthly}
-                  onValueChange={handleNumberChange("keepMonthly")}
-                  description="Backups per month"
-                />
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="keep-last">Keep latest backups</Label>
-                  <Input
-                    id="keep-last"
-                    type="number"
-                    min={0}
-                    value={formState.keepLast}
-                    onChange={handleNumberChange("keepLast")}
-                  />
-                  <p className="text-xs text-muted-foreground">Maximum total backups to retain across all schedules</p>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="custom-path">Custom backup path</Label>
-                  <Input
-                    id="custom-path"
-                    value={formState.customPath ?? ""}
-                    onChange={handlePathChange}
-                    placeholder="backups/instance-1"
-                  />
-                  <p className="text-xs text-muted-foreground">Relative to qui data directory. Leave empty to use default.</p>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                <Button onClick={() => handleTrigger("manual")} disabled={triggerBackup.isPending}>
-                  <ArrowDownToLine className="mr-2 h-4 w-4" /> Run manual backup
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={handleSave}
-                  disabled={updateSettings.isPending}
-                >
-                  Save changes
-                </Button>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <TooltipProvider>
         <Dialog open={restoreDialogOpen} onOpenChange={(open) => {
           if (!open) {
             closeRestoreDialog()
@@ -872,229 +915,229 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
             )}
           </DialogContent>
         </Dialog>
-      </TooltipProvider>
 
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Backup history</CardTitle>
-            <Button variant="outline" size="sm" onClick={() => handleTrigger("manual")} disabled={triggerBackup.isPending}>
-              <ArrowDownToLine className="mr-2 h-4 w-4" /> Queue backup
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {runsLoading ? (
-            <p className="text-sm text-muted-foreground">Loading backups...</p>
-          ) : runs && runs.length > 0 ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Requested</TableHead>
-                  <TableHead>Completed</TableHead>
-                  <TableHead className="text-right">Torrents</TableHead>
-                  <TableHead className="text-right">Size</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {runs.map(run => (
-                  <TableRow key={run.id}>
-                    <TableCell className="font-medium">{runKindLabels[run.kind]}</TableCell>
-                    <TableCell>
-                      <Badge variant={statusVariants[run.status]} className="capitalize">{run.status}</Badge>
-                    </TableCell>
-                    <TableCell>{formatDateSafe(run.requestedAt, formatDate)}</TableCell>
-                    <TableCell>{formatDateSafe(run.completedAt, formatDate)}</TableCell>
-                    <TableCell className="text-right">{run.torrentCount}</TableCell>
-                    <TableCell className="text-right">{formatBytes(run.totalBytes)}</TableCell>
-                    <TableCell className="flex justify-end gap-2">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => openManifest(run.id)}
-                        aria-label="View manifest"
-                      >
-                        <FileText className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => openRestore(run)}
-                        aria-label="Restore from backup"
-                      >
-                        <Undo2 className="h-4 w-4" />
-                      </Button>
-                      {run.archivePath ? (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle>Backup history</CardTitle>
+              <Button variant="outline" size="sm" onClick={() => handleTrigger("manual")} disabled={triggerBackup.isPending}>
+                <ArrowDownToLine className="mr-2 h-4 w-4" /> Queue backup
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {runsLoading ? (
+              <p className="text-sm text-muted-foreground">Loading backups...</p>
+            ) : runs && runs.length > 0 ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Requested</TableHead>
+                    <TableHead>Completed</TableHead>
+                    <TableHead className="text-right">Torrents</TableHead>
+                    <TableHead className="text-right">Size</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {runs.map(run => (
+                    <TableRow key={run.id}>
+                      <TableCell className="font-medium">{runKindLabels[run.kind]}</TableCell>
+                      <TableCell>
+                        <Badge variant={statusVariants[run.status]} className="capitalize">{run.status}</Badge>
+                      </TableCell>
+                      <TableCell>{formatDateSafe(run.requestedAt, formatDate)}</TableCell>
+                      <TableCell>{formatDateSafe(run.completedAt, formatDate)}</TableCell>
+                      <TableCell className="text-right">{run.torrentCount}</TableCell>
+                      <TableCell className="text-right">{formatBytes(run.totalBytes)}</TableCell>
+                      <TableCell className="flex justify-end gap-2">
                         <Button
                           variant="ghost"
                           size="icon"
-                          asChild
-                          aria-label="Download backup"
+                          onClick={() => openManifest(run.id)}
+                          aria-label="View manifest"
                         >
-                          <a
-                            href={api.getBackupDownloadUrl(instanceId, run.id)}
-                            rel="noreferrer"
+                          <FileText className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => openRestore(run)}
+                          aria-label="Restore from backup"
+                        >
+                          <Undo2 className="h-4 w-4" />
+                        </Button>
+                        {run.archivePath ? (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            asChild
+                            aria-label="Download backup"
                           >
-                            <Download className="h-4 w-4" />
-                          </a>
-                        </Button>
-                      ) : (
-                        <Button variant="ghost" size="icon" disabled aria-label="Download unavailable">
-                          <Download className="h-4 w-4" />
-                        </Button>
-                      )}
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="icon" aria-label="Delete backup">
-                            <Trash className="h-4 w-4" />
+                            <a
+                              href={api.getBackupDownloadUrl(instanceId, run.id)}
+                              rel="noreferrer"
+                            >
+                              <Download className="h-4 w-4" />
+                            </a>
                           </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete backup?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              This will remove the backup archive and manifest from disk. This action cannot be undone.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => handleDelete(run)}>
-                              Delete
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          ) : (
-            <p className="text-sm text-muted-foreground">No backups have been created yet.</p>
-          )}
-        </CardContent>
-      </Card>
-
-      <Dialog open={manifestOpen} onOpenChange={(open) => {
-        setManifestOpen(open)
-        if (!open) {
-          setManifestRunId(undefined)
-        }
-      }}>
-        <DialogContent className="!w-[96vw] !max-w-7xl !md:w-[90vw] !h-[92vh] md:!h-[80vh] lg:!h-[75vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle>Backup manifest</DialogTitle>
-            <DialogDescription>
-              {manifestRunId ? `Run #${manifestRunId}` : "Select a backup to view its manifest"}
-            </DialogDescription>
-          </DialogHeader>
-          {manifestLoading ? (
-            <p className="text-sm text-muted-foreground">Loading manifest...</p>
-          ) : manifest ? (
-            <div className="space-y-4 flex-1 flex flex-col min-h-0">
-              <div className="space-y-3 text-sm">
-                <div className="flex flex-wrap gap-3 text-muted-foreground">
-                  <span className="font-medium text-foreground">Torrents: {manifest.torrentCount}</span>
-                  {manifestCategoryEntries.length > 0 && (
-                    <span>Categories: {manifestCategoryEntries.length}</span>
-                  )}
-                  {manifestTags.length > 0 && <span>Tags: {manifestTags.length}</span>}
-                  <span>Generated {formatDateSafe(manifest.generatedAt, formatDate)}</span>
-                </div>
-                {displayedCategoryEntries.length > 0 && (
-                  <div>
-                    <p className="font-medium text-foreground mb-2">Categories</p>
-                    <div className="flex flex-wrap gap-2">
-                      {displayedCategoryEntries.map(([name, snapshot]) => (
-                        <Badge key={name} variant="secondary" title={snapshot?.savePath ?? undefined}>
-                          {name}
-                        </Badge>
-                      ))}
-                      {remainingCategoryCount > 0 && (
-                        <Badge variant="outline">+{remainingCategoryCount} more</Badge>
-                      )}
-                    </div>
-                  </div>
-                )}
-                {displayedTags.length > 0 && (
-                  <div>
-                    <p className="font-medium text-foreground mb-2">Tags</p>
-                    <div className="flex flex-wrap gap-2">
-                      {displayedTags.map(tag => (
-                        <Badge key={tag} variant="outline">{tag}</Badge>
-                      ))}
-                      {remainingTagCount > 0 && (
-                        <Badge variant="outline">+{remainingTagCount} more</Badge>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-              <div className="flex w-full justify-end">
-                <Input
-                  value={manifestSearch}
-                  onChange={event => setManifestSearch(event.target.value)}
-                  placeholder="Search torrents, tags, categories..."
-                  className="w-full sm:w-[18rem] md:w-[16rem]"
-                  aria-label="Search backup manifest"
-                />
-              </div>
-              <div className="flex-1 overflow-auto pr-1">
-                <Table className="min-w-[640px] w-full">
-                  <TableHeader className="sticky top-0 z-10 bg-background">
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Category</TableHead>
-                      <TableHead>Tags</TableHead>
-                      <TableHead className="text-right">Size</TableHead>
-                      <TableHead className="text-right">Cached Torrent</TableHead>
+                        ) : (
+                          <Button variant="ghost" size="icon" disabled aria-label="Download unavailable">
+                            <Download className="h-4 w-4" />
+                          </Button>
+                        )}
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="icon" aria-label="Delete backup">
+                              <Trash className="h-4 w-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete backup?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This will remove the backup archive and manifest from disk. This action cannot be undone.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => handleDelete(run)}>
+                                Delete
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </TableCell>
                     </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredManifestItems.length > 0 ? (
-                      filteredManifestItems.map(item => (
-                        <TableRow key={item.hash + item.archivePath}>
-                          <TableCell className="font-medium !max-w-md truncate">{item.name}</TableCell>
-                          <TableCell>{item.category ?? "—"}</TableCell>
-                          <TableCell className="max-w-sm truncate">{item.tags && item.tags.length > 0 ? item.tags.join(", ") : "—"}</TableCell>
-                          <TableCell className="text-right">{formatBytes(item.sizeBytes)}</TableCell>
-                          <TableCell className="text-right">
-                            {item.torrentBlob && manifestRunId ? (
-                              <Button variant="ghost" size="icon" asChild>
-                                <a
-                                  href={api.getBackupTorrentDownloadUrl(instanceId, manifestRunId, item.hash)}
-                                  download
-                                  aria-label={`Download ${item.name} torrent`}
-                                >
-                                  <Download className="h-4 w-4" />
-                                </a>
-                              </Button>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">—</span>
-                            )}
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <p className="text-sm text-muted-foreground">No backups have been created yet.</p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Dialog open={manifestOpen} onOpenChange={(open) => {
+          setManifestOpen(open)
+          if (!open) {
+            setManifestRunId(undefined)
+          }
+        }}>
+          <DialogContent className="!w-[96vw] !max-w-7xl !md:w-[90vw] !h-[92vh] md:!h-[80vh] lg:!h-[75vh] overflow-hidden flex flex-col">
+            <DialogHeader>
+              <DialogTitle>Backup manifest</DialogTitle>
+              <DialogDescription>
+                {manifestRunId ? `Run #${manifestRunId}` : "Select a backup to view its manifest"}
+              </DialogDescription>
+            </DialogHeader>
+            {manifestLoading ? (
+              <p className="text-sm text-muted-foreground">Loading manifest...</p>
+            ) : manifest ? (
+              <div className="space-y-4 flex-1 flex flex-col min-h-0">
+                <div className="space-y-3 text-sm">
+                  <div className="flex flex-wrap gap-3 text-muted-foreground">
+                    <span className="font-medium text-foreground">Torrents: {manifest.torrentCount}</span>
+                    {manifestCategoryEntries.length > 0 && (
+                      <span>Categories: {manifestCategoryEntries.length}</span>
+                    )}
+                    {manifestTags.length > 0 && <span>Tags: {manifestTags.length}</span>}
+                    <span>Generated {formatDateSafe(manifest.generatedAt, formatDate)}</span>
+                  </div>
+                  {displayedCategoryEntries.length > 0 && (
+                    <div>
+                      <p className="font-medium text-foreground mb-2">Categories</p>
+                      <div className="flex flex-wrap gap-2">
+                        {displayedCategoryEntries.map(([name, snapshot]) => (
+                          <Badge key={name} variant="secondary" title={snapshot?.savePath ?? undefined}>
+                            {name}
+                          </Badge>
+                        ))}
+                        {remainingCategoryCount > 0 && (
+                          <Badge variant="outline">+{remainingCategoryCount} more</Badge>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {displayedTags.length > 0 && (
+                    <div>
+                      <p className="font-medium text-foreground mb-2">Tags</p>
+                      <div className="flex flex-wrap gap-2">
+                        {displayedTags.map(tag => (
+                          <Badge key={tag} variant="outline">{tag}</Badge>
+                        ))}
+                        {remainingTagCount > 0 && (
+                          <Badge variant="outline">+{remainingTagCount} more</Badge>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div className="flex w-full justify-end">
+                  <Input
+                    value={manifestSearch}
+                    onChange={event => setManifestSearch(event.target.value)}
+                    placeholder="Search torrents, tags, categories..."
+                    className="w-full sm:w-[18rem] md:w-[16rem]"
+                    aria-label="Search backup manifest"
+                  />
+                </div>
+                <div className="flex-1 overflow-auto pr-1">
+                  <Table className="min-w-[640px] w-full">
+                    <TableHeader className="sticky top-0 z-10 bg-background">
+                      <TableRow>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Category</TableHead>
+                        <TableHead>Tags</TableHead>
+                        <TableHead className="text-right">Size</TableHead>
+                        <TableHead className="text-right">Cached Torrent</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredManifestItems.length > 0 ? (
+                        filteredManifestItems.map(item => (
+                          <TableRow key={item.hash + item.archivePath}>
+                            <TableCell className="font-medium !max-w-md truncate">{item.name}</TableCell>
+                            <TableCell>{item.category ?? "—"}</TableCell>
+                            <TableCell className="max-w-sm truncate">{item.tags && item.tags.length > 0 ? item.tags.join(", ") : "—"}</TableCell>
+                            <TableCell className="text-right">{formatBytes(item.sizeBytes)}</TableCell>
+                            <TableCell className="text-right">
+                              {item.torrentBlob && manifestRunId ? (
+                                <Button variant="ghost" size="icon" asChild>
+                                  <a
+                                    href={api.getBackupTorrentDownloadUrl(instanceId, manifestRunId, item.hash)}
+                                    download
+                                    aria-label={`Download ${item.name} torrent`}
+                                  >
+                                    <Download className="h-4 w-4" />
+                                  </a>
+                                </Button>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">—</span>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={5} className="py-6 text-center text-sm text-muted-foreground">
+                            {manifestSearch ? `No torrents match "${manifestSearch}".` : "No torrents found."}
                           </TableCell>
                         </TableRow>
-                      ))
-                    ) : (
-                      <TableRow>
-                        <TableCell colSpan={5} className="py-6 text-center text-sm text-muted-foreground">
-                          {manifestSearch ? `No torrents match "${manifestSearch}".` : "No torrents found."}
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
               </div>
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">Manifest unavailable.</p>
-          )}
-        </DialogContent>
-      </Dialog>
-    </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">Manifest unavailable.</p>
+            )}
+          </DialogContent>
+        </Dialog>
+      </div>
+    </TooltipProvider>
   )
 }
 
@@ -1127,6 +1170,7 @@ function ScheduleControl({
   onCheckedChange,
   value,
   onValueChange,
+  tooltip,
 }: {
   label: string
   description: string
@@ -1134,11 +1178,26 @@ function ScheduleControl({
   onCheckedChange: (checked: boolean) => void
   value: number
   onValueChange: (event: ChangeEvent<HTMLInputElement>) => void
+  tooltip?: string
 }) {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-3">
-        <Label className="font-medium">{label}</Label>
+        <div className="flex items-center gap-2">
+          <Label className="font-medium">{label}</Label>
+          {tooltip ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex h-6 w-6 cursor-help items-center justify-center rounded-full text-muted-foreground hover:text-foreground">
+                  <CircleHelp className="h-4 w-4" />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent align="start" className="max-w-xs text-xs">
+                {tooltip}
+              </TooltipContent>
+            </Tooltip>
+          ) : null}
+        </div>
         <Switch checked={checked} onCheckedChange={onCheckedChange} />
       </div>
       <Input type="number" min={0} value={value} onChange={onValueChange} disabled={!checked} />
