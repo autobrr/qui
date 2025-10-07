@@ -12,7 +12,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { type ColumnType, type FilterOperation } from "@/lib/column-constants"
 import { getDefaultOperation, getOperations } from "@/lib/column-filter-utils"
 import { CaseSensitive, Filter, X } from "lucide-react"
-import { type KeyboardEvent, useState } from "react"
+import { type KeyboardEvent, useEffect, useRef, useState } from "react"
 
 export type SizeUnit = "B" | "KiB" | "MiB" | "GiB" | "TiB"
 
@@ -40,6 +40,28 @@ interface ColumnFilterPopoverProps {
   columnType: ColumnType
   currentFilter?: ColumnFilter
   onApply: (filter: ColumnFilter | null) => void
+}
+
+function getScrollableParent(element: HTMLElement | null): HTMLElement | null {
+  if (typeof window === "undefined" || !element) {
+    return null
+  }
+
+  let current = element.parentElement
+
+  while (current) {
+    const style = window.getComputedStyle(current)
+    const overflowX = style.overflowX
+    const overflowY = style.overflowY
+
+    if (/(auto|scroll|overlay)/.test(overflowX) || /(auto|scroll|overlay)/.test(overflowY)) {
+      return current
+    }
+
+    current = current.parentElement
+  }
+
+  return (document.scrollingElement as HTMLElement | null) ?? document.documentElement
 }
 
 const SIZE_UNITS: { value: SizeUnit; label: string }[] = [
@@ -308,6 +330,9 @@ export function ColumnFilterPopover({
   currentFilter,
   onApply,
 }: ColumnFilterPopoverProps) {
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const lastScrollPosition = useRef({ left: 0, top: 0 })
+
   const [open, setOpen] = useState(false)
   const [operation, setOperation] = useState<FilterOperation>(
     currentFilter?.operation || getDefaultOperation(columnType)
@@ -410,6 +435,42 @@ export function ColumnFilterPopover({
     setOpen(false)
   }
 
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+
+    const triggerEl = triggerRef.current
+    const scrollParent = getScrollableParent(triggerEl)
+
+    if (!scrollParent) {
+      return
+    }
+
+    lastScrollPosition.current = {
+      left: scrollParent.scrollLeft,
+      top: scrollParent.scrollTop,
+    }
+
+    const handleScroll = () => {
+      const left = scrollParent.scrollLeft
+      const top = scrollParent.scrollTop
+      const hasHorizontalScroll = Math.abs(left - lastScrollPosition.current.left) > 0
+
+      lastScrollPosition.current = { left, top }
+
+      if (hasHorizontalScroll) {
+        setOpen((prev) => (prev ? false : prev))
+      }
+    }
+
+    scrollParent.addEventListener("scroll", handleScroll, { passive: true })
+
+    return () => {
+      scrollParent.removeEventListener("scroll", handleScroll)
+    }
+  }, [open])
+
   const hasActiveFilter = currentFilter !== undefined && currentFilter !== null
 
   return (
@@ -418,6 +479,7 @@ export function ColumnFilterPopover({
         <Button
           variant="ghost"
           size="icon"
+          ref={triggerRef}
           className={`h-6 w-6 p-0 ${hasActiveFilter ? "text-primary" : "text-muted-foreground"}`}
           onClick={(e) => {
             e.stopPropagation()
