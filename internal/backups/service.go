@@ -110,7 +110,7 @@ func NewService(store *models.BackupStore, syncManager *qbittorrent.SyncManager,
 		cacheDir:    cacheDir,
 		jobs:        make(chan job, cfg.WorkerCount*2),
 		inflight:    make(map[int]int64),
-		now:         time.Now,
+		now:         func() time.Time { return time.Now().UTC() },
 	}
 }
 
