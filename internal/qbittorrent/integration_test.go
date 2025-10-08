@@ -107,9 +107,9 @@ func TestSyncManager_ApplyManualFilters_Exclusions(t *testing.T) {
 
 	mainData := &qbt.MainData{
 		Trackers: map[string][]string{
-			"http://trackerA.com/announce":        {"hash1"},
-			"udp://trackerb.com:80/announce":      {"hash3"},
-			"https://trackerc.com/announce":       {"hash4"},
+			"http://trackerA.com/announce":   {"hash1"},
+			"udp://trackerb.com:80/announce": {"hash3"},
+			"https://trackerc.com/announce":  {"hash4"},
 		},
 	}
 
@@ -161,6 +161,39 @@ func TestSyncManager_ApplyManualFilters_Exclusions(t *testing.T) {
 	for _, tc := range testCases {
 		result := sm.applyManualFilters(nil, torrents, tc.filters, mainData)
 		assert.ElementsMatch(t, tc.expected, hashes(result), tc.name)
+	}
+}
+
+func TestFiltersRequireTrackerData(t *testing.T) {
+	testCases := []struct {
+		name    string
+		filters FilterOptions
+		want    bool
+	}{
+		{
+			name:    "include tracker health statuses",
+			filters: FilterOptions{Status: []string{"unregistered"}},
+			want:    true,
+		},
+		{
+			name:    "exclude tracker health statuses",
+			filters: FilterOptions{ExcludeStatus: []string{"tracker_down"}},
+			want:    true,
+		},
+		{
+			name:    "non tracker health statuses",
+			filters: FilterOptions{Status: []string{"downloading"}},
+			want:    false,
+		},
+		{
+			name:    "no statuses",
+			filters: FilterOptions{},
+			want:    false,
+		},
+	}
+
+	for _, tc := range testCases {
+		assert.Equal(t, tc.want, filtersRequireTrackerData(tc.filters), tc.name)
 	}
 }
 

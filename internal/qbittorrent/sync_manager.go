@@ -168,7 +168,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	hasExprFilters := len(filters.Expr) > 0
 
 	// Determine if any status filter needs manual filtering
-	trackerStatusFilters := statusFiltersRequireTrackerData(filters.Status)
+	trackerStatusFilters := filtersRequireTrackerData(filters)
 	needsManualStatusFiltering := trackerStatusFilters
 	if !needsManualStatusFiltering && len(filters.Status) > 0 {
 		for _, status := range filters.Status {
@@ -779,6 +779,12 @@ func statusFiltersRequireTrackerData(statuses []string) bool {
 	}
 
 	return false
+}
+
+// helper to make it possible to do filterExclude by "tracker_down" and "unregistered" in FilterSidebar
+func filtersRequireTrackerData(filters FilterOptions) bool {
+	return statusFiltersRequireTrackerData(filters.Status) ||
+		statusFiltersRequireTrackerData(filters.ExcludeStatus)
 }
 
 func (sm *SyncManager) torrentIsUnregistered(torrent qbt.Torrent) bool {
