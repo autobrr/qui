@@ -790,16 +790,15 @@ const FilterSidebarComponent = ({
   const filteredCategories = useMemo(() => {
     const categoryEntries = Object.entries(categories) as [string, Category][]
 
-    const matches = debouncedCategorySearch? categoryEntries.filter(([name]) =>
-      name.toLowerCase().includes(debouncedCategorySearch.toLowerCase())
-    ): categoryEntries
+    if (!debouncedCategorySearch) {
+      return categoryEntries
+    }
 
-    const included = matches.filter(([name]) => includeCategorySet.has(name))
-    const excluded = matches.filter(([name]) => !includeCategorySet.has(name) && excludeCategorySet.has(name))
-    const neutral = matches.filter(([name]) => !includeCategorySet.has(name) && !excludeCategorySet.has(name))
-
-    return [...included, ...excluded, ...neutral]
-  }, [categories, debouncedCategorySearch, excludeCategorySet, includeCategorySet])
+    const searchLower = debouncedCategorySearch.toLowerCase()
+    return categoryEntries.filter(([name]) =>
+      name.toLowerCase().includes(searchLower)
+    )
+  }, [categories, debouncedCategorySearch])
 
   // Filtered tags for performance
   const filteredTags = useMemo(() => {
@@ -807,26 +806,23 @@ const FilterSidebarComponent = ({
       return tags
     }
 
-    // Show included tags first, then exclusions, then neutral tags
-    const included = tags.filter(tag => includeTagSet.has(tag))
-    const excluded = tags.filter(tag => !includeTagSet.has(tag) && excludeTagSet.has(tag))
-    const neutral = tags.filter(tag => !includeTagSet.has(tag) && !excludeTagSet.has(tag))
-
-    return [...included, ...excluded, ...neutral]
-  }, [tags, debouncedTagSearch, includeTagSet, excludeTagSet])
+    const searchLower = debouncedTagSearch.toLowerCase()
+    return tags.filter(tag =>
+      tag.toLowerCase().includes(searchLower)
+    )
+  }, [tags, debouncedTagSearch])
 
   // Filtered trackers for performance
   const filteredTrackers = useMemo(() => {
-    const baseList = debouncedTrackerSearch? trackers.filter(tracker =>
-      tracker.toLowerCase().includes(debouncedTrackerSearch.toLowerCase())
-    ): trackers
+    if (!debouncedTrackerSearch) {
+      return trackers
+    }
 
-    const included = baseList.filter(tracker => includeTrackerSet.has(tracker))
-    const excluded = baseList.filter(tracker => !includeTrackerSet.has(tracker) && excludeTrackerSet.has(tracker))
-    const neutral = baseList.filter(tracker => !includeTrackerSet.has(tracker) && !excludeTrackerSet.has(tracker))
-
-    return [...included, ...excluded, ...neutral]
-  }, [debouncedTrackerSearch, excludeTrackerSet, includeTrackerSet, trackers])
+    const searchLower = debouncedTrackerSearch.toLowerCase()
+    return trackers.filter(tracker =>
+      tracker.toLowerCase().includes(searchLower)
+    )
+  }, [trackers, debouncedTrackerSearch])
 
   // Virtual scrolling for categories
   const categoryVirtualizer = useVirtualizer({
