@@ -85,7 +85,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 			torrentCreationMinVersion := semver.MustParse("2.11.2")
 			supportsTorrentCreation = !v.LessThan(torrentCreationMinVersion)
 
-			trackerEditingMinVersion := semver.MustParse("2.3.0")
+			trackerEditingMinVersion := semver.MustParse("2.2.0")
 			supportsTrackerEditing = !v.LessThan(trackerEditingMinVersion)
 
 			// Rename torrent: qBittorrent 4.1.0+ (WebAPI 2.0.0+)

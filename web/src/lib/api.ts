@@ -10,6 +10,7 @@ import type {
   InstanceFormData,
   InstanceCapabilities,
   InstanceResponse,
+  QBittorrentAppInfo,
   TorrentCreationParams,
   TorrentCreationTask,
   TorrentCreationTaskResponse,
@@ -35,7 +36,10 @@ class ApiClient {
     })
 
     if (!response.ok) {
-      if (response.status === 401 && !window.location.pathname.startsWith(withBasePath("/login")) && !window.location.pathname.startsWith(withBasePath("/setup"))) {
+      // Don't auto-redirect for auth check endpoints - let React Router handle navigation
+      const isAuthCheckEndpoint = endpoint === "/auth/me" || endpoint === "/auth/validate"
+
+      if (response.status === 401 && !isAuthCheckEndpoint && !window.location.pathname.startsWith(withBasePath("/login")) && !window.location.pathname.startsWith(withBasePath("/setup"))) {
         window.location.href = withBasePath("/login")
         throw new Error("Session expired")
       }
@@ -97,6 +101,35 @@ class ApiClient {
 
   async logout(): Promise<void> {
     return this.request("/auth/logout", { method: "POST" })
+  }
+
+  async validate(): Promise<{
+    username: string
+    auth_method?: string
+    profile_picture?: string
+  }> {
+    return this.request("/auth/validate")
+  }
+
+  async getOIDCConfig(): Promise<{
+    enabled: boolean
+    authorizationUrl: string
+    state: string
+    disableBuiltInLogin: boolean
+    issuerUrl: string
+  }> {
+    try {
+      return await this.request("/auth/oidc/config")
+    } catch {
+      // Return default config if OIDC is not configured
+      return {
+        enabled: false,
+        authorizationUrl: "",
+        state: "",
+        disableBuiltInLogin: false,
+        issuerUrl: "",
+      }
+    }
   }
 
   // Instance endpoints
@@ -623,6 +656,10 @@ class ApiClient {
     return this.request<{ enabled: boolean }>(`/instances/${instanceId}/alternative-speed-limits/toggle`, {
       method: "POST",
     })
+  }
+
+  async getQBittorrentAppInfo(instanceId: number): Promise<QBittorrentAppInfo> {
+    return this.request<QBittorrentAppInfo>(`/instances/${instanceId}/app-info`)
   }
 
   async getLatestVersion(): Promise<{

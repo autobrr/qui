@@ -17,6 +17,7 @@ interface UseTorrentsListOptions {
     categories: string[]
     tags: string[]
     trackers: string[]
+    expr?: string
   }
   sort?: string
   order?: "asc" | "desc"
@@ -184,6 +185,7 @@ export function useTorrentsList(
         error: data.stats.error || 0,
         totalDownloadSpeed: data.stats.totalDownloadSpeed || 0,
         totalUploadSpeed: data.stats.totalUploadSpeed || 0,
+        totalSize: data.stats.totalSize || 0,
       }
     }
 
@@ -195,6 +197,7 @@ export function useTorrentsList(
       error: 0,
       totalDownloadSpeed: 0,
       totalUploadSpeed: 0,
+      totalSize: data?.stats?.totalSize || 0,
     }
   }, [data])
 

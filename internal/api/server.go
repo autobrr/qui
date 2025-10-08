@@ -14,6 +14,7 @@ import (
 	"github.com/CAFxX/httpcompression"
 	"github.com/alexedwards/scs/v2"
 	"github.com/go-chi/chi/v5"
+	"github.com/rs/cors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
@@ -124,7 +125,13 @@ func (s *Server) tryToServe(addr, protocol string) error {
 		Str("base_url", s.config.Config.BaseURL).
 		Msgf("Starting API server - Open: %s", clickableURL)
 
-	s.server.Handler = s.Handler()
+	handler, err := s.Handler()
+	if err != nil {
+		listener.Close()
+		return fmt.Errorf("build API router: %w", err)
+	}
+
+	s.server.Handler = handler
 
 	return s.server.Serve(listener)
 }
@@ -133,7 +140,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	return s.server.Shutdown(ctx)
 }
 
-func (s *Server) Handler() *chi.Mux {
+func (s *Server) Handler() (*chi.Mux, error) {
 	r := chi.NewRouter()
 
 	// Global middleware
@@ -150,24 +157,33 @@ func (s *Server) Handler() *chi.Mux {
 		r.Use(compressor)
 	}
 
-	// CORS - configure based on your needs
-	allowedOrigins := []string{"http://localhost:3000", "http://localhost:5173"}
-	if s.config.Config.BaseURL != "" {
-		allowedOrigins = append(allowedOrigins, s.config.Config.BaseURL)
-	}
-	r.Use(middleware.CORSWithCredentials(allowedOrigins))
+	// CORS - mirror autobrr's permissive credentials setup
+	corsMiddleware := cors.New(cors.Options{
+		AllowCredentials:   true,
+		AllowedMethods:     []string{"HEAD", "OPTIONS", "GET", "POST", "PUT", "PATCH", "DELETE"},
+		AllowedHeaders:     []string{"Accept", "Authorization", "Content-Type", "X-API-Key"},
+		AllowOriginFunc:    func(origin string) bool { return true },
+		OptionsPassthrough: true,
+		MaxAge:             300,
+		Debug:              false,
+	})
+	r.Use(corsMiddleware.Handler)
 
 	// Session middleware - must be added before any session-dependent middleware
 	r.Use(s.sessionManager.LoadAndSave)
 
 	// Create handlers
 	healthHandler := handlers.NewHealthHandler()
-	authHandler := handlers.NewAuthHandler(s.authService, s.sessionManager, s.instanceStore, s.clientPool, s.syncManager)
+	authHandler, err := handlers.NewAuthHandler(s.authService, s.sessionManager, s.config.Config, s.instanceStore, s.clientPool, s.syncManager)
+	if err != nil {
+		return nil, err
+	}
 	instancesHandler := handlers.NewInstancesHandler(s.instanceStore, s.clientPool, s.syncManager)
 	torrentsHandler := handlers.NewTorrentsHandler(s.syncManager)
 	preferencesHandler := handlers.NewPreferencesHandler(s.syncManager)
 	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(s.clientAPIKeyStore, s.instanceStore)
 	versionHandler := handlers.NewVersionHandler(s.updateService)
+	qbittorrentInfoHandler := handlers.NewQBittorrentInfoHandler(s.clientPool)
 	var trackerIconHandler *handlers.TrackerIconHandler
 	if s.trackerIconService != nil {
 		trackerIconHandler = handlers.NewTrackerIconHandler(s.trackerIconService)
@@ -189,7 +205,7 @@ func (s *Server) Handler() *chi.Mux {
 		r.Use(middleware.Logger(s.logger))
 
 		// Apply setup check middleware
-		r.Use(middleware.RequireSetup(s.authService))
+		r.Use(middleware.RequireSetup(s.authService, s.config.Config))
 
 		// Public routes (no auth required)
 		r.Route("/auth", func(r chi.Router) {
@@ -199,6 +215,12 @@ func (s *Server) Handler() *chi.Mux {
 			r.Post("/setup", authHandler.Setup)
 			r.Post("/login", authHandler.Login)
 			r.Get("/check-setup", authHandler.CheckSetupRequired)
+			r.Get("/validate", authHandler.Validate)
+
+			// OIDC routes (if enabled)
+			if s.config.Config.OIDCEnabled && authHandler.GetOIDCHandler() != nil {
+				r.Route("/oidc", authHandler.GetOIDCHandler().Routes)
+			}
 		})
 
 		// Protected routes
@@ -301,6 +323,9 @@ func (s *Server) Handler() *chi.Mux {
 					// Alternative speed limits
 					r.Get("/alternative-speed-limits", preferencesHandler.GetAlternativeSpeedLimitsMode)
 					r.Post("/alternative-speed-limits/toggle", preferencesHandler.ToggleAlternativeSpeedLimits)
+
+					// qBittorrent application info
+					r.Get("/app-info", qbittorrentInfoHandler.GetQBittorrentAppInfo)
 				})
 			})
 
@@ -322,7 +347,15 @@ func (s *Server) Handler() *chi.Mux {
 		baseURL = "/"
 	}
 
+	// Mount API routes BEFORE web handler to prevent catch-all from intercepting API requests
+	r.Get("/health", healthHandler.HandleHealth)
+	r.Get("/healthz/readiness", healthHandler.HandleReady)
+	r.Get("/healthz/liveness", healthHandler.HandleLiveness)
+
+	r.Mount(baseURL+"api", apiRouter)
+
 	// Initialize web handler (for embedded frontend)
+	// This MUST be registered AFTER API routes to avoid catch-all intercepting /api/* paths
 	webHandler := web.NewHandler(s.version, s.config.Config.BaseURL, webfs.DistDirFS)
 
 	if baseURL != "/" {
@@ -338,12 +371,6 @@ func (s *Server) Handler() *chi.Mux {
 		webHandler.RegisterRoutes(r)
 	}
 
-	r.Get("/health", healthHandler.HandleHealth)
-	r.Get("/healthz/readiness", healthHandler.HandleReady)
-	r.Get("/healthz/liveness", healthHandler.HandleLiveness)
-
-	r.Mount(baseURL+"api", apiRouter)
-
 	if baseURL != "/" {
 		r.Get("/", func(w http.ResponseWriter, request *http.Request) {
 			w.WriteHeader(http.StatusNotFound)
@@ -355,7 +382,7 @@ func (s *Server) Handler() *chi.Mux {
 		//	})
 	}
 
-	return r
+	return r, nil
 }
 
 // Dependencies holds all the dependencies needed for the API

@@ -10,10 +10,13 @@ import { usePersistedColumnOrder } from "@/hooks/usePersistedColumnOrder"
 import { usePersistedColumnSizing } from "@/hooks/usePersistedColumnSizing"
 import { usePersistedColumnSorting } from "@/hooks/usePersistedColumnSorting"
 import { usePersistedColumnVisibility } from "@/hooks/usePersistedColumnVisibility"
-import { useTrackerIcons } from "@/hooks/useTrackerIcons"
+import { usePersistedColumnFilters } from "@/hooks/usePersistedColumnFilters"
+import { columnFiltersToExpr } from "@/lib/column-filter-utils"
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
 import { useTorrentExporter } from "@/hooks/useTorrentExporter"
 import { useTorrentsList } from "@/hooks/useTorrentsList"
+import { useTrackerIcons } from "@/hooks/useTrackerIcons"
+import { formatBytes } from "@/lib/utils"
 import {
   DndContext,
   MouseSensor,
@@ -76,7 +79,7 @@ import { useInstancePreferences } from "@/hooks/useInstancePreferences.ts"
 import { api } from "@/lib/api"
 import { useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
-import { getCommonCategory, getCommonSavePath, getCommonTags } from "@/lib/torrent-utils"
+import { getCommonCategory, getCommonSavePath, getCommonTags, getTotalSize } from "@/lib/torrent-utils"
 import type { Category, Torrent, TorrentCounts } from "@/types"
 import { useSearch } from "@tanstack/react-router"
 import { useQuery } from "@tanstack/react-query"
@@ -195,13 +198,21 @@ interface TorrentTableOptimizedProps {
     categories: string[]
     tags: string[]
     trackers: string[]
+    expr?: string
   }
   selectedTorrent?: Torrent | null
   onTorrentSelect?: (torrent: Torrent | null) => void
   addTorrentModalOpen?: boolean
   onAddTorrentModalChange?: (open: boolean) => void
   onFilteredDataUpdate?: (torrents: Torrent[], total: number, counts?: TorrentCounts, categories?: Record<string, Category>, tags?: string[]) => void
-  onSelectionChange?: (selectedHashes: string[], selectedTorrents: Torrent[], isAllSelected: boolean, totalSelectionCount: number, excludeHashes: string[]) => void
+  onSelectionChange?: (
+    selectedHashes: string[],
+    selectedTorrents: Torrent[],
+    isAllSelected: boolean,
+    totalSelectionCount: number,
+    excludeHashes: string[],
+    selectedTotalSize: number
+  ) => void
 }
 
 export const TorrentTableOptimized = memo(function TorrentTableOptimized({ instanceId, filters, selectedTorrent, onTorrentSelect, addTorrentModalOpen, onAddTorrentModalChange, onFilteredDataUpdate, onSelectionChange }: TorrentTableOptimizedProps) {
@@ -271,7 +282,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   // Column order with persistence (get default order at runtime to avoid initialization order issues)
   const [columnOrder, setColumnOrder] = usePersistedColumnOrder(getDefaultColumnOrder(), instanceId)
   // Column sizing with persistence
-  const [columnSizing, setColumnSizing] = usePersistedColumnSizing(DEFAULT_COLUMN_SIZING)
+  const [columnSizing, setColumnSizing] = usePersistedColumnSizing(DEFAULT_COLUMN_SIZING, instanceId)
+  // Column filters with persistence
+  const [columnFilters, setColumnFilters] = usePersistedColumnFilters(instanceId)
 
   // Progressive loading state with async management
   const [loadedRows, setLoadedRows] = useState(100)
@@ -405,6 +418,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchFromRoute])
 
+  // Convert column filters to expr format for backend
+  const columnFiltersExpr = useMemo(() => columnFiltersToExpr(columnFilters), [columnFilters])
+
   // Detect user-initiated changes
   useEffect(() => {
     const filtersChanged = JSON.stringify(previousFiltersRef.current) !== JSON.stringify(filters)
@@ -449,7 +465,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     loadMore: backendLoadMore,
   } = useTorrentsList(instanceId, {
     search: effectiveSearch,
-    filters,
+    filters: {
+      status: filters?.status || [],
+      categories: filters?.categories || [],
+      tags: filters?.tags || [],
+      trackers: filters?.trackers || [],
+      expr: columnFiltersExpr || undefined,
+    },
     sort: activeSortField,
     order: activeSortOrder,
   })
@@ -703,6 +725,55 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     }
   }, [selectedHashes, sortedTorrents, isAllSelected, excludedFromSelectAll])
 
+  // Calculate total size of selected torrents
+  const selectedTotalSize = useMemo(() => {
+    if (isAllSelected) {
+      const aggregateTotalSize = stats?.totalSize ?? 0
+
+      if (aggregateTotalSize <= 0) {
+        return 0
+      }
+
+      if (excludedFromSelectAll.size === 0) {
+        return aggregateTotalSize
+      }
+
+      const excludedSize = sortedTorrents.reduce((total, torrent) => {
+        if (excludedFromSelectAll.has(torrent.hash)) {
+          return total + (torrent.size || 0)
+        }
+        return total
+      }, 0)
+
+      return Math.max(aggregateTotalSize - excludedSize, 0)
+    }
+
+    return getTotalSize(selectedTorrents)
+  }, [isAllSelected, stats?.totalSize, excludedFromSelectAll, sortedTorrents, selectedTorrents])
+  const selectedFormattedSize = useMemo(() => formatBytes(selectedTotalSize), [selectedTotalSize])
+
+  // Size shown in destructive dialogs - prefer the aggregate when select-all is active
+  const deleteDialogTotalSize = useMemo(() => {
+    if (isAllSelected) {
+      if (selectedTotalSize > 0) {
+        return selectedTotalSize
+      }
+
+      if (contextTorrents.length > 0) {
+        return getTotalSize(contextTorrents)
+      }
+
+      return 0
+    }
+
+    if (contextTorrents.length > 0) {
+      return getTotalSize(contextTorrents)
+    }
+
+    return selectedTotalSize
+  }, [isAllSelected, selectedTotalSize, contextTorrents])
+  const deleteDialogFormattedSize = useMemo(() => formatBytes(deleteDialogTotalSize), [deleteDialogTotalSize])
+
   // Call the callback when selection state changes
   useEffect(() => {
     if (onSelectionChange) {
@@ -711,10 +782,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         selectedTorrents,
         isAllSelected,
         effectiveSelectionCount,
-        Array.from(excludedFromSelectAll)
+        Array.from(excludedFromSelectAll),
+        selectedTotalSize
       )
     }
-  }, [onSelectionChange, selectedHashes, selectedTorrents, isAllSelected, effectiveSelectionCount, excludedFromSelectAll])
+  }, [onSelectionChange, selectedHashes, selectedTorrents, isAllSelected, effectiveSelectionCount, excludedFromSelectAll, selectedTotalSize])
 
   // Virtualization setup with progressive loading
   const { rows } = table.getRowModel()
@@ -1266,6 +1338,21 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                           <DraggableTableHeader
                             key={header.id}
                             header={header}
+                            columnFilters={columnFilters}
+                            onFilterChange={(columnId, filter) => {
+                              if (filter === null) {
+                                setColumnFilters(columnFilters.filter(f => f.columnId !== columnId))
+                              } else {
+                                const existing = columnFilters.findIndex(f => f.columnId === columnId)
+                                if (existing >= 0) {
+                                  const newFilters = [...columnFilters]
+                                  newFilters[existing] = filter
+                                  setColumnFilters(newFilters)
+                                } else {
+                                  setColumnFilters([...columnFilters, filter])
+                                }
+                              }
+                            }}
                           />
                         ))}
                       </div>
@@ -1421,7 +1508,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                 ) : isLoadingMore ? (
                   "Loading more torrents..."
                 ) : (
-                  `${torrents.length} of ${totalCount} torrents loaded • Scroll to load more`
+                  `${torrents.length} of ${totalCount} torrents loaded`
                 )}
                 {hasLoadedAll && safeLoadedRows < rows.length && " (scroll for more)"}
               </>
@@ -1429,12 +1516,23 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
             {effectiveSelectionCount > 0 && (
               <>
                 <span className="ml-2">
-                  ({isAllSelected && excludedFromSelectAll.size === 0 ? `All ${effectiveSelectionCount}` : effectiveSelectionCount} selected)
+                  ({isAllSelected && excludedFromSelectAll.size === 0 ? `All ${effectiveSelectionCount}` : effectiveSelectionCount} selected
+                  {selectedTotalSize > 0 && <> • {selectedFormattedSize}</>})
                 </span>
                 {/* Keyboard shortcuts helper - only show on desktop */}
-                <span className="hidden sm:inline-block ml-2 text-xs opacity-70">
-                  • Shift+click for range • {isMac ? "Cmd" : "Ctrl"}+click for multiple
-                </span>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="hidden sm:inline-block ml-2 text-xs opacity-70 cursor-help">
+                      • Selection shortcuts
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <div className="text-xs">
+                      <div>Shift+click for range</div>
+                      <div>{isMac ? "Cmd" : "Ctrl"}+click for multiple</div>
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
               </>
             )}
           </div>
@@ -1497,6 +1595,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
             <AlertDialogTitle>Delete {isAllSelected ? effectiveSelectionCount : contextHashes.length} torrent(s)?</AlertDialogTitle>
             <AlertDialogDescription>
               This action cannot be undone. The torrents will be removed from qBittorrent.
+              {deleteDialogTotalSize > 0 && (
+                <span className="block mt-2 text-xs text-muted-foreground">
+                  Total size: {deleteDialogFormattedSize}
+                </span>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="flex items-center space-x-2 py-4">
