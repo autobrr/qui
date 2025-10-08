@@ -31,7 +31,7 @@ import { formatBytes, getRatioColor } from "@/lib/utils"
 import type { InstanceResponse, ServerState, TorrentCounts, TorrentResponse, TorrentStats } from "@/types"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
-import { Activity, ChevronDown, ChevronUp, Download, ExternalLink, Eye, EyeOff, HardDrive, Minus, Plus, Rabbit, Turtle, Upload, Zap } from "lucide-react"
+import { Activity, ChevronDown, ChevronUp, Download, ExternalLink, Eye, EyeOff, Flame, Globe, HardDrive, Minus, Plus, Rabbit, Turtle, Upload, Zap } from "lucide-react"
 import { useMemo, useState } from "react"
 
 import {
@@ -138,6 +138,10 @@ function InstanceCard({
   const hasError = error || (!isFirstLoad && !stats)
   const hasDecryptionOrRecentErrors = instance.hasDecryptionError || (instance.recentErrors && instance.recentErrors.length > 0)
 
+  const rawConnectionStatus = serverState?.connection_status ?? instance.connectionStatus ?? ""
+  const normalizedConnectionStatus = rawConnectionStatus ? rawConnectionStatus.trim().toLowerCase() : ""
+  const formattedConnectionStatus = normalizedConnectionStatus ? normalizedConnectionStatus.replace(/_/g, " ") : ""
+
   // Determine badge variant and text
   let badgeVariant: "default" | "secondary" | "destructive" = "default"
   let badgeText = "Connected"
@@ -152,6 +156,14 @@ function InstanceCard({
     badgeVariant = "destructive"
     badgeText = "Disconnected"
   }
+
+  const badgeClassName = "whitespace-nowrap"
+
+  const isConnectable = normalizedConnectionStatus === "connected"
+  const ConnectionStatusIcon = isConnectable ? Globe : Flame
+  const connectionStatusIconClass = formattedConnectionStatus ? (isConnectable ? "text-green-500" : "text-destructive") : ""
+
+  const connectionStatusTooltip = formattedConnectionStatus ? (isConnectable ? "Connectable" : "Firewalled") : ""
 
   // Determine if settings button should show
   const showSettingsButton = instance.connected && !isFirstLoad && !hasDecryptionOrRecentErrors
@@ -233,13 +245,28 @@ function InstanceCard({
                   instanceName={instance.name}
                 />
               )}
-              <Badge variant={badgeVariant} className="whitespace-nowrap">
+              <Badge variant={badgeVariant} className={badgeClassName}>
                 {badgeText}
               </Badge>
             </div>
           </div>
-          {(appVersion || webAPIVersion || libtorrentVersion) && (
+          {(appVersion || webAPIVersion || libtorrentVersion || formattedConnectionStatus) && (
             <CardDescription className="flex flex-wrap items-center gap-1.5 text-xs">
+              {formattedConnectionStatus && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span
+                      aria-label={`qBittorrent connection status: ${formattedConnectionStatus}`}
+                      className={`inline-flex h-5 w-5 items-center justify-center ${connectionStatusIconClass}`}
+                    >
+                      <ConnectionStatusIcon className="h-4 w-4" aria-hidden="true" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-[220px]">
+                    <p>{connectionStatusTooltip}</p>
+                  </TooltipContent>
+                </Tooltip>
+              )}
               {appVersion && (
                 <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">
                   qBit {appVersion}

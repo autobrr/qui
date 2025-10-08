@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -106,6 +107,17 @@ func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *
 	client, _ := h.clientPool.GetClientOffline(ctx, instance.ID)
 	healthy := client != nil && client.IsHealthy()
 
+	var connectionStatus string
+	if client != nil {
+		if syncManager := client.GetSyncManager(); syncManager != nil {
+			if state := syncManager.GetServerState(); state.ConnectionStatus != "" {
+				if status := strings.TrimSpace(state.ConnectionStatus); status != "" {
+					connectionStatus = strings.ToLower(status)
+				}
+			}
+		}
+	}
+
 	decryptionErrorInstances := h.clientPool.GetInstancesWithDecryptionErrors()
 	hasDecryptionError := slices.Contains(decryptionErrorInstances, instance.ID)
 
@@ -118,6 +130,7 @@ func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *
 		TLSSkipVerify:      instance.TLSSkipVerify,
 		Connected:          healthy,
 		HasDecryptionError: hasDecryptionError,
+		ConnectionStatus:   connectionStatus,
 	}
 
 	// Fetch recent errors for disconnected instances
@@ -202,6 +215,7 @@ type InstanceResponse struct {
 	Connected          bool                   `json:"connected"`
 	HasDecryptionError bool                   `json:"hasDecryptionError"`
 	RecentErrors       []models.InstanceError `json:"recentErrors,omitempty"`
+	ConnectionStatus   string                 `json:"connectionStatus,omitempty"`
 }
 
 // TestConnectionResponse represents connection test results
