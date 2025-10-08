@@ -56,6 +56,8 @@ func (h *Handler) RegisterRoutes(r chi.Router) {
 	// Serve PWA files
 	r.Get("/registerSW.js", h.serveAssets)
 	r.Get("/sw.js", h.serveAssets)
+	r.Get("/workbox-{hash}.js", h.serveAssets)
+	r.Get("/workbox-{hash}.js.map", h.serveAssets)
 	r.Get("/manifest.webmanifest", h.serveAssets)
 
 	// Serve favicon and other root assets

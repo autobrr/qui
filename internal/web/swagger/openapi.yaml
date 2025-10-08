@@ -448,6 +448,25 @@ paths:
         '503':
           description: Connection failed
 
+  /api/instances/{instanceId}/app-info:
+    get:
+      tags:
+        - Instances
+      summary: Get qBittorrent application info
+      description: Get qBittorrent version and build information for an instance
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+      responses:
+        '200':
+          description: qBittorrent application information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QBittorrentAppInfo'
+        '400':
+          description: Invalid instance ID
+        '500':
+          description: Failed to get qBittorrent application info
 
   /api/instances/{instanceId}/capabilities:
     get:
@@ -1785,6 +1804,12 @@ components:
         supportsSetTags:
           type: boolean
           description: Whether the instance supports replacing tags on torrents.
+        supportsTrackerHealth:
+          type: boolean
+          description: Whether the instance exposes tracker health metadata (unregistered/tracker down states).
+        supportsTrackerEditing:
+          type: boolean
+          description: Whether the instance can edit tracker URLs via the Web API (requires WebAPI v2.3.0+).
         webAPIVersion:
           type: string
           nullable: true
@@ -1936,6 +1961,56 @@ components:
           format: date-time
           description: When the release was published
           example: "2025-09-23T10:30:00Z"
+
+    QBittorrentBuildInfo:
+      type: object
+      description: qBittorrent build information
+      properties:
+        qt:
+          type: string
+          description: Qt framework version
+          example: "5.15.2"
+        libtorrent:
+          type: string
+          description: libtorrent library version
+          example: "2.0.8"
+        boost:
+          type: string
+          description: Boost library version
+          example: "1.76.0"
+        openssl:
+          type: string
+          description: OpenSSL library version
+          example: "1.1.1k"
+        zlib:
+          type: string
+          description: zlib library version
+          example: "1.2.11"
+        bitness:
+          type: integer
+          description: Architecture bitness (32 or 64)
+          example: 64
+        platform:
+          type: string
+          description: Operating system platform
+          example: "linux"
+
+    QBittorrentAppInfo:
+      type: object
+      description: qBittorrent application information
+      required:
+        - version
+      properties:
+        version:
+          type: string
+          description: qBittorrent version
+          example: "4.6.0"
+        webAPIVersion:
+          type: string
+          description: qBittorrent Web API version
+          example: "2.11.4"
+        buildInfo:
+          $ref: '#/components/schemas/QBittorrentBuildInfo'
 
 tags:
   - name: Authentication

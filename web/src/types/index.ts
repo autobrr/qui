@@ -4,10 +4,11 @@
  */
 
 export interface User {
-  id: number
+  id?: number
   username: string
-  createdAt: string
-  updatedAt: string
+  createdAt?: string
+  updatedAt?: string
+  auth_method?: string
 }
 
 export interface AuthResponse {
@@ -51,7 +52,19 @@ export interface InstanceResponse extends Instance {
 export interface InstanceCapabilities {
   supportsTorrentCreation: boolean
   supportsSetTags: boolean
+  supportsTrackerHealth: boolean
+  supportsTrackerEditing: boolean
   webAPIVersion?: string
+}
+
+export interface TorrentTracker {
+  url: string
+  status: number
+  num_peers: number
+  num_seeds: number
+  num_leechers: number
+  num_downloaded: number
+  msg: string
 }
 
 export interface Torrent {
@@ -105,6 +118,8 @@ export interface Torrent {
   total_size: number
   tracker: string
   trackers_count: number
+  trackers?: TorrentTracker[]
+  tracker_health?: "unregistered" | "tracker_down"
   up_limit: number
   uploaded: number
   uploaded_session: number
@@ -186,6 +201,8 @@ export interface ServerState {
   total_buffers_size?: number
   total_queued_size?: number
   write_cache_overload?: string
+  last_external_address_v4?: string
+  last_external_address_v6?: string
 }
 
 export interface AppPreferences {
@@ -423,6 +440,22 @@ export interface AppPreferences {
 
   // Add catch-all for any additional fields from the API
   [key: string]: unknown
+}
+
+// qBittorrent application information
+export interface QBittorrentBuildInfo {
+  qt: string
+  libtorrent: string
+  boost: string
+  openssl: string
+  bitness: number
+  platform?: string
+}
+
+export interface QBittorrentAppInfo {
+  version: string
+  webAPIVersion?: string
+  buildInfo?: QBittorrentBuildInfo
 }
 
 // Torrent Creation Types

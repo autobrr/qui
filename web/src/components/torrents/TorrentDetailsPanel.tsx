@@ -622,7 +622,9 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                                 <>
                                   <Separator className="opacity-50" />
                                   <div className="bg-background/50 p-2 rounded">
-                                    <p className="text-xs text-muted-foreground">{messageContent}</p>
+                                    <div className="text-xs text-muted-foreground break-words">
+                                      {renderTextWithLinks(messageContent)}
+                                    </div>
                                   </div>
                                 </>
                               )}

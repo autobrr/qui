@@ -52,6 +52,15 @@ func (s *InstanceErrorStore) RecordError(ctx context.Context, instanceID int, er
 	errorType := categorizeError(err)
 	errorMessage := err.Error()
 
+	// Validate that the instance exists before trying to record error
+	var exists int
+	existsQuery := `SELECT COUNT(*) FROM instances WHERE id = ?`
+	if err := s.db.QueryRowContext(ctx, existsQuery, instanceID).Scan(&exists); err != nil || exists == 0 {
+		// Instance doesn't exist, silently skip recording the error
+		// This can happen during instance deletion or with stale references
+		return nil
+	}
+
 	// Simple deduplication: check if same error was recorded in last minute
 	var count int
 	checkQuery := `SELECT COUNT(*) FROM instance_errors 
@@ -66,6 +75,13 @@ func (s *InstanceErrorStore) RecordError(ctx context.Context, instanceID int, er
 	query := `INSERT INTO instance_errors (instance_id, error_type, error_message) 
               VALUES (?, ?, ?)`
 	_, execErr := s.db.ExecContext(ctx, query, instanceID, errorType, errorMessage)
+
+	// Handle foreign key constraint errors gracefully
+	if execErr != nil && strings.Contains(execErr.Error(), "FOREIGN KEY constraint failed") {
+		// Instance was likely deleted between our check and insert, silently ignore
+		return nil
+	}
+
 	return execErr
 }
 

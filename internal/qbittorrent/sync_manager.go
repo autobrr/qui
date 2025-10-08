@@ -6,6 +6,7 @@ package qbittorrent
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net/url"
 	"path/filepath"
 	"slices"
@@ -15,6 +16,8 @@ import (
 
 	"github.com/autobrr/autobrr/pkg/ttlcache"
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/expr-lang/expr"
+	"github.com/expr-lang/expr/vm"
 	"github.com/lithammer/fuzzysearch/fuzzy"
 	"github.com/rs/zerolog/log"
 
@@ -34,17 +37,31 @@ type CacheMetadata struct {
 }
 
 // TorrentResponse represents a response containing torrents with stats
+type TrackerHealth string
+
+const (
+	TrackerHealthUnregistered TrackerHealth = "unregistered"
+	TrackerHealthDown         TrackerHealth = "tracker_down"
+)
+
+// TorrentView extends qBittorrent's torrent with UI-specific metadata.
+type TorrentView struct {
+	qbt.Torrent
+	TrackerHealth TrackerHealth `json:"tracker_health,omitempty"`
+}
+
 type TorrentResponse struct {
-	Torrents      []qbt.Torrent           `json:"torrents"`
-	Total         int                     `json:"total"`
-	Stats         *TorrentStats           `json:"stats,omitempty"`
-	Counts        *TorrentCounts          `json:"counts,omitempty"`      // Include counts for sidebar
-	Categories    map[string]qbt.Category `json:"categories,omitempty"`  // Include categories for sidebar
-	Tags          []string                `json:"tags,omitempty"`        // Include tags for sidebar
-	ServerState   *qbt.ServerState        `json:"serverState,omitempty"` // Include server state for Dashboard
-	HasMore       bool                    `json:"hasMore"`               // Whether more pages are available
-	SessionID     string                  `json:"sessionId,omitempty"`   // Optional session tracking
-	CacheMetadata *CacheMetadata          `json:"cacheMetadata,omitempty"`
+	Torrents               []TorrentView           `json:"torrents"`
+	Total                  int                     `json:"total"`
+	Stats                  *TorrentStats           `json:"stats,omitempty"`
+	Counts                 *TorrentCounts          `json:"counts,omitempty"`      // Include counts for sidebar
+	Categories             map[string]qbt.Category `json:"categories,omitempty"`  // Include categories for sidebar
+	Tags                   []string                `json:"tags,omitempty"`        // Include tags for sidebar
+	ServerState            *qbt.ServerState        `json:"serverState,omitempty"` // Include server state for Dashboard
+	HasMore                bool                    `json:"hasMore"`               // Whether more pages are available
+	SessionID              string                  `json:"sessionId,omitempty"`   // Optional session tracking
+	CacheMetadata          *CacheMetadata          `json:"cacheMetadata,omitempty"`
+	TrackerHealthSupported bool                    `json:"trackerHealthSupported"`
 }
 
 // TorrentStats represents aggregated torrent statistics
@@ -63,6 +80,7 @@ type TorrentStats struct {
 // SyncManager manages torrent operations
 type SyncManager struct {
 	clientPool *ClientPool
+	exprCache  *ttlcache.Cache[string, *vm.Program]
 }
 
 // OptimisticTorrentUpdate represents a temporary optimistic update to a torrent
@@ -77,6 +95,7 @@ type OptimisticTorrentUpdate struct {
 func NewSyncManager(clientPool *ClientPool) *SyncManager {
 	return &SyncManager{
 		clientPool: clientPool,
+		exprCache:  ttlcache.New(ttlcache.Options[string, *vm.Program]{}.SetDefaultTTL(5 * time.Minute)),
 	}
 }
 
@@ -124,6 +143,8 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		return nil, err
 	}
 
+	trackerHealthSupported := client != nil && client.supportsTrackerInclude()
+
 	// Get MainData for tracker filtering (if needed)
 	var mainData *qbt.MainData
 	if len(filters.Trackers) > 0 {
@@ -140,14 +161,20 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	hasMultipleCategoryFilters := len(filters.Categories) > 1
 	hasMultipleTagFilters := len(filters.Tags) > 1
 	hasTrackerFilters := len(filters.Trackers) > 0 // Library doesn't support tracker filtering
+	hasExprFilters := len(filters.Expr) > 0
 
 	// Determine if any status filter needs manual filtering
-	needsManualStatusFiltering := false
-	if len(filters.Status) > 0 {
+	trackerStatusFilters := statusFiltersRequireTrackerData(filters.Status)
+	needsManualStatusFiltering := trackerStatusFilters
+	if !needsManualStatusFiltering && len(filters.Status) > 0 {
 		for _, status := range filters.Status {
 			switch qbt.TorrentFilter(status) {
 			case qbt.TorrentFilterActive, qbt.TorrentFilterInactive, qbt.TorrentFilterChecking, qbt.TorrentFilterMoving, qbt.TorrentFilterError, qbt.TorrentFilterDownloading, qbt.TorrentFilterUploading:
 				needsManualStatusFiltering = true
+			}
+
+			if needsManualStatusFiltering {
+				break
 			}
 		}
 	}
@@ -163,7 +190,10 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	}
 
 	useManualFiltering = hasMultipleStatusFilters || hasMultipleCategoryFilters || hasMultipleTagFilters ||
-		hasTrackerFilters || needsManualStatusFiltering || needsManualCategoryFiltering || needsManualTagFiltering
+		hasTrackerFilters || hasExprFilters || needsManualStatusFiltering || needsManualCategoryFiltering || needsManualTagFiltering
+
+	var trackerMap map[string][]qbt.TorrentTracker
+	var counts *TorrentCounts
 
 	if useManualFiltering {
 		// Use manual filtering - get all torrents and filter manually
@@ -173,6 +203,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 			Bool("multipleCategories", hasMultipleCategoryFilters).
 			Bool("multipleTags", hasMultipleTagFilters).
 			Bool("hasTrackers", hasTrackerFilters).
+			Bool("hasExpr", hasExprFilters).
 			Bool("needsManualStatus", needsManualStatusFiltering).
 			Bool("needsManualCategory", needsManualCategoryFiltering).
 			Bool("needsManualTag", needsManualTagFiltering).
@@ -186,6 +217,10 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		filteredTorrents = syncManager.GetTorrents(torrentFilterOptions)
 
 		// Apply manual filtering for multiple selections
+		if trackerStatusFilters && trackerHealthSupported {
+			filteredTorrents, trackerMap, _ = sm.enrichTorrentsWithTrackerData(ctx, client, filteredTorrents, trackerMap, true)
+		}
+
 		filteredTorrents = sm.applyManualFilters(client, filteredTorrents, filters, mainData)
 	} else {
 		// Use library filtering for single selections
@@ -297,7 +332,52 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 	// Get MainData for accurate tracker information
 	mainData = syncManager.GetData()
-	counts := sm.calculateCountsFromTorrentsWithTrackers(client, allTorrents, mainData)
+
+	counts, trackerMap, enrichedAll := sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents, mainData, trackerMap, trackerHealthSupported)
+
+	// Reuse enriched tracker data for paginated torrents to avoid duplicate fetches
+	if len(paginatedTorrents) > 0 && trackerHealthSupported {
+		var enrichedLookup map[string]qbt.Torrent
+		for i := range paginatedTorrents {
+			hash := paginatedTorrents[i].Hash
+			if trackers, ok := trackerMap[hash]; ok && len(trackers) > 0 {
+				paginatedTorrents[i].Trackers = trackers
+				continue
+			}
+
+			if len(paginatedTorrents[i].Trackers) > 0 {
+				continue
+			}
+
+			if len(enrichedAll) == 0 {
+				continue
+			}
+
+			if enrichedLookup == nil {
+				enrichedLookup = make(map[string]qbt.Torrent, len(enrichedAll))
+				for _, torrent := range enrichedAll {
+					enrichedLookup[torrent.Hash] = torrent
+				}
+			}
+
+			if torrent, ok := enrichedLookup[hash]; ok && len(torrent.Trackers) > 0 {
+				paginatedTorrents[i].Trackers = torrent.Trackers
+			}
+		}
+	}
+
+	// Convert to UI view models with tracker health metadata
+	var paginatedViews []TorrentView
+	if len(paginatedTorrents) > 0 {
+		paginatedViews = make([]TorrentView, len(paginatedTorrents))
+		for i, torrent := range paginatedTorrents {
+			view := TorrentView{Torrent: torrent}
+			if health := sm.determineTrackerHealth(torrent); health != "" {
+				view.TrackerHealth = health
+			}
+			paginatedViews[i] = view
+		}
+	}
 
 	// Fetch categories and tags (cached separately for 60s)
 	categories, err := sm.GetCategories(ctx, instanceID)
@@ -343,15 +423,16 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	}
 
 	response := &TorrentResponse{
-		Torrents:      paginatedTorrents,
-		Total:         len(filteredTorrents),
-		Stats:         stats,
-		Counts:        counts,      // Include counts for sidebar
-		Categories:    categories,  // Include categories for sidebar
-		Tags:          tags,        // Include tags for sidebar
-		ServerState:   serverState, // Include server state for Dashboard
-		HasMore:       hasMore,
-		CacheMetadata: cacheMetadata,
+		Torrents:               paginatedViews,
+		Total:                  len(filteredTorrents),
+		Stats:                  stats,
+		Counts:                 counts,      // Include counts for sidebar
+		Categories:             categories,  // Include categories for sidebar
+		Tags:                   tags,        // Include tags for sidebar
+		ServerState:            serverState, // Include server state for Dashboard
+		HasMore:                hasMore,
+		CacheMetadata:          cacheMetadata,
+		TrackerHealthSupported: trackerHealthSupported,
 	}
 
 	// Always compute from fresh all_torrents data
@@ -360,7 +441,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 	log.Debug().
 		Int("instanceID", instanceID).
-		Int("count", len(paginatedTorrents)).
+		Int("count", len(paginatedViews)).
 		Int("total", len(filteredTorrents)).
 		Str("search", search).
 		Interface("filters", filters).
@@ -665,6 +746,132 @@ func (sm *SyncManager) primaryTrackerDomain(torrent qbt.Torrent) string {
 	return ""
 }
 
+func trackerMessageMatches(message string, patterns []string) bool {
+	text := strings.TrimSpace(strings.ToLower(message))
+	if text == "" {
+		return false
+	}
+
+	for _, pattern := range patterns {
+		if strings.Contains(text, pattern) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func statusFiltersRequireTrackerData(statuses []string) bool {
+	for _, status := range statuses {
+		switch status {
+		case "unregistered", "tracker_down":
+			return true
+		}
+	}
+
+	return false
+}
+
+func (sm *SyncManager) torrentIsUnregistered(torrent qbt.Torrent) bool {
+	if torrent.AddedOn > 0 {
+		addedAt := time.Unix(torrent.AddedOn, 0)
+		if time.Since(addedAt) < time.Hour {
+			return false
+		}
+	}
+
+	var hasWorking bool
+	var hasUnregistered bool
+
+	for _, tracker := range torrent.Trackers {
+		switch tracker.Status {
+		case qbt.TrackerStatusDisabled:
+			// Skip DHT/PeX entries
+			continue
+		case qbt.TrackerStatusOK, qbt.TrackerStatusUpdating:
+			hasWorking = true
+		case qbt.TrackerStatusNotWorking:
+			if trackerMessageMatches(tracker.Message, defaultUnregisteredStatuses) {
+				hasUnregistered = true
+			}
+		}
+	}
+
+	return hasUnregistered && !hasWorking
+}
+
+func (sm *SyncManager) torrentTrackerIsDown(torrent qbt.Torrent) bool {
+	var hasWorking bool
+	var hasDown bool
+
+	for _, tracker := range torrent.Trackers {
+		switch tracker.Status {
+		case qbt.TrackerStatusDisabled:
+			// Skip DHT/PeX entries
+			continue
+		case qbt.TrackerStatusOK, qbt.TrackerStatusUpdating:
+			hasWorking = true
+		case qbt.TrackerStatusNotWorking:
+			if trackerMessageMatches(tracker.Message, trackerDownStatuses) {
+				hasDown = true
+			}
+		default:
+			// Other statuses (e.g. not contacted yet) neither confirm nor deny a failure.
+			continue
+		}
+	}
+
+	return hasDown && !hasWorking
+}
+
+func (sm *SyncManager) determineTrackerHealth(torrent qbt.Torrent) TrackerHealth {
+	if sm.torrentIsUnregistered(torrent) {
+		return TrackerHealthUnregistered
+	}
+
+	if sm.torrentTrackerIsDown(torrent) {
+		return TrackerHealthDown
+	}
+
+	return ""
+}
+
+func (sm *SyncManager) enrichTorrentsWithTrackerData(ctx context.Context, client *Client, torrents []qbt.Torrent, trackerMap map[string][]qbt.TorrentTracker, allowFetch bool) ([]qbt.Torrent, map[string][]qbt.TorrentTracker, []string) {
+	if client == nil || len(torrents) == 0 {
+		return torrents, trackerMap, nil
+	}
+
+	// Tracker health enrichment requires qBittorrent >= 5.1 (includeTrackers support).
+	if !client.supportsTrackerInclude() {
+		return torrents, trackerMap, nil
+	}
+
+	if trackerMap == nil {
+		trackerMap = make(map[string][]qbt.TorrentTracker)
+	}
+
+	for i := range torrents {
+		if len(torrents[i].Trackers) > 0 {
+			trackerMap[torrents[i].Hash] = torrents[i].Trackers
+		}
+	}
+
+	enriched, trackerData, remaining, err := client.hydrateTorrentsWithTrackers(ctx, torrents, allowFetch)
+	if err != nil && allowFetch {
+		log.Debug().Err(err).Int("count", len(torrents)).Msg("Failed to fetch tracker details for enrichment")
+	}
+
+	maps.Copy(trackerMap, trackerData)
+
+	for i := range enriched {
+		if trackers, ok := trackerMap[enriched[i].Hash]; ok {
+			enriched[i].Trackers = trackers
+		}
+	}
+
+	return enriched, trackerMap, remaining
+}
+
 // TorrentCounts represents counts for filtering sidebar
 type TorrentCounts struct {
 	Status     map[string]int `json:"status"`
@@ -735,6 +942,14 @@ func (sm *SyncManager) countTorrentStatuses(torrent qbt.Torrent, counts map[stri
 	// Count "all"
 	counts["all"]++
 
+	if sm.torrentIsUnregistered(torrent) {
+		counts["unregistered"]++
+	}
+
+	if sm.torrentTrackerIsDown(torrent) {
+		counts["tracker_down"]++
+	}
+
 	// Count "completed"
 	if torrent.Progress == 1 {
 		counts["completed"]++
@@ -778,14 +993,21 @@ func (sm *SyncManager) countTorrentStatuses(torrent qbt.Torrent, counts map[stri
 
 // calculateCountsFromTorrentsWithTrackers calculates counts using MainData's tracker information
 // This gives us the REAL tracker-to-torrent mapping from qBittorrent
-func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(client *Client, allTorrents []qbt.Torrent, mainData *qbt.MainData) *TorrentCounts {
+
+func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(ctx context.Context, client *Client, allTorrents []qbt.Torrent, mainData *qbt.MainData, trackerMap map[string][]qbt.TorrentTracker, trackerHealthSupported bool) (*TorrentCounts, map[string][]qbt.TorrentTracker, []qbt.Torrent) {
+	var enriched []qbt.Torrent
+	if trackerHealthSupported {
+		enriched, trackerMap, _ = sm.enrichTorrentsWithTrackerData(ctx, client, allTorrents, trackerMap, true)
+		allTorrents = enriched
+	}
+
 	// Initialize counts
 	counts := &TorrentCounts{
 		Status: map[string]int{
 			"all": 0, "downloading": 0, "seeding": 0, "completed": 0, "paused": 0,
 			"active": 0, "inactive": 0, "resumed": 0, "running": 0, "stopped": 0, "stalled": 0,
 			"stalled_uploading": 0, "stalled_downloading": 0, "errored": 0,
-			"checking": 0, "moving": 0,
+			"checking": 0, "moving": 0, "unregistered": 0, "tracker_down": 0,
 		},
 		Categories: make(map[string]int),
 		Tags:       make(map[string]int),
@@ -902,7 +1124,7 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(client *Client, a
 		}
 	}
 
-	return counts
+	return counts, trackerMap, allTorrents
 }
 
 // GetTorrentCounts gets all torrent counts for the filter sidebar
@@ -925,7 +1147,8 @@ func (sm *SyncManager) GetTorrentCounts(ctx context.Context, instanceID int) (*T
 	mainData := syncManager.GetData()
 
 	// Calculate counts using the shared function - pass mainData for tracker information
-	counts := sm.calculateCountsFromTorrentsWithTrackers(client, allTorrents, mainData)
+	trackerHealthSupported := client != nil && client.supportsTrackerInclude()
+	counts, _, _ := sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents, mainData, nil, trackerHealthSupported)
 
 	// Don't cache counts separately - they're always derived from the cached torrent data
 	// This ensures sidebar and table are always in sync
@@ -1023,6 +1246,11 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 
 	// Get all torrents from sync manager
 	torrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{})
+
+	// Enrich torrents with tracker data so downstream calculations can inspect tracker errors
+	if enriched, _, _ := sm.enrichTorrentsWithTrackerData(ctx, client, torrents, nil, true); len(enriched) > 0 {
+		torrents = enriched
+	}
 
 	// Build a map for O(1) lookups during optimistic updates
 	torrentMap := make(map[string]*qbt.Torrent, len(torrents))
@@ -1304,7 +1532,8 @@ func (sm *SyncManager) filterTorrentsByGlob(torrents []qbt.Torrent, pattern stri
 	return filtered
 }
 
-// applyManualFilters applies all filters manually when library filtering is insufficient
+// applyManualFilters applies all filters manually when library filtering is insufficient.
+// Callers hydrate tracker data beforehand when status filters depend on tracker health.
 func (sm *SyncManager) applyManualFilters(client *Client, torrents []qbt.Torrent, filters FilterOptions, mainData *qbt.MainData) []qbt.Torrent {
 	var filtered []qbt.Torrent
 
@@ -1363,6 +1592,22 @@ func (sm *SyncManager) applyManualFilters(client *Client, torrents []qbt.Torrent
 					torrentHashToDomains[h] = make(map[string]struct{})
 				}
 				torrentHashToDomains[h][domain] = struct{}{}
+			}
+		}
+	}
+
+	var program *vm.Program
+	var compileErr error
+	if len(filters.Expr) > 0 {
+		if p, ok := sm.exprCache.Get(filters.Expr); ok {
+			log.Debug().Str("expr", filters.Expr).Msg("Using cached expression")
+			program = p
+		} else {
+			program, compileErr = expr.Compile(filters.Expr, expr.Env(qbt.Torrent{}), expr.AsBool())
+			if compileErr != nil {
+				log.Error().Err(compileErr).Msg("Failed to compile expression")
+			} else if ok := sm.exprCache.Set(filters.Expr, program, 5*time.Minute); !ok {
+				log.Warn().Str("expr", filters.Expr).Msg("Failed to cache expression")
 			}
 		}
 	}
@@ -1453,6 +1698,24 @@ func (sm *SyncManager) applyManualFilters(client *Client, torrents []qbt.Torrent
 			}
 		}
 
+		if len(filters.Expr) > 0 && compileErr == nil {
+			result, err := expr.Run(program, torrent)
+			if err != nil {
+				log.Error().Err(err).Msg("Failed to evaluate expression")
+				continue
+			}
+
+			expResult, ok := result.(bool)
+			if !ok {
+				log.Error().Msg("Expression result is not a boolean")
+				continue
+			}
+
+			if !expResult {
+				continue
+			}
+		}
+
 		// If we reach here, torrent passed all active filters
 		filtered = append(filtered, torrent)
 	}
@@ -1534,6 +1797,13 @@ func (sm *SyncManager) shouldClearOptimisticUpdate(currentState qbt.TorrentState
 
 // matchTorrentStatus checks if a torrent matches a specific status filter
 func (sm *SyncManager) matchTorrentStatus(torrent qbt.Torrent, status string) bool {
+	switch strings.ToLower(status) {
+	case "unregistered":
+		return sm.torrentIsUnregistered(torrent)
+	case "tracker_down":
+		return sm.torrentTrackerIsDown(torrent)
+	}
+
 	// Handle special cases first
 	switch qbt.TorrentFilter(status) {
 	case qbt.TorrentFilterAll:
@@ -2176,6 +2446,8 @@ func (sm *SyncManager) EditTorrentTracker(ctx context.Context, instanceID int, h
 		return fmt.Errorf("failed to edit tracker: %w", err)
 	}
 
+	client.invalidateTrackerCache(hash)
+
 	sm.recordTrackerTransition(client, oldURL, newURL, []string{hash})
 
 	// Queue icon fetch for the new tracker
@@ -2205,6 +2477,8 @@ func (sm *SyncManager) AddTorrentTrackers(ctx context.Context, instanceID int, h
 	if err := client.AddTrackersCtx(ctx, hash, urls); err != nil {
 		return fmt.Errorf("failed to add trackers: %w", err)
 	}
+
+	client.invalidateTrackerCache(hash)
 
 	// Queue icon fetches for newly added trackers
 	for trackerURL := range strings.SplitSeq(urls, "\n") {
@@ -2239,6 +2513,8 @@ func (sm *SyncManager) RemoveTorrentTrackers(ctx context.Context, instanceID int
 		return fmt.Errorf("failed to remove trackers: %w", err)
 	}
 
+	client.invalidateTrackerCache(hash)
+
 	sm.syncAfterModification(instanceID, client, "remove_trackers")
 
 	return nil
@@ -2249,6 +2525,10 @@ func (sm *SyncManager) BulkEditTrackers(ctx context.Context, instanceID int, has
 	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
 		return err
+	}
+
+	if !client.SupportsTrackerEditing() {
+		return fmt.Errorf("tracker editing is not supported by this qBittorrent instance")
 	}
 
 	// Validate that torrents exist
@@ -2277,6 +2557,8 @@ func (sm *SyncManager) BulkEditTrackers(ctx context.Context, instanceID int, has
 		}
 		return fmt.Errorf("failed to edit trackers")
 	}
+
+	client.invalidateTrackerCache(updatedHashes...)
 
 	sm.recordTrackerTransition(client, oldURL, newURL, updatedHashes)
 
@@ -2319,6 +2601,8 @@ func (sm *SyncManager) BulkAddTrackers(ctx context.Context, instanceID int, hash
 		return fmt.Errorf("failed to add trackers")
 	}
 
+	client.invalidateTrackerCache(hashes...)
+
 	sm.syncAfterModification(instanceID, client, "bulk_add_trackers")
 
 	return nil
@@ -2356,6 +2640,8 @@ func (sm *SyncManager) BulkRemoveTrackers(ctx context.Context, instanceID int, h
 		}
 		return fmt.Errorf("failed to remove trackers")
 	}
+
+	client.invalidateTrackerCache(hashes...)
 
 	sm.syncAfterModification(instanceID, client, "bulk_remove_trackers")
 
