@@ -1879,6 +1879,29 @@ var torrentStateCategories = map[qbt.TorrentFilter][]qbt.TorrentState{
 	// TorrentFilterRunning is handled specially in matchTorrentStatus as inverse of stopped
 }
 
+var torrentStateSortOrder = map[qbt.TorrentState]int{
+	qbt.TorrentStateDownloading:        20,
+	qbt.TorrentStateMetaDl:             21,
+	qbt.TorrentStateForcedDl:           22,
+	qbt.TorrentStateAllocating:         23,
+	qbt.TorrentStateCheckingDl:         24,
+	qbt.TorrentStateQueuedDl:           25,
+	qbt.TorrentStateStalledDl:          30,
+	qbt.TorrentStateUploading:          40,
+	qbt.TorrentStateForcedUp:           41,
+	qbt.TorrentStateStalledUp:          42,
+	qbt.TorrentStateQueuedUp:           43,
+	qbt.TorrentStatePausedDl:           50,
+	qbt.TorrentStatePausedUp:           51,
+	qbt.TorrentStateStoppedDl:          52,
+	qbt.TorrentStateStoppedUp:          53,
+	qbt.TorrentStateCheckingUp:         60,
+	qbt.TorrentStateCheckingResumeData: 61,
+	qbt.TorrentStateMoving:             70,
+	qbt.TorrentStateError:              80,
+	qbt.TorrentStateMissingFiles:       81,
+}
+
 // Action state categories for optimistic update clearing
 var actionSuccessCategories = map[string]string{
 	"resume":       "active",
@@ -1979,6 +2002,14 @@ func (sm *SyncManager) trackerHealthPriority(torrent qbt.Torrent, trackerHealthS
 	}
 }
 
+func stateSortPriority(state qbt.TorrentState) int {
+	if priority, ok := torrentStateSortOrder[state]; ok {
+		return priority
+	}
+
+	return 1000
+}
+
 func (sm *SyncManager) sortTorrentsByStatus(torrents []qbt.Torrent, desc bool, trackerHealthSupported bool) {
 	if len(torrents) == 0 {
 		return
@@ -1989,7 +2020,13 @@ func (sm *SyncManager) sortTorrentsByStatus(torrents []qbt.Torrent, desc bool, t
 		name string
 	}
 
-	cache := make(map[cacheKey]int, len(torrents))
+	type statusSortMeta struct {
+		trackerPriority int
+		statePriority   int
+		label           string
+	}
+
+	cache := make(map[cacheKey]statusSortMeta, len(torrents))
 	keyFor := func(t qbt.Torrent) cacheKey {
 		if t.Hash != "" {
 			return cacheKey{hash: t.Hash}
@@ -2003,37 +2040,60 @@ func (sm *SyncManager) sortTorrentsByStatus(torrents []qbt.Torrent, desc bool, t
 		return cacheKey{name: t.Name}
 	}
 
-	getPriority := func(t qbt.Torrent) int {
+	getMeta := func(t qbt.Torrent) statusSortMeta {
 		key := keyFor(t)
-		if priority, ok := cache[key]; ok {
-			return priority
+		if meta, ok := cache[key]; ok {
+			return meta
 		}
-		priority := sm.trackerHealthPriority(t, trackerHealthSupported)
-		cache[key] = priority
-		return priority
-	}
-
-	direction := 1
-	if desc {
-		direction = -1
+		label := strings.ToLower(string(t.State))
+		if trackerHealthSupported {
+			switch sm.determineTrackerHealth(t) {
+			case TrackerHealthUnregistered:
+				label = "unregistered"
+			case TrackerHealthDown:
+				label = "tracker_down"
+			}
+		}
+		meta := statusSortMeta{
+			trackerPriority: sm.trackerHealthPriority(t, trackerHealthSupported),
+			statePriority:   stateSortPriority(t.State),
+			label:           label,
+		}
+		cache[key] = meta
+		return meta
 	}
 
 	slices.SortStableFunc(torrents, func(a, b qbt.Torrent) int {
-		priorityComparison := getPriority(a) - getPriority(b)
-		if priorityComparison != 0 {
-			return priorityComparison * direction
+		metaA := getMeta(a)
+		metaB := getMeta(b)
+
+		if metaA.trackerPriority != metaB.trackerPriority {
+			if desc {
+				return metaA.trackerPriority - metaB.trackerPriority
+			}
+			return metaB.trackerPriority - metaA.trackerPriority
 		}
 
-		stateA := strings.ToLower(string(a.State))
-		stateB := strings.ToLower(string(b.State))
-		stateComparison := strings.Compare(stateA, stateB)
-		if stateComparison != 0 {
-			return stateComparison * direction
+		if metaA.statePriority != metaB.statePriority {
+			if desc {
+				return metaA.statePriority - metaB.statePriority
+			}
+			return metaB.statePriority - metaA.statePriority
+		}
+
+		if metaA.label != metaB.label {
+			if desc {
+				return strings.Compare(metaB.label, metaA.label)
+			}
+			return strings.Compare(metaA.label, metaB.label)
 		}
 
 		nameA := strings.ToLower(a.Name)
 		nameB := strings.ToLower(b.Name)
-		return strings.Compare(nameA, nameB) * direction
+		if desc {
+			return strings.Compare(nameB, nameA)
+		}
+		return strings.Compare(nameA, nameB)
 	})
 }
 

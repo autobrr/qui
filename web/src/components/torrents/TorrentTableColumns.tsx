@@ -131,6 +131,29 @@ const getTrackerDisplayMeta = (tracker?: string) => {
 
 TrackerIconCell.displayName = "TrackerIconCell"
 
+const STATUS_SORT_ORDER: Record<string, number> = {
+  downloading: 20,
+  metaDL: 21,
+  forcedDL: 22,
+  allocating: 23,
+  checkingDL: 24,
+  queuedDL: 25,
+  stalledDL: 30,
+  uploading: 40,
+  forcedUP: 41,
+  stalledUP: 42,
+  queuedUP: 43,
+  pausedDL: 50,
+  pausedUP: 51,
+  stoppedDL: 52,
+  stoppedUP: 53,
+  checkingUP: 60,
+  checkingResumeData: 61,
+  moving: 70,
+  error: 80,
+  missingFiles: 81,
+}
+
 const getTrackerAwareStatusLabel = (torrent: Torrent, supportsTrackerHealth: boolean): string => {
   if (supportsTrackerHealth) {
     if (torrent.tracker_health === "unregistered") {
@@ -149,19 +172,24 @@ const getTrackerAwareStatusSortMeta = (torrent: Torrent, supportsTrackerHealth: 
     if (torrent.tracker_health === "unregistered") {
       return {
         priority: 0,
+        statePriority: -1,
         label: "Unregistered",
       }
     }
     if (torrent.tracker_health === "tracker_down") {
       return {
         priority: 1,
+        statePriority: -1,
         label: "Tracker Down",
       }
     }
   }
 
+  const statePriority = STATUS_SORT_ORDER[torrent.state] ?? 1000
+
   return {
     priority: 10,
+    statePriority,
     label: getStateLabel(torrent.state),
   }
 }
@@ -374,6 +402,10 @@ export const createColumns = (
 
       if (metaA.priority !== metaB.priority) {
         return metaA.priority - metaB.priority
+      }
+
+      if (metaA.statePriority !== metaB.statePriority) {
+        return metaA.statePriority - metaB.statePriority
       }
 
       const labelComparison = metaA.label.localeCompare(metaB.label, undefined, { sensitivity: "accent", numeric: false })

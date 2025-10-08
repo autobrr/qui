@@ -238,6 +238,11 @@ func TestSyncManager_SortTorrentsByStatus(t *testing.T) {
 			Name:  "Paused Torrent",
 			State: qbt.TorrentStatePausedDl,
 		},
+		{
+			Hash:  "stalled_dl",
+			Name:  "Stalled Downloading",
+			State: qbt.TorrentStateStalledDl,
+		},
 	}
 
 	hashes := func(ts []qbt.Torrent) []string {
@@ -248,11 +253,11 @@ func TestSyncManager_SortTorrentsByStatus(t *testing.T) {
 		return out
 	}
 
-	sm.sortTorrentsByStatus(torrents, false, true)
-	assert.Equal(t, []string{"unreg", "down", "downloading", "paused", "uploading"}, hashes(torrents))
-
 	sm.sortTorrentsByStatus(torrents, true, true)
-	assert.Equal(t, []string{"uploading", "paused", "downloading", "down", "unreg"}, hashes(torrents))
+	assert.Equal(t, []string{"unreg", "down", "downloading", "stalled_dl", "uploading", "paused"}, hashes(torrents))
+
+	sm.sortTorrentsByStatus(torrents, false, true)
+	assert.Equal(t, []string{"paused", "uploading", "stalled_dl", "downloading", "down", "unreg"}, hashes(torrents))
 }
 
 // TestSyncManager_SearchFunctionality tests the search and filtering logic
