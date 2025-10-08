@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import i18n from "@/i18n"
 import type { DateTimePreferences } from "@/hooks/usePersistedDateTimePreferences"
 
 // Get stored preferences from localStorage
@@ -41,18 +42,13 @@ function getRelativeTime(date: Date): string {
   const diffMonth = Math.floor(diffDay / 30)
   const diffYear = Math.floor(diffDay / 365)
 
-  if (diffSec < 60) return "Just now"
-  if (diffMin < 60) return `${diffMin} minute${diffMin !== 1 ? "s" : ""} ago`
-  if (diffHour < 24) return `${diffHour} hour${diffHour !== 1 ? "s" : ""} ago`
-  if (diffDay < 7) return `${diffDay} day${diffDay !== 1 ? "s" : ""} ago`
-  if (diffWeek < 4) return `${diffWeek} week${diffWeek !== 1 ? "s" : ""} ago`
-  if (diffMonth < 12 && diffMonth > 0) return `${diffMonth} month${diffMonth !== 1 ? "s" : ""} ago`
-  if (diffYear > 0) return `${diffYear} year${diffYear !== 1 ? "s" : ""} ago`
-  
-  // Fallback for edge cases (like exactly 0 months but some weeks)
-  if (diffWeek > 0) return `${diffWeek} week${diffWeek !== 1 ? "s" : ""} ago`
-  if (diffDay > 0) return `${diffDay} day${diffDay !== 1 ? "s" : ""} ago`
-  return "Just now"
+  if (diffSec < 60) return i18n.t("lib.dateTime.justNow")
+  if (diffMin < 60) return i18n.t("lib.dateTime.minutesAgo", { count: diffMin })
+  if (diffHour < 24) return i18n.t("lib.dateTime.hoursAgo", { count: diffHour })
+  if (diffDay < 7) return i18n.t("lib.dateTime.daysAgo", { count: diffDay })
+  if (diffWeek < 4) return i18n.t("lib.dateTime.weeksAgo", { count: diffWeek })
+  if (diffMonth < 12) return i18n.t("lib.dateTime.monthsAgo", { count: diffMonth })
+  return i18n.t("lib.dateTime.yearsAgo", { count: diffYear })
 }
 
 /**
@@ -162,8 +158,8 @@ export function formatDateOnly(timestamp: number, preferences?: DateTimePreferen
     const diffMs = now.getTime() - date.getTime()
     const diffDay = Math.floor(diffMs / (1000 * 60 * 60 * 24))
     
-    if (diffDay === 0) return "Today"
-    if (diffDay === 1) return "Yesterday"
+    if (diffDay === 0) return i18n.t("lib.dateTime.today")
+    if (diffDay === 1) return i18n.t("lib.dateTime.yesterday")
     if (diffDay < 7) return `${diffDay} days ago`
     
     return getRelativeTime(date)

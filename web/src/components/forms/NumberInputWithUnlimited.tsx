@@ -3,20 +3,21 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useTranslation } from "react-i18next";
 
 interface NumberInputWithUnlimitedProps {
-  label: string
-  value: number
-  onChange: (value: number) => void
-  min?: number
-  max?: number
-  step?: string | number
-  description?: string
-  allowUnlimited?: boolean
-  placeholder?: string
-  disabled?: boolean
+  label: string;
+  value: number;
+  onChange: (value: number) => void;
+  min?: number;
+  max?: number;
+  step?: string | number;
+  description?: string;
+  allowUnlimited?: boolean;
+  placeholder?: string;
+  disabled?: boolean;
 }
 
 export function NumberInputWithUnlimited({
@@ -31,12 +32,14 @@ export function NumberInputWithUnlimited({
   placeholder,
   disabled = false,
 }: NumberInputWithUnlimitedProps) {
+  const { t } = useTranslation();
+
   // Display value: show empty string for -1 when unlimited is allowed
-  const displayValue = allowUnlimited && value === -1 ? "" : value.toString()
+  const displayValue = allowUnlimited && value === -1 ? "" : value.toString();
 
   // Default placeholder based on unlimited support
-  const defaultPlaceholder = allowUnlimited ? "Unlimited" : undefined
-  const actualPlaceholder = placeholder ?? defaultPlaceholder
+  const defaultPlaceholder = allowUnlimited ? t("forms.unlimited") : undefined;
+  const actualPlaceholder = placeholder ?? defaultPlaceholder;
 
   return (
     <div className="space-y-2">
@@ -45,7 +48,7 @@ export function NumberInputWithUnlimited({
         {description && (
           <p className="text-xs text-muted-foreground">
             {description}
-            {allowUnlimited && " (use -1 for unlimited)"}
+            {allowUnlimited && t("instances.forms.unlimitedHint")}
           </p>
         )}
       </div>
@@ -53,30 +56,30 @@ export function NumberInputWithUnlimited({
         type="number"
         value={displayValue}
         onChange={(e) => {
-          const inputValue = e.target.value
+          const inputValue = e.target.value;
 
           // Allow temporary empty or negative sign state
           if (inputValue === "" || inputValue === "-") {
             if (allowUnlimited) {
               // If unlimited is allowed and input is empty, treat as -1 (unlimited)
               if (inputValue === "") {
-                onChange(-1)
+                onChange(-1);
               }
             }
-            return
+            return;
           }
 
-          const num = parseFloat(inputValue)
-          if (isNaN(num)) return
+          const num = parseFloat(inputValue);
+          if (isNaN(num)) return;
 
           // Allow -1 for unlimited if allowUnlimited is true
           if (allowUnlimited && num === -1) {
-            onChange(-1)
-            return
+            onChange(-1);
+            return;
           }
 
           // Otherwise enforce min/max bounds
-          onChange(Math.max(min, Math.min(max, num)))
+          onChange(Math.max(min, Math.min(max, num)));
         }}
         min={allowUnlimited ? -1 : min}
         max={max}
@@ -86,5 +89,5 @@ export function NumberInputWithUnlimited({
         className="w-full"
       />
     </div>
-  )
+  );
 }

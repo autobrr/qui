@@ -12,6 +12,7 @@ import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Shield, Server, Lock } from "lucide-react"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 interface ProxySettingsFormProps {
@@ -82,6 +83,7 @@ function NumberInput({
 }
 
 export function ProxySettingsForm({ instanceId, onSuccess }: ProxySettingsFormProps) {
+  const { t } = useTranslation()
   const { preferences, isLoading, updatePreferences, isUpdating } = useInstancePreferences(instanceId)
 
   const form = useForm({
@@ -99,10 +101,10 @@ export function ProxySettingsForm({ instanceId, onSuccess }: ProxySettingsFormPr
     onSubmit: async ({ value }) => {
       try {
         await updatePreferences(value)
-        toast.success("Proxy settings updated successfully")
+        toast.success(t("instancePreferences.content.proxySettings.notifications.saveSuccess"))
         onSuccess?.()
       } catch (error) {
-        toast.error("Failed to update proxy settings")
+        toast.error(t("instancePreferences.content.proxySettings.notifications.saveError"))
         console.error("Failed to update proxy settings:", error)
       }
     },
@@ -123,18 +125,18 @@ export function ProxySettingsForm({ instanceId, onSuccess }: ProxySettingsFormPr
   }, [preferences, form])
 
   if (isLoading || !preferences) {
-    return <div className="flex items-center justify-center py-8">Loading proxy settings...</div>
+    return <div className="flex items-center justify-center py-8">{t("instancePreferences.content.proxySettings.loading")}</div>
   }
 
   const getProxyTypeLabel = (value: number | string) => {
     // Handle both number and string values for compatibility
     const numValue = typeof value === "string" ? parseInt(value) : value
     switch (numValue) {
-      case 0: return "None"
-      case 1: return "SOCKS4"
-      case 2: return "SOCKS5"
-      case 3: return "HTTP"
-      default: return "None"
+      case 0: return t("instancePreferences.content.proxySettings.proxyType.none")
+      case 1: return t("instancePreferences.content.proxySettings.proxyType.socks4")
+      case 2: return t("instancePreferences.content.proxySettings.proxyType.socks5")
+      case 3: return t("instancePreferences.content.proxySettings.proxyType.http")
+      default: return t("instancePreferences.content.proxySettings.proxyType.none")
     }
   }
 
@@ -164,13 +166,13 @@ export function ProxySettingsForm({ instanceId, onSuccess }: ProxySettingsFormPr
       <div className="space-y-4">
         <div className="flex items-center gap-2">
           <Shield className="h-4 w-4" />
-          <h3 className="text-lg font-medium">Proxy Configuration</h3>
+          <h3 className="text-lg font-medium">{t("instancePreferences.content.proxySettings.title")}</h3>
         </div>
 
         <form.Field name="proxy_type">
           {(field) => (
             <div className="space-y-2">
-              <Label className="text-sm font-medium">Proxy Type</Label>
+              <Label className="text-sm font-medium">{t("instancePreferences.content.proxySettings.proxyType.label")}</Label>
               <Select
                 value={getProxyTypeValue()}
                 onValueChange={(value) => {
@@ -197,7 +199,7 @@ export function ProxySettingsForm({ instanceId, onSuccess }: ProxySettingsFormPr
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                Select proxy type for routing connections
+                {t("instancePreferences.content.proxySettings.proxyType.description")}
               </p>
             </div>
           )}
@@ -209,22 +211,22 @@ export function ProxySettingsForm({ instanceId, onSuccess }: ProxySettingsFormPr
         <div className="space-y-4">
           <div className="flex items-center gap-2">
             <Server className="h-4 w-4" />
-            <h3 className="text-lg font-medium">Proxy Server</h3>
+            <h3 className="text-lg font-medium">{t("instancePreferences.content.proxySettings.server.title")}</h3>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <form.Field name="proxy_ip">
               {(field) => (
                 <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="proxy_ip">Proxy Server</Label>
+                  <Label htmlFor="proxy_ip">{t("instancePreferences.content.proxySettings.server.label")}</Label>
                   <Input
                     id="proxy_ip"
                     value={field.state.value}
                     onChange={(e) => field.handleChange(e.target.value)}
-                    placeholder="proxy.example.com"
+                    placeholder={t("instancePreferences.content.proxySettings.server.placeholder")}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Proxy server hostname or IP address
+                    {t("instancePreferences.content.proxySettings.server.description")}
                   </p>
                 </div>
               )}
@@ -233,12 +235,12 @@ export function ProxySettingsForm({ instanceId, onSuccess }: ProxySettingsFormPr
             <form.Field name="proxy_port">
               {(field) => (
                 <NumberInput
-                  label="Port"
+                  label={t("instancePreferences.content.proxySettings.server.port")}
                   value={field.state.value}
                   onChange={(value) => field.handleChange(value)}
                   min={1}
                   max={65535}
-                  description="Proxy server port"
+                  description={t("instancePreferences.content.proxySettings.server.portDescription")}
                 />
               )}
             </form.Field>
@@ -251,14 +253,14 @@ export function ProxySettingsForm({ instanceId, onSuccess }: ProxySettingsFormPr
         <div className="space-y-4">
           <div className="flex items-center gap-2">
             <Lock className="h-4 w-4" />
-            <h3 className="text-lg font-medium">Authentication</h3>
+            <h3 className="text-lg font-medium">{t("instancePreferences.content.proxySettings.authentication.title")}</h3>
           </div>
 
           <form.Field name="proxy_auth_enabled">
             {(field) => (
               <SwitchSetting
-                label="Use authentication"
-                description="Enable if your proxy server requires username/password"
+                label={t("instancePreferences.content.proxySettings.authentication.label")}
+                description={t("instancePreferences.content.proxySettings.authentication.description")}
                 checked={field.state.value}
                 onChange={(checked) => {
                   field.handleChange(checked)
@@ -277,13 +279,11 @@ export function ProxySettingsForm({ instanceId, onSuccess }: ProxySettingsFormPr
               <form.Field name="proxy_username">
                 {(field) => (
                   <div className="space-y-2">
-                    <Label htmlFor="proxy_username">Username</Label>
-                    <Input
+                                          <Label htmlFor="proxy_username">{t("common.username")}</Label>                    <Input
                       id="proxy_username"
                       value={field.state.value}
                       onChange={(e) => field.handleChange(e.target.value)}
-                      placeholder="Username"
-                      autoComplete="username"
+                                              placeholder={t("common.username")}                      autoComplete="username"
                     />
                   </div>
                 )}
@@ -292,14 +292,13 @@ export function ProxySettingsForm({ instanceId, onSuccess }: ProxySettingsFormPr
               <form.Field name="proxy_password">
                 {(field) => (
                   <div className="space-y-2">
-                    <Label htmlFor="proxy_password">Password</Label>
+                    <Label htmlFor="proxy_password">{t("common.password")}</Label>
                     <Input
                       id="proxy_password"
                       type="password"
                       value={field.state.value}
                       onChange={(e) => field.handleChange(e.target.value)}
-                      placeholder="Password"
-                      autoComplete="current-password"
+                                              placeholder={t("common.password")}                      autoComplete="current-password"
                     />
                   </div>
                 )}
@@ -312,14 +311,14 @@ export function ProxySettingsForm({ instanceId, onSuccess }: ProxySettingsFormPr
       {/* Proxy Options */}
       {isProxyEnabled() && (
         <div className="space-y-4">
-          <h3 className="text-lg font-medium">Proxy Options</h3>
+          <h3 className="text-lg font-medium">{t("instancePreferences.content.proxySettings.options.title")}</h3>
 
           <div className="space-y-4">
             <form.Field name="proxy_peer_connections">
               {(field) => (
                 <SwitchSetting
-                  label="Use proxy for peer connections"
-                  description="Route BitTorrent peer connections through proxy"
+                  label={t("instancePreferences.content.proxySettings.options.peerConnections")}
+                  description={t("instancePreferences.content.proxySettings.options.peerConnectionsDescription")}
                   checked={field.state.value}
                   onChange={(checked) => field.handleChange(checked)}
                 />
@@ -329,8 +328,8 @@ export function ProxySettingsForm({ instanceId, onSuccess }: ProxySettingsFormPr
             <form.Field name="proxy_torrents_only">
               {(field) => (
                 <SwitchSetting
-                  label="Use proxy only for torrents"
-                  description="Only use proxy for BitTorrent traffic, not for other connections"
+                  label={t("instancePreferences.content.proxySettings.options.torrentsOnly")}
+                  description={t("instancePreferences.content.proxySettings.options.torrentsOnlyDescription")}
                   checked={field.state.value}
                   onChange={(checked) => field.handleChange(checked)}
                 />
@@ -340,8 +339,8 @@ export function ProxySettingsForm({ instanceId, onSuccess }: ProxySettingsFormPr
             <form.Field name="proxy_hostname_lookup">
               {(field) => (
                 <SwitchSetting
-                  label="Use proxy for hostname lookups"
-                  description="Resolve hostnames through the proxy server"
+                  label={t("instancePreferences.content.proxySettings.options.hostnameLookup")}
+                  description={t("instancePreferences.content.proxySettings.options.hostnameLookupDescription")}
                   checked={field.state.value}
                   onChange={(checked) => field.handleChange(checked)}
                 />
@@ -360,7 +359,7 @@ export function ProxySettingsForm({ instanceId, onSuccess }: ProxySettingsFormPr
             disabled={!canSubmit || isSubmitting || isUpdating}
             className="w-full"
           >
-            {isSubmitting || isUpdating ? "Updating..." : "Update Proxy Settings"}
+            {isSubmitting || isUpdating ? t("instancePreferences.content.proxySettings.savingButton") : t("instancePreferences.content.proxySettings.saveButton")}
           </Button>
         )}
       </form.Subscribe>

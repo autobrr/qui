@@ -6,6 +6,7 @@
 import { api } from "@/lib/api"
 import { getLicenseErrorMessage } from "@/lib/license-errors.ts"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { t } from "i18next"
 import { toast } from "sonner"
 
 // Hook to check premium access status
@@ -27,7 +28,7 @@ export const useActivateLicense = () => {
     mutationFn: (licenseKey: string) => api.activateLicense(licenseKey),
     onSuccess: (data) => {
       if (data.valid) {
-        const message = "Premium access activated! Thank you!"
+        const message = t("hooks.useLicense.premiumAccessActivated")
         toast.success(message)
         // Invalidate license queries to refresh the UI
         queryClient.invalidateQueries({ queryKey: ["licenses"] })
@@ -47,7 +48,7 @@ export const useValidateLicense = () => {
     mutationFn: (licenseKey: string) => api.validateLicense(licenseKey),
     onSuccess: (data) => {
       if (data.valid) {
-        const message = data.productName === "premium-access"? "Premium access activated! Thank you!": "License activated successfully!"
+        const message = data.productName === "premium-access"? t("hooks.useLicense.premiumAccessActivated"): t("hooks.useLicense.licenseActivated")
         toast.success(message)
         // Invalidate license queries to refresh the UI
         queryClient.invalidateQueries({ queryKey: ["licenses"] })
@@ -66,12 +67,12 @@ export const useDeleteLicense = () => {
   return useMutation({
     mutationFn: (licenseKey: string) => api.deleteLicense(licenseKey),
     onSuccess: () => {
-      toast.success("License released successfully")
+      toast.success(t("hooks.useLicense.licenseReleased"))
       // Invalidate license queries to refresh the UI
       queryClient.invalidateQueries({ queryKey: ["licenses"] })
     },
     onError: (error: Error) => {
-      toast.error(error.message || "Failed to release license")
+      toast.error(error.message || t("hooks.useLicense.failedToReleaseLicense"))
     },
   })
 }
@@ -83,12 +84,12 @@ export const useRefreshLicenses = () => {
   return useMutation({
     mutationFn: () => api.refreshLicenses(),
     onSuccess: () => {
-      toast.success("All licenses refreshed successfully")
+      toast.success(t("hooks.useLicense.licensesRefreshed"))
       // Invalidate license queries to refresh the UI
       queryClient.invalidateQueries({ queryKey: ["licenses"] })
     },
     onError: (error: Error) => {
-      toast.error(error.message || "Failed to refresh licenses")
+      toast.error(error.message || t("hooks.useLicense.failedToRefreshLicenses"))
     },
   })
 }

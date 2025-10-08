@@ -15,6 +15,7 @@ import { themes, isThemePremium } from "@/config/themes";
 import { Sun, Moon, Monitor, Check, Palette } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -64,6 +65,7 @@ const useThemeChange = () => {
 };
 
 export const ThemeToggle: React.FC = () => {
+  const { t } = useTranslation();
   const { currentMode, currentTheme } = useThemeChange();
   const [isTransitioning, setIsTransitioning] = useState(false);
   const { hasPremiumAccess } = useHasPremiumAccess();
@@ -73,14 +75,14 @@ export const ThemeToggle: React.FC = () => {
     await setThemeMode(mode);
     setTimeout(() => setIsTransitioning(false), 400);
 
-    const modeNames = { light: "Light", dark: "Dark", auto: "System" };
-    toast.success(`Switched to ${modeNames[mode]} mode`);
-  }, []);
+    const modeNames: { [key: string]: string } = { light: t("theme.light"), dark: t("theme.dark"), auto: t("theme.system") };
+    toast.success(t("toasts.switched_to_mode", { mode: modeNames[mode] }));
+  }, [t]);
 
   const handleThemeSelect = useCallback(async (themeId: string) => {
     const isPremium = isThemePremium(themeId);
     if (isPremium && !hasPremiumAccess) {
-      toast.error("This is a premium theme. Please purchase a license to use it.");
+      toast.error(t("toasts.premium_theme_error"));
       return;
     }
 
@@ -89,8 +91,8 @@ export const ThemeToggle: React.FC = () => {
     setTimeout(() => setIsTransitioning(false), 400);
 
     const theme = themes.find(t => t.id === themeId);
-    toast.success(`Switched to ${theme?.name || themeId} theme`);
-  }, [hasPremiumAccess]);
+    toast.success(t("toasts.switched_to_theme", { theme: theme?.name || themeId }));
+  }, [hasPremiumAccess, t]);
 
   return (
     <DropdownMenu>
@@ -107,21 +109,21 @@ export const ThemeToggle: React.FC = () => {
             "h-5 w-5 transition-transform duration-200",
             isTransitioning && "scale-110"
           )} />
-          <span className="sr-only">Change theme</span>
+          <span className="sr-only">{t("theme.change_theme")}</span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
-        <DropdownMenuLabel>Appearance</DropdownMenuLabel>
+        <DropdownMenuLabel>{t('theme.appearance')}</DropdownMenuLabel>
         <DropdownMenuSeparator />
 
         {/* Mode Selection */}
-        <div className="px-2 py-1.5 text-sm font-medium">Mode</div>
+        <div className="px-2 py-1.5 text-sm font-medium">{t("theme.mode")}</div>
         <DropdownMenuItem
           onClick={() => handleModeSelect("light")}
           className="flex items-center gap-2"
         >
           <Sun className="h-4 w-4" />
-          <span className="flex-1">Light</span>
+          <span className="flex-1">{t("theme.light")}</span>
           {currentMode === "light" && <Check className="h-4 w-4" />}
         </DropdownMenuItem>
         <DropdownMenuItem
@@ -129,7 +131,7 @@ export const ThemeToggle: React.FC = () => {
           className="flex items-center gap-2"
         >
           <Moon className="h-4 w-4" />
-          <span className="flex-1">Dark</span>
+          <span className="flex-1">{t("theme.dark")}</span>
           {currentMode === "dark" && <Check className="h-4 w-4" />}
         </DropdownMenuItem>
         <DropdownMenuItem
@@ -137,14 +139,14 @@ export const ThemeToggle: React.FC = () => {
           className="flex items-center gap-2"
         >
           <Monitor className="h-4 w-4" />
-          <span className="flex-1">System</span>
+          <span className="flex-1">{t("theme.system")}</span>
           {currentMode === "auto" && <Check className="h-4 w-4" />}
         </DropdownMenuItem>
 
         <DropdownMenuSeparator />
 
         {/* Theme Selection */}
-        <div className="px-2 py-1.5 text-sm font-medium">Theme</div>
+        <div className="px-2 py-1.5 text-sm font-medium">{t("theme.theme")}</div>
         {themes
           .sort((a, b) => {
             const aIsPremium = isThemePremium(a.id);
@@ -181,7 +183,7 @@ export const ThemeToggle: React.FC = () => {
                     <span>{theme.name}</span>
                     {isPremium && (
                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground font-medium">
-                        Premium
+                        {t("theme.premium")}
                       </span>
                     )}
                   </div>

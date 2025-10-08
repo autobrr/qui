@@ -40,19 +40,21 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useSearch } from "@tanstack/react-router"
 import { Copy, ExternalLink, Plus, Trash2 } from "lucide-react"
 import { useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 function ChangePasswordForm() {
+  const { t } = useTranslation()
   const mutation = useMutation({
     mutationFn: async (data: { currentPassword: string; newPassword: string }) => {
       return api.changePassword(data.currentPassword, data.newPassword)
     },
     onSuccess: () => {
-      toast.success("Password changed successfully")
+      toast.success(t("settings.security.notifications.success"))
       form.reset()
     },
     onError: () => {
-      toast.error("Failed to change password. Please check your current password.")
+      toast.error(t("settings.security.notifications.error"))
     },
   })
 
@@ -81,13 +83,12 @@ function ChangePasswordForm() {
       <form.Field
         name="currentPassword"
         validators={{
-          onChange: ({ value }) => !value ? "Current password is required" : undefined,
+          onChange: ({ value }) => !value ? t("settings.security.currentPassword.required") : undefined,
         }}
       >
         {(field) => (
           <div className="space-y-2">
-            <Label htmlFor="currentPassword">Current Password</Label>
-            <Input
+                                  <Label htmlFor="currentPassword">{t("settings.security.currentPassword.label")}</Label>            <Input
               id="currentPassword"
               type="password"
               value={field.state.value}
@@ -105,15 +106,15 @@ function ChangePasswordForm() {
         name="newPassword"
         validators={{
           onChange: ({ value }) => {
-            if (!value) return "New password is required"
-            if (value.length < 8) return "Password must be at least 8 characters"
+            if (!value) return t("settings.security.newPassword.required")
+            if (value.length < 8) return t("settings.security.newPassword.minLength")
             return undefined
           },
         }}
       >
         {(field) => (
           <div className="space-y-2">
-            <Label htmlFor="newPassword">New Password</Label>
+            <Label htmlFor="newPassword">{t("settings.security.newPassword.label")}</Label>
             <Input
               id="newPassword"
               type="password"
@@ -133,15 +134,15 @@ function ChangePasswordForm() {
         validators={{
           onChange: ({ value, fieldApi }) => {
             const newPassword = fieldApi.form.getFieldValue("newPassword")
-            if (!value) return "Please confirm your password"
-            if (value !== newPassword) return "Passwords do not match"
+            if (!value) return t("settings.security.confirmNewPassword.required")
+            if (value !== newPassword) return t("settings.security.confirmNewPassword.noMatch")
             return undefined
           },
         }}
       >
         {(field) => (
           <div className="space-y-2">
-            <Label htmlFor="confirmPassword">Confirm New Password</Label>
+            <Label htmlFor="confirmPassword">{t("settings.security.confirmNewPassword.label")}</Label>
             <Input
               id="confirmPassword"
               type="password"
@@ -164,7 +165,7 @@ function ChangePasswordForm() {
             type="submit"
             disabled={!canSubmit || isSubmitting || mutation.isPending}
           >
-            {isSubmitting || mutation.isPending ? "Changing..." : "Change Password"}
+            {isSubmitting || mutation.isPending ? t("settings.security.button.changing") : t("settings.security.button.change")}
           </Button>
         )}
       </form.Subscribe>
@@ -173,6 +174,7 @@ function ChangePasswordForm() {
 }
 
 function ApiKeysManager() {
+  const { t } = useTranslation()
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [deleteKeyId, setDeleteKeyId] = useState<number | null>(null)
   const [newKey, setNewKey] = useState<{ name: string; key: string } | null>(null)
@@ -196,10 +198,10 @@ function ApiKeysManager() {
     onSuccess: (data) => {
       setNewKey(data)
       queryClient.invalidateQueries({ queryKey: ["apiKeys"] })
-      toast.success("API key created successfully")
+      toast.success(t("settings.apiKeys.notifications.createSuccess"))
     },
     onError: () => {
-      toast.error("Failed to create API key")
+      toast.error(t("settings.apiKeys.notifications.createError"))
     },
   })
 
@@ -210,10 +212,10 @@ function ApiKeysManager() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["apiKeys"] })
       setDeleteKeyId(null)
-      toast.success("API key deleted successfully")
+      toast.success(t("settings.apiKeys.notifications.deleteSuccess"))
     },
     onError: () => {
-      toast.error("Failed to delete API key")
+      toast.error(t("settings.apiKeys.notifications.deleteError"))
     },
   })
 
@@ -231,27 +233,27 @@ function ApiKeysManager() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          API keys allow external applications to access your qBittorrent instances.
+          {t("settings.apiKeys.mainDescription")}
         </p>
         <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
           <DialogTrigger asChild>
             <Button size="sm">
               <Plus className="mr-2 h-4 w-4" />
-              Create API Key
+              {t("settings.apiKeys.create")}
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Create API Key</DialogTitle>
+              <DialogTitle>{t("settings.apiKeys.createDialog.title")}</DialogTitle>
               <DialogDescription>
-                Give your API key a descriptive name to remember its purpose.
+                {t("settings.apiKeys.createDialog.description")}
               </DialogDescription>
             </DialogHeader>
 
             {newKey ? (
               <div className="space-y-4">
                 <div>
-                  <Label>Your new API key</Label>
+                  <Label>{t("settings.apiKeys.createDialog.newKeyLabel")}</Label>
                   <div className="mt-2 flex items-center gap-2">
                     <code className="flex-1 rounded bg-muted px-2 py-1 text-sm font-mono break-all">
                       {newKey.key}
@@ -262,9 +264,9 @@ function ApiKeysManager() {
                       onClick={async () => {
                         try {
                           await copyTextToClipboard(newKey.key)
-                          toast.success("API key copied to clipboard")
+                          toast.success(t("settings.apiKeys.notifications.copySuccess"))
                         } catch {
-                          toast.error("Failed to copy to clipboard")
+                          toast.error(t("settings.apiKeys.notifications.copyError"))
                         }
                       }}
                     >
@@ -272,7 +274,7 @@ function ApiKeysManager() {
                     </Button>
                   </div>
                   <p className="mt-2 text-sm text-destructive">
-                    Save this key now. You won't be able to see it again.
+                    {t("settings.apiKeys.createDialog.saveWarning")}
                   </p>
                 </div>
                 <Button
@@ -282,8 +284,7 @@ function ApiKeysManager() {
                   }}
                   className="w-full"
                 >
-                  Done
-                </Button>
+                                        {t("common.buttons.done")}                </Button>
               </div>
             ) : (
               <form
@@ -296,15 +297,15 @@ function ApiKeysManager() {
                 <form.Field
                   name="name"
                   validators={{
-                    onChange: ({ value }) => !value ? "Name is required" : undefined,
+                    onChange: ({ value }) => !value ? t("settings.apiKeys.createDialog.nameRequired") : undefined,
                   }}
                 >
                   {(field) => (
                     <div className="space-y-2">
-                      <Label htmlFor="name">Name</Label>
+                      <Label htmlFor="name">{t("common.name")}</Label>
                       <Input
                         id="name"
-                        placeholder="e.g., Automation Script"
+                        placeholder={t("settings.apiKeys.createDialog.namePlaceholder")}
                         value={field.state.value}
                         onBlur={field.handleBlur}
                         onChange={(e) => field.handleChange(e.target.value)}
@@ -327,7 +328,7 @@ function ApiKeysManager() {
                       disabled={!canSubmit || isSubmitting || createMutation.isPending}
                       className="w-full"
                     >
-                      {isSubmitting || createMutation.isPending ? "Creating..." : "Create API Key"}
+                      {isSubmitting || createMutation.isPending ? t("settings.apiKeys.createDialog.creating") : t("settings.apiKeys.create")}
                     </Button>
                   )}
                 </form.Subscribe>
@@ -340,7 +341,7 @@ function ApiKeysManager() {
       <div className="space-y-2">
         {isLoading ? (
           <p className="text-center text-sm text-muted-foreground py-8">
-            Loading API keys...
+            {t("settings.apiKeys.loading")}
           </p>
         ) : (
           <>
@@ -353,13 +354,13 @@ function ApiKeysManager() {
                   <div className="flex items-center gap-2">
                     <span className="font-medium">{key.name}</span>
                     <Badge variant="outline" className="text-xs">
-                      ID: {key.id}
+                      {t("settings.apiKeys.id", { id: key.id })}
                     </Badge>
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    Created: {formatDate(new Date(key.createdAt))}
+                    {t("settings.apiKeys.created", { date: formatDate(new Date(key.createdAt)) })}
                     {key.lastUsedAt && (
-                      <> • Last used: {formatDate(new Date(key.lastUsedAt))}</>
+                      <> • {t("settings.apiKeys.lastUsed", { date: formatDate(new Date(key.lastUsedAt)) })}</>
                     )}
                   </p>
                 </div>
@@ -375,7 +376,7 @@ function ApiKeysManager() {
 
             {keys.length === 0 && (
               <p className="text-center text-sm text-muted-foreground py-8">
-                No API keys created yet
+                {t("settings.apiKeys.empty")}
               </p>
             )}
           </>
@@ -385,18 +386,17 @@ function ApiKeysManager() {
       <AlertDialog open={!!deleteKeyId} onOpenChange={() => setDeleteKeyId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete API Key?</AlertDialogTitle>
+            <AlertDialogTitle>{t("settings.apiKeys.deleteDialog.title")}</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. Any applications using this key will lose access.
+              {t("settings.apiKeys.deleteDialog.description")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
+                          <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>            <AlertDialogAction
               onClick={() => deleteKeyId && deleteMutation.mutate(deleteKeyId)}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete
+              {t("common.buttons.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -406,35 +406,36 @@ function ApiKeysManager() {
 }
 
 export function Settings() {
+  const { t } = useTranslation()
   const search = useSearch({ from: "/_authenticated/settings" })
   const defaultTab = (search as any)?.tab || "security"
 
   return (
     <div className="container mx-auto p-6">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold">Settings</h1>
+        <h1 className="text-3xl font-bold">{t("common.titles.settings")}</h1>
         <p className="text-muted-foreground mt-2">
-          Manage your application preferences and security
+          {t("settings.description")}
         </p>
       </div>
 
       <Tabs defaultValue={defaultTab} className="space-y-4">
         <div className="w-full overflow-x-auto">
           <TabsList className="inline-flex h-auto min-w-full sm:grid sm:grid-cols-5">
-            <TabsTrigger value="security" className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 py-2 min-w-fit cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform">Security</TabsTrigger>
-            <TabsTrigger value="datetime" className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 py-2 min-w-fit whitespace-nowrap cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform">Date & Time</TabsTrigger>
-            <TabsTrigger value="themes" className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 py-2 min-w-fit cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform">Themes</TabsTrigger>
-            <TabsTrigger value="api" className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 py-2 min-w-fit whitespace-nowrap cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform">API Keys</TabsTrigger>
-            <TabsTrigger value="client-api" className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 py-2 min-w-fit whitespace-nowrap cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform">Client Proxy</TabsTrigger>
+            <TabsTrigger value="security" className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 py-2 min-w-fit cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform">{t("settings.tabs.security")}</TabsTrigger>
+            <TabsTrigger value="datetime" className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 py-2 min-w-fit whitespace-nowrap cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform">{t("settings.tabs.datetime")}</TabsTrigger>
+            <TabsTrigger value="themes" className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 py-2 min-w-fit cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform">{t("settings.tabs.themes")}</TabsTrigger>
+            <TabsTrigger value="api" className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 py-2 min-w-fit whitespace-nowrap cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform">{t("settings.tabs.api")}</TabsTrigger>
+            <TabsTrigger value="client-api" className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 py-2 min-w-fit whitespace-nowrap cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform">{t("settings.tabs.clientApi")}</TabsTrigger>
           </TabsList>
         </div>
 
         <TabsContent value="security" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Change Password</CardTitle>
+              <CardTitle>{t("settings.security.title")}</CardTitle>
               <CardDescription>
-                Update your account password
+                {t("settings.security.description")}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -446,9 +447,9 @@ export function Settings() {
         <TabsContent value="datetime" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Date & Time Preferences</CardTitle>
+              <CardTitle>{t("settings.dateTime.title")}</CardTitle>
               <CardDescription>
-                Configure timezone, date format, and time display preferences
+                {t("settings.dateTime.description")}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -467,9 +468,9 @@ export function Settings() {
             <CardHeader>
               <div className="flex items-start justify-between">
                 <div className="space-y-1.5">
-                  <CardTitle>API Keys</CardTitle>
+                  <CardTitle>{t("settings.apiKeys.title")}</CardTitle>
                   <CardDescription>
-                    Manage API keys for external access
+                    {t("settings.apiKeys.description")}
                   </CardDescription>
                 </div>
                 <a
@@ -477,9 +478,9 @@ export function Settings() {
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-                  title="View API documentation"
+                  title={t("settings.apiKeys.docsTitle")}
                 >
-                  <span className="hidden sm:inline">API Docs</span>
+                  <span className="hidden sm:inline">{t("settings.apiKeys.docs")}</span>
                   <ExternalLink className="h-3.5 w-3.5" />
                 </a>
               </div>
@@ -493,9 +494,9 @@ export function Settings() {
         <TabsContent value="client-api" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Client Proxy API Keys</CardTitle>
+              <CardTitle>{t("settings.clientApiKeys.title")}</CardTitle>
               <CardDescription>
-                Manage API keys for external applications to connect to qBittorrent instances through qui
+                {t("settings.clientApiKeys.description")}
               </CardDescription>
             </CardHeader>
             <CardContent>

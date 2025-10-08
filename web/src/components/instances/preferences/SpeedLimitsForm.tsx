@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Download, Upload, Clock } from "lucide-react"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { toast } from "sonner"
+import { useTranslation } from "react-i18next"
 
 // Convert bytes/s to MiB/s for display
 function bytesToMiB(bytes: number): number {
@@ -23,20 +24,6 @@ function bytesToMiB(bytes: number): number {
 function mibToBytes(mib: number): number {
   return mib === 0 ? 0 : Math.round(mib * 1024 * 1024)
 }
-
-// Day options for scheduler
-const dayOptions = [
-  { value: 0, label: "Every day" },
-  { value: 1, label: "Every weekday" },
-  { value: 2, label: "Every weekend" },
-  { value: 3, label: "Monday" },
-  { value: 4, label: "Tuesday" },
-  { value: 5, label: "Wednesday" },
-  { value: 6, label: "Thursday" },
-  { value: 7, label: "Friday" },
-  { value: 8, label: "Saturday" },
-  { value: 9, label: "Sunday" },
-]
 
 function SpeedLimitInput({
   label,
@@ -49,6 +36,7 @@ function SpeedLimitInput({
   onChange: (value: number) => void
   icon: React.ComponentType<{ className?: string }>
 }) {
+  const { t } = useTranslation()
   const displayValue = bytesToMiB(value)
 
   return (
@@ -69,10 +57,10 @@ function SpeedLimitInput({
               onChange(mibToBytes(mibValue))
             }
           }}
-          placeholder="0 (Unlimited)"
+          placeholder={t("instancePreferences.content.speedLimits.placeholderUnlimited")}
           className="flex-1"
         />
-        <span className="text-sm text-muted-foreground min-w-12">MiB/s</span>
+        <span className="text-sm text-muted-foreground min-w-12">{t("instancePreferences.content.speedLimits.unit")}</span>
       </div>
     </div>
   )
@@ -132,8 +120,22 @@ interface SpeedLimitsFormProps {
 }
 
 export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps) {
+  const { t } = useTranslation()
   const { preferences, isLoading, updatePreferences, isUpdating } = useInstancePreferences(instanceId)
 
+  // Day options for scheduler
+  const dayOptions = [
+    { value: 0, label: t("instancePreferences.content.speedLimits.days.everyDay") },
+    { value: 1, label: t("instancePreferences.content.speedLimits.days.weekdays") },
+    { value: 2, label: t("instancePreferences.content.speedLimits.days.weekends") },
+    { value: 3, label: t("instancePreferences.content.speedLimits.days.monday") },
+    { value: 4, label: t("instancePreferences.content.speedLimits.days.tuesday") },
+    { value: 5, label: t("instancePreferences.content.speedLimits.days.wednesday") },
+    { value: 6, label: t("instancePreferences.content.speedLimits.days.thursday") },
+    { value: 7, label: t("instancePreferences.content.speedLimits.days.friday") },
+    { value: 8, label: t("instancePreferences.content.speedLimits.days.saturday") },
+    { value: 9, label: t("instancePreferences.content.speedLimits.days.sunday") },
+  ]
 
   // Track if form is being actively edited
   const [isFormDirty, setIsFormDirty] = React.useState(false)
@@ -160,10 +162,10 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
       try {
         updatePreferences(value)
         setIsFormDirty(false) // Reset dirty flag after successful save
-        toast.success("Speed limits updated successfully")
+        toast.success(t("instancePreferences.content.speedLimits.notifications.saveSuccess"))
         onSuccess?.()
       } catch {
-        toast.error("Failed to update speed limits")
+        toast.error(t("instancePreferences.content.speedLimits.notifications.saveError"))
       }
     },
   })
@@ -188,7 +190,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
   if (isLoading) {
     return (
       <div className="text-center py-8">
-        <p className="text-sm text-muted-foreground">Loading speed limits...</p>
+        <p className="text-sm text-muted-foreground">{t("instancePreferences.content.speedLimits.loading")}</p>
       </div>
     )
   }
@@ -196,7 +198,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
   if (!memoizedPreferences) {
     return (
       <div className="text-center py-8">
-        <p className="text-sm text-muted-foreground">Failed to load preferences</p>
+        <p className="text-sm text-muted-foreground">{t("instancePreferences.content.speedLimits.failed")}</p>
       </div>
     )
   }
@@ -210,21 +212,21 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
       className="space-y-6"
     >
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <form.Field 
+        <form.Field
           name="dl_limit"
           validators={{
             onChange: ({ value }) => {
               if (value < 0) {
-                return 'Global download rate limit must be greater than 0 or disabled'
+                return t("instancePreferences.content.speedLimits.validation.globalDownload")
               }
               return undefined
-            }
+            },
           }}
         >
           {(field) => (
             <div className="space-y-2">
               <SpeedLimitInput
-                label="Download Limit"
+                label={t("instancePreferences.content.speedLimits.downloadLimit")}
                 value={(field.state.value as number) ?? 0}
                 onChange={(value) => {
                   setIsFormDirty(true)
@@ -239,21 +241,21 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
           )}
         </form.Field>
 
-        <form.Field 
+        <form.Field
           name="up_limit"
           validators={{
             onChange: ({ value }) => {
               if (value < 0) {
-                return 'Global upload rate limit must be greater than 0 or disabled'
+                return t("instancePreferences.content.speedLimits.validation.globalUpload")
               }
               return undefined
-            }
+            },
           }}
         >
           {(field) => (
             <div className="space-y-2">
               <SpeedLimitInput
-                label="Upload Limit"
+                label={t("instancePreferences.content.speedLimits.uploadLimit")}
                 value={(field.state.value as number) ?? 0}
                 onChange={(value) => {
                   setIsFormDirty(true)
@@ -268,21 +270,21 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
           )}
         </form.Field>
 
-        <form.Field 
+        <form.Field
           name="alt_dl_limit"
           validators={{
             onChange: ({ value }) => {
               if (value < 0) {
-                return 'Alternative download rate limit must be greater than 0 or disabled'
+                return t("instancePreferences.content.speedLimits.validation.altDownload")
               }
               return undefined
-            }
+            },
           }}
         >
           {(field) => (
             <div className="space-y-2">
               <SpeedLimitInput
-                label="Alternative Download Limit"
+                label={t("instancePreferences.content.speedLimits.altDownloadLimit")}
                 value={(field.state.value as number) ?? 0}
                 onChange={(value) => {
                   setIsFormDirty(true)
@@ -297,21 +299,21 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
           )}
         </form.Field>
 
-        <form.Field 
+        <form.Field
           name="alt_up_limit"
           validators={{
             onChange: ({ value }) => {
               if (value < 0) {
-                return 'Alternative upload rate limit must be greater than 0 or disabled'
+                return t("instancePreferences.content.speedLimits.validation.altUpload")
               }
               return undefined
-            }
+            },
           }}
         >
           {(field) => (
             <div className="space-y-2">
               <SpeedLimitInput
-                label="Alternative Upload Limit"
+                label={t("instancePreferences.content.speedLimits.altUploadLimit")}
                 value={(field.state.value as number) ?? 0}
                 onChange={(value) => {
                   setIsFormDirty(true)
@@ -342,7 +344,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
               <div className="flex items-center gap-2">
                 <Clock className="h-4 w-4 text-muted-foreground" />
                 <Label className="text-sm font-medium">
-                  Schedule the use of alternative rate limits
+                  {t("instancePreferences.content.speedLimits.scheduler")}
                 </Label>
               </div>
             </div>
@@ -355,7 +357,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <Label className="text-sm font-medium">From:</Label>
+                    <Label className="text-sm font-medium">{t("instancePreferences.content.speedLimits.from")}</Label>
                     <div className="flex items-center gap-4">
                       <form.Field name="schedule_from_hour">
                         {(hourField) => (
@@ -381,7 +383,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
                   </div>
 
                   <div className="space-y-2">
-                    <Label className="text-sm font-medium">To:</Label>
+                    <Label className="text-sm font-medium">{t("instancePreferences.content.speedLimits.to")}</Label>
                     <div className="flex items-center gap-4">
                       <form.Field name="schedule_to_hour">
                         {(hourField) => (
@@ -408,7 +410,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
                 </div>
 
                 <div className="space-y-2">
-                  <Label className="text-sm font-medium">When:</Label>
+                  <Label className="text-sm font-medium">{t("instancePreferences.content.speedLimits.when")}</Label>
                   <form.Field name="scheduler_days">
                     {(field) => (
                       <Select
@@ -448,7 +450,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
               disabled={!canSubmit || isSubmitting || isUpdating}
               className="min-w-32"
             >
-              {isSubmitting || isUpdating ? "Saving..." : "Save Changes"}
+              {isSubmitting || isUpdating ? t("instancePreferences.content.speedLimits.savingButton") : t("instancePreferences.content.speedLimits.saveButton")}
             </Button>
           )}
         </form.Subscribe>

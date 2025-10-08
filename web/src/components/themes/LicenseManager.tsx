@@ -29,6 +29,7 @@ import { useForm } from "@tanstack/react-form"
 import { AlertTriangle, Copy, ExternalLink, Key, RefreshCw, ShoppingCart, Sparkles, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { toast } from "sonner"
+import { useTranslation } from "react-i18next"
 
 // Helper function to mask license keys for display
 function maskLicenseKey(key: string): string {
@@ -39,6 +40,7 @@ function maskLicenseKey(key: string): string {
 }
 
 export function LicenseManager() {
+  const { t } = useTranslation()
   const [showAddLicense, setShowAddLicense] = useState(false)
   const { formatDate } = useDateTimeFormatters()
   const [selectedLicenseKey, setSelectedLicenseKey] = useState<string | null>(null)
@@ -83,9 +85,9 @@ export function LicenseManager() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Key className="h-5 w-5" />
-            License Management
+            {t("settings.license.title")}
           </CardTitle>
-          <CardDescription>Loading theme licenses...</CardDescription>
+          <CardDescription>{t("settings.license.loading")}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="animate-pulse space-y-2">
@@ -105,10 +107,10 @@ export function LicenseManager() {
             <div>
               <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
                 <Key className="h-4 w-4 sm:h-5 sm:w-5" />
-                License Management
+                {t("settings.license.title")}
               </CardTitle>
               <CardDescription className="text-xs sm:text-sm mt-1">
-                Manage your theme license and premium access
+                {t("settings.license.description")}
               </CardDescription>
             </div>
             <div className="flex gap-2">
@@ -119,7 +121,7 @@ export function LicenseManager() {
                   className="text-xs sm:text-sm"
                 >
                   <Key className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-                  Add License
+                  {t("settings.license.addLicense")}
                 </Button>
               )}
             </div>
@@ -133,10 +135,10 @@ export function LicenseManager() {
                 <Sparkles className={hasPremiumAccess ? "h-5 w-5 text-primary flex-shrink-0 mt-0.5" : "h-5 w-5 text-muted-foreground flex-shrink-0 mt-0.5"} />
                 <div className="min-w-0 space-y-1 flex-1">
                   <p className="font-medium text-base">
-                    {hasPremiumAccess ? "Premium Access Active" :hasInvalidLicense ? "License Activation Required" :"Unlock Premium Themes"}
+                    {hasPremiumAccess ? t("settings.license.status.active") :hasInvalidLicense ? t("settings.license.status.activationRequired") :t("settings.license.status.unlock")}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    {hasPremiumAccess ? "You have access to all current and future premium themes" :hasInvalidLicense ? "Your license needs to be activated on this machine" :"One-time purchase • $9.99 • All themes"}
+                    {hasPremiumAccess ? t("settings.license.statusDescription.active") :hasInvalidLicense ? t("settings.license.statusDescription.activationRequired") :t("settings.license.statusDescription.unlock")}
                   </p>
 
                   {/* License Key Details - Show for both active and invalid licenses */}
@@ -146,13 +148,13 @@ export function LicenseManager() {
                         {maskLicenseKey(licenses[0].licenseKey)}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        {licenses[0].productName} • Status: {licenses[0].status} • Added {formatDate(new Date(licenses[0].createdAt))}
+                        {licenses[0].productName} • {t("settings.license.common.status", { status: licenses[0].status })} • {t("settings.license.common.added", { date: formatDate(new Date(licenses[0].createdAt)) })}
                       </div>
                       {hasInvalidLicense && (
                         <div className="space-y-2">
                           <div className="text-xs text-amber-600 dark:text-amber-500 mt-2 flex items-start gap-1">
                             <AlertTriangle className="h-3 w-3 flex-shrink-0 mt-0.5" />
-                            <span>License validation failed. This may occur if the license was activated on another machine or if the database was copied. To deactivate on another machine, visit{" "}
+                            <span>{t("settings.license.validationFailed")}
                               <a
                                 href={POLAR_PORTAL_URL}
                                 target="_blank"
@@ -177,7 +179,7 @@ export function LicenseManager() {
                             className="h-7 text-xs"
                           >
                             <RefreshCw className={`h-3 w-3 mr-1 ${activateLicense.isPending ? "animate-spin" : ""}`} />
-                            {activateLicense.isPending ? "Activating..." : "Re-activate License"}
+                            {activateLicense.isPending ? t("settings.license.activating") : t("settings.license.reactivate")}
                           </Button>
                         </div>
                       )}
@@ -195,14 +197,14 @@ export function LicenseManager() {
                     className="text-destructive hover:text-destructive hover:bg-destructive/10"
                   >
                     <Trash2 className="h-4 w-4 mr-1" />
-                    Remove
+                    {t("settings.license.remove")}
                   </Button>
                 )}
                 {!hasPremiumAccess && !hasInvalidLicense && (
                   <Button size="sm" asChild>
                     <a href={POLAR_CHECKOUT_URL} target="_blank" rel="noopener noreferrer">
                       <ShoppingCart className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-                      Buy license
+                      {t("settings.license.buy")}
                     </a>
                   </Button>
                 )}
@@ -216,16 +218,16 @@ export function LicenseManager() {
       <Dialog open={!!selectedLicenseKey} onOpenChange={(open) => !open && setSelectedLicenseKey(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Release License Key</DialogTitle>
+            <DialogTitle>{t("settings.license.deleteDialog.title")}</DialogTitle>
             <DialogDescription>
-              Are you sure you want to remove this license? You will lose access to all premium themes and the license can be used elsewhere.
+              {t("settings.license.deleteDialog.description")}
             </DialogDescription>
           </DialogHeader>
 
           {selectedLicenseKey && (
             <div className="my-4 space-y-3">
               <div>
-                <Label className="text-sm font-medium">License Key to Release:</Label>
+                <Label className="text-sm font-medium">{t("settings.license.deleteDialog.label")}</Label>
                 <div className="mt-2 p-3 bg-muted rounded-lg font-mono text-sm break-all">
                   {selectedLicenseKey}
                 </div>
@@ -238,25 +240,25 @@ export function LicenseManager() {
                 onClick={async () => {
                   try {
                     await copyTextToClipboard(selectedLicenseKey)
-                    toast.success("License key copied to clipboard")
+                    toast.success(t("settings.license.notifications.copySuccess"))
                   } catch {
-                    toast.error("Failed to copy to clipboard")
+                    toast.error(t("settings.license.notifications.copyError"))
                   }
                 }}
               >
                 <Copy className="h-4 w-4 mr-2" />
-                Copy License Key
+                {t("settings.license.deleteDialog.copy")}
               </Button>
 
               <div className="text-sm text-muted-foreground">
-                If needed, you can recover it later from your{" "}
+                {t("settings.license.deleteDialog.recover")}
                 <a
                   href={POLAR_PORTAL_URL}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-primary underline inline-flex items-center gap-1"
                 >
-                  Polar portal
+                  {t("settings.license.deleteDialog.portal")}
                   <ExternalLink className="h-3 w-3" />
                 </a>
               </div>
@@ -265,14 +267,14 @@ export function LicenseManager() {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setSelectedLicenseKey(null)}>
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button
               variant="destructive"
               onClick={confirmDeleteLicense}
               disabled={deleteLicense.isPending}
             >
-              {deleteLicense.isPending ? "Releasing..." : "Release License"}
+              {deleteLicense.isPending ? t("settings.license.deleteDialog.releasing") : t("settings.license.deleteDialog.release")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -282,9 +284,9 @@ export function LicenseManager() {
       <Dialog open={showAddLicense} onOpenChange={setShowAddLicense}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add Premium License</DialogTitle>
+            <DialogTitle>{t("settings.license.addDialog.title")}</DialogTitle>
             <DialogDescription>
-              Enter your premium theme license key to unlock all premium themes.
+              {t("settings.license.addDialog.description")}
             </DialogDescription>
           </DialogHeader>
 
@@ -299,15 +301,15 @@ export function LicenseManager() {
               name="licenseKey"
               validators={{
                 onChange: ({ value }) =>
-                  !value ? "License key is required" : undefined,
+                  !value ? t("settings.license.addDialog.required") : undefined,
               }}
             >
               {(field) => (
                 <div className="space-y-2">
-                  <Label htmlFor="licenseKey">License Key</Label>
+                  <Label htmlFor="licenseKey">{t("settings.license.addDialog.label")}</Label>
                   <Input
                     id="licenseKey"
-                    placeholder="Enter your premium theme license key"
+                    placeholder={t("settings.license.addDialog.placeholder")}
                     value={field.state.value}
                     onBlur={field.handleBlur}
                     onChange={(e) => field.handleChange(e.target.value)}
@@ -329,7 +331,7 @@ export function LicenseManager() {
             <DialogFooter className="flex flex-col sm:flex-row sm:items-center gap-3">
               <Button variant="outline" asChild className="sm:mr-auto">
                 <a href={POLAR_PORTAL_URL} target="_blank" rel="noopener noreferrer">
-                  Recover key?
+                  {t("settings.license.addDialog.recover")}
                 </a>
               </Button>
 
@@ -340,7 +342,7 @@ export function LicenseManager() {
                   onClick={() => setShowAddLicense(false)}
                   className="flex-1 sm:flex-none"
                 >
-                  Cancel
+                  {t("settings.license.common.cancel")}
                 </Button>
                 <form.Subscribe
                   selector={(state) => [state.canSubmit, state.isSubmitting]}
@@ -351,7 +353,7 @@ export function LicenseManager() {
                       disabled={!canSubmit || isSubmitting || activateLicense.isPending}
                       className="flex-1 sm:flex-none"
                     >
-                      {isSubmitting || activateLicense.isPending ? "Validating..." : "Activate License"}
+                      {isSubmitting || activateLicense.isPending ? t("settings.license.addDialog.validating") : t("settings.license.addDialog.activate")}
                     </Button>
                   )}
                 </form.Subscribe>

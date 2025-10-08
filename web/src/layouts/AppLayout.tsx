@@ -14,8 +14,10 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { cn } from "@/lib/utils"
 import { MobileScrollProvider } from "@/contexts/MobileScrollContext"
 import { TorrentSelectionProvider } from "@/contexts/TorrentSelectionContext"
+import { useTranslation } from "react-i18next";
 
 function AppLayoutContent() {
+  const { t } = useTranslation();
   const [sidebarCollapsed, setSidebarCollapsed] = usePersistedSidebarState(false) // Desktop: persisted state
 
   return (
@@ -50,7 +52,7 @@ function AppLayoutContent() {
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              {sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+              {t(sidebarCollapsed ? "nav.showSidebar" : "nav.hideSidebar")}
             </TooltipContent>
           </Tooltip>
         </Header>

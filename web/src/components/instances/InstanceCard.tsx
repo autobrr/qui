@@ -39,6 +39,7 @@ import {
   XCircle
 } from "lucide-react"
 import { useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 interface InstanceCardProps {
@@ -47,6 +48,7 @@ interface InstanceCardProps {
 }
 
 export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
+  const { t } = useTranslation()
   const { deleteInstance, testConnection, isDeleting, isTesting } = useInstances()
   const [testResult, setTestResult] = useState<{ success: boolean; message: string | undefined } | null>(null)
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
@@ -63,18 +65,18 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
       setTestResult(testResult)
 
       if (result.connected) {
-        toast.success("Test Connection Successful", {
-          description: result.message || "Successfully connected to qBittorrent instance",
+        toast.success(t("instances.card.notifications.testSuccessTitle"), {
+          description: result.message || t("instances.card.notifications.testSuccessDescription"),
         })
       } else {
-        toast.error("Test Connection Failed", {
-          description: result.message ? formatErrorMessage(result.message) : "Could not connect to qBittorrent instance",
+        toast.error(t("instances.card.notifications.testErrorTitle"), {
+          description: result.message ? formatErrorMessage(result.message) : t("instances.card.notifications.testErrorDescription"),
         })
       }
     } catch (error) {
-      const message = "Connection failed"
+      const message = t("instances.card.notifications.testErrorFailed")
       setTestResult({ success: false, message })
-      toast.error("Test Connection Failed", {
+      toast.error(t("instances.card.notifications.testErrorTitle"), {
         description: error instanceof Error ? formatErrorMessage(error.message) : message,
       })
     }
@@ -83,14 +85,14 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
   const handleDelete = () => {
     deleteInstance({ id: instance.id, name: instance.name }, {
       onSuccess: () => {
-        toast.success("Instance Deleted", {
-          description: `Successfully deleted "${instance.name}"`,
+        toast.success(t("instances.card.notifications.deleteSuccessTitle"), {
+          description: t("instances.card.notifications.deleteSuccessDescription", { name: instance.name }),
         })
         setShowDeleteDialog(false)
       },
       onError: (error) => {
-        toast.error("Delete Failed", {
-          description: error instanceof Error ? formatErrorMessage(error.message) : "Failed to delete instance",
+        toast.error(t("instances.card.notifications.deleteErrorTitle"), {
+          description: error instanceof Error ? formatErrorMessage(error.message) : t("instances.card.notifications.deleteErrorDescription"),
         })
         setShowDeleteDialog(false)
       },
@@ -110,7 +112,7 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
             <Badge
               variant={instance.connected ? "default" : "destructive"}
             >
-              {instance.connected ? "Connected" : "Disconnected"}
+              {instance.connected ? t("instances.card.connected") : t("instances.card.disconnected")}
             </Badge>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -121,11 +123,11 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onClick={onEdit}>
                   <Edit className="mr-2 h-4 w-4" />
-                  Edit
+                  {t("common.buttons.edit")}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={handleTest} disabled={isTesting}>
                   <RefreshCw className="mr-2 h-4 w-4" />
-                  Test Connection
+                  {t("instances.card.testConnection")}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
@@ -134,7 +136,7 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
                   className="text-destructive"
                 >
                   <Trash2 className="mr-2 h-4 w-4" />
-                  Delete
+                  {t("common.buttons.delete")}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -164,20 +166,20 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
       <CardContent>
         <div className="space-y-1 text-sm">
           <div className="flex justify-between">
-            <span className="text-muted-foreground">Username:</span>
+            <span className="text-muted-foreground">{t("instances.card.username")}</span>
             {/* qBittorrent's default username is 'admin' */}
             <span>{instance.username || "admin"}</span>
           </div>
           {instance.basicUsername && (
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Basic Auth:</span>
+              <span className="text-muted-foreground">{t("instances.card.basicAuth")}</span>
               <span>{instance.basicUsername}</span>
             </div>
           )}
           <div className="flex justify-between">
-            <span className="text-muted-foreground">TLS Verification:</span>
+            <span className="text-muted-foreground">{t("instances.card.tlsVerification")}</span>
             <span className={instance.tlsSkipVerify ? "text-amber-500" : ""}>
-              {instance.tlsSkipVerify ? "Skipped" : "Strict"}
+              {instance.tlsSkipVerify ? t("instances.card.tlsSkipped") : t("instances.card.tlsStrict")}
             </span>
           </div>
         </div>
@@ -201,7 +203,7 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
         {isTesting && (
           <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
             <RefreshCw className="h-4 w-4 animate-spin" />
-            <span>Testing connection...</span>
+            <span>{t("instances.card.testing")}</span>
           </div>
         )}
       </CardContent>
@@ -209,18 +211,18 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Instance</AlertDialogTitle>
+            <AlertDialogTitle>{t("instances.card.deleteDialog.title")}</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete "{instance.name}"? This action cannot be undone.
+              {t("instances.card.deleteDialog.description", { name: instance.name })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete
+              {t("common.buttons.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

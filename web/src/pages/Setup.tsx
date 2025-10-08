@@ -17,8 +17,10 @@ import { useForm } from "@tanstack/react-form"
 import { useQuery } from "@tanstack/react-query"
 import { useNavigate } from "@tanstack/react-router"
 import { useEffect } from "react"
+import { useTranslation } from "react-i18next"
 
 export function Setup() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const { setup, isSettingUp, setupError } = useAuth()
 
@@ -73,7 +75,7 @@ export function Setup() {
               qui
             </CardTitle>
             <CardDescription className="pointer-events-none select-none">
-              Create your account to get started
+              {t("setup.description")}
             </CardDescription>
           </CardHeader>
           <CardContent className="pt-6">
@@ -88,22 +90,22 @@ export function Setup() {
                 name="username"
                 validators={{
                   onChange: ({ value }) => {
-                    if (!value) return "Username is required"
-                    if (value.length < 3) return "Username must be at least 3 characters"
+                    if (!value) return t("setup.username.required")
+                    if (value.length < 3) return t("setup.username.minLength")
                     return undefined
                   },
                 }}
               >
                 {(field) => (
                   <div className="space-y-2">
-                    <Label htmlFor={field.name}>Username</Label>
+                    <Label htmlFor={field.name}>{t("common.username")}</Label>
                     <Input
                       id={field.name}
                       type="text"
                       value={field.state.value}
                       onBlur={field.handleBlur}
                       onChange={(e) => field.handleChange(e.target.value)}
-                      placeholder="Choose a username"
+                      placeholder={t("setup.username.placeholder")}
                     />
                     {field.state.meta.isTouched && field.state.meta.errors[0] && (
                       <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
@@ -116,22 +118,22 @@ export function Setup() {
                 name="password"
                 validators={{
                   onChange: ({ value }) => {
-                    if (!value) return "Password is required"
-                    if (value.length < 8) return "Password must be at least 8 characters"
+                    if (!value) return t("setup.password.required")
+                    if (value.length < 8) return t("setup.password.minLength")
                     return undefined
                   },
                 }}
               >
                 {(field) => (
                   <div className="space-y-2">
-                    <Label htmlFor={field.name}>Password</Label>
+                    <Label htmlFor={field.name}>{t("common.password")}</Label>
                     <Input
                       id={field.name}
                       type="password"
                       value={field.state.value}
                       onBlur={field.handleBlur}
                       onChange={(e) => field.handleChange(e.target.value)}
-                      placeholder="Choose a strong password"
+                      placeholder={t("setup.password.placeholder")}
                     />
                     {field.state.meta.isTouched && field.state.meta.errors[0] && (
                       <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
@@ -145,22 +147,22 @@ export function Setup() {
                 validators={{
                   onChange: ({ value, fieldApi }) => {
                     const password = fieldApi.form.getFieldValue("password")
-                    if (!value) return "Please confirm your password"
-                    if (value !== password) return "Passwords do not match"
+                    if (!value) return t("setup.confirmPassword.required")
+                    if (value !== password) return t("setup.confirmPassword.noMatch")
                     return undefined
                   },
                 }}
               >
                 {(field) => (
                   <div className="space-y-2">
-                    <Label htmlFor={field.name}>Confirm Password</Label>
+                    <Label htmlFor={field.name}>{t("setup.confirmPassword.label")}</Label>
                     <Input
                       id={field.name}
                       type="password"
                       value={field.state.value}
                       onBlur={field.handleBlur}
                       onChange={(e) => field.handleChange(e.target.value)}
-                      placeholder="Confirm your password"
+                      placeholder={t("setup.confirmPassword.placeholder")}
                     />
                     {field.state.meta.isTouched && field.state.meta.errors[0] && (
                       <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
@@ -171,7 +173,7 @@ export function Setup() {
 
               {setupError && (
                 <div className="bg-destructive/10 border border-destructive/20 text-destructive px-4 py-3 rounded-md text-sm">
-                  {setupError.message || "Failed to create user"}
+                  {setupError.message || t("setup.error.generic")}
                 </div>
               )}
 
@@ -185,7 +187,7 @@ export function Setup() {
                     size="lg"
                     disabled={!canSubmit || isSubmitting || isSettingUp}
                   >
-                    {isSettingUp ? "Creating account..." : "Create Account"}
+                    {isSettingUp ? t("setup.buttons.creating") : t("setup.buttons.create")}
                   </Button>
                 )}
               </form.Subscribe>

@@ -17,6 +17,7 @@ import type {
   TorrentResponse,
   User
 } from "@/types"
+import i18n from "@/i18n"
 import { getApiBaseUrl, withBasePath } from "./base-url"
 
 const API_BASE = getApiBaseUrl()
@@ -41,7 +42,7 @@ class ApiClient {
 
       if (response.status === 401 && !isAuthCheckEndpoint && !window.location.pathname.startsWith(withBasePath("/login")) && !window.location.pathname.startsWith(withBasePath("/setup"))) {
         window.location.href = withBasePath("/login")
-        throw new Error("Session expired")
+        throw new Error(i18n.t("lib.api.sessionExpired"))
       }
 
       let errorMessage = `HTTP error! status: ${response.status}`
@@ -340,7 +341,7 @@ class ApiClient {
     if (!response.ok) {
       if (response.status === 401 && !window.location.pathname.startsWith(withBasePath("/login")) && !window.location.pathname.startsWith(withBasePath("/setup"))) {
         window.location.href = withBasePath("/login")
-        throw new Error("Session expired")
+        throw new Error(i18n.t("lib.api.sessionExpired"))
       }
 
       let errorMessage = `HTTP error! status: ${response.status}`
@@ -658,7 +659,7 @@ class ApiClient {
       // Treat empty responses as no update available
       return response ?? null
     } catch {
-      // Return null if no update available (204 status) or any error
+      // Return null if no update available (24 status) or any error
       return null
     }
   }

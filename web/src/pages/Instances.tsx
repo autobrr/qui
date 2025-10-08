@@ -19,8 +19,10 @@ import {
 import { Plus } from "lucide-react"
 import { useNavigate, useSearch } from "@tanstack/react-router"
 import type { Instance } from "@/types"
+import { useTranslation } from "react-i18next"
 
 export function Instances() {
+  const { t } = useTranslation()
   const { instances, isLoading } = useInstances()
   const navigate = useNavigate()
   const search = useSearch({ strict: false }) as Record<string, unknown>
@@ -55,21 +57,21 @@ export function Instances() {
   }, [search?.modal, editingInstance])
 
   if (isLoading) {
-    return <div className="p-6">Loading instances...</div>
+    return <div className="p-6">{t("instances.loading")}</div>
   }
 
   return (
     <div className="container mx-auto p-6">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Instances</h1>
+          <h1 className="text-3xl font-bold">{t("common.titles.instances")}</h1>
           <p className="text-muted-foreground mt-2">
-            Manage your qBittorrent connection settings
+            {t("instances.description")}
           </p>
         </div>
         <Button onClick={() => handleOpenDialog()}>
           <Plus className="mr-2 h-4 w-4" />
-          Add Instance
+          {t("instances.add")}
         </Button>
       </div>
 
@@ -88,14 +90,14 @@ export function Instances() {
         </div>
       ) : (
         <div className="rounded-lg border border-dashed p-12 text-center">
-          <p className="text-muted-foreground">No instances configured</p>
+          <p className="text-muted-foreground">{t("common.messages.noInstancesConfigured")}</p>
           <Button
             onClick={() => handleOpenDialog()}
             className="mt-4"
             variant="outline"
           >
             <Plus className="mr-2 h-4 w-4" />
-            Add your first instance
+            {t("instances.empty.addFirst")}
           </Button>
         </div>
       )}
@@ -104,10 +106,10 @@ export function Instances() {
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle>
-              {editingInstance ? "Edit Instance" : "Add Instance"}
+              {editingInstance ? t("instances.dialog.editTitle") : t("instances.add")}
             </DialogTitle>
             <DialogDescription>
-              {editingInstance? "Update your qBittorrent instance configuration": "Add a new qBittorrent instance to manage"
+              {editingInstance? t("instances.dialog.editDescription"): t("instances.dialog.addDescription")
               }
             </DialogDescription>
           </DialogHeader>
