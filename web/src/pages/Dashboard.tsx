@@ -25,10 +25,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useInstances } from "@/hooks/useInstances"
 import { usePersistedAccordionState } from "@/hooks/usePersistedAccordionState"
+import { useQBittorrentAppInfo } from "@/hooks/useQBittorrentAppInfo"
 import { api } from "@/lib/api"
 import { formatBytes, getRatioColor } from "@/lib/utils"
 import type { InstanceResponse, ServerState, TorrentCounts, TorrentResponse, TorrentStats } from "@/types"
-import { useQueries, useQuery } from "@tanstack/react-query"
+import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
 import { Activity, ChevronDown, ChevronUp, Download, ExternalLink, Eye, EyeOff, HardDrive, Minus, Plus, Rabbit, Turtle, Upload, Zap } from "lucide-react"
 import { useMemo, useState } from "react"
@@ -41,7 +42,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
-import { useAlternativeSpeedLimits } from "@/hooks/useAlternativeSpeedLimits"
+
 import { useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { useTranslation } from "react-i18next"
@@ -71,55 +72,67 @@ function useAllInstanceStats(instances: InstanceResponse[]) {
 
   return instances.map((instance, index) => {
     const data = dashboardQueries[index].data
+    const query = dashboardQueries[index]
     return {
       instance,
       // Return TorrentStats directly - no more backwards compatibility conversion
       stats: data?.stats || null,
       serverState: data?.serverState || null,
       torrentCounts: data?.counts,
+      // Include alt speed status from server state to avoid separate API call
+      altSpeedEnabled: data?.serverState?.use_alt_speed_limits || false,
+      // Include loading/error state for individual instances
+      isLoading: query.isLoading,
+      error: query.error,
     }
   })
 }
 
 
 function InstanceCard({
-  instance,
+  instanceData,
   isAdvancedMetricsOpen,
   setIsAdvancedMetricsOpen,
 }: {
-  instance: InstanceResponse
+  instanceData: {
+    instance: InstanceResponse
+    stats: any
+    serverState: any
+    torrentCounts: any
+    altSpeedEnabled: boolean
+    isLoading: boolean
+    error: any
+  }
   isAdvancedMetricsOpen: boolean
   setIsAdvancedMetricsOpen: (open: boolean) => void
 }) {
   const { t } = useTranslation()
+  const { instance, stats, serverState, torrentCounts, altSpeedEnabled, isLoading, error } = instanceData
   const [showSpeedLimitDialog, setShowSpeedLimitDialog] = useState(false)
 
-  // Use shared TorrentResponse cache for optimized performance
-  const { data: torrentData, isLoading, error } = useQuery<TorrentResponse>({
-    queryKey: ["torrents-list", instance.id, 0, undefined, undefined, "added_on", "desc"],
-    queryFn: () => api.getTorrents(instance.id, {
-      page: 0,
-      limit: 1, // Only need metadata, not actual torrents
-      sort: "added_on",
-      order: "desc" as const,
-    }),
-    enabled: true,
-    refetchInterval: 5000, // Match TorrentTable polling
-    staleTime: 2000,
-    gcTime: 300000, // Match TorrentTable cache time
-    retry: 1,
-    retryDelay: 1000,
+  // Alternative speed limits toggle - no need to track state, just provide toggle function
+  const queryClient = useQueryClient()
+  const { mutate: toggleAltSpeed, isPending: isToggling } = useMutation({
+    mutationFn: () => api.toggleAlternativeSpeedLimits(instance.id),
+    onSuccess: () => {
+      // Invalidate torrent queries to refresh server state
+      queryClient.invalidateQueries({
+        queryKey: ["torrents-list", instance.id],
+      })
+    },
   })
 
-  const { enabled: altSpeedEnabled, toggle: toggleAltSpeed, isToggling } = useAlternativeSpeedLimits(instance.id)
+  // Still need app info for version display - keep this separate as it's cached well
+  const {
+    data: qbittorrentAppInfo,
+    versionInfo: qbittorrentVersionInfo,
+  } = useQBittorrentAppInfo(instance.id)
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const [speedUnit] = useSpeedUnits()
+  const appVersion = qbittorrentAppInfo?.version || qbittorrentVersionInfo?.appVersion || ""
+  const webAPIVersion = qbittorrentAppInfo?.webAPIVersion || qbittorrentVersionInfo?.webAPIVersion || ""
+  const libtorrentVersion = qbittorrentAppInfo?.buildInfo?.libtorrent || ""
   const displayUrl = instance.host
-
-  // Use TorrentStats directly - no more conversion needed
-  const stats = torrentData?.stats
-  const torrentCounts = torrentData?.counts
-  const serverState = torrentData?.serverState
 
   // Determine card state
   const isFirstLoad = isLoading && !stats
@@ -153,7 +166,7 @@ function InstanceCard({
   return (
     <>
       <Card className="hover:shadow-lg transition-shadow">
-        <CardHeader className={!isFirstLoad ? "gap-0" : ""}>
+        <CardHeader className={!isFirstLoad ? "gap-1" : ""}>
           <div className="flex items-center gap-2 sm:gap-3">
             <Link
               to={linkTo}
@@ -227,24 +240,45 @@ function InstanceCard({
               </Badge>
             </div>
           </div>
-          <CardDescription className={`flex items-center gap-1 min-w-0 ${!isFirstLoad ? "text-xs" : ""}`}>
-            <span className={`${incognitoMode ? "blur-sm select-none" : ""} truncate min-w-0`} style={incognitoMode ? { filter: "blur(8px)" } : {}} title={displayUrl}>
-              {displayUrl}
-            </span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className={`${!isFirstLoad ? "h-4 w-4" : "h-5 w-5"} p-0 ${isFirstLoad ? "hover:bg-muted/50" : ""} shrink-0`}
-              onClick={(e) => {
-                if (isFirstLoad) {
-                  e.preventDefault()
-                  e.stopPropagation()
-                }
-                setIncognitoMode(!incognitoMode)
-              }}
-            >
-              {incognitoMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-            </Button>
+          {(appVersion || webAPIVersion || libtorrentVersion) && (
+            <CardDescription className="flex flex-wrap items-center gap-1.5 text-xs">
+              {appVersion && (
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">
+                  qBit {appVersion}
+                </Badge>
+              )}
+              {webAPIVersion && (
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">
+                  API v{webAPIVersion}
+                </Badge>
+              )}
+              {libtorrentVersion && (
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">
+                  lt {libtorrentVersion}
+                </Badge>
+              )}
+            </CardDescription>
+          )}
+          <CardDescription className="text-xs">
+            <div className="flex items-center gap-1 min-w-0">
+              <span className={`${incognitoMode ? "blur-sm select-none" : ""} truncate min-w-0`} style={incognitoMode ? { filter: "blur(8px)" } : {}} title={displayUrl}>
+                {displayUrl}
+              </span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className={`${!isFirstLoad ? "h-4 w-4" : "h-5 w-5"} p-0 ${isFirstLoad ? "hover:bg-muted/50" : ""} shrink-0`}
+                onClick={(e) => {
+                  if (isFirstLoad) {
+                    e.preventDefault()
+                    e.stopPropagation()
+                  }
+                  setIncognitoMode(!incognitoMode)
+                }}
+              >
+                {incognitoMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+              </Button>
+            </div>
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -350,12 +384,30 @@ function InstanceCard({
                       <span className="ml-auto font-medium">{serverState.average_time_queue}ms</span>
                     </div>
                   )}
+
+                  {serverState?.last_external_address_v4 && (
+                    <div className="flex items-center gap-2 text-xs">
+                      <ExternalLink className="h-3 w-3 text-muted-foreground" />
+                      <span className="text-muted-foreground">{t("dashboard.serverStats.externalIPv4")}</span>
+                      <span className={`ml-auto font-medium font-mono ${incognitoMode ? "blur-sm select-none" : ""}`} style={incognitoMode ? { filter: "blur(8px)" } : {}}>{serverState.last_external_address_v4}</span>
+                    </div>
+                  )}
+
+                  {serverState?.last_external_address_v6 && (
+                    <div className="flex items-center gap-2 text-xs">
+                      <ExternalLink className="h-3 w-3 text-muted-foreground" />
+                      <span className="text-muted-foreground">{t("dashboard.serverStats.externalIPv6")}</span>
+                      <span className={`ml-auto font-medium font-mono text-[10px] ${incognitoMode ? "blur-sm select-none" : ""}`} style={incognitoMode ? { filter: "blur(8px)" } : {}}>{serverState.last_external_address_v6}</span>
+                    </div>
+                  )}
                 </CollapsibleContent>
               </Collapsible>
 
               <InstanceErrorDisplay instance={instance} compact />
             </div>
           )}
+
+          {/* Version footer - always show if we have version info */}
         </CardContent>
       </Card>
     </>
@@ -736,10 +788,10 @@ export function Dashboard() {
               <h2 className="text-xl font-semibold mb-4">{t("common.titles.instances")}</h2>
               {/* Responsive layout so each instance mounts once */}
               <div className="flex flex-col gap-4 sm:grid sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-                {allInstances.map(instance => (
+                {statsData.map(instanceData => (
                   <InstanceCard
-                    key={instance.id}
-                    instance={instance}
+                    key={instanceData.instance.id}
+                    instanceData={instanceData}
                     isAdvancedMetricsOpen={isAdvancedMetricsOpen}
                     setIsAdvancedMetricsOpen={setIsAdvancedMetricsOpen}
                   />

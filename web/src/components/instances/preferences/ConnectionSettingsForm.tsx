@@ -3,17 +3,19 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import React from "react"
-import { useForm } from "@tanstack/react-form"
-import { Button } from "@/components/ui/button"
-import { Label } from "@/components/ui/label"
-import { Input } from "@/components/ui/input"
-import { Switch } from "@/components/ui/switch"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Textarea } from "@/components/ui/textarea"
-import { Wifi, Server, Globe, Shield } from "lucide-react"
-import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { NumberInputWithUnlimited } from "@/components/forms/NumberInputWithUnlimited"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
+import { Textarea } from "@/components/ui/textarea"
+import { useInstancePreferences } from "@/hooks/useInstancePreferences"
+import { useQBittorrentFieldVisibility } from "@/hooks/useQBittorrentAppInfo"
+import { useForm } from "@tanstack/react-form"
+import { AlertTriangle, Globe, Server, Shield, Wifi } from "lucide-react"
+import React from "react"
 import { toast } from "sonner"
 import { useTranslation } from "react-i18next"
 
@@ -110,6 +112,7 @@ function NumberInput({
 export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSettingsFormProps) {
   const { t } = useTranslation()
   const { preferences, isLoading, updatePreferences, isUpdating } = useInstancePreferences(instanceId)
+  const fieldVisibility = useQBittorrentFieldVisibility(instanceId)
 
   const form = useForm({
     defaultValues: {
@@ -201,6 +204,16 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
       }}
       className="space-y-6"
     >
+      {fieldVisibility.isUnknown && (
+        <Alert className="border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-400/70 dark:bg-amber-950/50">
+          <AlertTriangle className="h-4 w-4 text-amber-600" />
+          <AlertTitle>{t("instancePreferences.content.connectionSettings.warnings.limitedDetails.title")}</AlertTitle>
+          <AlertDescription>
+            {t("instancePreferences.content.connectionSettings.warnings.limitedDetails.description")}
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Listening Port Section */}
       <div className="space-y-4">
         <div className="flex items-center gap-2">
@@ -209,52 +222,75 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
         </div>
 
         <div className="space-y-4">
-          <form.Field name="listen_port">
-            {(field) => (
-              <NumberInput
-                label={t("instancePreferences.content.connectionSettings.port.portRange")}
-                value={field.state.value}
-                onChange={(value) => field.handleChange(value)}
-                min={1024}
-                max={65535}
-                description={t("instancePreferences.content.connectionSettings.port.portRangeDescription")}
-              />
-            )}
-          </form.Field>
+          {/* Input boxes row */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <form.Field
+              name="listen_port"
+              validators={{
+                onChange: ({ value }) => {
+                  if (value < 0 || value > 65535) {
+                    return t("instancePreferences.content.connectionSettings.port.validation.portRange")
+                  }
+                  return undefined
+                },
+              }}
+            >
+              {(field) => (
+                <div className="space-y-2">
+                  <NumberInput
+                    label={t("instancePreferences.content.connectionSettings.port.portRange")}
+                    value={field.state.value}
+                    onChange={(value) => field.handleChange(value)}
+                    min={0}
+                    max={65535}
+                    description={t("instancePreferences.content.connectionSettings.port.portRangeDescription")}
+                  />
+                  {field.state.meta.errors.length > 0 && (
+                    <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                  )}
+                </div>
+              )}
+            </form.Field>
 
-          <form.Field name="random_port">
-            {(field) => (
-              <SwitchSetting
-                label={t("instancePreferences.content.connectionSettings.port.randomPort")}
-                description={t("instancePreferences.content.connectionSettings.port.randomPortDescription")}
-                checked={field.state.value}
-                onChange={(checked) => field.handleChange(checked)}
-              />
+            {fieldVisibility.showUpnpLeaseField && (
+              <form.Field name="upnp_lease_duration">
+                {(field) => (
+                  <NumberInput
+                    label={t("instancePreferences.content.connectionSettings.port.upnpLease")}
+                    value={field.state.value}
+                    onChange={(value) => field.handleChange(value)}
+                    min={0}
+                    description={t("instancePreferences.content.connectionSettings.port.upnpLeaseDescription")}
+                  />
+                )}
+              </form.Field>
             )}
-          </form.Field>
+          </div>
 
-          <form.Field name="upnp">
-            {(field) => (
-              <SwitchSetting
-                label={t("instancePreferences.content.connectionSettings.port.upnp")}
-                description={t("instancePreferences.content.connectionSettings.port.upnpDescription")}
-                checked={field.state.value}
-                onChange={(checked) => field.handleChange(checked)}
-              />
-            )}
-          </form.Field>
+          {/* Toggles row */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <form.Field name="random_port">
+              {(field) => (
+                <SwitchSetting
+                  label={t("instancePreferences.content.connectionSettings.port.randomPort")}
+                  description={t("instancePreferences.content.connectionSettings.port.randomPortDescription")}
+                  checked={field.state.value}
+                  onChange={(checked) => field.handleChange(checked)}
+                />
+              )}
+            </form.Field>
 
-          <form.Field name="upnp_lease_duration">
-            {(field) => (
-              <NumberInput
-                label={t("instancePreferences.content.connectionSettings.port.upnpLease")}
-                value={field.state.value}
-                onChange={(value) => field.handleChange(value)}
-                min={0}
-                description={t("instancePreferences.content.connectionSettings.port.upnpLeaseDescription")}
-              />
-            )}
-          </form.Field>
+            <form.Field name="upnp">
+              {(field) => (
+                <SwitchSetting
+                  label={t("instancePreferences.content.connectionSettings.port.upnp")}
+                  description={t("instancePreferences.content.connectionSettings.port.upnpDescription")}
+                  checked={field.state.value}
+                  onChange={(checked) => field.handleChange(checked)}
+                />
+              )}
+            </form.Field>
+          </div>
         </div>
       </div>
 
@@ -353,41 +389,43 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
         </div>
 
         <div className="space-y-4">
-          <form.Field name="current_network_interface">
-            {(field) => (
-              <div className="space-y-2">
-                <Label htmlFor="network_interface">{t("instancePreferences.content.connectionSettings.networkInterface.interface")}</Label>
-                <Input
-                  id="network_interface"
-                  value={field.state.value || t("instancePreferences.content.connectionSettings.networkInterface.autoDetect")}
-                  readOnly
-                  className="bg-muted"
-                  disabled
-                />
-                <p className="text-xs text-muted-foreground">
-                  {t("instancePreferences.content.connectionSettings.networkInterface.interfaceDescription")}
-                </p>
-              </div>
-            )}
-          </form.Field>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <form.Field name="current_network_interface">
+              {(field) => (
+                <div className="space-y-2">
+                  <Label htmlFor="network_interface">{t("instancePreferences.content.connectionSettings.networkInterface.interface")}</Label>
+                  <Input
+                    id="network_interface"
+                    value={field.state.value || t("instancePreferences.content.connectionSettings.networkInterface.autoDetect")}
+                    readOnly
+                    className="bg-muted"
+                    disabled
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {t("instancePreferences.content.connectionSettings.networkInterface.interfaceDescription")}
+                  </p>
+                </div>
+              )}
+            </form.Field>
 
-          <form.Field name="current_interface_address">
-            {(field) => (
-              <div className="space-y-2">
-                <Label htmlFor="interface_address">{t("instancePreferences.content.connectionSettings.networkInterface.address")}</Label>
-                <Input
-                  id="interface_address"
-                  value={field.state.value || t("instancePreferences.content.connectionSettings.networkInterface.autoDetect")}
-                  readOnly
-                  disabled
-                  className="bg-muted"
-                />
-                <p className="text-xs text-muted-foreground">
-                  {t("instancePreferences.content.connectionSettings.networkInterface.addressDescription")}
-                </p>
-              </div>
-            )}
-          </form.Field>
+            <form.Field name="current_interface_address">
+              {(field) => (
+                <div className="space-y-2">
+                  <Label htmlFor="interface_address">{t("instancePreferences.content.connectionSettings.networkInterface.address")}</Label>
+                  <Input
+                    id="interface_address"
+                    value={field.state.value || t("instancePreferences.content.connectionSettings.networkInterface.autoDetect")}
+                    readOnly
+                    disabled
+                    className="bg-muted"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {t("instancePreferences.content.connectionSettings.networkInterface.addressDescription")}
+                  </p>
+                </div>
+              )}
+            </form.Field>
+          </div>
 
           <form.Field name="reannounce_when_address_changed">
             {(field) => (
@@ -407,51 +445,111 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
         <h3 className="text-lg font-medium">{t("instancePreferences.content.connectionSettings.limits.title")}</h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <form.Field name="max_connec">
+          <form.Field
+            name="max_connec"
+            validators={{
+              onChange: ({ value }) => {
+                if (value !== -1 && value !== 0 && value <= 0) {
+                  return t("instancePreferences.content.connectionSettings.limits.validation.globalMax")
+                }
+                return undefined
+              },
+            }}
+          >
             {(field) => (
-              <NumberInputWithUnlimited
-                label={t("instancePreferences.content.connectionSettings.limits.globalMax")}
-                value={field.state.value}
-                onChange={(value) => field.handleChange(value)}
-                allowUnlimited={true}
-                description={t("instancePreferences.content.connectionSettings.limits.globalMaxDescription")}
-              />
+              <div className="space-y-2">
+                <NumberInputWithUnlimited
+                  label={t("instancePreferences.content.connectionSettings.limits.globalMax")}
+                  value={field.state.value}
+                  onChange={(value) => field.handleChange(value)}
+                  allowUnlimited={true}
+                  description={t("instancePreferences.content.connectionSettings.limits.globalMaxDescription")}
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                )}
+              </div>
             )}
           </form.Field>
 
-          <form.Field name="max_connec_per_torrent">
+          <form.Field
+            name="max_connec_per_torrent"
+            validators={{
+              onChange: ({ value }) => {
+                if (value !== -1 && value !== 0 && value <= 0) {
+                  return t("instancePreferences.content.connectionSettings.limits.validation.perTorrentMax")
+                }
+                return undefined
+              },
+            }}
+          >
             {(field) => (
-              <NumberInputWithUnlimited
-                label={t("instancePreferences.content.connectionSettings.limits.perTorrentMax")}
-                value={field.state.value}
-                onChange={(value) => field.handleChange(value)}
-                allowUnlimited={true}
-                description={t("instancePreferences.content.connectionSettings.limits.perTorrentMaxDescription")}
-              />
+              <div className="space-y-2">
+                <NumberInputWithUnlimited
+                  label={t("instancePreferences.content.connectionSettings.limits.perTorrentMax")}
+                  value={field.state.value}
+                  onChange={(value) => field.handleChange(value)}
+                  allowUnlimited={true}
+                  description={t("instancePreferences.content.connectionSettings.limits.perTorrentMaxDescription")}
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                )}
+              </div>
             )}
           </form.Field>
 
-          <form.Field name="max_uploads">
+          <form.Field
+            name="max_uploads"
+            validators={{
+              onChange: ({ value }) => {
+                if (value !== -1 && value !== 0 && value <= 0) {
+                  return t("instancePreferences.content.connectionSettings.limits.validation.globalUploadSlots")
+                }
+                return undefined
+              },
+            }}
+          >
             {(field) => (
-              <NumberInputWithUnlimited
-                label={t("instancePreferences.content.connectionSettings.limits.globalUploadSlots")}
-                value={field.state.value}
-                onChange={(value) => field.handleChange(value)}
-                allowUnlimited={true}
-                description={t("instancePreferences.content.connectionSettings.limits.globalUploadSlotsDescription")}
-              />
+              <div className="space-y-2">
+                <NumberInputWithUnlimited
+                  label={t("instancePreferences.content.connectionSettings.limits.globalUploadSlots")}
+                  value={field.state.value}
+                  onChange={(value) => field.handleChange(value)}
+                  allowUnlimited={true}
+                  description={t("instancePreferences.content.connectionSettings.limits.globalUploadSlotsDescription")}
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                )}
+              </div>
             )}
           </form.Field>
 
-          <form.Field name="max_uploads_per_torrent">
+          <form.Field
+            name="max_uploads_per_torrent"
+            validators={{
+              onChange: ({ value }) => {
+                if (value !== -1 && value !== 0 && value <= 0) {
+                  return t("instancePreferences.content.connectionSettings.limits.validation.perTorrentUploadSlots")
+                }
+                return undefined
+              },
+            }}
+          >
             {(field) => (
-              <NumberInputWithUnlimited
-                label={t("instancePreferences.content.connectionSettings.limits.perTorrentUploadSlots")}
-                value={field.state.value}
-                onChange={(value) => field.handleChange(value)}
-                allowUnlimited={true}
-                description={t("instancePreferences.content.connectionSettings.limits.perTorrentUploadSlotsDescription")}
-              />
+              <div className="space-y-2">
+                <NumberInputWithUnlimited
+                  label={t("instancePreferences.content.connectionSettings.limits.perTorrentUploadSlots")}
+                  value={field.state.value}
+                  onChange={(value) => field.handleChange(value)}
+                  allowUnlimited={true}
+                  description={t("instancePreferences.content.connectionSettings.limits.perTorrentUploadSlotsDescription")}
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                )}
+              </div>
             )}
           </form.Field>
         </div>
@@ -473,29 +571,59 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
         <h3 className="text-lg font-medium">{t("instancePreferences.content.connectionSettings.outgoingPorts.title")}</h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <form.Field name="outgoing_ports_min">
+          <form.Field
+            name="outgoing_ports_min"
+            validators={{
+              onChange: ({ value }) => {
+                if (value < 0 || value > 65535) {
+                  return t("instancePreferences.content.connectionSettings.outgoingPorts.validation.min")
+                }
+                return undefined
+              },
+            }}
+          >
             {(field) => (
-              <NumberInput
-                label={t("instancePreferences.content.connectionSettings.outgoingPorts.min")}
-                value={field.state.value}
-                onChange={(value) => field.handleChange(value)}
-                min={0}
-                max={65535}
-                description={t("instancePreferences.content.connectionSettings.outgoingPorts.minDescription")}
-              />
+              <div className="space-y-2">
+                <NumberInput
+                  label={t("instancePreferences.content.connectionSettings.outgoingPorts.min")}
+                  value={field.state.value}
+                  onChange={(value) => field.handleChange(value)}
+                  min={0}
+                  max={65535}
+                  description={t("instancePreferences.content.connectionSettings.outgoingPorts.minDescription")}
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                )}
+              </div>
             )}
           </form.Field>
 
-          <form.Field name="outgoing_ports_max">
+          <form.Field
+            name="outgoing_ports_max"
+            validators={{
+              onChange: ({ value }) => {
+                if (value < 0 || value > 65535) {
+                  return t("instancePreferences.content.connectionSettings.outgoingPorts.validation.max")
+                }
+                return undefined
+              },
+            }}
+          >
             {(field) => (
-              <NumberInput
-                label={t("instancePreferences.content.connectionSettings.outgoingPorts.max")}
-                value={field.state.value}
-                onChange={(value) => field.handleChange(value)}
-                min={0}
-                max={65535}
-                description={t("instancePreferences.content.connectionSettings.outgoingPorts.maxDescription")}
-              />
+              <div className="space-y-2">
+                <NumberInput
+                  label={t("instancePreferences.content.connectionSettings.outgoingPorts.max")}
+                  value={field.state.value}
+                  onChange={(value) => field.handleChange(value)}
+                  min={0}
+                  max={65535}
+                  description={t("instancePreferences.content.connectionSettings.outgoingPorts.maxDescription")}
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                )}
+              </div>
             )}
           </form.Field>
         </div>

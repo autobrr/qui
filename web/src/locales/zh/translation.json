@@ -725,7 +725,9 @@
       "totalQueued": "总排队大小",
       "avgQueueTime": "平均排队时间",
       "ratio": "分享率:",
-      "peers": "Peers:"
+      "peers": "Peers:",
+      "externalIPv4": "外部 IPv4",
+      "externalIPv6": "外部 IPv6"
     },
     "globalStats": {
       "instances": {
@@ -803,6 +805,12 @@
         "notifications": {
           "saveSuccess": "速度限制更新成功",
           "saveError": "更新速度限制失败"
+        },
+        "validation": {
+          "globalDownload": "全局下载速率限制必须大于 0 或禁用",
+          "globalUpload": "全局上传速率限制必须大于 0 或禁用",
+          "altDownload": "备用下载速率限制必须大于 0 或禁用",
+          "altUpload": "备用上传速率限制必须大于 0 或禁用"
         }
       },
       "queueManagement": {
@@ -819,12 +827,17 @@
         "maxActiveTorrents": "最大活动种子数",
         "maxActiveTorrentsDescription": "总计最大活动种子数量",
         "maxCheckingTorrents": "最大校验种子数",
-        "maxCheckingTorrentsDescription": "同时校验的种子最大数量",
+        "maxCheckingTorrentsDescription": "同时校验的种子的最大数量",
         "saveButton": "保存更改",
         "savingButton": "正在保存...",
         "notifications": {
           "saveSuccess": "队列设置更新成功",
           "saveError": "更新队列设置失败"
+        },
+        "validation": {
+          "maxActiveDownloads": "最大活跃下载数必须大于 -1",
+          "maxActiveUploads": "最大活跃上传数必须大于 -1",
+          "maxActiveTorrents": "最大活跃种子数必须大于 -1"
         }
       },
       "fileManagement": {
@@ -881,6 +894,12 @@
         "failed": "加载偏好设置失败",
         "saveButton": "更新连接设置",
         "savingButton": "正在更新...",
+        "warnings": {
+          "limitedDetails": {
+            "title": "版本详情有限",
+            "description": "我们无法确认此实例的 qBittorrent 构建详情，因此所有连接选项都可见。在应用更改前请仔细检查适用性。"
+          }
+        },
         "port": {
           "title": "监听端口",
           "portRange": "传入连接的端口",
@@ -890,7 +909,10 @@
           "upnp": "启用 UPnP/NAT-PMP 端口转发",
           "upnpDescription": "通过您的路由器自动转发端口",
           "upnpLease": "UPnP 租约时长 (0 = 永久)",
-          "upnpLeaseDescription": "UPnP 租约的持续时间（分钟）(0 表示永久)"
+          "upnpLeaseDescription": "UPnP 租约的持续时间（分钟）(0 表示永久，仅限 libtorrent 2.x)",
+          "validation": {
+            "portRange": "用于传入连接的端口必须在 0 到 65535 之间"
+          }
         },
         "protocol": {
           "title": "协议设置",
@@ -926,14 +948,24 @@
           "perTorrentUploadSlots": "每个种子的最大上传通道数",
           "perTorrentUploadSlotsDescription": "单个种子的最大上传通道数",
           "allowMultipleConnections": "允许来自同一 IP 地址的多个连接",
-          "allowMultipleConnectionsDescription": "允许来自同一 NAT 后面的多个 Peer 的连接"
+          "allowMultipleConnectionsDescription": "允许来自同一 NAT 后面的多个 Peer 的连接",
+          "validation": {
+            "globalMax": "最大连接数限制必须大于 0 或禁用",
+            "perTorrentMax": "每个种子的最大连接数限制必须大于 0 或禁用",
+            "globalUploadSlots": "全局上传通道数限制必须大于 0 或禁用",
+            "perTorrentUploadSlots": "每个种子的最大上传通道数限制必须大于 0 或禁用"
+          }
         },
         "outgoingPorts": {
           "title": "传出端口",
           "min": "传出端口 (最小)",
           "minDescription": "传出连接的最小端口 (0 = 无限制)",
           "max": "传出端口 (最大)",
-          "maxDescription": "传出连接的最大端口 (0 = 无限制)"
+          "maxDescription": "传出连接的最大端口 (0 = 无限制)",
+          "validation": {
+            "min": "传出端口范围最小值必须在 0 到 65535 之间",
+            "max": "传出端口范围最大值必须在 0 到 65535 之间"
+          }
         },
         "ipFiltering": {
           "title": "IP 过滤",
@@ -1002,6 +1034,12 @@
         "failed": "加载偏好设置失败",
         "saveButton": "更新高级网络设置",
         "savingButton": "正在更新...",
+        "warnings": {
+          "showAll": {
+            "title": "显示所有高级选项",
+            "description": "我们无法确定此实例的 qBittorrent 版本，因此显示了所有高级设置。某些选项可能不适用于您的环境。"
+          }
+        },
         "tracker": {
           "title": "Tracker 设置",
           "announceIP": "向 Tracker 汇报的 IP 地址 (需要重启)",
@@ -1061,7 +1099,10 @@
           "checkingMemoryDescription": "用于分块校验的最大内存",
           "workingSetLimit": "工作集限制",
           "workingSetLimitUnit": "MiB",
-          "workingSetLimitDescription": "物理内存工作集大小限制"
+          "workingSetLimitDescription": "物理内存工作集大小限制",
+          "validation": {
+            "checkingMemory": "校验种子时的预留内存必须大于 0 且小于 1024"
+          }
         },
         "peerManagement": {
           "title": "Peer 管理",
@@ -1073,7 +1114,12 @@
           "turnoverCutoffDescription": "Peer 更替阈值百分比",
           "turnoverInterval": "更替间隔",
           "turnoverIntervalUnit": "秒",
-          "turnoverIntervalDescription": "执行 Peer 更替的频率"
+          "turnoverIntervalDescription": "执行 Peer 更替的频率",
+          "validation": {
+            "turnover": "Peer 更替率必须在 0 到 100 之间",
+            "turnoverCutoff": "Peer 更替率阈值必须在 0 到 100 之间",
+            "turnoverInterval": "Peer 更替间隔必须大于或等于 0 且小于 3600 秒"
+          }
         },
         "security": {
           "title": "安全与 IP 过滤",

@@ -113,42 +113,87 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
         </form.Field>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <form.Field name="max_active_downloads">
+          <form.Field
+            name="max_active_downloads"
+            validators={{
+              onChange: ({ value }) => {
+                if (value < -1) {
+                  return t("instancePreferences.content.queueManagement.validation.maxActiveDownloads")
+                }
+                return undefined
+              },
+            }}
+          >
             {(field) => (
-              <NumberInputWithUnlimited
-                label={t("instancePreferences.content.queueManagement.maxActiveDownloads")}
-                value={(field.state.value as number) ?? 3}
-                onChange={field.handleChange}
-                max={999}
-                description={t("instancePreferences.content.queueManagement.maxActiveDownloadsDescription")}
-                allowUnlimited={true}
-              />
+              <div className="space-y-2">
+                <NumberInputWithUnlimited
+                  label={t("instancePreferences.content.queueManagement.maxActiveDownloads")}
+                  value={(field.state.value as number) ?? 3}
+                  onChange={field.handleChange}
+                  max={999}
+                  description={t("instancePreferences.content.queueManagement.maxActiveDownloadsDescription")}
+                  allowUnlimited={true}
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                )}
+              </div>
             )}
           </form.Field>
 
-          <form.Field name="max_active_uploads">
+          <form.Field
+            name="max_active_uploads"
+            validators={{
+              onChange: ({ value }) => {
+                if (value < -1) {
+                  return t("instancePreferences.content.queueManagement.validation.maxActiveUploads")
+                }
+                return undefined
+              },
+            }}
+          >
             {(field) => (
-              <NumberInputWithUnlimited
-                label={t("instancePreferences.content.queueManagement.maxActiveUploads")}
-                value={(field.state.value as number) ?? 3}
-                onChange={field.handleChange}
-                max={999}
-                description={t("instancePreferences.content.queueManagement.maxActiveUploadsDescription")}
-                allowUnlimited={true}
-              />
+              <div className="space-y-2">
+                <NumberInputWithUnlimited
+                  label={t("instancePreferences.content.queueManagement.maxActiveUploads")}
+                  value={(field.state.value as number) ?? 3}
+                  onChange={field.handleChange}
+                  max={999}
+                  description={t("instancePreferences.content.queueManagement.maxActiveUploadsDescription")}
+                  allowUnlimited={true}
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                )}
+              </div>
             )}
           </form.Field>
 
-          <form.Field name="max_active_torrents">
+          <form.Field
+            name="max_active_torrents"
+            validators={{
+              onChange: ({ value }) => {
+                if (value < -1) {
+                  return t("instancePreferences.content.queueManagement.validation.maxActiveTorrents")
+                }
+                return undefined
+              },
+            }}
+          >
             {(field) => (
-              <NumberInputWithUnlimited
-                label={t("instancePreferences.content.queueManagement.maxActiveTorrents")}
-                value={(field.state.value as number) ?? 5}
-                onChange={field.handleChange}
-                max={999}
-                description={t("instancePreferences.content.queueManagement.maxActiveTorrentsDescription")}
-                allowUnlimited={true}
-              />
+              <div className="space-y-2">
+                <NumberInputWithUnlimited
+                  label={t("instancePreferences.content.queueManagement.maxActiveTorrents")}
+                  value={(field.state.value as number) ?? 5}
+                  onChange={field.handleChange}
+                  max={999}
+                  description={t("instancePreferences.content.queueManagement.maxActiveTorrentsDescription")}
+                  allowUnlimited={true}
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+                )}
+              </div>
             )}
           </form.Field>
 

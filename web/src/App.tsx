@@ -5,6 +5,7 @@
 
 import { ThemeValidator } from "@/components/themes/ThemeValidator"
 import { Toaster } from "@/components/ui/sonner"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { useDynamicFavicon } from "@/hooks/useDynamicFavicon"
 import { initializePWANativeTheme } from "@/utils/pwaNativeTheme"
 import { initializeTheme } from "@/utils/theme"
@@ -38,9 +39,11 @@ function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <ThemeValidator />
-      <RouterProvider router={router} />
-      <Toaster />
+      <TooltipProvider>
+        <ThemeValidator />
+        <RouterProvider router={router} />
+        <Toaster />
+      </TooltipProvider>
     </QueryClientProvider>
   )
 }

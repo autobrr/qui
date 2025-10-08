@@ -183,6 +183,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	preferencesHandler := handlers.NewPreferencesHandler(s.syncManager)
 	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(s.clientAPIKeyStore, s.instanceStore)
 	versionHandler := handlers.NewVersionHandler(s.updateService)
+	qbittorrentInfoHandler := handlers.NewQBittorrentInfoHandler(s.clientPool)
 	var trackerIconHandler *handlers.TrackerIconHandler
 	if s.trackerIconService != nil {
 		trackerIconHandler = handlers.NewTrackerIconHandler(s.trackerIconService)
@@ -319,6 +320,9 @@ func (s *Server) Handler() (*chi.Mux, error) {
 					// Alternative speed limits
 					r.Get("/alternative-speed-limits", preferencesHandler.GetAlternativeSpeedLimitsMode)
 					r.Post("/alternative-speed-limits/toggle", preferencesHandler.ToggleAlternativeSpeedLimits)
+
+					// qBittorrent application info
+					r.Get("/app-info", qbittorrentInfoHandler.GetQBittorrentAppInfo)
 				})
 			})
 

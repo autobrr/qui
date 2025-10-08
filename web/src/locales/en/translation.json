@@ -723,9 +723,11 @@
       "queuedIO": "Queued I/O Jobs",
       "bufferSize": "Buffer Size",
       "totalQueued": "Total Queued",
-      "avgQueueTime": "Avg Queue Time",
+      "avgQueueTime": "Avg. Queue Time",
       "ratio": "Ratio:",
-      "peers": "Peers:"
+      "peers": "Peers:",
+      "externalIPv4": "External IPv4",
+      "externalIPv6": "External IPv6"
     },
     "globalStats": {
       "instances": {
@@ -803,6 +805,12 @@
         "notifications": {
           "saveSuccess": "Speed limits updated successfully",
           "saveError": "Failed to update speed limits"
+        },
+        "validation": {
+          "globalDownload": "Global download rate limit must be greater than 0 or disabled",
+          "globalUpload": "Global upload rate limit must be greater than 0 or disabled",
+          "altDownload": "Alternative download rate limit must be greater than 0 or disabled",
+          "altUpload": "Alternative upload rate limit must be greater than 0 or disabled"
         }
       },
       "queueManagement": {
@@ -819,12 +827,17 @@
         "maxActiveTorrents": "Max Active Torrents",
         "maxActiveTorrentsDescription": "Total maximum active torrents",
         "maxCheckingTorrents": "Max Checking Torrents",
-        "maxCheckingTorrentsDescription": "Maximum torrents checking simultaneously",
+        "maxCheckingTorrentsDescription": "Maximum number of torrents being checked at the same time",
         "saveButton": "Save Changes",
         "savingButton": "Saving...",
         "notifications": {
           "saveSuccess": "Queue settings updated successfully",
           "saveError": "Failed to update queue settings"
+        },
+        "validation": {
+          "maxActiveDownloads": "Maximum active downloads must be greater than -1",
+          "maxActiveUploads": "Maximum active uploads must be greater than -1",
+          "maxActiveTorrents": "Maximum active torrents must be greater than -1"
         }
       },
       "fileManagement": {
@@ -881,6 +894,12 @@
         "failed": "Failed to load preferences",
         "saveButton": "Update Connection Settings",
         "savingButton": "Updating...",
+        "warnings": {
+          "limitedDetails": {
+            "title": "Limited version details",
+            "description": "We couldn't confirm this instance's qBittorrent build details, so all connection options are visible. Double-check applicability before applying changes."
+          }
+        },
         "port": {
           "title": "Listening Port",
           "portRange": "Port for incoming connections",
@@ -890,7 +909,10 @@
           "upnp": "Enable UPnP/NAT-PMP port forwarding",
           "upnpDescription": "Automatically forward port through your router",
           "upnpLease": "UPnP lease duration (0 = permanent)",
-          "upnpLeaseDescription": "Duration in minutes for UPnP lease (0 for permanent)"
+          "upnpLeaseDescription": "Duration in minutes for UPnP lease (0 for permanent, libtorrent 2.x only)",
+          "validation": {
+            "portRange": "The port used for incoming connections must be between 0 and 65535"
+          }
         },
         "protocol": {
           "title": "Protocol Settings",
@@ -926,14 +948,24 @@
           "perTorrentUploadSlots": "Maximum upload slots per torrent",
           "perTorrentUploadSlotsDescription": "Maximum upload slots per individual torrent",
           "allowMultipleConnections": "Allow multiple connections from the same IP address",
-          "allowMultipleConnectionsDescription": "Enable connections from multiple peers behind the same NAT"
+          "allowMultipleConnectionsDescription": "Enable connections from multiple peers behind the same NAT",
+          "validation": {
+            "globalMax": "Maximum number of connections limit must be greater than 0 or disabled",
+            "perTorrentMax": "Maximum number of connections per torrent limit must be greater than 0 or disabled",
+            "globalUploadSlots": "Global number of upload slots limit must be greater than 0 or disabled",
+            "perTorrentUploadSlots": "Maximum number of upload slots per torrent limit must be greater than 0 or disabled"
+          }
         },
         "outgoingPorts": {
           "title": "Outgoing Ports",
           "min": "Outgoing ports (Min)",
           "minDescription": "Minimum port for outgoing connections (0 = no limit)",
           "max": "Outgoing ports (Max)",
-          "maxDescription": "Maximum port for outgoing connections (0 = no limit)"
+          "maxDescription": "Maximum port for outgoing connections (0 = no limit)",
+          "validation": {
+            "min": "Outgoing port range minimum must be between 0 and 65535",
+            "max": "Outgoing port range maximum must be between 0 and 65535"
+          }
         },
         "ipFiltering": {
           "title": "IP Filtering",
@@ -1002,6 +1034,12 @@
         "failed": "Failed to load preferences",
         "saveButton": "Update Advanced Network Settings",
         "savingButton": "Updating...",
+        "warnings": {
+          "showAll": {
+            "title": "Showing all advanced options",
+            "description": "We couldn't determine this instance's qBittorrent version, so every advanced setting is displayed. Some options might not apply to your environment."
+          }
+        },
         "tracker": {
           "title": "Tracker Settings",
           "announceIP": "IP address reported to trackers (requires restart)",
@@ -1061,7 +1099,10 @@
           "checkingMemoryDescription": "Maximum memory used for piece checking",
           "workingSetLimit": "Working Set Limit",
           "workingSetLimitUnit": "MiB",
-          "workingSetLimitDescription": "Physical memory working set size limit"
+          "workingSetLimitDescription": "Physical memory working set size limit",
+          "validation": {
+            "checkingMemory": "Outstanding memory when checking torrents must be greater than 0 and less than 1024"
+          }
         },
         "peerManagement": {
           "title": "Peer Management",
@@ -1073,7 +1114,12 @@
           "turnoverCutoffDescription": "Peer turnover threshold percentage",
           "turnoverInterval": "Turnover Interval",
           "turnoverIntervalUnit": "seconds",
-          "turnoverIntervalDescription": "How often to perform peer turnover"
+          "turnoverIntervalDescription": "How often to perform peer turnover",
+          "validation": {
+            "turnover": "Peer turnover must be between 0 and 100",
+            "turnoverCutoff": "Peer turnover cutoff must be between 0 and 100",
+            "turnoverInterval": "Peer turnover interval must be greater than or equal to 0 and less than 3600 seconds"
+          }
         },
         "security": {
           "title": "Security & IP Filtering",

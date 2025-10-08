@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import type { ColumnFilter, DurationUnit, SizeUnit } from "@/components/torrents/ColumnFilterPopover"
+import type { ColumnFilter, DurationUnit, SizeUnit, SpeedUnit } from "@/components/torrents/ColumnFilterPopover"
 import {
   BOOLEAN_COLUMNS,
   BOOLEAN_OPERATIONS,
@@ -11,10 +11,13 @@ import {
   DATE_COLUMNS,
   DATE_OPERATIONS,
   DURATION_COLUMNS,
+  ENUM_COLUMNS,
   type FilterOperation,
   NUMERIC_COLUMNS,
   NUMERIC_OPERATIONS,
+  PERCENTAGE_COLUMNS,
   SIZE_COLUMNS,
+  SPEED_COLUMNS,
   STRING_OPERATIONS
 } from "@/lib/column-constants"
 import type { Torrent } from "@/types"
@@ -75,18 +78,34 @@ const OPERATION_TO_EXPR: Record<FilterOperation, string> = {
   endsWith: "endsWith",
 }
 
+const COLUMN_TYPE_MAP: Map<string, ColumnType> = new Map([
+  ...SIZE_COLUMNS.map(col => [col, "size" as ColumnType] as const),
+  ...SPEED_COLUMNS.map(col => [col, "speed" as ColumnType] as const),
+  ...DURATION_COLUMNS.map(col => [col, "duration" as ColumnType] as const),
+  ...PERCENTAGE_COLUMNS.map(col => [col, "percentage" as ColumnType] as const),
+  ...NUMERIC_COLUMNS.map(col => [col, "number" as ColumnType] as const),
+  ...DATE_COLUMNS.map(col => [col, "date" as ColumnType] as const),
+  ...BOOLEAN_COLUMNS.map(col => [col, "boolean" as ColumnType] as const),
+  ...ENUM_COLUMNS.map(col => [col, "enum" as ColumnType] as const),
+])
+
 function escapeExprValue(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/"/g, "\\\"")
 }
 
-function convertSizeToBytes(value: number, unit: SizeUnit): number {
+function convertSizeToBytes(value: number, unit: SizeUnit | SpeedUnit): number {
   const k = 1024
-  const unitMultipliers: Record<SizeUnit, number> = {
+  const unitMultipliers: Record<SizeUnit | SpeedUnit, number> = {
     B: 1,
     KiB: k,
     MiB: k ** 2,
     GiB: k ** 3,
     TiB: k ** 4,
+    "B/s": 1,
+    "KiB/s": k,
+    "MiB/s": k ** 2,
+    "GiB/s": k ** 3,
+    "TiB/s": k ** 4,
   }
   return Math.floor(value * unitMultipliers[unit])
 }
@@ -133,6 +152,7 @@ export function columnFilterToExpr(filter: ColumnFilter): string | null {
 
   const columnType = getColumnType(filter.columnId)
   const isSizeColumn = columnType === "size"
+  const isSpeedColumn = columnType === "speed"
   const isDurationColumn = columnType === "duration"
   const isDateColumn = columnType === "date"
   const isBooleanColumn = columnType === "boolean"
@@ -153,6 +173,18 @@ export function columnFilterToExpr(filter: ColumnFilter): string | null {
       }
       const bytesValue1 = convertSizeToBytes(numericValue1, filter.sizeUnit)
       const bytesValue2 = convertSizeToBytes(numericValue2, filter.sizeUnit2 || filter.sizeUnit)
+      return `(${fieldName} >= ${bytesValue1} && ${fieldName} <= ${bytesValue2})`
+    }
+
+    if (isSpeedColumn && filter.speedUnit) {
+      const numericValue1 = Number(filter.value)
+      const numericValue2 = Number(filter.value2)
+      if (isNaN(numericValue1) || isNaN(numericValue2)) {
+        console.warn(`Invalid numeric values for size column ${filter.columnId}`)
+        return null
+      }
+      const bytesValue1 = convertSizeToBytes(numericValue1, filter.speedUnit)
+      const bytesValue2 = convertSizeToBytes(numericValue2, filter.speedUnit2 || filter.speedUnit)
       return `(${fieldName} >= ${bytesValue1} && ${fieldName} <= ${bytesValue2})`
     }
 
@@ -202,6 +234,16 @@ export function columnFilterToExpr(filter: ColumnFilter): string | null {
     return `${fieldName} ${operator} ${bytesValue}`
   }
 
+  if (isSpeedColumn && filter.speedUnit) {
+    const numericValue = Number(filter.value)
+    if (isNaN(numericValue)) {
+      console.warn(`Invalid numeric value for size column ${filter.columnId}: ${filter.value}`)
+      return null
+    }
+    const bytesValue = convertSizeToBytes(numericValue, filter.speedUnit)
+    return `${fieldName} ${operator} ${bytesValue}`
+  }
+
   if (isDurationColumn && filter.durationUnit) {
     const numericValue = Number(filter.value)
     if (isNaN(numericValue)) {
@@ -246,13 +288,22 @@ export function columnFilterToExpr(filter: ColumnFilter): string | null {
     filter.columnId === "infohash_v1" ||
     filter.columnId === "infohash_v2"
 
+  const isStringColumn = columnType === "string"
+  const useLowerCase = isStringColumn && filter.caseSensitive === false
+
+  const needsStringCast = filter.columnId === "state"
+  const effectiveFieldName = needsStringCast ? `string(${fieldName})` : fieldName
+
   let escapedValue = filter.value
 
   if (needsQuotes) {
     escapedValue = escapeExprValue(filter.value)
-    return `${fieldName} ${operator} "${escapedValue}"`
+    if (useLowerCase) {
+      return `lower(${effectiveFieldName}) ${operator} "${escapedValue.toLowerCase()}"`
+    }
+    return `${effectiveFieldName} ${operator} "${escapedValue}"`
   } else {
-    return `${fieldName} ${operator} ${filter.value}`
+    return `${effectiveFieldName} ${operator} ${filter.value}`
   }
 }
 
@@ -284,37 +335,19 @@ export function columnFiltersToExpr(filters: ColumnFilter[], operator: string = 
 }
 
 export function getColumnType(columnId: string): ColumnType {
-  if (SIZE_COLUMNS.includes(columnId as typeof SIZE_COLUMNS[number])) {
-    return "size"
-  }
-
-  if (DURATION_COLUMNS.includes(columnId as typeof DURATION_COLUMNS[number])) {
-    return "duration"
-  }
-
-  if (NUMERIC_COLUMNS.includes(columnId as typeof NUMERIC_COLUMNS[number])) {
-    return "number"
-  }
-
-  if (DATE_COLUMNS.includes(columnId as typeof DATE_COLUMNS[number])) {
-    return "date"
-  }
-
-
-  if (BOOLEAN_COLUMNS.includes(columnId as typeof BOOLEAN_COLUMNS[number])) {
-    return "boolean"
-  }
-
-  return "string"
+  return COLUMN_TYPE_MAP.get(columnId) || "string"
 }
 
 export function getDefaultOperation(columnType: ColumnType): FilterOperation {
   switch (columnType) {
     case "size":
+    case "speed":
     case "duration":
+    case "percentage":
     case "number":
     case "date":
       return "gt"
+    case "enum":
     case "boolean":
       return "eq"
     default:
@@ -325,11 +358,14 @@ export function getDefaultOperation(columnType: ColumnType): FilterOperation {
 export function getOperations(columnType: ColumnType) {
   switch (columnType) {
     case "size":
+    case "speed":
     case "duration":
+    case "percentage":
     case "number":
       return NUMERIC_OPERATIONS
     case "date":
       return DATE_OPERATIONS
+    case "enum":
     case "boolean":
       return BOOLEAN_OPERATIONS
     default:
