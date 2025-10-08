@@ -131,6 +131,41 @@ const getTrackerDisplayMeta = (tracker?: string) => {
 
 TrackerIconCell.displayName = "TrackerIconCell"
 
+const getTrackerAwareStatusLabel = (torrent: Torrent, supportsTrackerHealth: boolean): string => {
+  if (supportsTrackerHealth) {
+    if (torrent.tracker_health === "unregistered") {
+      return "Unregistered"
+    }
+    if (torrent.tracker_health === "tracker_down") {
+      return "Tracker Down"
+    }
+  }
+
+  return getStateLabel(torrent.state)
+}
+
+const getTrackerAwareStatusSortMeta = (torrent: Torrent, supportsTrackerHealth: boolean) => {
+  if (supportsTrackerHealth) {
+    if (torrent.tracker_health === "unregistered") {
+      return {
+        priority: 0,
+        label: "Unregistered",
+      }
+    }
+    if (torrent.tracker_health === "tracker_down") {
+      return {
+        priority: 1,
+        label: "Tracker Down",
+      }
+    }
+  }
+
+  return {
+    priority: 10,
+    label: getStateLabel(torrent.state),
+  }
+}
+
 export const createColumns = (
   incognitoMode: boolean,
   selectionEnhancers?: {
@@ -333,11 +368,37 @@ export const createColumns = (
   {
     accessorKey: "state",
     header: "Status",
+    sortingFn: (rowA, rowB) => {
+      const metaA = getTrackerAwareStatusSortMeta(rowA.original, supportsTrackerHealth)
+      const metaB = getTrackerAwareStatusSortMeta(rowB.original, supportsTrackerHealth)
+
+      if (metaA.priority !== metaB.priority) {
+        return metaA.priority - metaB.priority
+      }
+
+      const labelComparison = metaA.label.localeCompare(metaB.label, undefined, { sensitivity: "accent", numeric: false })
+      if (labelComparison !== 0) {
+        return labelComparison
+      }
+
+      const stateA = rowA.original.state || ""
+      const stateB = rowB.original.state || ""
+
+      const stateComparison = stateA.localeCompare(stateB, undefined, { sensitivity: "accent", numeric: false })
+      if (stateComparison !== 0) {
+        return stateComparison
+      }
+
+      const nameA = rowA.original.name || ""
+      const nameB = rowB.original.name || ""
+
+      return nameA.localeCompare(nameB, undefined, { sensitivity: "accent", numeric: false })
+    },
     cell: ({ row }) => {
       const state = row.original.state
       const priority = row.original.priority
-      const label = getStateLabel(state)
       const isQueued = state === "queuedDL" || state === "queuedUP"
+      const displayLabelBase = getTrackerAwareStatusLabel(row.original, supportsTrackerHealth)
 
       const variant =
         state === "downloading" ? "default" :state === "stalledDL" ? "secondary" :state === "uploading" ? "default" :state === "stalledUP" ? "secondary" :state === "pausedDL" || state === "pausedUP" ? "secondary" :state === "queuedDL" || state === "queuedUP" ? "secondary" :state === "error" || state === "missingFiles" ? "destructive" :"outline"
@@ -345,7 +406,7 @@ export const createColumns = (
       const trackerHealth = row.original.tracker_health ?? null
       let badgeVariant: "default" | "secondary" | "destructive" | "outline" = variant
       let badgeClass = ""
-      let displayLabel = label
+      let displayLabel = displayLabelBase
 
       if (supportsTrackerHealth) {
         if (trackerHealth === "tracker_down") {

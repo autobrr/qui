@@ -144,6 +144,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	}
 
 	trackerHealthSupported := client != nil && client.supportsTrackerInclude()
+	needsTrackerHealthSorting := trackerHealthSupported && sort == "state"
 
 	// Get MainData for tracker filtering (if needed)
 	var mainData *qbt.MainData
@@ -170,6 +171,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	// Determine if any status filter needs manual filtering
 	trackerStatusFilters := filtersRequireTrackerData(filters)
 	needsManualStatusFiltering := trackerStatusFilters
+	needsTrackerHydration := trackerStatusFilters || needsTrackerHealthSorting
 	if !needsManualStatusFiltering && len(filters.Status) > 0 {
 		for _, status := range filters.Status {
 			switch qbt.TorrentFilter(status) {
@@ -226,7 +228,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		filteredTorrents = syncManager.GetTorrents(torrentFilterOptions)
 
 		// Apply manual filtering for multiple selections
-		if trackerStatusFilters && trackerHealthSupported {
+		if trackerHealthSupported && needsTrackerHydration {
 			filteredTorrents, trackerMap, _ = sm.enrichTorrentsWithTrackerData(ctx, client, filteredTorrents, trackerMap, true)
 		}
 
@@ -288,6 +290,10 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 		// Use library filtering and sorting
 		filteredTorrents = syncManager.GetTorrents(torrentFilterOptions)
+
+		if trackerHealthSupported && needsTrackerHealthSorting {
+			filteredTorrents, trackerMap, _ = sm.enrichTorrentsWithTrackerData(ctx, client, filteredTorrents, trackerMap, true)
+		}
 	}
 
 	log.Debug().
@@ -305,6 +311,10 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		Int("instanceID", instanceID).
 		Int("filtered", len(filteredTorrents)).
 		Msg("Applied search filtering")
+
+	if sort == "state" {
+		sm.sortTorrentsByStatus(filteredTorrents, order == "desc", trackerHealthSupported)
+	}
 
 	// Apply custom sorting for priority field
 	// qBittorrent's native sorting treats 0 as lowest, but we want it as highest (no priority)
@@ -1952,6 +1962,79 @@ func (sm *SyncManager) matchTorrentStatus(torrent qbt.Torrent, status string) bo
 
 	// For everything else, just do direct equality with the string representation
 	return string(torrent.State) == status
+}
+
+func (sm *SyncManager) trackerHealthPriority(torrent qbt.Torrent, trackerHealthSupported bool) int {
+	if !trackerHealthSupported {
+		return 10
+	}
+
+	switch sm.determineTrackerHealth(torrent) {
+	case TrackerHealthUnregistered:
+		return 0
+	case TrackerHealthDown:
+		return 1
+	default:
+		return 10
+	}
+}
+
+func (sm *SyncManager) sortTorrentsByStatus(torrents []qbt.Torrent, desc bool, trackerHealthSupported bool) {
+	if len(torrents) == 0 {
+		return
+	}
+
+	type cacheKey struct {
+		hash string
+		name string
+	}
+
+	cache := make(map[cacheKey]int, len(torrents))
+	keyFor := func(t qbt.Torrent) cacheKey {
+		if t.Hash != "" {
+			return cacheKey{hash: t.Hash}
+		}
+		if t.InfohashV1 != "" {
+			return cacheKey{hash: t.InfohashV1}
+		}
+		if t.InfohashV2 != "" {
+			return cacheKey{hash: t.InfohashV2}
+		}
+		return cacheKey{name: t.Name}
+	}
+
+	getPriority := func(t qbt.Torrent) int {
+		key := keyFor(t)
+		if priority, ok := cache[key]; ok {
+			return priority
+		}
+		priority := sm.trackerHealthPriority(t, trackerHealthSupported)
+		cache[key] = priority
+		return priority
+	}
+
+	direction := 1
+	if desc {
+		direction = -1
+	}
+
+	slices.SortStableFunc(torrents, func(a, b qbt.Torrent) int {
+		priorityComparison := getPriority(a) - getPriority(b)
+		if priorityComparison != 0 {
+			return priorityComparison * direction
+		}
+
+		stateA := strings.ToLower(string(a.State))
+		stateB := strings.ToLower(string(b.State))
+		stateComparison := strings.Compare(stateA, stateB)
+		if stateComparison != 0 {
+			return stateComparison * direction
+		}
+
+		nameA := strings.ToLower(a.Name)
+		nameB := strings.ToLower(b.Name)
+		return strings.Compare(nameA, nameB) * direction
+	})
 }
 
 // sortTorrentsByPriority sorts torrents by priority (queue position) with special handling for 0 values

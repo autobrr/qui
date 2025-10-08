@@ -197,6 +197,64 @@ func TestFiltersRequireTrackerData(t *testing.T) {
 	}
 }
 
+func TestSyncManager_SortTorrentsByStatus(t *testing.T) {
+	sm := &SyncManager{}
+
+	torrents := []qbt.Torrent{
+		{
+			Hash:  "unreg",
+			Name:  "Unregistered Torrent",
+			State: qbt.TorrentStatePausedUp,
+			Trackers: []qbt.TorrentTracker{
+				{
+					Status:  qbt.TrackerStatusNotWorking,
+					Message: "Torrent not found in tracker database",
+				},
+			},
+		},
+		{
+			Hash:  "down",
+			Name:  "Tracker Down Torrent",
+			State: qbt.TorrentStateStalledUp,
+			Trackers: []qbt.TorrentTracker{
+				{
+					Status:  qbt.TrackerStatusNotWorking,
+					Message: "Tracker is down",
+				},
+			},
+		},
+		{
+			Hash:  "uploading",
+			Name:  "Seeding Torrent",
+			State: qbt.TorrentStateUploading,
+		},
+		{
+			Hash:  "downloading",
+			Name:  "Downloading Torrent",
+			State: qbt.TorrentStateDownloading,
+		},
+		{
+			Hash:  "paused",
+			Name:  "Paused Torrent",
+			State: qbt.TorrentStatePausedDl,
+		},
+	}
+
+	hashes := func(ts []qbt.Torrent) []string {
+		out := make([]string, len(ts))
+		for i, torrent := range ts {
+			out[i] = torrent.Hash
+		}
+		return out
+	}
+
+	sm.sortTorrentsByStatus(torrents, false, true)
+	assert.Equal(t, []string{"unreg", "down", "downloading", "paused", "uploading"}, hashes(torrents))
+
+	sm.sortTorrentsByStatus(torrents, true, true)
+	assert.Equal(t, []string{"uploading", "paused", "downloading", "down", "unreg"}, hashes(torrents))
+}
+
 // TestSyncManager_SearchFunctionality tests the search and filtering logic
 func TestSyncManager_SearchFunctionality(t *testing.T) {
 	sm := &SyncManager{}
