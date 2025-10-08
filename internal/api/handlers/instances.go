@@ -109,12 +109,8 @@ func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *
 
 	var connectionStatus string
 	if client != nil {
-		if syncManager := client.GetSyncManager(); syncManager != nil {
-			if state := syncManager.GetServerState(); state.ConnectionStatus != "" {
-				if status := strings.TrimSpace(state.ConnectionStatus); status != "" {
-					connectionStatus = strings.ToLower(status)
-				}
-			}
+		if status := strings.TrimSpace(client.GetCachedConnectionStatus()); status != "" {
+			connectionStatus = strings.ToLower(status)
 		}
 	}
 
