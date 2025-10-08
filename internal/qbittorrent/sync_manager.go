@@ -312,6 +312,10 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		Int("filtered", len(filteredTorrents)).
 		Msg("Applied search filtering")
 
+	if sort == "name" {
+		sm.sortTorrentsByNameCaseInsensitive(filteredTorrents, order == "desc")
+	}
+
 	if sort == "state" {
 		sm.sortTorrentsByStatus(filteredTorrents, order == "desc", trackerHealthSupported)
 	}
@@ -2094,6 +2098,34 @@ func (sm *SyncManager) sortTorrentsByStatus(torrents []qbt.Torrent, desc bool, t
 			return strings.Compare(nameB, nameA)
 		}
 		return strings.Compare(nameA, nameB)
+	})
+}
+
+// sortTorrentsByNameCaseInsensitive enforces a case-insensitive ordering for torrent names.
+// qBittorrent sorts names using a case-sensitive comparison, which places lowercase entries
+// after uppercase and special characters. This normalizes the comparison while keeping the
+// original case as a secondary tiebreaker for deterministic ordering.
+func (sm *SyncManager) sortTorrentsByNameCaseInsensitive(torrents []qbt.Torrent, desc bool) {
+	if len(torrents) == 0 {
+		return
+	}
+
+	slices.SortStableFunc(torrents, func(a, b qbt.Torrent) int {
+		nameA := strings.ToLower(a.Name)
+		nameB := strings.ToLower(b.Name)
+
+		cmp := strings.Compare(nameA, nameB)
+		if cmp == 0 {
+			cmp = strings.Compare(a.Name, b.Name)
+			if cmp == 0 {
+				cmp = strings.Compare(a.Hash, b.Hash)
+			}
+		}
+
+		if desc {
+			return -cmp
+		}
+		return cmp
 	})
 }
 
