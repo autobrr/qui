@@ -20,6 +20,11 @@ import {
 } from "@/components/ui/context-menu"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { SearchInput } from "@/components/ui/SearchInput"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger
+} from "@/components/ui/tooltip"
 
 import { useDebounce } from "@/hooks/useDebounce"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
@@ -35,6 +40,7 @@ import {
   CheckCircle2,
   Download,
   Edit,
+  Info,
   MoveRight,
   PlayCircle,
   Plus,
@@ -916,6 +922,20 @@ const FilterSidebarComponent = ({
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <h3 className="font-semibold">Filters</h3>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="text-muted-foreground hover:text-foreground transition-colors"
+                    aria-label="Filter selection tips"
+                  >
+                    <Info className="h-4 w-4" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" align="start" className="max-w-[220px]">
+                  Left click cycles include and neutral. Cmd/Ctrl + click toggles exclusion.
+                </TooltipContent>
+              </Tooltip>
               {(isLoading || isStaleData) && (
                 <span className="text-xs text-muted-foreground animate-pulse">Loading...</span>
               )}
