@@ -240,6 +240,16 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const displayInfohashV2 = incognitoMode && resolvedInfohashV2 ? incognitoHash : resolvedInfohashV2
   const displaySavePath = incognitoMode && properties?.save_path ? getLinuxSavePath(torrent.hash) : properties?.save_path
 
+  const formatLimitLabel = (limit: number | null | undefined) => {
+    if (limit == null || !Number.isFinite(limit) || limit <= 0) {
+      return "∞"
+    }
+    return formatSpeedWithUnit(limit, speedUnit)
+  }
+
+  const downloadLimitLabel = formatLimitLabel(properties?.dl_limit ?? torrent.dl_limit)
+  const uploadLimitLabel = formatLimitLabel(properties?.up_limit ?? torrent.up_limit)
+
   // Show minimal loading state while waiting for initial data
   const isInitialLoad = !isReady || (loadingProperties && !properties)
   if (isInitialLoad) {
@@ -344,11 +354,13 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                             <p className="text-xs text-muted-foreground">Download Speed</p>
                             <p className="text-base font-semibold text-green-500">{formatSpeedWithUnit(properties.dl_speed || 0, speedUnit)}</p>
                             <p className="text-xs text-muted-foreground">avg: {formatSpeedWithUnit(properties.dl_speed_avg || 0, speedUnit)}</p>
+                            <p className="text-xs text-muted-foreground">Limit: {downloadLimitLabel}</p>
                           </div>
                           <div className="space-y-1">
                             <p className="text-xs text-muted-foreground">Upload Speed</p>
                             <p className="text-base font-semibold text-blue-500">{formatSpeedWithUnit(properties.up_speed || 0, speedUnit)}</p>
                             <p className="text-xs text-muted-foreground">avg: {formatSpeedWithUnit(properties.up_speed_avg || 0, speedUnit)}</p>
+                            <p className="text-xs text-muted-foreground">Limit: {uploadLimitLabel}</p>
                           </div>
                         </div>
                       </div>
@@ -610,7 +622,9 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                                 <>
                                   <Separator className="opacity-50" />
                                   <div className="bg-background/50 p-2 rounded">
-                                    <p className="text-xs text-muted-foreground">{messageContent}</p>
+                                    <div className="text-xs text-muted-foreground break-words">
+                                      {renderTextWithLinks(messageContent)}
+                                    </div>
                                   </div>
                                 </>
                               )}

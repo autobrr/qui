@@ -76,6 +76,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
   const [showSetTagsDialog, setShowSetTagsDialog] = useState(false)
   const [showRemoveTagsDialog, setShowRemoveTagsDialog] = useState(false)
   const [showCategoryDialog, setShowCategoryDialog] = useState(false)
+  const [showCreateCategoryDialog, setShowCreateCategoryDialog] = useState(false)
   const [showShareLimitDialog, setShowShareLimitDialog] = useState(false)
   const [showSpeedLimitDialog, setShowSpeedLimitDialog] = useState(false)
   const [showRecheckDialog, setShowRecheckDialog] = useState(false)
@@ -190,6 +191,30 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
         toastCount = variables.clientCount
       }
       showSuccessToast(variables.action, Math.max(1, toastCount), variables.deleteFiles, variables.enable)
+
+      // Close dialogs after successful action
+      if (variables.action === "delete") {
+        setShowDeleteDialog(false)
+      } else if (variables.action === "addTags") {
+        setShowAddTagsDialog(false)
+      } else if (variables.action === "setTags") {
+        setShowSetTagsDialog(false)
+      } else if (variables.action === "removeTags") {
+        setShowRemoveTagsDialog(false)
+      } else if (variables.action === "setCategory") {
+        setShowCategoryDialog(false)
+        setShowCreateCategoryDialog(false)
+      } else if (variables.action === "setShareLimit") {
+        setShowShareLimitDialog(false)
+      } else if (variables.action === "setUploadLimit" || variables.action === "setDownloadLimit") {
+        setShowSpeedLimitDialog(false)
+      } else if (variables.action === "setLocation") {
+        setShowLocationDialog(false)
+      } else if (variables.action === "recheck") {
+        setShowRecheckDialog(false)
+      } else if (variables.action === "reannounce") {
+        setShowReannounceDialog(false)
+      }
 
       onActionComplete?.()
     },
@@ -551,6 +576,12 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     setShowCategoryDialog(true)
   }, [])
 
+  const prepareCreateCategoryAction = useCallback((hashes: string[], torrents?: Torrent[]) => {
+    setContextHashes(hashes)
+    if (torrents) setContextTorrents(torrents)
+    setShowCreateCategoryDialog(true)
+  }, [])
+
   const prepareRecheckAction = useCallback((hashes: string[], count?: number) => {
     const actualCount = count || hashes.length
     setContextHashes(hashes)
@@ -603,6 +634,8 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     setShowRemoveTagsDialog,
     showCategoryDialog,
     setShowCategoryDialog,
+    showCreateCategoryDialog,
+    setShowCreateCategoryDialog,
     showShareLimitDialog,
     setShowShareLimitDialog,
     showSpeedLimitDialog,
@@ -636,6 +669,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     prepareDeleteAction,
     prepareTagsAction,
     prepareCategoryAction,
+    prepareCreateCategoryAction,
     prepareShareLimitAction,
     prepareSpeedLimitAction,
     prepareRecheckAction,

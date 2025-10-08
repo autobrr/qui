@@ -7,7 +7,7 @@ import { useState, useEffect } from "react"
 
 export type ViewMode = "normal" | "compact" | "ultra-compact"
 
-export function usePersistedCompactViewState(defaultMode: ViewMode = "normal") {
+export function usePersistedCompactViewState(defaultMode: ViewMode = "compact") {
   const storageKey = "qui-torrent-view-mode"
 
   // Initialize state from localStorage or default value

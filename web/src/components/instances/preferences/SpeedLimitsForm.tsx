@@ -210,59 +210,119 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
       className="space-y-6"
     >
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <form.Field name="dl_limit">
+        <form.Field 
+          name="dl_limit"
+          validators={{
+            onChange: ({ value }) => {
+              if (value < 0) {
+                return 'Global download rate limit must be greater than 0 or disabled'
+              }
+              return undefined
+            }
+          }}
+        >
           {(field) => (
-            <SpeedLimitInput
-              label="Download Limit"
-              value={(field.state.value as number) ?? 0}
-              onChange={(value) => {
-                setIsFormDirty(true)
-                field.handleChange(value)
-              }}
-              icon={Download}
-            />
+            <div className="space-y-2">
+              <SpeedLimitInput
+                label="Download Limit"
+                value={(field.state.value as number) ?? 0}
+                onChange={(value) => {
+                  setIsFormDirty(true)
+                  field.handleChange(value)
+                }}
+                icon={Download}
+              />
+              {field.state.meta.errors.length > 0 && (
+                <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+              )}
+            </div>
           )}
         </form.Field>
 
-        <form.Field name="up_limit">
+        <form.Field 
+          name="up_limit"
+          validators={{
+            onChange: ({ value }) => {
+              if (value < 0) {
+                return 'Global upload rate limit must be greater than 0 or disabled'
+              }
+              return undefined
+            }
+          }}
+        >
           {(field) => (
-            <SpeedLimitInput
-              label="Upload Limit"
-              value={(field.state.value as number) ?? 0}
-              onChange={(value) => {
-                setIsFormDirty(true)
-                field.handleChange(value)
-              }}
-              icon={Upload}
-            />
+            <div className="space-y-2">
+              <SpeedLimitInput
+                label="Upload Limit"
+                value={(field.state.value as number) ?? 0}
+                onChange={(value) => {
+                  setIsFormDirty(true)
+                  field.handleChange(value)
+                }}
+                icon={Upload}
+              />
+              {field.state.meta.errors.length > 0 && (
+                <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+              )}
+            </div>
           )}
         </form.Field>
 
-        <form.Field name="alt_dl_limit">
+        <form.Field 
+          name="alt_dl_limit"
+          validators={{
+            onChange: ({ value }) => {
+              if (value < 0) {
+                return 'Alternative download rate limit must be greater than 0 or disabled'
+              }
+              return undefined
+            }
+          }}
+        >
           {(field) => (
-            <SpeedLimitInput
-              label="Alternative Download Limit"
-              value={(field.state.value as number) ?? 0}
-              onChange={(value) => {
-                setIsFormDirty(true)
-                field.handleChange(value)
-              }}
-              icon={Download}
-            />
+            <div className="space-y-2">
+              <SpeedLimitInput
+                label="Alternative Download Limit"
+                value={(field.state.value as number) ?? 0}
+                onChange={(value) => {
+                  setIsFormDirty(true)
+                  field.handleChange(value)
+                }}
+                icon={Download}
+              />
+              {field.state.meta.errors.length > 0 && (
+                <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+              )}
+            </div>
           )}
         </form.Field>
 
-        <form.Field name="alt_up_limit">
+        <form.Field 
+          name="alt_up_limit"
+          validators={{
+            onChange: ({ value }) => {
+              if (value < 0) {
+                return 'Alternative upload rate limit must be greater than 0 or disabled'
+              }
+              return undefined
+            }
+          }}
+        >
           {(field) => (
-            <SpeedLimitInput
-              label="Alternative Upload Limit"
-              value={(field.state.value as number) ?? 0}
-              onChange={(value) => {
-                setIsFormDirty(true)
-                field.handleChange(value)
-              }}
-              icon={Upload}
-            />
+            <div className="space-y-2">
+              <SpeedLimitInput
+                label="Alternative Upload Limit"
+                value={(field.state.value as number) ?? 0}
+                onChange={(value) => {
+                  setIsFormDirty(true)
+                  field.handleChange(value)
+                }}
+                icon={Upload}
+              />
+              {field.state.meta.errors.length > 0 && (
+                <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
+              )}
+            </div>
           )}
         </form.Field>
       </div>

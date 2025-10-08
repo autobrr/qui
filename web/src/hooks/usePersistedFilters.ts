@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState, useEffect } from "react"
+import { useEffect, useState } from "react"
 import type { TorrentFilters } from "@/types"
 
 export function usePersistedFilters(instanceId: number) {
@@ -21,6 +21,7 @@ export function usePersistedFilters(instanceId: number) {
       excludeTags: instance.excludeTags || [],
       trackers: instance.trackers || [],
       excludeTrackers: instance.excludeTrackers || [],
+      expr: instance.expr || "",
     }
   })
 
@@ -38,6 +39,7 @@ export function usePersistedFilters(instanceId: number) {
       excludeTags: instance.excludeTags || [],
       trackers: instance.trackers || [],
       excludeTrackers: instance.excludeTrackers || [],
+      expr: instance.expr || "",
     })
   }, [instanceId])
 
@@ -54,6 +56,7 @@ export function usePersistedFilters(instanceId: number) {
       excludeTags: filters.excludeTags,
       trackers: filters.trackers,
       excludeTrackers: filters.excludeTrackers,
+      expr: filters.expr,
     }))
   }, [filters, instanceId])
 

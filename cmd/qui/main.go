@@ -32,6 +32,7 @@ import (
 	"github.com/autobrr/qui/internal/polar"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/license"
+	"github.com/autobrr/qui/internal/services/trackericons"
 	"github.com/autobrr/qui/internal/update"
 	"github.com/autobrr/qui/pkg/sqlite3store"
 )
@@ -433,6 +434,13 @@ func (app *Application) runServer() {
 
 	log.Info().Str("version", buildinfo.Version).Msg("Starting qui")
 
+	trackerIconService, err := trackericons.NewService(cfg.GetDataDir(), buildinfo.UserAgent)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to prepare tracker icon cache")
+	}
+	// Make tracker icon service globally accessible for background fetching
+	trackericons.SetGlobal(trackerIconService)
+
 	// init polar client
 	polarClient := polar.NewClient(polar.WithOrganizationID(app.polarOrgID), polar.WithEnvironment(os.Getenv("QUI__POLAR_ENVIRONMENT")), polar.WithUserAgent(buildinfo.UserAgent))
 	if app.polarOrgID != "" {
@@ -460,7 +468,7 @@ func (app *Application) runServer() {
 
 	// Initialize services
 	authService := auth.NewService(db.Conn())
-	licenseService := license.NewLicenseService(licenseRepo, polarClient)
+	licenseService := license.NewLicenseService(licenseRepo, polarClient, cfg.GetConfigDir())
 
 	go func() {
 		checker := license.NewLicenseChecker(licenseService)
@@ -527,16 +535,17 @@ func (app *Application) runServer() {
 
 	// Start server in goroutine
 	httpServer := api.NewServer(&api.Dependencies{
-		Config:            cfg,
-		Version:           buildinfo.Version,
-		AuthService:       authService,
-		SessionManager:    sessionManager,
-		InstanceStore:     instanceStore,
-		ClientAPIKeyStore: clientAPIKeyStore,
-		ClientPool:        clientPool,
-		SyncManager:       syncManager,
-		LicenseService:    licenseService,
-		UpdateService:     updateService,
+		Config:             cfg,
+		Version:            buildinfo.Version,
+		AuthService:        authService,
+		SessionManager:     sessionManager,
+		InstanceStore:      instanceStore,
+		ClientAPIKeyStore:  clientAPIKeyStore,
+		ClientPool:         clientPool,
+		SyncManager:        syncManager,
+		LicenseService:     licenseService,
+		UpdateService:      updateService,
+		TrackerIconService: trackerIconService,
 	})
 
 	errorChannel := make(chan error)

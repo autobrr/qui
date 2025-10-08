@@ -38,6 +38,16 @@ func TestSyncManager_FilteringAndSorting(t *testing.T) {
 	torrents[8].State = "pausedUP"
 	torrents[9].State = "queuedDL"
 
+	torrents[3].Trackers = []qbt.TorrentTracker{{
+		Status:  qbt.TrackerStatusNotWorking,
+		Message: "Torrent not registered on origin",
+	}}
+
+	torrents[4].Trackers = []qbt.TorrentTracker{{
+		Status:  qbt.TrackerStatusNotWorking,
+		Message: "Tracker is down for maintenance",
+	}}
+
 	t.Run("matchTorrentStatus filters correctly", func(t *testing.T) {
 		testCases := []struct {
 			status   string
@@ -49,6 +59,8 @@ func TestSyncManager_FilteringAndSorting(t *testing.T) {
 			{"paused", 2},
 			{"active", 4},
 			{"errored", 1},
+			{"unregistered", 1},
+			{"tracker_down", 1},
 		}
 
 		for _, tc := range testCases {

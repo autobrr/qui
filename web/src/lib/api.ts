@@ -8,7 +8,12 @@ import type {
   AuthResponse,
   Category,
   InstanceFormData,
+  InstanceCapabilities,
   InstanceResponse,
+  QBittorrentAppInfo,
+  TorrentCreationParams,
+  TorrentCreationTask,
+  TorrentCreationTaskResponse,
   TorrentFilters,
   TorrentResponse,
   User
@@ -32,7 +37,10 @@ class ApiClient {
     })
 
     if (!response.ok) {
-      if (response.status === 401 && !window.location.pathname.startsWith(withBasePath("/login")) && !window.location.pathname.startsWith(withBasePath("/setup"))) {
+      // Don't auto-redirect for auth check endpoints - let React Router handle navigation
+      const isAuthCheckEndpoint = endpoint === "/auth/me" || endpoint === "/auth/validate"
+
+      if (response.status === 401 && !isAuthCheckEndpoint && !window.location.pathname.startsWith(withBasePath("/login")) && !window.location.pathname.startsWith(withBasePath("/setup"))) {
         window.location.href = withBasePath("/login")
         throw new Error("Session expired")
       }
@@ -96,6 +104,35 @@ class ApiClient {
     return this.request("/auth/logout", { method: "POST" })
   }
 
+  async validate(): Promise<{
+    username: string
+    auth_method?: string
+    profile_picture?: string
+  }> {
+    return this.request("/auth/validate")
+  }
+
+  async getOIDCConfig(): Promise<{
+    enabled: boolean
+    authorizationUrl: string
+    state: string
+    disableBuiltInLogin: boolean
+    issuerUrl: string
+  }> {
+    try {
+      return await this.request("/auth/oidc/config")
+    } catch {
+      // Return default config if OIDC is not configured
+      return {
+        enabled: false,
+        authorizationUrl: "",
+        state: "",
+        disableBuiltInLogin: false,
+        issuerUrl: "",
+      }
+    }
+  }
+
   // Instance endpoints
   async getInstances(): Promise<InstanceResponse[]> {
     return this.request<InstanceResponse[]>("/instances")
@@ -124,6 +161,10 @@ class ApiClient {
 
   async testConnection(id: number): Promise<{ connected: boolean; message: string }> {
     return this.request(`/instances/${id}/test`, { method: "POST" })
+  }
+
+  async getInstanceCapabilities(id: number): Promise<InstanceCapabilities> {
+    return this.request<InstanceCapabilities>(`/instances/${id}/capabilities`)
   }
 
 
@@ -285,6 +326,41 @@ class ApiClient {
     return this.request(`/instances/${instanceId}/torrents/${hash}/files`)
   }
 
+  async exportTorrent(instanceId: number, hash: string): Promise<{ blob: Blob; filename: string | null }> {
+    const encodedHash = encodeURIComponent(hash)
+    const response = await fetch(`${API_BASE}/instances/${instanceId}/torrents/${encodedHash}/export`, {
+      method: "GET",
+      credentials: "include",
+    })
+
+    if (!response.ok) {
+      if (response.status === 401 && !window.location.pathname.startsWith(withBasePath("/login")) && !window.location.pathname.startsWith(withBasePath("/setup"))) {
+        window.location.href = withBasePath("/login")
+        throw new Error("Session expired")
+      }
+
+      let errorMessage = `HTTP error! status: ${response.status}`
+      try {
+        const errorData = await response.json()
+        errorMessage = errorData.error || errorData.message || errorMessage
+      } catch {
+        try {
+          const errorText = await response.text()
+          errorMessage = errorText || errorMessage
+        } catch {
+          // nothing to see here
+        }
+      }
+      throw new Error(errorMessage)
+    }
+
+    const blob = await response.blob()
+    const disposition = response.headers.get("content-disposition")
+    const filename = parseContentDispositionFilename(disposition)
+
+    return { blob, filename }
+  }
+
   async getTorrentPeers(instanceId: number, hash: string): Promise<any> {
     return this.request(`/instances/${instanceId}/torrents/${hash}/peers`)
   }
@@ -300,6 +376,65 @@ class ApiClient {
     return this.request(`/instances/${instanceId}/torrents/ban-peers`, {
       method: "POST",
       body: JSON.stringify({ peers }),
+    })
+  }
+
+  // Torrent Creator
+  async createTorrent(instanceId: number, params: TorrentCreationParams): Promise<TorrentCreationTaskResponse> {
+    return this.request(`/instances/${instanceId}/torrent-creator`, {
+      method: "POST",
+      body: JSON.stringify(params),
+    })
+  }
+
+  async getTorrentCreationTasks(instanceId: number, taskID?: string): Promise<TorrentCreationTask[]> {
+    const query = taskID ? `?taskID=${encodeURIComponent(taskID)}` : ""
+    return this.request(`/instances/${instanceId}/torrent-creator/status${query}`)
+  }
+
+  async getActiveTaskCount(instanceId: number): Promise<number> {
+    const response = await this.request<{ count: number }>(`/instances/${instanceId}/torrent-creator/count`)
+    return response.count
+  }
+
+  async downloadTorrentFile(instanceId: number, taskID: string): Promise<void> {
+    const response = await fetch(
+      `${API_BASE}/instances/${instanceId}/torrent-creator/${encodeURIComponent(taskID)}/file`,
+      {
+        method: "GET",
+        credentials: "include",
+      }
+    )
+
+    if (!response.ok) {
+      throw new Error(`Failed to download torrent file: ${response.statusText}`)
+    }
+
+    // Get filename from Content-Disposition header
+    const contentDisposition = response.headers.get("Content-Disposition")
+    let filename = `${taskID}.torrent`
+    if (contentDisposition) {
+      const filenameMatch = contentDisposition.match(/filename="?([^";]+)"?/)
+      if (filenameMatch) {
+        filename = filenameMatch[1]
+      }
+    }
+
+    // Create blob and download
+    const blob = await response.blob()
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    window.URL.revokeObjectURL(url)
+  }
+
+  async deleteTorrentCreationTask(instanceId: number, taskID: string): Promise<{ message: string }> {
+    return this.request(`/instances/${instanceId}/torrent-creator/${encodeURIComponent(taskID)}`, {
+      method: "DELETE",
     })
   }
 
@@ -345,6 +480,10 @@ class ApiClient {
       method: "DELETE",
       body: JSON.stringify({ tags }),
     })
+  }
+
+  async getActiveTrackers(instanceId: number): Promise<Record<string, string>> {
+    return this.request(`/instances/${instanceId}/trackers`)
   }
 
   // User endpoints
@@ -494,6 +633,10 @@ class ApiClient {
     })
   }
 
+  async getQBittorrentAppInfo(instanceId: number): Promise<QBittorrentAppInfo> {
+    return this.request<QBittorrentAppInfo>(`/instances/${instanceId}/app-info`)
+  }
+
   async getLatestVersion(): Promise<{
     tag_name: string
     name?: string
@@ -515,6 +658,32 @@ class ApiClient {
       return null
     }
   }
+
+  async getTrackerIcons(): Promise<Record<string, string>> {
+    return this.request<Record<string, string>>("/tracker-icons")
+  }
 }
 
 export const api = new ApiClient()
+
+function parseContentDispositionFilename(header: string | null): string | null {
+  if (!header) {
+    return null
+  }
+
+  const utf8Match = header.match(/filename\*=UTF-8''([^;]+)/i)
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1])
+    } catch {
+      return utf8Match[1]
+    }
+  }
+
+  const quotedMatch = header.match(/filename="?([^";]+)"?/i)
+  if (quotedMatch?.[1]) {
+    return quotedMatch[1]
+  }
+
+  return null
+}

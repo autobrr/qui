@@ -106,6 +106,14 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("metricsPort", 9074)
 	c.viper.SetDefault("metricsBasicAuthUsers", "")
 
+	// OIDC defaults
+	c.viper.SetDefault("oidcEnabled", false)
+	c.viper.SetDefault("oidcIssuer", "")
+	c.viper.SetDefault("oidcClientId", "")
+	c.viper.SetDefault("oidcClientSecret", "")
+	c.viper.SetDefault("oidcRedirectUrl", "")
+	c.viper.SetDefault("oidcDisableBuiltInLogin", false)
+
 	// HTTP timeout defaults - increased for large qBittorrent instances
 	c.viper.SetDefault("httpTimeouts.readTimeout", 60)   // 60 seconds
 	c.viper.SetDefault("httpTimeouts.writeTimeout", 120) // 120 seconds for large responses
@@ -186,6 +194,14 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("metricsHost", envPrefix+"METRICS_HOST")
 	c.viper.BindEnv("metricsPort", envPrefix+"METRICS_PORT")
 	c.viper.BindEnv("metricsBasicAuthUsers", envPrefix+"METRICS_BASIC_AUTH_USERS")
+
+	// OIDC environment variables
+	c.viper.BindEnv("oidcEnabled", envPrefix+"OIDC_ENABLED")
+	c.viper.BindEnv("oidcIssuer", envPrefix+"OIDC_ISSUER")
+	c.viper.BindEnv("oidcClientId", envPrefix+"OIDC_CLIENT_ID")
+	c.viper.BindEnv("oidcClientSecret", envPrefix+"OIDC_CLIENT_SECRET")
+	c.viper.BindEnv("oidcRedirectUrl", envPrefix+"OIDC_REDIRECT_URL")
+	c.viper.BindEnv("oidcDisableBuiltInLogin", envPrefix+"OIDC_DISABLE_BUILT_IN_LOGIN")
 
 	// HTTP timeout environment variables
 	c.viper.BindEnv("httpTimeouts.readTimeout", envPrefix+"HTTP_READ_TIMEOUT")
@@ -325,6 +341,25 @@ logLevel = "{{ .logLevel }}"
 # Example: "prometheus:$2y$10$example_bcrypt_hash_here"
 # Leave empty to disable authentication (default)
 #metricsBasicAuthUsers = ""
+
+# OpenID Connect (OIDC) Configuration
+# Enable OIDC authentication
+#oidcEnabled = false
+
+# OIDC Issuer URL (e.g. https://auth.example.com)
+#oidcIssuer = ""
+
+# OIDC Client ID
+#oidcClientId = ""
+
+# OIDC Client Secret
+#oidcClientSecret = ""
+
+# OIDC Redirect URL (e.g. http://localhost:7476/api/auth/oidc/callback)
+#oidcRedirectUrl = ""
+
+# Disable Built-In Login Form (only works when OIDC is enabled)
+#oidcDisableBuiltInLogin = false
 
 # HTTP Timeouts (for large qBittorrent instances)
 # Increase these values if you experience timeouts with 10k+ torrents
@@ -558,9 +593,23 @@ func (c *AppConfig) GetDatabasePath() string {
 	return filepath.Join(c.dataDir, "qui.db")
 }
 
+// GetDataDir returns the resolved data directory path.
+func (c *AppConfig) GetDataDir() string {
+	return c.dataDir
+}
+
 // SetDataDir sets the data directory (used by CLI flags)
 func (c *AppConfig) SetDataDir(dir string) {
 	c.dataDir = dir
+}
+
+// GetConfigDir returns the directory containing the config file
+func (c *AppConfig) GetConfigDir() string {
+	if c.viper.ConfigFileUsed() != "" {
+		return filepath.Dir(c.viper.ConfigFileUsed())
+	}
+	// Fallback to default config directory when no config file is explicitly used
+	return GetDefaultConfigDir()
 }
 
 const encryptionKeySize = 32
