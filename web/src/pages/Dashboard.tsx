@@ -340,7 +340,7 @@ function InstanceCard({
               <Collapsible open={isAdvancedMetricsOpen} onOpenChange={setIsAdvancedMetricsOpen}>
                 <CollapsibleTrigger className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors w-full [&[data-state=open]>svg]:rotate-180">
                   <ChevronDown className="h-3 w-3 transition-transform" />
-                  <span>Show More</span>
+                  <span>{`Show ${isAdvancedMetricsOpen ? "less" : "more"}`}</span>
                 </CollapsibleTrigger>
                 <CollapsibleContent className="space-y-2 mt-2">
                   {serverState?.total_peer_connections !== undefined && (
