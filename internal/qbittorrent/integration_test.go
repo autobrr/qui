@@ -254,10 +254,10 @@ func TestSyncManager_SortTorrentsByStatus(t *testing.T) {
 	}
 
 	sm.sortTorrentsByStatus(torrents, true, true)
-	assert.Equal(t, []string{"unreg", "down", "downloading", "stalled_dl", "uploading", "paused"}, hashes(torrents))
+	assert.Equal(t, []string{"paused", "uploading", "stalled_dl", "downloading", "down", "unreg"}, hashes(torrents))
 
 	sm.sortTorrentsByStatus(torrents, false, true)
-	assert.Equal(t, []string{"paused", "uploading", "stalled_dl", "downloading", "down", "unreg"}, hashes(torrents))
+	assert.Equal(t, []string{"unreg", "down", "downloading", "stalled_dl", "uploading", "paused"}, hashes(torrents))
 }
 
 // TestSyncManager_SearchFunctionality tests the search and filtering logic

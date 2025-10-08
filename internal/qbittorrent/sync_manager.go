@@ -2072,32 +2072,36 @@ func (sm *SyncManager) sortTorrentsByStatus(torrents []qbt.Torrent, desc bool, t
 		metaB := getMeta(b)
 
 		if metaA.trackerPriority != metaB.trackerPriority {
+			cmp := metaA.trackerPriority - metaB.trackerPriority
 			if desc {
-				return metaA.trackerPriority - metaB.trackerPriority
+				return -cmp
 			}
-			return metaB.trackerPriority - metaA.trackerPriority
+			return cmp
 		}
 
 		if metaA.statePriority != metaB.statePriority {
+			cmp := metaA.statePriority - metaB.statePriority
 			if desc {
-				return metaA.statePriority - metaB.statePriority
+				return -cmp
 			}
-			return metaB.statePriority - metaA.statePriority
+			return cmp
 		}
 
 		if metaA.label != metaB.label {
+			cmp := strings.Compare(metaA.label, metaB.label)
 			if desc {
-				return strings.Compare(metaB.label, metaA.label)
+				return -cmp
 			}
-			return strings.Compare(metaA.label, metaB.label)
+			return cmp
 		}
 
 		nameA := strings.ToLower(a.Name)
 		nameB := strings.ToLower(b.Name)
+		cmp := strings.Compare(nameA, nameB)
 		if desc {
-			return strings.Compare(nameB, nameA)
+			return -cmp
 		}
-		return strings.Compare(nameA, nameB)
+		return cmp
 	})
 }
 
