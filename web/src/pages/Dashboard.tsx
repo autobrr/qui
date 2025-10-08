@@ -46,9 +46,18 @@ import {
 import { useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 
+interface DashboardInstanceStats {
+  instance: InstanceResponse
+  stats: TorrentStats | null
+  serverState: ServerState | null
+  torrentCounts?: TorrentCounts
+  altSpeedEnabled: boolean
+  isLoading: boolean
+  error: unknown
+}
 
 // Optimized hook to get all instance stats using shared TorrentResponse cache
-function useAllInstanceStats(instances: InstanceResponse[]) {
+function useAllInstanceStats(instances: InstanceResponse[]): DashboardInstanceStats[] {
   const dashboardQueries = useQueries({
     queries: instances.map(instance => ({
       // Use same query key pattern as useTorrentsList for first page with no filters
@@ -69,14 +78,15 @@ function useAllInstanceStats(instances: InstanceResponse[]) {
     })),
   })
 
-  return instances.map((instance, index) => {
-    const data = dashboardQueries[index].data
+  return instances.map<DashboardInstanceStats>((instance, index) => {
     const query = dashboardQueries[index]
+    const data = query.data as TorrentResponse | undefined
+
     return {
       instance,
       // Return TorrentStats directly - no more backwards compatibility conversion
-      stats: data?.stats || null,
-      serverState: data?.serverState || null,
+      stats: data?.stats ?? null,
+      serverState: data?.serverState ?? null,
       torrentCounts: data?.counts,
       // Include alt speed status from server state to avoid separate API call
       altSpeedEnabled: data?.serverState?.use_alt_speed_limits || false,
@@ -93,15 +103,7 @@ function InstanceCard({
   isAdvancedMetricsOpen,
   setIsAdvancedMetricsOpen,
 }: {
-  instanceData: {
-    instance: InstanceResponse
-    stats: any
-    serverState: any
-    torrentCounts: any
-    altSpeedEnabled: boolean
-    isLoading: boolean
-    error: any
-  }
+  instanceData: DashboardInstanceStats
   isAdvancedMetricsOpen: boolean
   setIsAdvancedMetricsOpen: (open: boolean) => void
 }) {
@@ -135,7 +137,7 @@ function InstanceCard({
   // Determine card state
   const isFirstLoad = isLoading && !stats
   const isDisconnected = (stats && !instance.connected) || (!isFirstLoad && !instance.connected)
-  const hasError = error || (!isFirstLoad && !stats)
+  const hasError = Boolean(error) || (!isFirstLoad && !stats)
   const hasDecryptionOrRecentErrors = instance.hasDecryptionError || (instance.recentErrors && instance.recentErrors.length > 0)
 
   const rawConnectionStatus = serverState?.connection_status ?? instance.connectionStatus ?? ""
@@ -442,7 +444,7 @@ function InstanceCard({
   )
 }
 
-function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: InstanceResponse, stats: TorrentStats | null, serverState: ServerState | null, torrentCounts: TorrentCounts | undefined }> }) {
+function GlobalStatsCards({ statsData }: { statsData: DashboardInstanceStats[] }) {
   const [speedUnit] = useSpeedUnits()
   const globalStats = useMemo(() => {
     const connected = statsData.filter(({ instance }) => instance?.connected).length
@@ -546,7 +548,7 @@ function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: Instance
   )
 }
 
-function GlobalAllTimeStats({ statsData }: { statsData: Array<{ instance: InstanceResponse, stats: TorrentStats | null, serverState: ServerState | null }> }) {
+function GlobalAllTimeStats({ statsData }: { statsData: DashboardInstanceStats[] }) {
   const [accordionValue, setAccordionValue] = usePersistedAccordionState("qui-global-stats-accordion")
 
   const globalStats = useMemo(() => {
@@ -707,7 +709,7 @@ function GlobalAllTimeStats({ statsData }: { statsData: Array<{ instance: Instan
   )
 }
 
-function QuickActionsDropdown({ statsData }: { statsData: Array<{ instance: InstanceResponse, stats: TorrentStats | null, serverState: ServerState | null }> }) {
+function QuickActionsDropdown({ statsData }: { statsData: DashboardInstanceStats[] }) {
   const connectedInstances = statsData
     .filter(({ instance }) => instance?.connected)
     .map(({ instance }) => instance)
