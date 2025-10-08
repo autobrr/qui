@@ -1716,8 +1716,13 @@ torrentsLoop:
 			} else {
 				excluded := false
 				for _, et := range excludeTags {
-					if containsTagNoAlloc(torrent.Tags, et) {
-						excluded = true
+					for tag := range strings.SplitSeq(torrent.Tags, ",") {
+						if strings.TrimSpace(tag) == et {
+							excluded = true
+							break
+						}
+					}
+					if excluded {
 						break
 					}
 				}
@@ -1839,21 +1844,6 @@ torrentsLoop:
 		Msg("Applied manual filtering with multiple selections")
 
 	return filtered
-}
-
-// containsTagNoAlloc checks if the comma-separated tags string contains the target tag
-// It uses strings.SplitSeq for zero-allocation iteration over tags.
-func containsTagNoAlloc(tags string, target string) bool {
-	if tags == "" || target == "" {
-		return false
-	}
-
-	for tag := range strings.SplitSeq(tags, ",") {
-		if strings.TrimSpace(tag) == target {
-			return true
-		}
-	}
-	return false
 }
 
 // Torrent state categories for fast lookup
