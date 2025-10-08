@@ -82,7 +82,7 @@ import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { getCommonCategory, getCommonSavePath, getCommonTags, getTotalSize } from "@/lib/torrent-utils"
 import type { Category, ServerState, Torrent, TorrentCounts } from "@/types"
 import { useSearch } from "@tanstack/react-router"
-import { ArrowUpDown, ChevronDown, ChevronUp, Columns3, Eye, EyeOff, Flame, Globe, Loader2 } from "lucide-react"
+import { ArrowUpDown, Ban, ChevronDown, ChevronUp, Columns3, Eye, EyeOff, Flame, Globe, Loader2 } from "lucide-react"
 import { createPortal } from "react-dom"
 import { AddTorrentDialog } from "./AddTorrentDialog"
 import { DraggableTableHeader } from "./DraggableTableHeader"
@@ -728,12 +728,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const rawConnectionStatus = effectiveServerState?.connection_status ?? ""
   const normalizedConnectionStatus = rawConnectionStatus ? rawConnectionStatus.trim().toLowerCase() : ""
   const formattedConnectionStatus = normalizedConnectionStatus ? normalizedConnectionStatus.replace(/_/g, " ") : ""
+  const connectionStatusDisplay = formattedConnectionStatus? formattedConnectionStatus.replace(/\b\w/g, (char: string) => char.toUpperCase()): ""
   const showConnectionStatus = Boolean(formattedConnectionStatus)
   const isConnectable = normalizedConnectionStatus === "connected"
-  const ConnectionStatusIcon = isConnectable ? Globe : Flame
-  const connectionStatusTooltip = showConnectionStatus ? (isConnectable ? "Connectable" : "Firewalled") : ""
-  const connectionStatusIconClass = isConnectable ? "text-green-500" : "text-destructive"
-  const connectionStatusAriaLabel = showConnectionStatus ? `qBittorrent connection status: ${formattedConnectionStatus}` : ""
+  const isFirewalled = normalizedConnectionStatus === "firewalled"
+  const ConnectionStatusIcon = isConnectable ? Globe : isFirewalled ? Flame : Ban
+  const connectionStatusTooltip = showConnectionStatus ? (isConnectable ? "Connectable" : connectionStatusDisplay) : ""
+  const connectionStatusIconClass = showConnectionStatus? isConnectable? "text-green-500": isFirewalled? "text-amber-500": "text-destructive": ""
+  const connectionStatusAriaLabel = showConnectionStatus? `qBittorrent connection status: ${connectionStatusDisplay || formattedConnectionStatus}`: ""
 
   // Size shown in destructive dialogs - prefer the aggregate when select-all is active
   const deleteDialogTotalSize = useMemo(() => {

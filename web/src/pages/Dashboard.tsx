@@ -31,7 +31,7 @@ import { formatBytes, getRatioColor } from "@/lib/utils"
 import type { InstanceResponse, ServerState, TorrentCounts, TorrentResponse, TorrentStats } from "@/types"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
-import { Activity, ChevronDown, ChevronUp, Download, ExternalLink, Eye, EyeOff, Flame, Globe, HardDrive, Minus, Plus, Rabbit, Turtle, Upload, Zap } from "lucide-react"
+import { Activity, Ban, ChevronDown, ChevronUp, Download, ExternalLink, Eye, EyeOff, Flame, Globe, HardDrive, Minus, Plus, Rabbit, Turtle, Upload, Zap } from "lucide-react"
 import { useMemo, useState } from "react"
 
 import {
@@ -141,6 +141,8 @@ function InstanceCard({
   const rawConnectionStatus = serverState?.connection_status ?? instance.connectionStatus ?? ""
   const normalizedConnectionStatus = rawConnectionStatus ? rawConnectionStatus.trim().toLowerCase() : ""
   const formattedConnectionStatus = normalizedConnectionStatus ? normalizedConnectionStatus.replace(/_/g, " ") : ""
+  const connectionStatusDisplay = formattedConnectionStatus? formattedConnectionStatus.replace(/\b\w/g, (char: string) => char.toUpperCase()): ""
+  const hasConnectionStatus = Boolean(formattedConnectionStatus)
 
   // Determine badge variant and text
   let badgeVariant: "default" | "secondary" | "destructive" = "default"
@@ -160,10 +162,11 @@ function InstanceCard({
   const badgeClassName = "whitespace-nowrap"
 
   const isConnectable = normalizedConnectionStatus === "connected"
-  const ConnectionStatusIcon = isConnectable ? Globe : Flame
-  const connectionStatusIconClass = formattedConnectionStatus ? (isConnectable ? "text-green-500" : "text-destructive") : ""
+  const isFirewalled = normalizedConnectionStatus === "firewalled"
+  const ConnectionStatusIcon = isConnectable ? Globe : isFirewalled ? Flame : Ban
+  const connectionStatusIconClass = hasConnectionStatus? isConnectable? "text-green-500": isFirewalled? "text-amber-500": "text-destructive": ""
 
-  const connectionStatusTooltip = formattedConnectionStatus ? (isConnectable ? "Connectable" : "Firewalled") : ""
+  const connectionStatusTooltip = connectionStatusDisplay ? (isConnectable ? "Connectable" : connectionStatusDisplay) : ""
 
   // Determine if settings button should show
   const showSettingsButton = instance.connected && !isFirstLoad && !hasDecryptionOrRecentErrors
@@ -256,7 +259,7 @@ function InstanceCard({
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span
-                      aria-label={`qBittorrent connection status: ${formattedConnectionStatus}`}
+                      aria-label={`qBittorrent connection status: ${connectionStatusDisplay || formattedConnectionStatus}`}
                       className={`inline-flex h-5 w-5 items-center justify-center ${connectionStatusIconClass}`}
                     >
                       <ConnectionStatusIcon className="h-4 w-4" aria-hidden="true" />
