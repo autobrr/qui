@@ -52,7 +52,7 @@ import {
   XCircle,
   type LucideIcon
 } from "lucide-react"
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { memo, startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   CreateCategoryDialog,
   CreateTagDialog,
@@ -182,6 +182,12 @@ const FilterSidebarComponent = ({
 
   // Use compact view state hook
   const { viewMode, cycleViewMode } = usePersistedCompactViewState("compact")
+
+  const applyFilterChange = useCallback((nextFilters: TorrentFilters) => {
+    startTransition(() => {
+      onFilterChange(nextFilters)
+    })
+  }, [onFilterChange])
 
   // Helper function to get count display - shows 0 when loading to prevent showing stale counts from previous instance
   const getDisplayCount = useCallback((key: string, fallbackCount?: number): string => {
@@ -348,6 +354,10 @@ const FilterSidebarComponent = ({
     return propsTags || []
   }, [incognitoMode, propsTags, isLoading, isStaleData])
 
+  const categoryEntries = useMemo(() => {
+    return Object.entries(categories) as [string, Category][]
+  }, [categories])
+
   // Helper function to check if we have received data from the server
   const hasReceivedData = useCallback((data: Record<string, Category> | string[] | Record<string, number> | undefined) => {
     return !incognitoMode && !isLoading && !isStaleData && data !== undefined
@@ -442,12 +452,12 @@ const FilterSidebarComponent = ({
       return
     }
 
-    onFilterChange({
+    applyFilterChange({
       ...selectedFilters,
       status: nextIncluded,
       excludeStatus: nextExcluded,
     })
-  }, [excludeStatusSet, includeStatusSet, onFilterChange, selectedFilters])
+  }, [applyFilterChange, excludeStatusSet, includeStatusSet, selectedFilters])
 
   const getCategoryState = useCallback((category: string): TriState => {
     if (includeCategorySet.has(category)) return "include"
@@ -493,12 +503,12 @@ const FilterSidebarComponent = ({
       return
     }
 
-    onFilterChange({
+    applyFilterChange({
       ...selectedFilters,
       categories: nextIncluded,
       excludeCategories: nextExcluded,
     })
-  }, [excludeCategorySet, includeCategorySet, onFilterChange, selectedFilters])
+  }, [applyFilterChange, excludeCategorySet, includeCategorySet, selectedFilters])
 
   const getTagState = useCallback((tag: string): TriState => {
     if (includeTagSet.has(tag)) return "include"
@@ -544,12 +554,12 @@ const FilterSidebarComponent = ({
       return
     }
 
-    onFilterChange({
+    applyFilterChange({
       ...selectedFilters,
       tags: nextIncluded,
       excludeTags: nextExcluded,
     })
-  }, [excludeTagSet, includeTagSet, onFilterChange, selectedFilters])
+  }, [applyFilterChange, excludeTagSet, includeTagSet, selectedFilters])
 
   const getTrackerState = useCallback((tracker: string): TriState => {
     if (includeTrackerSet.has(tracker)) return "include"
@@ -595,12 +605,12 @@ const FilterSidebarComponent = ({
       return
     }
 
-    onFilterChange({
+    applyFilterChange({
       ...selectedFilters,
       trackers: nextIncluded,
       excludeTrackers: nextExcluded,
     })
-  }, [excludeTrackerSet, includeTrackerSet, onFilterChange, selectedFilters])
+  }, [applyFilterChange, excludeTrackerSet, includeTrackerSet, selectedFilters])
 
   const getCheckboxVisualState = useCallback((state: "include" | "exclude" | "neutral"): boolean | "indeterminate" => {
     if (state === "include") return true
@@ -794,8 +804,6 @@ const FilterSidebarComponent = ({
 
   // Filtered categories for performance
   const filteredCategories = useMemo(() => {
-    const categoryEntries = Object.entries(categories) as [string, Category][]
-
     if (!debouncedCategorySearch) {
       return categoryEntries
     }
@@ -804,7 +812,7 @@ const FilterSidebarComponent = ({
     return categoryEntries.filter(([name]) =>
       name.toLowerCase().includes(searchLower)
     )
-  }, [categories, debouncedCategorySearch])
+  }, [categoryEntries, debouncedCategorySearch])
 
   // Filtered tags for performance
   const filteredTags = useMemo(() => {
@@ -859,7 +867,7 @@ const FilterSidebarComponent = ({
   })
 
   const clearFilters = () => {
-    onFilterChange({
+    applyFilterChange({
       status: [],
       excludeStatus: [],
       categories: [],
@@ -874,7 +882,7 @@ const FilterSidebarComponent = ({
   }
 
   const clearStatusFilter = () => {
-    onFilterChange({
+    applyFilterChange({
       ...selectedFilters,
       status: [],
       excludeStatus: [],
@@ -882,7 +890,7 @@ const FilterSidebarComponent = ({
   }
 
   const clearCategoriesFilter = () => {
-    onFilterChange({
+    applyFilterChange({
       ...selectedFilters,
       categories: [],
       excludeCategories: [],
@@ -890,14 +898,14 @@ const FilterSidebarComponent = ({
   }
 
   const clearTrackersFilter = () => {
-    onFilterChange({
+    applyFilterChange({
       ...selectedFilters,
       trackers: [],
       excludeTrackers: [],
     })
   }
   const clearTagsFilter = () => {
-    onFilterChange({
+    applyFilterChange({
       ...selectedFilters,
       tags: [],
       excludeTags: [],
@@ -1120,7 +1128,7 @@ const FilterSidebarComponent = ({
                   )}
 
                   {/* Category list - use filtered categories for performance or virtual scrolling for large lists */}
-                  {Object.keys(categories).length > VIRTUAL_THRESHOLD ? (
+                  {filteredCategories.length > VIRTUAL_THRESHOLD ? (
                     <div ref={categoryListRef} className="max-h-96 overflow-auto">
                       <div
                         className="relative"
@@ -1358,7 +1366,7 @@ const FilterSidebarComponent = ({
                   )}
 
                   {/* Tag list - use filtered tags for performance or virtual scrolling for large lists */}
-                  {tags.length > VIRTUAL_THRESHOLD ? (
+                  {filteredTags.length > VIRTUAL_THRESHOLD ? (
                     <div ref={tagListRef} className="max-h-96 overflow-auto">
                       <div
                         className="relative"
