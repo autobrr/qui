@@ -57,7 +57,7 @@ type TorrentResponse struct {
 	Counts                 *TorrentCounts          `json:"counts,omitempty"`      // Include counts for sidebar
 	Categories             map[string]qbt.Category `json:"categories,omitempty"`  // Include categories for sidebar
 	Tags                   []string                `json:"tags,omitempty"`        // Include tags for sidebar
-	ServerState            *qbt.ServerState        `json:"serverState,omitempty"` // Include server state for Dashboard
+	ServerState            *ServerStateView        `json:"serverState,omitempty"` // Include server state for Dashboard
 	HasMore                bool                    `json:"hasMore"`               // Whether more pages are available
 	SessionID              string                  `json:"sessionId,omitempty"`   // Optional session tracking
 	CacheMetadata          *CacheMetadata          `json:"cacheMetadata,omitempty"`
@@ -394,7 +394,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 	// Determine cache metadata based on last sync update time
 	var cacheMetadata *CacheMetadata
-	var serverState *qbt.ServerState
+	var serverState *ServerStateView
 	client, clientErr := sm.clientPool.GetClient(ctx, instanceID)
 	if clientErr == nil {
 		syncManager := client.GetSyncManager()
@@ -417,7 +417,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 			}
 		}
 
-		if cached := client.GetCachedServerState(); cached != nil {
+		if cached := client.GetServerStateView(); cached != nil {
 			serverState = cached
 		}
 	}

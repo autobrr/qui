@@ -27,11 +27,11 @@ import { useInstances } from "@/hooks/useInstances"
 import { usePersistedAccordionState } from "@/hooks/usePersistedAccordionState"
 import { useQBittorrentAppInfo } from "@/hooks/useQBittorrentAppInfo"
 import { api } from "@/lib/api"
-import { formatBytes, getRatioColor } from "@/lib/utils"
+import { formatBytes, formatDuration, getRatioColor } from "@/lib/utils"
 import type { InstanceResponse, ServerState, TorrentCounts, TorrentResponse, TorrentStats } from "@/types"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
-import { Activity, Ban, ChevronDown, ChevronUp, Download, ExternalLink, Eye, EyeOff, Flame, Globe, HardDrive, Minus, Plus, Rabbit, Turtle, Upload, Zap } from "lucide-react"
+import { Activity, Ban, ChevronDown, ChevronUp, Clock, Download, ExternalLink, Eye, EyeOff, Flame, Globe, HardDrive, Minus, Plus, Rabbit, Turtle, Upload, Zap } from "lucide-react"
 import { useMemo, useState } from "react"
 
 import {
@@ -169,6 +169,10 @@ function InstanceCard({
   const connectionStatusIconClass = hasConnectionStatus? isConnectable? "text-green-500": isFirewalled? "text-amber-500": "text-destructive": ""
 
   const connectionStatusTooltip = connectionStatusDisplay ? (isConnectable ? "Connectable" : connectionStatusDisplay) : ""
+
+  const sessionUptimeSeconds = serverState?.session_uptime_seconds
+  const sessionStartDate = serverState?.session_started_at ? new Date(serverState.session_started_at) : null
+  const sessionStartDisplay = sessionStartDate && !Number.isNaN(sessionStartDate.getTime()) ? sessionStartDate.toLocaleString() : ""
 
   // Determine if settings button should show
   const showSettingsButton = instance.connected && !isFirstLoad && !hasDecryptionOrRecentErrors
@@ -375,6 +379,29 @@ function InstanceCard({
                   <span>{`Show ${isAdvancedMetricsOpen ? "less" : "more"}`}</span>
                 </CollapsibleTrigger>
                 <CollapsibleContent className="space-y-2 mt-2">
+                  {sessionUptimeSeconds !== undefined && sessionUptimeSeconds > 0 && (
+                    <div className="flex items-center gap-2 text-xs">
+                      <Clock className="h-3 w-3 text-muted-foreground" />
+                      <span className="text-muted-foreground">Uptime</span>
+                      {sessionStartDisplay ? (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="ml-auto font-medium cursor-default">
+                              {formatDuration(Math.floor(sessionUptimeSeconds))}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Started {sessionStartDisplay}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      ) : (
+                        <span className="ml-auto font-medium">
+                          {formatDuration(Math.floor(sessionUptimeSeconds))}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
                   {serverState?.total_peer_connections !== undefined && (
                     <div className="flex items-center gap-2 text-xs">
                       <Activity className="h-3 w-3 text-muted-foreground" />
