@@ -3,11 +3,11 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState, useEffect, useMemo } from "react"
-import { useQuery } from "@tanstack/react-query"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { api } from "@/lib/api"
 import type { Torrent, TorrentResponse } from "@/types"
+import { useQuery } from "@tanstack/react-query"
+import { useEffect, useMemo, useState } from "react"
 
 interface UseTorrentsListOptions {
   enabled?: boolean
@@ -216,7 +216,8 @@ export function useTorrentsList(
     categories: data?.categories,
     tags: data?.tags,
     supportsTorrentCreation: capabilities?.supportsTorrentCreation ?? true,
-    serverState: null, // Server state is fetched separately by Dashboard
+    capabilities,
+    serverState: data?.serverState ?? null,
     isLoading: isLoading && currentPage === 0,
     isFetching,
     isLoadingMore,

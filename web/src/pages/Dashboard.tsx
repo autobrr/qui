@@ -31,7 +31,7 @@ import { formatBytes, getRatioColor } from "@/lib/utils"
 import type { InstanceResponse, ServerState, TorrentCounts, TorrentResponse, TorrentStats } from "@/types"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
-import { Activity, ChevronDown, ChevronUp, Download, ExternalLink, Eye, EyeOff, HardDrive, Minus, Plus, Rabbit, Turtle, Upload, Zap } from "lucide-react"
+import { Activity, Ban, ChevronDown, ChevronUp, Download, ExternalLink, Eye, EyeOff, Flame, Globe, HardDrive, Minus, Plus, Rabbit, Turtle, Upload, Zap } from "lucide-react"
 import { useMemo, useState } from "react"
 
 import {
@@ -46,9 +46,18 @@ import {
 import { useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 
+interface DashboardInstanceStats {
+  instance: InstanceResponse
+  stats: TorrentStats | null
+  serverState: ServerState | null
+  torrentCounts?: TorrentCounts
+  altSpeedEnabled: boolean
+  isLoading: boolean
+  error: unknown
+}
 
 // Optimized hook to get all instance stats using shared TorrentResponse cache
-function useAllInstanceStats(instances: InstanceResponse[]) {
+function useAllInstanceStats(instances: InstanceResponse[]): DashboardInstanceStats[] {
   const dashboardQueries = useQueries({
     queries: instances.map(instance => ({
       // Use same query key pattern as useTorrentsList for first page with no filters
@@ -69,14 +78,15 @@ function useAllInstanceStats(instances: InstanceResponse[]) {
     })),
   })
 
-  return instances.map((instance, index) => {
-    const data = dashboardQueries[index].data
+  return instances.map<DashboardInstanceStats>((instance, index) => {
     const query = dashboardQueries[index]
+    const data = query.data as TorrentResponse | undefined
+
     return {
       instance,
       // Return TorrentStats directly - no more backwards compatibility conversion
-      stats: data?.stats || null,
-      serverState: data?.serverState || null,
+      stats: data?.stats ?? null,
+      serverState: data?.serverState ?? null,
       torrentCounts: data?.counts,
       // Include alt speed status from server state to avoid separate API call
       altSpeedEnabled: data?.serverState?.use_alt_speed_limits || false,
@@ -93,15 +103,7 @@ function InstanceCard({
   isAdvancedMetricsOpen,
   setIsAdvancedMetricsOpen,
 }: {
-  instanceData: {
-    instance: InstanceResponse
-    stats: any
-    serverState: any
-    torrentCounts: any
-    altSpeedEnabled: boolean
-    isLoading: boolean
-    error: any
-  }
+  instanceData: DashboardInstanceStats
   isAdvancedMetricsOpen: boolean
   setIsAdvancedMetricsOpen: (open: boolean) => void
 }) {
@@ -135,8 +137,14 @@ function InstanceCard({
   // Determine card state
   const isFirstLoad = isLoading && !stats
   const isDisconnected = (stats && !instance.connected) || (!isFirstLoad && !instance.connected)
-  const hasError = error || (!isFirstLoad && !stats)
+  const hasError = Boolean(error) || (!isFirstLoad && !stats)
   const hasDecryptionOrRecentErrors = instance.hasDecryptionError || (instance.recentErrors && instance.recentErrors.length > 0)
+
+  const rawConnectionStatus = serverState?.connection_status ?? instance.connectionStatus ?? ""
+  const normalizedConnectionStatus = rawConnectionStatus ? rawConnectionStatus.trim().toLowerCase() : ""
+  const formattedConnectionStatus = normalizedConnectionStatus ? normalizedConnectionStatus.replace(/_/g, " ") : ""
+  const connectionStatusDisplay = formattedConnectionStatus? formattedConnectionStatus.replace(/\b\w/g, (char: string) => char.toUpperCase()): ""
+  const hasConnectionStatus = Boolean(formattedConnectionStatus)
 
   // Determine badge variant and text
   let badgeVariant: "default" | "secondary" | "destructive" = "default"
@@ -152,6 +160,15 @@ function InstanceCard({
     badgeVariant = "destructive"
     badgeText = "Disconnected"
   }
+
+  const badgeClassName = "whitespace-nowrap"
+
+  const isConnectable = normalizedConnectionStatus === "connected"
+  const isFirewalled = normalizedConnectionStatus === "firewalled"
+  const ConnectionStatusIcon = isConnectable ? Globe : isFirewalled ? Flame : Ban
+  const connectionStatusIconClass = hasConnectionStatus? isConnectable? "text-green-500": isFirewalled? "text-amber-500": "text-destructive": ""
+
+  const connectionStatusTooltip = connectionStatusDisplay ? (isConnectable ? "Connectable" : connectionStatusDisplay) : ""
 
   // Determine if settings button should show
   const showSettingsButton = instance.connected && !isFirstLoad && !hasDecryptionOrRecentErrors
@@ -233,13 +250,28 @@ function InstanceCard({
                   instanceName={instance.name}
                 />
               )}
-              <Badge variant={badgeVariant} className="whitespace-nowrap">
+              <Badge variant={badgeVariant} className={badgeClassName}>
                 {badgeText}
               </Badge>
             </div>
           </div>
-          {(appVersion || webAPIVersion || libtorrentVersion) && (
+          {(appVersion || webAPIVersion || libtorrentVersion || formattedConnectionStatus) && (
             <CardDescription className="flex flex-wrap items-center gap-1.5 text-xs">
+              {formattedConnectionStatus && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span
+                      aria-label={`qBittorrent connection status: ${connectionStatusDisplay || formattedConnectionStatus}`}
+                      className={`inline-flex h-5 w-5 items-center justify-center ${connectionStatusIconClass}`}
+                    >
+                      <ConnectionStatusIcon className="h-4 w-4" aria-hidden="true" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-[220px]">
+                    <p>{connectionStatusTooltip}</p>
+                  </TooltipContent>
+                </Tooltip>
+              )}
               {appVersion && (
                 <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">
                   qBit {appVersion}
@@ -340,7 +372,7 @@ function InstanceCard({
               <Collapsible open={isAdvancedMetricsOpen} onOpenChange={setIsAdvancedMetricsOpen}>
                 <CollapsibleTrigger className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors w-full [&[data-state=open]>svg]:rotate-180">
                   <ChevronDown className="h-3 w-3 transition-transform" />
-                  <span>Show More</span>
+                  <span>{`Show ${isAdvancedMetricsOpen ? "less" : "more"}`}</span>
                 </CollapsibleTrigger>
                 <CollapsibleContent className="space-y-2 mt-2">
                   {serverState?.total_peer_connections !== undefined && (
@@ -412,7 +444,7 @@ function InstanceCard({
   )
 }
 
-function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: InstanceResponse, stats: TorrentStats | null, serverState: ServerState | null, torrentCounts: TorrentCounts | undefined }> }) {
+function GlobalStatsCards({ statsData }: { statsData: DashboardInstanceStats[] }) {
   const [speedUnit] = useSpeedUnits()
   const globalStats = useMemo(() => {
     const connected = statsData.filter(({ instance }) => instance?.connected).length
@@ -516,7 +548,7 @@ function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: Instance
   )
 }
 
-function GlobalAllTimeStats({ statsData }: { statsData: Array<{ instance: InstanceResponse, stats: TorrentStats | null, serverState: ServerState | null }> }) {
+function GlobalAllTimeStats({ statsData }: { statsData: DashboardInstanceStats[] }) {
   const [accordionValue, setAccordionValue] = usePersistedAccordionState("qui-global-stats-accordion")
 
   const globalStats = useMemo(() => {
@@ -677,7 +709,7 @@ function GlobalAllTimeStats({ statsData }: { statsData: Array<{ instance: Instan
   )
 }
 
-function QuickActionsDropdown({ statsData }: { statsData: Array<{ instance: InstanceResponse, stats: TorrentStats | null, serverState: ServerState | null }> }) {
+function QuickActionsDropdown({ statsData }: { statsData: DashboardInstanceStats[] }) {
   const connectedInstances = statsData
     .filter(({ instance }) => instance?.connected)
     .map(({ instance }) => instance)
