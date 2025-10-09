@@ -37,7 +37,7 @@ import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
 import { api } from "@/lib/api"
 import { formatBytes } from "@/lib/utils"
 import { getCommonCategory, getCommonSavePath, getCommonTags, getTotalSize } from "@/lib/torrent-utils"
-import type { Torrent } from "@/types"
+import type { Torrent, TorrentFilters } from "@/types"
 import { useQuery } from "@tanstack/react-query"
 import {
   ArrowDown,
@@ -75,12 +75,7 @@ interface TorrentManagementBarProps {
   isAllSelected?: boolean
   totalSelectionCount?: number
   totalSelectionSize?: number
-  filters?: {
-    status: string[]
-    categories: string[]
-    tags: string[]
-    trackers: string[]
-  }
+  filters?: TorrentFilters
   search?: string
   excludeHashes?: string[]
   onComplete?: () => void
