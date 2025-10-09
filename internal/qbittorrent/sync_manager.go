@@ -415,10 +415,10 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 				IsStale:     !isFresh,
 				NextRefresh: now.Add(time.Second).Format(time.RFC3339),
 			}
+		}
 
-			// Get server state from sync manager for Dashboard
-			serverStateData := syncManager.GetServerState()
-			serverState = &serverStateData
+		if cached := client.GetCachedServerState(); cached != nil {
+			serverState = cached
 		}
 	}
 

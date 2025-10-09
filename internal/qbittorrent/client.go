@@ -33,6 +33,7 @@ type Client struct {
 	// optimisticUpdates stores temporary optimistic state changes for this instance
 	optimisticUpdates *ttlcache.Cache[string, *OptimisticTorrentUpdate]
 	trackerExclusions map[string]map[string]struct{} // Domains to hide hashes from until fresh sync arrives
+	lastServerState   *qbt.ServerState
 	mu                sync.RWMutex
 	healthMu          sync.RWMutex
 }
@@ -127,11 +128,13 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 	// Set up health check callbacks
 	syncOpts.OnUpdate = func(data *qbt.MainData) {
 		client.updateHealthStatus(true)
+		client.updateServerState(data)
 		log.Debug().Int("instanceID", instanceID).Int("torrentCount", len(data.Torrents)).Msg("Sync manager update received, marking client as healthy")
 	}
 
 	syncOpts.OnError = func(err error) {
 		client.updateHealthStatus(false)
+		client.clearServerState()
 		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Sync manager error received, marking client as unhealthy")
 	}
 
@@ -203,6 +206,47 @@ func (c *Client) SupportsTrackerEditing() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.supportsTrackerEditing
+}
+
+func (c *Client) updateServerState(data *qbt.MainData) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if data == nil || data.ServerState == (qbt.ServerState{}) {
+		c.lastServerState = nil
+		return
+	}
+
+	stateCopy := data.ServerState
+	c.lastServerState = &stateCopy
+}
+
+func (c *Client) clearServerState() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.lastServerState = nil
+}
+
+func (c *Client) GetCachedServerState() *qbt.ServerState {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.lastServerState == nil {
+		return nil
+	}
+
+	copy := *c.lastServerState
+	return &copy
+}
+
+func (c *Client) GetCachedConnectionStatus() string {
+	state := c.GetCachedServerState()
+	if state == nil {
+		return ""
+	}
+
+	return state.ConnectionStatus
 }
 
 func (c *Client) SupportsRenameTorrent() bool {
@@ -310,11 +354,14 @@ func (c *Client) invalidateTrackerCache(hashes ...string) {
 
 func (c *Client) StartSyncManager(ctx context.Context) error {
 	c.mu.RLock()
-	defer c.mu.RUnlock()
-	if c.syncManager == nil {
+	syncManager := c.syncManager
+	c.mu.RUnlock()
+
+	if syncManager == nil {
 		return fmt.Errorf("sync manager not initialized")
 	}
-	return c.syncManager.Start(ctx)
+
+	return syncManager.Start(ctx)
 }
 
 // GetOrCreatePeerSyncManager gets or creates a PeerSyncManager for a specific torrent
