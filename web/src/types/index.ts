@@ -204,6 +204,8 @@ export interface ServerState {
   write_cache_overload?: string
   last_external_address_v4?: string
   last_external_address_v6?: string
+  session_started_at?: string
+  session_uptime_seconds?: number
 }
 
 export interface AppPreferences {

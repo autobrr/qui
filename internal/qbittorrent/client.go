@@ -31,8 +31,23 @@ type Client struct {
 	optimisticUpdates *ttlcache.Cache[string, *OptimisticTorrentUpdate]
 	trackerExclusions map[string]map[string]struct{} // Domains to hide hashes from until fresh sync arrives
 	lastServerState   *qbt.ServerState
+	sessionStart      time.Time
+	lastRid           int64
+	sessionFetching   bool
+	sessionRetryAfter time.Time
+	sessionAccurate   bool
+	logsFetcher       func(ctx context.Context) ([]qbt.Log, error)
 	mu                sync.RWMutex
 	healthMu          sync.RWMutex
+}
+
+const sessionRefreshBackoff = 5 * time.Minute
+
+// ServerStateView enriches qBittorrent's server state with derived uptime metadata.
+type ServerStateView struct {
+	qbt.ServerState
+	SessionStartedAt     string `json:"session_started_at,omitempty"`
+	SessionUptimeSeconds int64  `json:"session_uptime_seconds,omitempty"`
 }
 
 func NewClient(instanceID int, instanceHost, username, password string, basicUsername, basicPassword *string, tlsSkipVerify bool) (*Client, error) {
@@ -98,6 +113,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 			SetDefaultTTL(30 * time.Second)), // Updates expire after 30 seconds
 		trackerExclusions: make(map[string]map[string]struct{}),
 		peerSyncManager:   make(map[string]*qbt.PeerSyncManager),
+		logsFetcher:       qbtClient.GetLogsCtx,
 	}
 
 	// Initialize sync manager with default options
@@ -139,6 +155,9 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 			Str("webAPIVersion", webAPIVersion).
 			Msg("qBittorrent instance does not support includeTrackers; using fallback tracker queries for status detection")
 	}
+
+	// Attempt to capture the current session start time in the background.
+	client.maybeRefreshSessionStart(true)
 
 	return client, nil
 }
@@ -188,16 +207,64 @@ func (c *Client) SupportsTrackerEditing() bool {
 }
 
 func (c *Client) updateServerState(data *qbt.MainData) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if data == nil || data.ServerState == (qbt.ServerState{}) {
+	if data == nil {
+		c.mu.Lock()
+		// Sync updates run frequently; avoid log fetches when data is empty.
 		c.lastServerState = nil
+		c.mu.Unlock()
 		return
 	}
 
-	stateCopy := data.ServerState
+	state := data.ServerState
+	if state == (qbt.ServerState{}) {
+		c.mu.Lock()
+		c.lastServerState = nil
+		c.lastRid = data.Rid
+		c.mu.Unlock()
+		return
+	}
+
+	now := time.Now()
+	shouldResetSessionStart := false
+
+	c.mu.Lock()
+	prevRid := c.lastRid
+	var sessionStartUnset bool
+	retryAfter := c.sessionRetryAfter
+	accurate := c.sessionAccurate
+
+	if !shouldResetSessionStart && prevRid > 0 && data.Rid > 0 {
+		// Rid resets to 1 on restart; treat large backwards jumps as a new session.
+		if data.Rid < prevRid && (prevRid-data.Rid) > 10 {
+			shouldResetSessionStart = true
+		}
+	}
+
+	if !shouldResetSessionStart && prevRid > 1 && data.Rid <= 1 {
+		// First update after restart usually reports rid=1.
+		shouldResetSessionStart = true
+	}
+
+	if shouldResetSessionStart {
+		c.sessionStart = time.Time{}
+		c.sessionRetryAfter = time.Time{}
+		c.sessionAccurate = false
+	}
+
+	stateCopy := state
 	c.lastServerState = &stateCopy
+	c.lastRid = data.Rid
+	sessionStartUnset = c.sessionStart.IsZero()
+	if shouldResetSessionStart {
+		retryAfter = time.Time{}
+		accurate = false
+	}
+	needsFetch := sessionStartUnset || (!accurate && (retryAfter.IsZero() || now.After(retryAfter)))
+	c.mu.Unlock()
+
+	if needsFetch {
+		c.maybeRefreshSessionStart(false)
+	}
 }
 
 func (c *Client) clearServerState() {
@@ -208,24 +275,134 @@ func (c *Client) clearServerState() {
 }
 
 func (c *Client) GetCachedServerState() *qbt.ServerState {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	if c.lastServerState == nil {
+	view := c.GetServerStateView()
+	if view == nil {
 		return nil
 	}
 
-	copy := *c.lastServerState
+	copy := view.ServerState
 	return &copy
 }
 
 func (c *Client) GetCachedConnectionStatus() string {
-	state := c.GetCachedServerState()
+	state := c.GetServerStateView()
 	if state == nil {
 		return ""
 	}
 
 	return state.ConnectionStatus
+}
+
+func (c *Client) GetServerStateView() *ServerStateView {
+	c.mu.RLock()
+	if c.lastServerState == nil {
+		c.mu.RUnlock()
+		return nil
+	}
+
+	stateCopy := *c.lastServerState
+	sessionStart := c.sessionStart
+	c.mu.RUnlock()
+
+	view := &ServerStateView{
+		ServerState: stateCopy,
+	}
+
+	if !sessionStart.IsZero() {
+		startUTC := sessionStart.UTC()
+		view.SessionStartedAt = startUTC.Format(time.RFC3339)
+
+		uptime := max(time.Since(sessionStart), 0)
+
+		if uptime >= time.Second {
+			view.SessionUptimeSeconds = int64(uptime / time.Second)
+		}
+	}
+
+	return view
+}
+
+func (c *Client) fetchSessionLogs(ctx context.Context) ([]qbt.Log, error) {
+	if c.logsFetcher != nil {
+		return c.logsFetcher(ctx)
+	}
+	if c.Client == nil {
+		return nil, errors.New("qBittorrent client is not initialized")
+	}
+	return c.Client.GetLogsCtx(ctx)
+}
+
+func (c *Client) maybeRefreshSessionStart(force bool) {
+	now := time.Now()
+	c.mu.Lock()
+	if !force && !c.sessionStart.IsZero() && c.sessionAccurate {
+		c.mu.Unlock()
+		return
+	}
+	if !force && !c.sessionRetryAfter.IsZero() && now.Before(c.sessionRetryAfter) {
+		c.mu.Unlock()
+		return
+	}
+	if c.sessionFetching {
+		c.mu.Unlock()
+		return
+	}
+	c.sessionFetching = true
+	c.mu.Unlock()
+
+	go func(force bool) {
+		defer func() {
+			c.mu.Lock()
+			c.sessionFetching = false
+			c.mu.Unlock()
+		}()
+
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+
+		logs, err := c.fetchSessionLogs(ctx)
+		if err != nil {
+			log.Warn().Err(err).Int("instanceID", c.instanceID).Msg("Failed to fetch qBittorrent logs for uptime")
+			c.mu.Lock()
+			c.sessionAccurate = false
+			c.sessionRetryAfter = time.Now().Add(sessionRefreshBackoff)
+			c.mu.Unlock()
+			return
+		}
+
+		var minTimestamp int64
+		for _, entry := range logs {
+			if entry.Timestamp <= 0 {
+				continue
+			}
+			if minTimestamp == 0 || entry.Timestamp < minTimestamp {
+				minTimestamp = entry.Timestamp
+			}
+		}
+
+		if minTimestamp == 0 {
+			c.mu.Lock()
+			c.sessionAccurate = false
+			c.sessionRetryAfter = time.Now().Add(sessionRefreshBackoff)
+			c.mu.Unlock()
+			return
+		}
+
+		var startTime time.Time
+		if minTimestamp >= 1_000_000_000_000 {
+			startTime = time.Unix(0, minTimestamp*int64(time.Millisecond))
+		} else {
+			startTime = time.Unix(minTimestamp, 0)
+		}
+
+		c.mu.Lock()
+		if c.sessionStart.IsZero() || !c.sessionAccurate || force || startTime.Before(c.sessionStart) {
+			c.sessionStart = startTime
+		}
+		c.sessionAccurate = true
+		c.sessionRetryAfter = time.Time{}
+		c.mu.Unlock()
+	}(force)
 }
 
 // getTorrentsByHashes returns multiple torrents by their hashes (O(n) where n is number of requested hashes)
