@@ -74,13 +74,14 @@ import {
   TooltipContent,
   TooltipTrigger
 } from "@/components/ui/tooltip"
-import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences.ts"
+import { api } from "@/lib/api"
 import { useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { getCommonCategory, getCommonSavePath, getCommonTags, getTotalSize } from "@/lib/torrent-utils"
 import type { Category, ServerState, Torrent, TorrentCounts } from "@/types"
+import { useQuery } from "@tanstack/react-query"
 import { useSearch } from "@tanstack/react-router"
 import { ArrowUpDown, Ban, ChevronDown, ChevronUp, Columns3, Eye, EyeOff, Flame, Globe, Loader2 } from "lucide-react"
 import { createPortal } from "react-dom"
@@ -90,6 +91,9 @@ import {
   AddTagsDialog,
   CreateAndAssignCategoryDialog,
   RemoveTagsDialog,
+  RenameTorrentDialog,
+  RenameTorrentFileDialog,
+  RenameTorrentFolderDialog,
   SetCategoryDialog,
   SetLocationDialog,
   SetTagsDialog,
@@ -229,8 +233,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const [speedUnit, setSpeedUnit] = useSpeedUnits()
   const { formatTimestamp } = useDateTimeFormatters()
   const { preferences } = useInstancePreferences(instanceId)
-  const { data: capabilities } = useInstanceCapabilities(instanceId)
-  const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? true
+
   const trackerIconsQuery = useTrackerIcons()
   const trackerIconsRef = useRef<Record<string, string> | undefined>(undefined)
   const trackerIcons = useMemo(() => {
@@ -316,6 +319,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     setShowSpeedLimitDialog,
     showLocationDialog,
     setShowLocationDialog,
+    showRenameTorrentDialog,
+    setShowRenameTorrentDialog,
+    showRenameFileDialog,
+    setShowRenameFileDialog,
+    showRenameFolderDialog,
+    setShowRenameFolderDialog,
     showRecheckDialog,
     setShowRecheckDialog,
     showReannounceDialog,
@@ -330,6 +339,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     handleRemoveTags,
     handleSetCategory,
     handleSetLocation,
+    handleRenameTorrent,
+    handleRenameFile,
+    handleRenameFolder,
     handleSetShareLimit,
     handleSetSpeedLimits,
     handleRecheck,
@@ -341,6 +353,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     prepareShareLimitAction,
     prepareSpeedLimitAction,
     prepareLocationAction,
+    prepareRenameTorrentAction,
+    prepareRenameFileAction,
+    prepareRenameFolderAction,
     prepareRecheckAction,
     prepareReannounceAction,
   } = useTorrentActions({
@@ -355,6 +370,41 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const { data: metadata } = useInstanceMetadata(instanceId)
   const availableTags = metadata?.tags || []
   const availableCategories = metadata?.categories || {}
+
+  const shouldLoadRenameEntries = (showRenameFileDialog || showRenameFolderDialog) && Boolean(contextHashes[0])
+
+  const {
+    data: renameFileData,
+    isLoading: renameEntriesLoading,
+  } = useQuery({
+    queryKey: ["torrent-files", instanceId, contextHashes[0]],
+    queryFn: () => api.getTorrentFiles(instanceId, contextHashes[0]!),
+    enabled: shouldLoadRenameEntries,
+    staleTime: 30000,
+    gcTime: 5 * 60 * 1000,
+  })
+
+  const renameFileEntries = useMemo(() => {
+    if (!Array.isArray(renameFileData)) return [] as { name: string }[]
+    return renameFileData.filter((file): file is { name: string } => typeof file?.name === "string")
+  }, [renameFileData])
+
+  const renameFolderEntries = useMemo(() => {
+    if (renameFileEntries.length === 0) return [] as { name: string }[]
+    const folderSet = new Set<string>()
+    for (const file of renameFileEntries) {
+      const parts = file.name.split("/")
+      if (parts.length <= 1) continue
+      let current = ""
+      for (let i = 0; i < parts.length - 1; i++) {
+        current = current ? `${current}/${parts[i]}` : parts[i]
+        folderSet.add(current)
+      }
+    }
+    return Array.from(folderSet)
+      .sort((a, b) => a.localeCompare(b))
+      .map(name => ({ name }))
+  }, [renameFileEntries])
 
   // Debounce search to prevent excessive filtering (200ms delay for faster response)
   const debouncedSearch = useDebounce(globalFilter, 200)
@@ -411,7 +461,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     categories,
     tags,
     serverState,
-
+    capabilities,
     isLoading,
     isCachedData,
     isStaleData,
@@ -430,6 +480,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     sort: activeSortField,
     order: activeSortOrder,
   })
+
+  const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? true
 
   // Delayed loading state to avoid flicker on fast loads
   useEffect(() => {
@@ -1057,6 +1109,32 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     )
   }, [handleSetLocation, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
 
+  const handleRenameTorrentWrapper = useCallback(async (name: string) => {
+    const hash = contextHashes[0]
+    if (!hash) return
+    await handleRenameTorrent(hash, name)
+  }, [handleRenameTorrent, contextHashes])
+
+  const handleRenameFileWrapper = useCallback(async ({ oldPath, newName }: { oldPath: string; newName: string }) => {
+    const hash = contextHashes[0]
+    if (!hash) return
+    if (!oldPath) return
+    const segments = oldPath.split("/")
+    segments[segments.length - 1] = newName
+    const newPath = segments.join("/")
+    await handleRenameFile(hash, oldPath, newPath)
+  }, [handleRenameFile, contextHashes])
+
+  const handleRenameFolderWrapper = useCallback(async ({ oldPath, newName }: { oldPath: string; newName: string }) => {
+    const hash = contextHashes[0]
+    if (!hash) return
+    if (!oldPath) return
+    const segments = oldPath.split("/")
+    segments[segments.length - 1] = newName
+    const newPath = segments.join("/")
+    await handleRenameFolder(hash, oldPath, newPath)
+  }, [contextHashes, handleRenameFolder])
+
   const handleRemoveTagsWrapper = useCallback((tags: string[]) => {
     handleRemoveTags(
       tags,
@@ -1354,6 +1432,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                     onPrepareShareLimit={prepareShareLimitAction}
                     onPrepareSpeedLimits={prepareSpeedLimitAction}
                     onPrepareLocation={prepareLocationAction}
+                    onPrepareRenameTorrent={prepareRenameTorrentAction}
+                    onPrepareRenameFile={prepareRenameFileAction}
+                    onPrepareRenameFolder={prepareRenameFolderAction}
                     onPrepareRecheck={prepareRecheckAction}
                     onPrepareReannounce={prepareReannounceAction}
                     availableCategories={availableCategories}
@@ -1361,6 +1442,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                     isPending={isPending}
                     onExport={handleExportWrapper}
                     isExporting={isExportingTorrent}
+                    capabilities={capabilities}
                   >
                     <div
                       className={`flex border-b cursor-pointer hover:bg-muted/50 ${row.getIsSelected() ? "bg-muted/50" : ""} ${isSelected ? "bg-accent" : ""}`}
@@ -1663,6 +1745,31 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         onConfirm={handleSetLocationWrapper}
         isPending={isPending}
         initialLocation={getCommonSavePath(contextTorrents)}
+      />
+
+      {/* Rename dialogs */}
+      <RenameTorrentDialog
+        open={showRenameTorrentDialog}
+        onOpenChange={setShowRenameTorrentDialog}
+        currentName={contextTorrents[0]?.name}
+        onConfirm={handleRenameTorrentWrapper}
+        isPending={isPending}
+      />
+      <RenameTorrentFileDialog
+        open={showRenameFileDialog}
+        onOpenChange={setShowRenameFileDialog}
+        files={renameFileEntries}
+        isLoading={renameEntriesLoading}
+        onConfirm={handleRenameFileWrapper}
+        isPending={isPending}
+      />
+      <RenameTorrentFolderDialog
+        open={showRenameFolderDialog}
+        onOpenChange={setShowRenameFolderDialog}
+        folders={renameFolderEntries}
+        isLoading={renameEntriesLoading}
+        onConfirm={handleRenameFolderWrapper}
+        isPending={isPending}
       />
 
       {/* Remove Tags Dialog */}

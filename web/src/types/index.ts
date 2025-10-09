@@ -55,6 +55,9 @@ export interface InstanceCapabilities {
   supportsSetTags: boolean
   supportsTrackerHealth: boolean
   supportsTrackerEditing: boolean
+  supportsRenameTorrent: boolean
+  supportsRenameFile: boolean
+  supportsRenameFolder: boolean
   webAPIVersion?: string
 }
 
