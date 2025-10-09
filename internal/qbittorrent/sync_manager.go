@@ -1893,12 +1893,12 @@ var torrentStateSortOrder = map[qbt.TorrentState]int{
 	qbt.TorrentStateStalledDl:          30,
 	qbt.TorrentStateUploading:          40,
 	qbt.TorrentStateForcedUp:           41,
-	qbt.TorrentStateStalledUp:          42,
-	qbt.TorrentStateQueuedUp:           43,
+	qbt.TorrentStateStoppedDl:          42,
+	qbt.TorrentStateStoppedUp:          43,
+	qbt.TorrentStateQueuedUp:           44,
+	qbt.TorrentStateStalledUp:          45,
 	qbt.TorrentStatePausedDl:           50,
 	qbt.TorrentStatePausedUp:           51,
-	qbt.TorrentStateStoppedDl:          52,
-	qbt.TorrentStateStoppedUp:          53,
 	qbt.TorrentStateCheckingUp:         60,
 	qbt.TorrentStateCheckingResumeData: 61,
 	qbt.TorrentStateMoving:             70,
@@ -2093,6 +2093,19 @@ func (sm *SyncManager) sortTorrentsByStatus(torrents []qbt.Torrent, desc bool, t
 				return -cmp
 			}
 			return cmp
+		}
+
+		if a.AddedOn != b.AddedOn {
+			cmp := 0
+			if a.AddedOn > b.AddedOn {
+				cmp = 1
+			} else {
+				cmp = -1
+			}
+			if desc {
+				return cmp
+			}
+			return -cmp
 		}
 
 		nameA := strings.ToLower(a.Name)

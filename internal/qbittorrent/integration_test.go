@@ -202,9 +202,10 @@ func TestSyncManager_SortTorrentsByStatus(t *testing.T) {
 
 	torrents := []qbt.Torrent{
 		{
-			Hash:  "unreg",
-			Name:  "Unregistered Torrent",
-			State: qbt.TorrentStatePausedUp,
+			Hash:    "unreg",
+			Name:    "Unregistered Torrent",
+			State:   qbt.TorrentStatePausedUp,
+			AddedOn: 20,
 			Trackers: []qbt.TorrentTracker{
 				{
 					Status:  qbt.TrackerStatusNotWorking,
@@ -213,9 +214,10 @@ func TestSyncManager_SortTorrentsByStatus(t *testing.T) {
 			},
 		},
 		{
-			Hash:  "down",
-			Name:  "Tracker Down Torrent",
-			State: qbt.TorrentStateStalledUp,
+			Hash:    "down",
+			Name:    "Tracker Down Torrent",
+			State:   qbt.TorrentStateStalledUp,
+			AddedOn: 18,
 			Trackers: []qbt.TorrentTracker{
 				{
 					Status:  qbt.TrackerStatusNotWorking,
@@ -224,24 +226,40 @@ func TestSyncManager_SortTorrentsByStatus(t *testing.T) {
 			},
 		},
 		{
-			Hash:  "uploading",
-			Name:  "Seeding Torrent",
-			State: qbt.TorrentStateUploading,
+			Hash:    "uploading",
+			Name:    "Seeding Torrent",
+			State:   qbt.TorrentStateUploading,
+			AddedOn: 15,
 		},
 		{
-			Hash:  "downloading",
-			Name:  "Downloading Torrent",
-			State: qbt.TorrentStateDownloading,
+			Hash:    "uploading_old",
+			Name:    "Seeding Torrent Older",
+			State:   qbt.TorrentStateUploading,
+			AddedOn: 10,
 		},
 		{
-			Hash:  "paused",
-			Name:  "Paused Torrent",
-			State: qbt.TorrentStatePausedDl,
+			Hash:    "downloading",
+			Name:    "Downloading Torrent",
+			State:   qbt.TorrentStateDownloading,
+			AddedOn: 12,
 		},
 		{
-			Hash:  "stalled_dl",
-			Name:  "Stalled Downloading",
-			State: qbt.TorrentStateStalledDl,
+			Hash:    "paused",
+			Name:    "Paused Torrent",
+			State:   qbt.TorrentStatePausedDl,
+			AddedOn: 8,
+		},
+		{
+			Hash:    "paused_old",
+			Name:    "Paused Torrent Older",
+			State:   qbt.TorrentStatePausedDl,
+			AddedOn: 4,
+		},
+		{
+			Hash:    "stalled_dl",
+			Name:    "Stalled Downloading",
+			State:   qbt.TorrentStateStalledDl,
+			AddedOn: 6,
 		},
 	}
 
@@ -254,10 +272,64 @@ func TestSyncManager_SortTorrentsByStatus(t *testing.T) {
 	}
 
 	sm.sortTorrentsByStatus(torrents, true, true)
-	assert.Equal(t, []string{"paused", "uploading", "stalled_dl", "downloading", "down", "unreg"}, hashes(torrents))
+	assert.Equal(t, []string{"paused_old", "paused", "uploading_old", "uploading", "stalled_dl", "downloading", "down", "unreg"}, hashes(torrents))
 
 	sm.sortTorrentsByStatus(torrents, false, true)
-	assert.Equal(t, []string{"unreg", "down", "downloading", "stalled_dl", "uploading", "paused"}, hashes(torrents))
+	assert.Equal(t, []string{"unreg", "down", "downloading", "stalled_dl", "uploading", "uploading_old", "paused", "paused_old"}, hashes(torrents))
+}
+
+func TestSyncManager_SortTorrentsByStatus_TieBreakAddedOn(t *testing.T) {
+	sm := &SyncManager{}
+
+	torrents := []qbt.Torrent{
+		{
+			Hash:    "newer",
+			Name:    "Same State Newer",
+			State:   qbt.TorrentStateUploading,
+			AddedOn: 200,
+		},
+		{
+			Hash:    "older",
+			Name:    "Same State Older",
+			State:   qbt.TorrentStateUploading,
+			AddedOn: 100,
+		},
+	}
+
+	hashes := func(ts []qbt.Torrent) []string {
+		out := make([]string, len(ts))
+		for i, torrent := range ts {
+			out[i] = torrent.Hash
+		}
+		return out
+	}
+
+	sm.sortTorrentsByStatus(torrents, true, false)
+	assert.Equal(t, []string{"older", "newer"}, hashes(torrents))
+
+	sm.sortTorrentsByStatus(torrents, false, false)
+	assert.Equal(t, []string{"newer", "older"}, hashes(torrents))
+}
+
+func TestSyncManager_SortTorrentsByStatus_StoppedAfterSeeding(t *testing.T) {
+	sm := &SyncManager{}
+
+	torrents := []qbt.Torrent{
+		{Hash: "seeding", State: qbt.TorrentStateUploading, AddedOn: 3},
+		{Hash: "stopped", State: qbt.TorrentStateStoppedDl, AddedOn: 2},
+		{Hash: "stalled", State: qbt.TorrentStateStalledUp, AddedOn: 1},
+	}
+
+	hashes := func(ts []qbt.Torrent) []string {
+		out := make([]string, len(ts))
+		for i, torrent := range ts {
+			out[i] = torrent.Hash
+		}
+		return out
+	}
+
+	sm.sortTorrentsByStatus(torrents, false, false)
+	assert.Equal(t, []string{"seeding", "stopped", "stalled"}, hashes(torrents))
 }
 
 // TestSyncManager_SearchFunctionality tests the search and filtering logic
