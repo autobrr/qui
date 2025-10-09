@@ -21,44 +21,12 @@ import { renderTextWithLinks } from "@/lib/linkUtils"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { resolveTorrentHashes } from "@/lib/torrent-utils"
 import { copyTextToClipboard, formatBytes, formatDuration } from "@/lib/utils"
-import type { Torrent } from "@/types"
+import type { SortedPeersResponse, Torrent, TorrentPeer } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import "flag-icons/css/flag-icons.min.css"
 import { Ban, Copy, Loader2, UserPlus } from "lucide-react"
 import { memo, useCallback, useEffect, useState } from "react"
 import { toast } from "sonner"
-
-interface TorrentPeer {
-  ip: string
-  port: number
-  connection?: string
-  flags?: string
-  flags_desc?: string
-  client?: string
-  progress?: number  // Float 0-1, where 1 = 100% (seeder). Note: qBittorrent doesn't expose the actual seed status via API
-  dl_speed?: number
-  up_speed?: number
-  downloaded?: number
-  uploaded?: number
-  relevance?: number
-  files?: string
-  country?: string
-  country_code?: string
-  peer_id_client?: string
-}
-
-interface SortedPeer extends TorrentPeer {
-  key: string
-}
-
-interface TorrentPeersResponse {
-  full_update?: boolean
-  rid?: number
-  peers?: Record<string, TorrentPeer>
-  peers_removed?: string[]
-  show_flags?: boolean
-  sorted_peers?: SortedPeer[]
-}
 
 interface TorrentDetailsPanelProps {
   instanceId: number;
@@ -147,12 +115,9 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const isPeersTabActive = activeTab === "peers"
   const peersQueryKey = ["torrent-peers", instanceId, torrent?.hash] as const
 
-  const { data: peersData, isLoading: loadingPeers } = useQuery<TorrentPeersResponse>({
+  const { data: peersData, isLoading: loadingPeers } = useQuery<SortedPeersResponse>({
     queryKey: peersQueryKey,
-    queryFn: async () => {
-      const data = await api.getTorrentPeers(instanceId, torrent!.hash)
-      return data as TorrentPeersResponse
-    },
+    queryFn: () => api.getTorrentPeers(instanceId, torrent!.hash),
     enabled: !!torrent && isReady && isPeersTabActive,
     refetchInterval: () => {
       if (!isPeersTabActive) return false
@@ -611,7 +576,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                                 </div>
                                 <div className="space-y-1">
                                   <p className="text-xs text-muted-foreground">Leechers</p>
-                                  <p className="text-sm font-medium">{tracker.num_leechers}</p>
+                                  <p className="text-sm font-medium">{tracker.num_leeches}</p>
                                 </div>
                                 <div className="space-y-1">
                                   <p className="text-xs text-muted-foreground">Downloaded</p>

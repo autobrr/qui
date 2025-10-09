@@ -11,11 +11,15 @@ import type {
   InstanceCapabilities,
   InstanceResponse,
   QBittorrentAppInfo,
+  SortedPeersResponse,
   TorrentCreationParams,
   TorrentCreationTask,
   TorrentCreationTaskResponse,
+  TorrentFile,
   TorrentFilters,
+  TorrentProperties,
   TorrentResponse,
+  TorrentTracker,
   User
 } from "@/types"
 import { getApiBaseUrl, withBasePath } from "./base-url"
@@ -293,12 +297,12 @@ class ApiClient {
   }
 
   // Torrent Details
-  async getTorrentProperties(instanceId: number, hash: string): Promise<any> {
-    return this.request(`/instances/${instanceId}/torrents/${hash}/properties`)
+  async getTorrentProperties(instanceId: number, hash: string): Promise<TorrentProperties> {
+    return this.request<TorrentProperties>(`/instances/${instanceId}/torrents/${hash}/properties`)
   }
 
-  async getTorrentTrackers(instanceId: number, hash: string): Promise<any[]> {
-    return this.request(`/instances/${instanceId}/torrents/${hash}/trackers`)
+  async getTorrentTrackers(instanceId: number, hash: string): Promise<TorrentTracker[]> {
+    return this.request<TorrentTracker[]>(`/instances/${instanceId}/torrents/${hash}/trackers`)
   }
 
   async editTorrentTracker(instanceId: number, hash: string, oldURL: string, newURL: string): Promise<void> {
@@ -343,8 +347,8 @@ class ApiClient {
     })
   }
 
-  async getTorrentFiles(instanceId: number, hash: string): Promise<any[]> {
-    return this.request(`/instances/${instanceId}/torrents/${hash}/files`)
+  async getTorrentFiles(instanceId: number, hash: string): Promise<TorrentFile[]> {
+    return this.request<TorrentFile[]>(`/instances/${instanceId}/torrents/${hash}/files`)
   }
 
   async exportTorrent(instanceId: number, hash: string): Promise<{ blob: Blob; filename: string | null }> {
@@ -382,8 +386,8 @@ class ApiClient {
     return { blob, filename }
   }
 
-  async getTorrentPeers(instanceId: number, hash: string): Promise<any> {
-    return this.request(`/instances/${instanceId}/torrents/${hash}/peers`)
+  async getTorrentPeers(instanceId: number, hash: string): Promise<SortedPeersResponse> {
+    return this.request<SortedPeersResponse>(`/instances/${instanceId}/torrents/${hash}/peers`)
   }
 
   async addPeersToTorrents(instanceId: number, hashes: string[], peers: string[]): Promise<void> {
