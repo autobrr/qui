@@ -380,7 +380,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
   const renameFileEntries = useMemo(() => {
     if (!Array.isArray(renameFileData)) return [] as { name: string }[]
-    return renameFileData.filter((file): file is { name: string } => typeof file?.name === "string")
+    return renameFileData
+      .filter((file) => typeof file?.name === "string")
+      .map((file) => ({ name: file.name }))
   }, [renameFileData])
 
   const renameFolderEntries = useMemo(() => {
