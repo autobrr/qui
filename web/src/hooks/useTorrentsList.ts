@@ -216,7 +216,7 @@ export function useTorrentsList(
     categories: data?.categories,
     tags: data?.tags,
     supportsTorrentCreation: capabilities?.supportsTorrentCreation ?? true,
-    serverState: null, // Server state is fetched separately by Dashboard
+    serverState: data?.serverState ?? null,
     isLoading: isLoading && currentPage === 0,
     isFetching,
     isLoadingMore,

@@ -47,6 +47,7 @@ export interface InstanceResponse extends Instance {
   connected: boolean
   hasDecryptionError: boolean
   recentErrors?: InstanceError[]
+  connectionStatus?: string
 }
 
 export interface InstanceCapabilities {
