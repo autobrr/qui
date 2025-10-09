@@ -872,6 +872,101 @@ paths:
                 items:
                   $ref: '#/components/schemas/TorrentFile'
 
+  /api/instances/{instanceId}/torrents/{hash}/rename:
+    put:
+      tags:
+        - Torrent Details
+      summary: Rename torrent
+      description: Update the display name for a torrent
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/hash'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  description: New name to assign to the torrent
+      responses:
+        '200':
+          description: Torrent renamed successfully
+        '400':
+          description: Invalid request
+        '500':
+          description: Failed to rename torrent
+
+  /api/instances/{instanceId}/torrents/{hash}/rename-file:
+    put:
+      tags:
+        - Torrent Details
+      summary: Rename torrent file
+      description: Rename a specific file within a torrent
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/hash'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - oldPath
+                - newPath
+              properties:
+                oldPath:
+                  type: string
+                  description: Existing relative path of the file inside the torrent
+                newPath:
+                  type: string
+                  description: New relative path (including file name) to apply
+      responses:
+        '200':
+          description: Torrent file renamed successfully
+        '400':
+          description: Invalid request
+        '500':
+          description: Failed to rename torrent file
+
+  /api/instances/{instanceId}/torrents/{hash}/rename-folder:
+    put:
+      tags:
+        - Torrent Details
+      summary: Rename torrent folder
+      description: Rename a folder within a torrent
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/hash'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - oldPath
+                - newPath
+              properties:
+                oldPath:
+                  type: string
+                  description: Existing folder path relative to the torrent root
+                newPath:
+                  type: string
+                  description: New folder path (relative) to apply
+      responses:
+        '200':
+          description: Torrent folder renamed successfully
+        '400':
+          description: Invalid request
+        '500':
+          description: Failed to rename torrent folder
+
   /api/instances/{instanceId}/torrents/{hash}/peers:
     get:
       tags:
@@ -1810,6 +1905,15 @@ components:
         supportsTrackerEditing:
           type: boolean
           description: Whether the instance can edit tracker URLs via the Web API (requires WebAPI v2.3.0+).
+        supportsRenameTorrent:
+          type: boolean
+          description: Whether the instance supports renaming torrents (requires WebAPI 2.0.0+, qBittorrent 4.1.0+).
+        supportsRenameFile:
+          type: boolean
+          description: Whether the instance supports renaming files within torrents (requires WebAPI 2.6.0+, qBittorrent 4.3.0+).
+        supportsRenameFolder:
+          type: boolean
+          description: Whether the instance supports renaming folders within torrents (requires WebAPI 2.8.4+, qBittorrent 4.4.0+).
         webAPIVersion:
           type: string
           nullable: true

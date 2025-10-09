@@ -47,6 +47,7 @@ export interface InstanceResponse extends Instance {
   connected: boolean
   hasDecryptionError: boolean
   recentErrors?: InstanceError[]
+  connectionStatus?: string
 }
 
 export interface InstanceCapabilities {
@@ -54,6 +55,9 @@ export interface InstanceCapabilities {
   supportsSetTags: boolean
   supportsTrackerHealth: boolean
   supportsTrackerEditing: boolean
+  supportsRenameTorrent: boolean
+  supportsRenameFile: boolean
+  supportsRenameFolder: boolean
   webAPIVersion?: string
 }
 

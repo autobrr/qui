@@ -438,10 +438,10 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 				IsStale:     !isFresh,
 				NextRefresh: now.Add(time.Second).Format(time.RFC3339),
 			}
+		}
 
-			// Get server state from sync manager for Dashboard
-			serverStateData := syncManager.GetServerState()
-			serverState = &serverStateData
+		if cached := client.GetCachedServerState(); cached != nil {
+			serverState = cached
 		}
 	}
 
@@ -2724,6 +2724,99 @@ func (sm *SyncManager) SetLocation(ctx context.Context, instanceID int, hashes [
 	if err := client.SetLocationCtx(ctx, hashes, location); err != nil {
 		return fmt.Errorf("failed to set torrent location: %w", err)
 	}
+
+	return nil
+}
+
+// RenameTorrent renames a torrent by hash
+func (sm *SyncManager) RenameTorrent(ctx context.Context, instanceID int, hash, name string) error {
+	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		return err
+	}
+
+	if !client.SupportsRenameTorrent() {
+		return fmt.Errorf("qBittorrent instance does not support torrent renaming (requires WebAPI 2.0.0+, qBittorrent 4.1.0+)")
+	}
+
+	if err := sm.validateTorrentsExist(client, []string{hash}, "rename torrent"); err != nil {
+		return err
+	}
+
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" {
+		return fmt.Errorf("torrent name cannot be empty")
+	}
+
+	if err := client.SetTorrentNameCtx(ctx, hash, trimmed); err != nil {
+		return fmt.Errorf("failed to rename torrent: %w", err)
+	}
+
+	sm.syncAfterModification(instanceID, client, "rename_torrent")
+
+	return nil
+}
+
+// RenameTorrentFile renames a file inside a torrent
+func (sm *SyncManager) RenameTorrentFile(ctx context.Context, instanceID int, hash, oldPath, newPath string) error {
+	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		return err
+	}
+
+	if !client.SupportsRenameFile() {
+		return fmt.Errorf("qBittorrent instance does not support file renaming (requires WebAPI 2.4.0+, qBittorrent 4.2.1+)")
+	}
+
+	if err := sm.validateTorrentsExist(client, []string{hash}, "rename file"); err != nil {
+		return err
+	}
+
+	if strings.TrimSpace(oldPath) == "" {
+		return fmt.Errorf("original file path cannot be empty")
+	}
+
+	if strings.TrimSpace(newPath) == "" {
+		return fmt.Errorf("new file path cannot be empty")
+	}
+
+	if err := client.RenameFileCtx(ctx, hash, oldPath, newPath); err != nil {
+		return fmt.Errorf("failed to rename file: %w", err)
+	}
+
+	sm.syncAfterModification(instanceID, client, "rename_torrent_file")
+
+	return nil
+}
+
+// RenameTorrentFolder renames a folder inside a torrent
+func (sm *SyncManager) RenameTorrentFolder(ctx context.Context, instanceID int, hash, oldPath, newPath string) error {
+	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		return err
+	}
+
+	if !client.SupportsRenameFolder() {
+		return fmt.Errorf("qBittorrent instance does not support folder renaming (requires WebAPI 2.8.4+, qBittorrent 4.4.0+)")
+	}
+
+	if err := sm.validateTorrentsExist(client, []string{hash}, "rename folder"); err != nil {
+		return err
+	}
+
+	if strings.TrimSpace(oldPath) == "" {
+		return fmt.Errorf("original folder path cannot be empty")
+	}
+
+	if strings.TrimSpace(newPath) == "" {
+		return fmt.Errorf("new folder path cannot be empty")
+	}
+
+	if err := client.RenameFolderCtx(ctx, hash, oldPath, newPath); err != nil {
+		return fmt.Errorf("failed to rename folder: %w", err)
+	}
+
+	sm.syncAfterModification(instanceID, client, "rename_torrent_folder")
 
 	return nil
 }
