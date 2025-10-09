@@ -830,6 +830,10 @@ const FilterSidebarComponent = ({
     )
   }, [trackers, debouncedTrackerSearch])
 
+  const nonEmptyFilteredTrackers = useMemo(() => {
+    return filteredTrackers.filter(tracker => tracker !== "")
+  }, [filteredTrackers])
+
   // Virtual scrolling for categories
   const categoryVirtualizer = useVirtualizer({
     count: filteredCategories.length,
@@ -848,7 +852,7 @@ const FilterSidebarComponent = ({
 
   // Virtual scrolling for trackers
   const trackerVirtualizer = useVirtualizer({
-    count: filteredTrackers.filter(tracker => tracker !== "").length,
+    count: nonEmptyFilteredTrackers.length,
     getScrollElement: () => trackerListRef.current,
     estimateSize: () => 36, // Approximate height of each tracker item
     overscan: 10,
@@ -1565,21 +1569,21 @@ const FilterSidebarComponent = ({
                   )}
 
                   {/* No results message for trackers */}
-                  {hasReceivedTrackersData && debouncedTrackerSearch && filteredTrackers.filter(tracker => tracker !== "").length === 0 && (
+                  {hasReceivedTrackersData && debouncedTrackerSearch && nonEmptyFilteredTrackers.length === 0 && (
                     <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
                       No trackers found matching "{debouncedTrackerSearch}"
                     </div>
                   )}
 
                   {/* Tracker list - use filtered trackers for performance or virtual scrolling for large lists */}
-                  {trackers.length > VIRTUAL_THRESHOLD ? (
+                  {nonEmptyFilteredTrackers.length > VIRTUAL_THRESHOLD ? (
                     <div ref={trackerListRef} className="max-h-96 overflow-auto">
                       <div
                         className="relative"
                         style={{ height: `${trackerVirtualizer.getTotalSize()}px` }}
                       >
                         {trackerVirtualizer.getVirtualItems().map((virtualRow) => {
-                          const tracker = filteredTrackers.filter(t => t !== "")[virtualRow.index]
+                          const tracker = nonEmptyFilteredTrackers[virtualRow.index]
                           if (!tracker) return null
                           const trackerState = getTrackerState(tracker)
 
@@ -1652,7 +1656,7 @@ const FilterSidebarComponent = ({
                       </div>
                     </div>
                   ) : (
-                    filteredTrackers.filter(tracker => tracker !== "").map((tracker) => {
+                    nonEmptyFilteredTrackers.map((tracker) => {
                       const trackerState = getTrackerState(tracker)
                       return (
                         <ContextMenu key={tracker}>
@@ -1781,15 +1785,17 @@ const FilterSidebarComponent = ({
 
 // Memoize the component to prevent unnecessary re-renders during polling
 export const FilterSidebar = memo(FilterSidebarComponent, (prevProps, nextProps) => {
-  // Custom comparison function - only re-render if these props change
+  if (prevProps.instanceId !== nextProps.instanceId) return false
+  if (prevProps.className !== nextProps.className) return false
+  if (prevProps.isStaleData !== nextProps.isStaleData) return false
+  if (prevProps.isLoading !== nextProps.isLoading) return false
+  if (prevProps.isMobile !== nextProps.isMobile) return false
+  if (prevProps.onFilterChange !== nextProps.onFilterChange) return false
+
   return (
-    prevProps.instanceId === nextProps.instanceId &&
-    JSON.stringify(prevProps.selectedFilters) === JSON.stringify(nextProps.selectedFilters) &&
-    JSON.stringify(prevProps.torrentCounts) === JSON.stringify(nextProps.torrentCounts) &&
-    JSON.stringify(prevProps.categories) === JSON.stringify(nextProps.categories) &&
-    JSON.stringify(prevProps.tags) === JSON.stringify(nextProps.tags) &&
-    prevProps.className === nextProps.className &&
-    prevProps.isStaleData === nextProps.isStaleData &&
-    prevProps.isLoading === nextProps.isLoading
+    prevProps.selectedFilters === nextProps.selectedFilters &&
+    prevProps.torrentCounts === nextProps.torrentCounts &&
+    prevProps.categories === nextProps.categories &&
+    prevProps.tags === nextProps.tags
   )
 })
