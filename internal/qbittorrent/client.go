@@ -35,6 +35,7 @@ type Client struct {
 	trackerExclusions map[string]map[string]struct{} // Domains to hide hashes from until fresh sync arrives
 	lastServerState   *qbt.ServerState
 	mu                sync.RWMutex
+	serverStateMu     sync.RWMutex
 	healthMu          sync.RWMutex
 }
 
@@ -209,8 +210,8 @@ func (c *Client) SupportsTrackerEditing() bool {
 }
 
 func (c *Client) updateServerState(data *qbt.MainData) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.serverStateMu.Lock()
+	defer c.serverStateMu.Unlock()
 
 	if data == nil || data.ServerState == (qbt.ServerState{}) {
 		c.lastServerState = nil
@@ -222,15 +223,15 @@ func (c *Client) updateServerState(data *qbt.MainData) {
 }
 
 func (c *Client) clearServerState() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.serverStateMu.Lock()
+	defer c.serverStateMu.Unlock()
 
 	c.lastServerState = nil
 }
 
 func (c *Client) GetCachedServerState() *qbt.ServerState {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.serverStateMu.RLock()
+	defer c.serverStateMu.RUnlock()
 
 	if c.lastServerState == nil {
 		return nil
