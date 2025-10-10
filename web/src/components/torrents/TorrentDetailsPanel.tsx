@@ -15,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
+import { usePersistedTabState } from "@/hooks/usePersistedTabState"
 import { api } from "@/lib/api"
 import { getLinuxComment, getLinuxCreatedBy, getLinuxFileName, getLinuxHash, getLinuxIsoName, getLinuxSavePath, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { renderTextWithLinks } from "@/lib/linkUtils"
@@ -31,6 +32,15 @@ import { toast } from "sonner"
 interface TorrentDetailsPanelProps {
   instanceId: number;
   torrent: Torrent | null;
+}
+
+const TAB_VALUES = ["general", "trackers", "peers", "content"] as const
+type TabValue = typeof TAB_VALUES[number]
+const DEFAULT_TAB: TabValue = "general"
+const TAB_STORAGE_KEY = "torrent-details-last-tab"
+
+function isTabValue(value: string): value is TabValue {
+  return TAB_VALUES.includes(value as TabValue)
 }
 
 function getTrackerStatusBadge(status: number) {
@@ -51,7 +61,7 @@ function getTrackerStatusBadge(status: number) {
 }
 
 export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceId, torrent }: TorrentDetailsPanelProps) {
-  const [activeTab, setActiveTab] = useState("general")
+  const [activeTab, setActiveTab] = usePersistedTabState<TabValue>(TAB_STORAGE_KEY, DEFAULT_TAB, isTabValue)
   const [showAddPeersDialog, setShowAddPeersDialog] = useState(false)
   const { formatTimestamp } = useDateTimeFormatters()
   const [showBanPeerDialog, setShowBanPeerDialog] = useState(false)
@@ -73,14 +83,18 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       toast.error("Failed to copy to clipboard")
     }
   }, [])
-  // Reset tab when torrent changes and wait for component to be ready
+  // Wait for component animation before enabling queries when torrent changes
   useEffect(() => {
-    setActiveTab("general")
     setIsReady(false)
     // Small delay to ensure parent component animations complete
     const timer = setTimeout(() => setIsReady(true), 150)
     return () => clearTimeout(timer)
   }, [torrent?.hash])
+
+  const handleTabChange = useCallback((value: string) => {
+    const nextTab = isTabValue(value) ? value : DEFAULT_TAB
+    setActiveTab(nextTab)
+  }, [setActiveTab])
 
   // Fetch torrent properties
   const { data: properties, isLoading: loadingProperties } = useQuery({
@@ -233,7 +247,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
         </h3>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="flex-1 flex flex-col overflow-hidden">
         <TabsList className="w-full justify-start rounded-none border-b h-10 bg-background px-4 sm:px-6 py-0">
           <TabsTrigger
             value="general"
