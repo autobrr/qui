@@ -830,7 +830,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     }
   }, [altSpeedOverride, serverAltSpeedEnabled, toggleAltSpeedLimits, isTogglingAltSpeed])
 
-  const altSpeedTooltip = isAltSpeedKnown? altSpeedEnabled? "Alternative speed limits enabled (turtle mode) - Click to disable": "Alternative speed limits disabled (normal mode) - Click to enable": "Alternative speed limits status unknown"
+  const altSpeedTooltip = isAltSpeedKnown? altSpeedEnabled? "Alternative speed limits: On": "Alternative speed limits: Off": "Alternative speed limits status unknown"
   const altSpeedAriaLabel = isAltSpeedKnown? altSpeedEnabled? "Disable alternative speed limits": "Enable alternative speed limits": "Alternative speed limits status unknown"
 
   const rawConnectionStatus = effectiveServerState?.connection_status ?? ""
