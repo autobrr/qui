@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import type { Torrent } from "@/types"
-import type { ReactNode } from "react"
 import { createContext, useCallback, useContext, useState } from "react"
+import type { ReactNode } from "react"
+import type { Torrent, TorrentFilters } from "@/types"
 
 interface TorrentSelectionContextType {
   isSelectionMode: boolean
@@ -18,12 +18,7 @@ interface TorrentSelectionContextType {
   totalSelectionCount: number
   selectedTotalSize: number
   excludeHashes: string[]
-  filters?: {
-    status: string[]
-    categories: string[]
-    tags: string[]
-    trackers: string[]
-  }
+  filters?: TorrentFilters
   instanceId?: number
   // Management Bar actions
   updateSelection: (

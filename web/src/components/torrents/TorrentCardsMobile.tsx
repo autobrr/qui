@@ -24,6 +24,14 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
@@ -74,12 +82,13 @@ import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata.ts"
 import { usePersistedCompactViewState, type ViewMode } from "@/hooks/usePersistedCompactViewState"
 import { api } from "@/lib/api"
+import { getColumnType } from "@/lib/column-filter-utils"
 import { getLinuxCategory, getLinuxIsoName, getLinuxRatio, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits, type SpeedUnit } from "@/lib/speedUnits"
 import { getStateLabel } from "@/lib/torrent-state-utils"
 import { getCommonCategory, getCommonSavePath, getCommonTags } from "@/lib/torrent-utils"
 import { cn, formatBytes } from "@/lib/utils"
-import type { Category, Torrent, TorrentCounts } from "@/types"
+import type { Category, Torrent, TorrentCounts, TorrentFilters } from "@/types"
 import { useQuery } from "@tanstack/react-query"
 
 // Mobile-friendly Share Limits Dialog
@@ -298,12 +307,7 @@ function MobileSpeedLimitsDialog({
 
 interface TorrentCardsMobileProps {
   instanceId: number
-  filters?: {
-    status: string[]
-    categories: string[]
-    tags: string[]
-    trackers: string[]
-  }
+  filters?: TorrentFilters
   selectedTorrent?: Torrent | null
   onTorrentSelect?: (torrent: Torrent | null) => void
   addTorrentModalOpen?: boolean
@@ -403,6 +407,69 @@ function shallowEqualTrackerIcons(
   }
 
   return true
+}
+
+const TORRENT_SORT_OPTIONS = [
+  { value: "added_on", label: "Recently Added" },
+  { value: "name", label: "Name" },
+  { value: "size", label: "Size" },
+  // { value: "total_size", label: "Total Size" },
+  { value: "progress", label: "Progress" },
+  { value: "state", label: "Status" },
+  { value: "priority", label: "Priority" },
+  { value: "num_seeds", label: "Seeds" },
+  { value: "num_leechs", label: "Leechers" },
+  { value: "dlspeed", label: "Download Speed" },
+  { value: "upspeed", label: "Upload Speed" },
+  { value: "eta", label: "ETA" },
+  { value: "ratio", label: "Ratio" },
+  { value: "popularity", label: "Popularity" },
+  { value: "category", label: "Category" },
+  { value: "tags", label: "Tags" },
+  { value: "completion_on", label: "Completed On" },
+  { value: "tracker", label: "Tracker" },
+  { value: "dl_limit", label: "Download Limit" },
+  { value: "up_limit", label: "Upload Limit" },
+  { value: "downloaded", label: "Downloaded" },
+  { value: "uploaded", label: "Uploaded" },
+  { value: "downloaded_session", label: "Session Downloaded" },
+  { value: "uploaded_session", label: "Session Uploaded" },
+  { value: "amount_left", label: "Remaining" },
+  { value: "time_active", label: "Time Active" },
+  { value: "seeding_time", label: "Seeding Time" },
+  { value: "save_path", label: "Save Path" },
+  { value: "completed", label: "Completed" },
+  { value: "ratio_limit", label: "Ratio Limit" },
+  { value: "seen_complete", label: "Last Seen Complete" },
+  { value: "last_activity", label: "Last Activity" },
+  { value: "availability", label: "Availability" },
+  { value: "infohash_v1", label: "Info Hash v1" },
+  { value: "infohash_v2", label: "Info Hash v2" },
+  { value: "reannounce", label: "Reannounce In" },
+  { value: "private", label: "Private" },
+] as const
+
+type TorrentSortOptionValue = typeof TORRENT_SORT_OPTIONS[number]["value"]
+
+interface MobileSortState {
+  field: TorrentSortOptionValue
+  order: "asc" | "desc"
+}
+
+const DEFAULT_MOBILE_SORT_STATE: MobileSortState = {
+  field: "added_on",
+  order: getDefaultMobileSortOrder("added_on"),
+}
+
+const MOBILE_SORT_STORAGE_KEY = "qui:torrent-mobile-sort"
+
+function isValidSortField(value: unknown): value is TorrentSortOptionValue {
+  return TORRENT_SORT_OPTIONS.some(option => option.value === value)
+}
+
+function getDefaultMobileSortOrder(field: TorrentSortOptionValue): "asc" | "desc" {
+  const columnType = getColumnType(field)
+  return columnType === "string" || columnType === "enum" ? "asc" : "desc"
 }
 
 const trackerIconSizeClasses = {
@@ -883,6 +950,26 @@ export function TorrentCardsMobile({
   onFilteredDataUpdate,
 }: TorrentCardsMobileProps) {
   // State
+  const [sortState, setSortState] = useState<MobileSortState>(() => {
+    if (typeof window === "undefined") {
+      return DEFAULT_MOBILE_SORT_STATE
+    }
+
+    try {
+      const stored = window.localStorage.getItem(`${MOBILE_SORT_STORAGE_KEY}:${instanceId}`)
+      if (stored) {
+        const parsed = JSON.parse(stored) as Partial<MobileSortState>
+        const field = isValidSortField(parsed?.field) ? parsed?.field : DEFAULT_MOBILE_SORT_STATE.field
+        const defaultOrder = getDefaultMobileSortOrder(field)
+        const order = parsed?.order === "asc" || parsed?.order === "desc" ? parsed.order : defaultOrder
+        return { field, order }
+      }
+    } catch {
+      // Ignore malformed localStorage entries
+    }
+
+    return DEFAULT_MOBILE_SORT_STATE
+  })
   const [globalFilter, setGlobalFilter] = useState("")
   const [immediateSearch] = useState("")
   const [selectedHashes, setSelectedHashes] = useState<Set<string>>(new Set())
@@ -896,6 +983,31 @@ export function TorrentCardsMobile({
   const [showShareLimitDialog, setShowShareLimitDialog] = useState(false)
   const [showSpeedLimitDialog, setShowSpeedLimitDialog] = useState(false)
   const [showSearchModal, setShowSearchModal] = useState(false)
+  const sortField = sortState.field
+  const sortOrder = sortState.order
+
+  const currentSortOption = useMemo(() => {
+    return TORRENT_SORT_OPTIONS.find(option => option.value === sortField) ?? TORRENT_SORT_OPTIONS[0]
+  }, [sortField])
+
+  const handleSortFieldChange = useCallback((value: TorrentSortOptionValue) => {
+    setSortState(prev => {
+      if (prev.field === value) {
+        return prev
+      }
+      return {
+        field: value,
+        order: getDefaultMobileSortOrder(value),
+      }
+    })
+  }, [])
+
+  const toggleSortOrder = useCallback(() => {
+    setSortState(prev => ({
+      field: prev.field,
+      order: prev.order === "desc" ? "asc" : "desc",
+    }))
+  }, [])
 
   // Custom "select all" state for handling large datasets
   const [isAllSelected, setIsAllSelected] = useState(false)
@@ -926,6 +1038,7 @@ export function TorrentCardsMobile({
   const previousFiltersRef = useRef(filters)
   const previousInstanceIdRef = useRef(instanceId)
   const previousSearchRef = useRef("")
+  const previousSortRef = useRef(sortState)
 
   // Progressive loading state with async management
   const [loadedRows, setLoadedRows] = useState(100)
@@ -985,6 +1098,51 @@ export function TorrentCardsMobile({
     refetchIntervalInBackground: true,
   })
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      setSortState(DEFAULT_MOBILE_SORT_STATE)
+      return
+    }
+
+    const storageKey = `${MOBILE_SORT_STORAGE_KEY}:${instanceId}`
+    setSortState(prev => {
+      try {
+        const stored = window.localStorage.getItem(storageKey)
+        if (!stored) {
+          return DEFAULT_MOBILE_SORT_STATE
+        }
+
+        const parsed = JSON.parse(stored) as Partial<MobileSortState>
+        const field = isValidSortField(parsed?.field) ? parsed?.field : DEFAULT_MOBILE_SORT_STATE.field
+        const defaultOrder = getDefaultMobileSortOrder(field)
+        const order = parsed?.order === "asc" || parsed?.order === "desc" ? parsed.order : defaultOrder
+
+        if (prev.field === field && prev.order === order) {
+          return prev
+        }
+
+        return { field, order }
+      } catch {
+        return DEFAULT_MOBILE_SORT_STATE
+      }
+    })
+  }, [instanceId])
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return
+    }
+
+    try {
+      window.localStorage.setItem(
+        `${MOBILE_SORT_STORAGE_KEY}:${instanceId}`,
+        JSON.stringify(sortState)
+      )
+    } catch {
+      // Ignore storage quota errors
+    }
+  }, [sortState, instanceId])
+
   // Columns controls removed on mobile
 
   useEffect(() => {
@@ -999,19 +1157,25 @@ export function TorrentCardsMobile({
     const filtersChanged = JSON.stringify(previousFiltersRef.current) !== JSON.stringify(filters)
     const instanceChanged = previousInstanceIdRef.current !== instanceId
     const searchChanged = previousSearchRef.current !== effectiveSearch
+    const sortChanged =
+      previousSortRef.current.field !== sortState.field ||
+      previousSortRef.current.order !== sortState.order
 
-    if (filtersChanged || instanceChanged || searchChanged) {
+    if (filtersChanged || instanceChanged || searchChanged || sortChanged) {
+      const actionType = instanceChanged? "instance": sortChanged? "sort": filtersChanged? "filter": "search"
+
       setLastUserAction({
-        type: instanceChanged ? "instance" : filtersChanged ? "filter" : "search",
+        type: actionType,
         timestamp: Date.now(),
       })
-
-      // Update refs
-      previousFiltersRef.current = filters
-      previousInstanceIdRef.current = instanceId
-      previousSearchRef.current = effectiveSearch
     }
-  }, [filters, instanceId, effectiveSearch])
+
+    // Update refs
+    previousFiltersRef.current = filters
+    previousInstanceIdRef.current = instanceId
+    previousSearchRef.current = effectiveSearch
+    previousSortRef.current = sortState
+  }, [filters, instanceId, effectiveSearch, sortState])
 
   // Fetch data
   const {
@@ -1029,6 +1193,8 @@ export function TorrentCardsMobile({
   } = useTorrentsList(instanceId, {
     search: effectiveSearch,
     filters,
+    sort: sortField,
+    order: sortOrder,
   })
 
   const { data: capabilities } = useInstanceCapabilities(instanceId)
@@ -1499,6 +1665,44 @@ export function TorrentCardsMobile({
             )}
           </div>
           <div className="flex items-center gap-1">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-xs font-medium text-muted-foreground hover:text-foreground md:hidden"
+                >
+                  Sort: {currentSortOption.label}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48 max-h-100 overflow-y-auto">
+                <DropdownMenuLabel>Sort by</DropdownMenuLabel>
+                <DropdownMenuRadioGroup
+                  value={sortField}
+                  onValueChange={(value) => handleSortFieldChange(value as TorrentSortOptionValue)}
+                >
+                  {TORRENT_SORT_OPTIONS.map(option => (
+                    <DropdownMenuRadioItem key={option.value} value={option.value} className="text-xs">
+                      {option.label}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={toggleSortOrder}
+              className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground md:hidden"
+              aria-label={`Sort ${sortOrder === "desc" ? "descending" : "ascending"}`}
+              title={`Sort ${sortOrder === "desc" ? "descending" : "ascending"}`}
+            >
+              {sortOrder === "desc" ? (
+                <ChevronDown className="h-3.5 w-3.5" />
+              ) : (
+                <ChevronUp className="h-3.5 w-3.5" />
+              )}
+            </Button>
             <button
               onClick={() => setSpeedUnit(speedUnit === "bytes" ? "bits" : "bytes")}
               className="flex items-center gap-1 pl-1.5 py-0.5 rounded-sm transition-all hover:bg-muted/50"
