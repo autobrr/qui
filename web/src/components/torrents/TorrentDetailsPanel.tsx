@@ -416,10 +416,22 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
                     {/* Save Path */}
                     <div className="space-y-3">
-                      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">File Location</h3>
+                      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Save Path</h3>
                       <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50">
-                        <div className="font-mono text-xs sm:text-sm break-all text-muted-foreground">
-                          {displaySavePath || "N/A"}
+                        <div className="flex items-center gap-2">
+                          <div className="font-mono text-xs sm:text-sm break-all text-muted-foreground bg-background/50 rounded px-2.5 py-2 select-text flex-1">
+                            {displaySavePath || "N/A"}
+                          </div>
+                          {displaySavePath && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 shrink-0"
+                              onClick={() => copyToClipboard(displaySavePath, "File location")}
+                            >
+                              <Copy className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
                         </div>
                       </div>
                     </div>
