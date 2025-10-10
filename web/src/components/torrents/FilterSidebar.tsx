@@ -57,6 +57,7 @@ import {
   CreateCategoryDialog,
   CreateTagDialog,
   DeleteCategoryDialog,
+  DeleteEmptyCategoriesDialog,
   DeleteTagDialog,
   DeleteUnusedTagsDialog,
   EditCategoryDialog
@@ -218,6 +219,7 @@ const FilterSidebarComponent = ({
   const [showCreateCategoryDialog, setShowCreateCategoryDialog] = useState(false)
   const [showEditCategoryDialog, setShowEditCategoryDialog] = useState(false)
   const [showDeleteCategoryDialog, setShowDeleteCategoryDialog] = useState(false)
+  const [showDeleteEmptyCategoriesDialog, setShowDeleteEmptyCategoriesDialog] = useState(false)
   const [categoryToEdit, setCategoryToEdit] = useState<Category | null>(null)
   const [categoryToDelete, setCategoryToDelete] = useState("")
 
@@ -366,6 +368,19 @@ const FilterSidebarComponent = ({
   const hasReceivedCategoriesData = hasReceivedData(propsCategories)
   const hasReceivedTagsData = hasReceivedData(propsTags)
   const hasReceivedTrackersData = hasReceivedData(torrentCounts)
+
+  const emptyCategoryNames = useMemo(() => {
+    if (!hasReceivedCategoriesData || !hasReceivedTrackersData) {
+      return []
+    }
+
+    return Object.keys(categories).filter(categoryName => {
+      const count = torrentCounts ? torrentCounts[`category:${categoryName}`] || 0 : 0
+      return count === 0
+    })
+  }, [categories, hasReceivedCategoriesData, hasReceivedTrackersData, torrentCounts])
+
+  const hasEmptyCategories = emptyCategoryNames.length > 0
 
   // Use fake trackers if in incognito mode or extract from torrentCounts
   // When loading or showing stale data, show empty data to prevent stale data from previous instance
@@ -1205,6 +1220,14 @@ const FilterSidebarComponent = ({
                                     <Trash2 className="mr-2 h-4 w-4" />
                                     Delete Category
                                   </ContextMenuItem>
+                                  <ContextMenuItem
+                                    onClick={() => setShowDeleteEmptyCategoriesDialog(true)}
+                                    disabled={!hasEmptyCategories}
+                                    className="text-destructive"
+                                  >
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    Remove Empty Categories
+                                  </ContextMenuItem>
                                 </ContextMenuContent>
                               </ContextMenu>
                             </div>
@@ -1268,6 +1291,14 @@ const FilterSidebarComponent = ({
                             >
                               <Trash2 className="mr-2 h-4 w-4" />
                               Delete Category
+                            </ContextMenuItem>
+                            <ContextMenuItem
+                              onClick={() => setShowDeleteEmptyCategoriesDialog(true)}
+                              disabled={!hasEmptyCategories}
+                              className="text-destructive"
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Remove Empty Categories
                             </ContextMenuItem>
                           </ContextMenuContent>
                         </ContextMenu>
@@ -1761,6 +1792,14 @@ const FilterSidebarComponent = ({
         onOpenChange={setShowDeleteCategoryDialog}
         instanceId={instanceId}
         categoryName={categoryToDelete}
+      />
+
+      <DeleteEmptyCategoriesDialog
+        open={showDeleteEmptyCategoriesDialog}
+        onOpenChange={setShowDeleteEmptyCategoriesDialog}
+        instanceId={instanceId}
+        categories={categories}
+        torrentCounts={torrentCounts}
       />
 
       <DeleteUnusedTagsDialog
