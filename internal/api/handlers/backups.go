@@ -297,7 +297,7 @@ func (h *BackupsHandler) DownloadTorrentBlob(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	torrentHash := strings.ToLower(strings.TrimSpace(chi.URLParam(r, "torrentHash")))
+	torrentHash := strings.TrimSpace(chi.URLParam(r, "torrentHash"))
 	if torrentHash == "" {
 		RespondError(w, http.StatusBadRequest, "Invalid torrent hash")
 		return
