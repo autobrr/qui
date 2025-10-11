@@ -205,7 +205,8 @@ interface TorrentTableOptimizedProps {
     isAllSelected: boolean,
     totalSelectionCount: number,
     excludeHashes: string[],
-    selectedTotalSize: number
+    selectedTotalSize: number,
+    selectionFilters?: TorrentFilters
   ) => void
 }
 
@@ -820,6 +821,37 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   }, [isAllSelected, selectedTotalSize, contextTorrents])
   const deleteDialogFormattedSize = useMemo(() => formatBytes(deleteDialogTotalSize), [deleteDialogTotalSize])
 
+  const selectAllFilters = useMemo(() => {
+    if (!isAllSelected) {
+      return undefined
+    }
+
+    const combinedExpr = columnFiltersExpr ?? filters?.expr
+
+    if (filters) {
+      return {
+        ...filters,
+        expr: combinedExpr ?? filters.expr ?? "",
+      }
+    }
+
+    if (combinedExpr == null) {
+      return undefined
+    }
+
+    return {
+      status: [],
+      excludeStatus: [],
+      categories: [],
+      excludeCategories: [],
+      tags: [],
+      excludeTags: [],
+      trackers: [],
+      excludeTrackers: [],
+      expr: combinedExpr,
+    }
+  }, [isAllSelected, filters, columnFiltersExpr])
+
   // Call the callback when selection state changes
   useEffect(() => {
     if (onSelectionChange) {
@@ -829,10 +861,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         isAllSelected,
         effectiveSelectionCount,
         Array.from(excludedFromSelectAll),
-        selectedTotalSize
+        selectedTotalSize,
+        selectAllFilters ?? filters
       )
     }
-  }, [onSelectionChange, selectedHashes, selectedTorrents, isAllSelected, effectiveSelectionCount, excludedFromSelectAll, selectedTotalSize])
+  }, [onSelectionChange, selectedHashes, selectedTorrents, isAllSelected, effectiveSelectionCount, excludedFromSelectAll, selectedTotalSize, selectAllFilters, filters])
 
   // Virtualization setup with progressive loading
   const { rows } = table.getRowModel()
@@ -998,37 +1031,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   })
 
   // Wrapper functions to adapt hook handlers to component needs
-  const selectAllFilters = useMemo(() => {
-    if (!isAllSelected) {
-      return undefined
-    }
-
-    const combinedExpr = columnFiltersExpr ?? filters?.expr
-
-    if (filters) {
-      return {
-        ...filters,
-        expr: combinedExpr ?? filters.expr ?? "",
-      }
-    }
-
-    if (combinedExpr == null) {
-      return undefined
-    }
-
-    return {
-      status: [],
-      excludeStatus: [],
-      categories: [],
-      excludeCategories: [],
-      tags: [],
-      excludeTags: [],
-      trackers: [],
-      excludeTrackers: [],
-      expr: combinedExpr,
-    }
-  }, [isAllSelected, filters, columnFiltersExpr])
-
   const selectAllOptions = useMemo(() => ({
     selectAll: isAllSelected,
     filters: selectAllFilters,
