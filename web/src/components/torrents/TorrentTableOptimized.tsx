@@ -105,6 +105,7 @@ import { createColumns } from "./TorrentTableColumns"
 // Default values for persisted state hooks (module scope for stable references)
 const DEFAULT_COLUMN_VISIBILITY = {
   priority: true,
+  status_icon: true,
   tracker_icon: true,
   name: true,
   size: true,
@@ -443,7 +444,16 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
   // Map TanStack Table column IDs to backend field names
   const getBackendSortField = (columnId: string): string => {
-    return columnId || "added_on"
+    if (!columnId) {
+      return "added_on"
+    }
+
+    switch (columnId) {
+      case "status_icon":
+        return "state"
+      default:
+        return columnId
+    }
   }
 
   const activeSortField = sorting.length > 0 ? getBackendSortField(sorting[0].id) : "added_on"
