@@ -20,6 +20,13 @@ interface DraggableTableHeaderProps {
 export function DraggableTableHeader({ header, columnFilters = [], onFilterChange }: DraggableTableHeaderProps) {
   const { column } = header
 
+  const isSelectHeader = column.id === "select"
+  const isPriorityHeader = column.id === "priority"
+  const isTrackerIconHeader = column.id === "tracker_icon"
+  const isStatusIconHeader = column.id === "status_icon"
+  const isCompactHeader = isTrackerIconHeader || isStatusIconHeader
+  const headerPadding = isCompactHeader ? "px-0" : "px-3"
+
   const {
     attributes,
     listeners,
@@ -31,6 +38,10 @@ export function DraggableTableHeader({ header, columnFilters = [], onFilterChang
     id: column.id,
     disabled: column.id === "select",
   })
+
+  const canResize = column.getCanResize()
+  const shouldShowSeparator = canResize || column.columnDef.enableResizing === false
+  const shouldShowSortIndicator = !isSelectHeader && column.getIsSorted() && (isPriorityHeader || !isCompactHeader)
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -48,7 +59,7 @@ export function DraggableTableHeader({ header, columnFilters = [], onFilterChang
       className="group overflow-hidden"
     >
       <div
-        className={`px-3 h-10 text-left text-sm font-medium text-muted-foreground flex items-center ${
+        className={`${headerPadding} h-10 text-left text-sm font-medium text-muted-foreground flex items-center ${
           column.getCanSort() ? "cursor-pointer select-none" : ""
         } ${
           column.id !== "select" ? "cursor-grab active:cursor-grabbing" : ""
@@ -59,23 +70,31 @@ export function DraggableTableHeader({ header, columnFilters = [], onFilterChang
       >
         {/* Header content */}
         <div
-          className={`flex items-center gap-1 flex-1 min-w-0 ${column.id === "select" ? "justify-center" : ""}`}
+          className={`flex items-center ${isCompactHeader ? "gap-0" : "gap-1"} flex-1 min-w-0 ${
+            isSelectHeader || isCompactHeader ? "justify-center" : ""
+          }`}
         >
-          <span className={`overflow-hidden whitespace-nowrap ${column.id !== "priority" && column.id !== "tracker_icon" ? "flex-1 min-w-0" : ""} ${column.id === "select" ? "flex items-center" : ""}`}>
+          <span
+            className={`whitespace-nowrap ${
+              !isPriorityHeader && !isCompactHeader ? "overflow-hidden flex-1 min-w-0" : ""
+            } ${
+              isCompactHeader ? "flex items-center w-full justify-center" : ""
+            } ${isSelectHeader ? "flex items-center justify-center" : ""}`}
+          >
             {header.isPlaceholder ? null : flexRender(
               column.columnDef.header,
               header.getContext()
             )}
           </span>
-          {column.id !== "select" && column.getIsSorted() && (
+          {shouldShowSortIndicator && (
             column.getIsSorted() === "asc" ? (
-              <ChevronUp className="h-4 w-4 flex-shrink-0"/>
+              <ChevronUp className={`h-4 w-4 flex-shrink-0${isPriorityHeader ? " ml-1 mr-1" : ""}`}/>
             ) : (
-              <ChevronDown className="h-4 w-4 flex-shrink-0"/>
+              <ChevronDown className={`h-4 w-4 flex-shrink-0${isPriorityHeader ? " ml-1 mr-1" : ""}`}/>
             )
           )}
           {/* Column filter button - only show for filterable columns */}
-          {column.id !== "select" && column.id !== "priority" && column.id !== "tracker_icon" && onFilterChange && (
+          {!isSelectHeader && !isPriorityHeader && !isTrackerIconHeader && !isStatusIconHeader && onFilterChange && (
             <ColumnFilterPopover
               columnId={column.id}
               columnName={(column.columnDef.meta as { headerString?: string })?.headerString ||
@@ -89,15 +108,17 @@ export function DraggableTableHeader({ header, columnFilters = [], onFilterChang
       </div>
 
       {/* Resize handle */}
-      {column.getCanResize() && (
+      {shouldShowSeparator && (
         <div
-          onMouseDown={header.getResizeHandler()}
-          onTouchStart={header.getResizeHandler()}
-          className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none group/resize flex justify-center"
+          onMouseDown={canResize ? header.getResizeHandler() : undefined}
+          onTouchStart={canResize ? header.getResizeHandler() : undefined}
+          className={`absolute right-0 top-0 h-full w-2 select-none group/resize flex justify-end ${
+            canResize ? "cursor-col-resize touch-none" : "pointer-events-none"
+          }`}
         >
           <div
             className={`h-full w-px ${
-              column.getIsResizing() ? "bg-primary" : "bg-border group-hover/resize:bg-primary/50"
+              canResize && column.getIsResizing()? "bg-primary": canResize? "bg-border group-hover/resize:bg-primary/50": "bg-border"
             }`}
           />
         </div>
