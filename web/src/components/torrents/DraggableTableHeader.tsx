@@ -20,6 +20,9 @@ interface DraggableTableHeaderProps {
 export function DraggableTableHeader({ header, columnFilters = [], onFilterChange }: DraggableTableHeaderProps) {
   const { column } = header
 
+  const isCompactHeader = column.id === "priority" || column.id === "tracker_icon" || column.id === "status_icon"
+  const headerPadding = isCompactHeader ? "px-0" : "px-3"
+
   const {
     attributes,
     listeners,
@@ -31,6 +34,9 @@ export function DraggableTableHeader({ header, columnFilters = [], onFilterChang
     id: column.id,
     disabled: column.id === "select",
   })
+
+  const canResize = column.getCanResize()
+  const shouldShowSeparator = canResize || column.columnDef.enableResizing === false
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -48,7 +54,7 @@ export function DraggableTableHeader({ header, columnFilters = [], onFilterChang
       className="group overflow-hidden"
     >
       <div
-        className={`px-3 h-10 text-left text-sm font-medium text-muted-foreground flex items-center ${
+        className={`${headerPadding} h-10 text-left text-sm font-medium text-muted-foreground flex items-center ${
           column.getCanSort() ? "cursor-pointer select-none" : ""
         } ${
           column.id !== "select" ? "cursor-grab active:cursor-grabbing" : ""
@@ -59,15 +65,21 @@ export function DraggableTableHeader({ header, columnFilters = [], onFilterChang
       >
         {/* Header content */}
         <div
-          className={`flex items-center gap-1 flex-1 min-w-0 ${column.id === "select" ? "justify-center" : ""}`}
+          className={`flex items-center ${isCompactHeader ? "gap-0" : "gap-1"} flex-1 min-w-0 ${
+            column.id === "select" || isCompactHeader ? "justify-center" : ""
+          }`}
         >
-          <span className={`overflow-hidden whitespace-nowrap ${column.id !== "priority" && column.id !== "tracker_icon" && column.id !== "status_icon" ? "flex-1 min-w-0" : ""} ${column.id === "select" ? "flex items-center" : ""}`}>
+          <span
+            className={`whitespace-nowrap flex items-center ${
+              isCompactHeader? "w-full justify-center": "overflow-hidden flex-1 min-w-0"
+            } ${column.id === "select" ? "justify-center" : ""}`}
+          >
             {header.isPlaceholder ? null : flexRender(
               column.columnDef.header,
               header.getContext()
             )}
           </span>
-          {column.id !== "select" && column.getIsSorted() && (
+          {column.id !== "select" && !isCompactHeader && column.getIsSorted() && (
             column.getIsSorted() === "asc" ? (
               <ChevronUp className="h-4 w-4 flex-shrink-0"/>
             ) : (
@@ -89,15 +101,17 @@ export function DraggableTableHeader({ header, columnFilters = [], onFilterChang
       </div>
 
       {/* Resize handle */}
-      {column.getCanResize() && (
+      {shouldShowSeparator && (
         <div
-          onMouseDown={header.getResizeHandler()}
-          onTouchStart={header.getResizeHandler()}
-          className="absolute right-0 top-0 h-full w-2 cursor-col-resize select-none touch-none group/resize flex justify-center"
+          onMouseDown={canResize ? header.getResizeHandler() : undefined}
+          onTouchStart={canResize ? header.getResizeHandler() : undefined}
+          className={`absolute right-0 top-0 h-full w-2 select-none group/resize flex justify-end ${
+            canResize ? "cursor-col-resize touch-none" : "pointer-events-none"
+          }`}
         >
           <div
             className={`h-full w-px ${
-              column.getIsResizing() ? "bg-primary" : "bg-border group-hover/resize:bg-primary/50"
+              canResize && column.getIsResizing()? "bg-primary": canResize? "bg-border group-hover/resize:bg-primary/50": "bg-border"
             }`}
           />
         </div>

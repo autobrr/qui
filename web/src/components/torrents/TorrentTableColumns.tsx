@@ -93,7 +93,7 @@ const TrackerIconCell = memo(({ title, fallback, src }: TrackerIconCellProps) =>
   }, [src])
 
   return (
-    <div className="flex h-full items-center justify-center" title={title}>
+    <div className="flex h-full w-full items-center justify-center" title={title}>
       <div className="flex h-4 w-4 items-center justify-center rounded-sm border border-border/40 bg-muted text-[10px] font-medium uppercase leading-none">
         {src && !hasError ? (
           <img
@@ -265,6 +265,37 @@ const getStatusIcon = (state: string, trackerHealth?: string | null, supportsTra
 }
 
 type StatusBadgeVariant = "default" | "secondary" | "destructive" | "outline"
+
+const compareTrackerAwareStatus = (torrentA: Torrent, torrentB: Torrent, supportsTrackerHealth: boolean): number => {
+  const metaA = getTrackerAwareStatusSortMeta(torrentA, supportsTrackerHealth)
+  const metaB = getTrackerAwareStatusSortMeta(torrentB, supportsTrackerHealth)
+
+  if (metaA.priority !== metaB.priority) {
+    return metaA.priority - metaB.priority
+  }
+
+  if (metaA.statePriority !== metaB.statePriority) {
+    return metaA.statePriority - metaB.statePriority
+  }
+
+  const labelComparison = metaA.label.localeCompare(metaB.label, undefined, { sensitivity: "accent", numeric: false })
+  if (labelComparison !== 0) {
+    return labelComparison
+  }
+
+  const stateA = torrentA.state || ""
+  const stateB = torrentB.state || ""
+
+  const stateComparison = stateA.localeCompare(stateB, undefined, { sensitivity: "accent", numeric: false })
+  if (stateComparison !== 0) {
+    return stateComparison
+  }
+
+  const nameA = torrentA.name || ""
+  const nameB = torrentB.name || ""
+
+  return nameA.localeCompare(nameB, undefined, { sensitivity: "accent", numeric: false })
+}
 
 const getStatusBadgeMeta = (
   torrent: Torrent,
@@ -498,41 +529,6 @@ export const createColumns = (
     size: 65,
   },
   {
-    id: "status_icon",
-    header: () => (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <div className="flex h-10 w-full items-center justify-center text-muted-foreground">
-            <PlayCircle className="h-4 w-4" aria-hidden="true" />
-            <span className="sr-only">Status Icon</span>
-          </div>
-        </TooltipTrigger>
-        <TooltipContent>Status Icon</TooltipContent>
-      </Tooltip>
-    ),
-    meta: {
-      headerString: "Status Icon",
-    },
-    cell: ({ row }) => {
-      const torrent = row.original
-      const StatusIcon = getStatusIcon(torrent.state, torrent.tracker_health ?? null, supportsTrackerHealth)
-      const { label: statusLabel, iconClass } = getStatusBadgeMeta(torrent, supportsTrackerHealth)
-
-      return (
-        <div
-          className="flex h-full items-center justify-center"
-          title={statusLabel}
-          aria-label={statusLabel}
-        >
-          <StatusIcon className={cn("h-4 w-4", iconClass)} aria-hidden="true" />
-        </div>
-      )
-    },
-    size: 48,
-    enableResizing: true,
-    enableSorting: false,
-  },
-  {
     accessorKey: "name",
     header: "Name",
     cell: ({ row }) => {
@@ -575,38 +571,47 @@ export const createColumns = (
     size: 120,
   },
   {
+    id: "status_icon",
+    accessorFn: (torrent) => torrent.state,
+    header: () => (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="flex h-full w-full items-center justify-center text-muted-foreground" aria-label="Status Icon">
+            <PlayCircle className="h-4 w-4" aria-hidden="true" />
+          </div>
+        </TooltipTrigger>
+        <TooltipContent>Status Icon</TooltipContent>
+      </Tooltip>
+    ),
+    meta: {
+      headerString: "Status Icon",
+    },
+    sortingFn: (rowA, rowB) => compareTrackerAwareStatus(rowA.original, rowB.original, supportsTrackerHealth),
+    cell: ({ row }) => {
+      const torrent = row.original
+      const StatusIcon = getStatusIcon(torrent.state, torrent.tracker_health ?? null, supportsTrackerHealth)
+      const { label: statusLabel, iconClass } = getStatusBadgeMeta(torrent, supportsTrackerHealth)
+
+      return (
+        <div
+          className="flex h-full w-full items-center justify-center"
+          title={statusLabel}
+          aria-label={statusLabel}
+        >
+          <StatusIcon className={cn("h-4 w-4", iconClass)} aria-hidden="true" />
+        </div>
+      )
+    },
+    size: 48,
+    minSize: 48,
+    maxSize: 48,
+    enableResizing: false,
+    enableSorting: true,
+  },
+  {
     accessorKey: "state",
     header: "Status",
-    sortingFn: (rowA, rowB) => {
-      const metaA = getTrackerAwareStatusSortMeta(rowA.original, supportsTrackerHealth)
-      const metaB = getTrackerAwareStatusSortMeta(rowB.original, supportsTrackerHealth)
-
-      if (metaA.priority !== metaB.priority) {
-        return metaA.priority - metaB.priority
-      }
-
-      if (metaA.statePriority !== metaB.statePriority) {
-        return metaA.statePriority - metaB.statePriority
-      }
-
-      const labelComparison = metaA.label.localeCompare(metaB.label, undefined, { sensitivity: "accent", numeric: false })
-      if (labelComparison !== 0) {
-        return labelComparison
-      }
-
-      const stateA = rowA.original.state || ""
-      const stateB = rowB.original.state || ""
-
-      const stateComparison = stateA.localeCompare(stateB, undefined, { sensitivity: "accent", numeric: false })
-      if (stateComparison !== 0) {
-        return stateComparison
-      }
-
-      const nameA = rowA.original.name || ""
-      const nameB = rowB.original.name || ""
-
-      return nameA.localeCompare(nameB, undefined, { sensitivity: "accent", numeric: false })
-    },
+    sortingFn: (rowA, rowB) => compareTrackerAwareStatus(rowA.original, rowB.original, supportsTrackerHealth),
     cell: ({ row }) => {
       const torrent = row.original
       const state = torrent.state
@@ -780,9 +785,8 @@ export const createColumns = (
     header: () => (
       <Tooltip>
         <TooltipTrigger asChild>
-          <div className="flex h-10 w-full items-center justify-center text-muted-foreground">
+          <div className="flex h-full w-full items-center justify-center text-muted-foreground" aria-label="Tracker Icon">
             <Globe className="h-4 w-4" aria-hidden="true" />
-            <span className="sr-only">Tracker Icon</span>
           </div>
         </TooltipTrigger>
         <TooltipContent>Tracker Icon</TooltipContent>
@@ -805,7 +809,10 @@ export const createColumns = (
       )
     },
     size: 48,
-    enableResizing: true,
+    minSize: 48,
+    maxSize: 48,
+    enableResizing: false,
+    enableSorting: false,
   },
   {
     accessorKey: "tracker",

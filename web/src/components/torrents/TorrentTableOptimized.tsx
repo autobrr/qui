@@ -443,7 +443,16 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
   // Map TanStack Table column IDs to backend field names
   const getBackendSortField = (columnId: string): string => {
-    return columnId || "added_on"
+    if (!columnId) {
+      return "added_on"
+    }
+
+    switch (columnId) {
+      case "status_icon":
+        return "state"
+      default:
+        return columnId
+    }
   }
 
   const activeSortField = sorting.length > 0 ? getBackendSortField(sorting[0].id) : "added_on"
