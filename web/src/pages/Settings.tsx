@@ -30,6 +30,13 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { api } from "@/lib/api"
 import { withBasePath } from "@/lib/base-url"
@@ -37,9 +44,16 @@ import { copyTextToClipboard } from "@/lib/utils"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useSearch } from "@tanstack/react-router"
-import { Clock, Copy, ExternalLink, Key, Menu, Plus, Server, Shield, Trash2 } from "lucide-react"
+import { Clock, Copy, ExternalLink, Key, Palette, Plus, Server, Shield, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { toast } from "sonner"
+
+const settingsTabs = ["security", "themes", "api", "datetime", "client-api"] as const
+type SettingsTab = (typeof settingsTabs)[number]
+
+const isSettingsTab = (value: unknown): value is SettingsTab => {
+  return typeof value === "string" && settingsTabs.some((tab) => tab === value)
+}
 
 function ChangePasswordForm() {
   const mutation = useMutation({
@@ -405,73 +419,117 @@ function ApiKeysManager() {
 }
 
 export function Settings() {
-  const search = useSearch({ from: "/_authenticated/settings" })
-  const defaultTab = (search as any)?.tab || "security"
-  const [activeTab, setActiveTab] = useState(defaultTab)
+  const tabFromSearch = useSearch({
+    from: "/_authenticated/settings",
+    select: (search: Record<string, unknown>): SettingsTab | undefined => {
+      const value = search.tab
+      return isSettingsTab(value) ? value : undefined
+    },
+  })
+  const defaultTab: SettingsTab = tabFromSearch ?? "security"
+  const [activeTab, setActiveTab] = useState<SettingsTab>(defaultTab)
 
   return (
-    <div className="container mx-auto p-6">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold">Settings</h1>
-        <p className="text-muted-foreground mt-2">
+    <div className="container mx-auto p-4 md:p-6">
+      <div className="mb-4 md:mb-6">
+        <h1 className="text-2xl md:text-3xl font-bold">Settings</h1>
+        <p className="text-muted-foreground mt-1 md:mt-2 text-sm md:text-base">
           Manage your application preferences and security
         </p>
       </div>
 
+      {/* Mobile Dropdown Navigation */}
+      <div className="md:hidden mb-4">
+        <Select
+          value={activeTab}
+          onValueChange={(value) => {
+            if (isSettingsTab(value)) {
+              setActiveTab(value)
+            }
+          }}
+        >
+          <SelectTrigger className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="security">
+              <div className="flex items-center">
+                <Shield className="w-4 h-4 mr-2" />
+                Security
+              </div>
+            </SelectItem>
+            <SelectItem value="themes">
+              <div className="flex items-center">
+                <Palette className="w-4 h-4 mr-2" />
+                Premium Themes
+              </div>
+            </SelectItem>
+            <SelectItem value="api">
+              <div className="flex items-center">
+                <Key className="w-4 h-4 mr-2" />
+                API Keys
+              </div>
+            </SelectItem>
+            <SelectItem value="datetime">
+              <div className="flex items-center">
+                <Clock className="w-4 h-4 mr-2" />
+                Date & Time
+              </div>
+            </SelectItem>
+            <SelectItem value="client-api">
+              <div className="flex items-center">
+                <Server className="w-4 h-4 mr-2" />
+                Client Proxy
+              </div>
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
       <div className="flex gap-6">
-        {/* Left Sidebar Navigation */}
-        <div className="w-64 shrink-0">
+        {/* Desktop Sidebar Navigation */}
+        <div className="hidden md:block w-64 shrink-0">
           <nav className="space-y-1">
             <button
-              onClick={() => setActiveTab('security')}
+              onClick={() => setActiveTab("security")}
               className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === 'security'
-                  ? 'bg-accent text-accent-foreground'
-                  : 'text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground'
+                activeTab === "security"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
               }`}
             >
               <Shield className="w-4 h-4 mr-2" />
               Security
             </button>
             <button
-              onClick={() => setActiveTab('themes')}
+              onClick={() => setActiveTab("themes")}
               className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === 'themes'
-                  ? 'bg-accent text-accent-foreground'
-                  : 'text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground'
+                activeTab === "themes"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
               }`}
             >
-              <Menu className="w-4 h-4 mr-2" />
-              Context Menu
+              <Palette className="w-4 h-4 mr-2" />
+              Premium Themes
             </button>
             <button
-              onClick={() => setActiveTab('api')}
+              onClick={() => setActiveTab("api")}
               className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === 'api'
-                  ? 'bg-accent text-accent-foreground'
-                  : 'text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground'
+                activeTab === "api"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
               }`}
             >
               <Key className="w-4 h-4 mr-2" />
               API Keys
             </button>
             <button
-              onClick={() => setActiveTab('datetime')}
+              onClick={() => setActiveTab("datetime")}
               className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === 'datetime'
-                  ? 'bg-accent text-accent-foreground'
-                  : 'text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground'
+                activeTab === "datetime"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
               }`}
             >
               <Clock className="w-4 h-4 mr-2" />
               Date & Time
             </button>
             <button
-              onClick={() => setActiveTab('client-api')}
+              onClick={() => setActiveTab("client-api")}
               className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === 'client-api'
-                  ? 'bg-accent text-accent-foreground'
-                  : 'text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground'
+                activeTab === "client-api"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
               }`}
             >
               <Server className="w-4 h-4 mr-2" />
@@ -483,7 +541,7 @@ export function Settings() {
         {/* Main Content Area */}
         <div className="flex-1 min-w-0">
 
-          {activeTab === 'security' && (
+          {activeTab === "security" && (
             <div className="space-y-4">
               <Card>
                 <CardHeader>
@@ -499,7 +557,7 @@ export function Settings() {
             </div>
           )}
 
-          {activeTab === 'datetime' && (
+          {activeTab === "datetime" && (
             <div className="space-y-4">
               <Card>
                 <CardHeader>
@@ -515,44 +573,44 @@ export function Settings() {
             </div>
           )}
 
-          {activeTab === 'themes' && (
+          {activeTab === "themes" && (
             <div className="space-y-4">
               <LicenseManager />
               <ThemeSelector />
             </div>
           )}
 
-          {activeTab === 'api' && (
+          {activeTab === "api" && (
             <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <div className="flex items-start justify-between">
-                <div className="space-y-1.5">
-                  <CardTitle>API Keys</CardTitle>
-                  <CardDescription>
-                    Manage API keys for external access
-                  </CardDescription>
-                </div>
-                <a
-                  href={withBasePath("api/docs")}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-                  title="View API documentation"
-                >
-                  <span className="hidden sm:inline">API Docs</span>
-                  <ExternalLink className="h-3.5 w-3.5" />
-                </a>
-              </div>
-            </CardHeader>
-            <CardContent>
-                <ApiKeysManager />
-              </CardContent>
-            </Card>
+              <Card>
+                <CardHeader>
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-1.5">
+                      <CardTitle>API Keys</CardTitle>
+                      <CardDescription>
+                        Manage API keys for external access
+                      </CardDescription>
+                    </div>
+                    <a
+                      href={withBasePath("api/docs")}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                      title="View API documentation"
+                    >
+                      <span className="hidden sm:inline">API Docs</span>
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <ApiKeysManager />
+                </CardContent>
+              </Card>
             </div>
           )}
 
-          {activeTab === 'client-api' && (
+          {activeTab === "client-api" && (
             <div className="space-y-4">
               <Card>
                 <CardHeader>
