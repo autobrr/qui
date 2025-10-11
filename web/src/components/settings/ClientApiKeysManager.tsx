@@ -33,6 +33,12 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger
+} from "@/components/ui/tooltip"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { api } from "@/lib/api"
 import { withBasePath } from "@/lib/base-url"
@@ -57,6 +63,12 @@ interface NewClientAPIKey {
     host: string
   }
   proxyUrl: string
+}
+
+// Helper function to truncate long instance names
+function truncateInstanceName(name: string, maxLength = 20): string {
+  if (name.length <= maxLength) return name
+  return `${name.slice(0, maxLength)}...`
 }
 
 export function ClientApiKeysManager() {
@@ -155,258 +167,274 @@ export function ClientApiKeysManager() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:justify-end">
-        <Dialog open={showCreateDialog} onOpenChange={handleDialogOpenChange}>
-          <DialogTrigger asChild>
-            <Button size="sm" className="w-full sm:w-auto">
-              <Plus className="mr-2 h-4 w-4" />
-              Create Client API Key
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-xl max-w-full">
-            <DialogHeader>
-              <DialogTitle>Create Client API Key</DialogTitle>
-              <DialogDescription>
-                Create an API key for a specific client to connect to a qBittorrent instance.
-              </DialogDescription>
-            </DialogHeader>
+    <TooltipProvider>
+      <div className="space-y-4">
+        <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:justify-end">
+          <Dialog open={showCreateDialog} onOpenChange={handleDialogOpenChange}>
+            <DialogTrigger asChild>
+              <Button size="sm" className="w-full sm:w-auto">
+                <Plus className="mr-2 h-4 w-4" />
+                Create Client API Key
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-xl max-w-full">
+              <DialogHeader>
+                <DialogTitle>Create Client API Key</DialogTitle>
+                <DialogDescription>
+                  Create an API key for a specific client to connect to a qBittorrent instance.
+                </DialogDescription>
+              </DialogHeader>
 
-            {newKey ? (
-              <div className="space-y-4">
-                <Card className="w-full">
-                  <CardHeader>
-                    <CardTitle className="text-base">API Key Created</CardTitle>
-                    <CardDescription>
-                      This information is shown only once. Store it in your password manager before closing the dialog.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div>
-                      <Label htmlFor="proxy-url" className="text-xs uppercase text-muted-foreground">Proxy URL</Label>
-                      <div className="mt-1 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
-                        <code id="proxy-url" className="w-full rounded bg-muted px-2 py-1.5 text-xs font-mono break-all">
-                          {getFullProxyUrl(newKey.proxyUrl)}
-                        </code>
-                        <Button
-                          size="icon"
-                          variant="outline"
-                          className="h-7 w-7 justify-self-start sm:justify-self-end"
-                          onClick={async () => {
-                            try {
-                              await copyTextToClipboard(getFullProxyUrl(newKey.proxyUrl))
-                              toast.success("Proxy URL copied to clipboard")
-                            } catch {
-                              toast.error("Failed to copy to clipboard")
-                            }
-                          }}
-                          title="Copy proxy URL"
-                        >
-                          <Copy className="h-3.5 w-3.5" />
-                        </Button>
+              {newKey ? (
+                <div className="space-y-4">
+                  <Card className="w-full">
+                    <CardHeader>
+                      <CardTitle className="text-base">API Key Created</CardTitle>
+                      <CardDescription>
+                        This information is shown only once. Store it in your password manager before closing the dialog.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div>
+                        <Label htmlFor="proxy-url" className="text-xs uppercase text-muted-foreground">Proxy URL</Label>
+                        <div className="mt-1 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
+                          <code id="proxy-url" className="w-full rounded bg-muted px-2 py-1.5 text-xs font-mono break-all">
+                            {getFullProxyUrl(newKey.proxyUrl)}
+                          </code>
+                          <Button
+                            size="icon"
+                            variant="outline"
+                            className="h-7 w-7 justify-self-start sm:justify-self-end"
+                            onClick={async () => {
+                              try {
+                                await copyTextToClipboard(getFullProxyUrl(newKey.proxyUrl))
+                                toast.success("Proxy URL copied to clipboard")
+                              } catch {
+                                toast.error("Failed to copy to clipboard")
+                              }
+                            }}
+                            title="Copy proxy URL"
+                          >
+                            <Copy className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
                       </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Button
-                  onClick={() => handleDialogOpenChange(false)}
-                  className="w-full"
-                >
-                  Done
-                </Button>
-              </div>
-            ) : (
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault()
-                  form.handleSubmit()
-                }}
-                className="space-y-4"
-              >
-                <form.Field
-                  name="clientName"
-                  validators={{
-                    onChange: ({ value }) => !value ? "Client name is required" : undefined,
-                  }}
-                >
-                  {(field) => (
-                    <div className="space-y-2">
-                      <Label htmlFor="clientName">Client Name</Label>
-                      <div className="space-y-2">
-                        <Input
-                          id="clientName"
-                          placeholder="e.g., autobrr, tqm, sonarr, radarr, cross-seed"
-                          value={field.state.value}
-                          onBlur={field.handleBlur}
-                          onChange={(e) => field.handleChange(e.target.value)}
-                          data-1p-ignore
-                          autoComplete='off'
-                        />
-                      </div>
-                      {field.state.meta.isTouched && field.state.meta.errors[0] && (
-                        <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
-                      )}
-                    </div>
-                  )}
-                </form.Field>
-
-                <form.Field
-                  name="instanceId"
-                  validators={{
-                    onChange: ({ value }) => !value ? "Instance is required" : undefined,
-                  }}
-                >
-                  {(field) => (
-                    <div className="space-y-2">
-                      <Label htmlFor="instanceId">qBittorrent Instance</Label>
-                      <Select
-                        value={field.state.value}
-                        onValueChange={(value) => field.handleChange(value)}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select an instance" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {instances?.map((instance) => (
-                            <SelectItem key={instance.id} value={instance.id.toString()}>
-                              <div className="flex items-center gap-2">
-                                <Server className="h-4 w-4" />
-                                <span>{instance.name}</span>
-                                <span className="text-xs text-muted-foreground">({instance.host})</span>
-                              </div>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {field.state.meta.isTouched && field.state.meta.errors[0] && (
-                        <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
-                      )}
-                    </div>
-                  )}
-                </form.Field>
-
-                <form.Subscribe
-                  selector={(state) => [state.canSubmit, state.isSubmitting]}
-                >
-                  {([canSubmit, isSubmitting]) => (
-                    <Button
-                      type="submit"
-                      disabled={!canSubmit || isSubmitting || createMutation.isPending}
-                      className="w-full"
-                    >
-                      {isSubmitting || createMutation.isPending ? "Creating..." : "Create Client API Key"}
-                    </Button>
-                  )}
-                </form.Subscribe>
-              </form>
-            )}
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      <div className="space-y-2">
-        {isLoading ? (
-          <p className="text-center text-sm text-muted-foreground py-8">
-            Loading client API keys...
-          </p>
-        ) : error ? (
-          <div className="text-center py-8">
-            <p className="text-sm text-muted-foreground mb-2">
-              Unable to load client API keys
-            </p>
-            <p className="text-xs text-destructive">
-              {error.message?.includes("404")? "Feature may not be available in this version": error.message || "An error occurred"
-              }
-            </p>
-          </div>
-        ) : (
-          <>
-            {keys.map((key) => (
-              <div
-                key={key.id}
-                className="rounded-lg border bg-card p-4 transition-colors"
-              >
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="space-y-3">
-                    <div className="flex flex-wrap items-center gap-2 text-sm">
-                      <span className="font-medium text-base sm:text-lg">{key.clientName}</span>
-                      <Badge variant="outline" className="text-xs">
-                        ID: {key.id}
-                      </Badge>
-                      {key.instance ? (
-                        <Badge variant="secondary" className="text-xs flex items-center gap-1">
-                          <Server className="h-3 w-3" />
-                          {key.instance.name}
-                        </Badge>
-                      ) : (
-                        <Badge variant="destructive" className="text-xs">
-                          Instance Deleted
-                        </Badge>
-                      )}
-                    </div>
-
-                    <div className="space-y-1 text-xs text-muted-foreground">
-                      <p className="flex flex-wrap items-center gap-1">
-                        <span className="text-foreground">Created:</span>
-                        <span>{formatDate(new Date(key.createdAt))}</span>
-                        {key.lastUsedAt && (
-                          <>
-                            <span>•</span>
-                            <span className="text-foreground">Last used:</span>
-                            <span>{formatDate(new Date(key.lastUsedAt))}</span>
-                          </>
-                        )}
-                      </p>
-                      {key.instance?.host && (
-                        <p className="break-all">
-                          <span className="text-foreground">Host:</span> {key.instance.host}
-                        </p>
-                      )}
-                    </div>
-                  </div>
+                    </CardContent>
+                  </Card>
 
                   <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-9 w-9 self-end text-destructive hover:text-destructive focus-visible:ring-destructive sm:self-start"
-                    onClick={() => setDeleteKeyId(key.id)}
-                    aria-label={`Delete API key ${key.clientName}`}
+                    onClick={() => handleDialogOpenChange(false)}
+                    className="w-full"
                   >
-                    <Trash2 className="h-4 w-4" />
+                    Done
                   </Button>
                 </div>
-              </div>
-            ))}
+              ) : (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    form.handleSubmit()
+                  }}
+                  className="space-y-4"
+                >
+                  <form.Field
+                    name="clientName"
+                    validators={{
+                      onChange: ({ value }) => !value ? "Client name is required" : undefined,
+                    }}
+                  >
+                    {(field) => (
+                      <div className="space-y-2">
+                        <Label htmlFor="clientName">Client Name</Label>
+                        <div className="space-y-2">
+                          <Input
+                            id="clientName"
+                            placeholder="e.g., autobrr, tqm, sonarr, radarr, cross-seed"
+                            value={field.state.value}
+                            onBlur={field.handleBlur}
+                            onChange={(e) => field.handleChange(e.target.value)}
+                            data-1p-ignore
+                            autoComplete='off'
+                          />
+                        </div>
+                        {field.state.meta.isTouched && field.state.meta.errors[0] && (
+                          <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
+                        )}
+                      </div>
+                    )}
+                  </form.Field>
 
-            {keys.length === 0 && (
-              <p className="text-center text-sm text-muted-foreground py-8">
-                No client API keys created yet
+                  <form.Field
+                    name="instanceId"
+                    validators={{
+                      onChange: ({ value }) => !value ? "Instance is required" : undefined,
+                    }}
+                  >
+                    {(field) => (
+                      <div className="space-y-2">
+                        <Label htmlFor="instanceId">qBittorrent Instance</Label>
+                        <Select
+                          value={field.state.value}
+                          onValueChange={(value) => field.handleChange(value)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select an instance" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {instances?.map((instance) => (
+                              <SelectItem key={instance.id} value={instance.id.toString()}>
+                                <div className="flex items-center gap-2">
+                                  <Server className="h-4 w-4" />
+                                  <span>{instance.name}</span>
+                                  <span className="text-xs text-muted-foreground">({instance.host})</span>
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {field.state.meta.isTouched && field.state.meta.errors[0] && (
+                          <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
+                        )}
+                      </div>
+                    )}
+                  </form.Field>
+
+                  <form.Subscribe
+                    selector={(state) => [state.canSubmit, state.isSubmitting]}
+                  >
+                    {([canSubmit, isSubmitting]) => (
+                      <Button
+                        type="submit"
+                        disabled={!canSubmit || isSubmitting || createMutation.isPending}
+                        className="w-full"
+                      >
+                        {isSubmitting || createMutation.isPending ? "Creating..." : "Create Client API Key"}
+                      </Button>
+                    )}
+                  </form.Subscribe>
+                </form>
+              )}
+            </DialogContent>
+          </Dialog>
+        </div>
+
+        <div className="space-y-2">
+          {isLoading ? (
+            <p className="text-center text-sm text-muted-foreground py-8">
+              Loading client API keys...
+            </p>
+          ) : error ? (
+            <div className="text-center py-8">
+              <p className="text-sm text-muted-foreground mb-2">
+                Unable to load client API keys
               </p>
-            )}
-          </>
-        )}
-      </div>
+              <p className="text-xs text-destructive">
+                {error.message?.includes("404")? "Feature may not be available in this version": error.message || "An error occurred"
+                }
+              </p>
+            </div>
+          ) : (
+            <>
+              {keys.map((key) => (
+                <div
+                  key={key.id}
+                  className="rounded-lg border bg-card p-4 transition-colors"
+                >
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="space-y-3">
+                      <div className="flex flex-wrap items-center gap-2 text-sm">
+                        <span className="font-medium text-base sm:text-lg">{key.clientName}</span>
+                        <Badge variant="outline" className="text-xs">
+                          ID: {key.id}
+                        </Badge>
+                        {key.instance ? (
+                          key.instance.name.length > 20 ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Badge variant="secondary" className="text-xs flex items-center gap-1 cursor-help">
+                                  <Server className="h-3 w-3 shrink-0" />
+                                  <span className="truncate">{truncateInstanceName(key.instance.name)}</span>
+                                </Badge>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>{key.instance.name}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          ) : (
+                            <Badge variant="secondary" className="text-xs flex items-center gap-1">
+                              <Server className="h-3 w-3 shrink-0" />
+                              {key.instance.name}
+                            </Badge>
+                          )
+                        ) : (
+                          <Badge variant="destructive" className="text-xs">
+                            Instance Deleted
+                          </Badge>
+                        )}
+                      </div>
 
-      <AlertDialog open={!!deleteKeyId} onOpenChange={() => setDeleteKeyId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Client API Key?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. Any applications using this key will lose access to the qBittorrent instance.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => deleteKeyId && deleteMutation.mutate(deleteKeyId)}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
+                      <div className="space-y-1 text-xs text-muted-foreground">
+                        <p className="flex flex-wrap items-center gap-1">
+                          <span className="text-foreground">Created:</span>
+                          <span>{formatDate(new Date(key.createdAt))}</span>
+                          {key.lastUsedAt && (
+                            <>
+                              <span>•</span>
+                              <span className="text-foreground">Last used:</span>
+                              <span>{formatDate(new Date(key.lastUsedAt))}</span>
+                            </>
+                          )}
+                        </p>
+                        {key.instance?.host && (
+                          <p className="break-all">
+                            <span className="text-foreground">Host:</span> {key.instance.host}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-9 w-9 self-end text-destructive hover:text-destructive focus-visible:ring-destructive sm:self-start"
+                      onClick={() => setDeleteKeyId(key.id)}
+                      aria-label={`Delete API key ${key.clientName}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+
+              {keys.length === 0 && (
+                <p className="text-center text-sm text-muted-foreground py-8">
+                  No client API keys created yet
+                </p>
+              )}
+            </>
+          )}
+        </div>
+
+        <AlertDialog open={!!deleteKeyId} onOpenChange={() => setDeleteKeyId(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Client API Key?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This action cannot be undone. Any applications using this key will lose access to the qBittorrent instance.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => deleteKeyId && deleteMutation.mutate(deleteKeyId)}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+    </TooltipProvider>
   )
 }
