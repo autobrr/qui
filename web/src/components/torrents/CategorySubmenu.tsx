@@ -26,7 +26,6 @@ interface CategorySubmenuProps {
   hashCount: number
   availableCategories: Record<string, unknown>
   onSetCategory: (category: string) => void
-  onCreateCategory: () => void
   isPending?: boolean
   currentCategory?: string
 }
@@ -36,7 +35,6 @@ export const CategorySubmenu = memo(function CategorySubmenu({
   hashCount,
   availableCategories,
   onSetCategory,
-  onCreateCategory,
   isPending = false,
   currentCategory,
 }: CategorySubmenuProps) {
@@ -122,16 +120,7 @@ export const CategorySubmenu = memo(function CategorySubmenu({
           </div>
         )}
 
-        <Separator />
-
-        {/* Create New Category option */}
-        <MenuItem
-          onClick={onCreateCategory}
-          disabled={isPending}
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          Create New Category...
-        </MenuItem>
+        {/* Creating new categories from this menu is disabled. */}
       </SubContent>
     </Sub>
   )
