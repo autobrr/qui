@@ -66,6 +66,7 @@ func TestOpenAPISpec(t *testing.T) {
 		"User",
 		"ApiKey",
 		"Instance",
+		"InstanceCapabilities",
 		"Torrent",
 		"TorrentProperties",
 		"Tracker",

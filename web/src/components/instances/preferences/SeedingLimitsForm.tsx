@@ -117,9 +117,9 @@ export function SeedingLimitsForm({ instanceId, onSuccess }: SeedingLimitsFormPr
                   label="Maximum Share Ratio"
                   value={(field.state.value as number) ?? 2.0}
                   onChange={field.handleChange}
-                  min={0.1}
+                  min={-1}
                   max={10}
-                  step="0.1"
+                  step="0.05"
                   description="Stop seeding at this upload/download ratio"
                   allowUnlimited={true}
                   disabled={!(enabledField.state.value as boolean)}
@@ -148,7 +148,7 @@ export function SeedingLimitsForm({ instanceId, onSuccess }: SeedingLimitsFormPr
                   label="Maximum Seeding Time (minutes)"
                   value={(field.state.value as number) ?? 1440}
                   onChange={field.handleChange}
-                  min={1}
+                  min={-1}
                   max={525600} // 1 year in minutes
                   description="Stop seeding after this many minutes"
                   allowUnlimited={true}

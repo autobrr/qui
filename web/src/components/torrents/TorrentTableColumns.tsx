@@ -22,10 +22,23 @@ import {
 } from "@/lib/incognito"
 import { formatSpeedWithUnit, type SpeedUnit } from "@/lib/speedUnits"
 import { getStateLabel } from "@/lib/torrent-state-utils"
-import { formatBytes, formatDuration, getRatioColor } from "@/lib/utils"
-import type { Torrent } from "@/types"
+import { cn, formatBytes, formatDuration, getRatioColor } from "@/lib/utils"
+import type { AppPreferences, Torrent } from "@/types"
 import type { ColumnDef } from "@tanstack/react-table"
-import { ListOrdered } from "lucide-react"
+import {
+  AlertCircle,
+  CheckCircle2,
+  Download,
+  Globe,
+  ListOrdered,
+  MoveRight,
+  PlayCircle,
+  RotateCw,
+  StopCircle,
+  Upload,
+  XCircle
+} from "lucide-react"
+import { memo, useEffect, useState } from "react"
 
 function formatEta(seconds: number): string {
   if (seconds === 8640000) return "∞"
@@ -65,6 +78,299 @@ function calculateMinWidth(text: string, padding: number = 48): number {
   return Math.max(60, Math.ceil(text.length * charWidth) + padding + extraPadding)
 }
 
+interface TrackerIconCellProps {
+  title: string
+  fallback: string
+  src: string | null
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+const TrackerIconCell = memo(({ title, fallback, src }: TrackerIconCellProps) => {
+  const [hasError, setHasError] = useState(false)
+
+  useEffect(() => {
+    setHasError(false)
+  }, [src])
+
+  return (
+    <div className="flex h-full w-full items-center justify-center" title={title}>
+      <div className="flex h-4 w-4 items-center justify-center rounded-sm border border-border/40 bg-muted text-[10px] font-medium uppercase leading-none">
+        {src && !hasError ? (
+          <img
+            src={src}
+            alt=""
+            className="h-full w-full rounded-[2px] object-cover"
+            draggable={false}
+            decoding="async"
+            onError={() => setHasError(true)}
+          />
+        ) : (
+          <span aria-hidden="true">{fallback}</span>
+        )}
+      </div>
+    </div>
+  )
+})
+
+const getTrackerDisplayMeta = (tracker?: string) => {
+  if (!tracker) {
+    return {
+      host: "",
+      fallback: "#",
+      title: "",
+    }
+  }
+
+  const trimmed = tracker.trim()
+  const fallbackLetter = trimmed ? trimmed.charAt(0).toUpperCase() : "#"
+
+  let host = trimmed
+  try {
+    if (trimmed.includes("://")) {
+      const url = new URL(trimmed)
+      host = url.hostname
+    }
+  } catch {
+    // Keep host as trimmed value if URL parsing fails
+  }
+
+  return {
+    host,
+    fallback: fallbackLetter,
+    title: host,
+  }
+}
+
+TrackerIconCell.displayName = "TrackerIconCell"
+
+const STATUS_SORT_ORDER: Record<string, number> = {
+  downloading: 20,
+  metaDL: 21,
+  forcedDL: 22,
+  allocating: 23,
+  checkingDL: 24,
+  queuedDL: 25,
+  stalledDL: 30,
+  uploading: 40,
+  forcedUP: 41,
+  stoppedDL: 42,
+  stoppedUP: 43,
+  queuedUP: 44,
+  stalledUP: 45,
+  pausedDL: 50,
+  pausedUP: 51,
+  checkingUP: 60,
+  checkingResumeData: 61,
+  moving: 70,
+  error: 80,
+  missingFiles: 81,
+}
+
+const getTrackerAwareStatusLabel = (torrent: Torrent, supportsTrackerHealth: boolean): string => {
+  if (supportsTrackerHealth) {
+    if (torrent.tracker_health === "unregistered") {
+      return "Unregistered"
+    }
+    if (torrent.tracker_health === "tracker_down") {
+      return "Tracker Down"
+    }
+  }
+
+  return getStateLabel(torrent.state)
+}
+
+const getTrackerAwareStatusSortMeta = (torrent: Torrent, supportsTrackerHealth: boolean) => {
+  if (supportsTrackerHealth) {
+    if (torrent.tracker_health === "unregistered") {
+      return {
+        priority: 0,
+        statePriority: -1,
+        label: "Unregistered",
+      }
+    }
+    if (torrent.tracker_health === "tracker_down") {
+      return {
+        priority: 1,
+        statePriority: -1,
+        label: "Tracker Down",
+      }
+    }
+  }
+
+  const statePriority = STATUS_SORT_ORDER[torrent.state] ?? 1000
+
+  return {
+    priority: 10,
+    statePriority,
+    label: getStateLabel(torrent.state),
+  }
+}
+
+const getStatusIcon = (state: string, trackerHealth?: string | null, supportsTrackerHealth: boolean = true) => {
+  // Check tracker health first if supported
+  if (supportsTrackerHealth && trackerHealth) {
+    if (trackerHealth === "unregistered") {
+      return XCircle
+    }
+    if (trackerHealth === "tracker_down") {
+      return AlertCircle
+    }
+  }
+
+  // Map states to icons matching FilterSidebar.tsx
+  switch (state) {
+    case "downloading":
+    case "metaDL":
+    case "forcedDL":
+    case "queuedDL":
+    case "stalledDL":
+    case "stalled_downloading":
+      return Download
+    case "uploading":
+    case "forcedUP":
+    case "queuedUP":
+    case "stalledUP":
+    case "stalled_uploading":
+      return Upload
+    case "pausedDL":
+    case "pausedUP":
+    case "stopped":
+    case "stoppedDL":
+    case "stoppedUP":
+    case "inactive":
+      return StopCircle
+    case "checkingDL":
+    case "checkingUP":
+    case "checkingResumeData":
+    case "checking":
+      return RotateCw
+    case "allocating":
+    case "moving":
+      return MoveRight
+    case "error":
+    case "missingFiles":
+      return XCircle
+    case "active":
+    case "running":
+      return PlayCircle
+    case "stalled":
+      return AlertCircle
+    default:
+      // For completed state or any other state
+      if (state.includes("complet")) {
+        return CheckCircle2
+      }
+      return CheckCircle2
+  }
+}
+
+type StatusBadgeVariant = "default" | "secondary" | "destructive" | "outline"
+
+const compareTrackerAwareStatus = (torrentA: Torrent, torrentB: Torrent, supportsTrackerHealth: boolean): number => {
+  const metaA = getTrackerAwareStatusSortMeta(torrentA, supportsTrackerHealth)
+  const metaB = getTrackerAwareStatusSortMeta(torrentB, supportsTrackerHealth)
+
+  if (metaA.priority !== metaB.priority) {
+    return metaA.priority - metaB.priority
+  }
+
+  if (metaA.statePriority !== metaB.statePriority) {
+    return metaA.statePriority - metaB.statePriority
+  }
+
+  const labelComparison = metaA.label.localeCompare(metaB.label, undefined, { sensitivity: "accent", numeric: false })
+  if (labelComparison !== 0) {
+    return labelComparison
+  }
+
+  const stateA = torrentA.state || ""
+  const stateB = torrentB.state || ""
+
+  const stateComparison = stateA.localeCompare(stateB, undefined, { sensitivity: "accent", numeric: false })
+  if (stateComparison !== 0) {
+    return stateComparison
+  }
+
+  const nameA = torrentA.name || ""
+  const nameB = torrentB.name || ""
+
+  return nameA.localeCompare(nameB, undefined, { sensitivity: "accent", numeric: false })
+}
+
+const getStatusBadgeMeta = (
+  torrent: Torrent,
+  supportsTrackerHealth: boolean
+): {
+  label: string
+  variant: StatusBadgeVariant
+  className: string
+  iconClass: string
+} => {
+  const state = torrent.state
+  const baseLabel = getTrackerAwareStatusLabel(torrent, supportsTrackerHealth)
+  const trackerHealth = torrent.tracker_health ?? null
+
+  let badgeVariant: StatusBadgeVariant = "outline"
+  if (state === "downloading" || state === "uploading") {
+    badgeVariant = "default"
+  } else if (
+    state === "stalledDL" ||
+    state === "stalledUP" ||
+    state === "pausedDL" ||
+    state === "pausedUP" ||
+    state === "queuedDL" ||
+    state === "queuedUP"
+  ) {
+    badgeVariant = "secondary"
+  } else if (state === "error" || state === "missingFiles") {
+    badgeVariant = "destructive"
+  }
+
+  let badgeClass = ""
+  let label = baseLabel
+  let iconClass = "text-muted-foreground"
+
+  if (supportsTrackerHealth) {
+    if (trackerHealth === "tracker_down") {
+      label = "Tracker Down"
+      badgeVariant = "outline"
+      badgeClass = "text-yellow-500 border-yellow-500/40 bg-yellow-500/10"
+      iconClass = "text-yellow-500"
+    } else if (trackerHealth === "unregistered") {
+      label = "Unregistered"
+      badgeVariant = "outline"
+      badgeClass = "text-destructive border-destructive/40 bg-destructive/10"
+      iconClass = "text-destructive"
+    }
+  }
+
+  if (badgeClass === "") {
+    switch (badgeVariant) {
+      case "default":
+        iconClass = "text-primary"
+        break
+      case "secondary":
+        iconClass = "text-secondary-foreground"
+        break
+      case "destructive":
+        iconClass = "text-destructive"
+        break
+      default:
+        iconClass = "text-muted-foreground"
+        break
+    }
+  } else if (!iconClass) {
+    iconClass = "text-muted-foreground"
+  }
+
+  return {
+    label,
+    variant: badgeVariant,
+    className: badgeClass,
+    iconClass,
+  }
+}
+
 export const createColumns = (
   incognitoMode: boolean,
   selectionEnhancers?: {
@@ -80,7 +386,10 @@ export const createColumns = (
     excludedFromSelectAll?: Set<string>
   },
   speedUnit: SpeedUnit = "bytes",
-  formatTimestamp?: (timestamp: number) => string
+  trackerIcons?: Record<string, string>,
+  formatTimestamp?: (timestamp: number) => string,
+  instancePreferences?: AppPreferences | null,
+  supportsTrackerHealth: boolean = true
 ): ColumnDef<Torrent>[] => [
   {
     id: "select",
@@ -251,36 +560,81 @@ export const createColumns = (
       <div className="flex items-center gap-2">
         <Progress value={row.original.progress * 100} className="w-20" />
         <span className="text-xs text-muted-foreground">
-          {Math.round(row.original.progress * 100)}%
+          {row.original.progress >= 0.99 && row.original.progress < 1 ? (
+            (Math.floor(row.original.progress * 1000) / 10).toFixed(1)
+          ) : (
+            Math.round(row.original.progress * 100)
+          )}%
         </span>
       </div>
     ),
     size: 120,
   },
   {
+    id: "status_icon",
+    accessorFn: (torrent) => torrent.state,
+    header: () => (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="flex h-full w-full items-center justify-center text-muted-foreground" aria-label="Status Icon">
+            <PlayCircle className="h-4 w-4" aria-hidden="true" />
+          </div>
+        </TooltipTrigger>
+        <TooltipContent>Status Icon</TooltipContent>
+      </Tooltip>
+    ),
+    meta: {
+      headerString: "Status Icon",
+    },
+    sortingFn: (rowA, rowB) => compareTrackerAwareStatus(rowA.original, rowB.original, supportsTrackerHealth),
+    cell: ({ row }) => {
+      const torrent = row.original
+      const StatusIcon = getStatusIcon(torrent.state, torrent.tracker_health ?? null, supportsTrackerHealth)
+      const { label: statusLabel, iconClass } = getStatusBadgeMeta(torrent, supportsTrackerHealth)
+
+      return (
+        <div
+          className="flex h-full w-full items-center justify-center"
+          title={statusLabel}
+          aria-label={statusLabel}
+        >
+          <StatusIcon className={cn("h-4 w-4", iconClass)} aria-hidden="true" />
+        </div>
+      )
+    },
+    size: 48,
+    minSize: 48,
+    maxSize: 48,
+    enableResizing: false,
+    enableSorting: true,
+  },
+  {
     accessorKey: "state",
     header: "Status",
+    sortingFn: (rowA, rowB) => compareTrackerAwareStatus(rowA.original, rowB.original, supportsTrackerHealth),
     cell: ({ row }) => {
-      const state = row.original.state
-      const priority = row.original.priority
-      const label = getStateLabel(state)
+      const torrent = row.original
+      const state = torrent.state
+      const priority = torrent.priority
       const isQueued = state === "queuedDL" || state === "queuedUP"
-
-      const variant =
-        state === "downloading" ? "default" :state === "stalledDL" ? "secondary" :state === "uploading" ? "default" :state === "stalledUP" ? "secondary" :state === "pausedDL" || state === "pausedUP" ? "secondary" :state === "queuedDL" || state === "queuedUP" ? "secondary" :state === "error" || state === "missingFiles" ? "destructive" :"outline"
+      const { label: displayLabel, variant: badgeVariant, className: badgeClass } = getStatusBadgeMeta(torrent, supportsTrackerHealth)
 
       if (isQueued && priority > 0) {
         return (
           <div className="flex items-center gap-1">
-            <Badge variant={variant} className="text-xs">
-              {label}
+            <Badge variant={badgeVariant} className={cn("text-xs", badgeClass)}>
+              {displayLabel}
             </Badge>
             <span className="text-xs text-muted-foreground">#{priority}</span>
           </div>
         )
       }
 
-      return <Badge variant={variant} className="text-xs">{label}</Badge>
+      return (
+        <Badge variant={badgeVariant} className={cn("text-xs", badgeClass)}>
+          {displayLabel}
+        </Badge>
+      )
     },
     size: 130,
   },
@@ -355,7 +709,7 @@ export const createColumns = (
         </span>
       )
     },
-    size: 80,
+    size: 90,
   },
   {
     accessorKey: "popularity",
@@ -367,7 +721,7 @@ export const createColumns = (
         </div>
       )
     },
-    size: 115,
+    size: 120,
   },
   {
     accessorKey: "category",
@@ -427,6 +781,40 @@ export const createColumns = (
     size: 200,
   },
   {
+    id: "tracker_icon",
+    header: () => (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="flex h-full w-full items-center justify-center text-muted-foreground" aria-label="Tracker Icon">
+            <Globe className="h-4 w-4" aria-hidden="true" />
+          </div>
+        </TooltipTrigger>
+        <TooltipContent>Tracker Icon</TooltipContent>
+      </Tooltip>
+    ),
+    meta: {
+      headerString: "Tracker Icon",
+    },
+    cell: ({ row }) => {
+      const tracker = incognitoMode ? getLinuxTracker(row.original.hash) : row.original.tracker
+      const { host, fallback, title } = getTrackerDisplayMeta(tracker)
+      const iconSrc = host ? trackerIcons?.[host] ?? null : null
+
+      return (
+        <TrackerIconCell
+          title={title}
+          fallback={fallback}
+          src={iconSrc}
+        />
+      )
+    },
+    size: 48,
+    minSize: 48,
+    maxSize: 48,
+    enableResizing: false,
+    enableSorting: false,
+  },
+  {
     accessorKey: "tracker",
     header: "Tracker",
     cell: ({ row }) => {
@@ -463,7 +851,7 @@ export const createColumns = (
         </span>
       )
     },
-    size: calculateMinWidth("Down Limit", 24),
+    size: calculateMinWidth("Down Limit", 30),
   },
   {
     accessorKey: "up_limit",
@@ -480,7 +868,7 @@ export const createColumns = (
         </span>
       )
     },
-    size: calculateMinWidth("Up Limit", 24),
+    size: calculateMinWidth("Up Limit", 30),
   },
   {
     accessorKey: "downloaded",
@@ -576,7 +964,8 @@ export const createColumns = (
     header: "Ratio Limit",
     cell: ({ row }) => {
       const ratioLimit = row.original.ratio_limit
-      const displayRatioLimit = ratioLimit === -2 ? "∞" : ratioLimit.toFixed(2)
+      const instanceRatioLimit = instancePreferences?.max_ratio
+      const displayRatioLimit = ratioLimit === -2 ? (instanceRatioLimit === -1 ? "∞" : instanceRatioLimit?.toFixed(2) || "∞") :ratioLimit === -1 ? "∞" :ratioLimit.toFixed(2)
 
       return (
         <span

@@ -168,3 +168,13 @@ export function getCommonSavePath(torrents: Torrent[]): string {
 
   return firstPath
 }
+
+/**
+ * Calculate the total size of selected torrents
+ */
+export function getTotalSize(torrents: Torrent[]): number {
+  if (torrents.length === 0) return 0
+
+  // Use reduce to sum up all torrent sizes
+  return torrents.reduce((total, torrent) => total + (torrent.size || 0), 0)
+}

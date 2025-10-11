@@ -3,29 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { memo, useState, useEffect, useRef, useCallback } from "react"
-import type { ChangeEvent, KeyboardEvent } from "react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Switch } from "@/components/ui/switch"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from "@/components/ui/select"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -36,7 +13,33 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from "@/components/ui/alert-dialog"
-import { Plus, X } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from "@/components/ui/dialog"
+import { Tree } from "@/components/ui/file-tree"
+import { pathsToTreeView } from "@/components/ui/file-tree-utils"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
+import type { Torrent } from "@/types"
+import { Loader2, Plus, X } from "lucide-react"
+import type { ChangeEvent, KeyboardEvent } from "react"
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 interface SetTagsDialogProps {
   open: boolean
@@ -488,6 +491,382 @@ export const SetLocationDialog = memo(function SetLocationDialog({
   )
 })
 
+interface RenameTorrentDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  currentName?: string
+  onConfirm: (name: string) => void | Promise<void>
+  isPending?: boolean
+}
+
+export const RenameTorrentDialog = memo(function RenameTorrentDialog({
+  open,
+  onOpenChange,
+  currentName = "",
+  onConfirm,
+  isPending = false,
+}: RenameTorrentDialogProps) {
+  const [name, setName] = useState("")
+  const wasOpen = useRef(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (open && !wasOpen.current) {
+      setName(currentName)
+      setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 0)
+    }
+    wasOpen.current = open
+  }, [open, currentName])
+
+  const handleConfirm = useCallback(() => {
+    const trimmed = name.trim()
+    if (!trimmed) return
+    onConfirm(trimmed)
+  }, [name, onConfirm])
+
+  const handleClose = useCallback((nextOpen: boolean) => {
+    if (!nextOpen) {
+      setName("")
+    }
+    onOpenChange(nextOpen)
+  }, [onOpenChange])
+
+  return (
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Rename Torrent</DialogTitle>
+          <DialogDescription>
+            Update the display name for this torrent. This changes how it appears in qBittorrent and qui.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="py-4 space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="torrentName">Torrent Name</Label>
+            <Input
+              ref={inputRef}
+              id="torrentName"
+              value={name}
+              onChange={(e: ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
+              placeholder="Enter new torrent name"
+              disabled={isPending}
+              onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
+                if (e.key === "Enter" && !isPending && name.trim()) {
+                  e.preventDefault()
+                  handleConfirm()
+                }
+              }}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => handleClose(false)} disabled={isPending}>
+            Cancel
+          </Button>
+          <Button onClick={handleConfirm} disabled={isPending || !name.trim()}>
+            Rename
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+})
+
+interface RenameTorrentFileDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  files?: { name: string }[]
+  isLoading?: boolean
+  onConfirm: (payload: { oldPath: string; newName: string }) => void | Promise<void>
+  isPending?: boolean
+}
+
+export const RenameTorrentFileDialog = memo(function RenameTorrentFileDialog({
+  open,
+  onOpenChange,
+  files = [],
+  isLoading = false,
+  onConfirm,
+  isPending = false,
+}: RenameTorrentFileDialogProps) {
+  const [selectedPath, setSelectedPath] = useState("")
+  const [newName, setNewName] = useState("")
+  const wasOpen = useRef(false)
+
+  const sortedFiles = useMemo(() => {
+    return files.slice().sort((a, b) => a.name.localeCompare(b.name))
+  }, [files])
+
+  const fileTreeElements = useMemo(() => {
+    const filePaths = sortedFiles.map(file => file.name)
+    if (filePaths.length === 0) {
+      return []
+    }
+    return pathsToTreeView(filePaths, {
+      selectablePaths: new Set(filePaths),
+    })
+  }, [sortedFiles])
+
+  useEffect(() => {
+    if (open && !wasOpen.current) {
+      const defaultPath = sortedFiles[0]?.name ?? ""
+      setSelectedPath(defaultPath)
+      if (defaultPath) {
+        const segments = defaultPath.split("/")
+        setNewName(segments[segments.length - 1] || defaultPath)
+      } else {
+        setNewName("")
+      }
+    }
+    if (!open) {
+      setSelectedPath("")
+      setNewName("")
+    }
+    wasOpen.current = open
+  }, [open, sortedFiles])
+
+  const handleConfirm = useCallback(() => {
+    if (!selectedPath) return
+    const trimmedName = newName.trim()
+    if (!trimmedName) return
+    onConfirm({ oldPath: selectedPath, newName: trimmedName })
+  }, [newName, onConfirm, selectedPath])
+
+  const handlePathChange = useCallback((value: string) => {
+    setSelectedPath(value)
+    const segments = value.split("/")
+    setNewName(segments[segments.length - 1] || value)
+  }, [])
+
+  const handleClose = useCallback((nextOpen: boolean) => {
+    if (!nextOpen) {
+      setSelectedPath("")
+      setNewName("")
+    }
+    onOpenChange(nextOpen)
+  }, [onOpenChange])
+
+  return (
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="w-[calc(100vw-2.5rem)] max-w-xl sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Rename File</DialogTitle>
+          <DialogDescription>
+            Choose a file from the torrent and provide its new name. Folder structure is preserved.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="py-4 space-y-4">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8 text-muted-foreground">
+              <Loader2 className="h-5 w-5 animate-spin mr-2" />
+              Fetching file list...
+            </div>
+          ) : sortedFiles.length === 0 ? (
+            <div className="rounded-md border border-dashed py-6 text-center text-sm text-muted-foreground">
+              No files available for this torrent yet.
+            </div>
+          ) : (
+            <>
+              <div className="space-y-2">
+                <Label>Select File</Label>
+                <div className="rounded-md border p-2">
+                  <Tree
+                    className="h-64"
+                    elements={fileTreeElements}
+                    initialSelectedId={selectedPath || sortedFiles[0]?.name}
+                    onSelectionChange={handlePathChange}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="fileName">New File Name</Label>
+                <Input
+                  id="fileName"
+                  value={newName}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => setNewName(e.target.value)}
+                  placeholder="Enter new file name"
+                  disabled={isPending}
+                  className="font-mono"
+                  title={newName}
+                  onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
+                    if (e.key === "Enter" && !isPending && newName.trim()) {
+                      e.preventDefault()
+                      handleConfirm()
+                    }
+                  }}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Only the file name is changed. Folder paths remain the same.
+                </p>
+              </div>
+            </>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => handleClose(false)} disabled={isPending}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleConfirm}
+            disabled={isPending || !selectedPath || !newName.trim() || sortedFiles.length === 0}
+          >
+            Rename File
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+})
+
+interface RenameTorrentFolderDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  folders?: { name: string }[]
+  isLoading?: boolean
+  onConfirm: (payload: { oldPath: string; newName: string }) => void | Promise<void>
+  isPending?: boolean
+}
+
+export const RenameTorrentFolderDialog = memo(function RenameTorrentFolderDialog({
+  open,
+  onOpenChange,
+  folders = [],
+  isLoading = false,
+  onConfirm,
+  isPending = false,
+}: RenameTorrentFolderDialogProps) {
+  const [selectedPath, setSelectedPath] = useState("")
+  const [newName, setNewName] = useState("")
+  const wasOpen = useRef(false)
+
+  const sortedFolders = useMemo(() => {
+    return folders.slice().sort((a, b) => a.name.localeCompare(b.name))
+  }, [folders])
+
+  const folderTreeElements = useMemo(() => {
+    const folderPaths = sortedFolders.map(folder => folder.name)
+    if (folderPaths.length === 0) {
+      return []
+    }
+    return pathsToTreeView(folderPaths, {
+      selectablePaths: new Set(folderPaths),
+      leafType: "folder",
+    })
+  }, [sortedFolders])
+
+  useEffect(() => {
+    if (open && !wasOpen.current) {
+      const defaultPath = sortedFolders[0]?.name ?? ""
+      setSelectedPath(defaultPath)
+      if (defaultPath) {
+        const segments = defaultPath.split("/")
+        setNewName(segments[segments.length - 1] || defaultPath)
+      } else {
+        setNewName("")
+      }
+    }
+    if (!open) {
+      setSelectedPath("")
+      setNewName("")
+    }
+    wasOpen.current = open
+  }, [open, sortedFolders])
+
+  const handleConfirm = useCallback(() => {
+    if (!selectedPath) return
+    const trimmedName = newName.trim()
+    if (!trimmedName) return
+    onConfirm({ oldPath: selectedPath, newName: trimmedName })
+  }, [newName, onConfirm, selectedPath])
+
+  const handlePathChange = useCallback((value: string) => {
+    setSelectedPath(value)
+    const segments = value.split("/")
+    setNewName(segments[segments.length - 1] || value)
+  }, [])
+
+  const handleClose = useCallback((nextOpen: boolean) => {
+    if (!nextOpen) {
+      setSelectedPath("")
+      setNewName("")
+    }
+    onOpenChange(nextOpen)
+  }, [onOpenChange])
+
+  return (
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="w-[calc(100vw-2.5rem)] max-w-xl sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Rename Folder</DialogTitle>
+          <DialogDescription>
+            Choose a folder within the torrent and provide its new name. Any nested structure will be kept intact.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="py-4 space-y-4">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8 text-muted-foreground">
+              <Loader2 className="h-5 w-5 animate-spin mr-2" />
+              Fetching folder list...
+            </div>
+          ) : sortedFolders.length === 0 ? (
+            <div className="rounded-md border border-dashed py-6 text-center text-sm text-muted-foreground">
+              No folders available to rename.
+            </div>
+          ) : (
+            <>
+              <div className="space-y-2">
+                <Label>Select Folder</Label>
+                <div className="rounded-md border p-2">
+                  <Tree
+                    className="h-64"
+                    elements={folderTreeElements}
+                    initialSelectedId={selectedPath || sortedFolders[0]?.name}
+                    onSelectionChange={handlePathChange}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="folderName">New Folder Name</Label>
+                <Input
+                  id="folderName"
+                  value={newName}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => setNewName(e.target.value)}
+                  placeholder="Enter new folder name"
+                  disabled={isPending}
+                  className="font-mono"
+                  title={newName}
+                  onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
+                    if (e.key === "Enter" && !isPending && newName.trim()) {
+                      e.preventDefault()
+                      handleConfirm()
+                    }
+                  }}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Only the selected folder name is changed. Parent directories remain the same.
+                </p>
+              </div>
+            </>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => handleClose(false)} disabled={isPending}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleConfirm}
+            disabled={isPending || !selectedPath || !newName.trim() || sortedFolders.length === 0}
+          >
+            Rename Folder
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+})
+
 export const SetCategoryDialog = memo(function SetCategoryDialog({
   open,
   onOpenChange,
@@ -570,6 +949,82 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
             disabled={isPending}
           >
             Set Category
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+})
+
+interface CreateAndAssignCategoryDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  hashCount: number
+  onConfirm: (category: string) => void
+  isPending?: boolean
+}
+
+export const CreateAndAssignCategoryDialog = memo(function CreateAndAssignCategoryDialog({
+  open,
+  onOpenChange,
+  hashCount,
+  onConfirm,
+  isPending = false,
+}: CreateAndAssignCategoryDialogProps) {
+  const [categoryName, setCategoryName] = useState("")
+  const wasOpen = useRef(false)
+
+  // Reset when dialog opens
+  useEffect(() => {
+    if (open && !wasOpen.current) {
+      setCategoryName("")
+    }
+    wasOpen.current = open
+  }, [open])
+
+  const handleConfirm = useCallback(() => {
+    if (categoryName.trim()) {
+      onConfirm(categoryName.trim())
+      setCategoryName("")
+    }
+  }, [categoryName, onConfirm])
+
+  const handleCancel = useCallback(() => {
+    setCategoryName("")
+    onOpenChange(false)
+  }, [onOpenChange])
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Create New Category</DialogTitle>
+          <DialogDescription>
+            Enter a name for the new category. It will be created and assigned to {hashCount} torrent(s).
+          </DialogDescription>
+        </DialogHeader>
+        <div className="py-4 space-y-2">
+          <Label htmlFor="categoryName">Category Name</Label>
+          <Input
+            id="categoryName"
+            placeholder="Enter category name"
+            value={categoryName}
+            onChange={(e: ChangeEvent<HTMLInputElement>) => setCategoryName(e.target.value)}
+            onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
+              if (e.key === "Enter" && categoryName.trim()) {
+                handleConfirm()
+              }
+            }}
+            autoFocus
+          />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={handleCancel}>Cancel</Button>
+          <Button
+            onClick={handleConfirm}
+            disabled={isPending || !categoryName.trim()}
+          >
+            Create and Assign
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -837,65 +1292,168 @@ export const EditTrackerDialog = memo(function EditTrackerDialog({
   )
 })
 
+const SHARE_DEFAULT_RATIO_LIMIT = 0
+const SHARE_DEFAULT_SEEDING_LIMIT = 0
+const SHARE_DEFAULT_INACTIVE_LIMIT = 0
+const LIMIT_USE_GLOBAL = -2
+const LIMIT_UNLIMITED = -1
+const SPEED_DEFAULT_LIMIT = 0
+
+// Helper function to safely get numeric values with fallback
+const safeNumber = (value: number | undefined, fallback: number) =>
+  typeof value === "number" ? value : fallback
+
+// Single type for torrent limit fields used in dialogs
+type TorrentLimitSnapshot = Pick<
+  Torrent,
+  | "ratio_limit"
+  | "seeding_time_limit"
+  | "inactive_seeding_time_limit"
+  | "max_ratio"
+  | "max_seeding_time"
+  | "max_inactive_seeding_time"
+  | "dl_limit"
+  | "up_limit"
+>
+
 interface ShareLimitDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   hashCount: number
+  torrents?: TorrentLimitSnapshot[]
   onConfirm: (ratioLimit: number, seedingTimeLimit: number, inactiveSeedingTimeLimit: number) => void
   isPending?: boolean
+}
+
+interface ShareLimitFormState {
+  ratioEnabled: boolean
+  ratioLimit: number
+  seedingTimeEnabled: boolean
+  seedingTimeLimit: number
+  inactiveSeedingTimeEnabled: boolean
+  inactiveSeedingTimeLimit: number
+}
+
+const normalizeShareSignature = (torrent: TorrentLimitSnapshot): string => {
+  return [
+    safeNumber(torrent.ratio_limit, LIMIT_USE_GLOBAL),
+    safeNumber(torrent.seeding_time_limit, LIMIT_USE_GLOBAL),
+    safeNumber(torrent.inactive_seeding_time_limit, LIMIT_USE_GLOBAL),
+    safeNumber(torrent.max_ratio, LIMIT_UNLIMITED),
+    safeNumber(torrent.max_seeding_time, LIMIT_UNLIMITED),
+    safeNumber(torrent.max_inactive_seeding_time, LIMIT_UNLIMITED),
+  ].join("|")
+}
+
+const buildShareLimitInitialState = (torrents?: TorrentLimitSnapshot[]): ShareLimitFormState => {
+  const base: ShareLimitFormState = {
+    ratioEnabled: false,
+    ratioLimit: SHARE_DEFAULT_RATIO_LIMIT,
+    seedingTimeEnabled: false,
+    seedingTimeLimit: SHARE_DEFAULT_SEEDING_LIMIT,
+    inactiveSeedingTimeEnabled: false,
+    inactiveSeedingTimeLimit: SHARE_DEFAULT_INACTIVE_LIMIT,
+  }
+
+  if (!torrents || torrents.length === 0) {
+    return base
+  }
+
+  const signatures = torrents.map(normalizeShareSignature)
+  const allMatch = signatures.every((signature) => signature === signatures[0])
+
+  if (!allMatch) {
+    return base
+  }
+
+  const [first] = torrents
+  const ratioLimitValue = safeNumber(first.ratio_limit, LIMIT_UNLIMITED)
+  const seedingTimeLimitValue = safeNumber(first.seeding_time_limit, LIMIT_UNLIMITED)
+  const inactiveSeedingTimeLimitValue = safeNumber(first.inactive_seeding_time_limit, LIMIT_UNLIMITED)
+
+  return {
+    ...base,
+    ratioEnabled: ratioLimitValue >= 0,
+    ratioLimit: ratioLimitValue >= 0 ? ratioLimitValue : base.ratioLimit,
+    seedingTimeEnabled: seedingTimeLimitValue >= 0,
+    seedingTimeLimit: seedingTimeLimitValue >= 0 ? seedingTimeLimitValue : base.seedingTimeLimit,
+    inactiveSeedingTimeEnabled: inactiveSeedingTimeLimitValue >= 0,
+    inactiveSeedingTimeLimit:
+      inactiveSeedingTimeLimitValue >= 0 ? inactiveSeedingTimeLimitValue : base.inactiveSeedingTimeLimit,
+  }
 }
 
 export const ShareLimitDialog = memo(function ShareLimitDialog({
   open,
   onOpenChange,
   hashCount,
+  torrents,
   onConfirm,
   isPending = false,
 }: ShareLimitDialogProps) {
+  const [useGlobalLimits, setUseGlobalLimits] = useState(false)
   const [ratioEnabled, setRatioEnabled] = useState(false)
-  const [ratioLimit, setRatioLimit] = useState(1.5)
+  const [ratioLimit, setRatioLimit] = useState(SHARE_DEFAULT_RATIO_LIMIT)
   const [seedingTimeEnabled, setSeedingTimeEnabled] = useState(false)
-  const [seedingTimeLimit, setSeedingTimeLimit] = useState(1440) // 24 hours in minutes
+  const [seedingTimeLimit, setSeedingTimeLimit] = useState(SHARE_DEFAULT_SEEDING_LIMIT) // 24 hours in minutes
   const [inactiveSeedingTimeEnabled, setInactiveSeedingTimeEnabled] = useState(false)
-  const [inactiveSeedingTimeLimit, setInactiveSeedingTimeLimit] = useState(10080) // 7 days in minutes
+  const [inactiveSeedingTimeLimit, setInactiveSeedingTimeLimit] = useState(SHARE_DEFAULT_INACTIVE_LIMIT) // 7 days in minutes
   const wasOpen = useRef(false)
 
-  // Reset form when dialog opens
+  const shareInitialState = useMemo(() => buildShareLimitInitialState(torrents), [torrents])
+
+  // Reset form when dialog opens with torrent values
   useEffect(() => {
     if (open && !wasOpen.current) {
-      setRatioEnabled(false)
-      setRatioLimit(1.5)
-      setSeedingTimeEnabled(false)
-      setSeedingTimeLimit(1440)
-      setInactiveSeedingTimeEnabled(false)
-      setInactiveSeedingTimeLimit(10080)
+      // Check if all torrents have global limits (-2 for all three)
+      const hasGlobalLimits = torrents && torrents.length > 0 &&
+        torrents.every(t =>
+          t.ratio_limit === LIMIT_USE_GLOBAL &&
+          t.seeding_time_limit === LIMIT_USE_GLOBAL &&
+          t.inactive_seeding_time_limit === LIMIT_USE_GLOBAL
+        )
+
+      setUseGlobalLimits(hasGlobalLimits || false)
+      setRatioEnabled(!hasGlobalLimits && shareInitialState.ratioEnabled)
+      setRatioLimit(shareInitialState.ratioLimit)
+      setSeedingTimeEnabled(!hasGlobalLimits && shareInitialState.seedingTimeEnabled)
+      setSeedingTimeLimit(shareInitialState.seedingTimeLimit)
+      setInactiveSeedingTimeEnabled(!hasGlobalLimits && shareInitialState.inactiveSeedingTimeEnabled)
+      setInactiveSeedingTimeLimit(shareInitialState.inactiveSeedingTimeLimit)
     }
     wasOpen.current = open
-  }, [open])
+  }, [open, shareInitialState, torrents])
 
   const handleConfirm = useCallback((): void => {
-    onConfirm(
-      ratioEnabled ? ratioLimit : -1,
-      seedingTimeEnabled ? seedingTimeLimit : -1,
-      inactiveSeedingTimeEnabled ? inactiveSeedingTimeLimit : -1
-    )
+    if (useGlobalLimits) {
+      // When using global limits, set all to -2
+      onConfirm(LIMIT_USE_GLOBAL, LIMIT_USE_GLOBAL, LIMIT_USE_GLOBAL)
+    } else {
+      onConfirm(
+        ratioEnabled ? ratioLimit : -1,  // -1 means unlimited (no limit)
+        seedingTimeEnabled ? seedingTimeLimit : -1,
+        inactiveSeedingTimeEnabled ? inactiveSeedingTimeLimit : -1
+      )
+    }
     // Reset form
+    setUseGlobalLimits(false)
     setRatioEnabled(false)
-    setRatioLimit(1.5)
+    setRatioLimit(SHARE_DEFAULT_RATIO_LIMIT)
     setSeedingTimeEnabled(false)
-    setSeedingTimeLimit(1440)
+    setSeedingTimeLimit(SHARE_DEFAULT_SEEDING_LIMIT)
     setInactiveSeedingTimeEnabled(false)
-    setInactiveSeedingTimeLimit(10080)
+    setInactiveSeedingTimeLimit(SHARE_DEFAULT_INACTIVE_LIMIT)
     onOpenChange(false)
-  }, [onConfirm, ratioEnabled, ratioLimit, seedingTimeEnabled, seedingTimeLimit, inactiveSeedingTimeEnabled, inactiveSeedingTimeLimit, onOpenChange])
+  }, [onConfirm, useGlobalLimits, ratioEnabled, ratioLimit, seedingTimeEnabled, seedingTimeLimit, inactiveSeedingTimeEnabled, inactiveSeedingTimeLimit, onOpenChange])
 
   const handleCancel = useCallback((): void => {
+    setUseGlobalLimits(false)
     setRatioEnabled(false)
-    setRatioLimit(1.5)
+    setRatioLimit(SHARE_DEFAULT_RATIO_LIMIT)
     setSeedingTimeEnabled(false)
-    setSeedingTimeLimit(1440)
+    setSeedingTimeLimit(SHARE_DEFAULT_SEEDING_LIMIT)
     setInactiveSeedingTimeEnabled(false)
-    setInactiveSeedingTimeLimit(10080)
+    setInactiveSeedingTimeLimit(SHARE_DEFAULT_INACTIVE_LIMIT)
     onOpenChange(false)
   }, [onOpenChange])
 
@@ -905,16 +1463,32 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
         <DialogHeader>
           <DialogTitle>Set Share Limits for {hashCount} torrent(s)</DialogTitle>
           <DialogDescription>
-            Configure seeding limits. Use -1 or disable to remove limits.
+            Configure seeding limits or use global defaults from qBittorrent settings.
           </DialogDescription>
         </DialogHeader>
         <div className="py-2 space-y-4">
+          {/* Global limits toggle */}
+          <div className="space-y-2 pb-2 border-b">
+            <div className="flex items-center space-x-2">
+              <Switch
+                id="useGlobalLimits"
+                checked={useGlobalLimits}
+                onCheckedChange={setUseGlobalLimits}
+              />
+              <Label htmlFor="useGlobalLimits" className="text-sm font-medium">Use global limits</Label>
+            </div>
+            <p className="text-xs text-muted-foreground ml-6">
+              When enabled, torrents will follow the global share limits configured in qBittorrent settings
+            </p>
+          </div>
+
           <div className="space-y-2">
             <div className="flex items-center space-x-2">
               <Switch
                 id="ratioEnabled"
                 checked={ratioEnabled}
                 onCheckedChange={setRatioEnabled}
+                disabled={useGlobalLimits}
               />
               <Label htmlFor="ratioEnabled" className="text-sm">Set ratio limit</Label>
             </div>
@@ -925,9 +1499,9 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
                 min="0"
                 step="0.1"
                 value={ratioLimit}
-                disabled={!ratioEnabled}
+                disabled={!ratioEnabled || useGlobalLimits}
                 onChange={(e) => setRatioLimit(parseFloat(e.target.value) || 0)}
-                placeholder="1.5"
+                placeholder="0"
               />
               <p className="text-xs text-muted-foreground">
                 Stop seeding when ratio reaches this value
@@ -941,6 +1515,7 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
                 id="seedingTimeEnabled"
                 checked={seedingTimeEnabled}
                 onCheckedChange={setSeedingTimeEnabled}
+                disabled={useGlobalLimits}
               />
               <Label htmlFor="seedingTimeEnabled" className="text-sm">Set seeding time limit</Label>
             </div>
@@ -950,9 +1525,9 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
                 type="number"
                 min="0"
                 value={seedingTimeLimit}
-                disabled={!seedingTimeEnabled}
+                disabled={!seedingTimeEnabled || useGlobalLimits}
                 onChange={(e) => setSeedingTimeLimit(parseInt(e.target.value) || 0)}
-                placeholder="1440"
+                placeholder="0"
               />
               <p className="text-xs text-muted-foreground">
                 Minutes (1440 = 24 hours)
@@ -966,6 +1541,7 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
                 id="inactiveSeedingTimeEnabled"
                 checked={inactiveSeedingTimeEnabled}
                 onCheckedChange={setInactiveSeedingTimeEnabled}
+                disabled={useGlobalLimits}
               />
               <Label htmlFor="inactiveSeedingTimeEnabled" className="text-sm">Set inactive seeding limit</Label>
             </div>
@@ -975,9 +1551,9 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
                 type="number"
                 min="0"
                 value={inactiveSeedingTimeLimit}
-                disabled={!inactiveSeedingTimeEnabled}
+                disabled={!inactiveSeedingTimeEnabled || useGlobalLimits}
                 onChange={(e) => setInactiveSeedingTimeLimit(parseInt(e.target.value) || 0)}
-                placeholder="10080"
+                placeholder="0"
               />
               <p className="text-xs text-muted-foreground">
                 Minutes (10080 = 7 days)
@@ -1005,51 +1581,92 @@ interface SpeedLimitsDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   hashCount: number
+  torrents?: TorrentLimitSnapshot[]
   onConfirm: (uploadLimit: number, downloadLimit: number) => void
   isPending?: boolean
+}
+
+interface SpeedLimitFormState {
+  uploadEnabled: boolean
+  uploadLimit: number
+  downloadEnabled: boolean
+  downloadLimit: number
+}
+
+const buildSpeedLimitInitialState = (torrents?: TorrentLimitSnapshot[]): SpeedLimitFormState => {
+  const base: SpeedLimitFormState = {
+    uploadEnabled: false,
+    uploadLimit: SPEED_DEFAULT_LIMIT,
+    downloadEnabled: false,
+    downloadLimit: SPEED_DEFAULT_LIMIT,
+  }
+
+  if (!torrents || torrents.length === 0) {
+    return base
+  }
+
+  const uploadValues = torrents.map((torrent) => safeNumber(torrent.up_limit, 0))
+  const downloadValues = torrents.map((torrent) => safeNumber(torrent.dl_limit, 0))
+
+  const uploadsMatch = uploadValues.every((value) => value === uploadValues[0])
+  const downloadsMatch = downloadValues.every((value) => value === downloadValues[0])
+
+  const firstUpload = uploadValues[0]
+  const firstDownload = downloadValues[0]
+
+  return {
+    ...base,
+    uploadEnabled: uploadsMatch && firstUpload > 0,
+    uploadLimit: uploadsMatch && firstUpload > 0 ? Math.round(firstUpload / 1024) : base.uploadLimit,
+    downloadEnabled: downloadsMatch && firstDownload > 0,
+    downloadLimit: downloadsMatch && firstDownload > 0 ? Math.round(firstDownload / 1024) : base.downloadLimit,
+  }
 }
 
 export const SpeedLimitsDialog = memo(function SpeedLimitsDialog({
   open,
   onOpenChange,
   hashCount,
+  torrents,
   onConfirm,
   isPending = false,
 }: SpeedLimitsDialogProps) {
   const [uploadEnabled, setUploadEnabled] = useState(false)
-  const [uploadLimit, setUploadLimit] = useState(1024)
+  const [uploadLimit, setUploadLimit] = useState(SPEED_DEFAULT_LIMIT)
   const [downloadEnabled, setDownloadEnabled] = useState(false)
-  const [downloadLimit, setDownloadLimit] = useState(1024)
+  const [downloadLimit, setDownloadLimit] = useState(SPEED_DEFAULT_LIMIT)
   const wasOpen = useRef(false)
 
-  // Reset form when dialog opens
+  const speedInitialState = useMemo(() => buildSpeedLimitInitialState(torrents), [torrents])
+
+  // Reset form when dialog opens with torrent values
   useEffect(() => {
     if (open && !wasOpen.current) {
-      setUploadEnabled(false)
-      setUploadLimit(1024)
-      setDownloadEnabled(false)
-      setDownloadLimit(1024)
+      setUploadEnabled(speedInitialState.uploadEnabled)
+      setUploadLimit(speedInitialState.uploadLimit)
+      setDownloadEnabled(speedInitialState.downloadEnabled)
+      setDownloadLimit(speedInitialState.downloadLimit)
     }
     wasOpen.current = open
-  }, [open])
+  }, [open, speedInitialState])
 
   const handleConfirm = useCallback((): void => {
     onConfirm(
-      uploadEnabled ? uploadLimit : -1,
-      downloadEnabled ? downloadLimit : -1
+      uploadEnabled ? uploadLimit : 0,  // 0 means use global limit
+      downloadEnabled ? downloadLimit : 0  // 0 means use global limit
     )
     // Reset form
     setUploadEnabled(false)
-    setUploadLimit(1024)
+    setUploadLimit(SPEED_DEFAULT_LIMIT)
     setDownloadEnabled(false)
-    setDownloadLimit(1024)
+    setDownloadLimit(SPEED_DEFAULT_LIMIT)
   }, [onConfirm, uploadEnabled, uploadLimit, downloadEnabled, downloadLimit])
 
   const handleCancel = useCallback((): void => {
     setUploadEnabled(false)
-    setUploadLimit(1024)
+    setUploadLimit(SPEED_DEFAULT_LIMIT)
     setDownloadEnabled(false)
-    setDownloadLimit(1024)
+    setDownloadLimit(SPEED_DEFAULT_LIMIT)
     onOpenChange(false)
   }, [onOpenChange])
 
@@ -1059,7 +1676,7 @@ export const SpeedLimitsDialog = memo(function SpeedLimitsDialog({
         <DialogHeader>
           <DialogTitle>Set Speed Limits for {hashCount} torrent(s)</DialogTitle>
           <DialogDescription>
-            Set upload and download speed limits in KB/s. Use -1 or disable to remove limits.
+            Set upload and download speed limits in KB/s. Disable to use global limits.
           </DialogDescription>
         </DialogHeader>
         <div className="py-2 space-y-4">
@@ -1078,7 +1695,7 @@ export const SpeedLimitsDialog = memo(function SpeedLimitsDialog({
               value={uploadLimit}
               disabled={!uploadEnabled}
               onChange={(e) => setUploadLimit(parseInt(e.target.value) || 0)}
-              placeholder="1024"
+              placeholder="0"
             />
           </div>
 
@@ -1097,7 +1714,7 @@ export const SpeedLimitsDialog = memo(function SpeedLimitsDialog({
               value={downloadLimit}
               disabled={!downloadEnabled}
               onChange={(e) => setDownloadLimit(parseInt(e.target.value) || 0)}
-              placeholder="1024"
+              placeholder="0"
             />
           </div>
         </div>

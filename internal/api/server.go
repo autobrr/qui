@@ -14,6 +14,7 @@ import (
 	"github.com/CAFxX/httpcompression"
 	"github.com/alexedwards/scs/v2"
 	"github.com/go-chi/chi/v5"
+	"github.com/rs/cors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
@@ -25,6 +26,7 @@ import (
 	"github.com/autobrr/qui/internal/proxy"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/license"
+	"github.com/autobrr/qui/internal/services/trackericons"
 	"github.com/autobrr/qui/internal/update"
 	"github.com/autobrr/qui/internal/web"
 	"github.com/autobrr/qui/internal/web/swagger"
@@ -37,14 +39,15 @@ type Server struct {
 	config  *config.AppConfig
 	version string
 
-	authService       *auth.Service
-	sessionManager    *scs.SessionManager
-	instanceStore     *models.InstanceStore
-	clientAPIKeyStore *models.ClientAPIKeyStore
-	clientPool        *qbittorrent.ClientPool
-	syncManager       *qbittorrent.SyncManager
-	licenseService    *license.Service
-	updateService     *update.Service
+	authService        *auth.Service
+	sessionManager     *scs.SessionManager
+	instanceStore      *models.InstanceStore
+	clientAPIKeyStore  *models.ClientAPIKeyStore
+	clientPool         *qbittorrent.ClientPool
+	syncManager        *qbittorrent.SyncManager
+	licenseService     *license.Service
+	updateService      *update.Service
+	trackerIconService *trackericons.Service
 }
 
 func NewServer(deps *Dependencies) *Server {
@@ -55,17 +58,18 @@ func NewServer(deps *Dependencies) *Server {
 			WriteTimeout:      120 * time.Second,
 			IdleTimeout:       180 * time.Second,
 		},
-		logger:            log.Logger.With().Str("module", "api").Logger(),
-		config:            deps.Config,
-		version:           deps.Version,
-		authService:       deps.AuthService,
-		sessionManager:    deps.SessionManager,
-		instanceStore:     deps.InstanceStore,
-		clientAPIKeyStore: deps.ClientAPIKeyStore,
-		clientPool:        deps.ClientPool,
-		syncManager:       deps.SyncManager,
-		licenseService:    deps.LicenseService,
-		updateService:     deps.UpdateService,
+		logger:             log.Logger.With().Str("module", "api").Logger(),
+		config:             deps.Config,
+		version:            deps.Version,
+		authService:        deps.AuthService,
+		sessionManager:     deps.SessionManager,
+		instanceStore:      deps.InstanceStore,
+		clientAPIKeyStore:  deps.ClientAPIKeyStore,
+		clientPool:         deps.ClientPool,
+		syncManager:        deps.SyncManager,
+		licenseService:     deps.LicenseService,
+		updateService:      deps.UpdateService,
+		trackerIconService: deps.TrackerIconService,
 	}
 
 	// Create HTTP server with configurable timeouts
@@ -121,7 +125,13 @@ func (s *Server) tryToServe(addr, protocol string) error {
 		Str("base_url", s.config.Config.BaseURL).
 		Msgf("Starting API server - Open: %s", clickableURL)
 
-	s.server.Handler = s.Handler()
+	handler, err := s.Handler()
+	if err != nil {
+		listener.Close()
+		return fmt.Errorf("build API router: %w", err)
+	}
+
+	s.server.Handler = handler
 
 	return s.server.Serve(listener)
 }
@@ -130,7 +140,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	return s.server.Shutdown(ctx)
 }
 
-func (s *Server) Handler() *chi.Mux {
+func (s *Server) Handler() (*chi.Mux, error) {
 	r := chi.NewRouter()
 
 	// Global middleware
@@ -147,24 +157,37 @@ func (s *Server) Handler() *chi.Mux {
 		r.Use(compressor)
 	}
 
-	// CORS - configure based on your needs
-	allowedOrigins := []string{"http://localhost:3000", "http://localhost:5173"}
-	if s.config.Config.BaseURL != "" {
-		allowedOrigins = append(allowedOrigins, s.config.Config.BaseURL)
-	}
-	r.Use(middleware.CORSWithCredentials(allowedOrigins))
+	// CORS - mirror autobrr's permissive credentials setup
+	corsMiddleware := cors.New(cors.Options{
+		AllowCredentials:   true,
+		AllowedMethods:     []string{"HEAD", "OPTIONS", "GET", "POST", "PUT", "PATCH", "DELETE"},
+		AllowedHeaders:     []string{"Accept", "Authorization", "Content-Type", "X-API-Key"},
+		AllowOriginFunc:    func(origin string) bool { return true },
+		OptionsPassthrough: true,
+		MaxAge:             300,
+		Debug:              false,
+	})
+	r.Use(corsMiddleware.Handler)
 
 	// Session middleware - must be added before any session-dependent middleware
 	r.Use(s.sessionManager.LoadAndSave)
 
 	// Create handlers
 	healthHandler := handlers.NewHealthHandler()
-	authHandler := handlers.NewAuthHandler(s.authService, s.sessionManager, s.instanceStore, s.clientPool, s.syncManager)
+	authHandler, err := handlers.NewAuthHandler(s.authService, s.sessionManager, s.config.Config, s.instanceStore, s.clientPool, s.syncManager)
+	if err != nil {
+		return nil, err
+	}
 	instancesHandler := handlers.NewInstancesHandler(s.instanceStore, s.clientPool, s.syncManager)
 	torrentsHandler := handlers.NewTorrentsHandler(s.syncManager)
 	preferencesHandler := handlers.NewPreferencesHandler(s.syncManager)
 	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(s.clientAPIKeyStore, s.instanceStore)
 	versionHandler := handlers.NewVersionHandler(s.updateService)
+	qbittorrentInfoHandler := handlers.NewQBittorrentInfoHandler(s.clientPool)
+	var trackerIconHandler *handlers.TrackerIconHandler
+	if s.trackerIconService != nil {
+		trackerIconHandler = handlers.NewTrackerIconHandler(s.trackerIconService)
+	}
 
 	// Create proxy handler
 	proxyHandler := proxy.NewHandler(s.clientPool, s.clientAPIKeyStore, s.instanceStore)
@@ -182,7 +205,7 @@ func (s *Server) Handler() *chi.Mux {
 		r.Use(middleware.Logger(s.logger))
 
 		// Apply setup check middleware
-		r.Use(middleware.RequireSetup(s.authService))
+		r.Use(middleware.RequireSetup(s.authService, s.config.Config))
 
 		// Public routes (no auth required)
 		r.Route("/auth", func(r chi.Router) {
@@ -192,11 +215,21 @@ func (s *Server) Handler() *chi.Mux {
 			r.Post("/setup", authHandler.Setup)
 			r.Post("/login", authHandler.Login)
 			r.Get("/check-setup", authHandler.CheckSetupRequired)
+			r.Get("/validate", authHandler.Validate)
+
+			// OIDC routes (if enabled)
+			if s.config.Config.OIDCEnabled && authHandler.GetOIDCHandler() != nil {
+				r.Route("/oidc", authHandler.GetOIDCHandler().Routes)
+			}
 		})
 
 		// Protected routes
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.IsAuthenticated(s.authService, s.sessionManager))
+
+			if trackerIconHandler != nil {
+				r.Get("/tracker-icons", trackerIconHandler.GetTrackerIcons)
+			}
 
 			// Auth routes
 			r.Post("/auth/logout", authHandler.Logout)
@@ -245,6 +278,7 @@ func (s *Server) Handler() *chi.Mux {
 
 						r.Route("/{hash}", func(r chi.Router) {
 							// Torrent details
+							r.Get("/export", torrentsHandler.ExportTorrent)
 							r.Get("/properties", torrentsHandler.GetTorrentProperties)
 							r.Get("/trackers", torrentsHandler.GetTorrentTrackers)
 							r.Put("/trackers", torrentsHandler.EditTorrentTracker)
@@ -252,7 +286,21 @@ func (s *Server) Handler() *chi.Mux {
 							r.Delete("/trackers", torrentsHandler.RemoveTorrentTrackers)
 							r.Get("/peers", torrentsHandler.GetTorrentPeers)
 							r.Get("/files", torrentsHandler.GetTorrentFiles)
+							r.Put("/rename", torrentsHandler.RenameTorrent)
+							r.Put("/rename-file", torrentsHandler.RenameTorrentFile)
+							r.Put("/rename-folder", torrentsHandler.RenameTorrentFolder)
 						})
+					})
+
+					r.Get("/capabilities", instancesHandler.GetInstanceCapabilities)
+
+					// Torrent creator
+					r.Route("/torrent-creator", func(r chi.Router) {
+						r.Post("/", torrentsHandler.CreateTorrent)
+						r.Get("/status", torrentsHandler.GetTorrentCreationStatus)
+						r.Get("/count", torrentsHandler.GetActiveTaskCount)
+						r.Get("/{taskID}/file", torrentsHandler.DownloadTorrentCreationFile)
+						r.Delete("/{taskID}", torrentsHandler.DeleteTorrentCreationTask)
 					})
 
 					// Categories and tags
@@ -265,6 +313,9 @@ func (s *Server) Handler() *chi.Mux {
 					r.Post("/tags", torrentsHandler.CreateTags)
 					r.Delete("/tags", torrentsHandler.DeleteTags)
 
+					// Trackers
+					r.Get("/trackers", torrentsHandler.GetActiveTrackers)
+
 					// Preferences
 					r.Get("/preferences", preferencesHandler.GetPreferences)
 					r.Patch("/preferences", preferencesHandler.UpdatePreferences)
@@ -272,6 +323,9 @@ func (s *Server) Handler() *chi.Mux {
 					// Alternative speed limits
 					r.Get("/alternative-speed-limits", preferencesHandler.GetAlternativeSpeedLimitsMode)
 					r.Post("/alternative-speed-limits/toggle", preferencesHandler.ToggleAlternativeSpeedLimits)
+
+					// qBittorrent application info
+					r.Get("/app-info", qbittorrentInfoHandler.GetQBittorrentAppInfo)
 				})
 			})
 
@@ -293,7 +347,15 @@ func (s *Server) Handler() *chi.Mux {
 		baseURL = "/"
 	}
 
+	// Mount API routes BEFORE web handler to prevent catch-all from intercepting API requests
+	r.Get("/health", healthHandler.HandleHealth)
+	r.Get("/healthz/readiness", healthHandler.HandleReady)
+	r.Get("/healthz/liveness", healthHandler.HandleLiveness)
+
+	r.Mount(baseURL+"api", apiRouter)
+
 	// Initialize web handler (for embedded frontend)
+	// This MUST be registered AFTER API routes to avoid catch-all intercepting /api/* paths
 	webHandler := web.NewHandler(s.version, s.config.Config.BaseURL, webfs.DistDirFS)
 
 	if baseURL != "/" {
@@ -309,12 +371,6 @@ func (s *Server) Handler() *chi.Mux {
 		webHandler.RegisterRoutes(r)
 	}
 
-	r.Get("/health", healthHandler.HandleHealth)
-	r.Get("/healthz/readiness", healthHandler.HandleReady)
-	r.Get("/healthz/liveness", healthHandler.HandleLiveness)
-
-	r.Mount(baseURL+"api", apiRouter)
-
 	if baseURL != "/" {
 		r.Get("/", func(w http.ResponseWriter, request *http.Request) {
 			w.WriteHeader(http.StatusNotFound)
@@ -326,20 +382,21 @@ func (s *Server) Handler() *chi.Mux {
 		//	})
 	}
 
-	return r
+	return r, nil
 }
 
 // Dependencies holds all the dependencies needed for the API
 type Dependencies struct {
-	Config            *config.AppConfig
-	Version           string
-	AuthService       *auth.Service
-	SessionManager    *scs.SessionManager
-	InstanceStore     *models.InstanceStore
-	ClientAPIKeyStore *models.ClientAPIKeyStore
-	ClientPool        *qbittorrent.ClientPool
-	SyncManager       *qbittorrent.SyncManager
-	WebHandler        *web.Handler
-	LicenseService    *license.Service
-	UpdateService     *update.Service
+	Config             *config.AppConfig
+	Version            string
+	AuthService        *auth.Service
+	SessionManager     *scs.SessionManager
+	InstanceStore      *models.InstanceStore
+	ClientAPIKeyStore  *models.ClientAPIKeyStore
+	ClientPool         *qbittorrent.ClientPool
+	SyncManager        *qbittorrent.SyncManager
+	WebHandler         *web.Handler
+	LicenseService     *license.Service
+	UpdateService      *update.Service
+	TrackerIconService *trackericons.Service
 }

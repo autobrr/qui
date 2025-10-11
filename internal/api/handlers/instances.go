@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -32,6 +33,31 @@ func NewInstancesHandler(instanceStore *models.InstanceStore, clientPool *intern
 		clientPool:    clientPool,
 		syncManager:   syncManager,
 	}
+}
+
+// GetInstanceCapabilities returns lightweight capability metadata for an instance.
+func (h *InstancesHandler) GetInstanceCapabilities(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+
+	client, err := h.clientPool.GetClientOffline(ctx, instanceID)
+	if err != nil {
+		client, err = h.clientPool.GetClientWithTimeout(ctx, instanceID, 15*time.Second)
+		if err != nil {
+			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client for capabilities")
+			RespondError(w, http.StatusServiceUnavailable, "Failed to load instance capabilities")
+			return
+		}
+	}
+
+	capabilities := NewInstanceCapabilitiesResponse(client)
+	RespondJSON(w, http.StatusOK, capabilities)
 }
 
 func (h *InstancesHandler) buildInstanceResponsesParallel(ctx context.Context, instances []*models.Instance) []InstanceResponse {
@@ -81,6 +107,13 @@ func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *
 	client, _ := h.clientPool.GetClientOffline(ctx, instance.ID)
 	healthy := client != nil && client.IsHealthy()
 
+	var connectionStatus string
+	if client != nil {
+		if status := strings.TrimSpace(client.GetCachedConnectionStatus()); status != "" {
+			connectionStatus = strings.ToLower(status)
+		}
+	}
+
 	decryptionErrorInstances := h.clientPool.GetInstancesWithDecryptionErrors()
 	hasDecryptionError := slices.Contains(decryptionErrorInstances, instance.ID)
 
@@ -93,6 +126,7 @@ func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *
 		TLSSkipVerify:      instance.TLSSkipVerify,
 		Connected:          healthy,
 		HasDecryptionError: hasDecryptionError,
+		ConnectionStatus:   connectionStatus,
 	}
 
 	// Fetch recent errors for disconnected instances
@@ -177,6 +211,7 @@ type InstanceResponse struct {
 	Connected          bool                   `json:"connected"`
 	HasDecryptionError bool                   `json:"hasDecryptionError"`
 	RecentErrors       []models.InstanceError `json:"recentErrors,omitempty"`
+	ConnectionStatus   string                 `json:"connectionStatus,omitempty"`
 }
 
 // TestConnectionResponse represents connection test results

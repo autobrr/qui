@@ -15,54 +15,32 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
+import { usePersistedTabState } from "@/hooks/usePersistedTabState"
 import { api } from "@/lib/api"
 import { getLinuxComment, getLinuxCreatedBy, getLinuxFileName, getLinuxHash, getLinuxIsoName, getLinuxSavePath, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { renderTextWithLinks } from "@/lib/linkUtils"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { resolveTorrentHashes } from "@/lib/torrent-utils"
-import { formatBytes, formatDuration } from "@/lib/utils"
-import type { Torrent } from "@/types"
+import { copyTextToClipboard, formatBytes, formatDuration } from "@/lib/utils"
+import type { SortedPeersResponse, Torrent, TorrentPeer } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import "flag-icons/css/flag-icons.min.css"
 import { Ban, Copy, Loader2, UserPlus } from "lucide-react"
 import { memo, useCallback, useEffect, useState } from "react"
 import { toast } from "sonner"
 
-interface TorrentPeer {
-  ip: string
-  port: number
-  connection?: string
-  flags?: string
-  flags_desc?: string
-  client?: string
-  progress?: number  // Float 0-1, where 1 = 100% (seeder). Note: qBittorrent doesn't expose the actual seed status via API
-  dl_speed?: number
-  up_speed?: number
-  downloaded?: number
-  uploaded?: number
-  relevance?: number
-  files?: string
-  country?: string
-  country_code?: string
-  peer_id_client?: string
-}
-
-interface SortedPeer extends TorrentPeer {
-  key: string
-}
-
-interface TorrentPeersResponse {
-  full_update?: boolean
-  rid?: number
-  peers?: Record<string, TorrentPeer>
-  peers_removed?: string[]
-  show_flags?: boolean
-  sorted_peers?: SortedPeer[]
-}
-
 interface TorrentDetailsPanelProps {
   instanceId: number;
   torrent: Torrent | null;
+}
+
+const TAB_VALUES = ["general", "trackers", "peers", "content"] as const
+type TabValue = typeof TAB_VALUES[number]
+const DEFAULT_TAB: TabValue = "general"
+const TAB_STORAGE_KEY = "torrent-details-last-tab"
+
+function isTabValue(value: string): value is TabValue {
+  return TAB_VALUES.includes(value as TabValue)
 }
 
 function getTrackerStatusBadge(status: number) {
@@ -83,7 +61,7 @@ function getTrackerStatusBadge(status: number) {
 }
 
 export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceId, torrent }: TorrentDetailsPanelProps) {
-  const [activeTab, setActiveTab] = useState("general")
+  const [activeTab, setActiveTab] = usePersistedTabState<TabValue>(TAB_STORAGE_KEY, DEFAULT_TAB, isTabValue)
   const [showAddPeersDialog, setShowAddPeersDialog] = useState(false)
   const { formatTimestamp } = useDateTimeFormatters()
   const [showBanPeerDialog, setShowBanPeerDialog] = useState(false)
@@ -99,20 +77,24 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
   const copyToClipboard = useCallback(async (text: string, type: string) => {
     try {
-      await navigator.clipboard.writeText(text)
-      toast.success(`${type} copied!`)
+      await copyTextToClipboard(text)
+      toast.success(`${type} copied to clipboard`)
     } catch {
       toast.error("Failed to copy to clipboard")
     }
   }, [])
-  // Reset tab when torrent changes and wait for component to be ready
+  // Wait for component animation before enabling queries when torrent changes
   useEffect(() => {
-    setActiveTab("general")
     setIsReady(false)
     // Small delay to ensure parent component animations complete
     const timer = setTimeout(() => setIsReady(true), 150)
     return () => clearTimeout(timer)
   }, [torrent?.hash])
+
+  const handleTabChange = useCallback((value: string) => {
+    const nextTab = isTabValue(value) ? value : DEFAULT_TAB
+    setActiveTab(nextTab)
+  }, [setActiveTab])
 
   // Fetch torrent properties
   const { data: properties, isLoading: loadingProperties } = useQuery({
@@ -147,12 +129,9 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const isPeersTabActive = activeTab === "peers"
   const peersQueryKey = ["torrent-peers", instanceId, torrent?.hash] as const
 
-  const { data: peersData, isLoading: loadingPeers } = useQuery<TorrentPeersResponse>({
+  const { data: peersData, isLoading: loadingPeers } = useQuery<SortedPeersResponse>({
     queryKey: peersQueryKey,
-    queryFn: async () => {
-      const data = await api.getTorrentPeers(instanceId, torrent!.hash)
-      return data as TorrentPeersResponse
-    },
+    queryFn: () => api.getTorrentPeers(instanceId, torrent!.hash),
     enabled: !!torrent && isReady && isPeersTabActive,
     refetchInterval: () => {
       if (!isPeersTabActive) return false
@@ -199,13 +178,15 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   })
 
   // Handle copy peer IP:port
-  const handleCopyPeer = useCallback((peer: TorrentPeer) => {
+  const handleCopyPeer = useCallback(async (peer: TorrentPeer) => {
     const peerAddress = `${peer.ip}:${peer.port}`
-    navigator.clipboard.writeText(peerAddress).then(() => {
+    try {
+      await copyTextToClipboard(peerAddress)
       toast.success(`Copied ${peerAddress} to clipboard`)
-    }).catch(() => {
+    } catch (err) {
+      console.error("Failed to copy to clipboard:", err)
       toast.error("Failed to copy to clipboard")
-    })
+    }
   }, [])
 
   // Handle ban peer click
@@ -238,6 +219,16 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const displayInfohashV2 = incognitoMode && resolvedInfohashV2 ? incognitoHash : resolvedInfohashV2
   const displaySavePath = incognitoMode && properties?.save_path ? getLinuxSavePath(torrent.hash) : properties?.save_path
 
+  const formatLimitLabel = (limit: number | null | undefined) => {
+    if (limit == null || !Number.isFinite(limit) || limit <= 0) {
+      return "∞"
+    }
+    return formatSpeedWithUnit(limit, speedUnit)
+  }
+
+  const downloadLimitLabel = formatLimitLabel(properties?.dl_limit ?? torrent.dl_limit)
+  const uploadLimitLabel = formatLimitLabel(properties?.up_limit ?? torrent.up_limit)
+
   // Show minimal loading state while waiting for initial data
   const isInitialLoad = !isReady || (loadingProperties && !properties)
   if (isInitialLoad) {
@@ -256,7 +247,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
         </h3>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="flex-1 flex flex-col overflow-hidden">
         <TabsList className="w-full justify-start rounded-none border-b h-10 bg-background px-4 sm:px-6 py-0">
           <TabsTrigger
             value="general"
@@ -342,11 +333,13 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                             <p className="text-xs text-muted-foreground">Download Speed</p>
                             <p className="text-base font-semibold text-green-500">{formatSpeedWithUnit(properties.dl_speed || 0, speedUnit)}</p>
                             <p className="text-xs text-muted-foreground">avg: {formatSpeedWithUnit(properties.dl_speed_avg || 0, speedUnit)}</p>
+                            <p className="text-xs text-muted-foreground">Limit: {downloadLimitLabel}</p>
                           </div>
                           <div className="space-y-1">
                             <p className="text-xs text-muted-foreground">Upload Speed</p>
                             <p className="text-base font-semibold text-blue-500">{formatSpeedWithUnit(properties.up_speed || 0, speedUnit)}</p>
                             <p className="text-xs text-muted-foreground">avg: {formatSpeedWithUnit(properties.up_speed_avg || 0, speedUnit)}</p>
+                            <p className="text-xs text-muted-foreground">Limit: {uploadLimitLabel}</p>
                           </div>
                         </div>
                       </div>
@@ -437,10 +430,22 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
                     {/* Save Path */}
                     <div className="space-y-3">
-                      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">File Location</h3>
+                      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Save Path</h3>
                       <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50">
-                        <div className="font-mono text-xs sm:text-sm break-all text-muted-foreground">
-                          {displaySavePath || "N/A"}
+                        <div className="flex items-center gap-2">
+                          <div className="font-mono text-xs sm:text-sm break-all text-muted-foreground bg-background/50 rounded px-2.5 py-2 select-text flex-1">
+                            {displaySavePath || "N/A"}
+                          </div>
+                          {displaySavePath && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 shrink-0"
+                              onClick={() => copyToClipboard(displaySavePath, "File location")}
+                            >
+                              <Copy className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -597,7 +602,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                                 </div>
                                 <div className="space-y-1">
                                   <p className="text-xs text-muted-foreground">Leechers</p>
-                                  <p className="text-sm font-medium">{tracker.num_leechers}</p>
+                                  <p className="text-sm font-medium">{tracker.num_leeches}</p>
                                 </div>
                                 <div className="space-y-1">
                                   <p className="text-xs text-muted-foreground">Downloaded</p>
@@ -608,7 +613,9 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                                 <>
                                   <Separator className="opacity-50" />
                                   <div className="bg-background/50 p-2 rounded">
-                                    <p className="text-xs text-muted-foreground">{messageContent}</p>
+                                    <div className="text-xs text-muted-foreground break-words">
+                                      {renderTextWithLinks(messageContent)}
+                                    </div>
                                   </div>
                                 </>
                               )}

@@ -21,6 +21,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/license"
+	"github.com/autobrr/qui/internal/services/trackericons"
 	"github.com/autobrr/qui/internal/web"
 	"github.com/autobrr/qui/internal/web/swagger"
 )
@@ -30,9 +31,14 @@ type routeKey struct {
 	Path   string
 }
 
+var undocumentedRoutes = map[routeKey]struct{}{
+	{Method: http.MethodGet, Path: "/api/auth/validate"}: {},
+}
+
 func TestAllEndpointsDocumented(t *testing.T) {
 	server := NewServer(newTestDependencies(t))
-	router := server.Handler()
+	router, err := server.Handler()
+	require.NoError(t, err)
 
 	actualRoutes := collectRouterRoutes(t, router)
 	documentedRoutes := loadDocumentedRoutes(t)
@@ -56,21 +62,25 @@ func newTestDependencies(t *testing.T) *Dependencies {
 
 	sessionManager := scs.New()
 
+	trackerIconService, err := trackericons.NewService(t.TempDir(), "qui-test")
+	require.NoError(t, err)
+
 	return &Dependencies{
 		Config: &config.AppConfig{
 			Config: &domain.Config{
 				BaseURL: "/",
 			},
 		},
-		Version:           "test",
-		AuthService:       &auth.Service{},
-		SessionManager:    sessionManager,
-		InstanceStore:     &models.InstanceStore{},
-		ClientAPIKeyStore: &models.ClientAPIKeyStore{},
-		ClientPool:        &qbittorrent.ClientPool{},
-		SyncManager:       &qbittorrent.SyncManager{},
-		WebHandler:        &web.Handler{},
-		LicenseService:    &license.Service{},
+		Version:            "test",
+		AuthService:        &auth.Service{},
+		SessionManager:     sessionManager,
+		InstanceStore:      &models.InstanceStore{},
+		ClientAPIKeyStore:  &models.ClientAPIKeyStore{},
+		ClientPool:         &qbittorrent.ClientPool{},
+		SyncManager:        &qbittorrent.SyncManager{},
+		WebHandler:         &web.Handler{},
+		LicenseService:     &license.Service{},
+		TrackerIconService: trackerIconService,
 	}
 }
 
@@ -89,7 +99,12 @@ func collectRouterRoutes(t *testing.T, r chi.Routes) map[routeKey]struct{} {
 			return nil
 		}
 
-		routes[routeKey{Method: method, Path: normalizedPath}] = struct{}{}
+		route := routeKey{Method: method, Path: normalizedPath}
+		if _, skip := undocumentedRoutes[route]; skip {
+			return nil
+		}
+
+		routes[route] = struct{}{}
 		return nil
 	})
 	require.NoError(t, err)
