@@ -18,7 +18,7 @@ import {
   DropdownMenuSubTrigger
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
-import { Folder, Plus, Search, X } from "lucide-react"
+import { Folder, Search, X } from "lucide-react"
 import { memo, useMemo, useState } from "react"
 
 interface CategorySubmenuProps {
