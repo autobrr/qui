@@ -1079,6 +1079,11 @@ export function TorrentCardsMobile({
     },
   })
 
+  // IMPORTANT REMINDER: mobile view currently lacks column filter expressions,
+  // so select-all actions only forward the sidebar filters. If column filters
+  // are ever added to this view, ensure the combined filters (including expr)
+  // are passed into these bulk action payloads similar to the desktop table.
+
   const { data: metadata } = useInstanceMetadata(instanceId)
   const availableTags = metadata?.tags || []
   const availableCategories = metadata?.categories || {}
