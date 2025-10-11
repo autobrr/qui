@@ -1392,8 +1392,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
       {/* Table container */}
       <div className="flex flex-col flex-1 min-h-0 mt-2 sm:mt-0 overflow-hidden">
+        {/* Virtual scroll container with paint containment optimization for improved rendering performance */}
         <div
-          className="relative flex-1 overflow-auto scrollbar-thin select-none will-change-transform"
+          className="relative flex-1 overflow-auto scrollbar-thin select-none will-change-transform contain-paint"
           ref={parentRef}
           role="grid"
           aria-label="Torrents table"
