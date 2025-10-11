@@ -105,6 +105,7 @@ import { createColumns } from "./TorrentTableColumns"
 // Default values for persisted state hooks (module scope for stable references)
 const DEFAULT_COLUMN_VISIBILITY = {
   priority: true,
+  status_icon: true,
   tracker_icon: true,
   name: true,
   size: true,
