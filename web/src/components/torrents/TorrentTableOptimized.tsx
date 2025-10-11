@@ -795,6 +795,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const AltSpeedIcon = altSpeedEnabled ? Turtle : Rabbit
   const altSpeedIconClass = isAltSpeedKnown? altSpeedEnabled? "text-destructive": "text-green-500": "text-muted-foreground"
 
+  useEffect(() => {
+    setAltSpeedOverride(null)
+  }, [instanceId])
+
   const { mutateAsync: toggleAltSpeedLimits, isPending: isTogglingAltSpeed } = useMutation({
     mutationFn: () => api.toggleAlternativeSpeedLimits(instanceId),
     onSuccess: () => {
