@@ -21,6 +21,7 @@ import (
 	"github.com/autobrr/qui/internal/api/handlers"
 	"github.com/autobrr/qui/internal/api/middleware"
 	"github.com/autobrr/qui/internal/auth"
+	"github.com/autobrr/qui/internal/backups"
 	"github.com/autobrr/qui/internal/config"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/proxy"
@@ -48,6 +49,7 @@ type Server struct {
 	licenseService     *license.Service
 	updateService      *update.Service
 	trackerIconService *trackericons.Service
+	backupService      *backups.Service
 }
 
 func NewServer(deps *Dependencies) *Server {
@@ -70,6 +72,7 @@ func NewServer(deps *Dependencies) *Server {
 		licenseService:     deps.LicenseService,
 		updateService:      deps.UpdateService,
 		trackerIconService: deps.TrackerIconService,
+		backupService:      deps.BackupService,
 	}
 
 	// Create HTTP server with configurable timeouts
@@ -184,6 +187,10 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(s.clientAPIKeyStore, s.instanceStore)
 	versionHandler := handlers.NewVersionHandler(s.updateService)
 	qbittorrentInfoHandler := handlers.NewQBittorrentInfoHandler(s.clientPool)
+	var backupsHandler *handlers.BackupsHandler
+	if s.backupService != nil {
+		backupsHandler = handlers.NewBackupsHandler(s.backupService)
+	}
 	var trackerIconHandler *handlers.TrackerIconHandler
 	if s.trackerIconService != nil {
 		trackerIconHandler = handlers.NewTrackerIconHandler(s.trackerIconService)
@@ -326,6 +333,21 @@ func (s *Server) Handler() (*chi.Mux, error) {
 
 					// qBittorrent application info
 					r.Get("/app-info", qbittorrentInfoHandler.GetQBittorrentAppInfo)
+
+					if backupsHandler != nil {
+						r.Route("/backups", func(r chi.Router) {
+							r.Get("/settings", backupsHandler.GetSettings)
+							r.Put("/settings", backupsHandler.UpdateSettings)
+							r.Post("/run", backupsHandler.TriggerBackup)
+							r.Get("/runs", backupsHandler.ListRuns)
+							r.Get("/runs/{runID}/manifest", backupsHandler.GetManifest)
+							r.Get("/runs/{runID}/download", backupsHandler.DownloadRun)
+							r.Post("/runs/{runID}/restore/preview", backupsHandler.PreviewRestore)
+							r.Post("/runs/{runID}/restore", backupsHandler.ExecuteRestore)
+							r.Get("/runs/{runID}/items/{torrentHash}/download", backupsHandler.DownloadTorrentBlob)
+							r.Delete("/runs/{runID}", backupsHandler.DeleteRun)
+						})
+					}
 				})
 			})
 
@@ -399,4 +421,5 @@ type Dependencies struct {
 	LicenseService     *license.Service
 	UpdateService      *update.Service
 	TrackerIconService *trackericons.Service
+	BackupService      *backups.Service
 }

@@ -106,7 +106,7 @@ export function Sidebar() {
             <div className="mt-1 flex-1 overflow-y-auto space-y-1 pr-1">
               {instances?.map((instance) => {
                 const instancePath = `/instances/${instance.id}`
-                const isActive = location.pathname === instancePath
+                const isActive = location.pathname === instancePath || location.pathname.startsWith(`${instancePath}/`)
 
                 return (
                   <Link

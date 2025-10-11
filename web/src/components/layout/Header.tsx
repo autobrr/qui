@@ -34,7 +34,7 @@ import { cn } from "@/lib/utils"
 import type { InstanceCapabilities } from "@/types"
 import { useQuery } from "@tanstack/react-query"
 import { Link, useNavigate, useRouterState, useSearch } from "@tanstack/react-router"
-import { ChevronsUpDown, FileEdit, FunnelPlus, FunnelX, HardDrive, Home, Info, ListTodo, LogOut, Menu, Plus, Search, Server, Settings, X } from "lucide-react"
+import { Archive, ChevronsUpDown, FileEdit, FunnelPlus, FunnelX, HardDrive, Home, Info, ListTodo, LogOut, Menu, Plus, Search, Server, Settings, X } from "lucide-react"
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useHotkeys } from "react-hotkeys-hook"
 
@@ -64,13 +64,25 @@ export function Header({
   } = useTorrentSelection()
 
   const instanceId = useRouterState({
-    select: (s) => s.matches.find((m) => m.routeId === "/_authenticated/instances/$instanceId")?.params?.instanceId as string | undefined,
+    select: (s) => {
+      const match = s.matches.find(
+        (m) =>
+          m.routeId === "/_authenticated/instances/$instanceId" ||
+          m.routeId === "/_authenticated/instances/$instanceId/backups"
+      )
+      return (match?.params as { instanceId?: string } | undefined)?.instanceId
+    },
   })
   const selectedInstanceId = useMemo(() => {
     const parsed = instanceId ? parseInt(instanceId, 10) : NaN
     return Number.isFinite(parsed) ? parsed : null
   }, [instanceId])
   const isInstanceRoute = selectedInstanceId !== null
+  const isInstanceBackupsRoute = useRouterState({
+    select: (s) =>
+      s.matches.some((m) => m.routeId === "/_authenticated/instances/$instanceId/backups"),
+  })
+  const shouldShowInstanceControls = isInstanceRoute && !isInstanceBackupsRoute
 
   const shouldShowQuiOnMobile = !isInstanceRoute
   const [searchValue, setSearchValue] = useState<string>(routeSearch?.q || "")
@@ -91,13 +103,13 @@ export function Header({
 
   // Update URL search param after debounce
   useEffect(() => {
-    if (!isInstanceRoute) return
+    if (!shouldShowInstanceControls) return
     const next = { ...(routeSearch || {}) }
     if (debouncedSearch) next.q = debouncedSearch
     else delete next.q
     navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedSearch, isInstanceRoute])
+  }, [debouncedSearch, shouldShowInstanceControls])
 
   const isGlobSearch = !!searchValue && /[*?[\]]/.test(searchValue)
   const [filterSidebarCollapsed, setFilterSidebarCollapsed] = usePersistedFilterSidebarState(false)
@@ -128,8 +140,9 @@ export function Header({
     {
       preventDefault: true,
       enableOnFormTags: ["input", "textarea", "select"],
+      enabled: shouldShowInstanceControls,
     },
-    [isInstanceRoute]
+    [shouldShowInstanceControls]
   )
   const { theme } = useTheme()
 
@@ -137,7 +150,7 @@ export function Header({
   const { data: activeTaskCount = 0 } = useQuery({
     queryKey: ["active-task-count", selectedInstanceId],
     queryFn: () => selectedInstanceId !== null ? api.getActiveTaskCount(selectedInstanceId) : Promise.resolve(0),
-    enabled: selectedInstanceId !== null,
+    enabled: shouldShowInstanceControls && selectedInstanceId !== null,
     refetchInterval: 30000, // Poll every 30 seconds (lightweight check)
     refetchIntervalInBackground: true,
   })
@@ -146,7 +159,7 @@ export function Header({
   const { data: instanceCapabilities } = useQuery<InstanceCapabilities>({
     queryKey: ["instance-capabilities", selectedInstanceId],
     queryFn: () => api.getInstanceCapabilities(selectedInstanceId!),
-    enabled: selectedInstanceId !== null,
+    enabled: shouldShowInstanceControls && selectedInstanceId !== null,
     staleTime: 300000, // Cache for 5 minutes (capabilities don't change often)
   })
 
@@ -231,7 +244,7 @@ export function Header({
       </div>
 
       {/* Filter button and action buttons - always on first row */}
-      {isInstanceRoute && (
+      {shouldShowInstanceControls && (
         <>
           <div className={cn(
             "hidden md:flex items-center gap-2 h-12 lg:h-auto order-2 lg:order-none",
@@ -315,6 +328,24 @@ export function Header({
                 <TooltipContent>Torrent creation tasks</TooltipContent>
               </Tooltip>
             )}
+            {isInstanceRoute && selectedInstanceId !== null && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="hidden md:inline-flex"
+                    onClick={() => navigate({
+                      to: "/instances/$instanceId/backups",
+                      params: { instanceId: selectedInstanceId.toString() },
+                    })}
+                  >
+                    <Archive className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Backups</TooltipContent>
+              </Tooltip>
+            )}
           </div>
           {/* Management Bar - only shows when torrents selected, wraps to new line on tablet */}
           {(selectedHashes.length > 0 || isAllSelected) && (
@@ -336,7 +367,7 @@ export function Header({
         </>
       )}
       {/* Instance route - search on right */}
-      {isInstanceRoute && (
+      {shouldShowInstanceControls && (
         <div className="flex items-center flex-1 gap-2 sm:order-3 lg:order-none sm:h-12 lg:h-auto">
 
           {/* Right side: Filter button and Search bar */}
