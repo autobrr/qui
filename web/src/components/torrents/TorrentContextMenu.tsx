@@ -18,7 +18,7 @@ import { TORRENT_ACTIONS } from "@/hooks/useTorrentActions"
 import { getLinuxIsoName, getLinuxSavePath, useIncognitoMode } from "@/lib/incognito"
 import { getTorrentDisplayHash } from "@/lib/torrent-utils"
 import { copyTextToClipboard } from "@/lib/utils"
-import type { Torrent } from "@/types"
+import type { InstanceCapabilities, Torrent } from "@/types"
 import {
   CheckCircle,
   Copy,
@@ -36,7 +36,6 @@ import {
 } from "lucide-react"
 import { memo, useCallback, useMemo } from "react"
 import { toast } from "sonner"
-import type { InstanceCapabilities } from "@/types"
 import { CategorySubmenu } from "./CategorySubmenu"
 import { QueueSubmenu } from "./QueueSubmenu"
 import { RenameSubmenu } from "./RenameSubmenu"
@@ -83,7 +82,6 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   onAction,
   onPrepareDelete,
   onPrepareTags,
-  onPrepareCreateCategory,
   onPrepareShareLimit,
   onPrepareSpeedLimits,
   onPrepareRecheck,
@@ -167,10 +165,6 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
     }
   }, [onSetCategory, hashes])
 
-  const handleCreateCategory = useCallback(() => {
-    onPrepareCreateCategory(hashes, torrents)
-  }, [onPrepareCreateCategory, hashes, torrents])
-
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
@@ -240,7 +234,6 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
           hashCount={count}
           availableCategories={availableCategories}
           onSetCategory={handleSetCategory}
-          onCreateCategory={handleCreateCategory}
           isPending={isPending}
           currentCategory={torrent.category}
         />

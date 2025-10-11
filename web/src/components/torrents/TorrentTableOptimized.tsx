@@ -81,9 +81,9 @@ import { useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { getCommonCategory, getCommonSavePath, getCommonTags, getTotalSize } from "@/lib/torrent-utils"
 import type { Category, ServerState, Torrent, TorrentCounts, TorrentFilters } from "@/types"
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useSearch } from "@tanstack/react-router"
-import { ArrowUpDown, Ban, ChevronDown, ChevronUp, Columns3, Eye, EyeOff, Flame, Globe, Loader2 } from "lucide-react"
+import { ArrowUpDown, Ban, ChevronDown, ChevronUp, Columns3, Eye, EyeOff, Flame, Globe, Loader2, Rabbit, Turtle } from "lucide-react"
 import { createPortal } from "react-dom"
 import { AddTorrentDialog } from "./AddTorrentDialog"
 import { DraggableTableHeader } from "./DraggableTableHeader"
@@ -205,7 +205,8 @@ interface TorrentTableOptimizedProps {
     isAllSelected: boolean,
     totalSelectionCount: number,
     excludeHashes: string[],
-    selectedTotalSize: number
+    selectedTotalSize: number,
+    selectionFilters?: TorrentFilters
   ) => void
 }
 
@@ -786,17 +787,68 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     return getTotalSize(selectedTorrents)
   }, [isAllSelected, stats?.totalSize, excludedFromSelectAll, sortedTorrents, selectedTorrents])
   const selectedFormattedSize = useMemo(() => formatBytes(selectedTotalSize), [selectedTotalSize])
+  const queryClient = useQueryClient()
+  const [altSpeedOverride, setAltSpeedOverride] = useState<boolean | null>(null)
+  const serverAltSpeedEnabled = effectiveServerState?.use_alt_speed_limits
+  const hasAltSpeedStatus = typeof serverAltSpeedEnabled === "boolean"
+  const isAltSpeedKnown = altSpeedOverride !== null || hasAltSpeedStatus
+  const altSpeedEnabled = altSpeedOverride ?? serverAltSpeedEnabled ?? false
+  const AltSpeedIcon = altSpeedEnabled ? Turtle : Rabbit
+  const altSpeedIconClass = isAltSpeedKnown? altSpeedEnabled? "text-destructive": "text-green-500": "text-muted-foreground"
+
+  useEffect(() => {
+    setAltSpeedOverride(null)
+  }, [instanceId])
+
+  const { mutateAsync: toggleAltSpeedLimits, isPending: isTogglingAltSpeed } = useMutation({
+    mutationFn: () => api.toggleAlternativeSpeedLimits(instanceId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["torrents-list", instanceId] })
+      queryClient.invalidateQueries({ queryKey: ["alternative-speed-limits", instanceId] })
+    },
+  })
+
+  useEffect(() => {
+    if (altSpeedOverride === null) {
+      return
+    }
+
+    if (serverAltSpeedEnabled === altSpeedOverride) {
+      setAltSpeedOverride(null)
+    }
+  }, [serverAltSpeedEnabled, altSpeedOverride])
+
+  const handleToggleAltSpeedLimits = useCallback(async () => {
+    if (isTogglingAltSpeed) {
+      return
+    }
+
+    const current = altSpeedOverride ?? serverAltSpeedEnabled ?? false
+    const next = !current
+
+    setAltSpeedOverride(next)
+
+    try {
+      await toggleAltSpeedLimits()
+    } catch {
+      setAltSpeedOverride(current)
+    }
+  }, [altSpeedOverride, serverAltSpeedEnabled, toggleAltSpeedLimits, isTogglingAltSpeed])
+
+  const altSpeedTooltip = isAltSpeedKnown? altSpeedEnabled? "Alternative speed limits: On": "Alternative speed limits: Off": "Alternative speed limits status unknown"
+  const altSpeedAriaLabel = isAltSpeedKnown? altSpeedEnabled? "Disable alternative speed limits": "Enable alternative speed limits": "Alternative speed limits status unknown"
+
   const rawConnectionStatus = effectiveServerState?.connection_status ?? ""
   const normalizedConnectionStatus = rawConnectionStatus ? rawConnectionStatus.trim().toLowerCase() : ""
   const formattedConnectionStatus = normalizedConnectionStatus ? normalizedConnectionStatus.replace(/_/g, " ") : ""
   const connectionStatusDisplay = formattedConnectionStatus? formattedConnectionStatus.replace(/\b\w/g, (char: string) => char.toUpperCase()): ""
-  const showConnectionStatus = Boolean(formattedConnectionStatus)
+  const hasConnectionStatus = Boolean(formattedConnectionStatus)
   const isConnectable = normalizedConnectionStatus === "connected"
   const isFirewalled = normalizedConnectionStatus === "firewalled"
-  const ConnectionStatusIcon = isConnectable ? Globe : isFirewalled ? Flame : Ban
-  const connectionStatusTooltip = showConnectionStatus ? (isConnectable ? "Connectable" : connectionStatusDisplay) : ""
-  const connectionStatusIconClass = showConnectionStatus? isConnectable? "text-green-500": isFirewalled? "text-amber-500": "text-destructive": ""
-  const connectionStatusAriaLabel = showConnectionStatus? `qBittorrent connection status: ${connectionStatusDisplay || formattedConnectionStatus}`: ""
+  const ConnectionStatusIcon = isConnectable ? Globe : isFirewalled ? Flame : hasConnectionStatus ? Ban : Globe
+  const connectionStatusTooltip = hasConnectionStatus ? (isConnectable ? "Connectable" : connectionStatusDisplay) : "Connection status unknown"
+  const connectionStatusIconClass = hasConnectionStatus? isConnectable? "text-green-500": isFirewalled? "text-amber-500": "text-destructive": "text-muted-foreground"
+  const connectionStatusAriaLabel = hasConnectionStatus? `qBittorrent connection status: ${connectionStatusDisplay || formattedConnectionStatus}`: "qBittorrent connection status unknown"
 
   // Size shown in destructive dialogs - prefer the aggregate when select-all is active
   const deleteDialogTotalSize = useMemo(() => {
@@ -820,6 +872,37 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   }, [isAllSelected, selectedTotalSize, contextTorrents])
   const deleteDialogFormattedSize = useMemo(() => formatBytes(deleteDialogTotalSize), [deleteDialogTotalSize])
 
+  const selectAllFilters = useMemo(() => {
+    if (!isAllSelected) {
+      return undefined
+    }
+
+    const combinedExpr = columnFiltersExpr ?? filters?.expr
+
+    if (filters) {
+      return {
+        ...filters,
+        expr: combinedExpr ?? filters.expr ?? "",
+      }
+    }
+
+    if (combinedExpr == null) {
+      return undefined
+    }
+
+    return {
+      status: [],
+      excludeStatus: [],
+      categories: [],
+      excludeCategories: [],
+      tags: [],
+      excludeTags: [],
+      trackers: [],
+      excludeTrackers: [],
+      expr: combinedExpr,
+    }
+  }, [isAllSelected, filters, columnFiltersExpr])
+
   // Call the callback when selection state changes
   useEffect(() => {
     if (onSelectionChange) {
@@ -829,10 +912,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         isAllSelected,
         effectiveSelectionCount,
         Array.from(excludedFromSelectAll),
-        selectedTotalSize
+        selectedTotalSize,
+        selectAllFilters ?? filters
       )
     }
-  }, [onSelectionChange, selectedHashes, selectedTorrents, isAllSelected, effectiveSelectionCount, excludedFromSelectAll, selectedTotalSize])
+  }, [onSelectionChange, selectedHashes, selectedTorrents, isAllSelected, effectiveSelectionCount, excludedFromSelectAll, selectedTotalSize, selectAllFilters, filters])
 
   // Virtualization setup with progressive loading
   const { rows } = table.getRowModel()
@@ -997,15 +1081,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     hasSelection: isAllSelected || selectedRowIds.length > 0,
   })
 
-
-
   // Wrapper functions to adapt hook handlers to component needs
   const selectAllOptions = useMemo(() => ({
     selectAll: isAllSelected,
-    filters: isAllSelected ? filters : undefined,
+    filters: selectAllFilters,
     search: isAllSelected ? effectiveSearch : undefined,
     excludeHashes: isAllSelected ? Array.from(excludedFromSelectAll) : undefined,
-  }), [isAllSelected, filters, effectiveSearch, excludedFromSelectAll])
+  }), [isAllSelected, selectAllFilters, effectiveSearch, excludedFromSelectAll])
 
   const contextClientMeta = useMemo(() => ({
     clientHashes: contextHashes,
@@ -1029,7 +1111,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       torrents: torrentsForSelection,
       isAllSelected,
       totalSelected: effectiveSelectionCount,
-      filters,
+      filters: selectAllFilters ?? filters,
       search: effectiveSearch,
       excludeHashes: Array.from(excludedFromSelectAll),
       sortField: activeSortField,
@@ -1039,6 +1121,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     exportTorrents,
     isAllSelected,
     effectiveSelectionCount,
+    selectAllFilters,
     filters,
     effectiveSearch,
     excludedFromSelectAll,
@@ -1050,48 +1133,48 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     handleDelete(
       contextHashes,
       isAllSelected,
-      filters,
+      selectAllFilters ?? filters,
       effectiveSearch,
       Array.from(excludedFromSelectAll),
       contextClientMeta
     )
-  }, [handleDelete, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
+  }, [handleDelete, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
 
   const handleAddTagsWrapper = useCallback((tags: string[]) => {
     handleAddTags(
       tags,
       contextHashes,
       isAllSelected,
-      filters,
+      selectAllFilters ?? filters,
       effectiveSearch,
       Array.from(excludedFromSelectAll),
       contextClientMeta
     )
-  }, [handleAddTags, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
+  }, [handleAddTags, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
 
   const handleSetTagsWrapper = useCallback((tags: string[]) => {
     handleSetTags(
       tags,
       contextHashes,
       isAllSelected,
-      filters,
+      selectAllFilters ?? filters,
       effectiveSearch,
       Array.from(excludedFromSelectAll),
       contextClientMeta
     )
-  }, [handleSetTags, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
+  }, [handleSetTags, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
 
   const handleSetCategoryWrapper = useCallback((category: string) => {
     handleSetCategory(
       category,
       contextHashes,
       isAllSelected,
-      filters,
+      selectAllFilters ?? filters,
       effectiveSearch,
       Array.from(excludedFromSelectAll),
       contextClientMeta
     )
-  }, [handleSetCategory, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
+  }, [handleSetCategory, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
 
   // Direct category handler for context menu submenu
   const handleSetCategoryDirect = useCallback((category: string, hashes: string[]) => {
@@ -1111,12 +1194,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       location,
       contextHashes,
       isAllSelected,
-      filters,
+      selectAllFilters ?? filters,
       effectiveSearch,
       Array.from(excludedFromSelectAll),
       contextClientMeta
     )
-  }, [handleSetLocation, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
+  }, [handleSetLocation, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
 
   const handleRenameTorrentWrapper = useCallback(async (name: string) => {
     const hash = contextHashes[0]
@@ -1149,34 +1232,34 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       tags,
       contextHashes,
       isAllSelected,
-      filters,
+      selectAllFilters ?? filters,
       effectiveSearch,
       Array.from(excludedFromSelectAll),
       contextClientMeta
     )
-  }, [handleRemoveTags, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
+  }, [handleRemoveTags, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
 
   const handleRecheckWrapper = useCallback(() => {
     handleRecheck(
       contextHashes,
       isAllSelected,
-      filters,
+      selectAllFilters ?? filters,
       effectiveSearch,
       Array.from(excludedFromSelectAll),
       contextClientMeta
     )
-  }, [handleRecheck, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
+  }, [handleRecheck, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
 
   const handleReannounceWrapper = useCallback(() => {
     handleReannounce(
       contextHashes,
       isAllSelected,
-      filters,
+      selectAllFilters ?? filters,
       effectiveSearch,
       Array.from(excludedFromSelectAll),
       contextClientMeta
     )
-  }, [handleReannounce, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
+  }, [handleReannounce, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
 
   const handleSetShareLimitWrapper = useCallback((
     ratioLimit: number,
@@ -1189,12 +1272,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       inactiveSeedingTimeLimit,
       contextHashes,
       isAllSelected,
-      filters,
+      selectAllFilters ?? filters,
       effectiveSearch,
       Array.from(excludedFromSelectAll),
       contextClientMeta
     )
-  }, [handleSetShareLimit, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
+  }, [handleSetShareLimit, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
 
   const handleSetSpeedLimitsWrapper = useCallback((
     uploadLimit: number,
@@ -1205,12 +1288,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       downloadLimit,
       contextHashes,
       isAllSelected,
-      filters,
+      selectAllFilters ?? filters,
       effectiveSearch,
       Array.from(excludedFromSelectAll),
       contextClientMeta
     )
-  }, [handleSetSpeedLimits, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
+  }, [handleSetSpeedLimits, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
 
 
   // Drag and drop setup
@@ -1614,21 +1697,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                 {speedUnit === "bytes" ? "Switch to bits per second (bps)" : "Switch to bytes per second (B/s)"}
               </TooltipContent>
             </Tooltip>
-            {showConnectionStatus && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span
-                    aria-label={connectionStatusAriaLabel}
-                    className={`inline-flex h-5 w-5 items-center justify-center ${connectionStatusIconClass}`}
-                  >
-                    <ConnectionStatusIcon className="h-3.5 w-3.5" aria-hidden="true" />
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent className="max-w-[220px]">
-                  <p>{connectionStatusTooltip}</p>
-                </TooltipContent>
-              </Tooltip>
-            )}
             {/* Incognito mode toggle */}
             <Tooltip>
               <TooltipTrigger asChild>
@@ -1645,6 +1713,39 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
               </TooltipTrigger>
               <TooltipContent>
                 {incognitoMode ? "Exit incognito mode" : "Enable incognito mode"}
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => void handleToggleAltSpeedLimits()}
+                  disabled={isTogglingAltSpeed}
+                  aria-pressed={isAltSpeedKnown ? altSpeedEnabled : undefined}
+                  aria-label={altSpeedAriaLabel}
+                  className="p-1 rounded-sm transition-all hover:bg-muted/50 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {isTogglingAltSpeed ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                  ) : (
+                    <AltSpeedIcon className={`h-3.5 w-3.5 ${altSpeedIconClass}`} />
+                  )}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {altSpeedTooltip}
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  aria-label={connectionStatusAriaLabel}
+                  className={`inline-flex h-5 w-5 items-center justify-center ${connectionStatusIconClass}`}
+                >
+                  <ConnectionStatusIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-[220px]">
+                <p>{connectionStatusTooltip}</p>
               </TooltipContent>
             </Tooltip>
           </div>
