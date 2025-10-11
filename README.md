@@ -498,42 +498,6 @@ location /qui/ {
 }
 ```
 
-## Development
-
-### Quick Start for Developers
-
-```bash
-# Requirements: Go 1.24+ and Node.js 22+
-
-# Run both frontend and backend in dev mode
-make dev
-
-# Run backend only (with hot reload)
-make dev-backend
-
-# Run frontend only  
-make dev-frontend
-```
-
-## Features in Detail
-
-### Instance Management
-- Add unlimited qBittorrent instances
-- Health monitoring and auto-reconnection
-- Secure credential storage
-
-### Torrent Management
-- Bulk operations (pause, resume, delete)
-- Advanced filtering and search
-- Category and tag management
-- Real-time progress tracking
-
-### Performance
-- Efficient data sync for large collections
-- Minimal memory footprint
-- Fast search and filtering
-- Responsive UI with virtual scrolling
-
 ## qBittorrent Version Compatibility
 
 > [!NOTE]
