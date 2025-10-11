@@ -215,7 +215,7 @@ function InstanceCard({
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>
-                      Alternative speed limits {altSpeedEnabled ? "enabled (turtle mode)" : "disabled (normal mode)"} - Click to toggle
+                      Alternative speed limits: {altSpeedEnabled ? "On" : "Off"}
                     </TooltipContent>
                   </Tooltip>
                   <AlertDialog open={showSpeedLimitDialog} onOpenChange={setShowSpeedLimitDialog}>
