@@ -349,10 +349,6 @@
 
   /* Additional Safari-specific optimizations */
   @supports (-webkit-appearance: none) and (not (-moz-appearance: none)) {
-    * {
-      -webkit-overflow-scrolling: touch;
-    }
-
     /* Ensure Safari uses the CSS variables */
     *::-webkit-scrollbar-thumb {
       background-color: var(--border) !important;
@@ -360,6 +356,15 @@
 
     *::-webkit-scrollbar-thumb:hover {
       background-color: var(--muted-foreground) !important;
+    }
+  }
+
+  /* Only enable momentum scrolling helpers on devices with any coarse pointer (e.g. touch) */
+  @supports (-webkit-overflow-scrolling: touch) {
+    @media (any-pointer: coarse) {
+      * {
+        -webkit-overflow-scrolling: touch;
+      }
     }
   }
 }
