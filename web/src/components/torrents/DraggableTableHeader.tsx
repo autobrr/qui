@@ -20,7 +20,11 @@ interface DraggableTableHeaderProps {
 export function DraggableTableHeader({ header, columnFilters = [], onFilterChange }: DraggableTableHeaderProps) {
   const { column } = header
 
-  const isCompactHeader = column.id === "priority" || column.id === "tracker_icon" || column.id === "status_icon"
+  const isSelectHeader = column.id === "select"
+  const isPriorityHeader = column.id === "priority"
+  const isTrackerIconHeader = column.id === "tracker_icon"
+  const isStatusIconHeader = column.id === "status_icon"
+  const isCompactHeader = isTrackerIconHeader || isStatusIconHeader
   const headerPadding = isCompactHeader ? "px-0" : "px-3"
 
   const {
@@ -37,6 +41,7 @@ export function DraggableTableHeader({ header, columnFilters = [], onFilterChang
 
   const canResize = column.getCanResize()
   const shouldShowSeparator = canResize || column.columnDef.enableResizing === false
+  const shouldShowSortIndicator = !isSelectHeader && column.getIsSorted() && (isPriorityHeader || !isCompactHeader)
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -66,28 +71,30 @@ export function DraggableTableHeader({ header, columnFilters = [], onFilterChang
         {/* Header content */}
         <div
           className={`flex items-center ${isCompactHeader ? "gap-0" : "gap-1"} flex-1 min-w-0 ${
-            column.id === "select" || isCompactHeader ? "justify-center" : ""
+            isSelectHeader || isCompactHeader ? "justify-center" : ""
           }`}
         >
           <span
-            className={`whitespace-nowrap flex items-center ${
-              isCompactHeader? "w-full justify-center": "overflow-hidden flex-1 min-w-0"
-            } ${column.id === "select" ? "justify-center" : ""}`}
+            className={`whitespace-nowrap ${
+              !isPriorityHeader && !isCompactHeader ? "overflow-hidden flex-1 min-w-0" : ""
+            } ${
+              isCompactHeader ? "flex items-center w-full justify-center" : ""
+            } ${isSelectHeader ? "flex items-center justify-center" : ""}`}
           >
             {header.isPlaceholder ? null : flexRender(
               column.columnDef.header,
               header.getContext()
             )}
           </span>
-          {column.id !== "select" && !isCompactHeader && column.getIsSorted() && (
+          {shouldShowSortIndicator && (
             column.getIsSorted() === "asc" ? (
-              <ChevronUp className="h-4 w-4 flex-shrink-0"/>
+              <ChevronUp className={`h-4 w-4 flex-shrink-0${isPriorityHeader ? " ml-1 mr-1" : ""}`}/>
             ) : (
-              <ChevronDown className="h-4 w-4 flex-shrink-0"/>
+              <ChevronDown className={`h-4 w-4 flex-shrink-0${isPriorityHeader ? " ml-1 mr-1" : ""}`}/>
             )
           )}
           {/* Column filter button - only show for filterable columns */}
-          {column.id !== "select" && column.id !== "priority" && column.id !== "tracker_icon" && column.id !== "status_icon" && onFilterChange && (
+          {!isSelectHeader && !isPriorityHeader && !isTrackerIconHeader && !isStatusIconHeader && onFilterChange && (
             <ColumnFilterPopover
               columnId={column.id}
               columnName={(column.columnDef.meta as { headerString?: string })?.headerString ||
