@@ -997,15 +997,44 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     hasSelection: isAllSelected || selectedRowIds.length > 0,
   })
 
-
-
   // Wrapper functions to adapt hook handlers to component needs
+  const selectAllFilters = useMemo(() => {
+    if (!isAllSelected) {
+      return undefined
+    }
+
+    const combinedExpr = columnFiltersExpr ?? filters?.expr
+
+    if (filters) {
+      return {
+        ...filters,
+        expr: combinedExpr ?? filters.expr ?? "",
+      }
+    }
+
+    if (combinedExpr == null) {
+      return undefined
+    }
+
+    return {
+      status: [],
+      excludeStatus: [],
+      categories: [],
+      excludeCategories: [],
+      tags: [],
+      excludeTags: [],
+      trackers: [],
+      excludeTrackers: [],
+      expr: combinedExpr,
+    }
+  }, [isAllSelected, filters, columnFiltersExpr])
+
   const selectAllOptions = useMemo(() => ({
     selectAll: isAllSelected,
-    filters: isAllSelected ? filters : undefined,
+    filters: selectAllFilters,
     search: isAllSelected ? effectiveSearch : undefined,
     excludeHashes: isAllSelected ? Array.from(excludedFromSelectAll) : undefined,
-  }), [isAllSelected, filters, effectiveSearch, excludedFromSelectAll])
+  }), [isAllSelected, selectAllFilters, effectiveSearch, excludedFromSelectAll])
 
   const contextClientMeta = useMemo(() => ({
     clientHashes: contextHashes,
@@ -1029,7 +1058,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       torrents: torrentsForSelection,
       isAllSelected,
       totalSelected: effectiveSelectionCount,
-      filters,
+      filters: selectAllFilters ?? filters,
       search: effectiveSearch,
       excludeHashes: Array.from(excludedFromSelectAll),
       sortField: activeSortField,
@@ -1039,6 +1068,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     exportTorrents,
     isAllSelected,
     effectiveSelectionCount,
+    selectAllFilters,
     filters,
     effectiveSearch,
     excludedFromSelectAll,
@@ -1050,48 +1080,48 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     handleDelete(
       contextHashes,
       isAllSelected,
-      filters,
+      selectAllFilters ?? filters,
       effectiveSearch,
       Array.from(excludedFromSelectAll),
       contextClientMeta
     )
-  }, [handleDelete, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
+  }, [handleDelete, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
 
   const handleAddTagsWrapper = useCallback((tags: string[]) => {
     handleAddTags(
       tags,
       contextHashes,
       isAllSelected,
-      filters,
+      selectAllFilters ?? filters,
       effectiveSearch,
       Array.from(excludedFromSelectAll),
       contextClientMeta
     )
-  }, [handleAddTags, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
+  }, [handleAddTags, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
 
   const handleSetTagsWrapper = useCallback((tags: string[]) => {
     handleSetTags(
       tags,
       contextHashes,
       isAllSelected,
-      filters,
+      selectAllFilters ?? filters,
       effectiveSearch,
       Array.from(excludedFromSelectAll),
       contextClientMeta
     )
-  }, [handleSetTags, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
+  }, [handleSetTags, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
 
   const handleSetCategoryWrapper = useCallback((category: string) => {
     handleSetCategory(
       category,
       contextHashes,
       isAllSelected,
-      filters,
+      selectAllFilters ?? filters,
       effectiveSearch,
       Array.from(excludedFromSelectAll),
       contextClientMeta
     )
-  }, [handleSetCategory, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
+  }, [handleSetCategory, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
 
   // Direct category handler for context menu submenu
   const handleSetCategoryDirect = useCallback((category: string, hashes: string[]) => {
@@ -1111,12 +1141,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       location,
       contextHashes,
       isAllSelected,
-      filters,
+      selectAllFilters ?? filters,
       effectiveSearch,
       Array.from(excludedFromSelectAll),
       contextClientMeta
     )
-  }, [handleSetLocation, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
+  }, [handleSetLocation, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
 
   const handleRenameTorrentWrapper = useCallback(async (name: string) => {
     const hash = contextHashes[0]
@@ -1149,34 +1179,34 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       tags,
       contextHashes,
       isAllSelected,
-      filters,
+      selectAllFilters ?? filters,
       effectiveSearch,
       Array.from(excludedFromSelectAll),
       contextClientMeta
     )
-  }, [handleRemoveTags, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
+  }, [handleRemoveTags, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
 
   const handleRecheckWrapper = useCallback(() => {
     handleRecheck(
       contextHashes,
       isAllSelected,
-      filters,
+      selectAllFilters ?? filters,
       effectiveSearch,
       Array.from(excludedFromSelectAll),
       contextClientMeta
     )
-  }, [handleRecheck, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
+  }, [handleRecheck, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
 
   const handleReannounceWrapper = useCallback(() => {
     handleReannounce(
       contextHashes,
       isAllSelected,
-      filters,
+      selectAllFilters ?? filters,
       effectiveSearch,
       Array.from(excludedFromSelectAll),
       contextClientMeta
     )
-  }, [handleReannounce, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
+  }, [handleReannounce, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
 
   const handleSetShareLimitWrapper = useCallback((
     ratioLimit: number,
@@ -1189,12 +1219,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       inactiveSeedingTimeLimit,
       contextHashes,
       isAllSelected,
-      filters,
+      selectAllFilters ?? filters,
       effectiveSearch,
       Array.from(excludedFromSelectAll),
       contextClientMeta
     )
-  }, [handleSetShareLimit, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
+  }, [handleSetShareLimit, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
 
   const handleSetSpeedLimitsWrapper = useCallback((
     uploadLimit: number,
@@ -1205,12 +1235,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       downloadLimit,
       contextHashes,
       isAllSelected,
-      filters,
+      selectAllFilters ?? filters,
       effectiveSearch,
       Array.from(excludedFromSelectAll),
       contextClientMeta
     )
-  }, [handleSetSpeedLimits, contextHashes, isAllSelected, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
+  }, [handleSetSpeedLimits, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
 
 
   // Drag and drop setup
