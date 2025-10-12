@@ -83,7 +83,21 @@ import { getCommonCategory, getCommonSavePath, getCommonTags, getTotalSize } fro
 import type { Category, ServerState, Torrent, TorrentCounts, TorrentFilters } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useSearch } from "@tanstack/react-router"
-import { ArrowUpDown, Ban, ChevronDown, ChevronUp, Columns3, Eye, EyeOff, Flame, Globe, Loader2, Rabbit, Turtle } from "lucide-react"
+import {
+  ArrowUpDown,
+  Ban,
+  ChevronDown,
+  ChevronUp,
+  Columns3,
+  Eye,
+  EyeOff,
+  Flame,
+  Globe,
+  Loader2,
+  Rabbit,
+  Turtle,
+  X
+} from "lucide-react"
 import { createPortal } from "react-dom"
 import { AddTorrentDialog } from "./AddTorrentDialog"
 import { DraggableTableHeader } from "./DraggableTableHeader"
@@ -211,7 +225,16 @@ interface TorrentTableOptimizedProps {
   ) => void
 }
 
-export const TorrentTableOptimized = memo(function TorrentTableOptimized({ instanceId, filters, selectedTorrent, onTorrentSelect, addTorrentModalOpen, onAddTorrentModalChange, onFilteredDataUpdate, onSelectionChange }: TorrentTableOptimizedProps) {
+export const TorrentTableOptimized = memo(function TorrentTableOptimized({
+  instanceId,
+  filters,
+  selectedTorrent,
+  onTorrentSelect,
+  addTorrentModalOpen,
+  onAddTorrentModalChange,
+  onFilteredDataUpdate,
+  onSelectionChange,
+}: TorrentTableOptimizedProps) {
   // State management
   // Move default values outside the component for stable references
   // (This should be at module scope, not inside the component)
@@ -804,7 +827,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const isAltSpeedKnown = altSpeedOverride !== null || hasAltSpeedStatus
   const altSpeedEnabled = altSpeedOverride ?? serverAltSpeedEnabled ?? false
   const AltSpeedIcon = altSpeedEnabled ? Turtle : Rabbit
-  const altSpeedIconClass = isAltSpeedKnown? altSpeedEnabled? "text-destructive": "text-green-500": "text-muted-foreground"
+  const altSpeedIconClass = isAltSpeedKnown ? altSpeedEnabled ? "text-destructive" : "text-green-500" : "text-muted-foreground"
 
   useEffect(() => {
     setAltSpeedOverride(null)
@@ -845,20 +868,20 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     }
   }, [altSpeedOverride, serverAltSpeedEnabled, toggleAltSpeedLimits, isTogglingAltSpeed])
 
-  const altSpeedTooltip = isAltSpeedKnown? altSpeedEnabled? "Alternative speed limits: On": "Alternative speed limits: Off": "Alternative speed limits status unknown"
-  const altSpeedAriaLabel = isAltSpeedKnown? altSpeedEnabled? "Disable alternative speed limits": "Enable alternative speed limits": "Alternative speed limits status unknown"
+  const altSpeedTooltip = isAltSpeedKnown ? altSpeedEnabled ? "Alternative speed limits: On" : "Alternative speed limits: Off" : "Alternative speed limits status unknown"
+  const altSpeedAriaLabel = isAltSpeedKnown ? altSpeedEnabled ? "Disable alternative speed limits" : "Enable alternative speed limits" : "Alternative speed limits status unknown"
 
   const rawConnectionStatus = effectiveServerState?.connection_status ?? ""
   const normalizedConnectionStatus = rawConnectionStatus ? rawConnectionStatus.trim().toLowerCase() : ""
   const formattedConnectionStatus = normalizedConnectionStatus ? normalizedConnectionStatus.replace(/_/g, " ") : ""
-  const connectionStatusDisplay = formattedConnectionStatus? formattedConnectionStatus.replace(/\b\w/g, (char: string) => char.toUpperCase()): ""
+  const connectionStatusDisplay = formattedConnectionStatus ? formattedConnectionStatus.replace(/\b\w/g, (char: string) => char.toUpperCase()) : ""
   const hasConnectionStatus = Boolean(formattedConnectionStatus)
   const isConnectable = normalizedConnectionStatus === "connected"
   const isFirewalled = normalizedConnectionStatus === "firewalled"
   const ConnectionStatusIcon = isConnectable ? Globe : isFirewalled ? Flame : hasConnectionStatus ? Ban : Globe
   const connectionStatusTooltip = hasConnectionStatus ? (isConnectable ? "Connectable" : connectionStatusDisplay) : "Connection status unknown"
-  const connectionStatusIconClass = hasConnectionStatus? isConnectable? "text-green-500": isFirewalled? "text-amber-500": "text-destructive": "text-muted-foreground"
-  const connectionStatusAriaLabel = hasConnectionStatus? `qBittorrent connection status: ${connectionStatusDisplay || formattedConnectionStatus}`: "qBittorrent connection status unknown"
+  const connectionStatusIconClass = hasConnectionStatus ? isConnectable ? "text-green-500" : isFirewalled ? "text-amber-500" : "text-destructive" : "text-muted-foreground"
+  const connectionStatusAriaLabel = hasConnectionStatus ? `qBittorrent connection status: ${connectionStatusDisplay || formattedConnectionStatus}` : "qBittorrent connection status unknown"
 
   // Size shown in destructive dialogs - prefer the aggregate when select-all is active
   const deleteDialogTotalSize = useMemo(() => {
@@ -1350,7 +1373,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                           size="icon"
                           className="relative"
                         >
-                          <Columns3 className="h-4 w-4" />
+                          <Columns3 className="h-4 w-4"/>
                           <span className="sr-only">Toggle columns</span>
                         </Button>
                       </DropdownMenuTrigger>
@@ -1359,7 +1382,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                   </Tooltip>
                   <DropdownMenuContent align="end" className="w-48">
                     <DropdownMenuLabel>Toggle columns</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
+                    <DropdownMenuSeparator/>
                     {table
                       .getAllColumns()
                       .filter(
@@ -1380,7 +1403,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                           >
                             <span className="truncate">
                               {(column.columnDef.meta as { headerString?: string })?.headerString ||
-                               (typeof column.columnDef.header === "string" ? column.columnDef.header : column.id)}
+                                (typeof column.columnDef.header === "string" ? column.columnDef.header : column.id)}
                             </span>
                           </DropdownMenuCheckboxItem>
                         )
@@ -1389,6 +1412,28 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                 </DropdownMenu>
               )
               return container ? createPortal(dropdown, container) : dropdown
+            })()}
+
+            {/* Clear column filters button - only show when filters are active */}
+            {columnFilters.length > 0 && (() => {
+              const container = typeof document !== "undefined" ? document.getElementById("header-search-actions") : null
+              const clearButton = (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="ml-1"
+                      onClick={() => setColumnFilters([])}
+                    >
+                      <X className="h-4 w-4"/>
+                      <span className="sr-only">Clear all column filters</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Clear all column filters ({columnFilters.length})</TooltipContent>
+                </Tooltip>
+              )
+              return container ? createPortal(clearButton, container) : clearButton
             })()}
 
             <AddTorrentDialog
@@ -1415,7 +1460,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
           {torrents.length === 0 && showLoadingState && (
             <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm z-50 animate-in fade-in duration-300">
               <div className="text-center animate-in zoom-in-95 duration-300">
-                <Logo className="h-12 w-12 animate-pulse mx-auto mb-3" />
+                <Logo className="h-12 w-12 animate-pulse mx-auto mb-3"/>
                 <p>Loading torrents...</p>
               </div>
             </div>
@@ -1636,7 +1681,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
             {/* Show special loading message when fetching without cache (cold load) */}
             {isLoading && !isCachedData && !isStaleData && torrents.length === 0 ? (
               <>
-                <Loader2 className="h-3 w-3 animate-spin inline mr-1" />
+                <Loader2 className="h-3 w-3 animate-spin inline mr-1"/>
                 Loading torrents from instance... (no cache available)
               </>
             ) : totalCount === 0 ? (
@@ -1680,13 +1725,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
           <div className="flex items-center gap-2 text-xs">
             <div className="flex items-center gap-1">
-              <ChevronDown className="h-3 w-3 text-muted-foreground" />
+              <ChevronDown className="h-3 w-3 text-muted-foreground"/>
               <span className="font-medium">{formatSpeedWithUnit(stats.totalDownloadSpeed || 0, speedUnit)}</span>
-              <ChevronUp className="h-3 w-3 text-muted-foreground" />
+              <ChevronUp className="h-3 w-3 text-muted-foreground"/>
               <span className="font-medium">{formatSpeedWithUnit(stats.totalUploadSpeed || 0, speedUnit)}</span>
             </div>
           </div>
-
 
 
           <div className="flex items-center gap-4">
@@ -1697,7 +1741,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                   onClick={() => setSpeedUnit(speedUnit === "bytes" ? "bits" : "bytes")}
                   className="flex items-center gap-1 pl-1.5 py-0.5 rounded-sm transition-all hover:bg-muted/50"
                 >
-                  <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground" />
+                  <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground"/>
                   <span className="text-xs text-muted-foreground">
                     {speedUnit === "bytes" ? "MiB/s" : "Mbps"}
                   </span>
@@ -1715,9 +1759,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                   className="p-1 rounded-sm transition-all hover:bg-muted/50"
                 >
                   {incognitoMode ? (
-                    <EyeOff className="h-3.5 w-3.5 text-muted-foreground" />
+                    <EyeOff className="h-3.5 w-3.5 text-muted-foreground"/>
                   ) : (
-                    <Eye className="h-3.5 w-3.5 text-muted-foreground" />
+                    <Eye className="h-3.5 w-3.5 text-muted-foreground"/>
                   )}
                 </button>
               </TooltipTrigger>
@@ -1735,9 +1779,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                   className="p-1 rounded-sm transition-all hover:bg-muted/50 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {isTogglingAltSpeed ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground"/>
                   ) : (
-                    <AltSpeedIcon className={`h-3.5 w-3.5 ${altSpeedIconClass}`} />
+                    <AltSpeedIcon className={`h-3.5 w-3.5 ${altSpeedIconClass}`}/>
                   )}
                 </button>
               </TooltipTrigger>
@@ -1751,7 +1795,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                   aria-label={connectionStatusAriaLabel}
                   className={`inline-flex h-5 w-5 items-center justify-center ${connectionStatusIconClass}`}
                 >
-                  <ConnectionStatusIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                  <ConnectionStatusIcon className="h-3.5 w-3.5" aria-hidden="true"/>
                 </span>
               </TooltipTrigger>
               <TooltipContent className="max-w-[220px]">

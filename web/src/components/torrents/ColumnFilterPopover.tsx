@@ -480,7 +480,9 @@ export function ColumnFilterPopover({
           variant="ghost"
           size="icon"
           ref={triggerRef}
-          className={`h-6 w-6 p-0 ${hasActiveFilter ? "text-primary" : "text-muted-foreground"}`}
+          className={`h-6 w-6 p-0 transition-opacity ${
+            hasActiveFilter || open ? "opacity-100 text-primary" : "opacity-0 group-hover:opacity-100 text-muted-foreground"
+          }`}
           onClick={(e) => {
             e.stopPropagation()
             setOpen(true)
