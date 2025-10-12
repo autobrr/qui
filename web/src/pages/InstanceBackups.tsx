@@ -151,7 +151,7 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
   const [restoreMode, setRestoreMode] = useState<RestoreMode>("incremental")
   const [restoreDryRun, setRestoreDryRun] = useState(true)
   const [restoreStartPaused, setRestoreStartPaused] = useState(true)
-  const [restoreSkipHashCheck, setRestoreSkipHashCheck] = useState(false)
+  const [restoreSkipHashCheck, setRestoreSkipHashCheck] = useState(true)
   const [restoreAutoResume, setRestoreAutoResume] = useState(true)
   const [restorePlan, setRestorePlan] = useState<RestorePlan | null>(null)
   const [restorePlanLoading, setRestorePlanLoading] = useState(false)
@@ -389,7 +389,7 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
     setRestoreMode("incremental")
     setRestoreDryRun(true)
     setRestoreStartPaused(true)
-    setRestoreSkipHashCheck(false)
+    setRestoreSkipHashCheck(true)
     setRestoreAutoResume(true)
     setRestoreResult(null)
     setRestorePlan(null)
@@ -477,7 +477,7 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
     setRestoreResult(null)
     setRestoreExcludedHashes([])
     setRestoreStartPaused(true)
-    setRestoreSkipHashCheck(false)
+    setRestoreSkipHashCheck(true)
     setRestoreAutoResume(true)
     previewRestore.reset()
     executeRestore.reset()
@@ -784,7 +784,7 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
                     htmlFor="restore-auto-resume"
                     className={!restoreSkipHashCheck ? "text-muted-foreground" : undefined}
                   >
-                    Auto resume when verified
+                    Auto-resume completed torrents
                   </Label>
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -796,8 +796,8 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
                     </TooltipTrigger>
                     <TooltipContent className="max-w-xs text-xs">
                       <p>
-                        When enabled, torrents resume automatically once qBittorrent reports the restored data as
-                        fully checked.
+                        When enabled, torrents resume automatically if qBittorrent reports the restored data as
+                        fully checked. In other words; no data is missing.
                       </p>
                     </TooltipContent>
                   </Tooltip>
