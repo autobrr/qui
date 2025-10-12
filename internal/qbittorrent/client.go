@@ -23,6 +23,9 @@ type Client struct {
 	supportsSetTags         bool
 	supportsTorrentCreation bool
 	supportsTrackerEditing  bool
+	supportsRenameTorrent   bool
+	supportsRenameFile      bool
+	supportsRenameFolder    bool
 	lastHealthCheck         time.Time
 	isHealthy               bool
 	syncManager             *qbt.SyncManager
@@ -30,7 +33,9 @@ type Client struct {
 	// optimisticUpdates stores temporary optimistic state changes for this instance
 	optimisticUpdates *ttlcache.Cache[string, *OptimisticTorrentUpdate]
 	trackerExclusions map[string]map[string]struct{} // Domains to hide hashes from until fresh sync arrives
+	lastServerState   *qbt.ServerState
 	mu                sync.RWMutex
+	serverStateMu     sync.RWMutex
 	healthMu          sync.RWMutex
 }
 
@@ -71,6 +76,9 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 	supportsSetTags := false
 	supportsTorrentCreation := false
 	supportsTrackerEditing := false
+	supportsRenameTorrent := false
+	supportsRenameFile := false
+	supportsRenameFolder := false
 	if webAPIVersion != "" {
 		if v, err := semver.NewVersion(webAPIVersion); err == nil {
 			setTagsMinVersion := semver.MustParse("2.11.4")
@@ -81,6 +89,18 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 
 			trackerEditingMinVersion := semver.MustParse("2.2.0")
 			supportsTrackerEditing = !v.LessThan(trackerEditingMinVersion)
+
+			// Rename torrent: qBittorrent 4.1.0+ (WebAPI 2.0.0+)
+			renameTorrentMinVersion := semver.MustParse("2.0.0")
+			supportsRenameTorrent = !v.LessThan(renameTorrentMinVersion)
+
+			// Rename file: qBittorrent 4.2.1+ (WebAPI 2.4.0+)
+			renameFileMinVersion := semver.MustParse("2.4.0")
+			supportsRenameFile = !v.LessThan(renameFileMinVersion)
+
+			// Rename folder: qBittorrent 4.4.0+ (WebAPI 2.8.4+)
+			renameFolderMinVersion := semver.MustParse("2.8.4")
+			supportsRenameFolder = !v.LessThan(renameFolderMinVersion)
 		}
 	}
 
@@ -91,6 +111,9 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 		supportsSetTags:         supportsSetTags,
 		supportsTorrentCreation: supportsTorrentCreation,
 		supportsTrackerEditing:  supportsTrackerEditing,
+		supportsRenameTorrent:   supportsRenameTorrent,
+		supportsRenameFile:      supportsRenameFile,
+		supportsRenameFolder:    supportsRenameFolder,
 		lastHealthCheck:         time.Now(),
 		isHealthy:               true,
 		optimisticUpdates: ttlcache.New(ttlcache.Options[string, *OptimisticTorrentUpdate]{}.
@@ -106,11 +129,13 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 	// Set up health check callbacks
 	syncOpts.OnUpdate = func(data *qbt.MainData) {
 		client.updateHealthStatus(true)
+		client.updateServerState(data)
 		log.Debug().Int("instanceID", instanceID).Int("torrentCount", len(data.Torrents)).Msg("Sync manager update received, marking client as healthy")
 	}
 
 	syncOpts.OnError = func(err error) {
 		client.updateHealthStatus(false)
+		client.clearServerState()
 		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Sync manager error received, marking client as unhealthy")
 	}
 
@@ -182,6 +207,65 @@ func (c *Client) SupportsTrackerEditing() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.supportsTrackerEditing
+}
+
+func (c *Client) updateServerState(data *qbt.MainData) {
+	c.serverStateMu.Lock()
+	defer c.serverStateMu.Unlock()
+
+	if data == nil || data.ServerState == (qbt.ServerState{}) {
+		c.lastServerState = nil
+		return
+	}
+
+	stateCopy := data.ServerState
+	c.lastServerState = &stateCopy
+}
+
+func (c *Client) clearServerState() {
+	c.serverStateMu.Lock()
+	defer c.serverStateMu.Unlock()
+
+	c.lastServerState = nil
+}
+
+func (c *Client) GetCachedServerState() *qbt.ServerState {
+	c.serverStateMu.RLock()
+	defer c.serverStateMu.RUnlock()
+
+	if c.lastServerState == nil {
+		return nil
+	}
+
+	copy := *c.lastServerState
+	return &copy
+}
+
+func (c *Client) GetCachedConnectionStatus() string {
+	state := c.GetCachedServerState()
+	if state == nil {
+		return ""
+	}
+
+	return state.ConnectionStatus
+}
+
+func (c *Client) SupportsRenameTorrent() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.supportsRenameTorrent
+}
+
+func (c *Client) SupportsRenameFile() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.supportsRenameFile
+}
+
+func (c *Client) SupportsRenameFolder() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.supportsRenameFolder
 }
 
 // getTorrentsByHashes returns multiple torrents by their hashes (O(n) where n is number of requested hashes)
@@ -271,11 +355,14 @@ func (c *Client) invalidateTrackerCache(hashes ...string) {
 
 func (c *Client) StartSyncManager(ctx context.Context) error {
 	c.mu.RLock()
-	defer c.mu.RUnlock()
-	if c.syncManager == nil {
+	syncManager := c.syncManager
+	c.mu.RUnlock()
+
+	if syncManager == nil {
 		return fmt.Errorf("sync manager not initialized")
 	}
-	return c.syncManager.Start(ctx)
+
+	return syncManager.Start(ctx)
 }
 
 // GetOrCreatePeerSyncManager gets or creates a PeerSyncManager for a specific torrent

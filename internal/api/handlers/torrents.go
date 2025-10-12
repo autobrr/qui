@@ -965,6 +965,119 @@ func (h *TorrentsHandler) RemoveTorrentTrackers(w http.ResponseWriter, r *http.R
 	RespondJSON(w, http.StatusOK, map[string]string{"status": "success"})
 }
 
+// RenameTorrent updates the display name for a torrent
+func (h *TorrentsHandler) RenameTorrent(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	hash := chi.URLParam(r, "hash")
+	if hash == "" {
+		RespondError(w, http.StatusBadRequest, "Torrent hash is required")
+		return
+	}
+
+	var req struct {
+		Name string `json:"name"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if strings.TrimSpace(req.Name) == "" {
+		RespondError(w, http.StatusBadRequest, "Torrent name cannot be empty")
+		return
+	}
+
+	if err := h.syncManager.RenameTorrent(r.Context(), instanceID, hash, req.Name); err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to rename torrent")
+		RespondError(w, http.StatusInternalServerError, "Failed to rename torrent")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, map[string]string{"message": "Torrent renamed successfully"})
+}
+
+// RenameTorrentFile renames a file within a torrent
+func (h *TorrentsHandler) RenameTorrentFile(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	hash := chi.URLParam(r, "hash")
+	if hash == "" {
+		RespondError(w, http.StatusBadRequest, "Torrent hash is required")
+		return
+	}
+
+	var req struct {
+		OldPath string `json:"oldPath"`
+		NewPath string `json:"newPath"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if strings.TrimSpace(req.OldPath) == "" || strings.TrimSpace(req.NewPath) == "" {
+		RespondError(w, http.StatusBadRequest, "Both oldPath and newPath are required")
+		return
+	}
+
+	if err := h.syncManager.RenameTorrentFile(r.Context(), instanceID, hash, req.OldPath, req.NewPath); err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Str("oldPath", req.OldPath).Str("newPath", req.NewPath).Msg("Failed to rename torrent file")
+		RespondError(w, http.StatusInternalServerError, "Failed to rename torrent file")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, map[string]string{"message": "Torrent file renamed successfully"})
+}
+
+// RenameTorrentFolder renames a folder within a torrent
+func (h *TorrentsHandler) RenameTorrentFolder(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	hash := chi.URLParam(r, "hash")
+	if hash == "" {
+		RespondError(w, http.StatusBadRequest, "Torrent hash is required")
+		return
+	}
+
+	var req struct {
+		OldPath string `json:"oldPath"`
+		NewPath string `json:"newPath"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if strings.TrimSpace(req.OldPath) == "" || strings.TrimSpace(req.NewPath) == "" {
+		RespondError(w, http.StatusBadRequest, "Both oldPath and newPath are required")
+		return
+	}
+
+	if err := h.syncManager.RenameTorrentFolder(r.Context(), instanceID, hash, req.OldPath, req.NewPath); err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Str("oldPath", req.OldPath).Str("newPath", req.NewPath).Msg("Failed to rename torrent folder")
+		RespondError(w, http.StatusInternalServerError, "Failed to rename torrent folder")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, map[string]string{"message": "Torrent folder renamed successfully"})
+}
+
 // GetTorrentFiles returns files information for a specific torrent
 func (h *TorrentsHandler) GetTorrentPeers(w http.ResponseWriter, r *http.Request) {
 	// Get instance ID and hash from URL

@@ -3,13 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState } from "react"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { api } from "@/lib/api"
-import { toast } from "sonner"
-import { useTranslation } from "react-i18next"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,9 +11,16 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
-  AlertDialogTitle
+  AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import type { Category } from "@/types";
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { api } from "@/lib/api"
+import type { Category } from "@/types"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useState } from "react"
+import { useTranslation } from "react-i18next"
+import { toast } from "sonner"
 
 interface CreateTagDialogProps {
   open: boolean
@@ -362,6 +362,85 @@ export function DeleteCategoryDialog({ open, onOpenChange, instanceId, categoryN
           >
             {t("common.buttons.delete")}
           </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  )
+}
+
+interface DeleteEmptyCategoriesDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  instanceId: number
+  categories: Record<string, Category>
+  torrentCounts?: Record<string, number>
+}
+
+export function DeleteEmptyCategoriesDialog({
+  open,
+  onOpenChange,
+  instanceId,
+  categories,
+  torrentCounts = {},
+}: DeleteEmptyCategoriesDialogProps) {
+  const { t } = useTranslation()
+  const queryClient = useQueryClient()
+
+  const emptyCategories = Object.keys(categories).filter(categoryName => {
+    const count = torrentCounts[`category:${categoryName}`] || 0
+    return count === 0
+  })
+
+  const mutation = useMutation({
+    mutationFn: () => api.removeCategories(instanceId, emptyCategories),
+    onSuccess: () => {
+      queryClient.refetchQueries({ queryKey: ["categories", instanceId] })
+      queryClient.refetchQueries({ queryKey: ["instance-metadata", instanceId] })
+      toast.success(t("tag_category_management_dialogs.delete_empty_categories.success", { count: emptyCategories.length }))
+      onOpenChange(false)
+    },
+    onError: (error: Error) => {
+      toast.error(t("tag_category_management_dialogs.delete_empty_categories.error"), {
+        description: error.message,
+      })
+    },
+  })
+
+  return (
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{t("tag_category_management_dialogs.delete_empty_categories.title")}</AlertDialogTitle>
+          <AlertDialogDescription>
+            {emptyCategories.length === 0 ? (
+              t("tag_category_management_dialogs.delete_empty_categories.no_empty")
+            ) : (
+              <>
+                {t("tag_category_management_dialogs.delete_empty_categories.confirm", { count: emptyCategories.length })}
+                <div className="mt-3 max-h-40 overflow-y-auto">
+                  <div className="text-sm space-y-1">
+                    {emptyCategories.map(categoryName => (
+                      <div key={categoryName} className="text-muted-foreground">
+                        • {categoryName}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
+          {emptyCategories.length > 0 && (
+            <AlertDialogAction
+              onClick={() => mutation.mutate()}
+              disabled={mutation.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {t("tag_category_management_dialogs.delete_empty_categories.remove_button", { count: emptyCategories.length })}
+            </AlertDialogAction>
+          )}
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

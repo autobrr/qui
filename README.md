@@ -356,14 +356,15 @@ The reverse proxy feature:
 
 ### Setup Instructions
 
-#### 1. Create a Client API Key
+#### 1. Create a Client Proxy API Key
 
 1. Open qui in your browser
-2. Go to **Settings → Client API Keys**
-3. Click **"Generate New Key"** 
-4. Choose the qBittorrent instance you want to proxy
-5. Enter a name (e.g., "Sonarr")
-6. **Copy the generated key immediately** - it's only shown once
+2. Go to **Settings → Client Proxy Keys**
+3. Click **"Create Client API Key"** 
+4. Enter a name for the client (e.g., "Sonarr")
+5. Choose the qBittorrent instance you want to proxy
+6. Click **"Create Client API Key"**
+7. **Copy the generated proxy url immediately** - it's only shown once
 
 #### 2. Configure Your External Application
 
@@ -497,42 +498,6 @@ location /qui/ {
     proxy_set_header X-Forwarded-Proto $scheme;
 }
 ```
-
-## Development
-
-### Quick Start for Developers
-
-```bash
-# Requirements: Go 1.24+ and Node.js 22+
-
-# Run both frontend and backend in dev mode
-make dev
-
-# Run backend only (with hot reload)
-make dev-backend
-
-# Run frontend only  
-make dev-frontend
-```
-
-## Features in Detail
-
-### Instance Management
-- Add unlimited qBittorrent instances
-- Health monitoring and auto-reconnection
-- Secure credential storage
-
-### Torrent Management
-- Bulk operations (pause, resume, delete)
-- Advanced filtering and search
-- Category and tag management
-- Real-time progress tracking
-
-### Performance
-- Efficient data sync for large collections
-- Minimal memory footprint
-- Fast search and filtering
-- Responsive UI with virtual scrolling
 
 ## qBittorrent Version Compatibility
 

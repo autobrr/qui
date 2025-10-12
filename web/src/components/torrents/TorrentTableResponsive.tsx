@@ -7,17 +7,11 @@ import { useEffect, useState } from "react"
 import { TorrentTableOptimized } from "./TorrentTableOptimized"
 import { TorrentCardsMobile } from "./TorrentCardsMobile"
 import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
-import type { Torrent } from "@/types"
+import type { Torrent, TorrentFilters } from "@/types"
 
 interface TorrentTableResponsiveProps {
   instanceId: number
-  filters?: {
-    status: string[]
-    categories: string[]
-    tags: string[]
-    trackers: string[]
-    expr?: string
-  }
+  filters?: TorrentFilters
   selectedTorrent?: Torrent | null
   onTorrentSelect?: (torrent: Torrent | null) => void
   addTorrentModalOpen?: boolean

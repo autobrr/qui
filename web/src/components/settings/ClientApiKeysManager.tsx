@@ -33,6 +33,12 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger
+} from "@/components/ui/tooltip"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { api } from "@/lib/api"
 import { withBasePath } from "@/lib/base-url"
@@ -58,6 +64,12 @@ interface NewClientAPIKey {
     host: string
   }
   proxyUrl: string
+}
+
+// Helper function to truncate long instance names
+function truncateInstanceName(name: string, maxLength = 20): string {
+  if (name.length <= maxLength) return name
+  return `${name.slice(0, maxLength)}...`
 }
 
 export function ClientApiKeysManager() {
@@ -157,257 +169,272 @@ export function ClientApiKeysManager() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:justify-end">
-        <Dialog open={showCreateDialog} onOpenChange={handleDialogOpenChange}>
-          <DialogTrigger asChild>
-            <Button size="sm" className="w-full sm:w-auto">
-              <Plus className="mr-2 h-4 w-4" />
-              {t("settings.clientApiKeys.create")}
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-xl max-w-full">
-            <DialogHeader>
-              <DialogTitle>{t("settings.clientApiKeys.createDialog.title")}</DialogTitle>
-              <DialogDescription>
-                {t("settings.clientApiKeys.createDialog.description")}
-              </DialogDescription>
-            </DialogHeader>
+    <TooltipProvider>
+      <div className="space-y-4">
+        <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:justify-end">
+          <Dialog open={showCreateDialog} onOpenChange={handleDialogOpenChange}>
+            <DialogTrigger asChild>
+              <Button size="sm" className="w-full sm:w-auto">
+                <Plus className="mr-2 h-4 w-4" />
+                {t("settings.clientApiKeys.create")}
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-xl max-w-full">
+              <DialogHeader>
+                <DialogTitle>{t("settings.clientApiKeys.createDialog.title")}</DialogTitle>
+                <DialogDescription>
+                  {t("settings.clientApiKeys.createDialog.description")}
+                </DialogDescription>
+              </DialogHeader>
 
-            {newKey ? (
-              <div className="space-y-4">
-                <Card className="w-full">
-                  <CardHeader>
-                    <CardTitle className="text-base">{t("settings.clientApiKeys.createDialog.successTitle")}</CardTitle>
-                    <CardDescription>
-                      {t("settings.clientApiKeys.createDialog.successDescription")}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div>
-                      <Label htmlFor="proxy-url" className="text-xs uppercase text-muted-foreground">{t("settings.clientApiKeys.createDialog.proxyUrl")}</Label>
-                      <div className="mt-1 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
-                        <code id="proxy-url" className="w-full rounded bg-muted px-2 py-1.5 text-xs font-mono break-all">
-                          {getFullProxyUrl(newKey.proxyUrl)}
-                        </code>
-                        <Button
-                          size="icon"
-                          variant="outline"
-                          className="h-7 w-7 justify-self-start sm:justify-self-end"
-                          onClick={async () => {
-                            try {
-                              await copyTextToClipboard(getFullProxyUrl(newKey.proxyUrl))
-                              toast.success(t("settings.clientApiKeys.notifications.copySuccess"))
-                            } catch {
-                              toast.error(t("settings.clientApiKeys.notifications.copyError"))
-                            }
-                          }}
-                          title={t("settings.clientApiKeys.createDialog.copyProxyUrl")}
-                        >
-                          <Copy className="h-3.5 w-3.5" />
-                        </Button>
+              {newKey ? (
+                <div className="space-y-4">
+                  <Card className="w-full">
+                    <CardHeader>
+                      <CardTitle className="text-base">{t("settings.clientApiKeys.createDialog.successTitle")}</CardTitle>
+                      <CardDescription>
+                        {t("settings.clientApiKeys.createDialog.successDescription")}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div>
+                        <Label htmlFor="proxy-url" className="text-xs uppercase text-muted-foreground">{t("settings.clientApiKeys.createDialog.proxyUrl")}</Label>
+                        <div className="mt-1 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
+                          <code id="proxy-url" className="w-full rounded bg-muted px-2 py-1.5 text-xs font-mono break-all">
+                            {getFullProxyUrl(newKey.proxyUrl)}
+                          </code>
+                          <Button
+                            size="icon"
+                            variant="outline"
+                            className="h-7 w-7 justify-self-start sm:justify-self-end"
+                            onClick={async () => {
+                              try {
+                                await copyTextToClipboard(getFullProxyUrl(newKey.proxyUrl))
+                                toast.success(t("settings.clientApiKeys.notifications.copySuccess"))
+                              } catch {
+                                toast.error(t("settings.clientApiKeys.notifications.copyError"))
+                              }
+                            }}
+                            title={t("settings.clientApiKeys.createDialog.copyProxyUrl")}
+                          >
+                            <Copy className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
                       </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Button
-                  onClick={() => handleDialogOpenChange(false)}
-                  className="w-full"
-                >
-                  {t("common.buttons.done")}
-                </Button>
-              </div>
-            ) : (
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault()
-                  form.handleSubmit()
-                }}
-                className="space-y-4"
-              >
-                <form.Field
-                  name="clientName"
-                  validators={{
-                    onChange: ({ value }) => !value ? t("settings.clientApiKeys.createDialog.clientName.required") : undefined,
-                  }}
-                >
-                  {(field) => (
-                    <div className="space-y-2">
-                      <Label htmlFor="clientName">{t("settings.clientApiKeys.createDialog.clientName.label")}</Label>
-                      <div className="space-y-2">
-                        <Input
-                          id="clientName"
-                          placeholder={t("settings.clientApiKeys.createDialog.clientName.placeholder")}
-                          value={field.state.value}
-                          onBlur={field.handleBlur}
-                          onChange={(e) => field.handleChange(e.target.value)}
-                          data-1p-ignore
-                          autoComplete='off'
-                        />
-                      </div>
-                      {field.state.meta.isTouched && field.state.meta.errors[0] && (
-                        <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
-                      )}
-                    </div>
-                  )}
-                </form.Field>
-
-                <form.Field
-                  name="instanceId"
-                  validators={{
-                    onChange: ({ value }) => !value ? t("settings.clientApiKeys.createDialog.instance.required") : undefined,
-                  }}
-                >
-                  {(field) => (
-                    <div className="space-y-2">
-                      <Label htmlFor="instanceId">{t("settings.clientApiKeys.createDialog.instance.label")}</Label>
-                      <Select
-                        value={field.state.value}
-                        onValueChange={(value) => field.handleChange(value)}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder={t("settings.clientApiKeys.createDialog.instance.placeholder")} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {instances?.map((instance) => (
-                            <SelectItem key={instance.id} value={instance.id.toString()}>
-                              <div className="flex items-center gap-2">
-                                <Server className="h-4 w-4" />
-                                <span>{instance.name}</span>
-                                <span className="text-xs text-muted-foreground">({instance.host})</span>
-                              </div>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {field.state.meta.isTouched && field.state.meta.errors[0] && (
-                        <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
-                      )}
-                    </div>
-                  )}
-                </form.Field>
-
-                <form.Subscribe
-                  selector={(state) => [state.canSubmit, state.isSubmitting]}
-                >
-                  {([canSubmit, isSubmitting]) => (
-                    <Button
-                      type="submit"
-                      disabled={!canSubmit || isSubmitting || createMutation.isPending}
-                      className="w-full"
-                    >
-                      {isSubmitting || createMutation.isPending ? t("settings.clientApiKeys.createDialog.creating") : t("settings.clientApiKeys.create")}
-                    </Button>
-                  )}
-                </form.Subscribe>
-              </form>
-            )}
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      <div className="space-y-2">
-        {isLoading ? (
-          <p className="text-center text-sm text-muted-foreground py-8">
-            {t("settings.clientApiKeys.loading")}
-          </p>
-        ) : error ? (
-          <div className="text-center py-8">
-            <p className="text-sm text-muted-foreground mb-2">
-              {t("settings.clientApiKeys.error.load")}
-            </p>
-            <p className="text-xs text-destructive">
-              {error.message?.includes("404")? t("settings.clientApiKeys.error.unavailable"): error.message || t("settings.clientApiKeys.error.unknown")
-              }
-            </p>
-          </div>
-        ) : (
-          <>
-            {keys.map((key) => (
-              <div
-                key={key.id}
-                className="rounded-lg border bg-card p-4 transition-colors"
-              >
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="space-y-3">
-                    <div className="flex flex-wrap items-center gap-2 text-sm">
-                      <span className="font-medium text-base sm:text-lg">{key.clientName}</span>
-                      <Badge variant="outline" className="text-xs">
-                        {t("settings.clientApiKeys.id", { id: key.id })}
-                      </Badge>
-                      {key.instance ? (
-                        <Badge variant="secondary" className="text-xs flex items-center gap-1">
-                          <Server className="h-3 w-3" />
-                          {key.instance.name}
-                        </Badge>
-                      ) : (
-                        <Badge variant="destructive" className="text-xs">
-                          {t("settings.clientApiKeys.instanceDeleted")}
-                        </Badge>
-                      )}
-                    </div>
-
-                    <div className="space-y-1 text-xs text-muted-foreground">
-                      <p className="flex flex-wrap items-center gap-1">
-                        <span className="text-foreground">{t("settings.clientApiKeys.created")}</span>
-                        <span>{formatDate(new Date(key.createdAt))}</span>
-                        {key.lastUsedAt && (
-                          <>
-                            <span>•</span>
-                            <span className="text-foreground">{t("settings.clientApiKeys.lastUsed", { date: formatDate(new Date(key.lastUsedAt)) })}</span>
-                          </>
-                        )}
-                      </p>
-                      {key.instance?.host && (
-                        <p className="break-all">
-                          <span className="text-foreground">{t("settings.clientApiKeys.host")}</span> {key.instance.host}
-                        </p>
-                      )}
-                    </div>
-                  </div>
+                    </CardContent>
+                  </Card>
 
                   <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-9 w-9 self-end text-destructive hover:text-destructive focus-visible:ring-destructive sm:self-start"
-                    onClick={() => setDeleteKeyId(key.id)}
-                    aria-label={t("settings.clientApiKeys.deleteAriaLabel", { clientName: key.clientName })}
+                    onClick={() => handleDialogOpenChange(false)}
+                    className="w-full"
                   >
-                    <Trash2 className="h-4 w-4" />
+                    {t("common.buttons.done")}
                   </Button>
                 </div>
-              </div>
-            ))}
+              ) : (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    form.handleSubmit()
+                  }}
+                  className="space-y-4"
+                >
+                  <form.Field
+                    name="clientName"
+                    validators={{
+                      onChange: ({ value }) => !value ? t("settings.clientApiKeys.createDialog.clientName.required") : undefined,
+                    }}
+                  >
+                    {(field) => (
+                      <div className="space-y-2">
+                        <Label htmlFor="clientName">{t("settings.clientApiKeys.createDialog.clientName.label")}</Label>
+                        <div className="space-y-2">
+                          <Input
+                            id="clientName"
+                            placeholder={t("settings.clientApiKeys.createDialog.clientName.placeholder")}
+                            value={field.state.value}
+                            onBlur={field.handleBlur}
+                            onChange={(e) => field.handleChange(e.target.value)}
+                            data-1p-ignore
+                            autoComplete='off'
+                          />
+                        </div>
+                        {field.state.meta.isTouched && field.state.meta.errors[0] && (
+                          <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
+                        )}
+                      </div>
+                    )}
+                  </form.Field>
 
-            {keys.length === 0 && (
-              <p className="text-center text-sm text-muted-foreground py-8">
-                {t("settings.clientApiKeys.empty")}
+                  <form.Field
+                    name="instanceId"
+                    validators={{
+                      onChange: ({ value }) => !value ? t("settings.clientApiKeys.createDialog.instance.required") : undefined,
+                    }}
+                  >
+                    {(field) => (
+                      <div className="space-y-2">
+                        <Label htmlFor="instanceId">{t("settings.clientApiKeys.createDialog.instance.label")}</Label>
+                        <Select
+                          value={field.state.value}
+                          onValueChange={(value) => field.handleChange(value)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder={t("settings.clientApiKeys.createDialog.instance.placeholder")} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {instances?.map((instance) => (
+                              <SelectItem key={instance.id} value={instance.id.toString()}>
+                                <div className="flex items-center gap-2">
+                                  <Server className="h-4 w-4" />
+                                  <span>{instance.name}</span>
+                                  <span className="text-xs text-muted-foreground">({instance.host})</span>
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {field.state.meta.isTouched && field.state.meta.errors[0] && (
+                          <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
+                        )}
+                      </div>
+                    )}
+                  </form.Field>
+
+                  <form.Subscribe
+                    selector={(state) => [state.canSubmit, state.isSubmitting]}
+                  >
+                    {([canSubmit, isSubmitting]) => (
+                      <Button
+                        type="submit"
+                        disabled={!canSubmit || isSubmitting || createMutation.isPending}
+                        className="w-full"
+                      >
+                        {isSubmitting || createMutation.isPending ? t("settings.clientApiKeys.createDialog.creating") : t("settings.clientApiKeys.create")}
+                      </Button>
+                    )}
+                  </form.Subscribe>
+                </form>
+              )}
+            </DialogContent>
+          </Dialog>
+        </div>
+
+        <div className="space-y-2">
+          {isLoading ? (
+            <p className="text-center text-sm text-muted-foreground py-8">
+              {t("settings.clientApiKeys.loading")}
+            </p>
+          ) : error ? (
+            <div className="text-center py-8">
+              <p className="text-sm text-muted-foreground mb-2">
+                {t("settings.clientApiKeys.error.load")}
               </p>
-            )}
-          </>
-        )}
-      </div>
+              <p className="text-xs text-destructive">
+                {error.message?.includes("404") ? t("settings.clientApiKeys.error.unavailable") : error.message || t("settings.clientApiKeys.error.unknown")}
+              </p>
+            </div>
+          ) : (
+            <>
+              {keys.map((key) => (
+                <div
+                  key={key.id}
+                  className="rounded-lg border bg-card p-4 transition-colors"
+                >
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="space-y-3">
+                      <div className="flex flex-wrap items-center gap-2 text-sm">
+                        <span className="font-medium text-base sm:text-lg">{key.clientName}</span>
+                        <Badge variant="outline" className="text-xs">
+                          {t("settings.clientApiKeys.id", { id: key.id })}
+                        </Badge>
+                        {key.instance ? (
+                          key.instance.name.length > 20 ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Badge variant="secondary" className="text-xs flex items-center gap-1 cursor-help">
+                                  <Server className="h-3 w-3 shrink-0" />
+                                  <span className="truncate">{truncateInstanceName(key.instance.name)}</span>
+                                </Badge>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>{key.instance.name}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          ) : (
+                            <Badge variant="secondary" className="text-xs flex items-center gap-1">
+                              <Server className="h-3 w-3 shrink-0" />
+                              {key.instance.name}
+                            </Badge>
+                          )
+                        ) : (
+                          <Badge variant="destructive" className="text-xs">
+                            {t("settings.clientApiKeys.instanceDeleted")}
+                          </Badge>
+                        )}
+                      </div>
 
-      <AlertDialog open={!!deleteKeyId} onOpenChange={() => setDeleteKeyId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("settings.clientApiKeys.deleteDialog.title")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("settings.clientApiKeys.deleteDialog.description")}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => deleteKeyId && deleteMutation.mutate(deleteKeyId)}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {t("common.buttons.delete")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
+                      <div className="space-y-1 text-xs text-muted-foreground">
+                        <p className="flex flex-wrap items-center gap-1">
+                          <span className="text-foreground">{t("settings.clientApiKeys.created")}</span>
+                          <span>{formatDate(new Date(key.createdAt))}</span>
+                          {key.lastUsedAt && (
+                            <>
+                              <span>•</span>
+                              <span className="text-foreground">{t("settings.clientApiKeys.lastUsed", { date: formatDate(new Date(key.lastUsedAt)) })}</span>
+                            </>
+                          )}
+                        </p>
+                        {key.instance?.host && (
+                          <p className="break-all">
+                            <span className="text-foreground">{t("settings.clientApiKeys.host")}</span> {key.instance.host}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-9 w-9 self-end text-destructive hover:text-destructive focus-visible:ring-destructive sm:self-start"
+                      onClick={() => setDeleteKeyId(key.id)}
+                      aria-label={t("settings.clientApiKeys.deleteAriaLabel", { clientName: key.clientName })}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+
+              {keys.length === 0 && (
+                <p className="text-center text-sm text-muted-foreground py-8">
+                  {t("settings.clientApiKeys.empty")}
+                </p>
+              )}
+            </>
+          )}
+        </div>
+
+        <AlertDialog open={!!deleteKeyId} onOpenChange={() => setDeleteKeyId(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{t("settings.clientApiKeys.deleteDialog.title")}</AlertDialogTitle>
+              <AlertDialogDescription>
+                {t("settings.clientApiKeys.deleteDialog.description")}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => deleteKeyId && deleteMutation.mutate(deleteKeyId)}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {t("common.buttons.delete")}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+    </TooltipProvider>
   )
 }

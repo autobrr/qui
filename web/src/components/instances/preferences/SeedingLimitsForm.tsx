@@ -114,17 +114,17 @@ export function SeedingLimitsForm({ instanceId, onSuccess }: SeedingLimitsFormPr
           {(enabledField) => (
             <form.Field name="max_ratio">
               {(field) => (
-                <NumberInputWithUnlimited
-                  label={t("instancePreferences.content.seedingLimits.maxRatio")}
-                  value={(field.state.value as number) ?? 2.0}
-                  onChange={field.handleChange}
-                  min={0.1}
-                  max={10}
-                  step="0.1"
-                  description={t("instancePreferences.content.seedingLimits.maxRatioDescription")}
-                  allowUnlimited={true}
-                  disabled={!(enabledField.state.value as boolean)}
-                />
+                  <NumberInputWithUnlimited
+                    label={t("instancePreferences.content.seedingLimits.maxRatio")}
+                    value={(field.state.value as number) ?? 2.0}
+                    onChange={field.handleChange}
+                    min={-1}
+                    max={10}
+                    step="0.05"
+                    description={t("instancePreferences.content.seedingLimits.maxRatioDescription")}
+                    allowUnlimited={true}
+                    disabled={!(enabledField.state.value as boolean)}
+                  />
               )}
             </form.Field>
           )}
@@ -149,7 +149,7 @@ export function SeedingLimitsForm({ instanceId, onSuccess }: SeedingLimitsFormPr
                   label={t("instancePreferences.content.seedingLimits.maxTime")}
                   value={(field.state.value as number) ?? 1440}
                   onChange={field.handleChange}
-                  min={1}
+                  min={-1}
                   max={525600} // 1 year in minutes
                   description={t("instancePreferences.content.seedingLimits.maxTimeDescription")}
                   allowUnlimited={true}

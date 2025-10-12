@@ -95,6 +95,243 @@ func TestSyncManager_FilteringAndSorting(t *testing.T) {
 	})
 }
 
+func TestSyncManager_ApplyManualFilters_Exclusions(t *testing.T) {
+	sm := &SyncManager{}
+
+	torrents := []qbt.Torrent{
+		{Hash: "hash1", State: qbt.TorrentStateUploading, Category: "movies", Tags: "tagA, tagB", Tracker: "http://trackerA.com/announce"},
+		{Hash: "hash2", State: qbt.TorrentStateDownloading, Category: "tv", Tags: "", Tracker: ""},
+		{Hash: "hash3", State: qbt.TorrentStateUploading, Category: "documentary", Tags: "tagC", Tracker: "udp://trackerb.com:80/announce"},
+		{Hash: "hash4", State: qbt.TorrentStateDownloading, Category: "movies", Tags: "tagC, tagD", Tracker: "https://trackerc.com/announce"},
+	}
+
+	mainData := &qbt.MainData{
+		Trackers: map[string][]string{
+			"http://trackerA.com/announce":   {"hash1"},
+			"udp://trackerb.com:80/announce": {"hash3"},
+			"https://trackerc.com/announce":  {"hash4"},
+		},
+	}
+
+	hashes := func(ts []qbt.Torrent) []string {
+		result := make([]string, len(ts))
+		for i, torrent := range ts {
+			result[i] = torrent.Hash
+		}
+		return result
+	}
+
+	testCases := []struct {
+		name     string
+		filters  FilterOptions
+		expected []string
+	}{
+		{
+			name:     "exclude status uploading",
+			filters:  FilterOptions{ExcludeStatus: []string{"uploading"}},
+			expected: []string{"hash2", "hash4"},
+		},
+		{
+			name:     "exclude category movies",
+			filters:  FilterOptions{ExcludeCategories: []string{"movies"}},
+			expected: []string{"hash2", "hash3"},
+		},
+		{
+			name:     "exclude tracker domain",
+			filters:  FilterOptions{ExcludeTrackers: []string{"trackerb.com"}},
+			expected: []string{"hash1", "hash2", "hash4"},
+		},
+		{
+			name:     "exclude no tracker",
+			filters:  FilterOptions{ExcludeTrackers: []string{""}},
+			expected: []string{"hash1", "hash3", "hash4"},
+		},
+		{
+			name:     "exclude tag removes matching",
+			filters:  FilterOptions{ExcludeTags: []string{"tagD"}},
+			expected: []string{"hash1", "hash2", "hash3"},
+		},
+		{
+			name:     "combined include and exclude",
+			filters:  FilterOptions{Categories: []string{"movies"}, ExcludeTrackers: []string{"trackerc.com"}},
+			expected: []string{"hash1"},
+		},
+	}
+
+	for _, tc := range testCases {
+		result := sm.applyManualFilters(nil, torrents, tc.filters, mainData)
+		assert.ElementsMatch(t, tc.expected, hashes(result), tc.name)
+	}
+}
+
+func TestFiltersRequireTrackerData(t *testing.T) {
+	testCases := []struct {
+		name    string
+		filters FilterOptions
+		want    bool
+	}{
+		{
+			name:    "include tracker health statuses",
+			filters: FilterOptions{Status: []string{"unregistered"}},
+			want:    true,
+		},
+		{
+			name:    "exclude tracker health statuses",
+			filters: FilterOptions{ExcludeStatus: []string{"tracker_down"}},
+			want:    true,
+		},
+		{
+			name:    "non tracker health statuses",
+			filters: FilterOptions{Status: []string{"downloading"}},
+			want:    false,
+		},
+		{
+			name:    "no statuses",
+			filters: FilterOptions{},
+			want:    false,
+		},
+	}
+
+	for _, tc := range testCases {
+		assert.Equal(t, tc.want, filtersRequireTrackerData(tc.filters), tc.name)
+	}
+}
+
+func TestSyncManager_SortTorrentsByStatus(t *testing.T) {
+	sm := &SyncManager{}
+
+	torrents := []qbt.Torrent{
+		{
+			Hash:    "unreg",
+			Name:    "Unregistered Torrent",
+			State:   qbt.TorrentStatePausedUp,
+			AddedOn: 20,
+			Trackers: []qbt.TorrentTracker{
+				{
+					Status:  qbt.TrackerStatusNotWorking,
+					Message: "Torrent not found in tracker database",
+				},
+			},
+		},
+		{
+			Hash:    "down",
+			Name:    "Tracker Down Torrent",
+			State:   qbt.TorrentStateStalledUp,
+			AddedOn: 18,
+			Trackers: []qbt.TorrentTracker{
+				{
+					Status:  qbt.TrackerStatusNotWorking,
+					Message: "Tracker is down",
+				},
+			},
+		},
+		{
+			Hash:    "uploading",
+			Name:    "Seeding Torrent",
+			State:   qbt.TorrentStateUploading,
+			AddedOn: 15,
+		},
+		{
+			Hash:    "uploading_old",
+			Name:    "Seeding Torrent Older",
+			State:   qbt.TorrentStateUploading,
+			AddedOn: 10,
+		},
+		{
+			Hash:    "downloading",
+			Name:    "Downloading Torrent",
+			State:   qbt.TorrentStateDownloading,
+			AddedOn: 12,
+		},
+		{
+			Hash:    "paused",
+			Name:    "Paused Torrent",
+			State:   qbt.TorrentStatePausedDl,
+			AddedOn: 8,
+		},
+		{
+			Hash:    "paused_old",
+			Name:    "Paused Torrent Older",
+			State:   qbt.TorrentStatePausedDl,
+			AddedOn: 4,
+		},
+		{
+			Hash:    "stalled_dl",
+			Name:    "Stalled Downloading",
+			State:   qbt.TorrentStateStalledDl,
+			AddedOn: 6,
+		},
+	}
+
+	hashes := func(ts []qbt.Torrent) []string {
+		out := make([]string, len(ts))
+		for i, torrent := range ts {
+			out[i] = torrent.Hash
+		}
+		return out
+	}
+
+	sm.sortTorrentsByStatus(torrents, true, true)
+	assert.Equal(t, []string{"paused_old", "paused", "uploading_old", "uploading", "stalled_dl", "downloading", "down", "unreg"}, hashes(torrents))
+
+	sm.sortTorrentsByStatus(torrents, false, true)
+	assert.Equal(t, []string{"unreg", "down", "downloading", "stalled_dl", "uploading", "uploading_old", "paused", "paused_old"}, hashes(torrents))
+}
+
+func TestSyncManager_SortTorrentsByStatus_TieBreakAddedOn(t *testing.T) {
+	sm := &SyncManager{}
+
+	torrents := []qbt.Torrent{
+		{
+			Hash:    "newer",
+			Name:    "Same State Newer",
+			State:   qbt.TorrentStateUploading,
+			AddedOn: 200,
+		},
+		{
+			Hash:    "older",
+			Name:    "Same State Older",
+			State:   qbt.TorrentStateUploading,
+			AddedOn: 100,
+		},
+	}
+
+	hashes := func(ts []qbt.Torrent) []string {
+		out := make([]string, len(ts))
+		for i, torrent := range ts {
+			out[i] = torrent.Hash
+		}
+		return out
+	}
+
+	sm.sortTorrentsByStatus(torrents, true, false)
+	assert.Equal(t, []string{"older", "newer"}, hashes(torrents))
+
+	sm.sortTorrentsByStatus(torrents, false, false)
+	assert.Equal(t, []string{"newer", "older"}, hashes(torrents))
+}
+
+func TestSyncManager_SortTorrentsByStatus_StoppedAfterSeeding(t *testing.T) {
+	sm := &SyncManager{}
+
+	torrents := []qbt.Torrent{
+		{Hash: "seeding", State: qbt.TorrentStateUploading, AddedOn: 3},
+		{Hash: "stopped", State: qbt.TorrentStateStoppedDl, AddedOn: 2},
+		{Hash: "stalled", State: qbt.TorrentStateStalledUp, AddedOn: 1},
+	}
+
+	hashes := func(ts []qbt.Torrent) []string {
+		out := make([]string, len(ts))
+		for i, torrent := range ts {
+			out[i] = torrent.Hash
+		}
+		return out
+	}
+
+	sm.sortTorrentsByStatus(torrents, false, false)
+	assert.Equal(t, []string{"seeding", "stopped", "stalled"}, hashes(torrents))
+}
+
 // TestSyncManager_SearchFunctionality tests the search and filtering logic
 func TestSyncManager_SearchFunctionality(t *testing.T) {
 	sm := &SyncManager{}

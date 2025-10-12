@@ -18,7 +18,7 @@ import { TORRENT_ACTIONS } from "@/hooks/useTorrentActions"
 import { getLinuxIsoName, getLinuxSavePath, useIncognitoMode } from "@/lib/incognito"
 import { getTorrentDisplayHash } from "@/lib/torrent-utils"
 import { copyTextToClipboard } from "@/lib/utils"
-import type { Torrent } from "@/types"
+import type { InstanceCapabilities, Torrent } from "@/types"
 import {
   CheckCircle,
   Copy,
@@ -39,6 +39,7 @@ import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { CategorySubmenu } from "./CategorySubmenu"
 import { QueueSubmenu } from "./QueueSubmenu"
+import { RenameSubmenu } from "./RenameSubmenu"
 
 interface TorrentContextMenuProps {
   children: React.ReactNode
@@ -59,11 +60,15 @@ interface TorrentContextMenuProps {
   onPrepareRecheck: (hashes: string[], count?: number) => void
   onPrepareReannounce: (hashes: string[], count?: number) => void
   onPrepareLocation: (hashes: string[], torrents?: Torrent[]) => void
+  onPrepareRenameTorrent: (hashes: string[], torrents?: Torrent[]) => void
+  onPrepareRenameFile: (hashes: string[], torrents?: Torrent[]) => void
+  onPrepareRenameFolder: (hashes: string[], torrents?: Torrent[]) => void
   availableCategories?: Record<string, unknown>
   onSetCategory?: (category: string, hashes: string[]) => void
   isPending?: boolean
   onExport?: (hashes: string[], torrents: Torrent[]) => Promise<void> | void
   isExporting?: boolean
+  capabilities?: InstanceCapabilities
 }
 
 export const TorrentContextMenu = memo(function TorrentContextMenu({
@@ -78,17 +83,20 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   onAction,
   onPrepareDelete,
   onPrepareTags,
-  onPrepareCreateCategory,
   onPrepareShareLimit,
   onPrepareSpeedLimits,
   onPrepareRecheck,
   onPrepareReannounce,
   onPrepareLocation,
+  onPrepareRenameTorrent,
+  onPrepareRenameFile,
+  onPrepareRenameFolder,
   availableCategories = {},
   onSetCategory,
   isPending = false,
   onExport,
   isExporting = false,
+  capabilities,
 }: TorrentContextMenuProps) {
   const { t } = useTranslation()
   const [incognitoMode] = useIncognitoMode()
@@ -159,10 +167,6 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
     }
   }, [onSetCategory, hashes])
 
-  const handleCreateCategory = useCallback(() => {
-    onPrepareCreateCategory(hashes, torrents)
-  }, [onPrepareCreateCategory, hashes, torrents])
-
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
@@ -232,7 +236,6 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
           hashCount={count}
           availableCategories={availableCategories}
           onSetCategory={handleSetCategory}
-          onCreateCategory={handleCreateCategory}
           isPending={isPending}
           currentCategory={torrent.category}
         />
@@ -243,6 +246,15 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
           <FolderOpen className="mr-2 h-4 w-4" />
           {t("torrent_context_menu.set_location", { count })}
         </ContextMenuItem>
+        <RenameSubmenu
+          type="context"
+          hashCount={count}
+          onRenameTorrent={() => onPrepareRenameTorrent(hashes, torrents)}
+          onRenameFile={() => onPrepareRenameFile(hashes, torrents)}
+          onRenameFolder={() => onPrepareRenameFolder(hashes, torrents)}
+          isPending={isPending}
+          capabilities={capabilities}
+        />
         <ContextMenuSeparator />
         <ContextMenuItem
           onClick={() => onPrepareShareLimit(hashes, torrents)}

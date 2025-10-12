@@ -3,27 +3,24 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState, useEffect } from "react"
-
-interface Filters {
-  status: string[]
-  categories: string[]
-  tags: string[]
-  trackers: string[]
-  expr?: string
-}
+import { useEffect, useState } from "react"
+import type { TorrentFilters } from "@/types"
 
 export function usePersistedFilters(instanceId: number) {
   // Initialize state with persisted values immediately
-  const [filters, setFilters] = useState<Filters>(() => {
+  const [filters, setFilters] = useState<TorrentFilters>(() => {
     const global = JSON.parse(localStorage.getItem("qui-filters-global") || "{}")
     const instance = JSON.parse(localStorage.getItem(`qui-filters-${instanceId}`) || "{}")
 
     return {
       status: global.status || [],
+      excludeStatus: global.excludeStatus || [],
       categories: instance.categories || [],
+      excludeCategories: instance.excludeCategories || [],
       tags: instance.tags || [],
+      excludeTags: instance.excludeTags || [],
       trackers: instance.trackers || [],
+      excludeTrackers: instance.excludeTrackers || [],
       expr: instance.expr || "",
     }
   })
@@ -35,20 +32,30 @@ export function usePersistedFilters(instanceId: number) {
 
     setFilters({
       status: global.status || [],
+      excludeStatus: global.excludeStatus || [],
       categories: instance.categories || [],
+      excludeCategories: instance.excludeCategories || [],
       tags: instance.tags || [],
+      excludeTags: instance.excludeTags || [],
       trackers: instance.trackers || [],
+      excludeTrackers: instance.excludeTrackers || [],
       expr: instance.expr || "",
     })
   }, [instanceId])
 
   // Save filters when they change
   useEffect(() => {
-    localStorage.setItem("qui-filters-global", JSON.stringify({ status: filters.status }))
+    localStorage.setItem("qui-filters-global", JSON.stringify({
+      status: filters.status,
+      excludeStatus: filters.excludeStatus,
+    }))
     localStorage.setItem(`qui-filters-${instanceId}`, JSON.stringify({
       categories: filters.categories,
+      excludeCategories: filters.excludeCategories,
       tags: filters.tags,
+      excludeTags: filters.excludeTags,
       trackers: filters.trackers,
+      excludeTrackers: filters.excludeTrackers,
       expr: filters.expr,
     }))
   }, [filters, instanceId])

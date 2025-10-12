@@ -45,11 +45,13 @@ export function Sidebar() {
       icon: Home,
     },
     {
-              title: t("common.titles.instances"),      href: "/instances",
+      title: t("common.titles.instances"),
+      href: "/instances",
       icon: Server,
     },
     {
-              title: t("common.titles.settings"),      href: "/settings",
+      title: t("common.titles.settings"),
+      href: "/settings",
       icon: Settings,
     },
   ]
@@ -74,62 +76,72 @@ export function Sidebar() {
         </h2>
       </div>
 
-      <nav className="flex-1 space-y-1 px-3">
-        {navigation.map((item) => {
-          const Icon = item.icon
-          const isActive = location.pathname === item.href
-
-          return (
-            <Link
-              key={item.href}
-              to={item.href}
-              className={cn(
-                "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-all duration-200 ease-out",
-                isActive? "bg-sidebar-primary text-sidebar-primary-foreground": "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-              )}
-            >
-              <Icon className="h-4 w-4" />
-              {item.title}
-            </Link>
-          )
-        })}
-
-        <Separator className="my-4" />
-
+      <nav className="flex flex-1 min-h-0 flex-col px-3">
         <div className="space-y-1">
-          <p className="px-3 text-xs font-semibold text-sidebar-foreground/70 uppercase tracking-wider">
-            {t("common.titles.instances")}
-          </p>
-          {instances?.map((instance) => {
-            const instancePath = `/instances/${instance.id}`
-            const isActive = location.pathname === instancePath
+          {navigation.map((item) => {
+            const Icon = item.icon
+            const isActive = location.pathname === item.href
 
             return (
               <Link
-                key={instance.id}
-                to="/instances/$instanceId"
-                params={{ instanceId: instance.id.toString() }}
+                key={item.href}
+                to={item.href}
                 className={cn(
                   "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-all duration-200 ease-out",
-                  isActive? "bg-sidebar-primary text-sidebar-primary-foreground": "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                  isActive
+                    ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                    : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                 )}
               >
-                <HardDrive className="h-4 w-4 flex-shrink-0" />
-                <span className="truncate max-w-38" title={instance.name}>{instance.name}</span>
-                <span
-                  className={cn(
-                    "ml-auto h-2 w-2 rounded-full",
-                    instance.connected ? "bg-green-500" : "bg-red-500"
-                  )}
-                />
+                <Icon className="h-4 w-4" />
+                {item.title}
               </Link>
             )
           })}
-          {(!instances || instances.length === 0) && (
-            <p className="px-3 py-2 text-sm text-sidebar-foreground/50">
-              {t("common.messages.noInstancesConfigured")}
+        </div>
+
+        <Separator className="my-4" />
+
+        <div className="flex-1 min-h-0">
+          <div className="flex h-full min-h-0 flex-col">
+            <p className="px-3 text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/70">
+              {t("common.titles.instances")}
             </p>
-          )}
+            <div className="mt-1 flex-1 overflow-y-auto space-y-1 pr-1">
+              {instances?.map((instance) => {
+                const instancePath = `/instances/${instance.id}`
+                const isActive = location.pathname === instancePath
+
+                return (
+                  <Link
+                    key={instance.id}
+                    to="/instances/$instanceId"
+                    params={{ instanceId: instance.id.toString() }}
+                    className={cn(
+                      "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-all duration-200 ease-out",
+                      isActive
+                        ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                        : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                    )}
+                  >
+                    <HardDrive className="h-4 w-4 flex-shrink-0" />
+                    <span className="truncate max-w-36" title={instance.name}>{instance.name}</span>
+                    <span
+                      className={cn(
+                        "ml-auto h-2 w-2 rounded-full",
+                        instance.connected ? "bg-green-500" : "bg-red-500"
+                      )}
+                    />
+                  </Link>
+                )
+              })}
+              {(!instances || instances.length === 0) && (
+                <p className="px-3 py-2 text-sm text-sidebar-foreground/50">
+                  {t("common.messages.noInstancesConfigured")}
+                </p>
+              )}
+            </div>
+          </div>
         </div>
       </nav>
 

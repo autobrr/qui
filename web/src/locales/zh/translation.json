@@ -252,8 +252,19 @@
       "infohash_v1": "信息哈希 v1",
       "infohash_v2": "信息哈希 v2",
       "reannounce_in": "下次汇报",
-      "private": "私有"
-    }
+      "private": "私有",
+      "recently_added": "最近添加",
+      "download_speed": "下载速度",
+      "upload_speed": "上传速度",
+      "download_limit": "下载限制",
+      "upload_limit": "上传限制",
+      "status_icon": "状态图标"
+    },
+    "sort_by": "排序方式",
+    "sort_prefix": "排序: {{label}}",
+    "sort_order_aria_asc": "升序排序",
+    "sort_order_aria_desc": "降序排序",
+    "total_size_label": "总大小: {{size}}"
   },
   "torrent_details": {
     "tabs": {
@@ -311,7 +322,8 @@
         "seeding_time": "做种时间"
       },
       "location": {
-        "title": "文件位置"
+        "title": "保存路径",
+        "copy_type": "文件位置"
       },
       "identifiers": {
         "title": "种子标识符",
@@ -702,6 +714,13 @@
       "disconnected": "已断开",
       "connected": "已连接",
       "showMore": "显示更多",
+      "showLess": "收起",
+      "qbit_version_badge": "qBit {{version}}",
+      "api_version_badge": "API v{{version}}",
+      "libtorrent_version_badge": "lt {{version}}",
+      "connection_status_tooltip": {
+        "connectable": "可连接"
+      },
       "altSpeed": {
         "enabledTooltip": "备用速率限制已启用 (乌龟模式) - 点击切换",
         "disabledTooltip": "备用速率限制已禁用 (正常模式) - 点击切换",
@@ -1223,7 +1242,8 @@
       "no_match": "未找到匹配 \"{{search}}\" 的分类",
       "no_available": "无可用分类",
       "edit": "编辑分类",
-      "delete": "删除分类"
+      "delete": "删除分类",
+      "remove_empty": "移除空分类"
     },
     "tags": {
       "title": "标签",
@@ -1248,6 +1268,10 @@
       "fetch_urls_failed": "获取 Tracker URL 失败",
       "update_url_success": "已更新所有受影响种子的 Tracker URL",
       "update_url_failed": "更新 Tracker 失败"
+    },
+    "tooltips": {
+      "selection_tips_aria": "筛选选择提示",
+      "selection_tips_content": "左键点击切换“包含”和“中立”。Cmd/Ctrl + 左键点击切换“排除”。"
     }
   },
   "tag_category_management_dialogs": {
@@ -1301,6 +1325,17 @@
       "success_one": "已删除 {{count}} 个未使用的标签",
       "success_other": "已删除 {{count}} 个未使用的标签",
       "error": "删除未使用的标签失败"
+    },
+    "tag_category_management_dialogs": {
+      "title": "移除空分类",
+      "no_empty": "没有可移除的空分类。",
+      "confirm": "您确定要移除 {{count}} 个空分类吗？此操作无法撤销。",
+      "confirm_plural": "您确定要移除 {{count}} 个空分类吗？此操作无法撤销。",
+      "remove_button": "移除 {{count}} 个分类",
+      "remove_button_plural": "移除 {{count}} 个分类",
+      "success": "移除了 {{count}} 个空分类",
+      "success_plural": "移除了 {{count}} 个空分类",
+      "error": "移除空分类失败"
     },
     "buttons": {
       "create": "创建",
@@ -1654,6 +1689,7 @@
       "host": "主机:",
       "id": "ID: {{id}}",
       "deleteAriaLabel": "删除 API 密钥 {{clientName}}",
+      "lastUsedLabel": "上次使用：",
       "error": {
         "load": "无法加载客户端 API 密钥",
         "unavailable": "此版本中该功能可能不可用",

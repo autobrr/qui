@@ -226,7 +226,17 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
 
       {/* Mobile Filter Sheet */}
       <Sheet open={mobileFilterOpen} onOpenChange={setMobileFilterOpen}>
-        <SheetContent side="left" className="p-0 w-[280px] sm:w-[320px] md:hidden flex flex-col max-h-[100dvh]">
+        <SheetContent
+          side="left"
+          className="p-0 w-[280px] sm:w-[320px] md:hidden flex flex-col max-h-[100dvh]"
+          onOpenAutoFocus={(event) => {
+            event.preventDefault()
+
+            const content = event.currentTarget as HTMLElement | null
+            const closeButton = content?.querySelector<HTMLElement>("[data-slot=\"sheet-close\"]")
+            closeButton?.focus()
+          }}
+        >
           <SheetHeader className="px-4 py-3 border-b">
             <SheetTitle className="text-lg font-semibold">{t("torrents.filters")}</SheetTitle>
           </SheetHeader>

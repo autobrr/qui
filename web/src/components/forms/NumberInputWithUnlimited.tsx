@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import React from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useTranslation } from "react-i18next";
@@ -41,6 +42,35 @@ export function NumberInputWithUnlimited({
   const defaultPlaceholder = allowUnlimited ? t("forms.unlimited") : undefined;
   const actualPlaceholder = placeholder ?? defaultPlaceholder;
 
+  // Track previous value to detect when we hit 0 and should transition to unlimited
+  const prevValueRef = React.useRef(value);
+
+  React.useEffect(() => {
+    if (!allowUnlimited) return;
+
+    const prevValue = prevValueRef.current;
+    const currentValue = value;
+
+    // If we stepped down to exactly 0 from a positive value, transition to unlimited
+    if (prevValue > 0 && currentValue === 0) {
+      onChange(-1);
+    }
+
+    prevValueRef.current = value;
+  }, [value, allowUnlimited, onChange]);
+
+  // Handle stepping up from unlimited (-1) back to a valid positive value
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!allowUnlimited) return;
+
+    if (e.key === 'ArrowUp' && value === -1) {
+      e.preventDefault();
+      const stepValue = typeof step === 'string' ? parseFloat(step) : (step || 1);
+      const minPositive = stepValue; // Use the step value as the starting point
+      onChange(minPositive);
+    }
+  };
+
   return (
     <div className="space-y-2">
       <div className="space-y-1">
@@ -72,15 +102,25 @@ export function NumberInputWithUnlimited({
           const num = parseFloat(inputValue);
           if (isNaN(num)) return;
 
-          // Allow -1 for unlimited if allowUnlimited is true
-          if (allowUnlimited && num === -1) {
-            onChange(-1);
-            return;
+          // Handle unlimited values when allowUnlimited is true
+          if (allowUnlimited) {
+            // Allow exactly -1 for unlimited
+            if (num === -1) {
+              onChange(-1);
+              return;
+            }
+
+            // Prevent invalid negative values between -1 and 0
+            if (num < 0 && num > -1) {
+              // Don't update the value, effectively blocking invalid negative values
+              return;
+            }
           }
 
           // Otherwise enforce min/max bounds
           onChange(Math.max(min, Math.min(max, num)));
         }}
+        onKeyDown={handleKeyDown}
         min={allowUnlimited ? -1 : min}
         max={max}
         step={step}

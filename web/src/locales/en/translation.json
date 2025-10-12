@@ -252,8 +252,19 @@
       "infohash_v1": "Info Hash v1",
       "infohash_v2": "Info Hash v2",
       "reannounce_in": "Reannounce In",
-      "private": "Private"
-    }
+      "private": "Private",
+      "recently_added": "Recently Added",
+      "download_speed": "Download Speed",
+      "upload_speed": "Upload Speed",
+      "download_limit": "Download Limit",
+      "upload_limit": "Upload Limit",
+      "status_icon": "Status Icon"
+    },
+    "sort_by": "Sort by",
+    "sort_prefix": "Sort: {{label}}",
+    "sort_order_aria_asc": "Sort ascending",
+    "sort_order_aria_desc": "Sort descending",
+    "total_size_label": "Total size: {{size}}"
   },
   "torrent_details": {
     "tabs": {
@@ -311,7 +322,8 @@
         "seeding_time": "Seeding Time"
       },
       "location": {
-        "title": "File Location"
+        "title": "Save Path",
+        "copy_type": "File location"
       },
       "identifiers": {
         "title": "Torrent Identifiers",
@@ -702,6 +714,13 @@
       "disconnected": "Disconnected",
       "connected": "Connected",
       "showMore": "Show More",
+      "showLess": "Show less",
+      "qbit_version_badge": "qBit {{version}}",
+      "api_version_badge": "API v{{version}}",
+      "libtorrent_version_badge": "lt {{version}}",
+      "connection_status_tooltip": {
+        "connectable": "Connectable"
+      },
       "altSpeed": {
         "enabledTooltip": "Alternative speed limits enabled (turtle mode) - Click to toggle",
         "disabledTooltip": "Alternative speed limits disabled (normal mode) - Click to toggle",
@@ -1223,7 +1242,8 @@
       "no_match": "No categories found matching \"{{search}}\"",
       "no_available": "No categories available",
       "edit": "Edit Category",
-      "delete": "Delete Category"
+      "delete": "Delete Category",
+      "remove_empty": "Remove Empty Categories"
     },
     "tags": {
       "title": "Tags",
@@ -1248,6 +1268,10 @@
       "fetch_urls_failed": "Failed to fetch tracker URLs",
       "update_url_success": "Updated tracker URL across all affected torrents",
       "update_url_failed": "Failed to update tracker"
+    },
+    "tooltips": {
+      "selection_tips_aria": "Filter selection tips",
+      "selection_tips_content": "Left click cycles include and neutral. Cmd/Ctrl + click toggles exclusion."
     }
   },
   "tag_category_management_dialogs": {
@@ -1301,6 +1325,17 @@
       "success_one": "Deleted {{count}} unused tag",
       "success_other": "Deleted {{count}} unused tags",
       "error": "Failed to delete unused tags"
+    },
+    "tag_category_management_dialogs": {
+      "title": "Remove Empty Categories",
+      "no_empty": "There are no empty categories to remove.",
+      "confirm": "Are you sure you want to remove {{count}} empty category? This action cannot be undone.",
+      "confirm_plural": "Are you sure you want to remove {{count}} empty categories? This action cannot be undone.",
+      "remove_button": "Remove {{count}} Category",
+      "remove_button_plural": "Remove {{count}} Categories",
+      "success": "Removed {{count}} empty category",
+      "success_plural": "Removed {{count}} empty categories",
+      "error": "Failed to remove empty categories"
     },
     "buttons": {
       "create": "Create",
@@ -1654,6 +1689,7 @@
       "host": "Host:",
       "id": "ID: {{id}}",
       "deleteAriaLabel": "Delete API key {{clientName}}",
+      "lastUsedLabel": "Last used:",
       "error": {
         "load": "Unable to load client API keys",
         "unavailable": "Feature may not be available in this version",

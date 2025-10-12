@@ -4,7 +4,7 @@
  */
 
 import { api } from "@/lib/api"
-import type { Torrent } from "@/types"
+import type { Torrent, TorrentFilters } from "@/types"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useCallback, useState } from "react"
 import type { TFunction } from "i18next"
@@ -55,12 +55,7 @@ interface TorrentActionData {
   downloadLimit?: number
   location?: string
   selectAll?: boolean
-  filters?: {
-    status: string[]
-    categories: string[]
-    tags: string[]
-    trackers: string[]
-  }
+  filters?: TorrentFilters
   search?: string
   excludeHashes?: string[]
   // Client-side metadata used for optimistic updates and toast messages
@@ -90,6 +85,9 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
   const [showRecheckDialog, setShowRecheckDialog] = useState(false)
   const [showReannounceDialog, setShowReannounceDialog] = useState(false)
   const [showLocationDialog, setShowLocationDialog] = useState(false)
+  const [showRenameTorrentDialog, setShowRenameTorrentDialog] = useState(false)
+  const [showRenameFileDialog, setShowRenameFileDialog] = useState(false)
+  const [showRenameFolderDialog, setShowRenameFolderDialog] = useState(false)
 
   // Context state for dialogs
   const [contextHashes, setContextHashes] = useState<string[]>([])
@@ -231,6 +229,113 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
       toast.error(t("hooks.useTorrentActions.failedToAction", { action: variables.action, count }), {
         description: error.message || t("hooks.useTorrentActions.unexpectedError"),
       })
+    },
+  })
+
+  const renameTorrentMutation = useMutation({
+    mutationFn: async ({ hash, name }: { hash: string; name: string }) => {
+      await api.renameTorrent(instanceId, hash, name)
+      return { hash, name }
+    },
+    onSuccess: async (_, variables) => {
+      setShowRenameTorrentDialog(false)
+      setContextHashes([])
+      setContextTorrents([])
+
+      setTimeout(() => {
+        queryClient.refetchQueries({
+          queryKey: ["torrents-list", instanceId],
+          exact: false,
+          type: "active",
+        })
+        queryClient.refetchQueries({
+          queryKey: ["torrent-counts", instanceId],
+          exact: false,
+          type: "active",
+        })
+      }, 750)
+
+      toast.success(`Renamed torrent to "${variables.name}"`)
+      onActionComplete?.()
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to rename torrent: ${error.message}`)
+    },
+  })
+
+  const renameFileMutation = useMutation({
+    mutationFn: async ({ hash, oldPath, newPath }: { hash: string; oldPath: string; newPath: string }) => {
+      await api.renameTorrentFile(instanceId, hash, oldPath, newPath)
+      return { hash, oldPath, newPath }
+    },
+    onSuccess: async (_, variables) => {
+      setShowRenameFileDialog(false)
+
+      queryClient.invalidateQueries({
+        queryKey: ["torrent-files", instanceId, variables.hash],
+        exact: false,
+      })
+
+      setContextHashes([])
+      setContextTorrents([])
+
+      setTimeout(() => {
+        queryClient.refetchQueries({
+          queryKey: ["torrents-list", instanceId],
+          exact: false,
+          type: "active",
+        })
+        queryClient.refetchQueries({
+          queryKey: ["torrent-counts", instanceId],
+          exact: false,
+          type: "active",
+        })
+      }, 750)
+
+      const newFileName = variables.newPath.split("/").pop() ?? variables.newPath
+      toast.success(`Renamed file to "${newFileName}"`)
+      onActionComplete?.()
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to rename file: ${error.message}`)
+    },
+  })
+
+  const renameFolderMutation = useMutation({
+    mutationFn: async ({ hash, oldPath, newPath }: { hash: string; oldPath: string; newPath: string }) => {
+      await api.renameTorrentFolder(instanceId, hash, oldPath, newPath)
+      return { hash, oldPath, newPath }
+    },
+    onSuccess: async (_, variables) => {
+      setShowRenameFolderDialog(false)
+
+      queryClient.invalidateQueries({
+        queryKey: ["torrent-files", instanceId, variables.hash],
+        exact: false,
+      })
+
+      setContextHashes([])
+      setContextTorrents([])
+
+      setTimeout(() => {
+        queryClient.refetchQueries({
+          queryKey: ["torrents-list", instanceId],
+          exact: false,
+          type: "active",
+        })
+        queryClient.refetchQueries({
+          queryKey: ["torrent-counts", instanceId],
+          exact: false,
+          type: "active",
+        })
+      }, 750)
+
+      const newFolderName = variables.newPath.split("/").pop() ?? variables.newPath
+      toast.success(`Renamed folder to "${newFolderName}"`)
+      onActionComplete?.()
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to rename folder: ${error.message}`)
     },
   })
 
@@ -562,6 +667,49 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     setContextTorrents([])
   }, [mutation])
 
+  const handleRenameTorrent = useCallback(async (hash: string, name: string) => {
+    const trimmed = name.trim()
+    if (!trimmed) {
+      toast.error("Torrent name cannot be empty")
+      return
+    }
+    await renameTorrentMutation.mutateAsync({ hash, name: trimmed })
+  }, [renameTorrentMutation])
+
+  const handleRenameFile = useCallback(async (hash: string, oldPath: string, newPath: string) => {
+    const trimmedOldPath = oldPath.trim()
+    const trimmedNewPath = newPath.trim()
+    if (!trimmedOldPath || !trimmedNewPath) {
+      toast.error("Both original and new file paths are required")
+      return
+    }
+    if (trimmedOldPath === trimmedNewPath) {
+      toast.success("File name unchanged")
+      setShowRenameFileDialog(false)
+      setContextHashes([])
+      setContextTorrents([])
+      return
+    }
+    await renameFileMutation.mutateAsync({ hash, oldPath: trimmedOldPath, newPath: trimmedNewPath })
+  }, [renameFileMutation])
+
+  const handleRenameFolder = useCallback(async (hash: string, oldPath: string, newPath: string) => {
+    const trimmedOldPath = oldPath.trim()
+    const trimmedNewPath = newPath.trim()
+    if (!trimmedOldPath || !trimmedNewPath) {
+      toast.error("Both original and new folder paths are required")
+      return
+    }
+    if (trimmedOldPath === trimmedNewPath) {
+      toast.success("Folder name unchanged")
+      setShowRenameFolderDialog(false)
+      setContextHashes([])
+      setContextTorrents([])
+      return
+    }
+    await renameFolderMutation.mutateAsync({ hash, oldPath: trimmedOldPath, newPath: trimmedNewPath })
+  }, [renameFolderMutation])
+
   const prepareDeleteAction = useCallback((hashes: string[], torrents?: Torrent[]) => {
     setContextHashes(hashes)
     if (torrents) setContextTorrents(torrents)
@@ -627,6 +775,30 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     setShowSpeedLimitDialog(true)
   }, [])
 
+  const prepareRenameTorrentAction = useCallback((hashes: string[], torrents?: Torrent[]) => {
+    if (hashes.length === 0) return
+    setContextHashes(hashes)
+    if (torrents) setContextTorrents(torrents)
+    setShowRenameTorrentDialog(true)
+  }, [])
+
+  const prepareRenameFileAction = useCallback((hashes: string[], torrents?: Torrent[]) => {
+    if (hashes.length === 0) return
+    setContextHashes(hashes)
+    if (torrents) setContextTorrents(torrents)
+    setShowRenameFileDialog(true)
+  }, [])
+
+  const prepareRenameFolderAction = useCallback((hashes: string[], torrents?: Torrent[]) => {
+    if (hashes.length === 0) return
+    setContextHashes(hashes)
+    if (torrents) setContextTorrents(torrents)
+    setShowRenameFolderDialog(true)
+  }, [])
+
+  const isPending = mutation.isPending || renameTorrentMutation.isPending || renameFileMutation.isPending || renameFolderMutation.isPending
+
+
   return {
     // State
     showDeleteDialog,
@@ -653,11 +825,17 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     setShowReannounceDialog,
     showLocationDialog,
     setShowLocationDialog,
+    showRenameTorrentDialog,
+    setShowRenameTorrentDialog,
+    showRenameFileDialog,
+    setShowRenameFileDialog,
+    showRenameFolderDialog,
+    setShowRenameFolderDialog,
     contextHashes,
     contextTorrents,
 
     // Mutation state
-    isPending: mutation.isPending,
+    isPending,
 
     // Direct action handlers
     handleAction,
@@ -671,6 +849,9 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     handleRecheck,
     handleReannounce,
     handleSetLocation,
+    handleRenameTorrent,
+    handleRenameFile,
+    handleRenameFolder,
 
     // Preparation handlers (for showing dialogs)
     prepareDeleteAction,
@@ -682,6 +863,9 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     prepareRecheckAction,
     prepareReannounceAction,
     prepareLocationAction,
+    prepareRenameTorrentAction,
+    prepareRenameFileAction,
+    prepareRenameFolderAction,
   }
 }
 

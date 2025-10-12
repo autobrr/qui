@@ -18,7 +18,7 @@ import {
   DropdownMenuSubTrigger
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
-import { Folder, Plus, Search, X } from "lucide-react"
+import { Folder, Search, X } from "lucide-react"
 import { memo, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -27,7 +27,6 @@ interface CategorySubmenuProps {
   hashCount: number
   availableCategories: Record<string, unknown>
   onSetCategory: (category: string) => void
-  onCreateCategory: () => void
   isPending?: boolean
   currentCategory?: string
 }
@@ -37,7 +36,6 @@ export const CategorySubmenu = memo(function CategorySubmenu({
   hashCount,
   availableCategories,
   onSetCategory,
-  onCreateCategory,
   isPending = false,
   currentCategory,
 }: CategorySubmenuProps) {
@@ -131,16 +129,7 @@ export const CategorySubmenu = memo(function CategorySubmenu({
           </div>
         )}
 
-        <Separator />
-
-        {/* Create New Category option */}
-        <MenuItem
-          onClick={onCreateCategory}
-          disabled={isPending}
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          {t("torrent_context_menu.category.create_new")}
-        </MenuItem>
+        {/* Creating new categories from this menu is disabled. */}
       </SubContent>
     </Sub>
   )

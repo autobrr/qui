@@ -6,7 +6,7 @@
 import { useCallback, useState } from "react"
 import { api } from "@/lib/api"
 import { getLinuxIsoName } from "@/lib/incognito"
-import type { Torrent } from "@/types"
+import type { Torrent, TorrentFilters } from "@/types"
 import { toast } from "sonner"
 
 interface UseTorrentExporterOptions {
@@ -14,19 +14,12 @@ interface UseTorrentExporterOptions {
   incognitoMode: boolean
 }
 
-interface TorrentExportFilters {
-  status: string[]
-  categories: string[]
-  tags: string[]
-  trackers: string[]
-}
-
 interface ExportSelection {
   hashes: string[]
   torrents: Torrent[]
   isAllSelected: boolean
   totalSelected: number
-  filters?: TorrentExportFilters
+  filters?: TorrentFilters
   search?: string
   excludeHashes?: string[]
   sortField?: string
@@ -122,7 +115,7 @@ async function fetchAllMatchingTorrents({
   excludeSet,
 }: {
   instanceId: number
-  filters?: TorrentExportFilters
+  filters?: TorrentFilters
   search?: string
   sortField?: string
   sortOrder?: "asc" | "desc"
