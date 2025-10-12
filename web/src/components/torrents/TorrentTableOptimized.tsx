@@ -191,6 +191,10 @@ function shallowEqualTrackerIcons(
   return true
 }
 
+interface ExternalIPAddressProps {
+  address?: string | undefined
+  label: string
+}
 
 interface TorrentTableOptimizedProps {
   instanceId: number
@@ -1322,8 +1326,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     })
   )
 
-  const renderIPAddress = (address: string | undefined, label: string) => {
-    if (!address) return null;
+  const ExternalIPAddress = ({ address, label }: ExternalIPAddressProps) => {
+    if (!address) return null
 
     return (
       <Tooltip>
@@ -1336,11 +1340,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
           </span>
         </TooltipTrigger>
         <TooltipContent>
-          <p>{label}</p>
+          <p>External {label}</p>
         </TooltipContent>
       </Tooltip>
-    );
-  };
+    )
+  }
 
   return (
     <div className="h-full flex flex-col">
@@ -1711,10 +1715,15 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
           <div className="flex items-center gap-4">
             {/* External IPv4 */}
-            {renderIPAddress(serverState?.last_external_address_v4, "External IPv4")}
+            <ExternalIPAddress
+              label="IPv4"
+              address={serverState?.last_external_address_v4}
+            />
             {/* External IPv6 */}
-            {renderIPAddress(serverState?.last_external_address_v6, "External IPv6")}
-            {/* Speed units toggle */}
+            <ExternalIPAddress
+              label="IPv6"
+              address={serverState?.last_external_address_v6}
+            />
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
