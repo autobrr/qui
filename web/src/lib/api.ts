@@ -229,14 +229,22 @@ class ApiClient {
     })
   }
 
-  async previewRestore(instanceId: number, runId: number, payload: { mode?: RestoreMode } = {}): Promise<RestorePlan> {
+  async previewRestore(
+    instanceId: number,
+    runId: number,
+    payload: { mode?: RestoreMode; excludeHashes?: string[] } = {}
+  ): Promise<RestorePlan> {
     return this.request<RestorePlan>(`/instances/${instanceId}/backups/runs/${runId}/restore/preview`, {
       method: "POST",
       body: JSON.stringify(payload),
     })
   }
 
-  async executeRestore(instanceId: number, runId: number, payload: { mode: RestoreMode; dryRun?: boolean }): Promise<RestoreResult> {
+  async executeRestore(
+    instanceId: number,
+    runId: number,
+    payload: { mode: RestoreMode; dryRun?: boolean; excludeHashes?: string[]; startPaused?: boolean; skipHashCheck?: boolean }
+  ): Promise<RestoreResult> {
     return this.request<RestoreResult>(`/instances/${instanceId}/backups/runs/${runId}/restore`, {
       method: "POST",
       body: JSON.stringify(payload),

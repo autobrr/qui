@@ -113,8 +113,11 @@ type triggerBackupRequest struct {
 }
 
 type restoreRequest struct {
-	Mode   string `json:"mode"`
-	DryRun bool   `json:"dryRun"`
+	Mode          string   `json:"mode"`
+	DryRun        bool     `json:"dryRun"`
+	ExcludeHashes []string `json:"excludeHashes"`
+	StartPaused   *bool    `json:"startPaused"`
+	SkipHashCheck *bool    `json:"skipHashCheck"`
 }
 
 func (h *BackupsHandler) TriggerBackup(w http.ResponseWriter, r *http.Request) {
@@ -465,7 +468,12 @@ func (h *BackupsHandler) PreviewRestore(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	plan, err := h.service.PlanRestoreDiff(r.Context(), runID, mode)
+	var planOpts *backups.RestorePlanOptions
+	if len(req.ExcludeHashes) > 0 {
+		planOpts = &backups.RestorePlanOptions{ExcludeHashes: req.ExcludeHashes}
+	}
+
+	plan, err := h.service.PlanRestoreDiff(r.Context(), runID, mode, planOpts)
 	if err != nil {
 		RespondError(w, http.StatusInternalServerError, "Failed to build restore plan")
 		return
@@ -504,7 +512,21 @@ func (h *BackupsHandler) ExecuteRestore(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	result, err := h.service.ExecuteRestore(r.Context(), runID, mode, backups.RestoreOptions{DryRun: req.DryRun})
+	startPaused := true
+	if req.StartPaused != nil {
+		startPaused = *req.StartPaused
+	}
+	skipHashCheck := false
+	if req.SkipHashCheck != nil {
+		skipHashCheck = *req.SkipHashCheck
+	}
+
+	result, err := h.service.ExecuteRestore(r.Context(), runID, mode, backups.RestoreOptions{
+		DryRun:        req.DryRun,
+		StartPaused:   startPaused,
+		SkipHashCheck: skipHashCheck,
+		ExcludeHashes: req.ExcludeHashes,
+	})
 	if err != nil {
 		RespondError(w, http.StatusInternalServerError, "Failed to execute restore")
 		return

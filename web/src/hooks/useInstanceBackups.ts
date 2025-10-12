@@ -97,16 +97,16 @@ export function useDeleteBackupRun(instanceId: number) {
 }
 
 export function usePreviewRestore(instanceId: number) {
-  return useMutation<RestorePlan, Error, { runId: number; mode: RestoreMode }>({
-    mutationFn: ({ runId, mode }) => api.previewRestore(instanceId, runId, { mode }),
+  return useMutation<RestorePlan, Error, { runId: number; mode: RestoreMode; excludeHashes?: string[] }>({
+    mutationFn: ({ runId, mode, excludeHashes }) => api.previewRestore(instanceId, runId, { mode, excludeHashes }),
   })
 }
 
 export function useExecuteRestore(instanceId: number) {
   const queryClient = useQueryClient()
 
-  return useMutation<RestoreResult, Error, { runId: number; mode: RestoreMode; dryRun: boolean }>({
-    mutationFn: ({ runId, mode, dryRun }) => api.executeRestore(instanceId, runId, { mode, dryRun }),
+  return useMutation<RestoreResult, Error, { runId: number; mode: RestoreMode; dryRun: boolean; excludeHashes?: string[]; startPaused?: boolean; skipHashCheck?: boolean }>({
+    mutationFn: ({ runId, mode, dryRun, excludeHashes, startPaused, skipHashCheck }) => api.executeRestore(instanceId, runId, { mode, dryRun, excludeHashes, startPaused, skipHashCheck }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["instance-backups", instanceId, "runs"] })
     },

@@ -4,7 +4,7 @@
  */
 
 import { Link } from "@tanstack/react-router"
-import { ArrowDownToLine, CircleHelp, Clock, Download, FileText, ListChecks, RefreshCw, Trash, Undo2 } from "lucide-react"
+import { ArrowDownToLine, CircleHelp, CircleX, Clock, Download, FileText, ListChecks, RefreshCw, Trash, Undo2 } from "lucide-react"
 import type { ChangeEvent } from "react"
 import { useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
@@ -105,6 +105,13 @@ type SettingsToggleKey =
 
 type SettingsNumericKey = "keepLast" | "keepHourly" | "keepDaily" | "keepWeekly" | "keepMonthly"
 
+type ExcludedTorrentMeta = {
+  hash: string
+  name?: string | null
+  category?: string | null
+  action: "add" | "update" | "delete"
+}
+
 const runKindLabels: Record<BackupRunKind, string> = {
   manual: "Manual",
   hourly: "Hourly",
@@ -143,10 +150,13 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
   const [restoreTargetRun, setRestoreTargetRun] = useState<BackupRun | null>(null)
   const [restoreMode, setRestoreMode] = useState<RestoreMode>("incremental")
   const [restoreDryRun, setRestoreDryRun] = useState(true)
+  const [restoreStartPaused, setRestoreStartPaused] = useState(true)
+  const [restoreSkipHashCheck, setRestoreSkipHashCheck] = useState(false)
   const [restorePlan, setRestorePlan] = useState<RestorePlan | null>(null)
   const [restorePlanLoading, setRestorePlanLoading] = useState(false)
   const [restorePlanError, setRestorePlanError] = useState<string | null>(null)
   const [restoreResult, setRestoreResult] = useState<RestoreResult | null>(null)
+  const [restoreExcludedHashes, setRestoreExcludedHashes] = useState<string[]>([])
 
   const { data: manifest, isLoading: manifestLoading } = useBackupManifest(instanceId, manifestRunId)
 
@@ -350,12 +360,20 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
     setManifestOpen(true)
   }
 
-  const loadRestorePlan = async (mode: RestoreMode, run: BackupRun) => {
+  const loadRestorePlan = async (
+    mode: RestoreMode,
+    run: BackupRun,
+    excludeHashes: string[] = restoreExcludedHashes,
+    options?: { reset?: boolean }
+  ) => {
     setRestorePlanLoading(true)
     setRestorePlanError(null)
-    setRestorePlan(null)
+    if (options?.reset) {
+      setRestorePlan(null)
+    }
     try {
-      const plan = await previewRestore.mutateAsync({ runId: run.id, mode })
+      const payloadExclude = excludeHashes.length > 0 ? excludeHashes : undefined
+      const plan = await previewRestore.mutateAsync({ runId: run.id, mode, excludeHashes: payloadExclude })
       setRestorePlan(plan)
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to load restore plan"
@@ -369,11 +387,14 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
     setRestoreTargetRun(run)
     setRestoreMode("incremental")
     setRestoreDryRun(true)
+    setRestoreStartPaused(true)
+    setRestoreSkipHashCheck(false)
     setRestoreResult(null)
     setRestorePlan(null)
     setRestorePlanError(null)
+    setRestoreExcludedHashes([])
     setRestoreDialogOpen(true)
-    await loadRestorePlan("incremental", run)
+    await loadRestorePlan("incremental", run, [], { reset: true })
   }
 
   const handleRestoreModeChange = async (value: string) => {
@@ -381,7 +402,46 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
     const nextMode = value as RestoreMode
     setRestoreMode(nextMode)
     setRestoreResult(null)
-    await loadRestorePlan(nextMode, restoreTargetRun)
+    setRestoreExcludedHashes([])
+    await loadRestorePlan(nextMode, restoreTargetRun, [], { reset: true })
+  }
+
+  const handleExcludeTorrent = async (hash: string, meta: ExcludedTorrentMeta) => {
+    if (!restoreTargetRun) return
+    const normalizedHash = hash.trim()
+    if (!normalizedHash) return
+    if (restoreExcludedHashes.includes(normalizedHash)) {
+      return
+    }
+
+    const nextExcludes = [...restoreExcludedHashes, normalizedHash]
+    setRestoreExcludedHashes(nextExcludes)
+
+    const label = meta.name?.trim() ? meta.name : normalizedHash
+    toast.info(`Excluded ${label} from restore`)
+  }
+
+  const handleIncludeTorrent = async (hash: string, meta?: ExcludedTorrentMeta) => {
+    if (!restoreTargetRun) return
+    const normalizedHash = hash.trim()
+    if (!normalizedHash) return
+    if (!restoreExcludedHashes.includes(normalizedHash)) {
+      return
+    }
+
+    const nextExcludes = restoreExcludedHashes.filter(existing => existing !== normalizedHash)
+    setRestoreExcludedHashes(nextExcludes)
+
+    const label = meta?.name?.trim() || normalizedHash
+    toast.success(`Included ${label}`)
+  }
+
+  const handleResetExcluded = async () => {
+    if (!restoreTargetRun || restoreExcludedHashes.length === 0) {
+      return
+    }
+    setRestoreExcludedHashes([])
+    toast.success("Included all torrents")
   }
 
   const handleExecuteRestore = async () => {
@@ -391,6 +451,9 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
         runId: restoreTargetRun.id,
         mode: restoreMode,
         dryRun: restoreDryRun,
+        excludeHashes: restoreExcludedHashes,
+        startPaused: restoreStartPaused,
+        skipHashCheck: restoreSkipHashCheck,
       })
       setRestoreResult(result)
       setRestorePlan(result.plan)
@@ -409,6 +472,9 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
     setRestorePlan(null)
     setRestorePlanError(null)
     setRestoreResult(null)
+    setRestoreExcludedHashes([])
+    setRestoreStartPaused(true)
+    setRestoreSkipHashCheck(false)
     previewRestore.reset()
     executeRestore.reset()
   }
@@ -684,11 +750,39 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
                 <Label htmlFor="restore-dry-run">Dry run</Label>
               </div>
 
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="restore-start-paused"
+                  checked={restoreStartPaused}
+                  onCheckedChange={setRestoreStartPaused}
+                />
+                <Label htmlFor="restore-start-paused">Start paused</Label>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="restore-skip-hash-check"
+                  checked={restoreSkipHashCheck}
+                  onCheckedChange={setRestoreSkipHashCheck}
+                />
+                <Label htmlFor="restore-skip-hash-check">Skip recheck</Label>
+              </div>
+
               <div className="ml-auto flex items-center gap-2">
+                {restoreExcludedHashes.length > 0 ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleResetExcluded}
+                    disabled={restorePlanLoading}
+                  >
+                    <Undo2 className="mr-2 h-4 w-4" /> Re-include all
+                  </Button>
+                ) : null}
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => restoreTargetRun && loadRestorePlan(restoreMode, restoreTargetRun)}
+                  onClick={() => restoreTargetRun && loadRestorePlan(restoreMode, restoreTargetRun, restoreExcludedHashes)}
                   disabled={restorePlanLoading || !restoreTargetRun}
                 >
                   <ListChecks className="mr-2 h-4 w-4" /> Refresh plan
@@ -707,12 +801,29 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
 
 
             <div className="flex-1 overflow-y-auto space-y-6">
-              {restorePlanLoading ? (
+              {!restorePlan && restorePlanLoading ? (
                 <p className="text-sm text-muted-foreground">Loading restore plan...</p>
-              ) : restorePlanError ? (
+              ) : !restorePlan && restorePlanError ? (
                 <p className="text-sm text-destructive">{restorePlanError}</p>
               ) : restorePlan ? (
                 <div className="space-y-6">
+                  {restorePlanError ? (
+                    <p className="text-sm text-destructive">{restorePlanError}</p>
+                  ) : null}
+
+                  {restoreExcludedHashes.length > 0 ? (
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-muted-foreground/40 bg-muted/20 px-3 py-2">
+                      <div className="flex items-center gap-2 text-sm">
+                        <Badge variant="secondary" className="text-[10px] uppercase">excluded</Badge>
+                        <span>{restoreExcludedHashes.length} torrent{restoreExcludedHashes.length === 1 ? "" : "s"} excluded from this restore.</span>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {restorePlanLoading && restorePlan ? (
+                    <p className="text-xs text-muted-foreground">Refreshing plan...</p>
+                  ) : null}
+
                   {restorePlanHasActions ? (
                     <>
                       <section className="space-y-2">
@@ -818,16 +929,58 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
                                     Add ({restorePlan.torrents.add.length})
                                   </p>
                                   <ul className="space-y-1 text-sm">
-                                    {restorePlan.torrents.add.map(item => (
-                                      <li key={`torrent-add-${item.manifest.hash}`} className="flex flex-wrap items-center gap-2">
-                                        <Badge variant="outline" className="text-[10px] uppercase">add</Badge>
-                                        <span className="font-medium">{item.manifest.name || item.manifest.hash}</span>
-                                        <code className="text-xs text-muted-foreground">{item.manifest.hash}</code>
-                                        {item.manifest.category ? (
-                                          <span className="text-xs text-muted-foreground">• {item.manifest.category}</span>
-                                        ) : null}
-                                      </li>
-                                    ))}
+                                    {restorePlan.torrents.add.map(item => {
+                                      const hash = item.manifest.hash
+                                      const isExcluded = restoreExcludedHashes.includes(hash)
+                                      return (
+                                        <li
+                                          key={`torrent-add-${hash}`}
+                                          className={`flex flex-wrap items-center gap-2 rounded-md px-2 py-1 ${isExcluded ? "bg-muted/40 text-muted-foreground" : ""}`}
+                                        >
+                                          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                                            <Badge variant="outline" className="text-[10px] uppercase">add</Badge>
+                                            <span className="font-medium truncate">
+                                              {item.manifest.name || hash}
+                                            </span>
+                                            <code className="text-xs text-muted-foreground">{hash}</code>
+                                            {item.manifest.category ? (
+                                              <span className="text-xs text-muted-foreground">• {item.manifest.category}</span>
+                                            ) : null}
+                                            {isExcluded ? (
+                                              <Badge variant="secondary" className="text-[10px] uppercase">excluded</Badge>
+                                            ) : null}
+                                          </div>
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => (isExcluded? handleIncludeTorrent(hash, {
+                                              hash,
+                                              name: item.manifest.name,
+                                              category: item.manifest.category ?? null,
+                                              action: "add",
+                                            }): handleExcludeTorrent(hash, {
+                                              hash,
+                                              name: item.manifest.name,
+                                              category: item.manifest.category ?? null,
+                                              action: "add",
+                                            })
+                                            )}
+                                            disabled={restorePlanLoading}
+                                            aria-label={`${isExcluded ? "Include" : "Exclude"} ${item.manifest.name || hash} from restore`}
+                                          >
+                                            {isExcluded ? (
+                                              <>
+                                                <Undo2 className="mr-1 h-3 w-3" /> Include
+                                              </>
+                                            ) : (
+                                              <>
+                                                <CircleX className="mr-1 h-3 w-3" /> Exclude
+                                              </>
+                                            )}
+                                          </Button>
+                                        </li>
+                                      )
+                                    })}
                                   </ul>
                                 </div>
                               ) : null}
@@ -837,38 +990,79 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
                                     Update ({restorePlan.torrents.update.length})
                                   </p>
                                   <div className="space-y-3">
-                                    {restorePlan.torrents.update.map(update => (
-                                      <div key={`torrent-update-${update.hash}`} className="rounded-md border p-3 space-y-2">
-                                        <div className="flex flex-wrap items-center justify-between gap-2">
-                                          <div className="flex flex-col">
-                                            <span className="text-sm font-medium">{update.desired.name || update.current.name || update.hash}</span>
-                                            <span className="text-xs text-muted-foreground">
-                                              Current category: {update.current.category || "—"}
-                                            </span>
-                                          </div>
-                                          <code className="text-xs text-muted-foreground">{update.hash}</code>
-                                        </div>
-                                        <div className="space-y-1">
-                                          {update.changes.map(change => (
-                                            <div key={`${update.hash}-${change.field}`} className="flex flex-wrap items-center gap-2 text-sm">
-                                              <Badge
-                                                variant={change.supported ? "secondary" : "outline"}
-                                                className="text-[10px] uppercase"
-                                              >
-                                                {change.supported ? "auto" : "manual"}
-                                              </Badge>
-                                              <span className="font-medium capitalize">{humanizeChangeField(change.field)}</span>
+                                    {restorePlan.torrents.update.map(update => {
+                                      const isExcluded = restoreExcludedHashes.includes(update.hash)
+                                      return (
+                                        <div
+                                          key={`torrent-update-${update.hash}`}
+                                          className={`rounded-md border p-3 space-y-2 ${isExcluded ? "border-dashed bg-muted/40" : ""}`}
+                                        >
+                                          <div className="flex flex-wrap items-center justify-between gap-2">
+                                            <div className="flex flex-col">
+                                              <div className="flex items-center gap-2">
+                                                <span className="text-sm font-medium">{update.desired.name || update.current.name || update.hash}</span>
+                                                {isExcluded ? (
+                                                  <Badge variant="secondary" className="text-[10px] uppercase">excluded</Badge>
+                                                ) : null}
+                                              </div>
                                               <span className="text-xs text-muted-foreground">
-                                                {formatChangeValue(change.current)} → {formatChangeValue(change.desired)}
+                                                Current category: {update.current.category || "—"}
                                               </span>
-                                              {change.message ? (
-                                                <span className="text-xs text-muted-foreground">{change.message}</span>
-                                              ) : null}
                                             </div>
-                                          ))}
+                                            <div className="flex items-center gap-2">
+                                              <code className="text-xs text-muted-foreground">{update.hash}</code>
+                                              <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => (isExcluded? handleIncludeTorrent(update.hash, {
+                                                  hash: update.hash,
+                                                  name: update.desired.name || update.current.name || update.hash,
+                                                  category: update.desired.category ?? update.current.category ?? null,
+                                                  action: "update",
+                                                }): handleExcludeTorrent(update.hash, {
+                                                  hash: update.hash,
+                                                  name: update.desired.name || update.current.name || update.hash,
+                                                  category: update.desired.category ?? update.current.category ?? null,
+                                                  action: "update",
+                                                })
+                                                )}
+                                                disabled={restorePlanLoading}
+                                                aria-label={`${isExcluded ? "Include" : "Exclude"} ${update.desired.name || update.current.name || update.hash} from restore`}
+                                              >
+                                                {isExcluded ? (
+                                                  <>
+                                                    <Undo2 className="mr-1 h-3 w-3" /> Include
+                                                  </>
+                                                ) : (
+                                                  <>
+                                                    <CircleX className="mr-1 h-3 w-3" /> Exclude
+                                                  </>
+                                                )}
+                                              </Button>
+                                            </div>
+                                          </div>
+                                          <div className="space-y-1">
+                                            {update.changes.map(change => (
+                                              <div key={`${update.hash}-${change.field}`} className="flex flex-wrap items-center gap-2 text-sm">
+                                                <Badge
+                                                  variant={change.supported ? "secondary" : "outline"}
+                                                  className="text-[10px] uppercase"
+                                                >
+                                                  {change.supported ? "auto" : "manual"}
+                                                </Badge>
+                                                <span className="font-medium capitalize">{humanizeChangeField(change.field)}</span>
+                                                <span className="text-xs text-muted-foreground">
+                                                  {formatChangeValue(change.current)} → {formatChangeValue(change.desired)}
+                                                </span>
+                                                {change.message ? (
+                                                  <span className="text-xs text-muted-foreground">{change.message}</span>
+                                                ) : null}
+                                              </div>
+                                            ))}
+                                          </div>
                                         </div>
-                                      </div>
-                                    ))}
+                                      )
+                                    })}
                                   </div>
                                 </div>
                               ) : null}
@@ -877,12 +1071,40 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
                                   <p className="text-xs font-medium text-muted-foreground mb-1">
                                     Delete ({restorePlan.torrents.delete.length})
                                   </p>
-                                  <ul className="flex flex-wrap gap-2 text-sm">
-                                    {restorePlan.torrents.delete.map(hash => (
-                                      <li key={`torrent-delete-${hash}`}>
-                                        <Badge variant="destructive">{hash}</Badge>
-                                      </li>
-                                    ))}
+                                  <ul className="space-y-1 text-sm">
+                                    {restorePlan.torrents.delete.map(hash => {
+                                      const isExcluded = restoreExcludedHashes.includes(hash)
+                                      return (
+                                        <li
+                                          key={`torrent-delete-${hash}`}
+                                          className={`flex flex-wrap items-center gap-2 rounded-md px-2 py-1 ${isExcluded ? "bg-muted/40 text-muted-foreground" : ""}`}
+                                        >
+                                          <Badge variant="destructive" className="text-[10px] uppercase">delete</Badge>
+                                          <code className="text-xs text-muted-foreground">{hash}</code>
+                                          {isExcluded ? (
+                                            <Badge variant="secondary" className="text-[10px] uppercase">excluded</Badge>
+                                          ) : null}
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => (isExcluded? handleIncludeTorrent(hash, { hash, action: "delete" }): handleExcludeTorrent(hash, { hash, action: "delete" })
+                                            )}
+                                            disabled={restorePlanLoading}
+                                            aria-label={`${isExcluded ? "Include" : "Exclude"} ${hash} from restore`}
+                                          >
+                                            {isExcluded ? (
+                                              <>
+                                                <Undo2 className="mr-1 h-3 w-3" /> Include
+                                              </>
+                                            ) : (
+                                              <>
+                                                <CircleX className="mr-1 h-3 w-3" /> Exclude
+                                              </>
+                                            )}
+                                          </Button>
+                                        </li>
+                                      )
+                                    })}
                                   </ul>
                                 </div>
                               ) : null}

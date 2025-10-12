@@ -13,7 +13,10 @@ import (
 
 // RestoreOptions control restore execution behaviour.
 type RestoreOptions struct {
-	DryRun bool `json:"dryRun"`
+	DryRun        bool
+	StartPaused   bool
+	SkipHashCheck bool
+	ExcludeHashes []string
 }
 
 // RestoreError captures an operation failure during restore execution.
@@ -63,13 +66,18 @@ type RestoreResult struct {
 }
 
 // PreviewRestore returns the diff plan without executing any mutations.
-func (s *Service) PreviewRestore(ctx context.Context, runID int64, mode RestoreMode) (*RestorePlan, error) {
-	return s.PlanRestoreDiff(ctx, runID, mode)
+func (s *Service) PreviewRestore(ctx context.Context, runID int64, mode RestoreMode, opts *RestorePlanOptions) (*RestorePlan, error) {
+	return s.PlanRestoreDiff(ctx, runID, mode, opts)
 }
 
 // ExecuteRestore executes the restore plan for the given run and mode.
 func (s *Service) ExecuteRestore(ctx context.Context, runID int64, mode RestoreMode, opts RestoreOptions) (*RestoreResult, error) {
-	plan, err := s.PlanRestoreDiff(ctx, runID, mode)
+	var planOpts *RestorePlanOptions
+	if len(opts.ExcludeHashes) > 0 {
+		planOpts = &RestorePlanOptions{ExcludeHashes: opts.ExcludeHashes}
+	}
+
+	plan, err := s.PlanRestoreDiff(ctx, runID, mode, planOpts)
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +111,9 @@ func (s *Service) ExecuteRestore(ctx context.Context, runID int64, mode RestoreM
 		return result, err
 	}
 
-	warnings, err := s.applyTorrentPlan(ctx, plan, &result.Applied, &result.Errors)
+	excludeSet := buildHashSet(opts.ExcludeHashes)
+
+	warnings, err := s.applyTorrentPlan(ctx, plan, &result.Applied, &result.Errors, excludeSet, opts)
 	if len(warnings) > 0 {
 		result.Warnings = append(result.Warnings, warnings...)
 	}
@@ -223,13 +233,17 @@ func (s *Service) applyTagPlan(ctx context.Context, plan *RestorePlan, applied *
 	return nil
 }
 
-func (s *Service) applyTorrentPlan(ctx context.Context, plan *RestorePlan, applied *RestoreApplied, errs *[]RestoreError) ([]string, error) {
+func (s *Service) applyTorrentPlan(ctx context.Context, plan *RestorePlan, applied *RestoreApplied, errs *[]RestoreError, exclude map[string]struct{}, opts RestoreOptions) ([]string, error) {
 	instanceID := plan.InstanceID
 	var warnings []string
 
 	for _, spec := range plan.Torrents.Add {
 		if err := ctx.Err(); err != nil {
 			return warnings, err
+		}
+
+		if shouldSkipTorrent(spec.Manifest.Hash, exclude) {
+			continue
 		}
 
 		blobPath := strings.TrimSpace(spec.Manifest.TorrentBlob)
@@ -247,7 +261,15 @@ func (s *Service) applyTorrentPlan(ctx context.Context, plan *RestorePlan, appli
 			continue
 		}
 
-		options := map[string]string{"paused": "true"}
+		options := map[string]string{}
+		if opts.StartPaused {
+			options["paused"] = "true"
+		} else {
+			options["paused"] = "false"
+		}
+		if opts.SkipHashCheck {
+			options["skip_checking"] = "true"
+		}
 		if spec.Manifest.Category != nil {
 			category := strings.TrimSpace(*spec.Manifest.Category)
 			if category != "" {
@@ -284,6 +306,10 @@ func (s *Service) applyTorrentPlan(ctx context.Context, plan *RestorePlan, appli
 	for _, update := range plan.Torrents.Update {
 		if err := ctx.Err(); err != nil {
 			return warnings, err
+		}
+
+		if shouldSkipTorrent(update.Hash, exclude) {
+			continue
 		}
 
 		supportedApplied := false
@@ -330,9 +356,21 @@ func (s *Service) applyTorrentPlan(ctx context.Context, plan *RestorePlan, appli
 		return warnings, err
 	}
 
-	if err := s.syncManager.BulkAction(ctx, instanceID, plan.Torrents.Delete, "delete"); err != nil {
-		log.Warn().Err(err).Int("instanceID", instanceID).Strs("hashes", plan.Torrents.Delete).Msg("Restore: bulk torrent delete failed, retry individually")
-		for _, hash := range plan.Torrents.Delete {
+	deleteTargets := make([]string, 0, len(plan.Torrents.Delete))
+	for _, hash := range plan.Torrents.Delete {
+		if shouldSkipTorrent(hash, exclude) {
+			continue
+		}
+		deleteTargets = append(deleteTargets, hash)
+	}
+
+	if len(deleteTargets) == 0 {
+		return warnings, nil
+	}
+
+	if err := s.syncManager.BulkAction(ctx, instanceID, deleteTargets, "delete"); err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).Strs("hashes", deleteTargets).Msg("Restore: bulk torrent delete failed, retry individually")
+		for _, hash := range deleteTargets {
 			if err := ctx.Err(); err != nil {
 				return warnings, err
 			}
@@ -343,10 +381,37 @@ func (s *Service) applyTorrentPlan(ctx context.Context, plan *RestorePlan, appli
 			applied.Torrents.Deleted = append(applied.Torrents.Deleted, hash)
 		}
 	} else {
-		applied.Torrents.Deleted = append(applied.Torrents.Deleted, plan.Torrents.Delete...)
+		applied.Torrents.Deleted = append(applied.Torrents.Deleted, deleteTargets...)
 	}
 
 	return warnings, nil
+}
+
+func buildHashSet(items []string) map[string]struct{} {
+	if len(items) == 0 {
+		return nil
+	}
+	set := make(map[string]struct{}, len(items))
+	for _, hash := range items {
+		normalized := strings.TrimSpace(strings.ToLower(hash))
+		if normalized == "" {
+			continue
+		}
+		set[normalized] = struct{}{}
+	}
+	if len(set) == 0 {
+		return nil
+	}
+	return set
+}
+
+func shouldSkipTorrent(hash string, exclude map[string]struct{}) bool {
+	if len(exclude) == 0 {
+		return false
+	}
+	normalized := strings.TrimSpace(strings.ToLower(hash))
+	_, skip := exclude[normalized]
+	return skip
 }
 
 func (s *Service) loadTorrentBlobData(blobPath string) ([]byte, error) {

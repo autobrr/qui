@@ -97,6 +97,11 @@ type RestorePlan struct {
 	Torrents   TorrentPlan  `json:"torrents"`
 }
 
+// RestorePlanOptions controls post-processing applied to a generated plan.
+type RestorePlanOptions struct {
+	ExcludeHashes []string
+}
+
 // SnapshotTorrent provides convenient access to torrent metadata captured in the snapshot.
 type SnapshotTorrent struct {
 	Hash        string   `json:"hash"`
@@ -146,7 +151,7 @@ type LiveState struct {
 }
 
 // PlanRestoreDiff loads snapshot and live state, returning the diff plan for the requested mode.
-func (s *Service) PlanRestoreDiff(ctx context.Context, runID int64, mode RestoreMode) (*RestorePlan, error) {
+func (s *Service) PlanRestoreDiff(ctx context.Context, runID int64, mode RestoreMode, opts *RestorePlanOptions) (*RestorePlan, error) {
 	if s == nil {
 		return nil, errors.New("nil backup service")
 	}
@@ -174,6 +179,8 @@ func (s *Service) PlanRestoreDiff(ctx context.Context, runID int64, mode Restore
 		return nil, err
 	}
 
+	applyRestorePlanOptions(plan, opts)
+
 	return plan, nil
 }
 
@@ -196,6 +203,79 @@ func isValidRestoreMode(mode RestoreMode) bool {
 	default:
 		return false
 	}
+}
+
+func applyRestorePlanOptions(plan *RestorePlan, opts *RestorePlanOptions) {
+	if plan == nil || opts == nil {
+		return
+	}
+
+	if len(opts.ExcludeHashes) == 0 {
+		return
+	}
+
+	exclude := make(map[string]struct{}, len(opts.ExcludeHashes))
+	for _, hash := range opts.ExcludeHashes {
+		normalized := strings.TrimSpace(strings.ToLower(hash))
+		if normalized == "" {
+			continue
+		}
+		exclude[normalized] = struct{}{}
+	}
+
+	if len(exclude) == 0 {
+		return
+	}
+
+	filterTorrentSpecs := func(items []TorrentSpec) []TorrentSpec {
+		if len(items) == 0 {
+			return items
+		}
+		filtered := items[:0]
+		for _, item := range items {
+			hash := strings.TrimSpace(strings.ToLower(item.Manifest.Hash))
+			if _, skip := exclude[hash]; skip {
+				continue
+			}
+			filtered = append(filtered, item)
+		}
+		return filtered
+	}
+
+	filterTorrentUpdates := func(items []TorrentUpdate) []TorrentUpdate {
+		if len(items) == 0 {
+			return items
+		}
+		filtered := items[:0]
+		for _, item := range items {
+			hash := strings.TrimSpace(strings.ToLower(item.Hash))
+			if _, skip := exclude[hash]; skip {
+				continue
+			}
+			filtered = append(filtered, item)
+		}
+		return filtered
+	}
+
+	filterHashes := func(items []string) []string {
+		if len(items) == 0 {
+			return items
+		}
+		filtered := items[:0]
+		for _, hash := range items {
+			normalized := strings.TrimSpace(strings.ToLower(hash))
+			if _, skip := exclude[normalized]; skip {
+				continue
+			}
+			filtered = append(filtered, hash)
+		}
+		return filtered
+	}
+
+	plan.Torrents.Add = filterTorrentSpecs(plan.Torrents.Add)
+	plan.Torrents.Update = filterTorrentUpdates(plan.Torrents.Update)
+	plan.Torrents.Delete = filterHashes(plan.Torrents.Delete)
+
 }
 
 // buildRestorePlan compares snapshot and live state to determine the actions needed to reach parity.

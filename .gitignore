@@ -65,3 +65,4 @@ components.json
 tracker-icons/*
 .device-id-*
 backups/*
+.gocache/*

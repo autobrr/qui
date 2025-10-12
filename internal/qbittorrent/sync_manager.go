@@ -143,6 +143,19 @@ func (sm *SyncManager) getClientAndSyncManager(ctx context.Context, instanceID i
 func (sm *SyncManager) validateTorrentsExist(client *Client, hashes []string, operation string) error {
 	existingTorrents := client.getTorrentsByHashes(hashes)
 	if len(existingTorrents) == 0 {
+		// Force a fresh sync (needed by backup restore flows) to pick up torrents that were just added and are not yet cached.
+		if client != nil && client.syncManager != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			if err := client.syncManager.Sync(ctx); err != nil {
+				log.Debug().Err(err).Msg("validateTorrentsExist: forced sync failed")
+			} else {
+				existingTorrents = client.getTorrentsByHashes(hashes)
+				if len(existingTorrents) > 0 {
+					return nil
+				}
+			}
+		}
 		return fmt.Errorf("no valid torrents found to %s", operation)
 	}
 	return nil
