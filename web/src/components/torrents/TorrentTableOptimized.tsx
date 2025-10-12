@@ -1322,6 +1322,26 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     })
   )
 
+  const renderIPAddress = (address: string | undefined, label: string) => {
+    if (!address) return null;
+
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            className="font-mono text-xs text-muted-foreground"
+            {...(incognitoMode && { style: { filter: "blur(8px)" } })}
+          >
+            {address}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>{label}</p>
+        </TooltipContent>
+      </Tooltip>
+    );
+  };
+
   return (
     <div className="h-full flex flex-col">
       {/* Search and Actions */}
@@ -1691,21 +1711,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
           <div className="flex items-center gap-4">
             {/* External IPv4 */}
-            {serverState?.last_external_address_v4 && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span
-                    className="font-mono text-xs text-muted-foreground"
-                    {...(incognitoMode && { style: { filter: "blur(8px)" } })}
-                  >
-                    {serverState.last_external_address_v4}
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>External IPv4</p>
-                </TooltipContent>
-              </Tooltip>
-            )}
+            {renderIPAddress(serverState?.last_external_address_v4, "External IPv4")}
+            {/* External IPv6 */}
+            {renderIPAddress(serverState?.last_external_address_v6, "External IPv6")}
             {/* Speed units toggle */}
             <Tooltip>
               <TooltipTrigger asChild>
