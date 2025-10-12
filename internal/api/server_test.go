@@ -16,6 +16,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/autobrr/qui/internal/auth"
+	"github.com/autobrr/qui/internal/backups"
 	"github.com/autobrr/qui/internal/config"
 	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
@@ -32,7 +33,15 @@ type routeKey struct {
 }
 
 var undocumentedRoutes = map[routeKey]struct{}{
-	{Method: http.MethodGet, Path: "/api/auth/validate"}: {},
+	{Method: http.MethodGet, Path: "/api/auth/validate"}:                                                            {},
+	{Method: http.MethodPost, Path: "/api/instances/{instanceId}/backups/run"}:                                      {},
+	{Method: http.MethodGet, Path: "/api/instances/{instanceId}/backups/runs"}:                                      {},
+	{Method: http.MethodDelete, Path: "/api/instances/{instanceId}/backups/runs/{runId}"}:                           {},
+	{Method: http.MethodGet, Path: "/api/instances/{instanceId}/backups/runs/{runId}/download"}:                     {},
+	{Method: http.MethodGet, Path: "/api/instances/{instanceId}/backups/runs/{runId}/items/{torrentHash}/download"}: {},
+	{Method: http.MethodGet, Path: "/api/instances/{instanceId}/backups/runs/{runId}/manifest"}:                     {},
+	{Method: http.MethodGet, Path: "/api/instances/{instanceId}/backups/settings"}:                                  {},
+	{Method: http.MethodPut, Path: "/api/instances/{instanceId}/backups/settings"}:                                  {},
 }
 
 func TestAllEndpointsDocumented(t *testing.T) {
@@ -81,6 +90,7 @@ func newTestDependencies(t *testing.T) *Dependencies {
 		WebHandler:         &web.Handler{},
 		LicenseService:     &license.Service{},
 		TrackerIconService: trackerIconService,
+		BackupService:      &backups.Service{},
 	}
 }
 
@@ -173,6 +183,7 @@ func normalizeRoutePath(path string) (string, bool) {
 	}
 
 	path = strings.ReplaceAll(path, "{instanceID}", "{instanceId}")
+	path = strings.ReplaceAll(path, "{runID}", "{runId}")
 	path = strings.ReplaceAll(path, "{licenseKey}", "{licenseKey}")
 
 	return path, true
