@@ -83,6 +83,14 @@ type SyncManager struct {
 	exprCache  *ttlcache.Cache[string, *vm.Program]
 }
 
+// ResumeWhenCompleteOptions configure resume monitoring behavior.
+type ResumeWhenCompleteOptions struct {
+	// CheckInterval controls how frequently torrent progress is polled (default 5s).
+	CheckInterval time.Duration
+	// Timeout controls how long to wait before giving up (default 10m).
+	Timeout time.Duration
+}
+
 // OptimisticTorrentUpdate represents a temporary optimistic update to a torrent
 type OptimisticTorrentUpdate struct {
 	State         qbt.TorrentState `json:"state"`
@@ -1291,6 +1299,110 @@ func (sm *SyncManager) syncAfterModification(instanceID int, client *Client, ope
 			time.Sleep(10 * time.Millisecond)
 			if err := syncManager.Sync(ctx); err != nil {
 				log.Warn().Err(err).Int("instanceID", instanceID).Str("operation", operation).Msg("Failed to sync after modification")
+			}
+		}
+	}()
+}
+
+// ResumeWhenComplete monitors the provided hashes and resumes torrents once data is 100% complete.
+func (sm *SyncManager) ResumeWhenComplete(instanceID int, hashes []string, opts ResumeWhenCompleteOptions) {
+	if sm == nil || len(hashes) == 0 {
+		return
+	}
+
+	interval := opts.CheckInterval
+	if interval <= 0 {
+		interval = 5 * time.Second
+	}
+	timeout := opts.Timeout
+	if timeout <= 0 {
+		timeout = 10 * time.Minute
+	}
+
+	pending := make(map[string]string, len(hashes))
+	for _, hash := range hashes {
+		canonicalHash := strings.TrimSpace(hash)
+		normalizedHash := strings.ToLower(canonicalHash)
+		if normalizedHash == "" {
+			continue
+		}
+		if _, exists := pending[normalizedHash]; exists {
+			continue
+		}
+		pending[normalizedHash] = canonicalHash
+	}
+
+	if len(pending) == 0 {
+		return
+	}
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+
+		client, syncMgr, err := sm.getClientAndSyncManager(ctx, instanceID)
+		if err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("ResumeWhenComplete: failed to acquire client")
+			return
+		}
+
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		for len(pending) > 0 {
+			select {
+			case <-ctx.Done():
+				log.Debug().Int("instanceID", instanceID).Msg("ResumeWhenComplete: timeout reached")
+				return
+			case <-ticker.C:
+			}
+
+			if err := syncMgr.Sync(ctx); err != nil {
+				log.Debug().Err(err).Int("instanceID", instanceID).Msg("ResumeWhenComplete: sync failed")
+				continue
+			}
+
+			requested := make([]string, 0, len(pending))
+			for _, canonicalHash := range pending {
+				requested = append(requested, canonicalHash)
+			}
+
+			torrents := client.getTorrentsByHashes(requested)
+			if len(torrents) == 0 {
+				continue
+			}
+
+			var resumeList []string
+			for _, torrent := range torrents {
+				normalizedHash := strings.ToLower(strings.TrimSpace(torrent.Hash))
+				if _, watching := pending[normalizedHash]; !watching {
+					continue
+				}
+
+				switch torrent.State {
+				case qbt.TorrentStateCheckingDl, qbt.TorrentStateCheckingUp, qbt.TorrentStateCheckingResumeData, qbt.TorrentStateAllocating, qbt.TorrentStateMoving:
+					continue
+				}
+
+				if torrent.AmountLeft == 0 {
+					resumeList = append(resumeList, torrent.Hash)
+				}
+			}
+
+			if len(resumeList) == 0 {
+				continue
+			}
+
+			if err := client.ResumeCtx(ctx, resumeList); err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Strs("hashes", resumeList).Msg("ResumeWhenComplete: resume failed")
+				continue
+			}
+
+			sm.applyOptimisticCacheUpdate(instanceID, resumeList, "resume", nil)
+			sm.syncAfterModification(instanceID, client, "resume_when_complete")
+
+			for _, hash := range resumeList {
+				delete(pending, strings.ToLower(strings.TrimSpace(hash)))
 			}
 		}
 	}()

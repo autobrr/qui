@@ -9,14 +9,17 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog/log"
+
+	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
 // RestoreOptions control restore execution behaviour.
 type RestoreOptions struct {
-	DryRun        bool
-	StartPaused   bool
-	SkipHashCheck bool
-	ExcludeHashes []string
+	DryRun             bool
+	StartPaused        bool
+	SkipHashCheck      bool
+	AutoResumeVerified bool
+	ExcludeHashes      []string
 }
 
 // RestoreError captures an operation failure during restore execution.
@@ -236,6 +239,7 @@ func (s *Service) applyTagPlan(ctx context.Context, plan *RestorePlan, applied *
 func (s *Service) applyTorrentPlan(ctx context.Context, plan *RestorePlan, applied *RestoreApplied, errs *[]RestoreError, exclude map[string]struct{}, opts RestoreOptions) ([]string, error) {
 	instanceID := plan.InstanceID
 	var warnings []string
+	var pendingResume []string
 
 	for _, spec := range plan.Torrents.Add {
 		if err := ctx.Err(); err != nil {
@@ -262,11 +266,14 @@ func (s *Service) applyTorrentPlan(ctx context.Context, plan *RestorePlan, appli
 		}
 
 		options := map[string]string{}
-		if opts.StartPaused {
-			options["paused"] = "true"
-		} else {
-			options["paused"] = "false"
+		paused := "false"
+		stopped := "false"
+		if opts.StartPaused || opts.SkipHashCheck {
+			paused = "true"
+			stopped = "true"
 		}
+		options["paused"] = paused
+		options["stopped"] = stopped
 		if opts.SkipHashCheck {
 			options["skip_checking"] = "true"
 		}
@@ -301,6 +308,10 @@ func (s *Service) applyTorrentPlan(ctx context.Context, plan *RestorePlan, appli
 		}
 
 		applied.Torrents.Added = append(applied.Torrents.Added, spec.Manifest.Hash)
+
+		if opts.SkipHashCheck && opts.AutoResumeVerified {
+			pendingResume = append(pendingResume, spec.Manifest.Hash)
+		}
 	}
 
 	for _, update := range plan.Torrents.Update {
@@ -362,6 +373,10 @@ func (s *Service) applyTorrentPlan(ctx context.Context, plan *RestorePlan, appli
 			continue
 		}
 		deleteTargets = append(deleteTargets, hash)
+	}
+
+	if len(pendingResume) > 0 && s.syncManager != nil {
+		s.syncManager.ResumeWhenComplete(instanceID, pendingResume, qbittorrent.ResumeWhenCompleteOptions{})
 	}
 
 	if len(deleteTargets) == 0 {
@@ -466,7 +481,7 @@ func appendRestoreError(errs *[]RestoreError, operation, target string, err erro
 	})
 }
 
-func asString(value interface{}) string {
+func asString(value any) string {
 	if value == nil {
 		return ""
 	}
@@ -483,7 +498,7 @@ func asString(value interface{}) string {
 	}
 }
 
-func asStringSlice(value interface{}) []string {
+func asStringSlice(value any) []string {
 	if value == nil {
 		return nil
 	}

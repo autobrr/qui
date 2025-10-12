@@ -152,6 +152,7 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
   const [restoreDryRun, setRestoreDryRun] = useState(true)
   const [restoreStartPaused, setRestoreStartPaused] = useState(true)
   const [restoreSkipHashCheck, setRestoreSkipHashCheck] = useState(false)
+  const [restoreAutoResume, setRestoreAutoResume] = useState(true)
   const [restorePlan, setRestorePlan] = useState<RestorePlan | null>(null)
   const [restorePlanLoading, setRestorePlanLoading] = useState(false)
   const [restorePlanError, setRestorePlanError] = useState<string | null>(null)
@@ -389,6 +390,7 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
     setRestoreDryRun(true)
     setRestoreStartPaused(true)
     setRestoreSkipHashCheck(false)
+    setRestoreAutoResume(true)
     setRestoreResult(null)
     setRestorePlan(null)
     setRestorePlanError(null)
@@ -454,6 +456,7 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
         excludeHashes: restoreExcludedHashes,
         startPaused: restoreStartPaused,
         skipHashCheck: restoreSkipHashCheck,
+        autoResumeVerified: restoreSkipHashCheck ? restoreAutoResume : false,
       })
       setRestoreResult(result)
       setRestorePlan(result.plan)
@@ -475,6 +478,7 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
     setRestoreExcludedHashes([])
     setRestoreStartPaused(true)
     setRestoreSkipHashCheck(false)
+    setRestoreAutoResume(true)
     previewRestore.reset()
     executeRestore.reset()
   }
@@ -766,6 +770,48 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
                   onCheckedChange={setRestoreSkipHashCheck}
                 />
                 <Label htmlFor="restore-skip-hash-check">Skip recheck</Label>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="restore-auto-resume"
+                  checked={restoreAutoResume}
+                  onCheckedChange={setRestoreAutoResume}
+                  disabled={!restoreSkipHashCheck}
+                />
+                <div className="flex items-center gap-1 text-sm">
+                  <Label
+                    htmlFor="restore-auto-resume"
+                    className={!restoreSkipHashCheck ? "text-muted-foreground" : undefined}
+                  >
+                    Auto resume when verified
+                  </Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span
+                        className="inline-flex h-5 w-5 cursor-help items-center justify-center rounded-full text-muted-foreground hover:text-foreground"
+                      >
+                        <CircleHelp className="h-3.5 w-3.5" />
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs text-xs">
+                      <p>
+                        When enabled, torrents resume automatically once qBittorrent reports the restored data as
+                        fully checked.
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+              </div>
+
+              <div className="basis-full text-xs text-muted-foreground">
+                {restoreSkipHashCheck && restoreAutoResume ? (
+                  <span>Torrents will resume automatically once qBittorrent reports the restored data as fully checked.</span>
+                ) : restoreSkipHashCheck ? (
+                  <span>Auto resume is off. Torrents stay paused until you start them manually.</span>
+                ) : (
+                  <span>Enable skip recheck to allow automatic resume after verification.</span>
+                )}
               </div>
 
               <div className="ml-auto flex items-center gap-2">

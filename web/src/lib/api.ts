@@ -243,7 +243,14 @@ class ApiClient {
   async executeRestore(
     instanceId: number,
     runId: number,
-    payload: { mode: RestoreMode; dryRun?: boolean; excludeHashes?: string[]; startPaused?: boolean; skipHashCheck?: boolean }
+    payload: {
+      mode: RestoreMode
+      dryRun?: boolean
+      excludeHashes?: string[]
+      startPaused?: boolean
+      skipHashCheck?: boolean
+      autoResumeVerified?: boolean
+    }
   ): Promise<RestoreResult> {
     return this.request<RestoreResult>(`/instances/${instanceId}/backups/runs/${runId}/restore`, {
       method: "POST",

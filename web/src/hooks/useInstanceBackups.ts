@@ -105,8 +105,9 @@ export function usePreviewRestore(instanceId: number) {
 export function useExecuteRestore(instanceId: number) {
   const queryClient = useQueryClient()
 
-  return useMutation<RestoreResult, Error, { runId: number; mode: RestoreMode; dryRun: boolean; excludeHashes?: string[]; startPaused?: boolean; skipHashCheck?: boolean }>({
-    mutationFn: ({ runId, mode, dryRun, excludeHashes, startPaused, skipHashCheck }) => api.executeRestore(instanceId, runId, { mode, dryRun, excludeHashes, startPaused, skipHashCheck }),
+  return useMutation<RestoreResult, Error, { runId: number; mode: RestoreMode; dryRun: boolean; excludeHashes?: string[]; startPaused?: boolean; skipHashCheck?: boolean; autoResumeVerified?: boolean }>({
+    mutationFn: ({ runId, mode, dryRun, excludeHashes, startPaused, skipHashCheck, autoResumeVerified }) =>
+      api.executeRestore(instanceId, runId, { mode, dryRun, excludeHashes, startPaused, skipHashCheck, autoResumeVerified }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["instance-backups", instanceId, "runs"] })
     },

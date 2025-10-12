@@ -113,11 +113,12 @@ type triggerBackupRequest struct {
 }
 
 type restoreRequest struct {
-	Mode          string   `json:"mode"`
-	DryRun        bool     `json:"dryRun"`
-	ExcludeHashes []string `json:"excludeHashes"`
-	StartPaused   *bool    `json:"startPaused"`
-	SkipHashCheck *bool    `json:"skipHashCheck"`
+	Mode               string   `json:"mode"`
+	DryRun             bool     `json:"dryRun"`
+	ExcludeHashes      []string `json:"excludeHashes"`
+	StartPaused        *bool    `json:"startPaused"`
+	SkipHashCheck      *bool    `json:"skipHashCheck"`
+	AutoResumeVerified *bool    `json:"autoResumeVerified"`
 }
 
 func (h *BackupsHandler) TriggerBackup(w http.ResponseWriter, r *http.Request) {
@@ -521,11 +522,17 @@ func (h *BackupsHandler) ExecuteRestore(w http.ResponseWriter, r *http.Request) 
 		skipHashCheck = *req.SkipHashCheck
 	}
 
+	autoResume := true
+	if req.AutoResumeVerified != nil {
+		autoResume = *req.AutoResumeVerified
+	}
+
 	result, err := h.service.ExecuteRestore(r.Context(), runID, mode, backups.RestoreOptions{
-		DryRun:        req.DryRun,
-		StartPaused:   startPaused,
-		SkipHashCheck: skipHashCheck,
-		ExcludeHashes: req.ExcludeHashes,
+		DryRun:             req.DryRun,
+		StartPaused:        startPaused,
+		SkipHashCheck:      skipHashCheck,
+		AutoResumeVerified: autoResume,
+		ExcludeHashes:      req.ExcludeHashes,
 	})
 	if err != nil {
 		RespondError(w, http.StatusInternalServerError, "Failed to execute restore")

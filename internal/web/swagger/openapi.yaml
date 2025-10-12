@@ -1761,6 +1761,9 @@ paths:
                 skipHashCheck:
                   type: boolean
                   description: Skip re-checking the restored torrent data. Defaults to false.
+                autoResumeVerified:
+                  type: boolean
+                  description: Automatically resume torrents once qBittorrent reports them as fully verified. Defaults to true when skip recheck is enabled.
       responses:
         '200':
           description: Restore plan generated successfully
@@ -1821,6 +1824,9 @@ paths:
                 skipHashCheck:
                   type: boolean
                   description: Skip re-checking the restored torrent data. Defaults to false.
+                autoResumeVerified:
+                  type: boolean
+                  description: Automatically resume torrents once qBittorrent reports them as fully verified. Defaults to true when skip recheck is enabled.
       responses:
         '200':
           description: Restore executed successfully

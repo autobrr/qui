@@ -60,11 +60,11 @@ type TorrentUpdate struct {
 
 // DiffChange captures a single field difference between snapshot and live state.
 type DiffChange struct {
-	Field     string      `json:"field"`
-	Supported bool        `json:"supported"`
-	Current   interface{} `json:"current,omitempty"`
-	Desired   interface{} `json:"desired,omitempty"`
-	Message   string      `json:"message,omitempty"`
+	Field     string `json:"field"`
+	Supported bool   `json:"supported"`
+	Current   any    `json:"current,omitempty"`
+	Desired   any    `json:"desired,omitempty"`
+	Message   string `json:"message,omitempty"`
 }
 
 // CategoryPlan bundles create/update/delete intents for categories.

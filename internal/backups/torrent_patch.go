@@ -30,7 +30,7 @@ func patchTorrentTrackers(data []byte, trackers []string) ([]byte, bool, error) 
 		return data, false, nil
 	}
 
-	var root map[string]interface{}
+	var root map[string]any
 	if err := bencode.DecodeBytes(data, &root); err != nil {
 		return data, false, fmt.Errorf("decode torrent: %w", err)
 	}
@@ -72,7 +72,7 @@ func shouldInjectTrackerMetadata(apiVersion string) bool {
 	return ok
 }
 
-func needAnnounceListUpdate(existing interface{}, trackers []string) bool {
+func needAnnounceListUpdate(existing any, trackers []string) bool {
 	if len(trackers) == 0 {
 		return false
 	}
@@ -138,7 +138,7 @@ func gatherTrackerURLs(ctx context.Context, sm *qbittorrent.SyncManager, instanc
 	return trackers
 }
 
-func trackerMatches(value interface{}, trackers []string) bool {
+func trackerMatches(value any, trackers []string) bool {
 	s := ""
 	switch v := value.(type) {
 	case string:
@@ -157,15 +157,15 @@ func trackerMatches(value interface{}, trackers []string) bool {
 	return false
 }
 
-func buildAnnounceList(trackers []string) []interface{} {
-	result := make([]interface{}, 0, len(trackers))
+func buildAnnounceList(trackers []string) []any {
+	result := make([]any, 0, len(trackers))
 	for _, tr := range trackers {
-		result = append(result, []interface{}{tr})
+		result = append(result, []any{tr})
 	}
 	return result
 }
 
-func flattenAnnounceList(v interface{}) []string {
+func flattenAnnounceList(v any) []string {
 	switch val := v.(type) {
 	case nil:
 		return nil
@@ -173,7 +173,7 @@ func flattenAnnounceList(v interface{}) []string {
 		return []string{val}
 	case []byte:
 		return []string{string(val)}
-	case []interface{}:
+	case []any:
 		var out []string
 		for _, entry := range val {
 			switch inner := entry.(type) {
@@ -181,7 +181,7 @@ func flattenAnnounceList(v interface{}) []string {
 				out = append(out, inner)
 			case []byte:
 				out = append(out, string(inner))
-			case []interface{}:
+			case []any:
 				flattened := flattenAnnounceList(inner)
 				if len(flattened) > 0 {
 					out = append(out, flattened[0])
