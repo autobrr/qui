@@ -1690,6 +1690,22 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
 
           <div className="flex items-center gap-4">
+            {/* External IPv4 */}
+            {serverState?.last_external_address_v4 && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span
+                    className="font-mono text-xs text-muted-foreground"
+                    {...(incognitoMode && { style: { filter: "blur(8px)" } })}
+                  >
+                    {serverState.last_external_address_v4}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>External IPv4</p>
+                </TooltipContent>
+              </Tooltip>
+            )}
             {/* Speed units toggle */}
             <Tooltip>
               <TooltipTrigger asChild>
