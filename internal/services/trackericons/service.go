@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"image"
@@ -19,7 +18,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -463,6 +461,7 @@ func (s *Service) buildBaseCandidates(host, trackerURL string) []*url.URL {
 	}
 
 	seen := make(map[string]struct{})
+	var ordered []string
 	add := func(raw string) {
 		u, err := url.Parse(raw)
 		if err != nil || u.Host == "" {
@@ -476,6 +475,7 @@ func (s *Service) buildBaseCandidates(host, trackerURL string) []*url.URL {
 			return
 		}
 		seen[key] = struct{}{}
+		ordered = append(ordered, key)
 	}
 
 	if trackerURL != "" {
@@ -495,14 +495,8 @@ func (s *Service) buildBaseCandidates(host, trackerURL string) []*url.URL {
 	add((&url.URL{Scheme: "https", Host: host}).String())
 	add((&url.URL{Scheme: "http", Host: host}).String())
 
-	var keys []string
-	for raw := range seen {
-		keys = append(keys, raw)
-	}
-	slices.Sort(keys)
-
 	var urls []*url.URL
-	for _, raw := range keys {
+	for _, raw := range ordered {
 		if u, err := url.Parse(raw); err == nil {
 			urls = append(urls, u)
 		}
@@ -733,22 +727,6 @@ func decodeImage(data []byte, contentType, originalURL string) (image.Image, err
 
 	img, _, err := image.Decode(reader)
 	return img, err
-}
-
-func isLikelyICO(contentType, originalURL string, data []byte) bool {
-	lowerType := strings.ToLower(contentType)
-	if strings.Contains(lowerType, "ico") {
-		return true
-	}
-	if strings.HasSuffix(strings.ToLower(originalURL), ".ico") {
-		return true
-	}
-	if len(data) >= 6 { // https://en.wikipedia.org/wiki/List_of_file_signatures
-		if binary.LittleEndian.Uint16(data[0:2]) == 0 && binary.LittleEndian.Uint16(data[2:4]) == 1 && binary.LittleEndian.Uint16(data[4:6]) > 0 {
-			return true
-		}
-	}
-	return false
 }
 
 func resizeToSquare(src image.Image, size int) image.Image {
