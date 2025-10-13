@@ -1,0 +1,10 @@
+#!/usr/bin/env sh
+
+set -eu
+
+# Compute repo root relative to this hook (web/.husky -> repo root).
+REPO_ROOT="$(cd -- "$(dirname "$0")/../.." && pwd -P)"
+
+cd "$REPO_ROOT"
+
+uv run update-headers.py
