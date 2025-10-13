@@ -181,7 +181,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	instancesHandler := handlers.NewInstancesHandler(s.instanceStore, s.clientPool, s.syncManager)
 	torrentsHandler := handlers.NewTorrentsHandler(s.syncManager)
 	preferencesHandler := handlers.NewPreferencesHandler(s.syncManager)
-	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(s.clientAPIKeyStore, s.instanceStore)
+	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(s.clientAPIKeyStore, s.instanceStore, s.config.Config.BaseURL)
 	versionHandler := handlers.NewVersionHandler(s.updateService)
 	qbittorrentInfoHandler := handlers.NewQBittorrentInfoHandler(s.clientPool)
 	var trackerIconHandler *handlers.TrackerIconHandler
@@ -190,7 +190,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	}
 
 	// Create proxy handler
-	proxyHandler := proxy.NewHandler(s.clientPool, s.clientAPIKeyStore, s.instanceStore)
+	proxyHandler := proxy.NewHandler(s.clientPool, s.clientAPIKeyStore, s.instanceStore, s.config.Config.BaseURL)
 
 	// license handler (optional, only if the license service is configured)
 	var licenseHandler *handlers.LicenseHandler
