@@ -29,10 +29,11 @@ import (
 var envPrefix = "QUI__"
 
 type AppConfig struct {
-	Config  *domain.Config
-	viper   *viper.Viper
-	dataDir string
-	version string
+	Config   *domain.Config
+	viper    *viper.Viper
+	dataDir  string
+	version  string
+	configMu sync.RWMutex
 
 	listenersMu sync.RWMutex
 	listeners   []func(*domain.Config)
@@ -215,20 +216,26 @@ func (c *AppConfig) loadFromEnv() {
 func (c *AppConfig) watchConfig() {
 	c.viper.WatchConfig()
 	c.viper.OnConfigChange(func(e fsnotify.Event) {
+		c.configMu.Lock()
 		log.Info().Msgf("Config file changed: %s", e.Name)
 
 		// Reload configuration
 		if err := c.viper.Unmarshal(c.Config); err != nil {
+			c.configMu.Unlock()
 			log.Error().Err(err).Msg("Failed to reload configuration")
 			return
 		}
 
-		// Apply dynamic changes
-		c.applyDynamicChanges()
+		updated := c.applyDynamicChangesLocked()
+		c.configMu.Unlock()
+
+		c.notifyListeners(updated)
 	})
 }
 
-func (c *AppConfig) applyDynamicChanges() {
+// applyDynamicChangesLocked updates derived configuration fields.
+// Caller must hold c.configMu.
+func (c *AppConfig) applyDynamicChangesLocked() domain.Config {
 	c.Config.Version = c.version
 	c.ApplyLogConfig()
 
@@ -236,7 +243,7 @@ func (c *AppConfig) applyDynamicChanges() {
 	c.Config.CheckForUpdates = c.viper.GetBool("checkForUpdates")
 	c.Config.TrackerIconsFetchEnabled = c.viper.GetBool("trackerIconsFetchEnabled")
 
-	c.notifyListeners()
+	return *c.Config
 }
 
 // UpdateTrackerIconsFetchEnabled enables or disables remote tracker icon fetching and persists the setting.
@@ -245,14 +252,19 @@ func (c *AppConfig) UpdateTrackerIconsFetchEnabled(enabled bool) error {
 		return fmt.Errorf("app config not initialised")
 	}
 
+	c.configMu.Lock()
 	c.viper.Set("trackerIconsFetchEnabled", enabled)
 	c.Config.TrackerIconsFetchEnabled = enabled
 
-	if err := c.persistConfig(); err != nil {
+	if err := c.persistConfigLocked(); err != nil {
+		c.configMu.Unlock()
 		return fmt.Errorf("persist tracker icon setting: %w", err)
 	}
 
-	c.applyDynamicChanges()
+	updated := *c.Config
+	c.configMu.Unlock()
+
+	c.notifyListeners(updated)
 	return nil
 }
 
@@ -263,7 +275,7 @@ func (c *AppConfig) RegisterReloadListener(fn func(*domain.Config)) {
 	c.listeners = append(c.listeners, fn)
 }
 
-func (c *AppConfig) notifyListeners() {
+func (c *AppConfig) notifyListeners(updated domain.Config) {
 	c.listenersMu.RLock()
 	listeners := append([]func(*domain.Config){}, c.listeners...)
 	c.listenersMu.RUnlock()
@@ -272,13 +284,13 @@ func (c *AppConfig) notifyListeners() {
 		return
 	}
 
-	copied := *c.Config
 	for _, listener := range listeners {
-		listener(&copied)
+		cfgCopy := updated
+		listener(&cfgCopy)
 	}
 }
 
-func (c *AppConfig) persistConfig() error {
+func (c *AppConfig) persistConfigLocked() error {
 	path := c.viper.ConfigFileUsed()
 	if path == "" {
 		path = filepath.Join(c.GetConfigDir(), "config.toml")
