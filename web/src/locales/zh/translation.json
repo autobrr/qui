@@ -1,0 +1,1960 @@
+{
+  "header": {
+    "switchInstanceAriaLabel": "当前实例: {{instanceName}}。点击切换实例。",
+    "switchInstance": "切换实例"
+  },
+  "footer": {
+    "viewOnGitHub": "在 GitHub 上查看"
+  },
+  "login": {
+    "description": "qBittorrent 管理界面",
+    "username": {
+      "placeholder": "请输入您的用户名",
+      "required": "用户名为必填项"
+    },
+    "password": {
+      "placeholder": "请输入您的密码",
+      "required": "密码为必填项"
+    },
+    "rememberMe": "记住我",
+    "buttons": {
+      "signIn": "登录",
+      "loggingIn": "正在登录..."
+    },
+    "error": {
+      "invalidCredentials": "用户名或密码无效",
+      "generic": "登录失败，请重试。"
+    }
+  },
+  "setup": {
+    "description": "创建您的账户以开始使用",
+    "username": {
+      "placeholder": "请选择一个用户名",
+      "required": "用户名为必填项",
+      "minLength": "用户名必须至少包含3个字符"
+    },
+    "password": {
+      "placeholder": "请选择一个强密码",
+      "required": "密码为必填项",
+      "minLength": "密码必须至少包含8个字符"
+    },
+    "confirmPassword": {
+      "label": "确认密码",
+      "placeholder": "请确认您的密码",
+      "required": "请确认您的密码",
+      "noMatch": "两次输入的密码不匹配"
+    },
+    "buttons": {
+      "create": "创建账户",
+      "creating": "正在创建账户..."
+    },
+    "error": {
+      "generic": "创建用户失败"
+    }
+  },
+  "nav": {
+    "dashboard": "仪表盘",
+    "logout": "登出",
+    "version": "版本 {{version}}",
+    "viewOnGitHub": "在 GitHub 上查看",
+    "showSidebar": "显示侧边栏",
+    "hideSidebar": "隐藏侧边栏",
+    "clients": "客户端",
+    "qBittorrentClients": "qBittorrent 客户端",
+    "generalSettings": "通用设置",
+    "manageInstances": "管理实例",
+    "github": "GitHub",
+    "appearance": {
+      "title": "外观",
+      "mode": "模式",
+      "light": "浅色",
+      "dark": "深色",
+      "system": "系统",
+      "theme": "主题",
+      "premium": "高级",
+      "toast": {
+        "switchMode": "已切换到 {{mode}} 模式",
+        "switchTheme": "已切换到 {{theme}} 主题",
+        "premiumError": "这是一个高级主题。请购买许可证后使用。"
+      }
+    }
+  },
+  "pages": {
+    "instance": {
+      "loading": "正在加载实例...",
+      "notFound": "找不到实例",
+      "id": "实例 ID:",
+      "available": "可用实例:"
+    },
+    "notFound": {
+      "title": "糟糕！在集群中迷路了吗？",
+      "description": "看来您进入了未知领域。",
+      "bugReport": "如果您认为这是一个错误而不是链接丢失，",
+      "feelFree": "欢迎随时向我们的",
+      "github": "GitHub 仓库",
+      "getBack": "否则，让我们帮您回到正轨！",
+      "return": "返回仪表盘"
+    }
+  },
+  "add_torrent_dialog": {
+    "title": "添加新种子",
+    "description": "添加种子文件或磁力链接以开始下载",
+    "adding": "正在添加...",
+    "add_torrent_button": "添加种子",
+    "tabs": {
+      "file": "文件",
+      "basic": "基本",
+      "advanced": "高级"
+    },
+    "file_input": {
+      "label": "种子文件",
+      "button": "浏览种子文件",
+      "files_selected_one": "已选择 {{count}} 个文件",
+      "files_selected_other": "已选择 {{count}} 个文件",
+      "show_files": "显示文件",
+      "hide_files": "隐藏文件",
+      "and_more": "... 以及另外 {{count}} 个",
+      "validation": "请至少选择一个种子文件"
+    },
+    "url_input": {
+      "label": "URL / 磁力链接",
+      "placeholder": "输入 URL 或磁力链接 (每行一个)",
+      "validation": "请输入至少一个 URL 或磁力链接"
+    },
+    "toggles": {
+      "start_paused": "暂停开始",
+      "skip_hash_check": "跳过哈希校验"
+    },
+    "category": {
+      "search_placeholder": "搜索分类...",
+      "available_categories": "可用分类 (点击选择)",
+      "filtering": "- 正在筛选: \"{{search}}\"",
+      "no_match": "没有分类匹配 \"{{search}}\""
+    },
+    "tags": {
+      "search_placeholder": "创建新标签或搜索可用标签...",
+      "clear_all": "全部清除",
+      "available_tags": "可用标签 (点击选择/取消选择)",
+      "new": "(新)",
+      "no_match": "没有标签匹配 \"{{search}}\""
+    },
+    "advanced": {
+      "auto_tmm": "自动种子管理",
+      "save_path": {
+        "label": "保存路径",
+        "placeholder": "留空使用默认值",
+        "description": "手动保存路径 (TMM 已禁用)",
+        "tmm_enabled": "自动种子管理已启用。保存路径将由分类设置决定。"
+      },
+      "advanced_options": "高级选项",
+      "sequential_download": {
+        "label": "顺序下载",
+        "description": "(对媒体文件有用)"
+      },
+      "first_last_prio": {
+        "label": "首尾块优先",
+        "description": "(更快开始播放)"
+      },
+      "speed_limits": {
+        "download": "下载限制 (KB/s)",
+        "upload": "上传限制 (KB/s)",
+        "placeholder": "0 = 无限制"
+      },
+      "seeding_limits": {
+        "ratio": "分享率限制",
+        "time": "做种时间限制 (分钟)",
+        "placeholder": "0 = 使用全局设置"
+      },
+      "content_layout": {
+        "label": "内容布局",
+        "global": "使用全局设置",
+        "original": "原始",
+        "subfolder": "创建子文件夹",
+        "no_subfolder": "不创建子文件夹"
+      },
+      "rename": {
+        "label": "重命名种子",
+        "placeholder": "留空使用原始名称"
+      },
+      "auto_applied": {
+        "label": "自动应用：",
+        "trackers": "自动添加 tracker",
+        "exclusions": "文件排除项：{{exclusions}}"
+      }
+    }
+  },
+  "theme": {
+    "appearance": "外观",
+    "change_theme": "更改主题",
+    "mode": "模式",
+    "light": "浅色",
+    "dark": "深色",
+    "system": "系统",
+    "theme": "主题",
+    "premium": "高级"
+  },
+  "toasts": {
+    "switched_to_mode": "已切换到 {{mode}} 模式",
+    "switched_to_theme": "已切换到 {{theme}} 主题",
+    "premium_theme_error": "这是一个高级主题。请购买许可证后使用。"
+  },
+  "search": {
+    "placeholder_glob": "Glob 模式...",
+    "placeholder": "搜索种子... ({{shortcutKey}})",
+    "clear_tooltip": "清除搜索",
+    "info_tooltip": {
+      "title": "智能搜索功能：",
+      "glob": "<strong>Glob 模式：</strong> *.mkv, *1080p*, S??E??",
+      "fuzzy": "<strong>模糊匹配：</strong> \"breaking bad\" 会找到 \"Breaking.Bad\"",
+      "syntax": "处理点、下划线和括号",
+      "scope": "搜索名称、分类和标签",
+      "instant": "按 Enter 键即时搜索",
+      "auto": "暂停 500 毫秒后自动搜索"
+    }
+  },
+  "torrent_table": {
+    "header": {
+      "select_all": "全选",
+      "select_row": "选择行",
+      "deselect_all": "全部取消选择"
+    },
+    "columns": {
+      "priority": "优先级",
+      "size": "大小",
+      "total_size": "总大小",
+      "progress": "进度",
+      "seeds": "种子",
+      "peers": "用户",
+      "down_speed": "下载速度",
+      "up_speed": "上传速度",
+      "eta": "剩余时间",
+      "ratio": "分享率",
+      "popularity": "热度",
+      "added": "添加于",
+      "completed_on": "完成于",
+      "tracker_icon": "Tracker 图标",
+      "tracker": "Tracker",
+      "down_limit": "下载限制",
+      "up_limit": "上传限制",
+      "downloaded": "已下载",
+      "uploaded": "已上传",
+      "session_downloaded": "本次已下载",
+      "session_uploaded": "本次已上传",
+      "remaining": "剩余",
+      "time_active": "活动时间",
+      "seeding_time": "做种时间",
+      "save_path": "保存路径",
+      "completed": "已完成",
+      "ratio_limit": "分享率限制",
+      "last_seen_complete": "最近完成",
+      "last_activity": "最近活动",
+      "availability": "可用性",
+      "infohash_v1": "信息哈希 v1",
+      "infohash_v2": "信息哈希 v2",
+      "reannounce_in": "下次汇报",
+      "private": "私有",
+      "recently_added": "最近添加",
+      "download_speed": "下载速度",
+      "upload_speed": "上传速度",
+      "download_limit": "下载限制",
+      "upload_limit": "上传限制",
+      "status_icon": "状态图标"
+    },
+    "sort_by": "排序方式",
+    "sort_prefix": "排序: {{label}}",
+    "sort_order_aria_asc": "升序排序",
+    "sort_order_aria_desc": "降序排序",
+    "total_size_label": "总大小: {{size}}"
+  },
+  "torrent_details": {
+    "tabs": {
+      "general": "通用",
+      "trackers": "Tracker",
+      "peers": "用户",
+      "content": "内容"
+    },
+    "toasts": {
+      "copied_to_clipboard": "{{type}} 已复制到剪贴板",
+      "copy_failed": "复制到剪贴板失败",
+      "add_peers_success": "用户添加成功",
+      "add_peers_failed": "添加用户失败: {{error}}",
+      "ban_peer_success": "用户封禁成功",
+      "ban_peer_failed": "封禁用户失败: {{error}}",
+      "copied_peer": "已复制 {{peer}} 到剪贴板"
+    },
+    "general": {
+      "transfer_stats": {
+        "title": "传输统计",
+        "total_size": "总大小",
+        "share_ratio": "分享率",
+        "downloaded": "已下载",
+        "uploaded": "已上传",
+        "pieces": "分块",
+        "each": "每个",
+        "wasted": "已丢弃"
+      },
+      "speed": {
+        "title": "速度",
+        "download": "下载速度",
+        "upload": "上传速度",
+        "avg": "平均",
+        "limit": "限制"
+      },
+      "network": {
+        "title": "网络",
+        "seeds": "种子",
+        "peers": "用户"
+      },
+      "queue": {
+        "title": "队列管理",
+        "priority": "优先级",
+        "normal": "普通",
+        "queued": "排队中",
+        "dl": "下载",
+        "up": "上传",
+        "max_downloads": "最大下载数",
+        "max_uploads": "最大上传数",
+        "max_active": "最大活动数"
+      },
+      "time": {
+        "title": "时间信息",
+        "time_active": "活动时间",
+        "seeding_time": "做种时间"
+      },
+      "location": {
+        "title": "保存路径",
+        "copy_type": "文件位置"
+      },
+      "identifiers": {
+        "title": "种子标识符",
+        "infohash_v1": "信息哈希 v1",
+        "infohash_v2": "信息哈希 v2"
+      },
+      "timestamps": {
+        "title": "时间戳",
+        "added": "添加于",
+        "completed": "完成于",
+        "created": "创建于"
+      },
+      "additional_info": {
+        "title": "附加信息",
+        "created_by": "创建者",
+        "comment": "注释"
+      }
+    },
+    "trackers": {
+      "title": "活动 Tracker",
+      "count_one": "{{count}} 个 tracker",
+      "count_other": "{{count}} 个 tracker",
+      "incognito_message": "Tracker 消息在隐身模式下已隐藏",
+      "seeds": "种子",
+      "peers": "用户",
+      "leechers": "下载者",
+      "downloaded": "已下载",
+      "no_trackers": "未找到 tracker",
+      "status": {
+        "disabled": "已禁用",
+        "not_contacted": "未联系",
+        "working": "工作中",
+        "updating": "更新中",
+        "error": "错误",
+        "unknown": "未知"
+      }
+    },
+    "peers": {
+      "title": "已连接的用户",
+      "count_one": "{{count}} 个用户已连接",
+      "count_other": "{{count}} 个用户已连接",
+      "add_peers_button": "添加用户",
+      "seeder": "做种者",
+      "unknown_client": "未知客户端",
+      "peer_progress": "用户进度",
+      "download_speed": "下载速度",
+      "upload_speed": "上传速度",
+      "downloaded": "已下载",
+      "uploaded": "已上传",
+      "connection": "连接",
+      "flags": "标志",
+      "copy_ip": "复制 IP:端口",
+      "ban_peer": "永久封禁用户",
+      "no_peers": "未连接用户"
+    },
+    "content": {
+      "title": "文件内容",
+      "count_one": "{{count}} 个文件",
+      "count_other": "{{count}} 个文件",
+      "no_files": "未找到文件"
+    },
+    "dialogs": {
+      "add_peers": {
+        "title": "添加用户",
+        "description": "向此种子添加一个或多个用户。每行或用逗号分隔输入一个用户的 IP:端口。",
+        "peers_label": "用户",
+        "add_button": "添加用户"
+      },
+      "ban_peer": {
+        "title": "永久封禁用户",
+        "description": "您确定要永久封禁此用户吗？此操作无法撤销。",
+        "ip_address": "IP 地址",
+        "client": "客户端",
+        "country": "国家",
+        "ban_button": "封禁用户"
+      }
+    }
+  },
+  "torrent_management_bar": {
+    "toolbar_aria_one": "已选择 {{count}} 个种子 - 可用批量操作",
+    "toolbar_aria_other": "已选择 {{count}} 个种子 - 可用批量操作",
+    "actions": {
+      "resume": "恢复",
+      "pause": "暂停",
+      "recheck": "强制重新校验",
+      "reannounce": "重新汇报",
+      "tag_actions": "标签操作",
+      "set_category": "设置分类",
+      "set_location": "设置位置",
+      "queue_priority": "队列优先级",
+      "limits": "限制"
+    },
+    "tags": {
+      "add": "添加标签",
+      "add_count": "添加标签 ({{count}})",
+      "replace": "替换标签",
+      "replace_count": "替换标签 ({{count}})"
+    },
+    "queue": {
+      "top": "最高优先级",
+      "top_count": "最高优先级 ({{count}})",
+      "increase": "提高优先级",
+      "increase_count": "提高优先级 ({{count}})",
+      "decrease": "降低优先级",
+      "decrease_count": "降低优先级 ({{count}})",
+      "bottom": "最低优先级",
+      "bottom_count": "最低优先级 ({{count}})"
+    },
+    "limits": {
+      "set_share": "设置分享限制",
+      "set_share_count": "设置分享限制 ({{count}})",
+      "set_speed": "设置速度限制",
+      "set_speed_count": "设置速度限制 ({{count}})"
+    },
+    "tmm": {
+      "mixed": "TMM (混合)",
+      "disable": "禁用 TMM",
+      "enable": "启用 TMM"
+    },
+    "dialogs": {
+      "delete": {
+        "title_one": "删除 {{count}} 个种子？",
+        "title_other": "删除 {{count}} 个种子？",
+        "description": "此操作无法撤销。种子将从 qBittorrent 中移除。",
+        "delete_files_label": "同时删除磁盘上的文件",
+        "delete_button": "删除",
+        "description_with_size": "此操作无法撤销。总大小：{{size}}",
+        "total_size": "总大小:"
+      },
+      "recheck": {
+        "title_one": "强制重新校验 {{count}} 个种子？",
+        "title_other": "强制重新校验 {{count}} 个种子？",
+        "description": "这将强制 qBittorrent 重新校验所选种子的所有分片。此过程可能需要一些时间，并将临时暂停种子。",
+        "recheck_button": "强制重新校验"
+      },
+      "reannounce": {
+        "title_one": "重新汇报 {{count}} 个种子？",
+        "title_other": "重新汇报 {{count}} 个种子？",
+        "description": "这将强制所选种子向其所有 Tracker 重新汇报。当 Tracker 无响应或您想刷新连接时，此功能很有用。",
+        "reannounce_button": "重新汇报"
+      }
+    }
+  },
+  "torrent_context_menu": {
+    "view_details": "查看详情",
+    "resume": "恢复",
+    "resume_count": "恢复 ({{count}})",
+    "pause": "暂停",
+    "pause_count": "暂停 ({{count}})",
+    "recheck": "强制重新校验",
+    "recheck_count": "强制重新校验 ({{count}})",
+    "reannounce": "重新汇报",
+    "reannounce_count": "重新汇报 ({{count}})",
+    "add_tags": "添加标签",
+    "add_tags_count": "添加标签 ({{count}})",
+    "replace_tags": "替换标签",
+    "replace_tags_count": "替换标签 ({{count}})",
+    "set_location": "设置位置",
+    "set_location_count": "设置位置 ({{count}})",
+    "set_share_limits": "设置分享限制",
+    "set_share_limits_count": "设置分享限制 ({{count}})",
+    "set_speed_limits": "设置速度限制",
+    "set_speed_limits_count": "设置速度限制 ({{count}})",
+    "enable_tmm": "启用 TMM",
+    "enable_tmm_count": "启用 TMM ({{count}})",
+    "disable_tmm": "禁用 TMM",
+    "disable_tmm_count": "禁用 TMM ({{count}})",
+    "enable_tmm_mixed": "启用 TMM (混合)",
+    "enable_tmm_mixed_count": "启用 TMM ({{count}} 混合)",
+    "disable_tmm_mixed": "禁用 TMM (混合)",
+    "disable_tmm_mixed_count": "禁用 TMM ({{count}} 混合)",
+    "export": "导出种子",
+    "export_count": "导出种子 ({{count}})",
+    "copy_name": "复制名称",
+    "copy_hash": "复制哈希",
+    "queue": {
+      "title": "队列",
+      "top_priority": "最高优先级",
+      "top_priority_count": "最高优先级 ({{count}})",
+      "increase_priority": "提高优先级",
+      "increase_priority_count": "提高优先级 ({{count}})",
+      "decrease_priority": "降低优先级",
+      "decrease_priority_count": "降低优先级 ({{count}})",
+      "bottom_priority": "最低优先级",
+      "bottom_priority_count": "最低优先级 ({{count}})"
+    },
+    "category": {
+      "set_category": "设置分类",
+      "no_category": "(无分类)",
+      "no_category_count": "(无分类) ({{count}})",
+      "search_placeholder": "搜索分类...",
+      "category_item": "{{category}}",
+      "category_item_count": "{{category}} ({{count}})",
+      "no_categories_found": "未找到分类",
+      "create_new": "创建新分类..."
+    },
+    "toasts": {
+      "copied_success": "种子 {{type}} 已复制到剪贴板",
+      "copy_failed": "复制到剪贴板失败",
+      "hash_not_available": "哈希不可用"
+    },
+    "copy_options": {
+      "title": "复制...",
+      "name": "复制名称",
+      "hash": "复制哈希",
+      "full_path": "复制完整路径"
+    }
+  },
+  "torrent_table_optimized": {
+    "toggle_columns": "切换列",
+    "loading_torrents": "正在加载种子...",
+    "no_torrents_found": "未找到种子",
+    "torrents_count_one": "{{count}} 个种子",
+    "torrents_count_other": "{{count}} 个种子",
+    "loading_more_torrents": "正在加载更多种子...",
+    "torrents_loaded_of_total": "已加载 {{loaded}} / {{total}} 个种子 • 滚动以加载更多",
+    "scroll_for_more": " (滚动以查看更多)",
+    "all_selected": "已选择全部 {{count}} 个",
+    "count_selected": "已选择 {{count}} 个",
+    "keyboard_shortcuts": "• Shift+单击可选择范围 • {{key}}+单击可多选",
+    "switch_to_bps": "切换到比特每秒 (bps)",
+    "switch_to_Bps": "切换到字节每秒 (B/s)",
+    "exit_incognito": "退出隐身模式",
+    "enable_incognito": "启用隐身模式",
+    "delete_torrents_title_one": "删除 {{count}} 个种子？",
+    "delete_torrents_title_other": "删除 {{count}} 个种子？",
+    "delete_torrents_body": "此操作无法撤销。种子将从 qBittorrent 中删除。",
+    "delete_files_from_disk": "同时删除磁盘上的文件",
+    "recheck_torrents_title_one": "强制重新校验 {{count}} 个种子？",
+    "recheck_torrents_title_other": "强制重新校验 {{count}} 个种子？",
+    "recheck_torrents_body": "这将强制 qBittorrent 重新校验所选种子的所有分片。此过程可能需要一些时间，并会临时暂停种子。",
+    "force_recheck": "强制重新校验",
+    "reannounce_torrents_title_one": "重新汇报 {{count}} 个种子？",
+    "reannounce_torrents_title_other": "重新汇报 {{count}} 个种子？",
+    "reannounce_torrents_body": "这将强制所选种子向其所有 Tracker 重新汇报。当 Tracker 无响应或您想刷新连接时，此功能很有用。",
+    "reannounce": "重新汇报",
+    "loading_from_instance": "正在从实例加载种子... (无可用缓存)",
+    "all_selected_with_size": "已全选 {{count}} 个 • {{size}}",
+    "count_selected_with_size": "已选择 {{count}} 个 • {{size}}",
+    "keyboard_shortcuts_with_size": "按住 Shift 并单击可选择范围，按住 {{key}} 并单击可多选 • {{size}}",
+    "delete_torrents_body_with_size": "此操作无法撤销。种子将从 qBittorrent 中移除。总大小：{{size}}",
+    "selection_shortcuts": {
+      "title": "选择快捷键",
+      "range": "Shift+单击选择范围",
+      "multiple": "{{key}}+单击进行多选"
+    }
+  },
+  "instances": {
+    "add": "添加实例",
+    "loading": "正在加载实例...",
+    "instance_connected": "实例已连接",
+    "instance_disconnected": "实例已断开",
+    "description": "管理您的 qBittorrent 连接设置",
+    "empty": {
+      "addFirst": "添加您的第一个实例"
+    },
+    "dialog": {
+      "editTitle": "编辑实例",
+      "editDescription": "更新您的 qBittorrent 实例配置",
+      "addDescription": "添加一个新的 qBittorrent 实例进行管理"
+    },
+    "forms": {
+      "unlimitedHint": " (-1 代表无限制)",
+      "unlimited": "无限制"
+    },
+    "form": {
+      "name": {
+        "label": "实例名称",
+        "placeholder": "例如，主服务器或家庭 qBittorrent",
+        "required": "实例名称为必填项"
+      },
+      "url": {
+        "placeholder": "http://localhost:8080 或 192.168.1.100:8080",
+        "required": "URL 为必填项",
+        "invalid": "请输入一个有效的 URL",
+        "protocol": "仅支持 HTTP 和 HTTPS 协议",
+        "portRequired": "使用 IP 地址时必须指定端口 (例如, :8080)"
+      },
+      "tls": {
+        "label": "跳过 TLS 证书验证",
+        "description": "允许连接到使用自签名或不受信任证书的 qBittorrent 实例。"
+      },
+      "authBypass": {
+        "label": "认证绕过",
+        "description": "当 qBittorrent 为本地主机或白名单 IP 绕过身份验证时启用"
+      },
+      "qbitAuth": {
+        "usernamePlaceholder": "qBittorrent 用户名 (通常是 admin)",
+        "passwordPlaceholder": "qBittorrent 密码",
+        "passwordPlaceholderExisting": "留空以保留当前密码"
+      },
+      "basicAuth": {
+        "label": "HTTP 基本认证",
+        "description": "如果您的 qBittorrent 位于带基本认证的反向代理后面，请启用此项",
+        "usernameLabel": "基本认证用户名",
+        "usernamePlaceholder": "基本认证用户名",
+        "passwordLabel": "基本认证密码",
+        "passwordPlaceholder": "输入基本认证密码 (必填)",
+        "required": "启用基本认证时，基本认证密码为必填项"
+      },
+      "redacted": "<已编辑>",
+      "buttons": {
+        "saving": "正在保存...",
+        "update": "更新实例"
+      },
+      "notifications": {
+        "updateSuccessTitle": "实例已更新",
+        "updateSuccessDescription": "实例更新成功。正在后台测试连接...",
+        "updateErrorTitle": "更新失败",
+        "updateErrorDescription": "更新实例失败",
+        "createSuccessTitle": "实例已创建",
+        "createSuccessDescription": "实例创建成功。正在后台测试连接...",
+        "createErrorTitle": "创建失败",
+        "createErrorDescription": "创建实例失败"
+      }
+    },
+    "card": {
+      "connected": "已连接",
+      "disconnected": "已断开",
+      "testConnection": "测试连接",
+      "username": "用户名:",
+      "basicAuth": "基本认证:",
+      "tlsVerification": "TLS 验证:",
+      "tlsSkipped": "已跳过",
+      "tlsStrict": "严格",
+      "testing": "正在测试连接...",
+      "deleteDialog": {
+        "title": "删除实例",
+        "description": "您确定要删除 \"{{name}}\"? 此操作无法撤销。"
+      },
+      "notifications": {
+        "testSuccessTitle": "连接测试成功",
+        "testSuccessDescription": "成功连接到 qBittorrent 实例",
+        "testErrorTitle": "连接测试失败",
+        "testErrorDescription": "无法连接到 qBittorrent 实例",
+        "testErrorFailed": "连接失败",
+        "deleteSuccessTitle": "实例已删除",
+        "deleteSuccessDescription": "已成功删除 \"{{name}}\"",
+        "deleteErrorTitle": "删除失败",
+        "deleteErrorDescription": "删除实例失败"
+      }
+    },
+    "errorDisplay": {
+      "passwordRequired": "需要密码",
+      "decryptionError": "无法解密已保存的密码。通常在会话密钥更改时会发生这种情况。",
+      "reEnterPassword": "重新输入密码",
+      "recentErrorsCount": "最近的错误 ({{count}})"
+    },
+    "settingsButton": {
+      "tooltip": "实例设置"
+    },
+    "passwordIssues": {
+      "title": "检测到密码问题",
+      "description": "某些实例无法解密其已保存的密码，这可能是由于配置更改所致。请检查下面受影响的实例以解决此问题。"
+    }
+  },
+  "torrents": {
+    "filters": "筛选器",
+    "details": "种子详情",
+    "details_with_name": "种子详情: {{name}}"
+  },
+  "dashboard": {
+    "title": "仪表盘",
+    "description": "所有 qBittorrent 实例的总览",
+    "instances": {
+      "getStarted": "从添加您的第一个 qBittorrent 实例开始"
+    },
+    "speedLimits": {
+      "title": "速度限制",
+      "unlimited": "无限制",
+      "download": "下载",
+      "upload": "上传",
+      "current": "当前: {{speed}}"
+    },
+    "stats": {
+      "loading": "正在加载统计信息...",
+      "failed": "加载统计信息失败"
+    },
+    "status": {
+      "downloading": "下载中",
+      "active": "活动中",
+      "error": "错误",
+      "total": "总计"
+    },
+    "instance": {
+      "loading": "加载中...",
+      "error": "错误",
+      "disconnected": "已断开",
+      "connected": "已连接",
+      "showMore": "显示更多",
+      "showLess": "收起",
+      "qbit_version_badge": "qBit {{version}}",
+      "api_version_badge": "API v{{version}}",
+      "libtorrent_version_badge": "lt {{version}}",
+      "connection_status_tooltip": {
+        "connectable": "可连接"
+      },
+      "altSpeed": {
+        "enabledTooltip": "备用速率限制已启用 (乌龟模式) - 点击切换",
+        "disabledTooltip": "备用速率限制已禁用 (正常模式) - 点击切换",
+        "enableTitle": "启用备用速率限制？",
+        "disableTitle": "禁用备用速率限制？",
+        "enableDescription": "这将为 {{name}} 启用备用速率限制，会根据您的配置降低传输速度。",
+        "disableDescription": "这将为 {{name}} 禁用备用速率限制，并恢复到正常速度限制。",
+        "enableAction": "启用",
+        "disableAction": "禁用"
+      }
+    },
+    "serverStats": {
+      "title": "服务器统计",
+      "download": "下载",
+      "upload": "上传",
+      "totalSize": "总大小",
+      "freeSpace": "可用空间",
+      "peerConnections": "Peer 连接",
+      "queuedIO": "排队的 I/O 作业",
+      "bufferSize": "缓冲区大小",
+      "totalQueued": "总排队大小",
+      "avgQueueTime": "平均排队时间",
+      "ratio": "分享率:",
+      "peers": "Peers:",
+      "externalIPv4": "外部 IPv4",
+      "externalIPv6": "外部 IPv6"
+    },
+    "globalStats": {
+      "instances": {
+        "description": "已连接的实例"
+      },
+      "totalTorrents": {
+        "title": "种子总数",
+        "description": "{{active}} 活动 - {{size}} 总大小"
+      },
+      "totalDownload": {
+        "title": "总下载"
+      },
+      "totalUpload": {
+        "title": "总上传"
+      },
+      "allInstancesCombined": "所有实例合计"
+    },
+    "instanceTable": {
+      "instance": "实例",
+      "downloaded": "已下载",
+      "uploaded": "已上传",
+      "ratio": "分享率",
+      "peers": "Peers"
+    },
+    "quickActions": {
+      "title": "快捷操作",
+      "addTorrentTo": "添加到 {{name}}",
+      "addTorrent": "添加种子",
+      "createTorrent": "创建种子",
+      "tasks": "种子创建任务"
+    }
+  },
+  "instancePreferences": {
+    "title": "实例偏好设置",
+    "description": "为 {{name}} 配置所有设置和偏好",
+    "tabs": {
+      "speed": "速度",
+      "queue": "队列",
+      "files": "文件",
+      "seeding": "做种",
+      "connection": "连接",
+      "discovery": "发现",
+      "advanced": "高级"
+    },
+    "content": {
+      "speedLimits": {
+        "title": "速度限制",
+        "description": "为此 qBittorrent 实例配置下载和上传速度限制",
+        "loading": "正在加载速度限制...",
+        "failed": "加载偏好设置失败",
+        "downloadLimit": "下载限制",
+        "uploadLimit": "上传限制",
+        "altDownloadLimit": "备用下载限制",
+        "altUploadLimit": "备用上传限制",
+        "unit": "MiB/s",
+        "placeholderUnlimited": "0 (无限制)",
+        "scheduler": "计划使用备用速率限制",
+        "from": "从:",
+        "to": "到:",
+        "when": "时间:",
+        "days": {
+          "everyDay": "每天",
+          "weekdays": "每个工作日",
+          "weekends": "每个周末",
+          "monday": "星期一",
+          "tuesday": "星期二",
+          "wednesday": "星期三",
+          "thursday": "星期四",
+          "friday": "星期五",
+          "saturday": "星期六",
+          "sunday": "星期日"
+        },
+        "saveButton": "保存更改",
+        "savingButton": "正在保存...",
+        "notifications": {
+          "saveSuccess": "速度限制更新成功",
+          "saveError": "更新速度限制失败"
+        },
+        "validation": {
+          "globalDownload": "全局下载速率限制必须大于 0 或禁用",
+          "globalUpload": "全局上传速率限制必须大于 0 或禁用",
+          "altDownload": "备用下载速率限制必须大于 0 或禁用",
+          "altUpload": "备用上传速率限制必须大于 0 或禁用"
+        }
+      },
+      "queueManagement": {
+        "title": "队列管理",
+        "description": "配置种子队列设置和活动种子限制",
+        "loading": "正在加载队列设置...",
+        "failed": "加载偏好设置失败",
+        "enableQueueing": "启用队列",
+        "enableQueueingDescription": "限制活动种子的数量",
+        "maxActiveDownloads": "最大活动下载数",
+        "maxActiveDownloadsDescription": "同时下载的种子最大数量",
+        "maxActiveUploads": "最大活动上传数",
+        "maxActiveUploadsDescription": "同时上传的种子最大数量",
+        "maxActiveTorrents": "最大活动种子数",
+        "maxActiveTorrentsDescription": "总计最大活动种子数量",
+        "maxCheckingTorrents": "最大校验种子数",
+        "maxCheckingTorrentsDescription": "同时校验的种子的最大数量",
+        "saveButton": "保存更改",
+        "savingButton": "正在保存...",
+        "notifications": {
+          "saveSuccess": "队列设置更新成功",
+          "saveError": "更新队列设置失败"
+        },
+        "validation": {
+          "maxActiveDownloads": "最大活跃下载数必须大于 -1",
+          "maxActiveUploads": "最大活跃上传数必须大于 -1",
+          "maxActiveTorrents": "最大活跃种子数必须大于 -1"
+        }
+      },
+      "fileManagement": {
+        "title": "文件管理",
+        "description": "配置文件路径和种子管理设置",
+        "loading": "正在加载文件管理设置...",
+        "failed": "加载偏好设置失败",
+        "autoTMM": "自动种子管理",
+        "autoTMMDescription": "使用基于分类的路径进行下载",
+        "startPaused": "暂停开始新种子",
+        "startPausedDescription": "新添加的种子将以暂停状态开始",
+        "defaultSavePath": "默认保存路径",
+        "defaultSavePathDescription": "下载文件的默认目录",
+        "placeholderPath": "/downloads",
+        "defaultContentLayout": "默认内容布局",
+        "defaultContentLayoutDescription": "种子文件在保存目录中的组织方式",
+        "selectContentLayout": "选择内容布局",
+        "layoutOptions": {
+          "original": "原始布局",
+          "subfolder": "创建子文件夹",
+          "noSubfolder": "不创建子文件夹"
+        },
+        "saveButton": "保存更改",
+        "savingButton": "正在保存...",
+        "notifications": {
+          "saveSuccess": "文件管理设置更新成功",
+          "saveError": "更新文件管理设置失败"
+        }
+      },
+      "seedingLimits": {
+        "title": "做种限制",
+        "description": "配置分享率和做种时间限制",
+        "loading": "正在加载做种限制...",
+        "failed": "加载偏好设置失败",
+        "enableRatioLimit": "启用分享率限制",
+        "enableRatioLimitDescription": "达到分享率后停止做种",
+        "maxRatio": "最大分享率",
+        "maxRatioDescription": "在此上传/下载分享率时停止做种",
+        "enableTimeLimit": "启用做种时间限制",
+        "enableTimeLimitDescription": "在指定时间后停止做种",
+        "maxTime": "最大做种时间 (分钟)",
+        "maxTimeDescription": "在此分钟数后停止做种",
+        "saveButton": "保存更改",
+        "savingButton": "正在保存...",
+        "notifications": {
+          "saveSuccess": "做种限制更新成功",
+          "saveError": "更新做种限制失败"
+        }
+      },
+      "connectionSettings": {
+        "title": "连接设置",
+        "description": "配置监听端口、协议设置和连接限制",
+        "loading": "正在加载连接设置...",
+        "failed": "加载偏好设置失败",
+        "saveButton": "更新连接设置",
+        "savingButton": "正在更新...",
+        "warnings": {
+          "limitedDetails": {
+            "title": "版本详情有限",
+            "description": "我们无法确认此实例的 qBittorrent 构建详情，因此所有连接选项都可见。在应用更改前请仔细检查适用性。"
+          }
+        },
+        "port": {
+          "title": "监听端口",
+          "portRange": "传入连接的端口",
+          "portRangeDescription": "用于传入 BitTorrent 连接的端口",
+          "randomPort": "每次启动时使用随机端口",
+          "randomPortDescription": "qBittorrent 启动时随机选择一个端口",
+          "upnp": "启用 UPnP/NAT-PMP 端口转发",
+          "upnpDescription": "通过您的路由器自动转发端口",
+          "upnpLease": "UPnP 租约时长 (0 = 永久)",
+          "upnpLeaseDescription": "UPnP 租约的持续时间（分钟）(0 表示永久，仅限 libtorrent 2.x)",
+          "validation": {
+            "portRange": "用于传入连接的端口必须在 0 到 65535 之间"
+          }
+        },
+        "protocol": {
+          "title": "协议设置",
+          "bittorrentProtocol": "BitTorrent 协议",
+          "bittorrentProtocolDescription": "用于 Peer 连接的协议",
+          "tcp_and_utp": "TCP 和 μTP",
+          "tcp": "TCP",
+          "utp": "μTP",
+          "mixedMode": "μTP-TCP 混合模式",
+          "mixedModeDescription": "如何处理混合的 μTP/TCP 连接",
+          "mixedModePlaceholder": "选择模式",
+          "preferTcp": "优先 TCP",
+          "peerProportional": "对等端按比例"
+        },
+        "networkInterface": {
+          "title": "网络接口",
+          "interface": "网络接口 (只读)",
+          "interfaceDescription": "当前活动网络接口。配置需要缺失的 API 端点。",
+          "address": "接口 IP 地址 (只读)",
+          "addressDescription": "当前接口的 IP 地址。配置需要缺失的 API 端点。",
+          "autoDetect": "自动检测",
+          "reannounce": "IP 地址更改时重新向 Tracker 汇报",
+          "reannounceDescription": "当您的 IP 地址更改时自动重新汇报"
+        },
+        "limits": {
+          "title": "连接限制",
+          "globalMax": "全局最大连接数",
+          "globalMaxDescription": "所有种子的最大连接数",
+          "perTorrentMax": "每个种子的最大连接数",
+          "perTorrentMaxDescription": "单个种子的最大连接数",
+          "globalUploadSlots": "全局最大上传通道数",
+          "globalUploadSlotsDescription": "所有种子的最大上传通道数",
+          "perTorrentUploadSlots": "每个种子的最大上传通道数",
+          "perTorrentUploadSlotsDescription": "单个种子的最大上传通道数",
+          "allowMultipleConnections": "允许来自同一 IP 地址的多个连接",
+          "allowMultipleConnectionsDescription": "允许来自同一 NAT 后面的多个 Peer 的连接",
+          "validation": {
+            "globalMax": "最大连接数限制必须大于 0 或禁用",
+            "perTorrentMax": "每个种子的最大连接数限制必须大于 0 或禁用",
+            "globalUploadSlots": "全局上传通道数限制必须大于 0 或禁用",
+            "perTorrentUploadSlots": "每个种子的最大上传通道数限制必须大于 0 或禁用"
+          }
+        },
+        "outgoingPorts": {
+          "title": "传出端口",
+          "min": "传出端口 (最小)",
+          "minDescription": "传出连接的最小端口 (0 = 无限制)",
+          "max": "传出端口 (最大)",
+          "maxDescription": "传出连接的最大端口 (0 = 无限制)",
+          "validation": {
+            "min": "传出端口范围最小值必须在 0 到 65535 之间",
+            "max": "传出端口范围最大值必须在 0 到 65535 之间"
+          }
+        },
+        "ipFiltering": {
+          "title": "IP 过滤",
+          "enable": "启用 IP 过滤",
+          "enableDescription": "过滤特定 IP 地址的连接",
+          "path": "IP 过滤器文件路径",
+          "pathDescription": "IP 过滤器文件的路径 (.dat, .p2p, .p2b 格式)",
+          "pathPlaceholder": "/path/to/filter.dat",
+          "applyToTrackers": "将 IP 过滤器应用于 Tracker",
+          "applyToTrackersDescription": "同时基于 IP 过滤规则过滤 Tracker 连接",
+          "bannedIPs": "手动封禁的 IP 地址",
+          "bannedIPsDescription": "添加要永久封禁连接的 IP 地址 (每行一个)",
+          "bannedIPsPlaceholder": "输入要封禁的 IP 地址 (每行一个):\n192.168.1.100\n10.0.0.50\n2001:db8::1"
+        },
+        "notifications": {
+          "saveSuccess": "连接设置更新成功",
+          "saveError": "更新连接设置失败"
+        }
+      },
+      "networkDiscovery": {
+        "title": "网络发现",
+        "description": "配置 Peer 发现协议和 Tracker 设置",
+        "loading": "正在加载网络发现设置...",
+        "failed": "加载偏好设置失败",
+        "saveButton": "更新网络发现设置",
+        "savingButton": "正在更新...",
+        "peerDiscovery": {
+          "title": "Peer 发现",
+          "dht": "启用 DHT (分布式哈希表)",
+          "dhtDescription": "无需 Tracker 即可找到 Peer 的分布式哈希表",
+          "pex": "启用 PeX (Peer 交换)",
+          "pexDescription": "与其他 Peer 交换 Peer 列表",
+          "lsd": "启用 LSD (本地服务发现)",
+          "lsdDescription": "在您的本地网络上查找 Peer"
+        },
+        "tracker": {
+          "title": "Tracker 设置",
+          "allTiers": "总是向所有层级的 Tracker 汇报",
+          "allTiersDescription": "同时向所有 Tracker 层级进行汇报",
+          "allTrackers": "总是向一个层级中的所有 Tracker 汇报",
+          "allTrackersDescription": "同时向一个层级中的所有 Tracker 进行汇报"
+        },
+        "privacy": {
+          "title": "安全与隐私",
+          "encryption": "协议加密",
+          "encryptionDescription": "协议加密有助于绕过 ISP 的流量整形",
+          "encryptionOptions": {
+            "prefer": "优先加密",
+            "require": "强制加密",
+            "disable": "禁用加密"
+          },
+          "anonymousMode": "启用匿名模式",
+          "anonymousModeDescription": "隐藏您的客户端标识和版本",
+          "resolveCountries": "解析 Peer 的国家/地区",
+          "resolveCountriesDescription": "为 Peer 显示国家/地区旗帜 (需要额外带宽)"
+        },
+        "notifications": {
+          "saveSuccess": "网络发现设置更新成功",
+          "saveError": "更新网络发现设置失败"
+        }
+      },
+      "advancedSettings": {
+        "title": "高级设置",
+        "description": "性能调优、磁盘 I/O、Peer 管理和安全设置",
+        "loading": "正在加载高级网络设置...",
+        "failed": "加载偏好设置失败",
+        "saveButton": "更新高级网络设置",
+        "savingButton": "正在更新...",
+        "warnings": {
+          "showAll": {
+            "title": "显示所有高级选项",
+            "description": "我们无法确定此实例的 qBittorrent 版本，因此显示了所有高级设置。某些选项可能不适用于您的环境。"
+          }
+        },
+        "tracker": {
+          "title": "Tracker 设置",
+          "announceIP": "向 Tracker 汇报的 IP 地址 (需要重启)",
+          "announceIPDescription": "向 Tracker 汇报的 IP 地址 (留空为自动检测)",
+          "autoDetect": "自动检测"
+        },
+        "performance": {
+          "title": "性能优化",
+          "limitUTP": "对 μTP 协议应用速率限制",
+          "limitUTPDescription": "限制 μTP 连接以防止泛滥本地网络中的 Peer",
+          "limitTCPOverhead": "对传输开销应用速率限制",
+          "limitTCPOverheadDescription": "在速率限制计算中包括协议开销",
+          "limitUTPRate": "对 μTP 连接应用速率限制",
+          "limitUTPRateDescription": "对 μTP 连接应用上传/下载限制",
+          "peerTOS": "Peer ToS 字节",
+          "peerTOSDescription": "用于 Peer 连接的服务类型字节",
+          "socketBacklog": "套接字积压大小",
+          "socketBacklogDescription": "套接字积压中的待处理连接数",
+          "maxHTTPAnnounces": "最大 HTTP 汇报数",
+          "maxHTTPAnnouncesDescription": "最大并发 HTTP Tracker 汇报数",
+          "sendBufferWatermark": "发送缓冲区水印",
+          "sendBufferWatermarkUnit": "KiB",
+          "sendBufferWatermarkDescription": "套接字发送缓冲区的上限水印",
+          "sendBufferLowWatermark": "发送缓冲区低水印",
+          "sendBufferLowWatermarkUnit": "KiB",
+          "sendBufferLowWatermarkDescription": "套接字发送缓冲区的下限水印",
+          "watermarkFactor": "水印因子",
+          "watermarkFactorUnit": "%",
+          "watermarkFactorDescription": "发送缓冲区水印因子百分比",
+          "requestQueue": "请求队列大小",
+          "requestQueueDescription": "排队的分块请求的最大数量",
+          "stopTrackerTimeout": "停止 Tracker 超时",
+          "stopTrackerTimeoutUnit": "秒",
+          "stopTrackerTimeoutDescription": "Tracker 停止汇报的超时时间"
+        },
+        "diskIO": {
+          "title": "磁盘 I/O 与内存",
+          "coalesceReadWrite": "合并读写操作",
+          "coalesceReadWriteDescription": "合并相邻的磁盘读写以提高性能",
+          "asyncThreads": "异步 I/O 线程数",
+          "asyncThreadsDescription": "用于异步 I/O 操作的线程数",
+          "hashingThreads": "哈希线程数",
+          "hashingThreadsDescription": "用于分块哈希校验的线程数",
+          "filePool": "文件池大小",
+          "filePoolDescription": "文件句柄池中的最大打开文件数",
+          "diskCache": "磁盘缓存大小",
+          "diskCacheUnit": "MiB",
+          "diskCacheDescription": "磁盘缓存大小 (-1 = 自动, 0 = 禁用)",
+          "diskCacheTTL": "磁盘缓存 TTL",
+          "diskCacheTTLUnit": "秒",
+          "diskCacheTTLDescription": "缓存数据在内存中保留的时间",
+          "diskQueue": "磁盘队列大小",
+          "diskQueueUnit": "字节",
+          "diskQueueDescription": "为磁盘 I/O 排队的最大字节数",
+          "checkingMemory": "校验内存使用",
+          "checkingMemoryUnit": "MiB",
+          "checkingMemoryDescription": "用于分块校验的最大内存",
+          "workingSetLimit": "工作集限制",
+          "workingSetLimitUnit": "MiB",
+          "workingSetLimitDescription": "物理内存工作集大小限制",
+          "validation": {
+            "checkingMemory": "校验种子时的预留内存必须大于 0 且小于 1024"
+          }
+        },
+        "peerManagement": {
+          "title": "Peer 管理",
+          "turnover": "Peer 更替率",
+          "turnoverUnit": "%",
+          "turnoverDescription": "断开/重新连接的 Peer 百分比",
+          "turnoverCutoff": "更替率阈值",
+          "turnoverCutoffUnit": "%",
+          "turnoverCutoffDescription": "Peer 更替阈值百分比",
+          "turnoverInterval": "更替间隔",
+          "turnoverIntervalUnit": "秒",
+          "turnoverIntervalDescription": "执行 Peer 更替的频率",
+          "validation": {
+            "turnover": "Peer 更替率必须在 0 到 100 之间",
+            "turnoverCutoff": "Peer 更替率阈值必须在 0 到 100 之间",
+            "turnoverInterval": "Peer 更替间隔必须大于或等于 0 且小于 3600 秒"
+          }
+        },
+        "security": {
+          "title": "安全与 IP 过滤",
+          "enableIPFilter": "启用 IP 过滤",
+          "enableIPFilterDescription": "使用 IP 黑/白名单过滤连接",
+          "filterPath": "IP 过滤器文件路径",
+          "filterPathDescription": "IP 过滤器文件的路径 (支持 P2P, eMule, 和 PeerGuardian 格式)",
+          "filterPathPlaceholder": "/path/to/ipfilter.dat",
+          "filterTrackers": "同时过滤 Tracker",
+          "filterTrackersDescription": "将 IP 过滤应用于 Tracker 连接",
+          "bannedIPs": "封禁的 IP 地址",
+          "bannedIPsDescription": "要封禁的 IP 地址或范围列表 (每行一个)。支持 CIDR 表示法。",
+          "bannedIPsPlaceholder": "192.168.1.100\n10.0.0.0/8\n192.168.0.0/16",
+          "blockPrivilegedPorts": "阻止来自特权端口的 Peer",
+          "blockPrivilegedPortsDescription": "阻止来自低于 1024 端口的 Peer 的连接"
+        },
+        "notifications": {
+          "saveSuccess": "高级网络设置更新成功",
+          "saveError": "更新高级网络设置失败"
+        }
+      },
+      "proxySettings": {
+        "title": "代理配置",
+        "loading": "正在加载代理设置...",
+        "proxyType": {
+          "label": "代理类型",
+          "description": "选择用于路由连接的代理类型",
+          "none": "无",
+          "socks4": "SOCKS4",
+          "socks5": "SOCKS5",
+          "http": "HTTP"
+        },
+        "server": {
+          "title": "代理服务器",
+          "label": "代理服务器",
+          "placeholder": "proxy.example.com",
+          "description": "代理服务器主机名或 IP 地址",
+          "port": "端口",
+          "portDescription": "代理服务器端口"
+        },
+        "authentication": {
+          "title": "认证",
+          "label": "使用认证",
+          "description": "如果您的代理服务器需要用户名/密码，请启用"
+        },
+        "options": {
+          "title": "代理选项",
+          "peerConnections": "为 peer 连接使用代理",
+          "peerConnectionsDescription": "通过代理路由 BitTorrent peer 连接",
+          "torrentsOnly": "仅为种子使用代理",
+          "torrentsOnlyDescription": "仅为 BitTorrent 流量使用代理，不为其他连接使用",
+          "hostnameLookup": "为主机名查找使用代理",
+          "hostnameLookupDescription": "通过代理服务器解析主机名"
+        },
+        "notifications": {
+          "saveSuccess": "代理设置更新成功",
+          "saveError": "更新代理设置失败"
+        },
+        "saveButton": "更新代理设置",
+        "savingButton": "正在更新..."
+      }
+    }
+  },
+  "filter_sidebar": {
+    "title": "筛选器",
+    "loading": "正在加载...",
+    "clear_all": "全部清除",
+    "view_mode": {
+      "title": "视图模式",
+      "normal": "完整种子卡片",
+      "compact": "紧凑卡片",
+      "ultra_compact": "超紧凑",
+      "normal_button": "标准",
+      "compact_button": "紧凑",
+      "ultra_button": "超紧凑"
+    },
+    "status": {
+      "downloading": "下载中",
+      "uploading":"上传中",
+      "seeding": "做种中",
+      "completed": "已完成",
+      "stopped": "已停止",
+      "active": "活动中",
+      "inactive": "非活动",
+      "running": "运行中",
+      "stalled": "已暂停",
+      "stalled_uploading": "暂停上传",
+      "stalled_downloading": "暂停下载",
+      "errored": "错误",
+      "checking": "校验中",
+      "moving": "移动中",
+      "unregistered": "未注册",
+      "tracker_down": "Tracker 故障"
+    },
+    "categories": {
+      "title": "分类",
+      "add": "添加分类",
+      "search_placeholder": "搜索分类...",
+      "uncategorized": "未分类",
+      "loading": "正在加载分类...",
+      "no_match": "未找到匹配 \"{{search}}\" 的分类",
+      "no_available": "无可用分类",
+      "edit": "编辑分类",
+      "delete": "删除分类",
+      "remove_empty": "移除空分类"
+    },
+    "tags": {
+      "title": "标签",
+      "add": "添加标签",
+      "search_placeholder": "搜索标签...",
+      "untagged": "未标记",
+      "loading": "正在加载标签...",
+      "no_match": "未找到匹配 \"{{search}}\" 的标签",
+      "no_available": "无可用标签",
+      "delete": "删除标签",
+      "delete_unused": "删除所有未使用的标签"
+    },
+    "trackers": {
+      "title": "Tracker",
+      "search_placeholder": "搜索 Tracker...",
+      "no_tracker": "无 Tracker",
+      "loading": "正在加载 Tracker...",
+      "no_match": "未找到匹配 \"{{search}}\" 的 Tracker",
+      "edit_url": "编辑 Tracker URL"
+    },
+    "toasts": {
+      "fetch_urls_failed": "获取 Tracker URL 失败",
+      "update_url_success": "已更新所有受影响种子的 Tracker URL",
+      "update_url_failed": "更新 Tracker 失败"
+    },
+    "tooltips": {
+      "selection_tips_aria": "筛选选择提示",
+      "selection_tips_content": "左键点击切换“包含”和“中立”。Cmd/Ctrl + 左键点击切换“排除”。"
+    }
+  },
+  "tag_category_management_dialogs": {
+    "create_tag": {
+      "title": "创建新标签",
+      "description": "为新标签输入名称",
+      "label": "标签名称",
+      "placeholder": "输入标签名称",
+      "success": "标签创建成功",
+      "error": "创建标签失败"
+    },
+    "delete_tag": {
+      "title": "删除标签",
+      "description": "您确定要删除标签 \"{{tag}}\" 吗？此操作无法撤销。",
+      "success": "标签删除成功",
+      "error": "删除标签失败"
+    },
+    "create_category": {
+      "title": "创建新分类",
+      "description": "输入新分类的详细信息",
+      "name_label": "分类名称",
+      "name_placeholder": "输入分类名称",
+      "path_label": "保存路径 (可选)",
+      "path_placeholder": "例如 /downloads/movies",
+      "success": "分类创建成功",
+      "error": "创建分类失败"
+    },
+    "edit_category": {
+      "title": "编辑分类: {{name}}",
+      "description": "更新此分类的保存路径",
+      "current_path_label": "当前保存路径",
+      "no_path": "未配置保存路径",
+      "new_path_label": "新保存路径",
+      "new_path_placeholder": "例如 /downloads/movies",
+      "success": "分类更新成功",
+      "error": "更新分类失败"
+    },
+    "delete_category": {
+      "title": "删除分类",
+      "description": "您确定要删除分类 \"{{name}}\" 吗？此分类中的种子将变为未分类。",
+      "success": "分类删除成功",
+      "error": "删除分类失败"
+    },
+    "delete_unused_tags": {
+      "title": "删除未使用的标签",
+      "no_unused": "没有未使用的标签可删除。",
+      "confirm_one": "您确定要删除 {{count}} 个未使用的标签吗？此操作无法撤销。",
+      "confirm_other": "您确定要删除 {{count}} 个未使用的标签吗？此操作无法撤销。",
+      "delete_button_one": "删除 {{count}} 个标签",
+      "delete_button_other": "删除 {{count}} 个标签",
+      "success_one": "已删除 {{count}} 个未使用的标签",
+      "success_other": "已删除 {{count}} 个未使用的标签",
+      "error": "删除未使用的标签失败"
+    },
+    "tag_category_management_dialogs": {
+      "title": "移除空分类",
+      "no_empty": "没有可移除的空分类。",
+      "confirm": "您确定要移除 {{count}} 个空分类吗？此操作无法撤销。",
+      "confirm_plural": "您确定要移除 {{count}} 个空分类吗？此操作无法撤销。",
+      "remove_button": "移除 {{count}} 个分类",
+      "remove_button_plural": "移除 {{count}} 个分类",
+      "success": "移除了 {{count}} 个空分类",
+      "success_plural": "移除了 {{count}} 个空分类",
+      "error": "移除空分类失败"
+    },
+    "buttons": {
+      "create": "创建",
+      "load_more": "加载更多"
+    }
+  },
+  "common": {
+    "cancel": "取消",
+    "buttons": {
+      "delete": "删除",
+      "delete_count": "删除 ({{count}})",
+      "save": "保存",
+      "create": "创建",
+      "done": "完成",
+      "edit": "编辑"
+    },
+    "titles": {
+      "settings": "设置",
+      "instances": "实例"
+    },
+    "filters": "过滤器",
+    "messages": {
+      "noInstancesConfigured": "未配置实例"
+    },
+    "load_more": "加载更多",
+    "more": "更多",
+    "yes": "是",
+    "no": "否",
+    "showFilters": "显示筛选器",
+    "hideFilters": "隐藏筛选器",
+    "username": "用户名",
+    "password": "密码",
+    "loading": "加载中...",
+    "name": "名称",
+    "url": "URL",
+    "category": "分类",
+    "tags": "标签",
+    "status": "状态"
+  },
+  "actions_sheet": {
+    "title_all": "对全部 {{count}} 个种子的操作",
+    "title_selected_one": "对 {{count}} 个种子的操作",
+    "title_selected_other": "对 {{count}} 个种子的操作"
+  },
+  "torrent_dialogs": {
+    "add_tags": {
+      "title": "为 {{count}} 个种子添加标签",
+      "title_other": "为 {{count}} 个种子添加标签",
+      "description": "选择现有标签或创建新标签以添加到所选种子。",
+      "available_tags_label": "可用标签",
+      "deselect_all_button": "全部取消选择",
+      "new_tag_indicator": "(新)",
+      "create_new_tag_label": "创建新标签",
+      "new_tag_placeholder": "输入新标签名称",
+      "tags_to_add_summary": "要添加的标签：{{tags}}",
+      "add_tags_button": "添加标签"
+    },
+    "set_tags": {
+      "title": "为 {{count}} 个种子设置标签",
+      "title_other": "为 {{count}} 个种子设置标签",
+      "description": "用一组新标签替换所选种子上的所有当前标签。",
+      "available_tags_label": "可用标签",
+      "deselect_all_button": "全部取消选择",
+      "new_tag_indicator": "(新)",
+      "add_new_tag_label": "添加新标签",
+      "new_tag_placeholder": "输入新标签名称",
+      "selected_tags_summary": "已选标签：{{tags}}",
+      "replace_tags_button": "替换标签"
+    },
+    "remove_tags": {
+      "title": "从 {{count}} 个种子中移除标签",
+      "title_other": "从 {{count}} 个种子中移除标签",
+      "description": "选择要从所选种子中移除的标签。此操作无法撤销。",
+      "tags_to_remove_label": "要移除的标签",
+      "no_tags_found": "没有要移除的标签。",
+      "will_remove_summary": "将移除：{{tags}}",
+      "remove_tags_button": "移除标签"
+    },
+    "set_location": {
+      "title": "为 {{count}} 个种子设置位置",
+      "title_other": "为 {{count}} 个种子设置位置",
+      "description": "更改所选种子的保存位置。这将移动磁盘上的文件。",
+      "location_label": "新位置",
+      "location_placeholder": "输入新的绝对路径",
+      "set_location_button": "设置位置"
+    },
+    "set_category": {
+      "title": "为 {{count}} 个种子设置分类",
+      "title_other": "为 {{count}} 个种子设置分类",
+      "description": "选择现有分类或创建新分类以分配给所选种子。",
+      "select_placeholder": "选择一个分类",
+      "no_category": "(无分类)",
+      "create_new_label": "或创建新分类",
+      "new_category_placeholder": "输入新分类名称",
+      "set_category_button": "设置分类"
+    },
+    "create_category": {
+      "title": "创建并分配新分类",
+      "description": "创建新分类并将其分配给所选的 {{count}} 个种子。",
+      "category_name_label": "分类名称",
+      "category_name_placeholder": "输入新分类名称",
+      "create_and_assign_button": "创建并分配"
+    },
+    "edit_tracker": {
+      "title": "编辑 \"{{tracker}}\" 的 Tracker URL",
+      "description": "查找并替换 Tracker \"{{tracker}}\" 的 URL。当 Tracker 更改域名时，这对于更新 announce URL 很有用。",
+      "current_url_label": "当前 Tracker URL",
+      "loading_urls": "正在加载 Tracker URL...",
+      "select_url_placeholder": "选择要替换的 URL",
+      "multiple_urls_found": "为此 Tracker 找到多个 URL。请选择您要替换的一个。",
+      "current_url_placeholder": "例如，https://tracker.old-domain.com/announce",
+      "enter_full_url_note": "输入您希望替换的 Tracker 的完整 URL。",
+      "new_url_label": "新 Tracker URL",
+      "new_url_placeholder": "例如，https://tracker.new-domain.com/announce",
+      "enter_new_full_url_note": "输入您希望用于此 Tracker 的新的完整 URL。",
+      "note_title": "注意：",
+      "note_description": "未选择种子时，此操作将更新使用此 Tracker 的所有种子。此操作无法撤销。",
+      "update_button": "更新 Tracker"
+    },
+    "share_limits": {
+      "title": "为 {{count}} 个种子设置分享限制",
+      "title_other": "为 {{count}} 个种子设置分享限制",
+      "description": "为所选种子配置分享率和做种时间限制。",
+      "use_global_limits_label": "使用全局设置",
+      "use_global_limits_description": "使用您在 qBittorrent 设置中配置的全局分享限制。",
+      "set_ratio_limit_label": "设置分享率限制",
+      "ratio_limit_description": "达到此分享率后停止做种。",
+      "set_seeding_time_limit_label": "设置做种时间限制 (分钟)",
+      "seeding_time_limit_description": "达到此时间后停止做种。",
+      "set_inactive_seeding_limit_label": "设置非活动做种限制 (分钟)",
+      "inactive_seeding_limit_description": "停止已处于非活动状态这么长时间的种子。",
+      "saving_button": "正在保存..."
+    },
+    "speed_limits": {
+      "title": "为 {{count}} 个种子设置速度限制",
+      "title_other": "为 {{count}} 个种子设置速度限制",
+      "description": "为所选种子设置上传和下载速度限制 (单位 KB/s)。",
+      "set_upload_limit_label": "设置上传限制 (KB/s)",
+      "set_download_limit_label": "设置下载限制 (KB/s)",
+      "saving_button": "正在保存..."
+    }
+  },
+  "settings": {
+    "description": "管理您的应用偏好和安全设置",
+    "tabs": {
+      "security": "安全",
+      "datetime": "日期与时间",
+      "themes": "主题",
+      "api": "API 密钥",
+      "clientApi": "客户端代理"
+    },
+    "security": {
+      "title": "修改密码",
+      "description": "更新您的账户密码",
+      "currentPassword": {
+        "label": "当前密码",
+        "required": "当前密码为必填项"
+      },
+      "newPassword": {
+        "label": "新密码",
+        "required": "新密码为必填项",
+        "minLength": "密码必须至少包含8个字符"
+      },
+      "confirmNewPassword": {
+        "label": "确认新密码",
+        "required": "请确认您的新密码",
+        "noMatch": "两次输入的密码不匹配"
+      },
+      "button": {
+        "change": "修改密码",
+        "changing": "正在修改..."
+      },
+      "notifications": {
+        "success": "密码修改成功",
+        "error": "密码修改失败，请检查您输入的当前密码。"
+      }
+    },
+    "dateTime": {
+      "title": "日期与时间偏好设置",
+      "description": "配置时区、日期格式和时间显示偏好",
+      "timeZone": {
+        "title": "时区",
+        "description": "选择您本地的时区以确保时间准确显示",
+        "placeholder": "选择时区",
+        "detected": "(已检测)",
+        "regions": {
+          "utc": "协调世界时 (UTC)",
+          "americas": "美洲",
+          "europe": "欧洲",
+          "asia": "亚洲",
+          "africa": "非洲",
+          "oceania": "大洋洲"
+        }
+      },
+      "timeFormat": {
+        "title": "时间格式",
+        "label": "使用 12 小时制 (上午/下午)",
+        "description": "切换 12 小时制和 24 小时制的时间显示"
+      },
+      "dateFormat": {
+        "title": "日期格式",
+        "label": "日期格式",
+        "description": "选择在整个应用中日期的显示方式",
+        "placeholder": "选择日期格式",
+        "formats": {
+          "iso": "ISO 8601 (YYYY-MM-DD)",
+          "us": "美式格式 (MM/DD/YYYY)",
+          "eu": "欧式格式 (DD/MM/YYYY)",
+          "relative": "相对时间 (例如，\"2小时前\")"
+        }
+      },
+      "preview": {
+        "title": "预览",
+        "description": "日期和时间将以此格式在应用中显示"
+      },
+      "submit": "保存偏好设置",
+      "notifications": {
+        "success": "日期与时间偏好设置已成功更新",
+        "error": "更新日期与时间偏好设置失败"
+      }
+    },
+    "themes": {
+      "premium": "高级",
+      "pro": "Pro",
+      "free": "免费",
+      "locked": "已锁定",
+      "lock": "锁",
+      "title": "主题选择",
+      "description": "从可用主题中选择。高级主题需要有效的许可证。",
+      "freeThemes": "免费主题",
+      "premiumThemes": "高级主题",
+      "loading": {
+        "title": "主题选择",
+        "description": "正在加载可用主题..."
+      },
+      "notLoaded": {
+        "badge": "未加载高级主题",
+        "description": "请配置 THEMES_REPO_TOKEN 并运行 make themes-fetch。"
+      },
+      "notifications": {
+        "requiresLicense": {
+          "title": "此主题需要高级许可证",
+          "description": "请购买许可证以访问高级主题"
+        }
+      },
+      "changeTheme": "更改主题",
+      "theme": "主题",
+      "premiumToast": {
+        "title": "这是一个高级主题。",
+        "description": "请购买许可证以使用它。"
+      },
+      "switchToTheme": "已切换到 {{themeName}} 主题",
+      "modes": {
+        "light": "浅色",
+        "dark": "深色",
+        "system": "系统"
+      }
+    },
+    "license": {
+      "title": "许可证管理",
+      "description": "管理您的主题许可证和高级访问权限",
+      "loading": "正在加载主题许可证...",
+      "addLicense": "添加许可证",
+      "status": {
+        "active": "高级访问权限已激活",
+        "activationRequired": "需要激活许可证",
+        "unlock": "解锁高级主题"
+      },
+      "statusDescription": {
+        "active": "您已拥有所有当前和未来的高级主题的访问权限",
+        "activationRequired": "您的许可证需要在此设备上激活",
+        "unlock": "一次性购买 • $9.99 • 所有主题"
+      },
+      "validationFailed": "许可证验证失败。如果许可证已在其他设备上激活或数据库被复制，则可能发生这种情况。要在其他设备上停用，请访问 ",
+      "reactivate": "重新激活许可证",
+      "activating": "正在激活...",
+      "remove": "移除",
+      "buy": "购买许可证",
+      "deleteDialog": {
+        "title": "释放许可证密钥",
+        "description": "您确定要移除此许可证吗？您将失去所有高级主题的访问权限，并且该许可证将可以在别处使用。",
+        "label": "要释放的许可证密钥：",
+        "copy": "复制许可证密钥",
+        "recover": "如果需要，您可以稍后从您的 ",
+        "portal": "Polar 门户",
+        "releasing": "正在释放...",
+        "release": "释放许可证"
+      },
+      "addDialog": {
+        "title": "添加高级许可证",
+        "description": "输入您的高级主题许可证密钥以解锁所有高级主题。",
+        "label": "许可证密钥",
+        "placeholder": "请输入您的高级主题许可证密钥",
+        "required": "许可证密钥为必填项",
+        "recover": "找回密钥？",
+        "validating": "正在验证...",
+        "activate": "激活许可证"
+      },
+      "notifications": {
+        "copySuccess": "许可证密钥已复制到剪贴板",
+        "copyError": "复制到剪贴板失败"
+      },
+      "common": {
+        "status": "状态: {{status}}",
+        "added": "添加于 {{date}}"
+      }
+    },
+    "apiKeys": {
+      "title": "API 密钥",
+      "description": "管理用于外部访问的 API 密钥",
+      "docs": "API 文档",
+      "docsTitle": "查看 API 文档",
+      "mainDescription": "API 密钥允许外部应用程序访问您的 qBittorrent 实例。",
+      "create": "创建 API 密钥",
+      "loading": "正在加载 API 密钥...",
+      "empty": "尚未创建任何 API 密钥",
+      "lastUsed": "最后使用于: {{date}}",
+      "created": "创建于: {{date}}",
+      "id": "ID: {{id}}",
+      "createDialog": {
+        "title": "创建 API 密钥",
+        "description": "为您的 API 密钥指定一个描述性名称以记住其用途。",
+        "newKeyLabel": "您的新 API 密钥",
+        "saveWarning": "请立即保存此密钥，您将无法再次查看它。",
+        "namePlaceholder": "例如，自动化脚本",
+        "nameRequired": "名称为必填项",
+        "creating": "正在创建..."
+      },
+      "deleteDialog": {
+        "title": "删除 API 密钥？",
+        "description": "此操作无法撤销。任何使用此密钥的应用程序将失去访问权限。"
+      },
+      "notifications": {
+        "createSuccess": "API 密钥创建成功",
+        "createError": "创建 API 密钥失败",
+        "deleteSuccess": "API 密钥删除成功",
+        "deleteError": "删除 API 密钥失败",
+        "copySuccess": "API 密钥已复制到剪贴板",
+        "copyError": "复制到剪贴板失败"
+      }
+    },
+    "clientApiKeys": {
+      "title": "客户端代理 API 密钥",
+      "description": "管理用于外部应用程序通过 qui 连接到 qBittorrent 实例的 API 密钥",
+      "create": "创建客户端 API 密钥",
+      "loading": "正在加载客户端 API 密钥...",
+      "empty": "尚未创建任何客户端 API 密钥",
+      "instanceDeleted": "实例已删除",
+      "lastUsed": "最后使用于: {{date}}",
+      "created": "创建于:",
+      "host": "主机:",
+      "id": "ID: {{id}}",
+      "deleteAriaLabel": "删除 API 密钥 {{clientName}}",
+      "lastUsedLabel": "上次使用：",
+      "error": {
+        "load": "无法加载客户端 API 密钥",
+        "unavailable": "此版本中该功能可能不可用",
+        "unknown": "发生错误"
+      },
+      "createDialog": {
+        "title": "创建客户端 API 密钥",
+        "description": "为特定客户端创建 API 密钥以连接到 qBittorrent 实例。",
+        "successTitle": "API 密钥已创建",
+        "successDescription": "此信息仅显示一次。请在关闭对话框前将其保存在您的密码管理器中。",
+        "proxyUrl": "代理 URL",
+        "copyProxyUrl": "复制代理 URL",
+        "clientName": {
+          "label": "客户端名称",
+          "placeholder": "例如，autobrr, tqm, sonarr, radarr, cross-seed",
+          "required": "客户端名称为必填项"
+        },
+        "instance": {
+          "label": "qBittorrent 实例",
+          "placeholder": "选择一个实例",
+          "required": "实例为必填项"
+        },
+        "creating": "正在创建..."
+      },
+      "deleteDialog": {
+        "title": "删除客户端 API 密钥？",
+        "description": "此操作无法撤销。任何使用此密钥的应用程序将失去对 qBittorrent 实例的访问权限。"
+      },
+      "notifications": {
+        "createSuccess": "客户端 API 密钥创建成功",
+        "createError": "创建客户端 API 密钥失败",
+        "deleteSuccess": "客户端 API 密钥删除成功",
+        "deleteError": "删除客户端 API 密钥失败: {{error}}",
+        "selectInstanceError": "请选择一个实例",
+        "copySuccess": "代理 URL 已复制到剪贴板",
+        "copyError": "复制到剪贴板失败"
+      }
+    }
+  },
+  "ui": {
+    "updateBanner": {
+      "title": "有可用更新",
+      "version": "版本 {{tagName}} 现已可用",
+      "viewRelease": "查看发布",
+      "dismiss": "忽略"
+    }
+  },
+  "pwa": {
+    "reload": "重新加载",
+    "updateAvailable": {
+      "title": "有可用更新",
+      "description": "重新加载以应用最新的 qui 版本。"
+    },
+    "updated": {
+      "title": "qui 已更新",
+      "description": "在方便时重新加载以完成最新版本的安装。"
+    }
+  },
+  "hooks": {
+    "useLicense": {
+      "premiumAccessActivated": "高级访问已激活！谢谢！",
+      "licenseActivated": "许可证激活成功！",
+      "licenseReleased": "许可证释放成功",
+      "failedToReleaseLicense": "释放许可证失败",
+      "licensesRefreshed": "所有许可证刷新成功",
+      "failedToRefreshLicenses": "刷新许可证失败"
+    },
+    "useTorrentActions": {
+      "torrent_one": "个种子",
+      "torrent_other": "个种子",
+      "failedToAction_one": "未能{{action}} {{count}} 个种子",
+      "failedToAction_other": "未能{{action}} {{count}} 个种子",
+      "unexpectedError": "发生意外错误",
+      "resumed_one": "已恢复 {{count}} 个种子",
+      "resumed_other": "已恢复 {{count}} 个种子",
+      "paused_one": "已暂停 {{count}} 个种子",
+      "paused_other": "已暂停 {{count}} 个种子",
+      "deleted_one": "已删除 {{count}} 个种子",
+      "deleted_other": "已删除 {{count}} 个种子",
+      "deletedAndFiles_one": "已删除 {{count}} 个种子和文件",
+      "deletedAndFiles_other": "已删除 {{count}} 个种子和文件",
+      "rechecked_one": "已开始重新校验 {{count}} 个种子",
+      "rechecked_other": "已开始重新校验 {{count}} 个种子",
+      "reannounced_one": "已重新通知 {{count}} 个种子",
+      "reannounced_other": "已重新通知 {{count}} 个种子",
+      "increasedPriority_one": "已提高 {{count}} 个种子的优先级",
+      "increasedPriority_other": "已提高 {{count}} 个种子的优先级",
+      "decreasedPriority_one": "已降低 {{count}} 个种子的优先级",
+      "decreasedPriority_other": "已降低 {{count}} 个种子的优先级",
+      "topPriority_one": "已将 {{count}} 个种子设为最高优先级",
+      "topPriority_other": "已将 {{count}} 个种子设为最高优先级",
+      "bottomPriority_one": "已将 {{count}} 个种子设为最低优先级",
+      "bottomPriority_other": "已将 {{count}} 个种子设为最低优先级",
+      "addedTags_one": "已向 {{count}} 个种子添加标签",
+      "addedTags_other": "已向 {{count}} 个种子添加标签",
+      "removedTags_one": "已从 {{count}} 个种子中删除标签",
+      "removedTags_other": "已从 {{count}} 个种子中删除标签",
+      "replacedTags_one": "已替换 {{count}} 个种子的标签",
+      "replacedTags_other": "已替换 {{count}} 个种子的标签",
+      "setCategory_one": "已为 {{count}} 个种子设置分类",
+      "setCategory_other": "已为 {{count}} 个种子设置分类",
+      "enabledAutoTMM_one": "已为 {{count}} 个种子启用自动 TMM",
+      "enabledAutoTMM_other": "已为 {{count}} 个种子启用自动 TMM",
+      "disabledAutoTMM_one": "已为 {{count}} 个种子禁用自动 TMM",
+      "disabledAutoTMM_other": "已为 {{count}} 个种子禁用自动 TMM",
+      "setShareLimits_one": "已为 {{count}} 个种子设置分享限制",
+      "setShareLimits_other": "已为 {{count}} 个种子设置分享限制",
+      "setUploadLimit_one": "已为 {{count}} 个种子设置上传限制",
+      "setUploadLimit_other": "已为 {{count}} 个种子设置上传限制",
+      "setDownloadLimit_one": "已为 {{count}} 个种子设置下载限制",
+      "setDownloadLimit_other": "已为 {{count}} 个种子设置下载限制",
+      "setLocation_one": "已为 {{count}} 个种子设置位置",
+      "setLocation_other": "已为 {{count}} 个种子设置位置"
+    }
+  },
+  "torrent_creation_tasks": {
+    "loading": "正在加载任务...",
+    "empty": "未找到种子创建任务",
+    "private": "私有",
+    "status": {
+      "queued": "排队中",
+      "running": "运行中",
+      "finished": "已完成",
+      "failed": "失败"
+    },
+    "table": {
+      "source": "来源",
+      "status": "状态",
+      "progress": "进度",
+      "added": "已添加",
+      "actions": "操作"
+    },
+    "toasts": {
+      "download_started": "种子文件下载已开始",
+      "download_failed": "下载种子文件失败",
+      "delete_success": "种子创建任务已删除",
+      "delete_failed": "删除种子创建任务失败"
+    }
+  },
+  "torrent_creator_dialog": {
+    "title": "创建种子",
+    "description": "从服务器上的文件或文件夹创建新的 .torrent 文件",
+    "toasts": {
+      "queued": "已将创建种子的任务加入队列",
+      "failed": "创建种子任务失败"
+    },
+    "source_path": {
+      "label": "来源路径",
+      "placeholder": "/path/to/file/or/folder",
+      "description": "qBittorrent 所在服务器上的完整路径",
+      "tooltip": "Windows 用户：请使用双反斜杠（例如 C:\\\\Data\\\\folder）"
+    },
+    "private": {
+      "label": "私有种子",
+      "description": "禁用 DHT、PEX 和本地对等点发现"
+    },
+    "trackers": {
+      "label": "Trackers",
+      "description": "从您的活动 Trackers 中选择或在下方粘贴自定义 URL",
+      "placeholder": "从您活动的种子中添加 Tracker",
+      "line_by_line": "每行一个 Tracker URL",
+      "textarea_placeholder": "https://tracker.example.com:443/announce\nudp://tracker.example2.com:6969/announce"
+    },
+    "comment": {
+      "label": "注释",
+      "placeholder": "可选注释"
+    },
+    "source": {
+      "label": "来源",
+      "placeholder": "可选的来源标签"
+    },
+    "start_seeding": {
+      "label": "添加到 qBittorrent",
+      "description": "将创建的种子添加到 qBittorrent 并开始做种。如果禁用，则仅创建 .torrent 文件以供下载。"
+    },
+    "advanced_options": {
+      "title": "高级选项",
+      "format": {
+        "label": "种子格式",
+        "placeholder": "自动 (v1)",
+        "v1": "v1 (兼容)",
+        "v2": "v2 (现代)",
+        "hybrid": "混合 (v1 + v2)",
+        "description": "v1 提供最大兼容性，v2 适用于现代客户端，混合两者皆可"
+      },
+      "piece_size": {
+        "label": "区块大小",
+        "placeholder": "自动 (推荐)",
+        "description": "根据内容自动计算最佳大小",
+        "options": {
+          "auto": "自动 (推荐)"
+        }
+      },
+      "save_path": {
+        "label": "将 .torrent 保存到 (可选)",
+        "placeholder": "/path/to/save/file.torrent",
+        "description": "在服务器上保存 .torrent 文件的位置",
+        "tooltip": "qBittorrent 需要对该目录的写权限。最好留空，稍后从任务模式下载 .torrent 文件。"
+      },
+      "web_seeds": {
+        "label": "Web 种子 (HTTP/HTTPS)",
+        "placeholder": "https://mirror1.example.com/path\nhttps://mirror2.example.com/path",
+        "description": "可以下载内容的 HTTP/HTTPS URL。每行一个 URL。"
+      }
+    },
+    "actions": {
+      "submit": "创建种子"
+    }
+  },
+  "lib": {
+    "api": {
+      "sessionExpired": "会话已过期"
+    },
+    "dateTime": {
+      "justNow": "刚刚",
+      "minutesAgo_one": "{{count}} 分钟前",
+      "minutesAgo_other": "{{count}} 分钟前",
+      "hoursAgo_one": "{{count}} 小时前",
+      "hoursAgo_other": "{{count}} 小时前",
+      "daysAgo_one": "{{count}} 天前",
+      "daysAgo_other": "{{count}} 天前",
+      "weeksAgo_one": "{{count}} 周前",
+      "weeksAgo_other": "{{count}} 周前",
+      "monthsAgo_one": "{{count}} 个月前",
+      "monthsAgo_other": "{{count}} 个月前",
+      "yearsAgo_one": "{{count}} 年前",
+      "yearsAgo_other": "{{count}} 年前",
+      "today": "今天",
+      "yesterday": "昨天"
+    },
+    "licenseErrors": {
+      "expired": "您的许可证密钥已过期。",
+      "noLongerActive": "此许可证密钥不再有效。",
+      "invalid": "此许可证密钥无效。",
+      "notFound": "您输入的许可证密钥无效。",
+      "conditionsNotMet": "此许可证已在另一台计算机上激活。数据库似乎已被复制。",
+      "doesNotMatch": "许可证密钥不符合要求。",
+      "activationLimitExceeded": "已达到许可证激活上限。请在另一台计算机上停用，网址为 {{polarPortalUrl}}",
+      "limitReached": "已达到许可证激活上限。",
+      "usageLimitExceeded": "许可证使用超出限制。",
+      "tooManyRequests": "尝试次数过多。请稍候再试。",
+      "rateLimit": "请稍候再试。",
+      "default": "验证许可证密钥失败。请重试。"
+    },
+    "torrentState": {
+      "downloading": "下载中",
+      "metaDL": "获取元数据",
+      "allocating": "分配中",
+      "stalledDL": "下载停滞",
+      "queuedDL": "排队中",
+      "checkingDL": "校验中",
+      "forcedDL": "强制下载",
+      "uploading": "做种中",
+      "stalledUP": "做种停滞",
+      "queuedUP": "排队中",
+      "checkingUP": "校验中",
+      "forcedUP": "强制做种",
+      "pausedDL": "已暂停",
+      "pausedUP": "已暂停",
+      "stoppedDL": "已停止",
+      "stoppedUP": "已停止",
+      "error": "错误",
+      "missingFiles": "文件丢失",
+      "checkingResumeData": "正在校验恢复数据",
+      "moving": "移动中"
+    }
+  }
+}

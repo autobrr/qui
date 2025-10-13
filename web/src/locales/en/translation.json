@@ -1,0 +1,1960 @@
+{
+  "header": {
+    "switchInstanceAriaLabel": "Current instance: {{instanceName}}. Click to switch instances.",
+    "switchInstance": "Switch Instance"
+  },
+  "footer": {
+    "viewOnGitHub": "View on GitHub"
+  },
+  "login": {
+    "description": "qBittorrent management interface",
+    "username": {
+      "placeholder": "Enter your username",
+      "required": "Username is required"
+    },
+    "password": {
+      "placeholder": "Enter your password",
+      "required": "Password is required"
+    },
+    "rememberMe": "Remember me",
+    "buttons": {
+      "signIn": "Sign in",
+      "loggingIn": "Logging in..."
+    },
+    "error": {
+      "invalidCredentials": "Invalid username or password",
+      "generic": "Login failed. Please try again."
+    }
+  },
+  "setup": {
+    "description": "Create your account to get started",
+    "username": {
+      "placeholder": "Choose a username",
+      "required": "Username is required",
+      "minLength": "Username must be at least 3 characters"
+    },
+    "password": {
+      "placeholder": "Choose a strong password",
+      "required": "Password is required",
+      "minLength": "Password must be at least 8 characters"
+    },
+    "confirmPassword": {
+      "label": "Confirm Password",
+      "placeholder": "Confirm your password",
+      "required": "Please confirm your password",
+      "noMatch": "Passwords do not match"
+    },
+    "buttons": {
+      "create": "Create Account",
+      "creating": "Creating account..."
+    },
+    "error": {
+      "generic": "Failed to create user"
+    }
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "logout": "Logout",
+    "version": "Version {{version}}",
+    "viewOnGitHub": "View on GitHub",
+    "showSidebar": "Show sidebar",
+    "hideSidebar": "Hide sidebar",
+    "clients": "Clients",
+    "qBittorrentClients": "qBittorrent Clients",
+    "generalSettings": "General Settings",
+    "manageInstances": "Manage Instances",
+    "github": "GitHub",
+    "appearance": {
+      "title": "Appearance",
+      "mode": "Mode",
+      "light": "Light",
+      "dark": "Dark",
+      "system": "System",
+      "theme": "Theme",
+      "premium": "Premium",
+      "toast": {
+        "switchMode": "Switched to {{mode}} mode",
+        "switchTheme": "Switched to {{theme}} them",
+        "premiumError": "This is a premium theme. Please purchase a license to use it."
+      }
+    }
+  },
+  "pages": {
+    "instance": {
+      "loading": "Loading instances...",
+      "notFound": "Instance not found",
+      "id": "Instance ID:",
+      "available": "Available instances:"
+    },
+    "notFound": {
+      "title": "Oops! Lost in the swarm?",
+      "description": "Looks like you've ventured into the unknown.",
+      "bugReport": "In case you think this is a bug rather than a missing link,",
+      "feelFree": "feel free to report this to our",
+      "github": "GitHub repository",
+      "getBack": "Otherwise, let us help you get back on track!",
+      "return": "Return to dashboard"
+    }
+  },
+  "add_torrent_dialog": {
+    "title": "Add New Torrent",
+    "description": "Add a torrent file or magnet link to start downloading",
+    "adding": "Adding...",
+    "add_torrent_button": "Add Torrent",
+    "tabs": {
+      "file": "File",
+      "basic": "Basic",
+      "advanced": "Advanced"
+    },
+    "file_input": {
+      "label": "Torrent Files",
+      "button": "Browse for Torrent Files",
+      "files_selected_one": "{{count}} file selected",
+      "files_selected_other": "{{count}} files selected",
+      "show_files": "Show files",
+      "hide_files": "Hide files",
+      "and_more": "... and {{count}} more",
+      "validation": "Please select at least one torrent file"
+    },
+    "url_input": {
+      "label": "URLs / Magnet Links",
+      "placeholder": "Enter URLs or magnet links (one per line)",
+      "validation": "Please enter at least one URL or magnet link"
+    },
+    "toggles": {
+      "start_paused": "Start paused",
+      "skip_hash_check": "Skip hash check"
+    },
+    "category": {
+      "search_placeholder": "Search categories...",
+      "available_categories": "Available Categories (click to select)",
+      "filtering": "- filtering: \"{{search}}\"",
+      "no_match": "No categories match \"{{search}}\""
+    },
+    "tags": {
+      "search_placeholder": "Create new tag or search available tags...",
+      "clear_all": "Clear All",
+      "available_tags": "Available Tags (click to select/deselect)",
+      "new": "(new)",
+      "no_match": "No tags match \"{{search}}\""
+    },
+    "advanced": {
+      "auto_tmm": "Automatic Torrent Management",
+      "save_path": {
+        "label": "Save Path",
+        "placeholder": "Leave empty for default",
+        "description": "Manual save path (TMM disabled)",
+        "tmm_enabled": "Automatic Torrent Management is enabled. Save path will be determined by category settings."
+      },
+      "advanced_options": "Advanced Options",
+      "sequential_download": {
+        "label": "Sequential download",
+        "description": "(useful for media files)"
+      },
+      "first_last_prio": {
+        "label": "First/last piece priority",
+        "description": "(start playback faster)"
+      },
+      "speed_limits": {
+        "download": "Download limit (KB/s)",
+        "upload": "Upload limit (KB/s)",
+        "placeholder": "0 = unlimited"
+      },
+      "seeding_limits": {
+        "ratio": "Ratio limit",
+        "time": "Seed time limit (minutes)",
+        "placeholder": "0 = use global"
+      },
+      "content_layout": {
+        "label": "Content layout",
+        "global": "Use global setting",
+        "original": "Original",
+        "subfolder": "Create subfolder",
+        "no_subfolder": "Don't create subfolder"
+      },
+      "rename": {
+        "label": "Rename torrent",
+        "placeholder": "Leave empty to use original name"
+      },
+      "auto_applied": {
+        "label": "Auto-applied:",
+        "trackers": "Auto-add trackers",
+        "exclusions": "File exclusions: {{exclusions}}"
+      }
+    }
+  },
+  "theme": {
+    "appearance": "Appearance",
+    "change_theme": "Change theme",
+    "mode": "Mode",
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System",
+    "theme": "Theme",
+    "premium": "Premium"
+  },
+  "toasts": {
+    "switched_to_mode": "Switched to {{mode}} mode",
+    "switched_to_theme": "Switched to {{theme}} theme",
+    "premium_theme_error": "This is a premium theme. Please purchase a license to use it."
+  },
+  "search": {
+    "placeholder_glob": "Glob pattern...",
+    "placeholder": "Search torrents... ({{shortcutKey}})",
+    "clear_tooltip": "Clear search",
+    "info_tooltip": {
+      "title": "Smart Search Features:",
+      "glob": "<strong>Glob patterns:</strong> *.mkv, *1080p*, S??E??",
+      "fuzzy": "<strong>Fuzzy matching:</strong> \"breaking bad\" finds \"Breaking.Bad\"",
+      "syntax": "Handles dots, underscores, and brackets",
+      "scope": "Searches name, category, and tags",
+      "instant": "Press Enter for instant search",
+      "auto": "Auto-searches after 500ms pause"
+    }
+  },
+  "torrent_table": {
+    "header": {
+      "select_all": "Select all",
+      "select_row": "Select row",
+      "deselect_all": "Deselect All"
+    },
+    "columns": {
+      "priority": "Priority",
+      "size": "Size",
+      "total_size": "Total Size",
+      "progress": "Progress",
+      "seeds": "Seeds",
+      "peers": "Peers",
+      "down_speed": "Down Speed",
+      "up_speed": "Up Speed",
+      "eta": "ETA",
+      "ratio": "Ratio",
+      "popularity": "Popularity",
+      "added": "Added",
+      "completed_on": "Completed On",
+      "tracker_icon": "Tracker Icon",
+      "tracker": "Tracker",
+      "down_limit": "Down Limit",
+      "up_limit": "Up Limit",
+      "downloaded": "Downloaded",
+      "uploaded": "Uploaded",
+      "session_downloaded": "Session Downloaded",
+      "session_uploaded": "Session Uploaded",
+      "remaining": "Remaining",
+      "time_active": "Time Active",
+      "seeding_time": "Seeding Time",
+      "save_path": "Save Path",
+      "completed": "Completed",
+      "ratio_limit": "Ratio Limit",
+      "last_seen_complete": "Last Seen Complete",
+      "last_activity": "Last Activity",
+      "availability": "Availability",
+      "infohash_v1": "Info Hash v1",
+      "infohash_v2": "Info Hash v2",
+      "reannounce_in": "Reannounce In",
+      "private": "Private",
+      "recently_added": "Recently Added",
+      "download_speed": "Download Speed",
+      "upload_speed": "Upload Speed",
+      "download_limit": "Download Limit",
+      "upload_limit": "Upload Limit",
+      "status_icon": "Status Icon"
+    },
+    "sort_by": "Sort by",
+    "sort_prefix": "Sort: {{label}}",
+    "sort_order_aria_asc": "Sort ascending",
+    "sort_order_aria_desc": "Sort descending",
+    "total_size_label": "Total size: {{size}}"
+  },
+  "torrent_details": {
+    "tabs": {
+      "general": "General",
+      "trackers": "Trackers",
+      "peers": "Peers",
+      "content": "Content"
+    },
+    "toasts": {
+      "copied_to_clipboard": "{{type}} copied to clipboard",
+      "copy_failed": "Failed to copy to clipboard",
+      "add_peers_success": "Peers added successfully",
+      "add_peers_failed": "Failed to add peers: {{error}}",
+      "ban_peer_success": "Peer banned successfully",
+      "ban_peer_failed": "Failed to ban peer: {{error}}",
+      "copied_peer": "Copied {{peer}} to clipboard"
+    },
+    "general": {
+      "transfer_stats": {
+        "title": "Transfer Statistics",
+        "total_size": "Total Size",
+        "share_ratio": "Share Ratio",
+        "downloaded": "Downloaded",
+        "uploaded": "Uploaded",
+        "pieces": "Pieces",
+        "each": "each",
+        "wasted": "Wasted"
+      },
+      "speed": {
+        "title": "Speed",
+        "download": "Download Speed",
+        "upload": "Upload Speed",
+        "avg": "avg",
+        "limit": "Limit"
+      },
+      "network": {
+        "title": "Network",
+        "seeds": "Seeds",
+        "peers": "Peers"
+      },
+      "queue": {
+        "title": "Queue Management",
+        "priority": "Priority",
+        "normal": "Normal",
+        "queued": "Queued",
+        "dl": "DL",
+        "up": "UP",
+        "max_downloads": "Max Downloads",
+        "max_uploads": "Max Uploads",
+        "max_active": "Max Active"
+      },
+      "time": {
+        "title": "Time Information",
+        "time_active": "Time Active",
+        "seeding_time": "Seeding Time"
+      },
+      "location": {
+        "title": "Save Path",
+        "copy_type": "File location"
+      },
+      "identifiers": {
+        "title": "Torrent Identifiers",
+        "infohash_v1": "Info Hash v1",
+        "infohash_v2": "Info Hash v2"
+      },
+      "timestamps": {
+        "title": "Timestamps",
+        "added": "Added",
+        "completed": "Completed",
+        "created": "Created"
+      },
+      "additional_info": {
+        "title": "Additional Information",
+        "created_by": "Created By",
+        "comment": "Comment"
+      }
+    },
+    "trackers": {
+      "title": "Active Trackers",
+      "count_one": "{{count}} tracker",
+      "count_other": "{{count}} trackers",
+      "incognito_message": "Tracker message hidden in incognito mode",
+      "seeds": "Seeds",
+      "peers": "Peers",
+      "leechers": "Leechers",
+      "downloaded": "Downloaded",
+      "no_trackers": "No trackers found",
+      "status": {
+        "disabled": "Disabled",
+        "not_contacted": "Not contacted",
+        "working": "Working",
+        "updating": "Updating",
+        "error": "Error",
+        "unknown": "Unknown"
+      }
+    },
+    "peers": {
+      "title": "Connected Peers",
+      "count_one": "{{count}} peer connected",
+      "count_other": "{{count}} peers connected",
+      "add_peers_button": "Add Peers",
+      "seeder": "Seeder",
+      "unknown_client": "Unknown client",
+      "peer_progress": "Peer Progress",
+      "download_speed": "Download Speed",
+      "upload_speed": "Upload Speed",
+      "downloaded": "Downloaded",
+      "uploaded": "Uploaded",
+      "connection": "Connection",
+      "flags": "Flags",
+      "copy_ip": "Copy IP:port",
+      "ban_peer": "Ban peer permanently",
+      "no_peers": "No peers connected"
+    },
+    "content": {
+      "title": "File Contents",
+      "count_one": "{{count}} file",
+      "count_other": "{{count}} files",
+      "no_files": "No files found"
+    },
+    "dialogs": {
+      "add_peers": {
+        "title": "Add Peers",
+        "description": "Add one or more peers to this torrent. Enter each peer as IP:port, one per line or comma-separated.",
+        "peers_label": "Peers",
+        "add_button": "Add Peers"
+      },
+      "ban_peer": {
+        "title": "Ban Peer Permanently",
+        "description": "Are you sure you want to permanently ban this peer? This action cannot be undone.",
+        "ip_address": "IP Address",
+        "client": "Client",
+        "country": "Country",
+        "ban_button": "Ban Peer"
+      }
+    }
+  },
+  "torrent_management_bar": {
+    "toolbar_aria_one": "{{count}} torrent selected - Bulk actions available",
+    "toolbar_aria_other": "{{count}} torrents selected - Bulk actions available",
+    "actions": {
+      "resume": "Resume",
+      "pause": "Pause",
+      "recheck": "Force Recheck",
+      "reannounce": "Reannounce",
+      "tag_actions": "Tag Actions",
+      "set_category": "Set Category",
+      "set_location": "Set Location",
+      "queue_priority": "Queue Priority",
+      "limits": "Limits"
+    },
+    "tags": {
+      "add": "Add Tags",
+      "add_count": "Add Tags ({{count}})",
+      "replace": "Replace Tags",
+      "replace_count": "Replace Tags ({{count}})"
+    },
+    "queue": {
+      "top": "Top Priority",
+      "top_count": "Top Priority ({{count}})",
+      "increase": "Increase Priority",
+      "increase_count": "Increase Priority ({{count}})",
+      "decrease": "Decrease Priority",
+      "decrease_count": "Decrease Priority ({{count}})",
+      "bottom": "Bottom Priority",
+      "bottom_count": "Bottom Priority ({{count}})"
+    },
+    "limits": {
+      "set_share": "Set Share Limit",
+      "set_share_count": "Set Share Limit ({{count}})",
+      "set_speed": "Set Speed Limit",
+      "set_speed_count": "Set Speed Limit ({{count}})"
+    },
+    "tmm": {
+      "mixed": "TMM (Mixed)",
+      "disable": "Disable TMM",
+      "enable": "Enable TMM"
+    },
+    "dialogs": {
+      "delete": {
+        "title_one": "Delete {{count}} torrent?",
+        "title_other": "Delete {{count}} torrents?",
+        "description": "This action cannot be undone. The torrents will be removed from qBittorrent.",
+        "delete_files_label": "Also delete files from disk",
+        "delete_button": "Delete",
+        "description_with_size": "This action cannot be undone. Total size: {{size}}",
+        "total_size": "Total size:"
+      },
+      "recheck": {
+        "title_one": "Force Recheck {{count}} torrent?",
+        "title_other": "Force Recheck {{count}} torrents?",
+        "description": "This will force qBittorrent to recheck all pieces of the selected torrents. This process may take some time and will temporarily pause the torrents.",
+        "recheck_button": "Force Recheck"
+      },
+      "reannounce": {
+        "title_one": "Reannounce {{count}} torrent?",
+        "title_other": "Reannounce {{count}} torrents?",
+        "description": "This will force the selected torrents to reannounce to all their trackers. This is useful when trackers are not responding or you want to refresh your connection.",
+        "reannounce_button": "Reannounce"
+      }
+    }
+  },
+  "torrent_context_menu": {
+    "view_details": "View Details",
+    "resume": "Resume",
+    "resume_count": "Resume ({{count}})",
+    "pause": "Pause",
+    "pause_count": "Pause ({{count}})",
+    "recheck": "Force Recheck",
+    "recheck_count": "Force Recheck ({{count}})",
+    "reannounce": "Reannounce",
+    "reannounce_count": "Reannounce ({{count}})",
+    "add_tags": "Add Tags",
+    "add_tags_count": "Add Tags ({{count}})",
+    "replace_tags": "Replace Tags",
+    "replace_tags_count": "Replace Tags ({{count}})",
+    "set_location": "Set Location",
+    "set_location_count": "Set Location ({{count}})",
+    "set_share_limits": "Set Share Limits",
+    "set_share_limits_count": "Set Share Limits ({{count}})",
+    "set_speed_limits": "Set Speed Limits",
+    "set_speed_limits_count": "Set Speed Limits ({{count}})",
+    "enable_tmm": "Enable TMM",
+    "enable_tmm_count": "Enable TMM ({{count}})",
+    "disable_tmm": "Disable TMM",
+    "disable_tmm_count": "Disable TMM ({{count}})",
+    "enable_tmm_mixed": "Enable TMM (Mixed)",
+    "enable_tmm_mixed_count": "Enable TMM ({{count}} Mixed)",
+    "disable_tmm_mixed": "Disable TMM (Mixed)",
+    "disable_tmm_mixed_count": "Disable TMM ({{count}} Mixed)",
+    "export": "Export Torrent",
+    "export_count": "Export Torrents ({{count}})",
+    "copy_name": "Copy Name",
+    "copy_hash": "Copy Hash",
+    "queue": {
+      "title": "Queue",
+      "top_priority": "Top Priority",
+      "top_priority_count": "Top Priority ({{count}})",
+      "increase_priority": "Increase Priority",
+      "increase_priority_count": "Increase Priority ({{count}})",
+      "decrease_priority": "Decrease Priority",
+      "decrease_priority_count": "Decrease Priority ({{count}})",
+      "bottom_priority": "Bottom Priority",
+      "bottom_priority_count": "Bottom Priority ({{count}})"
+    },
+    "category": {
+      "set_category": "Set Category",
+      "no_category": "(No category)",
+      "no_category_count": "(No category) ({{count}})",
+      "search_placeholder": "Search categories...",
+      "category_item": "{{category}}",
+      "category_item_count": "{{category}} ({{count}})",
+      "no_categories_found": "No categories found",
+      "create_new": "Create New Category..."
+    },
+    "toasts": {
+      "copied_success": "Torrent {{type}} copied to clipboard",
+      "copy_failed": "Failed to copy to clipboard",
+      "hash_not_available": "Hash not available"
+    },
+    "copy_options": {
+      "title": "Copy...",
+      "name": "Copy Name",
+      "hash": "Copy Hash",
+      "full_path": "Copy Full Path"
+    }
+  },
+  "torrent_table_optimized": {
+    "toggle_columns": "Toggle columns",
+    "loading_torrents": "Loading torrents...",
+    "no_torrents_found": "No torrents found",
+    "torrents_count_one": "{{count}} torrent",
+    "torrents_count_other": "{{count}} torrents",
+    "loading_more_torrents": "Loading more torrents...",
+    "torrents_loaded_of_total": "{{loaded}} of {{total}} torrents loaded • Scroll to load more",
+    "scroll_for_more": " (scroll for more)",
+    "all_selected": "All {{count}}",
+    "count_selected": "{{count}} selected",
+    "keyboard_shortcuts": "• Shift+click for range • {{key}}+click for multiple",
+    "switch_to_bps": "Switch to bits per second (bps)",
+    "switch_to_Bps": "Switch to bytes per second (B/s)",
+    "exit_incognito": "Exit incognito mode",
+    "enable_incognito": "Enable incognito mode",
+    "delete_torrents_title_one": "Delete {{count}} torrent?",
+    "delete_torrents_title_other": "Delete {{count}} torrents?",
+    "delete_torrents_body": "This action cannot be undone. The torrents will be removed from qBittorrent.",
+    "delete_files_from_disk": "Also delete files from disk",
+    "recheck_torrents_title_one": "Force Recheck {{count}} torrent?",
+    "recheck_torrents_title_other": "Force Recheck {{count}} torrents?",
+    "recheck_torrents_body": "This will force qBittorrent to recheck all pieces of the selected torrents. This process may take some time and will temporarily pause the torrents.",
+    "force_recheck": "Force Recheck",
+    "reannounce_torrents_title_one": "Reannounce {{count}} torrent?",
+    "reannounce_torrents_title_other": "Reannounce {{count}} torrents?",
+    "reannounce_torrents_body": "This will force the selected torrents to reannounce to all their trackers. This is useful when trackers are not responding or you want to refresh your connection.",
+    "reannounce": "Reannounce",
+    "loading_from_instance": "Loading torrents from instance... (no cache available)",
+    "all_selected_with_size": "All {{count}} selected • {{size}}",
+    "count_selected_with_size": "{{count}} selected • {{size}}",
+    "keyboard_shortcuts_with_size": "Shift+click for range, {{key}}+click for multiple • {{size}}",
+    "delete_torrents_body_with_size": "This action cannot be undone. The torrents will be removed from qBittorrent. Total size: {{size}}",
+    "selection_shortcuts": {
+      "title": "Selection shortcuts",
+      "range": "Shift+click for range",
+      "multiple": "{{key}}+click for multiple"
+    }
+  },
+  "instances": {
+    "add": "Add Instance",
+    "loading": "Loading instances...",
+    "instance_connected": "Instance connected",
+    "instance_disconnected": "Instance disconnected",
+    "description": "Manage your qBittorrent connection settings",
+    "empty": {
+      "addFirst": "Add your first instance"
+    },
+    "dialog": {
+      "editTitle": "Edit Instance",
+      "editDescription": "Update your qBittorrent instance configuration",
+      "addDescription": "Add a new qBittorrent instance to manage"
+    },
+    "forms": {
+      "unlimitedHint": " (use -1 for unlimited)",
+      "unlimited": "Unlimited"
+    },
+    "form": {
+      "name": {
+        "label": "Instance Name",
+        "placeholder": "e.g., Main Server or Home qBittorrent",
+        "required": "Instance name is required"
+      },
+      "url": {
+        "placeholder": "http://localhost:8080 or 192.168.1.100:8080",
+        "required": "URL is required",
+        "invalid": "Please enter a valid URL",
+        "protocol": "Only HTTP and HTTPS protocols are supported",
+        "portRequired": "Port is required when using an IP address (e.g., :8080)"
+      },
+      "tls": {
+        "label": "Skip TLS Certificate Verification",
+        "description": "Allow connections to qBittorrent instances that use self-signed or otherwise untrusted certificates."
+      },
+      "authBypass": {
+        "label": "Authentication Bypass",
+        "description": "Enable when qBittorrent bypasses authentication for localhost or whitelisted IPs"
+      },
+      "qbitAuth": {
+        "usernamePlaceholder": "qBittorrent username (usually admin)",
+        "passwordPlaceholder": "qBittorrent password",
+        "passwordPlaceholderExisting": "Leave empty to keep current password"
+      },
+      "basicAuth": {
+        "label": "HTTP Basic Authentication",
+        "description": "Enable if your qBittorrent is behind a reverse proxy with Basic Auth",
+        "usernameLabel": "Basic Auth Username",
+        "usernamePlaceholder": "Basic auth username",
+        "passwordLabel": "Basic Auth Password",
+        "passwordPlaceholder": "Enter basic auth password (required)",
+        "required": "Basic auth password is required when basic auth is enabled"
+      },
+      "redacted": "<redacted>",
+      "buttons": {
+        "saving": "Saving...",
+        "update": "Update Instance"
+      },
+      "notifications": {
+        "updateSuccessTitle": "Instance Updated",
+        "updateSuccessDescription": "Instance updated successfully. Connection testing in background...",
+        "updateErrorTitle": "Update Failed",
+        "updateErrorDescription": "Failed to update instance",
+        "createSuccessTitle": "Instance Created",
+        "createSuccessDescription": "Instance created successfully. Connection testing in background...",
+        "createErrorTitle": "Create Failed",
+        "createErrorDescription": "Failed to create instance"
+      }
+    },
+    "card": {
+      "connected": "Connected",
+      "disconnected": "Disconnected",
+      "testConnection": "Test Connection",
+      "username": "Username:",
+      "basicAuth": "Basic Auth:",
+      "tlsVerification": "TLS Verification:",
+      "tlsSkipped": "Skipped",
+      "tlsStrict": "Strict",
+      "testing": "Testing connection...",
+      "deleteDialog": {
+        "title": "Delete Instance",
+        "description": "Are you sure you want to delete \"{{name}}\"? This action cannot be undone."
+      },
+      "notifications": {
+        "testSuccessTitle": "Test Connection Successful",
+        "testSuccessDescription": "Successfully connected to qBittorrent instance",
+        "testErrorTitle": "Test Connection Failed",
+        "testErrorDescription": "Could not connect to qBittorrent instance",
+        "testErrorFailed": "Connection failed",
+        "deleteSuccessTitle": "Instance Deleted",
+        "deleteSuccessDescription": "Successfully deleted \"{{name}}\"",
+        "deleteErrorTitle": "Delete Failed",
+        "deleteErrorDescription": "Failed to delete instance"
+      }
+    },
+    "errorDisplay": {
+      "passwordRequired": "Password Required",
+      "decryptionError": "Unable to decrypt saved password. This usually happens when the session secret has changed.",
+      "reEnterPassword": "Re-enter Password",
+      "recentErrorsCount": "Recent Errors ({{count}})"
+    },
+    "settingsButton": {
+      "tooltip": "Instance Settings"
+    },
+    "passwordIssues": {
+      "title": "Password Issues Detected",
+      "description": "Some instances cannot decrypt their saved passwords, likely due to a configuration change. Check the affected instances below to resolve this issue."
+    }
+  },
+  "torrents": {
+    "filters": "Filters",
+    "details": "Torrent Details",
+    "details_with_name": "Torrent Details: {{name}}"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "description": "Overview of all your qBittorrent instances",
+    "instances": {
+      "getStarted": "Get started by adding your first qBittorrent instance"
+    },
+    "speedLimits": {
+      "title": "Speed Limits",
+      "unlimited": "Unlimited",
+      "download": "Download",
+      "upload": "Upload",
+      "current": "Current: {{speed}}"
+    },
+    "stats": {
+      "loading": "Loading stats...",
+      "failed": "Failed to load stats"
+    },
+    "status": {
+      "downloading": "Downloading",
+      "active": "Active",
+      "error": "Error",
+      "total": "Total"
+    },
+    "instance": {
+      "loading": "Loading...",
+      "error": "Error",
+      "disconnected": "Disconnected",
+      "connected": "Connected",
+      "showMore": "Show More",
+      "showLess": "Show less",
+      "qbit_version_badge": "qBit {{version}}",
+      "api_version_badge": "API v{{version}}",
+      "libtorrent_version_badge": "lt {{version}}",
+      "connection_status_tooltip": {
+        "connectable": "Connectable"
+      },
+      "altSpeed": {
+        "enabledTooltip": "Alternative speed limits enabled (turtle mode) - Click to toggle",
+        "disabledTooltip": "Alternative speed limits disabled (normal mode) - Click to toggle",
+        "enableTitle": "Enable Alternative Speed Limits?",
+        "disableTitle": "Disable Alternative Speed Limits?",
+        "enableDescription": "This will enable alternative speed limits for {{name}}, which will reduce transfer speeds based on your configured limits.",
+        "disableDescription": "This will disable alternative speed limits for {{name}} and return to normal speed limits.",
+        "enableAction": "Enable",
+        "disableAction": "Disable"
+      }
+    },
+    "serverStats": {
+      "title": "Server Statistics",
+      "download": "Download",
+      "upload": "Upload",
+      "totalSize": "Total Size",
+      "freeSpace": "Free Space",
+      "peerConnections": "Peer Connections",
+      "queuedIO": "Queued I/O Jobs",
+      "bufferSize": "Buffer Size",
+      "totalQueued": "Total Queued",
+      "avgQueueTime": "Avg. Queue Time",
+      "ratio": "Ratio:",
+      "peers": "Peers:",
+      "externalIPv4": "External IPv4",
+      "externalIPv6": "External IPv6"
+    },
+    "globalStats": {
+      "instances": {
+        "description": "Connected instances"
+      },
+      "totalTorrents": {
+        "title": "Total Torrents",
+        "description": "{{active}} active - {{size}} total size"
+      },
+      "totalDownload": {
+        "title": "Total Download"
+      },
+      "totalUpload": {
+        "title": "Total Upload"
+      },
+      "allInstancesCombined": "All instances combined"
+    },
+    "instanceTable": {
+      "instance": "Instance",
+      "downloaded": "Downloaded",
+      "uploaded": "Uploaded",
+      "ratio": "Ratio",
+      "peers": "Peers"
+    },
+    "quickActions": {
+      "title": "Quick Actions",
+      "addTorrentTo": "Add to {{name}}",
+      "addTorrent": "Add Torrent",
+      "createTorrent": "Create torrent",
+      "tasks": "Torrent creation tasks"
+    }
+  },
+  "instancePreferences": {
+    "title": "Instance Preferences",
+    "description": "Configure all settings and preferences for {{name}}",
+    "tabs": {
+      "speed": "Speed",
+      "queue": "Queue",
+      "files": "Files",
+      "seeding": "Seeding",
+      "connection": "Connection",
+      "discovery": "Discovery",
+      "advanced": "Advanced"
+    },
+    "content": {
+      "speedLimits": {
+        "title": "Speed Limits",
+        "description": "Configure download and upload speed limits for this qBittorrent instance",
+        "loading": "Loading speed limits...",
+        "failed": "Failed to load preferences",
+        "downloadLimit": "Download Limit",
+        "uploadLimit": "Upload Limit",
+        "altDownloadLimit": "Alternative Download Limit",
+        "altUploadLimit": "Alternative Upload Limit",
+        "unit": "MiB/s",
+        "placeholderUnlimited": "0 (Unlimited)",
+        "scheduler": "Schedule the use of alternative rate limits",
+        "from": "From:",
+        "to": "To:",
+        "when": "When:",
+        "days": {
+          "everyDay": "Every day",
+          "weekdays": "Every weekday",
+          "weekends": "Every weekend",
+          "monday": "Monday",
+          "tuesday": "Tuesday",
+          "wednesday": "Wednesday",
+          "thursday": "Thursday",
+          "friday": "Friday",
+          "saturday": "Saturday",
+          "sunday": "Sunday"
+        },
+        "saveButton": "Save Changes",
+        "savingButton": "Saving...",
+        "notifications": {
+          "saveSuccess": "Speed limits updated successfully",
+          "saveError": "Failed to update speed limits"
+        },
+        "validation": {
+          "globalDownload": "Global download rate limit must be greater than 0 or disabled",
+          "globalUpload": "Global upload rate limit must be greater than 0 or disabled",
+          "altDownload": "Alternative download rate limit must be greater than 0 or disabled",
+          "altUpload": "Alternative upload rate limit must be greater than 0 or disabled"
+        }
+      },
+      "queueManagement": {
+        "title": "Queue Management",
+        "description": "Configure torrent queue settings and active torrent limits",
+        "loading": "Loading queue settings...",
+        "failed": "Failed to load preferences",
+        "enableQueueing": "Enable Queueing",
+        "enableQueueingDescription": "Limit the number of active torrents",
+        "maxActiveDownloads": "Max Active Downloads",
+        "maxActiveDownloadsDescription": "Maximum number of downloading torrents",
+        "maxActiveUploads": "Max Active Uploads",
+        "maxActiveUploadsDescription": "Maximum number of uploading torrents",
+        "maxActiveTorrents": "Max Active Torrents",
+        "maxActiveTorrentsDescription": "Total maximum active torrents",
+        "maxCheckingTorrents": "Max Checking Torrents",
+        "maxCheckingTorrentsDescription": "Maximum number of torrents being checked at the same time",
+        "saveButton": "Save Changes",
+        "savingButton": "Saving...",
+        "notifications": {
+          "saveSuccess": "Queue settings updated successfully",
+          "saveError": "Failed to update queue settings"
+        },
+        "validation": {
+          "maxActiveDownloads": "Maximum active downloads must be greater than -1",
+          "maxActiveUploads": "Maximum active uploads must be greater than -1",
+          "maxActiveTorrents": "Maximum active torrents must be greater than -1"
+        }
+      },
+      "fileManagement": {
+        "title": "File Management",
+        "description": "Configure file paths and torrent management settings",
+        "loading": "Loading file management settings...",
+        "failed": "Failed to load preferences",
+        "autoTMM": "Automatic Torrent Management",
+        "autoTMMDescription": "Use category-based paths for downloads",
+        "startPaused": "Start Torrents Paused",
+        "startPausedDescription": "New torrents start in paused state",
+        "defaultSavePath": "Default Save Path",
+        "defaultSavePathDescription": "Default directory for downloading files",
+        "placeholderPath": "/downloads",
+        "defaultContentLayout": "Default Content Layout",
+        "defaultContentLayoutDescription": "How torrent files are organized within the save directory",
+        "selectContentLayout": "Select content layout",
+        "layoutOptions": {
+          "original": "Original",
+          "subfolder": "Create subfolder",
+          "noSubfolder": "Don't create subfolder"
+        },
+        "saveButton": "Save Changes",
+        "savingButton": "Saving...",
+        "notifications": {
+          "saveSuccess": "File management settings updated successfully",
+          "saveError": "Failed to update file management settings"
+        }
+      },
+      "seedingLimits": {
+        "title": "Seeding Limits",
+        "description": "Configure share ratio and seeding time limits",
+        "loading": "Loading seeding limits...",
+        "failed": "Failed to load preferences",
+        "enableRatioLimit": "Enable Share Ratio Limit",
+        "enableRatioLimitDescription": "Stop seeding when ratio is reached",
+        "maxRatio": "Maximum Share Ratio",
+        "maxRatioDescription": "Stop seeding at this upload/download ratio",
+        "enableTimeLimit": "Enable Seeding Time Limit",
+        "enableTimeLimitDescription": "Stop seeding after specified time",
+        "maxTime": "Maximum Seeding Time (minutes)",
+        "maxTimeDescription": "Stop seeding after this many minutes",
+        "saveButton": "Save Changes",
+        "savingButton": "Saving...",
+        "notifications": {
+          "saveSuccess": "Seeding limits updated successfully",
+          "saveError": "Failed to update seeding limits"
+        }
+      },
+      "connectionSettings": {
+        "title": "Connection Settings",
+        "description": "Configure listening port, protocol settings, and connection limits",
+        "loading": "Loading connection settings...",
+        "failed": "Failed to load preferences",
+        "saveButton": "Update Connection Settings",
+        "savingButton": "Updating...",
+        "warnings": {
+          "limitedDetails": {
+            "title": "Limited version details",
+            "description": "We couldn't confirm this instance's qBittorrent build details, so all connection options are visible. Double-check applicability before applying changes."
+          }
+        },
+        "port": {
+          "title": "Listening Port",
+          "portRange": "Port for incoming connections",
+          "portRangeDescription": "Port used for incoming BitTorrent connections",
+          "randomPort": "Use random port on each startup",
+          "randomPortDescription": "Randomly select a port when qBittorrent starts",
+          "upnp": "Enable UPnP/NAT-PMP port forwarding",
+          "upnpDescription": "Automatically forward port through your router",
+          "upnpLease": "UPnP lease duration (0 = permanent)",
+          "upnpLeaseDescription": "Duration in minutes for UPnP lease (0 for permanent, libtorrent 2.x only)",
+          "validation": {
+            "portRange": "The port used for incoming connections must be between 0 and 65535"
+          }
+        },
+        "protocol": {
+          "title": "Protocol Settings",
+          "bittorrentProtocol": "BitTorrent Protocol",
+          "bittorrentProtocolDescription": "Protocol to use for peer connections",
+          "tcp_and_utp": "TCP and μTP",
+          "tcp": "TCP",
+          "utp": "μTP",
+          "mixedMode": "μTP-TCP Mixed Mode",
+          "mixedModeDescription": "How to handle mixed μTP/TCP connections",
+          "mixedModePlaceholder": "Select mode",
+          "preferTcp": "Prefer TCP",
+          "peerProportional": "Peer proportional"
+        },
+        "networkInterface": {
+          "title": "Network Interface",
+          "interface": "Network Interface (Read-Only)",
+          "interfaceDescription": "Currently active network interface. Configuration requires missing API endpoints.",
+          "address": "Interface IP Address (Read-Only)",
+          "addressDescription": "IP address of the current interface. Configuration requires missing API endpoints.",
+          "autoDetect": "Auto-detect",
+          "reannounce": "Re-announce to trackers when IP address changes",
+          "reannounceDescription": "Automatically re-announce when your IP address changes"
+        },
+        "limits": {
+          "title": "Connection Limits",
+          "globalMax": "Global maximum connections",
+          "globalMaxDescription": "Maximum connections across all torrents",
+          "perTorrentMax": "Maximum connections per torrent",
+          "perTorrentMaxDescription": "Maximum connections per individual torrent",
+          "globalUploadSlots": "Global maximum upload slots",
+          "globalUploadSlotsDescription": "Maximum upload slots across all torrents",
+          "perTorrentUploadSlots": "Maximum upload slots per torrent",
+          "perTorrentUploadSlotsDescription": "Maximum upload slots per individual torrent",
+          "allowMultipleConnections": "Allow multiple connections from the same IP address",
+          "allowMultipleConnectionsDescription": "Enable connections from multiple peers behind the same NAT",
+          "validation": {
+            "globalMax": "Maximum number of connections limit must be greater than 0 or disabled",
+            "perTorrentMax": "Maximum number of connections per torrent limit must be greater than 0 or disabled",
+            "globalUploadSlots": "Global number of upload slots limit must be greater than 0 or disabled",
+            "perTorrentUploadSlots": "Maximum number of upload slots per torrent limit must be greater than 0 or disabled"
+          }
+        },
+        "outgoingPorts": {
+          "title": "Outgoing Ports",
+          "min": "Outgoing ports (Min)",
+          "minDescription": "Minimum port for outgoing connections (0 = no limit)",
+          "max": "Outgoing ports (Max)",
+          "maxDescription": "Maximum port for outgoing connections (0 = no limit)",
+          "validation": {
+            "min": "Outgoing port range minimum must be between 0 and 65535",
+            "max": "Outgoing port range maximum must be between 0 and 65535"
+          }
+        },
+        "ipFiltering": {
+          "title": "IP Filtering",
+          "enable": "Enable IP filtering",
+          "enableDescription": "Filter specific IP addresses from connecting",
+          "path": "IP filter file path",
+          "pathDescription": "Path to IP filter file (.dat, .p2p, .p2b formats)",
+          "pathPlaceholder": "/path/to/filter.dat",
+          "applyToTrackers": "Apply IP filter to trackers",
+          "applyToTrackersDescription": "Also filter tracker connections based on IP filter rules",
+          "bannedIPs": "Manually banned IP addresses",
+          "bannedIPsDescription": "Add IP addresses to permanently ban from connecting (one per line)",
+          "bannedIPsPlaceholder": "Enter IP addresses to ban (one per line):\n192.168.1.100\n10.0.0.50\n2001:db8::1"
+        },
+        "notifications": {
+          "saveSuccess": "Connection settings updated successfully",
+          "saveError": "Failed to update connection settings"
+        }
+      },
+      "networkDiscovery": {
+        "title": "Network Discovery",
+        "description": "Configure peer discovery protocols and tracker settings",
+        "loading": "Loading network discovery settings...",
+        "failed": "Failed to load preferences",
+        "saveButton": "Update Network Discovery Settings",
+        "savingButton": "Updating...",
+        "peerDiscovery": {
+          "title": "Peer Discovery",
+          "dht": "Enable DHT (decentralized network)",
+          "dhtDescription": "Distributed Hash Table for finding peers without trackers",
+          "pex": "Enable PeX (Peer Exchange)",
+          "pexDescription": "Exchange peer lists with other peers",
+          "lsd": "Enable LSD (Local Service Discovery)",
+          "lsdDescription": "Find peers on your local network"
+        },
+        "tracker": {
+          "title": "Tracker Settings",
+          "allTiers": "Always announce to all tiers",
+          "allTiersDescription": "Announce to all tracker tiers simultaneously",
+          "allTrackers": "Always announce to all trackers in a tier",
+          "allTrackersDescription": "Announce to all trackers in a tier simultaneously"
+        },
+        "privacy": {
+          "title": "Security & Privacy",
+          "encryption": "Protocol Encryption",
+          "encryptionDescription": "Protocol encryption helps bypass ISP traffic shaping",
+          "encryptionOptions": {
+            "prefer": "Prefer encryption",
+            "require": "Require encryption",
+            "disable": "Disable encryption"
+          },
+          "anonymousMode": "Enable anonymous mode",
+          "anonymousModeDescription": "Hide your client identification and version",
+          "resolveCountries": "Resolve peer countries",
+          "resolveCountriesDescription": "Show country flags for peers (requires additional bandwidth)"
+        },
+        "notifications": {
+          "saveSuccess": "Network discovery settings updated successfully",
+          "saveError": "Failed to update network discovery settings"
+        }
+      },
+      "advancedSettings": {
+        "title": "Advanced Settings",
+        "description": "Performance tuning, disk I/O, peer management, and security settings",
+        "loading": "Loading advanced network settings...",
+        "failed": "Failed to load preferences",
+        "saveButton": "Update Advanced Network Settings",
+        "savingButton": "Updating...",
+        "warnings": {
+          "showAll": {
+            "title": "Showing all advanced options",
+            "description": "We couldn't determine this instance's qBittorrent version, so every advanced setting is displayed. Some options might not apply to your environment."
+          }
+        },
+        "tracker": {
+          "title": "Tracker Settings",
+          "announceIP": "IP address reported to trackers (requires restart)",
+          "announceIPDescription": "IP address to announce to trackers (leave empty for auto-detect)",
+          "autoDetect": "Auto-detect"
+        },
+        "performance": {
+          "title": "Performance Optimization",
+          "limitUTP": "Apply rate limit to μTP protocol",
+          "limitUTPDescription": "Limit μTP connections to prevent flooding LAN peers",
+          "limitTCPOverhead": "Apply rate limit to transport overhead",
+          "limitTCPOverheadDescription": "Include protocol overhead in rate limiting calculations",
+          "limitUTPRate": "Apply rate limit to μTP connections",
+          "limitUTPRateDescription": "Apply upload/download limits to μTP connections",
+          "peerTOS": "Peer ToS Byte",
+          "peerTOSDescription": "Type of Service byte for peer connections",
+          "socketBacklog": "Socket Backlog Size",
+          "socketBacklogDescription": "Number of pending connections in socket backlog",
+          "maxHTTPAnnounces": "Max HTTP Announces",
+          "maxHTTPAnnouncesDescription": "Maximum concurrent HTTP tracker announces",
+          "sendBufferWatermark": "Send Buffer Watermark",
+          "sendBufferWatermarkUnit": "KiB",
+          "sendBufferWatermarkDescription": "Upper watermark for socket send buffer",
+          "sendBufferLowWatermark": "Send Buffer Low Watermark",
+          "sendBufferLowWatermarkUnit": "KiB",
+          "sendBufferLowWatermarkDescription": "Lower watermark for socket send buffer",
+          "watermarkFactor": "Watermark Factor",
+          "watermarkFactorUnit": "%",
+          "watermarkFactorDescription": "Send buffer watermark factor percentage",
+          "requestQueue": "Request Queue Size",
+          "requestQueueDescription": "Maximum number of queued piece requests",
+          "stopTrackerTimeout": "Stop Tracker Timeout",
+          "stopTrackerTimeoutUnit": "seconds",
+          "stopTrackerTimeoutDescription": "Timeout for tracker stop announcements"
+        },
+        "diskIO": {
+          "title": "Disk I/O & Memory",
+          "coalesceReadWrite": "Coalesce reads & writes",
+          "coalesceReadWriteDescription": "Combine adjacent disk reads and writes for better performance",
+          "asyncThreads": "Async I/O Threads",
+          "asyncThreadsDescription": "Number of threads for asynchronous I/O operations",
+          "hashingThreads": "Hashing Threads",
+          "hashingThreadsDescription": "Number of threads for piece hash checking",
+          "filePool": "File Pool Size",
+          "filePoolDescription": "Maximum number of open file handles in pool",
+          "diskCache": "Disk Cache Size",
+          "diskCacheUnit": "MiB",
+          "diskCacheDescription": "Disk cache size (-1 = auto, 0 = disabled)",
+          "diskCacheTTL": "Disk Cache TTL",
+          "diskCacheTTLUnit": "seconds",
+          "diskCacheTTLDescription": "How long to keep cached data in memory",
+          "diskQueue": "Disk Queue Size",
+          "diskQueueUnit": "bytes",
+          "diskQueueDescription": "Maximum bytes queued for disk I/O",
+          "checkingMemory": "Checking Memory Use",
+          "checkingMemoryUnit": "MiB",
+          "checkingMemoryDescription": "Maximum memory used for piece checking",
+          "workingSetLimit": "Working Set Limit",
+          "workingSetLimitUnit": "MiB",
+          "workingSetLimitDescription": "Physical memory working set size limit",
+          "validation": {
+            "checkingMemory": "Outstanding memory when checking torrents must be greater than 0 and less than 1024"
+          }
+        },
+        "peerManagement": {
+          "title": "Peer Management",
+          "turnover": "Peer Turnover",
+          "turnoverUnit": "%",
+          "turnoverDescription": "Percentage of peers to disconnect/reconnect",
+          "turnoverCutoff": "Turnover Cutoff",
+          "turnoverCutoffUnit": "%",
+          "turnoverCutoffDescription": "Peer turnover threshold percentage",
+          "turnoverInterval": "Turnover Interval",
+          "turnoverIntervalUnit": "seconds",
+          "turnoverIntervalDescription": "How often to perform peer turnover",
+          "validation": {
+            "turnover": "Peer turnover must be between 0 and 100",
+            "turnoverCutoff": "Peer turnover cutoff must be between 0 and 100",
+            "turnoverInterval": "Peer turnover interval must be greater than or equal to 0 and less than 3600 seconds"
+          }
+        },
+        "security": {
+          "title": "Security & IP Filtering",
+          "enableIPFilter": "Enable IP filtering",
+          "enableIPFilterDescription": "Filter connections using IP blacklist/whitelist",
+          "filterPath": "IP Filter File Path",
+          "filterPathDescription": "Path to IP filter file (supports P2P, eMule, and PeerGuardian formats)",
+          "filterPathPlaceholder": "/path/to/ipfilter.dat",
+          "filterTrackers": "Filter trackers too",
+          "filterTrackersDescription": "Apply IP filtering to tracker connections",
+          "bannedIPs": "Banned IP Addresses",
+          "bannedIPsDescription": "List of banned IP addresses or ranges (one per line). Supports CIDR notation.",
+          "bannedIPsPlaceholder": "192.168.1.100\n10.0.0.0/8\n192.168.0.0/16",
+          "blockPrivilegedPorts": "Block peers on privileged ports",
+          "blockPrivilegedPortsDescription": "Block connections from peers using ports below 1024"
+        },
+        "notifications": {
+          "saveSuccess": "Advanced network settings updated successfully",
+          "saveError": "Failed to update advanced network settings"
+        }
+      },
+      "proxySettings": {
+        "title": "Proxy Configuration",
+        "loading": "Loading proxy settings...",
+        "proxyType": {
+          "label": "Proxy Type",
+          "description": "Select proxy type for routing connections",
+          "none": "None",
+          "socks4": "SOCKS4",
+          "socks5": "SOCKS5",
+          "http": "HTTP"
+        },
+        "server": {
+          "title": "Proxy Server",
+          "label": "Proxy Server",
+          "placeholder": "proxy.example.com",
+          "description": "Proxy server hostname or IP address",
+          "port": "Port",
+          "portDescription": "Proxy server port"
+        },
+        "authentication": {
+          "title": "Authentication",
+          "label": "Use authentication",
+          "description": "Enable if your proxy server requires username/password"
+        },
+        "options": {
+          "title": "Proxy Options",
+          "peerConnections": "Use proxy for peer connections",
+          "peerConnectionsDescription": "Route BitTorrent peer connections through proxy",
+          "torrentsOnly": "Use proxy only for torrents",
+          "torrentsOnlyDescription": "Only use proxy for BitTorrent traffic, not for other connections",
+          "hostnameLookup": "Use proxy for hostname lookups",
+          "hostnameLookupDescription": "Resolve hostnames through the proxy server"
+        },
+        "notifications": {
+          "saveSuccess": "Proxy settings updated successfully",
+          "saveError": "Failed to update proxy settings"
+        },
+        "saveButton": "Update Proxy Settings",
+        "savingButton": "Updating..."
+      }
+    }
+  },
+  "filter_sidebar": {
+    "title": "Filters",
+    "loading": "Loading...",
+    "clear_all": "Clear all",
+    "view_mode": {
+      "title": "View Mode",
+      "normal": "Full torrent cards",
+      "compact": "Compact cards",
+      "ultra_compact": "Ultra compact",
+      "normal_button": "Normal",
+      "compact_button": "Compact",
+      "ultra_button": "Ultra"
+    },
+    "status": {
+      "downloading": "Downloading",
+      "uploading":"Uploading",
+      "seeding": "Seeding",
+      "completed": "Completed",
+      "stopped": "Stopped",
+      "active": "Active",
+      "inactive": "Inactive",
+      "running": "Running",
+      "stalled": "Stalled",
+      "stalled_uploading": "Stalled Uploading",
+      "stalled_downloading": "Stalled Downloading",
+      "errored": "Error",
+      "checking": "Checking",
+      "moving": "Moving",
+      "unregistered": "Unregistered",
+      "tracker_down": "Tracker Down"
+    },
+    "categories": {
+      "title": "Categories",
+      "add": "Add category",
+      "search_placeholder": "Search categories...",
+      "uncategorized": "Uncategorized",
+      "loading": "Loading categories...",
+      "no_match": "No categories found matching \"{{search}}\"",
+      "no_available": "No categories available",
+      "edit": "Edit Category",
+      "delete": "Delete Category",
+      "remove_empty": "Remove Empty Categories"
+    },
+    "tags": {
+      "title": "Tags",
+      "add": "Add tag",
+      "search_placeholder": "Search tags...",
+      "untagged": "Untagged",
+      "loading": "Loading tags...",
+      "no_match": "No tags found matching \"{{search}}\"",
+      "no_available": "No tags available",
+      "delete": "Delete Tag",
+      "delete_unused": "Delete All Unused Tags"
+    },
+    "trackers": {
+      "title": "Trackers",
+      "search_placeholder": "Search trackers...",
+      "no_tracker": "No tracker",
+      "loading": "Loading trackers...",
+      "no_match": "No trackers found matching \"{{search}}\"",
+      "edit_url": "Edit Tracker URL"
+    },
+    "toasts": {
+      "fetch_urls_failed": "Failed to fetch tracker URLs",
+      "update_url_success": "Updated tracker URL across all affected torrents",
+      "update_url_failed": "Failed to update tracker"
+    },
+    "tooltips": {
+      "selection_tips_aria": "Filter selection tips",
+      "selection_tips_content": "Left click cycles include and neutral. Cmd/Ctrl + click toggles exclusion."
+    }
+  },
+  "tag_category_management_dialogs": {
+    "create_tag": {
+      "title": "Create New Tag",
+      "description": "Enter a name for the new tag",
+      "label": "Tag Name",
+      "placeholder": "Enter tag name",
+      "success": "Tag created successfully",
+      "error": "Failed to create tag"
+    },
+    "delete_tag": {
+      "title": "Delete Tag",
+      "description": "Are you sure you want to delete the tag \"{{tag}}\"? This action cannot be undone.",
+      "success": "Tag deleted successfully",
+      "error": "Failed to delete tag"
+    },
+    "create_category": {
+      "title": "Create New Category",
+      "description": "Enter details for the new category",
+      "name_label": "Category Name",
+      "name_placeholder": "Enter category name",
+      "path_label": "Save Path (optional)",
+      "path_placeholder": "e.g. /downloads/movies",
+      "success": "Category created successfully",
+      "error": "Failed to create category"
+    },
+    "edit_category": {
+      "title": "Edit Category: {{name}}",
+      "description": "Update the save path for this category",
+      "current_path_label": "Current Save Path",
+      "no_path": "No save path configured",
+      "new_path_label": "New Save Path",
+      "new_path_placeholder": "e.g. /downloads/movies",
+      "success": "Category updated successfully",
+      "error": "Failed to update category"
+    },
+    "delete_category": {
+      "title": "Delete Category",
+      "description": "Are you sure you want to delete the category \"{{name}}\"? Torrents in this category will become uncategorized.",
+      "success": "Category deleted successfully",
+      "error": "Failed to delete category"
+    },
+    "delete_unused_tags": {
+      "title": "Delete Unused Tags",
+      "no_unused": "There are no unused tags to delete.",
+      "confirm_one": "Are you sure you want to delete {{count}} unused tag? This action cannot be undone.",
+      "confirm_other": "Are you sure you want to delete {{count}} unused tags? This action cannot be undone.",
+      "delete_button_one": "Delete {{count}} Tag",
+      "delete_button_other": "Delete {{count}} Tags",
+      "success_one": "Deleted {{count}} unused tag",
+      "success_other": "Deleted {{count}} unused tags",
+      "error": "Failed to delete unused tags"
+    },
+    "tag_category_management_dialogs": {
+      "title": "Remove Empty Categories",
+      "no_empty": "There are no empty categories to remove.",
+      "confirm": "Are you sure you want to remove {{count}} empty category? This action cannot be undone.",
+      "confirm_plural": "Are you sure you want to remove {{count}} empty categories? This action cannot be undone.",
+      "remove_button": "Remove {{count}} Category",
+      "remove_button_plural": "Remove {{count}} Categories",
+      "success": "Removed {{count}} empty category",
+      "success_plural": "Removed {{count}} empty categories",
+      "error": "Failed to remove empty categories"
+    },
+    "buttons": {
+      "create": "Create",
+      "load_more": "Load More"
+    }
+  },
+  "common": {
+    "cancel": "Cancel",
+    "buttons": {
+      "delete": "Delete",
+      "delete_count": "Delete ({{count}}})",
+      "save": "Save",
+      "create": "Create",
+      "done": "Done",
+      "edit": "Edit"
+    },
+    "titles": {
+      "settings": "Settings",
+      "instances": "Instances"
+    },
+    "messages": {
+      "noInstancesConfigured": "No instances configured"
+    },
+    "filters": "Filters",
+    "load_more": "Load More",
+    "more": "More",
+    "yes": "Yes",
+    "no": "No",
+    "showFilters": "Show filters",
+    "hideFilters": "Hide filters",
+    "username": "Username",
+    "password": "Password",
+    "loading": "Loading...",
+    "name": "Name",
+    "url": "URL",
+    "category": "Category",
+    "tags": "Tags",
+    "status": "Status"
+  },
+  "actions_sheet": {
+    "title_all": "Actions for all {{count}} torrents",
+    "title_selected_one": "Actions for {{count}} torrent",
+    "title_selected_other": "Actions for {{count}} torrents"
+  },
+  "torrent_dialogs": {
+    "add_tags": {
+      "title": "Add Tags to {{count}} torrent",
+      "title_other": "Add Tags to {{count}} torrents",
+      "description": "Select existing tags or create new ones to add to the selected torrents.",
+      "available_tags_label": "Available Tags",
+      "deselect_all_button": "Deselect All",
+      "new_tag_indicator": "(new)",
+      "create_new_tag_label": "Create New Tag",
+      "new_tag_placeholder": "Enter new tag name",
+      "tags_to_add_summary": "Tags to add: {{tags}}",
+      "add_tags_button": "Add Tags"
+    },
+    "set_tags": {
+      "title": "Set Tags for {{count}} torrent",
+      "title_other": "Set Tags for {{count}} torrents",
+      "description": "Replace all current tags on the selected torrents with a new set of tags.",
+      "available_tags_label": "Available Tags",
+      "deselect_all_button": "Deselect All",
+      "new_tag_indicator": "(new)",
+      "add_new_tag_label": "Add New Tag",
+      "new_tag_placeholder": "Enter new tag name",
+      "selected_tags_summary": "Selected tags: {{tags}}",
+      "replace_tags_button": "Replace Tags"
+    },
+    "remove_tags": {
+      "title": "Remove Tags from {{count}} torrent",
+      "title_other": "Remove Tags from {{count}} torrents",
+      "description": "Select which tags to remove from the selected torrents. This action cannot be undone.",
+      "tags_to_remove_label": "Tags to Remove",
+      "no_tags_found": "No tags to remove.",
+      "will_remove_summary": "Will remove: {{tags}}",
+      "remove_tags_button": "Remove Tags"
+    },
+    "set_location": {
+      "title": "Set Location for {{count}} torrent",
+      "title_other": "Set Location for {{count}} torrents",
+      "description": "Change the save location for the selected torrents. This will move the files on disk.",
+      "location_label": "New Location",
+      "location_placeholder": "Enter the new absolute path",
+      "set_location_button": "Set Location"
+    },
+    "set_category": {
+      "title": "Set Category for {{count}} torrent",
+      "title_other": "Set Category for {{count}} torrents",
+      "description": "Choose an existing category or create a new one to assign to the selected torrents.",
+      "select_placeholder": "Select a category",
+      "no_category": "(No Category)",
+      "create_new_label": "Or create new category",
+      "new_category_placeholder": "Enter new category name",
+      "set_category_button": "Set Category"
+    },
+    "create_category": {
+      "title": "Create & Assign New Category",
+      "description": "Create a new category and assign it to the selected {{count}} torrent(s).",
+      "category_name_label": "Category Name",
+      "category_name_placeholder": "Enter new category name",
+      "create_and_assign_button": "Create & Assign"
+    },
+    "edit_tracker": {
+      "title": "Edit Tracker URLs for \"{{tracker}}\"",
+      "description": "Find and replace tracker URLs for the tracker \"{{tracker}}\". This is useful for updating announce URLs when a tracker changes domains.",
+      "current_url_label": "Current Tracker URL",
+      "loading_urls": "Loading tracker URLs...",
+      "select_url_placeholder": "Select a URL to replace",
+      "multiple_urls_found": "Multiple URLs found for this tracker. Please select the one you want to replace.",
+      "current_url_placeholder": "e.g., https://tracker.old-domain.com/announce",
+      "enter_full_url_note": "Enter the full URL of the tracker you wish to replace.",
+      "new_url_label": "New Tracker URL",
+      "new_url_placeholder": "e.g., https://tracker.new-domain.com/announce",
+      "enter_new_full_url_note": "Enter the new full URL you want to use for this tracker.",
+      "note_title": "Note:",
+      "note_description": "When no torrents are selected, this will update ALL torrents that use this tracker. This operation cannot be undone.",
+      "update_button": "Update Tracker"
+    },
+    "share_limits": {
+      "title": "Set Share Limits for {{count}} torrent",
+      "title_other": "Set Share Limits for {{count}} torrents",
+      "description": "Configure the share ratio and seeding time limits for the selected torrents.",
+      "use_global_limits_label": "Use global settings",
+      "use_global_limits_description": "Use the global share limits configured in your qBittorrent settings.",
+      "set_ratio_limit_label": "Set share ratio limit",
+      "ratio_limit_description": "Stop seeding when this ratio is reached.",
+      "set_seeding_time_limit_label": "Set seeding time limit (minutes)",
+      "seeding_time_limit_description": "Stop seeding when this time is reached.",
+      "set_inactive_seeding_limit_label": "Set inactive seeding limit (minutes)",
+      "inactive_seeding_limit_description": "Stop seeding torrents that have been inactive for this long.",
+      "saving_button": "Saving..."
+    },
+    "speed_limits": {
+      "title": "Set Speed Limits for {{count}} torrent",
+      "title_other": "Set Speed Limits for {{count}} torrents",
+      "description": "Set the upload and download speed limits for the selected torrents (in KB/s).",
+      "set_upload_limit_label": "Set upload limit (KB/s)",
+      "set_download_limit_label": "Set download limit (KB/s)",
+      "saving_button": "Saving..."
+    }
+  },
+  "settings": {
+    "description": "Manage your application preferences and security",
+    "tabs": {
+      "security": "Security",
+      "datetime": "Date & Time",
+      "themes": "Themes",
+      "api": "API Keys",
+      "clientApi": "Client Proxy"
+    },
+    "security": {
+      "title": "Change Password",
+      "description": "Update your account password",
+      "currentPassword": {
+        "label": "Current Password",
+        "required": "Current password is required"
+      },
+      "newPassword": {
+        "label": "New Password",
+        "required": "New password is required",
+        "minLength": "Password must be at least 8 characters"
+      },
+      "confirmNewPassword": {
+        "label": "Confirm New Password",
+        "required": "Please confirm your new password",
+        "noMatch": "Passwords do not match"
+      },
+      "button": {
+        "change": "Change Password",
+        "changing": "Changing..."
+      },
+      "notifications": {
+        "success": "Password changed successfully",
+        "error": "Failed to change password. Please check your current password."
+      }
+    },
+    "dateTime": {
+      "title": "Date & Time Preferences",
+      "description": "Configure timezone, date format, and time display preferences",
+      "timeZone": {
+        "title": "Timezone",
+        "description": "Select your local timezone for accurate time display",
+        "placeholder": "Select timezone",
+        "detected": "(detected)",
+        "regions": {
+          "utc": "UTC",
+          "americas": "Americas",
+          "europe": "Europe",
+          "asia": "Asia",
+          "africa": "Africa",
+          "oceania": "Oceania"
+        }
+      },
+      "timeFormat": {
+        "title": "Time Format",
+        "label": "Use 12-hour format (AM/PM)",
+        "description": "Toggle between 12-hour and 24-hour time display"
+      },
+      "dateFormat": {
+        "title": "Date Format",
+        "label": "Date Format",
+        "description": "Choose how dates are displayed throughout the application",
+        "placeholder": "Select date format",
+        "formats": {
+          "iso": "ISO 8601 (YYYY-MM-DD)",
+          "us": "US Format (MM/DD/YYYY)",
+          "eu": "European Format (DD/MM/YYYY)",
+          "relative": "Relative (e.g., \"2 hours ago\")"
+        }
+      },
+      "preview": {
+        "title": "Preview",
+        "description": "This is how dates and times will appear in the application"
+      },
+      "submit": "Save Preferences",
+      "notifications": {
+        "success": "Date & time preferences updated successfully",
+        "error": "Failed to update date & time preferences"
+      }
+    },
+    "themes": {
+      "premium": "Premium",
+      "pro": "Pro",
+      "free": "Free",
+      "locked": "Locked",
+      "lock": "Lock",
+      "title": "Theme Selection",
+      "description": "Choose from available themes. Premium themes require a valid license.",
+      "freeThemes": "Free Themes",
+      "premiumThemes": "Premium Themes",
+      "loading": {
+        "title": "Theme Selection",
+        "description": "Loading available themes..."
+      },
+      "notLoaded": {
+        "badge": "Premium themes not loaded",
+        "description": "Configure THEMES_REPO_TOKEN and run make themes-fetch."
+      },
+      "notifications": {
+        "requiresLicense": {
+          "title": "This theme requires a premium license",
+          "description": "Please purchase a license to access premium themes"
+        }
+      },
+      "changeTheme": "Change theme",
+      "theme": "Theme",
+      "premiumToast": {
+        "title": "This is a premium theme.",
+        "description": "Please purchase a license to use it."
+      },
+      "switchToTheme": "Switched to {{themeName}} theme",
+      "modes": {
+        "light": "Light",
+        "dark": "Dark",
+        "system": "System"
+      }
+    },
+    "license": {
+      "title": "License Management",
+      "description": "Manage your theme license and premium access",
+      "loading": "Loading theme licenses...",
+      "addLicense": "Add License",
+      "status": {
+        "active": "Premium Access Active",
+        "activationRequired": "License Activation Required",
+        "unlock": "Unlock Premium Themes"
+      },
+      "statusDescription": {
+        "active": "You have access to all current and future premium themes",
+        "activationRequired": "Your license needs to be activated on this machine",
+        "unlock": "One-time purchase • $9.99 • All themes"
+      },
+      "validationFailed": "License validation failed. This may occur if the license was activated on another machine or if the database was copied. To deactivate on another machine, visit ",
+      "reactivate": "Re-activate License",
+      "activating": "Activating...",
+      "remove": "Remove",
+      "buy": "Buy license",
+      "deleteDialog": {
+        "title": "Release License Key",
+        "description": "Are you sure you want to remove this license? You will lose access to all premium themes and the license can be used elsewhere.",
+        "label": "License Key to Release:",
+        "copy": "Copy License Key",
+        "recover": "If needed, you can recover it later from your ",
+        "portal": "Polar portal",
+        "releasing": "Releasing...",
+        "release": "Release License"
+      },
+      "addDialog": {
+        "title": "Add Premium License",
+        "description": "Enter your premium theme license key to unlock all premium themes.",
+        "label": "License Key",
+        "placeholder": "Enter your premium theme license key",
+        "required": "License key is required",
+        "recover": "Recover key?",
+        "validating": "Validating...",
+        "activate": "Activate License"
+      },
+      "notifications": {
+        "copySuccess": "License key copied to clipboard",
+        "copyError": "Failed to copy to clipboard"
+      },
+      "common": {
+        "status": "Status: {{status}}",
+        "added": "Added {{date}}"
+      }
+    },
+    "apiKeys": {
+      "title": "API Keys",
+      "description": "Manage API keys for external access",
+      "docs": "API Docs",
+      "docsTitle": "View API documentation",
+      "mainDescription": "API keys allow external applications to access your qBittorrent instances.",
+      "create": "Create API Key",
+      "loading": "Loading API keys...",
+      "empty": "No API keys created yet",
+      "lastUsed": "Last used: {{date}}",
+      "created": "Created: {{date}}",
+      "id": "ID: {{id}}",
+      "createDialog": {
+        "title": "Create API Key",
+        "description": "Give your API key a descriptive name to remember its purpose.",
+        "newKeyLabel": "Your new API key",
+        "saveWarning": "Save this key now. You won't be able to see it again.",
+        "namePlaceholder": "e.g., Automation Script",
+        "nameRequired": "Name is required",
+        "creating": "Creating..."
+      },
+      "deleteDialog": {
+        "title": "Delete API Key?",
+        "description": "This action cannot be undone. Any applications using this key will lose access."
+      },
+      "notifications": {
+        "createSuccess": "API key created successfully",
+        "createError": "Failed to create API key",
+        "deleteSuccess": "API key deleted successfully",
+        "deleteError": "Failed to delete API key",
+        "copySuccess": "API key copied to clipboard",
+        "copyError": "Failed to copy to clipboard"
+      }
+    },
+    "clientApiKeys": {
+      "title": "Client Proxy API Keys",
+      "description": "Manage API keys for external applications to connect to qBittorrent instances through qui",
+      "create": "Create Client API Key",
+      "loading": "Loading client API keys...",
+      "empty": "No client API keys created yet",
+      "instanceDeleted": "Instance Deleted",
+      "lastUsed": "Last used: {{date}}",
+      "created": "Created:",
+      "host": "Host:",
+      "id": "ID: {{id}}",
+      "deleteAriaLabel": "Delete API key {{clientName}}",
+      "lastUsedLabel": "Last used:",
+      "error": {
+        "load": "Unable to load client API keys",
+        "unavailable": "Feature may not be available in this version",
+        "unknown": "An error occurred"
+      },
+      "createDialog": {
+        "title": "Create Client API Key",
+        "description": "Create an API key for a specific client to connect to a qBittorrent instance.",
+        "successTitle": "API Key Created",
+        "successDescription": "This information is shown only once. Store it in your password manager before closing the dialog.",
+        "proxyUrl": "Proxy URL",
+        "copyProxyUrl": "Copy proxy URL",
+        "clientName": {
+          "label": "Client Name",
+          "placeholder": "e.g., autobrr, tqm, sonarr, radarr, cross-seed",
+          "required": "Client name is required"
+        },
+        "instance": {
+          "label": "qBittorrent Instance",
+          "placeholder": "Select an instance",
+          "required": "Instance is required"
+        },
+        "creating": "Creating..."
+      },
+      "deleteDialog": {
+        "title": "Delete Client API Key?",
+        "description": "This action cannot be undone. Any applications using this key will lose access to the qBittorrent instance."
+      },
+      "notifications": {
+        "createSuccess": "Client API key created successfully",
+        "createError": "Failed to create client API key",
+        "deleteSuccess": "Client API key deleted successfully",
+        "deleteError": "Failed to delete client API key: {{error}}",
+        "selectInstanceError": "Please select an instance",
+        "copySuccess": "Proxy URL copied to clipboard",
+        "copyError": "Failed to copy to clipboard"
+      }
+    }
+  },
+  "ui": {
+    "updateBanner": {
+      "title": "Update Available",
+      "version": "Version {{tagName}} is now available",
+      "viewRelease": "View Release",
+      "dismiss": "Dismiss"
+    }
+  },
+  "pwa": {
+    "reload": "Reload",
+    "updateAvailable": {
+      "title": "Update available",
+      "description": "Reload to apply the latest qui release."
+      },
+    "updated": {
+      "title": "qui updated",
+      "description": "Reload when convenient to finish installing the latest release."
+    }
+  },
+  "hooks": {
+    "useLicense": {
+      "premiumAccessActivated": "Premium access activated! Thank you!",
+      "licenseActivated": "License activated successfully!",
+      "licenseReleased": "License released successfully",
+      "failedToReleaseLicense": "Failed to release license",
+      "licensesRefreshed": "All licenses refreshed successfully",
+      "failedToRefreshLicenses": "Failed to refresh licenses"
+    },
+    "useTorrentActions": {
+      "torrent_one": "torrent",
+      "torrent_other": "torrents",
+      "failedToAction_one": "Failed to {{action}} {{count}} torrent",
+      "failedToAction_other": "Failed to {{action}} {{count}} torrents",
+      "unexpectedError": "An unexpected error occurred",
+      "resumed_one": "Resumed {{count}} torrent",
+      "resumed_other": "Resumed {{count}} torrents",
+      "paused_one": "Paused {{count}} torrent",
+      "paused_other": "Paused {{count}} torrents",
+      "deleted_one": "Deleted {{count}} torrent",
+      "deleted_other": "Deleted {{count}} torrents",
+      "deletedAndFiles_one": "Deleted {{count}} torrent and files",
+      "deletedAndFiles_other": "Deleted {{count}} torrents and files",
+      "rechecked_one": "Started recheck for {{count}} torrent",
+      "rechecked_other": "Started recheck for {{count}} torrents",
+      "reannounced_one": "Reannounced {{count}} torrent",
+      "reannounced_other": "Reannounced {{count}} torrents",
+      "increasedPriority_one": "Increased priority for {{count}} torrent",
+      "increasedPriority_other": "Increased priority for {{count}} torrents",
+      "decreasedPriority_one": "Decreased priority for {{count}} torrent",
+      "decreasedPriority_other": "Decreased priority for {{count}} torrents",
+      "topPriority_one": "Set {{count}} torrent to top priority",
+      "topPriority_other": "Set {{count}} torrents to top priority",
+      "bottomPriority_one": "Set {{count}} torrent to bottom priority",
+      "bottomPriority_other": "Set {{count}} torrents to bottom priority",
+      "addedTags_one": "Added tags to {{count}} torrent",
+      "addedTags_other": "Added tags to {{count}} torrents",
+      "removedTags_one": "Removed tags from {{count}} torrent",
+      "removedTags_other": "Removed tags from {{count}} torrents",
+      "replacedTags_one": "Replaced tags for {{count}} torrent",
+      "replacedTags_other": "Replaced tags for {{count}} torrents",
+      "setCategory_one": "Set category for {{count}} torrent",
+      "setCategory_other": "Set category for {{count}} torrents",
+      "enabledAutoTMM_one": "Enabled Auto TMM for {{count}} torrent",
+      "enabledAutoTMM_other": "Enabled Auto TMM for {{count}} torrents",
+      "disabledAutoTMM_one": "Disabled Auto TMM for {{count}} torrent",
+      "disabledAutoTMM_other": "Disabled Auto TMM for {{count}} torrents",
+      "setShareLimits_one": "Set share limits for {{count}} torrent",
+      "setShareLimits_other": "Set share limits for {{count}} torrents",
+      "setUploadLimit_one": "Set upload limit for {{count}} torrent",
+      "setUploadLimit_other": "Set upload limit for {{count}} torrents",
+      "setDownloadLimit_one": "Set download limit for {{count}} torrent",
+      "setDownloadLimit_other": "Set download limit for {{count}} torrents",
+      "setLocation_one": "Set location for {{count}} torrent",
+      "setLocation_other": "Set location for {{count}} torrents"
+    }
+  },
+  "torrent_creation_tasks": {
+    "loading": "Loading tasks...",
+    "empty": "No torrent creation tasks found",
+    "private": "Private",
+    "status": {
+      "queued": "Queued",
+      "running": "Running",
+      "finished": "Finished",
+      "failed": "Failed"
+    },
+    "table": {
+      "source": "Source",
+      "status": "Status",
+      "progress": "Progress",
+      "added": "Added",
+      "actions": "Actions"
+    },
+    "toasts": {
+      "download_started": "Torrent file download started",
+      "download_failed": "Failed to download torrent file",
+      "delete_success": "Torrent creation task deleted",
+      "delete_failed": "Failed to delete torrent creation task"
+    }
+  },
+  "torrent_creator_dialog": {
+    "title": "Create Torrent",
+    "description": "Create a new .torrent file from a file or folder on the server",
+    "toasts": {
+      "queued": "Torrent creation task queued",
+      "failed": "Failed to create torrent task"
+    },
+    "source_path": {
+      "label": "Source Path",
+      "placeholder": "/path/to/file/or/folder",
+      "description": "Full path on the server where qBittorrent is running",
+      "tooltip": "Windows users: use double backslashes (e.g., C:\\\\Data\\\\folder)"
+    },
+    "private": {
+      "label": "Private torrent",
+      "description": "Disable DHT, PEX, and local peer discovery"
+    },
+    "trackers": {
+      "label": "Trackers",
+      "description": "Select from your active trackers or paste custom URLs below",
+      "placeholder": "Add tracker from your active torrents",
+      "line_by_line": "One tracker URL per line",
+      "textarea_placeholder": "https://tracker.example.com:443/announce\nudp://tracker.example2.com:6969/announce"
+    },
+    "comment": {
+      "label": "Comment",
+      "placeholder": "Optional comment"
+    },
+    "source": {
+      "label": "Source",
+      "placeholder": "Optional source tag"
+    },
+    "start_seeding": {
+      "label": "Add to qBittorrent",
+      "description": "Add the created torrent to qBittorrent and start seeding. If disabled, only creates the .torrent file for download."
+    },
+    "advanced_options": {
+      "title": "Advanced Options",
+      "format": {
+        "label": "Torrent Format",
+        "placeholder": "Auto (v1)",
+        "v1": "v1 (Compatible)",
+        "v2": "v2 (Modern)",
+        "hybrid": "Hybrid (v1 + v2)",
+        "description": "v1 for maximum compatibility, v2 for modern clients, hybrid for both"
+      },
+      "piece_size": {
+        "label": "Piece Size",
+        "placeholder": "Auto (recommended)",
+        "description": "Auto calculates optimal size based on content",
+        "options": {
+          "auto": "Auto (recommended)"
+        }
+      },
+      "save_path": {
+        "label": "Save .torrent to (optional)",
+        "placeholder": "/path/to/save/file.torrent",
+        "description": "Where to save the .torrent file on the server",
+        "tooltip": "qBittorrent needs write access to this directory. Best to leave blank and download the .torrent file from the tasks modal later."
+      },
+      "web_seeds": {
+        "label": "Web Seeds (HTTP/HTTPS)",
+        "placeholder": "https://mirror1.example.com/path\nhttps://mirror2.example.com/path",
+        "description": "HTTP/HTTPS URLs where the content can be downloaded. One URL per line."
+      }
+    },
+    "actions": {
+      "submit": "Create Torrent"
+    }
+  },
+  "lib": {
+    "api": {
+      "sessionExpired": "Session expired"
+    },
+    "dateTime": {
+      "justNow": "Just now",
+      "minutesAgo_one": "{{count}} minute ago",
+      "minutesAgo_other": "{{count}} minutes ago",
+      "hoursAgo_one": "{{count}} hour ago",
+      "hoursAgo_other": "{{count}} hours ago",
+      "daysAgo_one": "{{count}} day ago",
+      "daysAgo_other": "{{count}} days ago",
+      "weeksAgo_one": "{{count}} week ago",
+      "weeksAgo_other": "{{count}} weeks ago",
+      "monthsAgo_one": "{{count}} month ago",
+      "monthsAgo_other": "{{count}} months ago",
+      "yearsAgo_one": "{{count}} year ago",
+      "yearsAgo_other": "{{count}} years ago",
+      "today": "Today",
+      "yesterday": "Yesterday"
+    },
+    "licenseErrors": {
+      "expired": "Your license key has expired.",
+      "noLongerActive": "This license key is no longer active.",
+      "invalid": "This license key is invalid.",
+      "notFound": "The license key you entered is not valid.",
+      "conditionsNotMet": "This license was activated on a different machine. The database appears to have been copied.",
+      "doesNotMatch": "License key does not match required conditions.",
+      "activationLimitExceeded": "License activation limit has been reached. Please deactivate on another machine at {{polarPortalUrl}}",
+      "limitReached": "License activation limit has been reached.",
+      "usageLimitExceeded": "License usage limit exceeded.",
+      "tooManyRequests": "Too many attempts. Please wait a moment and try again.",
+      "rateLimit": "Please wait before trying again.",
+      "default": "Failed to validate license key. Please try again."
+    },
+    "torrentState": {
+      "downloading": "Downloading",
+      "metaDL": "Fetching Metadata",
+      "allocating": "Allocating",
+      "stalledDL": "Stalled",
+      "queuedDL": "Queued",
+      "checkingDL": "Checking",
+      "forcedDL": "(F) Downloading",
+      "uploading": "Seeding",
+      "stalledUP": "Stalled",
+      "queuedUP": "Queued",
+      "checkingUP": "Checking",
+      "forcedUP": "(F) Seeding",
+      "pausedDL": "Paused",
+      "pausedUP": "Paused",
+      "stoppedDL": "Stopped",
+      "stoppedUP": "Stopped",
+      "error": "Error",
+      "missingFiles": "Missing Files",
+      "checkingResumeData": "Checking Resume Data",
+      "moving": "Moving"
+    }
+  }
+}

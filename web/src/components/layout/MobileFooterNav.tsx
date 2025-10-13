@@ -48,6 +48,7 @@ import {
 import { themes, isThemePremium } from "@/config/themes"
 import { toast } from "sonner"
 import { useHasPremiumAccess } from "@/hooks/useLicense"
+import { useTranslation } from "react-i18next"
 
 
 // Helper to extract primary color from theme
@@ -82,6 +83,7 @@ const useThemeChange = () => {
 }
 
 export function MobileFooterNav() {
+  const { t } = useTranslation()
   const location = useLocation()
   const { logout } = useAuth()
   const { isSelectionMode } = useTorrentSelection()
@@ -98,25 +100,29 @@ export function MobileFooterNav() {
   const isOnInstancePage = location.pathname.startsWith("/instances/")
   const currentInstanceId = isOnInstancePage? location.pathname.split("/")[2]: null
   const currentInstance = instances?.find(i => i.id.toString() === currentInstanceId)
-  const currentInstanceLabel = currentInstance ? currentInstance.name : "Clients"
+  const currentInstanceLabel = currentInstance ? currentInstance.name : t("nav.clients")
 
   const handleModeSelect = useCallback(async (mode: ThemeMode) => {
     await setThemeMode(mode)
-    const modeNames = { light: "Light", dark: "Dark", auto: "System" }
-    toast.success(`Switched to ${modeNames[mode]} mode`)
-  }, [])
+    const modeNames = {
+      light: t("nav.appearance.light"),
+      dark: t("nav.appearance.dark"),
+      auto: t("nav.appearance.system"),
+    }
+    toast.success(t("nav.appearance.toast.switchMode", { mode: modeNames[mode] }))
+  }, [t])
 
   const handleThemeSelect = useCallback(async (themeId: string) => {
     const isPremium = isThemePremium(themeId)
     if (isPremium && !hasPremiumAccess) {
-      toast.error("This is a premium theme. Please purchase a license to use it.")
+      toast.error(t("nav.appearance.toast.premiumError"))
       return
     }
 
     await setTheme(themeId)
     const theme = themes.find(t => t.id === themeId)
-    toast.success(`Switched to ${theme?.name || themeId} theme`)
-  }, [hasPremiumAccess])
+    toast.success(t("nav.appearance.toast.switchTheme", { theme: theme?.name || themeId }))
+  }, [hasPremiumAccess, t])
 
   if (isSelectionMode) {
     return null
@@ -143,7 +149,7 @@ export function MobileFooterNav() {
             "h-5 w-5",
             location.pathname === "/dashboard" && "text-primary"
           )} />
-          <span className="truncate">Dashboard</span>
+          <span className="truncate">{t("nav.dashboard")}</span>
         </Link>
 
         {/* Clients dropdown */}
@@ -178,7 +184,7 @@ export function MobileFooterNav() {
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="center" side="top" className="w-56 mb-2">
-            <DropdownMenuLabel>qBittorrent Clients</DropdownMenuLabel>
+            <DropdownMenuLabel>{t("nav.qBittorrentClients")}</DropdownMenuLabel>
             <DropdownMenuSeparator />
             {instances?.map((instance) => (
               <DropdownMenuItem key={instance.id} asChild>
@@ -205,7 +211,7 @@ export function MobileFooterNav() {
             ))}
             {(!instances || instances.length === 0) && (
               <DropdownMenuItem disabled>
-                No clients configured
+                {t("common.messages.noInstancesConfigured")}
               </DropdownMenuItem>
             )}
           </DropdownMenuContent>
@@ -224,7 +230,7 @@ export function MobileFooterNav() {
                 "h-5 w-5",
                 (location.pathname === "/settings" || location.pathname === "/instances") && "text-primary"
               )} />
-              <span className="truncate">Settings</span>
+              <span className="truncate">{t("common.titles.settings")}</span>
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" side="top" className="mb-2 w-56">
@@ -234,7 +240,7 @@ export function MobileFooterNav() {
                 className="flex items-center gap-2"
               >
                 <Settings className="h-4 w-4" />
-                General Settings
+                {t("nav.generalSettings")}
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
@@ -243,7 +249,7 @@ export function MobileFooterNav() {
                 className="flex items-center gap-2"
               >
                 <Server className="h-4 w-4" />
-                Manage Instances
+                {t("nav.manageInstances")}
               </Link>
             </DropdownMenuItem>
 
@@ -252,7 +258,7 @@ export function MobileFooterNav() {
             {/* Theme menu item - opens dialog */}
             <DropdownMenuItem onClick={() => setShowThemeDialog(true)}>
               <Palette className="h-4 w-4" />
-              Appearance
+              {t("nav.appearance.title")}
             </DropdownMenuItem>
 
             <DropdownMenuSeparator />
@@ -265,7 +271,7 @@ export function MobileFooterNav() {
                 className="flex items-center gap-2"
               >
                 <Github className="h-4 w-4" />
-                GitHub
+                {t("nav.github")}
               </a>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
@@ -274,7 +280,7 @@ export function MobileFooterNav() {
               className="text-destructive focus:text-destructive flex items-center gap-2"
             >
               <LogOut className="h-4 w-4 text-destructive" />
-              Logout
+              {t("nav.logout")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -284,13 +290,13 @@ export function MobileFooterNav() {
       <Dialog open={showThemeDialog} onOpenChange={setShowThemeDialog}>
         <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Appearance</DialogTitle>
+            <DialogTitle>{t("nav.appearance.title")}</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">
             {/* Mode Selection */}
             <div>
-              <div className="text-sm font-medium mb-2">Mode</div>
+              <div className="text-sm font-medium mb-2">{t("nav.appearance.mode")}</div>
               <div className="space-y-1">
                 <button
                   onClick={() => {
@@ -303,7 +309,7 @@ export function MobileFooterNav() {
                   )}
                 >
                   <Sun className="h-4 w-4" />
-                  <span className="flex-1 text-left">Light</span>
+                  <span className="flex-1 text-left">{t("nav.appearance.light")}</span>
                   {currentMode === "light" && <Check className="h-4 w-4" />}
                 </button>
                 <button
@@ -317,7 +323,7 @@ export function MobileFooterNav() {
                   )}
                 >
                   <Moon className="h-4 w-4" />
-                  <span className="flex-1 text-left">Dark</span>
+                  <span className="flex-1 text-left">{t("nav.appearance.dark")}</span>
                   {currentMode === "dark" && <Check className="h-4 w-4" />}
                 </button>
                 <button
@@ -331,7 +337,7 @@ export function MobileFooterNav() {
                   )}
                 >
                   <Monitor className="h-4 w-4" />
-                  <span className="flex-1 text-left">System</span>
+                  <span className="flex-1 text-left">{t("nav.appearance.system")}</span>
                   {currentMode === "auto" && <Check className="h-4 w-4" />}
                 </button>
               </div>
@@ -339,7 +345,7 @@ export function MobileFooterNav() {
 
             {/* Theme Selection */}
             <div>
-              <div className="text-sm font-medium mb-2">Theme</div>
+              <div className="text-sm font-medium mb-2">{t("nav.appearance.theme")}</div>
               <div className="space-y-1">
                 {themes
                   .sort((a, b) => {
@@ -380,7 +386,7 @@ export function MobileFooterNav() {
                           <span className="truncate">{theme.name}</span>
                           {isPremium && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground font-medium flex-shrink-0">
-                              Premium
+                              {t("nav.appearance.premium")}
                             </span>
                           )}
                         </div>

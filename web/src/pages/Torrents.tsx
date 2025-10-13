@@ -16,6 +16,7 @@ import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSideba
 import { cn } from "@/lib/utils"
 import type { Category, Torrent, TorrentCounts } from "@/types"
 import { useCallback, useEffect, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
 
 interface TorrentsProps {
   instanceId: number
@@ -25,6 +26,7 @@ interface TorrentsProps {
 }
 
 export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) {
+  const { t } = useTranslation()
   const [filters, setFilters] = usePersistedFilters(instanceId)
   const [filterSidebarCollapsed] = usePersistedFilterSidebarState(false)
   const [selectedTorrent, setSelectedTorrent] = useState<Torrent | null>(null)
@@ -236,7 +238,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
           }}
         >
           <SheetHeader className="px-4 py-3 border-b">
-            <SheetTitle className="text-lg font-semibold">Filters</SheetTitle>
+            <SheetTitle className="text-lg font-semibold">{t("torrents.filters")}</SheetTitle>
           </SheetHeader>
           <div className="flex-1 min-h-0 overflow-hidden">
             <FilterSidebar
@@ -287,7 +289,9 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
           <SheetHeader className="sr-only">
             <VisuallyHidden>
               <SheetTitle>
-                {selectedTorrent ? `Torrent Details: ${selectedTorrent.name}` : "Torrent Details"}
+                {selectedTorrent
+                  ? t("torrents.details_with_name", { name: selectedTorrent.name })
+                  : t("torrents.details")}
               </SheetTitle>
             </VisuallyHidden>
           </SheetHeader>
@@ -311,7 +315,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
       <Dialog open={isTasksModalOpen} onOpenChange={handleTasksModalChange}>
         <DialogContent className="w-full sm:max-w-screen-sm md:max-w-screen-md lg:max-w-screen-xl xl:max-w-screen-xl max-h-[85vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle>Torrent Creation Tasks</DialogTitle>
+            <DialogTitle>{t("dashboard.quickActions.tasks")}</DialogTitle>
           </DialogHeader>
           <div className="flex-1 overflow-auto">
             <TorrentCreationTasks instanceId={instanceId} />

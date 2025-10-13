@@ -45,6 +45,7 @@ import {
 
 import { useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
+import { useTranslation } from "react-i18next"
 
 interface DashboardInstanceStats {
   instance: InstanceResponse
@@ -107,6 +108,7 @@ function InstanceCard({
   isAdvancedMetricsOpen: boolean
   setIsAdvancedMetricsOpen: (open: boolean) => void
 }) {
+  const { t } = useTranslation()
   const { instance, stats, serverState, torrentCounts, altSpeedEnabled, isLoading, error } = instanceData
   const [showSpeedLimitDialog, setShowSpeedLimitDialog] = useState(false)
 
@@ -148,17 +150,17 @@ function InstanceCard({
 
   // Determine badge variant and text
   let badgeVariant: "default" | "secondary" | "destructive" = "default"
-  let badgeText = "Connected"
+  let badgeText = t("dashboard.instance.connected")
 
   if (isFirstLoad) {
     badgeVariant = "secondary"
-    badgeText = "Loading..."
+    badgeText = t("dashboard.instance.loading")
   } else if (hasError) {
     badgeVariant = "destructive"
-    badgeText = "Error"
+    badgeText = t("dashboard.instance.error")
   } else if (isDisconnected) {
     badgeVariant = "destructive"
-    badgeText = "Disconnected"
+    badgeText = t("dashboard.instance.disconnected")
   }
 
   const badgeClassName = "whitespace-nowrap"
@@ -168,7 +170,7 @@ function InstanceCard({
   const ConnectionStatusIcon = isConnectable ? Globe : isFirewalled ? BrickWallFire : Ban
   const connectionStatusIconClass = hasConnectionStatus? isConnectable? "text-green-500": isFirewalled? "text-amber-500": "text-destructive": ""
 
-  const connectionStatusTooltip = connectionStatusDisplay ? (isConnectable ? "Connectable" : connectionStatusDisplay) : ""
+  const connectionStatusTooltip = connectionStatusDisplay ? (isConnectable ? t("dashboard.instance.connection_status_tooltip.connectable") : connectionStatusDisplay) : ""
 
   // Determine if settings button should show
   const showSettingsButton = instance.connected && !isFirstLoad && !hasDecryptionOrRecentErrors
@@ -215,29 +217,29 @@ function InstanceCard({
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>
-                      Alternative speed limits: {altSpeedEnabled ? "On" : "Off"}
+                      {altSpeedEnabled ? t("dashboard.instance.altSpeed.enabledTooltip") : t("dashboard.instance.altSpeed.disabledTooltip")}
                     </TooltipContent>
                   </Tooltip>
                   <AlertDialog open={showSpeedLimitDialog} onOpenChange={setShowSpeedLimitDialog}>
                     <AlertDialogContent>
                       <AlertDialogHeader>
                         <AlertDialogTitle>
-                          {altSpeedEnabled ? "Disable Alternative Speed Limits?" : "Enable Alternative Speed Limits?"}
+                          {altSpeedEnabled ? t("dashboard.instance.altSpeed.disableTitle") : t("dashboard.instance.altSpeed.enableTitle")}
                         </AlertDialogTitle>
                         <AlertDialogDescription>
-                          {altSpeedEnabled? `This will disable alternative speed limits for ${instance.name} and return to normal speed limits.`: `This will enable alternative speed limits for ${instance.name}, which will reduce transfer speeds based on your configured limits.`
+                          {altSpeedEnabled? t("dashboard.instance.altSpeed.disableDescription", { name: instance.name }): t("dashboard.instance.altSpeed.enableDescription", { name: instance.name })
                           }
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
                         <AlertDialogAction
                           onClick={() => {
                             toggleAltSpeed()
                             setShowSpeedLimitDialog(false)
                           }}
                         >
-                          {altSpeedEnabled ? "Disable" : "Enable"}
+                          {altSpeedEnabled ? t("dashboard.instance.altSpeed.disableAction") : t("dashboard.instance.altSpeed.enableAction")}
                         </AlertDialogAction>
                       </AlertDialogFooter>
                     </AlertDialogContent>
@@ -274,17 +276,17 @@ function InstanceCard({
               )}
               {appVersion && (
                 <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">
-                  qBit {appVersion}
+                  {t("dashboard.instance.qbit_version_badge", { version: appVersion })}
                 </Badge>
               )}
               {webAPIVersion && (
                 <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">
-                  API v{webAPIVersion}
+                  {t("dashboard.instance.api_version_badge", { version: webAPIVersion })}
                 </Badge>
               )}
               {libtorrentVersion && (
                 <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">
-                  lt {libtorrentVersion}
+                  {t("dashboard.instance.libtorrent_version_badge", { version: libtorrentVersion })}
                 </Badge>
               )}
             </CardDescription>
@@ -315,8 +317,8 @@ function InstanceCard({
           {/* Show loading or error state */}
           {(isFirstLoad || hasError || isDisconnected) ? (
             <div className="text-sm text-muted-foreground text-center">
-              {isFirstLoad && <p className="animate-pulse">Loading stats...</p>}
-              {hasError && !isDisconnected && <p>Failed to load stats</p>}
+              {isFirstLoad && <p className="animate-pulse">{t("dashboard.stats.loading")}</p>}
+              {hasError && !isDisconnected && <p>{t("dashboard.stats.failed")}</p>}
               <InstanceErrorDisplay instance={instance} compact />
             </div>
           ) : (
@@ -324,10 +326,10 @@ function InstanceCard({
             <div className="space-y-2 sm:space-y-3">
               <div className="mb-3 sm:mb-6">
                 <div className="flex items-center justify-center mb-1">
-                  <span className="flex-1 text-center text-xs text-muted-foreground">Downloading</span>
-                  <span className="flex-1 text-center text-xs text-muted-foreground">Active</span>
-                  <span className="flex-1 text-center text-xs text-muted-foreground">Error</span>
-                  <span className="flex-1 text-center text-xs text-muted-foreground">Total</span>
+                  <span className="flex-1 text-center text-xs text-muted-foreground">{t("dashboard.status.downloading")}</span>
+                  <span className="flex-1 text-center text-xs text-muted-foreground">{t("dashboard.status.active")}</span>
+                  <span className="flex-1 text-center text-xs text-muted-foreground">{t("dashboard.status.error")}</span>
+                  <span className="flex-1 text-center text-xs text-muted-foreground">{t("dashboard.status.total")}</span>
                 </div>
                 <div className="flex items-center justify-center">
                   <span className="flex-1 text-center text-base sm:text-lg font-semibold">
@@ -344,19 +346,19 @@ function InstanceCard({
               <div className="grid grid-cols-1 sm:grid-cols-1 gap-1 sm:gap-2">
                 <div className="flex items-center gap-2 text-xs">
                   <Download className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-                  <span className="text-muted-foreground">Download</span>
+                  <span className="text-muted-foreground">{t("dashboard.serverStats.download")}</span>
                   <span className="ml-auto font-medium truncate">{formatSpeedWithUnit(stats?.totalDownloadSpeed || 0, speedUnit)}</span>
                 </div>
 
                 <div className="flex items-center gap-2 text-xs">
                   <Upload className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-                  <span className="text-muted-foreground">Upload</span>
+                  <span className="text-muted-foreground">{t("dashboard.serverStats.upload")}</span>
                   <span className="ml-auto font-medium truncate">{formatSpeedWithUnit(stats?.totalUploadSpeed || 0, speedUnit)}</span>
                 </div>
 
                 <div className="flex items-center gap-2 text-xs">
                   <HardDrive className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-                  <span className="text-muted-foreground">Total Size</span>
+                  <span className="text-muted-foreground">{t("dashboard.serverStats.totalSize")}</span>
                   <span className="ml-auto font-medium truncate">{formatBytes(stats?.totalSize || 0)}</span>
                 </div>
               </div>
@@ -364,7 +366,7 @@ function InstanceCard({
               {serverState?.free_space_on_disk !== undefined && serverState.free_space_on_disk > 0 && (
                 <div className="flex items-center gap-2 text-xs mt-1 sm:mt-2">
                   <HardDrive className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-                  <span className="text-muted-foreground">Free Space</span>
+                  <span className="text-muted-foreground">{t("dashboard.serverStats.freeSpace")}</span>
                   <span className="ml-auto font-medium truncate">{formatBytes(serverState.free_space_on_disk)}</span>
                 </div>
               )}
@@ -372,13 +374,13 @@ function InstanceCard({
               <Collapsible open={isAdvancedMetricsOpen} onOpenChange={setIsAdvancedMetricsOpen}>
                 <CollapsibleTrigger className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors w-full [&[data-state=open]>svg]:rotate-180">
                   <ChevronDown className="h-3 w-3 transition-transform" />
-                  <span>{`Show ${isAdvancedMetricsOpen ? "less" : "more"}`}</span>
+                  <span>{isAdvancedMetricsOpen ? t("dashboard.instance.showLess") : t("dashboard.instance.showMore")}</span>
                 </CollapsibleTrigger>
                 <CollapsibleContent className="space-y-2 mt-2">
                   {serverState?.total_peer_connections !== undefined && (
                     <div className="flex items-center gap-2 text-xs">
                       <Activity className="h-3 w-3 text-muted-foreground" />
-                      <span className="text-muted-foreground">Peer Connections</span>
+                      <span className="text-muted-foreground">{t("dashboard.serverStats.peerConnections")}</span>
                       <span className="ml-auto font-medium">{serverState.total_peer_connections || 0}</span>
                     </div>
                   )}
@@ -386,7 +388,7 @@ function InstanceCard({
                   {serverState?.queued_io_jobs !== undefined && (
                     <div className="flex items-center gap-2 text-xs">
                       <Zap className="h-3 w-3 text-muted-foreground" />
-                      <span className="text-muted-foreground">Queued I/O Jobs</span>
+                      <span className="text-muted-foreground">{t("dashboard.serverStats.queuedIO")}</span>
                       <span className="ml-auto font-medium">{serverState.queued_io_jobs || 0}</span>
                     </div>
                   )}
@@ -394,7 +396,7 @@ function InstanceCard({
                   {serverState?.total_buffers_size !== undefined && (
                     <div className="flex items-center gap-2 text-xs">
                       <HardDrive className="h-3 w-3 text-muted-foreground" />
-                      <span className="text-muted-foreground">Buffer Size</span>
+                      <span className="text-muted-foreground">{t("dashboard.serverStats.bufferSize")}</span>
                       <span className="ml-auto font-medium">{formatBytes(serverState.total_buffers_size)}</span>
                     </div>
                   )}
@@ -402,7 +404,7 @@ function InstanceCard({
                   {serverState?.total_queued_size !== undefined && (
                     <div className="flex items-center gap-2 text-xs">
                       <Activity className="h-3 w-3 text-muted-foreground" />
-                      <span className="text-muted-foreground">Total Queued</span>
+                      <span className="text-muted-foreground">{t("dashboard.serverStats.totalQueued")}</span>
                       <span className="ml-auto font-medium">{formatBytes(serverState.total_queued_size)}</span>
                     </div>
                   )}
@@ -410,7 +412,7 @@ function InstanceCard({
                   {serverState?.average_time_queue !== undefined && (
                     <div className="flex items-center gap-2 text-xs">
                       <Zap className="h-3 w-3 text-muted-foreground" />
-                      <span className="text-muted-foreground">Avg Queue Time</span>
+                      <span className="text-muted-foreground">{t("dashboard.serverStats.avgQueueTime")}</span>
                       <span className="ml-auto font-medium">{serverState.average_time_queue}ms</span>
                     </div>
                   )}
@@ -418,7 +420,7 @@ function InstanceCard({
                   {serverState?.last_external_address_v4 && (
                     <div className="flex items-center gap-2 text-xs">
                       <ExternalLink className="h-3 w-3 text-muted-foreground" />
-                      <span className="text-muted-foreground">External IPv4</span>
+                      <span className="text-muted-foreground">{t("dashboard.serverStats.externalIPv4")}</span>
                       <span className={`ml-auto font-medium font-mono ${incognitoMode ? "blur-sm select-none" : ""}`} style={incognitoMode ? { filter: "blur(8px)" } : {}}>{serverState.last_external_address_v4}</span>
                     </div>
                   )}
@@ -426,7 +428,7 @@ function InstanceCard({
                   {serverState?.last_external_address_v6 && (
                     <div className="flex items-center gap-2 text-xs">
                       <ExternalLink className="h-3 w-3 text-muted-foreground" />
-                      <span className="text-muted-foreground">External IPv6</span>
+                      <span className="text-muted-foreground">{t("dashboard.serverStats.externalIPv6")}</span>
                       <span className={`ml-auto font-medium font-mono text-[10px] ${incognitoMode ? "blur-sm select-none" : ""}`} style={incognitoMode ? { filter: "blur(8px)" } : {}}>{serverState.last_external_address_v6}</span>
                     </div>
                   )}
@@ -445,6 +447,7 @@ function InstanceCard({
 }
 
 function GlobalStatsCards({ statsData }: { statsData: DashboardInstanceStats[] }) {
+  const { t } = useTranslation()
   const [speedUnit] = useSpeedUnits()
   const globalStats = useMemo(() => {
     const connected = statsData.filter(({ instance }) => instance?.connected).length
@@ -495,52 +498,51 @@ function GlobalStatsCards({ statsData }: { statsData: DashboardInstanceStats[] }
     <>
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium">Instances</CardTitle>
-          <HardDrive className="h-4 w-4 text-muted-foreground" />
+                            <CardTitle className="text-sm font-medium">{t("common.titles.instances")}</CardTitle>          <HardDrive className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold">{globalStats.connected}/{globalStats.total}</div>
           <p className="text-xs text-muted-foreground">
-            Connected instances
+            {t("dashboard.globalStats.instances.description")}
           </p>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium">Total Torrents</CardTitle>
+          <CardTitle className="text-sm font-medium">{t("dashboard.globalStats.totalTorrents.title")}</CardTitle>
           <Activity className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold">{globalStats.totalTorrents}</div>
           <p className="text-xs text-muted-foreground">
-            {globalStats.activeTorrents} active - <span className="text-xs">{formatBytes(globalStats.totalSize)} total size</span>
+            {t("dashboard.globalStats.totalTorrents.description", { active: globalStats.activeTorrents, size: formatBytes(globalStats.totalSize) })}
           </p>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium">Total Download</CardTitle>
+          <CardTitle className="text-sm font-medium">{t("dashboard.globalStats.totalDownload.title")}</CardTitle>
           <Download className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold">{formatSpeedWithUnit(globalStats.totalDownload, speedUnit)}</div>
           <p className="text-xs text-muted-foreground">
-            All instances combined
+            {t("dashboard.globalStats.allInstancesCombined")}
           </p>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium">Total Upload</CardTitle>
+          <CardTitle className="text-sm font-medium">{t("dashboard.globalStats.totalUpload.title")}</CardTitle>
           <Upload className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold">{formatSpeedWithUnit(globalStats.totalUpload, speedUnit)}</div>
           <p className="text-xs text-muted-foreground">
-            All instances combined
+            {t("dashboard.globalStats.allInstancesCombined")}
           </p>
         </CardContent>
       </Card>
@@ -549,6 +551,7 @@ function GlobalStatsCards({ statsData }: { statsData: DashboardInstanceStats[] }
 }
 
 function GlobalAllTimeStats({ statsData }: { statsData: DashboardInstanceStats[] }) {
+  const { t } = useTranslation()
   const [accordionValue, setAccordionValue] = usePersistedAccordionState("qui-global-stats-accordion")
 
   const globalStats = useMemo(() => {
@@ -592,7 +595,7 @@ function GlobalAllTimeStats({ statsData }: { statsData: DashboardInstanceStats[]
               <div className="flex items-center gap-2">
                 <Plus className="h-3.5 w-3.5 text-muted-foreground group-data-[state=open]:hidden" />
                 <Minus className="h-3.5 w-3.5 text-muted-foreground group-data-[state=closed]:hidden" />
-                <h3 className="text-sm font-medium text-muted-foreground">Server Statistics</h3>
+                <h3 className="text-sm font-medium text-muted-foreground">{t("dashboard.serverStats.title")}</h3>
               </div>
             </div>
             <div className="flex items-center justify-between">
@@ -608,14 +611,14 @@ function GlobalAllTimeStats({ statsData }: { statsData: DashboardInstanceStats[]
               </div>
               <div className="flex items-center gap-4 text-sm">
                 <div>
-                  <span className="text-xs text-muted-foreground">Ratio: </span>
+                  <span className="text-xs text-muted-foreground">{t("dashboard.serverStats.ratio")} </span>
                   <span className="font-semibold" style={{ color: ratioColor }}>
                     {globalStats.globalRatio.toFixed(2)}
                   </span>
                 </div>
                 {globalStats.totalPeers > 0 && (
                   <div>
-                    <span className="text-xs text-muted-foreground">Peers: </span>
+                    <span className="text-xs text-muted-foreground">{t("dashboard.serverStats.peers")} </span>
                     <span className="font-semibold">{globalStats.totalPeers}</span>
                   </div>
                 )}
@@ -628,7 +631,7 @@ function GlobalAllTimeStats({ statsData }: { statsData: DashboardInstanceStats[]
             <div className="flex items-center gap-2">
               <Plus className="h-4 w-4 text-muted-foreground group-data-[state=open]:hidden" />
               <Minus className="h-4 w-4 text-muted-foreground group-data-[state=closed]:hidden" />
-              <h3 className="text-base font-medium">Server Statistics</h3>
+              <h3 className="text-base font-medium">{t("dashboard.serverStats.title")}</h3>
             </div>
             <div className="flex flex-wrap items-center gap-6 text-sm">
               <div className="flex items-center gap-2">
@@ -642,7 +645,7 @@ function GlobalAllTimeStats({ statsData }: { statsData: DashboardInstanceStats[]
               </div>
 
               <div className="flex items-center gap-2">
-                <span className="text-muted-foreground">Ratio:</span>
+                <span className="text-muted-foreground">{t("dashboard.serverStats.ratio")}</span>
                 <span className="text-lg font-semibold" style={{ color: ratioColor }}>
                   {globalStats.globalRatio.toFixed(2)}
                 </span>
@@ -650,7 +653,7 @@ function GlobalAllTimeStats({ statsData }: { statsData: DashboardInstanceStats[]
 
               {globalStats.totalPeers > 0 && (
                 <div className="flex items-center gap-2">
-                  <span className="text-muted-foreground">Peers:</span>
+                  <span className="text-muted-foreground">{t("dashboard.serverStats.peers")}</span>
                   <span className="text-lg font-semibold">{globalStats.totalPeers}</span>
                 </div>
               )}
@@ -661,19 +664,19 @@ function GlobalAllTimeStats({ statsData }: { statsData: DashboardInstanceStats[]
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/50">
-                <TableHead className="text-center">Instance</TableHead>
+                <TableHead className="text-center">{t("dashboard.instanceTable.instance")}</TableHead>
                 <TableHead className="text-center">
                   <div className="flex items-center justify-center gap-1">
-                    <span>Downloaded</span>
+                    <span>{t("dashboard.instanceTable.downloaded")}</span>
                   </div>
                 </TableHead>
                 <TableHead className="text-center">
                   <div className="flex items-center justify-center gap-1">
-                    <span>Uploaded</span>
+                    <span>{t("dashboard.instanceTable.uploaded")}</span>
                   </div>
                 </TableHead>
-                <TableHead className="text-center">Ratio</TableHead>
-                <TableHead className="text-center hidden sm:table-cell">Peers</TableHead>
+                <TableHead className="text-center">{t("dashboard.instanceTable.ratio")}</TableHead>
+                <TableHead className="text-center hidden sm:table-cell">{t("dashboard.instanceTable.peers")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -710,6 +713,7 @@ function GlobalAllTimeStats({ statsData }: { statsData: DashboardInstanceStats[]
 }
 
 function QuickActionsDropdown({ statsData }: { statsData: DashboardInstanceStats[] }) {
+  const { t } = useTranslation()
   const connectedInstances = statsData
     .filter(({ instance }) => instance?.connected)
     .map(({ instance }) => instance)
@@ -723,12 +727,12 @@ function QuickActionsDropdown({ statsData }: { statsData: DashboardInstanceStats
       <DropdownMenuTrigger asChild>
         <Button variant="outline" size="sm" className="w-full sm:w-auto">
           <Zap className="h-4 w-4 mr-2" />
-          Quick Actions
+          {t("dashboard.quickActions.title")}
           <ChevronDown className="h-3 w-3 ml-1" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuLabel>Add Torrent</DropdownMenuLabel>
+        <DropdownMenuLabel>{t("dashboard.quickActions.addTorrent")}</DropdownMenuLabel>
         <DropdownMenuSeparator />
         {connectedInstances.map(instance => (
           <Link
@@ -739,7 +743,7 @@ function QuickActionsDropdown({ statsData }: { statsData: DashboardInstanceStats
           >
             <DropdownMenuItem className="cursor-pointer active:bg-accent focus:bg-accent">
               <Plus className="h-4 w-4 mr-2" />
-              <span>Add to {instance.name}</span>
+              <span>{t("dashboard.quickActions.addTorrentTo", { name: instance.name })}</span>
             </DropdownMenuItem>
           </Link>
         ))}
@@ -749,6 +753,7 @@ function QuickActionsDropdown({ statsData }: { statsData: DashboardInstanceStats
 }
 
 export function Dashboard() {
+  const { t } = useTranslation()
   const { instances, isLoading } = useInstances()
   const allInstances = instances || []
   const [isAdvancedMetricsOpen, setIsAdvancedMetricsOpen] = useState(false)
@@ -776,10 +781,10 @@ export function Dashboard() {
     <div className="container mx-auto p-4 sm:p-6">
       {/* Header with Actions */}
       <div className="mb-6">
-        <h1 className="text-2xl sm:text-3xl font-bold">Dashboard</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold">{t("dashboard.title")}</h1>
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mt-2">
           <p className="text-muted-foreground">
-            Overview of all your qBittorrent instances
+            {t("dashboard.description")}
           </p>
           {instances && instances.length > 0 && (
             <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
@@ -787,7 +792,7 @@ export function Dashboard() {
               <Link to="/instances" search={{ modal: "add-instance" }} className="w-full sm:w-auto">
                 <Button variant="outline" size="sm" className="w-full sm:w-auto">
                   <Plus className="h-4 w-4 mr-2" />
-                  Add Instance
+              {t("instances.add")}
                 </Button>
               </Link>
             </div>
@@ -812,7 +817,7 @@ export function Dashboard() {
           {/* Instance Cards */}
           {allInstances.length > 0 && (
             <div>
-              <h2 className="text-xl font-semibold mb-4">Instances</h2>
+              <h2 className="text-xl font-semibold mb-4">{t("common.titles.instances")}</h2>
               {/* Responsive layout so each instance mounts once */}
               <div className="flex flex-col gap-4 sm:grid sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
                 {statsData.map(instanceData => (
@@ -832,13 +837,12 @@ export function Dashboard() {
           <div className="space-y-4">
             <HardDrive className="h-12 w-12 mx-auto text-muted-foreground" />
             <div>
-              <h3 className="text-lg font-semibold">No instances configured</h3>
-              <p className="text-muted-foreground">Get started by adding your first qBittorrent instance</p>
+                              <h3 className="text-lg font-semibold">{t("common.messages.noInstancesConfigured")}</h3>              <p className="text-muted-foreground">{t("dashboard.instances.getStarted")}</p>
             </div>
             <Link to="/instances" search={{ modal: "add-instance" }}>
               <Button>
                 <Plus className="h-4 w-4 mr-2" />
-                Add Instance
+                {t("instances.add")}
               </Button>
             </Link>
           </div>

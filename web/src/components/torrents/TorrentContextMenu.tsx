@@ -35,6 +35,7 @@ import {
   Trash2
 } from "lucide-react"
 import { memo, useCallback, useMemo } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { CategorySubmenu } from "./CategorySubmenu"
 import { QueueSubmenu } from "./QueueSubmenu"
@@ -97,27 +98,28 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   isExporting = false,
   capabilities,
 }: TorrentContextMenuProps) {
+  const { t } = useTranslation()
   const [incognitoMode] = useIncognitoMode()
 
   const copyToClipboard = useCallback(async (text: string, type: "name" | "hash" | "full path") => {
     try {
       await copyTextToClipboard(text)
-      toast.success(`Torrent ${type} copied to clipboard`)
+      toast.success(t("torrent_context_menu.toasts.copied_success", { type }))
     } catch {
-      toast.error("Failed to copy to clipboard")
+      toast.error(t("torrent_context_menu.toasts.copy_failed"))
     }
-  }, [])
+  }, [t])
 
   const displayHash = useMemo(() => getTorrentDisplayHash(torrent), [torrent])
 
   const copyHash = useCallback(() => {
     const value = displayHash || torrent.hash
     if (!value) {
-      toast.error("Hash not available")
+      toast.error(t("torrent_context_menu.toasts.hash_not_available"))
       return
     }
     void copyToClipboard(value, "hash")
-  }, [copyToClipboard, displayHash, torrent.hash])
+  }, [copyToClipboard, displayHash, torrent.hash, t])
 
   const copyFullPath = useCallback(() => {
     const name = incognitoMode ? getLinuxIsoName(torrent.hash) : torrent.name
@@ -176,7 +178,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
         className="ml-2"
       >
         <ContextMenuItem onClick={() => onTorrentSelect?.(torrent)}>
-          View Details
+          {t("torrent_context_menu.view_details")}
         </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem
@@ -184,28 +186,28 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
           disabled={isPending}
         >
           <Play className="mr-2 h-4 w-4" />
-          Resume {count > 1 ? `(${count})` : ""}
+          {t("torrent_context_menu.resume", { count })}
         </ContextMenuItem>
         <ContextMenuItem
           onClick={() => onAction(TORRENT_ACTIONS.PAUSE, hashes)}
           disabled={isPending}
         >
           <Pause className="mr-2 h-4 w-4" />
-          Pause {count > 1 ? `(${count})` : ""}
+          {t("torrent_context_menu.pause", { count })}
         </ContextMenuItem>
         <ContextMenuItem
           onClick={() => onPrepareRecheck(hashes, count)}
           disabled={isPending}
         >
           <CheckCircle className="mr-2 h-4 w-4" />
-          Force Recheck {count > 1 ? `(${count})` : ""}
+          {t("torrent_context_menu.recheck", { count })}
         </ContextMenuItem>
         <ContextMenuItem
           onClick={() => onPrepareReannounce(hashes, count)}
           disabled={isPending}
         >
           <Radio className="mr-2 h-4 w-4" />
-          Reannounce {count > 1 ? `(${count})` : ""}
+          {t("torrent_context_menu.reannounce", { count })}
         </ContextMenuItem>
         <ContextMenuSeparator />
         <QueueSubmenu
@@ -220,14 +222,14 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
           disabled={isPending}
         >
           <Tag className="mr-2 h-4 w-4" />
-          Add Tags {count > 1 ? `(${count})` : ""}
+          {t("torrent_context_menu.add_tags", { count })}
         </ContextMenuItem>
         <ContextMenuItem
           onClick={() => onPrepareTags("set", hashes, torrents)}
           disabled={isPending}
         >
           <Tag className="mr-2 h-4 w-4" />
-          Replace Tags {count > 1 ? `(${count})` : ""}
+          {t("torrent_context_menu.replace_tags", { count })}
         </ContextMenuItem>
         <CategorySubmenu
           type="context"
@@ -242,7 +244,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
           disabled={isPending}
         >
           <FolderOpen className="mr-2 h-4 w-4" />
-          Set Location {count > 1 ? `(${count})` : ""}
+          {t("torrent_context_menu.set_location", { count })}
         </ContextMenuItem>
         <RenameSubmenu
           type="context"
@@ -259,14 +261,14 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
           disabled={isPending}
         >
           <Sprout className="mr-2 h-4 w-4" />
-          Set Share Limits {count > 1 ? `(${count})` : ""}
+          {t("torrent_context_menu.set_share_limits", { count })}
         </ContextMenuItem>
         <ContextMenuItem
           onClick={() => onPrepareSpeedLimits(hashes, torrents)}
           disabled={isPending}
         >
           <Gauge className="mr-2 h-4 w-4" />
-          Set Speed Limits {count > 1 ? `(${count})` : ""}
+          {t("torrent_context_menu.set_speed_limits", { count })}
         </ContextMenuItem>
         <ContextMenuSeparator />
         {mixed ? (
@@ -276,14 +278,14 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
               disabled={isPending}
             >
               <Sparkles className="mr-2 h-4 w-4" />
-              Enable TMM {count > 1 ? `(${count} Mixed)` : "(Mixed)"}
+              {t("torrent_context_menu.enable_tmm_mixed", { count })}
             </ContextMenuItem>
             <ContextMenuItem
               onClick={() => onAction(TORRENT_ACTIONS.TOGGLE_AUTO_TMM, hashes, { enable: false })}
               disabled={isPending}
             >
               <Settings2 className="mr-2 h-4 w-4" />
-              Disable TMM {count > 1 ? `(${count} Mixed)` : "(Mixed)"}
+              {t("torrent_context_menu.disable_tmm_mixed", { count })}
             </ContextMenuItem>
           </>
         ) : (
@@ -294,12 +296,12 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
             {allEnabled ? (
               <>
                 <Settings2 className="mr-2 h-4 w-4" />
-                Disable TMM {count > 1 ? `(${count})` : ""}
+                {t("torrent_context_menu.disable_tmm", { count })}
               </>
             ) : (
               <>
                 <Sparkles className="mr-2 h-4 w-4" />
-                Enable TMM {count > 1 ? `(${count})` : ""}
+                {t("torrent_context_menu.enable_tmm", { count })}
               </>
             )}
           </ContextMenuItem>
@@ -310,24 +312,24 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
           disabled={isExporting}
         >
           <Download className="mr-2 h-4 w-4" />
-          {count > 1 ? `Export Torrents (${count})` : "Export Torrent"}
+          {t("torrent_context_menu.export", { count })}
         </ContextMenuItem>
         <ContextMenuSub>
           <ContextMenuSubTrigger>
             <Copy className="mr-4 h-4 w-4" />
-            Copy...
+            {t("torrent_context_menu.copy_options.title")}
           </ContextMenuSubTrigger>
           <ContextMenuSubContent>
             <ContextMenuItem
               onClick={() => copyToClipboard(incognitoMode ? getLinuxIsoName(torrent.hash) : torrent.name, "name")}
             >
-              Copy Name
+              {t("torrent_context_menu.copy_options.name")}
             </ContextMenuItem>
             <ContextMenuItem onClick={copyHash}>
-              Copy Hash
+              {t("torrent_context_menu.copy_options.hash")}
             </ContextMenuItem>
             <ContextMenuItem onClick={copyFullPath}>
-              Copy Full Path
+              {t("torrent_context_menu.copy_options.full_path")}
             </ContextMenuItem>
           </ContextMenuSubContent>
         </ContextMenuSub>
@@ -338,7 +340,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
           className="text-destructive"
         >
           <Trash2 className="mr-2 h-4 w-4" />
-          Delete {count > 1 ? `(${count})` : ""}
+          {count > 1 ? t("common.buttons.delete_count", { count }) : t("common.buttons.delete")}
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
