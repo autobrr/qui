@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "lint": "eslint \"src/**/*.{ts,tsx,js,jsx}\" \"*.{js,ts}\"",
     "format": "eslint --fix \"src/**/*.{ts,tsx,js,jsx}\" \"*.{js,ts}\"",
-    "prepare": "cd .. && husky web/.husky"
+    "prepare": "cd .. && (git config core.hooksPath web/.husky || true) && husky web/.husky"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
