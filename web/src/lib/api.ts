@@ -229,6 +229,12 @@ class ApiClient {
     })
   }
 
+  async deleteAllBackups(instanceId: number): Promise<{ deleted: boolean }> {
+    return this.request<{ deleted: boolean }>(`/instances/${instanceId}/backups/runs`, {
+      method: "DELETE",
+    })
+  }
+
   async previewRestore(
     instanceId: number,
     runId: number,

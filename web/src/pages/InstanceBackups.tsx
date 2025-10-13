@@ -56,6 +56,7 @@ import {
   useBackupRuns,
   useBackupSettings,
   useDeleteBackupRun,
+  useDeleteAllBackupRuns,
   useExecuteRestore,
   usePreviewRestore,
   useTriggerBackup,
@@ -137,6 +138,7 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
   const updateSettings = useUpdateBackupSettings(instanceId)
   const triggerBackup = useTriggerBackup(instanceId)
   const deleteRun = useDeleteBackupRun(instanceId)
+  const deleteAllRuns = useDeleteAllBackupRuns(instanceId)
   const previewRestore = usePreviewRestore(instanceId)
   const executeRestore = useExecuteRestore(instanceId)
   const { formatDate } = useDateTimeFormatters()
@@ -254,6 +256,7 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
   }, [settings])
 
   const lastRun = useMemo(() => (runs && runs.length > 0 ? runs[0] : undefined), [runs])
+  const hasRuns = useMemo(() => (runs?.length ?? 0) > 0, [runs])
 
   const hasActiveCadence = useMemo(() => {
     if (!formState) return false
@@ -352,6 +355,16 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
       toast.success("Backup run deleted")
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to delete backup run"
+      toast.error(message)
+    }
+  }
+
+  const handleDeleteAll = async () => {
+    try {
+      await deleteAllRuns.mutateAsync()
+      toast.success("Deleted all backups")
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to delete backups"
       toast.error(message)
     }
   }
@@ -1243,9 +1256,36 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle>Backup history</CardTitle>
-              <Button variant="outline" size="sm" onClick={() => handleTrigger("manual")} disabled={triggerBackup.isPending}>
-                <ArrowDownToLine className="mr-2 h-4 w-4" /> Queue backup
-              </Button>
+              <div className="flex items-center gap-2">
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      disabled={deleteAllRuns.isPending || runsLoading || !hasRuns}
+                    >
+                      <Trash className="mr-2 h-4 w-4" /> Delete all
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Delete all backups?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This removes every stored backup archive and manifest for this instance. This action cannot be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={handleDeleteAll} disabled={deleteAllRuns.isPending}>
+                        Delete all
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+                <Button variant="outline" size="sm" onClick={() => handleTrigger("manual")} disabled={triggerBackup.isPending}>
+                  <ArrowDownToLine className="mr-2 h-4 w-4" /> Queue backup
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">

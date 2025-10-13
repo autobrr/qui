@@ -96,6 +96,17 @@ export function useDeleteBackupRun(instanceId: number) {
   })
 }
 
+export function useDeleteAllBackupRuns(instanceId: number) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: () => api.deleteAllBackups(instanceId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["instance-backups", instanceId, "runs"] })
+    },
+  })
+}
+
 export function usePreviewRestore(instanceId: number) {
   return useMutation<RestorePlan, Error, { runId: number; mode: RestoreMode; excludeHashes?: string[] }>({
     mutationFn: ({ runId, mode, excludeHashes }) => api.previewRestore(instanceId, runId, { mode, excludeHashes }),

@@ -340,6 +340,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 							r.Put("/settings", backupsHandler.UpdateSettings)
 							r.Post("/run", backupsHandler.TriggerBackup)
 							r.Get("/runs", backupsHandler.ListRuns)
+							r.Delete("/runs", backupsHandler.DeleteAllRuns)
 							r.Get("/runs/{runID}/manifest", backupsHandler.GetManifest)
 							r.Get("/runs/{runID}/download", backupsHandler.DownloadRun)
 							r.Post("/runs/{runID}/restore/preview", backupsHandler.PreviewRestore)

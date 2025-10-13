@@ -439,6 +439,21 @@ func (h *BackupsHandler) DeleteRun(w http.ResponseWriter, r *http.Request) {
 	RespondJSON(w, http.StatusOK, map[string]bool{"deleted": true})
 }
 
+func (h *BackupsHandler) DeleteAllRuns(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	if err := h.service.DeleteAllRuns(r.Context(), instanceID); err != nil {
+		RespondError(w, http.StatusInternalServerError, "Failed to delete backups")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, map[string]bool{"deleted": true})
+}
+
 func (h *BackupsHandler) PreviewRestore(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {

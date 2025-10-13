@@ -880,10 +880,24 @@ func (s *Service) cleanupRunFiles(ctx context.Context, runIDs []int64) error {
 		}
 
 		if run.ManifestPath != nil {
-			_ = os.Remove(filepath.Join(s.cfg.DataDir, *run.ManifestPath))
+			manifestPath := filepath.Join(s.cfg.DataDir, *run.ManifestPath)
+			if err := os.Remove(manifestPath); err != nil && !os.IsNotExist(err) {
+				log.Warn().
+					Err(err).
+					Int64("runID", runID).
+					Str("path", manifestPath).
+					Msg("Failed to remove backup manifest file during retention cleanup")
+			}
 		}
 		if run.ArchivePath != nil {
-			_ = os.Remove(filepath.Join(s.cfg.DataDir, *run.ArchivePath))
+			archivePath := filepath.Join(s.cfg.DataDir, *run.ArchivePath)
+			if err := os.Remove(archivePath); err != nil && !os.IsNotExist(err) {
+				log.Warn().
+					Err(err).
+					Int64("runID", runID).
+					Str("path", archivePath).
+					Msg("Failed to remove backup archive during retention cleanup")
+			}
 		}
 		if err := s.store.CleanupRun(ctx, runID); err != nil {
 			log.Warn().Err(err).Int64("runID", runID).Msg("Failed to cleanup run from database")
@@ -936,10 +950,24 @@ func (s *Service) DeleteRun(ctx context.Context, runID int64) error {
 	}
 
 	if run.ManifestPath != nil {
-		_ = os.Remove(filepath.Join(s.cfg.DataDir, *run.ManifestPath))
+		manifestPath := filepath.Join(s.cfg.DataDir, *run.ManifestPath)
+		if err := os.Remove(manifestPath); err != nil && !os.IsNotExist(err) {
+			log.Warn().
+				Err(err).
+				Int64("runID", runID).
+				Str("path", manifestPath).
+				Msg("Failed to remove backup manifest file during run deletion")
+		}
 	}
 	if run.ArchivePath != nil {
-		_ = os.Remove(filepath.Join(s.cfg.DataDir, *run.ArchivePath))
+		archivePath := filepath.Join(s.cfg.DataDir, *run.ArchivePath)
+		if err := os.Remove(archivePath); err != nil && !os.IsNotExist(err) {
+			log.Warn().
+				Err(err).
+				Int64("runID", runID).
+				Str("path", archivePath).
+				Msg("Failed to remove backup archive during run deletion")
+		}
 	}
 
 	if err := s.store.CleanupRun(ctx, runID); err != nil {
@@ -948,6 +976,25 @@ func (s *Service) DeleteRun(ctx context.Context, runID int64) error {
 
 	s.cleanupTorrentBlobs(ctx, items)
 
+	return nil
+}
+
+func (s *Service) DeleteAllRuns(ctx context.Context, instanceID int) error {
+	runIDs, err := s.store.ListRunIDs(ctx, instanceID)
+	if err != nil {
+		return err
+	}
+	if len(runIDs) == 0 {
+		return nil
+	}
+	for _, runID := range runIDs {
+		if err := s.DeleteRun(ctx, runID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
+			return err
+		}
+	}
 	return nil
 }
 

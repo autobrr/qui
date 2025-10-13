@@ -614,6 +614,29 @@ func (s *BackupStore) ListRuns(ctx context.Context, instanceID int, limit, offse
 	return results, rows.Err()
 }
 
+func (s *BackupStore) ListRunIDs(ctx context.Context, instanceID int) ([]int64, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id
+		FROM instance_backup_runs
+		WHERE instance_id = ?
+		ORDER BY requested_at DESC
+	`, instanceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 func (s *BackupStore) DeleteRun(ctx context.Context, runID int64) error {
 	_, err := s.db.ExecContext(ctx, "DELETE FROM instance_backup_runs WHERE id = ?", runID)
 	return err
