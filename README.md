@@ -356,14 +356,15 @@ The reverse proxy feature:
 
 ### Setup Instructions
 
-#### 1. Create a Client API Key
+#### 1. Create a Client Proxy API Key
 
 1. Open qui in your browser
-2. Go to **Settings → Client API Keys**
-3. Click **"Generate New Key"** 
-4. Choose the qBittorrent instance you want to proxy
-5. Enter a name (e.g., "Sonarr")
-6. **Copy the generated key immediately** - it's only shown once
+2. Go to **Settings → Client Proxy Keys**
+3. Click **"Create Client API Key"** 
+4. Enter a name for the client (e.g., "Sonarr")
+5. Choose the qBittorrent instance you want to proxy
+6. Click **"Create Client API Key"**
+7. **Copy the generated proxy url immediately** - it's only shown once
 
 #### 2. Configure Your External Application
 
@@ -509,6 +510,7 @@ qui automatically detects the features available on each qBittorrent instance an
 | --- | --- | --- |
 | **Torrent Creation** | 5.0.0+ (Web API 2.11.2+) | |
 | **Tracker Health Status** | 5.1.0+ (Web API 2.11.4+) | Automatically marks torrents that are either unregistered or has a tracker issue |
+| **External IP Reporting (IPv4/IPv6)** | 5.1.0+ (Web API 2.11.3+) | Adds `last_external_address_v4` / `_v6`; earlier WebAPI builds expose no external IP data |
 
 ## Community
 
