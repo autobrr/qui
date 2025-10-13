@@ -83,7 +83,7 @@ import { getCommonCategory, getCommonSavePath, getCommonTags, getTotalSize } fro
 import type { Category, ServerState, Torrent, TorrentCounts, TorrentFilters } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useSearch } from "@tanstack/react-router"
-import { ArrowUpDown, Ban, BrickWallFire, ChevronDown, ChevronUp, Columns3, Eye, EyeOff, Globe, Loader2, Rabbit, Turtle } from "lucide-react"
+import { ArrowUpDown, Ban, BrickWallFire, ChevronDown, ChevronUp, Columns3, EthernetPort, Eye, EyeOff, Globe, Loader2, Rabbit, Turtle } from "lucide-react"
 import { createPortal } from "react-dom"
 import { AddTorrentDialog } from "./AddTorrentDialog"
 import { DraggableTableHeader } from "./DraggableTableHeader"
@@ -191,6 +191,39 @@ function shallowEqualTrackerIcons(
   return true
 }
 
+interface ExternalIPAddressProps {
+  address?: string | null
+  incognitoMode: boolean
+  label: string
+}
+
+const ExternalIPAddress = memo(
+  ({ address, incognitoMode, label }: ExternalIPAddressProps) => {
+    if (!address) return null
+
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            className="flex items-center gap-1 text-xs text-muted-foreground"
+            aria-label={`External ${label}`}
+          >
+            <EthernetPort className="h-3.5 w-3.5" />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p className="font-mono text-xs">
+            <span {...(incognitoMode && { style: { filter: "blur(4px)" } })}>{address}</span>
+          </p>
+        </TooltipContent>
+      </Tooltip>
+    )
+  },
+  (prev, next) =>
+    prev.address === next.address &&
+    prev.incognitoMode === next.incognitoMode &&
+    prev.label === next.label
+)
 
 interface TorrentTableOptimizedProps {
   instanceId: number
@@ -1725,6 +1758,18 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                 {incognitoMode ? "Exit incognito mode" : "Enable incognito mode"}
               </TooltipContent>
             </Tooltip>
+            {/* External IPv4 */}
+            <ExternalIPAddress
+              address={serverState?.last_external_address_v4}
+              incognitoMode={incognitoMode}
+              label="IPv4"
+            />
+            {/* External IPv6 */}
+            <ExternalIPAddress
+              address={serverState?.last_external_address_v6}
+              incognitoMode={incognitoMode}
+              label="IPv6"
+            />
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
