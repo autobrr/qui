@@ -3,15 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState, useEffect, useRef } from "react"
-import { useForm } from "@tanstack/react-form"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { api } from "@/lib/api"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Switch } from "@/components/ui/switch"
 import {
   Dialog,
   DialogContent,
@@ -20,6 +13,8 @@ import {
   DialogTitle,
   DialogTrigger
 } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import {
   Select,
   SelectContent,
@@ -27,26 +22,37 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger
 } from "@/components/ui/tabs"
-import { Plus, Upload, Link } from "lucide-react"
-import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
-import { usePersistedStartPaused } from "@/hooks/usePersistedStartPaused"
-import { Badge } from "@/components/ui/badge"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger
 } from "@/components/ui/tooltip"
+import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
+import { usePersistedStartPaused } from "@/hooks/usePersistedStartPaused"
+import { api } from "@/lib/api"
+import { useForm } from "@tanstack/react-form"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { Link, Plus, Upload } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
+
+export type AddTorrentDropPayload =
+  | { type: "file"; files: File[] }
+  | { type: "url"; urls: string[] }
 
 interface AddTorrentDialogProps {
   instanceId: number
   open?: boolean
   onOpenChange?: (open: boolean) => void
+  dropPayload?: AddTorrentDropPayload | null
+  onDropPayloadConsumed?: () => void
 }
 
 type TabValue = "file" | "url"
@@ -70,7 +76,7 @@ interface FormData {
   rename: string
 }
 
-export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChange }: AddTorrentDialogProps) {
+export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChange, dropPayload, onDropPayloadConsumed }: AddTorrentDialogProps) {
   const [internalOpen, setInternalOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<TabValue>("file")
   const [selectedTags, setSelectedTags] = useState<string[]>([])
@@ -99,6 +105,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
     if (!open) {
       setSelectedTags([])
       setNewTag("")
+      setShowFileList(false)
     }
   }, [open])
 
@@ -188,6 +195,45 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
       await mutation.mutateAsync({ ...value, tags: allTags })
     },
   })
+
+  useEffect(() => {
+    if (!dropPayload) {
+      return
+    }
+
+    if (dropPayload.type === "file") {
+      const files = dropPayload.files.filter((file): file is File => file instanceof File)
+      setActiveTab("file")
+      form.setFieldValue("torrentFiles", files.length > 0 ? files : null)
+      form.setFieldValue("urls", "")
+      setShowFileList(files.length > 0)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ""
+      }
+    } else if (dropPayload.type === "url") {
+      const urls = dropPayload.urls.map((url) => url.trim()).filter(Boolean)
+      setActiveTab("url")
+      setShowFileList(false)
+      form.setFieldValue("urls", urls.join("\n"))
+      form.setFieldValue("torrentFiles", null)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ""
+      }
+    }
+
+    setOpen(true)
+    onDropPayloadConsumed?.()
+  }, [dropPayload, form, onDropPayloadConsumed, setOpen])
+
+  useEffect(() => {
+    if (open) {
+      return
+    }
+    form.reset()
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""
+    }
+  }, [open, form])
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -806,18 +852,27 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
         <div className="flex-shrink-0 px-6 py-3 border-t bg-background">
           <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
             <form.Subscribe
-              selector={(state) => [state.canSubmit, state.isSubmitting]}
+              selector={(state) => ({
+                canSubmit: state.canSubmit,
+                isSubmitting: state.isSubmitting,
+                torrentFiles: state.values.torrentFiles,
+              })}
             >
-              {([canSubmit, isSubmitting]) => (
-                <Button
-                  type="submit"
-                  disabled={!canSubmit || isSubmitting || mutation.isPending}
-                  className="w-full sm:flex-1 h-11 sm:h-10 order-1 sm:order-2"
-                  onClick={() => form.handleSubmit()}
-                >
-                  {isSubmitting || mutation.isPending ? "Adding..." : "Add Torrent"}
-                </Button>
-              )}
+              {({ canSubmit, isSubmitting, torrentFiles }) => {
+                const hasSelectedFiles = Array.isArray(torrentFiles) && torrentFiles.length > 0
+                const requiresFileSelection = activeTab === "file" && !hasSelectedFiles
+                const isDisabled = !canSubmit || isSubmitting || mutation.isPending || requiresFileSelection
+                return (
+                  <Button
+                    type="submit"
+                    disabled={isDisabled}
+                    className="w-full sm:flex-1 h-11 sm:h-10 order-1 sm:order-2"
+                    onClick={() => form.handleSubmit()}
+                  >
+                    {isSubmitting || mutation.isPending ? "Adding..." : "Add Torrent"}
+                  </Button>
+                )
+              }}
             </form.Subscribe>
             <Button
               type="button"
