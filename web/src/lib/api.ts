@@ -20,6 +20,7 @@ import type {
   TorrentProperties,
   TorrentResponse,
   TorrentTracker,
+  TrackerIconSettings,
   User
 } from "@/types"
 import { getApiBaseUrl, withBasePath } from "./base-url"
@@ -686,6 +687,17 @@ class ApiClient {
 
   async getTrackerIcons(): Promise<Record<string, string>> {
     return this.request<Record<string, string>>("/tracker-icons")
+  }
+
+  async getTrackerIconSettings(): Promise<TrackerIconSettings> {
+    return this.request<TrackerIconSettings>("/tracker-icons/settings")
+  }
+
+  async updateTrackerIconSettings(fetchEnabled: boolean): Promise<TrackerIconSettings> {
+    return this.request<TrackerIconSettings>("/tracker-icons/settings", {
+      method: "PUT",
+      body: JSON.stringify({ fetchEnabled }),
+    })
   }
 }
 

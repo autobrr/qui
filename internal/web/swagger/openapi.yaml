@@ -1704,6 +1704,41 @@ paths:
                   description: Base64-encoded PNG data URL for the tracker favicon
         '500':
           description: Failed to list tracker icons
+  /api/tracker-icons/settings:
+    get:
+      tags:
+        - Tracker Icons
+      summary: Get tracker icon settings
+      description: Retrieve tracker icon configuration flags
+      responses:
+        '200':
+          description: Tracker icon settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrackerIconSettings'
+    put:
+      tags:
+        - Tracker Icons
+      summary: Update tracker icon settings
+      description: Enable or disable remote tracker icon fetching
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrackerIconSettings'
+      responses:
+        '200':
+          description: Updated tracker icon settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrackerIconSettings'
+        '400':
+          description: Invalid request body
+        '500':
+          description: Failed to update tracker icon settings
 
   /api/version/latest:
     get:
@@ -2013,6 +2048,15 @@ components:
           type: integer
         msg:
           type: string
+
+    TrackerIconSettings:
+      type: object
+      properties:
+        fetchEnabled:
+          type: boolean
+          description: Whether the server fetches tracker icons from remote hosts when missing
+      required:
+        - fetchEnabled
 
     TorrentFile:
       type: object

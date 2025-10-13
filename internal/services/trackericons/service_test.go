@@ -80,3 +80,16 @@ func TestServiceBuildBaseCandidatesOrder(t *testing.T) {
 		})
 	}
 }
+
+func TestServiceFetchToggle(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{}
+	require.False(t, svc.FetchEnabled())
+
+	svc.SetFetchEnabled(true)
+	require.True(t, svc.FetchEnabled())
+
+	svc.SetFetchEnabled(false)
+	require.False(t, svc.FetchEnabled())
+}

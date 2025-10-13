@@ -29,7 +29,7 @@ func TestPreloadIconsFromDisk(t *testing.T) {
 
 	require.NoError(t, os.WriteFile(filepath.Join(iconDir, "preload.json"), []byte(preload), 0o644))
 
-	svc, err := NewService(dataDir, "test-agent")
+	svc, err := NewService(dataDir, "test-agent", true)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = svc })
 

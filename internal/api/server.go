@@ -186,7 +186,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	qbittorrentInfoHandler := handlers.NewQBittorrentInfoHandler(s.clientPool)
 	var trackerIconHandler *handlers.TrackerIconHandler
 	if s.trackerIconService != nil {
-		trackerIconHandler = handlers.NewTrackerIconHandler(s.trackerIconService)
+		trackerIconHandler = handlers.NewTrackerIconHandler(s.trackerIconService, s.config)
 	}
 
 	// Create proxy handler
@@ -228,7 +228,11 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			r.Use(middleware.IsAuthenticated(s.authService, s.sessionManager))
 
 			if trackerIconHandler != nil {
-				r.Get("/tracker-icons", trackerIconHandler.GetTrackerIcons)
+				r.Route("/tracker-icons", func(r chi.Router) {
+					r.Get("/", trackerIconHandler.GetTrackerIcons)
+					r.Get("/settings", trackerIconHandler.GetTrackerIconSettings)
+					r.Put("/settings", trackerIconHandler.UpdateTrackerIconSettings)
+				})
 			}
 
 			// Auth routes

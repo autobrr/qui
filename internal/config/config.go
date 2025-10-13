@@ -6,6 +6,7 @@ package config
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -100,6 +101,7 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("logMaxBackups", 3)
 	c.viper.SetDefault("dataDir", "") // Empty means auto-detect (next to config file)
 	c.viper.SetDefault("checkForUpdates", true)
+	c.viper.SetDefault("trackerIconsFetchEnabled", true)
 	c.viper.SetDefault("pprofEnabled", false)
 	c.viper.SetDefault("metricsEnabled", false)
 	c.viper.SetDefault("metricsHost", "127.0.0.1")
@@ -189,6 +191,7 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("logMaxBackups", envPrefix+"LOG_MAX_BACKUPS")
 	c.viper.BindEnv("dataDir", envPrefix+"DATA_DIR")
 	c.viper.BindEnv("checkForUpdates", envPrefix+"CHECK_FOR_UPDATES")
+	c.viper.BindEnv("trackerIconsFetchEnabled", envPrefix+"TRACKER_ICONS_FETCH_ENABLED")
 	c.viper.BindEnv("pprofEnabled", envPrefix+"PPROF_ENABLED")
 	c.viper.BindEnv("metricsEnabled", envPrefix+"METRICS_ENABLED")
 	c.viper.BindEnv("metricsHost", envPrefix+"METRICS_HOST")
@@ -231,8 +234,26 @@ func (c *AppConfig) applyDynamicChanges() {
 
 	// Update check for updates flag from config changes
 	c.Config.CheckForUpdates = c.viper.GetBool("checkForUpdates")
+	c.Config.TrackerIconsFetchEnabled = c.viper.GetBool("trackerIconsFetchEnabled")
 
 	c.notifyListeners()
+}
+
+// UpdateTrackerIconsFetchEnabled enables or disables remote tracker icon fetching and persists the setting.
+func (c *AppConfig) UpdateTrackerIconsFetchEnabled(enabled bool) error {
+	if c == nil || c.viper == nil || c.Config == nil {
+		return fmt.Errorf("app config not initialised")
+	}
+
+	c.viper.Set("trackerIconsFetchEnabled", enabled)
+	c.Config.TrackerIconsFetchEnabled = enabled
+
+	if err := c.persistConfig(); err != nil {
+		return fmt.Errorf("persist tracker icon setting: %w", err)
+	}
+
+	c.applyDynamicChanges()
+	return nil
 }
 
 // RegisterReloadListener registers a callback that's invoked when the configuration file is reloaded.
@@ -255,6 +276,34 @@ func (c *AppConfig) notifyListeners() {
 	for _, listener := range listeners {
 		listener(&copied)
 	}
+}
+
+func (c *AppConfig) persistConfig() error {
+	path := c.viper.ConfigFileUsed()
+	if path == "" {
+		path = filepath.Join(c.GetConfigDir(), "config.toml")
+		c.viper.SetConfigFile(path)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("ensure config directory: %w", err)
+	}
+
+	if _, err := os.Stat(path); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			if err := c.viper.WriteConfigAs(path); err != nil {
+				return fmt.Errorf("write config file: %w", err)
+			}
+			return nil
+		}
+		return fmt.Errorf("stat config file: %w", err)
+	}
+
+	if err := c.viper.WriteConfig(); err != nil {
+		return fmt.Errorf("write config file: %w", err)
+	}
+
+	return nil
 }
 
 func (c *AppConfig) writeDefaultConfig(path string) error {
@@ -315,6 +364,11 @@ sessionSecret = "{{ .sessionSecret }}"
 # Check for new releases via api.autobrr.com
 # Default: true
 #checkForUpdates = true
+
+# Automatically fetch tracker icons when missing
+# Disable to rely solely on icons placed in dataDir/tracker-icons
+# Default: true
+#trackerIconsFetchEnabled = true
 
 # Log level
 # Default: "INFO"

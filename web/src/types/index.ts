@@ -201,6 +201,10 @@ export interface CacheMetadata {
   nextRefresh?: string
 }
 
+export interface TrackerIconSettings {
+  fetchEnabled: boolean
+}
+
 export interface TorrentCounts {
   status: Record<string, number>
   categories: Record<string, number>
