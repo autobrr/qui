@@ -42,10 +42,11 @@ import { memo, useEffect, useState } from "react"
 
 function formatEta(seconds: number): string {
   if (seconds === 8640000) return "∞"
-  if (seconds < 0) return ""
+  if (seconds < 0) return "-"
 
   const hours = Math.floor(seconds / 3600)
   const minutes = Math.floor((seconds % 3600) / 60)
+  const secs = Math.floor(seconds % 60)
 
   if (hours > 24) {
     const days = Math.floor(hours / 24)
@@ -56,7 +57,11 @@ function formatEta(seconds: number): string {
     return `${hours}h ${minutes}m`
   }
 
-  return `${minutes}m`
+  if (minutes > 0) {
+    return `${minutes}m ${secs}s`
+  }
+
+  return `${secs}s`
 }
 
 function formatReannounce(seconds: number): string {
