@@ -4,6 +4,7 @@
 package config
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -18,6 +19,7 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/pelletier/go-toml/v2"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
@@ -301,17 +303,36 @@ func (c *AppConfig) persistConfigLocked() error {
 		return fmt.Errorf("ensure config directory: %w", err)
 	}
 
-	if _, err := os.Stat(path); err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			if err := c.viper.WriteConfigAs(path); err != nil {
-				return fmt.Errorf("write config file: %w", err)
-			}
-			return nil
+	perm := os.FileMode(0o644)
+	if info, err := os.Stat(path); err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("stat config file: %w", err)
 		}
-		return fmt.Errorf("stat config file: %w", err)
+	} else {
+		perm = info.Mode().Perm()
 	}
 
-	if err := c.viper.WriteConfig(); err != nil {
+	settings := c.viper.AllSettings()
+	if err := writeTOMLConfig(path, settings, perm); err != nil {
+		return fmt.Errorf("persist config file: %w", err)
+	}
+
+	return nil
+}
+
+func writeTOMLConfig(path string, settings map[string]any, perm os.FileMode) error {
+	if settings == nil {
+		settings = make(map[string]any)
+	}
+
+	var buf bytes.Buffer
+	encoder := toml.NewEncoder(&buf)
+	// go-toml defaults to 2 space indent which matches existing files.
+	if err := encoder.Encode(settings); err != nil {
+		return fmt.Errorf("encode config: %w", err)
+	}
+
+	if err := os.WriteFile(path, buf.Bytes(), perm); err != nil {
 		return fmt.Errorf("write config file: %w", err)
 	}
 
