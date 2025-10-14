@@ -43,6 +43,45 @@ const formatAge = (days: number): string => {
   return `${Math.floor(days / 365)}y`
 }
 
+// Format last activity timestamp (unix seconds) into relative string
+const formatLastActivity = (timestamp?: number): string => {
+  if (!timestamp || timestamp <= 0) {
+    return "No activity"
+  }
+
+  const diffMs = Date.now() - timestamp * 1000
+
+  if (diffMs <= 0) {
+    return "Just now"
+  }
+
+  const minutes = Math.floor(diffMs / (60 * 1000))
+  if (minutes < 1) {
+    return "Just now"
+  }
+  if (minutes < 60) {
+    return `${minutes}m ago`
+  }
+
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) {
+    return `${hours}h ago`
+  }
+
+  const days = Math.floor(hours / 24)
+  if (days < 30) {
+    return `${days}d ago`
+  }
+
+  const months = Math.floor(days / 30)
+  if (months < 12) {
+    return `${months}mo ago`
+  }
+
+  const years = Math.floor(days / 365)
+  return `${years}y ago`
+}
+
 // Get state badge color
 const getStateBadgeVariant = (state: string): "default" | "secondary" | "outline" | "destructive" => {
   const stateMap: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
@@ -133,9 +172,10 @@ export const createEconomyColumns = (): ColumnDef<EconomyScore>[] => [
     header: ({ column }) => createSortableHeader(column, "Score"),
     cell: ({ row }) => {
       const score = row.getValue("economyScore") as number
+      const clampedProgress = Math.min(Math.max(score, 0), 100)
       return (
         <div className="flex items-center gap-2">
-          <Progress value={score} className="w-16 h-2" />
+          <Progress value={clampedProgress} className="w-16 h-2" />
           <span className={cn("font-semibold text-sm", getScoreColor(score))}>
             {score.toFixed(1)}
           </span>
@@ -230,15 +270,35 @@ export const createEconomyColumns = (): ColumnDef<EconomyScore>[] => [
     accessorKey: "reviewPriority",
     header: ({ column }) => createSortableHeader(column, "Priority"),
     cell: ({ row }) => {
-      const priority = row.getValue("reviewPriority") as number
-      const color = priority < 30 ? "text-red-500" : priority < 50 ? "text-orange-500" : ""
+      const priorityScore = row.getValue("reviewPriority") as number
+      const color = priorityScore < 30 ? "text-red-500" : priorityScore < 50 ? "text-orange-500" : ""
+
       return (
-        <span className={cn("font-mono text-sm", color)}>
-          {priority.toFixed(1)}
-        </span>
+        <div className="flex flex-col leading-tight">
+          <span className={cn("font-mono text-sm", color)} title="Lower means more urgent">
+            {priorityScore.toFixed(1)}
+          </span>
+          <span className="text-xs text-muted-foreground">
+            #{row.index + 1}
+          </span>
+        </div>
       )
     },
     size: 100,
+  },
+  {
+    accessorKey: "lastActivity",
+    header: ({ column }) => createSortableHeader(column, "Last Activity"),
+    cell: ({ row }) => {
+      const lastActivity = row.original.lastActivity
+      return (
+        <span className="text-sm text-muted-foreground">
+          {formatLastActivity(lastActivity)}
+        </span>
+      )
+    },
+    sortingFn: "basic",
+    size: 130,
   },
   {
     accessorKey: "state",

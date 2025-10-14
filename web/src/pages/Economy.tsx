@@ -3,17 +3,17 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState, useCallback, useEffect } from "react"
 import { EconomyTable } from "@/components/economy/EconomyTable"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useInstances } from "@/hooks/useInstances"
-import { formatBytes } from "@/lib/utils"
-import { useQuery } from "@tanstack/react-query"
 import { api } from "@/lib/api"
-import { Loader2, TrendingDown, TrendingUp, HardDrive, Package, Info } from "lucide-react"
+import { formatBytes } from "@/lib/utils"
 import type { FilterOptions } from "@/types"
+import { useQuery } from "@tanstack/react-query"
+import { HardDrive, Info, Loader2, Package, TrendingDown, TrendingUp } from "lucide-react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 
 export function Economy() {
   const { instances, isLoading: instancesLoading } = useInstances()
@@ -92,6 +92,22 @@ export function Economy() {
     setCurrentPage(1) // Reset to first page when filtering
   }, [])
 
+  const stats = statsData || economyData?.stats
+
+  const reviewThreshold = economyData?.reviewThreshold ?? null
+
+  // Estimate duplicate copy count from economy analysis when available
+  const duplicateCopyCount = useMemo(() => {
+    if (!economyData?.duplicates) return null
+
+    let count = 0
+    for (const duplicateHashes of Object.values(economyData.duplicates)) {
+      count += duplicateHashes.length
+    }
+
+    return count
+  }, [economyData?.duplicates])
+
   if (instancesLoading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -108,8 +124,6 @@ export function Economy() {
       </div>
     )
   }
-
-  const stats = statsData || economyData?.stats
 
   return (
     <div className="flex flex-col h-full">
@@ -169,7 +183,7 @@ export function Economy() {
 
               <Card>
                 <CardHeader className="pb-2">
-                  <CardDescription className="text-xs">Storage Savings</CardDescription>
+                  <CardDescription className="text-xs">Potential Dedup Savings</CardDescription>
                   <CardTitle className="text-lg flex items-center gap-2">
                     <TrendingDown className="h-4 w-4 text-green-500" />
                     {formatBytes(stats.storageSavings)}
@@ -178,7 +192,7 @@ export function Economy() {
                 <CardContent>
                   <div className="flex items-center gap-2">
                     <p className="text-xs text-muted-foreground">
-                      From {stats.totalTorrents - stats.rareContentCount} duplicates
+                      {duplicateCopyCount !== null? `If you remove ${duplicateCopyCount} duplicate ${duplicateCopyCount === 1 ? "copy" : "copies"}`: "If you keep only the best copy in each duplicate set"}
                     </p>
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -186,7 +200,7 @@ export function Economy() {
                       </TooltipTrigger>
                       <TooltipContent className="max-w-xs">
                         <p className="text-xs">
-                          Potential space that could be freed by removing duplicate copies while keeping the best version of each torrent based on economy score
+                          Calculated as total storage minus deduplicated storage — the space reclaimed by keeping just the top-ranked torrent in every duplicate group.
                         </p>
                       </TooltipContent>
                     </Tooltip>
@@ -196,7 +210,7 @@ export function Economy() {
 
               <Card>
                 <CardHeader className="pb-2">
-                  <CardDescription className="text-xs">Average Score</CardDescription>
+                  <CardDescription className="text-xs">Average Score (all torrents)</CardDescription>
                   <CardTitle className="text-lg flex items-center gap-2">
                     <TrendingUp className="h-4 w-4" />
                     {stats.averageEconomyScore.toFixed(1)}
@@ -205,7 +219,7 @@ export function Economy() {
                 <CardContent>
                   <div className="flex items-center gap-2">
                     <p className="text-xs text-muted-foreground">
-                      Retention value (0-100)
+                      Retention score (higher is better) across your entire library
                     </p>
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -213,7 +227,10 @@ export function Economy() {
                       </TooltipTrigger>
                       <TooltipContent className="max-w-xs">
                         <p className="text-xs">
-                          Score based on age, activity, ratio, and rarity. Higher scores indicate torrents worth keeping longer. Duplicates get bonus points, while old well-seeded content scores lower.
+                          Score based on age, activity, ratio, and rarity. Exceptional ratios, recent activity, and duplicate bonuses can push this above 100.
+                          {reviewThreshold !== null && (
+                            <> Torrents in the review table fall below {reviewThreshold.toFixed(1)}.</>
+                          )}
                         </p>
                       </TooltipContent>
                     </Tooltip>

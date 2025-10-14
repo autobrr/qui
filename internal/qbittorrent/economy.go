@@ -20,8 +20,8 @@ type EconomyScore struct {
 	Hash                string   `json:"hash"`
 	Name                string   `json:"name"`
 	Size                int64    `json:"size"`
-	Seeds               int      `json:"seeds"`         // Total seeds from tracker
-	Peers               int      `json:"peers"`         // Total peers from tracker
+	Seeds               int      `json:"seeds"` // Total seeds from tracker
+	Peers               int      `json:"peers"` // Total peers from tracker
 	Ratio               float64  `json:"ratio"`
 	Age                 int64    `json:"age"`          // Age in days
 	EconomyScore        float64  `json:"economyScore"` // Retention-based score (higher = keep longer)
@@ -259,6 +259,9 @@ func (es *EconomyService) AnalyzeEconomyWithPaginationAndSorting(ctx context.Con
 	// Pre-calculate duplicate hash set for performance optimization
 	duplicateHashSet := createDuplicateHashSet(duplicates)
 
+	// Apply deduplication adjustments so duplicate metadata and scoring stay in sync
+	scores = es.applyDeduplicationFactors(scores, duplicates, duplicateHashSet)
+
 	// Apply filters to scores
 	scores = es.applyFiltersToScores(scores, filters)
 
@@ -361,7 +364,7 @@ func (es *EconomyService) calculateSingleEconomyScore(torrent qbt.Torrent) Econo
 		Hash:                torrent.Hash,
 		Name:                torrent.Name,
 		Size:                torrent.Size,
-		Seeds:               int(torrent.NumComplete),  // Total seeds from tracker
+		Seeds:               int(torrent.NumComplete),   // Total seeds from tracker
 		Peers:               int(torrent.NumIncomplete), // Total peers from tracker
 		Ratio:               torrent.Ratio,
 		Age:                 ageInDays,

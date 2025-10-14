@@ -84,6 +84,7 @@ export function EconomyTable({
     storageValue: true,
     rarityBonus: true,
     reviewPriority: false,
+    lastActivity: true,
     tracker: false,
   })
   const [rowSelection, setRowSelection] = useState({})
@@ -112,7 +113,35 @@ export function EconomyTable({
   const tableData = useMemo((): EconomyScoreWithOriginal[] => {
     if (!data?.reviewTorrents?.torrents) return []
 
-    let torrents: EconomyScoreWithOriginal[] = data.reviewTorrents.torrents
+    // Build a lookup so torrents missing duplicate metadata can still be flagged using the global map
+    const duplicateLookup = new Map<string, Set<string>>()
+    if (data.duplicates) {
+      for (const [primary, duplicateHashes] of Object.entries(data.duplicates)) {
+        const primarySet = duplicateLookup.get(primary) ?? new Set<string>()
+        duplicateHashes.forEach((hash) => primarySet.add(hash))
+        duplicateLookup.set(primary, primarySet)
+
+        duplicateHashes.forEach((dup) => {
+          const dupSet = duplicateLookup.get(dup) ?? new Set<string>()
+          dupSet.add(primary)
+          duplicateHashes.forEach((other) => {
+            if (other !== dup) {
+              dupSet.add(other)
+            }
+          })
+          duplicateLookup.set(dup, dupSet)
+        })
+      }
+    }
+
+    let torrents: EconomyScoreWithOriginal[] = data.reviewTorrents.torrents.map((torrent) => {
+      const lookupDuplicates = duplicateLookup.get(torrent.hash)
+      const normalizedDuplicates = lookupDuplicates ? Array.from(lookupDuplicates) : torrent.duplicates
+      return {
+        ...torrent,
+        duplicates: normalizedDuplicates && normalizedDuplicates.length > 0 ? normalizedDuplicates : undefined,
+      }
+    })
 
     // Apply incognito mode transformations
     if (incognitoMode) {
