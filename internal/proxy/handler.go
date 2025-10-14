@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/CAFxX/httpcompression"
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -310,6 +311,14 @@ func (h *Handler) errorHandler(w http.ResponseWriter, r *http.Request, err error
 
 // Routes sets up the proxy routes
 func (h *Handler) Routes(r chi.Router) {
+	// HTTP compression - handles gzip, brotli, zstd, deflate automatically
+	compressor, err := httpcompression.DefaultAdapter()
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to create HTTP compression adapter")
+	} else {
+		r.Use(compressor)
+	}
+
 	// Proxy route with API key parameter
 	r.Route("/proxy/{api-key}", func(r chi.Router) {
 		// Apply client API key validation middleware
