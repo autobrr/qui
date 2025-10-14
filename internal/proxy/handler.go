@@ -21,6 +21,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/autobrr/pkg/sharedhttp"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
@@ -74,6 +75,7 @@ func NewHandler(clientPool *qbittorrent.ClientPool, clientAPIKeyStore *models.Cl
 		ModifyResponse: h.modifyResponse,
 		BufferPool:     bufferPool,
 		ErrorHandler:   h.errorHandler,
+		Transport:		sharedhttp.Transport,
 	}
 
 	return h
