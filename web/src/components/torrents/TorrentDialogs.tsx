@@ -23,6 +23,8 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog"
+import { Tree } from "@/components/ui/file-tree"
+import { pathsToTreeView } from "@/components/ui/file-tree-utils"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -35,7 +37,7 @@ import {
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import type { Torrent } from "@/types"
-import { Plus, X } from "lucide-react"
+import { Loader2, Plus, X } from "lucide-react"
 import type { ChangeEvent, KeyboardEvent } from "react"
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 
@@ -482,6 +484,382 @@ export const SetLocationDialog = memo(function SetLocationDialog({
             disabled={isPending || !location.trim()}
           >
             Set Location
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+})
+
+interface RenameTorrentDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  currentName?: string
+  onConfirm: (name: string) => void | Promise<void>
+  isPending?: boolean
+}
+
+export const RenameTorrentDialog = memo(function RenameTorrentDialog({
+  open,
+  onOpenChange,
+  currentName = "",
+  onConfirm,
+  isPending = false,
+}: RenameTorrentDialogProps) {
+  const [name, setName] = useState("")
+  const wasOpen = useRef(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (open && !wasOpen.current) {
+      setName(currentName)
+      setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 0)
+    }
+    wasOpen.current = open
+  }, [open, currentName])
+
+  const handleConfirm = useCallback(() => {
+    const trimmed = name.trim()
+    if (!trimmed) return
+    onConfirm(trimmed)
+  }, [name, onConfirm])
+
+  const handleClose = useCallback((nextOpen: boolean) => {
+    if (!nextOpen) {
+      setName("")
+    }
+    onOpenChange(nextOpen)
+  }, [onOpenChange])
+
+  return (
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Rename Torrent</DialogTitle>
+          <DialogDescription>
+            Update the display name for this torrent. This changes how it appears in qBittorrent and qui.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="py-4 space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="torrentName">Torrent Name</Label>
+            <Input
+              ref={inputRef}
+              id="torrentName"
+              value={name}
+              onChange={(e: ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
+              placeholder="Enter new torrent name"
+              disabled={isPending}
+              onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
+                if (e.key === "Enter" && !isPending && name.trim()) {
+                  e.preventDefault()
+                  handleConfirm()
+                }
+              }}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => handleClose(false)} disabled={isPending}>
+            Cancel
+          </Button>
+          <Button onClick={handleConfirm} disabled={isPending || !name.trim()}>
+            Rename
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+})
+
+interface RenameTorrentFileDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  files?: { name: string }[]
+  isLoading?: boolean
+  onConfirm: (payload: { oldPath: string; newName: string }) => void | Promise<void>
+  isPending?: boolean
+}
+
+export const RenameTorrentFileDialog = memo(function RenameTorrentFileDialog({
+  open,
+  onOpenChange,
+  files = [],
+  isLoading = false,
+  onConfirm,
+  isPending = false,
+}: RenameTorrentFileDialogProps) {
+  const [selectedPath, setSelectedPath] = useState("")
+  const [newName, setNewName] = useState("")
+  const wasOpen = useRef(false)
+
+  const sortedFiles = useMemo(() => {
+    return files.slice().sort((a, b) => a.name.localeCompare(b.name))
+  }, [files])
+
+  const fileTreeElements = useMemo(() => {
+    const filePaths = sortedFiles.map(file => file.name)
+    if (filePaths.length === 0) {
+      return []
+    }
+    return pathsToTreeView(filePaths, {
+      selectablePaths: new Set(filePaths),
+    })
+  }, [sortedFiles])
+
+  useEffect(() => {
+    if (open && !wasOpen.current) {
+      const defaultPath = sortedFiles[0]?.name ?? ""
+      setSelectedPath(defaultPath)
+      if (defaultPath) {
+        const segments = defaultPath.split("/")
+        setNewName(segments[segments.length - 1] || defaultPath)
+      } else {
+        setNewName("")
+      }
+    }
+    if (!open) {
+      setSelectedPath("")
+      setNewName("")
+    }
+    wasOpen.current = open
+  }, [open, sortedFiles])
+
+  const handleConfirm = useCallback(() => {
+    if (!selectedPath) return
+    const trimmedName = newName.trim()
+    if (!trimmedName) return
+    onConfirm({ oldPath: selectedPath, newName: trimmedName })
+  }, [newName, onConfirm, selectedPath])
+
+  const handlePathChange = useCallback((value: string) => {
+    setSelectedPath(value)
+    const segments = value.split("/")
+    setNewName(segments[segments.length - 1] || value)
+  }, [])
+
+  const handleClose = useCallback((nextOpen: boolean) => {
+    if (!nextOpen) {
+      setSelectedPath("")
+      setNewName("")
+    }
+    onOpenChange(nextOpen)
+  }, [onOpenChange])
+
+  return (
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="w-[calc(100vw-2.5rem)] max-w-xl sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Rename File</DialogTitle>
+          <DialogDescription>
+            Choose a file from the torrent and provide its new name. Folder structure is preserved.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="py-4 space-y-4">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8 text-muted-foreground">
+              <Loader2 className="h-5 w-5 animate-spin mr-2" />
+              Fetching file list...
+            </div>
+          ) : sortedFiles.length === 0 ? (
+            <div className="rounded-md border border-dashed py-6 text-center text-sm text-muted-foreground">
+              No files available for this torrent yet.
+            </div>
+          ) : (
+            <>
+              <div className="space-y-2">
+                <Label>Select File</Label>
+                <div className="rounded-md border p-2">
+                  <Tree
+                    className="h-64"
+                    elements={fileTreeElements}
+                    initialSelectedId={selectedPath || sortedFiles[0]?.name}
+                    onSelectionChange={handlePathChange}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="fileName">New File Name</Label>
+                <Input
+                  id="fileName"
+                  value={newName}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => setNewName(e.target.value)}
+                  placeholder="Enter new file name"
+                  disabled={isPending}
+                  className="font-mono"
+                  title={newName}
+                  onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
+                    if (e.key === "Enter" && !isPending && newName.trim()) {
+                      e.preventDefault()
+                      handleConfirm()
+                    }
+                  }}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Only the file name is changed. Folder paths remain the same.
+                </p>
+              </div>
+            </>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => handleClose(false)} disabled={isPending}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleConfirm}
+            disabled={isPending || !selectedPath || !newName.trim() || sortedFiles.length === 0}
+          >
+            Rename File
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+})
+
+interface RenameTorrentFolderDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  folders?: { name: string }[]
+  isLoading?: boolean
+  onConfirm: (payload: { oldPath: string; newName: string }) => void | Promise<void>
+  isPending?: boolean
+}
+
+export const RenameTorrentFolderDialog = memo(function RenameTorrentFolderDialog({
+  open,
+  onOpenChange,
+  folders = [],
+  isLoading = false,
+  onConfirm,
+  isPending = false,
+}: RenameTorrentFolderDialogProps) {
+  const [selectedPath, setSelectedPath] = useState("")
+  const [newName, setNewName] = useState("")
+  const wasOpen = useRef(false)
+
+  const sortedFolders = useMemo(() => {
+    return folders.slice().sort((a, b) => a.name.localeCompare(b.name))
+  }, [folders])
+
+  const folderTreeElements = useMemo(() => {
+    const folderPaths = sortedFolders.map(folder => folder.name)
+    if (folderPaths.length === 0) {
+      return []
+    }
+    return pathsToTreeView(folderPaths, {
+      selectablePaths: new Set(folderPaths),
+      leafType: "folder",
+    })
+  }, [sortedFolders])
+
+  useEffect(() => {
+    if (open && !wasOpen.current) {
+      const defaultPath = sortedFolders[0]?.name ?? ""
+      setSelectedPath(defaultPath)
+      if (defaultPath) {
+        const segments = defaultPath.split("/")
+        setNewName(segments[segments.length - 1] || defaultPath)
+      } else {
+        setNewName("")
+      }
+    }
+    if (!open) {
+      setSelectedPath("")
+      setNewName("")
+    }
+    wasOpen.current = open
+  }, [open, sortedFolders])
+
+  const handleConfirm = useCallback(() => {
+    if (!selectedPath) return
+    const trimmedName = newName.trim()
+    if (!trimmedName) return
+    onConfirm({ oldPath: selectedPath, newName: trimmedName })
+  }, [newName, onConfirm, selectedPath])
+
+  const handlePathChange = useCallback((value: string) => {
+    setSelectedPath(value)
+    const segments = value.split("/")
+    setNewName(segments[segments.length - 1] || value)
+  }, [])
+
+  const handleClose = useCallback((nextOpen: boolean) => {
+    if (!nextOpen) {
+      setSelectedPath("")
+      setNewName("")
+    }
+    onOpenChange(nextOpen)
+  }, [onOpenChange])
+
+  return (
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="w-[calc(100vw-2.5rem)] max-w-xl sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Rename Folder</DialogTitle>
+          <DialogDescription>
+            Choose a folder within the torrent and provide its new name. Any nested structure will be kept intact.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="py-4 space-y-4">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8 text-muted-foreground">
+              <Loader2 className="h-5 w-5 animate-spin mr-2" />
+              Fetching folder list...
+            </div>
+          ) : sortedFolders.length === 0 ? (
+            <div className="rounded-md border border-dashed py-6 text-center text-sm text-muted-foreground">
+              No folders available to rename.
+            </div>
+          ) : (
+            <>
+              <div className="space-y-2">
+                <Label>Select Folder</Label>
+                <div className="rounded-md border p-2">
+                  <Tree
+                    className="h-64"
+                    elements={folderTreeElements}
+                    initialSelectedId={selectedPath || sortedFolders[0]?.name}
+                    onSelectionChange={handlePathChange}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="folderName">New Folder Name</Label>
+                <Input
+                  id="folderName"
+                  value={newName}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => setNewName(e.target.value)}
+                  placeholder="Enter new folder name"
+                  disabled={isPending}
+                  className="font-mono"
+                  title={newName}
+                  onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
+                    if (e.key === "Enter" && !isPending && newName.trim()) {
+                      e.preventDefault()
+                      handleConfirm()
+                    }
+                  }}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Only the selected folder name is changed. Parent directories remain the same.
+                </p>
+              </div>
+            </>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => handleClose(false)} disabled={isPending}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleConfirm}
+            disabled={isPending || !selectedPath || !newName.trim() || sortedFolders.length === 0}
+          >
+            Rename Folder
           </Button>
         </DialogFooter>
       </DialogContent>

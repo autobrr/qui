@@ -4,6 +4,7 @@
  */
 
 import React from "react"
+import { ExternalLink } from "lucide-react"
 
 // Regular expression to match URLs
 const URL_REGEX = /(https?:\/\/[^\s<>"{}|\\^`[\]]+)/gi
@@ -17,17 +18,17 @@ export function renderTextWithLinks(text: string): React.ReactNode {
   if (!text) return text
 
   const parts = text.split(URL_REGEX)
-  
+
   return parts.map((part, index) => {
     // Check if this part is a URL
     if (URL_REGEX.test(part)) {
       URL_REGEX.lastIndex = 0 // Reset regex state
-      
+
       // Remove trailing punctuation from URLs
-      const trailingPunctuationMatch = part.match(/^(.*?)([\)\]\}.,;!?]*?)$/);
-      const cleanUrl = trailingPunctuationMatch ? trailingPunctuationMatch[1] : part;
-      const trailingPunctuation = trailingPunctuationMatch ? trailingPunctuationMatch[2] : '';
-      
+      const trailingPunctuationMatch = part.match(/^(.*?)([)\]}.,;!?]*?)$/)
+      const cleanUrl = trailingPunctuationMatch ? trailingPunctuationMatch[1] : part
+      const trailingPunctuation = trailingPunctuationMatch ? trailingPunctuationMatch[2] : ""
+
       return (
         <React.Fragment key={index}>
           <a
@@ -36,13 +37,16 @@ export function renderTextWithLinks(text: string): React.ReactNode {
             rel="noopener noreferrer"
             className="text-primary hover:underline break-all"
           >
-            {cleanUrl}
+            <span className="inline-flex items-center gap-1">
+              <span>{cleanUrl}</span>
+              <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+            </span>
           </a>
           {trailingPunctuation && <span>{trailingPunctuation}</span>}
         </React.Fragment>
       )
     }
-    
+
     // Regular text
     return <span key={index}>{part}</span>
   })

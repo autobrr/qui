@@ -81,8 +81,8 @@ export function EconomyTable({
     { id: sortField, desc: sortOrder === "desc" },
   ])
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({
-    storageValue: false,
-    rarityBonus: false,
+    storageValue: true,
+    rarityBonus: true,
     reviewPriority: false,
     tracker: false,
   })

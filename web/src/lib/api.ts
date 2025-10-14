@@ -12,8 +12,18 @@ import type {
   EconomyStats,
   FilterOptions,
   InstanceFormData,
+  InstanceCapabilities,
   InstanceResponse,
+  QBittorrentAppInfo,
+  SortedPeersResponse,
+  TorrentCreationParams,
+  TorrentCreationTask,
+  TorrentCreationTaskResponse,
+  TorrentFile,
+  TorrentFilters,
+  TorrentProperties,
   TorrentResponse,
+  TorrentTracker,
   User
 } from "@/types"
 import { getApiBaseUrl, withBasePath } from "./base-url"
@@ -53,7 +63,10 @@ class ApiClient {
     })
 
     if (!response.ok) {
-      if (response.status === 401 && !window.location.pathname.startsWith(withBasePath("/login")) && !window.location.pathname.startsWith(withBasePath("/setup"))) {
+      // Don't auto-redirect for auth check endpoints - let React Router handle navigation
+      const isAuthCheckEndpoint = endpoint === "/auth/me" || endpoint === "/auth/validate"
+
+      if (response.status === 401 && !isAuthCheckEndpoint && !window.location.pathname.startsWith(withBasePath("/login")) && !window.location.pathname.startsWith(withBasePath("/setup"))) {
         window.location.href = withBasePath("/login")
         throw new Error("Session expired")
       }
@@ -117,6 +130,35 @@ class ApiClient {
     return this.request("/auth/logout", { method: "POST" })
   }
 
+  async validate(): Promise<{
+    username: string
+    auth_method?: string
+    profile_picture?: string
+  }> {
+    return this.request("/auth/validate")
+  }
+
+  async getOIDCConfig(): Promise<{
+    enabled: boolean
+    authorizationUrl: string
+    state: string
+    disableBuiltInLogin: boolean
+    issuerUrl: string
+  }> {
+    try {
+      return await this.request("/auth/oidc/config")
+    } catch {
+      // Return default config if OIDC is not configured
+      return {
+        enabled: false,
+        authorizationUrl: "",
+        state: "",
+        disableBuiltInLogin: false,
+        issuerUrl: "",
+      }
+    }
+  }
+
   // Instance endpoints
   async getInstances(): Promise<InstanceResponse[]> {
     return this.request<InstanceResponse[]>("/instances")
@@ -147,6 +189,10 @@ class ApiClient {
     return this.request(`/instances/${id}/test`, { method: "POST" })
   }
 
+  async getInstanceCapabilities(id: number): Promise<InstanceCapabilities> {
+    return this.request<InstanceCapabilities>(`/instances/${id}/capabilities`)
+  }
+
 
   // Torrent endpoints
   async getTorrents(
@@ -157,7 +203,7 @@ class ApiClient {
       sort?: string
       order?: "asc" | "desc"
       search?: string
-      filters?: any
+      filters?: TorrentFilters
     }
   ): Promise<TorrentResponse> {
     const searchParams = new URLSearchParams()
@@ -252,12 +298,7 @@ class ApiClient {
       tags?: string  // Comma-separated tags string
       enable?: boolean  // For toggleAutoTMM
       selectAll?: boolean  // When true, apply to all torrents matching filters
-      filters?: {
-        status: string[]
-        categories: string[]
-        tags: string[]
-        trackers: string[]
-      }
+      filters?: TorrentFilters
       search?: string  // Search query when selectAll is true
       excludeHashes?: string[]  // Hashes to exclude when selectAll is true
       ratioLimit?: number  // For setShareLimit action
@@ -278,12 +319,12 @@ class ApiClient {
   }
 
   // Torrent Details
-  async getTorrentProperties(instanceId: number, hash: string): Promise<any> {
-    return this.request(`/instances/${instanceId}/torrents/${hash}/properties`)
+  async getTorrentProperties(instanceId: number, hash: string): Promise<TorrentProperties> {
+    return this.request<TorrentProperties>(`/instances/${instanceId}/torrents/${hash}/properties`)
   }
 
-  async getTorrentTrackers(instanceId: number, hash: string): Promise<any[]> {
-    return this.request(`/instances/${instanceId}/torrents/${hash}/trackers`)
+  async getTorrentTrackers(instanceId: number, hash: string): Promise<TorrentTracker[]> {
+    return this.request<TorrentTracker[]>(`/instances/${instanceId}/torrents/${hash}/trackers`)
   }
 
   async editTorrentTracker(instanceId: number, hash: string, oldURL: string, newURL: string): Promise<void> {
@@ -307,8 +348,29 @@ class ApiClient {
     })
   }
 
-  async getTorrentFiles(instanceId: number, hash: string): Promise<any[]> {
-    return this.request(`/instances/${instanceId}/torrents/${hash}/files`)
+  async renameTorrent(instanceId: number, hash: string, name: string): Promise<void> {
+    return this.request(`/instances/${instanceId}/torrents/${hash}/rename`, {
+      method: "PUT",
+      body: JSON.stringify({ name }),
+    })
+  }
+
+  async renameTorrentFile(instanceId: number, hash: string, oldPath: string, newPath: string): Promise<void> {
+    return this.request(`/instances/${instanceId}/torrents/${hash}/rename-file`, {
+      method: "PUT",
+      body: JSON.stringify({ oldPath, newPath }),
+    })
+  }
+
+  async renameTorrentFolder(instanceId: number, hash: string, oldPath: string, newPath: string): Promise<void> {
+    return this.request(`/instances/${instanceId}/torrents/${hash}/rename-folder`, {
+      method: "PUT",
+      body: JSON.stringify({ oldPath, newPath }),
+    })
+  }
+
+  async getTorrentFiles(instanceId: number, hash: string): Promise<TorrentFile[]> {
+    return this.request<TorrentFile[]>(`/instances/${instanceId}/torrents/${hash}/files`)
   }
 
   async exportTorrent(instanceId: number, hash: string): Promise<{ blob: Blob; filename: string | null }> {
@@ -346,8 +408,8 @@ class ApiClient {
     return { blob, filename }
   }
 
-  async getTorrentPeers(instanceId: number, hash: string): Promise<any> {
-    return this.request(`/instances/${instanceId}/torrents/${hash}/peers`)
+  async getTorrentPeers(instanceId: number, hash: string): Promise<SortedPeersResponse> {
+    return this.request<SortedPeersResponse>(`/instances/${instanceId}/torrents/${hash}/peers`)
   }
 
   async addPeersToTorrents(instanceId: number, hashes: string[], peers: string[]): Promise<void> {
@@ -361,6 +423,65 @@ class ApiClient {
     return this.request(`/instances/${instanceId}/torrents/ban-peers`, {
       method: "POST",
       body: JSON.stringify({ peers }),
+    })
+  }
+
+  // Torrent Creator
+  async createTorrent(instanceId: number, params: TorrentCreationParams): Promise<TorrentCreationTaskResponse> {
+    return this.request(`/instances/${instanceId}/torrent-creator`, {
+      method: "POST",
+      body: JSON.stringify(params),
+    })
+  }
+
+  async getTorrentCreationTasks(instanceId: number, taskID?: string): Promise<TorrentCreationTask[]> {
+    const query = taskID ? `?taskID=${encodeURIComponent(taskID)}` : ""
+    return this.request(`/instances/${instanceId}/torrent-creator/status${query}`)
+  }
+
+  async getActiveTaskCount(instanceId: number): Promise<number> {
+    const response = await this.request<{ count: number }>(`/instances/${instanceId}/torrent-creator/count`)
+    return response.count
+  }
+
+  async downloadTorrentFile(instanceId: number, taskID: string): Promise<void> {
+    const response = await fetch(
+      `${API_BASE}/instances/${instanceId}/torrent-creator/${encodeURIComponent(taskID)}/file`,
+      {
+        method: "GET",
+        credentials: "include",
+      }
+    )
+
+    if (!response.ok) {
+      throw new Error(`Failed to download torrent file: ${response.statusText}`)
+    }
+
+    // Get filename from Content-Disposition header
+    const contentDisposition = response.headers.get("Content-Disposition")
+    let filename = `${taskID}.torrent`
+    if (contentDisposition) {
+      const filenameMatch = contentDisposition.match(/filename="?([^";]+)"?/)
+      if (filenameMatch) {
+        filename = filenameMatch[1]
+      }
+    }
+
+    // Create blob and download
+    const blob = await response.blob()
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    window.URL.revokeObjectURL(url)
+  }
+
+  async deleteTorrentCreationTask(instanceId: number, taskID: string): Promise<{ message: string }> {
+    return this.request(`/instances/${instanceId}/torrent-creator/${encodeURIComponent(taskID)}`, {
+      method: "DELETE",
     })
   }
 
@@ -406,6 +527,10 @@ class ApiClient {
       method: "DELETE",
       body: JSON.stringify({ tags }),
     })
+  }
+
+  async getActiveTrackers(instanceId: number): Promise<Record<string, string>> {
+    return this.request(`/instances/${instanceId}/trackers`)
   }
 
   // User endpoints
@@ -553,6 +678,10 @@ class ApiClient {
     return this.request<{ enabled: boolean }>(`/instances/${instanceId}/alternative-speed-limits/toggle`, {
       method: "POST",
     })
+  }
+
+  async getQBittorrentAppInfo(instanceId: number): Promise<QBittorrentAppInfo> {
+    return this.request<QBittorrentAppInfo>(`/instances/${instanceId}/app-info`)
   }
 
   async getLatestVersion(): Promise<{

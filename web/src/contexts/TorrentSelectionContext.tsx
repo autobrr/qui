@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { createContext, useContext, useState, useCallback } from "react"
+import type { Torrent, TorrentFilters } from "@/types"
 import type { ReactNode } from "react"
-import type { Torrent } from "@/types"
+import { createContext, useCallback, useContext, useState } from "react"
 
 interface TorrentSelectionContextType {
   isSelectionMode: boolean
@@ -16,13 +16,9 @@ interface TorrentSelectionContextType {
   selectedTorrents: Torrent[]
   isAllSelected: boolean
   totalSelectionCount: number
+  selectedTotalSize: number
   excludeHashes: string[]
-  filters?: {
-    status: string[]
-    categories: string[]
-    tags: string[]
-    trackers: string[]
-  }
+  filters?: TorrentFilters
   instanceId?: number
   // Management Bar actions
   updateSelection: (
@@ -30,7 +26,9 @@ interface TorrentSelectionContextType {
     selectedTorrents: Torrent[],
     isAllSelected: boolean,
     totalSelectionCount: number,
-    excludeHashes: string[]
+    excludeHashes: string[],
+    selectedTotalSize: number,
+    selectionFilters?: TorrentFilters
   ) => void
   clearSelection: () => void
   setFiltersAndInstance: (filters: TorrentSelectionContextType["filters"], instanceId: number) => void
@@ -44,8 +42,10 @@ export function TorrentSelectionProvider({ children }: { children: ReactNode }) 
   const [selectedTorrents, setSelectedTorrents] = useState<Torrent[]>([])
   const [isAllSelected, setIsAllSelected] = useState(false)
   const [totalSelectionCount, setTotalSelectionCount] = useState(0)
+  const [selectedTotalSize, setSelectedTotalSize] = useState(0)
   const [excludeHashes, setExcludeHashes] = useState<string[]>([])
-  const [filters, setFilters] = useState<TorrentSelectionContextType["filters"]>()
+  const [baseFilters, setBaseFilters] = useState<TorrentSelectionContextType["filters"]>()
+  const [effectiveFilters, setEffectiveFilters] = useState<TorrentSelectionContextType["filters"]>()
   const [instanceId, setInstanceId] = useState<number>()
 
   // Calculate showManagementBar based on current state
@@ -56,14 +56,18 @@ export function TorrentSelectionProvider({ children }: { children: ReactNode }) 
     newSelectedTorrents: Torrent[],
     newIsAllSelected: boolean,
     newTotalSelectionCount: number,
-    newExcludeHashes: string[]
+    newExcludeHashes: string[],
+    newSelectedTotalSize: number,
+    selectionFilters?: TorrentFilters
   ) => {
     setSelectedHashes(newSelectedHashes)
     setSelectedTorrents(newSelectedTorrents)
     setIsAllSelected(newIsAllSelected)
     setTotalSelectionCount(newTotalSelectionCount)
     setExcludeHashes(newExcludeHashes)
-  }, [])
+    setSelectedTotalSize(newSelectedTotalSize)
+    setEffectiveFilters(selectionFilters ?? baseFilters)
+  }, [baseFilters])
 
   const clearSelection = useCallback(() => {
     setSelectedHashes([])
@@ -71,12 +75,20 @@ export function TorrentSelectionProvider({ children }: { children: ReactNode }) 
     setIsAllSelected(false)
     setTotalSelectionCount(0)
     setExcludeHashes([])
-  }, [])
+    setSelectedTotalSize(0)
+    setEffectiveFilters(baseFilters)
+  }, [baseFilters])
 
   const setFiltersAndInstance = useCallback((newFilters: TorrentSelectionContextType["filters"], newInstanceId: number) => {
-    setFilters(newFilters)
+    setBaseFilters(newFilters)
     setInstanceId(newInstanceId)
-  }, [])
+    setEffectiveFilters(prev => {
+      if (selectedHashes.length > 0 || isAllSelected) {
+        return prev ?? newFilters
+      }
+      return newFilters
+    })
+  }, [selectedHashes, isAllSelected])
 
   return (
     <TorrentSelectionContext.Provider value={{
@@ -87,8 +99,9 @@ export function TorrentSelectionProvider({ children }: { children: ReactNode }) 
       selectedTorrents,
       isAllSelected,
       totalSelectionCount,
+      selectedTotalSize,
       excludeHashes,
-      filters,
+      filters: effectiveFilters,
       instanceId,
       updateSelection,
       clearSelection,

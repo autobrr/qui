@@ -3,20 +3,16 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState, useEffect, useMemo } from "react"
-import { useQuery } from "@tanstack/react-query"
+import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { api } from "@/lib/api"
-import type { Torrent, TorrentResponse } from "@/types"
+import type { Torrent, TorrentFilters, TorrentResponse } from "@/types"
+import { useQuery } from "@tanstack/react-query"
+import { useEffect, useMemo, useState } from "react"
 
 interface UseTorrentsListOptions {
   enabled?: boolean
   search?: string
-  filters?: {
-    status: string[]
-    categories: string[]
-    tags: string[]
-    trackers: string[]
-  }
+  filters?: TorrentFilters
   sort?: string
   order?: "asc" | "desc"
 }
@@ -74,6 +70,8 @@ export function useTorrentsList(
     refetchIntervalInBackground: false, // Don't poll when tab is not active
     enabled,
   })
+
+  const { data: capabilities } = useInstanceCapabilities(instanceId, { enabled })
 
   // Update torrents when data arrives or changes (including optimistic updates)
   useEffect(() => {
@@ -181,6 +179,7 @@ export function useTorrentsList(
         error: data.stats.error || 0,
         totalDownloadSpeed: data.stats.totalDownloadSpeed || 0,
         totalUploadSpeed: data.stats.totalUploadSpeed || 0,
+        totalSize: data.stats.totalSize || 0,
       }
     }
 
@@ -192,6 +191,7 @@ export function useTorrentsList(
       error: 0,
       totalDownloadSpeed: 0,
       totalUploadSpeed: 0,
+      totalSize: data?.stats?.totalSize || 0,
     }
   }, [data])
 
@@ -209,7 +209,9 @@ export function useTorrentsList(
     counts: data?.counts,
     categories: data?.categories,
     tags: data?.tags,
-    serverState: null, // Server state is fetched separately by Dashboard
+    supportsTorrentCreation: capabilities?.supportsTorrentCreation ?? true,
+    capabilities,
+    serverState: data?.serverState ?? null,
     isLoading: isLoading && currentPage === 0,
     isFetching,
     isLoadingMore,

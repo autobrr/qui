@@ -5,7 +5,8 @@
 
 // Incognito mode utilities for disguising torrents as Linux ISOs
 
-import { useState, useEffect } from "react"
+import type { Category } from "@/types"
+import { useEffect, useState } from "react"
 
 // Linux ISO names for incognito mode
 const linuxIsoNames = [
@@ -58,14 +59,14 @@ const linuxIsoNames = [
 ]
 
 // Linux-themed categories for incognito mode
-export const LINUX_CATEGORIES = {
-  "distributions": { savePath: "/home/downloads/distributions" },
-  "documentation": { savePath: "/home/downloads/docs" },
-  "source-code": { savePath: "/home/downloads/source" },
-  "live-usb": { savePath: "/home/downloads/live" },
-  "server-editions": { savePath: "/home/downloads/server" },
-  "desktop-environments": { savePath: "/home/downloads/desktop" },
-  "arm-builds": { savePath: "/home/downloads/arm" },
+export const LINUX_CATEGORIES: Record<string, Category> = {
+  "distributions": { name: "distributions", savePath: "/home/downloads/distributions" },
+  "documentation": { name: "documentation", savePath: "/home/downloads/docs" },
+  "source-code": { name: "source-code", savePath: "/home/downloads/source" },
+  "live-usb": { name: "live-usb", savePath: "/home/downloads/live" },
+  "server-editions": { name: "server-editions", savePath: "/home/downloads/server" },
+  "desktop-environments": { name: "desktop-environments", savePath: "/home/downloads/desktop" },
+  "arm-builds": { name: "arm-builds", savePath: "/home/downloads/arm" },
 }
 
 const LINUX_CATEGORIES_ARRAY = [

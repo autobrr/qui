@@ -4,8 +4,11 @@
  */
 
 import { FilterSidebar } from "@/components/torrents/FilterSidebar"
+import { TorrentCreationTasks } from "@/components/torrents/TorrentCreationTasks"
+import { TorrentCreatorDialog } from "@/components/torrents/TorrentCreatorDialog"
 import { TorrentDetailsPanel } from "@/components/torrents/TorrentDetailsPanel"
 import { TorrentTableResponsive } from "@/components/torrents/TorrentTableResponsive"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { VisuallyHidden } from "@/components/ui/visually-hidden"
 import { usePersistedFilters } from "@/hooks/usePersistedFilters"
@@ -17,8 +20,8 @@ import { useCallback, useEffect, useRef, useState } from "react"
 interface TorrentsProps {
   instanceId: number
   instanceName: string
-  search: { modal?: "add-torrent" | undefined }
-  onSearchChange: (search: { modal?: "add-torrent" | undefined }) => void
+  search: { modal?: "add-torrent" | "create-torrent" | "tasks" | undefined }
+  onSearchChange: (search: { modal?: "add-torrent" | "create-torrent" | "tasks" | undefined }) => void
 }
 
 export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) {
@@ -45,6 +48,34 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
   const handleAddTorrentModalChange = (open: boolean) => {
     if (open) {
       onSearchChange({ ...search, modal: "add-torrent" })
+    } else {
+      const rest = Object.fromEntries(
+        Object.entries(search).filter(([key]) => key !== "modal")
+      )
+      onSearchChange(rest)
+    }
+  }
+
+  // Check if create torrent modal should be open
+  const isCreateTorrentModalOpen = search?.modal === "create-torrent"
+
+  const handleCreateTorrentModalChange = (open: boolean) => {
+    if (open) {
+      onSearchChange({ ...search, modal: "create-torrent" })
+    } else {
+      const rest = Object.fromEntries(
+        Object.entries(search).filter(([key]) => key !== "modal")
+      )
+      onSearchChange(rest)
+    }
+  }
+
+  // Check if tasks modal should be open
+  const isTasksModalOpen = search?.modal === "tasks"
+
+  const handleTasksModalChange = (open: boolean) => {
+    if (open) {
+      onSearchChange({ ...search, modal: "tasks" })
     } else {
       const rest = Object.fromEntries(
         Object.entries(search).filter(([key]) => key !== "modal")
@@ -115,6 +146,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
     if (tagsData !== undefined) {
       setTags(tagsData)
     }
+
   }, [instanceId])
 
   // Calculate total active filters for badge
@@ -192,7 +224,17 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
 
       {/* Mobile Filter Sheet */}
       <Sheet open={mobileFilterOpen} onOpenChange={setMobileFilterOpen}>
-        <SheetContent side="left" className="p-0 w-[280px] sm:w-[320px] md:hidden flex flex-col max-h-[100dvh]">
+        <SheetContent
+          side="left"
+          className="p-0 w-[280px] sm:w-[320px] md:hidden flex flex-col max-h-[100dvh]"
+          onOpenAutoFocus={(event) => {
+            event.preventDefault()
+
+            const content = event.currentTarget as HTMLElement | null
+            const closeButton = content?.querySelector<HTMLElement>("[data-slot=\"sheet-close\"]")
+            closeButton?.focus()
+          }}
+        >
           <SheetHeader className="px-4 py-3 border-b">
             <SheetTitle className="text-lg font-semibold">Filters</SheetTitle>
           </SheetHeader>
@@ -257,6 +299,25 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
           )}
         </SheetContent>
       </Sheet>
+
+      {/* Torrent Creator Dialog */}
+      <TorrentCreatorDialog
+        instanceId={instanceId}
+        open={isCreateTorrentModalOpen}
+        onOpenChange={handleCreateTorrentModalChange}
+      />
+
+      {/* Torrent Creation Tasks Modal */}
+      <Dialog open={isTasksModalOpen} onOpenChange={handleTasksModalChange}>
+        <DialogContent className="w-full sm:max-w-screen-sm md:max-w-screen-md lg:max-w-screen-xl xl:max-w-screen-xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Torrent Creation Tasks</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-auto">
+            <TorrentCreationTasks instanceId={instanceId} />
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

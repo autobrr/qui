@@ -27,7 +27,7 @@ export function usePersistedColumnOrder(
     const result = [...order]
 
     missingColumns.forEach(columnId => {
-      if (columnId === "tracker_icon") {
+      if (columnId === "tracker_icon" || columnId === "status_icon") {
         const priorityIndex = result.indexOf("priority")
         if (priorityIndex !== -1) {
           result.splice(priorityIndex + 1, 0, columnId)
@@ -37,7 +37,7 @@ export function usePersistedColumnOrder(
 
       const stateIndex = result.indexOf("state")
       const dlspeedIndex = result.indexOf("dlspeed")
-      if (stateIndex !== -1 && dlspeedIndex !== -1 && columnId !== "tracker_icon") {
+      if (stateIndex !== -1 && dlspeedIndex !== -1 && columnId !== "tracker_icon" && columnId !== "status_icon") {
         result.splice(stateIndex + 1, 0, columnId)
       } else {
         result.push(columnId)
