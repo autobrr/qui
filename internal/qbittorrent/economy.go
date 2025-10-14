@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -147,6 +148,42 @@ func createScoreMap(scores []EconomyScore) map[string]*EconomyScore {
 	return scoreMap
 }
 
+// normalizeStoragePath prepares storage paths for comparison
+func normalizeStoragePath(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return ""
+	}
+
+	cleaned := filepath.Clean(path)
+	if cleaned == "." {
+		return ""
+	}
+
+	return filepath.ToSlash(cleaned)
+}
+
+// getTorrentStorageKey returns a normalized storage key for a torrent hash
+func getTorrentStorageKey(torrentDetails map[string]qbt.Torrent, hash string) string {
+	if torrent, ok := torrentDetails[hash]; ok {
+		if key := normalizeStoragePath(torrent.ContentPath); key != "" {
+			return key
+		}
+		if key := normalizeStoragePath(filepath.Join(torrent.SavePath, torrent.Name)); key != "" {
+			return key
+		}
+	}
+	return ""
+}
+
+// storagePathsEqual checks if two normalized storage paths refer to the same location
+func storagePathsEqual(pathA, pathB string) bool {
+	if pathA == "" || pathB == "" {
+		return false
+	}
+	return strings.EqualFold(pathA, pathB)
+}
+
 // findBestCopyInGroup finds the best copy in a duplicate group by economy score
 func findBestCopyInGroup(hashes []string, scoreMap map[string]*EconomyScore) string {
 	if len(hashes) == 0 {
@@ -253,6 +290,12 @@ func (es *EconomyService) AnalyzeEconomyWithPaginationAndSorting(ctx context.Con
 	// Calculate economy scores
 	scores := es.calculateEconomyScores(torrents)
 
+	// Index torrents by hash for storage path comparisons
+	torrentDetails := make(map[string]qbt.Torrent, len(torrents))
+	for _, torrent := range torrents {
+		torrentDetails[torrent.Hash] = torrent
+	}
+
 	// Find duplicates
 	duplicates := es.findDuplicates(ctx, instanceID, torrents)
 
@@ -260,7 +303,7 @@ func (es *EconomyService) AnalyzeEconomyWithPaginationAndSorting(ctx context.Con
 	duplicateHashSet := createDuplicateHashSet(duplicates)
 
 	// Apply deduplication adjustments so duplicate metadata and scoring stay in sync
-	scores = es.applyDeduplicationFactors(scores, duplicates, duplicateHashSet)
+	scores = es.applyDeduplicationFactors(scores, duplicates, duplicateHashSet, torrentDetails)
 
 	// Apply filters to scores
 	scores = es.applyFiltersToScores(scores, filters)
@@ -269,13 +312,13 @@ func (es *EconomyService) AnalyzeEconomyWithPaginationAndSorting(ctx context.Con
 	sortedScores := es.sortScores(scores, sortField, sortDesc)
 
 	// Calculate statistics
-	stats := es.calculateStats(scores, duplicates, duplicateHashSet)
+	stats := es.calculateStats(scores, duplicates, duplicateHashSet, torrentDetails)
 
 	// Calculate optimization opportunities
-	optimizations := es.calculateOptimizationOpportunities(scores, duplicates, duplicateHashSet)
+	optimizations := es.calculateOptimizationOpportunities(scores, duplicates, duplicateHashSet, torrentDetails)
 
 	// Calculate storage optimization data
-	storageOptimization := es.calculateStorageOptimization(scores, duplicates, duplicateHashSet)
+	storageOptimization := es.calculateStorageOptimization(scores, duplicates, duplicateHashSet, torrentDetails)
 
 	// Get top valuable torrents (configurable limit)
 	topValuableLimit := 50 // Configurable limit instead of hard coded 20
@@ -645,7 +688,7 @@ func (es *EconomyService) normalizeContentName(name string) string {
 }
 
 // applyDeduplicationFactors updates economy scores based on duplicates
-func (es *EconomyService) applyDeduplicationFactors(scores []EconomyScore, duplicates map[string][]string, duplicateHashSet map[string]bool) []EconomyScore {
+func (es *EconomyService) applyDeduplicationFactors(scores []EconomyScore, duplicates map[string][]string, duplicateHashSet map[string]bool, torrentDetails map[string]qbt.Torrent) []EconomyScore {
 	if len(scores) == 0 {
 		return scores
 	}
@@ -658,7 +701,7 @@ func (es *EconomyService) applyDeduplicationFactors(scores []EconomyScore, dupli
 	es.applySeedFactors(scores, duplicateHashSet)
 
 	// Handle duplicate groupings for storage optimization
-	es.processDuplicateGroups(scores, duplicates, scoreMap)
+	es.processDuplicateGroups(scores, duplicates, scoreMap, torrentDetails)
 
 	// Set review priority for unique torrents
 	es.setUniqueTorrentReviewPriorities(scores, duplicateHashSet)
@@ -685,7 +728,7 @@ func (es *EconomyService) applySeedFactors(scores []EconomyScore, duplicateHashS
 }
 
 // processDuplicateGroups handles duplicate groupings for storage optimization
-func (es *EconomyService) processDuplicateGroups(scores []EconomyScore, duplicates map[string][]string, scoreMap map[string]*EconomyScore) {
+func (es *EconomyService) processDuplicateGroups(scores []EconomyScore, duplicates map[string][]string, scoreMap map[string]*EconomyScore, torrentDetails map[string]qbt.Torrent) {
 	for primaryHash, duplicateHashes := range duplicates {
 		if _, exists := scoreMap[primaryHash]; !exists {
 			continue
@@ -694,6 +737,7 @@ func (es *EconomyService) processDuplicateGroups(scores []EconomyScore, duplicat
 		// Find the best copy in this duplicate group
 		allHashes := append([]string{primaryHash}, duplicateHashes...)
 		bestHash := findBestCopyInGroup(allHashes, scoreMap)
+		bestStorageKey := getTorrentStorageKey(torrentDetails, bestHash)
 
 		// Mark the best copy as the "keeper" and others as potential removes
 		for _, hash := range allHashes {
@@ -709,10 +753,19 @@ func (es *EconomyService) processDuplicateGroups(scores []EconomyScore, duplicat
 					}
 					score.ReviewPriority = score.EconomyScore
 				} else {
-					// Other copies are marked for potential storage optimization
-					// 100% of their storage can be saved by removing them
-					score.DeduplicationFactor = 1.0
-					score.ReviewPriority = score.EconomyScore * 0.95
+					storageKey := getTorrentStorageKey(torrentDetails, hash)
+					sharesStorage := storagePathsEqual(bestStorageKey, storageKey)
+
+					if sharesStorage {
+						// Shares underlying files with the keeper - removing it won't free space
+						score.DeduplicationFactor = 0.0
+						score.ReviewPriority = score.EconomyScore
+					} else {
+						// Other copies are marked for potential storage optimization
+						// 100% of their storage can be saved by removing them
+						score.DeduplicationFactor = 1.0
+						score.ReviewPriority = score.EconomyScore * 0.95
+					}
 
 					// Populate duplicates array
 					score.Duplicates = make([]string, 0, len(allHashes)-1)
@@ -740,7 +793,7 @@ func (es *EconomyService) setUniqueTorrentReviewPriorities(scores []EconomyScore
 }
 
 // calculateStats calculates aggregated economy statistics
-func (es *EconomyService) calculateStats(scores []EconomyScore, duplicates map[string][]string, duplicateHashSet map[string]bool) EconomyStats {
+func (es *EconomyService) calculateStats(scores []EconomyScore, duplicates map[string][]string, duplicateHashSet map[string]bool, torrentDetails map[string]qbt.Torrent) EconomyStats {
 	if len(scores) == 0 {
 		return EconomyStats{}
 	}
@@ -755,7 +808,7 @@ func (es *EconomyService) calculateStats(scores []EconomyScore, duplicates map[s
 	var wellSeededOldCount int
 
 	// Calculate deduplicated storage using the same logic as storage optimization
-	deduplicatedStorage := es.calculateDeduplicatedStorage(scores, duplicates, scoreMap, duplicateHashSet)
+	deduplicatedStorage := es.calculateDeduplicatedStorage(scores, duplicates, scoreMap, duplicateHashSet, torrentDetails)
 
 	// Calculate stats in a single pass
 	for _, score := range scores {
@@ -790,7 +843,7 @@ func (es *EconomyService) calculateStats(scores []EconomyScore, duplicates map[s
 }
 
 // calculateDeduplicatedStorage calculates the storage used if we keep only the best copy of each duplicate group
-func (es *EconomyService) calculateDeduplicatedStorage(scores []EconomyScore, duplicates map[string][]string, scoreMap map[string]*EconomyScore, duplicateHashSet map[string]bool) int64 {
+func (es *EconomyService) calculateDeduplicatedStorage(scores []EconomyScore, duplicates map[string][]string, scoreMap map[string]*EconomyScore, duplicateHashSet map[string]bool, torrentDetails map[string]qbt.Torrent) int64 {
 	countedHashes := make(map[string]bool)
 
 	// Add all non-duplicates
@@ -804,7 +857,19 @@ func (es *EconomyService) calculateDeduplicatedStorage(scores []EconomyScore, du
 	for primaryHash, dupHashes := range duplicates {
 		allHashes := append([]string{primaryHash}, dupHashes...)
 		bestHash := findBestCopyInGroup(allHashes, scoreMap)
+		bestStorageKey := getTorrentStorageKey(torrentDetails, bestHash)
 		countedHashes[bestHash] = true
+
+		// Include any copies that share the same storage as the keeper
+		for _, hash := range allHashes {
+			if hash == bestHash {
+				continue
+			}
+			storageKey := getTorrentStorageKey(torrentDetails, hash)
+			if storagePathsEqual(bestStorageKey, storageKey) {
+				countedHashes[hash] = true
+			}
+		}
 	}
 
 	// Calculate total deduplicated storage
@@ -819,7 +884,7 @@ func (es *EconomyService) calculateDeduplicatedStorage(scores []EconomyScore, du
 }
 
 // calculateOptimizationOpportunities identifies specific optimization opportunities
-func (es *EconomyService) calculateOptimizationOpportunities(scores []EconomyScore, duplicates map[string][]string, duplicateHashSet map[string]bool) []OptimizationOpportunity {
+func (es *EconomyService) calculateOptimizationOpportunities(scores []EconomyScore, duplicates map[string][]string, duplicateHashSet map[string]bool, torrentDetails map[string]qbt.Torrent) []OptimizationOpportunity {
 	var opportunities []OptimizationOpportunity
 
 	// Pre-calculate shared data structures
@@ -827,7 +892,7 @@ func (es *EconomyService) calculateOptimizationOpportunities(scores []EconomySco
 	// duplicateHashSet is now passed as parameter instead of computed here
 
 	// 1. Duplicate removal opportunities
-	if dupOp := es.createDuplicateRemovalOpportunity(scores, duplicates, scoreMap); dupOp != nil {
+	if dupOp := es.createDuplicateRemovalOpportunity(scores, duplicates, scoreMap, torrentDetails); dupOp != nil {
 		opportunities = append(opportunities, *dupOp)
 	}
 
@@ -865,7 +930,7 @@ func (es *EconomyService) calculateOptimizationOpportunities(scores []EconomySco
 }
 
 // createDuplicateRemovalOpportunity creates duplicate removal optimization opportunity
-func (es *EconomyService) createDuplicateRemovalOpportunity(scores []EconomyScore, duplicates map[string][]string, scoreMap map[string]*EconomyScore) *OptimizationOpportunity {
+func (es *EconomyService) createDuplicateRemovalOpportunity(scores []EconomyScore, duplicates map[string][]string, scoreMap map[string]*EconomyScore, torrentDetails map[string]qbt.Torrent) *OptimizationOpportunity {
 	if len(duplicates) == 0 {
 		return nil
 	}
@@ -876,10 +941,16 @@ func (es *EconomyService) createDuplicateRemovalOpportunity(scores []EconomyScor
 	for primaryHash, dupHashes := range duplicates {
 		allHashes := append([]string{primaryHash}, dupHashes...)
 		bestHash := findBestCopyInGroup(allHashes, scoreMap)
+		bestStorageKey := getTorrentStorageKey(torrentDetails, bestHash)
 
 		// Remove all copies except the best one
 		for _, hash := range allHashes {
 			if hash != bestHash {
+				storageKey := getTorrentStorageKey(torrentDetails, hash)
+				if storagePathsEqual(bestStorageKey, storageKey) {
+					// Shares the same files as the keeper - no storage reclaimed by removing it
+					continue
+				}
 				if score := scoreMap[hash]; score != nil {
 					duplicateHashesToRemove = append(duplicateHashesToRemove, hash)
 					totalSavings += score.Size
@@ -1047,7 +1118,7 @@ func (es *EconomyService) createHighValueOpportunity(scores []EconomyScore, dupl
 }
 
 // calculateStorageOptimization calculates comprehensive storage optimization data
-func (es *EconomyService) calculateStorageOptimization(scores []EconomyScore, duplicates map[string][]string, duplicateHashSet map[string]bool) StorageOptimization {
+func (es *EconomyService) calculateStorageOptimization(scores []EconomyScore, duplicates map[string][]string, duplicateHashSet map[string]bool, torrentDetails map[string]qbt.Torrent) StorageOptimization {
 	// Pre-calculate shared data structures
 	scoreMap := createScoreMap(scores)
 	// duplicateHashSet is now passed as parameter instead of computed here
@@ -1058,7 +1129,7 @@ func (es *EconomyService) calculateStorageOptimization(scores []EconomyScore, du
 	var unusedContentSavings int64
 
 	// Calculate deduplication savings
-	deduplicationSavings = es.calculateDeduplicationSavings(duplicates, scoreMap)
+	deduplicationSavings = es.calculateDeduplicationSavings(duplicates, scoreMap, torrentDetails)
 
 	// Calculate old content cleanup savings
 	oldContentCleanupSavings = es.calculateOldContentCleanupSavings(scores, duplicateHashSet)
@@ -1081,16 +1152,22 @@ func (es *EconomyService) calculateStorageOptimization(scores []EconomyScore, du
 }
 
 // calculateDeduplicationSavings calculates savings from removing duplicate content
-func (es *EconomyService) calculateDeduplicationSavings(duplicates map[string][]string, scoreMap map[string]*EconomyScore) int64 {
+func (es *EconomyService) calculateDeduplicationSavings(duplicates map[string][]string, scoreMap map[string]*EconomyScore, torrentDetails map[string]qbt.Torrent) int64 {
 	var savings int64
 
 	for primaryHash, dupHashes := range duplicates {
 		allHashes := append([]string{primaryHash}, dupHashes...)
 		bestHash := findBestCopyInGroup(allHashes, scoreMap)
+		bestStorageKey := getTorrentStorageKey(torrentDetails, bestHash)
 
 		// Calculate savings from removing all copies except the best one
 		for _, hash := range allHashes {
 			if hash != bestHash {
+				storageKey := getTorrentStorageKey(torrentDetails, hash)
+				if storagePathsEqual(bestStorageKey, storageKey) {
+					// Removing this torrent won't reclaim disk space because it shares storage with the keeper
+					continue
+				}
 				if score := scoreMap[hash]; score != nil {
 					savings += score.Size
 				}
