@@ -25,7 +25,7 @@ import (
 
 const (
 	oidcInitMaxAttempts    = 5
-	oidcInitInitialBackoff = 250 * time.Millisecond
+	oidcInitInitialBackoff = time.Second
 )
 
 var (
