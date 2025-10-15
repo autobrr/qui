@@ -107,9 +107,7 @@ func TestMatchDuplicateTorrents_UsesInfohashFallback(t *testing.T) {
 }
 
 func TestClientLookupDuplicateMatches(t *testing.T) {
-	client := &Client{
-		hashIndex: make(map[string]duplicateIndexEntry),
-	}
+	client := newTestClient()
 
 	torrents := map[string]qbt.Torrent{
 		"ABCDEF1234567890ABCDEF1234567890ABCDEF12": {
@@ -145,9 +143,7 @@ func TestClientLookupDuplicateMatches(t *testing.T) {
 }
 
 func TestClientLookupDuplicateMatches_DeduplicatesInputs(t *testing.T) {
-	client := &Client{
-		hashIndex: make(map[string]duplicateIndexEntry),
-	}
+	client := newTestClient()
 
 	hash := "ABCDEF1234567890ABCDEF1234567890ABCDEF12"
 	torrents := map[string]qbt.Torrent{
@@ -179,9 +175,7 @@ func TestClientLookupDuplicateMatches_DeduplicatesInputs(t *testing.T) {
 }
 
 func TestClientLookupDuplicateMatches_UsesInfohashFallback(t *testing.T) {
-	client := &Client{
-		hashIndex: make(map[string]duplicateIndexEntry),
-	}
+	client := newTestClient()
 
 	infohashV2 := "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
 	torrents := map[string]qbt.Torrent{
@@ -204,4 +198,10 @@ func TestClientLookupDuplicateMatches_UsesInfohashFallback(t *testing.T) {
 	assert.Equal(t, "V2 Only", matches[0].Name)
 	assert.Equal(t, infohashV2, matches[0].Hash, "expected fallback hash to use infohash_v2")
 	assert.ElementsMatch(t, []string{infohashV2, strings.ToUpper(infohashV2)}, matches[0].MatchedHashes)
+}
+
+func newTestClient() *Client {
+	return &Client{
+		hashIndex: make(map[string]duplicateIndexEntry),
+	}
 }
