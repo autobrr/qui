@@ -99,33 +99,6 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
 }: TorrentContextMenuProps) {
   const [incognitoMode] = useIncognitoMode()
 
-  const copyToClipboard = useCallback(async (text: string, type: "name" | "hash" | "full path") => {
-    try {
-      await copyTextToClipboard(text)
-      toast.success(`Torrent ${type} copied to clipboard`)
-    } catch {
-      toast.error("Failed to copy to clipboard")
-    }
-  }, [])
-
-  const displayHash = useMemo(() => getTorrentDisplayHash(torrent), [torrent])
-
-  const copyHash = useCallback(() => {
-    const value = displayHash || torrent.hash
-    if (!value) {
-      toast.error("Hash not available")
-      return
-    }
-    void copyToClipboard(value, "hash")
-  }, [copyToClipboard, displayHash, torrent.hash])
-
-  const copyFullPath = useCallback(() => {
-    const name = incognitoMode ? getLinuxIsoName(torrent.hash) : torrent.name
-    const savePath = incognitoMode ? getLinuxSavePath(torrent.hash) : torrent.save_path
-    const fullPath = `${savePath}/${name}`
-    void copyToClipboard(fullPath, "full path")
-  }, [copyToClipboard, incognitoMode, torrent.hash, torrent.name, torrent.save_path])
-
   // Determine if we should use selection or just this torrent
   const useSelection = isSelected || isAllSelected
 
@@ -140,14 +113,77 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   [useSelection, selectedTorrents, torrent]
   )
 
+  const count = isAllSelected ? effectiveSelectionCount : hashes.length
+
+  const copyToClipboard = useCallback(async (text: string, type: "name" | "hash" | "full path", itemCount: number) => {
+    try {
+      await copyTextToClipboard(text)
+      const pluralTypes: Record<"name" | "hash" | "full path", string> = {
+        name: "names",
+        hash: "hashes",
+        "full path": "full paths",
+      }
+      const label = itemCount > 1 ? pluralTypes[type] : type
+      toast.success(`Torrent ${label} copied to clipboard`)
+    } catch {
+      toast.error("Failed to copy to clipboard")
+    }
+  }, [])
+
+  const handleCopyNames = useCallback(() => {
+    const values = torrents
+      .map(t => incognitoMode ? getLinuxIsoName(t.hash) : t.name)
+      .map(value => (value ?? "").trim())
+      .filter(Boolean)
+
+    if (values.length === 0) {
+      toast.error("Name not available")
+      return
+    }
+
+    void copyToClipboard(values.join("\n"), "name", values.length)
+  }, [copyToClipboard, incognitoMode, torrents])
+
+  const handleCopyHashes = useCallback(() => {
+    const values = torrents
+      .map(t => getTorrentDisplayHash(t) || t.hash || "")
+      .map(value => value.trim())
+      .filter(Boolean)
+
+    if (values.length === 0) {
+      toast.error("Hash not available")
+      return
+    }
+    void copyToClipboard(values.join("\n"), "hash", values.length)
+  }, [copyToClipboard, torrents])
+
+  const handleCopyFullPaths = useCallback(() => {
+    const values = torrents
+      .map(t => {
+        const name = incognitoMode ? getLinuxIsoName(t.hash) : t.name
+        const savePath = incognitoMode ? getLinuxSavePath(t.hash) : t.save_path
+        if (!name || !savePath) {
+          return ""
+        }
+        return `${savePath}/${name}`
+      })
+      .map(value => value.trim())
+      .filter(Boolean)
+
+    if (values.length === 0) {
+      toast.error("Full path not available")
+      return
+    }
+
+    void copyToClipboard(values.join("\n"), "full path", values.length)
+  }, [copyToClipboard, incognitoMode, torrents])
+
   const handleExport = useCallback(() => {
     if (!onExport) {
       return
     }
     void onExport(hashes, torrents)
   }, [hashes, onExport, torrents])
-
-  const count = isAllSelected ? effectiveSelectionCount : hashes.length
 
   // TMM state calculation
   const tmmStates = torrents.map(t => t.auto_tmm)
@@ -322,15 +358,13 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
             Copy...
           </ContextMenuSubTrigger>
           <ContextMenuSubContent>
-            <ContextMenuItem
-              onClick={() => copyToClipboard(incognitoMode ? getLinuxIsoName(torrent.hash) : torrent.name, "name")}
-            >
+            <ContextMenuItem onClick={handleCopyNames}>
               Copy Name
             </ContextMenuItem>
-            <ContextMenuItem onClick={copyHash}>
+            <ContextMenuItem onClick={handleCopyHashes}>
               Copy Hash
             </ContextMenuItem>
-            <ContextMenuItem onClick={copyFullPath}>
+            <ContextMenuItem onClick={handleCopyFullPaths}>
               Copy Full Path
             </ContextMenuItem>
           </ContextMenuSubContent>
