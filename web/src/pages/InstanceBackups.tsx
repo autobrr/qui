@@ -10,6 +10,11 @@ import { useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 
 import {
+  Alert,
+  AlertDescription,
+  AlertTitle
+} from "@/components/ui/alert"
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -55,13 +60,14 @@ import {
   useBackupManifest,
   useBackupRuns,
   useBackupSettings,
-  useDeleteBackupRun,
   useDeleteAllBackupRuns,
+  useDeleteBackupRun,
   useExecuteRestore,
   usePreviewRestore,
   useTriggerBackup,
   useUpdateBackupSettings
 } from "@/hooks/useInstanceBackups"
+import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
 import type {
@@ -132,9 +138,11 @@ const statusVariants: Record<BackupRunStatus, "default" | "secondary" | "destruc
 export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
   const { instances } = useInstances()
   const instance = instances?.find(i => i.id === instanceId)
+  const { data: capabilities, isLoading: capabilitiesLoading } = useInstanceCapabilities(instanceId)
+  const supportsTorrentExport = capabilities?.supportsTorrentExport ?? true
 
-  const { data: settings, isLoading: settingsLoading } = useBackupSettings(instanceId)
-  const { data: runs, isLoading: runsLoading } = useBackupRuns(instanceId)
+  const { data: settings, isLoading: settingsLoading } = useBackupSettings(instanceId, { enabled: supportsTorrentExport })
+  const { data: runs, isLoading: runsLoading } = useBackupRuns(instanceId, { enabled: supportsTorrentExport })
   const updateSettings = useUpdateBackupSettings(instanceId)
   const triggerBackup = useTriggerBackup(instanceId)
   const deleteRun = useDeleteBackupRun(instanceId)
@@ -161,7 +169,7 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
   const [restoreResult, setRestoreResult] = useState<RestoreResult | null>(null)
   const [restoreExcludedHashes, setRestoreExcludedHashes] = useState<string[]>([])
 
-  const { data: manifest, isLoading: manifestLoading } = useBackupManifest(instanceId, manifestRunId)
+  const { data: manifest, isLoading: manifestLoading } = useBackupManifest(instanceId, manifestRunId, { enabled: supportsTorrentExport })
 
   const manifestCategoryEntries = useMemo(() => {
     if (!manifest?.categories) return [] as Array<[string, BackupCategorySnapshot]>
@@ -494,6 +502,31 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
     setRestoreAutoResume(true)
     previewRestore.reset()
     executeRestore.reset()
+  }
+
+  if (capabilitiesLoading) {
+    return <div className="p-6">Loading instance capabilities...</div>
+  }
+
+  if (!supportsTorrentExport) {
+    const versionRaw = capabilities?.webAPIVersion?.trim()
+    const reportedVersion = versionRaw && versionRaw.length > 0 ? versionRaw : "an older web API version"
+
+    return (
+      <div className="p-6 space-y-4">
+        <Alert variant="destructive">
+          <AlertTitle>Backups unavailable for this instance</AlertTitle>
+          <AlertDescription>
+            {`qBittorrent Web API 2.8.11+ (qBittorrent 4.5.0+) is required to export .torrent files for backups. This instance reports ${reportedVersion}, so torrent exports are disabled.`}
+          </AlertDescription>
+        </Alert>
+        <Button variant="outline" asChild>
+          <Link to="/instances/$instanceId" params={{ instanceId: instanceId.toString() }}>
+            Return to instance overview
+          </Link>
+        </Button>
+      </div>
+    )
   }
 
   return (

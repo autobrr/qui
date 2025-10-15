@@ -8,11 +8,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import type { BackupRun, BackupSettings, RestoreMode, RestorePlan, RestoreResult } from "@/types"
 
-export function useBackupSettings(instanceId: number) {
+export function useBackupSettings(instanceId: number, options?: { enabled?: boolean }) {
+  const shouldEnable = (options?.enabled ?? true) && instanceId > 0
+
   return useQuery({
     queryKey: ["instance-backups", instanceId, "settings"],
     queryFn: () => api.getBackupSettings(instanceId),
-    enabled: instanceId > 0,
+    enabled: shouldEnable,
     staleTime: 30_000,
   })
 }
@@ -58,14 +60,18 @@ export function useTriggerBackup(instanceId: number) {
   })
 }
 
-export function useBackupRuns(instanceId: number, options?: { limit?: number; offset?: number }) {
+export function useBackupRuns(
+  instanceId: number,
+  options?: { limit?: number; offset?: number; enabled?: boolean }
+) {
   const limit = options?.limit ?? 25
   const offset = options?.offset ?? 0
+  const shouldEnable = (options?.enabled ?? true) && instanceId > 0
 
   return useQuery({
     queryKey: ["instance-backups", instanceId, "runs", { limit, offset }],
     queryFn: () => api.listBackupRuns(instanceId, { limit, offset }),
-    enabled: instanceId > 0,
+    enabled: shouldEnable,
     refetchInterval: (query) => {
       const runs = query.state.data as BackupRun[] | undefined
       if (!runs) {
@@ -77,11 +83,13 @@ export function useBackupRuns(instanceId: number, options?: { limit?: number; of
   })
 }
 
-export function useBackupManifest(instanceId: number, runId?: number) {
+export function useBackupManifest(instanceId: number, runId?: number, options?: { enabled?: boolean }) {
+  const shouldEnable = (options?.enabled ?? true) && instanceId > 0 && !!runId
+
   return useQuery({
     queryKey: ["instance-backups", instanceId, "manifest", runId],
     queryFn: () => api.getBackupManifest(instanceId, runId as number),
-    enabled: instanceId > 0 && !!runId,
+    enabled: shouldEnable,
   })
 }
 

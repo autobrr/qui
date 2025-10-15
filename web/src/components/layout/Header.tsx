@@ -164,6 +164,7 @@ export function Header({
   })
 
   const supportsTorrentCreation = instanceCapabilities?.supportsTorrentCreation ?? true
+  const supportsTorrentExport = instanceCapabilities?.supportsTorrentExport ?? true
 
   return (
     <header className="sticky top-0 z-50 hidden md:flex flex-wrap lg:flex-nowrap items-start lg:items-center justify-between sm:border-b bg-background pl-2 pr-4 md:pl-4 md:pr-4 lg:pl-0 lg:static py-2 lg:py-0 lg:h-16">
@@ -328,7 +329,7 @@ export function Header({
                 <TooltipContent>Torrent creation tasks</TooltipContent>
               </Tooltip>
             )}
-            {isInstanceRoute && selectedInstanceId !== null && (
+            {isInstanceRoute && selectedInstanceId !== null && supportsTorrentExport && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
