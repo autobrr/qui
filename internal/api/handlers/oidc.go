@@ -100,7 +100,7 @@ func NewOIDCHandler(cfg *domain.Config, sessionManager *scs.SessionManager) (*OI
 	}
 
 	if usedIssuer != cfg.OIDCIssuer {
-		log.Debug().
+		log.Trace().
 			Str("requested_issuer", cfg.OIDCIssuer).
 			Str("resolved_issuer", usedIssuer).
 			Msg("initialized OIDC provider using alternate issuer formatting")
@@ -115,7 +115,7 @@ func NewOIDCHandler(cfg *domain.Config, sessionManager *scs.SessionManager) (*OI
 	if err := provider.Claims(&claims); err != nil {
 		log.Warn().Err(err).Msg("failed to parse provider claims for endpoints")
 	} else {
-		log.Debug().
+		log.Trace().
 			Str("authorization_endpoint", claims.AuthURL).
 			Str("token_endpoint", claims.TokenURL).
 			Str("jwks_uri", claims.JWKSURL).
@@ -179,7 +179,7 @@ func discoverOIDCProvider(ctx context.Context, issuer string) (*oidc.Provider, s
 
 		if attempt < oidcInitMaxAttempts {
 			backoff := oidcInitInitialBackoff << (attempt - 1)
-			log.Debug().
+			log.Trace().
 				Int("next_attempt", attempt+1).
 				Dur("sleep", backoff).
 				Msg("retrying OIDC provider initialization after backoff")
@@ -277,7 +277,7 @@ func (h *OIDCHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 		if err := userInfo.Claims(&userInfoClaims); err != nil {
 			log.Warn().Err(err).Msg("failed to parse claims from userinfo endpoint, proceeding with ID token claims if available")
 		} else {
-			log.Debug().
+			log.Trace().
 				Str("userinfo_email", userInfoClaims.Email).
 				Str("userinfo_username", userInfoClaims.PreferredUsername).
 				Str("userinfo_name", userInfoClaims.Name).
@@ -319,7 +319,7 @@ func (h *OIDCHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	log.Debug().
+	log.Trace().
 		Str("email", claims.Email).
 		Str("preferred_username", claims.PreferredUsername).
 		Str("nickname", claims.Nickname).
@@ -376,7 +376,7 @@ func (h *OIDCHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 		frontendURL = h.config.BaseURL + "/dashboard"
 	}
 
-	log.Debug().
+	log.Trace().
 		Str("redirect_url", frontendURL).
 		Str("oidc_redirect_url", h.config.OIDCRedirectURL).
 		Str("base_url", h.config.BaseURL).
