@@ -84,6 +84,28 @@ func TestMatchDuplicateTorrents_DeduplicatesRawValues(t *testing.T) {
 	assert.ElementsMatch(t, expected, matches[0].MatchedHashes)
 }
 
+func TestMatchDuplicateTorrents_UsesInfohashFallback(t *testing.T) {
+	infohashV2 := "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+	torrents := []qbt.Torrent{
+		{
+			Hash:       "",
+			InfohashV2: infohashV2,
+			Name:       "V2 Only",
+		},
+	}
+
+	targets := []string{
+		infohashV2,
+		strings.ToUpper(infohashV2),
+	}
+
+	matches := matchDuplicateTorrents(targets, torrents)
+	require.Len(t, matches, 1, "expected a single torrent match")
+	require.Equal(t, "V2 Only", matches[0].Name)
+	assert.Equal(t, infohashV2, matches[0].Hash, "expected fallback hash to use infohash_v2")
+	assert.ElementsMatch(t, targets, matches[0].MatchedHashes)
+}
+
 func TestClientLookupDuplicateMatches(t *testing.T) {
 	client := &Client{
 		hashIndex: make(map[string]duplicateIndexEntry),
@@ -120,4 +142,66 @@ func TestClientLookupDuplicateMatches(t *testing.T) {
 	noMatches, ok := client.lookupDuplicateMatches([]string{"nope"})
 	require.True(t, ok, "index should remain available")
 	assert.Nil(t, noMatches, "expected no matches for unknown hash")
+}
+
+func TestClientLookupDuplicateMatches_DeduplicatesInputs(t *testing.T) {
+	client := &Client{
+		hashIndex: make(map[string]duplicateIndexEntry),
+	}
+
+	hash := "ABCDEF1234567890ABCDEF1234567890ABCDEF12"
+	torrents := map[string]qbt.Torrent{
+		hash: {
+			Hash: hash,
+			Name: "Alpha",
+		},
+	}
+
+	client.rebuildHashIndex(torrents)
+
+	matches, indexed := client.lookupDuplicateMatches([]string{
+		hash,
+		strings.ToLower(hash),
+		strings.ToUpper(hash),
+		"  " + hash + "  ",
+	})
+
+	require.True(t, indexed, "expected hash index to be available")
+	require.Len(t, matches, 1, "expected a single torrent match")
+	require.Equal(t, "Alpha", matches[0].Name)
+
+	// Expect unique raw values (after trimming) while preserving distinct cases
+	expected := []string{
+		hash,
+		strings.ToLower(hash),
+	}
+	assert.ElementsMatch(t, expected, matches[0].MatchedHashes)
+}
+
+func TestClientLookupDuplicateMatches_UsesInfohashFallback(t *testing.T) {
+	client := &Client{
+		hashIndex: make(map[string]duplicateIndexEntry),
+	}
+
+	infohashV2 := "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+	torrents := map[string]qbt.Torrent{
+		"": {
+			Hash:       "",
+			InfohashV2: infohashV2,
+			Name:       "V2 Only",
+		},
+	}
+
+	client.rebuildHashIndex(torrents)
+
+	matches, indexed := client.lookupDuplicateMatches([]string{
+		infohashV2,
+		strings.ToUpper(infohashV2),
+	})
+
+	require.True(t, indexed, "expected hash index to be available")
+	require.Len(t, matches, 1, "expected a single torrent match")
+	assert.Equal(t, "V2 Only", matches[0].Name)
+	assert.Equal(t, infohashV2, matches[0].Hash, "expected fallback hash to use infohash_v2")
+	assert.ElementsMatch(t, []string{infohashV2, strings.ToUpper(infohashV2)}, matches[0].MatchedHashes)
 }

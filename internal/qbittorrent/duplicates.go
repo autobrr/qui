@@ -17,6 +17,49 @@ type duplicateIndexEntry struct {
 	Name       string
 }
 
+type hashVariants struct {
+	Primary           string
+	PrimaryNormalized string
+	Trimmed           []string
+	Normalized        []string
+}
+
+func deriveHashVariants(values ...string) hashVariants {
+	variants := hashVariants{}
+	if len(values) == 0 {
+		return variants
+	}
+
+	seen := make(map[string]struct{}, len(values))
+
+	for _, value := range values {
+		trimmed := trimHashValue(value)
+		if trimmed == "" {
+			continue
+		}
+
+		normalized := strings.ToLower(trimmed)
+		if normalized == "" {
+			continue
+		}
+
+		if _, exists := seen[normalized]; exists {
+			continue
+		}
+		seen[normalized] = struct{}{}
+
+		variants.Trimmed = append(variants.Trimmed, trimmed)
+		variants.Normalized = append(variants.Normalized, normalized)
+
+		if variants.Primary == "" {
+			variants.Primary = trimmed
+			variants.PrimaryNormalized = normalized
+		}
+	}
+
+	return variants
+}
+
 func normalizeDuplicateHash(value string) string {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
@@ -39,19 +82,21 @@ func registerDuplicateIndexCandidate(index map[string]duplicateIndexEntry, entry
 
 func addTorrentToDuplicateIndex(index map[string]duplicateIndexEntry, torrent qbt.Torrent, fallbackHash string) {
 	entry := duplicateIndexEntry{
-		Hash:       trimHashValue(torrent.Hash),
 		InfohashV1: trimHashValue(torrent.InfohashV1),
 		InfohashV2: trimHashValue(torrent.InfohashV2),
 		Name:       torrent.Name,
 	}
 
+	variants := deriveHashVariants(torrent.Hash, fallbackHash, entry.InfohashV1, entry.InfohashV2)
+	entry.Hash = variants.Primary
+
 	if entry.Hash == "" {
-		entry.Hash = trimHashValue(fallbackHash)
+		return
 	}
 
-	registerDuplicateIndexCandidate(index, entry, entry.Hash)
-	registerDuplicateIndexCandidate(index, entry, entry.InfohashV1)
-	registerDuplicateIndexCandidate(index, entry, entry.InfohashV2)
+	for _, candidate := range variants.Trimmed {
+		registerDuplicateIndexCandidate(index, entry, candidate)
+	}
 }
 
 func (c *Client) rebuildHashIndex(torrents map[string]qbt.Torrent) {
@@ -99,7 +144,12 @@ func (c *Client) lookupDuplicateMatches(hashes []string) ([]DuplicateTorrentMatc
 		return nil, true
 	}
 
-	matchMap := make(map[string]*DuplicateTorrentMatch)
+	type matchAccumulator struct {
+		match      *DuplicateTorrentMatch
+		seenHashes map[string]struct{}
+	}
+
+	matchMap := make(map[string]*matchAccumulator)
 
 	for _, raw := range hashes {
 		trimmed := trimHashValue(raw)
@@ -115,17 +165,28 @@ func (c *Client) lookupDuplicateMatches(hashes []string) ([]DuplicateTorrentMatc
 			continue
 		}
 
-		match, exists := matchMap[entry.Hash]
-		if !exists {
-			match = &DuplicateTorrentMatch{
-				Hash:       entry.Hash,
-				InfohashV1: entry.InfohashV1,
-				InfohashV2: entry.InfohashV2,
-				Name:       entry.Name,
-			}
-			matchMap[entry.Hash] = match
+		variants := deriveHashVariants(entry.Hash, entry.InfohashV1, entry.InfohashV2)
+		if variants.PrimaryNormalized == "" {
+			continue
 		}
-		match.MatchedHashes = append(match.MatchedHashes, trimmed)
+
+		acc, exists := matchMap[variants.PrimaryNormalized]
+		if !exists {
+			acc = &matchAccumulator{
+				match: &DuplicateTorrentMatch{
+					Hash:       variants.Primary,
+					InfohashV1: entry.InfohashV1,
+					InfohashV2: entry.InfohashV2,
+					Name:       entry.Name,
+				},
+				seenHashes: make(map[string]struct{}),
+			}
+			matchMap[variants.PrimaryNormalized] = acc
+		}
+		if _, seen := acc.seenHashes[trimmed]; !seen {
+			acc.seenHashes[trimmed] = struct{}{}
+			acc.match.MatchedHashes = append(acc.match.MatchedHashes, trimmed)
+		}
 	}
 
 	if len(matchMap) == 0 {
@@ -133,13 +194,13 @@ func (c *Client) lookupDuplicateMatches(hashes []string) ([]DuplicateTorrentMatc
 	}
 
 	results := make([]DuplicateTorrentMatch, 0, len(matchMap))
-	for _, match := range matchMap {
-		if len(match.MatchedHashes) > 1 {
-			sort.Slice(match.MatchedHashes, func(i, j int) bool {
-				return strings.ToLower(match.MatchedHashes[i]) < strings.ToLower(match.MatchedHashes[j])
+	for _, acc := range matchMap {
+		if len(acc.match.MatchedHashes) > 1 {
+			sort.Slice(acc.match.MatchedHashes, func(i, j int) bool {
+				return strings.ToLower(acc.match.MatchedHashes[i]) < strings.ToLower(acc.match.MatchedHashes[j])
 			})
 		}
-		results = append(results, *match)
+		results = append(results, *acc.match)
 	}
 
 	sort.Slice(results, func(i, j int) bool {
@@ -173,44 +234,32 @@ func matchDuplicateTorrents(targetHashes []string, torrents []qbt.Torrent) []Dup
 
 	type accumulator struct {
 		torrent qbt.Torrent
+		primary string
 		matches map[string]struct{}
 	}
 
 	matchedTorrents := make(map[string]*accumulator)
 
 	for _, torrent := range torrents {
-		candidates := make([]string, 0, 3)
-		if hash := strings.TrimSpace(torrent.Hash); hash != "" {
-			candidates = append(candidates, strings.ToLower(hash))
-		}
-		if hashV1 := strings.TrimSpace(torrent.InfohashV1); hashV1 != "" {
-			candidates = append(candidates, strings.ToLower(hashV1))
-		}
-		if hashV2 := strings.TrimSpace(torrent.InfohashV2); hashV2 != "" {
-			candidates = append(candidates, strings.ToLower(hashV2))
-		}
-
-		if len(candidates) == 0 {
+		variants := deriveHashVariants(torrent.Hash, torrent.InfohashV1, torrent.InfohashV2)
+		if variants.PrimaryNormalized == "" {
 			continue
 		}
 
-		for _, candidate := range candidates {
-			if candidate == "" {
-				continue
-			}
-
+		for _, candidate := range variants.Normalized {
 			rawValues, exists := normalizedTargets[candidate]
 			if !exists {
 				continue
 			}
 
-			acc, ok := matchedTorrents[torrent.Hash]
+			acc, ok := matchedTorrents[variants.PrimaryNormalized]
 			if !ok {
 				acc = &accumulator{
 					torrent: torrent,
+					primary: variants.Primary,
 					matches: make(map[string]struct{}, len(rawValues)),
 				}
-				matchedTorrents[torrent.Hash] = acc
+				matchedTorrents[variants.PrimaryNormalized] = acc
 			}
 
 			for _, raw := range rawValues {
@@ -232,10 +281,14 @@ func matchDuplicateTorrents(targetHashes []string, torrents []qbt.Torrent) []Dup
 		for raw := range acc.matches {
 			matched = append(matched, raw)
 		}
-		sort.Strings(matched)
+		if len(matched) > 1 {
+			sort.Slice(matched, func(i, j int) bool {
+				return strings.ToLower(matched[i]) < strings.ToLower(matched[j])
+			})
+		}
 
 		results = append(results, DuplicateTorrentMatch{
-			Hash:          acc.torrent.Hash,
+			Hash:          acc.primary,
 			InfohashV1:    acc.torrent.InfohashV1,
 			InfohashV2:    acc.torrent.InfohashV2,
 			Name:          acc.torrent.Name,
