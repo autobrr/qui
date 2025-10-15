@@ -230,8 +230,8 @@ export const TorrentDropZone = forwardRef<HTMLDivElement, TorrentDropZoneProps>(
       onDrop={handleDrop}
     >
       {isDropTargetActive && (
-        <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center rounded-md border border-dashed border-primary bg-background backdrop-blur-sm">
-          <div className="text-center text-sm font-medium text-muted-foreground">
+        <div className="pointer-events-none absolute inset-0 z-60 flex items-center justify-center rounded-md border border-dashed border-primary bg-background/80 backdrop-blur-md">
+          <div className="text-center text-lg font-medium text-muted-foreground">
             {overlayMessage}
           </div>
         </div>
