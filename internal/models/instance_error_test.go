@@ -11,6 +11,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
+
+	"github.com/autobrr/qui/internal/dbiface"
 )
 
 func setupInstanceErrorTestDB(t *testing.T) (*sql.DB, *InstanceErrorStore) {
@@ -43,11 +45,11 @@ func setupInstanceErrorTestDB(t *testing.T) (*sql.DB, *InstanceErrorStore) {
 	return db, NewInstanceErrorStore(db)
 }
 
-func countInstanceErrors(t *testing.T, db *sql.DB, instanceID int) int {
+func countInstanceErrors(t *testing.T, db dbiface.DBLike, instanceID int) int {
 	t.Helper()
 
 	var count int
-	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM instance_errors WHERE instance_id = ?", instanceID).Scan(&count))
+	require.NoError(t, db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM instance_errors WHERE instance_id = ?", instanceID).Scan(&count))
 	return count
 }
 

@@ -9,6 +9,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/autobrr/qui/internal/dbiface"
 )
 
 var ErrClientAPIKeyNotFound = errors.New("client api key not found")
@@ -23,10 +25,10 @@ type ClientAPIKey struct {
 }
 
 type ClientAPIKeyStore struct {
-	db *sql.DB
+	db dbiface.DBLike
 }
 
-func NewClientAPIKeyStore(db *sql.DB) *ClientAPIKeyStore {
+func NewClientAPIKeyStore(db dbiface.DBLike) *ClientAPIKeyStore {
 	return &ClientAPIKeyStore{db: db}
 }
 

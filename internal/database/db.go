@@ -11,9 +11,11 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/autobrr/autobrr/pkg/ttlcache"
 	"github.com/rs/zerolog/log"
 	"modernc.org/sqlite"
 )
@@ -21,8 +23,37 @@ import (
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
 
+// reader/writer control
+type writeReq struct {
+	ctx   context.Context
+	query string
+	args  []any
+	resCh chan writeRes
+}
+
+type writeRes struct {
+	result sql.Result
+	err    error
+}
+
+// fakeResult is returned for statements that return rows (RETURNING)
+// when executed through ExecContext. It provides zero values for
+// LastInsertId and RowsAffected.
+type fakeResult struct{}
+
+func (f fakeResult) LastInsertId() (int64, error) { return 0, nil }
+func (f fakeResult) RowsAffected() (int64, error) { return 0, nil }
+
+type stmtCacheEntry struct {
+	stmt *sql.Stmt
+}
+
+// reader/writer fields on DB
 type DB struct {
-	conn *sql.DB
+	conn    *sql.DB
+	writeCh chan writeReq
+	stmts   *ttlcache.Cache[string, *sql.Stmt]
+	stop    chan struct{}
 }
 
 const (
@@ -108,8 +139,22 @@ func New(databasePath string) (*DB, error) {
 		return nil, fmt.Errorf("apply wal checkpoint: %w", err)
 	}
 
+	// create ttlcache for prepared statements with 5 minute TTL and deallocation func
+	var df ttlcache.DeallocationFunc[string, *sql.Stmt] = func(k string, s *sql.Stmt, _ ttlcache.DeallocationReason) {
+		if s != nil {
+			_ = s.Close()
+		}
+	}
+
+	opts := ttlcache.Options[string, *sql.Stmt]{}.SetDefaultTTL(5 * time.Minute).SetDeallocationFunc(df)
+
+	stmtsCache := ttlcache.New(opts)
+
 	db := &DB{
-		conn: conn,
+		conn:    conn,
+		writeCh: make(chan writeReq),
+		stmts:   stmtsCache,
+		stop:    make(chan struct{}),
 	}
 
 	// Run migrations with single connection
@@ -123,6 +168,9 @@ func New(databasePath string) (*DB, error) {
 	conn.SetMaxIdleConns(2)
 	conn.SetConnMaxLifetime(0)
 
+	// start single writer after migrations
+	go db.writerLoop()
+
 	// Verify database file was created
 	if _, err := os.Stat(databasePath); err != nil {
 		conn.Close()
@@ -133,12 +181,164 @@ func New(databasePath string) (*DB, error) {
 	return db, nil
 }
 
+// getStmt returns a prepared statement for the given query, preparing and
+// caching it if necessary.
+func (db *DB) getStmt(ctx context.Context, query string) (*sql.Stmt, error) {
+	if s, found := db.stmts.Get(query); found && s != nil {
+		return s, nil
+	}
+
+	// prepare and cache
+	s, err := db.conn.PrepareContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	db.stmts.Set(query, s, ttlcache.DefaultTTL)
+
+	// statement will be closed by ttlcache deallocation function when evicted
+
+	return s, nil
+}
+
+// execWrite executes a write query. If a prepared stmt is provided it will
+// be used, otherwise the connection is used directly. If the query contains
+// a RETURNING clause, QueryContext will be used and the returned rows will
+// be consumed and closed; a fakeResult is returned to the caller because
+// Exec-style callers expect a sql.Result.
+func (db *DB) execWrite(ctx context.Context, stmt *sql.Stmt, query string, args []any) (sql.Result, error) {
+	up := strings.ToUpper(strings.TrimSpace(query))
+	if strings.Contains(up, "RETURNING") {
+		if stmt != nil {
+			rows, err := stmt.QueryContext(ctx, args...)
+			if err != nil {
+				return nil, err
+			}
+			_ = rows.Close()
+			return fakeResult{}, nil
+		}
+		rows, err := db.conn.QueryContext(ctx, query, args...)
+		if err != nil {
+			return nil, err
+		}
+		_ = rows.Close()
+		return fakeResult{}, nil
+	}
+
+	if stmt != nil {
+		return stmt.ExecContext(ctx, args...)
+	}
+	return db.conn.ExecContext(ctx, query, args...)
+}
+
+// ExecContext routes write queries through the single writer goroutine and
+// uses prepared statements when possible.
+func (db *DB) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	// decide if this is a write-like statement
+	// naive check: starts with INSERT/UPDATE/REPLACE/DELETE/UPSERT/REPLACE INTO
+	q := strings.TrimSpace(query)
+	up := strings.ToUpper(q)
+	// Treat statements with RETURNING as writes too so they are routed
+	// through the single writer goroutine and handled specially.
+	isWrite := strings.HasPrefix(up, "INSERT") || strings.HasPrefix(up, "UPDATE") || strings.HasPrefix(up, "REPLACE") || strings.HasPrefix(up, "DELETE") || strings.HasPrefix(up, "UPSERT") || strings.Contains(up, "RETURNING")
+	if !isWrite {
+		// treat as reader and use prepared stmt when possible
+		stmt, err := db.getStmt(ctx, query)
+		if err != nil {
+			// fallback to direct Exec
+			return db.conn.ExecContext(ctx, query, args...)
+		}
+		return stmt.ExecContext(ctx, args...)
+	}
+
+	// route through writer
+	resCh := make(chan writeRes, 1)
+	req := writeReq{ctx: ctx, query: query, args: args, resCh: resCh}
+	select {
+	case db.writeCh <- req:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-db.stop:
+		return nil, fmt.Errorf("db stopping")
+	}
+
+	res := <-resCh
+	return res.result, res.err
+}
+
+// writerLoop processes write requests sequentially
+func (db *DB) writerLoop() {
+	for {
+		select {
+		case <-db.stop:
+			return
+		case req, ok := <-db.writeCh:
+			if !ok {
+				return
+			}
+			// use prepared stmt if possible
+			stmt, err := db.getStmt(req.ctx, req.query)
+			if err != nil {
+				// if we couldn't prepare a statement, execWrite will use the
+				// connection directly and handle RETURNING if present.
+				res, execErr := db.execWrite(req.ctx, nil, req.query, req.args)
+				select {
+				case req.resCh <- writeRes{result: res, err: execErr}:
+				default:
+				}
+				continue
+			}
+
+			res, execErr := db.execWrite(req.ctx, stmt, req.query, req.args)
+			select {
+			case req.resCh <- writeRes{result: res, err: execErr}:
+			default:
+			}
+		}
+	}
+}
+
+// QueryContext uses reader pool and prepared statements
+func (db *DB) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	// try to use prepared statement, fall back to db pool
+	stmt, err := db.getStmt(ctx, query)
+	if err != nil {
+		return db.conn.QueryContext(ctx, query, args...)
+	}
+	return stmt.QueryContext(ctx, args...)
+}
+
+// QueryRowContext uses QueryContext and scans first row
+func (db *DB) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
+	// prepare statement and use QueryRow on it (no reader release necessary because Row scans and doesn't return Rows)
+	stmt, err := db.getStmt(ctx, query)
+	if err != nil {
+		return db.conn.QueryRowContext(ctx, query, args...)
+	}
+	return stmt.QueryRowContext(ctx, args...)
+}
+
 func (db *DB) Close() error {
 	ctx, cancel := context.WithTimeout(context.Background(), connectionSetupTimeout)
 	defer cancel()
 	if _, err := db.conn.ExecContext(ctx, "PRAGMA optimize"); err != nil {
 		log.Warn().Err(err).Msg("failed to run PRAGMA optimize during close")
 	}
+
+	// stop writer
+	select {
+	case <-db.stop:
+		// already closed
+	default:
+		close(db.stop)
+	}
+	// close write channel to unblock writer
+	close(db.writeCh)
+
+	// close ttlcache
+	db.stmts.Close()
+
+	// deallocation of cached statements is handled by ttlcache
+
 	return db.conn.Close()
 }
 

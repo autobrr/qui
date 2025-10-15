@@ -7,6 +7,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+
+	"github.com/autobrr/qui/internal/dbiface"
 )
 
 var ErrUserNotFound = errors.New("user not found")
@@ -19,10 +21,10 @@ type User struct {
 }
 
 type UserStore struct {
-	db *sql.DB
+	db dbiface.DBLike
 }
 
-func NewUserStore(db *sql.DB) *UserStore {
+func NewUserStore(db dbiface.DBLike) *UserStore {
 	return &UserStore{db: db}
 }
 

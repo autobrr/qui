@@ -5,10 +5,11 @@ package models
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"strings"
 	"time"
+
+	"github.com/autobrr/qui/internal/dbiface"
 )
 
 // Error types for categorization
@@ -28,10 +29,10 @@ type InstanceError struct {
 }
 
 type InstanceErrorStore struct {
-	db *sql.DB
+	db dbiface.DBLike
 }
 
-func NewInstanceErrorStore(db *sql.DB) *InstanceErrorStore {
+func NewInstanceErrorStore(db dbiface.DBLike) *InstanceErrorStore {
 	return &InstanceErrorStore{
 		db: db,
 	}
