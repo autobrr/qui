@@ -140,13 +140,12 @@ func New(databasePath string) (*DB, error) {
 	}
 
 	// create ttlcache for prepared statements with 5 minute TTL and deallocation func
-	var df ttlcache.DeallocationFunc[string, *sql.Stmt] = func(k string, s *sql.Stmt, _ ttlcache.DeallocationReason) {
-		if s != nil {
-			_ = s.Close()
-		}
-	}
-
-	opts := ttlcache.Options[string, *sql.Stmt]{}.SetDefaultTTL(5 * time.Minute).SetDeallocationFunc(df)
+	opts := ttlcache.Options[string, *sql.Stmt]{}.SetDefaultTTL(5 * time.Minute).
+		SetDeallocationFunc(func(k string, s *sql.Stmt, _ ttlcache.DeallocationReason) {
+			if s != nil {
+				_ = s.Close()
+			}
+		})
 
 	stmtsCache := ttlcache.New(opts)
 
