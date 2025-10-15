@@ -1441,6 +1441,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
               onOpenChange={onAddTorrentModalChange}
               dropPayload={dropPayload}
               onDropPayloadConsumed={handleDropPayloadConsumed}
+              torrents={torrents}
             />
           </div>
         </div>

@@ -77,6 +77,15 @@ type TorrentStats struct {
 	TotalSize          int64 `json:"totalSize"`
 }
 
+// DuplicateTorrentMatch represents an existing torrent that matches one or more requested hashes.
+type DuplicateTorrentMatch struct {
+	Hash          string   `json:"hash"`
+	InfohashV1    string   `json:"infohash_v1,omitempty"`
+	InfohashV2    string   `json:"infohash_v2,omitempty"`
+	Name          string   `json:"name"`
+	MatchedHashes []string `json:"matched_hashes,omitempty"`
+}
+
 // SyncManager manages torrent operations
 type SyncManager struct {
 	clientPool *ClientPool
@@ -472,6 +481,51 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		Msg("Fresh torrent data fetched and cached")
 
 	return response, nil
+}
+
+// FindDuplicateTorrents returns existing torrents that match any of the provided hashes.
+func (sm *SyncManager) FindDuplicateTorrents(ctx context.Context, instanceID int, hashes []string) ([]DuplicateTorrentMatch, error) {
+	if len(hashes) == 0 {
+		return nil, nil
+	}
+
+	client, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		return nil, err
+	}
+
+	if matches, indexed := client.lookupDuplicateMatches(hashes); indexed {
+		if len(matches) > 0 {
+			log.Trace().
+				Int("instanceID", instanceID).
+				Int("requestedHashes", len(hashes)).
+				Int("duplicates", len(matches)).
+				Str("duplicateSource", "index").
+				Msg("Detected duplicate torrents for requested hashes")
+		}
+		return matches, nil
+	}
+
+	torrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{})
+	if len(torrents) == 0 {
+		client.rebuildHashIndexFromSlice(torrents)
+		return nil, nil
+	}
+
+	matches := matchDuplicateTorrents(hashes, torrents)
+	client.rebuildHashIndexFromSlice(torrents)
+	if len(matches) == 0 {
+		return nil, nil
+	}
+
+	log.Trace().
+		Int("instanceID", instanceID).
+		Int("requestedHashes", len(hashes)).
+		Int("duplicates", len(matches)).
+		Str("duplicateSource", "scan").
+		Msg("Detected duplicate torrents for requested hashes")
+
+	return matches, nil
 }
 
 // BulkAction performs bulk operations on torrents
