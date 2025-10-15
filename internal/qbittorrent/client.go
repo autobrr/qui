@@ -22,6 +22,7 @@ type Client struct {
 	webAPIVersion           string
 	supportsSetTags         bool
 	supportsTorrentCreation bool
+	supportsTorrentExport   bool
 	supportsTrackerEditing  bool
 	supportsRenameTorrent   bool
 	supportsRenameFile      bool
@@ -75,6 +76,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 
 	supportsSetTags := false
 	supportsTorrentCreation := false
+	supportsTorrentExport := false
 	supportsTrackerEditing := false
 	supportsRenameTorrent := false
 	supportsRenameFile := false
@@ -86,6 +88,10 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 
 			torrentCreationMinVersion := semver.MustParse("2.11.2")
 			supportsTorrentCreation = !v.LessThan(torrentCreationMinVersion)
+
+			// Torrent export endpoint: WebAPI 2.8.11+ (qBittorrent 4.5.0+, introduced in 4.5.0beta1)
+			exportTorrentMinVersion := semver.MustParse("2.8.11")
+			supportsTorrentExport = !v.LessThan(exportTorrentMinVersion)
 
 			trackerEditingMinVersion := semver.MustParse("2.2.0")
 			supportsTrackerEditing = !v.LessThan(trackerEditingMinVersion)
@@ -110,6 +116,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 		webAPIVersion:           webAPIVersion,
 		supportsSetTags:         supportsSetTags,
 		supportsTorrentCreation: supportsTorrentCreation,
+		supportsTorrentExport:   supportsTorrentExport,
 		supportsTrackerEditing:  supportsTrackerEditing,
 		supportsRenameTorrent:   supportsRenameTorrent,
 		supportsRenameFile:      supportsRenameFile,
@@ -149,6 +156,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 		Str("webAPIVersion", webAPIVersion).
 		Bool("supportsSetTags", supportsSetTags).
 		Bool("supportsTorrentCreation", supportsTorrentCreation).
+		Bool("supportsTorrentExport", supportsTorrentExport).
 		Bool("supportsTrackerEditing", supportsTrackerEditing).
 		Bool("includeTrackers", supportsInclude).
 		Bool("tlsSkipVerify", tlsSkipVerify).
@@ -207,6 +215,12 @@ func (c *Client) SupportsTrackerEditing() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.supportsTrackerEditing
+}
+
+func (c *Client) SupportsTorrentExport() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.supportsTorrentExport
 }
 
 func (c *Client) updateServerState(data *qbt.MainData) {

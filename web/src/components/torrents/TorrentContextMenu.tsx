@@ -165,6 +165,8 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
     }
   }, [onSetCategory, hashes])
 
+  const supportsTorrentExport = capabilities?.supportsTorrentExport ?? true
+
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
@@ -305,13 +307,15 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
           </ContextMenuItem>
         )}
         <ContextMenuSeparator />
-        <ContextMenuItem
-          onClick={handleExport}
-          disabled={isExporting}
-        >
-          <Download className="mr-2 h-4 w-4" />
-          {count > 1 ? `Export Torrents (${count})` : "Export Torrent"}
-        </ContextMenuItem>
+        {supportsTorrentExport && (
+          <ContextMenuItem
+            onClick={handleExport}
+            disabled={isExporting}
+          >
+            <Download className="mr-2 h-4 w-4" />
+            {count > 1 ? `Export Torrents (${count})` : "Export Torrent"}
+          </ContextMenuItem>
+        )}
         <ContextMenuSub>
           <ContextMenuSubTrigger>
             <Copy className="mr-4 h-4 w-4" />
