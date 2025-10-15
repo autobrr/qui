@@ -5,6 +5,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -96,16 +97,22 @@ func (s *Server) ListenAndServe() error {
 func (s *Server) Open() error {
 	addr := fmt.Sprintf("%s:%d", s.config.Config.Host, s.config.Config.Port)
 
-	var err error
+	var lastErr error
 	for _, proto := range []string{"tcp", "tcp4", "tcp6"} {
-		if err = s.tryToServe(addr, proto); err == nil {
-			break
+		err := s.tryToServe(addr, proto)
+		if err == nil {
+			return nil
+		}
+
+		if errors.Is(err, http.ErrServerClosed) {
+			return err
 		}
 
 		s.logger.Error().Err(err).Str("addr", addr).Str("proto", proto).Msgf("Failed to start server")
+		lastErr = err
 	}
 
-	return err
+	return lastErr
 }
 
 func (s *Server) tryToServe(addr, protocol string) error {

@@ -291,7 +291,11 @@ function InstanceCard({
           )}
           <CardDescription className="text-xs">
             <div className="flex items-center gap-1 min-w-0">
-              <span className={`${incognitoMode ? "blur-sm select-none" : ""} truncate min-w-0`} style={incognitoMode ? { filter: "blur(8px)" } : {}} title={displayUrl}>
+              <span
+                className={`${incognitoMode ? "blur-sm select-none" : ""} truncate min-w-0`}
+                style={incognitoMode ? { filter: "blur(8px)" } : {}}
+                {...(!incognitoMode && { title: displayUrl })}
+              >
                 {displayUrl}
               </span>
               <Button

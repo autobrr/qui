@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/autobrr/autobrr/pkg/sharedhttp"
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -74,6 +75,7 @@ func NewHandler(clientPool *qbittorrent.ClientPool, clientAPIKeyStore *models.Cl
 		ModifyResponse: h.modifyResponse,
 		BufferPool:     bufferPool,
 		ErrorHandler:   h.errorHandler,
+		Transport:      sharedhttp.Transport,
 	}
 
 	return h
@@ -152,9 +154,10 @@ func (h *Handler) rewriteRequest(pr *httputil.ProxyRequest) {
 	// Set the target URL
 	pr.SetURL(instanceURL)
 
-	// Update the path to the stripped version
-	pr.Out.URL.Path = strippedPath
-	pr.Out.URL.RawPath = ""
+	// Update the path, preserving any base path on the instance host
+	targetPath := combineInstanceAndRequestPath(instanceURL.Path, strippedPath)
+	pr.Out.URL.Path = targetPath
+	pr.Out.URL.RawPath = targetPath
 
 	// Preserve query parameters
 	pr.Out.URL.RawQuery = pr.In.URL.RawQuery
@@ -267,6 +270,22 @@ func (h *Handler) stripProxyPrefix(path, apiKey string) string {
 		return after
 	}
 	return path
+}
+
+func combineInstanceAndRequestPath(instanceBasePath, strippedPath string) string {
+	base := strings.TrimSuffix(instanceBasePath, "/")
+	request := strings.TrimPrefix(strippedPath, "/")
+
+	switch {
+	case base == "" && request == "":
+		return "/"
+	case base == "":
+		return "/" + request
+	case request == "":
+		return base + "/"
+	default:
+		return base + "/" + request
+	}
 }
 
 // errorHandler handles proxy errors
