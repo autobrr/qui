@@ -20,9 +20,9 @@ import (
 	"sync"
 	"time"
 
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
 
-	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/pkg/torrentname"
@@ -353,7 +353,18 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 	}
 
 	timestamp := s.now().UTC().Format("20060102T150405Z")
-	archiveName := fmt.Sprintf("qui-backup_instance-%d_%s_%s.zip", j.instanceID, j.kind, timestamp)
+	baseSegment := filepath.Base(baseRel)
+	baseSegment = strings.TrimSpace(baseSegment)
+	if baseSegment == "" || baseSegment == "." || baseSegment == string(filepath.Separator) {
+		baseSegment = fmt.Sprintf("instance-%d", j.instanceID)
+	}
+
+	slug := safeSegment(baseSegment)
+	if slug == "" || slug == "uncategorized" {
+		slug = fmt.Sprintf("instance-%d", j.instanceID)
+	}
+
+	archiveName := fmt.Sprintf("qui-backup_%s_%s_%s.zip", slug, j.kind, timestamp)
 	archiveAbsPath := filepath.Join(baseAbs, archiveName)
 	archiveRelPath := filepath.Join(baseRel, archiveName)
 
@@ -603,8 +614,6 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 }
 
 func (s *Service) resolveBasePaths(ctx context.Context, settings *models.BackupSettings, instanceID int) (string, string, error) {
-	baseSegment := fmt.Sprintf("instance-%d", instanceID)
-
 	if settings.CustomPath != nil {
 		custom := strings.TrimSpace(*settings.CustomPath)
 		if custom != "" {
@@ -620,13 +629,17 @@ func (s *Service) resolveBasePaths(ctx context.Context, settings *models.BackupS
 		}
 	}
 
-	if name, err := s.store.GetInstanceName(ctx, instanceID); err == nil && name != "" {
-		slug := safeSegment(name)
-		if slug != "" {
-			baseSegment = fmt.Sprintf("instance-%d_%s", instanceID, slug)
+	var baseSegment string
+	if name, err := s.store.GetInstanceName(ctx, instanceID); err == nil {
+		if trimmed := strings.TrimSpace(name); trimmed != "" {
+			baseSegment = safeSegment(trimmed)
 		}
-	} else if err != nil && !errors.Is(err, models.ErrInstanceNotFound) {
+	} else if !errors.Is(err, models.ErrInstanceNotFound) {
 		return "", "", err
+	}
+
+	if baseSegment == "" {
+		baseSegment = fmt.Sprintf("instance-%d", instanceID)
 	}
 
 	base := filepath.Join("backups", baseSegment)

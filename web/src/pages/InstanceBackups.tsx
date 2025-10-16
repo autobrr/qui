@@ -855,7 +855,7 @@ export function InstanceBackups() {
                         </span>
                       </TooltipTrigger>
                       <TooltipContent>
-                        <p>Windows users: use double backslashes (e.g., backups\\instance-1)</p>
+                        <p>Windows users: use double backslashes (e.g., backups\\MyInstance)</p>
                       </TooltipContent>
                     </Tooltip>
                   </div>
@@ -863,7 +863,7 @@ export function InstanceBackups() {
                     id="custom-path"
                     value={formState.customPath ?? ""}
                     onChange={handlePathChange}
-                    placeholder="backups/instance-1"
+                    placeholder="backups/MyInstance"
                   />
                   <p className="text-xs text-muted-foreground">Relative to qui data directory. Leave empty to use default.</p>
                 </div>
