@@ -14,6 +14,7 @@ import {
 import type { Category } from "@/types"
 import { ChevronDown, ChevronRight, Edit, FolderPlus, Trash2 } from "lucide-react"
 import { memo, useCallback, useMemo } from "react"
+import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react"
 
 interface CategoryNode {
   name: string
@@ -28,15 +29,21 @@ interface CategoryNode {
 interface CategoryTreeProps {
   categories: Record<string, Category>
   counts: Record<string, number>
-  selectedCategories: string[]
   useSubcategories: boolean
-  onCategoryToggle: (category: string) => void
-  onCreateSubcategory: (parent: string) => void
-  onEditCategory: (category: string) => void
-  onDeleteCategory: (category: string) => void
   collapsedCategories: Set<string>
   onToggleCollapse: (category: string) => void
   searchTerm?: string
+  getCategoryState: (category: string) => "include" | "exclude" | "neutral"
+  getCheckboxState: (state: "include" | "exclude" | "neutral") => boolean | "indeterminate"
+  onCategoryCheckboxChange: (category: string) => void
+  onCategoryPointerDown?: (event: ReactPointerEvent<HTMLElement>, category: string) => void
+  onCreateSubcategory: (parent: string) => void
+  onEditCategory: (category: string) => void
+  onDeleteCategory: (category: string) => void
+  onRemoveEmptyCategories?: () => void
+  hasEmptyCategories?: boolean
+  syntheticCategories?: Set<string>
+  getCategoryCount: (category: string) => string
 }
 
 function buildCategoryTree(
@@ -98,40 +105,79 @@ function buildCategoryTree(
 
 const CategoryTreeNode = memo(({
   node,
-  selectedCategories,
-  onCategoryToggle,
+  getCategoryState,
+  getCheckboxState,
+  onCategoryCheckboxChange,
+  onCategoryPointerDown,
   onCreateSubcategory,
   onEditCategory,
   onDeleteCategory,
+  onRemoveEmptyCategories,
+  hasEmptyCategories,
   collapsedCategories,
   onToggleCollapse,
   useSubcategories,
+  syntheticCategories,
+  getCategoryCount,
 }: {
   node: CategoryNode
-  selectedCategories: string[]
-  onCategoryToggle: (category: string) => void
+  getCategoryState: (category: string) => "include" | "exclude" | "neutral"
+  getCheckboxState: (state: "include" | "exclude" | "neutral") => boolean | "indeterminate"
+  onCategoryCheckboxChange: (category: string) => void
+  onCategoryPointerDown?: (event: ReactPointerEvent<HTMLElement>, category: string) => void
   onCreateSubcategory: (parent: string) => void
   onEditCategory: (category: string) => void
   onDeleteCategory: (category: string) => void
+  onRemoveEmptyCategories?: () => void
+  hasEmptyCategories?: boolean
   collapsedCategories: Set<string>
   onToggleCollapse: (category: string) => void
   useSubcategories: boolean
+  syntheticCategories?: Set<string>
+  getCategoryCount: (category: string) => string
 }) => {
   const hasChildren = node.children.length > 0
   const isCollapsed = collapsedCategories.has(node.name)
-  const isSelected = selectedCategories.includes(node.name)
+  const categoryState = getCategoryState(node.name)
+  const checkboxState = getCheckboxState(categoryState)
   const indentLevel = node.level * 20
+  const isSynthetic = syntheticCategories?.has(node.name) ?? false
 
-  const handleToggleCollapse = useCallback((e: React.MouseEvent) => {
+  const handleToggleCollapse = useCallback((e: ReactMouseEvent<HTMLButtonElement>) => {
     e.stopPropagation()
     if (hasChildren) {
       onToggleCollapse(node.name)
     }
   }, [hasChildren, node.name, onToggleCollapse])
 
-  const handleCategoryClick = useCallback(() => {
-    onCategoryToggle(node.name)
-  }, [node.name, onCategoryToggle])
+  const handleCheckboxChange = useCallback(() => {
+    onCategoryCheckboxChange(node.name)
+  }, [node.name, onCategoryCheckboxChange])
+
+  const handlePointerDown = useCallback((event: ReactPointerEvent<HTMLElement>) => {
+    onCategoryPointerDown?.(event, node.name)
+  }, [onCategoryPointerDown, node.name])
+
+  const handleCreateSubcategory = useCallback(() => {
+    if (isSynthetic) {
+      return
+    }
+    onCreateSubcategory(node.name)
+  }, [isSynthetic, node.name, onCreateSubcategory])
+
+  const handleEditCategory = useCallback(() => {
+    if (isSynthetic) {
+      return
+    }
+    onEditCategory(node.name)
+  }, [isSynthetic, node.name, onEditCategory])
+
+  const handleDeleteCategory = useCallback(() => {
+    if (isSynthetic) {
+      return
+    }
+    onDeleteCategory(node.name)
+  }, [isSynthetic, node.name, onDeleteCategory])
 
   return (
     <>
@@ -140,6 +186,8 @@ const CategoryTreeNode = memo(({
           <li
             className="flex items-center gap-2 px-2 py-1.5 hover:bg-accent rounded-md cursor-pointer select-none"
             style={{ paddingLeft: `${indentLevel + 8}px` }}
+            onPointerDown={handlePointerDown}
+            role="presentation"
           >
             {useSubcategories && (
               <button
@@ -157,20 +205,20 @@ const CategoryTreeNode = memo(({
             )}
 
             <Checkbox
-              checked={isSelected}
-              onCheckedChange={handleCategoryClick}
+              checked={checkboxState}
+              onCheckedChange={handleCheckboxChange}
               className="size-4"
             />
 
             <span
-              className="flex-1 text-sm cursor-pointer"
-              onClick={handleCategoryClick}
+              className={`flex-1 text-sm cursor-pointer ${categoryState === "exclude" ? "text-destructive" : ""}`}
+              onClick={handleCheckboxChange}
             >
               {node.displayName}
             </span>
 
-            <span className="text-xs text-muted-foreground">
-              ({node.count})
+            <span className={`text-xs ${categoryState === "exclude" ? "text-destructive" : "text-muted-foreground"}`}>
+              ({getCategoryCount(node.name)})
             </span>
           </li>
         </ContextMenuTrigger>
@@ -178,21 +226,32 @@ const CategoryTreeNode = memo(({
         <ContextMenuContent>
           {useSubcategories && (
             <>
-              <ContextMenuItem onClick={() => onCreateSubcategory(node.name)}>
+              <ContextMenuItem onClick={handleCreateSubcategory} disabled={isSynthetic}>
                 <FolderPlus className="mr-2 size-4" />
                 Create subcategory
               </ContextMenuItem>
               <ContextMenuSeparator />
             </>
           )}
-          <ContextMenuItem onClick={() => onEditCategory(node.name)}>
+          <ContextMenuItem onClick={handleEditCategory} disabled={isSynthetic}>
             <Edit className="mr-2 size-4" />
             Edit category
           </ContextMenuItem>
-          <ContextMenuItem onClick={() => onDeleteCategory(node.name)}>
+          <ContextMenuSeparator />
+          <ContextMenuItem onClick={handleDeleteCategory} disabled={isSynthetic} className="text-destructive">
             <Trash2 className="mr-2 size-4" />
             Delete category
           </ContextMenuItem>
+          {onRemoveEmptyCategories && (
+            <ContextMenuItem
+              onClick={() => onRemoveEmptyCategories()}
+              disabled={!hasEmptyCategories}
+              className="text-destructive"
+            >
+              <Trash2 className="mr-2 size-4" />
+              Remove Empty Categories
+            </ContextMenuItem>
+          )}
         </ContextMenuContent>
       </ContextMenu>
 
@@ -202,14 +261,20 @@ const CategoryTreeNode = memo(({
             <CategoryTreeNode
               key={child.name}
               node={child}
-              selectedCategories={selectedCategories}
-              onCategoryToggle={onCategoryToggle}
+              getCategoryState={getCategoryState}
+              getCheckboxState={getCheckboxState}
+              onCategoryCheckboxChange={onCategoryCheckboxChange}
+              onCategoryPointerDown={onCategoryPointerDown}
               onCreateSubcategory={onCreateSubcategory}
               onEditCategory={onEditCategory}
               onDeleteCategory={onDeleteCategory}
+              onRemoveEmptyCategories={onRemoveEmptyCategories}
+              hasEmptyCategories={hasEmptyCategories}
               collapsedCategories={collapsedCategories}
               onToggleCollapse={onToggleCollapse}
               useSubcategories={useSubcategories}
+              syntheticCategories={syntheticCategories}
+              getCategoryCount={getCategoryCount}
             />
           ))}
         </ul>
@@ -223,15 +288,21 @@ CategoryTreeNode.displayName = "CategoryTreeNode"
 export const CategoryTree = memo(({
   categories,
   counts,
-  selectedCategories,
   useSubcategories,
-  onCategoryToggle,
+  getCategoryState,
+  getCheckboxState,
+  onCategoryCheckboxChange,
+  onCategoryPointerDown,
   onCreateSubcategory,
   onEditCategory,
   onDeleteCategory,
+  onRemoveEmptyCategories,
+  hasEmptyCategories = false,
   collapsedCategories,
   onToggleCollapse,
   searchTerm = "",
+  syntheticCategories = new Set<string>(),
+  getCategoryCount,
 }: CategoryTreeProps) => {
   // Filter categories based on search term
   const filteredCategories = useMemo(() => {
@@ -257,6 +328,9 @@ export const CategoryTree = memo(({
 
   // Build tree for subcategory mode
   const categoryTree = useSubcategories? buildCategoryTree(filteredCategories, counts): flatCategories
+  const uncategorizedState = getCategoryState("")
+  const uncategorizedCheckboxState = getCheckboxState(uncategorizedState)
+  const uncategorizedCount = getCategoryCount("")
 
   return (
     <div className="space-y-1">
@@ -264,15 +338,18 @@ export const CategoryTree = memo(({
 
       <li
         className="flex items-center gap-2 px-2 py-1.5 hover:bg-accent rounded-md cursor-pointer"
-        onClick={() => onCategoryToggle("")}
+        onClick={() => onCategoryCheckboxChange("")}
+        onPointerDown={(event) => onCategoryPointerDown?.(event, "")}
       >
         <Checkbox
-          checked={selectedCategories.includes("")}
+          checked={uncategorizedCheckboxState}
           className="size-4"
         />
-        <span className="flex-1 text-sm">Uncategorized</span>
-        <span className="text-xs text-muted-foreground">
-          ({counts["category:"] || 0})
+        <span className={`flex-1 text-sm italic ${uncategorizedState === "exclude" ? "text-destructive" : "text-muted-foreground"}`}>
+          Uncategorized
+        </span>
+        <span className={`text-xs ${uncategorizedState === "exclude" ? "text-destructive" : "text-muted-foreground"}`}>
+          ({uncategorizedCount})
         </span>
       </li>
 
@@ -283,14 +360,20 @@ export const CategoryTree = memo(({
         <CategoryTreeNode
           key={node.name}
           node={node}
-          selectedCategories={selectedCategories}
-          onCategoryToggle={onCategoryToggle}
+          getCategoryState={getCategoryState}
+          getCheckboxState={getCheckboxState}
+          onCategoryCheckboxChange={onCategoryCheckboxChange}
+          onCategoryPointerDown={onCategoryPointerDown}
           onCreateSubcategory={onCreateSubcategory}
           onEditCategory={onEditCategory}
           onDeleteCategory={onDeleteCategory}
+          onRemoveEmptyCategories={onRemoveEmptyCategories}
+          hasEmptyCategories={hasEmptyCategories}
           collapsedCategories={collapsedCategories}
           onToggleCollapse={onToggleCollapse}
           useSubcategories={useSubcategories}
+          syntheticCategories={syntheticCategories}
+          getCategoryCount={getCategoryCount}
         />
       ))}
     </div>
