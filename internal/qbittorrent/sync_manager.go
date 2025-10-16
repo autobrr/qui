@@ -216,6 +216,11 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		tags = []string{}
 	}
 
+	if useManualFiltering && mainData == nil {
+		// Manual filtering needs the server preference to respect disabled subcategories
+		mainData = syncManager.GetData()
+	}
+
 	supportsSubcategories := client.SupportsSubcategories()
 	useSubcategories := resolveUseSubcategories(supportsSubcategories, mainData, categories)
 
@@ -371,7 +376,9 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	allTorrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{})
 
 	// Get MainData for accurate tracker information
-	mainData = syncManager.GetData()
+	if mainData == nil {
+		mainData = syncManager.GetData()
+	}
 	useSubcategories = resolveUseSubcategories(supportsSubcategories, mainData, categories)
 
 	counts, trackerMap, enrichedAll := sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents, mainData, trackerMap, trackerHealthSupported, useSubcategories)
