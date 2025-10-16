@@ -104,8 +104,9 @@ export function Header({
   // Update URL search param after debounce
   useEffect(() => {
     if (!shouldShowInstanceControls) return
+    const trimmedSearch = debouncedSearch.trim()
     const next = { ...(routeSearch || {}) }
-    if (debouncedSearch) next.q = debouncedSearch
+    if (trimmedSearch) next.q = trimmedSearch
     else delete next.q
     navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -384,7 +385,8 @@ export function Header({
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     const next = { ...(routeSearch || {}) }
-                    if (searchValue) next.q = searchValue
+                    const trimmedValue = searchValue.trim()
+                    if (trimmedValue) next.q = trimmedValue
                     else delete next.q
                     navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
                   } else if (e.key === "Escape") {

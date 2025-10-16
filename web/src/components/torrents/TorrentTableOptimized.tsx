@@ -242,9 +242,10 @@ interface TorrentTableOptimizedProps {
     selectedTotalSize: number,
     selectionFilters?: TorrentFilters
   ) => void
+  onResetSelection?: (handler?: () => void) => void
 }
 
-export const TorrentTableOptimized = memo(function TorrentTableOptimized({ instanceId, filters, selectedTorrent, onTorrentSelect, addTorrentModalOpen, onAddTorrentModalChange, onFilteredDataUpdate, onSelectionChange }: TorrentTableOptimizedProps) {
+export const TorrentTableOptimized = memo(function TorrentTableOptimized({ instanceId, filters, selectedTorrent, onTorrentSelect, addTorrentModalOpen, onAddTorrentModalChange, onFilteredDataUpdate, onSelectionChange, onResetSelection }: TorrentTableOptimizedProps) {
   // State management
   // Move default values outside the component for stable references
   // (This should be at module scope, not inside the component)
@@ -305,6 +306,24 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   // State for range select capabilities for checkboxes
   const shiftPressedRef = useRef<boolean>(false)
   const lastSelectedIndexRef = useRef<number | null>(null)
+
+  const resetSelectionState = useCallback(() => {
+    setIsAllSelected(false)
+    setExcludedFromSelectAll(new Set())
+    setRowSelection({})
+    lastSelectedIndexRef.current = null
+  }, [setIsAllSelected, setExcludedFromSelectAll, setRowSelection])
+
+  useEffect(() => {
+    if (!onResetSelection) {
+      return
+    }
+
+    onResetSelection(resetSelectionState)
+    return () => {
+      onResetSelection(undefined)
+    }
+  }, [onResetSelection, resetSelectionState])
 
   // These should be defined at module scope, not inside the component, to ensure stable references
   // (If not already, move them to the top of the file)
@@ -389,10 +408,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     prepareReannounceAction,
   } = useTorrentActions({
     instanceId,
-    onActionComplete: () => {
-      setRowSelection({})
-      lastSelectedIndexRef.current = null // Reset anchor after actions
-    },
+    onActionComplete: resetSelectionState,
   })
 
   // Fetch metadata using shared hook
@@ -440,10 +456,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   // Debounce search to prevent excessive filtering (200ms delay for faster response)
   const debouncedSearch = useDebounce(globalFilter, 200)
   const routeSearch = useSearch({ strict: false }) as { q?: string }
-  const searchFromRoute = routeSearch?.q || ""
+  const rawRouteSearch = typeof routeSearch?.q === "string" ? routeSearch.q : ""
+  const searchFromRoute = rawRouteSearch.trim()
 
   // Use route search if present, otherwise fall back to local immediate/debounced search
-  const effectiveSearch = searchFromRoute || immediateSearch || debouncedSearch
+  const effectiveSearch = (searchFromRoute || immediateSearch || debouncedSearch).trim()
 
   // Keep local input state in sync with route query so internal effects remain consistent
   useEffect(() => {
@@ -1082,10 +1099,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       setIsLoadingMoreRows(false)
 
       // Clear selection state when data changes
-      setIsAllSelected(false)
-      setExcludedFromSelectAll(new Set())
-      setRowSelection({})
-      lastSelectedIndexRef.current = null // Reset anchor on filter/search change
+      resetSelectionState() // Reset anchor on filter/search change
 
       // User-initiated change: scroll to top
       if (parentRef.current) {
@@ -1101,15 +1115,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         virtualizer.measure()
       }, 0)
     }
-  }, [filters, effectiveSearch, instanceId, virtualizer, sortedTorrents.length, setRowSelection, lastUserAction])
+  }, [filters, effectiveSearch, instanceId, virtualizer, sortedTorrents.length, lastUserAction, resetSelectionState])
 
   // Clear selection handler for keyboard navigation
   const clearSelection = useCallback(() => {
-    setIsAllSelected(false)
-    setExcludedFromSelectAll(new Set())
-    setRowSelection({})
-    lastSelectedIndexRef.current = null // Reset anchor on clear selection
-  }, [setRowSelection])
+    resetSelectionState()
+  }, [resetSelectionState])
 
   // Set up keyboard navigation with selection clearing
   useKeyboardNavigation({
@@ -1221,16 +1232,35 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
   // Direct category handler for context menu submenu
   const handleSetCategoryDirect = useCallback((category: string, hashes: string[]) => {
+    const usingSelectAll = isAllSelected
+    const resolvedFilters = usingSelectAll ? (selectAllFilters ?? filters) : undefined
+    const resolvedSearch = usingSelectAll ? effectiveSearch : undefined
+    const resolvedExclusions = usingSelectAll ? Array.from(excludedFromSelectAll) : undefined
+    const clientHashes = hashes.length > 0 ? hashes : selectedHashes
+    const totalSelected = usingSelectAll ? effectiveSelectionCount : (clientHashes.length || 1)
+
     handleSetCategory(
       category,
-      hashes,
-      false, // Not using select all when directly setting from context menu
-      undefined,
-      undefined,
-      Array.from(excludedFromSelectAll),
-      undefined
+      usingSelectAll ? [] : hashes,
+      usingSelectAll,
+      resolvedFilters,
+      resolvedSearch,
+      resolvedExclusions,
+      {
+        clientHashes,
+        totalSelected,
+      }
     )
-  }, [handleSetCategory, excludedFromSelectAll])
+  }, [
+    handleSetCategory,
+    isAllSelected,
+    selectAllFilters,
+    filters,
+    effectiveSearch,
+    excludedFromSelectAll,
+    selectedHashes,
+    effectiveSelectionCount,
+  ])
 
   const handleSetLocationWrapper = useCallback((location: string) => {
     handleSetLocation(
