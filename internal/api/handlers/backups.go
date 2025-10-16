@@ -171,6 +171,13 @@ func (h *BackupsHandler) TriggerBackup(w http.ResponseWriter, r *http.Request) {
 	RespondJSON(w, http.StatusAccepted, run)
 }
 
+type backupRunWithProgress struct {
+	*models.BackupRun
+	ProgressCurrent    int     `json:"progressCurrent"`
+	ProgressTotal      int     `json:"progressTotal"`
+	ProgressPercentage float64 `json:"progressPercentage"`
+}
+
 func (h *BackupsHandler) ListRuns(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
@@ -198,7 +205,21 @@ func (h *BackupsHandler) ListRuns(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, runs)
+	// Merge progress data for running backups
+	runsWithProgress := make([]*backupRunWithProgress, len(runs))
+	for i, run := range runs {
+		runWithProgress := &backupRunWithProgress{BackupRun: run}
+		if run.Status == models.BackupRunStatusRunning {
+			if progress := h.service.GetProgress(run.ID); progress != nil {
+				runWithProgress.ProgressCurrent = progress.Current
+				runWithProgress.ProgressTotal = progress.Total
+				runWithProgress.ProgressPercentage = progress.Percentage
+			}
+		}
+		runsWithProgress[i] = runWithProgress
+	}
+
+	RespondJSON(w, http.StatusOK, runsWithProgress)
 }
 
 func (h *BackupsHandler) GetManifest(w http.ResponseWriter, r *http.Request) {

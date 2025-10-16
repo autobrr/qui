@@ -37,6 +37,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Progress } from "@/components/ui/progress"
 import {
   Select,
   SelectContent,
@@ -548,22 +549,35 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <Card>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 auto-rows-fr">
+          <Card className="flex flex-col">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Last backup</CardTitle>
               <Clock className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex-1 flex flex-col">
               {runsLoading ? (
                 <p className="text-sm text-muted-foreground">Loading...</p>
               ) : lastRun ? (
-                <div className="space-y-2">
-                  <Badge variant={statusVariants[lastRun.status]}>{runKindLabels[lastRun.kind]}</Badge>
-                  <p className="text-sm">
-                    {formatDateSafe(lastRun.completedAt ?? lastRun.requestedAt, formatDate)}
-                  </p>
-                  <p className="text-xs text-muted-foreground capitalize">Status: {lastRun.status}</p>
+                <div className="flex flex-col flex-1">
+                  <div className="space-y-2">
+                    <Badge variant={statusVariants[lastRun.status]}>{runKindLabels[lastRun.kind]}</Badge>
+                    <p className="text-sm">
+                      {formatDateSafe(lastRun.completedAt ?? lastRun.requestedAt, formatDate)}
+                    </p>
+                  </div>
+                  <div className="min-h-[44px] flex items-start pt-1 mt-auto">
+                    {lastRun.status === "running" && lastRun.progressTotal && lastRun.progressTotal > 0 ? (
+                      <div className="space-y-1 w-full">
+                        <Progress value={lastRun.progressPercentage ?? 0} className="h-2" />
+                        <p className="text-xs text-muted-foreground">
+                          {lastRun.progressCurrent ?? 0} of {lastRun.progressTotal} torrents ({(lastRun.progressPercentage ?? 0).toFixed(1)}%)
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground capitalize">Status: {lastRun.status}</p>
+                    )}
+                  </div>
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">No backups yet</p>
@@ -571,7 +585,7 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="flex flex-col">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Queued backups</CardTitle>
               <RefreshCw className="h-4 w-4 text-muted-foreground" />
@@ -586,7 +600,7 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="flex flex-col">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Instance</CardTitle>
               <Download className="h-4 w-4 text-muted-foreground" />
@@ -1342,7 +1356,16 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
                     <TableRow key={run.id}>
                       <TableCell className="font-medium">{runKindLabels[run.kind]}</TableCell>
                       <TableCell>
-                        <Badge variant={statusVariants[run.status]} className="capitalize">{run.status}</Badge>
+                        {run.status === "running" && run.progressTotal && run.progressTotal > 0 ? (
+                          <div className="space-y-1 min-w-[200px]">
+                            <Progress value={run.progressPercentage ?? 0} className="h-2" />
+                            <p className="text-xs text-muted-foreground">
+                              {run.progressCurrent ?? 0} of {run.progressTotal} torrents ({(run.progressPercentage ?? 0).toFixed(1)}%)
+                            </p>
+                          </div>
+                        ) : (
+                          <Badge variant={statusVariants[run.status]} className="capitalize">{run.status}</Badge>
+                        )}
                       </TableCell>
                       <TableCell>{formatDateSafe(run.requestedAt, formatDate)}</TableCell>
                       <TableCell>{formatDateSafe(run.completedAt, formatDate)}</TableCell>

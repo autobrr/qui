@@ -40,6 +40,12 @@ type Config struct {
 	WorkerCount  int
 }
 
+type BackupProgress struct {
+	Current    int
+	Total      int
+	Percentage float64
+}
+
 type Service struct {
 	store       *models.BackupStore
 	syncManager *qbittorrent.SyncManager
@@ -53,6 +59,9 @@ type Service struct {
 
 	inflight   map[int]int64
 	inflightMu sync.Mutex
+
+	progress   map[int64]*BackupProgress
+	progressMu sync.RWMutex
 
 	now func() time.Time
 }
@@ -110,6 +119,7 @@ func NewService(store *models.BackupStore, syncManager *qbittorrent.SyncManager,
 		cacheDir:    cacheDir,
 		jobs:        make(chan job, cfg.WorkerCount*2),
 		inflight:    make(map[int]int64),
+		progress:    make(map[int64]*BackupProgress),
 		now:         func() time.Time { return time.Now().UTC() },
 	}
 }
@@ -381,7 +391,10 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 	categoryCounts := make(map[string]int)
 	var totalBytes int64
 
-	for _, torrent := range torrents {
+	// Initialize progress tracking
+	s.setProgress(j.runID, 0, len(torrents))
+
+	for idx, torrent := range torrents {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
@@ -532,6 +545,9 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 			manifestItem.TorrentBlob = *blobRelPath
 		}
 		manifestItems = append(manifestItems, manifestItem)
+
+		// Update progress after processing each torrent
+		s.setProgress(j.runID, idx+1, len(torrents))
 	}
 
 	manifest := Manifest{
@@ -701,6 +717,38 @@ func (s *Service) clearInstance(instanceID int, runID int64) {
 	if current, ok := s.inflight[instanceID]; ok && current == runID {
 		delete(s.inflight, instanceID)
 	}
+
+	s.progressMu.Lock()
+	delete(s.progress, runID)
+	s.progressMu.Unlock()
+}
+
+func (s *Service) setProgress(runID int64, current, total int) {
+	percentage := 0.0
+	if total > 0 {
+		percentage = float64(current) / float64(total) * 100.0
+	}
+
+	s.progressMu.Lock()
+	s.progress[runID] = &BackupProgress{
+		Current:    current,
+		Total:      total,
+		Percentage: percentage,
+	}
+	s.progressMu.Unlock()
+}
+
+func (s *Service) GetProgress(runID int64) *BackupProgress {
+	s.progressMu.RLock()
+	defer s.progressMu.RUnlock()
+	if p, ok := s.progress[runID]; ok {
+		return &BackupProgress{
+			Current:    p.Current,
+			Total:      p.Total,
+			Percentage: p.Percentage,
+		}
+	}
+	return nil
 }
 
 func (s *Service) markInstance(instanceID int, runID int64) bool {

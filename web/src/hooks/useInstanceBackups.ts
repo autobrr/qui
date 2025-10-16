@@ -78,7 +78,7 @@ export function useBackupRuns(
         return 5_000
       }
       const hasActiveRun = runs.some((run: BackupRun) => run.status === "pending" || run.status === "running")
-      return hasActiveRun ? 3_000 : 15_000
+      return hasActiveRun ? 500 : 15_000
     },
   })
 }

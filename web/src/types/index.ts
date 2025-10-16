@@ -350,6 +350,9 @@ export interface BackupRun {
   categories?: Record<string, BackupCategorySnapshot>
   tags?: string[]
   errorMessage?: string | null
+  progressCurrent?: number
+  progressTotal?: number
+  progressPercentage?: number
 }
 
 export interface BackupManifestItem {
