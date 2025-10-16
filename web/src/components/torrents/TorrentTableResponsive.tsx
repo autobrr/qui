@@ -3,11 +3,11 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useEffect, useState } from "react"
-import { TorrentTableOptimized } from "./TorrentTableOptimized"
-import { TorrentCardsMobile } from "./TorrentCardsMobile"
 import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
 import type { Torrent, TorrentFilters } from "@/types"
+import { useEffect, useState } from "react"
+import { TorrentCardsMobile } from "./TorrentCardsMobile"
+import { TorrentTableOptimized } from "./TorrentTableOptimized"
 
 interface TorrentTableResponsiveProps {
   instanceId: number
@@ -21,7 +21,7 @@ interface TorrentTableResponsiveProps {
 
 export function TorrentTableResponsive(props: TorrentTableResponsiveProps) {
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768)
-  const { updateSelection, setFiltersAndInstance } = useTorrentSelection()
+  const { updateSelection, setFiltersAndInstance, setResetHandler } = useTorrentSelection()
 
   // Update context with current filters and instance
   useEffect(() => {
@@ -67,5 +67,11 @@ export function TorrentTableResponsive(props: TorrentTableResponsiveProps) {
   if (isMobile) {
     return <TorrentCardsMobile {...memoizedProps} />
   }
-  return <TorrentTableOptimized {...memoizedProps} onSelectionChange={updateSelection} />
+  return (
+    <TorrentTableOptimized
+      {...memoizedProps}
+      onSelectionChange={updateSelection}
+      onResetSelection={setResetHandler}
+    />
+  )
 }
