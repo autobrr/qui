@@ -1931,6 +1931,9 @@ components:
         supportsTorrentCreation:
           type: boolean
           description: Whether the instance supports creating torrents via the Web API.
+        supportsTorrentExport:
+          type: boolean
+          description: Whether the instance supports exporting torrent files via the Web API (requires WebAPI 2.8.11+, qBittorrent 4.5.0+).
         supportsSetTags:
           type: boolean
           description: Whether the instance supports replacing tags on torrents.

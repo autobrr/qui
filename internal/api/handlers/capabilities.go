@@ -10,6 +10,7 @@ import (
 // InstanceCapabilitiesResponse describes supported features for an instance.
 type InstanceCapabilitiesResponse struct {
 	SupportsTorrentCreation bool   `json:"supportsTorrentCreation"`
+	SupportsTorrentExport   bool   `json:"supportsTorrentExport"`
 	SupportsSetTags         bool   `json:"supportsSetTags"`
 	SupportsTrackerHealth   bool   `json:"supportsTrackerHealth"`
 	SupportsTrackerEditing  bool   `json:"supportsTrackerEditing"`
@@ -23,6 +24,7 @@ type InstanceCapabilitiesResponse struct {
 func NewInstanceCapabilitiesResponse(client *internalqbittorrent.Client) InstanceCapabilitiesResponse {
 	capabilities := InstanceCapabilitiesResponse{
 		SupportsTorrentCreation: client.SupportsTorrentCreation(),
+		SupportsTorrentExport:   client.SupportsTorrentExport(),
 		SupportsSetTags:         client.SupportsSetTags(),
 		SupportsTrackerHealth:   client.SupportsTrackerHealth(),
 		SupportsTrackerEditing:  client.SupportsTrackerEditing(),

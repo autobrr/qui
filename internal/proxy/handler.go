@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/autobrr/autobrr/pkg/sharedhttp"
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -74,6 +75,7 @@ func NewHandler(clientPool *qbittorrent.ClientPool, clientAPIKeyStore *models.Cl
 		ModifyResponse: h.modifyResponse,
 		BufferPool:     bufferPool,
 		ErrorHandler:   h.errorHandler,
+		Transport:      sharedhttp.Transport,
 	}
 
 	return h
