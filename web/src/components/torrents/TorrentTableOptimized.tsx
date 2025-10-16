@@ -456,10 +456,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   // Debounce search to prevent excessive filtering (200ms delay for faster response)
   const debouncedSearch = useDebounce(globalFilter, 200)
   const routeSearch = useSearch({ strict: false }) as { q?: string }
-  const searchFromRoute = routeSearch?.q || ""
+  const rawRouteSearch = typeof routeSearch?.q === "string" ? routeSearch.q : ""
+  const searchFromRoute = rawRouteSearch.trim()
 
   // Use route search if present, otherwise fall back to local immediate/debounced search
-  const effectiveSearch = searchFromRoute || immediateSearch || debouncedSearch
+  const effectiveSearch = (searchFromRoute || immediateSearch || debouncedSearch).trim()
 
   // Keep local input state in sync with route query so internal effects remain consistent
   useEffect(() => {
