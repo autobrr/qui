@@ -24,14 +24,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
-import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstances } from "@/hooks/useInstances"
 import { useIncognitoMode } from "@/lib/incognito"
 import { cn, formatErrorMessage } from "@/lib/utils"
 import type { InstanceResponse } from "@/types"
-import { Link } from "@tanstack/react-router"
 import {
-  Archive,
   CheckCircle,
   Edit,
   Eye,
@@ -55,8 +52,6 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const displayUrl = instance.host
-  const { data: capabilities } = useInstanceCapabilities(instance.id, { enabled: instance.connected })
-  const supportsTorrentExport = capabilities?.supportsTorrentExport ?? true
 
 
   const handleTest = async () => {
@@ -132,17 +127,6 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
                   <RefreshCw className="mr-2 h-4 w-4" />
                   Test Connection
                 </DropdownMenuItem>
-                {supportsTorrentExport && (
-                  <DropdownMenuItem asChild>
-                    <Link
-                      to="/instances/$instanceId/backups"
-                      params={{ instanceId: instance.id.toString() }}
-                    >
-                      <Archive className="mr-2 h-4 w-4" />
-                      View Backups
-                    </Link>
-                  </DropdownMenuItem>
-                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={() => setShowDeleteDialog(true)}
