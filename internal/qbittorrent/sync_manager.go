@@ -255,7 +255,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 			filteredTorrents, trackerMap, _ = sm.enrichTorrentsWithTrackerData(ctx, client, filteredTorrents, trackerMap, true)
 		}
 
-		filteredTorrents = sm.applyManualFilters(client, filteredTorrents, filters, mainData, useSubcategories)
+		filteredTorrents = sm.applyManualFilters(client, filteredTorrents, filters, mainData, categories, useSubcategories)
 	} else {
 		// Use library filtering for single selections
 		log.Debug().
@@ -1606,32 +1606,36 @@ func (sm *SyncManager) filterTorrentsByGlob(torrents []qbt.Torrent, pattern stri
 
 // applyManualFilters applies all filters manually when library filtering is insufficient.
 // Callers hydrate tracker data beforehand when status filters depend on tracker health.
-func (sm *SyncManager) applyManualFilters(client *Client, torrents []qbt.Torrent, filters FilterOptions, mainData *qbt.MainData, useSubcategories bool) []qbt.Torrent {
+func (sm *SyncManager) applyManualFilters(
+	client *Client,
+	torrents []qbt.Torrent,
+	filters FilterOptions,
+	mainData *qbt.MainData,
+	categories map[string]qbt.Category,
+	useSubcategories bool,
+) []qbt.Torrent {
 	var filtered []qbt.Torrent
 
+	var categoryNames []string
+	if useSubcategories {
+		categoryNames = collectCategoryNames(mainData, categories)
+	}
+
 	// Category set for O(1) lookups
-	// When subcategories are enabled, we need to include child categories
 	categorySet := make(map[string]struct{}, len(filters.Categories))
 	for _, c := range filters.Categories {
 		categorySet[c] = struct{}{}
-		// If subcategories are enabled and mainData has server state with subcategories enabled,
-		// we need to also include all subcategories
-	if useSubcategories && c != "" {
-		// Add all subcategories of this category
-		// We check if each category in the full list starts with the parent category + "/"
-		if mainData != nil && mainData.Categories != nil {
-			for catName := range mainData.Categories {
-				if strings.HasPrefix(catName, c+"/") {
-					categorySet[catName] = struct{}{}
-				}
-			}
-			}
+		if useSubcategories && c != "" {
+			expandCategorySet(categorySet, c, categoryNames)
 		}
 	}
 
 	excludeCategorySet := make(map[string]struct{}, len(filters.ExcludeCategories))
 	for _, c := range filters.ExcludeCategories {
 		excludeCategorySet[c] = struct{}{}
+		if useSubcategories && c != "" {
+			expandCategorySet(excludeCategorySet, c, categoryNames)
+		}
 	}
 
 	// Prepare tag filter strings (lower-cased/trimmed) to reuse across torrents (avoid per-torrent allocations)
@@ -1930,6 +1934,49 @@ func hasNestedCategories(categories map[string]qbt.Category) bool {
 		}
 	}
 	return false
+}
+
+func collectCategoryNames(mainData *qbt.MainData, categories map[string]qbt.Category) []string {
+	var mainCount int
+	if mainData != nil && mainData.Categories != nil {
+		mainCount = len(mainData.Categories)
+	}
+	if len(categories) == 0 && mainCount == 0 {
+		return nil
+	}
+
+	names := make([]string, 0, len(categories)+mainCount)
+	seen := make(map[string]struct{}, len(categories))
+
+	for name := range categories {
+		names = append(names, name)
+		seen[name] = struct{}{}
+	}
+
+	if mainCount > 0 {
+		for name := range mainData.Categories {
+			if _, exists := seen[name]; exists {
+				continue
+			}
+			names = append(names, name)
+			seen[name] = struct{}{}
+		}
+	}
+
+	return names
+}
+
+func expandCategorySet(target map[string]struct{}, parent string, categoryNames []string) {
+	if len(categoryNames) == 0 {
+		return
+	}
+
+	prefix := parent + "/"
+	for _, name := range categoryNames {
+		if strings.HasPrefix(name, prefix) {
+			target[name] = struct{}{}
+		}
+	}
 }
 
 // Torrent state categories for fast lookup

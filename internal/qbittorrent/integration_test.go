@@ -159,7 +159,7 @@ func TestSyncManager_ApplyManualFilters_Exclusions(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		result := sm.applyManualFilters(nil, torrents, tc.filters, mainData, false)
+		result := sm.applyManualFilters(nil, torrents, tc.filters, mainData, nil, false)
 		assert.ElementsMatch(t, tc.expected, hashes(result), tc.name)
 	}
 }
