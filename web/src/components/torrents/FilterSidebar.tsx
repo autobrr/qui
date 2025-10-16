@@ -210,9 +210,10 @@ const FilterSidebarComponent = ({
   const { data: capabilities } = useInstanceCapabilities(instanceId)
   const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? true
   const supportsTrackerEditing = capabilities?.supportsTrackerEditing ?? true
+  const supportsSubcategories = capabilities?.supportsSubcategories ?? false
   const { preferences } = useInstancePreferences(instanceId)
   const preferenceUseSubcategories = preferences?.use_subcategories
-  const subcategoriesEnabled = preferenceUseSubcategories ?? useSubcategories ?? false
+  const subcategoriesEnabled = supportsSubcategories && (preferenceUseSubcategories ?? useSubcategories ?? false)
 
   // Use compact view state hook
   const { viewMode, cycleViewMode } = usePersistedCompactViewState("compact")

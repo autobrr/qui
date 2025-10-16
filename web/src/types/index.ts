@@ -59,6 +59,7 @@ export interface InstanceCapabilities {
   supportsRenameTorrent: boolean
   supportsRenameFile: boolean
   supportsRenameFolder: boolean
+  supportsSubcategories: boolean
   webAPIVersion?: string
 }
 

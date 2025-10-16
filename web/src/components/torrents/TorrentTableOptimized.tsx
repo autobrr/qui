@@ -304,6 +304,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     totalCount?: number
     torrentsLength?: number
     useSubcategories?: boolean
+    supportsSubcategories?: boolean
   }>({})
   const serverStateRef = useRef<{ instanceId: number, state: ServerState | null }>({
     instanceId,
@@ -540,7 +541,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   })
 
   const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? true
-  const allowSubcategories = preferences?.use_subcategories ?? subcategoriesFromData ?? false
+  const supportsSubcategories = capabilities?.supportsSubcategories ?? false
+  const allowSubcategories = supportsSubcategories && (preferences?.use_subcategories ?? subcategoriesFromData ?? false)
 
   // Delayed loading state to avoid flicker on fast loads
   useEffect(() => {
@@ -572,7 +574,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     const nextCounts = counts ?? lastMetadataRef.current.counts
     const nextCategories = categories ?? lastMetadataRef.current.categories
     const nextTags = tags ?? lastMetadataRef.current.tags
-    const nextUseSubcategories = subcategoriesFromData ?? lastMetadataRef.current.useSubcategories
+    const prevSupportsSubcategories = lastMetadataRef.current.supportsSubcategories ?? false
+    const previousUseSubcategories = lastMetadataRef.current.useSubcategories ?? false
+    const nextSupportsSubcategories = supportsSubcategories
+    const nextUseSubcategories = nextSupportsSubcategories
+      ? (subcategoriesFromData ?? previousUseSubcategories)
+      : false
     const nextTotalCount = totalCount
 
     const hasAnyMetadata =
@@ -590,7 +597,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       nextCounts !== lastMetadataRef.current.counts ||
       nextCategories !== lastMetadataRef.current.categories ||
       nextTags !== lastMetadataRef.current.tags ||
-      nextUseSubcategories !== lastMetadataRef.current.useSubcategories ||
+      nextSupportsSubcategories !== prevSupportsSubcategories ||
+      nextUseSubcategories !== previousUseSubcategories ||
       nextTotalCount !== lastMetadataRef.current.totalCount
 
     const torrentsLengthChanged = torrents.length !== (lastMetadataRef.current.torrentsLength ?? -1)
@@ -605,7 +613,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       nextCounts,
       nextCategories,
       nextTags,
-      nextUseSubcategories ?? false
+      nextUseSubcategories
     )
 
     lastMetadataRef.current = {
@@ -615,8 +623,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       totalCount: nextTotalCount,
       torrentsLength: torrents.length,
       useSubcategories: nextUseSubcategories,
+      supportsSubcategories: nextSupportsSubcategories,
     }
-  }, [counts, categories, tags, totalCount, torrents, isLoading, onFilteredDataUpdate, subcategoriesFromData])
+  }, [counts, categories, tags, totalCount, torrents, isLoading, onFilteredDataUpdate, subcategoriesFromData, supportsSubcategories])
 
   // Use torrents directly from backend (already sorted)
   const sortedTorrents = torrents

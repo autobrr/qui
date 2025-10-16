@@ -27,6 +27,7 @@ type Client struct {
 	supportsRenameTorrent   bool
 	supportsRenameFile      bool
 	supportsRenameFolder    bool
+	supportsSubcategories   bool
 	lastHealthCheck         time.Time
 	isHealthy               bool
 	syncManager             *qbt.SyncManager
@@ -81,6 +82,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 	supportsRenameTorrent := false
 	supportsRenameFile := false
 	supportsRenameFolder := false
+	supportsSubcategories := false
 	if webAPIVersion != "" {
 		if v, err := semver.NewVersion(webAPIVersion); err == nil {
 			setTagsMinVersion := semver.MustParse("2.11.4")
@@ -107,6 +109,10 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 			// Rename folder: qBittorrent 4.4.0+ (WebAPI 2.8.4+)
 			renameFolderMinVersion := semver.MustParse("2.8.4")
 			supportsRenameFolder = !v.LessThan(renameFolderMinVersion)
+
+			// Subcategories: qBittorrent 4.6+ (WebAPI 2.9.0+)
+			subcategoriesMinVersion := semver.MustParse("2.9.0")
+			supportsSubcategories = !v.LessThan(subcategoriesMinVersion)
 		}
 	}
 
@@ -121,6 +127,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 		supportsRenameTorrent:   supportsRenameTorrent,
 		supportsRenameFile:      supportsRenameFile,
 		supportsRenameFolder:    supportsRenameFolder,
+		supportsSubcategories:   supportsSubcategories,
 		lastHealthCheck:         time.Now(),
 		isHealthy:               true,
 		optimisticUpdates: ttlcache.New(ttlcache.Options[string, *OptimisticTorrentUpdate]{}.
@@ -159,6 +166,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 		Bool("supportsTorrentExport", supportsTorrentExport).
 		Bool("supportsTrackerEditing", supportsTrackerEditing).
 		Bool("includeTrackers", supportsInclude).
+		Bool("supportsSubcategories", supportsSubcategories).
 		Bool("tlsSkipVerify", tlsSkipVerify).
 		Msg("qBittorrent client created successfully")
 
@@ -280,6 +288,12 @@ func (c *Client) SupportsRenameFolder() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.supportsRenameFolder
+}
+
+func (c *Client) SupportsSubcategories() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.supportsSubcategories
 }
 
 // getTorrentsByHashes returns multiple torrents by their hashes (O(n) where n is number of requested hashes)

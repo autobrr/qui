@@ -1917,6 +1917,9 @@ components:
         supportsRenameFolder:
           type: boolean
           description: Whether the instance supports renaming folders within torrents (requires WebAPI 2.8.4+, qBittorrent 4.4.0+).
+        supportsSubcategories:
+          type: boolean
+          description: Whether the instance supports nested torrent categories (requires WebAPI 2.9.0+, qBittorrent 4.6.0+).
         webAPIVersion:
           type: string
           nullable: true
