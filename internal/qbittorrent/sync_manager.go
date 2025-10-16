@@ -2909,7 +2909,7 @@ func (sm *SyncManager) RenameTorrentFile(ctx context.Context, instanceID int, ha
 	}
 
 	if !client.SupportsRenameFile() {
-		return fmt.Errorf("qBittorrent instance does not support file renaming (requires WebAPI 2.7.0+, qBittorrent 4.3.3+)")
+		return fmt.Errorf("qBittorrent instance does not support file renaming (requires WebAPI 2.4.0+, qBittorrent 4.2.1+)")
 	}
 
 	if err := sm.validateTorrentsExist(client, []string{hash}, "rename file"); err != nil {

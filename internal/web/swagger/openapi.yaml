@@ -1913,7 +1913,7 @@ components:
           description: Whether the instance supports renaming torrents (requires WebAPI 2.0.0+, qBittorrent 4.1.0+).
         supportsRenameFile:
           type: boolean
-          description: Whether the instance supports renaming files within torrents (requires WebAPI 2.7.0+, qBittorrent 4.3.3+).
+          description: Whether the instance supports renaming files within torrents (requires WebAPI 2.4.0+, qBittorrent 4.2.1+).
         supportsRenameFolder:
           type: boolean
           description: Whether the instance supports renaming folders within torrents (requires WebAPI 2.7.0+, qBittorrent 4.3.3+).

@@ -510,7 +510,7 @@ qui automatically detects the features available on each qBittorrent instance an
 | --- | --- | --- |
 | **Rename Torrent** | 4.1.0+ (Web API 2.0.0+) | Change the display name of torrents |
 | **Tracker Editing** | 4.1.5+ (Web API 2.2.0+) | Edit, add, and remove tracker URLs |
-| **Rename File** | 4.3.3+ (Web API 2.7.0+) | Rename individual files within torrents |
+| **Rename File** | 4.2.1+ (Web API 2.4.0+) | Rename individual files within torrents |
 | **Rename Folder** | 4.3.3+ (Web API 2.7.0+) | Rename folders within torrents |
 | **Torrent Export (.torrent download)** | 4.5.0+ (Web API 2.8.11+) | Download .torrent files via `/api/v2/torrents/export`; first appeared in 4.5.0beta1 |
 | **Subcategories** | 4.6.0+ (Web API 2.9.0+) | Support for nested category structures (e.g., `Movies/Action`) |

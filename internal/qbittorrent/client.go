@@ -102,8 +102,8 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 			renameTorrentMinVersion := semver.MustParse("2.0.0")
 			supportsRenameTorrent = !v.LessThan(renameTorrentMinVersion)
 
-			// Rename file: qBittorrent 4.3.3+ (WebAPI 2.7.0+)
-			renameFileMinVersion := semver.MustParse("2.7.0")
+			// Rename file: qBittorrent 4.2.1+ (WebAPI 2.4.0+)
+			renameFileMinVersion := semver.MustParse("2.4.0")
 			supportsRenameFile = !v.LessThan(renameFileMinVersion)
 
 			// Rename folder: qBittorrent 4.3.3+ (WebAPI 2.7.0+)
