@@ -212,7 +212,9 @@ export function useTorrentsList(
     supportsTorrentCreation: capabilities?.supportsTorrentCreation ?? true,
     capabilities,
     serverState: data?.serverState ?? null,
-    useSubcategories: data?.useSubcategories ?? false,
+    useSubcategories: data?.useSubcategories
+      ?? data?.serverState?.use_subcategories
+      ?? false,
     isLoading: isLoading && currentPage === 0,
     isFetching,
     isLoadingMore,

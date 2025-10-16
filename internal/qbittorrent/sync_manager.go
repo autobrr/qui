@@ -217,7 +217,9 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	}
 
 	useSubcategories := false
-	if hasNestedCategories(categories) {
+	if mainData != nil && mainData.ServerState != (qbt.ServerState{}) {
+		useSubcategories = mainData.ServerState.UseSubcategories
+	} else if hasNestedCategories(categories) {
 		useSubcategories = true
 	} else if mainData != nil && mainData.Categories != nil {
 		useSubcategories = hasNestedCategories(mainData.Categories)
@@ -1213,7 +1215,9 @@ func (sm *SyncManager) GetTorrentCounts(ctx context.Context, instanceID int) (*T
 	// Calculate counts using the shared function - pass mainData for tracker information
 	trackerHealthSupported := client != nil && client.supportsTrackerInclude()
 	useSubcategories := false
-	if mainData != nil && mainData.Categories != nil {
+	if mainData != nil && mainData.ServerState != (qbt.ServerState{}) {
+		useSubcategories = mainData.ServerState.UseSubcategories
+	} else if mainData != nil && mainData.Categories != nil {
 		useSubcategories = hasNestedCategories(mainData.Categories)
 	}
 	counts, _, _ := sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents, mainData, nil, trackerHealthSupported, useSubcategories)

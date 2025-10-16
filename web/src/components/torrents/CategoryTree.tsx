@@ -13,10 +13,10 @@ import {
 } from "@/components/ui/context-menu"
 import type { Category } from "@/types"
 import { ChevronDown, ChevronRight, Edit, FolderPlus, Trash2 } from "lucide-react"
-import { memo, useCallback, useMemo } from "react"
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react"
+import { memo, useCallback, useMemo } from "react"
 
-interface CategoryNode {
+export interface CategoryNode {
   name: string
   displayName: string
   category: Category
@@ -46,7 +46,7 @@ interface CategoryTreeProps {
   getCategoryCount: (category: string) => string
 }
 
-function buildCategoryTree(
+export function buildCategoryTree(
   categories: Record<string, Category>,
   counts: Record<string, number>
 ): CategoryNode[] {
@@ -159,11 +159,11 @@ const CategoryTreeNode = memo(({
   }, [onCategoryPointerDown, node.name])
 
   const handleCreateSubcategory = useCallback(() => {
-    if (isSynthetic) {
+    if (!node.name) {
       return
     }
     onCreateSubcategory(node.name)
-  }, [isSynthetic, node.name, onCreateSubcategory])
+  }, [node.name, onCreateSubcategory])
 
   const handleEditCategory = useCallback(() => {
     if (isSynthetic) {
@@ -226,7 +226,7 @@ const CategoryTreeNode = memo(({
         <ContextMenuContent>
           {useSubcategories && (
             <>
-              <ContextMenuItem onClick={handleCreateSubcategory} disabled={isSynthetic}>
+              <ContextMenuItem onClick={handleCreateSubcategory} disabled={!node.name}>
                 <FolderPlus className="mr-2 size-4" />
                 Create subcategory
               </ContextMenuItem>

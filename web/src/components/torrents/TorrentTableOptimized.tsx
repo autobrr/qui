@@ -500,6 +500,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const activeSortField = sorting.length > 0 ? getBackendSortField(sorting[0].id) : "added_on"
   const activeSortOrder: "asc" | "desc" = sorting.length > 0 ? (sorting[0].desc ? "desc" : "asc") : "desc"
 
+  const effectiveIncludedCategories = filters?.expandedCategories ?? filters?.categories ?? []
+  const effectiveExcludedCategories = filters?.expandedExcludeCategories ?? filters?.excludeCategories ?? []
+
   // Fetch torrents data with backend sorting
   const {
     torrents,
@@ -510,7 +513,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     tags,
     serverState,
     capabilities,
-    useSubcategories,
+    useSubcategories: subcategoriesFromData,
     isLoading,
     isCachedData,
     isStaleData,
@@ -522,12 +525,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     filters: {
       status: filters?.status || [],
       excludeStatus: filters?.excludeStatus || [],
-      categories: filters?.categories || [],
-      excludeCategories: filters?.excludeCategories || [],
+      categories: effectiveIncludedCategories,
+      excludeCategories: effectiveExcludedCategories,
       tags: filters?.tags || [],
       excludeTags: filters?.excludeTags || [],
       trackers: filters?.trackers || [],
       excludeTrackers: filters?.excludeTrackers || [],
+      expandedCategories: filters?.expandedCategories,
+      expandedExcludeCategories: filters?.expandedExcludeCategories,
       expr: columnFiltersExpr || undefined,
     },
     sort: activeSortField,
@@ -535,6 +540,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   })
 
   const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? true
+  const allowSubcategories = preferences?.use_subcategories ?? subcategoriesFromData ?? false
 
   // Delayed loading state to avoid flicker on fast loads
   useEffect(() => {
@@ -566,7 +572,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     const nextCounts = counts ?? lastMetadataRef.current.counts
     const nextCategories = categories ?? lastMetadataRef.current.categories
     const nextTags = tags ?? lastMetadataRef.current.tags
-    const nextUseSubcategories = useSubcategories ?? lastMetadataRef.current.useSubcategories
+    const nextUseSubcategories = subcategoriesFromData ?? lastMetadataRef.current.useSubcategories
     const nextTotalCount = totalCount
 
     const hasAnyMetadata =
@@ -610,7 +616,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       torrentsLength: torrents.length,
       useSubcategories: nextUseSubcategories,
     }
-  }, [counts, categories, tags, totalCount, torrents, isLoading, onFilteredDataUpdate, useSubcategories])
+  }, [counts, categories, tags, totalCount, torrents, isLoading, onFilteredDataUpdate, subcategoriesFromData])
 
   // Use torrents directly from backend (already sorted)
   const sortedTorrents = torrents
@@ -1602,6 +1608,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                     onExport={handleExportWrapper}
                     isExporting={isExportingTorrent}
                     capabilities={capabilities}
+                    useSubcategories={allowSubcategories}
                   >
                     <div
                       className={`flex border-b cursor-pointer hover:bg-muted/50 ${row.getIsSelected() ? "bg-muted/50" : ""} ${isSelected ? "bg-accent" : ""}`}

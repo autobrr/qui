@@ -18,7 +18,7 @@ import { TORRENT_ACTIONS } from "@/hooks/useTorrentActions"
 import { getLinuxIsoName, getLinuxSavePath, useIncognitoMode } from "@/lib/incognito"
 import { getTorrentDisplayHash } from "@/lib/torrent-utils"
 import { copyTextToClipboard } from "@/lib/utils"
-import type { InstanceCapabilities, Torrent } from "@/types"
+import type { Category, InstanceCapabilities, Torrent } from "@/types"
 import {
   CheckCircle,
   Copy,
@@ -62,12 +62,13 @@ interface TorrentContextMenuProps {
   onPrepareRenameTorrent: (hashes: string[], torrents?: Torrent[]) => void
   onPrepareRenameFile: (hashes: string[], torrents?: Torrent[]) => void
   onPrepareRenameFolder: (hashes: string[], torrents?: Torrent[]) => void
-  availableCategories?: Record<string, unknown>
+  availableCategories?: Record<string, Category>
   onSetCategory?: (category: string, hashes: string[]) => void
   isPending?: boolean
   onExport?: (hashes: string[], torrents: Torrent[]) => Promise<void> | void
   isExporting?: boolean
   capabilities?: InstanceCapabilities
+  useSubcategories?: boolean
 }
 
 export const TorrentContextMenu = memo(function TorrentContextMenu({
@@ -96,6 +97,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   onExport,
   isExporting = false,
   capabilities,
+  useSubcategories = false,
 }: TorrentContextMenuProps) {
   const [incognitoMode] = useIncognitoMode()
 
@@ -274,6 +276,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
           onSetCategory={handleSetCategory}
           isPending={isPending}
           currentCategory={torrent.category}
+          useSubcategories={useSubcategories}
         />
         <ContextMenuItem
           onClick={() => onPrepareLocation(hashes, torrents)}

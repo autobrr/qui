@@ -215,6 +215,8 @@ export interface TorrentFilters {
   excludeStatus: string[]
   categories: string[]
   excludeCategories: string[]
+  expandedCategories?: string[]
+  expandedExcludeCategories?: string[]
   tags: string[]
   excludeTags: string[]
   trackers: string[]
