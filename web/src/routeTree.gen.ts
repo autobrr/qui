@@ -15,10 +15,10 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
+import { Route as AuthenticatedBackupsRouteImport } from './routes/_authenticated/backups'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedInstancesRouteImport } from './routes/_authenticated/instances'
 import { Route as AuthenticatedInstancesInstanceIdRouteImport } from './routes/_authenticated/instances.$instanceId'
-import { Route as AuthenticatedInstancesInstanceIdBackupsRouteImport } from './routes/_authenticated/instances.$instanceId.backups'
 import { Route as AuthenticatedInstancesIndexRouteImport } from './routes/_authenticated/instances.index'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as IndexRouteImport } from './routes/index'
@@ -59,6 +59,11 @@ const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedBackupsRoute = AuthenticatedBackupsRouteImport.update({
+  id: '/backups',
+  path: '/backups',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedInstancesIndexRoute =
   AuthenticatedInstancesIndexRouteImport.update({
     id: '/',
@@ -71,32 +76,26 @@ const AuthenticatedInstancesInstanceIdRoute =
     path: '/$instanceId',
     getParentRoute: () => AuthenticatedInstancesRoute,
   } as any)
-const AuthenticatedInstancesInstanceIdBackupsRoute =
-  AuthenticatedInstancesInstanceIdBackupsRouteImport.update({
-    id: '/$instanceId/backups',
-    path: '/$instanceId/backups',
-    getParentRoute: () => AuthenticatedInstancesRoute,
-  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
+  '/backups': typeof AuthenticatedBackupsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/instances': typeof AuthenticatedInstancesRouteWithChildren
   '/settings': typeof AuthenticatedSettingsRoute
-  '/instances/$instanceId': typeof AuthenticatedInstancesInstanceIdRoute
-  '/instances/$instanceId/backups': typeof AuthenticatedInstancesInstanceIdBackupsRoute
+  '/instances/$instanceId': typeof AuthenticatedInstancesInstanceIdRouteWithChildren
   '/instances/': typeof AuthenticatedInstancesIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
+  '/backups': typeof AuthenticatedBackupsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/settings': typeof AuthenticatedSettingsRoute
-  '/instances/$instanceId': typeof AuthenticatedInstancesInstanceIdRoute
-  '/instances/$instanceId/backups': typeof AuthenticatedInstancesInstanceIdBackupsRoute
+  '/instances/$instanceId': typeof AuthenticatedInstancesInstanceIdRouteWithChildren
   '/instances': typeof AuthenticatedInstancesIndexRoute
 }
 export interface FileRoutesById {
@@ -105,11 +104,11 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
+  '/_authenticated/backups': typeof AuthenticatedBackupsRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/instances': typeof AuthenticatedInstancesRouteWithChildren
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
-  '/_authenticated/instances/$instanceId': typeof AuthenticatedInstancesInstanceIdRoute
-  '/_authenticated/instances/$instanceId/backups': typeof AuthenticatedInstancesInstanceIdBackupsRoute
+  '/_authenticated/instances/$instanceId': typeof AuthenticatedInstancesInstanceIdRouteWithChildren
   '/_authenticated/instances/': typeof AuthenticatedInstancesIndexRoute
 }
 export interface FileRouteTypes {
@@ -118,34 +117,37 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/setup'
+    | '/backups'
     | '/dashboard'
     | '/instances'
     | '/settings'
     | '/instances/$instanceId'
-    | '/instances/$instanceId/backups'
     | '/instances/'
+    | '/instances/$instanceId/backups'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/login'
     | '/setup'
+    | '/backups'
     | '/dashboard'
     | '/settings'
     | '/instances/$instanceId'
-    | '/instances/$instanceId/backups'
     | '/instances'
+    | '/instances/$instanceId/backups'
   id:
     | '__root__'
     | '/'
     | '/_authenticated'
     | '/login'
     | '/setup'
+    | '/_authenticated/backups'
     | '/_authenticated/dashboard'
     | '/_authenticated/instances'
     | '/_authenticated/settings'
     | '/_authenticated/instances/$instanceId'
-    | '/_authenticated/instances/$instanceId/backups'
     | '/_authenticated/instances/'
+    | '/_authenticated/instances/$instanceId/backups'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -206,6 +208,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDashboardRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/backups': {
+      id: '/_authenticated/backups'
+      path: '/backups'
+      fullPath: '/backups'
+      preLoaderRoute: typeof AuthenticatedBackupsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/instances/': {
       id: '/_authenticated/instances/'
       path: '/'
@@ -220,28 +229,21 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedInstancesInstanceIdRouteImport
       parentRoute: typeof AuthenticatedInstancesRoute
     }
-    '/_authenticated/instances/$instanceId/backups': {
-      id: '/_authenticated/instances/$instanceId/backups'
-      path: '/$instanceId/backups'
-      fullPath: '/instances/$instanceId/backups'
-      preLoaderRoute: typeof AuthenticatedInstancesInstanceIdBackupsRouteImport
-      parentRoute: typeof AuthenticatedInstancesRoute
-    }
   }
 }
 
+const AuthenticatedInstancesInstanceIdRouteWithChildren =
+  AuthenticatedInstancesInstanceIdRoute
+
 interface AuthenticatedInstancesRouteChildren {
-  AuthenticatedInstancesInstanceIdRoute: typeof AuthenticatedInstancesInstanceIdRoute
-  AuthenticatedInstancesInstanceIdBackupsRoute: typeof AuthenticatedInstancesInstanceIdBackupsRoute
+  AuthenticatedInstancesInstanceIdRoute: typeof AuthenticatedInstancesInstanceIdRouteWithChildren
   AuthenticatedInstancesIndexRoute: typeof AuthenticatedInstancesIndexRoute
 }
 
 const AuthenticatedInstancesRouteChildren: AuthenticatedInstancesRouteChildren =
   {
     AuthenticatedInstancesInstanceIdRoute:
-      AuthenticatedInstancesInstanceIdRoute,
-    AuthenticatedInstancesInstanceIdBackupsRoute:
-      AuthenticatedInstancesInstanceIdBackupsRoute,
+      AuthenticatedInstancesInstanceIdRouteWithChildren,
     AuthenticatedInstancesIndexRoute: AuthenticatedInstancesIndexRoute,
   }
 
@@ -251,12 +253,14 @@ const AuthenticatedInstancesRouteWithChildren =
   )
 
 interface AuthenticatedRouteChildren {
+  AuthenticatedBackupsRoute: typeof AuthenticatedBackupsRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedInstancesRoute: typeof AuthenticatedInstancesRouteWithChildren
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
+  AuthenticatedBackupsRoute: AuthenticatedBackupsRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedInstancesRoute: AuthenticatedInstancesRouteWithChildren,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,

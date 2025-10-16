@@ -23,6 +23,7 @@ import {
   TooltipContent,
   TooltipTrigger
 } from "@/components/ui/tooltip"
+import { useLayoutRoute } from "@/contexts/LayoutRouteContext"
 import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
 import { useAuth } from "@/hooks/useAuth"
 import { useDebounce } from "@/hooks/useDebounce"
@@ -33,8 +34,8 @@ import { api } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import type { InstanceCapabilities } from "@/types"
 import { useQuery } from "@tanstack/react-query"
-import { Link, useNavigate, useRouterState, useSearch } from "@tanstack/react-router"
-import { Archive, ChevronsUpDown, FileEdit, FunnelPlus, FunnelX, HardDrive, Home, Info, ListTodo, LogOut, Menu, Plus, Search, Server, Settings, X } from "lucide-react"
+import { Link, useNavigate, useSearch } from "@tanstack/react-router"
+import { ChevronsUpDown, FileEdit, FunnelPlus, FunnelX, HardDrive, Home, Info, ListTodo, LogOut, Menu, Plus, Search, Server, Settings, X } from "lucide-react"
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useHotkeys } from "react-hotkeys-hook"
 
@@ -50,6 +51,7 @@ export function Header({
   const { logout } = useAuth()
   const navigate = useNavigate()
   const routeSearch = useSearch({ strict: false }) as { q?: string; modal?: string; [key: string]: unknown }
+  const { state: layoutRouteState } = useLayoutRoute()
 
   // Get selection state from context
   const {
@@ -63,26 +65,9 @@ export function Header({
     clearSelection,
   } = useTorrentSelection()
 
-  const instanceId = useRouterState({
-    select: (s) => {
-      const match = s.matches.find(
-        (m) =>
-          m.routeId === "/_authenticated/instances/$instanceId" ||
-          m.routeId === "/_authenticated/instances/$instanceId/backups"
-      )
-      return (match?.params as { instanceId?: string } | undefined)?.instanceId
-    },
-  })
-  const selectedInstanceId = useMemo(() => {
-    const parsed = instanceId ? parseInt(instanceId, 10) : NaN
-    return Number.isFinite(parsed) ? parsed : null
-  }, [instanceId])
+  const selectedInstanceId = layoutRouteState.instanceId
   const isInstanceRoute = selectedInstanceId !== null
-  const isInstanceBackupsRoute = useRouterState({
-    select: (s) =>
-      s.matches.some((m) => m.routeId === "/_authenticated/instances/$instanceId/backups"),
-  })
-  const shouldShowInstanceControls = isInstanceRoute && !isInstanceBackupsRoute
+  const shouldShowInstanceControls = layoutRouteState.showInstanceControls && isInstanceRoute
 
   const shouldShowQuiOnMobile = !isInstanceRoute
   const [searchValue, setSearchValue] = useState<string>(routeSearch?.q || "")
@@ -165,7 +150,6 @@ export function Header({
   })
 
   const supportsTorrentCreation = instanceCapabilities?.supportsTorrentCreation ?? true
-  const supportsTorrentExport = instanceCapabilities?.supportsTorrentExport ?? true
 
   return (
     <header className="sticky top-0 z-50 hidden md:flex flex-wrap lg:flex-nowrap items-start lg:items-center justify-between sm:border-b bg-background pl-2 pr-4 md:pl-4 md:pr-4 lg:pl-0 lg:static py-2 lg:py-0 lg:h-16">
@@ -328,24 +312,6 @@ export function Header({
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>Torrent creation tasks</TooltipContent>
-              </Tooltip>
-            )}
-            {isInstanceRoute && selectedInstanceId !== null && supportsTorrentExport && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="hidden md:inline-flex"
-                    onClick={() => navigate({
-                      to: "/instances/$instanceId/backups",
-                      params: { instanceId: selectedInstanceId.toString() },
-                    })}
-                  >
-                    <Archive className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Backups</TooltipContent>
               </Tooltip>
             )}
           </div>

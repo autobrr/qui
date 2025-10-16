@@ -4,7 +4,7 @@
  */
 
 import { Link } from "@tanstack/react-router"
-import { ArrowDownToLine, CircleHelp, CircleX, Clock, Download, FileText, ListChecks, RefreshCw, Trash, Undo2 } from "lucide-react"
+import { ArrowDownToLine, CircleHelp, CircleX, Clock, Download, FileText, HardDrive, ListChecks, RefreshCw, Trash, Undo2 } from "lucide-react"
 import type { ChangeEvent } from "react"
 import { useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
@@ -70,6 +70,7 @@ import {
 } from "@/hooks/useInstanceBackups"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstances } from "@/hooks/useInstances"
+import { usePersistedInstanceSelection } from "@/hooks/usePersistedInstanceSelection"
 import { api } from "@/lib/api"
 import type {
   BackupCategorySnapshot,
@@ -81,10 +82,7 @@ import type {
   RestorePlan,
   RestoreResult
 } from "@/types"
-
-interface InstanceBackupsProps {
-  instanceId: number
-}
+import { useQueries } from "@tanstack/react-query"
 
 type SettingsFormState = {
   enabled: boolean
@@ -136,20 +134,71 @@ const statusVariants: Record<BackupRunStatus, "default" | "secondary" | "destruc
   canceled: "outline",
 }
 
-export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
+export function InstanceBackups() {
   const { instances } = useInstances()
+  const [selectedInstanceId, setSelectedInstanceId] = usePersistedInstanceSelection("backups")
+
+  // Fetch capabilities for all instances to filter out unsupported ones
+  const instanceCapabilitiesQueries = useQueries({
+    queries: (instances || []).map(inst => ({
+      queryKey: ["instance-capabilities", inst.id],
+      queryFn: () => api.getInstanceCapabilities(inst.id),
+      staleTime: 300000,
+    })),
+  })
+
+  // Filter instances to only show those that support backups
+  const supportedInstances = useMemo(() => {
+    if (!instances) return []
+    return instances.filter((_inst, index) => {
+      const capabilitiesData = instanceCapabilitiesQueries[index]?.data
+      // If capabilities haven't loaded yet, assume supported to avoid flickering
+      return capabilitiesData?.supportsTorrentExport ?? true
+    })
+  }, [instances, instanceCapabilitiesQueries])
+
+  const hasInstances = (instances?.length ?? 0) > 0
+  const hasSupportedInstances = supportedInstances.length > 0
+
+  useEffect(() => {
+    if (selectedInstanceId === undefined) {
+      return
+    }
+
+    const stillSupported = supportedInstances.some(inst => inst.id === selectedInstanceId)
+    if (!stillSupported) {
+      setSelectedInstanceId(undefined)
+    }
+  }, [selectedInstanceId, setSelectedInstanceId, supportedInstances])
+
+  const instanceId = selectedInstanceId
+
+  const handleInstanceSelection = (value: string) => {
+    const parsed = parseInt(value, 10)
+    if (Number.isNaN(parsed)) {
+      setSelectedInstanceId(undefined)
+      return
+    }
+
+    setSelectedInstanceId(parsed)
+  }
+
   const instance = instances?.find(i => i.id === instanceId)
-  const { data: capabilities, isLoading: capabilitiesLoading } = useInstanceCapabilities(instanceId)
+
+  // Only load capabilities when an instance is selected
+  const { data: capabilities, isLoading: capabilitiesLoading } = useInstanceCapabilities(instanceId, { enabled: !!instanceId })
   const supportsTorrentExport = capabilities?.supportsTorrentExport ?? true
 
-  const { data: settings, isLoading: settingsLoading } = useBackupSettings(instanceId, { enabled: supportsTorrentExport })
-  const { data: runs, isLoading: runsLoading } = useBackupRuns(instanceId, { enabled: supportsTorrentExport })
-  const updateSettings = useUpdateBackupSettings(instanceId)
-  const triggerBackup = useTriggerBackup(instanceId)
-  const deleteRun = useDeleteBackupRun(instanceId)
-  const deleteAllRuns = useDeleteAllBackupRuns(instanceId)
-  const previewRestore = usePreviewRestore(instanceId)
-  const executeRestore = useExecuteRestore(instanceId)
+  // Only load data when instance is selected AND supports backups
+  const shouldLoadData = !!instanceId && supportsTorrentExport
+  const { data: settings, isLoading: settingsLoading } = useBackupSettings(instanceId ?? 0, { enabled: shouldLoadData })
+  const { data: runs, isLoading: runsLoading } = useBackupRuns(instanceId ?? 0, { enabled: shouldLoadData })
+  const updateSettings = useUpdateBackupSettings(instanceId ?? 0)
+  const triggerBackup = useTriggerBackup(instanceId ?? 0)
+  const deleteRun = useDeleteBackupRun(instanceId ?? 0)
+  const deleteAllRuns = useDeleteAllBackupRuns(instanceId ?? 0)
+  const previewRestore = usePreviewRestore(instanceId ?? 0)
+  const executeRestore = useExecuteRestore(instanceId ?? 0)
   const { formatDate } = useDateTimeFormatters()
 
   const [formState, setFormState] = useState<SettingsFormState | null>(null)
@@ -170,7 +219,9 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
   const [restoreResult, setRestoreResult] = useState<RestoreResult | null>(null)
   const [restoreExcludedHashes, setRestoreExcludedHashes] = useState<string[]>([])
 
-  const { data: manifest, isLoading: manifestLoading } = useBackupManifest(instanceId, manifestRunId, { enabled: supportsTorrentExport })
+  const { data: manifest, isLoading: manifestLoading } = useBackupManifest(instanceId ?? 0, manifestRunId, {
+    enabled: supportsTorrentExport && !!instanceId,
+  })
 
   const manifestCategoryEntries = useMemo(() => {
     if (!manifest?.categories) return [] as Array<[string, BackupCategorySnapshot]>
@@ -505,6 +556,75 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
     executeRestore.reset()
   }
 
+  // Show instance selector when no instance is selected
+  if (!instanceId) {
+    const selectionHeading = hasSupportedInstances? "Select an instance to manage backups": hasInstances? "No compatible instances found": "Connect a qBittorrent instance"
+
+    const selectionMessage = !hasInstances? "No qBittorrent instances configured. Add an instance first to use the backup feature.": hasSupportedInstances? "Choose a qBittorrent instance from the dropdown above to view and manage its backups.": "None of your qBittorrent instances support torrent backups yet. Upgrade to qBittorrent 4.5.0+ (Web API 2.8.11+) to enable this feature."
+
+    return (
+      <TooltipProvider>
+        <div className="space-y-6 p-4 lg:p-6">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div className="flex-1 space-y-2">
+              <h1 className="text-2xl font-semibold">Backups</h1>
+              <p className="text-sm text-muted-foreground">
+                Manage torrent backups for your instances
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {hasSupportedInstances && (
+                <Select
+                  value={instanceId !== undefined ? instanceId.toString() : undefined}
+                  onValueChange={handleInstanceSelection}
+                >
+                  <SelectTrigger className="!w-[240px] !max-w-[240px]">
+                    <div className="flex items-center gap-2 min-w-0 overflow-hidden">
+                      <HardDrive className="h-4 w-4 flex-shrink-0" />
+                      <span className="truncate">
+                        <SelectValue placeholder="Select instance" />
+                      </span>
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {supportedInstances.map((inst) => (
+                      <SelectItem key={inst.id} value={inst.id.toString()}>
+                        <div className="flex items-center max-w-40 gap-2">
+                          <span className="truncate">{inst.name}</span>
+                          <span
+                            className={`ml-auto h-2 w-2 rounded-full flex-shrink-0 ${
+                              inst.connected ? "bg-green-500" : "bg-red-500"
+                            }`}
+                          />
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+          </div>
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center py-12 space-y-4">
+              <HardDrive className="h-16 w-16 text-muted-foreground/40" />
+              <div className="text-center space-y-2">
+                <p className="text-lg font-medium">{selectionHeading}</p>
+                <p className="text-sm text-muted-foreground max-w-md">{selectionMessage}</p>
+              </div>
+              {!hasSupportedInstances && (
+                <Button variant="outline" asChild>
+                  <Link to="/instances">
+                    Go to Instances
+                  </Link>
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </TooltipProvider>
+    )
+  }
+
   if (capabilitiesLoading) {
     return <div className="p-6">Loading instance capabilities...</div>
   }
@@ -521,11 +641,13 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
             {`qBittorrent Web API 2.8.11+ (qBittorrent 4.5.0+) is required to export .torrent files for backups. This instance reports ${reportedVersion}, so torrent exports are disabled.`}
           </AlertDescription>
         </Alert>
-        <Button variant="outline" asChild>
-          <Link to="/instances/$instanceId" params={{ instanceId: instanceId.toString() }}>
-            Return to instance overview
-          </Link>
-        </Button>
+        {instanceId && (
+          <Button variant="outline" asChild>
+            <Link to="/instances/$instanceId" params={{ instanceId: instanceId.toString() }}>
+              Return to instance overview
+            </Link>
+          </Button>
+        )}
       </div>
     )
   }
@@ -534,18 +656,50 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
     <TooltipProvider>
       <div className="space-y-6 p-4 lg:p-6">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div>
+          <div className="flex-1 space-y-2">
             <h1 className="text-2xl font-semibold">Backups</h1>
             <p className="text-sm text-muted-foreground">
-              Manage torrent backups for {instance?.name ?? `instance ${instanceId}`}
+              Manage torrent backups for your instances
             </p>
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" asChild>
-              <Link to="/instances/$instanceId" params={{ instanceId: instanceId.toString() }}>
-                Back to Torrents
-              </Link>
-            </Button>
+          <div className="flex items-center gap-2">
+            {/* Instance selector */}
+            {hasSupportedInstances && (
+              <Select
+                value={instanceId !== undefined ? instanceId.toString() : undefined}
+                onValueChange={handleInstanceSelection}
+              >
+                <SelectTrigger className="!w-[240px] !max-w-[240px]">
+                  <div className="flex items-center gap-2 min-w-0 overflow-hidden">
+                    <HardDrive className="h-4 w-4 flex-shrink-0" />
+                    <span className="truncate">
+                      <SelectValue placeholder="Select instance" />
+                    </span>
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  {supportedInstances.map((inst) => (
+                    <SelectItem key={inst.id} value={inst.id.toString()}>
+                      <div className="flex items-center max-w-40 gap-2">
+                        <span className="truncate">{inst.name}</span>
+                        <span
+                          className={`ml-auto h-2 w-2 rounded-full flex-shrink-0 ${
+                            inst.connected ? "bg-green-500" : "bg-red-500"
+                          }`}
+                        />
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            {instanceId && (
+              <Button variant="outline" asChild>
+                <Link to="/instances/$instanceId" params={{ instanceId: instanceId.toString() }}>
+                  Back to Torrents
+                </Link>
+              </Button>
+            )}
           </div>
         </div>
 
@@ -1396,7 +1550,7 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
                             aria-label="Download backup"
                           >
                             <a
-                              href={api.getBackupDownloadUrl(instanceId, run.id)}
+                              href={api.getBackupDownloadUrl(instanceId!, run.id)}
                               rel="noreferrer"
                             >
                               <Download className="h-4 w-4" />
@@ -1526,7 +1680,7 @@ export function InstanceBackups({ instanceId }: InstanceBackupsProps) {
                               {item.torrentBlob && manifestRunId ? (
                                 <Button variant="ghost" size="icon" asChild>
                                   <a
-                                    href={api.getBackupTorrentDownloadUrl(instanceId, manifestRunId, item.hash)}
+                                    href={api.getBackupTorrentDownloadUrl(instanceId!, manifestRunId, item.hash)}
                                     download
                                     aria-label={`Download ${item.name} torrent`}
                                   >

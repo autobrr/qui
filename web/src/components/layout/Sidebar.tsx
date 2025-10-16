@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils"
 import { useQuery } from "@tanstack/react-query"
 import { Link, useLocation } from "@tanstack/react-router"
 import {
+  Archive,
   Copyright,
   Github,
   HardDrive,
@@ -41,6 +42,11 @@ const navigation: NavItem[] = [
     title: "Instances",
     href: "/instances",
     icon: Server,
+  },
+  {
+    title: "Backups",
+    href: "/backups",
+    icon: Archive,
   },
   {
     title: "Settings",
