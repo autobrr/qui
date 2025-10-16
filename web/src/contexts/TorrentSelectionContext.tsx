@@ -5,7 +5,7 @@
 
 import type { Torrent, TorrentFilters } from "@/types"
 import type { ReactNode } from "react"
-import { createContext, useCallback, useContext, useState } from "react"
+import { createContext, useCallback, useContext, useRef, useState } from "react"
 
 interface TorrentSelectionContextType {
   isSelectionMode: boolean
@@ -32,6 +32,7 @@ interface TorrentSelectionContextType {
   ) => void
   clearSelection: () => void
   setFiltersAndInstance: (filters: TorrentSelectionContextType["filters"], instanceId: number) => void
+  setResetHandler: (handler?: () => void) => void
 }
 
 const TorrentSelectionContext = createContext<TorrentSelectionContextType | undefined>(undefined)
@@ -47,6 +48,7 @@ export function TorrentSelectionProvider({ children }: { children: ReactNode }) 
   const [baseFilters, setBaseFilters] = useState<TorrentSelectionContextType["filters"]>()
   const [effectiveFilters, setEffectiveFilters] = useState<TorrentSelectionContextType["filters"]>()
   const [instanceId, setInstanceId] = useState<number>()
+  const resetHandlerRef = useRef<(() => void) | undefined>(undefined)
 
   // Calculate showManagementBar based on current state
   const showManagementBar = selectedHashes.length > 0 || isAllSelected
@@ -70,6 +72,7 @@ export function TorrentSelectionProvider({ children }: { children: ReactNode }) 
   }, [baseFilters])
 
   const clearSelection = useCallback(() => {
+    resetHandlerRef.current?.()
     setSelectedHashes([])
     setSelectedTorrents([])
     setIsAllSelected(false)
@@ -90,6 +93,10 @@ export function TorrentSelectionProvider({ children }: { children: ReactNode }) 
     })
   }, [selectedHashes, isAllSelected])
 
+  const setResetHandler = useCallback((handler?: () => void) => {
+    resetHandlerRef.current = handler
+  }, [])
+
   return (
     <TorrentSelectionContext.Provider value={{
       isSelectionMode,
@@ -106,6 +113,7 @@ export function TorrentSelectionProvider({ children }: { children: ReactNode }) 
       updateSelection,
       clearSelection,
       setFiltersAndInstance,
+      setResetHandler,
     }}>
       {children}
     </TorrentSelectionContext.Provider>

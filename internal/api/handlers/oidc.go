@@ -23,6 +23,16 @@ import (
 	"github.com/autobrr/qui/internal/domain"
 )
 
+const (
+	oidcInitMaxAttempts    = 5
+	oidcInitInitialBackoff = time.Second
+)
+
+var (
+	oidcNewProvider = oidc.NewProvider
+	oidcSleep       = time.Sleep
+)
+
 type OIDCHandler struct {
 	config         *domain.Config
 	provider       *oidc.Provider
@@ -81,36 +91,19 @@ func NewOIDCHandler(cfg *domain.Config, sessionManager *scs.SessionManager) (*OI
 
 	scopes := []string{"openid", "profile", "email"}
 
-	issuer := cfg.OIDCIssuer
 	ctx := context.Background()
 
-	// First try with original issuer
-	provider, err := oidc.NewProvider(ctx, issuer)
+	provider, usedIssuer, err := discoverOIDCProvider(ctx, cfg.OIDCIssuer)
 	if err != nil {
-		// If failed and issuer ends with slash, try without
-		if strings.HasSuffix(issuer, "/") {
-			withoutSlash := strings.TrimRight(issuer, "/")
-			log.Debug().
-				Str("original_issuer", issuer).
-				Str("retry_issuer", withoutSlash).
-				Msg("retrying OIDC provider initialization without trailing slash")
+		log.Error().Err(err).Msg("failed to initialize OIDC provider")
+		return nil, fmt.Errorf("failed to initialize OIDC provider: %w", err)
+	}
 
-			provider, err = oidc.NewProvider(ctx, withoutSlash)
-		} else {
-			// If failed and issuer doesn't end with slash, try with
-			withSlash := issuer + "/"
-			log.Debug().
-				Str("original_issuer", issuer).
-				Str("retry_issuer", withSlash).
-				Msg("retrying OIDC provider initialization with trailing slash")
-
-			provider, err = oidc.NewProvider(ctx, withSlash)
-		}
-
-		if err != nil {
-			log.Error().Err(err).Msg("failed to initialize OIDC provider")
-			return nil, fmt.Errorf("failed to initialize OIDC provider: %w", err)
-		}
+	if usedIssuer != cfg.OIDCIssuer {
+		log.Trace().
+			Str("requested_issuer", cfg.OIDCIssuer).
+			Str("resolved_issuer", usedIssuer).
+			Msg("initialized OIDC provider using alternate issuer formatting")
 	}
 
 	var claims struct {
@@ -122,7 +115,7 @@ func NewOIDCHandler(cfg *domain.Config, sessionManager *scs.SessionManager) (*OI
 	if err := provider.Claims(&claims); err != nil {
 		log.Warn().Err(err).Msg("failed to parse provider claims for endpoints")
 	} else {
-		log.Debug().
+		log.Trace().
 			Str("authorization_endpoint", claims.AuthURL).
 			Str("token_endpoint", claims.TokenURL).
 			Str("jwks_uri", claims.JWKSURL).
@@ -157,6 +150,44 @@ func (h *OIDCHandler) Routes(r chi.Router) {
 	r.Use(middleware.ThrottleBacklog(1, 1, time.Second))
 	r.Get("/config", h.getConfig)
 	r.Get("/callback", h.handleCallback)
+}
+
+func discoverOIDCProvider(ctx context.Context, issuer string) (*oidc.Provider, string, error) {
+	candidates := []string{issuer}
+	if strings.HasSuffix(issuer, "/") {
+		candidates = append(candidates, strings.TrimRight(issuer, "/"))
+	} else {
+		candidates = append(candidates, issuer+"/")
+	}
+
+	var lastErr error
+	for attempt := 1; attempt <= oidcInitMaxAttempts; attempt++ {
+		for idx, candidate := range candidates {
+			provider, err := oidcNewProvider(ctx, candidate)
+			if err == nil {
+				return provider, candidate, nil
+			}
+
+			lastErr = err
+			log.Warn().
+				Err(err).
+				Int("attempt", attempt).
+				Int("candidate_index", idx).
+				Str("issuer", candidate).
+				Msg("failed to initialize OIDC provider candidate")
+		}
+
+		if attempt < oidcInitMaxAttempts {
+			backoff := oidcInitInitialBackoff << (attempt - 1)
+			log.Trace().
+				Int("next_attempt", attempt+1).
+				Dur("sleep", backoff).
+				Msg("retrying OIDC provider initialization after backoff")
+			oidcSleep(backoff)
+		}
+	}
+
+	return nil, "", fmt.Errorf("attempted %d times without success: %w", oidcInitMaxAttempts, lastErr)
 }
 
 func (h *OIDCHandler) getConfig(w http.ResponseWriter, r *http.Request) {
@@ -246,7 +277,7 @@ func (h *OIDCHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 		if err := userInfo.Claims(&userInfoClaims); err != nil {
 			log.Warn().Err(err).Msg("failed to parse claims from userinfo endpoint, proceeding with ID token claims if available")
 		} else {
-			log.Debug().
+			log.Trace().
 				Str("userinfo_email", userInfoClaims.Email).
 				Str("userinfo_username", userInfoClaims.PreferredUsername).
 				Str("userinfo_name", userInfoClaims.Name).
@@ -288,7 +319,7 @@ func (h *OIDCHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	log.Debug().
+	log.Trace().
 		Str("email", claims.Email).
 		Str("preferred_username", claims.PreferredUsername).
 		Str("nickname", claims.Nickname).
@@ -345,7 +376,7 @@ func (h *OIDCHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 		frontendURL = h.config.BaseURL + "/dashboard"
 	}
 
-	log.Debug().
+	log.Trace().
 		Str("redirect_url", frontendURL).
 		Str("oidc_redirect_url", h.config.OIDCRedirectURL).
 		Str("base_url", h.config.BaseURL).
