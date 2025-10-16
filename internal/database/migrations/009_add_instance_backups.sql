@@ -6,7 +6,6 @@ CREATE TABLE IF NOT EXISTS instance_backup_settings (
     daily_enabled BOOLEAN NOT NULL DEFAULT 0,
     weekly_enabled BOOLEAN NOT NULL DEFAULT 0,
     monthly_enabled BOOLEAN NOT NULL DEFAULT 0,
-    keep_last INTEGER NOT NULL DEFAULT 3,
     keep_hourly INTEGER NOT NULL DEFAULT 0,
     keep_daily INTEGER NOT NULL DEFAULT 7,
     keep_weekly INTEGER NOT NULL DEFAULT 4,

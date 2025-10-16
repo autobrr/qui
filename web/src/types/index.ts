@@ -321,7 +321,6 @@ export interface BackupSettings {
   dailyEnabled: boolean
   weeklyEnabled: boolean
   monthlyEnabled: boolean
-  keepLast: number
   keepHourly: number
   keepDaily: number
   keepWeekly: number

@@ -37,7 +37,6 @@ type backupSettingsRequest struct {
 	DailyEnabled      bool    `json:"dailyEnabled"`
 	WeeklyEnabled     bool    `json:"weeklyEnabled"`
 	MonthlyEnabled    bool    `json:"monthlyEnabled"`
-	KeepLast          int     `json:"keepLast"`
 	KeepHourly        int     `json:"keepHourly"`
 	KeepDaily         int     `json:"keepDaily"`
 	KeepWeekly        int     `json:"keepWeekly"`
@@ -83,7 +82,6 @@ func (h *BackupsHandler) UpdateSettings(w http.ResponseWriter, r *http.Request) 
 		DailyEnabled:      req.DailyEnabled,
 		WeeklyEnabled:     req.WeeklyEnabled,
 		MonthlyEnabled:    req.MonthlyEnabled,
-		KeepLast:          req.KeepLast,
 		KeepHourly:        req.KeepHourly,
 		KeepDaily:         req.KeepDaily,
 		KeepWeekly:        req.KeepWeekly,

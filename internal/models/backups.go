@@ -19,7 +19,6 @@ type BackupSettings struct {
 	DailyEnabled      bool      `json:"dailyEnabled"`
 	WeeklyEnabled     bool      `json:"weeklyEnabled"`
 	MonthlyEnabled    bool      `json:"monthlyEnabled"`
-	KeepLast          int       `json:"keepLast"`
 	KeepHourly        int       `json:"keepHourly"`
 	KeepDaily         int       `json:"keepDaily"`
 	KeepWeekly        int       `json:"keepWeekly"`
@@ -39,7 +38,6 @@ func DefaultBackupSettings(instanceID int) *BackupSettings {
 		DailyEnabled:      false,
 		WeeklyEnabled:     false,
 		MonthlyEnabled:    false,
-		KeepLast:          3,
 		KeepHourly:        0,
 		KeepDaily:         7,
 		KeepWeekly:        4,
@@ -123,7 +121,7 @@ func NewBackupStore(db *sql.DB) *BackupStore {
 func (s *BackupStore) GetSettings(ctx context.Context, instanceID int) (*BackupSettings, error) {
 	query := `
         SELECT instance_id, enabled, hourly_enabled, daily_enabled, weekly_enabled, monthly_enabled,
-               keep_last, keep_hourly, keep_daily, keep_weekly, keep_monthly,
+               keep_hourly, keep_daily, keep_weekly, keep_monthly,
                include_categories, include_tags, custom_path, created_at, updated_at
         FROM instance_backup_settings
         WHERE instance_id = ?
@@ -143,7 +141,6 @@ func (s *BackupStore) GetSettings(ctx context.Context, instanceID int) (*BackupS
 		&settings.DailyEnabled,
 		&settings.WeeklyEnabled,
 		&settings.MonthlyEnabled,
-		&settings.KeepLast,
 		&settings.KeepHourly,
 		&settings.KeepDaily,
 		&settings.KeepWeekly,
@@ -183,16 +180,15 @@ func (s *BackupStore) UpsertSettings(ctx context.Context, settings *BackupSettin
 	query := `
         INSERT INTO instance_backup_settings (
             instance_id, enabled, hourly_enabled, daily_enabled, weekly_enabled, monthly_enabled,
-            keep_last, keep_hourly, keep_daily, keep_weekly, keep_monthly,
+            keep_hourly, keep_daily, keep_weekly, keep_monthly,
             include_categories, include_tags, custom_path
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(instance_id) DO UPDATE SET
             enabled = excluded.enabled,
             hourly_enabled = excluded.hourly_enabled,
             daily_enabled = excluded.daily_enabled,
             weekly_enabled = excluded.weekly_enabled,
             monthly_enabled = excluded.monthly_enabled,
-            keep_last = excluded.keep_last,
             keep_hourly = excluded.keep_hourly,
             keep_daily = excluded.keep_daily,
             keep_weekly = excluded.keep_weekly,
@@ -211,7 +207,6 @@ func (s *BackupStore) UpsertSettings(ctx context.Context, settings *BackupSettin
 		settings.DailyEnabled,
 		settings.WeeklyEnabled,
 		settings.MonthlyEnabled,
-		maxInt(settings.KeepLast, 0),
 		maxInt(settings.KeepHourly, 0),
 		maxInt(settings.KeepDaily, 0),
 		maxInt(settings.KeepWeekly, 0),
@@ -1038,7 +1033,7 @@ func (s *BackupStore) GetRun(ctx context.Context, runID int64) (*BackupRun, erro
 func (s *BackupStore) ListEnabledSettings(ctx context.Context) ([]*BackupSettings, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT instance_id, enabled, hourly_enabled, daily_enabled, weekly_enabled, monthly_enabled,
-		       keep_last, keep_hourly, keep_daily, keep_weekly, keep_monthly,
+		       keep_hourly, keep_daily, keep_weekly, keep_monthly,
 		       include_categories, include_tags, custom_path, created_at, updated_at
 		FROM instance_backup_settings
 		WHERE enabled = 1
@@ -1063,7 +1058,6 @@ func (s *BackupStore) ListEnabledSettings(ctx context.Context) ([]*BackupSetting
 			&s.DailyEnabled,
 			&s.WeeklyEnabled,
 			&s.MonthlyEnabled,
-			&s.KeepLast,
 			&s.KeepHourly,
 			&s.KeepDaily,
 			&s.KeepWeekly,
@@ -1154,51 +1148,6 @@ func (s *BackupStore) DeleteItemsByRunIDs(ctx context.Context, runIDs []int64) e
 
 	_, err := s.db.ExecContext(ctx, query, args...)
 	return err
-}
-
-func (s *BackupStore) DeleteRunsBeyondTotal(ctx context.Context, instanceID int, keep int) ([]int64, error) {
-	if keep <= 0 {
-		rows, err := s.db.QueryContext(ctx, `
-			SELECT id FROM instance_backup_runs
-			WHERE instance_id = ?
-		`, instanceID)
-		if err != nil {
-			return nil, err
-		}
-		defer rows.Close()
-
-		var ids []int64
-		for rows.Next() {
-			var id int64
-			if err := rows.Scan(&id); err != nil {
-				return nil, err
-			}
-			ids = append(ids, id)
-		}
-		return ids, rows.Err()
-	}
-
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id FROM instance_backup_runs
-		WHERE instance_id = ?
-		ORDER BY requested_at DESC
-		LIMIT -1 OFFSET ?
-	`, instanceID, keep)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	ids := make([]int64, 0)
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-
-	return ids, rows.Err()
 }
 
 func placeholders(count int) string {

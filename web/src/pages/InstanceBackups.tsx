@@ -90,7 +90,6 @@ type SettingsFormState = {
   dailyEnabled: boolean
   weeklyEnabled: boolean
   monthlyEnabled: boolean
-  keepLast: number
   keepHourly: number
   keepDaily: number
   keepWeekly: number
@@ -109,7 +108,7 @@ type SettingsToggleKey =
   | "includeCategories"
   | "includeTags"
 
-type SettingsNumericKey = "keepLast" | "keepHourly" | "keepDaily" | "keepWeekly" | "keepMonthly"
+type SettingsNumericKey = "keepHourly" | "keepDaily" | "keepWeekly" | "keepMonthly"
 
 type ExcludedTorrentMeta = {
   hash: string
@@ -303,7 +302,6 @@ export function InstanceBackups() {
         dailyEnabled: settings.dailyEnabled,
         weeklyEnabled: settings.weeklyEnabled,
         monthlyEnabled: settings.monthlyEnabled,
-        keepLast: settings.keepLast,
         keepHourly: settings.keepHourly,
         keepDaily: settings.keepDaily,
         keepWeekly: settings.keepWeekly,
@@ -845,42 +843,29 @@ export function InstanceBackups() {
                   </div>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="keep-last">Keep latest backups</Label>
-                    <Input
-                      id="keep-last"
-                      type="number"
-                      min={0}
-                      value={formState.keepLast}
-                      onChange={handleNumberChange("keepLast")}
-                    />
-                    <p className="text-xs text-muted-foreground">Maximum total backups to retain across all schedules</p>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="custom-path">Custom backup path</Label>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span
+                          className="inline-flex h-5 w-5 cursor-help items-center justify-center rounded-full text-muted-foreground hover:text-foreground"
+                        >
+                          <CircleHelp className="h-3.5 w-3.5" />
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Windows users: use double backslashes (e.g., backups\\instance-1)</p>
+                      </TooltipContent>
+                    </Tooltip>
                   </div>
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <Label htmlFor="custom-path">Custom backup path</Label>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span
-                            className="inline-flex h-5 w-5 cursor-help items-center justify-center rounded-full text-muted-foreground hover:text-foreground"
-                          >
-                            <CircleHelp className="h-3.5 w-3.5" />
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Windows users: use double backslashes (e.g., backups\\instance-1)</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                    <Input
-                      id="custom-path"
-                      value={formState.customPath ?? ""}
-                      onChange={handlePathChange}
-                      placeholder="backups/instance-1"
-                    />
-                    <p className="text-xs text-muted-foreground">Relative to qui data directory. Leave empty to use default.</p>
-                  </div>
+                  <Input
+                    id="custom-path"
+                    value={formState.customPath ?? ""}
+                    onChange={handlePathChange}
+                    placeholder="backups/instance-1"
+                  />
+                  <p className="text-xs text-muted-foreground">Relative to qui data directory. Leave empty to use default.</p>
                 </div>
 
                 <div className="space-y-2">

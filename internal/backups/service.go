@@ -147,11 +147,6 @@ func normalizeBackupSettings(settings *models.BackupSettings) bool {
 		settings.KeepMonthly = 0
 		changed = true
 	}
-	if settings.KeepLast < 0 {
-		settings.KeepLast = 0
-		changed = true
-	}
-
 	if settings.HourlyEnabled && settings.KeepHourly < 1 {
 		settings.KeepHourly = 1
 		changed = true
@@ -894,14 +889,6 @@ func (s *Service) applyRetention(ctx context.Context, instanceID int, settings *
 		if err := s.cleanupRunFiles(ctx, runIDs); err != nil {
 			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to cleanup old backup files")
 		}
-	}
-
-	totalIDs, err := s.store.DeleteRunsBeyondTotal(ctx, instanceID, settings.KeepLast)
-	if err != nil {
-		return err
-	}
-	if err := s.cleanupRunFiles(ctx, totalIDs); err != nil {
-		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to cleanup pruned backups")
 	}
 
 	return nil
