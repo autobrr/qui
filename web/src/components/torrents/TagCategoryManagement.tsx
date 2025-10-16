@@ -3,12 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState, useEffect } from "react"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { api } from "@/lib/api"
-import { toast } from "sonner"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,7 +13,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from "@/components/ui/alert-dialog"
-import type { Category } from "@/types";
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { api } from "@/lib/api"
+import type { Category } from "@/types"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useEffect, useState } from "react"
+import { toast } from "sonner"
 
 interface CreateTagDialogProps {
   open: boolean
@@ -361,6 +361,85 @@ export function DeleteCategoryDialog({ open, onOpenChange, instanceId, categoryN
           >
             Delete
           </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  )
+}
+
+interface DeleteEmptyCategoriesDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  instanceId: number
+  categories: Record<string, Category>
+  torrentCounts?: Record<string, number>
+}
+
+export function DeleteEmptyCategoriesDialog({
+  open,
+  onOpenChange,
+  instanceId,
+  categories,
+  torrentCounts = {},
+}: DeleteEmptyCategoriesDialogProps) {
+  const queryClient = useQueryClient()
+
+  const emptyCategories = Object.keys(categories).filter(categoryName => {
+    const count = torrentCounts[`category:${categoryName}`] || 0
+    return count === 0
+  })
+
+  const mutation = useMutation({
+    mutationFn: () => api.removeCategories(instanceId, emptyCategories),
+    onSuccess: () => {
+      queryClient.refetchQueries({ queryKey: ["categories", instanceId] })
+      queryClient.refetchQueries({ queryKey: ["instance-metadata", instanceId] })
+      toast.success(`Removed ${emptyCategories.length} empty categor${emptyCategories.length === 1 ? "y" : "ies"}`)
+      onOpenChange(false)
+    },
+    onError: (error: Error) => {
+      toast.error("Failed to remove empty categories", {
+        description: error.message,
+      })
+    },
+  })
+
+  return (
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Remove Empty Categories</AlertDialogTitle>
+          <AlertDialogDescription>
+            {emptyCategories.length === 0 ? (
+              "There are no empty categories to remove."
+            ) : (
+              <>
+                Are you sure you want to remove {emptyCategories.length} empty categor{emptyCategories.length === 1 ? "y" : "ies"}?
+                This action cannot be undone.
+                <div className="mt-3 max-h-40 overflow-y-auto">
+                  <div className="text-sm space-y-1">
+                    {emptyCategories.map(categoryName => (
+                      <div key={categoryName} className="text-muted-foreground">
+                        • {categoryName}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          {emptyCategories.length > 0 && (
+            <AlertDialogAction
+              onClick={() => mutation.mutate()}
+              disabled={mutation.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Remove {emptyCategories.length} Categor{emptyCategories.length === 1 ? "y" : "ies"}
+            </AlertDialogAction>
+          )}
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -32,6 +33,31 @@ func NewInstancesHandler(instanceStore *models.InstanceStore, clientPool *intern
 		clientPool:    clientPool,
 		syncManager:   syncManager,
 	}
+}
+
+// GetInstanceCapabilities returns lightweight capability metadata for an instance.
+func (h *InstancesHandler) GetInstanceCapabilities(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+
+	client, err := h.clientPool.GetClientOffline(ctx, instanceID)
+	if err != nil {
+		client, err = h.clientPool.GetClientWithTimeout(ctx, instanceID, 15*time.Second)
+		if err != nil {
+			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client for capabilities")
+			RespondError(w, http.StatusServiceUnavailable, "Failed to load instance capabilities")
+			return
+		}
+	}
+
+	capabilities := NewInstanceCapabilitiesResponse(client)
+	RespondJSON(w, http.StatusOK, capabilities)
 }
 
 func (h *InstancesHandler) buildInstanceResponsesParallel(ctx context.Context, instances []*models.Instance) []InstanceResponse {
@@ -65,6 +91,7 @@ func (h *InstancesHandler) buildInstanceResponsesParallel(ctx context.Context, i
 				Host:               instances[i].Host,
 				Username:           instances[i].Username,
 				BasicUsername:      instances[i].BasicUsername,
+				TLSSkipVerify:      instances[i].TLSSkipVerify,
 				Connected:          false,
 				HasDecryptionError: false,
 			}
@@ -80,6 +107,13 @@ func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *
 	client, _ := h.clientPool.GetClientOffline(ctx, instance.ID)
 	healthy := client != nil && client.IsHealthy()
 
+	var connectionStatus string
+	if client != nil {
+		if status := strings.TrimSpace(client.GetCachedConnectionStatus()); status != "" {
+			connectionStatus = strings.ToLower(status)
+		}
+	}
+
 	decryptionErrorInstances := h.clientPool.GetInstancesWithDecryptionErrors()
 	hasDecryptionError := slices.Contains(decryptionErrorInstances, instance.ID)
 
@@ -89,8 +123,10 @@ func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *
 		Host:               instance.Host,
 		Username:           instance.Username,
 		BasicUsername:      instance.BasicUsername,
+		TLSSkipVerify:      instance.TLSSkipVerify,
 		Connected:          healthy,
 		HasDecryptionError: hasDecryptionError,
+		ConnectionStatus:   connectionStatus,
 	}
 
 	// Fetch recent errors for disconnected instances
@@ -115,6 +151,7 @@ func (h *InstancesHandler) buildQuickInstanceResponse(instance *models.Instance)
 		Host:               instance.Host,
 		Username:           instance.Username,
 		BasicUsername:      instance.BasicUsername,
+		TLSSkipVerify:      instance.TLSSkipVerify,
 		Connected:          false, // Will be updated asynchronously
 		HasDecryptionError: false,
 	}
@@ -149,6 +186,7 @@ type CreateInstanceRequest struct {
 	Password      string  `json:"password"`
 	BasicUsername *string `json:"basicUsername,omitempty"`
 	BasicPassword *string `json:"basicPassword,omitempty"`
+	TLSSkipVerify bool    `json:"tlsSkipVerify,omitempty"`
 }
 
 // UpdateInstanceRequest represents a request to update an instance
@@ -159,6 +197,7 @@ type UpdateInstanceRequest struct {
 	Password      string  `json:"password,omitempty"` // Optional for updates
 	BasicUsername *string `json:"basicUsername,omitempty"`
 	BasicPassword *string `json:"basicPassword,omitempty"`
+	TLSSkipVerify *bool   `json:"tlsSkipVerify,omitempty"`
 }
 
 // InstanceResponse represents an instance in API responses
@@ -168,9 +207,11 @@ type InstanceResponse struct {
 	Host               string                 `json:"host"`
 	Username           string                 `json:"username"`
 	BasicUsername      *string                `json:"basicUsername,omitempty"`
+	TLSSkipVerify      bool                   `json:"tlsSkipVerify"`
 	Connected          bool                   `json:"connected"`
 	HasDecryptionError bool                   `json:"hasDecryptionError"`
 	RecentErrors       []models.InstanceError `json:"recentErrors,omitempty"`
+	ConnectionStatus   string                 `json:"connectionStatus,omitempty"`
 }
 
 // TestConnectionResponse represents connection test results
@@ -214,7 +255,7 @@ func (h *InstancesHandler) CreateInstance(w http.ResponseWriter, r *http.Request
 	}
 
 	// Create instance
-	instance, err := h.instanceStore.Create(r.Context(), req.Name, req.Host, req.Username, req.Password, req.BasicUsername, req.BasicPassword)
+	instance, err := h.instanceStore.Create(r.Context(), req.Name, req.Host, req.Username, req.Password, req.BasicUsername, req.BasicPassword, req.TLSSkipVerify)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create instance")
 		RespondError(w, http.StatusInternalServerError, "Failed to create instance")
@@ -274,7 +315,7 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 	}
 
 	// Update instance
-	instance, err := h.instanceStore.Update(r.Context(), instanceID, req.Name, req.Host, req.Username, req.Password, req.BasicUsername, req.BasicPassword)
+	instance, err := h.instanceStore.Update(r.Context(), instanceID, req.Name, req.Host, req.Username, req.Password, req.BasicUsername, req.BasicPassword, req.TLSSkipVerify)
 	if err != nil {
 		if errors.Is(err, models.ErrInstanceNotFound) {
 			RespondError(w, http.StatusNotFound, "Instance not found")

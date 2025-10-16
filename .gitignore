@@ -2,6 +2,7 @@
 *.log
 *.sqlite
 *.db*
+*.exe
 log/
 logs/
 
@@ -52,16 +53,14 @@ web/src/themes/premium/
 
 # Preserve files
 !.gitkeep
-config.toml
-.env
-.mcp.json
-.claude/commands/*
-.claude/hooks/*
-ai_docs/*
-output/*
-.claude/agents/*
 
 web/src/themes/premium/*
 docs/*
 .mcp_unused.json
+config.toml
+.env
+.mcp.json
 components.json
+.cache/
+tracker-icons/*
+.device-id-*

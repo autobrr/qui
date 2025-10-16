@@ -6,18 +6,24 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"mime"
+	"mime/multipart"
 	"net/http"
 	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
+	"golang.org/x/net/publicsuffix"
 
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
@@ -25,6 +31,8 @@ import (
 type TorrentsHandler struct {
 	syncManager *qbittorrent.SyncManager
 }
+
+const addTorrentMaxFormMemory int64 = 256 << 20 // 256 MiB cap for multi-file uploads
 
 // SortedPeer represents a peer with its key for sorting
 type SortedPeer struct {
@@ -153,8 +161,12 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Parse multipart form
-	err = r.ParseMultipartForm(32 << 20) // 32MB max
+	err = r.ParseMultipartForm(addTorrentMaxFormMemory)
 	if err != nil {
+		if errors.Is(err, multipart.ErrMessageTooLarge) {
+			RespondError(w, http.StatusRequestEntityTooLarge, fmt.Sprintf("Upload exceeded %d MB limit", addTorrentMaxFormMemory>>20))
+			return
+		}
 		RespondError(w, http.StatusBadRequest, "Failed to parse form data")
 		return
 	}
@@ -380,6 +392,9 @@ type BulkActionRequest struct {
 	UploadLimit              int64                      `json:"uploadLimit,omitempty"`              // For setUploadLimit action (KB/s)
 	DownloadLimit            int64                      `json:"downloadLimit,omitempty"`            // For setDownloadLimit action (KB/s)
 	Location                 string                     `json:"location,omitempty"`                 // For setLocation action
+	TrackerOldURL            string                     `json:"trackerOldURL,omitempty"`            // For editTrackers action
+	TrackerNewURL            string                     `json:"trackerNewURL,omitempty"`            // For editTrackers action
+	TrackerURLs              string                     `json:"trackerURLs,omitempty"`              // For addTrackers/removeTrackers actions
 }
 
 // BulkAction performs bulk operations on torrents
@@ -413,6 +428,7 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 		"recheck", "reannounce", "increasePriority", "decreasePriority",
 		"topPriority", "bottomPriority", "addTags", "removeTags", "setTags", "setCategory",
 		"toggleAutoTMM", "setShareLimit", "setUploadLimit", "setDownloadLimit", "setLocation",
+		"editTrackers", "addTrackers", "removeTrackers",
 	}
 
 	valid := slices.Contains(validActions, req.Action)
@@ -500,6 +516,24 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		err = h.syncManager.SetLocation(r.Context(), instanceID, targetHashes, req.Location)
+	case "editTrackers":
+		if req.TrackerOldURL == "" || req.TrackerNewURL == "" {
+			RespondError(w, http.StatusBadRequest, "Both trackerOldURL and trackerNewURL are required for editTrackers action")
+			return
+		}
+		err = h.syncManager.BulkEditTrackers(r.Context(), instanceID, targetHashes, req.TrackerOldURL, req.TrackerNewURL)
+	case "addTrackers":
+		if req.TrackerURLs == "" {
+			RespondError(w, http.StatusBadRequest, "TrackerURLs parameter is required for addTrackers action")
+			return
+		}
+		err = h.syncManager.BulkAddTrackers(r.Context(), instanceID, targetHashes, req.TrackerURLs)
+	case "removeTrackers":
+		if req.TrackerURLs == "" {
+			RespondError(w, http.StatusBadRequest, "TrackerURLs parameter is required for removeTrackers action")
+			return
+		}
+		err = h.syncManager.BulkRemoveTrackers(r.Context(), instanceID, targetHashes, req.TrackerURLs)
 	case "delete":
 		// Handle delete with deleteFiles parameter
 		action := req.Action
@@ -666,6 +700,26 @@ func (h *TorrentsHandler) GetTags(w http.ResponseWriter, r *http.Request) {
 	RespondJSON(w, http.StatusOK, tags)
 }
 
+// GetActiveTrackers returns all active tracker domains with their URLs
+func (h *TorrentsHandler) GetActiveTrackers(w http.ResponseWriter, r *http.Request) {
+	// Get instance ID from URL
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	// Get active trackers
+	trackers, err := h.syncManager.GetActiveTrackers(r.Context(), instanceID)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get active trackers")
+		RespondError(w, http.StatusInternalServerError, "Failed to get active trackers")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, trackers)
+}
+
 // CreateTags creates new tags
 func (h *TorrentsHandler) CreateTags(w http.ResponseWriter, r *http.Request) {
 	// Get instance ID from URL
@@ -784,6 +838,246 @@ func (h *TorrentsHandler) GetTorrentTrackers(w http.ResponseWriter, r *http.Requ
 	RespondJSON(w, http.StatusOK, trackers)
 }
 
+// EditTrackerRequest represents a tracker edit request
+type EditTrackerRequest struct {
+	OldURL string `json:"oldURL"`
+	NewURL string `json:"newURL"`
+}
+
+// EditTorrentTracker edits a tracker URL for a specific torrent
+func (h *TorrentsHandler) EditTorrentTracker(w http.ResponseWriter, r *http.Request) {
+	// Get instance ID and hash from URL
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	hash := chi.URLParam(r, "hash")
+	if hash == "" {
+		RespondError(w, http.StatusBadRequest, "Torrent hash is required")
+		return
+	}
+
+	var req EditTrackerRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if req.OldURL == "" || req.NewURL == "" {
+		RespondError(w, http.StatusBadRequest, "Both oldURL and newURL are required")
+		return
+	}
+
+	// Edit tracker
+	err = h.syncManager.EditTorrentTracker(r.Context(), instanceID, hash, req.OldURL, req.NewURL)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to edit tracker")
+		RespondError(w, http.StatusInternalServerError, "Failed to edit tracker")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, map[string]string{"status": "success"})
+}
+
+// AddTrackerRequest represents a tracker add request
+type AddTrackerRequest struct {
+	URLs string `json:"urls"` // Newline-separated URLs
+}
+
+// AddTorrentTrackers adds trackers to a specific torrent
+func (h *TorrentsHandler) AddTorrentTrackers(w http.ResponseWriter, r *http.Request) {
+	// Get instance ID and hash from URL
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	hash := chi.URLParam(r, "hash")
+	if hash == "" {
+		RespondError(w, http.StatusBadRequest, "Torrent hash is required")
+		return
+	}
+
+	var req AddTrackerRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if req.URLs == "" {
+		RespondError(w, http.StatusBadRequest, "URLs are required")
+		return
+	}
+
+	// Add trackers
+	err = h.syncManager.AddTorrentTrackers(r.Context(), instanceID, hash, req.URLs)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to add trackers")
+		RespondError(w, http.StatusInternalServerError, "Failed to add trackers")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, map[string]string{"status": "success"})
+}
+
+// RemoveTrackerRequest represents a tracker remove request
+type RemoveTrackerRequest struct {
+	URLs string `json:"urls"` // Newline-separated URLs
+}
+
+// RemoveTorrentTrackers removes trackers from a specific torrent
+func (h *TorrentsHandler) RemoveTorrentTrackers(w http.ResponseWriter, r *http.Request) {
+	// Get instance ID and hash from URL
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	hash := chi.URLParam(r, "hash")
+	if hash == "" {
+		RespondError(w, http.StatusBadRequest, "Torrent hash is required")
+		return
+	}
+
+	var req RemoveTrackerRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if req.URLs == "" {
+		RespondError(w, http.StatusBadRequest, "URLs are required")
+		return
+	}
+
+	// Remove trackers
+	err = h.syncManager.RemoveTorrentTrackers(r.Context(), instanceID, hash, req.URLs)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to remove trackers")
+		RespondError(w, http.StatusInternalServerError, "Failed to remove trackers")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, map[string]string{"status": "success"})
+}
+
+// RenameTorrent updates the display name for a torrent
+func (h *TorrentsHandler) RenameTorrent(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	hash := chi.URLParam(r, "hash")
+	if hash == "" {
+		RespondError(w, http.StatusBadRequest, "Torrent hash is required")
+		return
+	}
+
+	var req struct {
+		Name string `json:"name"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if strings.TrimSpace(req.Name) == "" {
+		RespondError(w, http.StatusBadRequest, "Torrent name cannot be empty")
+		return
+	}
+
+	if err := h.syncManager.RenameTorrent(r.Context(), instanceID, hash, req.Name); err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to rename torrent")
+		RespondError(w, http.StatusInternalServerError, "Failed to rename torrent")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, map[string]string{"message": "Torrent renamed successfully"})
+}
+
+// RenameTorrentFile renames a file within a torrent
+func (h *TorrentsHandler) RenameTorrentFile(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	hash := chi.URLParam(r, "hash")
+	if hash == "" {
+		RespondError(w, http.StatusBadRequest, "Torrent hash is required")
+		return
+	}
+
+	var req struct {
+		OldPath string `json:"oldPath"`
+		NewPath string `json:"newPath"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if strings.TrimSpace(req.OldPath) == "" || strings.TrimSpace(req.NewPath) == "" {
+		RespondError(w, http.StatusBadRequest, "Both oldPath and newPath are required")
+		return
+	}
+
+	if err := h.syncManager.RenameTorrentFile(r.Context(), instanceID, hash, req.OldPath, req.NewPath); err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Str("oldPath", req.OldPath).Str("newPath", req.NewPath).Msg("Failed to rename torrent file")
+		RespondError(w, http.StatusInternalServerError, "Failed to rename torrent file")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, map[string]string{"message": "Torrent file renamed successfully"})
+}
+
+// RenameTorrentFolder renames a folder within a torrent
+func (h *TorrentsHandler) RenameTorrentFolder(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	hash := chi.URLParam(r, "hash")
+	if hash == "" {
+		RespondError(w, http.StatusBadRequest, "Torrent hash is required")
+		return
+	}
+
+	var req struct {
+		OldPath string `json:"oldPath"`
+		NewPath string `json:"newPath"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if strings.TrimSpace(req.OldPath) == "" || strings.TrimSpace(req.NewPath) == "" {
+		RespondError(w, http.StatusBadRequest, "Both oldPath and newPath are required")
+		return
+	}
+
+	if err := h.syncManager.RenameTorrentFolder(r.Context(), instanceID, hash, req.OldPath, req.NewPath); err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Str("oldPath", req.OldPath).Str("newPath", req.NewPath).Msg("Failed to rename torrent folder")
+		RespondError(w, http.StatusInternalServerError, "Failed to rename torrent folder")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, map[string]string{"message": "Torrent folder renamed successfully"})
+}
+
 // GetTorrentFiles returns files information for a specific torrent
 func (h *TorrentsHandler) GetTorrentPeers(w http.ResponseWriter, r *http.Request) {
 	// Get instance ID and hash from URL
@@ -886,6 +1180,49 @@ func (h *TorrentsHandler) GetTorrentFiles(w http.ResponseWriter, r *http.Request
 	RespondJSON(w, http.StatusOK, files)
 }
 
+// ExportTorrent streams the .torrent file for a specific torrent
+func (h *TorrentsHandler) ExportTorrent(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	hash := strings.TrimSpace(chi.URLParam(r, "hash"))
+	if hash == "" {
+		RespondError(w, http.StatusBadRequest, "Torrent hash is required")
+		return
+	}
+
+	data, suggestedName, trackerDomain, err := h.syncManager.ExportTorrent(r.Context(), instanceID, hash)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to export torrent")
+		RespondError(w, http.StatusInternalServerError, "Failed to export torrent")
+		return
+	}
+
+	filename := sanitizeTorrentExportFilename(suggestedName, hash, trackerDomain, hash)
+
+	disposition := mime.FormatMediaType("attachment", map[string]string{"filename": filename})
+	if disposition == "" {
+		log.Warn().Str("filename", filename).Msg("Falling back to quoted Content-Disposition header")
+		disposition = fmt.Sprintf("attachment; filename=%q", filename)
+	}
+
+	if len(data) > 0 {
+		w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+	}
+	w.Header().Set("Content-Type", "application/x-bittorrent")
+	w.Header().Set("Content-Disposition", disposition)
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.WriteHeader(http.StatusOK)
+
+	if _, err := w.Write(data); err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to write torrent export response")
+	}
+}
+
 // AddPeers adds peers to torrents
 func (h *TorrentsHandler) AddPeers(w http.ResponseWriter, r *http.Request) {
 	// Get instance ID from URL
@@ -955,4 +1292,323 @@ func (h *TorrentsHandler) BanPeers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	RespondJSON(w, http.StatusOK, map[string]bool{"success": true})
+}
+
+const (
+	// keep filenames comfortably under the 255 byte limit common across modern filesystems
+	maxExportFilenameBytes = 240
+	shortTorrentHashLength = 5
+	torrentFileExtension   = ".torrent"
+)
+
+// truncateUTF8 preserves valid rune boundaries while capping the returned string to maxBytes.
+func truncateUTF8(input string, maxBytes int) string {
+	if len(input) <= maxBytes {
+		return input
+	}
+
+	cut := 0
+	for cut < len(input) {
+		_, size := utf8.DecodeRuneInString(input[cut:])
+		if size <= 0 || cut+size > maxBytes {
+			break
+		}
+		cut += size
+	}
+
+	return input[:cut]
+}
+
+func sanitizeTorrentExportFilename(name, fallback, trackerDomain, hash string) string {
+	trimmed := strings.TrimSpace(name)
+	alt := strings.TrimSpace(fallback)
+
+	if trimmed == "" {
+		trimmed = alt
+	}
+
+	if trimmed == "" {
+		trimmed = "torrent"
+	}
+
+	sanitized := strings.Map(func(r rune) rune {
+		switch r {
+		case '/', '\\', ':', '*', '?', '"', '<', '>', '|':
+			return '_'
+		case 0:
+			return -1
+		}
+
+		if r < 32 || r == 127 {
+			return -1
+		}
+
+		return r
+	}, trimmed)
+
+	sanitized = strings.Trim(sanitized, " .")
+	if sanitized == "" {
+		sanitized = "torrent"
+	}
+
+	trackerTag := trackerTagFromDomain(trackerDomain)
+	shortHash := shortTorrentHash(hash)
+
+	prefix := ""
+	if trackerTag != "" {
+		prefix = "[" + trackerTag + "] "
+	}
+
+	suffix := ""
+	if shortHash != "" {
+		suffix = " - " + shortHash
+	}
+
+	coreBudget := max(maxExportFilenameBytes-len(torrentFileExtension), 0)
+
+	allowedBytes := coreBudget - len(prefix) - len(suffix)
+	if allowedBytes < 1 {
+		prefix = ""
+		allowedBytes = coreBudget - len(suffix)
+		if allowedBytes < 1 {
+			suffix = ""
+			allowedBytes = coreBudget
+			if allowedBytes < 1 {
+				allowedBytes = 0
+			}
+		}
+	}
+
+	sanitized = truncateUTF8(sanitized, allowedBytes)
+	if sanitized == "" {
+		sanitized = "torrent"
+	}
+
+	filename := prefix + sanitized + suffix
+	if !strings.HasSuffix(strings.ToLower(filename), torrentFileExtension) {
+		filename += torrentFileExtension
+	}
+
+	return filename
+}
+
+func trackerTagFromDomain(domain string) string {
+	domain = strings.TrimSpace(domain)
+	if domain == "" {
+		return ""
+	}
+
+	domain = strings.TrimSuffix(domain, ".")
+	domain = strings.TrimPrefix(domain, "www.")
+
+	base := domain
+	if registrable, err := publicsuffix.EffectiveTLDPlusOne(domain); err == nil {
+		base = registrable
+	}
+
+	if idx := strings.IndexRune(base, '.'); idx != -1 {
+		base = base[:idx]
+	}
+
+	base = strings.TrimSpace(base)
+	if base == "" {
+		return ""
+	}
+
+	// Domain labels should already be safe, but guard against unexpected characters
+	var builder strings.Builder
+	for _, r := range base {
+		switch {
+		case unicode.IsLetter(r):
+			builder.WriteRune(unicode.ToLower(r))
+		case unicode.IsDigit(r):
+			builder.WriteRune(r)
+		case r == '-':
+			builder.WriteRune(r)
+		}
+	}
+
+	tag := strings.Trim(builder.String(), "-")
+	return tag
+}
+
+func shortTorrentHash(hash string) string {
+	hash = strings.TrimSpace(hash)
+	if hash == "" {
+		return ""
+	}
+
+	var builder strings.Builder
+	builder.Grow(shortTorrentHashLength)
+	for i := 0; i < len(hash) && builder.Len() < shortTorrentHashLength; i++ {
+		c := hash[i]
+		switch {
+		case '0' <= c && c <= '9':
+			builder.WriteByte(c)
+		case 'a' <= c && c <= 'f':
+			builder.WriteByte(c)
+		case 'A' <= c && c <= 'F':
+			builder.WriteByte(c + ('a' - 'A'))
+		}
+	}
+
+	return builder.String()
+}
+
+// CreateTorrent creates a new torrent file from source path
+func (h *TorrentsHandler) CreateTorrent(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	var req qbt.TorrentCreationParams
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if req.SourcePath == "" {
+		RespondError(w, http.StatusBadRequest, "sourcePath is required")
+		return
+	}
+
+	resp, err := h.syncManager.CreateTorrent(r.Context(), instanceID, req)
+	if err != nil {
+		if errors.Is(err, qbt.ErrTorrentCreationTooManyActiveTasks) {
+			RespondError(w, http.StatusConflict, "Too many active torrent creation tasks")
+			return
+		}
+		if errors.Is(err, qbt.ErrUnsupportedVersion) {
+			RespondError(w, http.StatusBadRequest, "Torrent creation requires qBittorrent v5.0.0 or later. Please upgrade your qBittorrent instance.")
+			return
+		}
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to create torrent")
+		RespondError(w, http.StatusInternalServerError, "Failed to create torrent")
+		return
+	}
+
+	RespondJSON(w, http.StatusCreated, resp)
+}
+
+// GetTorrentCreationStatus gets status of torrent creation tasks
+func (h *TorrentsHandler) GetTorrentCreationStatus(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	taskID := r.URL.Query().Get("taskID")
+
+	tasks, err := h.syncManager.GetTorrentCreationStatus(r.Context(), instanceID, taskID)
+	if err != nil {
+		if errors.Is(err, qbt.ErrTorrentCreationTaskNotFound) {
+			RespondError(w, http.StatusNotFound, "Torrent creation task not found")
+			return
+		}
+		if errors.Is(err, qbt.ErrUnsupportedVersion) {
+			RespondError(w, http.StatusBadRequest, "Torrent creation requires qBittorrent v5.0.0 or later. Please upgrade your qBittorrent instance.")
+			return
+		}
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get torrent creation status")
+		RespondError(w, http.StatusInternalServerError, "Failed to get torrent creation status")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, tasks)
+}
+
+// GetActiveTaskCount returns the number of active torrent creation tasks
+// This is a lightweight endpoint optimized for polling the badge count
+func (h *TorrentsHandler) GetActiveTaskCount(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	count := h.syncManager.GetActiveTaskCount(r.Context(), instanceID)
+	RespondJSON(w, http.StatusOK, map[string]int{"count": count})
+}
+
+// DownloadTorrentCreationFile downloads the torrent file for a completed task
+func (h *TorrentsHandler) DownloadTorrentCreationFile(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	taskID := chi.URLParam(r, "taskID")
+	if taskID == "" {
+		RespondError(w, http.StatusBadRequest, "Task ID is required")
+		return
+	}
+
+	data, err := h.syncManager.GetTorrentCreationFile(r.Context(), instanceID, taskID)
+	if err != nil {
+		if errors.Is(err, qbt.ErrTorrentCreationTaskNotFound) {
+			RespondError(w, http.StatusNotFound, "Torrent creation task not found")
+			return
+		}
+		if errors.Is(err, qbt.ErrTorrentCreationUnfinished) {
+			RespondError(w, http.StatusConflict, "Torrent creation is still in progress")
+			return
+		}
+		if errors.Is(err, qbt.ErrTorrentCreationFailed) {
+			RespondError(w, http.StatusConflict, "Torrent creation failed")
+			return
+		}
+		if errors.Is(err, qbt.ErrUnsupportedVersion) {
+			RespondError(w, http.StatusBadRequest, "Torrent creation requires qBittorrent v5.0.0 or later. Please upgrade your qBittorrent instance.")
+			return
+		}
+		log.Error().Err(err).Int("instanceID", instanceID).Str("taskID", taskID).Msg("Failed to download torrent file")
+		RespondError(w, http.StatusInternalServerError, "Failed to download torrent file")
+		return
+	}
+
+	filename := fmt.Sprintf("%s.torrent", taskID)
+	w.Header().Set("Content-Type", "application/x-bittorrent")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+	w.WriteHeader(http.StatusOK)
+
+	if _, err := w.Write(data); err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Str("taskID", taskID).Msg("Failed to write torrent file response")
+	}
+}
+
+// DeleteTorrentCreationTask deletes a torrent creation task
+func (h *TorrentsHandler) DeleteTorrentCreationTask(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	taskID := chi.URLParam(r, "taskID")
+	if taskID == "" {
+		RespondError(w, http.StatusBadRequest, "Task ID is required")
+		return
+	}
+
+	err = h.syncManager.DeleteTorrentCreationTask(r.Context(), instanceID, taskID)
+	if err != nil {
+		if errors.Is(err, qbt.ErrTorrentCreationTaskNotFound) {
+			RespondError(w, http.StatusNotFound, "Torrent creation task not found")
+			return
+		}
+		if errors.Is(err, qbt.ErrUnsupportedVersion) {
+			RespondError(w, http.StatusBadRequest, "Torrent creation requires qBittorrent v5.0.0 or later. Please upgrade your qBittorrent instance.")
+			return
+		}
+		log.Error().Err(err).Int("instanceID", instanceID).Str("taskID", taskID).Msg("Failed to delete torrent creation task")
+		RespondError(w, http.StatusInternalServerError, "Failed to delete torrent creation task")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, map[string]string{"message": "Torrent creation task deleted successfully"})
 }

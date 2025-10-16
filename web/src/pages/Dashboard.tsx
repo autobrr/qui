@@ -21,17 +21,17 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { Progress } from "@/components/ui/progress"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useInstances } from "@/hooks/useInstances"
 import { usePersistedAccordionState } from "@/hooks/usePersistedAccordionState"
+import { useQBittorrentAppInfo } from "@/hooks/useQBittorrentAppInfo"
 import { api } from "@/lib/api"
 import { formatBytes, getRatioColor } from "@/lib/utils"
 import type { InstanceResponse, ServerState, TorrentCounts, TorrentResponse, TorrentStats } from "@/types"
-import { useQueries, useQuery } from "@tanstack/react-query"
+import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
-import { Activity, ChevronDown, ChevronUp, Download, ExternalLink, Eye, EyeOff, HardDrive, Minus, Plus, Rabbit, Turtle, Upload, Zap } from "lucide-react"
+import { Activity, Ban, BrickWallFire, ChevronDown, ChevronUp, Download, ExternalLink, Eye, EyeOff, Globe, HardDrive, Minus, Plus, Rabbit, Turtle, Upload, Zap } from "lucide-react"
 import { useMemo, useState } from "react"
 
 import {
@@ -42,13 +42,22 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
-import { useAlternativeSpeedLimits } from "@/hooks/useAlternativeSpeedLimits"
+
 import { useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 
+interface DashboardInstanceStats {
+  instance: InstanceResponse
+  stats: TorrentStats | null
+  serverState: ServerState | null
+  torrentCounts?: TorrentCounts
+  altSpeedEnabled: boolean
+  isLoading: boolean
+  error: unknown
+}
 
 // Optimized hook to get all instance stats using shared TorrentResponse cache
-function useAllInstanceStats(instances: InstanceResponse[]) {
+function useAllInstanceStats(instances: InstanceResponse[]): DashboardInstanceStats[] {
   const dashboardQueries = useQueries({
     queries: instances.map(instance => ({
       // Use same query key pattern as useTorrentsList for first page with no filters
@@ -69,62 +78,73 @@ function useAllInstanceStats(instances: InstanceResponse[]) {
     })),
   })
 
-  return instances.map((instance, index) => {
-    const data = dashboardQueries[index].data
+  return instances.map<DashboardInstanceStats>((instance, index) => {
+    const query = dashboardQueries[index]
+    const data = query.data as TorrentResponse | undefined
+
     return {
       instance,
       // Return TorrentStats directly - no more backwards compatibility conversion
-      stats: data?.stats || null,
-      serverState: data?.serverState || null,
+      stats: data?.stats ?? null,
+      serverState: data?.serverState ?? null,
       torrentCounts: data?.counts,
+      // Include alt speed status from server state to avoid separate API call
+      altSpeedEnabled: data?.serverState?.use_alt_speed_limits || false,
+      // Include loading/error state for individual instances
+      isLoading: query.isLoading,
+      error: query.error,
     }
   })
 }
 
 
 function InstanceCard({
-  instance,
+  instanceData,
   isAdvancedMetricsOpen,
   setIsAdvancedMetricsOpen,
 }: {
-  instance: InstanceResponse
+  instanceData: DashboardInstanceStats
   isAdvancedMetricsOpen: boolean
   setIsAdvancedMetricsOpen: (open: boolean) => void
 }) {
+  const { instance, stats, serverState, torrentCounts, altSpeedEnabled, isLoading, error } = instanceData
   const [showSpeedLimitDialog, setShowSpeedLimitDialog] = useState(false)
 
-  // Use shared TorrentResponse cache for optimized performance
-  const { data: torrentData, isLoading, error } = useQuery<TorrentResponse>({
-    queryKey: ["torrents-list", instance.id, 0, undefined, undefined, "added_on", "desc"],
-    queryFn: () => api.getTorrents(instance.id, {
-      page: 0,
-      limit: 1, // Only need metadata, not actual torrents
-      sort: "added_on",
-      order: "desc" as const,
-    }),
-    enabled: true,
-    refetchInterval: 5000, // Match TorrentTable polling
-    staleTime: 2000,
-    gcTime: 300000, // Match TorrentTable cache time
-    retry: 1,
-    retryDelay: 1000,
+  // Alternative speed limits toggle - no need to track state, just provide toggle function
+  const queryClient = useQueryClient()
+  const { mutate: toggleAltSpeed, isPending: isToggling } = useMutation({
+    mutationFn: () => api.toggleAlternativeSpeedLimits(instance.id),
+    onSuccess: () => {
+      // Invalidate torrent queries to refresh server state
+      queryClient.invalidateQueries({
+        queryKey: ["torrents-list", instance.id],
+      })
+    },
   })
 
-  const { enabled: altSpeedEnabled, toggle: toggleAltSpeed, isToggling } = useAlternativeSpeedLimits(instance.id)
+  // Still need app info for version display - keep this separate as it's cached well
+  const {
+    data: qbittorrentAppInfo,
+    versionInfo: qbittorrentVersionInfo,
+  } = useQBittorrentAppInfo(instance.id)
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const [speedUnit] = useSpeedUnits()
+  const appVersion = qbittorrentAppInfo?.version || qbittorrentVersionInfo?.appVersion || ""
+  const webAPIVersion = qbittorrentAppInfo?.webAPIVersion || qbittorrentVersionInfo?.webAPIVersion || ""
+  const libtorrentVersion = qbittorrentAppInfo?.buildInfo?.libtorrent || ""
   const displayUrl = instance.host
-
-  // Use TorrentStats directly - no more conversion needed
-  const stats = torrentData?.stats
-  const torrentCounts = torrentData?.counts
-  const serverState = torrentData?.serverState
 
   // Determine card state
   const isFirstLoad = isLoading && !stats
   const isDisconnected = (stats && !instance.connected) || (!isFirstLoad && !instance.connected)
-  const hasError = error || (!isFirstLoad && !stats)
+  const hasError = Boolean(error) || (!isFirstLoad && !stats)
   const hasDecryptionOrRecentErrors = instance.hasDecryptionError || (instance.recentErrors && instance.recentErrors.length > 0)
+
+  const rawConnectionStatus = serverState?.connection_status ?? instance.connectionStatus ?? ""
+  const normalizedConnectionStatus = rawConnectionStatus ? rawConnectionStatus.trim().toLowerCase() : ""
+  const formattedConnectionStatus = normalizedConnectionStatus ? normalizedConnectionStatus.replace(/_/g, " ") : ""
+  const connectionStatusDisplay = formattedConnectionStatus? formattedConnectionStatus.replace(/\b\w/g, (char: string) => char.toUpperCase()): ""
+  const hasConnectionStatus = Boolean(formattedConnectionStatus)
 
   // Determine badge variant and text
   let badgeVariant: "default" | "secondary" | "destructive" = "default"
@@ -141,6 +161,15 @@ function InstanceCard({
     badgeText = "Disconnected"
   }
 
+  const badgeClassName = "whitespace-nowrap"
+
+  const isConnectable = normalizedConnectionStatus === "connected"
+  const isFirewalled = normalizedConnectionStatus === "firewalled"
+  const ConnectionStatusIcon = isConnectable ? Globe : isFirewalled ? BrickWallFire : Ban
+  const connectionStatusIconClass = hasConnectionStatus? isConnectable? "text-green-500": isFirewalled? "text-amber-500": "text-destructive": ""
+
+  const connectionStatusTooltip = connectionStatusDisplay ? (isConnectable ? "Connectable" : connectionStatusDisplay) : ""
+
   // Determine if settings button should show
   const showSettingsButton = instance.connected && !isFirstLoad && !hasDecryptionOrRecentErrors
 
@@ -152,17 +181,17 @@ function InstanceCard({
   return (
     <>
       <Card className="hover:shadow-lg transition-shadow">
-        <CardHeader className={!isFirstLoad ? "gap-0" : ""}>
-          <div className="flex items-center justify-between">
+        <CardHeader className={!isFirstLoad ? "gap-1" : ""}>
+          <div className="flex items-center gap-2 sm:gap-3">
             <Link
               to={linkTo}
               params={linkParams}
-              className="flex items-center gap-2 hover:underline truncate max-w-40"
+              className="flex flex-1 items-center gap-2 hover:underline min-w-0"
             >
-              <CardTitle className="text-lg truncate">{instance.name}</CardTitle>
-              <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+              <CardTitle className="text-lg truncate min-w-0 max-w-[80px] sm:max-w-[90px] md:max-w-[90px] lg:max-w-[90px] xl:max-w-[120px] 2xl:max-w-[250px]">{instance.name}</CardTitle>
+              <ExternalLink className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
             </Link>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
               {instance.connected && !isFirstLoad && (
                 <>
                   <Tooltip>
@@ -186,7 +215,7 @@ function InstanceCard({
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>
-                      Alternative speed limits {altSpeedEnabled ? "enabled (turtle mode)" : "disabled (normal mode)"} - Click to toggle
+                      Alternative speed limits: {altSpeedEnabled ? "On" : "Off"}
                     </TooltipContent>
                   </Tooltip>
                   <AlertDialog open={showSpeedLimitDialog} onOpenChange={setShowSpeedLimitDialog}>
@@ -221,29 +250,69 @@ function InstanceCard({
                   instanceName={instance.name}
                 />
               )}
-              <Badge variant={badgeVariant}>
+              <Badge variant={badgeVariant} className={badgeClassName}>
                 {badgeText}
               </Badge>
             </div>
           </div>
-          <CardDescription className={`flex items-center gap-1 ${!isFirstLoad ? "text-xs" : ""}`}>
-            <span className={`${incognitoMode ? "blur-sm select-none" : ""} truncate`} style={incognitoMode ? { filter: "blur(8px)" } : {}} title={displayUrl}>
-              {displayUrl}
-            </span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className={`${!isFirstLoad ? "h-4 w-4" : "h-5 w-5"} p-0 ${isFirstLoad ? "hover:bg-muted/50" : ""} shrink-0`}
-              onClick={(e) => {
-                if (isFirstLoad) {
-                  e.preventDefault()
-                  e.stopPropagation()
-                }
-                setIncognitoMode(!incognitoMode)
-              }}
-            >
-              {incognitoMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-            </Button>
+          {(appVersion || webAPIVersion || libtorrentVersion || formattedConnectionStatus) && (
+            <CardDescription className="flex flex-wrap items-center gap-1.5 text-xs">
+              {formattedConnectionStatus && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span
+                      aria-label={`qBittorrent connection status: ${connectionStatusDisplay || formattedConnectionStatus}`}
+                      className={`inline-flex h-5 w-5 items-center justify-center ${connectionStatusIconClass}`}
+                    >
+                      <ConnectionStatusIcon className="h-4 w-4" aria-hidden="true" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-[220px]">
+                    <p>{connectionStatusTooltip}</p>
+                  </TooltipContent>
+                </Tooltip>
+              )}
+              {appVersion && (
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">
+                  qBit {appVersion}
+                </Badge>
+              )}
+              {webAPIVersion && (
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">
+                  API v{webAPIVersion}
+                </Badge>
+              )}
+              {libtorrentVersion && (
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">
+                  lt {libtorrentVersion}
+                </Badge>
+              )}
+            </CardDescription>
+          )}
+          <CardDescription className="text-xs">
+            <div className="flex items-center gap-1 min-w-0">
+              <span
+                className={`${incognitoMode ? "blur-sm select-none" : ""} truncate min-w-0`}
+                style={incognitoMode ? { filter: "blur(8px)" } : {}}
+                {...(!incognitoMode && { title: displayUrl })}
+              >
+                {displayUrl}
+              </span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className={`${!isFirstLoad ? "h-4 w-4" : "h-5 w-5"} p-0 ${isFirstLoad ? "hover:bg-muted/50" : ""} shrink-0`}
+                onClick={(e) => {
+                  if (isFirstLoad) {
+                    e.preventDefault()
+                    e.stopPropagation()
+                  }
+                  setIncognitoMode(!incognitoMode)
+                }}
+              >
+                {incognitoMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+              </Button>
+            </div>
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -256,8 +325,8 @@ function InstanceCard({
             </div>
           ) : (
             /* Show normal stats */
-            <div className="space-y-3">
-              <div className="mb-6">
+            <div className="space-y-2 sm:space-y-3">
+              <div className="mb-3 sm:mb-6">
                 <div className="flex items-center justify-center mb-1">
                   <span className="flex-1 text-center text-xs text-muted-foreground">Downloading</span>
                   <span className="flex-1 text-center text-xs text-muted-foreground">Active</span>
@@ -265,41 +334,49 @@ function InstanceCard({
                   <span className="flex-1 text-center text-xs text-muted-foreground">Total</span>
                 </div>
                 <div className="flex items-center justify-center">
-                  <span className="flex-1 text-center text-lg font-semibold">
+                  <span className="flex-1 text-center text-base sm:text-lg font-semibold">
                     {torrentCounts?.status?.downloading || 0}
                   </span>
-                  <span className="flex-1 text-center text-lg font-semibold">{torrentCounts?.status?.active || 0}</span>
-                  <span className={`flex-1 text-center text-lg font-semibold ${(torrentCounts?.status?.errored || 0) > 0 ? "text-destructive" : ""}`}>
+                  <span className="flex-1 text-center text-base sm:text-lg font-semibold">{torrentCounts?.status?.active || 0}</span>
+                  <span className={`flex-1 text-center text-base sm:text-lg font-semibold ${(torrentCounts?.status?.errored || 0) > 0 ? "text-destructive" : ""}`}>
                     {torrentCounts?.status?.errored || 0}
                   </span>
-                  <span className="flex-1 text-center text-lg font-semibold">{torrentCounts?.total || 0}</span>
+                  <span className="flex-1 text-center text-base sm:text-lg font-semibold">{torrentCounts?.total || 0}</span>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 text-xs">
-                <Download className="h-3 w-3 text-muted-foreground" />
-                <span className="text-muted-foreground">Download</span>
-                <span className="ml-auto font-medium">{formatSpeedWithUnit(stats?.totalDownloadSpeed || 0, speedUnit)}</span>
-              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-1 gap-1 sm:gap-2">
+                <div className="flex items-center gap-2 text-xs">
+                  <Download className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                  <span className="text-muted-foreground">Download</span>
+                  <span className="ml-auto font-medium truncate">{formatSpeedWithUnit(stats?.totalDownloadSpeed || 0, speedUnit)}</span>
+                </div>
 
-              <div className="flex items-center gap-2 text-xs">
-                <Upload className="h-3 w-3 text-muted-foreground" />
-                <span className="text-muted-foreground">Upload</span>
-                <span className="ml-auto font-medium">{formatSpeedWithUnit(stats?.totalUploadSpeed || 0, speedUnit)}</span>
+                <div className="flex items-center gap-2 text-xs">
+                  <Upload className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                  <span className="text-muted-foreground">Upload</span>
+                  <span className="ml-auto font-medium truncate">{formatSpeedWithUnit(stats?.totalUploadSpeed || 0, speedUnit)}</span>
+                </div>
+
+                <div className="flex items-center gap-2 text-xs">
+                  <HardDrive className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                  <span className="text-muted-foreground">Total Size</span>
+                  <span className="ml-auto font-medium truncate">{formatBytes(stats?.totalSize || 0)}</span>
+                </div>
               </div>
 
               {serverState?.free_space_on_disk !== undefined && serverState.free_space_on_disk > 0 && (
-                <div className="flex items-center gap-2 text-xs">
-                  <HardDrive className="h-3 w-3 text-muted-foreground" />
+                <div className="flex items-center gap-2 text-xs mt-1 sm:mt-2">
+                  <HardDrive className="h-3 w-3 text-muted-foreground flex-shrink-0" />
                   <span className="text-muted-foreground">Free Space</span>
-                  <span className="ml-auto font-medium">{formatBytes(serverState.free_space_on_disk)}</span>
+                  <span className="ml-auto font-medium truncate">{formatBytes(serverState.free_space_on_disk)}</span>
                 </div>
               )}
 
               <Collapsible open={isAdvancedMetricsOpen} onOpenChange={setIsAdvancedMetricsOpen}>
                 <CollapsibleTrigger className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors w-full [&[data-state=open]>svg]:rotate-180">
                   <ChevronDown className="h-3 w-3 transition-transform" />
-                  <span>Show More</span>
+                  <span>{`Show ${isAdvancedMetricsOpen ? "less" : "more"}`}</span>
                 </CollapsibleTrigger>
                 <CollapsibleContent className="space-y-2 mt-2">
                   {serverState?.total_peer_connections !== undefined && (
@@ -341,19 +418,37 @@ function InstanceCard({
                       <span className="ml-auto font-medium">{serverState.average_time_queue}ms</span>
                     </div>
                   )}
+
+                  {serverState?.last_external_address_v4 && (
+                    <div className="flex items-center gap-2 text-xs">
+                      <ExternalLink className="h-3 w-3 text-muted-foreground" />
+                      <span className="text-muted-foreground">External IPv4</span>
+                      <span className={`ml-auto font-medium font-mono ${incognitoMode ? "blur-sm select-none" : ""}`} style={incognitoMode ? { filter: "blur(8px)" } : {}}>{serverState.last_external_address_v4}</span>
+                    </div>
+                  )}
+
+                  {serverState?.last_external_address_v6 && (
+                    <div className="flex items-center gap-2 text-xs">
+                      <ExternalLink className="h-3 w-3 text-muted-foreground" />
+                      <span className="text-muted-foreground">External IPv6</span>
+                      <span className={`ml-auto font-medium font-mono text-[10px] ${incognitoMode ? "blur-sm select-none" : ""}`} style={incognitoMode ? { filter: "blur(8px)" } : {}}>{serverState.last_external_address_v6}</span>
+                    </div>
+                  )}
                 </CollapsibleContent>
               </Collapsible>
 
               <InstanceErrorDisplay instance={instance} compact />
             </div>
           )}
+
+          {/* Version footer - always show if we have version info */}
         </CardContent>
       </Card>
     </>
   )
 }
 
-function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: InstanceResponse, stats: TorrentStats | null, serverState: ServerState | null, torrentCounts: TorrentCounts | undefined }> }) {
+function GlobalStatsCards({ statsData }: { statsData: DashboardInstanceStats[] }) {
   const [speedUnit] = useSpeedUnits()
   const globalStats = useMemo(() => {
     const connected = statsData.filter(({ instance }) => instance?.connected).length
@@ -367,6 +462,8 @@ function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: Instance
       sum + (stats?.totalUploadSpeed || 0), 0)
     const totalErrors = statsData.reduce((sum, { torrentCounts }) =>
       sum + (torrentCounts?.status?.errored || 0), 0)
+    const totalSize = statsData.reduce((sum, { stats }) =>
+      sum + (stats?.totalSize || 0), 0)
 
     // Calculate server stats
     const alltimeDl = statsData.reduce((sum, { serverState }) =>
@@ -390,6 +487,7 @@ function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: Instance
       totalDownload,
       totalUpload,
       totalErrors,
+      totalSize,
       alltimeDl,
       alltimeUl,
       globalRatio,
@@ -409,10 +507,6 @@ function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: Instance
           <p className="text-xs text-muted-foreground">
             Connected instances
           </p>
-          <Progress
-            value={(globalStats.connected / globalStats.total) * 100}
-            className="mt-2 h-1"
-          />
         </CardContent>
       </Card>
 
@@ -424,7 +518,7 @@ function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: Instance
         <CardContent>
           <div className="text-2xl font-bold">{globalStats.totalTorrents}</div>
           <p className="text-xs text-muted-foreground">
-            {globalStats.activeTorrents} active
+            {globalStats.activeTorrents} active - <span className="text-xs">{formatBytes(globalStats.totalSize)} total size</span>
           </p>
         </CardContent>
       </Card>
@@ -458,7 +552,7 @@ function GlobalStatsCards({ statsData }: { statsData: Array<{ instance: Instance
   )
 }
 
-function GlobalAllTimeStats({ statsData }: { statsData: Array<{ instance: InstanceResponse, stats: TorrentStats | null, serverState: ServerState | null }> }) {
+function GlobalAllTimeStats({ statsData }: { statsData: DashboardInstanceStats[] }) {
   const [accordionValue, setAccordionValue] = usePersistedAccordionState("qui-global-stats-accordion")
 
   const globalStats = useMemo(() => {
@@ -619,7 +713,7 @@ function GlobalAllTimeStats({ statsData }: { statsData: Array<{ instance: Instan
   )
 }
 
-function QuickActionsDropdown({ statsData }: { statsData: Array<{ instance: InstanceResponse, stats: TorrentStats | null, serverState: ServerState | null }> }) {
+function QuickActionsDropdown({ statsData }: { statsData: DashboardInstanceStats[] }) {
   const connectedInstances = statsData
     .filter(({ instance }) => instance?.connected)
     .map(({ instance }) => instance)
@@ -659,9 +753,9 @@ function QuickActionsDropdown({ statsData }: { statsData: Array<{ instance: Inst
 }
 
 export function Dashboard() {
-  const [isAdvancedMetricsOpen, setIsAdvancedMetricsOpen] = useState(false)
   const { instances, isLoading } = useInstances()
   const allInstances = instances || []
+  const [isAdvancedMetricsOpen, setIsAdvancedMetricsOpen] = useState(false)
 
   // Use safe hook that always calls the same number of hooks
   const statsData = useAllInstanceStats(allInstances)
@@ -723,11 +817,12 @@ export function Dashboard() {
           {allInstances.length > 0 && (
             <div>
               <h2 className="text-xl font-semibold mb-4">Instances</h2>
-              <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-                {allInstances.map(instance => (
+              {/* Responsive layout so each instance mounts once */}
+              <div className="flex flex-col gap-4 sm:grid sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+                {statsData.map(instanceData => (
                   <InstanceCard
-                    key={instance.id}
-                    instance={instance}
+                    key={instanceData.instance.id}
+                    instanceData={instanceData}
                     isAdvancedMetricsOpen={isAdvancedMetricsOpen}
                     setIsAdvancedMetricsOpen={setIsAdvancedMetricsOpen}
                   />

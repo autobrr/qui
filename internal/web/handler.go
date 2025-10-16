@@ -33,12 +33,12 @@ func init() {
 	mime.AddExtensionType(".woff2", "font/woff2")
 }
 
-func NewHandler(version, baseURL string, embedFS fs.FS) (*Handler, error) {
+func NewHandler(version, baseURL string, embedFS fs.FS) *Handler {
 	return &Handler{
 		fs:      embedFS,
 		baseURL: baseURL,
 		version: version,
-	}, nil
+	}
 }
 
 func (h *Handler) RegisterRoutes(r chi.Router) {
@@ -56,6 +56,8 @@ func (h *Handler) RegisterRoutes(r chi.Router) {
 	// Serve PWA files
 	r.Get("/registerSW.js", h.serveAssets)
 	r.Get("/sw.js", h.serveAssets)
+	r.Get("/workbox-{hash}.js", h.serveAssets)
+	r.Get("/workbox-{hash}.js.map", h.serveAssets)
 	r.Get("/manifest.webmanifest", h.serveAssets)
 
 	// Serve favicon and other root assets
@@ -66,7 +68,8 @@ func (h *Handler) RegisterRoutes(r chi.Router) {
 	r.Get("/pwa-512x512.png", h.serveAssets)
 	r.Get("/swizzin.png", h.serveAssets)
 
-	// SPA catch-all route
+	// SPA routes
+	r.Get("/", h.serveSPA)
 	r.Get("/*", h.serveSPA)
 }
 
@@ -202,8 +205,8 @@ func (h *Handler) serveSPA(w http.ResponseWriter, r *http.Request) {
 		baseURL += "/"
 	}
 
-	// Create the script tag to inject
-	scriptTag := fmt.Sprintf(`<script>window.__QUI_BASE_URL__="%s";</script>`, baseURL)
+	// Create the script tag to inject both base URL and version metadata
+	scriptTag := fmt.Sprintf(`<script>window.__QUI_BASE_URL__=%q;window.__QUI_VERSION__=%q;</script>`, baseURL, h.version)
 
 	// Inject before the closing </head> tag
 	modifiedContent := strings.Replace(

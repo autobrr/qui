@@ -16,36 +16,35 @@ import (
 	"time"
 
 	"github.com/alexedwards/scs/v2"
-	"github.com/go-chi/chi/v5"
-	"github.com/rs/zerolog"
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
 	"github.com/autobrr/qui/internal/api"
 	"github.com/autobrr/qui/internal/auth"
+	"github.com/autobrr/qui/internal/buildinfo"
 	"github.com/autobrr/qui/internal/config"
 	"github.com/autobrr/qui/internal/database"
-	quihttp "github.com/autobrr/qui/internal/http"
+	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/metrics"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/polar"
 	"github.com/autobrr/qui/internal/qbittorrent"
-	"github.com/autobrr/qui/internal/services"
+	"github.com/autobrr/qui/internal/services/license"
+	"github.com/autobrr/qui/internal/services/trackericons"
 	"github.com/autobrr/qui/internal/update"
-	"github.com/autobrr/qui/internal/web"
 	"github.com/autobrr/qui/pkg/sqlite3store"
-	webfs "github.com/autobrr/qui/web"
 )
 
 var (
-	Version = "dev"
-
 	// PolarOrgID Publisher credentials - set during build via ldflags
 	PolarOrgID = "" // Set via: -X main.PolarOrgID=your-org-id
 )
 
 func main() {
+	config.InitDefaultLogger(buildinfo.Version)
+
 	var rootCmd = &cobra.Command{
 		Use:   "qui",
 		Short: "A self-hosted qBittorrent WebUI alternative",
@@ -53,13 +52,10 @@ func main() {
 multiple qBittorrent instances with support for 10k+ torrents.`,
 	}
 
-	// Initialize logger
-	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
-
-	rootCmd.Version = Version
+	rootCmd.Version = buildinfo.Version
 
 	rootCmd.AddCommand(RunServeCommand())
-	rootCmd.AddCommand(RunVersionCommand(Version))
+	rootCmd.AddCommand(RunVersionCommand(buildinfo.Version))
 	rootCmd.AddCommand(RunGenerateConfigCommand())
 	rootCmd.AddCommand(RunCreateUserCommand())
 	rootCmd.AddCommand(RunChangePasswordCommand())
@@ -90,7 +86,7 @@ func RunServeCommand() *cobra.Command {
 	command.Flags().BoolVar(&pprofFlag, "pprof", false, "enable pprof server on :6060")
 
 	command.Run = func(cmd *cobra.Command, args []string) {
-		app := NewApplication(Version, configDir, dataDir, logPath, pprofFlag, PolarOrgID)
+		app := NewApplication(configDir, dataDir, logPath, pprofFlag, PolarOrgID)
 		app.runServer()
 	}
 
@@ -195,7 +191,7 @@ If no --config-dir is specified, uses the OS-specific default location:
 - Windows: %APPDATA%\qui\config.toml`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Initialize configuration
-			cfg, err := config.New(configDir)
+			cfg, err := config.New(configDir, buildinfo.Version)
 			if err != nil {
 				return fmt.Errorf("failed to initialize configuration: %w", err)
 			}
@@ -282,7 +278,7 @@ If no --config-dir is specified, uses the OS-specific default location:
 - Linux/macOS: ~/.config/qui/config.toml  
 - Windows: %APPDATA%\qui\config.toml`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := config.New(configDir)
+			cfg, err := config.New(configDir, buildinfo.Version)
 			if err != nil {
 				return fmt.Errorf("failed to initialize configuration: %w", err)
 			}
@@ -377,7 +373,7 @@ func RunUpdateCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			updater := update.NewUpdater(update.Config{
 				Repository: "autobrr/qui",
-				Version:    Version,
+				Version:    buildinfo.Version,
 			})
 			return updater.Run(cmd.Context())
 		},
@@ -394,7 +390,6 @@ Flags:
 }
 
 type Application struct {
-	version   string
 	configDir string
 	dataDir   string
 	logPath   string
@@ -404,9 +399,8 @@ type Application struct {
 	polarOrgID string // Set via: -X main.PolarOrgID=your-org-id
 }
 
-func NewApplication(version, configDir, dataDir, logPath string, pprofFlag bool, polarOrgID string) *Application {
+func NewApplication(configDir, dataDir, logPath string, pprofFlag bool, polarOrgID string) *Application {
 	return &Application{
-		version:    version,
 		configDir:  configDir,
 		dataDir:    dataDir,
 		logPath:    logPath,
@@ -416,10 +410,8 @@ func NewApplication(version, configDir, dataDir, logPath string, pprofFlag bool,
 }
 
 func (app *Application) runServer() {
-	log.Info().Str("version", app.version).Msg("Starting qui")
-
 	// Initialize configuration
-	cfg, err := config.New(app.configDir)
+	cfg, err := config.New(app.configDir, buildinfo.Version)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize configuration")
 	}
@@ -440,6 +432,23 @@ func (app *Application) runServer() {
 
 	cfg.ApplyLogConfig()
 
+	log.Info().Str("version", buildinfo.Version).Msg("Starting qui")
+
+	trackerIconService, err := trackericons.NewService(cfg.GetDataDir(), buildinfo.UserAgent)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to prepare tracker icon cache")
+	}
+	// Make tracker icon service globally accessible for background fetching
+	trackericons.SetGlobal(trackerIconService)
+
+	// init polar client
+	polarClient := polar.NewClient(polar.WithOrganizationID(app.polarOrgID), polar.WithEnvironment(os.Getenv("QUI__POLAR_ENVIRONMENT")), polar.WithUserAgent(buildinfo.UserAgent))
+	if app.polarOrgID != "" {
+		log.Trace().Msg("Initializing Polar client for license validation")
+	} else {
+		log.Warn().Msg("No Polar organization ID configured - premium themes will be disabled")
+	}
+
 	// Initialize database
 	db, err := database.New(cfg.GetDatabasePath())
 	if err != nil {
@@ -447,20 +456,8 @@ func (app *Application) runServer() {
 	}
 	defer db.Close()
 
-	// Initialize session manager
-	sessionManager := scs.New()
-	sessionManager.Store = sqlite3store.New(db.Conn())
-	sessionManager.Lifetime = 24 * time.Hour * 30 // 30 days
-	sessionManager.Cookie.Name = "qui_user_session"
-	sessionManager.Cookie.HttpOnly = true
-	sessionManager.Cookie.SameSite = http.SameSiteLaxMode
-	sessionManager.Cookie.Secure = false // Will be set to true when HTTPS is detected
-	sessionManager.Cookie.Persist = false
-
-	// Initialize services
-	authService := auth.NewService(db.Conn())
-
 	// Initialize stores
+	licenseRepo := database.NewLicenseRepo(db)
 	instanceStore, err := models.NewInstanceStore(db.Conn(), cfg.GetEncryptionKey())
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize instance store")
@@ -468,6 +465,15 @@ func (app *Application) runServer() {
 
 	clientAPIKeyStore := models.NewClientAPIKeyStore(db.Conn())
 	errorStore := models.NewInstanceErrorStore(db.Conn())
+
+	// Initialize services
+	authService := auth.NewService(db.Conn())
+	licenseService := license.NewLicenseService(licenseRepo, polarClient, cfg.GetConfigDir())
+
+	go func() {
+		checker := license.NewLicenseChecker(licenseService)
+		checker.StartPeriodicChecks(context.Background())
+	}()
 
 	// Initialize qBittorrent client pool
 	clientPool, err := qbittorrent.NewClientPool(instanceStore, errorStore)
@@ -479,37 +485,13 @@ func (app *Application) runServer() {
 	// Initialize managers
 	syncManager := qbittorrent.NewSyncManager(clientPool)
 
-	var metricsManager *metrics.MetricsManager
-	if cfg.Config.MetricsEnabled {
-		metricsManager = metrics.NewMetricsManager(syncManager, clientPool)
-
-		// Start metrics server on separate port
-		go func() {
-			// Parse basic auth users
-			basicAuthUsers := map[string]string{}
-			if cfg.Config.MetricsBasicAuthUsers != "" {
-				for cred := range strings.SplitSeq(cfg.Config.MetricsBasicAuthUsers, ",") {
-					parts := strings.Split(strings.TrimSpace(cred), ":")
-					if len(parts) == 2 {
-						basicAuthUsers[parts[0]] = parts[1]
-					} else {
-						log.Warn().Msgf("Invalid metrics basic auth credentials: %s", cred)
-					}
-				}
-			}
-
-			metricsServer := quihttp.NewMetricsServer(
-				metricsManager,
-				cfg.Config.MetricsHost,
-				cfg.Config.MetricsPort,
-				basicAuthUsers,
-			)
-
-			if err := metricsServer.Start(); err != nil && err != http.ErrServerClosed {
-				log.Error().Err(err).Msg("Metrics server failed")
-			}
-		}()
-	}
+	updateService := update.NewService(log.Logger, cfg.Config.CheckForUpdates, buildinfo.Version, buildinfo.UserAgent)
+	cfg.RegisterReloadListener(func(conf *domain.Config) {
+		updateService.SetEnabled(conf.CheckForUpdates)
+	})
+	updateCtx, cancelUpdate := context.WithCancel(context.Background())
+	defer cancelUpdate()
+	updateService.Start(updateCtx)
 
 	// Initialize client connections for all active instances on startup
 	go func() {
@@ -541,113 +523,53 @@ func (app *Application) runServer() {
 		}
 	}()
 
-	// Initialize web handler (for embedded frontend)
-	webHandler, err := web.NewHandler(Version, cfg.Config.BaseURL, webfs.DistDirFS)
-	if err != nil {
-		log.Warn().Err(err).Msg("Failed to initialize web handler")
-	}
-
-	// Initialize Polar client and theme license service
-	var themeLicenseService *services.ThemeLicenseService
-
-	if app.polarOrgID != "" {
-		log.Trace().
-			Msg("Initializing Polar client for license validation")
-
-		polarClient := polar.NewClient()
-		polarClient.SetOrganizationID(app.polarOrgID)
-
-		themeLicenseService = services.NewThemeLicenseService(db, polarClient)
-		log.Info().Msg("Theme licensing service initialized")
-	} else {
-		log.Warn().Msg("No Polar organization ID configured - premium themes will be disabled")
-
-		polarClient := polar.NewClient()
-		polarClient.SetOrganizationID("")
-
-		themeLicenseService = services.NewThemeLicenseService(db, polarClient)
-	}
-
-	// Create router dependencies
-	deps := &api.Dependencies{
-		Config:              cfg,
-		DB:                  db.Conn(),
-		AuthService:         authService,
-		SessionManager:      sessionManager,
-		InstanceStore:       instanceStore,
-		ClientAPIKeyStore:   clientAPIKeyStore,
-		ClientPool:          clientPool,
-		SyncManager:         syncManager,
-		WebHandler:          webHandler,
-		ThemeLicenseService: themeLicenseService,
-		MetricsManager:      metricsManager,
-	}
-
-	// Initialize router
-	router := api.NewRouter(deps)
-
-	// If baseURL is configured, mount the entire app under that path
-	var handler http.Handler
-	if cfg.Config.BaseURL != "" && cfg.Config.BaseURL != "/" {
-		// Create a parent router and mount our app under the base URL
-		parentRouter := chi.NewRouter()
-
-		// Strip trailing slash from base URL for mounting
-		mountPath := strings.TrimSuffix(cfg.Config.BaseURL, "/")
-
-		// Mount the application under the base URL
-		parentRouter.Mount(mountPath, router)
-
-		// Redirect root to base URL
-		parentRouter.Get("/", func(w http.ResponseWriter, r *http.Request) {
-			http.Redirect(w, r, cfg.Config.BaseURL, http.StatusMovedPermanently)
-		})
-
-		handler = parentRouter
-	} else {
-		handler = router
-	}
-
-	// Create HTTP server with configurable timeouts
-	readTimeout := time.Duration(cfg.Config.HTTPTimeouts.ReadTimeout) * time.Second
-	writeTimeout := time.Duration(cfg.Config.HTTPTimeouts.WriteTimeout) * time.Second
-	idleTimeout := time.Duration(cfg.Config.HTTPTimeouts.IdleTimeout) * time.Second
-
-	// Use defaults if not configured
-	if readTimeout == 0 {
-		readTimeout = 60 * time.Second
-	}
-	if writeTimeout == 0 {
-		writeTimeout = 120 * time.Second
-	}
-	if idleTimeout == 0 {
-		idleTimeout = 180 * time.Second
-	}
-
-	srv := &http.Server{
-		Addr:         fmt.Sprintf("%s:%d", cfg.Config.Host, cfg.Config.Port),
-		Handler:      handler,
-		ReadTimeout:  readTimeout,
-		WriteTimeout: writeTimeout,
-		IdleTimeout:  idleTimeout,
-	}
+	// Initialize session manager
+	sessionManager := scs.New()
+	sessionManager.Store = sqlite3store.New(db.Conn())
+	sessionManager.Lifetime = 24 * time.Hour * 30 // 30 days
+	sessionManager.Cookie.Name = "qui_user_session"
+	sessionManager.Cookie.HttpOnly = true
+	sessionManager.Cookie.SameSite = http.SameSiteLaxMode
+	sessionManager.Cookie.Secure = false // Will be set to true when HTTPS is detected
+	sessionManager.Cookie.Persist = false
 
 	// Start server in goroutine
-	go func() {
-		log.Info().
-			Str("address", srv.Addr).
-			Dur("readTimeout", readTimeout).
-			Dur("writeTimeout", writeTimeout).
-			Dur("idleTimeout", idleTimeout).
-			Msg("Starting HTTP server")
-		if cfg.Config.BaseURL != "" {
-			log.Info().Str("baseURL", cfg.Config.BaseURL).Msg("Serving under base URL")
-		}
+	httpServer := api.NewServer(&api.Dependencies{
+		Config:             cfg,
+		Version:            buildinfo.Version,
+		AuthService:        authService,
+		SessionManager:     sessionManager,
+		InstanceStore:      instanceStore,
+		ClientAPIKeyStore:  clientAPIKeyStore,
+		ClientPool:         clientPool,
+		SyncManager:        syncManager,
+		LicenseService:     licenseService,
+		UpdateService:      updateService,
+		TrackerIconService: trackerIconService,
+	})
 
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatal().Err(err).Msg("Server failed")
+	errorChannel := make(chan error)
+	go func() {
+		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			errorChannel <- err
 		}
 	}()
+
+	if cfg.Config.MetricsEnabled {
+		metricsManager := metrics.NewMetricsManager(syncManager, clientPool)
+
+		// Start metrics server on separate port
+		go func() {
+			metricsServer := metrics.NewMetricsServer(
+				metricsManager,
+				cfg.Config.MetricsHost,
+				cfg.Config.MetricsPort,
+				cfg.Config.MetricsBasicAuthUsers,
+			)
+
+			errorChannel <- metricsServer.ListenAndServe()
+		}()
+	}
 
 	// Start profiling server if enabled
 	if cfg.Config.PprofEnabled {
@@ -659,19 +581,50 @@ func (app *Application) runServer() {
 			}
 		}()
 	}
+
 	// Wait for interrupt signal to gracefully shutdown the server
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-	log.Info().Msg("Shutting down server...")
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGHUP, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM)
+
+	select {
+	case sig := <-sigCh:
+		log.Info().Msgf("got signal %v, shutting down server", sig.String())
+	case err := <-errorChannel:
+		log.Error().Err(err).Msg("got unexpected error from server")
+	}
 
 	// Graceful shutdown with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	if err := srv.Shutdown(ctx); err != nil {
-		log.Fatal().Err(err).Msg("Server forced to shutdown")
+	if err := httpServer.Shutdown(ctx); err != nil {
+		//log.Fatal().Err(err).Msg("Server forced to shutdown")
+		log.Error().Err(err).Msg("got error during graceful http shutdown")
+
+		os.Exit(1)
 	}
 
-	log.Info().Msg("Server stopped")
+	//if err := srv.Shutdown(context.Background()); err != nil {
+	//	log.Error().Err(err).Msg("got error during graceful http shutdown")
+	//
+	//	os.Exit(1)
+	//}
+
+	os.Exit(0)
+
+	//// Wait for interrupt signal to gracefully shutdown the server
+	//quit := make(chan os.Signal, 1)
+	//signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	//<-quit
+	//log.Info().Msg("Shutting down server...")
+	//
+	//// Graceful shutdown with timeout
+	//ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	//defer cancel()
+	//
+	//if err := httpServer.Close(ctx); err != nil {
+	//	log.Fatal().Err(err).Msg("Server forced to shutdown")
+	//}
+	//
+	//log.Info().Msg("Server stopped")
 }

@@ -4,11 +4,13 @@
 package middleware
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/autobrr/qui/internal/auth"
+	"github.com/autobrr/qui/internal/domain"
 	"github.com/rs/zerolog/log"
 )
 
@@ -38,15 +40,27 @@ func IsAuthenticated(authService *auth.Service, sessionManager *scs.SessionManag
 				return
 			}
 
+			username := sessionManager.GetString(r.Context(), "username")
+			ctx := context.WithValue(r.Context(), "username", username)
+			r = r.WithContext(ctx)
+
 			next.ServeHTTP(w, r)
 		})
 	}
 }
 
 // RequireSetup middleware ensures initial setup is complete
-func RequireSetup(authService *auth.Service) func(http.Handler) http.Handler {
+func RequireSetup(authService *auth.Service, cfg *domain.Config) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// When OIDC is enabled we don't require a local user to exist, so skip the
+			// setup precondition entirely. Authentication is still enforced by the
+			// downstream middleware.
+			if cfg != nil && cfg.OIDCEnabled {
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			// Allow setup-related endpoints
 			if strings.HasSuffix(r.URL.Path, "/auth/setup") || strings.HasSuffix(r.URL.Path, "/auth/check-setup") {
 				next.ServeHTTP(w, r)

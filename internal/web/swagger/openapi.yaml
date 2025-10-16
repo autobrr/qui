@@ -369,6 +369,9 @@ paths:
                   nullable: true
                   writeOnly: true
                   description: Optional basic auth password. Will be encrypted and never returned in responses.
+                tlsSkipVerify:
+                  type: boolean
+                  description: Set to true to disable TLS certificate verification (for trusted self-signed certificates).
       responses:
         '201':
           description: Instance created
@@ -412,6 +415,9 @@ paths:
                   nullable: true
                   writeOnly: true
                   description: Optional basic auth password. For updates - provide new password to update, omit field to keep existing, or empty string to remove basic auth.
+                tlsSkipVerify:
+                  type: boolean
+                  description: Set to true to disable TLS certificate verification (for trusted self-signed certificates).
       responses:
         '200':
           description: Instance updated
@@ -441,6 +447,46 @@ paths:
           description: Connection successful
         '503':
           description: Connection failed
+
+  /api/instances/{instanceId}/app-info:
+    get:
+      tags:
+        - Instances
+      summary: Get qBittorrent application info
+      description: Get qBittorrent version and build information for an instance
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+      responses:
+        '200':
+          description: qBittorrent application information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QBittorrentAppInfo'
+        '400':
+          description: Invalid instance ID
+        '500':
+          description: Failed to get qBittorrent application info
+
+  /api/instances/{instanceId}/capabilities:
+    get:
+      tags:
+        - Instances
+      summary: Get instance capabilities
+      description: Retrieve lightweight capability metadata for a qBittorrent instance.
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+      responses:
+        '200':
+          description: Instance capabilities
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstanceCapabilities'
+        '400':
+          description: Invalid instance ID
+        '503':
+          description: Instance unavailable
 
 
   /api/instances/{instanceId}/torrents:
@@ -481,7 +527,7 @@ paths:
           in: query
           schema:
             type: string
-            description: JSON object with filter criteria
+            description: JSON object with filter criteria (`status`, `categories`, `tags`, `excludeTags`, `trackers`)
       responses:
         '200':
           description: Paginated torrent list
@@ -551,23 +597,140 @@ paths:
             schema:
               type: object
               required:
-                - hashes
                 - action
               properties:
                 hashes:
                   type: array
                   items:
                     type: string
+                  description: Specific torrent hashes to target. Required unless selectAll is true.
+                selectAll:
+                  type: boolean
+                  description: Apply the action to all torrents matching the provided filters.
+                filters:
+                  type: object
+                  description: Filter criteria used when selectAll is true.
+                  properties:
+                    status:
+                      type: array
+                      items:
+                        type: string
+                    categories:
+                      type: array
+                      items:
+                        type: string
+                    tags:
+                      type: array
+                      items:
+                        type: string
+                    trackers:
+                      type: array
+                      items:
+                        type: string
+                search:
+                  type: string
+                  description: Optional search query applied when selectAll is true.
+                excludeHashes:
+                  type: array
+                  items:
+                    type: string
+                  description: Hashes to exclude when selectAll is true.
                 action:
                   type: string
-                  enum: [pause, resume, delete]
+                  description: Bulk action to perform on the selected torrents.
+                  enum:
+                    - pause
+                    - resume
+                    - delete
+                    - deleteWithFiles
+                    - recheck
+                    - reannounce
+                    - increasePriority
+                    - decreasePriority
+                    - topPriority
+                    - bottomPriority
+                    - addTags
+                    - removeTags
+                    - setTags
+                    - setCategory
+                    - toggleAutoTMM
+                    - setShareLimit
+                    - setUploadLimit
+                    - setDownloadLimit
+                    - setLocation
+                    - editTrackers
+                    - addTrackers
+                    - removeTrackers
                 deleteFiles:
                   type: boolean
                   description: Only for delete action
+                tags:
+                  type: string
+                  description: Comma-separated list of tags for tag-related actions.
+                category:
+                  type: string
+                  description: Category name for setCategory action.
+                enable:
+                  type: boolean
+                  description: Enable or disable Automatic Torrent Management for toggleAutoTMM.
+                ratioLimit:
+                  type: number
+                  format: float
+                  description: Ratio limit for setShareLimit action.
+                seedingTimeLimit:
+                  type: integer
+                  format: int64
+                  description: Seeding time limit (minutes) for setShareLimit action.
+                inactiveSeedingTimeLimit:
+                  type: integer
+                  format: int64
+                  description: Inactive seeding time limit (minutes) for setShareLimit action.
+                uploadLimit:
+                  type: integer
+                  format: int64
+                  description: Upload speed limit in KB/s for setUploadLimit action.
+                downloadLimit:
+                  type: integer
+                  format: int64
+                  description: Download speed limit in KB/s for setDownloadLimit action.
+                location:
+                  type: string
+                  description: Destination path for setLocation action.
+                trackerOldURL:
+                  type: string
+                  description: Existing tracker URL to replace for editTrackers action.
+                trackerNewURL:
+                  type: string
+                  description: Replacement tracker URL for editTrackers action.
+                trackerURLs:
+                  type: string
+                  description: Newline-separated tracker URLs for addTrackers/removeTrackers actions.
       responses:
         '200':
           description: Action performed successfully
 
+
+  /api/instances/{instanceId}/torrents/{hash}/export:
+    get:
+      tags:
+        - Torrent Details
+      summary: Export torrent file
+      description: Download the .torrent file for a specific torrent
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/hash'
+      responses:
+        '200':
+          description: Torrent file
+          content:
+            application/x-bittorrent:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Invalid request
+        '500':
+          description: Failed to export torrent
 
   /api/instances/{instanceId}/torrents/{hash}/properties:
     get:
@@ -604,6 +767,91 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Tracker'
+    put:
+      tags:
+        - Torrent Details
+      summary: Edit torrent tracker
+      description: Edit a tracker URL for a torrent
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/hash'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - oldURL
+                - newURL
+              properties:
+                oldURL:
+                  type: string
+                  description: The current tracker URL to replace
+                newURL:
+                  type: string
+                  description: The new tracker URL
+      responses:
+        '200':
+          description: Tracker edited successfully
+        '400':
+          description: Invalid request
+        '500':
+          description: Failed to edit tracker
+    post:
+      tags:
+        - Torrent Details
+      summary: Add torrent trackers
+      description: Add new trackers to a torrent
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/hash'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - urls
+              properties:
+                urls:
+                  type: string
+                  description: Newline-separated list of tracker URLs to add
+      responses:
+        '200':
+          description: Trackers added successfully
+        '400':
+          description: Invalid request
+        '500':
+          description: Failed to add trackers
+    delete:
+      tags:
+        - Torrent Details
+      summary: Remove torrent trackers
+      description: Remove trackers from a torrent
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/hash'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - urls
+              properties:
+                urls:
+                  type: string
+                  description: Newline-separated list of tracker URLs to remove
+      responses:
+        '200':
+          description: Trackers removed successfully
+        '400':
+          description: Invalid request
+        '500':
+          description: Failed to remove trackers
 
   /api/instances/{instanceId}/torrents/{hash}/files:
     get:
@@ -623,6 +871,101 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/TorrentFile'
+
+  /api/instances/{instanceId}/torrents/{hash}/rename:
+    put:
+      tags:
+        - Torrent Details
+      summary: Rename torrent
+      description: Update the display name for a torrent
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/hash'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  description: New name to assign to the torrent
+      responses:
+        '200':
+          description: Torrent renamed successfully
+        '400':
+          description: Invalid request
+        '500':
+          description: Failed to rename torrent
+
+  /api/instances/{instanceId}/torrents/{hash}/rename-file:
+    put:
+      tags:
+        - Torrent Details
+      summary: Rename torrent file
+      description: Rename a specific file within a torrent
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/hash'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - oldPath
+                - newPath
+              properties:
+                oldPath:
+                  type: string
+                  description: Existing relative path of the file inside the torrent
+                newPath:
+                  type: string
+                  description: New relative path (including file name) to apply
+      responses:
+        '200':
+          description: Torrent file renamed successfully
+        '400':
+          description: Invalid request
+        '500':
+          description: Failed to rename torrent file
+
+  /api/instances/{instanceId}/torrents/{hash}/rename-folder:
+    put:
+      tags:
+        - Torrent Details
+      summary: Rename torrent folder
+      description: Rename a folder within a torrent
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/hash'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - oldPath
+                - newPath
+              properties:
+                oldPath:
+                  type: string
+                  description: Existing folder path relative to the torrent root
+                newPath:
+                  type: string
+                  description: New folder path (relative) to apply
+      responses:
+        '200':
+          description: Torrent folder renamed successfully
+        '400':
+          description: Invalid request
+        '500':
+          description: Failed to rename torrent folder
 
   /api/instances/{instanceId}/torrents/{hash}/peers:
     get:
@@ -725,6 +1068,210 @@ paths:
       responses:
         '200':
           description: Peers banned successfully
+
+  /api/instances/{instanceId}/torrent-creator:
+    post:
+      tags:
+        - Torrents
+      summary: Create torrent
+      description: Create a new torrent file from a source path. Requires qBittorrent v5.0.0 or later.
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - sourcePath
+              properties:
+                sourcePath:
+                  type: string
+                  description: Path to the source file or directory
+                torrentFilePath:
+                  type: string
+                  description: Custom path for saving the torrent file
+                private:
+                  type: boolean
+                  description: Create a private torrent
+                format:
+                  type: string
+                  enum: [v1, v2, hybrid]
+                  description: Torrent format
+                optimizeAlignment:
+                  type: boolean
+                  description: Optimize piece alignment
+                paddedFileSizeLimit:
+                  type: integer
+                  description: Padded file size limit
+                pieceSize:
+                  type: integer
+                  description: Piece size in bytes
+                comment:
+                  type: string
+                  description: Comment for the torrent
+                source:
+                  type: string
+                  description: Source string for the torrent
+                trackers:
+                  type: array
+                  items:
+                    type: string
+                  description: List of tracker URLs
+                urlSeeds:
+                  type: array
+                  items:
+                    type: string
+                  description: List of URL seeds
+                startSeeding:
+                  type: boolean
+                  description: Start seeding after creation
+      responses:
+        '201':
+          description: Torrent creation task created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  taskID:
+                    type: string
+                  sourcePath:
+                    type: string
+                  status:
+                    type: string
+                  timeAdded:
+                    type: string
+        '400':
+          description: Invalid request or unsupported qBittorrent version
+        '409':
+          description: Too many active torrent creation tasks
+
+  /api/instances/{instanceId}/torrent-creator/status:
+    get:
+      tags:
+        - Torrents
+      summary: Get torrent creation status
+      description: Get status of torrent creation tasks. Query parameter taskID can be used to filter by specific task.
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+        - name: taskID
+          in: query
+          schema:
+            type: string
+          description: Optional task ID to filter by
+      responses:
+        '200':
+          description: List of torrent creation tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    taskID:
+                      type: string
+                    sourcePath:
+                      type: string
+                    torrentFilePath:
+                      type: string
+                    pieceSize:
+                      type: integer
+                    private:
+                      type: boolean
+                    format:
+                      type: string
+                    status:
+                      type: string
+                    timeAdded:
+                      type: string
+                    timeStarted:
+                      type: string
+                    timeFinished:
+                      type: string
+                    progress:
+                      type: number
+                    errorMessage:
+                      type: string
+        '400':
+          description: Invalid request or unsupported qBittorrent version
+        '404':
+          description: Torrent creation task not found
+
+  /api/instances/{instanceId}/torrent-creator/count:
+    get:
+      tags:
+        - Torrents
+      summary: Get active torrent creation task count
+      description: Get the number of active (running or queued) torrent creation tasks.
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+      responses:
+        '200':
+          description: Active torrent creation task count
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                    description: Number of active torrent creation tasks
+        '400':
+          description: Invalid instance ID
+
+  /api/instances/{instanceId}/torrent-creator/{taskID}:
+    delete:
+      tags:
+        - Torrents
+      summary: Delete torrent creation task
+      description: Delete a torrent creation task
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+        - name: taskID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Task ID to delete
+      responses:
+        '200':
+          description: Torrent creation task deleted successfully
+        '400':
+          description: Invalid request or unsupported qBittorrent version
+        '404':
+          description: Torrent creation task not found
+
+  /api/instances/{instanceId}/torrent-creator/{taskID}/file:
+    get:
+      tags:
+        - Torrents
+      summary: Download created torrent file
+      description: Download the torrent file for a completed torrent creation task
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+        - name: taskID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Task ID of the completed torrent
+      responses:
+        '200':
+          description: Torrent file downloaded successfully
+          content:
+            application/x-bittorrent:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Invalid request or unsupported qBittorrent version
+        '404':
+          description: Torrent creation task not found
+        '409':
+          description: Torrent creation is still in progress or failed
 
   /api/instances/{instanceId}/categories:
     get:
@@ -877,6 +1424,28 @@ paths:
         '200':
           description: Tags deleted
 
+  /api/instances/{instanceId}/trackers:
+    get:
+      tags:
+        - Trackers
+      summary: List active trackers
+      description: Get active tracker domains and representative tracker URLs for an instance
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+      responses:
+        '200':
+          description: Active tracker domains mapped to a tracker URL
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+        '400':
+          description: Invalid instance ID
+        '500':
+          description: Failed to get active trackers
+
   /api/instances/{instanceId}/preferences:
     get:
       tags:
@@ -951,12 +1520,12 @@ paths:
                     type: boolean
                     description: New status of alternative speed limits
 
-  /api/themes/license/validate:
+  /api/license/activate:
     post:
       tags:
-        - Theme Licenses
-      summary: Validate theme license
-      description: Validate and activate a theme license key
+        - Licenses
+      summary: Activate license
+      description: Activate a license key and store it for the current user
       requestBody:
         required: true
         content:
@@ -970,7 +1539,7 @@ paths:
                   type: string
       responses:
         '200':
-          description: License validated
+          description: License activated successfully
           content:
             application/json:
               schema:
@@ -978,23 +1547,91 @@ paths:
                 properties:
                   valid:
                     type: boolean
-                  themeName:
+                  productName:
                     type: string
                   expiresAt:
                     type: string
                     format: date-time
                   message:
                     type: string
+                  error:
+                    type: string
+                    nullable: true
+        '400':
+          description: Invalid request payload
+        '403':
+          description: License activation failed
 
-  /api/themes/licensed:
-    get:
+  /api/license/validate:
+    post:
       tags:
-        - Theme Licenses
-      summary: Get licensed themes
-      description: Get list of themes with active licenses
+        - Licenses
+      summary: Validate license
+      description: Validate a license key and ensure it remains active
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - licenseKey
+              properties:
+                licenseKey:
+                  type: string
       responses:
         '200':
-          description: List of licensed themes
+          description: License validated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid:
+                    type: boolean
+                  productName:
+                    type: string
+                  expiresAt:
+                    type: string
+                    format: date-time
+                  message:
+                    type: string
+                  error:
+                    type: string
+                    nullable: true
+        '400':
+          description: Invalid request payload
+        '403':
+          description: License validation failed
+        '404':
+          description: License not found
+
+  /api/license/licensed:
+    get:
+      tags:
+        - Licenses
+      summary: Check premium access
+      description: Check if any active licenses grant premium access
+      responses:
+        '200':
+          description: Premium access status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  hasPremiumAccess:
+                    type: boolean
+
+  /api/license/licenses:
+    get:
+      tags:
+        - Licenses
+      summary: List licenses
+      description: List all stored licenses
+      responses:
+        '200':
+          description: Licenses retrieved
           content:
             application/json:
               schema:
@@ -1002,47 +1639,22 @@ paths:
                 items:
                   type: object
                   properties:
-                    name:
-                      type: string
-                    expiresAt:
-                      type: string
-                      format: date-time
-
-  /api/themes/licenses:
-    get:
-      tags:
-        - Theme Licenses
-      summary: Get all licenses
-      description: Get all theme licenses
-      responses:
-        '200':
-          description: List of licenses
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  type: object
-                  properties:
-                    id:
-                      type: integer
                     licenseKey:
                       type: string
-                    themeName:
+                    productName:
                       type: string
-                    expiresAt:
+                    status:
                       type: string
-                      format: date-time
                     createdAt:
                       type: string
                       format: date-time
 
-  /api/themes/license/{licenseKey}:
+  /api/license/{licenseKey}:
     delete:
       tags:
-        - Theme Licenses
+        - Licenses
       summary: Delete license
-      description: Remove a theme license
+      description: Remove a stored license
       parameters:
         - name: licenseKey
           in: path
@@ -1051,26 +1663,63 @@ paths:
             type: string
       responses:
         '200':
-          description: License deleted
+          description: License deleted successfully
+        '400':
+          description: Invalid license key
 
-  /api/themes/license/refresh:
+  /api/license/refresh:
     post:
       tags:
-        - Theme Licenses
+        - Licenses
       summary: Refresh licenses
-      description: Refresh all theme licenses
+      description: Refresh all stored licenses from the licensing service
       responses:
         '200':
-          description: Licenses refreshed
+          description: Licenses refreshed successfully
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  refreshed:
-                    type: integer
-                  failed:
-                    type: integer
+                  message:
+                    type: string
+        '500':
+          description: Failed to refresh licenses
+
+  /api/tracker-icons:
+    get:
+      tags:
+        - Tracker Icons
+      summary: List tracker icons
+      description: Retrieve cached tracker favicons as data URLs keyed by tracker hostname
+      responses:
+        '200':
+          description: Cached tracker icons
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+                  description: Base64-encoded PNG data URL for the tracker favicon
+        '500':
+          description: Failed to list tracker icons
+
+  /api/version/latest:
+    get:
+      tags:
+        - System
+      summary: Check for latest version
+      description: Check if a newer version of qui is available
+      responses:
+        '200':
+          description: Update available - newer version found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LatestVersionResponse'
+        '204':
+          description: No update available - current version is latest
 
   /health:
     get:
@@ -1090,6 +1739,31 @@ paths:
                   status:
                     type: string
                     example: "ok"
+
+  /healthz/readiness:
+    get:
+      tags:
+        - System
+      summary: Readiness probe
+      description: Check if the service and its dependencies are ready to receive traffic
+      security: []
+      responses:
+        '200':
+          description: Service ready
+        '503':
+          description: Service not ready
+
+  /healthz/liveness:
+    get:
+      tags:
+        - System
+      summary: Liveness probe
+      description: Simple liveness check to confirm the service is running
+      security: []
+      responses:
+        '200':
+          description: Service is alive
+
 
 components:
   securitySchemes:
@@ -1211,6 +1885,42 @@ components:
         hasDecryptionError:
           type: boolean
           description: Whether there's a password decryption error
+        tlsSkipVerify:
+          type: boolean
+          description: When true, TLS certificate errors from the upstream qBittorrent instance are ignored.
+
+
+    InstanceCapabilities:
+      type: object
+      properties:
+        supportsTorrentCreation:
+          type: boolean
+          description: Whether the instance supports creating torrents via the Web API.
+        supportsTorrentExport:
+          type: boolean
+          description: Whether the instance supports exporting torrent files via the Web API (requires WebAPI 2.8.11+, qBittorrent 4.5.0+).
+        supportsSetTags:
+          type: boolean
+          description: Whether the instance supports replacing tags on torrents.
+        supportsTrackerHealth:
+          type: boolean
+          description: Whether the instance exposes tracker health metadata (unregistered/tracker down states).
+        supportsTrackerEditing:
+          type: boolean
+          description: Whether the instance can edit tracker URLs via the Web API (requires WebAPI v2.3.0+).
+        supportsRenameTorrent:
+          type: boolean
+          description: Whether the instance supports renaming torrents (requires WebAPI 2.0.0+, qBittorrent 4.1.0+).
+        supportsRenameFile:
+          type: boolean
+          description: Whether the instance supports renaming files within torrents (requires WebAPI 2.6.0+, qBittorrent 4.3.0+).
+        supportsRenameFolder:
+          type: boolean
+          description: Whether the instance supports renaming folders within torrents (requires WebAPI 2.8.4+, qBittorrent 4.4.0+).
+        webAPIVersion:
+          type: string
+          nullable: true
+          description: Reported qBittorrent Web API version for the instance.
 
 
     Torrent:
@@ -1330,6 +2040,84 @@ components:
           type: string
         savePath:
           type: string
+
+    LatestVersionResponse:
+      type: object
+      description: Information about the latest available version when an update is available
+      required:
+        - tag_name
+        - html_url
+        - published_at
+      properties:
+        tag_name:
+          type: string
+          description: The version tag (e.g., "v1.2.3")
+          example: "v1.2.3"
+        name:
+          type: string
+          nullable: true
+          description: The release name/title
+          example: "qui v1.2.3 - Bug fixes and improvements"
+        html_url:
+          type: string
+          format: uri
+          description: URL to the GitHub release page
+          example: "https://github.com/autobrr/qui/releases/tag/v1.2.3"
+        published_at:
+          type: string
+          format: date-time
+          description: When the release was published
+          example: "2025-09-23T10:30:00Z"
+
+    QBittorrentBuildInfo:
+      type: object
+      description: qBittorrent build information
+      properties:
+        qt:
+          type: string
+          description: Qt framework version
+          example: "5.15.2"
+        libtorrent:
+          type: string
+          description: libtorrent library version
+          example: "2.0.8"
+        boost:
+          type: string
+          description: Boost library version
+          example: "1.76.0"
+        openssl:
+          type: string
+          description: OpenSSL library version
+          example: "1.1.1k"
+        zlib:
+          type: string
+          description: zlib library version
+          example: "1.2.11"
+        bitness:
+          type: integer
+          description: Architecture bitness (32 or 64)
+          example: 64
+        platform:
+          type: string
+          description: Operating system platform
+          example: "linux"
+
+    QBittorrentAppInfo:
+      type: object
+      description: qBittorrent application information
+      required:
+        - version
+      properties:
+        version:
+          type: string
+          description: qBittorrent version
+          example: "4.6.0"
+        webAPIVersion:
+          type: string
+          description: qBittorrent Web API version
+          example: "2.11.4"
+        buildInfo:
+          $ref: '#/components/schemas/QBittorrentBuildInfo'
 
 tags:
   - name: Authentication

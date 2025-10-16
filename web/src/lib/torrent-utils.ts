@@ -5,6 +5,75 @@
 
 import type { Torrent } from "@/types"
 
+type HashSource = {
+  hash?: string | null
+  infohash_v1?: string | null
+  infohash_v2?: string | null
+}
+
+export function normalizeTorrentHash(value?: string | null): string {
+  if (!value) return ""
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : ""
+}
+
+function toHashSource(source?: HashSource | null): HashSource | undefined {
+  if (!source) return undefined
+
+  const { hash, infohash_v1, infohash_v2 } = source
+  const hasValue = [hash, infohash_v1, infohash_v2].some(value => normalizeTorrentHash(value) !== "")
+  if (!hasValue) return undefined
+
+  return { hash, infohash_v1, infohash_v2 }
+}
+
+// qBittorrent maps the v1 info-hash into `hash` for legacy torrents; reuse it unless it
+// matches the v2 digest (pure v2 torrent).
+function deriveLegacyInfohashV1(source?: HashSource | null): string | undefined {
+  if (!source) return undefined
+
+  const candidate = normalizeTorrentHash(source.hash)
+  if (!candidate) return undefined
+
+  const v2 = normalizeTorrentHash(source.infohash_v2)
+  if (v2 && v2 === candidate) return undefined
+
+  return candidate
+}
+
+export function resolveTorrentHashes(primary?: HashSource | null, fallback?: HashSource | null) {
+  const primarySource = toHashSource(primary)
+  const fallbackSource = toHashSource(fallback)
+
+  const infohashV1 = [
+    primarySource?.infohash_v1,
+    fallbackSource?.infohash_v1,
+    deriveLegacyInfohashV1(primarySource),
+    deriveLegacyInfohashV1(fallbackSource),
+  ].map(normalizeTorrentHash).find(Boolean) || ""
+
+  const infohashV2 = [
+    primarySource?.infohash_v2,
+    fallbackSource?.infohash_v2,
+  ].map(normalizeTorrentHash).find(Boolean) || ""
+
+  const canonicalHash =
+    infohashV1 ||
+    infohashV2 ||
+    normalizeTorrentHash(primarySource?.hash) ||
+    normalizeTorrentHash(fallbackSource?.hash)
+
+  return {
+    infohashV1,
+    infohashV2,
+    canonicalHash,
+  }
+}
+
+export function getTorrentDisplayHash(primary?: HashSource | null, fallback?: HashSource | null): string {
+  return resolveTorrentHashes(primary, fallback).canonicalHash
+}
+
 /**
  * Get common tags from selected torrents (tags that ALL selected torrents have)
  */
@@ -98,4 +167,14 @@ export function getCommonSavePath(torrents: Torrent[]): string {
   }
 
   return firstPath
+}
+
+/**
+ * Calculate the total size of selected torrents
+ */
+export function getTotalSize(torrents: Torrent[]): number {
+  if (torrents.length === 0) return 0
+
+  // Use reduce to sum up all torrent sizes
+  return torrents.reduce((total, torrent) => total + (torrent.size || 0), 0)
 }

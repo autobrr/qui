@@ -143,7 +143,7 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
         <CardDescription className="flex items-center gap-1 text-sm pl-6 pr-8">
           <span
             className={incognitoMode ? "blur-sm select-none truncate" : "truncate"}
-            title={displayUrl}
+            {...(!incognitoMode && { title: displayUrl })}
           >
             {displayUrl}
           </span>
@@ -174,6 +174,12 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
               <span>{instance.basicUsername}</span>
             </div>
           )}
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">TLS Verification:</span>
+            <span className={instance.tlsSkipVerify ? "text-amber-500" : ""}>
+              {instance.tlsSkipVerify ? "Skipped" : "Strict"}
+            </span>
+          </div>
         </div>
 
         <InstanceErrorDisplay instance={instance} onEdit={onEdit} showEditButton={true} compact />

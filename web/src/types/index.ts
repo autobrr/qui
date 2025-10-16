@@ -4,10 +4,11 @@
  */
 
 export interface User {
-  id: number
+  id?: number
   username: string
-  createdAt: string
-  updatedAt: string
+  createdAt?: string
+  updatedAt?: string
+  auth_method?: string
 }
 
 export interface AuthResponse {
@@ -21,6 +22,7 @@ export interface Instance {
   host: string
   username: string
   basicUsername?: string
+  tlsSkipVerify: boolean
 }
 
 export interface InstanceFormData {
@@ -30,6 +32,7 @@ export interface InstanceFormData {
   password?: string
   basicUsername?: string
   basicPassword?: string
+  tlsSkipVerify: boolean
 }
 
 export interface InstanceError {
@@ -44,48 +47,141 @@ export interface InstanceResponse extends Instance {
   connected: boolean
   hasDecryptionError: boolean
   recentErrors?: InstanceError[]
+  connectionStatus?: string
 }
 
-export interface Torrent {
+export interface InstanceCapabilities {
+  supportsTorrentCreation: boolean
+  supportsTorrentExport: boolean
+  supportsSetTags: boolean
+  supportsTrackerHealth: boolean
+  supportsTrackerEditing: boolean
+  supportsRenameTorrent: boolean
+  supportsRenameFile: boolean
+  supportsRenameFolder: boolean
+  webAPIVersion?: string
+}
+
+export interface TorrentTracker {
+  url: string
+  status: number
+  num_peers: number
+  num_seeds: number
+  num_leeches: number
+  num_downloaded: number
+  msg: string
+}
+
+export interface TorrentProperties {
+  addition_date: number
+  comment: string
+  completion_date: number
+  created_by: string
+  creation_date: number
+  dl_limit: number
+  dl_speed: number
+  dl_speed_avg: number
+  download_path: string
+  eta: number
   hash: string
   infohash_v1: string
   infohash_v2: string
+  is_private: boolean
+  last_seen: number
   name: string
-  size: number
-  progress: number
-  dlspeed: number
-  upspeed: number
-  priority: number
-  num_seeds: number
-  num_leechs: number
-  num_complete: number
-  num_incomplete: number
-  ratio: number
-  eta: number
-  state: string
-  category: string
-  tags: string
-  added_on: number
-  completion_on: number
-  tracker: string
-  dl_limit: number
-  up_limit: number
-  downloaded: number
-  uploaded: number
-  downloaded_session: number
-  uploaded_session: number
-  amount_left: number
+  nb_connections: number
+  nb_connections_limit: number
+  peers: number
+  peers_total: number
+  piece_size: number
+  pieces_have: number
+  pieces_num: number
+  reannounce: number
   save_path: string
-  completed: number
-  ratio_limit: number
-  seen_complete: number
-  last_activity: number
-  time_active: number
-  auto_tmm: boolean
+  seeding_time: number
+  seeds: number
+  seeds_total: number
+  share_ratio: number
+  time_elapsed: number
+  total_downloaded: number
+  total_downloaded_session: number
   total_size: number
+  total_uploaded: number
+  total_uploaded_session: number
+  total_wasted: number
+  up_limit: number
+  up_speed: number
+  up_speed_avg: number
+}
+
+export interface TorrentFile {
+  availability: number
+  index: number
+  is_seed?: boolean
+  name: string
+  piece_range: number[]
+  priority: number
+  progress: number
+  size: number
+}
+
+export interface Torrent {
+  added_on: number
+  amount_left: number
+  auto_tmm: boolean
+  availability: number
+  category: string
+  completed: number
+  completion_on: number
+  content_path: string
+  dl_limit: number
+  dlspeed: number
+  download_path: string
+  downloaded: number
+  downloaded_session: number
+  eta: number
+  f_l_piece_prio: boolean
+  force_start: boolean
+  hash: string
+  infohash_v1: string
+  infohash_v2: string
+  popularity: number
+  private: boolean
+  last_activity: number
+  magnet_uri: string
   max_ratio: number
   max_seeding_time: number
+  max_inactive_seeding_time?: number
+  name: string
+  num_complete: number
+  num_incomplete: number
+  num_leechs: number
+  num_seeds: number
+  priority: number
+  progress: number
+  ratio: number
+  ratio_limit: number
+  reannounce: number
+  save_path: string
+  seeding_time: number
   seeding_time_limit: number
+  inactive_seeding_time_limit?: number
+  seen_complete: number
+  seq_dl: boolean
+  size: number
+  state: string
+  super_seeding: boolean
+  tags: string
+  time_active: number
+  total_size: number
+  tracker: string
+  trackers_count: number
+  trackers?: TorrentTracker[]
+  tracker_health?: "unregistered" | "tracker_down"
+  up_limit: number
+  uploaded: number
+  uploaded_session: number
+  upspeed: number
 }
 
 export interface TorrentStats {
@@ -96,6 +192,7 @@ export interface TorrentStats {
   error: number
   totalDownloadSpeed?: number
   totalUploadSpeed?: number
+  totalSize?: number
 }
 
 export interface CacheMetadata {
@@ -113,6 +210,18 @@ export interface TorrentCounts {
   total: number
 }
 
+export interface TorrentFilters {
+  status: string[]
+  excludeStatus: string[]
+  categories: string[]
+  excludeCategories: string[]
+  tags: string[]
+  excludeTags: string[]
+  trackers: string[]
+  excludeTrackers: string[]
+  expr?: string
+}
+
 export interface TorrentResponse {
   torrents: Torrent[]
   total: number
@@ -124,6 +233,7 @@ export interface TorrentResponse {
   useSubcategories?: boolean
   cacheMetadata?: CacheMetadata
   hasMore?: boolean
+  trackerHealthSupported?: boolean
 }
 
 // Simplified MainData - only used for Dashboard server stats
@@ -164,6 +274,43 @@ export interface ServerState {
   total_buffers_size?: number
   total_queued_size?: number
   write_cache_overload?: string
+  last_external_address_v4?: string
+  last_external_address_v6?: string
+}
+
+export interface TorrentPeer {
+  ip: string
+  port: number
+  connection?: string
+  flags?: string
+  flags_desc?: string
+  client?: string
+  progress: number
+  dl_speed?: number
+  up_speed?: number
+  downloaded?: number
+  uploaded?: number
+  relevance?: number
+  files?: string
+  country?: string
+  country_code?: string
+  peer_id_client?: string
+}
+
+export interface SortedPeer extends TorrentPeer {
+  key: string
+}
+
+export interface TorrentPeersResponse {
+  peers?: Record<string, TorrentPeer>
+  peers_removed?: string[]
+  rid: number
+  full_update: boolean
+  show_flags?: boolean
+}
+
+export interface SortedPeersResponse extends TorrentPeersResponse {
+  sorted_peers?: SortedPeer[]
 }
 
 export interface AppPreferences {
@@ -401,4 +548,64 @@ export interface AppPreferences {
 
   // Add catch-all for any additional fields from the API
   [key: string]: unknown
+}
+
+// qBittorrent application information
+export interface QBittorrentBuildInfo {
+  qt: string
+  libtorrent: string
+  boost: string
+  openssl: string
+  bitness: number
+  platform?: string
+}
+
+export interface QBittorrentAppInfo {
+  version: string
+  webAPIVersion?: string
+  buildInfo?: QBittorrentBuildInfo
+}
+
+// Torrent Creation Types
+export type TorrentFormat = "v1" | "v2" | "hybrid"
+export type TorrentCreationStatus = "Queued" | "Running" | "Finished" | "Failed"
+
+export interface TorrentCreationParams {
+  sourcePath: string
+  torrentFilePath?: string
+  private?: boolean
+  format?: TorrentFormat
+  optimizeAlignment?: boolean
+  paddedFileSizeLimit?: number
+  pieceSize?: number
+  comment?: string
+  source?: string
+  trackers?: string[]
+  urlSeeds?: string[]
+  startSeeding?: boolean
+}
+
+export interface TorrentCreationTask {
+  taskID: string
+  sourcePath: string
+  torrentFilePath?: string
+  pieceSize: number
+  private: boolean
+  format?: TorrentFormat
+  optimizeAlignment?: boolean
+  paddedFileSizeLimit?: number
+  status: TorrentCreationStatus
+  comment?: string
+  source?: string
+  trackers?: string[]
+  urlSeeds?: string[]
+  timeAdded: string
+  timeStarted?: string
+  timeFinished?: string
+  progress?: number
+  errorMessage?: string
+}
+
+export interface TorrentCreationTaskResponse {
+  taskID: string
 }

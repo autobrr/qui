@@ -3,20 +3,16 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState, useEffect, useMemo } from "react"
-import { useQuery } from "@tanstack/react-query"
+import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { api } from "@/lib/api"
-import type { Torrent, TorrentResponse } from "@/types"
+import type { Torrent, TorrentFilters, TorrentResponse } from "@/types"
+import { useQuery } from "@tanstack/react-query"
+import { useEffect, useMemo, useState } from "react"
 
 interface UseTorrentsListOptions {
   enabled?: boolean
   search?: string
-  filters?: {
-    status: string[]
-    categories: string[]
-    tags: string[]
-    trackers: string[]
-  }
+  filters?: TorrentFilters
   sort?: string
   order?: "asc" | "desc"
 }
@@ -52,7 +48,7 @@ export function useTorrentsList(
   }, [instanceId, filterKey, searchKey, sort, order])
 
   // Query for torrents - backend handles stale-while-revalidate
-  const { data, isLoading, isFetching } = useQuery<TorrentResponse>({
+  const { data, isLoading, isFetching, isPlaceholderData } = useQuery<TorrentResponse>({
     queryKey: ["torrents-list", instanceId, currentPage, filters, search, sort, order],
     queryFn: () => {
       return api.getTorrents(instanceId, {
@@ -67,54 +63,85 @@ export function useTorrentsList(
     // Trust backend cache - it returns immediately with stale data if needed
     staleTime: 0, // Always check with backend (it decides if cache is fresh)
     gcTime: 300000, // Keep in React Query cache for 5 minutes for navigation
+    // Reuse the previous page's data while the next page is loading so the UI doesn't flash empty state
+    placeholderData: currentPage > 0 ? ((previousData) => previousData) : undefined,
     // Only poll the first page to get fresh data - don't poll pagination pages
     refetchInterval: currentPage === 0 ? 3000 : false,
     refetchIntervalInBackground: false, // Don't poll when tab is not active
     enabled,
   })
 
+  const { data: capabilities } = useInstanceCapabilities(instanceId, { enabled })
+
   // Update torrents when data arrives or changes (including optimistic updates)
   useEffect(() => {
-    if (data?.torrents) {
-      // Check if this is a new page load or data update for current page
-      const isNewPageLoad = currentPage !== lastProcessedPage
-      const isDataUpdate = !isNewPageLoad // Same page, but data changed (optimistic updates)
-
-      // Update last known total whenever we get data
-      if (data.total !== undefined) {
-        setLastKnownTotal(data.total)
-      }
-
-      // For first page or true data updates (optimistic updates from mutations)
-      if (currentPage === 0 || (isDataUpdate && currentPage === 0)) {
-        // First page OR data update (optimistic updates): replace all
-        setAllTorrents(data.torrents)
-        // Use backend's HasMore field for accurate pagination
-        setHasLoadedAll(!data.hasMore)
-
-        // Mark this page as processed
-        if (isNewPageLoad) {
-          setLastProcessedPage(currentPage)
-        }
-      } else if (isNewPageLoad && currentPage > 0) {
-        // Mark this page as processed FIRST to prevent double processing
-        setLastProcessedPage(currentPage)
-
-        // Append to existing for pagination
-        setAllTorrents(prev => {
-          const updatedTorrents = [...prev, ...data.torrents]
-          return updatedTorrents
-        })
-
-        // Use backend's HasMore field for accurate pagination
-        if (!data.hasMore) {
-          setHasLoadedAll(true)
-        }
-      }
-
-      setIsLoadingMore(false)
+    // When filters/search/sort change we reset lastProcessedPage to -1. Skip placeholder
+    // data in that window so we don't repopulate the table with stale results from the
+    // previous query while the new request is in-flight.
+    if (isPlaceholderData && (lastProcessedPage === -1 || currentPage === 0)) {
+      return
     }
-  }, [data, currentPage, pageSize, lastProcessedPage])
+
+    if (currentPage > 0 && isFetching && isPlaceholderData) {
+      return
+    }
+
+    if (!data) {
+      return
+    }
+
+    if (data.total !== undefined) {
+      setLastKnownTotal(data.total)
+    }
+
+    // When the first page reports zero results, immediately clear the list so
+    // downstream UIs don't render stale rows from the previous query.
+    if (currentPage === 0 && data.total === 0) {
+      setAllTorrents([])
+      setHasLoadedAll(true)
+      setLastProcessedPage(currentPage)
+      setIsLoadingMore(false)
+      return
+    }
+
+    if (!data.torrents) {
+      setIsLoadingMore(false)
+      return
+    }
+
+    // Check if this is a new page load or data update for current page
+    const isNewPageLoad = currentPage !== lastProcessedPage
+    const isDataUpdate = !isNewPageLoad // Same page, but data changed (optimistic updates)
+
+    // For first page or true data updates (optimistic updates from mutations)
+    if (currentPage === 0 || (isDataUpdate && currentPage === 0)) {
+      // First page OR data update (optimistic updates): replace all
+      setAllTorrents(data.torrents)
+      // Use backend's HasMore field for accurate pagination
+      setHasLoadedAll(!data.hasMore)
+
+      // Mark this page as processed
+      if (isNewPageLoad) {
+        setLastProcessedPage(currentPage)
+      }
+    } else if (isNewPageLoad && currentPage > 0) {
+      // Mark this page as processed FIRST to prevent double processing
+      setLastProcessedPage(currentPage)
+
+      // Append to existing for pagination
+      setAllTorrents(prev => {
+        const updatedTorrents = [...prev, ...data.torrents]
+        return updatedTorrents
+      })
+
+      // Use backend's HasMore field for accurate pagination
+      if (!data.hasMore) {
+        setHasLoadedAll(true)
+      }
+    }
+
+    setIsLoadingMore(false)
+  }, [data, currentPage, lastProcessedPage, isFetching, isPlaceholderData])
 
   // Load more function for pagination - following TanStack Query best practices
   const loadMore = () => {
@@ -152,6 +179,7 @@ export function useTorrentsList(
         error: data.stats.error || 0,
         totalDownloadSpeed: data.stats.totalDownloadSpeed || 0,
         totalUploadSpeed: data.stats.totalUploadSpeed || 0,
+        totalSize: data.stats.totalSize || 0,
       }
     }
 
@@ -163,6 +191,7 @@ export function useTorrentsList(
       error: 0,
       totalDownloadSpeed: 0,
       totalUploadSpeed: 0,
+      totalSize: data?.stats?.totalSize || 0,
     }
   }, [data])
 
@@ -180,8 +209,10 @@ export function useTorrentsList(
     counts: data?.counts,
     categories: data?.categories,
     tags: data?.tags,
+    supportsTorrentCreation: capabilities?.supportsTorrentCreation ?? true,
+    capabilities,
+    serverState: data?.serverState ?? null,
     useSubcategories: data?.useSubcategories ?? false,
-    serverState: null, // Server state is fetched separately by Dashboard
     isLoading: isLoading && currentPage === 0,
     isFetching,
     isLoadingMore,
