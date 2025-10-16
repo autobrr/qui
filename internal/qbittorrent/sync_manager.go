@@ -217,16 +217,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	}
 
 	supportsSubcategories := client.SupportsSubcategories()
-	useSubcategories := false
-	if supportsSubcategories {
-		if mainData != nil && mainData.ServerState != (qbt.ServerState{}) {
-			useSubcategories = mainData.ServerState.UseSubcategories
-		} else if hasNestedCategories(categories) {
-			useSubcategories = true
-		} else if mainData != nil && mainData.Categories != nil {
-			useSubcategories = hasNestedCategories(mainData.Categories)
-		}
-	}
+	useSubcategories := resolveUseSubcategories(supportsSubcategories, mainData, categories)
 
 	if useManualFiltering {
 		// Use manual filtering - get all torrents and filter manually
@@ -381,6 +372,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 	// Get MainData for accurate tracker information
 	mainData = syncManager.GetData()
+	useSubcategories = resolveUseSubcategories(supportsSubcategories, mainData, categories)
 
 	counts, trackerMap, enrichedAll := sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents, mainData, trackerMap, trackerHealthSupported, useSubcategories)
 
@@ -1939,6 +1931,26 @@ func hasNestedCategories(categories map[string]qbt.Category) bool {
 			return true
 		}
 	}
+	return false
+}
+
+func resolveUseSubcategories(supports bool, mainData *qbt.MainData, categories map[string]qbt.Category) bool {
+	if !supports {
+		return false
+	}
+
+	if mainData != nil && mainData.ServerState != (qbt.ServerState{}) {
+		return mainData.ServerState.UseSubcategories
+	}
+
+	if hasNestedCategories(categories) {
+		return true
+	}
+
+	if mainData != nil && mainData.Categories != nil {
+		return hasNestedCategories(mainData.Categories)
+	}
+
 	return false
 }
 

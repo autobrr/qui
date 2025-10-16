@@ -542,7 +542,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
   const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? true
   const supportsSubcategories = capabilities?.supportsSubcategories ?? false
-  const allowSubcategories = supportsSubcategories && (preferences?.use_subcategories ?? subcategoriesFromData ?? false)
+  const allowSubcategories = Boolean(
+    supportsSubcategories && (preferences?.use_subcategories ?? subcategoriesFromData ?? false)
+  )
 
   // Delayed loading state to avoid flicker on fast loads
   useEffect(() => {
@@ -577,9 +579,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     const prevSupportsSubcategories = lastMetadataRef.current.supportsSubcategories ?? false
     const previousUseSubcategories = lastMetadataRef.current.useSubcategories ?? false
     const nextSupportsSubcategories = supportsSubcategories
-    const nextUseSubcategories = nextSupportsSubcategories
-      ? (subcategoriesFromData ?? previousUseSubcategories)
-      : false
+    const nextUseSubcategories = nextSupportsSubcategories? (subcategoriesFromData ?? previousUseSubcategories): false
     const nextTotalCount = totalCount
 
     const hasAnyMetadata =
