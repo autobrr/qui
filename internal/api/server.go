@@ -297,6 +297,12 @@ func (s *Server) Handler() (*chi.Mux, error) {
 							r.Put("/rename-file", torrentsHandler.RenameTorrentFile)
 							r.Put("/rename-folder", torrentsHandler.RenameTorrentFolder)
 						})
+
+						// Economy analysis routes
+						r.Get("/economy", torrentsHandler.GetEconomyAnalysis)
+						r.Get("/economy/stats", torrentsHandler.GetEconomyStats)
+						r.Get("/economy/top-valuable", torrentsHandler.GetTopValuableTorrents)
+
 					})
 
 					r.Get("/capabilities", instancesHandler.GetInstanceCapabilities)
