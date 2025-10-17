@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import {
   Collapsible,
@@ -29,6 +29,7 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { useQBittorrentAppInfo } from "@/hooks/useQBittorrentAppInfo"
 import { api } from "@/lib/api"
 import type { TorrentCreationParams, TorrentFormat } from "@/types"
 import { useForm } from "@tanstack/react-form"
@@ -48,6 +49,12 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
   const [error, setError] = useState<string | null>(null)
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const queryClient = useQueryClient()
+
+  const { versionInfo } = useQBittorrentAppInfo(instanceId)
+  const supportsFormatSelection = versionInfo.isLibtorrent2 !== false
+  const formatSelectionUnavailable = versionInfo.isLibtorrent2 === false
+  const libtorrentVersionLabel =
+    formatSelectionUnavailable && versionInfo.libtorrentMajorVersion? `libtorrent ${versionInfo.libtorrentMajorVersion}.x`: "libtorrent 1.x"
 
   // Fetch active trackers for the select dropdown
   const { data: activeTrackers } = useQuery({
@@ -104,6 +111,8 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
         .map((u) => u.trim())
         .filter(Boolean)
 
+      const selectedFormat = supportsFormatSelection ? value.format : ""
+
       const params: TorrentCreationParams = {
         sourcePath: value.sourcePath,
         private: value.private,
@@ -112,7 +121,7 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
         source: value.source || undefined,
         startSeeding: value.startSeeding, // Always send boolean value
         // Advanced options
-        format: value.format || undefined,
+        format: selectedFormat || undefined,
         pieceSize: value.pieceSize ? parseInt(value.pieceSize) : undefined,
         torrentFilePath: value.torrentFilePath || undefined,
         urlSeeds: urlSeeds && urlSeeds.length > 0 ? urlSeeds : undefined,
@@ -121,6 +130,12 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
       mutation.mutate(params)
     },
   })
+
+  useEffect(() => {
+    if (formatSelectionUnavailable) {
+      form.setFieldValue("format", "")
+    }
+  }, [formatSelectionUnavailable, form])
 
   // Reset form and error state when dialog closes
   useEffect(() => {
@@ -316,29 +331,40 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
             </CollapsibleTrigger>
             <CollapsibleContent className="space-y-4 pt-4">
               {/* Torrent Format */}
-              <form.Field name="format">
-                {(field) => (
-                  <div className="space-y-2">
-                    <Label htmlFor="format">Torrent Format</Label>
-                    <Select
-                      value={field.state.value}
-                      onValueChange={(value) => field.handleChange(value as TorrentFormat | "")}
-                    >
-                      <SelectTrigger id="format">
-                        <SelectValue placeholder="Auto (v1)" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="v1">v1 (Compatible)</SelectItem>
-                        <SelectItem value="v2">v2 (Modern)</SelectItem>
-                        <SelectItem value="hybrid">Hybrid (v1 + v2)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <p className="text-sm text-muted-foreground">
-                      v1 for maximum compatibility, v2 for modern clients, hybrid for both
-                    </p>
-                  </div>
-                )}
-              </form.Field>
+              {supportsFormatSelection ? (
+                <form.Field name="format">
+                  {(field) => (
+                    <div className="space-y-2">
+                      <Label htmlFor="format">Torrent Format</Label>
+                      <Select
+                        value={field.state.value}
+                        onValueChange={(value) => field.handleChange(value as TorrentFormat | "")}
+                      >
+                        <SelectTrigger id="format">
+                          <SelectValue placeholder="Auto (v1)" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="v1">v1 (Compatible)</SelectItem>
+                          <SelectItem value="v2">v2 (Modern)</SelectItem>
+                          <SelectItem value="hybrid">Hybrid (v1 + v2)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-sm text-muted-foreground">
+                        v1 for maximum compatibility, v2 for modern clients, hybrid for both
+                      </p>
+                    </div>
+                  )}
+                </form.Field>
+              ) : (
+                <Alert className="bg-muted/40 text-muted-foreground">
+                  <Info className="h-4 w-4" />
+                  <AlertTitle>Hybrid and v2 torrents are unavailable</AlertTitle>
+                  <AlertDescription>
+                    This qBittorrent build uses {libtorrentVersionLabel}, which only supports creating v1 torrents.
+                    Upgrade to a qBittorrent release built with libtorrent v2 to enable hybrid or v2 torrent creation.
+                  </AlertDescription>
+                </Alert>
+              )}
 
               {/* Piece Size
                   https://github.com/qbittorrent/qBittorrent/blob/master/src/gui/torrentcreatordialog.cpp#L86-L92
