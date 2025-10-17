@@ -94,7 +94,7 @@ func (h *QBittorrentInfoHandler) getQBittorrentAppInfo(ctx context.Context, clie
 	}
 
 	// Log the buildinfo
-	log.Info().Msgf("qBittorrent BuildInfo - App Version: %s, Web API Version: %s, Platform: %s, Libtorrent: %s, Qt: %s, Bitness: %d",
+	log.Trace().Msgf("qBittorrent BuildInfo - App Version: %s, Web API Version: %s, Platform: %s, Libtorrent: %s, Qt: %s, Bitness: %d",
 		version, webAPIVersion, buildInfo.Platform, buildInfo.Libtorrent, buildInfo.Qt, buildInfo.Bitness)
 
 	// Convert from go-qbittorrent BuildInfo to our QBittorrentBuildInfo
