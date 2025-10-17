@@ -92,17 +92,6 @@ func NewServer(deps *Dependencies) *Server {
 		backupService:      deps.BackupService,
 	}
 
-	// Create HTTP server with configurable timeouts
-	if val := deps.Config.Config.HTTPTimeouts.ReadTimeout; val > 0 {
-		s.server.ReadTimeout = time.Duration(val) * time.Second
-	}
-	if val := deps.Config.Config.HTTPTimeouts.WriteTimeout; val > 0 {
-		s.server.WriteTimeout = time.Duration(val) * time.Second
-	}
-	if val := deps.Config.Config.HTTPTimeouts.IdleTimeout; val > 0 {
-		s.server.IdleTimeout = time.Duration(val) * time.Second
-	}
-
 	return &s
 }
 

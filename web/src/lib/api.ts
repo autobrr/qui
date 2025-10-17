@@ -50,7 +50,7 @@ class ApiClient {
       // Don't auto-redirect for auth check endpoints - let React Router handle navigation
       const isAuthCheckEndpoint = endpoint === "/auth/me" || endpoint === "/auth/validate"
 
-      if (response.status === 401 && !isAuthCheckEndpoint && !window.location.pathname.startsWith(withBasePath("/login")) && !window.location.pathname.startsWith(withBasePath("/setup"))) {
+      if ((response.status === 401 || response.status === 403) && !isAuthCheckEndpoint && !window.location.pathname.startsWith(withBasePath("/login")) && !window.location.pathname.startsWith(withBasePath("/setup"))) {
         window.location.href = withBasePath("/login")
         throw new Error("Session expired")
       }
@@ -460,7 +460,7 @@ class ApiClient {
     })
 
     if (!response.ok) {
-      if (response.status === 401 && !window.location.pathname.startsWith(withBasePath("/login")) && !window.location.pathname.startsWith(withBasePath("/setup"))) {
+      if ((response.status === 401 || response.status === 403) && !window.location.pathname.startsWith(withBasePath("/login")) && !window.location.pathname.startsWith(withBasePath("/setup"))) {
         window.location.href = withBasePath("/login")
         throw new Error("Session expired")
       }
