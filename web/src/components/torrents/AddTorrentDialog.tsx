@@ -42,53 +42,74 @@ import type { Torrent } from "@/types"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { AlertCircle, Link, Loader2, Plus, Upload } from "lucide-react"
-import { remote as parseTorrentRemote } from "parse-torrent"
+import parseTorrent from "parse-torrent"
 import { useCallback, useEffect, useRef, useState } from "react"
 
 // Extract info hash from magnet link
 function extractHashFromMagnet(magnetUrl: string): string | null {
-  const match = magnetUrl.match(/[?&]xt=urn:btih:([a-f0-9]{40}|[a-z2-7]{32})/i)
-  return match ? match[1].toLowerCase() : null
+  const btihMatch = magnetUrl.match(/[?&]xt=urn:btih:([a-f0-9]{40}|[a-z2-7]{32})/i)
+  if (btihMatch) {
+    return btihMatch[1].toLowerCase()
+  }
+
+  const btmhMatch = magnetUrl.match(/[?&]xt=urn:btmh:([a-f0-9]+)/i)
+  if (!btmhMatch) {
+    return null
+  }
+
+  const multihash = btmhMatch[1].toLowerCase()
+  // Multihash format: <code><digest-length><digest>. For v2 torrents qBittorrent expects SHA2-256 (0x12) with 32 byte digest.
+  if (!multihash.startsWith("1220")) {
+    return null
+  }
+
+  const digest = multihash.slice(4)
+  return /^[a-f0-9]{64}$/.test(digest) ? digest : null
 }
 
 // Parse torrent file and extract info hash
-function parseTorrentFile(file: File): Promise<string | null> {
+async function parseTorrentFile(file: File): Promise<string | null> {
   console.log("[parseTorrentFile] Starting to parse:", file.name, "size:", file.size, "type:", file.type)
-  return new Promise((resolve) => {
-    // Set a timeout to prevent hanging
-    const timeoutId = setTimeout(() => {
-      console.error("[parseTorrentFile] Timeout parsing file:", file.name)
-      resolve(null)
-    }, 10000) // 10 second timeout
+  const timeoutId = window.setTimeout(() => {
+    console.error("[parseTorrentFile] Timeout parsing file:", file.name)
+  }, 10000) // 10 second timeout
 
-    parseTorrentRemote(file, (err, parsed) => {
-      clearTimeout(timeoutId)
+  try {
+    const arrayBuffer = await file.arrayBuffer()
+    const parsed = await parseTorrent(new Uint8Array(arrayBuffer))
+    const parsedTorrent = parsed as parseTorrent.Instance & { infoHashV2?: string }
 
-      if (err) {
-        console.error("[parseTorrentFile] Error parsing file:", file.name, err)
-        console.error("[parseTorrentFile] Error details:", {
-          message: err.message,
-          stack: err.stack,
-        })
-        resolve(null)
-      } else if (!parsed) {
-        console.warn("[parseTorrentFile] No parsed result for:", file.name)
-        resolve(null)
-      } else if (!parsed.infoHash) {
-        console.warn("[parseTorrentFile] No infoHash found for:", file.name)
-        console.warn("[parseTorrentFile] Parsed object:", {
-          name: parsed.name,
-          announce: parsed.announce,
-          keys: Object.keys(parsed),
-        })
-        resolve(null)
-      } else {
-        const hash = parsed.infoHash.toLowerCase()
-        console.log("[parseTorrentFile] Successfully parsed:", file.name, "hash:", hash)
-        resolve(hash)
-      }
+    if (!parsedTorrent) {
+      console.warn("[parseTorrentFile] No parsed result for:", file.name)
+      return null
+    }
+
+    const hash = parsedTorrent.infoHash || parsedTorrent.infoHashV2
+
+    if (!hash) {
+      console.warn("[parseTorrentFile] No info hash found for:", file.name)
+      console.warn("[parseTorrentFile] Parsed object:", {
+        name: parsedTorrent.name,
+        announce: parsedTorrent.announce,
+        keys: Object.keys(parsedTorrent as unknown as Record<string, unknown>),
+      })
+      return null
+    }
+
+    const normalized = hash.toLowerCase()
+    console.log("[parseTorrentFile] Successfully parsed:", file.name, "hash:", normalized)
+    return normalized
+  } catch (err) {
+    const error = err as Error
+    console.error("[parseTorrentFile] Error parsing file:", file.name, error)
+    console.error("[parseTorrentFile] Error details:", {
+      message: error?.message,
+      stack: error?.stack,
     })
-  })
+    return null
+  } finally {
+    window.clearTimeout(timeoutId)
+  }
 }
 
 export type AddTorrentDropPayload =
