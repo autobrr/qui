@@ -198,7 +198,7 @@ export function Login() {
 
                 {loginError && (
                   <div className="bg-destructive/10 border border-destructive/20 text-destructive px-4 py-3 rounded-md text-sm">
-                    {typeof loginError === "string"? loginError: loginError.message?.includes("Invalid credentials") || loginError.message?.includes("401")? "Invalid username or password": loginError.message || "Login failed. Please try again."}
+                    {typeof loginError === "string"? loginError: loginError.message?.includes("Invalid credentials") || loginError.message?.includes("401") || loginError.message?.includes("403") ? "Invalid username or password": loginError.message || "Login failed. Please try again."}
                   </div>
                 )}
 
