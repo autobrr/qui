@@ -29,13 +29,4 @@ type Config struct {
 	OIDCClientSecret        string `toml:"oidcClientSecret" mapstructure:"oidcClientSecret"`
 	OIDCRedirectURL         string `toml:"oidcRedirectUrl" mapstructure:"oidcRedirectUrl"`
 	OIDCDisableBuiltInLogin bool   `toml:"oidcDisableBuiltInLogin" mapstructure:"oidcDisableBuiltInLogin"`
-
-	HTTPTimeouts HTTPTimeouts `toml:"httpTimeouts" mapstructure:"httpTimeouts"`
-}
-
-// HTTPTimeouts represents HTTP server timeout configuration
-type HTTPTimeouts struct {
-	ReadTimeout  int `toml:"readTimeout" mapstructure:"readTimeout"`   // seconds
-	WriteTimeout int `toml:"writeTimeout" mapstructure:"writeTimeout"` // seconds
-	IdleTimeout  int `toml:"idleTimeout" mapstructure:"idleTimeout"`   // seconds
 }
