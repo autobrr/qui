@@ -18,16 +18,20 @@ import {
   DropdownMenuSubTrigger
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
+import { cn } from "@/lib/utils"
+import type { Category } from "@/types"
 import { Folder, Search, X } from "lucide-react"
 import { memo, useMemo, useState } from "react"
+import { buildCategoryTree, type CategoryNode } from "./CategoryTree"
 
 interface CategorySubmenuProps {
   type: "context" | "dropdown"
   hashCount: number
-  availableCategories: Record<string, unknown>
+  availableCategories: Record<string, Category>
   onSetCategory: (category: string) => void
   isPending?: boolean
   currentCategory?: string
+  useSubcategories?: boolean
 }
 
 export const CategorySubmenu = memo(function CategorySubmenu({
@@ -37,6 +41,7 @@ export const CategorySubmenu = memo(function CategorySubmenu({
   onSetCategory,
   isPending = false,
   currentCategory,
+  useSubcategories = false,
 }: CategorySubmenuProps) {
   const [searchQuery, setSearchQuery] = useState("")
 
@@ -46,15 +51,68 @@ export const CategorySubmenu = memo(function CategorySubmenu({
   const MenuItem = type === "context" ? ContextMenuItem : DropdownMenuItem
   const Separator = type === "context" ? ContextMenuSeparator : DropdownMenuSeparator
 
-  const categories = Object.keys(availableCategories || {}).sort()
-  const hasCategories = categories.length > 0
+  const hasCategories = Object.keys(availableCategories).length > 0
 
-  // Filter categories based on search query
   const filteredCategories = useMemo(() => {
-    if (!searchQuery.trim()) return categories
-    const query = searchQuery.toLowerCase()
-    return categories.filter(cat => cat.toLowerCase().includes(query))
-  }, [categories, searchQuery])
+    const query = searchQuery.trim().toLowerCase()
+
+    if (useSubcategories) {
+      const tree = buildCategoryTree(availableCategories, {})
+      const shouldIncludeCache = new Map<CategoryNode, boolean>()
+
+      const shouldIncludeNode = (node: CategoryNode): boolean => {
+        const cached = shouldIncludeCache.get(node)
+        if (cached !== undefined) {
+          return cached
+        }
+
+        const nodeMatches = query === "" || node.name.toLowerCase().includes(query)
+        if (nodeMatches) {
+          shouldIncludeCache.set(node, true)
+          return true
+        }
+
+        for (const child of node.children) {
+          if (shouldIncludeNode(child)) {
+            shouldIncludeCache.set(node, true)
+            return true
+          }
+        }
+
+        shouldIncludeCache.set(node, false)
+        return false
+      }
+
+      const flattened: Array<{ name: string; displayName: string; level: number }> = []
+
+      const visitNodes = (nodes: CategoryNode[]) => {
+        for (const node of nodes) {
+          if (shouldIncludeNode(node)) {
+            flattened.push({
+              name: node.name,
+              displayName: node.displayName,
+              level: node.level,
+            })
+            visitNodes(node.children)
+          }
+        }
+      }
+
+      visitNodes(tree)
+      return flattened
+    }
+
+    const names = Object.keys(availableCategories).sort()
+    const namesFiltered = query? names.filter(cat => cat.toLowerCase().includes(query)): names
+
+    return namesFiltered.map((name) => ({
+      name,
+      displayName: name,
+      level: 0,
+    }))
+  }, [availableCategories, searchQuery, useSubcategories])
+
+  const hasFilteredCategories = filteredCategories.length > 0
 
   return (
     <Sub>
@@ -100,16 +158,30 @@ export const CategorySubmenu = memo(function CategorySubmenu({
         {/* Scrollable category list */}
         {hasCategories && (
           <div className="max-h-[300px] overflow-y-auto">
-            {filteredCategories.length > 0 ? (
+            {hasFilteredCategories ? (
               filteredCategories.map((category) => (
                 <MenuItem
-                  key={category}
-                  onClick={() => onSetCategory(category)}
+                  key={category.name}
+                  onClick={() => onSetCategory(category.name)}
                   disabled={isPending}
-                  className={currentCategory === category ? "bg-accent" : ""}
+                  className={cn(
+                    "flex items-center gap-2",
+                    currentCategory === category.name ? "bg-accent" : ""
+                  )}
                 >
                   <Folder className="mr-2 h-4 w-4" />
-                  {category} {hashCount > 1 ? `(${hashCount})` : ""}
+                  <span
+                    className="flex-1 truncate"
+                    title={category.name}
+                    style={category.level > 0 ? { paddingLeft: category.level * 12 } : undefined}
+                  >
+                    {category.displayName}
+                  </span>
+                  {hashCount > 1 && (
+                    <span className="text-xs text-muted-foreground">
+                      ({hashCount})
+                    </span>
+                  )}
                 </MenuItem>
               ))
             ) : (

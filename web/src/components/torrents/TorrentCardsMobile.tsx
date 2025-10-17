@@ -1040,6 +1040,18 @@ export function TorrentCardsMobile({
   const previousSearchRef = useRef("")
   const previousSortRef = useRef(sortState)
 
+  const effectiveFilters = useMemo(() => {
+    if (!filters) {
+      return undefined
+    }
+
+    return {
+      ...filters,
+      categories: filters.expandedCategories ?? filters.categories ?? [],
+      excludeCategories: filters.expandedExcludeCategories ?? filters.excludeCategories ?? [],
+    }
+  }, [filters])
+
   // Progressive loading state with async management
   const [loadedRows, setLoadedRows] = useState(100)
   const [isLoadingMoreRows, setIsLoadingMoreRows] = useState(false)
@@ -1197,7 +1209,7 @@ export function TorrentCardsMobile({
     loadMore: backendLoadMore,
   } = useTorrentsList(instanceId, {
     search: effectiveSearch,
-    filters,
+    filters: effectiveFilters,
     sort: sortField,
     order: sortOrder,
   })

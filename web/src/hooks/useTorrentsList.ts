@@ -202,6 +202,8 @@ export function useTorrentsList(
   // Use lastKnownTotal when loading more pages to prevent flickering
   const effectiveTotalCount = currentPage > 0 && !data?.total ? lastKnownTotal : (data?.total ?? 0)
 
+  const supportsSubcategories = capabilities?.supportsSubcategories ?? false
+
   return {
     torrents: allTorrents,
     totalCount: effectiveTotalCount,
@@ -212,6 +214,9 @@ export function useTorrentsList(
     supportsTorrentCreation: capabilities?.supportsTorrentCreation ?? true,
     capabilities,
     serverState: data?.serverState ?? null,
+    useSubcategories: supportsSubcategories
+      ? (data?.useSubcategories ?? data?.serverState?.use_subcategories ?? false)
+      : false,
     isLoading: isLoading && currentPage === 0,
     isFetching,
     isLoadingMore,

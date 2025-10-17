@@ -233,7 +233,14 @@ interface TorrentTableOptimizedProps {
   onTorrentSelect?: (torrent: Torrent | null) => void
   addTorrentModalOpen?: boolean
   onAddTorrentModalChange?: (open: boolean) => void
-  onFilteredDataUpdate?: (torrents: Torrent[], total: number, counts?: TorrentCounts, categories?: Record<string, Category>, tags?: string[]) => void
+  onFilteredDataUpdate?: (
+    torrents: Torrent[],
+    total: number,
+    counts?: TorrentCounts,
+    categories?: Record<string, Category>,
+    tags?: string[],
+    useSubcategories?: boolean
+  ) => void
   onSelectionChange?: (
     selectedHashes: string[],
     selectedTorrents: Torrent[],
@@ -299,6 +306,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     tags?: string[]
     totalCount?: number
     torrentsLength?: number
+    useSubcategories?: boolean
+    supportsSubcategories?: boolean
   }>({})
   const serverStateRef = useRef<{ instanceId: number, state: ServerState | null }>({
     instanceId,
@@ -511,6 +520,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const activeSortField = sorting.length > 0 ? getBackendSortField(sorting[0].id) : "added_on"
   const activeSortOrder: "asc" | "desc" = sorting.length > 0 ? (sorting[0].desc ? "desc" : "asc") : "desc"
 
+  const effectiveIncludedCategories = filters?.expandedCategories ?? filters?.categories ?? []
+  const effectiveExcludedCategories = filters?.expandedExcludeCategories ?? filters?.excludeCategories ?? []
+
   // Fetch torrents data with backend sorting
   const {
     torrents,
@@ -521,6 +533,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     tags,
     serverState,
     capabilities,
+    useSubcategories: subcategoriesFromData,
     isLoading,
     isCachedData,
     isStaleData,
@@ -532,12 +545,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     filters: {
       status: filters?.status || [],
       excludeStatus: filters?.excludeStatus || [],
-      categories: filters?.categories || [],
-      excludeCategories: filters?.excludeCategories || [],
+      categories: effectiveIncludedCategories,
+      excludeCategories: effectiveExcludedCategories,
       tags: filters?.tags || [],
       excludeTags: filters?.excludeTags || [],
       trackers: filters?.trackers || [],
       excludeTrackers: filters?.excludeTrackers || [],
+      expandedCategories: filters?.expandedCategories,
+      expandedExcludeCategories: filters?.expandedExcludeCategories,
       expr: columnFiltersExpr || undefined,
     },
     sort: activeSortField,
@@ -545,6 +560,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   })
 
   const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? true
+  const supportsSubcategories = capabilities?.supportsSubcategories ?? false
+  const allowSubcategories = Boolean(
+    supportsSubcategories && (preferences?.use_subcategories ?? subcategoriesFromData ?? false)
+  )
 
   // Delayed loading state to avoid flicker on fast loads
   useEffect(() => {
@@ -576,9 +595,17 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     const nextCounts = counts ?? lastMetadataRef.current.counts
     const nextCategories = categories ?? lastMetadataRef.current.categories
     const nextTags = tags ?? lastMetadataRef.current.tags
+    const prevSupportsSubcategories = lastMetadataRef.current.supportsSubcategories ?? false
+    const previousUseSubcategories = lastMetadataRef.current.useSubcategories ?? false
+    const nextSupportsSubcategories = supportsSubcategories
+    const nextUseSubcategories = nextSupportsSubcategories? (subcategoriesFromData ?? previousUseSubcategories): false
     const nextTotalCount = totalCount
 
-    const hasAnyMetadata = nextCounts !== undefined || nextCategories !== undefined || nextTags !== undefined
+    const hasAnyMetadata =
+      nextCounts !== undefined ||
+      nextCategories !== undefined ||
+      nextTags !== undefined ||
+      nextUseSubcategories !== undefined
     const hasExistingTorrents = torrents.length > 0
 
     if (!hasAnyMetadata && !hasExistingTorrents) {
@@ -589,6 +616,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       nextCounts !== lastMetadataRef.current.counts ||
       nextCategories !== lastMetadataRef.current.categories ||
       nextTags !== lastMetadataRef.current.tags ||
+      nextSupportsSubcategories !== prevSupportsSubcategories ||
+      nextUseSubcategories !== previousUseSubcategories ||
       nextTotalCount !== lastMetadataRef.current.totalCount
 
     const torrentsLengthChanged = torrents.length !== (lastMetadataRef.current.torrentsLength ?? -1)
@@ -597,7 +626,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       return
     }
 
-    onFilteredDataUpdate(torrents, totalCount, nextCounts, nextCategories, nextTags)
+    onFilteredDataUpdate(
+      torrents,
+      totalCount,
+      nextCounts,
+      nextCategories,
+      nextTags,
+      nextUseSubcategories
+    )
 
     lastMetadataRef.current = {
       counts: nextCounts,
@@ -605,8 +641,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       tags: nextTags,
       totalCount: nextTotalCount,
       torrentsLength: torrents.length,
+      useSubcategories: nextUseSubcategories,
+      supportsSubcategories: nextSupportsSubcategories,
     }
-  }, [counts, categories, tags, totalCount, torrents, isLoading, onFilteredDataUpdate])
+  }, [counts, categories, tags, totalCount, torrents, isLoading, onFilteredDataUpdate, subcategoriesFromData, supportsSubcategories])
 
   // Use torrents directly from backend (already sorted)
   const sortedTorrents = torrents
@@ -1624,6 +1662,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                     onExport={handleExportWrapper}
                     isExporting={isExportingTorrent}
                     capabilities={capabilities}
+                    useSubcategories={allowSubcategories}
                   >
                     <div
                       className={`flex border-b cursor-pointer hover:bg-muted/50 ${row.getIsSelected() ? "bg-muted/50" : ""} ${isSelected ? "bg-accent" : ""}`}

@@ -1947,16 +1947,19 @@ components:
           description: Whether the instance exposes tracker health metadata (unregistered/tracker down states).
         supportsTrackerEditing:
           type: boolean
-          description: Whether the instance can edit tracker URLs via the Web API (requires WebAPI v2.3.0+).
+          description: Whether the instance can edit tracker URLs via the Web API (requires WebAPI 2.2.0+, qBittorrent 4.1.5+).
         supportsRenameTorrent:
           type: boolean
           description: Whether the instance supports renaming torrents (requires WebAPI 2.0.0+, qBittorrent 4.1.0+).
         supportsRenameFile:
           type: boolean
-          description: Whether the instance supports renaming files within torrents (requires WebAPI 2.6.0+, qBittorrent 4.3.0+).
+          description: Whether the instance supports renaming files within torrents (requires WebAPI 2.4.0+, qBittorrent 4.2.1+).
         supportsRenameFolder:
           type: boolean
-          description: Whether the instance supports renaming folders within torrents (requires WebAPI 2.8.4+, qBittorrent 4.4.0+).
+          description: Whether the instance supports renaming folders within torrents (requires WebAPI 2.7.0+, qBittorrent 4.3.3+).
+        supportsSubcategories:
+          type: boolean
+          description: Whether the instance supports nested torrent categories (requires WebAPI 2.9.0+, qBittorrent 4.6.0+).
         webAPIVersion:
           type: string
           nullable: true
