@@ -41,7 +41,7 @@ import {
 } from "@/components/ui/tooltip"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { api } from "@/lib/api"
-import { withBasePath } from "@/lib/base-url"
+import { getBaseUrl } from "@/lib/base-url"
 import { copyTextToClipboard } from "@/lib/utils"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
@@ -79,10 +79,29 @@ export function ClientApiKeysManager() {
   const { formatDate } = useDateTimeFormatters()
 
   // Get the current browser URL to construct full proxy URL
+  const resolveProxyPath = (proxyPath: string) => {
+    const normalizedProxyPath = proxyPath.startsWith("/") ? proxyPath : `/${proxyPath}`
+    const base = getBaseUrl()
+    const baseWithoutTrailingSlash = base.endsWith("/") ? base.slice(0, -1) : base
+
+    if (!baseWithoutTrailingSlash) {
+      return normalizedProxyPath
+    }
+
+    if (
+      normalizedProxyPath === baseWithoutTrailingSlash ||
+      normalizedProxyPath.startsWith(`${baseWithoutTrailingSlash}/`)
+    ) {
+      return normalizedProxyPath
+    }
+
+    return `${baseWithoutTrailingSlash}${normalizedProxyPath}`
+  }
+
   const getFullProxyUrl = (proxyPath: string) => {
     const { protocol, hostname, port } = window.location
     const origin = port ? `${protocol}//${hostname}:${port}` : `${protocol}//${hostname}`
-    return `${origin}${withBasePath(proxyPath)}`
+    return `${origin}${resolveProxyPath(proxyPath)}`
   }
 
   // Fetch client API keys
