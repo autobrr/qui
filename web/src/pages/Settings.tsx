@@ -3,6 +3,9 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { InstanceCard } from "@/components/instances/InstanceCard"
+import { InstanceForm } from "@/components/instances/InstanceForm"
+import { PasswordIssuesBanner } from "@/components/instances/PasswordIssuesBanner"
 import { ClientApiKeysManager } from "@/components/settings/ClientApiKeysManager"
 import { DateTimePreferencesForm } from "@/components/settings/DateTimePreferencesForm"
 import { LicenseManager } from "@/components/themes/LicenseManager.tsx"
@@ -38,17 +41,19 @@ import {
   SelectValue
 } from "@/components/ui/select"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
+import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
 import { withBasePath } from "@/lib/base-url"
 import { copyTextToClipboard } from "@/lib/utils"
+import type { Instance } from "@/types"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { useSearch } from "@tanstack/react-router"
-import { Clock, Copy, ExternalLink, Key, Palette, Plus, Server, Shield, Trash2 } from "lucide-react"
+import { useNavigate, useSearch } from "@tanstack/react-router"
+import { Clock, Copy, ExternalLink, Key, Palette, Plus, Server, Share2, Shield, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { toast } from "sonner"
 
-const settingsTabs = ["security", "themes", "api", "datetime", "client-api"] as const
+const settingsTabs = ["instances", "security", "themes", "api", "datetime", "client-api"] as const
 type SettingsTab = (typeof settingsTabs)[number]
 
 const isSettingsTab = (value: unknown): value is SettingsTab => {
@@ -418,16 +423,117 @@ function ApiKeysManager() {
   )
 }
 
+function InstancesManager() {
+  const { instances, isLoading } = useInstances()
+  const navigate = useNavigate()
+  const search = useSearch({ strict: false }) as Record<string, unknown> | undefined
+  const tab = isSettingsTab(search?.tab) ? search?.tab : undefined
+  const modal = typeof search?.modal === "string" ? search?.modal : undefined
+  const isDialogOpen = tab === "instances" && modal === "add-instance"
+  const [editingInstance, setEditingInstance] = useState<Instance | undefined>()
+
+  const handleOpenDialog = (instance?: Instance) => {
+    setEditingInstance(instance)
+    const nextSearch: Record<string, unknown> = {
+      ...(search ?? {}),
+      tab: "instances",
+      modal: "add-instance",
+    }
+    navigate({ search: nextSearch as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
+  }
+
+  const handleCloseDialog = () => {
+    setEditingInstance(undefined)
+    const nextSearch: Record<string, unknown> = {
+      ...(search ?? {}),
+      tab: "instances",
+    }
+    delete nextSearch.modal
+    navigate({ search: nextSearch as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
+  }
+
+  if (isLoading) {
+    return <div className="p-6">Loading instances...</div>
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h2 className="text-2xl font-semibold">Instances</h2>
+          <p className="text-muted-foreground mt-2">
+            Manage your qBittorrent connection settings
+          </p>
+        </div>
+        <Button onClick={() => handleOpenDialog()} className="md:ml-auto">
+          <Plus className="mr-2 h-4 w-4" />
+          Add Instance
+        </Button>
+      </div>
+
+      <PasswordIssuesBanner instances={instances || []} />
+
+      {instances && instances.length > 0 ? (
+        <div className="grid gap-4 lg:grid-cols-2">
+          {instances.map((instance) => (
+            <InstanceCard
+              key={instance.id}
+              instance={instance}
+              onEdit={() => handleOpenDialog(instance)}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-lg border border-dashed p-12 text-center">
+          <p className="text-muted-foreground">No instances configured</p>
+          <Button
+            onClick={() => handleOpenDialog()}
+            className="mt-4"
+            variant="outline"
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            Add your first instance
+          </Button>
+        </div>
+      )}
+
+      <Dialog open={isDialogOpen} onOpenChange={(open) => open ? handleOpenDialog() : handleCloseDialog()}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>
+              {editingInstance ? "Edit Instance" : "Add Instance"}
+            </DialogTitle>
+            <DialogDescription>
+              {editingInstance? "Update your qBittorrent instance configuration": "Add a new qBittorrent instance to manage"}
+            </DialogDescription>
+          </DialogHeader>
+          <InstanceForm
+            instance={editingInstance}
+            onSuccess={handleCloseDialog}
+            onCancel={handleCloseDialog}
+          />
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
 export function Settings() {
-  const tabFromSearch = useSearch({
-    from: "/_authenticated/settings",
-    select: (search: Record<string, unknown>): SettingsTab | undefined => {
-      const value = search.tab
-      return isSettingsTab(value) ? value : undefined
-    },
-  })
-  const defaultTab: SettingsTab = tabFromSearch ?? "security"
-  const [activeTab, setActiveTab] = useState<SettingsTab>(defaultTab)
+  const navigate = useNavigate()
+  const search = useSearch({ strict: false }) as Record<string, unknown> | undefined
+  const tabFromSearch = isSettingsTab(search?.tab) ? search?.tab : undefined
+  const activeTab: SettingsTab = tabFromSearch ?? "instances"
+
+  const handleTabChange = (tab: SettingsTab) => {
+    const nextSearch: Record<string, unknown> = {
+      ...(search ?? {}),
+      tab,
+    }
+    if (tab !== "instances") {
+      delete nextSearch.modal
+    }
+    navigate({ search: nextSearch as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
+  }
 
   return (
     <div className="container mx-auto p-4 md:p-6">
@@ -444,7 +550,7 @@ export function Settings() {
           value={activeTab}
           onValueChange={(value) => {
             if (isSettingsTab(value)) {
-              setActiveTab(value)
+              handleTabChange(value)
             }
           }}
         >
@@ -452,6 +558,12 @@ export function Settings() {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
+            <SelectItem value="instances">
+              <div className="flex items-center">
+                <Server className="w-4 h-4 mr-2" />
+                Instances
+              </div>
+            </SelectItem>
             <SelectItem value="security">
               <div className="flex items-center">
                 <Shield className="w-4 h-4 mr-2" />
@@ -478,7 +590,7 @@ export function Settings() {
             </SelectItem>
             <SelectItem value="client-api">
               <div className="flex items-center">
-                <Server className="w-4 h-4 mr-2" />
+                <Share2 className="w-4 h-4 mr-2" />
                 Client Proxy
               </div>
             </SelectItem>
@@ -491,7 +603,16 @@ export function Settings() {
         <div className="hidden md:block w-64 shrink-0">
           <nav className="space-y-1">
             <button
-              onClick={() => setActiveTab("security")}
+              onClick={() => handleTabChange("instances")}
+              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                activeTab === "instances"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+              }`}
+            >
+              <Server className="w-4 h-4 mr-2" />
+              Instances
+            </button>
+            <button
+              onClick={() => handleTabChange("security")}
               className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
                 activeTab === "security"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
               }`}
@@ -500,7 +621,7 @@ export function Settings() {
               Security
             </button>
             <button
-              onClick={() => setActiveTab("themes")}
+              onClick={() => handleTabChange("themes")}
               className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
                 activeTab === "themes"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
               }`}
@@ -509,7 +630,7 @@ export function Settings() {
               Premium Themes
             </button>
             <button
-              onClick={() => setActiveTab("api")}
+              onClick={() => handleTabChange("api")}
               className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
                 activeTab === "api"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
               }`}
@@ -518,7 +639,7 @@ export function Settings() {
               API Keys
             </button>
             <button
-              onClick={() => setActiveTab("datetime")}
+              onClick={() => handleTabChange("datetime")}
               className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
                 activeTab === "datetime"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
               }`}
@@ -527,12 +648,12 @@ export function Settings() {
               Date & Time
             </button>
             <button
-              onClick={() => setActiveTab("client-api")}
+              onClick={() => handleTabChange("client-api")}
               className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
                 activeTab === "client-api"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
               }`}
             >
-              <Server className="w-4 h-4 mr-2" />
+              <Share2 className="w-4 h-4 mr-2" />
               Client Proxy
             </button>
           </nav>
@@ -540,6 +661,10 @@ export function Settings() {
 
         {/* Main Content Area */}
         <div className="flex-1 min-w-0">
+
+          {activeTab === "instances" && (
+            <InstancesManager />
+          )}
 
           {activeTab === "security" && (
             <div className="space-y-4">
