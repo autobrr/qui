@@ -41,7 +41,7 @@ import { api } from "@/lib/api"
 import type { Torrent } from "@/types"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { AlertCircle, Link, Loader2, Plus, Upload } from "lucide-react"
+import { AlertCircle, Link, Loader2, Plus, Upload, X } from "lucide-react"
 import parseTorrent from "parse-torrent"
 import { useCallback, useEffect, useRef, useState } from "react"
 
@@ -69,9 +69,7 @@ function extractHashFromMagnet(magnetUrl: string): string | null {
 
 // Parse torrent file and extract info hash
 async function parseTorrentFile(file: File): Promise<string | null> {
-  console.log("[parseTorrentFile] Starting to parse:", file.name, "size:", file.size, "type:", file.type)
   const timeoutId = window.setTimeout(() => {
-    console.error("[parseTorrentFile] Timeout parsing file:", file.name)
   }, 10000) // 10 second timeout
 
   try {
@@ -80,32 +78,18 @@ async function parseTorrentFile(file: File): Promise<string | null> {
     const parsedTorrent = parsed as parseTorrent.Instance & { infoHashV2?: string }
 
     if (!parsedTorrent) {
-      console.warn("[parseTorrentFile] No parsed result for:", file.name)
       return null
     }
 
     const hash = parsedTorrent.infoHash || parsedTorrent.infoHashV2
 
     if (!hash) {
-      console.warn("[parseTorrentFile] No info hash found for:", file.name)
-      console.warn("[parseTorrentFile] Parsed object:", {
-        name: parsedTorrent.name,
-        announce: parsedTorrent.announce,
-        keys: Object.keys(parsedTorrent as unknown as Record<string, unknown>),
-      })
       return null
     }
 
     const normalized = hash.toLowerCase()
-    console.log("[parseTorrentFile] Successfully parsed:", file.name, "hash:", normalized)
     return normalized
-  } catch (err) {
-    const error = err as Error
-    console.error("[parseTorrentFile] Error parsing file:", file.name, error)
-    console.error("[parseTorrentFile] Error details:", {
-      message: error?.message,
-      stack: error?.stack,
-    })
+  } catch {
     return null
   } finally {
     window.clearTimeout(timeoutId)
@@ -430,9 +414,6 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
 
     try {
       const hashList = Array.from(hashesForApi).slice(0, 512)
-      if (hashesForApi.size > hashList.length) {
-        console.warn("[checkForDuplicates] Truncated hash list to 512 entries to avoid oversized request")
-      }
       const response = await api.checkTorrentDuplicates(instanceId, hashList)
       if (!isLatest()) {
         return
@@ -620,6 +601,29 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
 
     checkForDuplicates(nextFiles, nextUrls)
   }, [checkForDuplicates, duplicateFileKeys, duplicateUrlKeys, form])
+
+  const handleRemoveFile = useCallback((indexToRemove: number) => {
+    const rawFiles = form.getFieldValue("torrentFiles")
+    const currentFiles = Array.isArray(rawFiles) ? (rawFiles as File[]) : null
+
+    if (!currentFiles) {
+      return
+    }
+
+    const filteredFiles = currentFiles.filter((_, index) => index !== indexToRemove)
+    const nextFiles = filteredFiles.length > 0 ? filteredFiles : null
+
+    form.setFieldValue("torrentFiles", nextFiles)
+
+    if (!nextFiles) {
+      setShowFileList(false)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ""
+      }
+    }
+
+    checkForDuplicates(nextFiles, form.getFieldValue("urls") || "")
+  }, [checkForDuplicates, form])
 
   useEffect(() => {
     if (!dropPayload) {
@@ -865,6 +869,14 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                                         </span>
                                       ) : null}
                                     </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveFile(index)}
+                                      className="shrink-0 h-5 w-5 rounded-sm hover:bg-destructive/10 hover:text-destructive flex items-center justify-center transition-colors"
+                                      title="Remove file"
+                                    >
+                                      <X className="h-3 w-3" />
+                                    </button>
                                   </div>
                                 )
                               })}
