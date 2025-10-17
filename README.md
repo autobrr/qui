@@ -513,6 +513,9 @@ qui automatically detects the features available on each qBittorrent instance an
 | **Tracker Health Status** | 5.1.0+ (Web API 2.11.4+) | Automatically marks torrents that are either unregistered or has a tracker issue |
 | **External IP Reporting (IPv4/IPv6)** | 5.1.0+ (Web API 2.11.3+) | Adds `last_external_address_v4` / `_v6`; earlier WebAPI builds expose no external IP data |
 
+> [!NOTE]
+> Hybrid and v2 torrent creation requires a qBittorrent build that links against libtorrent v2. Builds compiled with libtorrent 1.x ignore the `format` parameter.
+
 ## Community
 
 Join our friendly and welcoming community on [Discord](https://discord.autobrr.com/qui)! Connect with fellow autobrr users, get advice, and share your experiences. 
