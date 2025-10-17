@@ -268,6 +268,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 					r.Route("/torrents", func(r chi.Router) {
 						r.Get("/", torrentsHandler.ListTorrents)
 						r.Post("/", torrentsHandler.AddTorrent)
+						r.Post("/check-duplicates", torrentsHandler.CheckDuplicates)
 						r.Post("/bulk-action", torrentsHandler.BulkAction)
 						r.Post("/add-peers", torrentsHandler.AddPeers)
 						r.Post("/ban-peers", torrentsHandler.BanPeers)

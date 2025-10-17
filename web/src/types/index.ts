@@ -184,6 +184,14 @@ export interface Torrent {
   upspeed: number
 }
 
+export interface DuplicateTorrentMatch {
+  hash: string
+  infohash_v1?: string
+  infohash_v2?: string
+  name: string
+  matched_hashes?: string[]
+}
+
 export interface TorrentStats {
   total: number
   downloading: number

@@ -85,7 +85,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useSearch } from "@tanstack/react-router"
 import { ArrowUpDown, Ban, BrickWallFire, ChevronDown, ChevronUp, Columns3, EthernetPort, Eye, EyeOff, Globe, Loader2, Rabbit, Turtle } from "lucide-react"
 import { createPortal } from "react-dom"
-import { AddTorrentDialog } from "./AddTorrentDialog"
+import { AddTorrentDialog, type AddTorrentDropPayload } from "./AddTorrentDialog"
 import { DraggableTableHeader } from "./DraggableTableHeader"
 import {
   AddTagsDialog,
@@ -100,6 +100,7 @@ import {
   ShareLimitDialog,
   SpeedLimitsDialog
 } from "./TorrentDialogs"
+import { TorrentDropZone } from "./TorrentDropZone"
 import { createColumns } from "./TorrentTableColumns"
 
 // Default values for persisted state hooks (module scope for stable references)
@@ -257,6 +258,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   // Custom "select all" state for handling large datasets
   const [isAllSelected, setIsAllSelected] = useState(false)
   const [excludedFromSelectAll, setExcludedFromSelectAll] = useState<Set<string>>(new Set())
+  const [dropPayload, setDropPayload] = useState<AddTorrentDropPayload | null>(null)
 
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const { exportTorrents, isExporting: isExportingTorrent } = useTorrentExporter({ instanceId, incognitoMode })
@@ -1368,6 +1370,15 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     )
   }, [handleSetSpeedLimits, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
 
+  const handleDropPayload = useCallback((payload: AddTorrentDropPayload) => {
+    setDropPayload(payload)
+    onAddTorrentModalChange?.(true)
+  }, [onAddTorrentModalChange])
+
+  const handleDropPayloadConsumed = useCallback(() => {
+    setDropPayload(null)
+  }, [])
+
 
   // Drag and drop setup
   // Sensors must be called at the top level, not inside useMemo
@@ -1458,6 +1469,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
               instanceId={instanceId}
               open={addTorrentModalOpen}
               onOpenChange={onAddTorrentModalChange}
+              dropPayload={dropPayload}
+              onDropPayloadConsumed={handleDropPayloadConsumed}
+              torrents={torrents}
             />
           </div>
         </div>
@@ -1466,13 +1480,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       {/* Table container */}
       <div className="flex flex-col flex-1 min-h-0 mt-2 sm:mt-0 overflow-hidden">
         {/* Virtual scroll container with paint containment optimization for improved rendering performance */}
-        <div
-          className="relative flex-1 overflow-auto scrollbar-thin select-none will-change-transform contain-paint"
+        <TorrentDropZone
           ref={parentRef}
+          className="relative flex-1 overflow-auto scrollbar-thin select-none will-change-transform contain-paint"
           role="grid"
           aria-label="Torrents table"
           aria-rowcount={totalCount}
           aria-colcount={table.getVisibleLeafColumns().length}
+          onDropPayload={handleDropPayload}
         >
           {/* Loading overlay - positioned absolute to scroll container */}
           {torrents.length === 0 && showLoadingState && (
@@ -1691,7 +1706,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
               })}
             </div>
           </div>
-        </div>
+        </TorrentDropZone>
 
         {/* Status bar */}
         <div className="flex items-center justify-between p-2 border-t flex-shrink-0 select-none">
