@@ -119,10 +119,6 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("oidcRedirectUrl", "")
 	c.viper.SetDefault("oidcDisableBuiltInLogin", false)
 
-	// HTTP timeout defaults - increased for large qBittorrent instances
-	c.viper.SetDefault("httpTimeouts.readTimeout", 60)   // 60 seconds
-	c.viper.SetDefault("httpTimeouts.writeTimeout", 120) // 120 seconds for large responses
-	c.viper.SetDefault("httpTimeouts.idleTimeout", 180)  // 180 seconds
 }
 
 func (c *AppConfig) load(configDirOrPath string) error {
@@ -209,10 +205,6 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("oidcRedirectUrl", envPrefix+"OIDC_REDIRECT_URL")
 	c.viper.BindEnv("oidcDisableBuiltInLogin", envPrefix+"OIDC_DISABLE_BUILT_IN_LOGIN")
 
-	// HTTP timeout environment variables
-	c.viper.BindEnv("httpTimeouts.readTimeout", envPrefix+"HTTP_READ_TIMEOUT")
-	c.viper.BindEnv("httpTimeouts.writeTimeout", envPrefix+"HTTP_WRITE_TIMEOUT")
-	c.viper.BindEnv("httpTimeouts.idleTimeout", envPrefix+"HTTP_IDLE_TIMEOUT")
 }
 
 func (c *AppConfig) watchConfig() {
@@ -447,21 +439,6 @@ logLevel = "{{ .logLevel }}"
 
 # Disable Built-In Login Form (only works when OIDC is enabled)
 #oidcDisableBuiltInLogin = false
-
-# HTTP Timeouts (for large qBittorrent instances)
-# Increase these values if you experience timeouts with 10k+ torrents
-[httpTimeouts]
-# Read timeout in seconds
-# Default: 60
-#readTimeout = 60
-
-# Write timeout in seconds (increase for large responses)
-# Default: 120
-#writeTimeout = 120
-
-# Idle timeout in seconds
-# Default: 180
-#idleTimeout = 180
 `
 
 	// Prepare template data
