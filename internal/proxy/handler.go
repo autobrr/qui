@@ -17,16 +17,19 @@ import (
 	"strings"
 	"time"
 
+	"github.com/autobrr/autobrr/pkg/sharedhttp"
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/httphelpers"
 )
 
 // Handler manages reverse proxy requests to qBittorrent instances
 type Handler struct {
+	basePath          string
 	clientPool        *qbittorrent.ClientPool
 	clientAPIKeyStore *models.ClientAPIKeyStore
 	instanceStore     *models.InstanceStore
@@ -58,10 +61,12 @@ type proxyContext struct {
 }
 
 // NewHandler creates a new proxy handler
-func NewHandler(clientPool *qbittorrent.ClientPool, clientAPIKeyStore *models.ClientAPIKeyStore, instanceStore *models.InstanceStore) *Handler {
+func NewHandler(clientPool *qbittorrent.ClientPool, clientAPIKeyStore *models.ClientAPIKeyStore, instanceStore *models.InstanceStore, baseURL string) *Handler {
 	bufferPool := NewBufferPool()
+	basePath := httphelpers.NormalizeBasePath(baseURL)
 
 	h := &Handler{
+		basePath:          basePath,
 		clientPool:        clientPool,
 		clientAPIKeyStore: clientAPIKeyStore,
 		instanceStore:     instanceStore,
@@ -74,6 +79,7 @@ func NewHandler(clientPool *qbittorrent.ClientPool, clientAPIKeyStore *models.Cl
 		ModifyResponse: h.modifyResponse,
 		BufferPool:     bufferPool,
 		ErrorHandler:   h.errorHandler,
+		Transport:      sharedhttp.Transport,
 	}
 
 	return h
@@ -263,7 +269,7 @@ func (h *Handler) modifyResponse(resp *http.Response) error {
 
 // stripProxyPrefix removes the proxy prefix from the URL path
 func (h *Handler) stripProxyPrefix(path, apiKey string) string {
-	prefix := "/proxy/" + apiKey
+	prefix := httphelpers.JoinBasePath(h.basePath, "/proxy/"+apiKey)
 	if after, found := strings.CutPrefix(path, prefix); found {
 		return after
 	}
@@ -311,7 +317,8 @@ func (h *Handler) errorHandler(w http.ResponseWriter, r *http.Request, err error
 // Routes sets up the proxy routes
 func (h *Handler) Routes(r chi.Router) {
 	// Proxy route with API key parameter
-	r.Route("/proxy/{api-key}", func(r chi.Router) {
+	proxyRoute := httphelpers.JoinBasePath(h.basePath, "/proxy/{api-key}")
+	r.Route(proxyRoute, func(r chi.Router) {
 		// Apply client API key validation middleware
 		r.Use(ClientAPIKeyMiddleware(h.clientAPIKeyStore))
 

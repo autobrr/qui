@@ -22,10 +22,12 @@ type Client struct {
 	webAPIVersion           string
 	supportsSetTags         bool
 	supportsTorrentCreation bool
+	supportsTorrentExport   bool
 	supportsTrackerEditing  bool
 	supportsRenameTorrent   bool
 	supportsRenameFile      bool
 	supportsRenameFolder    bool
+	supportsSubcategories   bool
 	lastHealthCheck         time.Time
 	isHealthy               bool
 	syncManager             *qbt.SyncManager
@@ -37,6 +39,9 @@ type Client struct {
 	mu                sync.RWMutex
 	serverStateMu     sync.RWMutex
 	healthMu          sync.RWMutex
+	hashIndexMu       sync.RWMutex
+	hashIndex         map[string]duplicateIndexEntry
+	hashIndexReady    bool
 }
 
 func NewClient(instanceID int, instanceHost, username, password string, basicUsername, basicPassword *string, tlsSkipVerify bool) (*Client, error) {
@@ -75,10 +80,12 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 
 	supportsSetTags := false
 	supportsTorrentCreation := false
+	supportsTorrentExport := false
 	supportsTrackerEditing := false
 	supportsRenameTorrent := false
 	supportsRenameFile := false
 	supportsRenameFolder := false
+	supportsSubcategories := false
 	if webAPIVersion != "" {
 		if v, err := semver.NewVersion(webAPIVersion); err == nil {
 			setTagsMinVersion := semver.MustParse("2.11.4")
@@ -86,6 +93,10 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 
 			torrentCreationMinVersion := semver.MustParse("2.11.2")
 			supportsTorrentCreation = !v.LessThan(torrentCreationMinVersion)
+
+			// Torrent export endpoint: WebAPI 2.8.11+ (qBittorrent 4.5.0+, introduced in 4.5.0beta1)
+			exportTorrentMinVersion := semver.MustParse("2.8.11")
+			supportsTorrentExport = !v.LessThan(exportTorrentMinVersion)
 
 			trackerEditingMinVersion := semver.MustParse("2.2.0")
 			supportsTrackerEditing = !v.LessThan(trackerEditingMinVersion)
@@ -98,9 +109,13 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 			renameFileMinVersion := semver.MustParse("2.4.0")
 			supportsRenameFile = !v.LessThan(renameFileMinVersion)
 
-			// Rename folder: qBittorrent 4.4.0+ (WebAPI 2.8.4+)
-			renameFolderMinVersion := semver.MustParse("2.8.4")
+			// Rename folder: qBittorrent 4.3.3+ (WebAPI 2.7.0+)
+			renameFolderMinVersion := semver.MustParse("2.7.0")
 			supportsRenameFolder = !v.LessThan(renameFolderMinVersion)
+
+			// Subcategories: qBittorrent 4.6+ (WebAPI 2.9.0+)
+			subcategoriesMinVersion := semver.MustParse("2.9.0")
+			supportsSubcategories = !v.LessThan(subcategoriesMinVersion)
 		}
 	}
 
@@ -110,16 +125,19 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 		webAPIVersion:           webAPIVersion,
 		supportsSetTags:         supportsSetTags,
 		supportsTorrentCreation: supportsTorrentCreation,
+		supportsTorrentExport:   supportsTorrentExport,
 		supportsTrackerEditing:  supportsTrackerEditing,
 		supportsRenameTorrent:   supportsRenameTorrent,
 		supportsRenameFile:      supportsRenameFile,
 		supportsRenameFolder:    supportsRenameFolder,
+		supportsSubcategories:   supportsSubcategories,
 		lastHealthCheck:         time.Now(),
 		isHealthy:               true,
 		optimisticUpdates: ttlcache.New(ttlcache.Options[string, *OptimisticTorrentUpdate]{}.
 			SetDefaultTTL(30 * time.Second)), // Updates expire after 30 seconds
 		trackerExclusions: make(map[string]map[string]struct{}),
 		peerSyncManager:   make(map[string]*qbt.PeerSyncManager),
+		hashIndex:         make(map[string]duplicateIndexEntry),
 	}
 
 	// Initialize sync manager with default options
@@ -130,6 +148,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 	syncOpts.OnUpdate = func(data *qbt.MainData) {
 		client.updateHealthStatus(true)
 		client.updateServerState(data)
+		client.rebuildHashIndex(data.Torrents)
 		log.Debug().Int("instanceID", instanceID).Int("torrentCount", len(data.Torrents)).Msg("Sync manager update received, marking client as healthy")
 	}
 
@@ -149,8 +168,10 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 		Str("webAPIVersion", webAPIVersion).
 		Bool("supportsSetTags", supportsSetTags).
 		Bool("supportsTorrentCreation", supportsTorrentCreation).
+		Bool("supportsTorrentExport", supportsTorrentExport).
 		Bool("supportsTrackerEditing", supportsTrackerEditing).
 		Bool("includeTrackers", supportsInclude).
+		Bool("supportsSubcategories", supportsSubcategories).
 		Bool("tlsSkipVerify", tlsSkipVerify).
 		Msg("qBittorrent client created successfully")
 
@@ -207,6 +228,12 @@ func (c *Client) SupportsTrackerEditing() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.supportsTrackerEditing
+}
+
+func (c *Client) SupportsTorrentExport() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.supportsTorrentExport
 }
 
 func (c *Client) updateServerState(data *qbt.MainData) {
@@ -266,6 +293,12 @@ func (c *Client) SupportsRenameFolder() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.supportsRenameFolder
+}
+
+func (c *Client) SupportsSubcategories() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.supportsSubcategories
 }
 
 // getTorrentsByHashes returns multiple torrents by their hashes (O(n) where n is number of requested hashes)

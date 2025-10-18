@@ -12,17 +12,20 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/httphelpers"
 )
 
 type ClientAPIKeysHandler struct {
 	clientAPIKeyStore *models.ClientAPIKeyStore
 	instanceStore     *models.InstanceStore
+	basePath          string
 }
 
-func NewClientAPIKeysHandler(clientAPIKeyStore *models.ClientAPIKeyStore, instanceStore *models.InstanceStore) *ClientAPIKeysHandler {
+func NewClientAPIKeysHandler(clientAPIKeyStore *models.ClientAPIKeyStore, instanceStore *models.InstanceStore, baseURL string) *ClientAPIKeysHandler {
 	return &ClientAPIKeysHandler{
 		clientAPIKeyStore: clientAPIKeyStore,
 		instanceStore:     instanceStore,
+		basePath:          httphelpers.NormalizeBasePath(baseURL),
 	}
 }
 
@@ -84,8 +87,8 @@ func (h *ClientAPIKeysHandler) CreateClientAPIKey(w http.ResponseWriter, r *http
 		return
 	}
 
-	// Generate proxy URL
-	proxyURL := "/proxy/" + rawKey
+	// Generate proxy URL (base-aware)
+	proxyURL := httphelpers.JoinBasePath(h.basePath, "/proxy/"+rawKey)
 
 	response := CreateClientAPIKeyResponse{
 		Key:          rawKey,

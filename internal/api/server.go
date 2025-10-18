@@ -73,17 +73,6 @@ func NewServer(deps *Dependencies) *Server {
 		trackerIconService: deps.TrackerIconService,
 	}
 
-	// Create HTTP server with configurable timeouts
-	if val := deps.Config.Config.HTTPTimeouts.ReadTimeout; val > 0 {
-		s.server.ReadTimeout = time.Duration(val) * time.Second
-	}
-	if val := deps.Config.Config.HTTPTimeouts.WriteTimeout; val > 0 {
-		s.server.WriteTimeout = time.Duration(val) * time.Second
-	}
-	if val := deps.Config.Config.HTTPTimeouts.IdleTimeout; val > 0 {
-		s.server.IdleTimeout = time.Duration(val) * time.Second
-	}
-
 	return &s
 }
 
@@ -188,7 +177,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	instancesHandler := handlers.NewInstancesHandler(s.instanceStore, s.clientPool, s.syncManager)
 	torrentsHandler := handlers.NewTorrentsHandler(s.syncManager)
 	preferencesHandler := handlers.NewPreferencesHandler(s.syncManager)
-	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(s.clientAPIKeyStore, s.instanceStore)
+	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(s.clientAPIKeyStore, s.instanceStore, s.config.Config.BaseURL)
 	versionHandler := handlers.NewVersionHandler(s.updateService)
 	qbittorrentInfoHandler := handlers.NewQBittorrentInfoHandler(s.clientPool)
 	var trackerIconHandler *handlers.TrackerIconHandler
@@ -197,7 +186,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	}
 
 	// Create proxy handler
-	proxyHandler := proxy.NewHandler(s.clientPool, s.clientAPIKeyStore, s.instanceStore)
+	proxyHandler := proxy.NewHandler(s.clientPool, s.clientAPIKeyStore, s.instanceStore, s.config.Config.BaseURL)
 
 	// license handler (optional, only if the license service is configured)
 	var licenseHandler *handlers.LicenseHandler
@@ -279,6 +268,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 					r.Route("/torrents", func(r chi.Router) {
 						r.Get("/", torrentsHandler.ListTorrents)
 						r.Post("/", torrentsHandler.AddTorrent)
+						r.Post("/check-duplicates", torrentsHandler.CheckDuplicates)
 						r.Post("/bulk-action", torrentsHandler.BulkAction)
 						r.Post("/add-peers", torrentsHandler.AddPeers)
 						r.Post("/ban-peers", torrentsHandler.BanPeers)

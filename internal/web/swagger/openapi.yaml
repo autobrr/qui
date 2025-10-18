@@ -582,6 +582,46 @@ paths:
           description: Torrent added successfully
 
 
+  /api/instances/{instanceId}/torrents/check-duplicates:
+    post:
+      tags:
+        - Torrents
+      summary: Check for duplicate torrents
+      description: Determine whether any of the provided hashes already exist on the qBittorrent instance. Supports infohash v1 or v2 values.
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - hashes
+              properties:
+                hashes:
+                  type: array
+                  description: List of torrent hashes to check. Maximum 512 entries per request.
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Existing torrents matching the provided hashes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  duplicates:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DuplicateTorrentMatch'
+        '400':
+          description: Invalid request body or too many hashes provided
+        '500':
+          description: Failed to check duplicates
+
+
   /api/instances/{instanceId}/torrents/bulk-action:
     post:
       tags:
@@ -1896,6 +1936,9 @@ components:
         supportsTorrentCreation:
           type: boolean
           description: Whether the instance supports creating torrents via the Web API.
+        supportsTorrentExport:
+          type: boolean
+          description: Whether the instance supports exporting torrent files via the Web API (requires WebAPI 2.8.11+, qBittorrent 4.5.0+).
         supportsSetTags:
           type: boolean
           description: Whether the instance supports replacing tags on torrents.
@@ -1904,16 +1947,19 @@ components:
           description: Whether the instance exposes tracker health metadata (unregistered/tracker down states).
         supportsTrackerEditing:
           type: boolean
-          description: Whether the instance can edit tracker URLs via the Web API (requires WebAPI v2.3.0+).
+          description: Whether the instance can edit tracker URLs via the Web API (requires WebAPI 2.2.0+, qBittorrent 4.1.5+).
         supportsRenameTorrent:
           type: boolean
           description: Whether the instance supports renaming torrents (requires WebAPI 2.0.0+, qBittorrent 4.1.0+).
         supportsRenameFile:
           type: boolean
-          description: Whether the instance supports renaming files within torrents (requires WebAPI 2.6.0+, qBittorrent 4.3.0+).
+          description: Whether the instance supports renaming files within torrents (requires WebAPI 2.4.0+, qBittorrent 4.2.1+).
         supportsRenameFolder:
           type: boolean
-          description: Whether the instance supports renaming folders within torrents (requires WebAPI 2.8.4+, qBittorrent 4.4.0+).
+          description: Whether the instance supports renaming folders within torrents (requires WebAPI 2.7.0+, qBittorrent 4.3.3+).
+        supportsSubcategories:
+          type: boolean
+          description: Whether the instance supports nested torrent categories (requires WebAPI 2.9.0+, qBittorrent 4.6.0+).
         webAPIVersion:
           type: string
           nullable: true
@@ -2029,6 +2075,29 @@ components:
           type: boolean
         availability:
           type: number
+
+    DuplicateTorrentMatch:
+      type: object
+      properties:
+        hash:
+          type: string
+          description: Primary torrent hash
+        infohash_v1:
+          type: string
+          nullable: true
+          description: Legacy v1 infohash if available
+        infohash_v2:
+          type: string
+          nullable: true
+          description: v2 infohash if available
+        name:
+          type: string
+          description: Name of the existing torrent that matched
+        matched_hashes:
+          type: array
+          items:
+            type: string
+          description: Hashes from the request that matched this torrent
 
     Category:
       type: object
