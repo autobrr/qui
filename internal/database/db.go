@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode"
 
@@ -39,10 +40,16 @@ type writeRes struct {
 
 // reader/writer fields on DB
 type DB struct {
-	conn    *sql.DB
-	writeCh chan writeReq
-	stmts   *ttlcache.Cache[string, *sql.Stmt]
-	stop    chan struct{}
+	conn          *sql.DB
+	writeCh       chan writeReq
+	stmts         *ttlcache.Cache[string, *sql.Stmt]
+	stop          chan struct{}
+	closeOnce     sync.Once
+	writerWG      sync.WaitGroup
+	closing       atomic.Bool
+	closeErr      error
+	writeBarrier  atomic.Value // stores chan struct{} to pause writer for tests
+	barrierSignal atomic.Value // stores chan struct{} to signal writer pause
 }
 
 const (
@@ -145,6 +152,8 @@ func New(databasePath string) (*DB, error) {
 		stmts:   stmtsCache,
 		stop:    make(chan struct{}),
 	}
+	db.writeBarrier.Store((chan struct{})(nil))
+	db.barrierSignal.Store((chan struct{})(nil))
 
 	// Run migrations with single connection
 	if err := db.migrate(); err != nil {
@@ -158,6 +167,7 @@ func New(databasePath string) (*DB, error) {
 	conn.SetConnMaxLifetime(0)
 
 	// start single writer after migrations
+	db.writerWG.Add(1)
 	go db.writerLoop()
 
 	// Verify database file was created
@@ -241,6 +251,10 @@ func (db *DB) ExecContext(ctx context.Context, query string, args ...any) (sql.R
 		return stmt.ExecContext(ctx, args...)
 	}
 
+	if db.closing.Load() {
+		return nil, fmt.Errorf("db stopping")
+	}
+
 	// route through writer
 	resCh := make(chan writeRes, 1)
 	req := writeReq{ctx: ctx, query: query, args: args, resCh: resCh}
@@ -258,33 +272,66 @@ func (db *DB) ExecContext(ctx context.Context, query string, args ...any) (sql.R
 
 // writerLoop processes write requests sequentially
 func (db *DB) writerLoop() {
+	defer db.writerWG.Done()
+
+	draining := false
 	for {
+		if draining {
+			select {
+			case req, ok := <-db.writeCh:
+				if !ok {
+					return
+				}
+				db.processWrite(req)
+			default:
+				return
+			}
+			continue
+		}
+
 		select {
-		case <-db.stop:
-			return
 		case req, ok := <-db.writeCh:
 			if !ok {
 				return
 			}
-			// use prepared stmt if possible
-			stmt, err := db.getStmt(req.ctx, req.query)
-			if err != nil {
-				// if we couldn't prepare a statement, execWrite will use
-				// the connection directly
-				res, execErr := db.execWrite(req.ctx, nil, req.query, req.args)
-				select {
-				case req.resCh <- writeRes{result: res, err: execErr}:
-				default:
-				}
-				continue
-			}
+			db.processWrite(req)
+		case <-db.stop:
+			draining = true
+		}
+	}
+}
 
-			res, execErr := db.execWrite(req.ctx, stmt, req.query, req.args)
+func (db *DB) processWrite(req writeReq) {
+	if barrier, ok := db.writeBarrier.Load().(chan struct{}); ok && barrier != nil {
+		if signal, ok := db.barrierSignal.Load().(chan struct{}); ok && signal != nil {
 			select {
-			case req.resCh <- writeRes{result: res, err: execErr}:
+			case signal <- struct{}{}:
 			default:
 			}
 		}
+		select {
+		case <-barrier:
+		case <-req.ctx.Done():
+		}
+	}
+
+	// use prepared stmt if possible
+	stmt, err := db.getStmt(req.ctx, req.query)
+	if err != nil {
+		// if we couldn't prepare a statement, execWrite will use
+		// the connection directly
+		res, execErr := db.execWrite(req.ctx, nil, req.query, req.args)
+		select {
+		case req.resCh <- writeRes{result: res, err: execErr}:
+		default:
+		}
+		return
+	}
+
+	res, execErr := db.execWrite(req.ctx, stmt, req.query, req.args)
+	select {
+	case req.resCh <- writeRes{result: res, err: execErr}:
+	default:
 	}
 }
 
@@ -309,28 +356,40 @@ func (db *DB) QueryRowContext(ctx context.Context, query string, args ...any) *s
 }
 
 func (db *DB) Close() error {
-	ctx, cancel := context.WithTimeout(context.Background(), connectionSetupTimeout)
-	defer cancel()
-	if _, err := db.conn.ExecContext(ctx, "PRAGMA optimize"); err != nil {
-		log.Warn().Err(err).Msg("failed to run PRAGMA optimize during close")
-	}
+	db.closeOnce.Do(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), connectionSetupTimeout)
+		defer cancel()
+		if _, err := db.conn.ExecContext(ctx, "PRAGMA optimize"); err != nil {
+			log.Warn().Err(err).Msg("failed to run PRAGMA optimize during close")
+		}
 
-	// stop writer
-	select {
-	case <-db.stop:
-		// already closed
-	default:
-		close(db.stop)
-	}
-	// close write channel to unblock writer
-	close(db.writeCh)
+		db.closing.Store(true)
 
-	// close ttlcache
-	db.stmts.Close()
+		select {
+		case <-db.stop:
+		default:
+			close(db.stop)
+		}
 
-	// deallocation of cached statements is handled by ttlcache
+		if barrier, ok := db.writeBarrier.Load().(chan struct{}); ok && barrier != nil {
+			select {
+			case <-barrier:
+			default:
+				close(barrier)
+			}
+			db.writeBarrier.Store((chan struct{})(nil))
+		}
+		db.barrierSignal.Store((chan struct{})(nil))
 
-	return db.conn.Close()
+		db.writerWG.Wait()
+
+		db.stmts.Close()
+
+		// deallocation of cached statements is handled by ttlcache
+		db.closeErr = db.conn.Close()
+	})
+
+	return db.closeErr
 }
 
 func (db *DB) Conn() *sql.DB {
