@@ -31,7 +31,7 @@ import { formatBytes, getRatioColor } from "@/lib/utils"
 import type { InstanceResponse, ServerState, TorrentCounts, TorrentResponse, TorrentStats } from "@/types"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
-import { Activity, Ban, BrickWallFire, ChevronDown, ChevronUp, Download, ExternalLink, Eye, EyeOff, Globe, HardDrive, Minus, Plus, Rabbit, Turtle, Upload, Zap } from "lucide-react"
+import { Activity, Ban, BrickWallFire, ChevronDown, ChevronRight, ChevronUp, Download, ExternalLink, Eye, EyeOff, Globe, HardDrive, Minus, Plus, Rabbit, Turtle, Upload, Zap } from "lucide-react"
 import { useMemo, useState } from "react"
 
 import {
@@ -146,22 +146,6 @@ function InstanceCard({
   const connectionStatusDisplay = formattedConnectionStatus? formattedConnectionStatus.replace(/\b\w/g, (char: string) => char.toUpperCase()): ""
   const hasConnectionStatus = Boolean(formattedConnectionStatus)
 
-  // Determine badge variant and text
-  let badgeVariant: "default" | "secondary" | "destructive" = "default"
-  let badgeText = "Connected"
-
-  if (isFirstLoad) {
-    badgeVariant = "secondary"
-    badgeText = "Loading..."
-  } else if (hasError) {
-    badgeVariant = "destructive"
-    badgeText = "Error"
-  } else if (isDisconnected) {
-    badgeVariant = "destructive"
-    badgeText = "Disconnected"
-  }
-
-  const badgeClassName = "whitespace-nowrap"
 
   const isConnectable = normalizedConnectionStatus === "connected"
   const isFirewalled = normalizedConnectionStatus === "firewalled"
@@ -182,69 +166,48 @@ function InstanceCard({
   return (
     <>
       <Card className="hover:shadow-lg transition-shadow">
-        <CardHeader className={!isFirstLoad ? "gap-1" : ""}>
-          <div className="flex items-center gap-2 sm:gap-3">
+        <CardHeader className={`${!isFirstLoad ? "gap-1" : ""} overflow-hidden`}>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 w-full">
             <Link
               to={linkTo}
               params={linkParams}
               search={linkSearch}
-              className="flex flex-1 items-center gap-2 hover:underline min-w-0"
+              className="flex items-center gap-2 hover:underline overflow-hidden flex-1 min-w-0"
             >
-              <CardTitle className="text-lg truncate min-w-0 max-w-[80px] sm:max-w-[90px] md:max-w-[90px] lg:max-w-[90px] xl:max-w-[120px] 2xl:max-w-[250px]">{instance.name}</CardTitle>
+              <CardTitle
+                className="text-lg truncate min-w-0 max-w-[100px] sm:max-w-[130px] md:max-w-[160px] lg:max-w-[190px]"
+                title={instance.name}
+              >
+                {instance.name}
+              </CardTitle>
               <ExternalLink className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
             </Link>
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-1 justify-end shrink-0 basis-full sm:basis-auto sm:min-w-[4.5rem]">
               {instance.connected && !isFirstLoad && (
-                <>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.preventDefault()
-                          e.stopPropagation()
-                          setShowSpeedLimitDialog(true)
-                        }}
-                        disabled={isToggling}
-                        className="h-8 w-8 p-0 !hover:bg-transparent"
-                      >
-                        {altSpeedEnabled ? (
-                          <Turtle className="h-4 w-4 text-orange-600" />
-                        ) : (
-                          <Rabbit className="h-4 w-4 text-green-600" />
-                        )}
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      Alternative speed limits: {altSpeedEnabled ? "On" : "Off"}
-                    </TooltipContent>
-                  </Tooltip>
-                  <AlertDialog open={showSpeedLimitDialog} onOpenChange={setShowSpeedLimitDialog}>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>
-                          {altSpeedEnabled ? "Disable Alternative Speed Limits?" : "Enable Alternative Speed Limits?"}
-                        </AlertDialogTitle>
-                        <AlertDialogDescription>
-                          {altSpeedEnabled? `This will disable alternative speed limits for ${instance.name} and return to normal speed limits.`: `This will enable alternative speed limits for ${instance.name}, which will reduce transfer speeds based on your configured limits.`
-                          }
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction
-                          onClick={() => {
-                            toggleAltSpeed()
-                            setShowSpeedLimitDialog(false)
-                          }}
-                        >
-                          {altSpeedEnabled ? "Disable" : "Enable"}
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                </>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        setShowSpeedLimitDialog(true)
+                      }}
+                      disabled={isToggling}
+                      className="h-8 w-8 p-0 shrink-0"
+                    >
+                      {altSpeedEnabled ? (
+                        <Turtle className="h-4 w-4 text-orange-600" />
+                      ) : (
+                        <Rabbit className="h-4 w-4 text-green-600" />
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Alternative speed limits: {altSpeedEnabled ? "On" : "Off"}
+                  </TooltipContent>
+                </Tooltip>
               )}
               {showSettingsButton && (
                 <InstanceSettingsButton
@@ -252,11 +215,33 @@ function InstanceCard({
                   instanceName={instance.name}
                 />
               )}
-              <Badge variant={badgeVariant} className={badgeClassName}>
-                {badgeText}
-              </Badge>
             </div>
           </div>
+
+          <AlertDialog open={showSpeedLimitDialog} onOpenChange={setShowSpeedLimitDialog}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  {altSpeedEnabled ? "Disable Alternative Speed Limits?" : "Enable Alternative Speed Limits?"}
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  {altSpeedEnabled? `This will disable alternative speed limits for ${instance.name} and return to normal speed limits.`: `This will enable alternative speed limits for ${instance.name}, which will reduce transfer speeds based on your configured limits.`
+                  }
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => {
+                    toggleAltSpeed()
+                    setShowSpeedLimitDialog(false)
+                  }}
+                >
+                  {altSpeedEnabled ? "Disable" : "Enable"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
           {(appVersion || webAPIVersion || libtorrentVersion || formattedConnectionStatus) && (
             <CardDescription className="flex flex-wrap items-center gap-1.5 text-xs">
               {formattedConnectionStatus && (
@@ -362,7 +347,16 @@ function InstanceCard({
 
                 <div className="flex items-center gap-2 text-xs">
                   <HardDrive className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-                  <span className="text-muted-foreground">Total Size</span>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="text-muted-foreground cursor-help inline-flex items-center gap-1">
+                        Total Size
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      Total size of all torrents, including cross-seeds
+                    </TooltipContent>
+                  </Tooltip>
                   <span className="ml-auto font-medium truncate">{formatBytes(stats?.totalSize || 0)}</span>
                 </div>
               </div>
@@ -376,8 +370,12 @@ function InstanceCard({
               )}
 
               <Collapsible open={isAdvancedMetricsOpen} onOpenChange={setIsAdvancedMetricsOpen}>
-                <CollapsibleTrigger className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors w-full [&[data-state=open]>svg]:rotate-180">
-                  <ChevronDown className="h-3 w-3 transition-transform" />
+                <CollapsibleTrigger className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors w-full">
+                  {isAdvancedMetricsOpen ? (
+                    <ChevronDown className="h-3 w-3" />
+                  ) : (
+                    <ChevronRight className="h-3 w-3" />
+                  )}
                   <span>{`Show ${isAdvancedMetricsOpen ? "less" : "more"}`}</span>
                 </CollapsibleTrigger>
                 <CollapsibleContent className="space-y-2 mt-2">
