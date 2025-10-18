@@ -42,10 +42,11 @@ import {
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { api } from "@/lib/api"
 import { getBaseUrl } from "@/lib/base-url"
+import { useIncognitoMode } from "@/lib/incognito"
 import { copyTextToClipboard } from "@/lib/utils"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Copy, Plus, Server, Trash2 } from "lucide-react"
+import { Copy, Eye, EyeOff, Plus, Server, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { toast } from "sonner"
 
@@ -77,6 +78,7 @@ export function ClientApiKeysManager() {
   const [newKey, setNewKey] = useState<NewClientAPIKey | null>(null)
   const queryClient = useQueryClient()
   const { formatDate } = useDateTimeFormatters()
+  const [incognitoMode, setIncognitoMode] = useIncognitoMode()
 
   // Get the current browser URL to construct full proxy URL
   const resolveProxyPath = (proxyPath: string) => {
@@ -216,14 +218,26 @@ export function ClientApiKeysManager() {
                     <CardContent className="space-y-3">
                       <div>
                         <Label htmlFor="proxy-url" className="text-xs uppercase text-muted-foreground">Proxy URL</Label>
-                        <div className="mt-1 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
-                          <code id="proxy-url" className="w-full rounded bg-muted px-2 py-1.5 text-xs font-mono break-all">
+                        <div className="mt-1 flex flex-wrap items-center gap-2 sm:flex-nowrap">
+                          <code
+                            id="proxy-url"
+                            className={`w-full flex-1 rounded bg-muted px-2 py-1.5 text-xs font-mono break-all ${incognitoMode ? "blur-sm select-none" : ""}`}
+                          >
                             {getFullProxyUrl(newKey.proxyUrl)}
                           </code>
                           <Button
                             size="icon"
                             variant="outline"
-                            className="h-7 w-7 justify-self-start sm:justify-self-end"
+                            className="h-7 w-7"
+                            onClick={() => setIncognitoMode(!incognitoMode)}
+                            title={incognitoMode ? "Show proxy URL" : "Hide proxy URL"}
+                          >
+                            {incognitoMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="outline"
+                            className="h-7 w-7"
                             onClick={async () => {
                               try {
                                 await copyTextToClipboard(getFullProxyUrl(newKey.proxyUrl))
@@ -405,9 +419,22 @@ export function ClientApiKeysManager() {
                           )}
                         </p>
                         {key.instance?.host && (
-                          <p className="break-all">
-                            <span className="text-foreground">Host:</span> {key.instance.host}
-                          </p>
+                          <div className="flex flex-wrap items-center gap-1 break-all">
+                            <span className="text-foreground">Host:</span>
+                            <span className={incognitoMode ? "blur-sm select-none" : ""}>
+                              {key.instance.host}
+                            </span>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-6 w-6 px-0 text-muted-foreground hover:text-foreground"
+                              onClick={() => setIncognitoMode(!incognitoMode)}
+                              title={incognitoMode ? "Show host" : "Hide host"}
+                              aria-label={incognitoMode ? "Show host" : "Hide host"}
+                            >
+                              {incognitoMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                            </Button>
+                          </div>
                         )}
                       </div>
                     </div>

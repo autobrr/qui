@@ -53,7 +53,7 @@ import { Clock, Copy, ExternalLink, Key, Palette, Plus, Server, Share2, Shield, 
 import { useState } from "react"
 import { toast } from "sonner"
 
-const settingsTabs = ["instances", "security", "themes", "api", "datetime", "client-api"] as const
+const settingsTabs = ["instances", "client-api", "api", "datetime", "themes", "security"] as const
 type SettingsTab = (typeof settingsTabs)[number]
 
 const isSettingsTab = (value: unknown): value is SettingsTab => {
@@ -452,20 +452,10 @@ function InstancesManager() {
     navigate({ search: nextSearch as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
   }
 
-  if (isLoading) {
-    return <div className="p-6">Loading instances...</div>
-  }
-
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h2 className="text-2xl font-semibold">Instances</h2>
-          <p className="text-muted-foreground mt-2">
-            Manage your qBittorrent connection settings
-          </p>
-        </div>
-        <Button onClick={() => handleOpenDialog()} className="md:ml-auto">
+    <div className="space-y-4">
+      <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:justify-end">
+        <Button onClick={() => handleOpenDialog()} size="sm" className="w-full sm:w-auto">
           <Plus className="mr-2 h-4 w-4" />
           Add Instance
         </Button>
@@ -473,29 +463,39 @@ function InstancesManager() {
 
       <PasswordIssuesBanner instances={instances || []} />
 
-      {instances && instances.length > 0 ? (
-        <div className="grid gap-4 lg:grid-cols-2">
-          {instances.map((instance) => (
-            <InstanceCard
-              key={instance.id}
-              instance={instance}
-              onEdit={() => handleOpenDialog(instance)}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="rounded-lg border border-dashed p-12 text-center">
-          <p className="text-muted-foreground">No instances configured</p>
-          <Button
-            onClick={() => handleOpenDialog()}
-            className="mt-4"
-            variant="outline"
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            Add your first instance
-          </Button>
-        </div>
-      )}
+      <div className="space-y-2">
+        {isLoading ? (
+          <p className="text-center text-sm text-muted-foreground py-8">
+            Loading instances...
+          </p>
+        ) : (
+          <>
+            {instances && instances.length > 0 ? (
+              <div className="grid gap-4 lg:grid-cols-2">
+                {instances.map((instance) => (
+                  <InstanceCard
+                    key={instance.id}
+                    instance={instance}
+                    onEdit={() => handleOpenDialog(instance)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-lg border border-dashed p-12 text-center">
+                <p className="text-muted-foreground">No instances configured</p>
+                <Button
+                  onClick={() => handleOpenDialog()}
+                  className="mt-4"
+                  variant="outline"
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add your first instance
+                </Button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
 
       <Dialog open={isDialogOpen} onOpenChange={(open) => open ? handleOpenDialog() : handleCloseDialog()}>
         <DialogContent className="sm:max-w-[425px]">
@@ -564,16 +564,10 @@ export function Settings() {
                 Instances
               </div>
             </SelectItem>
-            <SelectItem value="security">
+            <SelectItem value="client-api">
               <div className="flex items-center">
-                <Shield className="w-4 h-4 mr-2" />
-                Security
-              </div>
-            </SelectItem>
-            <SelectItem value="themes">
-              <div className="flex items-center">
-                <Palette className="w-4 h-4 mr-2" />
-                Premium Themes
+                <Share2 className="w-4 h-4 mr-2" />
+                Client Proxy
               </div>
             </SelectItem>
             <SelectItem value="api">
@@ -588,10 +582,16 @@ export function Settings() {
                 Date & Time
               </div>
             </SelectItem>
-            <SelectItem value="client-api">
+            <SelectItem value="themes">
               <div className="flex items-center">
-                <Share2 className="w-4 h-4 mr-2" />
-                Client Proxy
+                <Palette className="w-4 h-4 mr-2" />
+                Premium Themes
+              </div>
+            </SelectItem>
+            <SelectItem value="security">
+              <div className="flex items-center">
+                <Shield className="w-4 h-4 mr-2" />
+                Security
               </div>
             </SelectItem>
           </SelectContent>
@@ -612,22 +612,13 @@ export function Settings() {
               Instances
             </button>
             <button
-              onClick={() => handleTabChange("security")}
+              onClick={() => handleTabChange("client-api")}
               className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === "security"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+                activeTab === "client-api"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
               }`}
             >
-              <Shield className="w-4 h-4 mr-2" />
-              Security
-            </button>
-            <button
-              onClick={() => handleTabChange("themes")}
-              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === "themes"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
-              }`}
-            >
-              <Palette className="w-4 h-4 mr-2" />
-              Premium Themes
+              <Share2 className="w-4 h-4 mr-2" />
+              Client Proxy
             </button>
             <button
               onClick={() => handleTabChange("api")}
@@ -648,13 +639,22 @@ export function Settings() {
               Date & Time
             </button>
             <button
-              onClick={() => handleTabChange("client-api")}
+              onClick={() => handleTabChange("themes")}
               className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === "client-api"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+                activeTab === "themes"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
               }`}
             >
-              <Share2 className="w-4 h-4 mr-2" />
-              Client Proxy
+              <Palette className="w-4 h-4 mr-2" />
+              Premium Themes
+            </button>
+            <button
+              onClick={() => handleTabChange("security")}
+              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                activeTab === "security"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+              }`}
+            >
+              <Shield className="w-4 h-4 mr-2" />
+              Security
             </button>
           </nav>
         </div>
@@ -663,45 +663,34 @@ export function Settings() {
         <div className="flex-1 min-w-0">
 
           {activeTab === "instances" && (
-            <InstancesManager />
-          )}
-
-          {activeTab === "security" && (
             <div className="space-y-4">
               <Card>
                 <CardHeader>
-                  <CardTitle>Change Password</CardTitle>
+                  <CardTitle>Instances</CardTitle>
                   <CardDescription>
-                    Update your account password
+                    Manage your qBittorrent connection settings
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <ChangePasswordForm />
+                  <InstancesManager />
                 </CardContent>
               </Card>
             </div>
           )}
 
-          {activeTab === "datetime" && (
+          {activeTab === "client-api" && (
             <div className="space-y-4">
               <Card>
                 <CardHeader>
-                  <CardTitle>Date & Time Preferences</CardTitle>
+                  <CardTitle>Client Proxy API Keys</CardTitle>
                   <CardDescription>
-                    Configure timezone, date format, and time display preferences
+                    Manage API keys for external applications to connect to qBittorrent instances through qui
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <DateTimePreferencesForm />
+                  <ClientApiKeysManager />
                 </CardContent>
               </Card>
-            </div>
-          )}
-
-          {activeTab === "themes" && (
-            <div className="space-y-4">
-              <LicenseManager />
-              <ThemeSelector />
             </div>
           )}
 
@@ -735,17 +724,40 @@ export function Settings() {
             </div>
           )}
 
-          {activeTab === "client-api" && (
+          {activeTab === "datetime" && (
             <div className="space-y-4">
               <Card>
                 <CardHeader>
-                  <CardTitle>Client Proxy API Keys</CardTitle>
+                  <CardTitle>Date & Time Preferences</CardTitle>
                   <CardDescription>
-                    Manage API keys for external applications to connect to qBittorrent instances through qui
+                    Configure timezone, date format, and time display preferences
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <ClientApiKeysManager />
+                  <DateTimePreferencesForm />
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {activeTab === "themes" && (
+            <div className="space-y-4">
+              <LicenseManager />
+              <ThemeSelector />
+            </div>
+          )}
+
+          {activeTab === "security" && (
+            <div className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Change Password</CardTitle>
+                  <CardDescription>
+                    Update your account password
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ChangePasswordForm />
                 </CardContent>
               </Card>
             </div>
