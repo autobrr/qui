@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	_ "github.com/mat/besticon/v3/ico"
@@ -59,8 +60,9 @@ type Service struct {
 
 	group singleflight.Group
 
-	failureMu   sync.Mutex
-	lastFailure map[string]time.Time
+	failureMu    sync.Mutex
+	lastFailure  map[string]time.Time
+	fetchEnabled atomic.Bool
 }
 
 // Flow overview:
@@ -81,7 +83,8 @@ type Service struct {
 //     the first icon that decodes successfully.
 
 // NewService creates a new tracker icon service rooted in the provided data directory.
-func NewService(dataDir, userAgent string) (*Service, error) {
+// When fetchEnabled is false, the service will only serve icons already present on disk.
+func NewService(dataDir, userAgent string, fetchEnabled bool) (*Service, error) {
 	if strings.TrimSpace(dataDir) == "" {
 		return nil, fmt.Errorf("data directory must be provided")
 	}
@@ -96,6 +99,7 @@ func NewService(dataDir, userAgent string) (*Service, error) {
 		client:      &http.Client{Timeout: fetchTimeout},
 		lastFailure: make(map[string]time.Time),
 	}
+	svc.fetchEnabled.Store(fetchEnabled)
 
 	if trimmed := strings.TrimSpace(userAgent); trimmed != "" {
 		svc.ua = trimmed
@@ -127,6 +131,9 @@ func QueueFetch(host, trackerURL string) {
 
 	sanitized := sanitizeHost(host)
 	if sanitized == "" {
+		return
+	}
+	if !svc.fetchEnabled.Load() {
 		return
 	}
 
@@ -199,6 +206,9 @@ func (s *Service) GetIcon(ctx context.Context, host, trackerURL string) (string,
 	if _, err := os.Stat(iconPath); err == nil {
 		return iconPath, nil
 	}
+	if !s.fetchEnabled.Load() {
+		return "", ErrIconNotFound
+	}
 
 	ch := s.group.DoChan(sanitized, func() (any, error) {
 		if _, err := os.Stat(iconPath); err == nil {
@@ -237,6 +247,22 @@ func (s *Service) GetIcon(ctx context.Context, host, trackerURL string) (string,
 	case <-ctx.Done():
 		return "", ctx.Err()
 	}
+}
+
+// SetFetchEnabled toggles whether the service may fetch missing icons from remote hosts.
+func (s *Service) SetFetchEnabled(enabled bool) {
+	if s == nil {
+		return
+	}
+	s.fetchEnabled.Store(enabled)
+}
+
+// FetchEnabled reports whether remote fetching is allowed.
+func (s *Service) FetchEnabled() bool {
+	if s == nil {
+		return false
+	}
+	return s.fetchEnabled.Load()
 }
 
 // iconPath returns the on-disk path for the tracker icon.

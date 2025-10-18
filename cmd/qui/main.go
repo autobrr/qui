@@ -434,7 +434,7 @@ func (app *Application) runServer() {
 
 	log.Info().Str("version", buildinfo.Version).Msg("Starting qui")
 
-	trackerIconService, err := trackericons.NewService(cfg.GetDataDir(), buildinfo.UserAgent)
+	trackerIconService, err := trackericons.NewService(cfg.GetDataDir(), buildinfo.UserAgent, cfg.Config.TrackerIconsFetchEnabled)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to prepare tracker icon cache")
 	}
@@ -488,6 +488,7 @@ func (app *Application) runServer() {
 	updateService := update.NewService(log.Logger, cfg.Config.CheckForUpdates, buildinfo.Version, buildinfo.UserAgent)
 	cfg.RegisterReloadListener(func(conf *domain.Config) {
 		updateService.SetEnabled(conf.CheckForUpdates)
+		trackerIconService.SetFetchEnabled(conf.TrackerIconsFetchEnabled)
 	})
 	updateCtx, cancelUpdate := context.WithCancel(context.Background())
 	defer cancelUpdate()

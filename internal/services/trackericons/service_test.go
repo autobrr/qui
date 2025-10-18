@@ -1,3 +1,6 @@
+// Copyright (c) 2025, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package trackericons
 
 import (
@@ -79,4 +82,17 @@ func TestServiceBuildBaseCandidatesOrder(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestServiceFetchToggle(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{}
+	require.False(t, svc.FetchEnabled())
+
+	svc.SetFetchEnabled(true)
+	require.True(t, svc.FetchEnabled())
+
+	svc.SetFetchEnabled(false)
+	require.False(t, svc.FetchEnabled())
 }

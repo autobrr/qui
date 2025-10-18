@@ -5,6 +5,7 @@
 
 import { ClientApiKeysManager } from "@/components/settings/ClientApiKeysManager"
 import { DateTimePreferencesForm } from "@/components/settings/DateTimePreferencesForm"
+import { TrackerIconSettingsCard } from "@/components/settings/TrackerIconSettingsCard"
 import { LicenseManager } from "@/components/themes/LicenseManager.tsx"
 import { ThemeSelector } from "@/components/themes/ThemeSelector"
 import {
@@ -455,7 +456,7 @@ export function Settings() {
             <SelectItem value="security">
               <div className="flex items-center">
                 <Shield className="w-4 h-4 mr-2" />
-                Security
+                Privacy & Security
               </div>
             </SelectItem>
             <SelectItem value="themes">
@@ -497,7 +498,7 @@ export function Settings() {
               }`}
             >
               <Shield className="w-4 h-4 mr-2" />
-              Security
+              Privacy & Security
             </button>
             <button
               onClick={() => setActiveTab("themes")}
@@ -554,6 +555,7 @@ export function Settings() {
                   <ChangePasswordForm />
                 </CardContent>
               </Card>
+              <TrackerIconSettingsCard />
             </div>
           )}
 

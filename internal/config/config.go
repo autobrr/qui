@@ -4,8 +4,10 @@
 package config
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -17,6 +19,7 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/pelletier/go-toml/v2"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
@@ -28,10 +31,11 @@ import (
 var envPrefix = "QUI__"
 
 type AppConfig struct {
-	Config  *domain.Config
-	viper   *viper.Viper
-	dataDir string
-	version string
+	Config   *domain.Config
+	viper    *viper.Viper
+	dataDir  string
+	version  string
+	configMu sync.RWMutex
 
 	listenersMu sync.RWMutex
 	listeners   []func(*domain.Config)
@@ -100,6 +104,7 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("logMaxBackups", 3)
 	c.viper.SetDefault("dataDir", "") // Empty means auto-detect (next to config file)
 	c.viper.SetDefault("checkForUpdates", true)
+	c.viper.SetDefault("trackerIconsFetchEnabled", true)
 	c.viper.SetDefault("pprofEnabled", false)
 	c.viper.SetDefault("metricsEnabled", false)
 	c.viper.SetDefault("metricsHost", "127.0.0.1")
@@ -185,6 +190,7 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("logMaxBackups", envPrefix+"LOG_MAX_BACKUPS")
 	c.viper.BindEnv("dataDir", envPrefix+"DATA_DIR")
 	c.viper.BindEnv("checkForUpdates", envPrefix+"CHECK_FOR_UPDATES")
+	c.viper.BindEnv("trackerIconsFetchEnabled", envPrefix+"TRACKER_ICONS_FETCH_ENABLED")
 	c.viper.BindEnv("pprofEnabled", envPrefix+"PPROF_ENABLED")
 	c.viper.BindEnv("metricsEnabled", envPrefix+"METRICS_ENABLED")
 	c.viper.BindEnv("metricsHost", envPrefix+"METRICS_HOST")
@@ -204,27 +210,56 @@ func (c *AppConfig) loadFromEnv() {
 func (c *AppConfig) watchConfig() {
 	c.viper.WatchConfig()
 	c.viper.OnConfigChange(func(e fsnotify.Event) {
+		c.configMu.Lock()
 		log.Info().Msgf("Config file changed: %s", e.Name)
 
 		// Reload configuration
 		if err := c.viper.Unmarshal(c.Config); err != nil {
+			c.configMu.Unlock()
 			log.Error().Err(err).Msg("Failed to reload configuration")
 			return
 		}
 
-		// Apply dynamic changes
-		c.applyDynamicChanges()
+		updated := c.applyDynamicChangesLocked()
+		c.configMu.Unlock()
+
+		c.notifyListeners(updated)
 	})
 }
 
-func (c *AppConfig) applyDynamicChanges() {
+// applyDynamicChangesLocked updates derived configuration fields.
+// Caller must hold c.configMu.
+func (c *AppConfig) applyDynamicChangesLocked() domain.Config {
 	c.Config.Version = c.version
 	c.ApplyLogConfig()
 
 	// Update check for updates flag from config changes
 	c.Config.CheckForUpdates = c.viper.GetBool("checkForUpdates")
+	c.Config.TrackerIconsFetchEnabled = c.viper.GetBool("trackerIconsFetchEnabled")
 
-	c.notifyListeners()
+	return *c.Config
+}
+
+// UpdateTrackerIconsFetchEnabled enables or disables remote tracker icon fetching and persists the setting.
+func (c *AppConfig) UpdateTrackerIconsFetchEnabled(enabled bool) error {
+	if c == nil || c.viper == nil || c.Config == nil {
+		return fmt.Errorf("app config not initialised")
+	}
+
+	c.configMu.Lock()
+	c.viper.Set("trackerIconsFetchEnabled", enabled)
+	c.Config.TrackerIconsFetchEnabled = enabled
+
+	if err := c.persistConfigLocked(); err != nil {
+		c.configMu.Unlock()
+		return fmt.Errorf("persist tracker icon setting: %w", err)
+	}
+
+	updated := *c.Config
+	c.configMu.Unlock()
+
+	c.notifyListeners(updated)
+	return nil
 }
 
 // RegisterReloadListener registers a callback that's invoked when the configuration file is reloaded.
@@ -234,7 +269,7 @@ func (c *AppConfig) RegisterReloadListener(fn func(*domain.Config)) {
 	c.listeners = append(c.listeners, fn)
 }
 
-func (c *AppConfig) notifyListeners() {
+func (c *AppConfig) notifyListeners(updated domain.Config) {
 	c.listenersMu.RLock()
 	listeners := append([]func(*domain.Config){}, c.listeners...)
 	c.listenersMu.RUnlock()
@@ -243,10 +278,57 @@ func (c *AppConfig) notifyListeners() {
 		return
 	}
 
-	copied := *c.Config
 	for _, listener := range listeners {
-		listener(&copied)
+		cfgCopy := updated
+		listener(&cfgCopy)
 	}
+}
+
+func (c *AppConfig) persistConfigLocked() error {
+	path := c.viper.ConfigFileUsed()
+	if path == "" {
+		path = filepath.Join(c.GetConfigDir(), "config.toml")
+		c.viper.SetConfigFile(path)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("ensure config directory: %w", err)
+	}
+
+	perm := os.FileMode(0o644)
+	if info, err := os.Stat(path); err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("stat config file: %w", err)
+		}
+	} else {
+		perm = info.Mode().Perm()
+	}
+
+	settings := c.viper.AllSettings()
+	if err := writeTOMLConfig(path, settings, perm); err != nil {
+		return fmt.Errorf("persist config file: %w", err)
+	}
+
+	return nil
+}
+
+func writeTOMLConfig(path string, settings map[string]any, perm os.FileMode) error {
+	if settings == nil {
+		settings = make(map[string]any)
+	}
+
+	var buf bytes.Buffer
+	encoder := toml.NewEncoder(&buf)
+	// go-toml defaults to 2 space indent which matches existing files.
+	if err := encoder.Encode(settings); err != nil {
+		return fmt.Errorf("encode config: %w", err)
+	}
+
+	if err := os.WriteFile(path, buf.Bytes(), perm); err != nil {
+		return fmt.Errorf("write config file: %w", err)
+	}
+
+	return nil
 }
 
 func (c *AppConfig) writeDefaultConfig(path string) error {
@@ -307,6 +389,11 @@ sessionSecret = "{{ .sessionSecret }}"
 # Check for new releases via api.autobrr.com
 # Default: true
 #checkForUpdates = true
+
+# Automatically fetch tracker icons when missing
+# Disable to rely solely on icons placed in dataDir/tracker-icons
+# Default: true
+#trackerIconsFetchEnabled = true
 
 # Log level
 # Default: "INFO"

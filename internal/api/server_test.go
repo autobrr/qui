@@ -62,7 +62,7 @@ func newTestDependencies(t *testing.T) *Dependencies {
 
 	sessionManager := scs.New()
 
-	trackerIconService, err := trackericons.NewService(t.TempDir(), "qui-test")
+	trackerIconService, err := trackericons.NewService(t.TempDir(), "qui-test", true)
 	require.NoError(t, err)
 
 	return &Dependencies{
