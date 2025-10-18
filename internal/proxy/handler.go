@@ -4,13 +4,11 @@
 package proxy
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -78,11 +76,10 @@ func NewHandler(clientPool *qbittorrent.ClientPool, clientAPIKeyStore *models.Cl
 
 	// Configure the reverse proxy
 	h.proxy = &httputil.ReverseProxy{
-		Rewrite:        h.rewriteRequest,
-		ModifyResponse: h.modifyAuthLoginResponse,
-		BufferPool:     bufferPool,
-		ErrorHandler:   h.errorHandler,
-		Transport:      sharedhttp.Transport,
+		Rewrite:      h.rewriteRequest,
+		BufferPool:   bufferPool,
+		ErrorHandler: h.errorHandler,
+		Transport:    sharedhttp.Transport,
 	}
 
 	return h
@@ -257,7 +254,8 @@ func (h *Handler) Routes(r chi.Router) {
 		// Apply proxy context middleware (adds instance info to context)
 		r.Use(h.prepareProxyContextMiddleware)
 
-		// Register intercepted endpoints (these use qui's sync manager)
+		// Register intercepted endpoints (these use qui's sync manager or special handling)
+		r.Post("/api/v2/auth/login", h.handleAuthLogin)
 		r.Get("/api/v2/torrents/info", h.handleTorrentsInfoWithSearch)
 		r.Get("/api/v2/torrents/categories", h.handleCategories)
 		r.Get("/api/v2/torrents/tags", h.handleTags)
@@ -714,57 +712,27 @@ func (h *Handler) handleTorrentFiles(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// modifyAuthLoginResponse injects cookies for successful /auth/login responses that don't set cookies
-func (h *Handler) modifyAuthLoginResponse(resp *http.Response) error {
-	// Only process successful login responses
-	if resp == nil || resp.Request == nil || resp.Request.URL == nil {
-		return nil
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil
-	}
-
-	if !strings.HasSuffix(resp.Request.URL.Path, "/auth/login") {
-		return nil
-	}
-
-	ctx := resp.Request.Context()
+// handleAuthLogin handles /api/v2/auth/login requests (ceremonial - proxy already authenticated)
+func (h *Handler) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	instanceID := GetInstanceIDFromContext(ctx)
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
-	if clientAPIKey == nil {
-		return nil
-	}
 
-	// If qBittorrent already set a cookie, don't inject one
-	if len(resp.Header.Values("Set-Cookie")) > 0 {
-		return nil
-	}
+	log.Debug().
+		Int("instanceId", instanceID).
+		Str("client", clientAPIKey.ClientName).
+		Msg("Handling ceremonial auth/login request")
 
-	// Read response body to check if login was successful
-	bodyBytes, readErr := io.ReadAll(resp.Body)
-	resp.Body.Close()
-	resp.Body = io.NopCloser(bytes.NewReader(bodyBytes))
-	resp.ContentLength = int64(len(bodyBytes))
-	if len(bodyBytes) > 0 {
-		resp.Header.Set("Content-Length", strconv.Itoa(len(bodyBytes)))
-	} else {
-		resp.Header.Del("Content-Length")
-	}
-	if readErr != nil {
-		log.Error().
-			Err(readErr).
-			Str("client", clientAPIKey.ClientName).
+	// Check if instance is healthy using the client pool's health tracking
+	if !h.clientPool.IsHealthy(instanceID) {
+		log.Warn().
 			Int("instanceId", instanceID).
-			Msg("Failed to read auth login response body")
-		return nil
+			Msg("Instance unhealthy for auth/login")
+		h.writeProxyError(w)
+		return
 	}
 
-	// Only inject cookie if login was successful
-	if strings.TrimSpace(string(bodyBytes)) != proxyLoginSuccessBody {
-		return nil
-	}
-
+	// Instance is healthy, generate and set cookie
 	cookieValue, err := generateLoginCookieValue()
 	if err != nil {
 		log.Warn().
@@ -787,13 +755,15 @@ func (h *Handler) modifyAuthLoginResponse(resp *http.Response) error {
 		cookie.Secure = true
 	}
 
-	resp.Header.Add("Set-Cookie", cookie.String())
+	http.SetCookie(w, cookie)
 
 	log.Debug().
 		Str("client", clientAPIKey.ClientName).
 		Int("instanceId", instanceID).
 		Str("cookieName", cookie.Name).
-		Msg("Injected proxy login cookie for auth/login response")
+		Msg("Set ceremonial login cookie for client")
 
-	return nil
+	// Return success response
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(proxyLoginSuccessBody))
 }
