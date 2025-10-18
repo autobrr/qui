@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -33,6 +34,7 @@ type Handler struct {
 	clientPool        *qbittorrent.ClientPool
 	clientAPIKeyStore *models.ClientAPIKeyStore
 	instanceStore     *models.InstanceStore
+	syncManager       *qbittorrent.SyncManager
 	bufferPool        *BufferPool
 	proxy             *httputil.ReverseProxy
 }
@@ -61,7 +63,7 @@ type proxyContext struct {
 }
 
 // NewHandler creates a new proxy handler
-func NewHandler(clientPool *qbittorrent.ClientPool, clientAPIKeyStore *models.ClientAPIKeyStore, instanceStore *models.InstanceStore, baseURL string) *Handler {
+func NewHandler(clientPool *qbittorrent.ClientPool, clientAPIKeyStore *models.ClientAPIKeyStore, instanceStore *models.InstanceStore, syncManager *qbittorrent.SyncManager, baseURL string) *Handler {
 	bufferPool := NewBufferPool()
 	basePath := httphelpers.NormalizeBasePath(baseURL)
 
@@ -70,6 +72,7 @@ func NewHandler(clientPool *qbittorrent.ClientPool, clientAPIKeyStore *models.Cl
 		clientPool:        clientPool,
 		clientAPIKeyStore: clientAPIKeyStore,
 		instanceStore:     instanceStore,
+		syncManager:       syncManager,
 		bufferPool:        bufferPool,
 	}
 
@@ -98,6 +101,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		ctx = context.WithValue(ctx, clientHTTPSContextKey, true)
 	}
 
+	// Check if this is a torrents/info request with search parameter
+	if h.shouldHandleSearch(r) {
+		log.Debug().Msg("Handling search request via qui sync manager")
+		h.handleTorrentsInfoWithSearch(w, r.WithContext(ctx))
+		return
+	}
+
+	log.Debug().Msg("Forwarding to qBittorrent via reverse proxy")
 	h.proxy.ServeHTTP(w, r.WithContext(ctx))
 }
 
@@ -318,12 +329,15 @@ func (h *Handler) errorHandler(w http.ResponseWriter, r *http.Request, err error
 func (h *Handler) Routes(r chi.Router) {
 	// Proxy route with API key parameter
 	proxyRoute := httphelpers.JoinBasePath(h.basePath, "/proxy/{api-key}")
+	log.Info().Str("proxyRoute", proxyRoute).Msg("Registering proxy routes")
 	r.Route(proxyRoute, func(r chi.Router) {
 		// Apply client API key validation middleware
 		r.Use(ClientAPIKeyMiddleware(h.clientAPIKeyStore))
 
 		// Handle all requests under this prefix
 		r.HandleFunc("/*", h.ServeHTTP)
+		// Also handle requests without trailing path (for direct access)
+		r.HandleFunc("/", h.ServeHTTP)
 	})
 }
 
@@ -451,4 +465,130 @@ func isHTTPSRequest(r *http.Request) bool {
 	}
 
 	return false
+}
+
+// shouldHandleSearch checks if this request should use qui's search functionality
+func (h *Handler) shouldHandleSearch(r *http.Request) bool {
+	// Only handle GET requests
+	if r.Method != http.MethodGet {
+		return false
+	}
+
+	// Check if this is an api/v2/torrents/info request
+	path := r.URL.Path
+	if !strings.Contains(path, "/api/v2/torrents/info") {
+		return false
+	}
+
+	// Check if there's a search parameter
+	search := r.URL.Query().Get("search")
+	return search != ""
+}
+
+// handleTorrentsInfoWithSearch handles torrents/info requests with search using qui's sync manager
+func (h *Handler) handleTorrentsInfoWithSearch(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	instanceID := GetInstanceIDFromContext(ctx)
+	clientAPIKey := GetClientAPIKeyFromContext(ctx)
+
+	if instanceID == 0 || clientAPIKey == nil {
+		log.Error().Msg("Missing instance ID or client API key in search request")
+		h.writeProxyError(w)
+		return
+	}
+
+	// Extract qBittorrent API parameters
+	queryParams := r.URL.Query()
+	search := queryParams.Get("search")
+	filter := queryParams.Get("filter")
+	category := queryParams.Get("category")
+	tag := queryParams.Get("tag")
+	sort := queryParams.Get("sort")
+	reverse := queryParams.Get("reverse") == "true"
+	limit := 0
+	offset := 0
+
+	if l := queryParams.Get("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 {
+			limit = parsed
+		}
+	}
+
+	if o := queryParams.Get("offset"); o != "" {
+		if parsed, err := strconv.Atoi(o); err == nil && parsed >= 0 {
+			offset = parsed
+		}
+	}
+
+	// Build filter options from qBittorrent API parameters
+	filters := qbittorrent.FilterOptions{}
+
+	// Map qBittorrent filter to qui filter
+	if filter != "" {
+		filters.Status = []string{filter}
+	}
+
+	if category != "" {
+		filters.Categories = []string{category}
+	}
+
+	if tag != "" {
+		filters.Tags = []string{tag}
+	}
+
+	// Default sort order
+	if sort == "" {
+		sort = "added_on"
+	}
+	order := "asc"
+	if reverse {
+		order = "desc"
+	}
+
+	// If no limit specified, use a reasonable default
+	if limit == 0 {
+		limit = 100000 // Large limit to get all results
+	}
+
+	log.Debug().
+		Int("instanceId", instanceID).
+		Str("client", clientAPIKey.ClientName).
+		Str("search", search).
+		Str("filter", filter).
+		Str("sort", sort).
+		Str("order", order).
+		Int("limit", limit).
+		Int("offset", offset).
+		Msg("Handling torrents/info with search via qui sync manager")
+
+	// Use qui's sync manager to get filtered torrents
+	response, err := h.syncManager.GetTorrentsWithFilters(ctx, instanceID, limit, offset, sort, order, search, filters)
+	if err != nil {
+		log.Error().
+			Err(err).
+			Int("instanceId", instanceID).
+			Str("search", search).
+			Msg("Failed to get torrents with search")
+		h.writeProxyError(w)
+		return
+	}
+
+	// Convert qui's TorrentView format back to qBittorrent's Torrent format
+	// The TorrentView embeds qbt.Torrent, so we can extract it
+	torrents := make([]interface{}, len(response.Torrents))
+	for i, tv := range response.Torrents {
+		torrents[i] = tv.Torrent
+	}
+
+	// Return as JSON array (qBittorrent API format)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	encoder := json.NewEncoder(w)
+	if err := encoder.Encode(torrents); err != nil {
+		log.Error().
+			Err(err).
+			Int("instanceId", instanceID).
+			Msg("Failed to encode torrents response")
+	}
 }
