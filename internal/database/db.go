@@ -11,8 +11,10 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/autobrr/autobrr/pkg/ttlcache"
 	"github.com/rs/zerolog/log"
@@ -207,31 +209,21 @@ func (db *DB) execWrite(ctx context.Context, stmt *sql.Stmt, query string, args 
 // isWriteQuery efficiently determines if a query is a write operation.
 // This uses a fast byte-level check to avoid string allocation and case conversion.
 func isWriteQuery(query string) bool {
-	// Skip leading whitespace
-	i := 0
-	for i < len(query) && (query[i] == ' ' || query[i] == '\t' || query[i] == '\n' || query[i] == '\r') {
-		i++
-	}
-	if i >= len(query) {
+	// Trim leading whitespace (covers spaces, tabs, newlines, etc.)
+	q := strings.TrimLeftFunc(query, unicode.IsSpace)
+	if q == "" {
 		return false
 	}
 
-	// Check first character (case-insensitive)
-	switch query[i] | 0x20 { // convert to lowercase by setting bit 5
-	case 'i': // INSERT
-		return len(query) >= i+6 && (query[i:i+6] == "INSERT" || query[i:i+6] == "insert" || query[i:i+6] == "Insert")
-	case 'u': // UPDATE or UPSERT
-		if len(query) >= i+6 && (query[i:i+6] == "UPDATE" || query[i:i+6] == "update" || query[i:i+6] == "Update") {
-			return true
-		}
-		return len(query) >= i+6 && (query[i:i+6] == "UPSERT" || query[i:i+6] == "upsert" || query[i:i+6] == "Upsert")
-	case 'r': // REPLACE
-		return len(query) >= i+7 && (query[i:i+7] == "REPLACE" || query[i:i+7] == "replace" || query[i:i+7] == "Replace")
-	case 'd': // DELETE
-		return len(query) >= i+6 && (query[i:i+6] == "DELETE" || query[i:i+6] == "delete" || query[i:i+6] == "Delete")
-	default:
-		return false
-	}
+	// We only care about the first word. Convert to upper-case for
+	// case-insensitive comparison and use HasPrefix to avoid allocations
+	// beyond the ToUpper call.
+	upper := strings.ToUpper(q)
+	return strings.HasPrefix(upper, "INSERT") ||
+		strings.HasPrefix(upper, "UPDATE") ||
+		strings.HasPrefix(upper, "UPSERT") ||
+		strings.HasPrefix(upper, "REPLACE") ||
+		strings.HasPrefix(upper, "DELETE")
 }
 
 // ExecContext routes write queries through the single writer goroutine and
