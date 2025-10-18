@@ -42,7 +42,7 @@ function InstanceTorrents() {
         <h1>Instance not found</h1>
         <p>Instance ID: {instanceId}</p>
         <p>Available instances: {instances?.map(i => i.id).join(", ")}</p>
-        <Navigate to="/instances" />
+        <Navigate to="/settings" search={{ tab: "instances" }} />
       </div>
     )
   }

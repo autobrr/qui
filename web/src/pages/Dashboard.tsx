@@ -158,8 +158,9 @@ function InstanceCard({
   const showSettingsButton = instance.connected && !isFirstLoad && !hasDecryptionOrRecentErrors
 
   // Determine link destination
-  const linkTo = hasDecryptionOrRecentErrors ? "/instances" : "/instances/$instanceId"
-  const linkParams = hasDecryptionOrRecentErrors ? {} : { instanceId: instance.id.toString() }
+  const linkTo = hasDecryptionOrRecentErrors ? "/settings" : "/instances/$instanceId"
+  const linkParams = hasDecryptionOrRecentErrors ? undefined : { instanceId: instance.id.toString() }
+  const linkSearch = hasDecryptionOrRecentErrors ? { tab: "instances" as const } : undefined
 
   // Unified return statement
   return (
@@ -170,6 +171,7 @@ function InstanceCard({
             <Link
               to={linkTo}
               params={linkParams}
+              search={linkSearch}
               className="flex items-center gap-2 hover:underline overflow-hidden flex-1 min-w-0"
             >
               <CardTitle
@@ -786,7 +788,7 @@ export function Dashboard() {
           {instances && instances.length > 0 && (
             <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
               <QuickActionsDropdown statsData={statsData} />
-              <Link to="/instances" search={{ modal: "add-instance" }} className="w-full sm:w-auto">
+              <Link to="/settings" search={{ tab: "instances" as const, modal: "add-instance" }} className="w-full sm:w-auto">
                 <Button variant="outline" size="sm" className="w-full sm:w-auto">
                   <Plus className="h-4 w-4 mr-2" />
                   Add Instance
@@ -837,7 +839,7 @@ export function Dashboard() {
               <h3 className="text-lg font-semibold">No instances configured</h3>
               <p className="text-muted-foreground">Get started by adding your first qBittorrent instance</p>
             </div>
-            <Link to="/instances" search={{ modal: "add-instance" }}>
+            <Link to="/settings" search={{ tab: "instances" as const, modal: "add-instance" }}>
               <Button>
                 <Plus className="h-4 w-4 mr-2" />
                 Add Instance
