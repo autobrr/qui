@@ -427,8 +427,11 @@ export function ColumnFilterPopover({
     setValue("")
     setValue2("")
     setSizeUnit("MiB")
+    setSizeUnit2("MiB")
     setSpeedUnit("MiB/s")
+    setSpeedUnit2("MiB/s")
     setDurationUnit("hours")
+    setDurationUnit2("hours")
     setCaseSensitive(true)
     setOperation(getDefaultOperation(columnType))
     onApply(null)
@@ -480,7 +483,9 @@ export function ColumnFilterPopover({
           variant="ghost"
           size="icon"
           ref={triggerRef}
-          className={`h-6 w-6 p-0 ${hasActiveFilter ? "text-primary" : "text-muted-foreground"}`}
+          className={`h-6 w-6 p-0 transition-opacity ${
+            hasActiveFilter || open ? "opacity-100 text-primary" : "opacity-10 group-hover:opacity-100 focus:opacity-100 focus-visible:opacity-100 active:opacity-100 text-muted-foreground"
+          }`}
           onClick={(e) => {
             e.stopPropagation()
             setOpen(true)
