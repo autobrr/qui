@@ -937,7 +937,7 @@ func (sm *SyncManager) enrichTorrentsWithTrackerData(ctx context.Context, client
 		return torrents, trackerMap, nil
 	}
 
-	// Tracker health enrichment requires qBittorrent >= 5.1 (includeTrackers support).
+	// Tracker health enrichment is now supported for all qBittorrent versions
 	if !client.supportsTrackerInclude() {
 		return torrents, trackerMap, nil
 	}
