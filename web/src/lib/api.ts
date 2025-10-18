@@ -7,6 +7,7 @@ import type {
   AppPreferences,
   AuthResponse,
   Category,
+  DuplicateTorrentMatch,
   InstanceFormData,
   InstanceCapabilities,
   InstanceResponse,
@@ -44,7 +45,7 @@ class ApiClient {
       // Don't auto-redirect for auth check endpoints - let React Router handle navigation
       const isAuthCheckEndpoint = endpoint === "/auth/me" || endpoint === "/auth/validate"
 
-      if (response.status === 401 && !isAuthCheckEndpoint && !window.location.pathname.startsWith(withBasePath("/login")) && !window.location.pathname.startsWith(withBasePath("/setup"))) {
+      if ((response.status === 401 || response.status === 403) && !isAuthCheckEndpoint && !window.location.pathname.startsWith(withBasePath("/login")) && !window.location.pathname.startsWith(withBasePath("/setup"))) {
         window.location.href = withBasePath("/login")
         throw new Error("Session expired")
       }
@@ -265,6 +266,13 @@ class ApiClient {
     return response.json()
   }
 
+  async checkTorrentDuplicates(instanceId: number, hashes: string[]): Promise<{ duplicates: DuplicateTorrentMatch[] }> {
+    return this.request<{ duplicates: DuplicateTorrentMatch[] }>(`/instances/${instanceId}/torrents/check-duplicates`, {
+      method: "POST",
+      body: JSON.stringify({ hashes }),
+    })
+  }
+
 
   async bulkAction(
     instanceId: number,
@@ -359,7 +367,7 @@ class ApiClient {
     })
 
     if (!response.ok) {
-      if (response.status === 401 && !window.location.pathname.startsWith(withBasePath("/login")) && !window.location.pathname.startsWith(withBasePath("/setup"))) {
+      if ((response.status === 401 || response.status === 403) && !window.location.pathname.startsWith(withBasePath("/login")) && !window.location.pathname.startsWith(withBasePath("/setup"))) {
         window.location.href = withBasePath("/login")
         throw new Error("Session expired")
       }
