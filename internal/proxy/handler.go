@@ -79,7 +79,7 @@ func NewHandler(clientPool *qbittorrent.ClientPool, clientAPIKeyStore *models.Cl
 	// Configure the reverse proxy
 	h.proxy = &httputil.ReverseProxy{
 		Rewrite:        h.rewriteRequest,
-		ModifyResponse: h.modifyResponse,
+		ModifyResponse: h.modifyAuthLoginResponse,
 		BufferPool:     bufferPool,
 		ErrorHandler:   h.errorHandler,
 		Transport:      sharedhttp.Transport,
@@ -88,28 +88,10 @@ func NewHandler(clientPool *qbittorrent.ClientPool, clientAPIKeyStore *models.Cl
 	return h
 }
 
-// ServeHTTP handles the reverse proxy request
+// ServeHTTP handles the reverse proxy request (fallback for non-intercepted routes)
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	proxyCtx, err := h.prepareProxyContext(r)
-	if err != nil {
-		h.writeProxyError(w)
-		return
-	}
-
-	ctx := context.WithValue(r.Context(), proxyContextKey, proxyCtx)
-	if isHTTPSRequest(r) {
-		ctx = context.WithValue(ctx, clientHTTPSContextKey, true)
-	}
-
-	// Check if this is a torrents/info request with search parameter
-	if h.shouldHandleSearch(r) {
-		log.Debug().Msg("Handling search request via qui sync manager")
-		h.handleTorrentsInfoWithSearch(w, r.WithContext(ctx))
-		return
-	}
-
 	log.Debug().Msg("Forwarding to qBittorrent via reverse proxy")
-	h.proxy.ServeHTTP(w, r.WithContext(ctx))
+	h.proxy.ServeHTTP(w, r)
 }
 
 // rewriteRequest modifies the outbound request to target the correct qBittorrent instance
@@ -199,85 +181,6 @@ func (h *Handler) rewriteRequest(pr *httputil.ProxyRequest) {
 	pr.Out.Header.Set("X-Qui-Client", clientAPIKey.ClientName)
 }
 
-func (h *Handler) modifyResponse(resp *http.Response) error {
-	if resp == nil || resp.Request == nil || resp.Request.URL == nil {
-		return nil
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil
-	}
-
-	if !strings.HasSuffix(resp.Request.URL.Path, "/auth/login") {
-		return nil
-	}
-
-	ctx := resp.Request.Context()
-	instanceID := GetInstanceIDFromContext(ctx)
-	clientAPIKey := GetClientAPIKeyFromContext(ctx)
-	if clientAPIKey == nil {
-		return nil
-	}
-
-	if len(resp.Header.Values("Set-Cookie")) > 0 {
-		return nil
-	}
-
-	bodyBytes, readErr := io.ReadAll(resp.Body)
-	resp.Body.Close()
-	resp.Body = io.NopCloser(bytes.NewReader(bodyBytes))
-	resp.ContentLength = int64(len(bodyBytes))
-	if len(bodyBytes) > 0 {
-		resp.Header.Set("Content-Length", strconv.Itoa(len(bodyBytes)))
-	} else {
-		resp.Header.Del("Content-Length")
-	}
-	if readErr != nil {
-		log.Error().
-			Err(readErr).
-			Str("client", clientAPIKey.ClientName).
-			Int("instanceId", instanceID).
-			Msg("Failed to read complete proxy login response body")
-		return nil
-	}
-
-	if strings.TrimSpace(string(bodyBytes)) != proxyLoginSuccessBody {
-		return nil
-	}
-
-	cookieValue, err := generateLoginCookieValue()
-	if err != nil {
-		log.Warn().
-			Err(err).
-			Str("client", clientAPIKey.ClientName).
-			Int("instanceId", instanceID).
-			Msg("Falling back to timestamp-based proxy login cookie value")
-		cookieValue = fmt.Sprintf("fallback-%d", time.Now().UnixNano())
-	}
-
-	cookie := &http.Cookie{
-		Name:     proxyLoginCookieName,
-		Value:    cookieValue,
-		Path:     "/",
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-	}
-
-	if clientRequestIsHTTPS(ctx) {
-		cookie.Secure = true
-	}
-
-	resp.Header.Add("Set-Cookie", cookie.String())
-
-	log.Debug().
-		Str("client", clientAPIKey.ClientName).
-		Int("instanceId", instanceID).
-		Str("cookieName", cookie.Name).
-		Msg("Injected proxy login cookie for client request")
-
-	return nil
-}
-
 // stripProxyPrefix removes the proxy prefix from the URL path
 func (h *Handler) stripProxyPrefix(path, apiKey string) string {
 	prefix := httphelpers.JoinBasePath(h.basePath, "/proxy/"+apiKey)
@@ -325,6 +228,24 @@ func (h *Handler) errorHandler(w http.ResponseWriter, r *http.Request, err error
 	h.writeProxyError(w)
 }
 
+// prepareProxyContextMiddleware adds proxy context to the request
+func (h *Handler) prepareProxyContextMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		proxyCtx, err := h.prepareProxyContext(r)
+		if err != nil {
+			h.writeProxyError(w)
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), proxyContextKey, proxyCtx)
+		if isHTTPSRequest(r) {
+			ctx = context.WithValue(ctx, clientHTTPSContextKey, true)
+		}
+
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
 // Routes sets up the proxy routes
 func (h *Handler) Routes(r chi.Router) {
 	// Proxy route with API key parameter
@@ -333,10 +254,20 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Route(proxyRoute, func(r chi.Router) {
 		// Apply client API key validation middleware
 		r.Use(ClientAPIKeyMiddleware(h.clientAPIKeyStore))
+		// Apply proxy context middleware (adds instance info to context)
+		r.Use(h.prepareProxyContextMiddleware)
 
-		// Handle all requests under this prefix
+		// Register intercepted endpoints (these use qui's sync manager)
+		r.Get("/api/v2/torrents/info", h.handleTorrentsInfoWithSearch)
+		r.Get("/api/v2/torrents/categories", h.handleCategories)
+		r.Get("/api/v2/torrents/tags", h.handleTags)
+		r.Get("/api/v2/torrents/properties", h.handleTorrentProperties)
+		r.Get("/api/v2/torrents/trackers", h.handleTorrentTrackers)
+		r.Get("/api/v2/sync/torrentPeers", h.handleTorrentPeers)
+		r.Get("/api/v2/torrents/files", h.handleTorrentFiles)
+
+		// Handle all other requests via reverse proxy
 		r.HandleFunc("/*", h.ServeHTTP)
-		// Also handle requests without trailing path (for direct access)
 		r.HandleFunc("/", h.ServeHTTP)
 	})
 }
@@ -467,35 +398,11 @@ func isHTTPSRequest(r *http.Request) bool {
 	return false
 }
 
-// shouldHandleSearch checks if this request should use qui's search functionality
-func (h *Handler) shouldHandleSearch(r *http.Request) bool {
-	// Only handle GET requests
-	if r.Method != http.MethodGet {
-		return false
-	}
-
-	// Check if this is an api/v2/torrents/info request
-	path := r.URL.Path
-	if !strings.Contains(path, "/api/v2/torrents/info") {
-		return false
-	}
-
-	// Check if there's a search parameter
-	search := r.URL.Query().Get("search")
-	return search != ""
-}
-
-// handleTorrentsInfoWithSearch handles torrents/info requests with search using qui's sync manager
+// handleTorrentsInfoWithSearch handles torrents/info requests using qui's sync manager
 func (h *Handler) handleTorrentsInfoWithSearch(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	instanceID := GetInstanceIDFromContext(ctx)
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
-
-	if instanceID == 0 || clientAPIKey == nil {
-		log.Error().Msg("Missing instance ID or client API key in search request")
-		h.writeProxyError(w)
-		return
-	}
 
 	// Extract qBittorrent API parameters
 	queryParams := r.URL.Query()
@@ -591,4 +498,302 @@ func (h *Handler) handleTorrentsInfoWithSearch(w http.ResponseWriter, r *http.Re
 			Int("instanceId", instanceID).
 			Msg("Failed to encode torrents response")
 	}
+}
+
+// handleCategories handles /api/v2/torrents/categories requests
+func (h *Handler) handleCategories(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	instanceID := GetInstanceIDFromContext(ctx)
+	clientAPIKey := GetClientAPIKeyFromContext(ctx)
+
+	log.Debug().
+		Int("instanceId", instanceID).
+		Str("client", clientAPIKey.ClientName).
+		Msg("Handling categories request via qui sync manager")
+
+	categories, err := h.syncManager.GetCategories(ctx, instanceID)
+	if err != nil {
+		log.Error().
+			Err(err).
+			Int("instanceId", instanceID).
+			Msg("Failed to get categories")
+		h.writeProxyError(w)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	encoder := json.NewEncoder(w)
+	if err := encoder.Encode(categories); err != nil {
+		log.Error().
+			Err(err).
+			Int("instanceId", instanceID).
+			Msg("Failed to encode categories response")
+	}
+}
+
+// handleTags handles /api/v2/torrents/tags requests
+func (h *Handler) handleTags(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	instanceID := GetInstanceIDFromContext(ctx)
+	clientAPIKey := GetClientAPIKeyFromContext(ctx)
+
+	log.Debug().
+		Int("instanceId", instanceID).
+		Str("client", clientAPIKey.ClientName).
+		Msg("Handling tags request via qui sync manager")
+
+	tags, err := h.syncManager.GetTags(ctx, instanceID)
+	if err != nil {
+		log.Error().
+			Err(err).
+			Int("instanceId", instanceID).
+			Msg("Failed to get tags")
+		h.writeProxyError(w)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	encoder := json.NewEncoder(w)
+	if err := encoder.Encode(tags); err != nil {
+		log.Error().
+			Err(err).
+			Int("instanceId", instanceID).
+			Msg("Failed to encode tags response")
+	}
+}
+
+// handleTorrentProperties handles /api/v2/torrents/properties requests
+func (h *Handler) handleTorrentProperties(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	instanceID := GetInstanceIDFromContext(ctx)
+	clientAPIKey := GetClientAPIKeyFromContext(ctx)
+
+	hash := r.URL.Query().Get("hash")
+
+	log.Debug().
+		Int("instanceId", instanceID).
+		Str("client", clientAPIKey.ClientName).
+		Str("hash", hash).
+		Msg("Handling torrent properties request via qui sync manager")
+
+	properties, err := h.syncManager.GetTorrentProperties(ctx, instanceID, hash)
+	if err != nil {
+		log.Error().
+			Err(err).
+			Int("instanceId", instanceID).
+			Str("hash", hash).
+			Msg("Failed to get torrent properties")
+		h.writeProxyError(w)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	encoder := json.NewEncoder(w)
+	if err := encoder.Encode(properties); err != nil {
+		log.Error().
+			Err(err).
+			Int("instanceId", instanceID).
+			Msg("Failed to encode properties response")
+	}
+}
+
+// handleTorrentTrackers handles /api/v2/torrents/trackers requests
+func (h *Handler) handleTorrentTrackers(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	instanceID := GetInstanceIDFromContext(ctx)
+	clientAPIKey := GetClientAPIKeyFromContext(ctx)
+
+	hash := r.URL.Query().Get("hash")
+
+	log.Debug().
+		Int("instanceId", instanceID).
+		Str("client", clientAPIKey.ClientName).
+		Str("hash", hash).
+		Msg("Handling torrent trackers request via qui sync manager")
+
+	trackers, err := h.syncManager.GetTorrentTrackers(ctx, instanceID, hash)
+	if err != nil {
+		log.Error().
+			Err(err).
+			Int("instanceId", instanceID).
+			Str("hash", hash).
+			Msg("Failed to get torrent trackers")
+		h.writeProxyError(w)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	encoder := json.NewEncoder(w)
+	if err := encoder.Encode(trackers); err != nil {
+		log.Error().
+			Err(err).
+			Int("instanceId", instanceID).
+			Msg("Failed to encode trackers response")
+	}
+}
+
+// handleTorrentPeers handles /api/v2/sync/torrentPeers requests
+func (h *Handler) handleTorrentPeers(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	instanceID := GetInstanceIDFromContext(ctx)
+	clientAPIKey := GetClientAPIKeyFromContext(ctx)
+
+	hash := r.URL.Query().Get("hash")
+
+	log.Debug().
+		Int("instanceId", instanceID).
+		Str("client", clientAPIKey.ClientName).
+		Str("hash", hash).
+		Msg("Handling torrent peers request via qui sync manager")
+
+	peers, err := h.syncManager.GetTorrentPeers(ctx, instanceID, hash)
+	if err != nil {
+		log.Error().
+			Err(err).
+			Int("instanceId", instanceID).
+			Str("hash", hash).
+			Msg("Failed to get torrent peers")
+		h.writeProxyError(w)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	encoder := json.NewEncoder(w)
+	if err := encoder.Encode(peers); err != nil {
+		log.Error().
+			Err(err).
+			Int("instanceId", instanceID).
+			Msg("Failed to encode peers response")
+	}
+}
+
+// handleTorrentFiles handles /api/v2/torrents/files requests
+func (h *Handler) handleTorrentFiles(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	instanceID := GetInstanceIDFromContext(ctx)
+	clientAPIKey := GetClientAPIKeyFromContext(ctx)
+
+	hash := r.URL.Query().Get("hash")
+
+	log.Debug().
+		Int("instanceId", instanceID).
+		Str("client", clientAPIKey.ClientName).
+		Str("hash", hash).
+		Msg("Handling torrent files request via qui sync manager")
+
+	files, err := h.syncManager.GetTorrentFiles(ctx, instanceID, hash)
+	if err != nil {
+		log.Error().
+			Err(err).
+			Int("instanceId", instanceID).
+			Str("hash", hash).
+			Msg("Failed to get torrent files")
+		h.writeProxyError(w)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	encoder := json.NewEncoder(w)
+	if err := encoder.Encode(files); err != nil {
+		log.Error().
+			Err(err).
+			Int("instanceId", instanceID).
+			Msg("Failed to encode files response")
+	}
+}
+
+// modifyAuthLoginResponse injects cookies for successful /auth/login responses that don't set cookies
+func (h *Handler) modifyAuthLoginResponse(resp *http.Response) error {
+	// Only process successful login responses
+	if resp == nil || resp.Request == nil || resp.Request.URL == nil {
+		return nil
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil
+	}
+
+	if !strings.HasSuffix(resp.Request.URL.Path, "/auth/login") {
+		return nil
+	}
+
+	ctx := resp.Request.Context()
+	instanceID := GetInstanceIDFromContext(ctx)
+	clientAPIKey := GetClientAPIKeyFromContext(ctx)
+	if clientAPIKey == nil {
+		return nil
+	}
+
+	// If qBittorrent already set a cookie, don't inject one
+	if len(resp.Header.Values("Set-Cookie")) > 0 {
+		return nil
+	}
+
+	// Read response body to check if login was successful
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	resp.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+	resp.ContentLength = int64(len(bodyBytes))
+	if len(bodyBytes) > 0 {
+		resp.Header.Set("Content-Length", strconv.Itoa(len(bodyBytes)))
+	} else {
+		resp.Header.Del("Content-Length")
+	}
+	if readErr != nil {
+		log.Error().
+			Err(readErr).
+			Str("client", clientAPIKey.ClientName).
+			Int("instanceId", instanceID).
+			Msg("Failed to read auth login response body")
+		return nil
+	}
+
+	// Only inject cookie if login was successful
+	if strings.TrimSpace(string(bodyBytes)) != proxyLoginSuccessBody {
+		return nil
+	}
+
+	cookieValue, err := generateLoginCookieValue()
+	if err != nil {
+		log.Warn().
+			Err(err).
+			Str("client", clientAPIKey.ClientName).
+			Int("instanceId", instanceID).
+			Msg("Falling back to timestamp-based proxy login cookie value")
+		cookieValue = fmt.Sprintf("fallback-%d", time.Now().UnixNano())
+	}
+
+	cookie := &http.Cookie{
+		Name:     proxyLoginCookieName,
+		Value:    cookieValue,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	}
+
+	if clientRequestIsHTTPS(ctx) {
+		cookie.Secure = true
+	}
+
+	resp.Header.Add("Set-Cookie", cookie.String())
+
+	log.Debug().
+		Str("client", clientAPIKey.ClientName).
+		Int("instanceId", instanceID).
+		Str("cookieName", cookie.Name).
+		Msg("Injected proxy login cookie for auth/login response")
+
+	return nil
 }
