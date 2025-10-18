@@ -261,28 +261,28 @@ func (c *TorrentCollector) Collect(ch chan<- prometheus.Metric) {
 			stats := response.ServerState
 			ch <- prometheus.MustNewConstMetric(
 				c.sessionDownload,
-				prometheus.GaugeValue,
+				prometheus.CounterValue,
 				float64(stats.DlInfoData),
 				instanceIDStr,
 				instanceName,
 			)
 			ch <- prometheus.MustNewConstMetric(
 				c.sessionUpload,
-				prometheus.GaugeValue,
+				prometheus.CounterValue,
 				float64(stats.UpInfoData),
 				instanceIDStr,
 				instanceName,
 			)
 			ch <- prometheus.MustNewConstMetric(
 				c.allTimeDownload,
-				prometheus.GaugeValue,
+				prometheus.CounterValue,
 				float64(stats.AlltimeDl),
 				instanceIDStr,
 				instanceName,
 			)
 			ch <- prometheus.MustNewConstMetric(
 				c.allTimeUpload,
-				prometheus.GaugeValue,
+				prometheus.CounterValue,
 				float64(stats.AlltimeUl),
 				instanceIDStr,
 				instanceName,
