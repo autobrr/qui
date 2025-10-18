@@ -101,12 +101,12 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
     <Card>
       <div>
         <CardHeader className="flex flex-row items-center justify-between pr-2 space-y-0">
-          <div className="flex-1 max-w-45">
+          <div className="flex-1 min-w-0 overflow-hidden">
             <CardTitle className="text-base font-medium truncate" title={instance.name}>
               {instance.name}
             </CardTitle>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 shrink-0">
             <Badge
               variant={instance.connected ? "default" : "destructive"}
             >
@@ -166,12 +166,16 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
           <div className="flex justify-between">
             <span className="text-muted-foreground">Username:</span>
             {/* qBittorrent's default username is 'admin' */}
-            <span>{instance.username || "admin"}</span>
+            <span className={incognitoMode ? "blur-sm select-none" : ""}>
+              {instance.username || "admin"}
+            </span>
           </div>
           {instance.basicUsername && (
             <div className="flex justify-between">
               <span className="text-muted-foreground">Basic Auth:</span>
-              <span>{instance.basicUsername}</span>
+              <span className={incognitoMode ? "blur-sm select-none" : ""}>
+                {instance.basicUsername}
+              </span>
             </div>
           )}
           <div className="flex justify-between">

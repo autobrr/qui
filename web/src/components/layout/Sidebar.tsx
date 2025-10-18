@@ -22,7 +22,6 @@ import {
   HardDrive,
   Home,
   LogOut,
-  Server,
   Settings
 } from "lucide-react"
 
@@ -37,11 +36,6 @@ const navigation: NavItem[] = [
     title: "Dashboard",
     href: "/dashboard",
     icon: Home,
-  },
-  {
-    title: "Instances",
-    href: "/instances",
-    icon: Server,
   },
   {
     title: "Backups",

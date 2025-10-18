@@ -10,6 +10,7 @@ import type {
   BackupRun,
   BackupSettings,
   Category,
+  DuplicateTorrentMatch,
   InstanceCapabilities,
   InstanceFormData,
   InstanceResponse,
@@ -364,6 +365,13 @@ class ApiClient {
     }
 
     return response.json()
+  }
+
+  async checkTorrentDuplicates(instanceId: number, hashes: string[]): Promise<{ duplicates: DuplicateTorrentMatch[] }> {
+    return this.request<{ duplicates: DuplicateTorrentMatch[] }>(`/instances/${instanceId}/torrents/check-duplicates`, {
+      method: "POST",
+      body: JSON.stringify({ hashes }),
+    })
   }
 
 

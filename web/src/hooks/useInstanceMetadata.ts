@@ -5,10 +5,10 @@
 
 import { useQuery } from "@tanstack/react-query"
 import { api } from "@/lib/api"
-import type { AppPreferences } from "@/types"
+import type { AppPreferences, Category } from "@/types"
 
 interface InstanceMetadata {
-  categories: Record<string, { name: string; savePath: string }>
+  categories: Record<string, Category>
   tags: string[]
   preferences: AppPreferences
 }

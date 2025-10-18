@@ -58,6 +58,7 @@ type TorrentResponse struct {
 	Categories             map[string]qbt.Category `json:"categories,omitempty"`  // Include categories for sidebar
 	Tags                   []string                `json:"tags,omitempty"`        // Include tags for sidebar
 	ServerState            *qbt.ServerState        `json:"serverState,omitempty"` // Include server state for Dashboard
+	UseSubcategories       bool                    `json:"useSubcategories"`      // Whether subcategories are enabled
 	HasMore                bool                    `json:"hasMore"`               // Whether more pages are available
 	SessionID              string                  `json:"sessionId,omitempty"`   // Optional session tracking
 	CacheMetadata          *CacheMetadata          `json:"cacheMetadata,omitempty"`
@@ -75,6 +76,15 @@ type TorrentStats struct {
 	TotalDownloadSpeed int   `json:"totalDownloadSpeed"`
 	TotalUploadSpeed   int   `json:"totalUploadSpeed"`
 	TotalSize          int64 `json:"totalSize"`
+}
+
+// DuplicateTorrentMatch represents an existing torrent that matches one or more requested hashes.
+type DuplicateTorrentMatch struct {
+	Hash          string   `json:"hash"`
+	InfohashV1    string   `json:"infohash_v1,omitempty"`
+	InfohashV2    string   `json:"infohash_v2,omitempty"`
+	Name          string   `json:"name"`
+	MatchedHashes []string `json:"matched_hashes,omitempty"`
 }
 
 // SyncManager manages torrent operations
@@ -241,6 +251,27 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	var trackerMap map[string][]qbt.TorrentTracker
 	var counts *TorrentCounts
 
+	// Fetch categories and tags (cached separately for 60s)
+	categories, err := sm.GetCategories(ctx, instanceID)
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to get categories")
+		categories = make(map[string]qbt.Category)
+	}
+
+	tags, err := sm.GetTags(ctx, instanceID)
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to get tags")
+		tags = []string{}
+	}
+
+	if useManualFiltering && mainData == nil {
+		// Manual filtering needs the server preference to respect disabled subcategories
+		mainData = syncManager.GetData()
+	}
+
+	supportsSubcategories := client.SupportsSubcategories()
+	useSubcategories := resolveUseSubcategories(supportsSubcategories, mainData, categories)
+
 	if useManualFiltering {
 		// Use manual filtering - get all torrents and filter manually
 		log.Debug().
@@ -271,7 +302,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 			filteredTorrents, trackerMap, _ = sm.enrichTorrentsWithTrackerData(ctx, client, filteredTorrents, trackerMap, true)
 		}
 
-		filteredTorrents = sm.applyManualFilters(client, filteredTorrents, filters, mainData)
+		filteredTorrents = sm.applyManualFilters(client, filteredTorrents, filters, mainData, categories, useSubcategories)
 	} else {
 		// Use library filtering for single selections
 		log.Debug().
@@ -393,9 +424,12 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	allTorrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{})
 
 	// Get MainData for accurate tracker information
-	mainData = syncManager.GetData()
+	if mainData == nil {
+		mainData = syncManager.GetData()
+	}
+	useSubcategories = resolveUseSubcategories(supportsSubcategories, mainData, categories)
 
-	counts, trackerMap, enrichedAll := sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents, mainData, trackerMap, trackerHealthSupported)
+	counts, trackerMap, enrichedAll := sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents, mainData, trackerMap, trackerHealthSupported, useSubcategories)
 
 	// Reuse enriched tracker data for paginated torrents to avoid duplicate fetches
 	if len(paginatedTorrents) > 0 && trackerHealthSupported {
@@ -441,19 +475,6 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		}
 	}
 
-	// Fetch categories and tags (cached separately for 60s)
-	categories, err := sm.GetCategories(ctx, instanceID)
-	if err != nil {
-		log.Warn().Err(err).Msg("Failed to get categories")
-		categories = make(map[string]qbt.Category)
-	}
-
-	tags, err := sm.GetTags(ctx, instanceID)
-	if err != nil {
-		log.Warn().Err(err).Msg("Failed to get tags")
-		tags = []string{}
-	}
-
 	// Determine cache metadata based on last sync update time
 	var cacheMetadata *CacheMetadata
 	var serverState *qbt.ServerState
@@ -492,6 +513,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		Categories:             categories,  // Include categories for sidebar
 		Tags:                   tags,        // Include tags for sidebar
 		ServerState:            serverState, // Include server state for Dashboard
+		UseSubcategories:       useSubcategories,
 		HasMore:                hasMore,
 		CacheMetadata:          cacheMetadata,
 		TrackerHealthSupported: trackerHealthSupported,
@@ -511,6 +533,51 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		Msg("Fresh torrent data fetched and cached")
 
 	return response, nil
+}
+
+// FindDuplicateTorrents returns existing torrents that match any of the provided hashes.
+func (sm *SyncManager) FindDuplicateTorrents(ctx context.Context, instanceID int, hashes []string) ([]DuplicateTorrentMatch, error) {
+	if len(hashes) == 0 {
+		return nil, nil
+	}
+
+	client, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		return nil, err
+	}
+
+	if matches, indexed := client.lookupDuplicateMatches(hashes); indexed {
+		if len(matches) > 0 {
+			log.Trace().
+				Int("instanceID", instanceID).
+				Int("requestedHashes", len(hashes)).
+				Int("duplicates", len(matches)).
+				Str("duplicateSource", "index").
+				Msg("Detected duplicate torrents for requested hashes")
+		}
+		return matches, nil
+	}
+
+	torrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{})
+	if len(torrents) == 0 {
+		client.rebuildHashIndexFromSlice(torrents)
+		return nil, nil
+	}
+
+	matches := matchDuplicateTorrents(hashes, torrents)
+	client.rebuildHashIndexFromSlice(torrents)
+	if len(matches) == 0 {
+		return nil, nil
+	}
+
+	log.Trace().
+		Int("instanceID", instanceID).
+		Int("requestedHashes", len(hashes)).
+		Int("duplicates", len(matches)).
+		Str("duplicateSource", "scan").
+		Msg("Detected duplicate torrents for requested hashes")
+
+	return matches, nil
 }
 
 // BulkAction performs bulk operations on torrents
@@ -1062,7 +1129,7 @@ func (sm *SyncManager) countTorrentStatuses(torrent qbt.Torrent, counts map[stri
 // calculateCountsFromTorrentsWithTrackers calculates counts using MainData's tracker information
 // This gives us the REAL tracker-to-torrent mapping from qBittorrent
 
-func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(ctx context.Context, client *Client, allTorrents []qbt.Torrent, mainData *qbt.MainData, trackerMap map[string][]qbt.TorrentTracker, trackerHealthSupported bool) (*TorrentCounts, map[string][]qbt.TorrentTracker, []qbt.Torrent) {
+func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(ctx context.Context, client *Client, allTorrents []qbt.Torrent, mainData *qbt.MainData, trackerMap map[string][]qbt.TorrentTracker, trackerHealthSupported bool, useSubcategories bool) (*TorrentCounts, map[string][]qbt.TorrentTracker, []qbt.Torrent) {
 	var enriched []qbt.Torrent
 	if trackerHealthSupported {
 		enriched, trackerMap, _ = sm.enrichTorrentsWithTrackerData(ctx, client, allTorrents, trackerMap, true)
@@ -1192,6 +1259,32 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(ctx context.Conte
 		}
 	}
 
+	// If subcategories are enabled, aggregate subcategory counts into parent categories
+	if useSubcategories {
+		// Build a temporary map to hold aggregated counts
+		aggregatedCounts := make(map[string]int)
+
+		// First, copy all existing counts
+		maps.Copy(aggregatedCounts, counts.Categories)
+
+		// Find all parent categories and ensure they exist in the map
+		// Also aggregate subcategory counts into parent categories
+		for cat, count := range counts.Categories {
+			if cat != "" && strings.Contains(cat, "/") {
+				// This is a subcategory - ensure all parent paths exist and aggregate counts
+				segments := strings.Split(cat, "/")
+				for i := 1; i <= len(segments)-1; i++ {
+					parentPath := strings.Join(segments[:i], "/")
+					// Add subcategory count to parent
+					aggregatedCounts[parentPath] += count
+				}
+			}
+		}
+
+		// Replace the original counts with aggregated ones
+		counts.Categories = aggregatedCounts
+	}
+
 	return counts, trackerMap, allTorrents
 }
 
@@ -1216,7 +1309,16 @@ func (sm *SyncManager) GetTorrentCounts(ctx context.Context, instanceID int) (*T
 
 	// Calculate counts using the shared function - pass mainData for tracker information
 	trackerHealthSupported := client != nil && client.supportsTrackerInclude()
-	counts, _, _ := sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents, mainData, nil, trackerHealthSupported)
+	supportsSubcategories := client.SupportsSubcategories()
+	useSubcategories := false
+	if supportsSubcategories {
+		if mainData != nil && mainData.ServerState != (qbt.ServerState{}) {
+			useSubcategories = mainData.ServerState.UseSubcategories
+		} else if mainData != nil && mainData.Categories != nil {
+			useSubcategories = hasNestedCategories(mainData.Categories)
+		}
+	}
+	counts, _, _ := sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents, mainData, nil, trackerHealthSupported, useSubcategories)
 
 	// Don't cache counts separately - they're always derived from the cached torrent data
 	// This ensures sidebar and table are always in sync
@@ -1711,18 +1813,36 @@ func (sm *SyncManager) filterTorrentsByGlob(torrents []qbt.Torrent, pattern stri
 
 // applyManualFilters applies all filters manually when library filtering is insufficient.
 // Callers hydrate tracker data beforehand when status filters depend on tracker health.
-func (sm *SyncManager) applyManualFilters(client *Client, torrents []qbt.Torrent, filters FilterOptions, mainData *qbt.MainData) []qbt.Torrent {
+func (sm *SyncManager) applyManualFilters(
+	client *Client,
+	torrents []qbt.Torrent,
+	filters FilterOptions,
+	mainData *qbt.MainData,
+	categories map[string]qbt.Category,
+	useSubcategories bool,
+) []qbt.Torrent {
 	var filtered []qbt.Torrent
+
+	var categoryNames []string
+	if useSubcategories {
+		categoryNames = collectCategoryNames(mainData, categories)
+	}
 
 	// Category set for O(1) lookups
 	categorySet := make(map[string]struct{}, len(filters.Categories))
 	for _, c := range filters.Categories {
 		categorySet[c] = struct{}{}
+		if useSubcategories && c != "" {
+			expandCategorySet(categorySet, c, categoryNames)
+		}
 	}
 
 	excludeCategorySet := make(map[string]struct{}, len(filters.ExcludeCategories))
 	for _, c := range filters.ExcludeCategories {
 		excludeCategorySet[c] = struct{}{}
+		if useSubcategories && c != "" {
+			expandCategorySet(excludeCategorySet, c, categoryNames)
+		}
 	}
 
 	// Prepare tag filter strings (lower-cased/trimmed) to reuse across torrents (avoid per-torrent allocations)
@@ -2012,6 +2132,78 @@ torrentsLoop:
 		Msg("Applied manual filtering with multiple selections")
 
 	return filtered
+}
+
+func hasNestedCategories(categories map[string]qbt.Category) bool {
+	for name := range categories {
+		if strings.Contains(name, "/") {
+			return true
+		}
+	}
+	return false
+}
+
+func resolveUseSubcategories(supports bool, mainData *qbt.MainData, categories map[string]qbt.Category) bool {
+	if !supports {
+		return false
+	}
+
+	if mainData != nil && mainData.ServerState != (qbt.ServerState{}) {
+		return mainData.ServerState.UseSubcategories
+	}
+
+	if hasNestedCategories(categories) {
+		return true
+	}
+
+	if mainData != nil && mainData.Categories != nil {
+		return hasNestedCategories(mainData.Categories)
+	}
+
+	return false
+}
+
+func collectCategoryNames(mainData *qbt.MainData, categories map[string]qbt.Category) []string {
+	var mainCount int
+	if mainData != nil && mainData.Categories != nil {
+		mainCount = len(mainData.Categories)
+	}
+	if len(categories) == 0 && mainCount == 0 {
+		return nil
+	}
+
+	names := make([]string, 0, len(categories)+mainCount)
+	seen := make(map[string]struct{}, len(categories))
+
+	for name := range categories {
+		names = append(names, name)
+		seen[name] = struct{}{}
+	}
+
+	if mainCount > 0 {
+		for name := range mainData.Categories {
+			if _, exists := seen[name]; exists {
+				continue
+			}
+			names = append(names, name)
+			seen[name] = struct{}{}
+		}
+	}
+
+	return names
+}
+
+func expandCategorySet(target map[string]struct{}, parent string, categoryNames []string) {
+	if len(categoryNames) == 0 {
+		return
+	}
+
+	prefix := parent + "/"
+	for _, name := range categoryNames {
+		if strings.HasPrefix(name, prefix) {
+			target[name] = struct{}{}
+		}
+	}
 }
 
 // Torrent state categories for fast lookup
@@ -2958,7 +3150,7 @@ func (sm *SyncManager) RenameTorrentFolder(ctx context.Context, instanceID int, 
 	}
 
 	if !client.SupportsRenameFolder() {
-		return fmt.Errorf("qBittorrent instance does not support folder renaming (requires WebAPI 2.8.4+, qBittorrent 4.4.0+)")
+		return fmt.Errorf("qBittorrent instance does not support folder renaming (requires WebAPI 2.7.0+, qBittorrent 4.3.3+)")
 	}
 
 	if err := sm.validateTorrentsExist(client, []string{hash}, "rename folder"); err != nil {

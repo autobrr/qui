@@ -135,6 +135,51 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 	RespondJSON(w, http.StatusOK, response)
 }
 
+// CheckDuplicates validates if any of the provided hashes already exist in qBittorrent.
+func (h *TorrentsHandler) CheckDuplicates(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	var req struct {
+		Hashes []string `json:"hashes"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if len(req.Hashes) == 0 {
+		RespondJSON(w, http.StatusOK, struct {
+			Duplicates []qbittorrent.DuplicateTorrentMatch `json:"duplicates"`
+		}{Duplicates: []qbittorrent.DuplicateTorrentMatch{}})
+		return
+	}
+
+	if len(req.Hashes) > 512 {
+		RespondError(w, http.StatusBadRequest, "Too many hashes provided (maximum 512)")
+		return
+	}
+
+	matches, err := h.syncManager.FindDuplicateTorrents(r.Context(), instanceID, req.Hashes)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to check duplicate torrents")
+		RespondError(w, http.StatusInternalServerError, "Failed to check duplicate torrents")
+		return
+	}
+
+	if matches == nil {
+		matches = []qbittorrent.DuplicateTorrentMatch{}
+	}
+
+	RespondJSON(w, http.StatusOK, struct {
+		Duplicates []qbittorrent.DuplicateTorrentMatch `json:"duplicates"`
+	}{Duplicates: matches})
+}
+
 // AddTorrentRequest represents a request to add a torrent
 type AddTorrentRequest struct {
 	Category     string   `json:"category,omitempty"`
