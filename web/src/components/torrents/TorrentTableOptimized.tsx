@@ -86,12 +86,13 @@ import { useSearch } from "@tanstack/react-router"
 import {
   ArrowUpDown,
   Ban,
+  BrickWallFire,
   ChevronDown,
   ChevronUp,
   Columns3,
+  EthernetPort,
   Eye,
   EyeOff,
-  Flame,
   Globe,
   Loader2,
   Rabbit,
@@ -99,7 +100,7 @@ import {
   X
 } from "lucide-react"
 import { createPortal } from "react-dom"
-import { AddTorrentDialog } from "./AddTorrentDialog"
+import { AddTorrentDialog, type AddTorrentDropPayload } from "./AddTorrentDialog"
 import { DraggableTableHeader } from "./DraggableTableHeader"
 import {
   AddTagsDialog,
@@ -114,6 +115,7 @@ import {
   ShareLimitDialog,
   SpeedLimitsDialog
 } from "./TorrentDialogs"
+import { TorrentDropZone } from "./TorrentDropZone"
 import { createColumns } from "./TorrentTableColumns"
 
 // Default values for persisted state hooks (module scope for stable references)
@@ -205,6 +207,39 @@ function shallowEqualTrackerIcons(
   return true
 }
 
+interface ExternalIPAddressProps {
+  address?: string | null
+  incognitoMode: boolean
+  label: string
+}
+
+const ExternalIPAddress = memo(
+  ({ address, incognitoMode, label }: ExternalIPAddressProps) => {
+    if (!address) return null
+
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            className="flex items-center gap-1 text-xs text-muted-foreground"
+            aria-label={`External ${label}`}
+          >
+            <EthernetPort className="h-3.5 w-3.5" />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p className="font-mono text-xs">
+            <span {...(incognitoMode && { style: { filter: "blur(4px)" } })}>{address}</span>
+          </p>
+        </TooltipContent>
+      </Tooltip>
+    )
+  },
+  (prev, next) =>
+    prev.address === next.address &&
+    prev.incognitoMode === next.incognitoMode &&
+    prev.label === next.label
+)
 
 interface TorrentTableOptimizedProps {
   instanceId: number
@@ -213,7 +248,14 @@ interface TorrentTableOptimizedProps {
   onTorrentSelect?: (torrent: Torrent | null) => void
   addTorrentModalOpen?: boolean
   onAddTorrentModalChange?: (open: boolean) => void
-  onFilteredDataUpdate?: (torrents: Torrent[], total: number, counts?: TorrentCounts, categories?: Record<string, Category>, tags?: string[]) => void
+  onFilteredDataUpdate?: (
+    torrents: Torrent[],
+    total: number,
+    counts?: TorrentCounts,
+    categories?: Record<string, Category>,
+    tags?: string[],
+    useSubcategories?: boolean
+  ) => void
   onSelectionChange?: (
     selectedHashes: string[],
     selectedTorrents: Torrent[],
@@ -223,6 +265,7 @@ interface TorrentTableOptimizedProps {
     selectedTotalSize: number,
     selectionFilters?: TorrentFilters
   ) => void
+  onResetSelection?: (handler?: () => void) => void
 }
 
 export const TorrentTableOptimized = memo(function TorrentTableOptimized({
@@ -234,6 +277,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   onAddTorrentModalChange,
   onFilteredDataUpdate,
   onSelectionChange,
+  onResetSelection,
 }: TorrentTableOptimizedProps) {
   // State management
   // Move default values outside the component for stable references
@@ -246,6 +290,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   // Custom "select all" state for handling large datasets
   const [isAllSelected, setIsAllSelected] = useState(false)
   const [excludedFromSelectAll, setExcludedFromSelectAll] = useState<Set<string>>(new Set())
+  const [dropPayload, setDropPayload] = useState<AddTorrentDropPayload | null>(null)
 
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const { exportTorrents, isExporting: isExportingTorrent } = useTorrentExporter({ instanceId, incognitoMode })
@@ -286,6 +331,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     tags?: string[]
     totalCount?: number
     torrentsLength?: number
+    useSubcategories?: boolean
+    supportsSubcategories?: boolean
   }>({})
   const serverStateRef = useRef<{ instanceId: number, state: ServerState | null }>({
     instanceId,
@@ -295,6 +342,24 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   // State for range select capabilities for checkboxes
   const shiftPressedRef = useRef<boolean>(false)
   const lastSelectedIndexRef = useRef<number | null>(null)
+
+  const resetSelectionState = useCallback(() => {
+    setIsAllSelected(false)
+    setExcludedFromSelectAll(new Set())
+    setRowSelection({})
+    lastSelectedIndexRef.current = null
+  }, [setIsAllSelected, setExcludedFromSelectAll, setRowSelection])
+
+  useEffect(() => {
+    if (!onResetSelection) {
+      return
+    }
+
+    onResetSelection(resetSelectionState)
+    return () => {
+      onResetSelection(undefined)
+    }
+  }, [onResetSelection, resetSelectionState])
 
   // These should be defined at module scope, not inside the component, to ensure stable references
   // (If not already, move them to the top of the file)
@@ -379,10 +444,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     prepareReannounceAction,
   } = useTorrentActions({
     instanceId,
-    onActionComplete: () => {
-      setRowSelection({})
-      lastSelectedIndexRef.current = null // Reset anchor after actions
-    },
+    onActionComplete: resetSelectionState,
   })
 
   // Fetch metadata using shared hook
@@ -430,10 +492,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   // Debounce search to prevent excessive filtering (200ms delay for faster response)
   const debouncedSearch = useDebounce(globalFilter, 200)
   const routeSearch = useSearch({ strict: false }) as { q?: string }
-  const searchFromRoute = routeSearch?.q || ""
+  const rawRouteSearch = typeof routeSearch?.q === "string" ? routeSearch.q : ""
+  const searchFromRoute = rawRouteSearch.trim()
 
   // Use route search if present, otherwise fall back to local immediate/debounced search
-  const effectiveSearch = searchFromRoute || immediateSearch || debouncedSearch
+  const effectiveSearch = (searchFromRoute || immediateSearch || debouncedSearch).trim()
 
   // Keep local input state in sync with route query so internal effects remain consistent
   useEffect(() => {
@@ -482,6 +545,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const activeSortField = sorting.length > 0 ? getBackendSortField(sorting[0].id) : "added_on"
   const activeSortOrder: "asc" | "desc" = sorting.length > 0 ? (sorting[0].desc ? "desc" : "asc") : "desc"
 
+  const effectiveIncludedCategories = filters?.expandedCategories ?? filters?.categories ?? []
+  const effectiveExcludedCategories = filters?.expandedExcludeCategories ?? filters?.excludeCategories ?? []
+
   // Fetch torrents data with backend sorting
   const {
     torrents,
@@ -492,6 +558,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     tags,
     serverState,
     capabilities,
+    useSubcategories: subcategoriesFromData,
     isLoading,
     isCachedData,
     isStaleData,
@@ -503,12 +570,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     filters: {
       status: filters?.status || [],
       excludeStatus: filters?.excludeStatus || [],
-      categories: filters?.categories || [],
-      excludeCategories: filters?.excludeCategories || [],
+      categories: effectiveIncludedCategories,
+      excludeCategories: effectiveExcludedCategories,
       tags: filters?.tags || [],
       excludeTags: filters?.excludeTags || [],
       trackers: filters?.trackers || [],
       excludeTrackers: filters?.excludeTrackers || [],
+      expandedCategories: filters?.expandedCategories,
+      expandedExcludeCategories: filters?.expandedExcludeCategories,
       expr: columnFiltersExpr || undefined,
     },
     sort: activeSortField,
@@ -516,6 +585,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   })
 
   const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? true
+  const supportsSubcategories = capabilities?.supportsSubcategories ?? false
+  const allowSubcategories = Boolean(
+    supportsSubcategories && (preferences?.use_subcategories ?? subcategoriesFromData ?? false)
+  )
 
   // Delayed loading state to avoid flicker on fast loads
   useEffect(() => {
@@ -547,9 +620,17 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     const nextCounts = counts ?? lastMetadataRef.current.counts
     const nextCategories = categories ?? lastMetadataRef.current.categories
     const nextTags = tags ?? lastMetadataRef.current.tags
+    const prevSupportsSubcategories = lastMetadataRef.current.supportsSubcategories ?? false
+    const previousUseSubcategories = lastMetadataRef.current.useSubcategories ?? false
+    const nextSupportsSubcategories = supportsSubcategories
+    const nextUseSubcategories = nextSupportsSubcategories? (subcategoriesFromData ?? previousUseSubcategories): false
     const nextTotalCount = totalCount
 
-    const hasAnyMetadata = nextCounts !== undefined || nextCategories !== undefined || nextTags !== undefined
+    const hasAnyMetadata =
+      nextCounts !== undefined ||
+      nextCategories !== undefined ||
+      nextTags !== undefined ||
+      nextUseSubcategories !== undefined
     const hasExistingTorrents = torrents.length > 0
 
     if (!hasAnyMetadata && !hasExistingTorrents) {
@@ -560,6 +641,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       nextCounts !== lastMetadataRef.current.counts ||
       nextCategories !== lastMetadataRef.current.categories ||
       nextTags !== lastMetadataRef.current.tags ||
+      nextSupportsSubcategories !== prevSupportsSubcategories ||
+      nextUseSubcategories !== previousUseSubcategories ||
       nextTotalCount !== lastMetadataRef.current.totalCount
 
     const torrentsLengthChanged = torrents.length !== (lastMetadataRef.current.torrentsLength ?? -1)
@@ -568,7 +651,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       return
     }
 
-    onFilteredDataUpdate(torrents, totalCount, nextCounts, nextCategories, nextTags)
+    onFilteredDataUpdate(
+      torrents,
+      totalCount,
+      nextCounts,
+      nextCategories,
+      nextTags,
+      nextUseSubcategories
+    )
 
     lastMetadataRef.current = {
       counts: nextCounts,
@@ -576,8 +666,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       tags: nextTags,
       totalCount: nextTotalCount,
       torrentsLength: torrents.length,
+      useSubcategories: nextUseSubcategories,
+      supportsSubcategories: nextSupportsSubcategories,
     }
-  }, [counts, categories, tags, totalCount, torrents, isLoading, onFilteredDataUpdate])
+  }, [counts, categories, tags, totalCount, torrents, isLoading, onFilteredDataUpdate, subcategoriesFromData, supportsSubcategories])
 
   // Use torrents directly from backend (already sorted)
   const sortedTorrents = torrents
@@ -878,7 +970,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const hasConnectionStatus = Boolean(formattedConnectionStatus)
   const isConnectable = normalizedConnectionStatus === "connected"
   const isFirewalled = normalizedConnectionStatus === "firewalled"
-  const ConnectionStatusIcon = isConnectable ? Globe : isFirewalled ? Flame : hasConnectionStatus ? Ban : Globe
+  const ConnectionStatusIcon = isConnectable ? Globe : isFirewalled ? BrickWallFire : hasConnectionStatus ? Ban : Globe
   const connectionStatusTooltip = hasConnectionStatus ? (isConnectable ? "Connectable" : connectionStatusDisplay) : "Connection status unknown"
   const connectionStatusIconClass = hasConnectionStatus ? isConnectable ? "text-green-500" : isFirewalled ? "text-amber-500" : "text-destructive" : "text-muted-foreground"
   const connectionStatusAriaLabel = hasConnectionStatus ? `qBittorrent connection status: ${connectionStatusDisplay || formattedConnectionStatus}` : "qBittorrent connection status unknown"
@@ -1072,10 +1164,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       setIsLoadingMoreRows(false)
 
       // Clear selection state when data changes
-      setIsAllSelected(false)
-      setExcludedFromSelectAll(new Set())
-      setRowSelection({})
-      lastSelectedIndexRef.current = null // Reset anchor on filter/search change
+      resetSelectionState() // Reset anchor on filter/search change
 
       // User-initiated change: scroll to top
       if (parentRef.current) {
@@ -1091,15 +1180,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         virtualizer.measure()
       }, 0)
     }
-  }, [filters, effectiveSearch, instanceId, virtualizer, sortedTorrents.length, setRowSelection, lastUserAction])
+  }, [filters, effectiveSearch, instanceId, virtualizer, sortedTorrents.length, lastUserAction, resetSelectionState])
 
   // Clear selection handler for keyboard navigation
   const clearSelection = useCallback(() => {
-    setIsAllSelected(false)
-    setExcludedFromSelectAll(new Set())
-    setRowSelection({})
-    lastSelectedIndexRef.current = null // Reset anchor on clear selection
-  }, [setRowSelection])
+    resetSelectionState()
+  }, [resetSelectionState])
 
   // Set up keyboard navigation with selection clearing
   useKeyboardNavigation({
@@ -1211,16 +1297,35 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
   // Direct category handler for context menu submenu
   const handleSetCategoryDirect = useCallback((category: string, hashes: string[]) => {
+    const usingSelectAll = isAllSelected
+    const resolvedFilters = usingSelectAll ? (selectAllFilters ?? filters) : undefined
+    const resolvedSearch = usingSelectAll ? effectiveSearch : undefined
+    const resolvedExclusions = usingSelectAll ? Array.from(excludedFromSelectAll) : undefined
+    const clientHashes = hashes.length > 0 ? hashes : selectedHashes
+    const totalSelected = usingSelectAll ? effectiveSelectionCount : (clientHashes.length || 1)
+
     handleSetCategory(
       category,
-      hashes,
-      false, // Not using select all when directly setting from context menu
-      undefined,
-      undefined,
-      Array.from(excludedFromSelectAll),
-      undefined
+      usingSelectAll ? [] : hashes,
+      usingSelectAll,
+      resolvedFilters,
+      resolvedSearch,
+      resolvedExclusions,
+      {
+        clientHashes,
+        totalSelected,
+      }
     )
-  }, [handleSetCategory, excludedFromSelectAll])
+  }, [
+    handleSetCategory,
+    isAllSelected,
+    selectAllFilters,
+    filters,
+    effectiveSearch,
+    excludedFromSelectAll,
+    selectedHashes,
+    effectiveSelectionCount,
+  ])
 
   const handleSetLocationWrapper = useCallback((location: string) => {
     handleSetLocation(
@@ -1327,6 +1432,15 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       contextClientMeta
     )
   }, [handleSetSpeedLimits, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
+
+  const handleDropPayload = useCallback((payload: AddTorrentDropPayload) => {
+    setDropPayload(payload)
+    onAddTorrentModalChange?.(true)
+  }, [onAddTorrentModalChange])
+
+  const handleDropPayloadConsumed = useCallback(() => {
+    setDropPayload(null)
+  }, [])
 
 
   // Drag and drop setup
@@ -1440,6 +1554,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
               instanceId={instanceId}
               open={addTorrentModalOpen}
               onOpenChange={onAddTorrentModalChange}
+              dropPayload={dropPayload}
+              onDropPayloadConsumed={handleDropPayloadConsumed}
+              torrents={torrents}
             />
           </div>
         </div>
@@ -1448,13 +1565,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       {/* Table container */}
       <div className="flex flex-col flex-1 min-h-0 mt-2 sm:mt-0 overflow-hidden">
         {/* Virtual scroll container with paint containment optimization for improved rendering performance */}
-        <div
-          className="relative flex-1 overflow-auto scrollbar-thin select-none will-change-transform contain-paint"
+        <TorrentDropZone
           ref={parentRef}
+          className="relative flex-1 overflow-auto scrollbar-thin select-none will-change-transform contain-paint"
           role="grid"
           aria-label="Torrents table"
           aria-rowcount={totalCount}
           aria-colcount={table.getVisibleLeafColumns().length}
+          onDropPayload={handleDropPayload}
         >
           {/* Loading overlay - positioned absolute to scroll container */}
           {torrents.length === 0 && showLoadingState && (
@@ -1591,6 +1709,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                     onExport={handleExportWrapper}
                     isExporting={isExportingTorrent}
                     capabilities={capabilities}
+                    useSubcategories={allowSubcategories}
                   >
                     <div
                       className={`flex border-b cursor-pointer hover:bg-muted/50 ${row.getIsSelected() ? "bg-muted/50" : ""} ${isSelected ? "bg-accent" : ""}`}
@@ -1673,7 +1792,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
               })}
             </div>
           </div>
-        </div>
+        </TorrentDropZone>
 
         {/* Status bar */}
         <div className="flex items-center justify-between p-2 border-t flex-shrink-0 select-none">
@@ -1769,6 +1888,18 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                 {incognitoMode ? "Exit incognito mode" : "Enable incognito mode"}
               </TooltipContent>
             </Tooltip>
+            {/* External IPv4 */}
+            <ExternalIPAddress
+              address={serverState?.last_external_address_v4}
+              incognitoMode={incognitoMode}
+              label="IPv4"
+            />
+            {/* External IPv6 */}
+            <ExternalIPAddress
+              address={serverState?.last_external_address_v6}
+              incognitoMode={incognitoMode}
+              label="IPv6"
+            />
             <Tooltip>
               <TooltipTrigger asChild>
                 <button

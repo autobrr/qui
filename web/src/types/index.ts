@@ -52,12 +52,14 @@ export interface InstanceResponse extends Instance {
 
 export interface InstanceCapabilities {
   supportsTorrentCreation: boolean
+  supportsTorrentExport: boolean
   supportsSetTags: boolean
   supportsTrackerHealth: boolean
   supportsTrackerEditing: boolean
   supportsRenameTorrent: boolean
   supportsRenameFile: boolean
   supportsRenameFolder: boolean
+  supportsSubcategories: boolean
   webAPIVersion?: string
 }
 
@@ -183,6 +185,14 @@ export interface Torrent {
   upspeed: number
 }
 
+export interface DuplicateTorrentMatch {
+  hash: string
+  infohash_v1?: string
+  infohash_v2?: string
+  name: string
+  matched_hashes?: string[]
+}
+
 export interface TorrentStats {
   total: number
   downloading: number
@@ -214,6 +224,8 @@ export interface TorrentFilters {
   excludeStatus: string[]
   categories: string[]
   excludeCategories: string[]
+  expandedCategories?: string[]
+  expandedExcludeCategories?: string[]
   tags: string[]
   excludeTags: string[]
   trackers: string[]
@@ -229,8 +241,10 @@ export interface TorrentResponse {
   categories?: Record<string, Category>
   tags?: string[]
   serverState?: ServerState
+  useSubcategories?: boolean
   cacheMetadata?: CacheMetadata
   hasMore?: boolean
+  trackerHealthSupported?: boolean
 }
 
 // Simplified MainData - only used for Dashboard server stats
@@ -256,6 +270,7 @@ export interface ServerState {
   up_rate_limit: number
   queueing: boolean
   use_alt_speed_limits: boolean
+  use_subcategories?: boolean
   refresh_interval: number
   alltime_dl?: number
   alltime_ul?: number

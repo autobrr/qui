@@ -31,7 +31,7 @@ import { formatBytes, getRatioColor } from "@/lib/utils"
 import type { InstanceResponse, ServerState, TorrentCounts, TorrentResponse, TorrentStats } from "@/types"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
-import { Activity, Ban, ChevronDown, ChevronUp, Download, ExternalLink, Eye, EyeOff, Flame, Globe, HardDrive, Minus, Plus, Rabbit, Turtle, Upload, Zap } from "lucide-react"
+import { Activity, Ban, BrickWallFire, ChevronDown, ChevronUp, Download, ExternalLink, Eye, EyeOff, Globe, HardDrive, Minus, Plus, Rabbit, Turtle, Upload, Zap } from "lucide-react"
 import { useMemo, useState } from "react"
 
 import {
@@ -165,7 +165,7 @@ function InstanceCard({
 
   const isConnectable = normalizedConnectionStatus === "connected"
   const isFirewalled = normalizedConnectionStatus === "firewalled"
-  const ConnectionStatusIcon = isConnectable ? Globe : isFirewalled ? Flame : Ban
+  const ConnectionStatusIcon = isConnectable ? Globe : isFirewalled ? BrickWallFire : Ban
   const connectionStatusIconClass = hasConnectionStatus? isConnectable? "text-green-500": isFirewalled? "text-amber-500": "text-destructive": ""
 
   const connectionStatusTooltip = connectionStatusDisplay ? (isConnectable ? "Connectable" : connectionStatusDisplay) : ""
@@ -291,7 +291,11 @@ function InstanceCard({
           )}
           <CardDescription className="text-xs">
             <div className="flex items-center gap-1 min-w-0">
-              <span className={`${incognitoMode ? "blur-sm select-none" : ""} truncate min-w-0`} style={incognitoMode ? { filter: "blur(8px)" } : {}} title={displayUrl}>
+              <span
+                className={`${incognitoMode ? "blur-sm select-none" : ""} truncate min-w-0`}
+                style={incognitoMode ? { filter: "blur(8px)" } : {}}
+                {...(!incognitoMode && { title: displayUrl })}
+              >
                 {displayUrl}
               </span>
               <Button

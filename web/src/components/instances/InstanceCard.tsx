@@ -143,7 +143,7 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
         <CardDescription className="flex items-center gap-1 text-sm pl-6 pr-8">
           <span
             className={incognitoMode ? "blur-sm select-none truncate" : "truncate"}
-            title={displayUrl}
+            {...(!incognitoMode && { title: displayUrl })}
           >
             {displayUrl}
           </span>

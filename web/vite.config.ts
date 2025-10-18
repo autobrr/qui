@@ -7,6 +7,7 @@ import { defineConfig } from "vite"
 import react from "@vitejs/plugin-react"
 import tailwindcss from "@tailwindcss/vite"
 import { VitePWA } from "vite-plugin-pwa"
+import { nodePolyfills } from "vite-plugin-node-polyfills"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
@@ -20,6 +21,11 @@ export default defineConfig(() => ({
       jsxRuntime: "automatic",
     }),
     tailwindcss(),
+    nodePolyfills({
+      // Enable polyfills for Node.js built-in modules
+      // Required for parse-torrent library to work in the browser
+      include: ["path", "buffer", "stream"],
+    }),
     VitePWA({
       registerType: "autoUpdate",
       injectRegister: null,

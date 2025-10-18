@@ -35,11 +35,13 @@ import { getLinuxCount, LINUX_CATEGORIES, LINUX_TAGS, LINUX_TRACKERS, useIncogni
 import { cn } from "@/lib/utils"
 import type { Category, TorrentFilters } from "@/types"
 import { useVirtualizer } from "@tanstack/react-virtual"
+import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import {
   AlertCircle,
   CheckCircle2,
   Download,
   Edit,
+  FolderPlus,
   Info,
   MoveRight,
   PlayCircle,
@@ -63,6 +65,7 @@ import {
   EditCategoryDialog
 } from "./TagCategoryManagement"
 import { EditTrackerDialog } from "./TorrentDialogs"
+import { CategoryTree } from "./CategoryTree"
 // import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
 import { api } from "@/lib/api"
 import { useMutation } from "@tanstack/react-query"
@@ -98,6 +101,7 @@ interface FilterSidebarProps {
   torrentCounts?: Record<string, number>
   categories?: Record<string, Category>
   tags?: string[]
+  useSubcategories?: boolean
   className?: string
   isStaleData?: boolean
   isLoading?: boolean
@@ -105,6 +109,31 @@ interface FilterSidebarProps {
 }
 
 type TriState = "include" | "exclude" | "neutral"
+
+const arraysEqual = (a?: string[], b?: string[]) => {
+  if (a === b) {
+    return true
+  }
+
+  const aLength = a?.length ?? 0
+  const bLength = b?.length ?? 0
+
+  if (aLength !== bLength) {
+    return false
+  }
+
+  if (!a || !b) {
+    return aLength === bLength
+  }
+
+  for (let i = 0; i < aLength; i++) {
+    if (a[i] !== b[i]) {
+      return false
+    }
+  }
+
+  return true
+}
 
 
 // Define torrent states based on qBittorrent
@@ -169,6 +198,7 @@ const FilterSidebarComponent = ({
   torrentCounts = {},
   categories: propsCategories,
   tags: propsTags,
+  useSubcategories = false,
   className = "",
   isStaleData = false,
   isLoading = false,
@@ -180,15 +210,15 @@ const FilterSidebarComponent = ({
   const { data: capabilities } = useInstanceCapabilities(instanceId)
   const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? true
   const supportsTrackerEditing = capabilities?.supportsTrackerEditing ?? true
+  const supportsSubcategories = capabilities?.supportsSubcategories ?? false
+  const { preferences } = useInstancePreferences(instanceId)
+  const preferenceUseSubcategories = preferences?.use_subcategories
+  const subcategoriesEnabled = Boolean(
+    supportsSubcategories && (preferenceUseSubcategories ?? useSubcategories ?? false)
+  )
 
   // Use compact view state hook
   const { viewMode, cycleViewMode } = usePersistedCompactViewState("compact")
-
-  const applyFilterChange = useCallback((nextFilters: TorrentFilters) => {
-    startTransition(() => {
-      onFilterChange(nextFilters)
-    })
-  }, [onFilterChange])
 
   // Helper function to get count display - shows 0 when loading to prevent showing stale counts from previous instance
   const getDisplayCount = useCallback((key: string, fallbackCount?: number): string => {
@@ -222,6 +252,8 @@ const FilterSidebarComponent = ({
   const [showDeleteEmptyCategoriesDialog, setShowDeleteEmptyCategoriesDialog] = useState(false)
   const [categoryToEdit, setCategoryToEdit] = useState<Category | null>(null)
   const [categoryToDelete, setCategoryToDelete] = useState("")
+  const [parentCategoryForNew, setParentCategoryForNew] = useState<string | undefined>(undefined)
+  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(() => new Set())
 
   // Search states for filtering large lists
   const [categorySearch, setCategorySearch] = useState("")
@@ -356,9 +388,146 @@ const FilterSidebarComponent = ({
     return propsTags || []
   }, [incognitoMode, propsTags, isLoading, isStaleData])
 
+  const realCategoryNames = useMemo(() => new Set(Object.keys(categories)), [categories])
+
   const categoryEntries = useMemo(() => {
-    return Object.entries(categories) as [string, Category][]
-  }, [categories])
+    const baseEntries = Object.entries(categories) as [string, Category][]
+
+    if (!subcategoriesEnabled) {
+      return baseEntries
+    }
+
+    const merged = new Map<string, Category>()
+    for (const [name, category] of baseEntries) {
+      merged.set(name, category)
+    }
+
+    const counts = torrentCounts ?? {}
+    for (const key of Object.keys(counts)) {
+      if (!key.startsWith("category:")) {
+        continue
+      }
+      const categoryName = key.slice("category:".length)
+      if (!categoryName || merged.has(categoryName)) {
+        continue
+      }
+      merged.set(categoryName, { name: categoryName, savePath: "" })
+    }
+
+    return Array.from(merged.entries()).sort((a, b) => a[0].localeCompare(b[0]))
+  }, [categories, torrentCounts, subcategoriesEnabled])
+
+  const syntheticCategorySet = useMemo(() => {
+    if (!subcategoriesEnabled) {
+      return new Set<string>()
+    }
+
+    const synthetic = new Set<string>()
+    for (const [name] of categoryEntries) {
+      if (!realCategoryNames.has(name) && name !== "") {
+        synthetic.add(name)
+      }
+    }
+    return synthetic
+  }, [categoryEntries, realCategoryNames, subcategoriesEnabled])
+
+  const categoriesForTree = useMemo(() => Object.fromEntries(categoryEntries), [categoryEntries])
+
+  const allowSubcategories = subcategoriesEnabled
+
+  const getCategoryCountForTree = useCallback((categoryName: string) => {
+    const key = categoryName ? `category:${categoryName}` : "category:"
+    return getDisplayCount(key, incognitoMode ? getLinuxCount(categoryName, 50) : undefined)
+  }, [getDisplayCount, incognitoMode])
+
+  const expandCategoryList = useCallback((list: string[]) => {
+    if (!allowSubcategories || list.length === 0) {
+      return list
+    }
+
+    const uniqueBase = Array.from(new Set(list))
+    const parentCategories = Array.from(new Set(uniqueBase.filter(category => category && category.length > 0)))
+
+    if (parentCategories.length === 0) {
+      return uniqueBase
+    }
+
+    const existing = new Set(uniqueBase)
+
+    for (const [name] of categoryEntries) {
+      if (!name || existing.has(name)) {
+        continue
+      }
+
+      const hasParent = parentCategories.some(parent => name.startsWith(`${parent}/`))
+
+      if (hasParent) {
+        existing.add(name)
+        uniqueBase.push(name)
+      }
+    }
+
+    return uniqueBase
+  }, [categoryEntries, allowSubcategories])
+
+  const applyFilterChange = useCallback((nextFilters: TorrentFilters) => {
+    const filtersWithExpansion: TorrentFilters = {
+      ...nextFilters,
+    }
+
+    if (allowSubcategories) {
+      filtersWithExpansion.expandedCategories = expandCategoryList(nextFilters.categories)
+      filtersWithExpansion.expandedExcludeCategories = expandCategoryList(nextFilters.excludeCategories)
+    } else {
+      filtersWithExpansion.expandedCategories = undefined
+      filtersWithExpansion.expandedExcludeCategories = undefined
+    }
+
+    startTransition(() => {
+      onFilterChange(filtersWithExpansion)
+    })
+  }, [allowSubcategories, expandCategoryList, onFilterChange])
+
+  const selectedIncludeCategories = selectedFilters.categories
+  const selectedExcludeCategories = selectedFilters.excludeCategories
+  const selectedExpandedCategories = selectedFilters.expandedCategories
+  const selectedExpandedExcludeCategories = selectedFilters.expandedExcludeCategories
+
+  useEffect(() => {
+    if (!allowSubcategories) {
+      if ((selectedExpandedCategories?.length ?? 0) > 0 || (selectedExpandedExcludeCategories?.length ?? 0) > 0) {
+        applyFilterChange({
+          ...selectedFilters,
+          categories: [...selectedIncludeCategories],
+          excludeCategories: [...selectedExcludeCategories],
+        })
+      }
+      return
+    }
+
+    const expandedIncluded = expandCategoryList(selectedIncludeCategories)
+    const expandedExcluded = expandCategoryList(selectedExcludeCategories)
+
+    const includeMismatch = !arraysEqual(selectedExpandedCategories, expandedIncluded)
+    const excludeMismatch = !arraysEqual(selectedExpandedExcludeCategories, expandedExcluded)
+
+    if (includeMismatch || excludeMismatch) {
+      applyFilterChange({
+        ...selectedFilters,
+        categories: [...selectedIncludeCategories],
+        excludeCategories: [...selectedExcludeCategories],
+      })
+    }
+  }, [
+    allowSubcategories,
+    applyFilterChange,
+    expandCategoryList,
+    selectedExcludeCategories,
+    selectedExpandedCategories,
+    selectedExpandedExcludeCategories,
+    selectedFilters,
+    selectedIncludeCategories,
+  ])
 
   // Helper function to check if we have received data from the server
   const hasReceivedData = useCallback((data: Record<string, Category> | string[] | Record<string, number> | undefined) => {
@@ -927,6 +1096,50 @@ const FilterSidebarComponent = ({
     })
   }
 
+  const handleCreateSubcategory = useCallback((categoryName: string) => {
+    if (!subcategoriesEnabled) {
+      return
+    }
+    setParentCategoryForNew(categoryName)
+    setShowCreateCategoryDialog(true)
+  }, [subcategoriesEnabled])
+
+  const handleToggleCollapse = useCallback((categoryName: string) => {
+    setCollapsedCategories((prev) => {
+      const next = new Set(prev)
+      if (next.has(categoryName)) {
+        next.delete(categoryName)
+      } else {
+        next.add(categoryName)
+      }
+      return next
+    })
+  }, [])
+
+  const handleEditCategoryByName = useCallback((categoryName: string) => {
+    const category = categories[categoryName]
+    if (!category) {
+      return
+    }
+    setCategoryToEdit(category)
+    setShowEditCategoryDialog(true)
+  }, [categories, setCategoryToEdit, setShowEditCategoryDialog])
+
+  const handleDeleteCategoryByName = useCallback((categoryName: string) => {
+    setCategoryToDelete(categoryName)
+    setShowDeleteCategoryDialog(true)
+  }, [setCategoryToDelete, setShowDeleteCategoryDialog])
+
+  const handleRemoveEmptyCategories = useCallback(() => {
+    setShowDeleteEmptyCategoriesDialog(true)
+  }, [setShowDeleteEmptyCategoriesDialog])
+
+  useEffect(() => {
+    if (!allowSubcategories) {
+      setCollapsedCategories(new Set())
+    }
+  }, [allowSubcategories, setCollapsedCategories])
+
   const hasActiveFilters =
     selectedFilters.status.length > 0 ||
     selectedFilters.excludeStatus.length > 0 ||
@@ -1073,7 +1286,10 @@ const FilterSidebarComponent = ({
                   {/* Add new category button */}
                   <button
                     className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-1 px-2 w-full cursor-pointer"
-                    onClick={() => setShowCreateCategoryDialog(true)}
+                    onClick={() => {
+                      setParentCategoryForNew(undefined)
+                      setShowCreateCategoryDialog(true)
+                    }}
                   >
                     <Plus className="h-3 w-3" />
                     Add category
@@ -1091,35 +1307,37 @@ const FilterSidebarComponent = ({
                   </div>
 
                   {/* Uncategorized option */}
-                  <label
-                    className={cn(
-                      "flex items-center space-x-2 py-1 px-2 rounded cursor-pointer transition-colors",
-                      uncategorizedState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": "hover:bg-muted"
-                    )}
-                    onPointerDown={(event) => handleCategoryPointerDown(event, "")}
-                  >
-                    <Checkbox
-                      checked={getCheckboxVisualState(uncategorizedState)}
-                      onCheckedChange={() => handleCategoryCheckboxChange("")}
-                      className="rounded border-input"
-                    />
-                    <span
+                  {!allowSubcategories && (
+                    <label
                       className={cn(
-                        "text-sm flex-1 italic",
-                        uncategorizedState === "exclude" ? "text-destructive" : "text-muted-foreground"
+                        "flex items-center space-x-2 py-1 px-2 rounded cursor-pointer transition-colors",
+                        uncategorizedState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": "hover:bg-muted"
                       )}
+                      onPointerDown={(event) => handleCategoryPointerDown(event, "")}
                     >
-                      Uncategorized
-                    </span>
-                    <span
-                      className={cn(
-                        "text-xs",
-                        uncategorizedState === "exclude" ? "text-destructive" : "text-muted-foreground"
-                      )}
-                    >
-                      {getDisplayCount("category:")}
-                    </span>
-                  </label>
+                      <Checkbox
+                        checked={getCheckboxVisualState(uncategorizedState)}
+                        onCheckedChange={() => handleCategoryCheckboxChange("")}
+                        className="rounded border-input"
+                      />
+                      <span
+                        className={cn(
+                          "text-sm flex-1 italic",
+                          uncategorizedState === "exclude" ? "text-destructive" : "text-muted-foreground"
+                        )}
+                      >
+                        Uncategorized
+                      </span>
+                      <span
+                        className={cn(
+                          "text-xs",
+                          uncategorizedState === "exclude" ? "text-destructive" : "text-muted-foreground"
+                        )}
+                      >
+                        {getDisplayCount("category:")}
+                      </span>
+                    </label>
+                  )}
 
                   {/* Loading message for categories */}
                   {!hasReceivedCategoriesData && !incognitoMode && (
@@ -1136,14 +1354,34 @@ const FilterSidebarComponent = ({
                   )}
 
                   {/* Empty categories message */}
-                  {hasReceivedCategoriesData && !debouncedCategorySearch && Object.keys(categories).length === 0 && (
+                  {hasReceivedCategoriesData && !debouncedCategorySearch && categoryEntries.length === 0 && (
                     <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
                       No categories available
                     </div>
                   )}
 
                   {/* Category list - use filtered categories for performance or virtual scrolling for large lists */}
-                  {filteredCategories.length > VIRTUAL_THRESHOLD ? (
+                  {allowSubcategories ? (
+                    <CategoryTree
+                      categories={categoriesForTree}
+                      counts={torrentCounts ?? {}}
+                      useSubcategories={allowSubcategories}
+                      collapsedCategories={collapsedCategories}
+                      onToggleCollapse={handleToggleCollapse}
+                      searchTerm={debouncedCategorySearch}
+                      getCategoryState={getCategoryState}
+                      getCheckboxState={getCheckboxVisualState}
+                      onCategoryCheckboxChange={handleCategoryCheckboxChange}
+                      onCategoryPointerDown={handleCategoryPointerDown}
+                      onCreateSubcategory={handleCreateSubcategory}
+                      onEditCategory={handleEditCategoryByName}
+                      onDeleteCategory={handleDeleteCategoryByName}
+                      onRemoveEmptyCategories={handleRemoveEmptyCategories}
+                      hasEmptyCategories={hasEmptyCategories}
+                      syntheticCategories={syntheticCategorySet}
+                      getCategoryCount={getCategoryCountForTree}
+                    />
+                  ) : filteredCategories.length > VIRTUAL_THRESHOLD ? (
                     <div ref={categoryListRef} className="max-h-96 overflow-auto">
                       <div
                         className="relative"
@@ -1153,6 +1391,9 @@ const FilterSidebarComponent = ({
                           const [name, category] = filteredCategories[virtualRow.index] || ["", {}]
                           if (!name) return null
                           const categoryState = getCategoryState(name)
+                          const indentLevel = allowSubcategories ? Math.max(0, name.split("/").length - 1) : 0
+                          const displayName = allowSubcategories ? (name.split("/").pop() ?? name) : name
+                          const isSynthetic = syntheticCategorySet.has(name)
 
                           return (
                             <div
@@ -1180,6 +1421,12 @@ const FilterSidebarComponent = ({
                                       checked={getCheckboxVisualState(categoryState)}
                                       onCheckedChange={() => handleCategoryCheckboxChange(name)}
                                     />
+                                    {allowSubcategories && indentLevel > 0 && (
+                                      <span
+                                        className="shrink-0"
+                                        style={{ width: `${indentLevel * 12}px` }}
+                                      />
+                                    )}
                                     <span
                                       className={cn(
                                         "text-sm flex-1 truncate w-8",
@@ -1187,7 +1434,7 @@ const FilterSidebarComponent = ({
                                       )}
                                       title={name}
                                     >
-                                      {name}
+                                      {displayName}
                                     </span>
                                     <span
                                       className={cn(
@@ -1200,8 +1447,21 @@ const FilterSidebarComponent = ({
                                   </label>
                                 </ContextMenuTrigger>
                                 <ContextMenuContent>
+                                  {allowSubcategories && (
+                                    <>
+                                      <ContextMenuItem onClick={() => handleCreateSubcategory(name)}>
+                                        <FolderPlus className="mr-2 h-4 w-4" />
+                                        Create Subcategory
+                                      </ContextMenuItem>
+                                      <ContextMenuSeparator />
+                                    </>
+                                  )}
                                   <ContextMenuItem
+                                    disabled={isSynthetic}
                                     onClick={() => {
+                                      if (isSynthetic) {
+                                        return
+                                      }
                                       setCategoryToEdit(category)
                                       setShowEditCategoryDialog(true)
                                     }}
@@ -1211,7 +1471,11 @@ const FilterSidebarComponent = ({
                                   </ContextMenuItem>
                                   <ContextMenuSeparator />
                                   <ContextMenuItem
+                                    disabled={isSynthetic}
                                     onClick={() => {
+                                      if (isSynthetic) {
+                                        return
+                                      }
                                       setCategoryToDelete(name)
                                       setShowDeleteCategoryDialog(true)
                                     }}
@@ -1221,7 +1485,7 @@ const FilterSidebarComponent = ({
                                     Delete Category
                                   </ContextMenuItem>
                                   <ContextMenuItem
-                                    onClick={() => setShowDeleteEmptyCategoriesDialog(true)}
+                                    onClick={handleRemoveEmptyCategories}
                                     disabled={!hasEmptyCategories}
                                     className="text-destructive"
                                   >
@@ -1238,6 +1502,9 @@ const FilterSidebarComponent = ({
                   ) : (
                     filteredCategories.map(([name, category]: [string, Category]) => {
                       const categoryState = getCategoryState(name)
+                      const indentLevel = allowSubcategories ? Math.max(0, name.split("/").length - 1) : 0
+                      const displayName = allowSubcategories ? (name.split("/").pop() ?? name) : name
+                      const isSynthetic = syntheticCategorySet.has(name)
                       return (
                         <ContextMenu key={name}>
                           <ContextMenuTrigger asChild>
@@ -1252,6 +1519,12 @@ const FilterSidebarComponent = ({
                                 checked={getCheckboxVisualState(categoryState)}
                                 onCheckedChange={() => handleCategoryCheckboxChange(name)}
                               />
+                              {allowSubcategories && indentLevel > 0 && (
+                                <span
+                                  className="shrink-0"
+                                  style={{ width: `${indentLevel * 12}px` }}
+                                />
+                              )}
                               <span
                                 className={cn(
                                   "text-sm flex-1 truncate w-8",
@@ -1259,7 +1532,7 @@ const FilterSidebarComponent = ({
                                 )}
                                 title={name}
                               >
-                                {name}
+                                {displayName}
                               </span>
                               <span
                                 className={cn(
@@ -1272,8 +1545,21 @@ const FilterSidebarComponent = ({
                             </label>
                           </ContextMenuTrigger>
                           <ContextMenuContent>
+                            {allowSubcategories && (
+                              <>
+                                <ContextMenuItem onClick={() => handleCreateSubcategory(name)}>
+                                  <FolderPlus className="mr-2 h-4 w-4" />
+                                  Create Subcategory
+                                </ContextMenuItem>
+                                <ContextMenuSeparator />
+                              </>
+                            )}
                             <ContextMenuItem
+                              disabled={isSynthetic}
                               onClick={() => {
+                                if (isSynthetic) {
+                                  return
+                                }
                                 setCategoryToEdit(category)
                                 setShowEditCategoryDialog(true)
                               }}
@@ -1283,7 +1569,11 @@ const FilterSidebarComponent = ({
                             </ContextMenuItem>
                             <ContextMenuSeparator />
                             <ContextMenuItem
+                              disabled={isSynthetic}
                               onClick={() => {
+                                if (isSynthetic) {
+                                  return
+                                }
                                 setCategoryToDelete(name)
                                 setShowDeleteCategoryDialog(true)
                               }}
@@ -1293,7 +1583,7 @@ const FilterSidebarComponent = ({
                               Delete Category
                             </ContextMenuItem>
                             <ContextMenuItem
-                              onClick={() => setShowDeleteEmptyCategoriesDialog(true)}
+                              onClick={handleRemoveEmptyCategories}
                               disabled={!hasEmptyCategories}
                               className="text-destructive"
                             >
@@ -1774,8 +2064,14 @@ const FilterSidebarComponent = ({
 
       <CreateCategoryDialog
         open={showCreateCategoryDialog}
-        onOpenChange={setShowCreateCategoryDialog}
+        onOpenChange={(open) => {
+          setShowCreateCategoryDialog(open)
+          if (!open) {
+            setParentCategoryForNew(undefined)
+          }
+        }}
         instanceId={instanceId}
+        parent={parentCategoryForNew}
       />
 
       {categoryToEdit && (
@@ -1838,6 +2134,7 @@ export const FilterSidebar = memo(FilterSidebarComponent, (prevProps, nextProps)
   if (prevProps.isLoading !== nextProps.isLoading) return false
   if (prevProps.isMobile !== nextProps.isMobile) return false
   if (prevProps.onFilterChange !== nextProps.onFilterChange) return false
+  if ((prevProps.useSubcategories ?? false) !== (nextProps.useSubcategories ?? false)) return false
 
   return (
     prevProps.selectedFilters === nextProps.selectedFilters &&
