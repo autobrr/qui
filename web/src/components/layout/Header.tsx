@@ -452,7 +452,8 @@ export function Header({
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
                 <Link
-                  to="/instances"
+                  to="/settings"
+                  search={{ tab: "instances" }}
                   className="flex cursor-pointer"
                 >
                   <Server className="mr-2 h-4 w-4"/>
