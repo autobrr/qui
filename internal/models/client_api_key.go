@@ -9,6 +9,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/autobrr/qui/internal/dbinterface"
 )
 
 var ErrClientAPIKeyNotFound = errors.New("client api key not found")
@@ -23,10 +25,10 @@ type ClientAPIKey struct {
 }
 
 type ClientAPIKeyStore struct {
-	db *sql.DB
+	db dbinterface.Querier
 }
 
-func NewClientAPIKeyStore(db *sql.DB) *ClientAPIKeyStore {
+func NewClientAPIKeyStore(db dbinterface.Querier) *ClientAPIKeyStore {
 	return &ClientAPIKeyStore{db: db}
 }
 

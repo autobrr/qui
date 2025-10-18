@@ -5,12 +5,12 @@ package auth
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/models"
 )
 
@@ -28,7 +28,7 @@ type Service struct {
 	apiKeyStore *models.APIKeyStore
 }
 
-func NewService(db *sql.DB) *Service {
+func NewService(db dbinterface.Querier) *Service {
 	return &Service{
 		userStore:   models.NewUserStore(db),
 		apiKeyStore: models.NewAPIKeyStore(db),

@@ -36,7 +36,7 @@ func TestCreateUserCommandCreatesUser(t *testing.T) {
 	db := openDatabase(t, databasePath(configDir))
 	t.Cleanup(func() { _ = db.Close() })
 
-	userStore := models.NewUserStore(db.Conn())
+	userStore := models.NewUserStore(db)
 	user, err := userStore.GetByUsername(ctx, "testuser")
 	require.NoError(t, err)
 	assert.Equal(t, "testuser", user.Username)
@@ -59,7 +59,7 @@ func TestCreateUserCommandSkipsWhenUserExists(t *testing.T) {
 	)
 
 	db := openDatabase(t, databasePath(configDir))
-	userStore := models.NewUserStore(db.Conn())
+	userStore := models.NewUserStore(db)
 	userBefore, err := userStore.Get(ctx)
 	require.NoError(t, err)
 	initialHash := userBefore.PasswordHash
@@ -76,7 +76,7 @@ func TestCreateUserCommandSkipsWhenUserExists(t *testing.T) {
 	db = openDatabase(t, databasePath(configDir))
 	t.Cleanup(func() { _ = db.Close() })
 
-	userAfter, err := models.NewUserStore(db.Conn()).Get(ctx)
+	userAfter, err := models.NewUserStore(db).Get(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, initialHash, userAfter.PasswordHash)
 }
@@ -93,7 +93,7 @@ func TestChangePasswordCommandUpdatesStoredHash(t *testing.T) {
 	)
 
 	db := openDatabase(t, databasePath(configDir))
-	userStore := models.NewUserStore(db.Conn())
+	userStore := models.NewUserStore(db)
 	userBefore, err := userStore.Get(ctx)
 	require.NoError(t, err)
 	oldHash := userBefore.PasswordHash
@@ -110,7 +110,7 @@ func TestChangePasswordCommandUpdatesStoredHash(t *testing.T) {
 	db = openDatabase(t, databasePath(configDir))
 	t.Cleanup(func() { _ = db.Close() })
 
-	userAfter, err := models.NewUserStore(db.Conn()).Get(ctx)
+	userAfter, err := models.NewUserStore(db).Get(ctx)
 	require.NoError(t, err)
 	assert.NotEqual(t, oldHash, userAfter.PasswordHash)
 
