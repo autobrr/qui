@@ -1468,86 +1468,89 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           {/* Action buttons - now handled by Management Bar in Header */}
           <div className="flex gap-1 sm:gap-2 flex-shrink-0">
 
-            {/* Column visibility dropdown moved next to search via portal, with inline fallback */}
+            {/* Column controls next to search via portal, with inline fallback */}
             {(() => {
               const container = typeof document !== "undefined" ? document.getElementById("header-search-actions") : null
-              const dropdown = (
-                <DropdownMenu>
-                  <Tooltip disableHoverableContent={true}>
-                    <TooltipTrigger
-                      asChild
-                      onFocus={(e) => {
-                        // Prevent tooltip from showing on focus - only show on hover
-                        e.preventDefault()
-                      }}
-                    >
-                      <DropdownMenuTrigger asChild>
+              const actions = (
+                <>
+                  {columnFilters.length > 0 && (
+                    <Tooltip>
+                      <TooltipTrigger
+                        asChild
+                        onFocus={(e) => {
+                          // Prevent tooltip from showing on focus - only show on hover
+                          e.preventDefault()
+                        }}
+                      >
                         <Button
                           variant="outline"
                           size="icon"
-                          className="relative"
+                          className="relative mr-1"
+                          onClick={() => setColumnFilters([])}
                         >
-                          <Columns3 className="h-4 w-4"/>
-                          <span className="sr-only">Toggle columns</span>
+                          <X className="h-4 w-4"/>
+                          <span className="sr-only">Clear all column filters</span>
                         </Button>
-                      </DropdownMenuTrigger>
-                    </TooltipTrigger>
-                    <TooltipContent>Toggle columns</TooltipContent>
-                  </Tooltip>
-                  <DropdownMenuContent align="end" className="w-48">
-                    <DropdownMenuLabel>Toggle columns</DropdownMenuLabel>
-                    <DropdownMenuSeparator/>
-                    {table
-                      .getAllColumns()
-                      .filter(
-                        (column) =>
-                          column.id !== "select" && // Never show select in visibility options
-                          column.getCanHide()
-                      )
-                      .map((column) => {
-                        return (
-                          <DropdownMenuCheckboxItem
-                            key={column.id}
-                            className="capitalize"
-                            checked={column.getIsVisible()}
-                            onCheckedChange={(value) =>
-                              column.toggleVisibility(!!value)
-                            }
-                            onSelect={(e) => e.preventDefault()}
-                          >
-                            <span className="truncate">
-                              {(column.columnDef.meta as { headerString?: string })?.headerString ||
-                                (typeof column.columnDef.header === "string" ? column.columnDef.header : column.id)}
-                            </span>
-                          </DropdownMenuCheckboxItem>
-                        )
-                      })}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )
-              return container ? createPortal(dropdown, container) : dropdown
-            })()}
+                      </TooltipTrigger>
+                      <TooltipContent>Clear all column filters ({columnFilters.length})</TooltipContent>
+                    </Tooltip>
+                  )}
 
-            {/* Clear column filters button - only show when filters are active */}
-            {columnFilters.length > 0 && (() => {
-              const container = typeof document !== "undefined" ? document.getElementById("header-search-actions") : null
-              const clearButton = (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="ml-1"
-                      onClick={() => setColumnFilters([])}
-                    >
-                      <X className="h-4 w-4"/>
-                      <span className="sr-only">Clear all column filters</span>
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Clear all column filters ({columnFilters.length})</TooltipContent>
-                </Tooltip>
+                  <DropdownMenu>
+                    <Tooltip disableHoverableContent={true}>
+                      <TooltipTrigger
+                        asChild
+                        onFocus={(e) => {
+                          // Prevent tooltip from showing on focus - only show on hover
+                          e.preventDefault()
+                        }}
+                      >
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                          >
+                            <Columns3 className="h-4 w-4"/>
+                            <span className="sr-only">Toggle columns</span>
+                          </Button>
+                        </DropdownMenuTrigger>
+                      </TooltipTrigger>
+                      <TooltipContent>Toggle columns</TooltipContent>
+                    </Tooltip>
+                    <DropdownMenuContent align="end" className="w-48">
+                      <DropdownMenuLabel>Toggle columns</DropdownMenuLabel>
+                      <DropdownMenuSeparator/>
+                      {table
+                        .getAllColumns()
+                        .filter(
+                          (column) =>
+                            column.id !== "select" && // Never show select in visibility options
+                            column.getCanHide()
+                        )
+                        .map((column) => {
+                          return (
+                            <DropdownMenuCheckboxItem
+                              key={column.id}
+                              className="capitalize"
+                              checked={column.getIsVisible()}
+                              onCheckedChange={(value) =>
+                                column.toggleVisibility(!!value)
+                              }
+                              onSelect={(e) => e.preventDefault()}
+                            >
+                              <span className="truncate">
+                                {(column.columnDef.meta as { headerString?: string })?.headerString ||
+                                  (typeof column.columnDef.header === "string" ? column.columnDef.header : column.id)}
+                              </span>
+                            </DropdownMenuCheckboxItem>
+                          )
+                        })}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </>
               )
-              return container ? createPortal(clearButton, container) : clearButton
+
+              return container ? createPortal(actions, container) : actions
             })()}
 
             <AddTorrentDialog
