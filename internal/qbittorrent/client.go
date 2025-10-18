@@ -344,7 +344,12 @@ func (c *Client) trackerManager() *qbt.TrackerManager {
 }
 
 func (c *Client) supportsTrackerInclude() bool {
-	return true // Now support tracker include for all versions
+	if c.trackerManager() == nil {
+		return false
+	}
+
+	// Check if the underlying client supports tracker include
+	return c.trackerManager().SupportsIncludeTrackers()
 }
 
 func (c *Client) hydrateTorrentsWithTrackers(ctx context.Context, torrents []qbt.Torrent, allowFetch bool) ([]qbt.Torrent, map[string][]qbt.TorrentTracker, []string, error) {
