@@ -186,7 +186,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	}
 
 	// Create proxy handler
-	proxyHandler := proxy.NewHandler(s.clientPool, s.clientAPIKeyStore, s.instanceStore, s.config.Config.BaseURL)
+	proxyHandler := proxy.NewHandler(s.clientPool, s.clientAPIKeyStore, s.instanceStore, s.syncManager, s.config.Config.BaseURL)
 
 	// license handler (optional, only if the license service is configured)
 	var licenseHandler *handlers.LicenseHandler

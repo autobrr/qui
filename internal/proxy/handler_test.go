@@ -65,7 +65,7 @@ func TestHandlerRewriteRequest_PathJoining(t *testing.T) {
 		baseCase := baseCase
 
 		t.Run(baseCase.name, func(t *testing.T) {
-			h := NewHandler(nil, nil, nil, baseCase.baseURL)
+			h := NewHandler(nil, nil, nil, nil, baseCase.baseURL)
 			require.NotNil(t, h)
 
 			for _, tc := range instanceCases {
@@ -108,6 +108,59 @@ func TestHandlerRewriteRequest_PathJoining(t *testing.T) {
 					require.Equal(t, instanceURL.Host, pr.Out.URL.Host)
 				})
 			}
+		})
+	}
+}
+
+func TestHandlerShouldHandleSearch(t *testing.T) {
+	h := NewHandler(nil, nil, nil, nil, "/")
+
+	tests := []struct {
+		name     string
+		method   string
+		path     string
+		query    string
+		expected bool
+	}{
+		{
+			name:     "GET request with search parameter",
+			method:   "GET",
+			path:     "/api/v2/torrents/info",
+			query:    "search=ubuntu",
+			expected: true,
+		},
+		{
+			name:     "GET request without search parameter",
+			method:   "GET",
+			path:     "/api/v2/torrents/info",
+			query:    "",
+			expected: false,
+		},
+		{
+			name:     "POST request with search parameter",
+			method:   "POST",
+			path:     "/api/v2/torrents/info",
+			query:    "search=ubuntu",
+			expected: false,
+		},
+		{
+			name:     "GET request to different endpoint",
+			method:   "GET",
+			path:     "/api/v2/app/version",
+			query:    "search=ubuntu",
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reqURL := tt.path
+			if tt.query != "" {
+				reqURL += "?" + tt.query
+			}
+			req := httptest.NewRequest(tt.method, reqURL, nil)
+			result := h.shouldHandleSearch(req)
+			require.Equal(t, tt.expected, result)
 		})
 	}
 }
