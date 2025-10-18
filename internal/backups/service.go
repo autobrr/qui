@@ -131,6 +131,11 @@ func normalizeBackupSettings(settings *models.BackupSettings) bool {
 
 	changed := false
 
+	if settings.CustomPath != nil {
+		settings.CustomPath = nil
+		changed = true
+	}
+
 	if settings.KeepHourly < 0 {
 		settings.KeepHourly = 0
 		changed = true
@@ -614,21 +619,6 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 }
 
 func (s *Service) resolveBasePaths(ctx context.Context, settings *models.BackupSettings, instanceID int) (string, string, error) {
-	if settings.CustomPath != nil {
-		custom := strings.TrimSpace(*settings.CustomPath)
-		if custom != "" {
-			if filepath.IsAbs(custom) {
-				return "", "", errors.New("custom backup path must be relative to data dir")
-			}
-			base := filepath.Clean(custom)
-			if s.cfg.DataDir == "" {
-				return "", "", errors.New("data directory not configured")
-			}
-			abs := filepath.Join(s.cfg.DataDir, base)
-			return abs, base, nil
-		}
-	}
-
 	var baseSegment string
 	if name, err := s.store.GetInstanceName(ctx, instanceID); err == nil {
 		if trimmed := strings.TrimSpace(name); trimmed != "" {
@@ -964,11 +954,13 @@ func (s *Service) GetSettings(ctx context.Context, instanceID int) (*models.Back
 	}
 
 	s.normalizeAndPersistSettings(ctx, settings)
+	settings.CustomPath = nil
 
 	return settings, nil
 }
 
 func (s *Service) UpdateSettings(ctx context.Context, settings *models.BackupSettings) error {
+	settings.CustomPath = nil
 	normalizeBackupSettings(settings)
 	return s.store.UpsertSettings(ctx, settings)
 }

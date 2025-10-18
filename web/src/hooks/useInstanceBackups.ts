@@ -35,7 +35,6 @@ export function useUpdateBackupSettings(instanceId: number) {
       keepMonthly: number
       includeCategories: boolean
       includeTags: boolean
-      customPath?: string | null
     }) => api.updateBackupSettings(instanceId, data),
     onSuccess: (settings: BackupSettings) => {
       queryClient.setQueryData<BackupSettings>(["instance-backups", instanceId, "settings"], settings)

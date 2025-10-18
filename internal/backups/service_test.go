@@ -245,3 +245,35 @@ func TestNormalizeAndPersistSettingsRepairsLegacyValues(t *testing.T) {
 	require.Equal(t, 1, saved.KeepDaily)
 	require.Equal(t, 1, saved.KeepMonthly)
 }
+
+func TestUpdateSettingsClearsCustomPath(t *testing.T) {
+	db := setupTestBackupDB(t)
+
+	ctx := context.Background()
+	result, err := db.ExecContext(ctx, "INSERT INTO instances (name) VALUES (?)", "custom-path")
+	require.NoError(t, err)
+
+	instanceID64, err := result.LastInsertId()
+	require.NoError(t, err)
+	instanceID := int(instanceID64)
+
+	store := models.NewBackupStore(db)
+	svc := NewService(store, nil, Config{WorkerCount: 1})
+
+	custom := "snapshots/daily"
+	settings := &models.BackupSettings{
+		InstanceID: instanceID,
+		Enabled:    true,
+		CustomPath: &custom,
+	}
+
+	require.NoError(t, svc.UpdateSettings(ctx, settings))
+
+	saved, err := store.GetSettings(ctx, instanceID)
+	require.NoError(t, err)
+	require.Nil(t, saved.CustomPath)
+
+	view, err := svc.GetSettings(ctx, instanceID)
+	require.NoError(t, err)
+	require.Nil(t, view.CustomPath)
+}

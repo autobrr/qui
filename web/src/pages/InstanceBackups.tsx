@@ -96,7 +96,6 @@ type SettingsFormState = {
   keepMonthly: number
   includeCategories: boolean
   includeTags: boolean
-  customPath?: string | null
 }
 
 type SettingsToggleKey =
@@ -308,7 +307,6 @@ export function InstanceBackups() {
         keepMonthly: settings.keepMonthly,
         includeCategories: settings.includeCategories,
         includeTags: settings.includeTags,
-        customPath: settings.customPath ?? "",
       })
     }
   }, [settings])
@@ -378,17 +376,11 @@ export function InstanceBackups() {
     })
   }
 
-  const handlePathChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const value = event.target.value
-    setFormState(prev => (prev ? { ...prev, customPath: value === "" ? "" : value } : prev))
-  }
-
   const handleSave = async () => {
     if (!formState) return
     try {
       await updateSettings.mutateAsync({
         ...formState,
-        customPath: formState.customPath === "" ? null : formState.customPath,
       })
       toast.success("Backup settings updated")
     } catch (error) {
@@ -841,31 +833,6 @@ export function InstanceBackups() {
                       tooltip="Runs when the previous run is from an earlier calendar month."
                     />
                   </div>
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Label htmlFor="custom-path">Custom backup path</Label>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span
-                          className="inline-flex h-5 w-5 cursor-help items-center justify-center rounded-full text-muted-foreground hover:text-foreground"
-                        >
-                          <CircleHelp className="h-3.5 w-3.5" />
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Windows users: use double backslashes (e.g., backups\\MyInstance)</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </div>
-                  <Input
-                    id="custom-path"
-                    value={formState.customPath ?? ""}
-                    onChange={handlePathChange}
-                    placeholder="backups/MyInstance"
-                  />
-                  <p className="text-xs text-muted-foreground">Relative to qui data directory. Leave empty to use default.</p>
                 </div>
 
                 <div className="space-y-2">

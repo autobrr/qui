@@ -32,18 +32,17 @@ func NewBackupsHandler(service *backups.Service) *BackupsHandler {
 }
 
 type backupSettingsRequest struct {
-	Enabled           bool    `json:"enabled"`
-	HourlyEnabled     bool    `json:"hourlyEnabled"`
-	DailyEnabled      bool    `json:"dailyEnabled"`
-	WeeklyEnabled     bool    `json:"weeklyEnabled"`
-	MonthlyEnabled    bool    `json:"monthlyEnabled"`
-	KeepHourly        int     `json:"keepHourly"`
-	KeepDaily         int     `json:"keepDaily"`
-	KeepWeekly        int     `json:"keepWeekly"`
-	KeepMonthly       int     `json:"keepMonthly"`
-	IncludeCategories bool    `json:"includeCategories"`
-	IncludeTags       bool    `json:"includeTags"`
-	CustomPath        *string `json:"customPath"`
+	Enabled           bool `json:"enabled"`
+	HourlyEnabled     bool `json:"hourlyEnabled"`
+	DailyEnabled      bool `json:"dailyEnabled"`
+	WeeklyEnabled     bool `json:"weeklyEnabled"`
+	MonthlyEnabled    bool `json:"monthlyEnabled"`
+	KeepHourly        int  `json:"keepHourly"`
+	KeepDaily         int  `json:"keepDaily"`
+	KeepWeekly        int  `json:"keepWeekly"`
+	KeepMonthly       int  `json:"keepMonthly"`
+	IncludeCategories bool `json:"includeCategories"`
+	IncludeTags       bool `json:"includeTags"`
 }
 
 func (h *BackupsHandler) GetSettings(w http.ResponseWriter, r *http.Request) {
@@ -88,7 +87,6 @@ func (h *BackupsHandler) UpdateSettings(w http.ResponseWriter, r *http.Request) 
 		KeepMonthly:       req.KeepMonthly,
 		IncludeCategories: req.IncludeCategories,
 		IncludeTags:       req.IncludeTags,
-		CustomPath:        req.CustomPath,
 	}
 
 	if err := h.service.UpdateSettings(r.Context(), settings); err != nil {
@@ -389,8 +387,6 @@ func (h *BackupsHandler) DownloadTorrentBlob(w http.ResponseWriter, r *http.Requ
 			if altFile, altErr := os.Open(altAbs); altErr == nil {
 				file = altFile
 				defer file.Close()
-				absTarget = altAbs
-				rel = altRel
 				goto serve
 			}
 			RespondError(w, http.StatusNotFound, "Cached torrent file missing")

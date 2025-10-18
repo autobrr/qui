@@ -194,7 +194,6 @@ class ApiClient {
     keepMonthly: number
     includeCategories: boolean
     includeTags: boolean
-    customPath?: string | null
   }): Promise<BackupSettings> {
     return this.request<BackupSettings>(`/instances/${instanceId}/backups/settings`, {
       method: "PUT",

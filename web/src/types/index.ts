@@ -341,7 +341,6 @@ export interface BackupSettings {
   keepMonthly: number
   includeCategories: boolean
   includeTags: boolean
-  customPath?: string | null
   createdAt?: string
   updatedAt?: string
 }
