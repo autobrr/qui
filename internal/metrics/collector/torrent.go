@@ -24,6 +24,10 @@ type TorrentCollector struct {
 	torrentsCheckingDesc         *prometheus.Desc
 	downloadSpeedDesc            *prometheus.Desc
 	uploadSpeedDesc              *prometheus.Desc
+	sessionDownload              *prometheus.Desc
+	sessionUpload                *prometheus.Desc
+	allTimeDownload              *prometheus.Desc
+	allTimeUpload                *prometheus.Desc
 	instanceConnectionStatusDesc *prometheus.Desc
 	scrapeErrorsDesc             *prometheus.Desc
 }
@@ -75,6 +79,30 @@ func NewTorrentCollector(syncManager *qbittorrent.SyncManager, clientPool *qbitt
 			[]string{"instance_id", "instance_name"},
 			nil,
 		),
+		sessionDownload: prometheus.NewDesc(
+			"qbittorrent_session_download_bytes",
+			"Total downloaded data in bytes per session by instance",
+			[]string{"instance_id", "instance_name"},
+			nil,
+		),
+		sessionUpload: prometheus.NewDesc(
+			"qbittorrent_session_upload_bytes",
+			"Total uploaded data in bytes per session by instance",
+			[]string{"instance_id", "instance_name"},
+			nil,
+		),
+		allTimeDownload: prometheus.NewDesc(
+			"qbittorrent_alltime_download_bytes",
+			"Total downloaded data in bytes by instance",
+			[]string{"instance_id", "instance_name"},
+			nil,
+		),
+		allTimeUpload: prometheus.NewDesc(
+			"qbittorrent_alltime_upload_bytes",
+			"Total uploaded data in bytes by instance",
+			[]string{"instance_id", "instance_name"},
+			nil,
+		),
 		instanceConnectionStatusDesc: prometheus.NewDesc(
 			"qbittorrent_instance_connection_status",
 			"Connection status of qBittorrent instance (1=connected, 0=disconnected)",
@@ -98,6 +126,10 @@ func (c *TorrentCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.torrentsCheckingDesc
 	ch <- c.downloadSpeedDesc
 	ch <- c.uploadSpeedDesc
+	ch <- c.sessionDownload
+	ch <- c.sessionUpload
+	ch <- c.allTimeDownload
+	ch <- c.allTimeUpload
 	ch <- c.instanceConnectionStatusDesc
 	ch <- c.scrapeErrorsDesc
 }
@@ -158,7 +190,7 @@ func (c *TorrentCollector) Collect(ch chan<- prometheus.Metric) {
 			continue
 		}
 
-		// Use GetTorrentsWithFilters with no filters to get all torrents and counts
+		// Use GetTorrentsWithFilters with no filters to get all torrents, counts and global stats
 		// This uses the same data source as the UI for consistency
 		response, err := c.syncManager.GetTorrentsWithFilters(ctx, instance.ID, 100000, 0, "", "", "", qbittorrent.FilterOptions{})
 		if err != nil {
@@ -222,6 +254,39 @@ func (c *TorrentCollector) Collect(ch chan<- prometheus.Metric) {
 					instanceName,
 				)
 			}
+
+		}
+
+		if response != nil && response.ServerState != nil {
+			stats := response.ServerState
+			ch <- prometheus.MustNewConstMetric(
+				c.sessionDownload,
+				prometheus.GaugeValue,
+				float64(stats.DlInfoData),
+				instanceIDStr,
+				instanceName,
+			)
+			ch <- prometheus.MustNewConstMetric(
+				c.sessionUpload,
+				prometheus.GaugeValue,
+				float64(stats.UpInfoData),
+				instanceIDStr,
+				instanceName,
+			)
+			ch <- prometheus.MustNewConstMetric(
+				c.allTimeDownload,
+				prometheus.GaugeValue,
+				float64(stats.AlltimeDl),
+				instanceIDStr,
+				instanceName,
+			)
+			ch <- prometheus.MustNewConstMetric(
+				c.allTimeUpload,
+				prometheus.GaugeValue,
+				float64(stats.AlltimeUl),
+				instanceIDStr,
+				instanceName,
+			)
 		}
 
 		speeds, err := c.syncManager.GetInstanceSpeeds(ctx, instance.ID)
