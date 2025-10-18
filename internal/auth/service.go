@@ -10,8 +10,8 @@ import (
 
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/internal/dbiface"
 )
 
 const (
@@ -28,7 +28,7 @@ type Service struct {
 	apiKeyStore *models.APIKeyStore
 }
 
-func NewService(db dbiface.DBLike) *Service {
+func NewService(db dbinterface.Querier) *Service {
 	return &Service{
 		userStore:   models.NewUserStore(db),
 		apiKeyStore: models.NewAPIKeyStore(db),

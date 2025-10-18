@@ -18,8 +18,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/domain"
-	"github.com/autobrr/qui/internal/dbiface"
 )
 
 var ErrInstanceNotFound = errors.New("instance not found")
@@ -113,11 +113,11 @@ func (i *Instance) UnmarshalJSON(data []byte) error {
 }
 
 type InstanceStore struct {
-	db            dbiface.DBLike
+	db            dbinterface.Querier
 	encryptionKey []byte
 }
 
-func NewInstanceStore(db dbiface.DBLike, encryptionKey []byte) (*InstanceStore, error) {
+func NewInstanceStore(db dbinterface.Querier, encryptionKey []byte) (*InstanceStore, error) {
 	if len(encryptionKey) != 32 {
 		return nil, errors.New("encryption key must be 32 bytes")
 	}

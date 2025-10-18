@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/autobrr/qui/internal/dbiface"
+	"github.com/autobrr/qui/internal/dbinterface"
 )
 
 // Error types for categorization
@@ -29,10 +29,10 @@ type InstanceError struct {
 }
 
 type InstanceErrorStore struct {
-	db dbiface.DBLike
+	db dbinterface.Querier
 }
 
-func NewInstanceErrorStore(db dbiface.DBLike) *InstanceErrorStore {
+func NewInstanceErrorStore(db dbinterface.Querier) *InstanceErrorStore {
 	return &InstanceErrorStore{
 		db: db,
 	}

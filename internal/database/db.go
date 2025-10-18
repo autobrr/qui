@@ -11,7 +11,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
@@ -36,18 +35,6 @@ type writeRes struct {
 	err    error
 }
 
-// fakeResult is returned for statements that return rows (RETURNING)
-// when executed through ExecContext. It provides zero values for
-// LastInsertId and RowsAffected.
-type fakeResult struct{}
-
-func (f fakeResult) LastInsertId() (int64, error) { return 0, nil }
-func (f fakeResult) RowsAffected() (int64, error) { return 0, nil }
-
-type stmtCacheEntry struct {
-	stmt *sql.Stmt
-}
-
 // reader/writer fields on DB
 type DB struct {
 	conn    *sql.DB
@@ -60,6 +47,7 @@ const (
 	defaultBusyTimeout       = 5 * time.Second
 	defaultBusyTimeoutMillis = int(defaultBusyTimeout / time.Millisecond)
 	connectionSetupTimeout   = 5 * time.Second
+	writeChannelBuffer       = 256 // buffer for write operations to improve throughput
 )
 
 var driverInit sync.Once
@@ -151,7 +139,7 @@ func New(databasePath string) (*DB, error) {
 
 	db := &DB{
 		conn:    conn,
-		writeCh: make(chan writeReq),
+		writeCh: make(chan writeReq, writeChannelBuffer),
 		stmts:   stmtsCache,
 		stop:    make(chan struct{}),
 	}
@@ -181,65 +169,77 @@ func New(databasePath string) (*DB, error) {
 }
 
 // getStmt returns a prepared statement for the given query, preparing and
-// caching it if necessary.
+// caching it if necessary. Statements are cached with TTL and automatically
+// closed on eviction. This is safe for concurrent use.
 func (db *DB) getStmt(ctx context.Context, query string) (*sql.Stmt, error) {
+	// Fast path: check cache first
 	if s, found := db.stmts.Get(query); found && s != nil {
 		return s, nil
 	}
 
-	// prepare and cache
+	// Slow path: prepare new statement
+	// Note: Multiple goroutines might prepare the same query simultaneously,
+	// but this is acceptable since:
+	// 1. It's rare (only on cache miss/eviction)
+	// 2. The extra statements will be garbage collected
+	// 3. TTL cache will eventually converge to one statement per query
 	s, err := db.conn.PrepareContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
-	db.stmts.Set(query, s, ttlcache.DefaultTTL)
 
-	// statement will be closed by ttlcache deallocation function when evicted
+	// Cache the statement - if another goroutine already cached it,
+	// that's fine, this one will be closed by the deallocation function
+	db.stmts.Set(query, s, ttlcache.DefaultTTL)
 
 	return s, nil
 }
 
-// execWrite executes a write query. If a prepared stmt is provided it will
-// be used, otherwise the connection is used directly. If the query contains
-// a RETURNING clause, QueryContext will be used and the returned rows will
-// be consumed and closed; a fakeResult is returned to the caller because
-// Exec-style callers expect a sql.Result.
+// execWrite executes a write query using ExecContext. If a prepared stmt
+// is provided it will be used, otherwise the connection is used directly.
 func (db *DB) execWrite(ctx context.Context, stmt *sql.Stmt, query string, args []any) (sql.Result, error) {
-	up := strings.ToUpper(strings.TrimSpace(query))
-	if strings.Contains(up, "RETURNING") {
-		if stmt != nil {
-			rows, err := stmt.QueryContext(ctx, args...)
-			if err != nil {
-				return nil, err
-			}
-			_ = rows.Close()
-			return fakeResult{}, nil
-		}
-		rows, err := db.conn.QueryContext(ctx, query, args...)
-		if err != nil {
-			return nil, err
-		}
-		_ = rows.Close()
-		return fakeResult{}, nil
-	}
-
 	if stmt != nil {
 		return stmt.ExecContext(ctx, args...)
 	}
 	return db.conn.ExecContext(ctx, query, args...)
 }
 
+// isWriteQuery efficiently determines if a query is a write operation.
+// This uses a fast byte-level check to avoid string allocation and case conversion.
+func isWriteQuery(query string) bool {
+	// Skip leading whitespace
+	i := 0
+	for i < len(query) && (query[i] == ' ' || query[i] == '\t' || query[i] == '\n' || query[i] == '\r') {
+		i++
+	}
+	if i >= len(query) {
+		return false
+	}
+
+	// Check first character (case-insensitive)
+	switch query[i] | 0x20 { // convert to lowercase by setting bit 5
+	case 'i': // INSERT
+		return len(query) >= i+6 && (query[i:i+6] == "INSERT" || query[i:i+6] == "insert" || query[i:i+6] == "Insert")
+	case 'u': // UPDATE or UPSERT
+		if len(query) >= i+6 && (query[i:i+6] == "UPDATE" || query[i:i+6] == "update" || query[i:i+6] == "Update") {
+			return true
+		}
+		return len(query) >= i+6 && (query[i:i+6] == "UPSERT" || query[i:i+6] == "upsert" || query[i:i+6] == "Upsert")
+	case 'r': // REPLACE
+		return len(query) >= i+7 && (query[i:i+7] == "REPLACE" || query[i:i+7] == "replace" || query[i:i+7] == "Replace")
+	case 'd': // DELETE
+		return len(query) >= i+6 && (query[i:i+6] == "DELETE" || query[i:i+6] == "delete" || query[i:i+6] == "Delete")
+	default:
+		return false
+	}
+}
+
 // ExecContext routes write queries through the single writer goroutine and
-// uses prepared statements when possible.
+// uses prepared statements when possible. Do NOT use this for queries with
+// RETURNING clauses - use QueryRowContext or QueryContext instead.
 func (db *DB) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
-	// decide if this is a write-like statement
-	// naive check: starts with INSERT/UPDATE/REPLACE/DELETE/UPSERT/REPLACE INTO
-	q := strings.TrimSpace(query)
-	up := strings.ToUpper(q)
-	// Treat statements with RETURNING as writes too so they are routed
-	// through the single writer goroutine and handled specially.
-	isWrite := strings.HasPrefix(up, "INSERT") || strings.HasPrefix(up, "UPDATE") || strings.HasPrefix(up, "REPLACE") || strings.HasPrefix(up, "DELETE") || strings.HasPrefix(up, "UPSERT") || strings.Contains(up, "RETURNING")
-	if !isWrite {
+	// Fast write detection without string allocation
+	if !isWriteQuery(query) {
 		// treat as reader and use prepared stmt when possible
 		stmt, err := db.getStmt(ctx, query)
 		if err != nil {
@@ -277,8 +277,8 @@ func (db *DB) writerLoop() {
 			// use prepared stmt if possible
 			stmt, err := db.getStmt(req.ctx, req.query)
 			if err != nil {
-				// if we couldn't prepare a statement, execWrite will use the
-				// connection directly and handle RETURNING if present.
+				// if we couldn't prepare a statement, execWrite will use
+				// the connection directly
 				res, execErr := db.execWrite(req.ctx, nil, req.query, req.args)
 				select {
 				case req.resCh <- writeRes{result: res, err: execErr}:
