@@ -66,8 +66,8 @@ func (d *Debouncer) run() {
 			d.mu.Lock()
 			// Store the latest function
 			d.latest = fn
-			// Create new timer
-			if d.timer != nil {
+			// Start the timer if not already running
+			if d.timer == nil {
 				d.timer = time.After(d.delay)
 			}
 			d.mu.Unlock()
