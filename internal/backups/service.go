@@ -246,7 +246,7 @@ func (s *Service) recoverIncompleteRuns(ctx context.Context) error {
 	return nil
 }
 
-func (s *Service) isBackupMissed(ctx context.Context, instanceID int, kind models.BackupRunKind, enabled bool, interval time.Duration, monthly bool, now time.Time) bool {
+func (s *Service) isBackupMissed(ctx context.Context, instanceID int, kind models.BackupRunKind, enabled bool, now time.Time) bool {
 	if !enabled {
 		return false
 	}
@@ -259,22 +259,32 @@ func (s *Service) isBackupMissed(ctx context.Context, instanceID int, kind model
 		if ref == nil {
 			ref = &lastRun.RequestedAt
 		}
-		if monthly {
+		if kind == models.BackupRunKindMonthly {
 			next := ref.AddDate(0, 1, 0)
 			if now.Before(next) {
 				return false
 			}
-		} else if ref.Add(interval).After(now) {
-			return false
+		} else {
+			var interval time.Duration
+			switch kind {
+			case models.BackupRunKindHourly:
+				interval = time.Hour
+			case models.BackupRunKindDaily:
+				interval = 24 * time.Hour
+			case models.BackupRunKindWeekly:
+				interval = 7 * 24 * time.Hour
+			}
+			if ref.Add(interval).After(now) {
+				return false
+			}
 		}
+		return true
 	}
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to check last backup run for missed backup")
-		return false
 	}
-
-	// If we reach here, the backup is missed
-	return true
+	// If there's no last run or an error, it's not considered missed
+	return false
 }
 
 func (s *Service) checkMissedBackups(ctx context.Context) error {
@@ -294,20 +304,20 @@ func (s *Service) checkMissedBackups(ctx context.Context) error {
 
 		var missedKinds []models.BackupRunKind
 
-		if s.isBackupMissed(ctx, cfg.InstanceID, models.BackupRunKindHourly, cfg.HourlyEnabled, time.Hour, false, now) {
+		if s.isBackupMissed(ctx, cfg.InstanceID, models.BackupRunKindHourly, cfg.HourlyEnabled, now) {
 			missedKinds = append(missedKinds, models.BackupRunKindHourly)
 		}
-		if s.isBackupMissed(ctx, cfg.InstanceID, models.BackupRunKindDaily, cfg.DailyEnabled, 24*time.Hour, false, now) {
+		if s.isBackupMissed(ctx, cfg.InstanceID, models.BackupRunKindDaily, cfg.DailyEnabled, now) {
 			missedKinds = append(missedKinds, models.BackupRunKindDaily)
 		}
-		if s.isBackupMissed(ctx, cfg.InstanceID, models.BackupRunKindWeekly, cfg.WeeklyEnabled, 7*24*time.Hour, false, now) {
+		if s.isBackupMissed(ctx, cfg.InstanceID, models.BackupRunKindWeekly, cfg.WeeklyEnabled, now) {
 			missedKinds = append(missedKinds, models.BackupRunKindWeekly)
 		}
-		if s.isBackupMissed(ctx, cfg.InstanceID, models.BackupRunKindMonthly, cfg.MonthlyEnabled, 0, true, now) {
+		if s.isBackupMissed(ctx, cfg.InstanceID, models.BackupRunKindMonthly, cfg.MonthlyEnabled, now) {
 			missedKinds = append(missedKinds, models.BackupRunKindMonthly)
 		}
 
-		// Only queue if exactly one backup kind is missed
+		// Queue the first missed backup if any are missed
 		if len(missedKinds) > 0 {
 			kind := missedKinds[0]
 			if _, err := s.QueueRun(ctx, cfg.InstanceID, kind, "startup-recovery"); err != nil {
@@ -952,7 +962,7 @@ func (s *Service) scheduleDueBackups(ctx context.Context) error {
 		}
 
 		evaluate := func(kind models.BackupRunKind, enabled bool, interval time.Duration, monthly bool) {
-			if s.isBackupMissed(ctx, cfg.InstanceID, kind, enabled, interval, monthly, now) {
+			if s.isBackupMissed(ctx, cfg.InstanceID, kind, enabled, now) {
 				if _, err := s.QueueRun(ctx, cfg.InstanceID, kind, "scheduler"); err != nil {
 					if !errors.Is(err, ErrInstanceBusy) {
 						log.Warn().Err(err).Int("instanceID", cfg.InstanceID).Msg("Failed to queue scheduled backup")

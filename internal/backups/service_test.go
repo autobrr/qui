@@ -518,11 +518,17 @@ func TestCheckMissedBackupsMultipleMissed(t *testing.T) {
 	err = svc.checkMissedBackups(ctx)
 	require.NoError(t, err)
 
-	// Should not queue any backups since multiple are missed
+	// Should queue the first missed backup even when multiple are missed
 	var count int
 	err = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM instance_backup_runs WHERE requested_by = 'startup-recovery'").Scan(&count)
 	require.NoError(t, err)
-	require.Equal(t, 0, count)
+	require.Equal(t, 1, count)
+
+	// Check the kind of the queued run (should be the first missed one, which is hourly)
+	var kind string
+	err = db.QueryRowContext(ctx, "SELECT kind FROM instance_backup_runs WHERE requested_by = 'startup-recovery'").Scan(&kind)
+	require.NoError(t, err)
+	require.Equal(t, string(models.BackupRunKindHourly), kind)
 }
 
 func TestCheckMissedBackupsNoneMissed(t *testing.T) {
