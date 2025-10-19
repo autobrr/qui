@@ -580,19 +580,11 @@ applyFilters:
 		return
 	}
 
-	// Convert qui's TorrentView format back to qBittorrent's Torrent format
-	// The TorrentView embeds qbt.Torrent, so we can extract it
-	torrents := make([]interface{}, len(response.Torrents))
-	for i, tv := range response.Torrents {
-		torrents[i] = tv.Torrent
-	}
-
-	// Return as JSON array (qBittorrent API format)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 
 	encoder := json.NewEncoder(w)
-	if err := encoder.Encode(torrents); err != nil {
+	if err := encoder.Encode(response.Torrents); err != nil {
 		log.Error().
 			Err(err).
 			Int("instanceId", instanceID).
