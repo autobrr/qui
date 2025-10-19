@@ -308,7 +308,7 @@ func (s *Service) checkMissedBackups(ctx context.Context) error {
 		}
 
 		// Only queue if exactly one backup kind is missed
-		if len(missedKinds) == 1 {
+		if len(missedKinds) > 0 {
 			kind := missedKinds[0]
 			if _, err := s.QueueRun(ctx, cfg.InstanceID, kind, "startup-recovery"); err != nil {
 				if !errors.Is(err, ErrInstanceBusy) {
