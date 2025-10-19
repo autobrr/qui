@@ -55,6 +55,11 @@ func (d *Debouncer) run() {
 
 	for {
 		select {
+		case <-d.stop:
+			runFunc()
+			for range d.submissions {
+			}
+			return
 		case <-d.timer:
 			runFunc()
 		case fn := <-d.submissions:
@@ -66,9 +71,6 @@ func (d *Debouncer) run() {
 				d.timer = time.After(d.delay)
 			}
 			d.mu.Unlock()
-		case <-d.stop:
-			runFunc()
-			return
 		}
 	}
 }
@@ -77,10 +79,10 @@ func (d *Debouncer) run() {
 // If called multiple times within the delay period, only the last fn will execute after the delay.
 func (d *Debouncer) Do(fn func()) {
 	select {
-	case d.submissions <- fn:
 	case <-d.stop:
 		// If stopped, execute immediately
 		fn()
+	case d.submissions <- fn:
 	}
 }
 
@@ -93,4 +95,5 @@ func (d *Debouncer) Queued() bool {
 // Stop shuts down the debouncer goroutine
 func (d *Debouncer) Stop() {
 	close(d.stop)
+	close(d.submissions)
 }
