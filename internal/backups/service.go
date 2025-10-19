@@ -250,41 +250,60 @@ func (s *Service) isBackupMissed(ctx context.Context, instanceID int, kind model
 	if !enabled {
 		return false
 	}
-	lastRun, err := s.store.LatestRunByKind(ctx, instanceID, kind)
-	if err == nil {
-		if lastRun.Status == models.BackupRunStatusRunning {
-			return false
+
+	// We only consider the most recent successful run as the reference point. Failed/running/pending
+	// runs do not count toward the schedule — i.e. a failed run doesn't reset the schedule.
+	runs, err := s.store.ListRunsByKind(ctx, instanceID, kind, 10)
+	if err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to list runs for missed backup check")
 		}
-		ref := lastRun.CompletedAt
-		if ref == nil {
-			ref = &lastRun.RequestedAt
+		// On DB error treat as not missed to avoid accidental scheduling
+		return false
+	}
+
+	// Find the most recent successful run
+	var refTime *time.Time
+	var foundSuccess bool
+	for _, r := range runs {
+		if r == nil {
+			continue
 		}
-		if kind == models.BackupRunKindMonthly {
-			next := ref.AddDate(0, 1, 0)
-			if now.Before(next) {
-				return false
+		if r.Status == models.BackupRunStatusSuccess {
+			if r.CompletedAt != nil {
+				refTime = r.CompletedAt
+			} else {
+				refTime = &r.RequestedAt
 			}
-		} else {
-			var interval time.Duration
-			switch kind {
-			case models.BackupRunKindHourly:
-				interval = time.Hour
-			case models.BackupRunKindDaily:
-				interval = 24 * time.Hour
-			case models.BackupRunKindWeekly:
-				interval = 7 * 24 * time.Hour
-			}
-			if ref.Add(interval).After(now) {
-				return false
-			}
+			foundSuccess = true
+			break
 		}
+	}
+
+	// If we found no successful run, consider it missed (first-run semantics)
+	if !foundSuccess || refTime == nil {
 		return true
 	}
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to check last backup run for missed backup")
+
+	ref := *refTime
+
+	var interval time.Duration
+	switch kind {
+	case models.BackupRunKindHourly:
+		interval = time.Hour
+	case models.BackupRunKindDaily:
+		interval = 24 * time.Hour
+	case models.BackupRunKindWeekly:
+		interval = 7 * 24 * time.Hour
+	case models.BackupRunKindMonthly:
+		next := ref.AddDate(0, 1, 0)
+		return !now.Before(next)
+	default:
+		// Unknown kind — don't consider it missed
+		return false
 	}
-	// If there's no last run, consider it missed (first run scenario)
-	return true
+
+	return !ref.Add(interval).After(now)
 }
 
 func (s *Service) checkMissedBackups(ctx context.Context) error {
