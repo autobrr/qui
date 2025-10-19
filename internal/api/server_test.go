@@ -4,8 +4,11 @@
 package api
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
@@ -17,6 +20,7 @@ import (
 
 	"github.com/autobrr/qui/internal/auth"
 	"github.com/autobrr/qui/internal/config"
+	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
@@ -62,6 +66,19 @@ func newTestDependencies(t *testing.T) *Dependencies {
 
 	sessionManager := scs.New()
 
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	db, err := database.New(dbPath)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+	})
+
+	authService := auth.NewService(db.Conn())
+	_, err = authService.SetupUser(context.Background(), "test-user", "password123")
+	if err != nil && !errors.Is(err, models.ErrUserAlreadyExists) {
+		require.NoError(t, err)
+	}
+
 	trackerIconService, err := trackericons.NewService(t.TempDir(), "qui-test")
 	require.NoError(t, err)
 
@@ -72,7 +89,7 @@ func newTestDependencies(t *testing.T) *Dependencies {
 			},
 		},
 		Version:            "test",
-		AuthService:        &auth.Service{},
+		AuthService:        authService,
 		SessionManager:     sessionManager,
 		InstanceStore:      &models.InstanceStore{},
 		ClientAPIKeyStore:  &models.ClientAPIKeyStore{},
