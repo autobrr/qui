@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/autobrr/autobrr/pkg/sharedhttp"
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -225,6 +226,86 @@ func (h *Handler) errorHandler(w http.ResponseWriter, r *http.Request, err error
 	h.writeProxyError(w)
 }
 
+// handleSyncMainData proxies sync/maindata requests and updates local state from the response
+func (h *Handler) handleSyncMainData(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	instanceID := GetInstanceIDFromContext(ctx)
+	clientAPIKey := GetClientAPIKeyFromContext(ctx)
+
+	log.Debug().
+		Int("instanceId", instanceID).
+		Str("client", clientAPIKey.ClientName).
+		Msg("Proxying sync/maindata request")
+
+	// Use a custom response writer to capture the response
+	crw := &capturingResponseWriter{
+		ResponseWriter: w,
+		statusCode:     http.StatusOK,
+	}
+
+	// Proxy the request
+	h.proxy.ServeHTTP(crw, r)
+
+	// Only update local state for successful responses with body
+	if crw.statusCode == http.StatusOK && len(crw.body) > 0 {
+		var mainData qbt.MainData
+		if err := json.Unmarshal(crw.body, &mainData); err != nil {
+			log.Error().
+				Err(err).
+				Int("instanceId", instanceID).
+				Msg("Failed to parse sync/maindata response")
+			return
+		}
+
+		// Check if this is a full update by examining the response
+		// A full update contains the FullUpdate field set to true, or has complete torrent data
+		isFullUpdate := mainData.FullUpdate || (mainData.Rid == 0 && len(mainData.Torrents) > 0)
+
+		if isFullUpdate {
+			client, err := h.clientPool.GetClient(ctx, instanceID)
+			if err != nil {
+				log.Error().
+					Err(err).
+					Int("instanceId", instanceID).
+					Msg("Failed to get client for maindata update")
+				return
+			}
+
+			client.UpdateWithMainData(&mainData)
+			log.Debug().
+				Int("instanceId", instanceID).
+				Int64("rid", mainData.Rid).
+				Int("torrentCount", len(mainData.Torrents)).
+				Bool("hasServerState", mainData.ServerState != (qbt.ServerState{})).
+				Int("categoryCount", len(mainData.Categories)).
+				Int("tagCount", len(mainData.Tags)).
+				Msg("Updated local maindata from full sync/maindata response")
+		} else {
+			log.Debug().
+				Int("instanceId", instanceID).
+				Int64("rid", mainData.Rid).
+				Msg("Skipping incremental sync/maindata update")
+		}
+	}
+}
+
+// capturingResponseWriter captures the response body while writing it to the client
+type capturingResponseWriter struct {
+	http.ResponseWriter
+	body       []byte
+	statusCode int
+}
+
+func (crw *capturingResponseWriter) WriteHeader(statusCode int) {
+	crw.statusCode = statusCode
+	crw.ResponseWriter.WriteHeader(statusCode)
+}
+
+func (crw *capturingResponseWriter) Write(b []byte) (int, error) {
+	crw.body = append(crw.body, b...)
+	return crw.ResponseWriter.Write(b)
+}
+
 // prepareProxyContextMiddleware adds proxy context to the request
 func (h *Handler) prepareProxyContextMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -256,12 +337,13 @@ func (h *Handler) Routes(r chi.Router) {
 
 		// Register intercepted endpoints (these use qui's sync manager or special handling)
 		r.Post("/api/v2/auth/login", h.handleAuthLogin)
+		r.Get("/api/v2/sync/maindata", h.handleSyncMainData)
+		r.Get("/api/v2/sync/torrentPeers", h.handleTorrentPeers)
 		r.Get("/api/v2/torrents/info", h.handleTorrentsInfoWithSearch)
 		r.Get("/api/v2/torrents/categories", h.handleCategories)
 		r.Get("/api/v2/torrents/tags", h.handleTags)
 		r.Get("/api/v2/torrents/properties", h.handleTorrentProperties)
 		r.Get("/api/v2/torrents/trackers", h.handleTorrentTrackers)
-		r.Get("/api/v2/sync/torrentPeers", h.handleTorrentPeers)
 		r.Get("/api/v2/torrents/files", h.handleTorrentFiles)
 
 		// Handle all other requests via reverse proxy
