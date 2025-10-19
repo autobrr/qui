@@ -152,7 +152,11 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     prepareReannounceAction,
   } = useTorrentActions({
     instanceId: instanceId || 0,
-    onActionComplete: onComplete,
+    onActionComplete: (action) => {
+      if (action === TORRENT_ACTIONS.DELETE) {
+        onComplete?.()
+      }
+    },
   })
 
   const selectionCount = totalSelectionCount || selectedHashes.length

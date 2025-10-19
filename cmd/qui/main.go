@@ -23,6 +23,7 @@ import (
 
 	"github.com/autobrr/qui/internal/api"
 	"github.com/autobrr/qui/internal/auth"
+	"github.com/autobrr/qui/internal/backups"
 	"github.com/autobrr/qui/internal/buildinfo"
 	"github.com/autobrr/qui/internal/config"
 	"github.com/autobrr/qui/internal/database"
@@ -485,6 +486,11 @@ func (app *Application) runServer() {
 	// Initialize managers
 	syncManager := qbittorrent.NewSyncManager(clientPool)
 
+	backupStore := models.NewBackupStore(db.Conn())
+	backupService := backups.NewService(backupStore, syncManager, backups.Config{DataDir: cfg.GetDataDir()})
+	backupService.Start(context.Background())
+	defer backupService.Stop()
+
 	updateService := update.NewService(log.Logger, cfg.Config.CheckForUpdates, buildinfo.Version, buildinfo.UserAgent)
 	cfg.RegisterReloadListener(func(conf *domain.Config) {
 		updateService.SetEnabled(conf.CheckForUpdates)
@@ -546,6 +552,7 @@ func (app *Application) runServer() {
 		LicenseService:     licenseService,
 		UpdateService:      updateService,
 		TrackerIconService: trackerIconService,
+		BackupService:      backupService,
 	})
 
 	errorChannel := make(chan error)
