@@ -56,6 +56,11 @@ func (d *Debouncer) run() {
 	for {
 		select {
 		case <-d.stop:
+			go func(t <-chan time.Time) {
+				for range t {
+				}
+			}(d.timer)
+
 			runFunc()
 			close(d.submissions)
 			for fn := range d.submissions {
