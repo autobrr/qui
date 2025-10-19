@@ -428,7 +428,25 @@ func (h *Handler) handleTorrentsInfoWithSearch(w http.ResponseWriter, r *http.Re
 	// Build filter options from qBittorrent API parameters
 	filters := qbittorrent.FilterOptions{}
 
-	// Map qBittorrent filter to qui filter
+	// Check for qui's advanced filters parameter (JSON format)
+	// This allows using qui's full FilterOptions via: ?filters={"status":["downloading","seeding"],...}
+	if filtersParam := queryParams.Get("filters"); filtersParam != "" {
+		if err := json.Unmarshal([]byte(filtersParam), &filters); err != nil {
+			log.Warn().
+				Err(err).
+				Str("filters", filtersParam).
+				Msg("Failed to parse filters parameter, using standard qBittorrent params")
+			// Fall through to standard parameter handling
+		} else {
+			log.Debug().
+				Interface("filters", filters).
+				Msg("Using qui advanced filters from filters parameter")
+			// Skip standard parameter processing if advanced filters were provided
+			goto applyFilters
+		}
+	}
+
+	// Map standard qBittorrent parameters to qui filter (if no advanced filters provided)
 	if filter != "" {
 		filters.Status = []string{filter}
 	}
@@ -440,6 +458,8 @@ func (h *Handler) handleTorrentsInfoWithSearch(w http.ResponseWriter, r *http.Re
 	if tag != "" {
 		filters.Tags = []string{tag}
 	}
+
+applyFilters:
 
 	// Default sort order
 	if sort == "" {
