@@ -42,6 +42,7 @@ interface SetTagsDialogProps {
   onConfirm: (tags: string[]) => void
   isPending?: boolean
   initialTags?: string[]
+  isLoadingTags?: boolean
 }
 
 interface AddTagsDialogProps {
@@ -52,6 +53,7 @@ interface AddTagsDialogProps {
   onConfirm: (tags: string[]) => void
   isPending?: boolean
   initialTags?: string[]
+  isLoadingTags?: boolean
 }
 
 export const AddTagsDialog = memo(function AddTagsDialog({
@@ -62,6 +64,7 @@ export const AddTagsDialog = memo(function AddTagsDialog({
   onConfirm,
   isPending = false,
   initialTags = [],
+  isLoadingTags = false,
 }: AddTagsDialogProps) {
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [newTag, setNewTag] = useState("")
@@ -134,7 +137,17 @@ export const AddTagsDialog = memo(function AddTagsDialog({
         </DialogHeader>
         <div className="py-4 space-y-4">
           {/* Existing tags */}
-          {displayTags && displayTags.length > 0 && (
+          {isLoadingTags ? (
+            <div className="space-y-2">
+              <Label>Available Tags</Label>
+              <div className="h-48 border rounded-md p-3 flex items-center justify-center">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span className="text-sm">Loading tags...</span>
+                </div>
+              </div>
+            </div>
+          ) : displayTags && displayTags.length > 0 ? (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label>Available Tags</Label>
@@ -237,7 +250,7 @@ export const AddTagsDialog = memo(function AddTagsDialog({
                 )}
               </div>
             </div>
-          )}
+          ) : null}
 
           {/* Add new tag */}
           <div className="space-y-2">
@@ -296,6 +309,7 @@ export const SetTagsDialog = memo(function SetTagsDialog({
   onConfirm,
   isPending = false,
   initialTags = [],
+  isLoadingTags = false,
 }: SetTagsDialogProps) {
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [newTag, setNewTag] = useState("")
@@ -368,7 +382,17 @@ export const SetTagsDialog = memo(function SetTagsDialog({
         </DialogHeader>
         <div className="py-4 space-y-4">
           {/* Existing tags */}
-          {displayTags && displayTags.length > 0 && (
+          {isLoadingTags ? (
+            <div className="space-y-2">
+              <Label>Available Tags</Label>
+              <div className="h-48 border rounded-md p-3 flex items-center justify-center">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span className="text-sm">Loading tags...</span>
+                </div>
+              </div>
+            </div>
+          ) : displayTags && displayTags.length > 0 ? (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label>Available Tags</Label>
@@ -471,7 +495,7 @@ export const SetTagsDialog = memo(function SetTagsDialog({
                 )}
               </div>
             </div>
-          )}
+          ) : null}
 
           {/* Add new tag */}
           <div className="space-y-2">
@@ -530,6 +554,7 @@ interface SetCategoryDialogProps {
   onConfirm: (category: string) => void
   isPending?: boolean
   initialCategory?: string
+  isLoadingCategories?: boolean
 }
 
 interface SetLocationDialogProps {
@@ -1006,6 +1031,7 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
   onConfirm,
   isPending = false,
   initialCategory = "",
+  isLoadingCategories = false,
 }: SetCategoryDialogProps) {
   const [categoryInput, setCategoryInput] = useState("")
   const [searchQuery, setSearchQuery] = useState("")
@@ -1059,7 +1085,7 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
         </DialogHeader>
         <div className="py-4 space-y-4">
           {/* Search bar for categories */}
-          {categoryList.length > 10 && (
+          {!isLoadingCategories && categoryList.length > 10 && (
             <div className="space-y-2">
               <Label htmlFor="categorySearch">Search Categories</Label>
               <Input
@@ -1074,10 +1100,18 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
           {/* Category list with optional virtualization */}
           <div className="space-y-2">
             <Label>Select Category</Label>
-            <div
-              ref={scrollContainerRef}
-              className="max-h-64 border rounded-md overflow-y-auto"
-            >
+            {isLoadingCategories ? (
+              <div className="max-h-64 border rounded-md p-3 flex items-center justify-center">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span className="text-sm">Loading categories...</span>
+                </div>
+              </div>
+            ) : (
+              <div
+                ref={scrollContainerRef}
+                className="max-h-64 border rounded-md overflow-y-auto"
+              >
               {/* No category option */}
               <button
                 type="button"
@@ -1149,7 +1183,8 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
                   No categories found matching "{searchQuery}"
                 </div>
               )}
-            </div>
+              </div>
+            )}
           </div>
 
           {/* Option to enter new category */}

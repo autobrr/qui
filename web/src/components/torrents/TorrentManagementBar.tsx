@@ -34,11 +34,10 @@ import {
   TooltipTrigger
 } from "@/components/ui/tooltip"
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
-import { api } from "@/lib/api"
+import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { formatBytes } from "@/lib/utils"
 import { getCommonCategory, getCommonSavePath, getCommonTags, getTotalSize } from "@/lib/torrent-utils"
 import type { Torrent, TorrentFilters } from "@/types"
-import { useQuery } from "@tanstack/react-query"
 import {
   ArrowDown,
   ArrowUp,
@@ -93,21 +92,13 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   excludeHashes = [],
   onComplete,
 }: TorrentManagementBarProps) {
-  // Fetch available tags
-  const { data: availableTags = [] } = useQuery({
-    queryKey: ["tags", instanceId],
-    queryFn: () => instanceId ? api.getTags(instanceId) : Promise.resolve([]),
-    enabled: !!instanceId,
-    staleTime: 60000,
-  })
-
-  // Fetch available categories
-  const { data: availableCategories = {} } = useQuery({
-    queryKey: ["categories", instanceId],
-    queryFn: () => instanceId ? api.getCategories(instanceId) : Promise.resolve({}),
-    enabled: !!instanceId,
-    staleTime: 60000,
-  })
+  // Use shared metadata hook to leverage cache from table and filter sidebar
+  const { data: metadata, isLoading: isMetadataLoading } = useInstanceMetadata(instanceId || 0)
+  const availableTags = metadata?.tags || []
+  const availableCategories = metadata?.categories || {}
+  
+  const isLoadingTagsData = isMetadataLoading && availableTags.length === 0
+  const isLoadingCategoriesData = isMetadataLoading && Object.keys(availableCategories).length === 0
 
   // Use the shared torrent actions hook
   const {
@@ -636,6 +627,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
         hashCount={totalSelectionCount || selectedHashes.length}
         onConfirm={handleAddTagsWrapper}
         isPending={isPending}
+        isLoadingTags={isLoadingTagsData}
       />
 
       {/* Set Tags Dialog */}
@@ -647,6 +639,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
         onConfirm={handleSetTagsWrapper}
         isPending={isPending}
         initialTags={getCommonTags(selectedTorrents)}
+        isLoadingTags={isLoadingTagsData}
       />
 
       {/* Set Category Dialog */}
@@ -658,6 +651,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
         onConfirm={handleSetCategoryWrapper}
         isPending={isPending}
         initialCategory={getCommonCategory(selectedTorrents)}
+        isLoadingCategories={isLoadingCategoriesData}
       />
 
       {/* Set Location Dialog */}
