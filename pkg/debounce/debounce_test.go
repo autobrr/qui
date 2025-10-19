@@ -4,7 +4,6 @@
 package debounce
 
 import (
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -32,38 +31,43 @@ func TestDebouncer_DebouncesMultipleCalls(t *testing.T) {
 	d := New(100 * time.Millisecond)
 	defer d.Stop()
 
-	var executed []int
-	var mu sync.Mutex
-	done := make(chan bool, 1)
+	var executed atomic.Int32
+	done := make(chan int, 1)
 
-	// Submit multiple functions quickly
+	// Submit multiple functions very quickly (much faster than debounce delay)
 	for i := 0; i < 5; i++ {
 		val := i
 		d.Do(func() {
-			mu.Lock()
-			executed = append(executed, val)
-			mu.Unlock()
-			if val == 4 { // Only signal when the last function executes
-				done <- true
-			}
+			executed.Add(1)
+			done <- val
 		})
-		time.Sleep(10 * time.Millisecond) // Less than debounce delay
+		time.Sleep(5 * time.Millisecond) // Much less than debounce delay
 	}
 
-	// Wait for execution
-	select {
-	case <-done:
-		mu.Lock()
-		defer mu.Unlock()
-		if len(executed) != 1 {
-			t.Errorf("Expected only one execution, got %d: %v", len(executed), executed)
+	// Wait for execution - should only get one
+	var lastValue int
+	timeout := time.After(300 * time.Millisecond)
+	executionCount := 0
+
+	for executionCount < 2 {
+		select {
+		case val := <-done:
+			executionCount++
+			lastValue = val
+		case <-timeout:
+			// Timeout - check results
+			if executionCount != 1 {
+				t.Errorf("Expected exactly one execution, got %d", executionCount)
+			}
+			if lastValue != 4 {
+				t.Errorf("Expected last value to be 4, got %d", lastValue)
+			}
+			return
 		}
-		if len(executed) > 0 && executed[0] != 4 {
-			t.Errorf("Expected last value to be 4, got %d", executed[0])
-		}
-	case <-time.After(300 * time.Millisecond):
-		t.Error("Function did not execute within timeout")
 	}
+
+	// If we got here, we got 2+ executions which is wrong
+	t.Errorf("Expected only one execution, got %d, last value: %d", executionCount, lastValue)
 }
 
 func TestDebouncer_Queued(t *testing.T) {

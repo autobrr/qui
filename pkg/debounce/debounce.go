@@ -5,6 +5,7 @@ package debounce
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -17,7 +18,8 @@ type Debouncer struct {
 	latest      func()
 	mu          sync.RWMutex
 	delay       time.Duration
-	stop        chan struct{}
+	stopped     atomic.Bool
+	done        chan struct{}
 }
 
 // New creates a new Debouncer with the specified delay.
@@ -25,7 +27,7 @@ func New(delay time.Duration) *Debouncer {
 	d := &Debouncer{
 		submissions: make(chan func(), 100), // buffered channel to prevent blocking
 		delay:       delay,
-		stop:        make(chan struct{}),
+		done:        make(chan struct{}),
 	}
 
 	go d.run()
@@ -35,6 +37,8 @@ func New(delay time.Duration) *Debouncer {
 
 // run is the main goroutine that processes submissions
 func (d *Debouncer) run() {
+	defer close(d.done)
+
 	runFunc := func() {
 		d.mu.Lock()
 
@@ -55,23 +59,14 @@ func (d *Debouncer) run() {
 
 	for {
 		select {
-		case <-d.stop:
-			go func(t <-chan time.Time) {
-				for range t {
-				}
-			}(d.timer)
-
-			close(d.submissions)
-			d.mu.Lock()
-			for fn := range d.submissions {
-				d.latest = fn
-			}
-			d.mu.Unlock()
-			runFunc()
-			return
 		case <-d.timer:
 			runFunc()
-		case fn := <-d.submissions:
+		case fn, ok := <-d.submissions:
+			if !ok {
+				// Channel closed, execute final function and exit
+				runFunc()
+				return
+			}
 			d.mu.Lock()
 			// Store the latest function
 			d.latest = fn
@@ -87,10 +82,23 @@ func (d *Debouncer) run() {
 // Do executes the function fn after the delay.
 // If called multiple times within the delay period, only the last fn will execute after the delay.
 func (d *Debouncer) Do(fn func()) {
-	select {
-	case <-d.stop:
+	// Check if stopped
+	if d.stopped.Load() {
+		// Execute immediately if stopped
 		fn()
+		return
+	}
+
+	// Try to send to submissions channel
+	select {
 	case d.submissions <- fn:
+		// Successfully submitted
+	default:
+		// Channel is full or closed, check if stopped
+		if d.stopped.Load() {
+			fn()
+		}
+		// Otherwise, drop the submission (buffer is full)
 	}
 }
 
@@ -102,5 +110,13 @@ func (d *Debouncer) Queued() bool {
 
 // Stop shuts down the debouncer goroutine
 func (d *Debouncer) Stop() {
-	close(d.stop)
+	// Only stop once using atomic compare-and-swap
+	if !d.stopped.CompareAndSwap(false, true) {
+		// Already stopped or stopping
+		return
+	}
+
+	// First call to Stop - close submissions and wait
+	close(d.submissions)
+	<-d.done
 }
