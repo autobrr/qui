@@ -444,7 +444,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     prepareReannounceAction,
   } = useTorrentActions({
     instanceId,
-    onActionComplete: resetSelectionState,
+    onActionComplete: (action) => {
+      if (action === TORRENT_ACTIONS.DELETE) {
+        resetSelectionState()
+      }
+    },
   })
 
   // Fetch metadata using shared hook

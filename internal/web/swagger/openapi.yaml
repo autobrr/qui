@@ -1761,6 +1761,127 @@ paths:
         '204':
           description: No update available - current version is latest
 
+  /api/instances/{instanceId}/backups/runs/{runId}/restore/preview:
+    post:
+      tags:
+        - Backups
+      summary: Preview restore plan
+      description: Build a restore plan for the specified backup run without applying any changes.
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Backup run ID
+      requestBody:
+        description: Restore options
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                mode:
+                  type: string
+                  description: Restore mode
+                  enum:
+                    - incremental
+                    - overwrite
+                    - complete
+                excludeHashes:
+                  type: array
+                  items:
+                    type: string
+                  description: Torrent hashes to exclude from the generated plan.
+                startPaused:
+                  type: boolean
+                  description: Start restored torrents paused. Defaults to true.
+                skipHashCheck:
+                  type: boolean
+                  description: Skip re-checking the restored torrent data. Defaults to false.
+                autoResumeVerified:
+                  type: boolean
+                  description: Automatically resume torrents once qBittorrent reports them as fully verified. Defaults to true when skip recheck is enabled.
+      responses:
+        '200':
+          description: Restore plan generated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Restore plan payload
+        '400':
+          description: Invalid request payload
+        '404':
+          description: Backup run not found
+        '500':
+          description: Failed to build restore plan
+
+  /api/instances/{instanceId}/backups/runs/{runId}/restore:
+    post:
+      tags:
+        - Backups
+      summary: Execute restore
+      description: Execute the restore plan for the specified backup run.
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Backup run ID
+      requestBody:
+        description: Restore execution options
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - mode
+              properties:
+                mode:
+                  type: string
+                  description: Restore mode
+                  enum:
+                    - incremental
+                    - overwrite
+                    - complete
+                dryRun:
+                  type: boolean
+                  description: When true, no changes are applied and the plan is returned.
+                excludeHashes:
+                  type: array
+                  items:
+                    type: string
+                  description: Torrent hashes to exclude from the restore plan and execution.
+                startPaused:
+                  type: boolean
+                  description: Start restored torrents paused. Defaults to true.
+                skipHashCheck:
+                  type: boolean
+                  description: Skip re-checking the restored torrent data. Defaults to false.
+                autoResumeVerified:
+                  type: boolean
+                  description: Automatically resume torrents once qBittorrent reports them as fully verified. Defaults to true when skip recheck is enabled.
+      responses:
+        '200':
+          description: Restore executed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Restore result payload
+        '400':
+          description: Invalid request payload
+        '404':
+          description: Backup run not found
+        '500':
+          description: Failed to execute restore
+
   /health:
     get:
       tags:

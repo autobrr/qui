@@ -4,8 +4,11 @@
 package api
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
@@ -16,12 +19,15 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/autobrr/qui/internal/auth"
+	"github.com/autobrr/qui/internal/backups"
 	"github.com/autobrr/qui/internal/config"
+	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/license"
 	"github.com/autobrr/qui/internal/services/trackericons"
+	"github.com/autobrr/qui/internal/update"
 	"github.com/autobrr/qui/internal/web"
 	"github.com/autobrr/qui/internal/web/swagger"
 )
@@ -32,7 +38,16 @@ type routeKey struct {
 }
 
 var undocumentedRoutes = map[routeKey]struct{}{
-	{Method: http.MethodGet, Path: "/api/auth/validate"}: {},
+	{Method: http.MethodGet, Path: "/api/auth/validate"}:                                                            {},
+	{Method: http.MethodPost, Path: "/api/instances/{instanceId}/backups/run"}:                                      {},
+	{Method: http.MethodGet, Path: "/api/instances/{instanceId}/backups/runs"}:                                      {},
+	{Method: http.MethodDelete, Path: "/api/instances/{instanceId}/backups/runs"}:                                   {},
+	{Method: http.MethodDelete, Path: "/api/instances/{instanceId}/backups/runs/{runId}"}:                           {},
+	{Method: http.MethodGet, Path: "/api/instances/{instanceId}/backups/runs/{runId}/download"}:                     {},
+	{Method: http.MethodGet, Path: "/api/instances/{instanceId}/backups/runs/{runId}/items/{torrentHash}/download"}: {},
+	{Method: http.MethodGet, Path: "/api/instances/{instanceId}/backups/runs/{runId}/manifest"}:                     {},
+	{Method: http.MethodGet, Path: "/api/instances/{instanceId}/backups/settings"}:                                  {},
+	{Method: http.MethodPut, Path: "/api/instances/{instanceId}/backups/settings"}:                                  {},
 }
 
 func TestAllEndpointsDocumented(t *testing.T) {
@@ -62,6 +77,19 @@ func newTestDependencies(t *testing.T) *Dependencies {
 
 	sessionManager := scs.New()
 
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	db, err := database.New(dbPath)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+	})
+
+	authService := auth.NewService(db.Conn())
+	_, err = authService.SetupUser(context.Background(), "test-user", "password123")
+	if err != nil && !errors.Is(err, models.ErrUserAlreadyExists) {
+		require.NoError(t, err)
+	}
+
 	trackerIconService, err := trackericons.NewService(t.TempDir(), "qui-test")
 	require.NoError(t, err)
 
@@ -72,7 +100,7 @@ func newTestDependencies(t *testing.T) *Dependencies {
 			},
 		},
 		Version:            "test",
-		AuthService:        &auth.Service{},
+		AuthService:        authService,
 		SessionManager:     sessionManager,
 		InstanceStore:      &models.InstanceStore{},
 		ClientAPIKeyStore:  &models.ClientAPIKeyStore{},
@@ -80,7 +108,9 @@ func newTestDependencies(t *testing.T) *Dependencies {
 		SyncManager:        &qbittorrent.SyncManager{},
 		WebHandler:         &web.Handler{},
 		LicenseService:     &license.Service{},
+		UpdateService:      &update.Service{},
 		TrackerIconService: trackerIconService,
+		BackupService:      &backups.Service{},
 	}
 }
 
@@ -173,6 +203,7 @@ func normalizeRoutePath(path string) (string, bool) {
 	}
 
 	path = strings.ReplaceAll(path, "{instanceID}", "{instanceId}")
+	path = strings.ReplaceAll(path, "{runID}", "{runId}")
 	path = strings.ReplaceAll(path, "{licenseKey}", "{licenseKey}")
 
 	return path, true
