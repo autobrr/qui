@@ -155,13 +155,12 @@ func (s *Server) Handler() (*chi.Mux, error) {
 
 	// CORS - mirror autobrr's permissive credentials setup
 	corsMiddleware := cors.New(cors.Options{
-		AllowCredentials:   true,
-		AllowedMethods:     []string{"HEAD", "OPTIONS", "GET", "POST", "PUT", "PATCH", "DELETE"},
-		AllowedHeaders:     []string{"Accept", "Authorization", "Content-Type", "X-API-Key"},
-		AllowOriginFunc:    func(origin string) bool { return true },
-		OptionsPassthrough: true,
-		MaxAge:             300,
-		Debug:              false,
+		AllowCredentials: true,
+		AllowedMethods:   []string{"HEAD", "OPTIONS", "GET", "POST", "PUT", "PATCH", "DELETE"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-API-Key"},
+		AllowOriginFunc:  func(origin string) bool { return true },
+		MaxAge:           300,
+		Debug:            false,
 	})
 	r.Use(corsMiddleware.Handler)
 
