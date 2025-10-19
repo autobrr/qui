@@ -283,8 +283,8 @@ func (s *Service) isBackupMissed(ctx context.Context, instanceID int, kind model
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to check last backup run for missed backup")
 	}
-	// If there's no last run or an error, it's not considered missed
-	return false
+	// If there's no last run, consider it missed (first run scenario)
+	return true
 }
 
 func (s *Service) checkMissedBackups(ctx context.Context) error {
