@@ -27,6 +27,7 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/license"
 	"github.com/autobrr/qui/internal/services/trackericons"
+	"github.com/autobrr/qui/internal/update"
 	"github.com/autobrr/qui/internal/web"
 	"github.com/autobrr/qui/internal/web/swagger"
 )
@@ -107,6 +108,7 @@ func newTestDependencies(t *testing.T) *Dependencies {
 		SyncManager:        &qbittorrent.SyncManager{},
 		WebHandler:         &web.Handler{},
 		LicenseService:     &license.Service{},
+		UpdateService:      &update.Service{},
 		TrackerIconService: trackerIconService,
 		BackupService:      &backups.Service{},
 	}
