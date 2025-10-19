@@ -40,6 +40,7 @@ import type { Torrent } from "@/types"
 import { Loader2, Plus, X } from "lucide-react"
 import type { ChangeEvent, KeyboardEvent } from "react"
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useVirtualizer } from "@tanstack/react-virtual"
 
 interface SetTagsDialogProps {
   open: boolean
@@ -74,6 +75,7 @@ export const AddTagsDialog = memo(function AddTagsDialog({
   const [newTag, setNewTag] = useState("")
   const [temporaryTags, setTemporaryTags] = useState<string[]>([])
   const wasOpen = useRef(false)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
 
   // Initialize selected tags only when dialog transitions from closed to open
   useEffect(() => {
@@ -86,6 +88,14 @@ export const AddTagsDialog = memo(function AddTagsDialog({
 
   // Combine server tags with temporary tags for display
   const displayTags = [...(availableTags || []), ...temporaryTags].sort()
+
+  // Virtualization for large tag lists
+  const virtualizer = useVirtualizer({
+    count: displayTags.length,
+    getScrollElement: () => scrollContainerRef.current,
+    estimateSize: () => 32, // Approximate height of each tag item
+    overscan: 5,
+  })
 
   const handleConfirm = useCallback((): void => {
     const allTags = [...selectedTags]
@@ -143,37 +153,60 @@ export const AddTagsDialog = memo(function AddTagsDialog({
                   Deselect All
                 </Button>
               </div>
-              <ScrollArea className="h-48 border rounded-md p-3">
-                <div className="space-y-2">
-                  {displayTags.map((tag) => {
+              <div
+                ref={scrollContainerRef}
+                className="h-48 border rounded-md p-3 overflow-y-auto"
+              >
+                <div
+                  style={{
+                    height: `${virtualizer.getTotalSize()}px`,
+                    width: "100%",
+                    position: "relative",
+                  }}
+                >
+                  {virtualizer.getVirtualItems().map((virtualRow) => {
+                    const tag = displayTags[virtualRow.index]
                     const isTemporary = temporaryTags.includes(tag)
                     return (
-                      <div key={tag} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`add-tag-${tag}`}
-                          checked={selectedTags.includes(tag)}
-                          onCheckedChange={(checked: boolean | string) => {
-                            if (checked) {
-                              setSelectedTags([...selectedTags, tag])
-                            } else {
-                              setSelectedTags(selectedTags.filter((t: string) => t !== tag))
-                            }
-                          }}
-                        />
-                        <label
-                          htmlFor={`add-tag-${tag}`}
-                          className={`text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer ${
-                            isTemporary ? "text-primary italic" : ""
-                          }`}
-                        >
-                          {tag}
-                          {isTemporary && <span className="ml-1 text-xs text-muted-foreground">(new)</span>}
-                        </label>
+                      <div
+                        key={virtualRow.key}
+                        data-index={virtualRow.index}
+                        ref={virtualizer.measureElement}
+                        style={{
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          width: "100%",
+                          transform: `translateY(${virtualRow.start}px)`,
+                        }}
+                      >
+                        <div className="flex items-center space-x-2 py-1">
+                          <Checkbox
+                            id={`add-tag-${tag}`}
+                            checked={selectedTags.includes(tag)}
+                            onCheckedChange={(checked: boolean | string) => {
+                              if (checked) {
+                                setSelectedTags([...selectedTags, tag])
+                              } else {
+                                setSelectedTags(selectedTags.filter((t: string) => t !== tag))
+                              }
+                            }}
+                          />
+                          <label
+                            htmlFor={`add-tag-${tag}`}
+                            className={`text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer ${
+                              isTemporary ? "text-primary italic" : ""
+                            }`}
+                          >
+                            {tag}
+                            {isTemporary && <span className="ml-1 text-xs text-muted-foreground">(new)</span>}
+                          </label>
+                        </div>
                       </div>
                     )
                   })}
                 </div>
-              </ScrollArea>
+              </div>
             </div>
           )}
 
@@ -239,6 +272,7 @@ export const SetTagsDialog = memo(function SetTagsDialog({
   const [newTag, setNewTag] = useState("")
   const [temporaryTags, setTemporaryTags] = useState<string[]>([]) // New state for temporarily created tags
   const wasOpen = useRef(false)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
 
   // Initialize selected tags only when dialog transitions from closed to open
   useEffect(() => {
@@ -251,6 +285,14 @@ export const SetTagsDialog = memo(function SetTagsDialog({
 
   // Combine server tags with temporary tags for display
   const displayTags = [...(availableTags || []), ...temporaryTags].sort()
+
+  // Virtualization for large tag lists
+  const virtualizer = useVirtualizer({
+    count: displayTags.length,
+    getScrollElement: () => scrollContainerRef.current,
+    estimateSize: () => 32, // Approximate height of each tag item
+    overscan: 5,
+  })
 
   const handleConfirm = useCallback((): void => {
     const allTags = [...selectedTags]
@@ -308,37 +350,60 @@ export const SetTagsDialog = memo(function SetTagsDialog({
                   Deselect All
                 </Button>
               </div>
-              <ScrollArea className="h-48 border rounded-md p-3">
-                <div className="space-y-2">
-                  {displayTags.map((tag) => {
+              <div
+                ref={scrollContainerRef}
+                className="h-48 border rounded-md p-3 overflow-y-auto"
+              >
+                <div
+                  style={{
+                    height: `${virtualizer.getTotalSize()}px`,
+                    width: "100%",
+                    position: "relative",
+                  }}
+                >
+                  {virtualizer.getVirtualItems().map((virtualRow) => {
+                    const tag = displayTags[virtualRow.index]
                     const isTemporary = temporaryTags.includes(tag)
                     return (
-                      <div key={tag} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`tag-${tag}`}
-                          checked={selectedTags.includes(tag)}
-                          onCheckedChange={(checked: boolean | string) => {
-                            if (checked) {
-                              setSelectedTags([...selectedTags, tag])
-                            } else {
-                              setSelectedTags(selectedTags.filter((t: string) => t !== tag))
-                            }
-                          }}
-                        />
-                        <label
-                          htmlFor={`tag-${tag}`}
-                          className={`text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer ${
-                            isTemporary ? "text-primary italic" : ""
-                          }`}
-                        >
-                          {tag}
-                          {isTemporary && <span className="ml-1 text-xs text-muted-foreground">(new)</span>}
-                        </label>
+                      <div
+                        key={virtualRow.key}
+                        data-index={virtualRow.index}
+                        ref={virtualizer.measureElement}
+                        style={{
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          width: "100%",
+                          transform: `translateY(${virtualRow.start}px)`,
+                        }}
+                      >
+                        <div className="flex items-center space-x-2 py-1">
+                          <Checkbox
+                            id={`tag-${tag}`}
+                            checked={selectedTags.includes(tag)}
+                            onCheckedChange={(checked: boolean | string) => {
+                              if (checked) {
+                                setSelectedTags([...selectedTags, tag])
+                              } else {
+                                setSelectedTags(selectedTags.filter((t: string) => t !== tag))
+                              }
+                            }}
+                          />
+                          <label
+                            htmlFor={`tag-${tag}`}
+                            className={`text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer ${
+                              isTemporary ? "text-primary italic" : ""
+                            }`}
+                          >
+                            {tag}
+                            {isTemporary && <span className="ml-1 text-xs text-muted-foreground">(new)</span>}
+                          </label>
+                        </div>
                       </div>
                     )
                   })}
                 </div>
-              </ScrollArea>
+              </div>
             </div>
           )}
 
@@ -1053,6 +1118,7 @@ export const RemoveTagsDialog = memo(function RemoveTagsDialog({
 }: RemoveTagsDialogProps) {
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const wasOpen = useRef(false)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
 
   // Initialize with current tags when dialog opens
   useEffect(() => {
@@ -1078,6 +1144,14 @@ export const RemoveTagsDialog = memo(function RemoveTagsDialog({
   // Filter available tags to only show those that are on the selected torrents
   const relevantTags = (availableTags || []).filter(tag => currentTags.includes(tag))
 
+  // Virtualization for large tag lists
+  const virtualizer = useVirtualizer({
+    count: relevantTags.length,
+    getScrollElement: () => scrollContainerRef.current,
+    estimateSize: () => 32, // Approximate height of each tag item
+    overscan: 5,
+  })
+
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent className="max-w-md">
@@ -1091,31 +1165,56 @@ export const RemoveTagsDialog = memo(function RemoveTagsDialog({
           {relevantTags.length > 0 ? (
             <div className="space-y-2">
               <Label>Tags to Remove</Label>
-              <ScrollArea className="h-48 border rounded-md p-3">
-                <div className="space-y-2">
-                  {relevantTags.map((tag) => (
-                    <div key={tag} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`remove-tag-${tag}`}
-                        checked={selectedTags.includes(tag)}
-                        onCheckedChange={(checked) => {
-                          if (checked) {
-                            setSelectedTags([...selectedTags, tag])
-                          } else {
-                            setSelectedTags(selectedTags.filter(t => t !== tag))
-                          }
+              <div
+                ref={scrollContainerRef}
+                className="h-48 border rounded-md p-3 overflow-y-auto"
+              >
+                <div
+                  style={{
+                    height: `${virtualizer.getTotalSize()}px`,
+                    width: "100%",
+                    position: "relative",
+                  }}
+                >
+                  {virtualizer.getVirtualItems().map((virtualRow) => {
+                    const tag = relevantTags[virtualRow.index]
+                    return (
+                      <div
+                        key={virtualRow.key}
+                        data-index={virtualRow.index}
+                        ref={virtualizer.measureElement}
+                        style={{
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          width: "100%",
+                          transform: `translateY(${virtualRow.start}px)`,
                         }}
-                      />
-                      <label
-                        htmlFor={`remove-tag-${tag}`}
-                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
                       >
-                        {tag}
-                      </label>
-                    </div>
-                  ))}
+                        <div className="flex items-center space-x-2 py-1">
+                          <Checkbox
+                            id={`remove-tag-${tag}`}
+                            checked={selectedTags.includes(tag)}
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                setSelectedTags([...selectedTags, tag])
+                              } else {
+                                setSelectedTags(selectedTags.filter(t => t !== tag))
+                              }
+                            }}
+                          />
+                          <label
+                            htmlFor={`remove-tag-${tag}`}
+                            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                          >
+                            {tag}
+                          </label>
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
-              </ScrollArea>
+              </div>
             </div>
           ) : (
             <div className="text-center py-8 text-muted-foreground">

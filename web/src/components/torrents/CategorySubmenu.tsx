@@ -21,7 +21,8 @@ import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import type { Category } from "@/types"
 import { Folder, Search, X } from "lucide-react"
-import { memo, useMemo, useState } from "react"
+import { memo, useMemo, useRef, useState } from "react"
+import { useVirtualizer } from "@tanstack/react-virtual"
 import { buildCategoryTree, type CategoryNode } from "./CategoryTree"
 
 interface CategorySubmenuProps {
@@ -44,6 +45,7 @@ export const CategorySubmenu = memo(function CategorySubmenu({
   useSubcategories = false,
 }: CategorySubmenuProps) {
   const [searchQuery, setSearchQuery] = useState("")
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
 
   const SubTrigger = type === "context" ? ContextMenuSubTrigger : DropdownMenuSubTrigger
   const Sub = type === "context" ? ContextMenuSub : DropdownMenuSub
@@ -114,6 +116,14 @@ export const CategorySubmenu = memo(function CategorySubmenu({
 
   const hasFilteredCategories = filteredCategories.length > 0
 
+  // Virtualization for large category lists
+  const virtualizer = useVirtualizer({
+    count: filteredCategories.length,
+    getScrollElement: () => scrollContainerRef.current,
+    estimateSize: () => 36, // Approximate height of each category item
+    overscan: 5,
+  })
+
   return (
     <Sub>
       <SubTrigger disabled={isPending}>
@@ -155,35 +165,61 @@ export const CategorySubmenu = memo(function CategorySubmenu({
           </>
         )}
 
-        {/* Scrollable category list */}
+        {/* Virtualized scrollable category list */}
         {hasCategories && (
-          <div className="max-h-[300px] overflow-y-auto">
+          <div
+            ref={scrollContainerRef}
+            className="max-h-[300px] overflow-y-auto"
+          >
             {hasFilteredCategories ? (
-              filteredCategories.map((category) => (
-                <MenuItem
-                  key={category.name}
-                  onClick={() => onSetCategory(category.name)}
-                  disabled={isPending}
-                  className={cn(
-                    "flex items-center gap-2",
-                    currentCategory === category.name ? "bg-accent" : ""
-                  )}
-                >
-                  <Folder className="mr-2 h-4 w-4" />
-                  <span
-                    className="flex-1 truncate"
-                    title={category.name}
-                    style={category.level > 0 ? { paddingLeft: category.level * 12 } : undefined}
-                  >
-                    {category.displayName}
-                  </span>
-                  {hashCount > 1 && (
-                    <span className="text-xs text-muted-foreground">
-                      ({hashCount})
-                    </span>
-                  )}
-                </MenuItem>
-              ))
+              <div
+                style={{
+                  height: `${virtualizer.getTotalSize()}px`,
+                  width: "100%",
+                  position: "relative",
+                }}
+              >
+                {virtualizer.getVirtualItems().map((virtualRow) => {
+                  const category = filteredCategories[virtualRow.index]
+                  return (
+                    <div
+                      key={virtualRow.key}
+                      data-index={virtualRow.index}
+                      ref={virtualizer.measureElement}
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        width: "100%",
+                        transform: `translateY(${virtualRow.start}px)`,
+                      }}
+                    >
+                      <MenuItem
+                        onClick={() => onSetCategory(category.name)}
+                        disabled={isPending}
+                        className={cn(
+                          "flex items-center gap-2",
+                          currentCategory === category.name ? "bg-accent" : ""
+                        )}
+                      >
+                        <Folder className="mr-2 h-4 w-4" />
+                        <span
+                          className="flex-1 truncate"
+                          title={category.name}
+                          style={category.level > 0 ? { paddingLeft: category.level * 12 } : undefined}
+                        >
+                          {category.displayName}
+                        </span>
+                        {hashCount > 1 && (
+                          <span className="text-xs text-muted-foreground">
+                            ({hashCount})
+                          </span>
+                        )}
+                      </MenuItem>
+                    </div>
+                  )
+                })}
+              </div>
             ) : (
               <div className="px-2 py-6 text-center text-sm text-muted-foreground">
                 No categories found
