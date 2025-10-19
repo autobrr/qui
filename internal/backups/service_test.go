@@ -366,3 +366,226 @@ func TestRecoverIncompleteRuns(t *testing.T) {
 	require.Len(t, remainingIncomplete, 0, "should have no incomplete runs after recovery")
 }
 
+func TestCheckMissedBackups(t *testing.T) {
+	db := setupTestBackupDB(t)
+
+	ctx := context.Background()
+	result, err := db.ExecContext(ctx, "INSERT INTO instances (name) VALUES (?)", "test-instance")
+	require.NoError(t, err)
+
+	instanceID64, err := result.LastInsertId()
+	require.NoError(t, err)
+	instanceID := int(instanceID64)
+
+	store := models.NewBackupStore(db)
+	svc := NewService(store, nil, Config{WorkerCount: 1})
+	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+	svc.now = func() time.Time { return fixedTime }
+
+	// Enable all backup kinds
+	settings := &models.BackupSettings{
+		InstanceID:     instanceID,
+		Enabled:        true,
+		HourlyEnabled:  true,
+		DailyEnabled:   true,
+		WeeklyEnabled:  true,
+		MonthlyEnabled: true,
+		KeepHourly:     1,
+		KeepDaily:      1,
+		KeepWeekly:     1,
+		KeepMonthly:    1,
+	}
+	require.NoError(t, store.UpsertSettings(ctx, settings))
+
+	// Create successful runs that are now overdue
+	hourlyRun := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindHourly,
+		Status:      models.BackupRunStatusSuccess,
+		RequestedBy: "scheduler",
+		RequestedAt: fixedTime.Add(-2 * time.Hour), // 2 hours ago, overdue
+	}
+	hourlyCompletedAt := fixedTime.Add(-2 * time.Hour)
+	hourlyRun.CompletedAt = &hourlyCompletedAt
+	require.NoError(t, store.CreateRun(ctx, hourlyRun))
+
+	dailyRun := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindDaily,
+		Status:      models.BackupRunStatusSuccess,
+		RequestedBy: "scheduler",
+		RequestedAt: fixedTime.Add(-23 * time.Hour), // 23 hours ago, not overdue
+	}
+	dailyCompletedAt := fixedTime.Add(-23 * time.Hour)
+	dailyRun.CompletedAt = &dailyCompletedAt
+	require.NoError(t, store.CreateRun(ctx, dailyRun))
+
+	// Weekly and monthly are not overdue yet
+	weeklyRun := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindWeekly,
+		Status:      models.BackupRunStatusSuccess,
+		RequestedBy: "scheduler",
+		RequestedAt: fixedTime.Add(-6 * 24 * time.Hour), // 6 days ago, not overdue
+	}
+	weeklyCompletedAt := fixedTime.Add(-6 * 24 * time.Hour)
+	weeklyRun.CompletedAt = &weeklyCompletedAt
+	require.NoError(t, store.CreateRun(ctx, weeklyRun))
+
+	monthlyRun := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindMonthly,
+		Status:      models.BackupRunStatusSuccess,
+		RequestedBy: "scheduler",
+		RequestedAt: fixedTime.AddDate(0, 0, -20), // 20 days ago, not overdue
+	}
+	monthlyCompletedAt := fixedTime.AddDate(0, 0, -20)
+	monthlyRun.CompletedAt = &monthlyCompletedAt
+	require.NoError(t, store.CreateRun(ctx, monthlyRun))
+
+	// Run checkMissedBackups
+	err = svc.checkMissedBackups(ctx)
+	require.NoError(t, err)
+
+	// Check that exactly one new run was queued
+	var count int
+	err = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM instance_backup_runs WHERE requested_by = 'startup-recovery'").Scan(&count)
+	require.NoError(t, err)
+	require.Equal(t, 1, count)
+
+	// Check the kind of the queued run
+	var kind string
+	err = db.QueryRowContext(ctx, "SELECT kind FROM instance_backup_runs WHERE requested_by = 'startup-recovery'").Scan(&kind)
+	require.NoError(t, err)
+	require.Equal(t, string(models.BackupRunKindHourly), kind)
+}
+
+func TestCheckMissedBackupsMultipleMissed(t *testing.T) {
+	db := setupTestBackupDB(t)
+
+	ctx := context.Background()
+	result, err := db.ExecContext(ctx, "INSERT INTO instances (name) VALUES (?)", "test-instance")
+	require.NoError(t, err)
+
+	instanceID64, err := result.LastInsertId()
+	require.NoError(t, err)
+	instanceID := int(instanceID64)
+
+	store := models.NewBackupStore(db)
+	svc := NewService(store, nil, Config{WorkerCount: 1})
+	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+	svc.now = func() time.Time { return fixedTime }
+
+	// Enable all backup kinds
+	settings := &models.BackupSettings{
+		InstanceID:     instanceID,
+		Enabled:        true,
+		HourlyEnabled:  true,
+		DailyEnabled:   true,
+		WeeklyEnabled:  true,
+		MonthlyEnabled: true,
+		KeepHourly:     1,
+		KeepDaily:      1,
+		KeepWeekly:     1,
+		KeepMonthly:    1,
+	}
+	require.NoError(t, store.UpsertSettings(ctx, settings))
+
+	// Create successful runs that are all overdue
+	hourlyRun := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindHourly,
+		Status:      models.BackupRunStatusSuccess,
+		RequestedBy: "scheduler",
+		RequestedAt: fixedTime.Add(-2 * time.Hour),
+	}
+	hourlyCompletedAt := fixedTime.Add(-2 * time.Hour)
+	hourlyRun.CompletedAt = &hourlyCompletedAt
+	require.NoError(t, store.CreateRun(ctx, hourlyRun))
+
+	dailyRun := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindDaily,
+		Status:      models.BackupRunStatusSuccess,
+		RequestedBy: "scheduler",
+		RequestedAt: fixedTime.Add(-25 * time.Hour),
+	}
+	dailyCompletedAt := fixedTime.Add(-25 * time.Hour)
+	dailyRun.CompletedAt = &dailyCompletedAt
+	require.NoError(t, store.CreateRun(ctx, dailyRun))
+
+	// Run checkMissedBackups
+	err = svc.checkMissedBackups(ctx)
+	require.NoError(t, err)
+
+	// Should not queue any backups since multiple are missed
+	var count int
+	err = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM instance_backup_runs WHERE requested_by = 'startup-recovery'").Scan(&count)
+	require.NoError(t, err)
+	require.Equal(t, 0, count)
+}
+
+func TestCheckMissedBackupsNoneMissed(t *testing.T) {
+	db := setupTestBackupDB(t)
+
+	ctx := context.Background()
+	result, err := db.ExecContext(ctx, "INSERT INTO instances (name) VALUES (?)", "test-instance")
+	require.NoError(t, err)
+
+	instanceID64, err := result.LastInsertId()
+	require.NoError(t, err)
+	instanceID := int(instanceID64)
+
+	store := models.NewBackupStore(db)
+	svc := NewService(store, nil, Config{WorkerCount: 1})
+	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+	svc.now = func() time.Time { return fixedTime }
+
+	// Enable all backup kinds
+	settings := &models.BackupSettings{
+		InstanceID:     instanceID,
+		Enabled:        true,
+		HourlyEnabled:  true,
+		DailyEnabled:   true,
+		WeeklyEnabled:  true,
+		MonthlyEnabled: true,
+		KeepHourly:     1,
+		KeepDaily:      1,
+		KeepWeekly:     1,
+		KeepMonthly:    1,
+	}
+	require.NoError(t, store.UpsertSettings(ctx, settings))
+
+	// Create successful runs that are recent (not overdue)
+	hourlyRun := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindHourly,
+		Status:      models.BackupRunStatusSuccess,
+		RequestedBy: "scheduler",
+		RequestedAt: fixedTime.Add(-30 * time.Minute), // 30 minutes ago, not overdue
+	}
+	hourlyCompletedAt := fixedTime.Add(-30 * time.Minute)
+	hourlyRun.CompletedAt = &hourlyCompletedAt
+	require.NoError(t, store.CreateRun(ctx, hourlyRun))
+
+	dailyRun := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindDaily,
+		Status:      models.BackupRunStatusSuccess,
+		RequestedBy: "scheduler",
+		RequestedAt: fixedTime.Add(-2 * time.Hour), // 2 hours ago, not overdue for daily
+	}
+	dailyCompletedAt := fixedTime.Add(-2 * time.Hour)
+	dailyRun.CompletedAt = &dailyCompletedAt
+	require.NoError(t, store.CreateRun(ctx, dailyRun))
+
+	// Run checkMissedBackups
+	err = svc.checkMissedBackups(ctx)
+	require.NoError(t, err)
+
+	// Should not queue any backups since none are missed
+	var count int
+	err = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM instance_backup_runs WHERE requested_by = 'startup-recovery'").Scan(&count)
+	require.NoError(t, err)
+	require.Equal(t, 0, count)
+}
