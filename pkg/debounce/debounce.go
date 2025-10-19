@@ -57,8 +57,10 @@ func (d *Debouncer) run() {
 		select {
 		case <-d.stop:
 			runFunc()
-			for range d.submissions {
+			for fn := range d.submissions {
+				fn()
 			}
+			close(d.submissions)
 			return
 		case <-d.timer:
 			runFunc()
@@ -80,7 +82,6 @@ func (d *Debouncer) run() {
 func (d *Debouncer) Do(fn func()) {
 	select {
 	case <-d.stop:
-		// If stopped, execute immediately
 		fn()
 	case d.submissions <- fn:
 	}
@@ -95,5 +96,4 @@ func (d *Debouncer) Queued() bool {
 // Stop shuts down the debouncer goroutine
 func (d *Debouncer) Stop() {
 	close(d.stop)
-	close(d.submissions)
 }
