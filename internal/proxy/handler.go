@@ -240,6 +240,7 @@ func (h *Handler) handleSyncMainData(w http.ResponseWriter, r *http.Request) {
 	// Use a custom response writer to capture the response
 	crw := &capturingResponseWriter{
 		ResponseWriter: w,
+		body:           h.bufferPool.Get(),
 		statusCode:     http.StatusOK,
 	}
 
