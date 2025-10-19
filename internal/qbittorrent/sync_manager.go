@@ -157,10 +157,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	needsTrackerHealthSorting := trackerHealthSupported && sort == "state"
 
 	// Get MainData for tracker filtering (if needed)
-	var mainData *qbt.MainData
-	if len(filters.Trackers) > 0 || len(filters.ExcludeTrackers) > 0 {
-		mainData = syncManager.GetData()
-	}
+	mainData := syncManager.GetData()
 
 	// Determine if we can use library filtering or need manual filtering
 	// Use library filtering only if we have single filters that the library supports
@@ -223,11 +220,6 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to get tags")
 		tags = []string{}
-	}
-
-	if useManualFiltering && mainData == nil {
-		// Manual filtering needs the server preference to respect disabled subcategories
-		mainData = syncManager.GetData()
 	}
 
 	supportsSubcategories := client.SupportsSubcategories()
@@ -384,10 +376,6 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	// This uses the same cached data, so it's very fast
 	allTorrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{})
 
-	// Get MainData for accurate tracker information
-	if mainData == nil {
-		mainData = syncManager.GetData()
-	}
 	useSubcategories = resolveUseSubcategories(supportsSubcategories, mainData, categories)
 
 	counts, trackerMap, enrichedAll := sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents, mainData, trackerMap, trackerHealthSupported, useSubcategories)
