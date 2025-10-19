@@ -22,6 +22,7 @@ import (
 	"github.com/autobrr/qui/internal/api/handlers"
 	"github.com/autobrr/qui/internal/api/middleware"
 	"github.com/autobrr/qui/internal/auth"
+	"github.com/autobrr/qui/internal/backups"
 	"github.com/autobrr/qui/internal/config"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/proxy"
@@ -49,6 +50,23 @@ type Server struct {
 	licenseService     *license.Service
 	updateService      *update.Service
 	trackerIconService *trackericons.Service
+	backupService      *backups.Service
+}
+
+type Dependencies struct {
+	Config             *config.AppConfig
+	Version            string
+	AuthService        *auth.Service
+	SessionManager     *scs.SessionManager
+	InstanceStore      *models.InstanceStore
+	ClientAPIKeyStore  *models.ClientAPIKeyStore
+	ClientPool         *qbittorrent.ClientPool
+	SyncManager        *qbittorrent.SyncManager
+	WebHandler         *web.Handler
+	LicenseService     *license.Service
+	UpdateService      *update.Service
+	TrackerIconService *trackericons.Service
+	BackupService      *backups.Service
 }
 
 func NewServer(deps *Dependencies) *Server {
@@ -71,6 +89,7 @@ func NewServer(deps *Dependencies) *Server {
 		licenseService:     deps.LicenseService,
 		updateService:      deps.UpdateService,
 		trackerIconService: deps.TrackerIconService,
+		backupService:      deps.BackupService,
 	}
 
 	return &s
@@ -179,19 +198,10 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(s.clientAPIKeyStore, s.instanceStore, s.config.Config.BaseURL)
 	versionHandler := handlers.NewVersionHandler(s.updateService)
 	qbittorrentInfoHandler := handlers.NewQBittorrentInfoHandler(s.clientPool)
-	var trackerIconHandler *handlers.TrackerIconHandler
-	if s.trackerIconService != nil {
-		trackerIconHandler = handlers.NewTrackerIconHandler(s.trackerIconService)
-	}
-
-	// Create proxy handler
+	backupsHandler := handlers.NewBackupsHandler(s.backupService)
+	trackerIconHandler := handlers.NewTrackerIconHandler(s.trackerIconService)
 	proxyHandler := proxy.NewHandler(s.clientPool, s.clientAPIKeyStore, s.instanceStore, s.config.Config.BaseURL)
-
-	// license handler (optional, only if the license service is configured)
-	var licenseHandler *handlers.LicenseHandler
-	if s.licenseService != nil {
-		licenseHandler = handlers.NewLicenseHandler(s.licenseService)
-	}
+	licenseHandler := handlers.NewLicenseHandler(s.licenseService)
 
 	// API routes
 	apiRouter := chi.NewRouter()
@@ -222,19 +232,14 @@ func (s *Server) Handler() (*chi.Mux, error) {
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.IsAuthenticated(s.authService, s.sessionManager))
 
-			if trackerIconHandler != nil {
-				r.Get("/tracker-icons", trackerIconHandler.GetTrackerIcons)
-			}
+			r.Get("/tracker-icons", trackerIconHandler.GetTrackerIcons)
 
 			// Auth routes
 			r.Post("/auth/logout", authHandler.Logout)
 			r.Get("/auth/me", authHandler.GetCurrentUser)
 			r.Put("/auth/change-password", authHandler.ChangePassword)
 
-			// license routes (if configured)
-			if licenseHandler != nil {
-				r.Route("/license", licenseHandler.Routes)
-			}
+			r.Route("/license", licenseHandler.Routes)
 
 			// API key management
 			r.Route("/api-keys", func(r chi.Router) {
@@ -322,6 +327,20 @@ func (s *Server) Handler() (*chi.Mux, error) {
 
 					// qBittorrent application info
 					r.Get("/app-info", qbittorrentInfoHandler.GetQBittorrentAppInfo)
+
+					r.Route("/backups", func(r chi.Router) {
+						r.Get("/settings", backupsHandler.GetSettings)
+						r.Put("/settings", backupsHandler.UpdateSettings)
+						r.Post("/run", backupsHandler.TriggerBackup)
+						r.Get("/runs", backupsHandler.ListRuns)
+						r.Delete("/runs", backupsHandler.DeleteAllRuns)
+						r.Get("/runs/{runID}/manifest", backupsHandler.GetManifest)
+						r.Get("/runs/{runID}/download", backupsHandler.DownloadRun)
+						r.Post("/runs/{runID}/restore/preview", backupsHandler.PreviewRestore)
+						r.Post("/runs/{runID}/restore", backupsHandler.ExecuteRestore)
+						r.Get("/runs/{runID}/items/{torrentHash}/download", backupsHandler.DownloadTorrentBlob)
+						r.Delete("/runs/{runID}", backupsHandler.DeleteRun)
+					})
 				})
 			})
 
@@ -379,20 +398,4 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	}
 
 	return r, nil
-}
-
-// Dependencies holds all the dependencies needed for the API
-type Dependencies struct {
-	Config             *config.AppConfig
-	Version            string
-	AuthService        *auth.Service
-	SessionManager     *scs.SessionManager
-	InstanceStore      *models.InstanceStore
-	ClientAPIKeyStore  *models.ClientAPIKeyStore
-	ClientPool         *qbittorrent.ClientPool
-	SyncManager        *qbittorrent.SyncManager
-	WebHandler         *web.Handler
-	LicenseService     *license.Service
-	UpdateService      *update.Service
-	TrackerIconService *trackericons.Service
 }
