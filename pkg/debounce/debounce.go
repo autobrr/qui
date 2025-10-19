@@ -57,10 +57,10 @@ func (d *Debouncer) run() {
 		select {
 		case <-d.stop:
 			runFunc()
+			close(d.submissions)
 			for fn := range d.submissions {
 				fn()
 			}
-			close(d.submissions)
 			return
 		case <-d.timer:
 			runFunc()
