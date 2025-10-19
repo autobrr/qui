@@ -277,3 +277,92 @@ func TestUpdateSettingsClearsCustomPath(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, view.CustomPath)
 }
+
+func TestRecoverIncompleteRuns(t *testing.T) {
+	db := setupTestBackupDB(t)
+
+	ctx := context.Background()
+	result, err := db.ExecContext(ctx, "INSERT INTO instances (name) VALUES (?)", "test-instance")
+	require.NoError(t, err)
+
+	instanceID64, err := result.LastInsertId()
+	require.NoError(t, err)
+	instanceID := int(instanceID64)
+
+	store := models.NewBackupStore(db)
+	svc := NewService(store, nil, Config{WorkerCount: 1})
+	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+	svc.now = func() time.Time { return fixedTime }
+
+	// Create a pending run
+	pendingRun := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindHourly,
+		Status:      models.BackupRunStatusPending,
+		RequestedBy: "scheduler",
+		RequestedAt: fixedTime.Add(-5 * time.Minute),
+	}
+	require.NoError(t, store.CreateRun(ctx, pendingRun))
+
+	// Create a running run
+	runningRun := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindDaily,
+		Status:      models.BackupRunStatusRunning,
+		RequestedBy: "manual",
+		RequestedAt: fixedTime.Add(-10 * time.Minute),
+	}
+	startedAt := fixedTime.Add(-9 * time.Minute)
+	runningRun.StartedAt = &startedAt
+	require.NoError(t, store.CreateRun(ctx, runningRun))
+
+	// Create a successful run (should not be affected)
+	successRun := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindWeekly,
+		Status:      models.BackupRunStatusSuccess,
+		RequestedBy: "scheduler",
+		RequestedAt: fixedTime.Add(-1 * time.Hour),
+	}
+	completedAt := fixedTime.Add(-55 * time.Minute)
+	successRun.CompletedAt = &completedAt
+	require.NoError(t, store.CreateRun(ctx, successRun))
+
+	// Verify incomplete runs exist
+	incompleteRuns, err := store.FindIncompleteRuns(ctx)
+	require.NoError(t, err)
+	require.Len(t, incompleteRuns, 2, "should find 2 incomplete runs")
+
+	// Run recovery
+	err = svc.recoverIncompleteRuns(ctx)
+	require.NoError(t, err)
+
+	// Check that pending run is now failed
+	recoveredPending, err := store.GetRun(ctx, pendingRun.ID)
+	require.NoError(t, err)
+	require.Equal(t, models.BackupRunStatusFailed, recoveredPending.Status)
+	require.NotNil(t, recoveredPending.CompletedAt)
+	require.Equal(t, fixedTime, *recoveredPending.CompletedAt)
+	require.NotNil(t, recoveredPending.ErrorMessage)
+	require.Equal(t, "Backup interrupted by application restart", *recoveredPending.ErrorMessage)
+
+	// Check that running run is now failed
+	recoveredRunning, err := store.GetRun(ctx, runningRun.ID)
+	require.NoError(t, err)
+	require.Equal(t, models.BackupRunStatusFailed, recoveredRunning.Status)
+	require.NotNil(t, recoveredRunning.CompletedAt)
+	require.Equal(t, fixedTime, *recoveredRunning.CompletedAt)
+	require.NotNil(t, recoveredRunning.ErrorMessage)
+	require.Equal(t, "Backup interrupted by application restart", *recoveredRunning.ErrorMessage)
+
+	// Check that successful run is unchanged
+	unchangedSuccess, err := store.GetRun(ctx, successRun.ID)
+	require.NoError(t, err)
+	require.Equal(t, models.BackupRunStatusSuccess, unchangedSuccess.Status)
+
+	// Verify no incomplete runs remain
+	remainingIncomplete, err := store.FindIncompleteRuns(ctx)
+	require.NoError(t, err)
+	require.Len(t, remainingIncomplete, 0, "should have no incomplete runs after recovery")
+}
+

@@ -193,6 +193,11 @@ func (s *Service) Start(ctx context.Context) {
 	ctx, cancel := context.WithCancel(ctx)
 	s.cancel = cancel
 
+	// Recover any incomplete backup runs from previous session
+	if err := s.recoverIncompleteRuns(ctx); err != nil {
+		log.Warn().Err(err).Msg("Failed to recover incomplete backup runs")
+	}
+
 	for i := 0; i < s.cfg.WorkerCount; i++ {
 		s.wg.Add(1)
 		go s.worker(ctx)
@@ -200,6 +205,40 @@ func (s *Service) Start(ctx context.Context) {
 
 	s.wg.Add(1)
 	go s.scheduler(ctx)
+}
+
+// recoverIncompleteRuns marks any pending or running backup runs as failed.
+// This handles the case where qui was restarted while backups were in progress.
+func (s *Service) recoverIncompleteRuns(ctx context.Context) error {
+	incompleteRuns, err := s.store.FindIncompleteRuns(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to find incomplete runs: %w", err)
+	}
+
+	if len(incompleteRuns) == 0 {
+		return nil
+	}
+
+	log.Info().Int("count", len(incompleteRuns)).Msg("Recovering incomplete backup runs from previous session")
+
+	now := s.now()
+	errorMsg := "Backup interrupted by application restart"
+
+	for _, run := range incompleteRuns {
+		err := s.store.UpdateRunMetadata(ctx, run.ID, func(r *models.BackupRun) error {
+			r.Status = models.BackupRunStatusFailed
+			r.CompletedAt = &now
+			r.ErrorMessage = &errorMsg
+			return nil
+		})
+		if err != nil {
+			log.Warn().Err(err).Int64("runID", run.ID).Int("instanceID", run.InstanceID).Msg("Failed to mark incomplete run as failed")
+		} else {
+			log.Debug().Int64("runID", run.ID).Int("instanceID", run.InstanceID).Str("kind", string(run.Kind)).Str("previousStatus", string(run.Status)).Msg("Marked incomplete backup run as failed")
+		}
+	}
+
+	return nil
 }
 
 func (s *Service) Stop() {
