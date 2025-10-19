@@ -134,7 +134,7 @@ export const CategorySubmenu = memo(function CategorySubmenu({
   })
 
   // Render a single category item (shared between virtualized and non-virtualized)
-  const renderCategoryItem = (category: { name: string; displayName: string; level: number }, index?: number) => (
+  const renderCategoryItem = (category: { name: string; displayName: string; level: number }) => (
     <MenuItem
       key={category.name}
       onClick={() => onSetCategory(category.name)}
@@ -235,7 +235,7 @@ export const CategorySubmenu = memo(function CategorySubmenu({
                           transform: `translateY(${virtualRow.start}px)`,
                         }}
                       >
-                        {renderCategoryItem(category, virtualRow.index)}
+                        {renderCategoryItem(category)}
                       </div>
                     )
                   })}

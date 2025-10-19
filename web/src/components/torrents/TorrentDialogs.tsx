@@ -88,9 +88,12 @@ export const AddTagsDialog = memo(function AddTagsDialog({
   // Combine server tags with temporary tags for display
   const displayTags = [...(availableTags || []), ...temporaryTags].sort()
 
+  // Only use virtualization for large tag lists (>50 tags)
+  const shouldUseVirtualization = displayTags.length > 50
+
   // Virtualization for large tag lists
   const virtualizer = useVirtualizer({
-    count: displayTags.length,
+    count: shouldUseVirtualization ? displayTags.length : 0,
     getScrollElement: () => scrollContainerRef.current,
     estimateSize: () => 32, // Approximate height of each tag item
     overscan: 5,
@@ -156,30 +159,64 @@ export const AddTagsDialog = memo(function AddTagsDialog({
                 ref={scrollContainerRef}
                 className="h-48 border rounded-md p-3 overflow-y-auto"
               >
-                <div
-                  style={{
-                    height: `${virtualizer.getTotalSize()}px`,
-                    width: "100%",
-                    position: "relative",
-                  }}
-                >
-                  {virtualizer.getVirtualItems().map((virtualRow) => {
-                    const tag = displayTags[virtualRow.index]
-                    const isTemporary = temporaryTags.includes(tag)
-                    return (
-                      <div
-                        key={virtualRow.key}
-                        data-index={virtualRow.index}
-                        ref={virtualizer.measureElement}
-                        style={{
-                          position: "absolute",
-                          top: 0,
-                          left: 0,
-                          width: "100%",
-                          transform: `translateY(${virtualRow.start}px)`,
-                        }}
-                      >
-                        <div className="flex items-center space-x-2 py-1">
+                {shouldUseVirtualization ? (
+                  // Virtualized rendering for large tag lists
+                  <div
+                    style={{
+                      height: `${virtualizer.getTotalSize()}px`,
+                      width: "100%",
+                      position: "relative",
+                    }}
+                  >
+                    {virtualizer.getVirtualItems().map((virtualRow) => {
+                      const tag = displayTags[virtualRow.index]
+                      const isTemporary = temporaryTags.includes(tag)
+                      return (
+                        <div
+                          key={virtualRow.key}
+                          data-index={virtualRow.index}
+                          ref={virtualizer.measureElement}
+                          style={{
+                            position: "absolute",
+                            top: 0,
+                            left: 0,
+                            width: "100%",
+                            transform: `translateY(${virtualRow.start}px)`,
+                          }}
+                        >
+                          <div className="flex items-center space-x-2 py-1">
+                            <Checkbox
+                              id={`add-tag-${tag}`}
+                              checked={selectedTags.includes(tag)}
+                              onCheckedChange={(checked: boolean | string) => {
+                                if (checked) {
+                                  setSelectedTags([...selectedTags, tag])
+                                } else {
+                                  setSelectedTags(selectedTags.filter((t: string) => t !== tag))
+                                }
+                              }}
+                            />
+                            <label
+                              htmlFor={`add-tag-${tag}`}
+                              className={`text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer ${
+                                isTemporary ? "text-primary italic" : ""
+                              }`}
+                            >
+                              {tag}
+                              {isTemporary && <span className="ml-1 text-xs text-muted-foreground">(new)</span>}
+                            </label>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  // Simple rendering for small tag lists - faster!
+                  <div className="space-y-1">
+                    {displayTags.map((tag) => {
+                      const isTemporary = temporaryTags.includes(tag)
+                      return (
+                        <div key={tag} className="flex items-center space-x-2 py-1">
                           <Checkbox
                             id={`add-tag-${tag}`}
                             checked={selectedTags.includes(tag)}
@@ -201,10 +238,10 @@ export const AddTagsDialog = memo(function AddTagsDialog({
                             {isTemporary && <span className="ml-1 text-xs text-muted-foreground">(new)</span>}
                           </label>
                         </div>
-                      </div>
-                    )
-                  })}
-                </div>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -285,9 +322,12 @@ export const SetTagsDialog = memo(function SetTagsDialog({
   // Combine server tags with temporary tags for display
   const displayTags = [...(availableTags || []), ...temporaryTags].sort()
 
+  // Only use virtualization for large tag lists (>50 tags)
+  const shouldUseVirtualization = displayTags.length > 50
+
   // Virtualization for large tag lists
   const virtualizer = useVirtualizer({
-    count: displayTags.length,
+    count: shouldUseVirtualization ? displayTags.length : 0,
     getScrollElement: () => scrollContainerRef.current,
     estimateSize: () => 32, // Approximate height of each tag item
     overscan: 5,
@@ -353,30 +393,64 @@ export const SetTagsDialog = memo(function SetTagsDialog({
                 ref={scrollContainerRef}
                 className="h-48 border rounded-md p-3 overflow-y-auto"
               >
-                <div
-                  style={{
-                    height: `${virtualizer.getTotalSize()}px`,
-                    width: "100%",
-                    position: "relative",
-                  }}
-                >
-                  {virtualizer.getVirtualItems().map((virtualRow) => {
-                    const tag = displayTags[virtualRow.index]
-                    const isTemporary = temporaryTags.includes(tag)
-                    return (
-                      <div
-                        key={virtualRow.key}
-                        data-index={virtualRow.index}
-                        ref={virtualizer.measureElement}
-                        style={{
-                          position: "absolute",
-                          top: 0,
-                          left: 0,
-                          width: "100%",
-                          transform: `translateY(${virtualRow.start}px)`,
-                        }}
-                      >
-                        <div className="flex items-center space-x-2 py-1">
+                {shouldUseVirtualization ? (
+                  // Virtualized rendering for large tag lists
+                  <div
+                    style={{
+                      height: `${virtualizer.getTotalSize()}px`,
+                      width: "100%",
+                      position: "relative",
+                    }}
+                  >
+                    {virtualizer.getVirtualItems().map((virtualRow) => {
+                      const tag = displayTags[virtualRow.index]
+                      const isTemporary = temporaryTags.includes(tag)
+                      return (
+                        <div
+                          key={virtualRow.key}
+                          data-index={virtualRow.index}
+                          ref={virtualizer.measureElement}
+                          style={{
+                            position: "absolute",
+                            top: 0,
+                            left: 0,
+                            width: "100%",
+                            transform: `translateY(${virtualRow.start}px)`,
+                          }}
+                        >
+                          <div className="flex items-center space-x-2 py-1">
+                            <Checkbox
+                              id={`tag-${tag}`}
+                              checked={selectedTags.includes(tag)}
+                              onCheckedChange={(checked: boolean | string) => {
+                                if (checked) {
+                                  setSelectedTags([...selectedTags, tag])
+                                } else {
+                                  setSelectedTags(selectedTags.filter((t: string) => t !== tag))
+                                }
+                              }}
+                            />
+                            <label
+                              htmlFor={`tag-${tag}`}
+                              className={`text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer ${
+                                isTemporary ? "text-primary italic" : ""
+                              }`}
+                            >
+                              {tag}
+                              {isTemporary && <span className="ml-1 text-xs text-muted-foreground">(new)</span>}
+                            </label>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  // Simple rendering for small tag lists - faster!
+                  <div className="space-y-1">
+                    {displayTags.map((tag) => {
+                      const isTemporary = temporaryTags.includes(tag)
+                      return (
+                        <div key={tag} className="flex items-center space-x-2 py-1">
                           <Checkbox
                             id={`tag-${tag}`}
                             checked={selectedTags.includes(tag)}
@@ -398,10 +472,10 @@ export const SetTagsDialog = memo(function SetTagsDialog({
                             {isTemporary && <span className="ml-1 text-xs text-muted-foreground">(new)</span>}
                           </label>
                         </div>
-                      </div>
-                    )
-                  })}
-                </div>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
             </div>
           )}
