@@ -162,12 +162,15 @@ export function InstanceBackups() {
     if (selectedInstanceId === undefined) {
       return
     }
+    if (!instances) {
+      return
+    }
 
     const stillSupported = supportedInstances.some(inst => inst.id === selectedInstanceId)
     if (!stillSupported) {
       setSelectedInstanceId(undefined)
     }
-  }, [selectedInstanceId, setSelectedInstanceId, supportedInstances])
+  }, [selectedInstanceId, setSelectedInstanceId, supportedInstances, instances])
 
   const instanceId = selectedInstanceId
 

@@ -359,6 +359,10 @@ func (s *Service) applyTorrentPlan(ctx context.Context, plan *RestorePlan, appli
 		}
 	}
 
+	if len(pendingResume) > 0 && s.syncManager != nil {
+		s.syncManager.ResumeWhenComplete(instanceID, pendingResume, qbittorrent.ResumeWhenCompleteOptions{})
+	}
+
 	if len(plan.Torrents.Delete) == 0 {
 		return warnings, nil
 	}
@@ -373,10 +377,6 @@ func (s *Service) applyTorrentPlan(ctx context.Context, plan *RestorePlan, appli
 			continue
 		}
 		deleteTargets = append(deleteTargets, hash)
-	}
-
-	if len(pendingResume) > 0 && s.syncManager != nil {
-		s.syncManager.ResumeWhenComplete(instanceID, pendingResume, qbittorrent.ResumeWhenCompleteOptions{})
 	}
 
 	if len(deleteTargets) == 0 {
