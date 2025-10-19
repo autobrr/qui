@@ -4,6 +4,7 @@
 package qbittorrent
 
 import (
+	"sort"
 	"strings"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -133,6 +134,10 @@ func matchDuplicateTorrents(targetHashes []string, torrents []qbt.Torrent) []Dup
 		})
 	}
 
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].Name < results[j].Name
+	})
+
 	return results
 }
 
@@ -146,5 +151,6 @@ func sortedCaseInsensitiveSet(values map[string]struct{}) []string {
 		result = append(result, value)
 	}
 
+	sort.Strings(result)
 	return result
 }
