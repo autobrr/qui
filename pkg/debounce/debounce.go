@@ -61,11 +61,13 @@ func (d *Debouncer) run() {
 				}
 			}(d.timer)
 
-			runFunc()
 			close(d.submissions)
+			d.mu.Lock()
 			for fn := range d.submissions {
-				fn()
+				d.latest = fn
 			}
+			d.mu.Unlock()
+			runFunc()
 			return
 		case <-d.timer:
 			runFunc()
