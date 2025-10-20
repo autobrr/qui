@@ -370,11 +370,8 @@ export function Titles({ instanceId, instanceName }: TitlesProps) {
 
         if (seasonPack && individualEpisodes.length > 0) {
           // Check if files might match for relocation
-          const canRelocate = individualEpisodes.some(episode => {
-            // Simple heuristic: if season pack is much larger than individual episodes combined
-            const totalEpisodeSize = individualEpisodes.reduce((sum, ep) => sum + ep.size, 0)
-            return seasonPack.size >= totalEpisodeSize * 0.8 // Allow for some overhead
-          })
+          const totalEpisodeSize = individualEpisodes.reduce((sum, ep) => sum + ep.size, 0)
+          const canRelocate = seasonPack.size >= totalEpisodeSize * 0.8 // Allow for some overhead
 
           recommendations.push({
             title: group.title,
