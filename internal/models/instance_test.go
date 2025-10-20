@@ -153,7 +153,8 @@ func TestInstanceStoreWithHost(t *testing.T) {
 			is_active BOOLEAN DEFAULT 1,
 			last_connected_at TIMESTAMP,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			sync_interval INTEGER NOT NULL
 		)
 	`)
 	require.NoError(t, err, "Failed to create test table")
