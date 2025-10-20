@@ -223,8 +223,77 @@ export function Titles({ instanceId, instanceName }: TitlesProps) {
     )
   }, [data?.titles])
 
-  // Create virtual items for rendering
+  // Create upgrade recommendations
+  const upgradeRecommendations = useMemo(() => {
+    if (!data?.titles) return []
+    
+    const recommendations: Array<{
+      title: string
+      type: string
+      currentBest: ParsedTitle
+      potentialUpgrades: ParsedTitle[]
+      reason: string
+    }> = []
+    
+    groupedTitles.forEach((group) => {
+      if (group.upgrades.length > 0 && group.bestQualityItem) {
+        const currentScore = calculateQualityScore(group.bestQualityItem)
+        const upgradeReasons: string[] = []
+        
+        // Analyze why these are upgrades
+        const qualityImprovements = group.upgrades.map(upgrade => {
+          const upgradeScore = calculateQualityScore(upgrade)
+          const improvements: string[] = []
+          
+          if (upgradeScore.level !== currentScore.level) {
+            improvements.push(`${currentScore.level} → ${upgradeScore.level}`)
+          }
+          
+          if (upgrade.resolution && group.bestQualityItem.resolution && 
+              upgrade.resolution !== group.bestQualityItem.resolution) {
+            improvements.push(`Resolution: ${group.bestQualityItem.resolution} → ${upgrade.resolution}`)
+          }
+          
+          if (upgrade.hdr && upgrade.hdr.length > 0 && 
+              (!group.bestQualityItem.hdr || group.bestQualityItem.hdr.length === 0)) {
+            improvements.push('Adds HDR')
+          }
+          
+          if (upgrade.codec && upgrade.codec.some(c => c.toLowerCase().includes('x265') || c.toLowerCase().includes('hevc')) &&
+              (!group.bestQualityItem.codec || !group.bestQualityItem.codec.some(c => c.toLowerCase().includes('x265') || c.toLowerCase().includes('hevc')))) {
+            improvements.push('Better codec (x265/HEVC)')
+          }
+          
+          return {
+            item: upgrade,
+            improvements,
+            scoreDiff: upgradeScore.score - currentScore.score
+          }
+        })
+        
+        if (qualityImprovements.some(u => u.improvements.length > 0)) {
+          upgradeReasons.push('Quality improvements available')
+        }
+        
+        if (upgradeReasons.length > 0) {
+          recommendations.push({
+            title: group.title,
+            type: group.type,
+            currentBest: group.bestQualityItem,
+            potentialUpgrades: group.upgrades,
+            reason: upgradeReasons[0]
+          })
+        }
+      }
+    })
+    
+    return recommendations.sort((a, b) => b.potentialUpgrades.length - a.potentialUpgrades.length)
+  }, [groupedTitles, data?.titles])
+
+  // Create virtual items for rendering (only when not showing upgrades)
   const virtualItems = useMemo(() => {
+    if (showUpgrades) return []
+    
     const items: VirtualItem[] = []
     
     groupedTitles.forEach((group) => {
@@ -270,7 +339,7 @@ export function Titles({ instanceId, instanceName }: TitlesProps) {
     })
     
     return items
-  }, [groupedTitles, expandedGroups])
+  }, [groupedTitles, expandedGroups, showUpgrades])
 
   const virtualizer = useVirtualizer({
     count: virtualItems.length,
@@ -552,7 +621,7 @@ export function Titles({ instanceId, instanceName }: TitlesProps) {
             onClick={() => setShowUpgrades(!showUpgrades)}
           >
             <Crown className="mr-2 h-4 w-4" />
-            Show Upgrades
+            {showUpgrades ? "Hide Upgrades" : "Show Upgrades"}
           </Button>
           {selectedItems.size > 0 && (
             <div className="flex items-center gap-2">
@@ -586,7 +655,7 @@ export function Titles({ instanceId, instanceName }: TitlesProps) {
       </div>
 
       {/* Analytics Dashboard */}
-      {analytics && (
+      {!showUpgrades && analytics && (
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -662,164 +731,169 @@ export function Titles({ instanceId, instanceName }: TitlesProps) {
           </Card>
         </div>
       )}
-
-      {/* Filters */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Filters</CardTitle>
-          <CardDescription>Filter parsed titles by various criteria</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Preset Filters */}
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" onClick={() => applyPresetFilter('recent-4k')}>
-              <Crown className="mr-2 h-4 w-4" />
-              Recent 4K Movies
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => applyPresetFilter('incomplete-series')}>
-              <Tv className="mr-2 h-4 w-4" />
-              Incomplete Series
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => applyPresetFilter('high-quality')}>
-              <Zap className="mr-2 h-4 w-4" />
-              High Quality
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => applyPresetFilter('new-releases')}>
-              <Package className="mr-2 h-4 w-4" />
-              New Releases
-            </Button>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="type-filter">Type</Label>
-              <Select
-                value={filters.type || "all"}
-                onValueChange={(value) => handleFilterChange("type", value)}
-              >
-                <SelectTrigger id="type-filter">
-                  <SelectValue placeholder="All Types" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Types</SelectItem>
-                  {uniqueValues.types.map((type) => (
-                    <SelectItem key={type} value={type}>
-                      {type}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+        <Card>
+          <CardHeader>
+            <CardTitle>Filters</CardTitle>
+            <CardDescription>Filter parsed titles by various criteria</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Preset Filters */}
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" onClick={() => applyPresetFilter('recent-4k')}>
+                <Crown className="mr-2 h-4 w-4" />
+                Recent 4K Movies
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => applyPresetFilter('incomplete-series')}>
+                <Tv className="mr-2 h-4 w-4" />
+                Incomplete Series
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => applyPresetFilter('high-quality')}>
+                <Zap className="mr-2 h-4 w-4" />
+                High Quality
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => applyPresetFilter('new-releases')}>
+                <Package className="mr-2 h-4 w-4" />
+                New Releases
+              </Button>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="source-filter">Source</Label>
-              <Select
-                value={filters.source || "all"}
-                onValueChange={(value) => handleFilterChange("source", value)}
-              >
-                <SelectTrigger id="source-filter">
-                  <SelectValue placeholder="All Sources" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Sources</SelectItem>
-                  {uniqueValues.sources.map((source) => (
-                    <SelectItem key={source} value={source}>
-                      {source}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="type-filter">Type</Label>
+                <Select
+                  value={filters.type || "all"}
+                  onValueChange={(value) => handleFilterChange("type", value)}
+                >
+                  <SelectTrigger id="type-filter">
+                    <SelectValue placeholder="All Types" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Types</SelectItem>
+                    {uniqueValues.types.map((type) => (
+                      <SelectItem key={type} value={type}>
+                        {type}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="resolution-filter">Resolution</Label>
-              <Select
-                value={filters.resolution || "all"}
-                onValueChange={(value) => handleFilterChange("resolution", value)}
-              >
-                <SelectTrigger id="resolution-filter">
-                  <SelectValue placeholder="All Resolutions" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Resolutions</SelectItem>
-                  {uniqueValues.resolutions.map((resolution) => (
-                    <SelectItem key={resolution} value={resolution}>
-                      {resolution}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+              <div className="space-y-2">
+                <Label htmlFor="source-filter">Source</Label>
+                <Select
+                  value={filters.source || "all"}
+                  onValueChange={(value) => handleFilterChange("source", value)}
+                >
+                  <SelectTrigger id="source-filter">
+                    <SelectValue placeholder="All Sources" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Sources</SelectItem>
+                    {uniqueValues.sources.map((source) => (
+                      <SelectItem key={source} value={source}>
+                        {source}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="group-filter">Group</Label>
-              <Select
-                value={filters.group || "all"}
-                onValueChange={(value) => handleFilterChange("group", value)}
-              >
-                <SelectTrigger id="group-filter">
-                  <SelectValue placeholder="All Groups" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Groups</SelectItem>
-                  {uniqueValues.groups.map((group) => (
-                    <SelectItem key={group} value={group}>
-                      {group}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+              <div className="space-y-2">
+                <Label htmlFor="resolution-filter">Resolution</Label>
+                <Select
+                  value={filters.resolution || "all"}
+                  onValueChange={(value) => handleFilterChange("resolution", value)}
+                >
+                  <SelectTrigger id="resolution-filter">
+                    <SelectValue placeholder="All Resolutions" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Resolutions</SelectItem>
+                    {uniqueValues.resolutions.map((resolution) => (
+                      <SelectItem key={resolution} value={resolution}>
+                        {resolution}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="year-filter">Year</Label>
-              <Select
-                value={filters.year?.toString() || "all"}
-                onValueChange={(value) => handleFilterChange("year", value === "all" ? undefined : parseInt(value))}
-              >
-                <SelectTrigger id="year-filter">
-                  <SelectValue placeholder="All Years" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Years</SelectItem>
-                  {uniqueValues.years.map((year) => (
-                    <SelectItem key={year} value={year.toString()}>
-                      {year}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+              <div className="space-y-2">
+                <Label htmlFor="group-filter">Group</Label>
+                <Select
+                  value={filters.group || "all"}
+                  onValueChange={(value) => handleFilterChange("group", value)}
+                >
+                  <SelectTrigger id="group-filter">
+                    <SelectValue placeholder="All Groups" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Groups</SelectItem>
+                    {uniqueValues.groups.map((group) => (
+                      <SelectItem key={group} value={group}>
+                        {group}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-          <div className="flex gap-2">
-            <div className="flex-1 space-y-2">
-              <Label htmlFor="search">Search</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="search"
-                  placeholder="Search by name, title, or group..."
-                  value={searchInput}
-                  onChange={(e) => setSearchInput(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                />
-                <Button onClick={handleSearch}>
-                  <Search className="h-4 w-4" />
-                </Button>
+              <div className="space-y-2">
+                <Label htmlFor="year-filter">Year</Label>
+                <Select
+                  value={filters.year?.toString() || "all"}
+                  onValueChange={(value) => handleFilterChange("year", value === "all" ? undefined : parseInt(value))}
+                >
+                  <SelectTrigger id="year-filter">
+                    <SelectValue placeholder="All Years" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Years</SelectItem>
+                    {uniqueValues.years.map((year) => (
+                      <SelectItem key={year} value={year.toString()}>
+                        {year}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+
+            <div className="flex gap-2">
+              <div className="flex-1 space-y-2">
+                <Label htmlFor="search">Search</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="search"
+                    placeholder="Search by name, title, or group..."
+                    value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                  />
+                  <Button onClick={handleSearch}>
+                    <Search className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Results */}
       <Card>
         <CardHeader>
           <CardTitle>
-            Grouped Titles {data && `(${groupedTitles.length} titles, ${data.total} items)`}
+            {showUpgrades 
+              ? `Upgrade Recommendations (${upgradeRecommendations.length} titles)`
+              : `Grouped Titles ${data ? `(${groupedTitles.length} titles, ${data.total} items)` : ''}`
+            }
           </CardTitle>
           <CardDescription>
-            Click on a title to expand and view releases grouped by year or season
+            {showUpgrades 
+              ? "Potential quality upgrades for your collection with recommended actions"
+              : "Click on a title to expand and view releases grouped by year or season"
+            }
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -835,13 +909,35 @@ export function Titles({ instanceId, instanceName }: TitlesProps) {
             </div>
           )}
 
-          {data && groupedTitles.length === 0 && (
+          {data && showUpgrades && upgradeRecommendations.length === 0 && (
+            <div className="text-center py-8">
+              <p className="text-muted-foreground">No upgrade recommendations found. Your collection is up to date!</p>
+            </div>
+          )}
+
+          {data && !showUpgrades && groupedTitles.length === 0 && (
             <div className="text-center py-8">
               <p className="text-muted-foreground">No titles found matching your filters</p>
             </div>
           )}
 
-          {data && groupedTitles.length > 0 && (
+          {data && showUpgrades && upgradeRecommendations.length > 0 && (
+            <div className="space-y-4">
+              {upgradeRecommendations.map((rec, index) => (
+                <UpgradeRecommendationCard
+                  key={index}
+                  recommendation={rec}
+                  formatSize={formatSize}
+                  formatDate={formatDate}
+                  getReleaseTypeIcon={getReleaseTypeIcon}
+                  onTorrentAction={handleTorrentAction}
+                  onCategoryChange={handleCategoryChange}
+                />
+              ))}
+            </div>
+          )}
+
+          {data && !showUpgrades && groupedTitles.length > 0 && (
             <div
               ref={parentRef}
               className="h-[600px] overflow-auto border rounded-lg"
@@ -1107,5 +1203,179 @@ function TitleItem({ item, formatSize, formatDate, getReleaseTypeIcon, showUpgra
         </div>
       </div>
     </div>
+  )
+}
+
+interface UpgradeRecommendation {
+  title: string
+  type: string
+  currentBest: ParsedTitle
+  potentialUpgrades: ParsedTitle[]
+  reason: string
+}
+
+interface UpgradeRecommendationCardProps {
+  recommendation: UpgradeRecommendation
+  formatSize: (bytes: number) => string
+  formatDate: (timestamp: number) => string
+  getReleaseTypeIcon: (type: string) => React.ReactNode
+  onTorrentAction: (action: string, hash: string) => Promise<void>
+  onCategoryChange: (hash: string, category: string) => Promise<void>
+}
+
+function UpgradeRecommendationCard({
+  recommendation,
+  formatSize,
+  formatDate,
+  getReleaseTypeIcon,
+  onTorrentAction,
+  onCategoryChange
+}: UpgradeRecommendationCardProps) {
+  const [selectedUpgrade, setSelectedUpgrade] = useState<string | null>(null)
+  
+  const currentScore = calculateQualityScore(recommendation.currentBest)
+  
+  const handleUpgradeAction = async (action: string) => {
+    if (!selectedUpgrade) return
+    
+    if (action === 'replace') {
+      // Pause current best and resume upgrade
+      await onTorrentAction('pause', recommendation.currentBest.hash)
+      await onTorrentAction('resume', selectedUpgrade)
+    } else if (action === 'keep-both') {
+      // Just resume the upgrade
+      await onTorrentAction('resume', selectedUpgrade)
+    }
+  }
+  
+  return (
+    <Card className="border-l-4 border-l-blue-500">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            {getReleaseTypeIcon(recommendation.type)}
+            <CardTitle className="text-lg">{recommendation.title}</CardTitle>
+            <Badge variant="secondary">{recommendation.reason}</Badge>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Current Best */}
+        <div className="border rounded-lg p-3 bg-muted/30">
+          <div className="flex items-center gap-2 mb-2">
+            <Badge variant="outline">Current Best</Badge>
+            <Badge variant={currentScore.color as any}>{currentScore.label}</Badge>
+          </div>
+          <div className="text-sm text-muted-foreground">
+            {recommendation.currentBest.name} • {formatSize(recommendation.currentBest.size)} • Added {formatDate(recommendation.currentBest.addedOn)}
+          </div>
+        </div>
+        
+        {/* Potential Upgrades */}
+        <div className="space-y-2">
+          <h4 className="font-medium text-sm">Potential Upgrades</h4>
+          {recommendation.potentialUpgrades.map((upgrade, index) => {
+            const upgradeScore = calculateQualityScore(upgrade)
+            const improvements: string[] = []
+            
+            if (upgradeScore.level !== currentScore.level) {
+              improvements.push(`${currentScore.level} → ${upgradeScore.level}`)
+            }
+            
+            if (upgrade.resolution && recommendation.currentBest.resolution && 
+                upgrade.resolution !== recommendation.currentBest.resolution) {
+              improvements.push(`Resolution: ${recommendation.currentBest.resolution} → ${upgrade.resolution}`)
+            }
+            
+            if (upgrade.hdr && upgrade.hdr.length > 0 && 
+                (!recommendation.currentBest.hdr || recommendation.currentBest.hdr.length === 0)) {
+              improvements.push('Adds HDR')
+            }
+            
+            if (upgrade.codec && upgrade.codec.some(c => c.toLowerCase().includes('x265') || c.toLowerCase().includes('hevc')) &&
+                (!recommendation.currentBest.codec || !recommendation.currentBest.codec.some(c => c.toLowerCase().includes('x265') || c.toLowerCase().includes('hevc')))) {
+              improvements.push('Better codec (x265/HEVC)')
+            }
+            
+            return (
+              <div key={index} className="border rounded-lg p-3">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-2">
+                      <input
+                        type="radio"
+                        name={`upgrade-${recommendation.title}`}
+                        checked={selectedUpgrade === upgrade.hash}
+                        onChange={() => setSelectedUpgrade(upgrade.hash)}
+                        className="mt-0.5"
+                      />
+                      <Badge variant={upgradeScore.color as any}>{upgradeScore.label}</Badge>
+                      {improvements.length > 0 && (
+                        <Badge variant="default" className="text-xs">
+                          {improvements.join(', ')}
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="text-sm font-medium mb-1">{upgrade.name}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {formatSize(upgrade.size)} • Added {formatDate(upgrade.addedOn)}
+                    </div>
+                    {upgrade.resolution && (
+                      <div className="text-xs text-muted-foreground mt-1">
+                        {upgrade.resolution}
+                        {upgrade.source && ` • ${upgrade.source}`}
+                        {upgrade.codec && upgrade.codec.length > 0 && ` • ${upgrade.codec.join(', ')}`}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1 ml-4">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onTorrentAction(upgrade.state === 'paused' ? 'resume' : 'pause', upgrade.hash)}
+                      title={upgrade.state === 'paused' ? 'Resume torrent' : 'Pause torrent'}
+                    >
+                      {upgrade.state === 'paused' ? <Play className="h-3 w-3" /> : <Pause className="h-3 w-3" />}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onTorrentAction('delete', upgrade.hash)}
+                      title="Delete torrent"
+                      className="text-destructive hover:text-destructive"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+        
+        {/* Action Buttons */}
+        {selectedUpgrade && (
+          <div className="flex gap-2 pt-2 border-t">
+            <Button 
+              variant="default" 
+              size="sm"
+              onClick={() => handleUpgradeAction('replace')}
+              className="flex-1"
+            >
+              <Crown className="mr-2 h-4 w-4" />
+              Replace Current with Upgrade
+            </Button>
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => handleUpgradeAction('keep-both')}
+              className="flex-1"
+            >
+              Keep Both
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }
