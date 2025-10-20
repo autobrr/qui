@@ -9,11 +9,12 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { useQuery } from "@tanstack/react-query"
-import { useState, useMemo } from "react"
-import { Search, X, Film, Music, Tv, Package, Download } from "lucide-react"
-import type { TitlesResponse, TitlesFilterOptions } from "@/types"
+import { useState, useMemo, useRef } from "react"
+import { Search, X, Film, Music, Tv, Package, Download, ChevronDown, ChevronRight, HardDrive } from "lucide-react"
+import { useVirtualizer } from "@tanstack/react-virtual"
+import type { TitlesResponse, TitlesFilterOptions, ParsedTitle } from "@/types"
 
 interface TitlesProps {
   instanceId: number
@@ -29,9 +30,27 @@ const releaseTypeIcons: Record<string, React.ReactNode> = {
   game: <Package className="h-4 w-4" />,
 }
 
+interface GroupedTitle {
+  title: string
+  type: string
+  items: ParsedTitle[]
+  totalSize: number
+  subGroups: Map<string, ParsedTitle[]>
+}
+
+interface VirtualItem {
+  type: 'group' | 'item'
+  data: GroupedTitle | ParsedTitle
+  groupTitle?: string
+  subGroupKey?: string
+  depth: number
+}
+
 export function Titles({ instanceId, instanceName }: TitlesProps) {
   const [filters, setFilters] = useState<TitlesFilterOptions>({})
   const [searchInput, setSearchInput] = useState("")
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
+  const parentRef = useRef<HTMLDivElement>(null)
 
   // Fetch titles data
   const { data, isLoading, error } = useQuery<TitlesResponse>({
@@ -56,6 +75,116 @@ export function Titles({ instanceId, instanceName }: TitlesProps) {
       return response.json()
     },
     refetchInterval: 30000, // Refresh every 30 seconds
+  })
+
+  // Group titles by title, then by year/season
+  const groupedTitles = useMemo(() => {
+    if (!data?.titles) return []
+    
+    const groups = new Map<string, GroupedTitle>()
+    
+    data.titles.forEach((item) => {
+      const titleKey = item.title || item.name || "Unknown"
+      
+      if (!groups.has(titleKey)) {
+        groups.set(titleKey, {
+          title: titleKey,
+          type: item.type,
+          items: [],
+          totalSize: 0,
+          subGroups: new Map(),
+        })
+      }
+      
+      const group = groups.get(titleKey)!
+      group.items.push(item)
+      group.totalSize += item.size
+      
+      // Create subgroups based on type
+      let subGroupKey = "Other"
+      if (item.type === "episode" || item.type === "series") {
+        // Group by season
+        if (item.series !== undefined && item.series !== null) {
+          subGroupKey = `Season ${item.series}`
+        } else if (item.year) {
+          subGroupKey = `${item.year}`
+        }
+      } else if (item.year) {
+        // For movies, group by year
+        subGroupKey = `${item.year}`
+      }
+      
+      if (!group.subGroups.has(subGroupKey)) {
+        group.subGroups.set(subGroupKey, [])
+      }
+      group.subGroups.get(subGroupKey)!.push(item)
+    })
+    
+    return Array.from(groups.values()).sort((a, b) => 
+      a.title.localeCompare(b.title)
+    )
+  }, [data?.titles])
+
+  // Create virtual items for rendering
+  const virtualItems = useMemo(() => {
+    const items: VirtualItem[] = []
+    
+    groupedTitles.forEach((group) => {
+      // Add group header
+      items.push({
+        type: 'group',
+        data: group,
+        depth: 0,
+      })
+      
+      // If expanded, add subgroups and their items
+      if (expandedGroups.has(group.title)) {
+        const sortedSubGroups = Array.from(group.subGroups.entries()).sort((a, b) => {
+          // Sort seasons/years in reverse order (newest first)
+          return b[0].localeCompare(a[0])
+        })
+        
+        sortedSubGroups.forEach(([subGroupKey, subGroupItems]) => {
+          // Add subgroup header
+          items.push({
+            type: 'group',
+            data: { ...group, items: subGroupItems } as GroupedTitle,
+            groupTitle: group.title,
+            subGroupKey,
+            depth: 1,
+          })
+          
+          // If subgroup is expanded, add individual items
+          const subGroupId = `${group.title}::${subGroupKey}`
+          if (expandedGroups.has(subGroupId)) {
+            subGroupItems.forEach((item) => {
+              items.push({
+                type: 'item',
+                data: item,
+                groupTitle: group.title,
+                subGroupKey,
+                depth: 2,
+              })
+            })
+          }
+        })
+      }
+    })
+    
+    return items
+  }, [groupedTitles, expandedGroups])
+
+  const virtualizer = useVirtualizer({
+    count: virtualItems.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: (index) => {
+      const item = virtualItems[index]
+      if (item.type === 'group') {
+        return item.depth === 0 ? 80 : 60 // Main group vs subgroup
+      }
+      return 120 // Individual item
+    },
+    overscan: 5,
   })
 
   // Extract unique values for filters
@@ -106,6 +235,24 @@ export function Titles({ instanceId, instanceName }: TitlesProps) {
   const clearFilters = () => {
     setFilters({})
     setSearchInput("")
+  }
+
+  const toggleGroup = (groupId: string) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(groupId)) {
+        next.delete(groupId)
+        // Also collapse all subgroups
+        Array.from(next).forEach((id) => {
+          if (id.startsWith(`${groupId}::`)) {
+            next.delete(id)
+          }
+        })
+      } else {
+        next.add(groupId)
+      }
+      return next
+    })
   }
 
   const formatSize = (bytes: number) => {
@@ -277,8 +424,11 @@ export function Titles({ instanceId, instanceName }: TitlesProps) {
       <Card>
         <CardHeader>
           <CardTitle>
-            Results {data && `(${data.total})`}
+            Grouped Titles {data && `(${groupedTitles.length} titles, ${data.total} items)`}
           </CardTitle>
+          <CardDescription>
+            Click on a title to expand and view releases grouped by year or season
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading && (
@@ -293,105 +443,209 @@ export function Titles({ instanceId, instanceName }: TitlesProps) {
             </div>
           )}
 
-          {data && data.titles.length === 0 && (
+          {data && groupedTitles.length === 0 && (
             <div className="text-center py-8">
               <p className="text-muted-foreground">No titles found matching your filters</p>
             </div>
           )}
 
-          {data && data.titles.length > 0 && (
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[50px]">Type</TableHead>
-                    <TableHead>Title</TableHead>
-                    <TableHead>Source</TableHead>
-                    <TableHead>Resolution</TableHead>
-                    <TableHead>Codec</TableHead>
-                    <TableHead>Audio</TableHead>
-                    <TableHead>Group</TableHead>
-                    <TableHead>Year</TableHead>
-                    <TableHead>Size</TableHead>
-                    <TableHead>Added</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {data.titles.map((title) => (
-                    <TableRow key={title.hash}>
-                      <TableCell>
-                        <div className="flex items-center justify-center">
-                          {getReleaseTypeIcon(title.type)}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="space-y-1">
-                          <div className="font-medium truncate max-w-md" title={title.title || title.name}>
-                            {title.title || title.name}
-                          </div>
-                          {title.artist && (
-                            <div className="text-xs text-muted-foreground">{title.artist}</div>
+          {data && groupedTitles.length > 0 && (
+            <div
+              ref={parentRef}
+              className="h-[600px] overflow-auto border rounded-lg"
+            >
+              <div
+                style={{
+                  height: `${virtualizer.getTotalSize()}px`,
+                  width: '100%',
+                  position: 'relative',
+                }}
+              >
+                {virtualizer.getVirtualItems().map((virtualRow) => {
+                  const item = virtualItems[virtualRow.index]
+                  
+                  return (
+                    <div
+                      key={virtualRow.index}
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        height: `${virtualRow.size}px`,
+                        transform: `translateY(${virtualRow.start}px)`,
+                      }}
+                    >
+                      {item.type === 'group' ? (
+                        <GroupHeader
+                          group={item.data as GroupedTitle}
+                          isExpanded={expandedGroups.has(
+                            item.subGroupKey 
+                              ? `${item.groupTitle}::${item.subGroupKey}`
+                              : (item.data as GroupedTitle).title
                           )}
-                          {title.subtitle && (
-                            <div className="text-xs text-muted-foreground">{title.subtitle}</div>
+                          onToggle={() => toggleGroup(
+                            item.subGroupKey 
+                              ? `${item.groupTitle}::${item.subGroupKey}`
+                              : (item.data as GroupedTitle).title
                           )}
-                          {title.edition && title.edition.length > 0 && (
-                            <div className="flex gap-1 flex-wrap">
-                              {title.edition.map((ed, i) => (
-                                <Badge key={i} variant="outline" className="text-xs">
-                                  {ed}
-                                </Badge>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>{title.source || "-"}</TableCell>
-                      <TableCell>{title.resolution || "-"}</TableCell>
-                      <TableCell>
-                        {title.codec && title.codec.length > 0 ? (
-                          <div className="flex gap-1 flex-wrap">
-                            {title.codec.map((c, i) => (
-                              <Badge key={i} variant="secondary" className="text-xs">
-                                {c}
-                              </Badge>
-                            ))}
-                          </div>
-                        ) : (
-                          "-"
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {title.audio && title.audio.length > 0 ? (
-                          <div className="flex gap-1 flex-wrap">
-                            {title.audio.map((a, i) => (
-                              <Badge key={i} variant="secondary" className="text-xs">
-                                {a}
-                              </Badge>
-                            ))}
-                          </div>
-                        ) : (
-                          "-"
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {title.group ? (
-                          <Badge variant="default">{title.group}</Badge>
-                        ) : (
-                          "-"
-                        )}
-                      </TableCell>
-                      <TableCell>{title.year || "-"}</TableCell>
-                      <TableCell className="text-xs">{formatSize(title.size)}</TableCell>
-                      <TableCell className="text-xs">{formatDate(title.addedOn)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                          depth={item.depth}
+                          subGroupKey={item.subGroupKey}
+                          formatSize={formatSize}
+                          getReleaseTypeIcon={getReleaseTypeIcon}
+                        />
+                      ) : (
+                        <TitleItem
+                          item={item.data as ParsedTitle}
+                          formatSize={formatSize}
+                          formatDate={formatDate}
+                          getReleaseTypeIcon={getReleaseTypeIcon}
+                        />
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           )}
         </CardContent>
       </Card>
+    </div>
+  )
+}
+
+interface GroupHeaderProps {
+  group: GroupedTitle
+  isExpanded: boolean
+  onToggle: () => void
+  depth: number
+  subGroupKey?: string
+  formatSize: (bytes: number) => string
+  getReleaseTypeIcon: (type: string) => React.ReactNode
+}
+
+function GroupHeader({ 
+  group, 
+  isExpanded, 
+  onToggle, 
+  depth, 
+  subGroupKey,
+  formatSize,
+  getReleaseTypeIcon 
+}: GroupHeaderProps) {
+  const paddingLeft = depth * 24 + 16
+  
+  if (depth === 0) {
+    // Main group header
+    return (
+      <button
+        onClick={onToggle}
+        className="w-full text-left px-4 py-4 hover:bg-accent/50 transition-colors border-b flex items-center gap-3"
+        style={{ paddingLeft: `${paddingLeft}px` }}
+      >
+        {isExpanded ? (
+          <ChevronDown className="h-5 w-5 flex-shrink-0" />
+        ) : (
+          <ChevronRight className="h-5 w-5 flex-shrink-0" />
+        )}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {getReleaseTypeIcon(group.type)}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="font-semibold text-lg truncate">{group.title}</div>
+          <div className="text-sm text-muted-foreground">
+            {group.items.length} release{group.items.length !== 1 ? 's' : ''} • {formatSize(group.totalSize)}
+            {group.subGroups.size > 1 && ` • ${group.subGroups.size} ${group.type === 'episode' || group.type === 'series' ? 'seasons' : 'years'}`}
+          </div>
+        </div>
+      </button>
+    )
+  }
+  
+  // Subgroup header
+  return (
+    <button
+      onClick={onToggle}
+      className="w-full text-left px-4 py-3 hover:bg-accent/30 transition-colors border-b border-border/50 flex items-center gap-3"
+      style={{ paddingLeft: `${paddingLeft}px` }}
+    >
+      {isExpanded ? (
+        <ChevronDown className="h-4 w-4 flex-shrink-0" />
+      ) : (
+        <ChevronRight className="h-4 w-4 flex-shrink-0" />
+      )}
+      <div className="flex-1 flex items-center justify-between min-w-0">
+        <div className="font-medium truncate">{subGroupKey}</div>
+        <div className="text-sm text-muted-foreground flex-shrink-0 ml-4">
+          {group.items.length} item{group.items.length !== 1 ? 's' : ''} • {formatSize(group.items.reduce((sum, item) => sum + item.size, 0))}
+        </div>
+      </div>
+    </button>
+  )
+}
+
+interface TitleItemProps {
+  item: ParsedTitle
+  formatSize: (bytes: number) => string
+  formatDate: (timestamp: number) => string
+  getReleaseTypeIcon: (type: string) => React.ReactNode
+}
+
+function TitleItem({ item, formatSize, formatDate, getReleaseTypeIcon }: TitleItemProps) {
+  return (
+    <div className="px-4 py-3 border-b border-border/50 bg-card hover:bg-accent/20 transition-colors" style={{ paddingLeft: '72px' }}>
+      <div className="flex items-start gap-4">
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {getReleaseTypeIcon(item.type)}
+        </div>
+        <div className="flex-1 min-w-0 space-y-2">
+          <div className="font-medium truncate" title={item.name}>
+            {item.name}
+          </div>
+          
+          <div className="flex flex-wrap gap-2 items-center text-sm">
+            {item.resolution && (
+              <Badge variant="secondary">{item.resolution}</Badge>
+            )}
+            {item.source && (
+              <Badge variant="secondary">{item.source}</Badge>
+            )}
+            {item.codec && item.codec.length > 0 && item.codec.map((c, i) => (
+              <Badge key={i} variant="outline">{c}</Badge>
+            ))}
+            {item.audio && item.audio.length > 0 && item.audio.map((a, i) => (
+              <Badge key={i} variant="outline">{a}</Badge>
+            ))}
+            {item.hdr && item.hdr.length > 0 && item.hdr.map((h, i) => (
+              <Badge key={i} variant="default">{h}</Badge>
+            ))}
+            {item.group && (
+              <Badge>{item.group}</Badge>
+            )}
+          </div>
+          
+          {item.edition && item.edition.length > 0 && (
+            <div className="flex gap-1 flex-wrap">
+              {item.edition.map((ed, i) => (
+                <Badge key={i} variant="outline" className="text-xs">
+                  {ed}
+                </Badge>
+              ))}
+            </div>
+          )}
+          
+          <div className="flex items-center gap-4 text-xs text-muted-foreground">
+            {item.episode !== undefined && item.episode !== null && (
+              <span>Episode {item.episode}</span>
+            )}
+            <span className="flex items-center gap-1">
+              <HardDrive className="h-3 w-3" />
+              {formatSize(item.size)}
+            </span>
+            <span>Added {formatDate(item.addedOn)}</span>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
