@@ -260,9 +260,9 @@ func (h *InstancesHandler) CreateInstance(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Validate sync interval (0 = disabled, or minimum 5 minutes)
-	if req.SyncInterval != 0 && req.SyncInterval < 5 {
-		RespondError(w, http.StatusBadRequest, "Sync interval must be 0 (disabled) or at least 5 minutes")
+	// Validate sync interval (0 = disabled, or minimum 1 minute)
+	if req.SyncInterval != 0 && req.SyncInterval < 1 {
+		RespondError(w, http.StatusBadRequest, "Sync interval must be 0 (disabled) or at least 1 minute")
 		return
 	}
 
@@ -304,10 +304,10 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Validate sync interval (0 = disabled, or minimum 5 minutes)
+	// Validate sync interval (0 = disabled, or minimum 1 minute)
 	if req.SyncInterval != nil {
-		if *req.SyncInterval != 0 && *req.SyncInterval < 5 {
-			RespondError(w, http.StatusBadRequest, "Sync interval must be 0 (disabled) or at least 5 minutes")
+		if *req.SyncInterval != 0 && *req.SyncInterval < 1 {
+			RespondError(w, http.StatusBadRequest, "Sync interval must be 0 (disabled) or at least 1 minute")
 			return
 		}
 	}

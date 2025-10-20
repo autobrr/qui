@@ -350,7 +350,7 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
               const num = Number(value)
               if (isNaN(num)) return "Must be a number"
               if (num < 0) return "Must be 0 or greater"
-              if (num > 0 && num < 5) return "Minimum 5 minutes when enabled"
+              if (num > 0 && num < 1) return "Minimum 1 minute when enabled"
               return undefined
             },
           }}
@@ -369,7 +369,7 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
                 placeholder="0"
               />
               <p className="text-sm text-muted-foreground">
-                Automatically refresh cache every N minutes. Set to 0 to disable, minimum 5 minutes when enabled.
+                Automatically refresh cache every N minutes. Set to 0 to disable, minimum 1 minute when enabled. Timer resets after any sync.
               </p>
               {field.state.meta.isTouched && field.state.meta.errors[0] && (
                 <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
