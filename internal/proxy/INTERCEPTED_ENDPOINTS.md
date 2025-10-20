@@ -14,37 +14,48 @@ These endpoints are intercepted to:
 
 All intercepted endpoints are **GET requests only**. Write operations (POST, PUT, DELETE) are always forwarded to qBittorrent.
 
-### 1. Torrent List with Search
+### 1. Torrent List (Standard)
 - **Endpoint**: `/api/v2/torrents/info`
-- **When Intercepted**: When `search` query parameter is present
 - **SyncManager Method**: `GetTorrentsWithFilters`
 - **Benefits**: 
-  - Fast fuzzy search across torrent names
-  - Efficient filtering and sorting from cached data
-  - Supports all qBittorrent filter parameters (category, tag, filter, sort, etc.)
+  - Fast response using cached/synchronized data
+  - Efficient filtering and sorting
+  - Supports standard qBittorrent parameters (category, tag, filter, sort, limit, offset)
+  - Full qBittorrent API compatibility
+- **Note**: Does NOT support search parameter or advanced qui filtering
 
-### 2. Categories
+### 2. Torrent List (Enhanced)
+- **Endpoint**: `/api/v2/torrents/search`
+- **SyncManager Method**: `GetTorrentsWithFilters`
+- **Benefits**: 
+  - All benefits of `/api/v2/torrents/info` plus:
+  - Fast fuzzy search across torrent names via `search` parameter
+  - Advanced qui-specific filtering capabilities like `unregistered`, `tracker_down`
+  - Returns full qui response with metadata (stats, counts, categories, tags, server state)
+- **Note**: This is a qui-specific endpoint, not part of standard qBittorrent API
+
+### 3. Categories
 - **Endpoint**: `/api/v2/torrents/categories`
 - **SyncManager Method**: `GetCategories`
 - **Benefits**:
   - Instant response from synchronized category data
   - No additional API call to qBittorrent needed
 
-### 3. Tags
+### 4. Tags
 - **Endpoint**: `/api/v2/torrents/tags`
 - **SyncManager Method**: `GetTags`
 - **Benefits**:
   - Instant response from synchronized tag data
   - Automatically sorted for consistent UI display
 
-### 4. Torrent Properties
+### 5. Torrent Properties
 - **Endpoint**: `/api/v2/torrents/properties`
 - **Query Parameter**: `hash` (required)
 - **SyncManager Method**: `GetTorrentProperties`
 - **Benefits**:
   - Reduced latency for frequently accessed torrent details
 
-### 5. Torrent Trackers
+### 6. Torrent Trackers
 - **Endpoint**: `/api/v2/torrents/trackers`
 - **Query Parameter**: `hash` (required)
 - **SyncManager Method**: `GetTorrentTrackers`
@@ -52,7 +63,7 @@ All intercepted endpoints are **GET requests only**. Write operations (POST, PUT
   - Automatic tracker icon discovery and caching
   - Enhanced tracker status information
 
-### 6. Torrent Peers
+### 7. Torrent Peers
 - **Endpoint**: `/api/v2/sync/torrentPeers`
 - **Query Parameter**: `hash` (required)
 - **SyncManager Method**: `GetTorrentPeers`
@@ -60,7 +71,7 @@ All intercepted endpoints are **GET requests only**. Write operations (POST, PUT
   - Incremental peer updates
   - Efficient peer list synchronization
 
-### 7. Torrent Files
+### 8. Torrent Files
 - **Endpoint**: `/api/v2/torrents/files`
 - **Query Parameter**: `hash` (required)
 - **SyncManager Method**: `GetTorrentFiles`
@@ -76,7 +87,8 @@ The intercepted endpoints are registered as explicit chi routes in the proxy han
 
 ```go
 // Read endpoints (served from qui's sync manager)
-r.Get("/api/v2/torrents/info", h.handleTorrentsInfoWithSearch)
+r.Get("/api/v2/torrents/info", h.handleTorrentsInfo)        // Standard qBittorrent API compatibility
+r.Get("/api/v2/torrents/search", h.handleTorrentSearch)          // Qui-enhanced endpoint with search & advanced filtering
 r.Get("/api/v2/torrents/categories", h.handleCategories)
 r.Get("/api/v2/torrents/tags", h.handleTags)
 r.Get("/api/v2/torrents/properties", h.handleTorrentProperties)
@@ -116,6 +128,5 @@ All other endpoints are forwarded to qBittorrent via reverse proxy, including:
 ## Future Considerations
 
 Potential endpoints that could be intercepted in the future:
-- `/api/v2/torrents/info` (without search) - Could serve all torrent lists from cache
-- `/api/v2/sync/maindata` - Could provide qui's enhanced sync data
-- `/api/v2/transfer/info` - Could aggregate transfer statistics
+- `/api/v2/sync/maindata` - Could provide qui's enhanced sync data with additional metadata
+- `/api/v2/transfer/info` - Could aggregate transfer statistics across instances

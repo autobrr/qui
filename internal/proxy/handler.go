@@ -340,12 +340,13 @@ func (h *Handler) Routes(r chi.Router) {
 		r.Post("/api/v2/auth/login", h.handleAuthLogin)
 		r.Get("/api/v2/sync/maindata", h.handleSyncMainData)
 		r.Get("/api/v2/sync/torrentPeers", h.handleTorrentPeers)
-		r.Get("/api/v2/torrents/info", h.handleTorrentsInfoWithSearch)
+		r.Get("/api/v2/torrents/info", h.handleTorrentsInfo)
 		r.Get("/api/v2/torrents/categories", h.handleCategories)
 		r.Get("/api/v2/torrents/tags", h.handleTags)
 		r.Get("/api/v2/torrents/properties", h.handleTorrentProperties)
 		r.Get("/api/v2/torrents/trackers", h.handleTorrentTrackers)
 		r.Get("/api/v2/torrents/files", h.handleTorrentFiles)
+		r.Get("/api/v2/torrents/search", h.handleTorrentSearch)
 
 		// Handle all other requests via reverse proxy
 		r.HandleFunc("/*", h.ServeHTTP)
@@ -479,8 +480,108 @@ func isHTTPSRequest(r *http.Request) bool {
 	return false
 }
 
-// handleTorrentsInfoWithSearch handles torrents/info requests using qui's sync manager
-func (h *Handler) handleTorrentsInfoWithSearch(w http.ResponseWriter, r *http.Request) {
+// handleTorrentsInfo handles /api/v2/torrents/info using qui's sync manager
+func (h *Handler) handleTorrentsInfo(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	instanceID := GetInstanceIDFromContext(ctx)
+	clientAPIKey := GetClientAPIKeyFromContext(ctx)
+
+	// Extract standard qBittorrent API parameters (no advanced filtering)
+	queryParams := r.URL.Query()
+	filter := queryParams.Get("filter")
+	category := queryParams.Get("category")
+	tag := queryParams.Get("tag")
+	sort := queryParams.Get("sort")
+	reverse := queryParams.Get("reverse") == "true"
+	limit := 0
+	offset := 0
+
+	if l := queryParams.Get("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 {
+			limit = parsed
+		}
+	}
+
+	if o := queryParams.Get("offset"); o != "" {
+		if parsed, err := strconv.Atoi(o); err == nil && parsed >= 0 {
+			offset = parsed
+		}
+	}
+
+	// Build basic filter options (standard qBittorrent parameters only)
+	filters := qbittorrent.FilterOptions{}
+
+	if filter != "" {
+		filters.Status = []string{filter}
+	}
+
+	if category != "" {
+		filters.Categories = []string{category}
+	}
+
+	if tag != "" {
+		filters.Tags = []string{tag}
+	}
+
+	// Default sort order
+	if sort == "" {
+		sort = "added_on"
+	}
+	order := "asc"
+	if reverse {
+		order = "desc"
+	}
+
+	// If no limit specified, use a reasonable default
+	if limit == 0 {
+		limit = 100000 // Large limit to get all results
+	}
+
+	log.Debug().
+		Int("instanceId", instanceID).
+		Str("client", clientAPIKey.ClientName).
+		Str("filter", filter).
+		Str("category", category).
+		Str("tag", tag).
+		Str("sort", sort).
+		Str("order", order).
+		Int("limit", limit).
+		Int("offset", offset).
+		Msg("Handling torrents/info request via qui sync manager")
+
+	// Use qui's sync manager
+	response, err := h.syncManager.GetTorrentsWithFilters(ctx, instanceID, limit, offset, sort, order, "", filters)
+	if err != nil {
+		log.Error().
+			Err(err).
+			Int("instanceId", instanceID).
+			Msg("Failed to get torrents from sync manager")
+		h.writeProxyError(w)
+		return
+	}
+
+	// Convert qui's TorrentView format back to qBittorrent's Torrent format
+	// The TorrentView embeds qbt.Torrent, so we can extract it
+	torrents := make([]interface{}, len(response.Torrents))
+	for i, tv := range response.Torrents {
+		torrents[i] = tv.Torrent
+	}
+
+	// Return as JSON array (qBittorrent API format)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	encoder := json.NewEncoder(w)
+	if err := encoder.Encode(torrents); err != nil {
+		log.Error().
+			Err(err).
+			Int("instanceId", instanceID).
+			Msg("Failed to encode torrents response")
+	}
+}
+
+// handleTorrentSearch handles torrents/search requests using qui's sync manager with advanced filtering
+func (h *Handler) handleTorrentSearch(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	instanceID := GetInstanceIDFromContext(ctx)
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
@@ -511,25 +612,7 @@ func (h *Handler) handleTorrentsInfoWithSearch(w http.ResponseWriter, r *http.Re
 	// Build filter options from qBittorrent API parameters
 	filters := qbittorrent.FilterOptions{}
 
-	// Check for qui's advanced filters parameter (JSON format)
-	// This allows using qui's full FilterOptions via: ?filters={"status":["downloading","seeding"],...}
-	if filtersParam := queryParams.Get("filters"); filtersParam != "" {
-		if err := json.Unmarshal([]byte(filtersParam), &filters); err != nil {
-			log.Warn().
-				Err(err).
-				Str("filters", filtersParam).
-				Msg("Failed to parse filters parameter, using standard qBittorrent params")
-			// Fall through to standard parameter handling
-		} else {
-			log.Debug().
-				Interface("filters", filters).
-				Msg("Using qui advanced filters from filters parameter")
-			// Skip standard parameter processing if advanced filters were provided
-			goto applyFilters
-		}
-	}
-
-	// Map standard qBittorrent parameters to qui filter (if no advanced filters provided)
+	// Map standard qBittorrent parameters to qui filter
 	if filter != "" {
 		filters.Status = []string{filter}
 	}
@@ -541,8 +624,6 @@ func (h *Handler) handleTorrentsInfoWithSearch(w http.ResponseWriter, r *http.Re
 	if tag != "" {
 		filters.Tags = []string{tag}
 	}
-
-applyFilters:
 
 	// Default sort order
 	if sort == "" {
@@ -567,7 +648,7 @@ applyFilters:
 		Str("order", order).
 		Int("limit", limit).
 		Int("offset", offset).
-		Msg("Handling torrents/info with search via qui sync manager")
+		Msg("Handling torrents/qui request with qui sync manager")
 
 	// Use qui's sync manager to get filtered torrents
 	response, err := h.syncManager.GetTorrentsWithFilters(ctx, instanceID, limit, offset, sort, order, search, filters)
@@ -576,28 +657,21 @@ applyFilters:
 			Err(err).
 			Int("instanceId", instanceID).
 			Str("search", search).
-			Msg("Failed to get torrents with search")
+			Msg("Failed to get torrents with qui filters")
 		h.writeProxyError(w)
 		return
 	}
 
-	// Convert qui's TorrentView format back to qBittorrent's Torrent format
-	// The TorrentView embeds qbt.Torrent, so we can extract it
-	torrents := make([]interface{}, len(response.Torrents))
-	for i, tv := range response.Torrents {
-		torrents[i] = tv.Torrent
-	}
-
-	// Return as JSON array (qBittorrent API format)
+	// Return full qui response with metadata
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 
 	encoder := json.NewEncoder(w)
-	if err := encoder.Encode(torrents); err != nil {
+	if err := encoder.Encode(response); err != nil {
 		log.Error().
 			Err(err).
 			Int("instanceId", instanceID).
-			Msg("Failed to encode torrents response")
+			Msg("Failed to encode qui response")
 	}
 }
 
