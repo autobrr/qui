@@ -202,6 +202,8 @@ export interface TorrentStats {
   totalDownloadSpeed?: number
   totalUploadSpeed?: number
   totalSize?: number
+  totalRemainingSize?: number
+  totalSeedingSize?: number
 }
 
 export interface CacheMetadata {
