@@ -17,7 +17,8 @@ import {
   Monitor,
   Archive,
   Check,
-  Palette
+  Palette,
+  FileText
 } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { api } from "@/lib/api"
@@ -255,6 +256,15 @@ export function MobileFooterNav() {
               >
                 <Archive className="h-4 w-4" />
                 Instance Backups
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link
+                to="/titles"
+                className="flex items-center gap-2"
+              >
+                <FileText className="h-4 w-4" />
+                Titles Dashboard
               </Link>
             </DropdownMenuItem>
 
