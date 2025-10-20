@@ -464,6 +464,14 @@ function GlobalStatsCards({ statsData }: { statsData: DashboardInstanceStats[] }
       sum + (torrentCounts?.status?.errored || 0), 0)
     const totalSize = statsData.reduce((sum, { stats }) =>
       sum + (stats?.totalSize || 0), 0)
+    const totalRemainingSize = statsData.reduce((sum, { stats }) =>
+      sum + (stats?.totalRemainingSize || 0), 0)
+    const totalSeedingSize = statsData.reduce((sum, { stats }) =>
+      sum + (stats?.totalSeedingSize || 0), 0)
+    const downloadingTorrents = statsData.reduce((sum, { stats }) =>
+      sum + (stats?.downloading || 0), 0)
+    const seedingTorrents = statsData.reduce((sum, { stats }) =>
+      sum + (stats?.seeding || 0), 0)
 
     // Calculate server stats
     const alltimeDl = statsData.reduce((sum, { serverState }) =>
@@ -488,6 +496,10 @@ function GlobalStatsCards({ statsData }: { statsData: DashboardInstanceStats[] }
       totalUpload,
       totalErrors,
       totalSize,
+      totalRemainingSize,
+      totalSeedingSize,
+      downloadingTorrents,
+      seedingTorrents,
       alltimeDl,
       alltimeUl,
       globalRatio,
@@ -531,7 +543,7 @@ function GlobalStatsCards({ statsData }: { statsData: DashboardInstanceStats[] }
         <CardContent>
           <div className="text-2xl font-bold">{formatSpeedWithUnit(globalStats.totalDownload, speedUnit)}</div>
           <p className="text-xs text-muted-foreground">
-            All instances combined
+            {globalStats.downloadingTorrents} active - <span className="text-xs">{formatBytes(globalStats.totalRemainingSize)} remaining</span>
           </p>
         </CardContent>
       </Card>
@@ -544,7 +556,7 @@ function GlobalStatsCards({ statsData }: { statsData: DashboardInstanceStats[] }
         <CardContent>
           <div className="text-2xl font-bold">{formatSpeedWithUnit(globalStats.totalUpload, speedUnit)}</div>
           <p className="text-xs text-muted-foreground">
-            All instances combined
+            {globalStats.seedingTorrents} active - <span className="text-xs">{formatBytes(globalStats.totalSeedingSize)} seeding</span>
           </p>
         </CardContent>
       </Card>
