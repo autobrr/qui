@@ -11,9 +11,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { useQuery } from "@tanstack/react-query"
 import { useState, useMemo, useRef } from "react"
-import { Search, X, Film, Music, Tv, Package, Download, ChevronDown, ChevronRight, HardDrive, Zap, Crown, Play, Pause, Trash2, FolderOpen, RotateCcw } from "lucide-react"
+import { Search, X, Film, Music, Tv, Package, Download, ChevronDown, ChevronRight, HardDrive, Zap, Crown, Play, Pause, Trash2, RotateCcw } from "lucide-react"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import type { TitlesResponse, TitlesFilterOptions, ParsedTitle } from "@/types"
+import { TORRENT_ACTIONS, useTorrentActions, type TorrentAction } from "@/hooks/useTorrentActions"
+import { TorrentManagementBar } from "@/components/torrents/TorrentManagementBar"
 
 interface TitlesProps {
   instanceId: number
@@ -120,7 +122,14 @@ export function Titles({ instanceId, instanceName }: TitlesProps) {
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
   const parentRef = useRef<HTMLDivElement>(null)
 
-  // Fetch titles data
+  // Use the standard torrent actions hook
+  const { handleAction } = useTorrentActions({
+    instanceId,
+    onActionComplete: () => {
+      // Refresh data after action
+      // This would trigger a refetch of the titles data
+    }
+  })
   const { data, isLoading, error } = useQuery<TitlesResponse>({
     queryKey: ["titles", instanceId, filters],
     queryFn: async () => {
@@ -630,44 +639,7 @@ export function Titles({ instanceId, instanceName }: TitlesProps) {
     }
   }
 
-  const handleCategoryChange = async (hash: string, category: string) => {
-    try {
-      const response = await fetch(`/api/instances/${instanceId}/torrents/${hash}/category`, {
-        method: 'POST',
-        body: JSON.stringify({ category }),
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-      })
-      
-      if (!response.ok) {
-        throw new Error('Failed to change category')
-      }
-    } catch (error) {
-      console.error('Error changing category:', error)
-    }
-  }
 
-  const handleBulkAction = async (action: string) => {
-    if (selectedItems.size === 0) return
-    
-    try {
-      const hashes = Array.from(selectedItems)
-      const response = await fetch(`/api/instances/${instanceId}/torrents/bulk/${action}`, {
-        method: 'POST',
-        body: JSON.stringify({ hashes }),
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-      })
-      
-      if (!response.ok) {
-        throw new Error(`Failed to ${action} torrents`)
-      }
-      
-      setSelectedItems(new Set())
-    } catch (error) {
-      console.error(`Error bulk ${action}:`, error)
-    }
-  }
 
   const toggleItemSelection = (hash: string) => {
     setSelectedItems(prev => {
@@ -738,26 +710,13 @@ export function Titles({ instanceId, instanceName }: TitlesProps) {
             {showConsolidation ? "Hide Consolidation" : "Season Packs"}
           </Button>
           {selectedItems.size > 0 && (
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">
-                {selectedItems.size} selected
-              </span>
-              <Button variant="outline" size="sm" onClick={clearSelection}>
-                Clear
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => handleBulkAction('pause')}>
-                <Pause className="mr-2 h-4 w-4" />
-                Pause All
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => handleBulkAction('resume')}>
-                <Play className="mr-2 h-4 w-4" />
-                Resume All
-              </Button>
-              <Button variant="destructive" size="sm" onClick={() => handleBulkAction('delete')}>
-                <Trash2 className="mr-2 h-4 w-4" />
-                Delete All
-              </Button>
-            </div>
+            <TorrentManagementBar
+              instanceId={instanceId}
+              selectedHashes={Array.from(selectedItems)}
+              selectedTorrents={[]} // We don't have full torrent objects here
+              totalSelectionCount={selectedItems.size}
+              onComplete={clearSelection}
+            />
           )}
           {activeFiltersCount > 0 && (
             <Button variant="outline" onClick={clearFilters}>
@@ -1144,8 +1103,7 @@ export function Titles({ instanceId, instanceName }: TitlesProps) {
                           getReleaseTypeIcon={getReleaseTypeIcon}
                           showUpgrades={showUpgrades}
                           isUpgrade={false} // TODO: Calculate based on group.upgrades
-                          onTorrentAction={handleTorrentAction}
-                          onCategoryChange={handleCategoryChange}
+                          onTorrentAction={(action, hashes) => handleAction(action, hashes)}
                           isSelected={selectedItems.has((item.data as ParsedTitle).hash)}
                           onToggleSelection={toggleItemSelection}
                         />
@@ -1239,13 +1197,12 @@ interface TitleItemProps {
   getReleaseTypeIcon: (type: string) => React.ReactNode
   showUpgrades: boolean
   isUpgrade: boolean
-  onTorrentAction: (action: string, hash: string) => Promise<void>
-  onCategoryChange: (hash: string, category: string) => Promise<void>
+  onTorrentAction: (action: TorrentAction, hashes: string[]) => void
   isSelected: boolean
   onToggleSelection: (hash: string) => void
 }
 
-function TitleItem({ item, formatSize, formatDate, getReleaseTypeIcon, showUpgrades, isUpgrade, onTorrentAction, onCategoryChange, isSelected, onToggleSelection }: TitleItemProps) {
+function TitleItem({ item, formatSize, formatDate, getReleaseTypeIcon, showUpgrades, isUpgrade, onTorrentAction, isSelected, onToggleSelection }: TitleItemProps) {
   const qualityScore = calculateQualityScore(item)
   
   return (
@@ -1319,12 +1276,12 @@ function TitleItem({ item, formatSize, formatDate, getReleaseTypeIcon, showUpgra
           </div>
         </div>
         
-        {/* Action buttons */}
+        {/* Simplified Action buttons */}
         <div className="flex items-center gap-1 flex-shrink-0">
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => onTorrentAction(item.state === 'paused' ? 'resume' : 'pause', item.hash)}
+            onClick={() => handleAction(item.state === 'paused' ? TORRENT_ACTIONS.RESUME : TORRENT_ACTIONS.PAUSE, [item.hash])}
             title={item.state === 'paused' ? 'Resume torrent' : 'Pause torrent'}
           >
             {item.state === 'paused' ? <Play className="h-3 w-3" /> : <Pause className="h-3 w-3" />}
@@ -1332,23 +1289,7 @@ function TitleItem({ item, formatSize, formatDate, getReleaseTypeIcon, showUpgra
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => onTorrentAction('recheck', item.hash)}
-            title="Force recheck"
-          >
-            <RotateCcw className="h-3 w-3" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onCategoryChange(item.hash, 'change-category')}
-            title="Change category"
-          >
-            <FolderOpen className="h-3 w-3" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onTorrentAction('delete', item.hash)}
+            onClick={() => handleAction(TORRENT_ACTIONS.DELETE, [item.hash])}
             title="Delete torrent"
             className="text-destructive hover:text-destructive"
           >
