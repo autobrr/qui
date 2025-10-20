@@ -13,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useQuery } from "@tanstack/react-query"
 import { useState, useMemo } from "react"
 import { Search, X, Film, Music, Tv, Package, Download } from "lucide-react"
-import type { ParsedTitle, TitlesResponse, TitlesFilterOptions } from "@/types"
+import type { TitlesResponse, TitlesFilterOptions } from "@/types"
 
 interface TitlesProps {
   instanceId: number

@@ -14,7 +14,8 @@ export const Route = createFileRoute("/_authenticated/instances/$instanceId/titl
 })
 
 function InstanceTitles() {
-  const { instanceId } = Route.useParams()
+  const params = Route.useParams()
+  const instanceId = params.instanceId
   const { setLayoutRouteState, resetLayoutRouteState } = useLayoutRoute()
   const { instances, isLoading } = useInstances()
   const instanceIdNumber = Number.parseInt(instanceId, 10)
