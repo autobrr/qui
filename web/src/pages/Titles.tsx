@@ -116,6 +116,7 @@ export function Titles({ instanceId, instanceName }: TitlesProps) {
   const [searchInput, setSearchInput] = useState("")
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
   const [showUpgrades, setShowUpgrades] = useState(false)
+  const [showConsolidation, setShowConsolidation] = useState(false)
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
   const parentRef = useRef<HTMLDivElement>(null)
 
@@ -290,9 +291,70 @@ export function Titles({ instanceId, instanceName }: TitlesProps) {
     return recommendations.sort((a, b) => b.potentialUpgrades.length - a.potentialUpgrades.length)
   }, [groupedTitles, data?.titles])
 
-  // Create virtual items for rendering (only when not showing upgrades)
+  // Create season pack consolidation recommendations
+  const consolidationRecommendations = useMemo(() => {
+    if (!data?.titles) return []
+
+    const recommendations: Array<{
+      title: string
+      season: number
+      seasonPack: ParsedTitle
+      individualEpisodes: ParsedTitle[]
+      reason: string
+      canRelocate: boolean
+    }> = []
+
+    groupedTitles.forEach((group) => {
+      // Only process series/episode groups
+      if (group.type !== 'episode' && group.type !== 'series') return
+
+      // Check each subgroup (season)
+      group.subGroups.forEach((subGroupItems, subGroupKey) => {
+        if (!subGroupKey.startsWith('Season ')) return
+
+        const seasonNum = parseInt(subGroupKey.replace('Season ', ''))
+
+        // Find season pack (item with type 'series' and no specific episode)
+        const seasonPack = subGroupItems.find(item =>
+          item.type === 'series' &&
+          (item.episode === undefined || item.episode === null)
+        )
+
+        // Find individual episodes
+        const individualEpisodes = subGroupItems.filter(item =>
+          item.type === 'episode' &&
+          item.episode !== undefined &&
+          item.episode !== null
+        )
+
+        if (seasonPack && individualEpisodes.length > 0) {
+          // Check if files might match for relocation
+          const canRelocate = individualEpisodes.some(episode => {
+            // Simple heuristic: if season pack is much larger than individual episodes combined
+            const totalEpisodeSize = individualEpisodes.reduce((sum, ep) => sum + ep.size, 0)
+            return seasonPack.size >= totalEpisodeSize * 0.8 // Allow for some overhead
+          })
+
+          recommendations.push({
+            title: group.title,
+            season: seasonNum,
+            seasonPack,
+            individualEpisodes,
+            reason: canRelocate
+              ? `Season pack available - can consolidate ${individualEpisodes.length} individual episodes`
+              : `Season pack available - consider consolidating ${individualEpisodes.length} individual episodes`,
+            canRelocate
+          })
+        }
+      })
+    })
+
+    return recommendations.sort((a, b) => b.individualEpisodes.length - a.individualEpisodes.length)
+  }, [groupedTitles, data?.titles])
+
+  // Create virtual items for rendering (only when not showing upgrades or consolidation)
   const virtualItems = useMemo(() => {
-    if (showUpgrades) return []
+    if (showUpgrades || showConsolidation) return []
     
     const items: VirtualItem[] = []
     
@@ -618,10 +680,24 @@ export function Titles({ instanceId, instanceName }: TitlesProps) {
           <Button 
             variant={showUpgrades ? "default" : "outline"} 
             size="sm"
-            onClick={() => setShowUpgrades(!showUpgrades)}
+            onClick={() => {
+              setShowUpgrades(!showUpgrades)
+              if (!showUpgrades) setShowConsolidation(false) // Hide consolidation when showing upgrades
+            }}
           >
             <Crown className="mr-2 h-4 w-4" />
             {showUpgrades ? "Hide Upgrades" : "Show Upgrades"}
+          </Button>
+          <Button 
+            variant={showConsolidation ? "default" : "outline"} 
+            size="sm"
+            onClick={() => {
+              setShowConsolidation(!showConsolidation)
+              if (!showConsolidation) setShowUpgrades(false) // Hide upgrades when showing consolidation
+            }}
+          >
+            <Package className="mr-2 h-4 w-4" />
+            {showConsolidation ? "Hide Consolidation" : "Season Packs"}
           </Button>
           {selectedItems.size > 0 && (
             <div className="flex items-center gap-2">
@@ -655,7 +731,7 @@ export function Titles({ instanceId, instanceName }: TitlesProps) {
       </div>
 
       {/* Analytics Dashboard */}
-      {!showUpgrades && analytics && (
+      {!showUpgrades && !showConsolidation && analytics && (
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -731,7 +807,7 @@ export function Titles({ instanceId, instanceName }: TitlesProps) {
           </Card>
         </div>
       )}
-      {!showUpgrades && (
+      {!showUpgrades && !showConsolidation && (
         <Card>
           <CardHeader>
             <CardTitle>Filters</CardTitle>
@@ -887,12 +963,16 @@ export function Titles({ instanceId, instanceName }: TitlesProps) {
           <CardTitle>
             {showUpgrades 
               ? `Upgrade Recommendations (${upgradeRecommendations.length} titles)`
+              : showConsolidation
+              ? `Season Pack Consolidation (${consolidationRecommendations.length} seasons)`
               : `Grouped Titles ${data ? `(${groupedTitles.length} titles, ${data.total} items)` : ''}`
             }
           </CardTitle>
           <CardDescription>
             {showUpgrades 
               ? "Potential quality upgrades for your collection with recommended actions"
+              : showConsolidation
+              ? "Consolidate individual episodes into season packs to save space and reduce management overhead"
               : "Click on a title to expand and view releases grouped by year or season"
             }
           </CardDescription>
@@ -916,7 +996,43 @@ export function Titles({ instanceId, instanceName }: TitlesProps) {
             </div>
           )}
 
-          {data && !showUpgrades && groupedTitles.length === 0 && (
+          {data && showConsolidation && consolidationRecommendations.length === 0 && (
+            <div className="text-center py-8">
+              <p className="text-muted-foreground">No season pack consolidation opportunities found.</p>
+            </div>
+          )}
+
+          {data && showUpgrades && upgradeRecommendations.length > 0 && (
+            <div className="space-y-4">
+              {upgradeRecommendations.map((rec, index) => (
+                <UpgradeRecommendationCard
+                  key={index}
+                  recommendation={rec}
+                  formatSize={formatSize}
+                  formatDate={formatDate}
+                  getReleaseTypeIcon={getReleaseTypeIcon}
+                  onTorrentAction={handleTorrentAction}
+                />
+              ))}
+            </div>
+          )}
+
+          {data && showConsolidation && consolidationRecommendations.length > 0 && (
+            <div className="space-y-4">
+              {consolidationRecommendations.map((rec, index) => (
+                <ConsolidationRecommendationCard
+                  key={index}
+                  recommendation={rec}
+                  formatSize={formatSize}
+                  formatDate={formatDate}
+                  getReleaseTypeIcon={getReleaseTypeIcon}
+                  onTorrentAction={handleTorrentAction}
+                />
+              ))}
+            </div>
+          )}
+
+          {data && !showUpgrades && !showConsolidation && groupedTitles.length === 0 && (
             <div className="text-center py-8">
               <p className="text-muted-foreground">No titles found matching your filters</p>
             </div>
@@ -1373,6 +1489,153 @@ function UpgradeRecommendationCard({
             </Button>
           </div>
         )}
+      </CardContent>
+    </Card>
+  )
+}
+
+interface ConsolidationRecommendation {
+  title: string
+  season: number
+  seasonPack: ParsedTitle
+  individualEpisodes: ParsedTitle[]
+  reason: string
+  canRelocate: boolean
+}
+
+interface ConsolidationRecommendationCardProps {
+  recommendation: ConsolidationRecommendation
+  formatSize: (bytes: number) => string
+  formatDate: (timestamp: number) => string
+  getReleaseTypeIcon: (type: string) => React.ReactNode
+  onTorrentAction: (action: string, hash: string) => Promise<void>
+}
+
+function ConsolidationRecommendationCard({
+  recommendation,
+  formatSize,
+  formatDate,
+  getReleaseTypeIcon,
+  onTorrentAction
+}: ConsolidationRecommendationCardProps) {
+  const seasonPackScore = calculateQualityScore(recommendation.seasonPack)
+  const totalIndividualSize = recommendation.individualEpisodes.reduce((sum, ep) => sum + ep.size, 0)
+  const spaceSavings = totalIndividualSize - recommendation.seasonPack.size
+  
+  const handleConsolidationAction = async (action: string) => {
+    if (action === 'consolidate') {
+      // Delete all individual episodes
+      for (const episode of recommendation.individualEpisodes) {
+        await onTorrentAction('delete', episode.hash)
+      }
+      // Ensure season pack is resumed
+      await onTorrentAction('resume', recommendation.seasonPack.hash)
+    } else if (action === 'relocate') {
+      // This would require backend support for relocating data
+      // For now, just show a message
+      alert('Data relocation requires backend support. Use consolidate for now.')
+    }
+  }
+  
+  return (
+    <Card className="border-l-4 border-l-green-500">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            {getReleaseTypeIcon('series')}
+            <CardTitle className="text-lg">{recommendation.title} - Season {recommendation.season}</CardTitle>
+            <Badge variant="secondary">{recommendation.reason}</Badge>
+          </div>
+          <div className="text-right">
+            <div className="text-sm font-medium text-green-600">
+              Save {formatSize(spaceSavings)}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {recommendation.individualEpisodes.length} episodes → 1 pack
+            </div>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Season Pack */}
+        <div className="border rounded-lg p-3 bg-green-50 dark:bg-green-950/20">
+          <div className="flex items-center gap-2 mb-2">
+            <Badge variant="default">Season Pack</Badge>
+            <Badge variant={seasonPackScore.color as any}>{seasonPackScore.label}</Badge>
+            {recommendation.canRelocate && (
+              <Badge variant="outline" className="text-xs">
+                <RotateCcw className="mr-1 h-3 w-3" />
+                Can Relocate
+              </Badge>
+            )}
+          </div>
+          <div className="text-sm font-medium mb-1">{recommendation.seasonPack.name}</div>
+          <div className="text-xs text-muted-foreground">
+            {formatSize(recommendation.seasonPack.size)} • Added {formatDate(recommendation.seasonPack.addedOn)}
+          </div>
+          {recommendation.seasonPack.resolution && (
+            <div className="text-xs text-muted-foreground mt-1">
+              {recommendation.seasonPack.resolution}
+              {recommendation.seasonPack.source && ` • ${recommendation.seasonPack.source}`}
+              {recommendation.seasonPack.codec && recommendation.seasonPack.codec.length > 0 && ` • ${recommendation.seasonPack.codec.join(', ')}`}
+            </div>
+          )}
+        </div>
+        
+        {/* Individual Episodes */}
+        <div className="space-y-2">
+          <h4 className="font-medium text-sm">Individual Episodes ({recommendation.individualEpisodes.length})</h4>
+          <div className="max-h-32 overflow-y-auto space-y-1">
+            {recommendation.individualEpisodes.slice(0, 5).map((episode, index) => {
+              const episodeScore = calculateQualityScore(episode)
+              return (
+                <div key={index} className="flex items-center justify-between text-xs border rounded p-2 bg-muted/30">
+                  <div className="flex-1 truncate">
+                    <span className="font-medium">Ep {episode.episode}:</span> {episode.name}
+                  </div>
+                  <div className="flex items-center gap-2 ml-2">
+                    <Badge variant={episodeScore.color as any} className="text-xs">
+                      {episodeScore.label}
+                    </Badge>
+                    <span className="text-muted-foreground">{formatSize(episode.size)}</span>
+                  </div>
+                </div>
+              )
+            })}
+            {recommendation.individualEpisodes.length > 5 && (
+              <div className="text-xs text-muted-foreground text-center py-1">
+                ... and {recommendation.individualEpisodes.length - 5} more episodes
+              </div>
+            )}
+          </div>
+          <div className="text-xs text-muted-foreground border-t pt-2">
+            Total size: {formatSize(totalIndividualSize)}
+          </div>
+        </div>
+        
+        {/* Action Buttons */}
+        <div className="flex gap-2 pt-2 border-t">
+          <Button 
+            variant="default" 
+            size="sm"
+            onClick={() => handleConsolidationAction('consolidate')}
+            className="flex-1"
+          >
+            <Package className="mr-2 h-4 w-4" />
+            Consolidate Episodes
+          </Button>
+          {recommendation.canRelocate && (
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => handleConsolidationAction('relocate')}
+              className="flex-1"
+            >
+              <RotateCcw className="mr-2 h-4 w-4" />
+              Relocate Data
+            </Button>
+          )}
+        </div>
       </CardContent>
     </Card>
   )
