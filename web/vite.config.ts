@@ -37,7 +37,7 @@ export default defineConfig(() => ({
         globPatterns: ["**/*.{js,css,html,ico,png,svg,webp}"],
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024, // Allow larger bundles to be precached
         sourcemap: true,
-        navigateFallbackDenylist: [/^\/api/],
+        navigateFallbackDenylist: [/^\/api/, /^\/proxy/],
       },
       includeAssets: ["favicon.png", "apple-touch-icon.png"],
       manifest: {
