@@ -621,24 +621,6 @@ export function Titles({ instanceId, instanceName }: TitlesProps) {
 
   const activeFiltersCount = Object.keys(filters).length
 
-  const handleTorrentAction = async (action: string, hash: string) => {
-    try {
-      const response = await fetch(`/api/instances/${instanceId}/torrents/${hash}/${action}`, {
-        method: 'POST',
-        credentials: 'include',
-      })
-      
-      if (!response.ok) {
-        throw new Error(`Failed to ${action} torrent`)
-      }
-      
-      // Refresh data
-      // This would trigger a refetch of the titles data
-    } catch (error) {
-      console.error(`Error ${action} torrent:`, error)
-    }
-  }
-
 
 
   const toggleItemSelection = (hash: string) => {
@@ -1008,7 +990,7 @@ export function Titles({ instanceId, instanceName }: TitlesProps) {
                   formatSize={formatSize}
                   formatDate={formatDate}
                   getReleaseTypeIcon={getReleaseTypeIcon}
-                  onTorrentAction={handleTorrentAction}
+                  onTorrentAction={(action, hashes) => handleAction(action, hashes)}
                 />
               ))}
             </div>
@@ -1023,7 +1005,7 @@ export function Titles({ instanceId, instanceName }: TitlesProps) {
                   formatSize={formatSize}
                   formatDate={formatDate}
                   getReleaseTypeIcon={getReleaseTypeIcon}
-                  onTorrentAction={handleTorrentAction}
+                  onTorrentAction={(action, hashes) => handleAction(action, hashes)}
                 />
               ))}
             </div>
@@ -1044,7 +1026,7 @@ export function Titles({ instanceId, instanceName }: TitlesProps) {
                   formatSize={formatSize}
                   formatDate={formatDate}
                   getReleaseTypeIcon={getReleaseTypeIcon}
-                  onTorrentAction={handleTorrentAction}
+                  onTorrentAction={(action, hashes) => handleAction(action, hashes)}
                 />
               ))}
             </div>
@@ -1281,7 +1263,7 @@ function TitleItem({ item, formatSize, formatDate, getReleaseTypeIcon, showUpgra
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => handleAction(item.state === 'paused' ? TORRENT_ACTIONS.RESUME : TORRENT_ACTIONS.PAUSE, [item.hash])}
+            onClick={() => onTorrentAction(item.state === 'paused' ? TORRENT_ACTIONS.RESUME : TORRENT_ACTIONS.PAUSE, [item.hash])}
             title={item.state === 'paused' ? 'Resume torrent' : 'Pause torrent'}
           >
             {item.state === 'paused' ? <Play className="h-3 w-3" /> : <Pause className="h-3 w-3" />}
@@ -1289,7 +1271,7 @@ function TitleItem({ item, formatSize, formatDate, getReleaseTypeIcon, showUpgra
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => handleAction(TORRENT_ACTIONS.DELETE, [item.hash])}
+            onClick={() => onTorrentAction(TORRENT_ACTIONS.DELETE, [item.hash])}
             title="Delete torrent"
             className="text-destructive hover:text-destructive"
           >
@@ -1314,7 +1296,7 @@ interface UpgradeRecommendationCardProps {
   formatSize: (bytes: number) => string
   formatDate: (timestamp: number) => string
   getReleaseTypeIcon: (type: string) => React.ReactNode
-  onTorrentAction: (action: string, hash: string) => Promise<void>
+  onTorrentAction: (action: TorrentAction, hashes: string[]) => void
 }
 
 function UpgradeRecommendationCard({
@@ -1333,11 +1315,11 @@ function UpgradeRecommendationCard({
     
     if (action === 'replace') {
       // Pause current best and resume upgrade
-      await onTorrentAction('pause', recommendation.currentBest.hash)
-      await onTorrentAction('resume', selectedUpgrade)
+      await onTorrentAction(TORRENT_ACTIONS.PAUSE, [recommendation.currentBest.hash])
+      await onTorrentAction(TORRENT_ACTIONS.RESUME, [selectedUpgrade])
     } else if (action === 'keep-both') {
       // Just resume the upgrade
-      await onTorrentAction('resume', selectedUpgrade)
+      await onTorrentAction(TORRENT_ACTIONS.RESUME, [selectedUpgrade])
     }
   }
   
@@ -1434,7 +1416,7 @@ function UpgradeRecommendationCard({
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => onTorrentAction(upgrade.state === 'paused' ? 'resume' : 'pause', upgrade.hash)}
+                      onClick={() => onTorrentAction(upgrade.state === 'paused' ? TORRENT_ACTIONS.RESUME : TORRENT_ACTIONS.PAUSE, [upgrade.hash])}
                       title={upgrade.state === 'paused' ? 'Resume torrent' : 'Pause torrent'}
                     >
                       {upgrade.state === 'paused' ? <Play className="h-3 w-3" /> : <Pause className="h-3 w-3" />}
@@ -1442,7 +1424,7 @@ function UpgradeRecommendationCard({
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => onTorrentAction('delete', upgrade.hash)}
+                      onClick={() => onTorrentAction(TORRENT_ACTIONS.DELETE, [upgrade.hash])}
                       title="Delete torrent"
                       className="text-destructive hover:text-destructive"
                     >
@@ -1496,7 +1478,7 @@ interface ConsolidationRecommendationCardProps {
   formatSize: (bytes: number) => string
   formatDate: (timestamp: number) => string
   getReleaseTypeIcon: (type: string) => React.ReactNode
-  onTorrentAction: (action: string, hash: string) => Promise<void>
+  onTorrentAction: (action: TorrentAction, hashes: string[]) => void
 }
 
 function ConsolidationRecommendationCard({
@@ -1514,10 +1496,10 @@ function ConsolidationRecommendationCard({
     if (action === 'consolidate') {
       // Delete all individual episodes
       for (const episode of recommendation.individualEpisodes) {
-        await onTorrentAction('delete', episode.hash)
+        await onTorrentAction(TORRENT_ACTIONS.DELETE, [episode.hash])
       }
       // Ensure season pack is resumed
-      await onTorrentAction('resume', recommendation.seasonPack.hash)
+      await onTorrentAction(TORRENT_ACTIONS.RESUME, [recommendation.seasonPack.hash])
     } else if (action === 'relocate') {
       // This would require backend support for relocating data
       // For now, just show a message
