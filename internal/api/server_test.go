@@ -48,7 +48,6 @@ var undocumentedRoutes = map[routeKey]struct{}{
 	{Method: http.MethodGet, Path: "/api/instances/{instanceId}/backups/runs/{runId}/manifest"}:                     {},
 	{Method: http.MethodGet, Path: "/api/instances/{instanceId}/backups/settings"}:                                  {},
 	{Method: http.MethodPut, Path: "/api/instances/{instanceId}/backups/settings"}:                                  {},
-	{Method: http.MethodGet, Path: "/api/instances/{instanceId}/titles"}:                                            {},
 }
 
 func TestAllEndpointsDocumented(t *testing.T) {
