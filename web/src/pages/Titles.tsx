@@ -249,18 +249,18 @@ export function Titles({ instanceId, instanceName }: TitlesProps) {
             improvements.push(`${currentScore.level} → ${upgradeScore.level}`)
           }
           
-          if (upgrade.resolution && group.bestQualityItem.resolution && 
-              upgrade.resolution !== group.bestQualityItem.resolution) {
-            improvements.push(`Resolution: ${group.bestQualityItem.resolution} → ${upgrade.resolution}`)
+          if (upgrade.resolution && group.bestQualityItem!.resolution && 
+              upgrade.resolution !== group.bestQualityItem!.resolution) {
+            improvements.push(`Resolution: ${group.bestQualityItem!.resolution} → ${upgrade.resolution}`)
           }
           
           if (upgrade.hdr && upgrade.hdr.length > 0 && 
-              (!group.bestQualityItem.hdr || group.bestQualityItem.hdr.length === 0)) {
+              (!group.bestQualityItem!.hdr || group.bestQualityItem!.hdr.length === 0)) {
             improvements.push('Adds HDR')
           }
           
           if (upgrade.codec && upgrade.codec.some(c => c.toLowerCase().includes('x265') || c.toLowerCase().includes('hevc')) &&
-              (!group.bestQualityItem.codec || !group.bestQualityItem.codec.some(c => c.toLowerCase().includes('x265') || c.toLowerCase().includes('hevc')))) {
+              (!group.bestQualityItem!.codec || !group.bestQualityItem!.codec.some(c => c.toLowerCase().includes('x265') || c.toLowerCase().includes('hevc')))) {
             improvements.push('Better codec (x265/HEVC)')
           }
           
@@ -932,7 +932,6 @@ export function Titles({ instanceId, instanceName }: TitlesProps) {
                   formatDate={formatDate}
                   getReleaseTypeIcon={getReleaseTypeIcon}
                   onTorrentAction={handleTorrentAction}
-                  onCategoryChange={handleCategoryChange}
                 />
               ))}
             </div>
@@ -1221,7 +1220,6 @@ interface UpgradeRecommendationCardProps {
   formatDate: (timestamp: number) => string
   getReleaseTypeIcon: (type: string) => React.ReactNode
   onTorrentAction: (action: string, hash: string) => Promise<void>
-  onCategoryChange: (hash: string, category: string) => Promise<void>
 }
 
 function UpgradeRecommendationCard({
@@ -1229,8 +1227,7 @@ function UpgradeRecommendationCard({
   formatSize,
   formatDate,
   getReleaseTypeIcon,
-  onTorrentAction,
-  onCategoryChange
+  onTorrentAction
 }: UpgradeRecommendationCardProps) {
   const [selectedUpgrade, setSelectedUpgrade] = useState<string | null>(null)
   
