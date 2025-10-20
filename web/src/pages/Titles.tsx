@@ -209,9 +209,27 @@ export function Titles({ instanceId, instanceName }: TitlesProps) {
         // Find upgrades (items that are significantly better than others)
         const upgrades: ParsedTitle[] = []
         group.items.forEach((item) => {
-          if (item.hash !== bestItem.hash && calculateQualityScore(item).score >= bestScore - 10) {
-            // This is a high-quality item, could be an upgrade
-            upgrades.push(item)
+          if (item.hash !== bestItem.hash) {
+            const itemScore = calculateQualityScore(item).score
+            const bestItemScore = calculateQualityScore(bestItem).score
+            
+            // Quality-based upgrades
+            const isQualityUpgrade = itemScore >= bestItemScore - 10
+            
+            // Completeness-based upgrades for episodes/series
+            let isCompletenessUpgrade = false
+            if ((group.type === 'episode' || group.type === 'series') && item.type === 'series' && bestItem.type === 'episode') {
+              // Season pack is an upgrade over individual episodes
+              isCompletenessUpgrade = true
+            } else if ((group.type === 'episode' || group.type === 'series') && item.type === 'episode' && bestItem.type === 'episode') {
+              // Check if this episode fills gaps in a season
+              // For now, consider any episode not in the best quality as potentially filling completeness
+              isCompletenessUpgrade = itemScore >= bestItemScore - 25 // More lenient for completeness
+            }
+            
+            if (isQualityUpgrade || isCompletenessUpgrade) {
+              upgrades.push(item)
+            }
           }
         })
         
@@ -272,8 +290,31 @@ export function Titles({ instanceId, instanceName }: TitlesProps) {
           }
         })
         
+        // Check for quality improvements
         if (qualityImprovements.some(u => u.improvements.length > 0)) {
           upgradeReasons.push('Quality improvements available')
+        }
+        
+        // Check for completeness improvements
+        const completenessImprovements = group.upgrades.some(upgrade => {
+          // Season pack is more complete than individual episodes
+          if ((group.type === 'episode' || group.type === 'series') && 
+              upgrade.type === 'series' && 
+              group.bestQualityItem!.type === 'episode') {
+            return true
+          }
+          
+          // For series, check if this provides a more complete collection
+          if (group.type === 'series' && upgrade.type === 'series') {
+            // Could check episode counts, but for now assume series type indicates completeness
+            return true
+          }
+          
+          return false
+        })
+        
+        if (completenessImprovements) {
+          upgradeReasons.push('Completeness improvements available')
         }
         
         if (upgradeReasons.length > 0) {
@@ -282,7 +323,7 @@ export function Titles({ instanceId, instanceName }: TitlesProps) {
             type: group.type,
             currentBest: group.bestQualityItem,
             potentialUpgrades: group.upgrades,
-            reason: upgradeReasons[0]
+            reason: upgradeReasons.join(', ')
           })
         }
       }
@@ -1409,6 +1450,15 @@ function UpgradeRecommendationCard({
             if (upgrade.codec && upgrade.codec.some(c => c.toLowerCase().includes('x265') || c.toLowerCase().includes('hevc')) &&
                 (!recommendation.currentBest.codec || !recommendation.currentBest.codec.some(c => c.toLowerCase().includes('x265') || c.toLowerCase().includes('hevc')))) {
               improvements.push('Better codec (x265/HEVC)')
+            }
+            
+            // Check for completeness improvements
+            if ((recommendation.type === 'episode' || recommendation.type === 'series') && 
+                upgrade.type === 'series' && 
+                recommendation.currentBest.type === 'episode') {
+              improvements.push('Complete season pack')
+            } else if (recommendation.type === 'series' && upgrade.type === 'series') {
+              improvements.push('More complete collection')
             }
             
             return (
