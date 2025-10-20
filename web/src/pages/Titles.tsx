@@ -731,6 +731,7 @@ export function Titles({ instanceId, instanceName }: TitlesProps) {
           </Card>
         </div>
       )}
+      {!showUpgrades && (
         <Card>
           <CardHeader>
             <CardTitle>Filters</CardTitle>
