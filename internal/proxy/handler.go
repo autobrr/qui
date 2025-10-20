@@ -318,13 +318,14 @@ func (h *Handler) errorHandler(w http.ResponseWriter, r *http.Request, err error
 func (h *Handler) Routes(r chi.Router) {
 	// Proxy route with API key parameter
 	proxyRoute := httphelpers.JoinBasePath(h.basePath, "/proxy/{api-key}")
-	r.Route(proxyRoute, func(r chi.Router) {
-		// Apply client API key validation middleware
-		r.Use(ClientAPIKeyMiddleware(h.clientAPIKeyStore))
+	proxyRouter := r.With(ClientAPIKeyMiddleware(h.clientAPIKeyStore))
 
-		// Handle all requests under this prefix
-		r.HandleFunc("/*", h.ServeHTTP)
-	})
+	// Handle the base proxy path (exact match)
+	proxyRouter.HandleFunc(proxyRoute, h.ServeHTTP)
+
+	// Handle any nested paths requested through the proxy
+	wildcardRoute := proxyRoute + "/*"
+	proxyRouter.HandleFunc(wildcardRoute, h.ServeHTTP)
 }
 
 func (h *Handler) prepareProxyContext(r *http.Request) (*proxyContext, error) {
