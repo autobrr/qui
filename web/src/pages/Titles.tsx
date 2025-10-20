@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { useQuery } from "@tanstack/react-query"
 import { useState, useMemo, useRef } from "react"
-import { Search, X, Film, Music, Tv, Package, Download, ChevronDown, ChevronRight, HardDrive } from "lucide-react"
+import { Search, X, Film, Music, Tv, Package, Download, ChevronDown, ChevronRight, HardDrive, Zap, Crown, Play, Pause, Trash2, FolderOpen, RotateCcw } from "lucide-react"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import type { TitlesResponse, TitlesFilterOptions, ParsedTitle } from "@/types"
 
@@ -35,6 +35,8 @@ interface GroupedTitle {
   items: ParsedTitle[]
   totalSize: number
   subGroups: Map<string, ParsedTitle[]>
+  bestQualityItem?: ParsedTitle
+  upgrades: ParsedTitle[]
 }
 
 interface VirtualItem {
@@ -45,10 +47,99 @@ interface VirtualItem {
   depth: number
 }
 
+// Quality scoring and comparison utilities
+interface QualityScore {
+  score: number
+  level: 'SD' | 'HD' | 'FHD' | 'UHD' | 'HDR'
+  label: string
+  color: string
+}
+
+function calculateQualityScore(item: ParsedTitle): QualityScore {
+  let score = 0
+  let level: QualityScore['level'] = 'SD'
+  let label = 'SD'
+  let color = 'secondary'
+
+  // Resolution scoring
+  const resolution = item.resolution?.toLowerCase()
+  if (resolution?.includes('2160p') || resolution?.includes('4k')) {
+    score += 100
+    level = 'UHD'
+    label = '4K'
+    color = 'default'
+  } else if (resolution?.includes('1080p') || resolution?.includes('fhd')) {
+    score += 75
+    level = 'FHD'
+    label = '1080p'
+    color = 'default'
+  } else if (resolution?.includes('720p') || resolution?.includes('hd')) {
+    score += 50
+    level = 'HD'
+    label = '720p'
+    color = 'secondary'
+  } else {
+    score += 25
+    level = 'SD'
+    label = 'SD'
+    color = 'outline'
+  }
+
+  // HDR bonus
+  if (item.hdr && item.hdr.length > 0) {
+    score += 20
+    if (level === 'UHD') {
+      label += ' HDR'
+    }
+  }
+
+  // Source quality bonus
+  const source = item.source?.toLowerCase()
+  if (source?.includes('bluray') || source?.includes('bd')) {
+    score += 15
+  } else if (source?.includes('web')) {
+    score += 10
+  } else if (source?.includes('hdtv')) {
+    score += 5
+  }
+
+  // Codec quality bonus
+  if (item.codec && item.codec.some(c => c.toLowerCase().includes('x265') || c.toLowerCase().includes('hevc'))) {
+    score += 10
+  }
+
+  return { score, level, label, color }
+}
+
+function isUpgrade(existing: ParsedTitle, candidate: ParsedTitle): boolean {
+  const existingScore = calculateQualityScore(existing)
+  const candidateScore = calculateQualityScore(candidate)
+  
+  // Must be same title/series
+  const existingTitle = existing.title || existing.name || ''
+  const candidateTitle = candidate.title || candidate.name || ''
+  if (existingTitle.toLowerCase() !== candidateTitle.toLowerCase()) {
+    return false
+  }
+
+  // For series, must be same season/episode
+  if ((existing.type === 'episode' || existing.type === 'series') && 
+      (candidate.type === 'episode' || candidate.type === 'series')) {
+    if (existing.series !== candidate.series || existing.episode !== candidate.episode) {
+      return false
+    }
+  }
+
+  // Check if candidate is significantly better quality
+  return candidateScore.score > existingScore.score + 10 // At least 10 points better
+}
+
 export function Titles({ instanceId, instanceName }: TitlesProps) {
   const [filters, setFilters] = useState<TitlesFilterOptions>({})
   const [searchInput, setSearchInput] = useState("")
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
+  const [showUpgrades, setShowUpgrades] = useState(false)
+  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
   const parentRef = useRef<HTMLDivElement>(null)
 
   // Fetch titles data
@@ -92,6 +183,7 @@ export function Titles({ instanceId, instanceName }: TitlesProps) {
           items: [],
           totalSize: 0,
           subGroups: new Map(),
+          upgrades: [],
         })
       }
       
@@ -119,6 +211,36 @@ export function Titles({ instanceId, instanceName }: TitlesProps) {
       group.subGroups.get(subGroupKey)!.push(item)
     })
     
+    // Calculate best quality items and upgrades for each group
+    groups.forEach((group) => {
+      if (group.items.length > 0) {
+        // Find the best quality item (highest score)
+        let bestItem = group.items[0]
+        let bestScore = calculateQualityScore(bestItem).score
+        
+        group.items.forEach((item) => {
+          const score = calculateQualityScore(item).score
+          if (score > bestScore) {
+            bestScore = score
+            bestItem = item
+          }
+        })
+        
+        group.bestQualityItem = bestItem
+        
+        // Find upgrades (items that are significantly better than others)
+        const upgrades: ParsedTitle[] = []
+        group.items.forEach((item) => {
+          if (item.hash !== bestItem.hash && calculateQualityScore(item).score >= bestScore - 10) {
+            // This is a high-quality item, could be an upgrade
+            upgrades.push(item)
+          }
+        })
+        
+        group.upgrades = upgrades
+      }
+    })
+
     return Array.from(groups.values()).sort((a, b) => 
       a.title.localeCompare(b.title)
     )
@@ -271,7 +393,161 @@ export function Titles({ instanceId, instanceName }: TitlesProps) {
     return releaseTypeIcons[type.toLowerCase()] || <Download className="h-4 w-4" />
   }
 
+  // Calculate analytics
+  const analytics = useMemo(() => {
+    if (!data?.titles) return null
+    
+    const totalSize = data.titles.reduce((sum, item) => sum + item.size, 0)
+    const totalItems = data.titles.length
+    
+    // Content type breakdown
+    const typeBreakdown = data.titles.reduce((acc, item) => {
+      acc[item.type] = (acc[item.type] || 0) + 1
+      return acc
+    }, {} as Record<string, number>)
+    
+    // Quality breakdown
+    const qualityBreakdown = data.titles.reduce((acc, item) => {
+      const quality = calculateQualityScore(item)
+      acc[quality.level] = (acc[quality.level] || 0) + 1
+      return acc
+    }, {} as Record<string, number>)
+    
+    // Source breakdown
+    const sourceBreakdown = data.titles.reduce((acc, item) => {
+      if (item.source) {
+        acc[item.source] = (acc[item.source] || 0) + 1
+      }
+      return acc
+    }, {} as Record<string, number>)
+    
+    // Missing episodes/seasons detection
+    const seriesData: Record<string, { episodes: Set<number>, seasons: Set<number> }> = {}
+    data.titles.forEach((item) => {
+      if ((item.type === 'episode' || item.type === 'series') && item.title) {
+        const title = item.title
+        if (!seriesData[title]) {
+          seriesData[title] = { episodes: new Set(), seasons: new Set() }
+        }
+        if (item.episode) seriesData[title].episodes.add(item.episode)
+        if (item.series) seriesData[title].seasons.add(item.series)
+      }
+    })
+    
+    // Calculate missing content (simplified - just count gaps)
+    let totalEpisodes = 0
+    let missingEpisodes = 0
+    Object.values(seriesData).forEach((data) => {
+      totalEpisodes += data.episodes.size
+      // Simple gap detection for episodes 1-50 (could be improved)
+      for (let i = 1; i <= Math.max(...Array.from(data.episodes)); i++) {
+        if (!data.episodes.has(i)) missingEpisodes++
+      }
+    })
+    
+    // Completion rates (assuming completed means not in error state)
+    const completedItems = data.titles.filter(item => 
+      item.state !== 'error' && item.state !== 'missingFiles'
+    ).length
+    const completionRate = totalItems > 0 ? (completedItems / totalItems) * 100 : 0
+    
+    return {
+      totalSize,
+      totalItems,
+      typeBreakdown,
+      qualityBreakdown,
+      sourceBreakdown,
+      completionRate,
+      completedItems,
+      missingEpisodes,
+      seriesCount: Object.keys(seriesData).length
+    }
+  }, [data?.titles])
+
   const activeFiltersCount = Object.keys(filters).length
+
+  const handleTorrentAction = async (action: string, hash: string) => {
+    try {
+      const response = await fetch(`/api/instances/${instanceId}/torrents/${hash}/${action}`, {
+        method: 'POST',
+        credentials: 'include',
+      })
+      
+      if (!response.ok) {
+        throw new Error(`Failed to ${action} torrent`)
+      }
+      
+      // Refresh data
+      // This would trigger a refetch of the titles data
+    } catch (error) {
+      console.error(`Error ${action} torrent:`, error)
+    }
+  }
+
+  const handleBulkAction = async (action: string) => {
+    if (selectedItems.size === 0) return
+    
+    try {
+      const hashes = Array.from(selectedItems)
+      const response = await fetch(`/api/instances/${instanceId}/torrents/bulk/${action}`, {
+        method: 'POST',
+        body: JSON.stringify({ hashes }),
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+      })
+      
+      if (!response.ok) {
+        throw new Error(`Failed to ${action} torrents`)
+      }
+      
+      setSelectedItems(new Set())
+    } catch (error) {
+      console.error(`Error bulk ${action}:`, error)
+    }
+  }
+
+  const toggleItemSelection = (hash: string) => {
+    setSelectedItems(prev => {
+      const next = new Set(prev)
+      if (next.has(hash)) {
+        next.delete(hash)
+      } else {
+        next.add(hash)
+      }
+      return next
+    })
+  }
+
+  const selectAllVisible = () => {
+    if (!data?.titles) return
+    
+    const allHashes = new Set(data.titles.map(item => item.hash))
+    setSelectedItems(allHashes)
+  }
+
+  const clearSelection = () => {
+    setSelectedItems(new Set())
+  }
+
+  const applyPresetFilter = (preset: string) => {
+    switch (preset) {
+      case 'recent-4k':
+        setFilters({ resolution: '2160p', type: 'movie' })
+        break
+      case 'incomplete-series':
+        setFilters({ type: 'episode' })
+        break
+      case 'high-quality':
+        setFilters({ resolution: '1080p', source: 'bluray' })
+        break
+      case 'new-releases':
+        // Could filter by recent dates
+        setFilters({})
+        break
+      default:
+        setFilters({})
+    }
+  }
 
   return (
     <div className="container mx-auto p-6 space-y-6">
@@ -282,13 +558,123 @@ export function Titles({ instanceId, instanceName }: TitlesProps) {
             View and filter torrent releases with parsed metadata from {instanceName}
           </p>
         </div>
-        {activeFiltersCount > 0 && (
-          <Button variant="outline" onClick={clearFilters}>
-            <X className="mr-2 h-4 w-4" />
-            Clear Filters ({activeFiltersCount})
+        <div className="flex items-center gap-2">
+          <Button 
+            variant={showUpgrades ? "default" : "outline"} 
+            size="sm"
+            onClick={() => setShowUpgrades(!showUpgrades)}
+          >
+            <Crown className="mr-2 h-4 w-4" />
+            Show Upgrades
           </Button>
-        )}
+          {selectedItems.size > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">
+                {selectedItems.size} selected
+              </span>
+              <Button variant="outline" size="sm" onClick={clearSelection}>
+                Clear
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => handleBulkAction('pause')}>
+                <Pause className="mr-2 h-4 w-4" />
+                Pause All
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => handleBulkAction('resume')}>
+                <Play className="mr-2 h-4 w-4" />
+                Resume All
+              </Button>
+              <Button variant="destructive" size="sm" onClick={() => handleBulkAction('delete')}>
+                <Trash2 className="mr-2 h-4 w-4" />
+                Delete All
+              </Button>
+            </div>
+          )}
+          {activeFiltersCount > 0 && (
+            <Button variant="outline" onClick={clearFilters}>
+              <X className="mr-2 h-4 w-4" />
+              Clear Filters ({activeFiltersCount})
+            </Button>
+          )}
+        </div>
       </div>
+
+      {/* Analytics Dashboard */}
+      {analytics && (
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Size</CardTitle>
+              <HardDrive className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{formatSize(analytics.totalSize)}</div>
+              <p className="text-xs text-muted-foreground">
+                {analytics.totalItems} items
+              </p>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Completion Rate</CardTitle>
+              <Zap className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{analytics.completionRate.toFixed(1)}%</div>
+              <p className="text-xs text-muted-foreground">
+                {analytics.completedItems} of {analytics.totalItems} complete
+              </p>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Content Types</CardTitle>
+              <Film className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{Object.keys(analytics.typeBreakdown).length}</div>
+              <p className="text-xs text-muted-foreground">
+                {Object.entries(analytics.typeBreakdown)
+                  .sort(([,a], [,b]) => b - a)
+                  .slice(0, 2)
+                  .map(([type, count]) => `${type}: ${count}`)
+                  .join(', ')}
+              </p>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Quality Distribution</CardTitle>
+              <Crown className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {analytics.qualityBreakdown.UHD || 0} UHD
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {analytics.qualityBreakdown.FHD || 0} FHD, {analytics.qualityBreakdown.HD || 0} HD
+              </p>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Series Collection</CardTitle>
+              <Tv className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {analytics.seriesCount || 0}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                series • {analytics.missingEpisodes || 0} missing episodes
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Filters */}
       <Card>
@@ -297,6 +683,26 @@ export function Titles({ instanceId, instanceName }: TitlesProps) {
           <CardDescription>Filter parsed titles by various criteria</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Preset Filters */}
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => applyPresetFilter('recent-4k')}>
+              <Crown className="mr-2 h-4 w-4" />
+              Recent 4K Movies
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => applyPresetFilter('incomplete-series')}>
+              <Tv className="mr-2 h-4 w-4" />
+              Incomplete Series
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => applyPresetFilter('high-quality')}>
+              <Zap className="mr-2 h-4 w-4" />
+              High Quality
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => applyPresetFilter('new-releases')}>
+              <Package className="mr-2 h-4 w-4" />
+              New Releases
+            </Button>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="space-y-2">
               <Label htmlFor="type-filter">Type</Label>
@@ -499,6 +905,12 @@ export function Titles({ instanceId, instanceName }: TitlesProps) {
                           formatSize={formatSize}
                           formatDate={formatDate}
                           getReleaseTypeIcon={getReleaseTypeIcon}
+                          showUpgrades={showUpgrades}
+                          isUpgrade={false} // TODO: Calculate based on group.upgrades
+                          onTorrentAction={handleTorrentAction}
+                          onCategoryChange={handleCategoryChange}
+                          isSelected={selectedItems.has((item.data as ParsedTitle).hash)}
+                          onToggleSelection={toggleItemSelection}
                         />
                       )}
                     </div>
@@ -588,18 +1000,43 @@ interface TitleItemProps {
   formatSize: (bytes: number) => string
   formatDate: (timestamp: number) => string
   getReleaseTypeIcon: (type: string) => React.ReactNode
+  showUpgrades: boolean
+  isUpgrade: boolean
+  onTorrentAction: (action: string, hash: string) => Promise<void>
+  onCategoryChange: (hash: string, category: string) => Promise<void>
+  isSelected: boolean
+  onToggleSelection: (hash: string) => void
 }
 
-function TitleItem({ item, formatSize, formatDate, getReleaseTypeIcon }: TitleItemProps) {
+function TitleItem({ item, formatSize, formatDate, getReleaseTypeIcon, showUpgrades, isUpgrade, onTorrentAction, onCategoryChange, isSelected, onToggleSelection }: TitleItemProps) {
+  const qualityScore = calculateQualityScore(item)
+  
   return (
     <div className="px-4 py-3 border-b border-border/50 bg-card hover:bg-accent/20 transition-colors" style={{ paddingLeft: '72px' }}>
       <div className="flex items-start gap-4">
         <div className="flex items-center gap-2 flex-shrink-0">
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={() => onToggleSelection(item.hash)}
+            className="rounded border-gray-300"
+          />
           {getReleaseTypeIcon(item.type)}
         </div>
         <div className="flex-1 min-w-0 space-y-2">
-          <div className="font-medium truncate" title={item.name}>
-            {item.name}
+          <div className="flex items-center gap-2">
+            <div className="font-medium truncate" title={item.name}>
+              {item.name}
+            </div>
+            <Badge variant={qualityScore.color as any} className="flex-shrink-0">
+              {qualityScore.label}
+            </Badge>
+            {showUpgrades && isUpgrade && (
+              <Badge variant="destructive" className="flex-shrink-0">
+                <Crown className="mr-1 h-3 w-3" />
+                Upgrade Available
+              </Badge>
+            )}
           </div>
           
           <div className="flex flex-wrap gap-2 items-center text-sm">
@@ -643,6 +1080,43 @@ function TitleItem({ item, formatSize, formatDate, getReleaseTypeIcon }: TitleIt
             </span>
             <span>Added {formatDate(item.addedOn)}</span>
           </div>
+        </div>
+        
+        {/* Action buttons */}
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onTorrentAction(item.state === 'paused' ? 'resume' : 'pause', item.hash)}
+            title={item.state === 'paused' ? 'Resume torrent' : 'Pause torrent'}
+          >
+            {item.state === 'paused' ? <Play className="h-3 w-3" /> : <Pause className="h-3 w-3" />}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onTorrentAction('recheck', item.hash)}
+            title="Force recheck"
+          >
+            <RotateCcw className="h-3 w-3" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onCategoryChange(item.hash, 'change-category')}
+            title="Change category"
+          >
+            <FolderOpen className="h-3 w-3" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onTorrentAction('delete', item.hash)}
+            title="Delete torrent"
+            className="text-destructive hover:text-destructive"
+          >
+            <Trash2 className="h-3 w-3" />
+          </Button>
         </div>
       </div>
     </div>

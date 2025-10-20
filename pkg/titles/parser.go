@@ -46,6 +46,11 @@ type ParsedTitle struct {
 	ID          string   `json:"id,omitempty"`
 	Group       string   `json:"group,omitempty"`
 	Meta        []string `json:"meta,omitempty"`
+	Site        string   `json:"site,omitempty"`
+	Sum         string   `json:"sum,omitempty"`
+	Pass        string   `json:"pass,omitempty"`
+	Req         bool     `json:"req,omitempty"`
+	Ext         string   `json:"ext,omitempty"`
 }
 
 // Parser handles parsing of torrent titles with caching
@@ -112,6 +117,11 @@ func (p *Parser) ParseTitles(ctx context.Context, names []string) []ParsedTitle 
 			ID:          release.ID,
 			Group:       release.Group,
 			Meta:        release.Meta,
+			Site:        release.Site,
+			Sum:         release.Sum,
+			Pass:        release.Pass,
+			Req:         release.Req,
+			Ext:         release.Ext,
 		}
 
 		// Cache the parsed title
