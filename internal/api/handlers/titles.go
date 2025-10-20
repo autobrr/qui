@@ -10,7 +10,9 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/autobrr/autobrr/pkg/ttlcache"
 	"github.com/go-chi/chi/v5"
 	"github.com/moistari/rls"
 	"github.com/rs/zerolog/log"
@@ -20,6 +22,7 @@ import (
 
 type TitlesHandler struct {
 	syncManager *qbittorrent.SyncManager
+	cache       *ttlcache.Cache[string, ParsedTitle]
 }
 
 // ParsedTitle represents a torrent with its parsed title information
@@ -96,6 +99,7 @@ type TitlesFilterOptions struct {
 func NewTitlesHandler(syncManager *qbittorrent.SyncManager) *TitlesHandler {
 	return &TitlesHandler{
 		syncManager: syncManager,
+		cache:       ttlcache.New(ttlcache.Options[string, ParsedTitle]{}.SetDefaultTTL(30 * time.Minute)),
 	}
 }
 
@@ -170,6 +174,36 @@ func (h *TitlesHandler) parseTorrents(ctx context.Context, torrents interface{})
 		hash, _ := torrentMap["hash"].(string)
 		name, _ := torrentMap["name"].(string)
 		if name == "" {
+			continue
+		}
+
+		// Check cache first
+		if cached, found := h.cache.Get(name); found {
+			// Use cached parsed title but update torrent-specific fields
+			parsed := cached
+			parsed.Hash = hash
+			parsed.Name = name
+
+			// Update torrent-specific metadata
+			if val, ok := torrentMap["added_on"].(float64); ok {
+				parsed.AddedOn = int64(val)
+			} else if val, ok := torrentMap["addedOn"].(float64); ok {
+				parsed.AddedOn = int64(val)
+			}
+
+			if val, ok := torrentMap["size"].(float64); ok {
+				parsed.Size = int64(val)
+			}
+
+			parsed.State, _ = torrentMap["state"].(string)
+			parsed.Category, _ = torrentMap["category"].(string)
+			parsed.Tags, _ = torrentMap["tags"].(string)
+
+			if trackerVal, ok := torrentMap["tracker"]; ok {
+				parsed.Tracker, _ = trackerVal.(string)
+			}
+
+			result = append(result, parsed)
 			continue
 		}
 
@@ -248,6 +282,9 @@ func (h *TitlesHandler) parseTorrents(ctx context.Context, torrents interface{})
 			Req:         release.Req,
 			Ext:         release.Ext,
 		}
+
+		// Cache the parsed title
+		h.cache.Set(name, parsed, ttlcache.DefaultTTL)
 
 		result = append(result, parsed)
 	}
