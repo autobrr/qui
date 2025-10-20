@@ -111,29 +111,6 @@ function calculateQualityScore(item: ParsedTitle): QualityScore {
   return { score, level, label, color }
 }
 
-function isUpgrade(existing: ParsedTitle, candidate: ParsedTitle): boolean {
-  const existingScore = calculateQualityScore(existing)
-  const candidateScore = calculateQualityScore(candidate)
-  
-  // Must be same title/series
-  const existingTitle = existing.title || existing.name || ''
-  const candidateTitle = candidate.title || candidate.name || ''
-  if (existingTitle.toLowerCase() !== candidateTitle.toLowerCase()) {
-    return false
-  }
-
-  // For series, must be same season/episode
-  if ((existing.type === 'episode' || existing.type === 'series') && 
-      (candidate.type === 'episode' || candidate.type === 'series')) {
-    if (existing.series !== candidate.series || existing.episode !== candidate.episode) {
-      return false
-    }
-  }
-
-  // Check if candidate is significantly better quality
-  return candidateScore.score > existingScore.score + 10 // At least 10 points better
-}
-
 export function Titles({ instanceId, instanceName }: TitlesProps) {
   const [filters, setFilters] = useState<TitlesFilterOptions>({})
   const [searchInput, setSearchInput] = useState("")
@@ -484,6 +461,23 @@ export function Titles({ instanceId, instanceName }: TitlesProps) {
     }
   }
 
+  const handleCategoryChange = async (hash: string, category: string) => {
+    try {
+      const response = await fetch(`/api/instances/${instanceId}/torrents/${hash}/category`, {
+        method: 'POST',
+        body: JSON.stringify({ category }),
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+      })
+      
+      if (!response.ok) {
+        throw new Error('Failed to change category')
+      }
+    } catch (error) {
+      console.error('Error changing category:', error)
+    }
+  }
+
   const handleBulkAction = async (action: string) => {
     if (selectedItems.size === 0) return
     
@@ -516,13 +510,6 @@ export function Titles({ instanceId, instanceName }: TitlesProps) {
       }
       return next
     })
-  }
-
-  const selectAllVisible = () => {
-    if (!data?.titles) return
-    
-    const allHashes = new Set(data.titles.map(item => item.hash))
-    setSelectedItems(allHashes)
   }
 
   const clearSelection = () => {
