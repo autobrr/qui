@@ -486,7 +486,7 @@ func (app *Application) runServer() {
 	// Initialize managers
 	syncManager := qbittorrent.NewSyncManager(clientPool)
 
-	backupStore := models.NewBackupStore(db.Conn())
+	backupStore := models.NewBackupStore(db)
 	backupService := backups.NewService(backupStore, syncManager, backups.Config{DataDir: cfg.GetDataDir()})
 	backupService.Start(context.Background())
 	defer backupService.Stop()

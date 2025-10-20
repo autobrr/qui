@@ -20,3 +20,10 @@ type Querier interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 }
+
+// TxBeginner is an interface for types that can begin transactions.
+// It is implemented by *sql.DB and *database.DB.
+type TxBeginner interface {
+	Querier
+	BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error)
+}

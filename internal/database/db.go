@@ -355,6 +355,13 @@ func (db *DB) QueryRowContext(ctx context.Context, query string, args ...any) *s
 	return stmt.QueryRowContext(ctx, args...)
 }
 
+// BeginTx starts a transaction. Note that transactions bypass the single writer
+// and use the underlying connection pool directly. This is safe because SQLite
+// handles transaction serialization internally.
+func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
+	return db.conn.BeginTx(ctx, opts)
+}
+
 func (db *DB) Close() error {
 	db.closeOnce.Do(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), connectionSetupTimeout)
