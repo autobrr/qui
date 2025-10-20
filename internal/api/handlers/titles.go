@@ -4,29 +4,27 @@
 package handlers
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 
-	"github.com/autobrr/autobrr/pkg/ttlcache"
 	"github.com/go-chi/chi/v5"
-	"github.com/moistari/rls"
 	"github.com/rs/zerolog/log"
 
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/titles"
 )
 
 type TitlesHandler struct {
 	syncManager *qbittorrent.SyncManager
-	cache       *ttlcache.Cache[string, ParsedTitle]
+	parser      *titles.Parser
 }
 
-// ParsedTitle represents a torrent with its parsed title information
-type ParsedTitle struct {
+// TorrentWithParsedTitle represents a torrent with its parsed title information
+type TorrentWithParsedTitle struct {
 	// Torrent information
 	Hash     string `json:"hash"`
 	Name     string `json:"name"`
@@ -37,50 +35,14 @@ type ParsedTitle struct {
 	Tags     string `json:"tags"`
 	Tracker  string `json:"tracker,omitempty"`
 
-	// Parsed release information
-	Type        string   `json:"type"`
-	Artist      string   `json:"artist,omitempty"`
-	Title       string   `json:"title,omitempty"`
-	Subtitle    string   `json:"subtitle,omitempty"`
-	Alt         string   `json:"alt,omitempty"`
-	Platform    string   `json:"platform,omitempty"`
-	Arch        string   `json:"arch,omitempty"`
-	Source      string   `json:"source,omitempty"`
-	Resolution  string   `json:"resolution,omitempty"`
-	Collection  string   `json:"collection,omitempty"`
-	Year        int      `json:"year,omitempty"`
-	Month       int      `json:"month,omitempty"`
-	Day         int      `json:"day,omitempty"`
-	Series      int      `json:"series,omitempty"`
-	Episode     int      `json:"episode,omitempty"`
-	Version     string   `json:"version,omitempty"`
-	Disc        string   `json:"disc,omitempty"`
-	Codec       []string `json:"codec,omitempty"`
-	HDR         []string `json:"hdr,omitempty"`
-	Audio       []string `json:"audio,omitempty"`
-	Channels    string   `json:"channels,omitempty"`
-	Other       []string `json:"other,omitempty"`
-	Cut         []string `json:"cut,omitempty"`
-	Edition     []string `json:"edition,omitempty"`
-	Language    []string `json:"language,omitempty"`
-	ReleaseSize string   `json:"releaseSize,omitempty"`
-	Region      string   `json:"region,omitempty"`
-	Container   string   `json:"container,omitempty"`
-	Genre       string   `json:"genre,omitempty"`
-	ID          string   `json:"id,omitempty"`
-	Group       string   `json:"group,omitempty"`
-	Meta        []string `json:"meta,omitempty"`
-	Site        string   `json:"site,omitempty"`
-	Sum         string   `json:"sum,omitempty"`
-	Pass        string   `json:"pass,omitempty"`
-	Req         bool     `json:"req,omitempty"`
-	Ext         string   `json:"ext,omitempty"`
+	// Parsed title information
+	titles.ParsedTitle
 }
 
 // TitlesResponse represents the response for the titles endpoint
 type TitlesResponse struct {
-	Titles []ParsedTitle `json:"titles"`
-	Total  int           `json:"total"`
+	Titles []TorrentWithParsedTitle `json:"titles"`
+	Total  int                      `json:"total"`
 }
 
 // FilterOptions for titles
@@ -99,7 +61,7 @@ type TitlesFilterOptions struct {
 func NewTitlesHandler(syncManager *qbittorrent.SyncManager) *TitlesHandler {
 	return &TitlesHandler{
 		syncManager: syncManager,
-		cache:       ttlcache.New(ttlcache.Options[string, ParsedTitle]{}.SetDefaultTTL(30 * time.Minute)),
+		parser:      titles.NewParser(),
 	}
 }
 
@@ -130,12 +92,48 @@ func (h *TitlesHandler) ListParsedTitles(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// torrents is already []qbt.Torrent
+	var torrentNames []string
+	var torrentList []qbt.Torrent
+
+	for _, t := range torrents {
+		if t.Name != "" {
+			torrentNames = append(torrentNames, t.Name)
+			torrentList = append(torrentList, t)
+		}
+	}
+
+	// Parse titles
+	parsedTitles := h.parser.ParseTitles(ctx, torrentNames)
+
+	// Combine torrent data with parsed titles
+	var combinedTitles []TorrentWithParsedTitle
+	for i, parsed := range parsedTitles {
+		if i >= len(torrentList) {
+			continue
+		}
+
+		t := torrentList[i]
+		combined := TorrentWithParsedTitle{
+			ParsedTitle: parsed,
+			Hash:        t.Hash,
+			Name:        t.Name,
+			AddedOn:     t.AddedOn,
+			Size:        t.Size,
+			State:       string(t.State),
+			Category:    t.Category,
+			Tags:        t.Tags,
+			Tracker:     t.Tracker,
+		}
+
+		combinedTitles = append(combinedTitles, combined)
+	}
+
 	// Parse and filter titles
-	parsedTitles := h.parseTorrents(ctx, torrents)
-	filteredTitles := h.filterTitles(parsedTitles, filters)
+	filteredTitles := h.filterTitles(combinedTitles, filters)
 
 	// Sort by added date (newest first)
-	slices.SortFunc(filteredTitles, func(a, b ParsedTitle) int {
+	slices.SortFunc(filteredTitles, func(a, b TorrentWithParsedTitle) int {
 		if a.AddedOn > b.AddedOn {
 			return -1
 		}
@@ -153,154 +151,15 @@ func (h *TitlesHandler) ListParsedTitles(w http.ResponseWriter, r *http.Request)
 	RespondJSON(w, http.StatusOK, response)
 }
 
-// parseTorrents parses all torrent names using the rls library
-func (h *TitlesHandler) parseTorrents(ctx context.Context, torrents interface{}) []ParsedTitle {
-	var result []ParsedTitle
-
-	// Convert torrents to a slice we can iterate
-	torrentsData, err := json.Marshal(torrents)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to marshal torrents")
-		return result
-	}
-
-	var torrentsList []map[string]interface{}
-	if err := json.Unmarshal(torrentsData, &torrentsList); err != nil {
-		log.Error().Err(err).Msg("Failed to unmarshal torrents")
-		return result
-	}
-
-	for _, torrentMap := range torrentsList {
-		hash, _ := torrentMap["hash"].(string)
-		name, _ := torrentMap["name"].(string)
-		if name == "" {
-			continue
-		}
-
-		// Check cache first
-		if cached, found := h.cache.Get(name); found {
-			// Use cached parsed title but update torrent-specific fields
-			parsed := cached
-			parsed.Hash = hash
-			parsed.Name = name
-
-			// Update torrent-specific metadata
-			if val, ok := torrentMap["added_on"].(float64); ok {
-				parsed.AddedOn = int64(val)
-			} else if val, ok := torrentMap["addedOn"].(float64); ok {
-				parsed.AddedOn = int64(val)
-			}
-
-			if val, ok := torrentMap["size"].(float64); ok {
-				parsed.Size = int64(val)
-			}
-
-			parsed.State, _ = torrentMap["state"].(string)
-			parsed.Category, _ = torrentMap["category"].(string)
-			parsed.Tags, _ = torrentMap["tags"].(string)
-
-			if trackerVal, ok := torrentMap["tracker"]; ok {
-				parsed.Tracker, _ = trackerVal.(string)
-			}
-
-			result = append(result, parsed)
-			continue
-		}
-
-		// Parse the torrent name using rls
-		release := rls.ParseString(name)
-
-		// Extract tracker domain if available
-		tracker := ""
-		if trackerVal, ok := torrentMap["tracker"]; ok {
-			tracker, _ = trackerVal.(string)
-		}
-
-		// Get numeric fields with type checking
-		addedOn := int64(0)
-		if val, ok := torrentMap["added_on"].(float64); ok {
-			addedOn = int64(val)
-		} else if val, ok := torrentMap["addedOn"].(float64); ok {
-			addedOn = int64(val)
-		}
-
-		size := int64(0)
-		if val, ok := torrentMap["size"].(float64); ok {
-			size = int64(val)
-		}
-
-		state, _ := torrentMap["state"].(string)
-		category, _ := torrentMap["category"].(string)
-		tags, _ := torrentMap["tags"].(string)
-
-		parsed := ParsedTitle{
-			Hash:     hash,
-			Name:     name,
-			AddedOn:  addedOn,
-			Size:     size,
-			State:    state,
-			Category: category,
-			Tags:     tags,
-			Tracker:  tracker,
-
-			// Parsed fields from rls
-			Type:        release.Type.String(),
-			Artist:      release.Artist,
-			Title:       release.Title,
-			Subtitle:    release.Subtitle,
-			Alt:         release.Alt,
-			Platform:    release.Platform,
-			Arch:        release.Arch,
-			Source:      release.Source,
-			Resolution:  release.Resolution,
-			Collection:  release.Collection,
-			Year:        release.Year,
-			Month:       release.Month,
-			Day:         release.Day,
-			Series:      release.Series,
-			Episode:     release.Episode,
-			Version:     release.Version,
-			Disc:        release.Disc,
-			Codec:       release.Codec,
-			HDR:         release.HDR,
-			Audio:       release.Audio,
-			Channels:    release.Channels,
-			Other:       release.Other,
-			Cut:         release.Cut,
-			Edition:     release.Edition,
-			Language:    release.Language,
-			ReleaseSize: release.Size,
-			Region:      release.Region,
-			Container:   release.Container,
-			Genre:       release.Genre,
-			ID:          release.ID,
-			Group:       release.Group,
-			Meta:        release.Meta,
-			Site:        release.Site,
-			Sum:         release.Sum,
-			Pass:        release.Pass,
-			Req:         release.Req,
-			Ext:         release.Ext,
-		}
-
-		// Cache the parsed title
-		h.cache.Set(name, parsed, ttlcache.DefaultTTL)
-
-		result = append(result, parsed)
-	}
-
-	return result
-}
-
 // filterTitles applies filters to the parsed titles
-func (h *TitlesHandler) filterTitles(titles []ParsedTitle, filters TitlesFilterOptions) []ParsedTitle {
+func (h *TitlesHandler) filterTitles(titles []TorrentWithParsedTitle, filters TitlesFilterOptions) []TorrentWithParsedTitle {
 	if filters.Type == "" && filters.Source == "" && filters.Resolution == "" &&
 		filters.Codec == "" && filters.Audio == "" && filters.Group == "" &&
 		filters.Category == "" && filters.Year == 0 && filters.Search == "" {
 		return titles
 	}
 
-	var filtered []ParsedTitle
+	var filtered []TorrentWithParsedTitle
 	for _, title := range titles {
 		// Type filter
 		if filters.Type != "" && !strings.EqualFold(title.Type, filters.Type) {
