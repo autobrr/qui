@@ -33,10 +33,10 @@ import {
   TooltipContent,
   TooltipTrigger
 } from "@/components/ui/tooltip"
-import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
-import { formatBytes } from "@/lib/utils"
+import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
 import { getCommonCategory, getCommonSavePath, getCommonTags, getTotalSize } from "@/lib/torrent-utils"
+import { formatBytes } from "@/lib/utils"
 import type { Torrent, TorrentFilters } from "@/types"
 import {
   ArrowDown,
@@ -92,8 +92,12 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   excludeHashes = [],
   onComplete,
 }: TorrentManagementBarProps) {
+  if (typeof instanceId !== "number" || instanceId <= 0) {
+    return null
+  }
+
   // Use shared metadata hook to leverage cache from table and filter sidebar
-  const { data: metadata, isLoading: isMetadataLoading } = useInstanceMetadata(instanceId || 0)
+  const { data: metadata, isLoading: isMetadataLoading } = useInstanceMetadata(instanceId)
   const availableTags = metadata?.tags || []
   const availableCategories = metadata?.categories || {}
   
@@ -142,7 +146,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     prepareRecheckAction,
     prepareReannounceAction,
   } = useTorrentActions({
-    instanceId: instanceId || 0,
+    instanceId,
     onActionComplete: (action) => {
       if (action === TORRENT_ACTIONS.DELETE) {
         onComplete?.()
