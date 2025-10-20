@@ -4,6 +4,8 @@
 package debounce
 
 import (
+	"runtime"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -35,7 +37,7 @@ func TestDebouncer_DebouncesMultipleCalls(t *testing.T) {
 	done := make(chan int, 1)
 
 	// Submit multiple functions very quickly (much faster than debounce delay)
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		val := i
 		d.Do(func() {
 			executed.Add(1)
@@ -165,7 +167,7 @@ func TestDebouncer_MultipleSequences(t *testing.T) {
 
 	// First sequence
 	firstDone := make(chan bool, 1)
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		d.Do(func() {
 			atomic.AddInt64(&executed, 1)
 			firstDone <- true
@@ -186,7 +188,7 @@ func TestDebouncer_MultipleSequences(t *testing.T) {
 
 	// Second sequence
 	secondDone := make(chan bool, 1)
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		d.Do(func() {
 			atomic.AddInt64(&executed, 1)
 			secondDone <- true
@@ -203,5 +205,44 @@ func TestDebouncer_MultipleSequences(t *testing.T) {
 		}
 	case <-time.After(200 * time.Millisecond):
 		t.Error("Second sequence did not execute within timeout")
+	}
+}
+
+func TestDebouncer_StopNoPanicWhileDoInFlight(t *testing.T) {
+	const attempts = 2000
+	const workers = 64
+
+	for attempt := range attempts {
+		d := New(0)
+		panicCh := make(chan any, workers)
+		var wg sync.WaitGroup
+		wg.Add(workers)
+		start := make(chan struct{})
+
+		for range workers {
+			go func() {
+				defer wg.Done()
+				<-start
+				defer func() {
+					if r := recover(); r != nil {
+						select {
+						case panicCh <- r:
+						default:
+						}
+					}
+				}()
+				d.Do(func() {})
+			}()
+		}
+
+		close(start)
+		runtime.Gosched()
+		d.Stop()
+		wg.Wait()
+
+		if len(panicCh) > 0 {
+			// we do not expect a send-on-closed-channel panic anymore
+			t.Fatalf("send on closed channel panic observed when stopping debouncer (attempt %d)", attempt)
+		}
 	}
 }

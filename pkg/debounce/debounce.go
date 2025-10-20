@@ -17,6 +17,7 @@ type Debouncer struct {
 	timer       <-chan time.Time
 	latest      func()
 	mu          sync.RWMutex
+	submitMu    sync.Mutex
 	delay       time.Duration
 	stopped     atomic.Bool
 	done        chan struct{}
@@ -82,9 +83,9 @@ func (d *Debouncer) run() {
 // Do executes the function fn after the delay.
 // If called multiple times within the delay period, only the last fn will execute after the delay.
 func (d *Debouncer) Do(fn func()) {
-	// Check if stopped
+	d.submitMu.Lock()
 	if d.stopped.Load() {
-		// Execute immediately if stopped
+		d.submitMu.Unlock()
 		fn()
 		return
 	}
@@ -92,9 +93,11 @@ func (d *Debouncer) Do(fn func()) {
 	// Try to send to submissions channel
 	select {
 	case d.submissions <- fn:
+		d.submitMu.Unlock()
 		// Successfully submitted
 	default:
-		// Channel is full or closed, check if stopped
+		d.submitMu.Unlock()
+		// Channel is full, check if stopped and execute immediately
 		if d.stopped.Load() {
 			fn()
 		}
@@ -117,6 +120,8 @@ func (d *Debouncer) Stop() {
 	}
 
 	// First call to Stop - close submissions and wait
+	d.submitMu.Lock()
 	close(d.submissions)
+	d.submitMu.Unlock()
 	<-d.done
 }
