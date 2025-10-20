@@ -23,6 +23,7 @@ export interface Instance {
   username: string
   basicUsername?: string
   tlsSkipVerify: boolean
+  syncInterval?: number
 }
 
 export interface InstanceFormData {
@@ -33,6 +34,7 @@ export interface InstanceFormData {
   basicUsername?: string
   basicPassword?: string
   tlsSkipVerify: boolean
+  syncInterval?: number
 }
 
 export interface InstanceError {

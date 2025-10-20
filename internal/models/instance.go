@@ -32,6 +32,7 @@ type Instance struct {
 	BasicUsername          *string `json:"basic_username,omitempty"`
 	BasicPasswordEncrypted *string `json:"-"`
 	TLSSkipVerify          bool    `json:"tlsSkipVerify"`
+	SyncInterval           int     `json:"sync_interval"` // Minutes between automatic syncs (0 = disabled, min 5)
 }
 
 func (i Instance) MarshalJSON() ([]byte, error) {
@@ -45,6 +46,7 @@ func (i Instance) MarshalJSON() ([]byte, error) {
 		BasicUsername   *string    `json:"basic_username,omitempty"`
 		BasicPassword   string     `json:"basic_password,omitempty"`
 		TLSSkipVerify   bool       `json:"tlsSkipVerify"`
+		SyncInterval    int        `json:"sync_interval"`
 		IsActive        bool       `json:"is_active"`
 		LastConnectedAt *time.Time `json:"last_connected_at,omitempty"`
 		CreatedAt       time.Time  `json:"created_at"`
@@ -63,6 +65,7 @@ func (i Instance) MarshalJSON() ([]byte, error) {
 			return ""
 		}(),
 		TLSSkipVerify: i.TLSSkipVerify,
+		SyncInterval:  i.SyncInterval,
 	})
 }
 
@@ -77,6 +80,7 @@ func (i *Instance) UnmarshalJSON(data []byte) error {
 		BasicUsername   *string    `json:"basic_username,omitempty"`
 		BasicPassword   string     `json:"basic_password,omitempty"`
 		TLSSkipVerify   *bool      `json:"tlsSkipVerify,omitempty"`
+		SyncInterval    *int       `json:"sync_interval,omitempty"`
 		IsActive        bool       `json:"is_active"`
 		LastConnectedAt *time.Time `json:"last_connected_at,omitempty"`
 		CreatedAt       time.Time  `json:"created_at"`
@@ -96,6 +100,10 @@ func (i *Instance) UnmarshalJSON(data []byte) error {
 
 	if temp.TLSSkipVerify != nil {
 		i.TLSSkipVerify = *temp.TLSSkipVerify
+	}
+
+	if temp.SyncInterval != nil {
+		i.SyncInterval = *temp.SyncInterval
 	}
 
 	// Handle password - don't overwrite if redacted
@@ -213,7 +221,7 @@ func validateAndNormalizeHost(rawHost string) (string, error) {
 	return u.String(), nil
 }
 
-func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, password string, basicUsername, basicPassword *string, tlsSkipVerify bool) (*Instance, error) {
+func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, password string, basicUsername, basicPassword *string, tlsSkipVerify bool, syncInterval int) (*Instance, error) {
 	// Validate and normalize the host
 	normalizedHost, err := validateAndNormalizeHost(rawHost)
 	if err != nil {
@@ -236,13 +244,13 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 	}
 
 	query := `
-		INSERT INTO instances (name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify) 
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-		RETURNING id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify
+		INSERT INTO instances (name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sync_interval) 
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		RETURNING id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sync_interval
 	`
 
 	instance := &Instance{}
-	err = s.db.QueryRowContext(ctx, query, name, normalizedHost, username, encryptedPassword, basicUsername, encryptedBasicPassword, tlsSkipVerify).Scan(
+	err = s.db.QueryRowContext(ctx, query, name, normalizedHost, username, encryptedPassword, basicUsername, encryptedBasicPassword, tlsSkipVerify, syncInterval).Scan(
 		&instance.ID,
 		&instance.Name,
 		&instance.Host,
@@ -251,6 +259,7 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 		&instance.BasicUsername,
 		&instance.BasicPasswordEncrypted,
 		&instance.TLSSkipVerify,
+		&instance.SyncInterval,
 	)
 
 	if err != nil {
@@ -262,7 +271,7 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 
 func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 	query := `
-		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify 
+		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sync_interval 
 		FROM instances 
 		WHERE id = ?
 	`
@@ -277,6 +286,7 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 		&instance.BasicUsername,
 		&instance.BasicPasswordEncrypted,
 		&instance.TLSSkipVerify,
+		&instance.SyncInterval,
 	)
 
 	if err != nil {
@@ -291,7 +301,7 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 
 func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 	query := `
-		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify 
+		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sync_interval 
 		FROM instances
 		ORDER BY name ASC
 	`
@@ -314,6 +324,7 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 			&instance.BasicUsername,
 			&instance.BasicPasswordEncrypted,
 			&instance.TLSSkipVerify,
+			&instance.SyncInterval,
 		)
 		if err != nil {
 			return nil, err
@@ -324,7 +335,7 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 	return instances, rows.Err()
 }
 
-func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, username, password string, basicUsername, basicPassword *string, tlsSkipVerify *bool) (*Instance, error) {
+func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, username, password string, basicUsername, basicPassword *string, tlsSkipVerify *bool, syncInterval *int) (*Instance, error) {
 	// Validate and normalize the host
 	normalizedHost, err := validateAndNormalizeHost(rawHost)
 	if err != nil {
@@ -364,6 +375,11 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 	if tlsSkipVerify != nil {
 		query += ", tls_skip_verify = ?"
 		args = append(args, *tlsSkipVerify)
+	}
+
+	if syncInterval != nil {
+		query += ", sync_interval = ?"
+		args = append(args, *syncInterval)
 	}
 
 	query += " WHERE id = ?"

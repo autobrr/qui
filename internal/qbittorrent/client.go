@@ -36,12 +36,19 @@ type Client struct {
 	optimisticUpdates *ttlcache.Cache[string, *OptimisticTorrentUpdate]
 	trackerExclusions map[string]map[string]struct{} // Domains to hide hashes from until fresh sync arrives
 	lastServerState   *qbt.ServerState
-	mu                sync.RWMutex
-	serverStateMu     sync.RWMutex
-	healthMu          sync.RWMutex
-	hashIndexMu       sync.RWMutex
-	hashIndex         map[string]duplicateIndexEntry
-	hashIndexReady    bool
+	// Periodic sync fields
+	syncInterval   int           // Minutes between automatic syncs (0 = disabled)
+	syncTicker     *time.Ticker  // Ticker for periodic syncs
+	stopSync       chan struct{} // Channel to stop the sync ticker
+	lastSyncTime   time.Time     // Time of last sync (for resetting ticker)
+	lastResetTime  time.Time     // Time of last ticker reset (for debouncing)
+	syncMu         sync.RWMutex  // Protects sync ticker fields
+	mu             sync.RWMutex
+	serverStateMu  sync.RWMutex
+	healthMu       sync.RWMutex
+	hashIndexMu    sync.RWMutex
+	hashIndex      map[string]duplicateIndexEntry
+	hashIndexReady bool
 }
 
 func NewClient(instanceID int, instanceHost, username, password string, basicUsername, basicPassword *string, tlsSkipVerify bool) (*Client, error) {
@@ -138,6 +145,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 		trackerExclusions: make(map[string]map[string]struct{}),
 		peerSyncManager:   make(map[string]*qbt.PeerSyncManager),
 		hashIndex:         make(map[string]duplicateIndexEntry),
+		stopSync:          make(chan struct{}),
 	}
 
 	// Initialize sync manager with default options
@@ -386,16 +394,193 @@ func (c *Client) invalidateTrackerCache(hashes ...string) {
 	}
 }
 
-func (c *Client) StartSyncManager(ctx context.Context) error {
+func (c *Client) StartSyncManager(ctx context.Context, syncInterval int) error {
 	c.mu.RLock()
 	syncManager := c.syncManager
+	instanceID := c.instanceID
 	c.mu.RUnlock()
 
 	if syncManager == nil {
 		return fmt.Errorf("sync manager not initialized")
 	}
 
-	return syncManager.Start(ctx)
+	// Store the sync interval
+	c.syncMu.Lock()
+	c.syncInterval = syncInterval
+	c.lastSyncTime = time.Now()
+	c.syncMu.Unlock()
+
+	// Start the sync manager (this starts the background sync loop)
+	if err := syncManager.Start(ctx); err != nil {
+		return err
+	}
+
+	log.Debug().
+		Int("instanceID", instanceID).
+		Msg("Sync manager started successfully")
+
+	// Perform an initial sync to populate the cache immediately
+	// This fetches all torrents via qBittorrent's /sync/maindata endpoint in a single call
+	if err := syncManager.Sync(ctx); err != nil {
+		log.Warn().
+			Err(err).
+			Int("instanceID", instanceID).
+			Msg("Initial sync failed, cache will be populated on first request")
+	} else {
+		// Get torrent count from sync manager to log what was synced
+		torrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{})
+		log.Info().
+			Int("instanceID", instanceID).
+			Int("torrentCount", len(torrents)).
+			Msg("Initial cache sync completed - all torrents loaded")
+	}
+
+	// Start periodic sync if interval is set (and >= 5 minutes)
+	if syncInterval >= 5 {
+		c.startPeriodicSync()
+	}
+
+	return nil
+}
+
+// startPeriodicSync starts a ticker for periodic cache refresh
+func (c *Client) startPeriodicSync() {
+	c.syncMu.Lock()
+	defer c.syncMu.Unlock()
+
+	// Stop existing ticker if any
+	if c.syncTicker != nil {
+		c.syncTicker.Stop()
+		c.syncTicker = nil
+	}
+
+	if c.syncInterval < 5 {
+		return // Don't start if interval is below minimum
+	}
+
+	interval := time.Duration(c.syncInterval) * time.Minute
+	c.syncTicker = time.NewTicker(interval)
+
+	log.Info().
+		Int("instanceID", c.instanceID).
+		Int("intervalMinutes", c.syncInterval).
+		Msg("Started periodic cache refresh")
+
+	go func() {
+		for {
+			select {
+			case <-c.syncTicker.C:
+				c.performPeriodicSync()
+			case <-c.stopSync:
+				return
+			}
+		}
+	}()
+}
+
+// performPeriodicSync executes a sync operation
+func (c *Client) performPeriodicSync() {
+	c.mu.RLock()
+	syncManager := c.syncManager
+	instanceID := c.instanceID
+	c.mu.RUnlock()
+
+	if syncManager == nil {
+		log.Warn().Int("instanceID", instanceID).Msg("Sync manager not available for periodic sync")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	log.Debug().Int("instanceID", instanceID).Msg("Starting periodic cache refresh (sync/maindata - all torrents)")
+
+	// Sync fetches all torrents via qBittorrent's /sync/maindata endpoint in a single call
+	// This is different from frontend pagination which applies limit/offset when serving results
+	if err := syncManager.Sync(ctx); err != nil {
+		log.Warn().
+			Err(err).
+			Int("instanceID", instanceID).
+			Msg("Periodic sync failed")
+	} else {
+		// Get torrent count from sync manager to log what was synced
+		torrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{})
+		log.Info().
+			Int("instanceID", instanceID).
+			Int("torrentCount", len(torrents)).
+			Msg("Periodic cache refresh completed - all torrents synced")
+		c.recordSyncTime()
+	}
+}
+
+// recordSyncTime records the time of the last sync and resets the ticker
+func (c *Client) recordSyncTime() {
+	c.syncMu.Lock()
+	defer c.syncMu.Unlock()
+
+	c.lastSyncTime = time.Now()
+
+	// Reset the ticker to start counting from now
+	if c.syncTicker != nil && c.syncInterval >= 5 {
+		// Debounce: only reset if at least 10 seconds have passed since last reset
+		// This prevents excessive resets when multiple rapid syncs occur
+		if time.Since(c.lastResetTime) < 10*time.Second {
+			log.Debug().
+				Int("instanceID", c.instanceID).
+				Dur("timeSinceLastReset", time.Since(c.lastResetTime)).
+				Msg("Skipping timer reset - too soon since last reset (debounced)")
+			return
+		}
+
+		c.syncTicker.Reset(time.Duration(c.syncInterval) * time.Minute)
+		c.lastResetTime = time.Now()
+		nextSync := c.lastSyncTime.Add(time.Duration(c.syncInterval) * time.Minute)
+		log.Info().
+			Int("instanceID", c.instanceID).
+			Int("intervalMinutes", c.syncInterval).
+			Time("lastSync", c.lastSyncTime).
+			Time("nextSync", nextSync).
+			Msg("Periodic sync timer reset - cache refreshed")
+	}
+}
+
+// UpdateSyncInterval updates the periodic sync interval and restarts the ticker
+func (c *Client) UpdateSyncInterval(syncInterval int) {
+	c.syncMu.Lock()
+	oldInterval := c.syncInterval
+	c.syncInterval = syncInterval
+	c.syncMu.Unlock()
+
+	if oldInterval == syncInterval {
+		return // No change
+	}
+
+	log.Info().
+		Int("instanceID", c.instanceID).
+		Int("oldInterval", oldInterval).
+		Int("newInterval", syncInterval).
+		Msg("Updating periodic sync interval")
+
+	// Stop existing ticker if any
+	c.syncMu.Lock()
+	if c.syncTicker != nil {
+		c.syncTicker.Stop()
+		c.syncTicker = nil
+	}
+	c.syncMu.Unlock()
+
+	// Start new ticker if interval is valid
+	if syncInterval >= 5 {
+		c.startPeriodicSync()
+	} else {
+		log.Info().
+			Int("instanceID", c.instanceID).
+			Msg("Stopped periodic cache refresh (interval disabled or below minimum)")
+	}
+}
+
+func (c *Client) StartSyncManagerLegacy(ctx context.Context) error {
+	return c.StartSyncManager(ctx, 0)
 }
 
 // GetOrCreatePeerSyncManager gets or creates a PeerSyncManager for a specific torrent
