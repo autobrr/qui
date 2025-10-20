@@ -147,6 +147,71 @@ func TestQueueRunCleansPendingRunOnContextCancel(t *testing.T) {
 	require.False(t, exists, "instance inflight marker should be cleared")
 }
 
+func TestStartBlocksWhileRecoveringMissedBackups(t *testing.T) {
+	db := setupTestBackupDB(t)
+
+	store := models.NewBackupStore(db)
+	svc := NewService(store, nil, Config{WorkerCount: 1})
+
+	instanceNames := []string{"instance-a", "instance-b", "instance-c"}
+	for _, name := range instanceNames {
+		result, err := db.ExecContext(context.Background(), "INSERT INTO instances (name) VALUES (?)", name)
+		require.NoError(t, err)
+
+		instanceID64, err := result.LastInsertId()
+		require.NoError(t, err)
+
+		settings := &models.BackupSettings{
+			InstanceID:    int(instanceID64),
+			Enabled:       true,
+			HourlyEnabled: true,
+			KeepHourly:    1,
+		}
+		require.NoError(t, store.UpsertSettings(context.Background(), settings))
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	started := make(chan struct{})
+	go func() {
+		svc.Start(ctx)
+		close(started)
+	}()
+
+	timer := time.NewTimer(250 * time.Millisecond)
+	defer timer.Stop()
+
+	select {
+	case <-started:
+		// Expected with a fixed implementation.
+	case <-timer.C:
+		// Drain the queue to let Start finish before failing the test.
+		drained := make(chan struct{})
+		go func() {
+			defer close(drained)
+			for range instanceNames {
+				select {
+				case <-svc.jobs:
+				case <-time.After(100 * time.Millisecond):
+					return
+				}
+			}
+		}()
+		<-drained
+		cancel()
+		<-started
+		t.Fatal("Start blocked while recovering missed backups; workers never launched")
+	}
+
+	cancel()
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("Start did not exit after shutdown")
+	}
+}
+
 func TestUpdateSettingsNormalizesRetention(t *testing.T) {
 	db := setupTestBackupDB(t)
 

@@ -198,14 +198,14 @@ func (s *Service) Start(ctx context.Context) {
 		log.Warn().Err(err).Msg("Failed to recover incomplete backup runs")
 	}
 
-	// Check for missed backups and queue exactly one if applicable
-	if err := s.checkMissedBackups(ctx); err != nil {
-		log.Warn().Err(err).Msg("Failed to check for missed backups")
-	}
-
 	for i := 0; i < s.cfg.WorkerCount; i++ {
 		s.wg.Add(1)
 		go s.worker(ctx)
+	}
+
+	// Check for missed backups and queue exactly one if applicable
+	if err := s.checkMissedBackups(ctx); err != nil {
+		log.Warn().Err(err).Msg("Failed to check for missed backups")
 	}
 
 	s.wg.Add(1)
@@ -375,6 +375,20 @@ func (s *Service) worker(ctx context.Context) {
 }
 
 func (s *Service) handleJob(ctx context.Context, j job) {
+	if s.syncManager == nil {
+		now := s.now()
+		msg := "sync manager not configured"
+		_ = s.store.UpdateRunMetadata(ctx, j.runID, func(run *models.BackupRun) error {
+			run.Status = models.BackupRunStatusFailed
+			run.CompletedAt = &now
+			run.ErrorMessage = &msg
+			return nil
+		})
+		s.clearInstance(j.instanceID, j.runID)
+		log.Error().Int("instanceID", j.instanceID).Msg("Backup run failed: sync manager not configured")
+		return
+	}
+
 	start := s.now()
 	err := s.store.UpdateRunMetadata(ctx, j.runID, func(run *models.BackupRun) error {
 		run.Status = models.BackupRunStatusRunning
