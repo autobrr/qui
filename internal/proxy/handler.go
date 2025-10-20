@@ -329,28 +329,28 @@ func (h *Handler) prepareProxyContextMiddleware(next http.Handler) http.Handler 
 func (h *Handler) Routes(r chi.Router) {
 	// Proxy route with API key parameter
 	proxyRoute := httphelpers.JoinBasePath(h.basePath, "/proxy/{api-key}")
-	log.Info().Str("proxyRoute", proxyRoute).Msg("Registering proxy routes")
-	r.Route(proxyRoute, func(r chi.Router) {
-		// Apply client API key validation middleware
-		r.Use(ClientAPIKeyMiddleware(h.clientAPIKeyStore))
+	proxyRouter := r.With(ClientAPIKeyMiddleware(h.clientAPIKeyStore))
+
+	// Scoped proxy routes retain API key middleware and prepare proxy context
+	proxyRouter.Route(proxyRoute, func(pr chi.Router) {
 		// Apply proxy context middleware (adds instance info to context)
-		r.Use(h.prepareProxyContextMiddleware)
+		pr.Use(h.prepareProxyContextMiddleware)
 
 		// Register intercepted endpoints (these use qui's sync manager or special handling)
-		r.Post("/api/v2/auth/login", h.handleAuthLogin)
-		r.Get("/api/v2/sync/maindata", h.handleSyncMainData)
-		r.Get("/api/v2/sync/torrentPeers", h.handleTorrentPeers)
-		r.Get("/api/v2/torrents/info", h.handleTorrentsInfo)
-		r.Get("/api/v2/torrents/categories", h.handleCategories)
-		r.Get("/api/v2/torrents/tags", h.handleTags)
-		r.Get("/api/v2/torrents/properties", h.handleTorrentProperties)
-		r.Get("/api/v2/torrents/trackers", h.handleTorrentTrackers)
-		r.Get("/api/v2/torrents/files", h.handleTorrentFiles)
-		r.Get("/api/v2/torrents/search", h.handleTorrentSearch)
+		pr.Post("/api/v2/auth/login", h.handleAuthLogin)
+		pr.Get("/api/v2/sync/maindata", h.handleSyncMainData)
+		pr.Get("/api/v2/sync/torrentPeers", h.handleTorrentPeers)
+		pr.Get("/api/v2/torrents/info", h.handleTorrentsInfo)
+		pr.Get("/api/v2/torrents/categories", h.handleCategories)
+		pr.Get("/api/v2/torrents/tags", h.handleTags)
+		pr.Get("/api/v2/torrents/properties", h.handleTorrentProperties)
+		pr.Get("/api/v2/torrents/trackers", h.handleTorrentTrackers)
+		pr.Get("/api/v2/torrents/files", h.handleTorrentFiles)
+		pr.Get("/api/v2/torrents/search", h.handleTorrentSearch)
 
-		// Handle all other requests via reverse proxy
-		r.HandleFunc("/*", h.ServeHTTP)
-		r.HandleFunc("/", h.ServeHTTP)
+		// Handle the base proxy path and any nested paths requested through the proxy
+		pr.HandleFunc("/", h.ServeHTTP)
+		pr.HandleFunc("/*", h.ServeHTTP)
 	})
 }
 

@@ -37,7 +37,24 @@ export default defineConfig(() => ({
         globPatterns: ["**/*.{js,css,html,ico,png,svg,webp}"],
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024, // Allow larger bundles to be precached
         sourcemap: true,
-        navigateFallbackDenylist: [/^\/api/, /^\/proxy/],
+        // Avoid serving the SPA shell for backend proxy routes (also under custom base URLs)
+        navigateFallbackDenylist: [/^\/api/, /\/proxy(?:\/|$)/],
+        // Some deployments sit behind Basic Auth; skip assets that tend to 401 (e.g. manifest, source maps)
+        manifestTransforms: [
+          async (entries) => {
+            const manifest = entries.filter((entry) => {
+              const url = entry.url || ""
+              if (url.endsWith("manifest.webmanifest")) {
+                return false
+              }
+              if (url.endsWith(".map")) {
+                return false
+              }
+              return true
+            })
+            return { manifest, warnings: [] }
+          },
+        ],
       },
       includeAssets: ["favicon.png", "apple-touch-icon.png"],
       manifest: {
