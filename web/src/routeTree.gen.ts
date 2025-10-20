@@ -22,6 +22,7 @@ import { Route as AuthenticatedInstancesInstanceIdRouteImport } from './routes/_
 import { Route as AuthenticatedInstancesInstanceIdTitlesRouteImport } from './routes/_authenticated/instances.$instanceId.titles'
 import { Route as AuthenticatedInstancesIndexRouteImport } from './routes/_authenticated/instances.index'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
+import { Route as AuthenticatedTitlesRouteImport } from './routes/_authenticated/titles'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as SetupRouteImport } from './routes/setup'
@@ -65,6 +66,11 @@ const AuthenticatedBackupsRoute = AuthenticatedBackupsRouteImport.update({
   path: '/backups',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedTitlesRoute = AuthenticatedTitlesRouteImport.update({
+  id: '/titles',
+  path: '/titles',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedInstancesIndexRoute =
   AuthenticatedInstancesIndexRouteImport.update({
     id: '/',
@@ -92,6 +98,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/instances': typeof AuthenticatedInstancesRouteWithChildren
   '/settings': typeof AuthenticatedSettingsRoute
+  '/titles': typeof AuthenticatedTitlesRoute
   '/instances/$instanceId': typeof AuthenticatedInstancesInstanceIdRouteWithChildren
   '/instances/': typeof AuthenticatedInstancesIndexRoute
   '/instances/$instanceId/titles': typeof AuthenticatedInstancesInstanceIdTitlesRoute
@@ -103,6 +110,7 @@ export interface FileRoutesByTo {
   '/backups': typeof AuthenticatedBackupsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/settings': typeof AuthenticatedSettingsRoute
+  '/titles': typeof AuthenticatedTitlesRoute
   '/instances/$instanceId': typeof AuthenticatedInstancesInstanceIdRouteWithChildren
   '/instances': typeof AuthenticatedInstancesIndexRoute
   '/instances/$instanceId/titles': typeof AuthenticatedInstancesInstanceIdTitlesRoute
@@ -117,6 +125,7 @@ export interface FileRoutesById {
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/instances': typeof AuthenticatedInstancesRouteWithChildren
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
+  '/_authenticated/titles': typeof AuthenticatedTitlesRoute
   '/_authenticated/instances/$instanceId': typeof AuthenticatedInstancesInstanceIdRouteWithChildren
   '/_authenticated/instances/': typeof AuthenticatedInstancesIndexRoute
   '/_authenticated/instances/$instanceId/titles': typeof AuthenticatedInstancesInstanceIdTitlesRoute
@@ -131,6 +140,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/instances'
     | '/settings'
+    | '/titles'
     | '/instances/$instanceId'
     | '/instances/'
     | '/instances/$instanceId/backups'
@@ -143,6 +153,7 @@ export interface FileRouteTypes {
     | '/backups'
     | '/dashboard'
     | '/settings'
+    | '/titles'
     | '/instances/$instanceId'
     | '/instances'
     | '/instances/$instanceId/backups'
@@ -157,6 +168,7 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard'
     | '/_authenticated/instances'
     | '/_authenticated/settings'
+    | '/_authenticated/titles'
     | '/_authenticated/instances/$instanceId'
     | '/_authenticated/instances/'
     | '/_authenticated/instances/$instanceId/backups'
@@ -228,6 +240,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedBackupsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/titles': {
+      id: '/_authenticated/titles'
+      path: '/titles'
+      fullPath: '/titles'
+      preLoaderRoute: typeof AuthenticatedTitlesRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/instances/': {
       id: '/_authenticated/instances/'
       path: '/'
@@ -296,6 +315,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedInstancesRoute: AuthenticatedInstancesRouteWithChildren,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
+  AuthenticatedTitlesRoute: AuthenticatedTitlesRoute,
 }
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
