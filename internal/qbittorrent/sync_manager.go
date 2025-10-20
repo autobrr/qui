@@ -76,6 +76,8 @@ type TorrentStats struct {
 	TotalDownloadSpeed int   `json:"totalDownloadSpeed"`
 	TotalUploadSpeed   int   `json:"totalUploadSpeed"`
 	TotalSize          int64 `json:"totalSize"`
+	TotalRemainingSize int64 `json:"totalRemainingSize"`
+	TotalSeedingSize   int64 `json:"totalSeedingSize"`
 }
 
 // DuplicateTorrentMatch represents an existing torrent that matches one or more requested hashes.
@@ -2557,12 +2559,24 @@ func (sm *SyncManager) calculateStats(torrents []qbt.Torrent) *TorrentStats {
 		// Add size
 		stats.TotalSize += torrent.Size
 
-		// Count states
+		// Count states and calculate specific sizes
 		switch torrent.State {
-		case qbt.TorrentStateDownloading, qbt.TorrentStateStalledDl, qbt.TorrentStateMetaDl, qbt.TorrentStateQueuedDl, qbt.TorrentStateForcedDl:
+		case qbt.TorrentStateDownloading:
 			stats.Downloading++
-		case qbt.TorrentStateUploading, qbt.TorrentStateStalledUp, qbt.TorrentStateQueuedUp, qbt.TorrentStateForcedUp:
+			stats.TotalRemainingSize += torrent.AmountLeft
+		case qbt.TorrentStateForcedDl:
+			stats.Downloading++
+			stats.TotalRemainingSize += torrent.AmountLeft
+		case qbt.TorrentStateStalledDl, qbt.TorrentStateMetaDl, qbt.TorrentStateQueuedDl, qbt.TorrentStateAllocating:
+			// These are downloading states but not actively downloading
+		case qbt.TorrentStateUploading:
 			stats.Seeding++
+			stats.TotalSeedingSize += torrent.Size
+		case qbt.TorrentStateForcedUp:
+			stats.Seeding++
+			stats.TotalSeedingSize += torrent.Size
+		case qbt.TorrentStateStalledUp, qbt.TorrentStateQueuedUp:
+			// These are seeding states but not actively seeding
 		case qbt.TorrentStatePausedDl, qbt.TorrentStatePausedUp, qbt.TorrentStateStoppedDl, qbt.TorrentStateStoppedUp:
 			stats.Paused++
 		case qbt.TorrentStateError, qbt.TorrentStateMissingFiles:
