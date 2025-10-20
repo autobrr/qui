@@ -15,6 +15,7 @@ import {
   Sun,
   Moon,
   Monitor,
+  Archive,
   Check,
   Palette
 } from "lucide-react"
@@ -245,6 +246,15 @@ export function MobileFooterNav() {
               >
                 <Server className="h-4 w-4" />
                 Manage Instances
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link
+                to="/backups"
+                className="flex items-center gap-2"
+              >
+                <Archive className="h-4 w-4" />
+                Instance Backups
               </Link>
             </DropdownMenuItem>
 
