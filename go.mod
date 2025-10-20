@@ -7,7 +7,7 @@ require (
 	github.com/Masterminds/semver/v3 v3.4.0
 	github.com/alexedwards/scs/v2 v2.9.0
 	github.com/autobrr/autobrr v1.68.0
-	github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20251019123214-7a82706c8ae7
+	github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20251016080322-0243eae10daf
 	github.com/coreos/go-oidc/v3 v3.16.0
 	github.com/creativeprojects/go-selfupdate v1.5.1
 	github.com/expr-lang/expr v1.17.6
@@ -87,5 +87,3 @@ require (
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
 )
-
-replace github.com/autobrr/go-qbittorrent => github.com/Audionut/go-qbittorrent v1.15.0-rc1.0.20251019123214-7a82706c8ae7
