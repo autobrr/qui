@@ -792,3 +792,72 @@ export interface TorrentCreationTask {
 export interface TorrentCreationTaskResponse {
   taskID: string
 }
+
+// Parsed title types using rls library
+export interface ParsedTitle {
+  // Torrent information
+  hash: string
+  name: string
+  addedOn: number
+  size: number
+  state: string
+  category: string
+  tags: string
+  tracker?: string
+
+  // Parsed release information from rls
+  type: string
+  artist?: string
+  title?: string
+  subtitle?: string
+  alt?: string
+  platform?: string
+  arch?: string
+  source?: string
+  resolution?: string
+  collection?: string
+  year?: number
+  month?: number
+  day?: number
+  series?: number
+  episode?: number
+  version?: string
+  disc?: string
+  codec?: string[]
+  hdr?: string[]
+  audio?: string[]
+  channels?: string
+  other?: string[]
+  cut?: string[]
+  edition?: string[]
+  language?: string[]
+  releaseSize?: string
+  region?: string
+  container?: string
+  genre?: string
+  id?: string
+  group?: string
+  meta?: string[]
+  site?: string
+  sum?: string
+  pass?: string
+  req?: boolean
+  ext?: string
+}
+
+export interface TitlesResponse {
+  titles: ParsedTitle[]
+  total: number
+}
+
+export interface TitlesFilterOptions {
+  type?: string
+  source?: string
+  resolution?: string
+  codec?: string
+  audio?: string
+  group?: string
+  category?: string
+  year?: number
+  search?: string
+}

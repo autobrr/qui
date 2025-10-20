@@ -194,6 +194,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	}
 	instancesHandler := handlers.NewInstancesHandler(s.instanceStore, s.clientPool, s.syncManager)
 	torrentsHandler := handlers.NewTorrentsHandler(s.syncManager)
+	titlesHandler := handlers.NewTitlesHandler(s.syncManager)
 	preferencesHandler := handlers.NewPreferencesHandler(s.syncManager)
 	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(s.clientAPIKeyStore, s.instanceStore, s.config.Config.BaseURL)
 	versionHandler := handlers.NewVersionHandler(s.updateService)
@@ -316,6 +317,9 @@ func (s *Server) Handler() (*chi.Mux, error) {
 
 					// Trackers
 					r.Get("/trackers", torrentsHandler.GetActiveTrackers)
+
+					// Titles - parsed torrent titles
+					r.Get("/titles", titlesHandler.ListParsedTitles)
 
 					// Preferences
 					r.Get("/preferences", preferencesHandler.GetPreferences)
