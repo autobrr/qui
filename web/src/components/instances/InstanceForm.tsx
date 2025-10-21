@@ -126,6 +126,7 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
       basicUsername: instance?.basicUsername ?? "",
       basicPassword: instance?.basicUsername ? "<redacted>" : "",
       tlsSkipVerify: instance?.tlsSkipVerify ?? false,
+      syncInterval: instance?.syncInterval ?? 0,
     },
     onSubmit: ({ value }) => {
       handleSubmit(value)
@@ -341,6 +342,41 @@ export function InstanceForm({ instance, onSuccess, onCancel }: InstanceFormProp
           )}
         </div>
 
+        <form.Field
+          name="syncInterval"
+          validators={{
+            onChange: ({ value }) => {
+              if (value === undefined || value === null) return undefined
+              const num = Number(value)
+              if (isNaN(num)) return "Must be a number"
+              if (num < 0) return "Must be 0 or greater"
+              if (num > 0 && num < 1) return "Minimum 1 minute when enabled"
+              return undefined
+            },
+          }}
+        >
+          {(field) => (
+            <div className="space-y-2">
+              <Label htmlFor={field.name}>Automatic Cache Refresh (minutes)</Label>
+              <Input
+                id={field.name}
+                type="number"
+                min={0}
+                step={1}
+                value={field.state.value}
+                onBlur={field.handleBlur}
+                onChange={(e) => field.handleChange(Number(e.target.value))}
+                placeholder="0"
+              />
+              <p className="text-sm text-muted-foreground">
+                Automatically refresh cache every N minutes. Set to 0 to disable, minimum 1 minute when enabled. Timer resets after any sync.
+              </p>
+              {field.state.meta.isTouched && field.state.meta.errors[0] && (
+                <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
+              )}
+            </div>
+          )}
+        </form.Field>
 
         <div className="flex gap-2">
           <form.Subscribe

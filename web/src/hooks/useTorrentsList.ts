@@ -196,7 +196,8 @@ export function useTorrentsList(
   }, [data])
 
   // Check if data is from cache or fresh (backend provides this info)
-  const isCachedData = data?.cacheMetadata?.source === "cache"
+  // Backend sets source to "fresh" (synced within 30s), "cache" (older but valid), or "no-sync" (no sync yet)
+  const isCachedData = data?.cacheMetadata?.source === "cache" || data?.cacheMetadata?.source === "fresh"
   const isStaleData = data?.cacheMetadata?.isStale === true
 
   // Use lastKnownTotal when loading more pages to prevent flickering

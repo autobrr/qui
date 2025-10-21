@@ -94,6 +94,7 @@ func (h *InstancesHandler) buildInstanceResponsesParallel(ctx context.Context, i
 				TLSSkipVerify:      instances[i].TLSSkipVerify,
 				Connected:          false,
 				HasDecryptionError: false,
+				SyncInterval:       instances[i].SyncInterval,
 			}
 		}
 	}
@@ -127,6 +128,7 @@ func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *
 		Connected:          healthy,
 		HasDecryptionError: hasDecryptionError,
 		ConnectionStatus:   connectionStatus,
+		SyncInterval:       instance.SyncInterval,
 	}
 
 	// Fetch recent errors for disconnected instances
@@ -154,6 +156,7 @@ func (h *InstancesHandler) buildQuickInstanceResponse(instance *models.Instance)
 		TLSSkipVerify:      instance.TLSSkipVerify,
 		Connected:          false, // Will be updated asynchronously
 		HasDecryptionError: false,
+		SyncInterval:       instance.SyncInterval,
 	}
 }
 
@@ -187,6 +190,7 @@ type CreateInstanceRequest struct {
 	BasicUsername *string `json:"basicUsername,omitempty"`
 	BasicPassword *string `json:"basicPassword,omitempty"`
 	TLSSkipVerify bool    `json:"tlsSkipVerify,omitempty"`
+	SyncInterval  int     `json:"syncInterval,omitempty"`
 }
 
 // UpdateInstanceRequest represents a request to update an instance
@@ -198,6 +202,7 @@ type UpdateInstanceRequest struct {
 	BasicUsername *string `json:"basicUsername,omitempty"`
 	BasicPassword *string `json:"basicPassword,omitempty"`
 	TLSSkipVerify *bool   `json:"tlsSkipVerify,omitempty"`
+	SyncInterval  *int    `json:"syncInterval,omitempty"`
 }
 
 // InstanceResponse represents an instance in API responses
@@ -212,6 +217,7 @@ type InstanceResponse struct {
 	HasDecryptionError bool                   `json:"hasDecryptionError"`
 	RecentErrors       []models.InstanceError `json:"recentErrors,omitempty"`
 	ConnectionStatus   string                 `json:"connectionStatus,omitempty"`
+	SyncInterval       int                    `json:"syncInterval,omitempty"`
 }
 
 // TestConnectionResponse represents connection test results
@@ -254,8 +260,14 @@ func (h *InstancesHandler) CreateInstance(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Validate sync interval (0 = disabled, or minimum 1 minute)
+	if req.SyncInterval != 0 && req.SyncInterval < 1 {
+		RespondError(w, http.StatusBadRequest, "Sync interval must be 0 (disabled) or at least 1 minute")
+		return
+	}
+
 	// Create instance
-	instance, err := h.instanceStore.Create(r.Context(), req.Name, req.Host, req.Username, req.Password, req.BasicUsername, req.BasicPassword, req.TLSSkipVerify)
+	instance, err := h.instanceStore.Create(r.Context(), req.Name, req.Host, req.Username, req.Password, req.BasicUsername, req.BasicPassword, req.TLSSkipVerify, req.SyncInterval)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create instance")
 		RespondError(w, http.StatusInternalServerError, "Failed to create instance")
@@ -292,6 +304,14 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Validate sync interval (0 = disabled, or minimum 1 minute)
+	if req.SyncInterval != nil {
+		if *req.SyncInterval != 0 && *req.SyncInterval < 1 {
+			RespondError(w, http.StatusBadRequest, "Sync interval must be 0 (disabled) or at least 1 minute")
+			return
+		}
+	}
+
 	// Fetch existing instance to handle redacted values
 	existingInstance, err := h.instanceStore.Get(r.Context(), instanceID)
 	if err != nil {
@@ -315,7 +335,7 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 	}
 
 	// Update instance
-	instance, err := h.instanceStore.Update(r.Context(), instanceID, req.Name, req.Host, req.Username, req.Password, req.BasicUsername, req.BasicPassword, req.TLSSkipVerify)
+	instance, err := h.instanceStore.Update(r.Context(), instanceID, req.Name, req.Host, req.Username, req.Password, req.BasicUsername, req.BasicPassword, req.TLSSkipVerify, req.SyncInterval)
 	if err != nil {
 		if errors.Is(err, models.ErrInstanceNotFound) {
 			RespondError(w, http.StatusNotFound, "Instance not found")
@@ -326,7 +346,15 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Remove old client from pool to force reconnection
+	// Update sync interval for existing client (if it exists in pool)
+	// This handles the case where only sync interval changed
+	if req.SyncInterval != nil {
+		if err := h.clientPool.UpdateClientSyncInterval(instanceID, *req.SyncInterval); err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to update client sync interval")
+		}
+	}
+
+	// Remove old client from pool to force reconnection with new credentials/settings
 	h.clientPool.RemoveClient(instanceID)
 
 	// Return quickly without testing connection

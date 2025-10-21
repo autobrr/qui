@@ -36,12 +36,19 @@ type Client struct {
 	optimisticUpdates *ttlcache.Cache[string, *OptimisticTorrentUpdate]
 	trackerExclusions map[string]map[string]struct{} // Domains to hide hashes from until fresh sync arrives
 	lastServerState   *qbt.ServerState
-	mu                sync.RWMutex
-	serverStateMu     sync.RWMutex
-	healthMu          sync.RWMutex
-	hashIndexMu       sync.RWMutex
-	hashIndex         map[string]duplicateIndexEntry
-	hashIndexReady    bool
+	// Periodic sync configuration
+	syncInterval   int // Minutes between automatic syncs (0 = disabled)
+	syncTimer      *time.Timer
+	lastSyncTime   time.Time
+	syncCtx        context.Context
+	syncCancel     context.CancelFunc
+	syncMu         sync.RWMutex // Protects sync timer and timing fields
+	mu             sync.RWMutex
+	serverStateMu  sync.RWMutex
+	healthMu       sync.RWMutex
+	hashIndexMu    sync.RWMutex
+	hashIndex      map[string]duplicateIndexEntry
+	hashIndexReady bool
 }
 
 func NewClient(instanceID int, instanceHost, username, password string, basicUsername, basicPassword *string, tlsSkipVerify bool) (*Client, error) {
@@ -149,7 +156,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 		client.updateHealthStatus(true)
 		client.updateServerState(data)
 		client.rebuildHashIndex(data.Torrents)
-		log.Debug().Int("instanceID", instanceID).Int("torrentCount", len(data.Torrents)).Msg("Sync manager update received, marking client as healthy")
+		log.Debug().Int("instanceID", instanceID).Int("torrentCount", len(data.Torrents)).Msg("Sync update received, marking client as healthy")
 	}
 
 	syncOpts.OnError = func(err error) {
@@ -398,16 +405,221 @@ func (c *Client) invalidateTrackerCache(hashes ...string) {
 	}
 }
 
-func (c *Client) StartSyncManager(ctx context.Context) error {
-	c.mu.RLock()
-	syncManager := c.syncManager
-	c.mu.RUnlock()
+func (c *Client) StartSyncManager(ctx context.Context, syncInterval int) error {
+	c.mu.Lock()
+	instanceID := c.instanceID
+	qbtClient := c.Client
 
-	if syncManager == nil {
-		return fmt.Errorf("sync manager not initialized")
+	// Store the sync interval and create a dedicated context for sync manager
+	c.syncInterval = syncInterval
+	if c.syncCancel != nil {
+		// Cancel any existing sync context
+		c.syncCancel()
+	}
+	// Create a new context for sync manager that we control independently
+	c.syncCtx, c.syncCancel = context.WithCancel(context.Background())
+	syncCtx := c.syncCtx
+
+	// Stop existing periodic sync timer if any
+	c.syncMu.Lock()
+	if c.syncTimer != nil {
+		c.syncTimer.Stop()
+		c.syncTimer = nil
+	}
+	c.syncMu.Unlock()
+
+	// Create sync manager with DynamicSync but NOT AutoSync
+	// We'll handle periodic syncing ourselves to reset after any sync
+	syncOpts := qbt.DefaultSyncOptions()
+	syncOpts.DynamicSync = true
+	syncOpts.AutoSync = false // Disable library's AutoSync, we handle it ourselves
+
+	// Set up callbacks that record sync time for periodic sync reset
+	syncOpts.OnUpdate = func(data *qbt.MainData) {
+		c.updateHealthStatus(true)
+		c.updateServerState(data)
+		c.rebuildHashIndex(data.Torrents)
+		// Record sync time and reset periodic sync timer
+		c.recordSyncTime()
+		log.Debug().Int("instanceID", instanceID).Int("torrentCount", len(data.Torrents)).Msg("Sync update received, marking client as healthy")
 	}
 
-	return syncManager.Start(ctx)
+	syncOpts.OnError = func(err error) {
+		c.updateHealthStatus(false)
+		c.clearServerState()
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Sync manager error received, marking client as unhealthy")
+	}
+
+	// Create new sync manager with the configured options
+	c.syncManager = qbtClient.NewSyncManager(syncOpts)
+	syncManager := c.syncManager
+	c.mu.Unlock()
+
+	// Start the sync manager with our dedicated context
+	// This performs initial full sync
+	if err := syncManager.Start(syncCtx); err != nil {
+		return err
+	}
+
+	// Start custom periodic sync if interval is configured (>= 1 minute)
+	if syncInterval >= 1 {
+		c.startPeriodicSync()
+		log.Info().
+			Int("instanceID", instanceID).
+			Int("intervalMinutes", syncInterval).
+			Msg("Started periodic background syncing - timer resets after any sync")
+	}
+
+	// Get torrent count from sync manager to log what was synced
+	torrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{})
+	log.Info().
+		Int("instanceID", instanceID).
+		Int("torrentCount", len(torrents)).
+		Bool("periodicSyncEnabled", syncInterval >= 1).
+		Int("syncIntervalMinutes", syncInterval).
+		Msg("Sync manager started successfully - initial sync completed")
+
+	return nil
+}
+
+// StopSyncManager cancels the client's sync context and stops periodic timers.
+func (c *Client) StopSyncManager() {
+	c.mu.Lock()
+	// Stop periodic timer if running
+	c.syncMu.Lock()
+	if c.syncTimer != nil {
+		c.syncTimer.Stop()
+		c.syncTimer = nil
+	}
+	c.syncMu.Unlock()
+
+	// Cancel sync context to halt background sync goroutines
+	if c.syncCancel != nil {
+		c.syncCancel()
+		c.syncCancel = nil
+	}
+	c.syncCtx = nil
+	c.mu.Unlock()
+}
+
+// UpdateSyncInterval updates the periodic sync interval by recreating the sync manager
+func (c *Client) UpdateSyncInterval(syncInterval int) {
+	c.syncMu.Lock()
+	oldInterval := c.syncInterval
+	c.syncMu.Unlock()
+
+	if oldInterval == syncInterval {
+		return // No change
+	}
+
+	log.Info().
+		Int("instanceID", c.instanceID).
+		Int("oldInterval", oldInterval).
+		Int("newInterval", syncInterval).
+		Msg("Updating periodic sync interval - will restart sync manager")
+
+	// Stop existing periodic sync timer
+	c.syncMu.Lock()
+	if c.syncTimer != nil {
+		c.syncTimer.Stop()
+		c.syncTimer = nil
+	}
+	c.syncMu.Unlock()
+
+	// Cancel existing sync context
+	if c.syncCancel != nil {
+		c.syncCancel()
+	}
+
+	// Restart sync manager with new interval using context.Background()
+	// This ensures it continues running independently of any request contexts
+	if err := c.StartSyncManager(context.Background(), syncInterval); err != nil {
+		log.Error().
+			Err(err).
+			Int("instanceID", c.instanceID).
+			Int("syncInterval", syncInterval).
+			Msg("Failed to restart sync manager with new interval")
+	} else {
+		log.Info().
+			Int("instanceID", c.instanceID).
+			Int("intervalMinutes", syncInterval).
+			Msg("Successfully restarted sync manager with new interval")
+	}
+}
+
+// startPeriodicSync starts the periodic sync timer
+func (c *Client) startPeriodicSync() {
+	c.syncMu.Lock()
+	defer c.syncMu.Unlock()
+
+	if c.syncInterval < 1 {
+		return // Disabled
+	}
+
+	// Stop existing timer if any
+	if c.syncTimer != nil {
+		c.syncTimer.Stop()
+	}
+
+	// Create new timer
+	duration := time.Duration(c.syncInterval) * time.Minute
+	c.syncTimer = time.AfterFunc(duration, func() {
+		c.performPeriodicSync()
+	})
+}
+
+// performPeriodicSync executes a periodic sync and reschedules the next one
+func (c *Client) performPeriodicSync() {
+	c.mu.RLock()
+	syncManager := c.syncManager
+	instanceID := c.instanceID
+	syncCtx := c.syncCtx
+	c.mu.RUnlock()
+
+	if syncManager == nil || syncCtx == nil {
+		return
+	}
+
+	log.Debug().
+		Int("instanceID", instanceID).
+		Int("intervalMinutes", c.syncInterval).
+		Msg("Performing periodic cache refresh")
+
+	// Perform sync - this will trigger OnUpdate callback which calls recordSyncTime
+	if err := syncManager.Sync(syncCtx); err != nil {
+		log.Warn().
+			Err(err).
+			Int("instanceID", instanceID).
+			Msg("Periodic sync failed")
+		// Still record time and reset timer even on error
+		c.recordSyncTime()
+	}
+}
+
+// recordSyncTime records the last sync time and resets the periodic sync timer
+// This is called after ANY sync (periodic, manual, or triggered by operations)
+func (c *Client) recordSyncTime() {
+	c.syncMu.Lock()
+	defer c.syncMu.Unlock()
+
+	c.lastSyncTime = time.Now()
+
+	// Reset the periodic sync timer if enabled
+	if c.syncInterval >= 1 && c.syncTimer != nil {
+		c.syncTimer.Stop()
+		duration := time.Duration(c.syncInterval) * time.Minute
+		c.syncTimer = time.AfterFunc(duration, func() {
+			c.performPeriodicSync()
+		})
+		log.Debug().
+			Int("instanceID", c.instanceID).
+			Dur("nextSyncIn", duration).
+			Msg("Periodic sync timer reset after sync")
+	}
+}
+
+func (c *Client) StartSyncManagerLegacy(ctx context.Context) error {
+	return c.StartSyncManager(ctx, 0)
 }
 
 // GetOrCreatePeerSyncManager gets or creates a PeerSyncManager for a specific torrent

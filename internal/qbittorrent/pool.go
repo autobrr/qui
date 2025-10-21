@@ -217,8 +217,8 @@ func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID in
 	cp.resetFailureTrackingLocked(instanceID)
 	cp.mu.Unlock()
 
-	// Start the sync manager
-	if err := client.StartSyncManager(ctx); err != nil {
+	// Start the sync manager with the instance's sync interval
+	if err := client.StartSyncManager(ctx, instance.SyncInterval); err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to start sync manager")
 		// Don't fail client creation for sync manager issues
 	}
@@ -228,9 +228,18 @@ func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID in
 
 // RemoveClient removes a client from the pool
 func (cp *ClientPool) RemoveClient(instanceID int) {
+	var client *Client
+
 	cp.mu.Lock()
-	delete(cp.clients, instanceID)
+	if existing, ok := cp.clients[instanceID]; ok {
+		client = existing
+		delete(cp.clients, instanceID)
+	}
 	cp.mu.Unlock()
+
+	if client != nil {
+		client.StopSyncManager()
+	}
 
 	// Also clean up the per-instance lock to prevent memory leaks
 	cp.creationMu.Lock()
@@ -238,6 +247,24 @@ func (cp *ClientPool) RemoveClient(instanceID int) {
 	cp.creationMu.Unlock()
 
 	log.Info().Int("instanceID", instanceID).Msg("Removed client from pool")
+}
+
+// UpdateClientSyncInterval updates the sync interval for an existing client
+func (cp *ClientPool) UpdateClientSyncInterval(instanceID int, syncInterval int) error {
+	cp.mu.RLock()
+	client, exists := cp.clients[instanceID]
+	cp.mu.RUnlock()
+
+	if !exists {
+		// Client not in pool yet, will be configured when created
+		return nil
+	}
+
+	// Update the client's sync interval
+	client.UpdateSyncInterval(syncInterval)
+	log.Info().Int("instanceID", instanceID).Int("syncInterval", syncInterval).Msg("Updated client sync interval")
+
+	return nil
 }
 
 // healthCheckLoop periodically checks the health of all clients

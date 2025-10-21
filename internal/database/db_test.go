@@ -215,6 +215,7 @@ var expectedSchema = map[string][]columnSpec{
 		{Name: "basic_username", Type: "TEXT"},
 		{Name: "basic_password_encrypted", Type: "TEXT"},
 		{Name: "tls_skip_verify", Type: "BOOLEAN"},
+		{Name: "sync_interval", Type: "INTEGER"},
 	},
 	"licenses": {
 		{Name: "id", Type: "INTEGER", PrimaryKey: true},

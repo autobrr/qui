@@ -153,13 +153,14 @@ func TestInstanceStoreWithHost(t *testing.T) {
 			is_active BOOLEAN DEFAULT 1,
 			last_connected_at TIMESTAMP,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			sync_interval INTEGER NOT NULL
 		)
 	`)
 	require.NoError(t, err, "Failed to create test table")
 
 	// Test creating an instance with host
-	instance, err := store.Create(ctx, "Test Instance", "http://localhost:8080", "testuser", "testpass", nil, nil, false)
+	instance, err := store.Create(ctx, "Test Instance", "http://localhost:8080", "testuser", "testpass", nil, nil, false, 0)
 	require.NoError(t, err, "Failed to create instance")
 	assert.Equal(t, "http://localhost:8080", instance.Host, "host should match")
 	assert.False(t, instance.TLSSkipVerify)
@@ -172,7 +173,7 @@ func TestInstanceStoreWithHost(t *testing.T) {
 
 	// Test updating the instance
 	newTLSSetting := true
-	updated, err := store.Update(ctx, instance.ID, "Updated Instance", "https://example.com:8443/qbittorrent", "newuser", "", nil, nil, &newTLSSetting)
+	updated, err := store.Update(ctx, instance.ID, "Updated Instance", "https://example.com:8443/qbittorrent", "newuser", "", nil, nil, &newTLSSetting, nil)
 	require.NoError(t, err, "Failed to update instance")
 	assert.Equal(t, "https://example.com:8443/qbittorrent", updated.Host, "updated host should match")
 	assert.True(t, updated.TLSSkipVerify)

@@ -481,18 +481,27 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		if syncManager != nil {
 			lastSyncTime := syncManager.LastSyncTime()
 			now := time.Now()
+
+			// Check if sync has occurred (lastSyncTime is not zero)
+			hasSynced := !lastSyncTime.IsZero()
 			age := int(now.Sub(lastSyncTime).Seconds())
-			isFresh := age <= 1 // Fresh if updated within the last second
+
+			// Consider cache fresh if:
+			// 1. Sync has occurred AND
+			// 2. Updated within the last 30 seconds (to account for initial sync and periodic syncs)
+			isFresh := hasSynced && age <= 30
 
 			source := "cache"
 			if isFresh {
 				source = "fresh"
+			} else if !hasSynced {
+				source = "no-sync"
 			}
 
 			cacheMetadata = &CacheMetadata{
 				Source:      source,
 				Age:         age,
-				IsStale:     !isFresh,
+				IsStale:     !hasSynced || age > 300, // Stale if no sync or older than 5 minutes
 				NextRefresh: now.Add(time.Second).Format(time.RFC3339),
 			}
 		}
