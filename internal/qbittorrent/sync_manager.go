@@ -403,19 +403,22 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	// Calculate stats from filtered torrents
 	stats := sm.calculateStats(filteredTorrents)
 
-	// Apply pagination to filtered results
-	var paginatedTorrents []qbt.Torrent
-	start := offset
-	end := offset + limit
-	if start < len(filteredTorrents) {
-		if end > len(filteredTorrents) {
-			end = len(filteredTorrents)
-		}
-		paginatedTorrents = filteredTorrents[start:end]
+	// Apply pagination to filtered results; limit <= 0 means "unbounded"
+	totalTorrents := len(filteredTorrents)
+	start := max(offset, 0)
+	if start > totalTorrents {
+		start = totalTorrents
 	}
 
-	// Check if there are more pages
-	hasMore := end < len(filteredTorrents)
+	end := totalTorrents
+	if limit > 0 {
+		end = min(start+limit, totalTorrents)
+	}
+
+	paginatedTorrents := filteredTorrents[start:end]
+
+	// Check if there are more pages (only meaningful when limit > 0)
+	hasMore := limit > 0 && end < totalTorrents
 
 	// Calculate counts from ALL torrents (not filtered) for sidebar
 	// This uses the same cached data, so it's very fast

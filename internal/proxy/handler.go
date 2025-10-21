@@ -588,15 +588,6 @@ func (h *Handler) handleTorrentsInfo(w http.ResponseWriter, r *http.Request) {
 		order = "desc"
 	}
 
-	// If no limit specified, use a reasonable default
-	if limit == 0 {
-		if uniqueHashCount > 0 {
-			limit = uniqueHashCount
-		} else {
-			limit = 100000 // Large limit to get all results
-		}
-	}
-
 	log.Debug().
 		Int("instanceId", instanceID).
 		Str("client", clientAPIKey.ClientName).
