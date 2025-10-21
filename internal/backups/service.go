@@ -193,13 +193,163 @@ func (s *Service) Start(ctx context.Context) {
 	ctx, cancel := context.WithCancel(ctx)
 	s.cancel = cancel
 
+	// Recover any incomplete backup runs from previous session
+	if err := s.recoverIncompleteRuns(ctx); err != nil {
+		log.Warn().Err(err).Msg("Failed to recover incomplete backup runs")
+	}
+
 	for i := 0; i < s.cfg.WorkerCount; i++ {
 		s.wg.Add(1)
 		go s.worker(ctx)
 	}
 
+	// Check for missed backups and queue exactly one if applicable
+	if err := s.checkMissedBackups(ctx); err != nil {
+		log.Warn().Err(err).Msg("Failed to check for missed backups")
+	}
+
 	s.wg.Add(1)
 	go s.scheduler(ctx)
+}
+
+// recoverIncompleteRuns marks any pending or running backup runs as failed.
+// This handles the case where qui was restarted while backups were in progress.
+func (s *Service) recoverIncompleteRuns(ctx context.Context) error {
+	incompleteRuns, err := s.store.FindIncompleteRuns(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to find incomplete runs: %w", err)
+	}
+
+	if len(incompleteRuns) == 0 {
+		return nil
+	}
+
+	log.Info().Int("count", len(incompleteRuns)).Msg("Recovering incomplete backup runs from previous session")
+
+	now := s.now()
+	errorMsg := "Backup interrupted by application restart"
+
+	for _, run := range incompleteRuns {
+		err := s.store.UpdateRunMetadata(ctx, run.ID, func(r *models.BackupRun) error {
+			r.Status = models.BackupRunStatusFailed
+			r.CompletedAt = &now
+			r.ErrorMessage = &errorMsg
+			return nil
+		})
+		if err != nil {
+			log.Warn().Err(err).Int64("runID", run.ID).Int("instanceID", run.InstanceID).Msg("Failed to mark incomplete run as failed")
+		} else {
+			log.Debug().Int64("runID", run.ID).Int("instanceID", run.InstanceID).Str("kind", string(run.Kind)).Str("previousStatus", string(run.Status)).Msg("Marked incomplete backup run as failed")
+		}
+	}
+
+	return nil
+}
+
+func (s *Service) isBackupMissed(ctx context.Context, instanceID int, kind models.BackupRunKind, enabled bool, now time.Time) bool {
+	if !enabled {
+		return false
+	}
+
+	// We only consider the most recent successful run as the reference point. Failed/running/pending
+	// runs do not count toward the schedule — i.e. a failed run doesn't reset the schedule.
+	runs, err := s.store.ListRunsByKind(ctx, instanceID, kind, 10)
+	if err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to list runs for missed backup check")
+		}
+		// On DB error treat as not missed to avoid accidental scheduling
+		return false
+	}
+
+	// Find the most recent successful run
+	var refTime *time.Time
+	var foundSuccess bool
+	for _, r := range runs {
+		if r == nil {
+			continue
+		}
+		if r.Status == models.BackupRunStatusSuccess {
+			if r.CompletedAt != nil {
+				refTime = r.CompletedAt
+			} else {
+				refTime = &r.RequestedAt
+			}
+			foundSuccess = true
+			break
+		}
+	}
+
+	// If we found no successful run, consider it missed (first-run semantics)
+	if !foundSuccess || refTime == nil {
+		return true
+	}
+
+	ref := *refTime
+
+	var interval time.Duration
+	switch kind {
+	case models.BackupRunKindHourly:
+		interval = time.Hour
+	case models.BackupRunKindDaily:
+		interval = 24 * time.Hour
+	case models.BackupRunKindWeekly:
+		interval = 7 * 24 * time.Hour
+	case models.BackupRunKindMonthly:
+		next := ref.AddDate(0, 1, 0)
+		return !now.Before(next)
+	default:
+		// Unknown kind — don't consider it missed
+		return false
+	}
+
+	return !ref.Add(interval).After(now)
+}
+
+func (s *Service) checkMissedBackups(ctx context.Context) error {
+	settings, err := s.store.ListEnabledSettings(ctx)
+	if err != nil {
+		return err
+	}
+
+	now := s.now()
+
+	for _, cfg := range settings {
+		s.normalizeAndPersistSettings(ctx, cfg)
+
+		if !cfg.Enabled {
+			continue
+		}
+
+		var missedKinds []models.BackupRunKind
+
+		if s.isBackupMissed(ctx, cfg.InstanceID, models.BackupRunKindHourly, cfg.HourlyEnabled, now) {
+			missedKinds = append(missedKinds, models.BackupRunKindHourly)
+		}
+		if s.isBackupMissed(ctx, cfg.InstanceID, models.BackupRunKindDaily, cfg.DailyEnabled, now) {
+			missedKinds = append(missedKinds, models.BackupRunKindDaily)
+		}
+		if s.isBackupMissed(ctx, cfg.InstanceID, models.BackupRunKindWeekly, cfg.WeeklyEnabled, now) {
+			missedKinds = append(missedKinds, models.BackupRunKindWeekly)
+		}
+		if s.isBackupMissed(ctx, cfg.InstanceID, models.BackupRunKindMonthly, cfg.MonthlyEnabled, now) {
+			missedKinds = append(missedKinds, models.BackupRunKindMonthly)
+		}
+
+		// Queue the first missed backup if any are missed
+		if len(missedKinds) > 0 {
+			kind := missedKinds[0]
+			if _, err := s.QueueRun(ctx, cfg.InstanceID, kind, "startup-recovery"); err != nil {
+				if !errors.Is(err, ErrInstanceBusy) {
+					log.Warn().Err(err).Int("instanceID", cfg.InstanceID).Str("kind", string(kind)).Msg("Failed to queue missed backup on startup")
+				}
+			} else {
+				log.Info().Int("instanceID", cfg.InstanceID).Str("kind", string(kind)).Msg("Queued missed backup on startup")
+			}
+		}
+	}
+
+	return nil
 }
 
 func (s *Service) Stop() {
@@ -225,6 +375,20 @@ func (s *Service) worker(ctx context.Context) {
 }
 
 func (s *Service) handleJob(ctx context.Context, j job) {
+	if s.syncManager == nil {
+		now := s.now()
+		msg := "sync manager not configured"
+		_ = s.store.UpdateRunMetadata(ctx, j.runID, func(run *models.BackupRun) error {
+			run.Status = models.BackupRunStatusFailed
+			run.CompletedAt = &now
+			run.ErrorMessage = &msg
+			return nil
+		})
+		s.clearInstance(j.instanceID, j.runID)
+		log.Error().Int("instanceID", j.instanceID).Msg("Backup run failed: sync manager not configured")
+		return
+	}
+
 	start := s.now()
 	err := s.store.UpdateRunMetadata(ctx, j.runID, func(run *models.BackupRun) error {
 		run.Status = models.BackupRunStatusRunning
@@ -831,35 +995,11 @@ func (s *Service) scheduleDueBackups(ctx context.Context) error {
 		}
 
 		evaluate := func(kind models.BackupRunKind, enabled bool, interval time.Duration, monthly bool) {
-			if !enabled {
-				return
-			}
-			lastRun, err := s.store.LatestRunByKind(ctx, cfg.InstanceID, kind)
-			if err == nil {
-				if lastRun.Status == models.BackupRunStatusRunning {
-					return
-				}
-				ref := lastRun.CompletedAt
-				if ref == nil {
-					ref = &lastRun.RequestedAt
-				}
-				if monthly {
-					next := ref.AddDate(0, 1, 0)
-					if now.Before(next) {
-						return
+			if s.isBackupMissed(ctx, cfg.InstanceID, kind, enabled, now) {
+				if _, err := s.QueueRun(ctx, cfg.InstanceID, kind, "scheduler"); err != nil {
+					if !errors.Is(err, ErrInstanceBusy) {
+						log.Warn().Err(err).Int("instanceID", cfg.InstanceID).Msg("Failed to queue scheduled backup")
 					}
-				} else if ref.Add(interval).After(now) {
-					return
-				}
-			}
-			if err != nil && !errors.Is(err, sql.ErrNoRows) {
-				log.Warn().Err(err).Int("instanceID", cfg.InstanceID).Msg("Failed to check last backup run")
-				return
-			}
-
-			if _, err := s.QueueRun(ctx, cfg.InstanceID, kind, "scheduler"); err != nil {
-				if !errors.Is(err, ErrInstanceBusy) {
-					log.Warn().Err(err).Int("instanceID", cfg.InstanceID).Msg("Failed to queue scheduled backup")
 				}
 			}
 		}
