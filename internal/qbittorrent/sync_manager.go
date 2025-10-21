@@ -532,49 +532,10 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	return response, nil
 }
 
-// FindDuplicateTorrents returns existing torrents that match any of the provided hashes.
-func (sm *SyncManager) FindDuplicateTorrents(ctx context.Context, instanceID int, hashes []string) ([]DuplicateTorrentMatch, error) {
-	if len(hashes) == 0 {
-		return nil, nil
-	}
-
-	client, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
-	if err != nil {
-		return nil, err
-	}
-
-	if matches, indexed := client.lookupDuplicateMatches(hashes); indexed {
-		if len(matches) > 0 {
-			log.Trace().
-				Int("instanceID", instanceID).
-				Int("requestedHashes", len(hashes)).
-				Int("duplicates", len(matches)).
-				Str("duplicateSource", "index").
-				Msg("Detected duplicate torrents for requested hashes")
-		}
-		return matches, nil
-	}
-
-	torrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{})
-	if len(torrents) == 0 {
-		client.rebuildHashIndexFromSlice(torrents)
-		return nil, nil
-	}
-
-	matches := matchDuplicateTorrents(hashes, torrents)
-	client.rebuildHashIndexFromSlice(torrents)
-	if len(matches) == 0 {
-		return nil, nil
-	}
-
-	log.Trace().
-		Int("instanceID", instanceID).
-		Int("requestedHashes", len(hashes)).
-		Int("duplicates", len(matches)).
-		Str("duplicateSource", "scan").
-		Msg("Detected duplicate torrents for requested hashes")
-
-	return matches, nil
+// GetQBittorrentSyncManager returns the underlying qBittorrent sync manager for an instance
+func (sm *SyncManager) GetQBittorrentSyncManager(ctx context.Context, instanceID int) (*qbt.SyncManager, error) {
+	_, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
+	return syncManager, err
 }
 
 // BulkAction performs bulk operations on torrents
@@ -973,7 +934,7 @@ func (sm *SyncManager) enrichTorrentsWithTrackerData(ctx context.Context, client
 		return torrents, trackerMap, nil
 	}
 
-	// Tracker health enrichment requires qBittorrent >= 5.1 (includeTrackers support).
+	// Tracker health enrichment is now supported for all qBittorrent versions
 	if !client.supportsTrackerInclude() {
 		return torrents, trackerMap, nil
 	}
