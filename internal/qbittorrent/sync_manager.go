@@ -198,10 +198,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	needsTrackerHealthSorting := trackerHealthSupported && sort == "state"
 
 	// Get MainData for tracker filtering (if needed)
-	var mainData *qbt.MainData
-	if len(filters.Trackers) > 0 || len(filters.ExcludeTrackers) > 0 {
-		mainData = syncManager.GetData()
-	}
+	mainData := syncManager.GetData()
 
 	// Determine if we can use library filtering or need manual filtering
 	// Use library filtering only if we have single filters that the library supports
@@ -218,6 +215,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	hasExcludeTagFilters := len(filters.ExcludeTags) > 0
 	hasExcludeTrackerFilters := len(filters.ExcludeTrackers) > 0
 	hasExprFilters := len(filters.Expr) > 0
+	hasHashFilters := len(filters.Hashes) > 0
 
 	// Determine if any status filter needs manual filtering
 	trackerStatusFilters := filtersRequireTrackerData(filters)
@@ -248,7 +246,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 	useManualFiltering = hasMultipleStatusFilters || hasMultipleCategoryFilters || hasMultipleTagFilters ||
 		hasTrackerFilters || hasExcludeStatusFilters || hasExcludeCategoryFilters || hasExcludeTagFilters || hasExcludeTrackerFilters ||
-		hasExprFilters || needsManualStatusFiltering || needsManualCategoryFiltering || needsManualTagFiltering
+		hasExprFilters || needsManualStatusFiltering || needsManualCategoryFiltering || needsManualTagFiltering || hasHashFilters
 
 	var trackerMap map[string][]qbt.TorrentTracker
 	var counts *TorrentCounts
@@ -264,11 +262,6 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to get tags")
 		tags = []string{}
-	}
-
-	if useManualFiltering && mainData == nil {
-		// Manual filtering needs the server preference to respect disabled subcategories
-		mainData = syncManager.GetData()
 	}
 
 	supportsSubcategories := client.SupportsSubcategories()
@@ -290,6 +283,8 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 			Bool("needsManualStatus", needsManualStatusFiltering).
 			Bool("needsManualCategory", needsManualCategoryFiltering).
 			Bool("needsManualTag", needsManualTagFiltering).
+			Bool("hasHashes", hasHashFilters).
+			Int("hashFilters", len(filters.Hashes)).
 			Msg("Using manual filtering due to multiple selections or unsupported filters")
 
 		// Get all torrents
@@ -309,6 +304,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		// Use library filtering for single selections
 		log.Debug().
 			Int("instanceID", instanceID).
+			Int("hashFilters", len(filters.Hashes)).
 			Msg("Using library filtering for single selections")
 
 		// Handle single status filter
@@ -407,28 +403,27 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	// Calculate stats from filtered torrents
 	stats := sm.calculateStats(filteredTorrents)
 
-	// Apply pagination to filtered results
-	var paginatedTorrents []qbt.Torrent
-	start := offset
-	end := offset + limit
-	if start < len(filteredTorrents) {
-		if end > len(filteredTorrents) {
-			end = len(filteredTorrents)
-		}
-		paginatedTorrents = filteredTorrents[start:end]
+	// Apply pagination to filtered results; limit <= 0 means "unbounded"
+	totalTorrents := len(filteredTorrents)
+	start := max(offset, 0)
+	if start > totalTorrents {
+		start = totalTorrents
 	}
 
-	// Check if there are more pages
-	hasMore := end < len(filteredTorrents)
+	end := totalTorrents
+	if limit > 0 {
+		end = min(start+limit, totalTorrents)
+	}
+
+	paginatedTorrents := filteredTorrents[start:end]
+
+	// Check if there are more pages (only meaningful when limit > 0)
+	hasMore := limit > 0 && end < totalTorrents
 
 	// Calculate counts from ALL torrents (not filtered) for sidebar
 	// This uses the same cached data, so it's very fast
 	allTorrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{})
 
-	// Get MainData for accurate tracker information
-	if mainData == nil {
-		mainData = syncManager.GetData()
-	}
 	useSubcategories = resolveUseSubcategories(supportsSubcategories, mainData, categories)
 
 	counts, trackerMap, enrichedAll := sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents, mainData, trackerMap, trackerHealthSupported, useSubcategories)
@@ -1666,10 +1661,16 @@ func (sm *SyncManager) filterTorrentsBySearch(torrents []qbt.Torrent, search str
 		nameLower := strings.ToLower(torrent.Name)
 		categoryLower := strings.ToLower(torrent.Category)
 		tagsLower := strings.ToLower(torrent.Tags)
+		hashLower := strings.ToLower(torrent.Hash)
+		infohashV1Lower := strings.ToLower(torrent.InfohashV1)
+		infohashV2Lower := strings.ToLower(torrent.InfohashV2)
 
 		if strings.Contains(nameLower, searchLower) ||
 			strings.Contains(categoryLower, searchLower) ||
-			strings.Contains(tagsLower, searchLower) {
+			strings.Contains(tagsLower, searchLower) ||
+			strings.Contains(hashLower, searchLower) ||
+			strings.Contains(infohashV1Lower, searchLower) ||
+			strings.Contains(infohashV2Lower, searchLower) {
 			matches = append(matches, torrentMatch{
 				torrent: torrent,
 				score:   0, // Best score
@@ -1825,6 +1826,14 @@ func (sm *SyncManager) applyManualFilters(
 ) []qbt.Torrent {
 	var filtered []qbt.Torrent
 
+	hashFilterSet := make(map[string]struct{}, len(filters.Hashes))
+	for _, h := range filters.Hashes {
+		if h == "" {
+			continue
+		}
+		hashFilterSet[strings.ToUpper(h)] = struct{}{}
+	}
+
 	var categoryNames []string
 	if useSubcategories {
 		categoryNames = collectCategoryNames(mainData, categories)
@@ -1937,6 +1946,23 @@ func (sm *SyncManager) applyManualFilters(
 
 torrentsLoop:
 	for _, torrent := range torrents {
+		if len(hashFilterSet) > 0 {
+			match := false
+			candidates := []string{torrent.Hash, torrent.InfohashV1, torrent.InfohashV2}
+			for _, candidate := range candidates {
+				if candidate == "" {
+					continue
+				}
+				if _, ok := hashFilterSet[strings.ToUpper(candidate)]; ok {
+					match = true
+					break
+				}
+			}
+			if !match {
+				continue
+			}
+		}
+
 		// Status filters (OR logic)
 		if len(filters.Status) > 0 {
 			matched := false

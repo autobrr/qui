@@ -4,13 +4,19 @@
 package proxy
 
 import (
+	"bytes"
 	"context"
+	"io"
+	"net/http"
 	"net/http/httptest"
 	"net/http/httputil"
 	"net/url"
+	"sync/atomic"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
@@ -65,14 +71,12 @@ func TestHandlerRewriteRequest_PathJoining(t *testing.T) {
 	}
 
 	for _, baseCase := range baseCases {
-		baseCase := baseCase
 
 		t.Run(baseCase.name, func(t *testing.T) {
-			h := NewHandler(nil, nil, nil, baseCase.baseURL)
+			h := NewHandler(nil, nil, nil, nil, baseCase.baseURL)
 			require.NotNil(t, h)
 
 			for _, tc := range instanceCases {
-				tc := tc
 
 				t.Run(tc.name, func(t *testing.T) {
 					req := httptest.NewRequest("GET", baseCase.requestPath, nil)
@@ -113,4 +117,75 @@ func TestHandlerRewriteRequest_PathJoining(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Note: Intercept logic is now handled by chi routes, not by dynamic checking
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+func TestHandleSyncMainDataCapturesBodyWithoutLeadingZeros(t *testing.T) {
+	t.Helper()
+
+	handler := NewHandler(nil, nil, nil, nil, "/")
+	require.NotNil(t, handler)
+
+	payload := []byte(`{"rid":1,"full_update":false}`)
+
+	handler.proxy.Transport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		resp := &http.Response{
+			StatusCode:    http.StatusOK,
+			ContentLength: int64(len(payload)),
+			Body:          io.NopCloser(bytes.NewReader(payload)),
+			Header:        make(http.Header),
+			Request:       req,
+		}
+		resp.Header.Set("Content-Type", "application/json")
+		return resp, nil
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/proxy/abc123/sync/maindata", nil)
+
+	routeCtx := chi.NewRouteContext()
+	routeCtx.URLParams.Add("api-key", "abc123")
+
+	ctx := context.WithValue(req.Context(), chi.RouteCtxKey, routeCtx)
+	ctx = context.WithValue(ctx, ClientAPIKeyContextKey, &models.ClientAPIKey{
+		ClientName: "test-client",
+		InstanceID: 1,
+	})
+	ctx = context.WithValue(ctx, InstanceIDContextKey, 1)
+
+	instanceURL, err := url.Parse("http://qbittorrent.example")
+	require.NoError(t, err)
+
+	ctx = context.WithValue(ctx, proxyContextKey, &proxyContext{
+		instanceID:  1,
+		instanceURL: instanceURL,
+	})
+
+	req = req.WithContext(ctx)
+
+	rec := httptest.NewRecorder()
+
+	var parseErrorLogged atomic.Bool
+
+	origLogger := log.Logger
+	log.Logger = log.Logger.Hook(zerolog.HookFunc(func(e *zerolog.Event, level zerolog.Level, msg string) {
+		if level == zerolog.ErrorLevel && msg == "Failed to parse sync/maindata response" {
+			parseErrorLogged.Store(true)
+		}
+	}))
+	defer func() {
+		log.Logger = origLogger
+	}()
+
+	handler.handleSyncMainData(rec, req)
+
+	require.False(t, parseErrorLogged.Load(), "expected sync/maindata response to parse successfully")
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, payload, rec.Body.Bytes())
 }
