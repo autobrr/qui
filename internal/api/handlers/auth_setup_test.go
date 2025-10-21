@@ -29,7 +29,7 @@ func TestSetupForbiddenWhenOIDCEnabled(t *testing.T) {
 		require.NoError(t, db.Close())
 	})
 
-	authService := auth.NewService(db.Conn())
+	authService := auth.NewService(db)
 	sessionManager := scs.New()
 
 	config := &domain.Config{

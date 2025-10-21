@@ -208,7 +208,7 @@ If no --config-dir is specified, uses the OS-specific default location:
 			}
 			defer db.Close()
 
-			authService := auth.NewService(db.Conn())
+			authService := auth.NewService(db)
 
 			exists, err := authService.IsSetupComplete(context.Background())
 			if err != nil {
@@ -299,7 +299,7 @@ If no --config-dir is specified, uses the OS-specific default location:
 			}
 			defer db.Close()
 
-			authService := auth.NewService(db.Conn())
+			authService := auth.NewService(db)
 
 			exists, err := authService.IsSetupComplete(context.Background())
 			if err != nil {
@@ -317,7 +317,7 @@ If no --config-dir is specified, uses the OS-specific default location:
 			}
 
 			ctx := context.Background()
-			userStore := models.NewUserStore(db.Conn())
+			userStore := models.NewUserStore(db)
 			user, err := userStore.GetByUsername(ctx, username)
 			if err != nil {
 				if err == models.ErrUserNotFound {
@@ -343,7 +343,7 @@ If no --config-dir is specified, uses the OS-specific default location:
 				return fmt.Errorf("failed to hash password: %w", err)
 			}
 
-			userStore = models.NewUserStore(db.Conn())
+			userStore = models.NewUserStore(db)
 			if err = userStore.UpdatePassword(ctx, hashedPassword); err != nil {
 				return fmt.Errorf("failed to update password: %w", err)
 			}
@@ -459,16 +459,16 @@ func (app *Application) runServer() {
 
 	// Initialize stores
 	licenseRepo := database.NewLicenseRepo(db)
-	instanceStore, err := models.NewInstanceStore(db.Conn(), cfg.GetEncryptionKey())
+	instanceStore, err := models.NewInstanceStore(db, cfg.GetEncryptionKey())
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize instance store")
 	}
 
-	clientAPIKeyStore := models.NewClientAPIKeyStore(db.Conn())
-	errorStore := models.NewInstanceErrorStore(db.Conn())
+	clientAPIKeyStore := models.NewClientAPIKeyStore(db)
+	errorStore := models.NewInstanceErrorStore(db)
 
 	// Initialize services
-	authService := auth.NewService(db.Conn())
+	authService := auth.NewService(db)
 	licenseService := license.NewLicenseService(licenseRepo, polarClient, cfg.GetConfigDir())
 
 	go func() {
@@ -486,7 +486,7 @@ func (app *Application) runServer() {
 	// Initialize managers
 	syncManager := qbittorrent.NewSyncManager(clientPool)
 
-	backupStore := models.NewBackupStore(db.Conn())
+	backupStore := models.NewBackupStore(db)
 	backupService := backups.NewService(backupStore, syncManager, backups.Config{DataDir: cfg.GetDataDir()})
 	backupService.Start(context.Background())
 	defer backupService.Stop()
@@ -531,7 +531,7 @@ func (app *Application) runServer() {
 
 	// Initialize session manager
 	sessionManager := scs.New()
-	sessionManager.Store = sqlite3store.New(db.Conn())
+	sessionManager.Store = sqlite3store.New(db)
 	sessionManager.Lifetime = 24 * time.Hour * 30 // 30 days
 	sessionManager.Cookie.Name = "qui_user_session"
 	sessionManager.Cookie.HttpOnly = true
