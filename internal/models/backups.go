@@ -10,6 +10,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"github.com/autobrr/qui/internal/dbinterface"
 )
 
 type BackupSettings struct {
@@ -111,10 +113,10 @@ type CategorySnapshot struct {
 }
 
 type BackupStore struct {
-	db *sql.DB
+	db dbinterface.TxBeginner
 }
 
-func NewBackupStore(db *sql.DB) *BackupStore {
+func NewBackupStore(db dbinterface.TxBeginner) *BackupStore {
 	return &BackupStore{db: db}
 }
 
