@@ -228,9 +228,18 @@ func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID in
 
 // RemoveClient removes a client from the pool
 func (cp *ClientPool) RemoveClient(instanceID int) {
+	var client *Client
+
 	cp.mu.Lock()
-	delete(cp.clients, instanceID)
+	if existing, ok := cp.clients[instanceID]; ok {
+		client = existing
+		delete(cp.clients, instanceID)
+	}
 	cp.mu.Unlock()
+
+	if client != nil {
+		client.StopSyncManager()
+	}
 
 	// Also clean up the per-instance lock to prevent memory leaks
 	cp.creationMu.Lock()

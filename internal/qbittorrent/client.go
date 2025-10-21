@@ -470,6 +470,26 @@ func (c *Client) StartSyncManager(ctx context.Context, syncInterval int) error {
 	return nil
 }
 
+// StopSyncManager cancels the client's sync context and stops periodic timers.
+func (c *Client) StopSyncManager() {
+	c.mu.Lock()
+	// Stop periodic timer if running
+	c.syncMu.Lock()
+	if c.syncTimer != nil {
+		c.syncTimer.Stop()
+		c.syncTimer = nil
+	}
+	c.syncMu.Unlock()
+
+	// Cancel sync context to halt background sync goroutines
+	if c.syncCancel != nil {
+		c.syncCancel()
+		c.syncCancel = nil
+	}
+	c.syncCtx = nil
+	c.mu.Unlock()
+}
+
 // UpdateSyncInterval updates the periodic sync interval by recreating the sync manager
 func (c *Client) UpdateSyncInterval(syncInterval int) {
 	c.syncMu.Lock()
