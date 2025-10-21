@@ -203,20 +203,10 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(s.clientAPIKeyStore, s.instanceStore, s.config.Config.BaseURL)
 	versionHandler := handlers.NewVersionHandler(s.updateService)
 	qbittorrentInfoHandler := handlers.NewQBittorrentInfoHandler(s.clientPool)
-	var trackerIconHandler *handlers.TrackerIconHandler
-	if s.trackerIconService != nil {
-		trackerIconHandler = handlers.NewTrackerIconHandler(s.trackerIconService)
-	}
-
-	// Create proxy handler
-	proxyHandler := proxy.NewHandler(s.clientPool, s.clientAPIKeyStore, s.instanceStore, s.syncManager, s.config.Config.BaseURL)
-
-	// license handler (optional, only if the license service is configured)
-	var licenseHandler *handlers.LicenseHandler
-	if s.licenseService != nil {
-		licenseHandler = handlers.NewLicenseHandler(s.licenseService)
-	}
 	backupsHandler := handlers.NewBackupsHandler(s.backupService)
+	trackerIconHandler := handlers.NewTrackerIconHandler(s.trackerIconService)
+	proxyHandler := proxy.NewHandler(s.clientPool, s.clientAPIKeyStore, s.instanceStore, s.syncManager, s.config.Config.BaseURL)
+	licenseHandler := handlers.NewLicenseHandler(s.licenseService)
 
 	// API routes
 	apiRouter := chi.NewRouter()
