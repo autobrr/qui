@@ -265,7 +265,6 @@ func (c *Client) GetCachedConnectionStatus() string {
 // This is used when intercepting sync/maindata responses to keep local state in sync
 func (c *Client) UpdateWithMainData(data *qbt.MainData) {
 	c.updateServerState(data)
-	c.rebuildHashIndex(data.Torrents)
 	c.updateHealthStatus(true)
 	log.Debug().
 		Int("instanceID", c.instanceID).
