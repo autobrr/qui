@@ -540,6 +540,7 @@ func (h *Handler) handleTorrentsInfo(w http.ResponseWriter, r *http.Request) {
 
 	hashesParam := queryParams.Get("hashes")
 	var hashes []string
+	var uniqueHashCount int
 	if hashesParam != "" && !strings.EqualFold(hashesParam, "all") {
 		hashSet := make(map[string]struct{})
 		for rawHash := range strings.SplitSeq(hashesParam, "|") {
@@ -548,14 +549,15 @@ func (h *Handler) handleTorrentsInfo(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			dedupKey := strings.ToUpper(trimmed)
-			if _, exists := hashSet[dedupKey]; exists {
+			normalized := strings.ToUpper(trimmed)
+			if _, exists := hashSet[normalized]; exists {
 				continue
 			}
 
-			hashSet[dedupKey] = struct{}{}
-			hashes = append(hashes, trimmed)
+			hashSet[normalized] = struct{}{}
+			hashes = append(hashes, normalized)
 		}
+		uniqueHashCount = len(hashSet)
 	}
 
 	// Build basic filter options (standard qBittorrent parameters only)
@@ -588,8 +590,8 @@ func (h *Handler) handleTorrentsInfo(w http.ResponseWriter, r *http.Request) {
 
 	// If no limit specified, use a reasonable default
 	if limit == 0 {
-		if len(hashes) > 0 {
-			limit = len(hashes)
+		if uniqueHashCount > 0 {
+			limit = uniqueHashCount
 		} else {
 			limit = 100000 // Large limit to get all results
 		}
@@ -605,7 +607,7 @@ func (h *Handler) handleTorrentsInfo(w http.ResponseWriter, r *http.Request) {
 		Str("order", order).
 		Int("limit", limit).
 		Int("offset", offset).
-		Int("hashCount", len(hashes)).
+		Int("hashCount", uniqueHashCount).
 		Msg("Handling torrents/info request via qui sync manager")
 
 	// Use qui's sync manager

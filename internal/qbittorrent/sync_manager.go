@@ -215,6 +215,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	hasExcludeTagFilters := len(filters.ExcludeTags) > 0
 	hasExcludeTrackerFilters := len(filters.ExcludeTrackers) > 0
 	hasExprFilters := len(filters.Expr) > 0
+	hasHashFilters := len(filters.Hashes) > 0
 
 	// Determine if any status filter needs manual filtering
 	trackerStatusFilters := filtersRequireTrackerData(filters)
@@ -245,7 +246,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 	useManualFiltering = hasMultipleStatusFilters || hasMultipleCategoryFilters || hasMultipleTagFilters ||
 		hasTrackerFilters || hasExcludeStatusFilters || hasExcludeCategoryFilters || hasExcludeTagFilters || hasExcludeTrackerFilters ||
-		hasExprFilters || needsManualStatusFiltering || needsManualCategoryFiltering || needsManualTagFiltering
+		hasExprFilters || needsManualStatusFiltering || needsManualCategoryFiltering || needsManualTagFiltering || hasHashFilters
 
 	var trackerMap map[string][]qbt.TorrentTracker
 	var counts *TorrentCounts
@@ -266,10 +267,6 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	supportsSubcategories := client.SupportsSubcategories()
 	useSubcategories := resolveUseSubcategories(supportsSubcategories, mainData, categories)
 
-	if len(filters.Hashes) > 0 {
-		torrentFilterOptions.Hashes = filters.Hashes
-	}
-
 	if useManualFiltering {
 		// Use manual filtering - get all torrents and filter manually
 		log.Debug().
@@ -286,6 +283,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 			Bool("needsManualStatus", needsManualStatusFiltering).
 			Bool("needsManualCategory", needsManualCategoryFiltering).
 			Bool("needsManualTag", needsManualTagFiltering).
+			Bool("hasHashes", hasHashFilters).
 			Int("hashFilters", len(filters.Hashes)).
 			Msg("Using manual filtering due to multiple selections or unsupported filters")
 
