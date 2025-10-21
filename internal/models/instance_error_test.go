@@ -9,6 +9,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
 )
@@ -43,11 +44,11 @@ func setupInstanceErrorTestDB(t *testing.T) (*sql.DB, *InstanceErrorStore) {
 	return db, NewInstanceErrorStore(db)
 }
 
-func countInstanceErrors(t *testing.T, db *sql.DB, instanceID int) int {
+func countInstanceErrors(t *testing.T, db dbinterface.Querier, instanceID int) int {
 	t.Helper()
 
 	var count int
-	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM instance_errors WHERE instance_id = ?", instanceID).Scan(&count))
+	require.NoError(t, db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM instance_errors WHERE instance_id = ?", instanceID).Scan(&count))
 	return count
 }
 
@@ -83,4 +84,3 @@ func TestInstanceErrorStore_RecordError_DeduplicatesWithinOneMinute(t *testing.T
 	require.NoError(t, store.RecordError(ctx, 1, errors.New("authentication failed")))
 	require.Equal(t, 2, countInstanceErrors(t, db, 1))
 }
-

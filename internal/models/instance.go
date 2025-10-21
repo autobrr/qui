@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/domain"
 )
 
@@ -120,11 +121,11 @@ func (i *Instance) UnmarshalJSON(data []byte) error {
 }
 
 type InstanceStore struct {
-	db            *sql.DB
+	db            dbinterface.Querier
 	encryptionKey []byte
 }
 
-func NewInstanceStore(db *sql.DB, encryptionKey []byte) (*InstanceStore, error) {
+func NewInstanceStore(db dbinterface.Querier, encryptionKey []byte) (*InstanceStore, error) {
 	if len(encryptionKey) != 32 {
 		return nil, errors.New("encryption key must be 32 bytes")
 	}

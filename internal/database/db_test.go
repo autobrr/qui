@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
@@ -122,6 +123,61 @@ func TestConnectionPragmasApplyToEachConnection(t *testing.T) {
 
 	verifyPragmas(t, ctx, conn1)
 	verifyPragmas(t, ctx, conn2)
+}
+
+func TestCloseDrainsPendingWrites(t *testing.T) {
+	log.Output(io.Discard)
+	ctx := t.Context()
+	dbPath := filepath.Join(t.TempDir(), "close-drain.db")
+
+	db, err := New(dbPath)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+	})
+
+	_, err = db.Conn().ExecContext(ctx, "CREATE TABLE IF NOT EXISTS close_drain (id INTEGER PRIMARY KEY AUTOINCREMENT, val TEXT NOT NULL)")
+	require.NoError(t, err)
+
+	barrier := make(chan struct{})
+	signal := make(chan struct{}, 1)
+	db.writeBarrier.Store(barrier)
+	db.barrierSignal.Store(signal)
+	t.Cleanup(func() {
+		db.writeBarrier.Store((chan struct{})(nil))
+		db.barrierSignal.Store((chan struct{})(nil))
+	})
+
+	firstDone := make(chan error, 1)
+	go func() {
+		_, execErr := db.ExecContext(ctx, "INSERT INTO close_drain (val) VALUES (?)", "first")
+		firstDone <- execErr
+	}()
+
+	select {
+	case <-signal:
+	case <-time.After(time.Second):
+		t.Fatal("writer did not reach barrier")
+	}
+
+	secondDone := make(chan error, 1)
+	go func() {
+		_, execErr := db.ExecContext(ctx, "INSERT INTO close_drain (val) VALUES (?)", "second")
+		secondDone <- execErr
+	}()
+
+	require.Eventually(t, func() bool {
+		return len(db.writeCh) > 0
+	}, time.Second, 10*time.Millisecond)
+
+	closeDone := make(chan error, 1)
+	go func() {
+		closeDone <- db.Close()
+	}()
+
+	require.NoError(t, <-closeDone)
+	require.NoError(t, <-firstDone)
+	require.NoError(t, <-secondDone)
 }
 
 type columnSpec struct {

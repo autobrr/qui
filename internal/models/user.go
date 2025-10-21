@@ -7,6 +7,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+
+	"github.com/autobrr/qui/internal/dbinterface"
 )
 
 var ErrUserNotFound = errors.New("user not found")
@@ -19,10 +21,10 @@ type User struct {
 }
 
 type UserStore struct {
-	db *sql.DB
+	db dbinterface.Querier
 }
 
-func NewUserStore(db *sql.DB) *UserStore {
+func NewUserStore(db dbinterface.Querier) *UserStore {
 	return &UserStore{db: db}
 }
 
