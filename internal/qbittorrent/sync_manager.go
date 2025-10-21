@@ -76,6 +76,8 @@ type TorrentStats struct {
 	TotalDownloadSpeed int   `json:"totalDownloadSpeed"`
 	TotalUploadSpeed   int   `json:"totalUploadSpeed"`
 	TotalSize          int64 `json:"totalSize"`
+	TotalRemainingSize int64 `json:"totalRemainingSize"`
+	TotalSeedingSize   int64 `json:"totalSeedingSize"`
 }
 
 // DuplicateTorrentMatch represents an existing torrent that matches one or more requested hashes.
@@ -91,6 +93,14 @@ type DuplicateTorrentMatch struct {
 type SyncManager struct {
 	clientPool *ClientPool
 	exprCache  *ttlcache.Cache[string, *vm.Program]
+}
+
+// ResumeWhenCompleteOptions configure resume monitoring behavior.
+type ResumeWhenCompleteOptions struct {
+	// CheckInterval controls how frequently torrent progress is polled (default 5s).
+	CheckInterval time.Duration
+	// Timeout controls how long to wait before giving up (default 10m).
+	Timeout time.Duration
 }
 
 // OptimisticTorrentUpdate represents a temporary optimistic update to a torrent
@@ -114,6 +124,24 @@ func (sm *SyncManager) GetErrorStore() *models.InstanceErrorStore {
 	return sm.clientPool.GetErrorStore()
 }
 
+// GetInstanceWebAPIVersion returns the qBittorrent web API version for the provided instance.
+func (sm *SyncManager) GetInstanceWebAPIVersion(ctx context.Context, instanceID int) (string, error) {
+	if sm == nil || sm.clientPool == nil {
+		return "", fmt.Errorf("client pool unavailable")
+	}
+
+	if client, err := sm.clientPool.GetClientOffline(ctx, instanceID); err == nil {
+		return strings.TrimSpace(client.GetWebAPIVersion()), nil
+	}
+
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return "", err
+	}
+
+	return strings.TrimSpace(client.GetWebAPIVersion()), nil
+}
+
 // getClientAndSyncManager gets both client and sync manager with error handling
 func (sm *SyncManager) getClientAndSyncManager(ctx context.Context, instanceID int) (*Client, *qbt.SyncManager, error) {
 	// Get client
@@ -135,6 +163,19 @@ func (sm *SyncManager) getClientAndSyncManager(ctx context.Context, instanceID i
 func (sm *SyncManager) validateTorrentsExist(client *Client, hashes []string, operation string) error {
 	existingTorrents := client.getTorrentsByHashes(hashes)
 	if len(existingTorrents) == 0 {
+		// Force a fresh sync (needed by backup restore flows) to pick up torrents that were just added and are not yet cached.
+		if client != nil && client.syncManager != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			if err := client.syncManager.Sync(ctx); err != nil {
+				log.Debug().Err(err).Msg("validateTorrentsExist: forced sync failed")
+			} else {
+				existingTorrents = client.getTorrentsByHashes(hashes)
+				if len(existingTorrents) > 0 {
+					return nil
+				}
+			}
+		}
 		return fmt.Errorf("no valid torrents found to %s", operation)
 	}
 	return nil
@@ -157,10 +198,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	needsTrackerHealthSorting := trackerHealthSupported && sort == "state"
 
 	// Get MainData for tracker filtering (if needed)
-	var mainData *qbt.MainData
-	if len(filters.Trackers) > 0 || len(filters.ExcludeTrackers) > 0 {
-		mainData = syncManager.GetData()
-	}
+	mainData := syncManager.GetData()
 
 	// Determine if we can use library filtering or need manual filtering
 	// Use library filtering only if we have single filters that the library supports
@@ -177,6 +215,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	hasExcludeTagFilters := len(filters.ExcludeTags) > 0
 	hasExcludeTrackerFilters := len(filters.ExcludeTrackers) > 0
 	hasExprFilters := len(filters.Expr) > 0
+	hasHashFilters := len(filters.Hashes) > 0
 
 	// Determine if any status filter needs manual filtering
 	trackerStatusFilters := filtersRequireTrackerData(filters)
@@ -207,7 +246,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 	useManualFiltering = hasMultipleStatusFilters || hasMultipleCategoryFilters || hasMultipleTagFilters ||
 		hasTrackerFilters || hasExcludeStatusFilters || hasExcludeCategoryFilters || hasExcludeTagFilters || hasExcludeTrackerFilters ||
-		hasExprFilters || needsManualStatusFiltering || needsManualCategoryFiltering || needsManualTagFiltering
+		hasExprFilters || needsManualStatusFiltering || needsManualCategoryFiltering || needsManualTagFiltering || hasHashFilters
 
 	var trackerMap map[string][]qbt.TorrentTracker
 	var counts *TorrentCounts
@@ -223,11 +262,6 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to get tags")
 		tags = []string{}
-	}
-
-	if useManualFiltering && mainData == nil {
-		// Manual filtering needs the server preference to respect disabled subcategories
-		mainData = syncManager.GetData()
 	}
 
 	supportsSubcategories := client.SupportsSubcategories()
@@ -249,6 +283,8 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 			Bool("needsManualStatus", needsManualStatusFiltering).
 			Bool("needsManualCategory", needsManualCategoryFiltering).
 			Bool("needsManualTag", needsManualTagFiltering).
+			Bool("hasHashes", hasHashFilters).
+			Int("hashFilters", len(filters.Hashes)).
 			Msg("Using manual filtering due to multiple selections or unsupported filters")
 
 		// Get all torrents
@@ -268,6 +304,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		// Use library filtering for single selections
 		log.Debug().
 			Int("instanceID", instanceID).
+			Int("hashFilters", len(filters.Hashes)).
 			Msg("Using library filtering for single selections")
 
 		// Handle single status filter
@@ -366,28 +403,27 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	// Calculate stats from filtered torrents
 	stats := sm.calculateStats(filteredTorrents)
 
-	// Apply pagination to filtered results
-	var paginatedTorrents []qbt.Torrent
-	start := offset
-	end := offset + limit
-	if start < len(filteredTorrents) {
-		if end > len(filteredTorrents) {
-			end = len(filteredTorrents)
-		}
-		paginatedTorrents = filteredTorrents[start:end]
+	// Apply pagination to filtered results; limit <= 0 means "unbounded"
+	totalTorrents := len(filteredTorrents)
+	start := max(offset, 0)
+	if start > totalTorrents {
+		start = totalTorrents
 	}
 
-	// Check if there are more pages
-	hasMore := end < len(filteredTorrents)
+	end := totalTorrents
+	if limit > 0 {
+		end = min(start+limit, totalTorrents)
+	}
+
+	paginatedTorrents := filteredTorrents[start:end]
+
+	// Check if there are more pages (only meaningful when limit > 0)
+	hasMore := limit > 0 && end < totalTorrents
 
 	// Calculate counts from ALL torrents (not filtered) for sidebar
 	// This uses the same cached data, so it's very fast
 	allTorrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{})
 
-	// Get MainData for accurate tracker information
-	if mainData == nil {
-		mainData = syncManager.GetData()
-	}
 	useSubcategories = resolveUseSubcategories(supportsSubcategories, mainData, categories)
 
 	counts, trackerMap, enrichedAll := sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents, mainData, trackerMap, trackerHealthSupported, useSubcategories)
@@ -1328,6 +1364,110 @@ func (sm *SyncManager) syncAfterModification(instanceID int, client *Client, ope
 	}()
 }
 
+// ResumeWhenComplete monitors the provided hashes and resumes torrents once data is 100% complete.
+func (sm *SyncManager) ResumeWhenComplete(instanceID int, hashes []string, opts ResumeWhenCompleteOptions) {
+	if sm == nil || len(hashes) == 0 {
+		return
+	}
+
+	interval := opts.CheckInterval
+	if interval <= 0 {
+		interval = 5 * time.Second
+	}
+	timeout := opts.Timeout
+	if timeout <= 0 {
+		timeout = 10 * time.Minute
+	}
+
+	pending := make(map[string]string, len(hashes))
+	for _, hash := range hashes {
+		canonicalHash := strings.TrimSpace(hash)
+		normalizedHash := strings.ToLower(canonicalHash)
+		if normalizedHash == "" {
+			continue
+		}
+		if _, exists := pending[normalizedHash]; exists {
+			continue
+		}
+		pending[normalizedHash] = canonicalHash
+	}
+
+	if len(pending) == 0 {
+		return
+	}
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+
+		client, syncMgr, err := sm.getClientAndSyncManager(ctx, instanceID)
+		if err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("ResumeWhenComplete: failed to acquire client")
+			return
+		}
+
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		for len(pending) > 0 {
+			select {
+			case <-ctx.Done():
+				log.Debug().Int("instanceID", instanceID).Msg("ResumeWhenComplete: timeout reached")
+				return
+			case <-ticker.C:
+			}
+
+			if err := syncMgr.Sync(ctx); err != nil {
+				log.Debug().Err(err).Int("instanceID", instanceID).Msg("ResumeWhenComplete: sync failed")
+				continue
+			}
+
+			requested := make([]string, 0, len(pending))
+			for _, canonicalHash := range pending {
+				requested = append(requested, canonicalHash)
+			}
+
+			torrents := client.getTorrentsByHashes(requested)
+			if len(torrents) == 0 {
+				continue
+			}
+
+			var resumeList []string
+			for _, torrent := range torrents {
+				normalizedHash := strings.ToLower(strings.TrimSpace(torrent.Hash))
+				if _, watching := pending[normalizedHash]; !watching {
+					continue
+				}
+
+				switch torrent.State {
+				case qbt.TorrentStateCheckingDl, qbt.TorrentStateCheckingUp, qbt.TorrentStateCheckingResumeData, qbt.TorrentStateAllocating, qbt.TorrentStateMoving:
+					continue
+				}
+
+				if torrent.AmountLeft == 0 {
+					resumeList = append(resumeList, torrent.Hash)
+				}
+			}
+
+			if len(resumeList) == 0 {
+				continue
+			}
+
+			if err := client.ResumeCtx(ctx, resumeList); err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Strs("hashes", resumeList).Msg("ResumeWhenComplete: resume failed")
+				continue
+			}
+
+			sm.applyOptimisticCacheUpdate(instanceID, resumeList, "resume", nil)
+			sm.syncAfterModification(instanceID, client, "resume_when_complete")
+
+			for _, hash := range resumeList {
+				delete(pending, strings.ToLower(strings.TrimSpace(hash)))
+			}
+		}
+	}()
+}
+
 // getAllTorrentsForStats gets all torrents for stats calculation (with optimistic updates)
 func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID int, _ string) ([]qbt.Torrent, error) {
 	// Get client and sync manager
@@ -1439,6 +1579,11 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 	return torrents, nil
 }
 
+// GetAllTorrents returns the current torrent list for an instance without pagination.
+func (sm *SyncManager) GetAllTorrents(ctx context.Context, instanceID int) ([]qbt.Torrent, error) {
+	return sm.getAllTorrentsForStats(ctx, instanceID, "")
+}
+
 func normalizeForSearch(text string) string {
 	// Replace common torrent separators with spaces
 	replacers := []string{".", "_", "-", "[", "]", "(", ")", "{", "}"}
@@ -1477,10 +1622,16 @@ func (sm *SyncManager) filterTorrentsBySearch(torrents []qbt.Torrent, search str
 		nameLower := strings.ToLower(torrent.Name)
 		categoryLower := strings.ToLower(torrent.Category)
 		tagsLower := strings.ToLower(torrent.Tags)
+		hashLower := strings.ToLower(torrent.Hash)
+		infohashV1Lower := strings.ToLower(torrent.InfohashV1)
+		infohashV2Lower := strings.ToLower(torrent.InfohashV2)
 
 		if strings.Contains(nameLower, searchLower) ||
 			strings.Contains(categoryLower, searchLower) ||
-			strings.Contains(tagsLower, searchLower) {
+			strings.Contains(tagsLower, searchLower) ||
+			strings.Contains(hashLower, searchLower) ||
+			strings.Contains(infohashV1Lower, searchLower) ||
+			strings.Contains(infohashV2Lower, searchLower) {
 			matches = append(matches, torrentMatch{
 				torrent: torrent,
 				score:   0, // Best score
@@ -1636,6 +1787,14 @@ func (sm *SyncManager) applyManualFilters(
 ) []qbt.Torrent {
 	var filtered []qbt.Torrent
 
+	hashFilterSet := make(map[string]struct{}, len(filters.Hashes))
+	for _, h := range filters.Hashes {
+		if h == "" {
+			continue
+		}
+		hashFilterSet[strings.ToUpper(h)] = struct{}{}
+	}
+
 	var categoryNames []string
 	if useSubcategories {
 		categoryNames = collectCategoryNames(mainData, categories)
@@ -1748,6 +1907,23 @@ func (sm *SyncManager) applyManualFilters(
 
 torrentsLoop:
 	for _, torrent := range torrents {
+		if len(hashFilterSet) > 0 {
+			match := false
+			candidates := []string{torrent.Hash, torrent.InfohashV1, torrent.InfohashV2}
+			for _, candidate := range candidates {
+				if candidate == "" {
+					continue
+				}
+				if _, ok := hashFilterSet[strings.ToUpper(candidate)]; ok {
+					match = true
+					break
+				}
+			}
+			if !match {
+				continue
+			}
+		}
+
 		// Status filters (OR logic)
 		if len(filters.Status) > 0 {
 			matched := false
@@ -2382,12 +2558,24 @@ func (sm *SyncManager) calculateStats(torrents []qbt.Torrent) *TorrentStats {
 		// Add size
 		stats.TotalSize += torrent.Size
 
-		// Count states
+		// Count states and calculate specific sizes
 		switch torrent.State {
-		case qbt.TorrentStateDownloading, qbt.TorrentStateStalledDl, qbt.TorrentStateMetaDl, qbt.TorrentStateQueuedDl, qbt.TorrentStateForcedDl:
+		case qbt.TorrentStateDownloading:
 			stats.Downloading++
-		case qbt.TorrentStateUploading, qbt.TorrentStateStalledUp, qbt.TorrentStateQueuedUp, qbt.TorrentStateForcedUp:
+			stats.TotalRemainingSize += torrent.AmountLeft
+		case qbt.TorrentStateForcedDl:
+			stats.Downloading++
+			stats.TotalRemainingSize += torrent.AmountLeft
+		case qbt.TorrentStateStalledDl, qbt.TorrentStateMetaDl, qbt.TorrentStateQueuedDl, qbt.TorrentStateAllocating:
+			// These are downloading states but not actively downloading
+		case qbt.TorrentStateUploading:
 			stats.Seeding++
+			stats.TotalSeedingSize += torrent.Size
+		case qbt.TorrentStateForcedUp:
+			stats.Seeding++
+			stats.TotalSeedingSize += torrent.Size
+		case qbt.TorrentStateStalledUp, qbt.TorrentStateQueuedUp:
+			// These are seeding states but not actively seeding
 		case qbt.TorrentStatePausedDl, qbt.TorrentStatePausedUp, qbt.TorrentStateStoppedDl, qbt.TorrentStateStoppedUp:
 			stats.Paused++
 		case qbt.TorrentStateError, qbt.TorrentStateMissingFiles:

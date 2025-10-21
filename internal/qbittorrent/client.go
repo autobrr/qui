@@ -261,6 +261,18 @@ func (c *Client) GetCachedConnectionStatus() string {
 	return state.ConnectionStatus
 }
 
+// UpdateWithMainData updates the client's cached state with fresh MainData
+// This is used when intercepting sync/maindata responses to keep local state in sync
+func (c *Client) UpdateWithMainData(data *qbt.MainData) {
+	c.updateServerState(data)
+	c.rebuildHashIndex(data.Torrents)
+	c.updateHealthStatus(true)
+	log.Debug().
+		Int("instanceID", c.instanceID).
+		Int("torrentCount", len(data.Torrents)).
+		Msg("Updated client state with fresh maindata from intercepted request")
+}
+
 func (c *Client) SupportsRenameTorrent() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()

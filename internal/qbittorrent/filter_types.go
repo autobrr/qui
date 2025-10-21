@@ -5,6 +5,7 @@ package qbittorrent
 
 // FilterOptions represents the filter options from the frontend
 type FilterOptions struct {
+	Hashes            []string `json:"hashes"`
 	Status            []string `json:"status"`
 	ExcludeStatus     []string `json:"excludeStatus"`
 	Categories        []string `json:"categories"`
