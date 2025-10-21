@@ -9,13 +9,9 @@ import (
 	"errors"
 	"log"
 	"time"
-)
 
-type SqlDB interface {
-	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
-	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
-	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
-}
+	"github.com/autobrr/qui/internal/dbinterface"
+)
 
 type OptFunc func(*SQLite3Store)
 
@@ -31,14 +27,14 @@ func WithCleanupInterval(interval time.Duration) OptFunc {
 
 // SQLite3Store represents the session store.
 type SQLite3Store struct {
-	db              SqlDB
+	db              dbinterface.Querier
 	stopCleanup     chan bool
 	cleanupInterval time.Duration
 }
 
 // New returns a new SQLite3Store instance, with a background cleanup goroutine
 // that runs every 5 minutes to remove expired session data.
-func New(db SqlDB, opts ...OptFunc) *SQLite3Store {
+func New(db dbinterface.Querier, opts ...OptFunc) *SQLite3Store {
 	p := &SQLite3Store{
 		db:              db,
 		cleanupInterval: 5 * time.Minute,
