@@ -238,11 +238,18 @@ func (h *Handler) handleSyncMainData(w http.ResponseWriter, r *http.Request) {
 		Msg("Proxying sync/maindata request")
 
 	// Use a custom response writer to capture the response
+	buf := h.bufferPool.Get()
+	crwBody := buf[:0]
 	crw := &capturingResponseWriter{
 		ResponseWriter: w,
-		body:           h.bufferPool.Get(),
+		body:           crwBody,
 		statusCode:     http.StatusOK,
 	}
+	defer func() {
+		if buf != nil {
+			h.bufferPool.Put(buf[:cap(buf)])
+		}
+	}()
 
 	// Proxy the request
 	h.proxy.ServeHTTP(crw, r)
