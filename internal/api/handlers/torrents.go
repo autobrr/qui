@@ -164,15 +164,24 @@ func (h *TorrentsHandler) CheckDuplicates(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	matches, err := h.syncManager.FindDuplicateTorrents(r.Context(), instanceID, req.Hashes)
+	syncManager, err := h.syncManager.GetQBittorrentSyncManager(r.Context(), instanceID)
 	if err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to check duplicate torrents")
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get qBittorrent sync manager")
 		RespondError(w, http.StatusInternalServerError, "Failed to check duplicate torrents")
 		return
 	}
 
-	if matches == nil {
-		matches = []qbittorrent.DuplicateTorrentMatch{}
+	torrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{Hashes: req.Hashes})
+
+	matches := make([]qbittorrent.DuplicateTorrentMatch, len(torrents))
+	for i, torrent := range torrents {
+		matches[i] = qbittorrent.DuplicateTorrentMatch{
+			Hash:          torrent.Hash,
+			InfohashV1:    strings.TrimSpace(torrent.InfohashV1),
+			InfohashV2:    strings.TrimSpace(torrent.InfohashV2),
+			Name:          torrent.Name,
+			MatchedHashes: []string{torrent.Hash},
+		}
 	}
 
 	RespondJSON(w, http.StatusOK, struct {
