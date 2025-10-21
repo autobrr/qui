@@ -1488,15 +1488,41 @@ function ConsolidationRecommendationCard({
   getReleaseTypeIcon,
   onTorrentAction
 }: ConsolidationRecommendationCardProps) {
+  const [selectedEpisodes, setSelectedEpisodes] = useState<Set<string>>(
+    new Set(recommendation.individualEpisodes.map(ep => ep.hash))
+  )
+  
   const seasonPackScore = calculateQualityScore(recommendation.seasonPack)
-  const totalIndividualSize = recommendation.individualEpisodes.reduce((sum, ep) => sum + ep.size, 0)
+  const selectedEpisodesList = recommendation.individualEpisodes.filter(ep => selectedEpisodes.has(ep.hash))
+  const totalIndividualSize = selectedEpisodesList.reduce((sum, ep) => sum + ep.size, 0)
   const spaceSavings = totalIndividualSize - recommendation.seasonPack.size
+  
+  const parentRef = useRef<HTMLDivElement>(null)
+  
+  const virtualizer = useVirtualizer({
+    count: recommendation.individualEpisodes.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 60,
+    overscan: 5,
+  })
+  
+  const toggleEpisodeSelection = (hash: string) => {
+    setSelectedEpisodes((prev: Set<string>) => {
+      const next = new Set(prev)
+      if (next.has(hash)) {
+        next.delete(hash)
+      } else {
+        next.add(hash)
+      }
+      return next
+    })
+  }
   
   const handleConsolidationAction = async (action: string) => {
     if (action === 'consolidate') {
-      // Delete all individual episodes
-      for (const episode of recommendation.individualEpisodes) {
-        await onTorrentAction(TORRENT_ACTIONS.DELETE, [episode.hash])
+      // Pause selected individual episodes instead of deleting them
+      if (selectedEpisodesList.length > 0) {
+        await onTorrentAction(TORRENT_ACTIONS.PAUSE, selectedEpisodesList.map(ep => ep.hash))
       }
       // Ensure season pack is resumed
       await onTorrentAction(TORRENT_ACTIONS.RESUME, [recommendation.seasonPack.hash])
@@ -1554,32 +1580,82 @@ function ConsolidationRecommendationCard({
         
         {/* Individual Episodes */}
         <div className="space-y-2">
-          <h4 className="font-medium text-sm">Individual Episodes ({recommendation.individualEpisodes.length})</h4>
-          <div className="max-h-32 overflow-y-auto space-y-1">
-            {recommendation.individualEpisodes.slice(0, 5).map((episode, index) => {
-              const episodeScore = calculateQualityScore(episode)
-              return (
-                <div key={index} className="flex items-center justify-between text-xs border rounded p-2 bg-muted/30">
-                  <div className="flex-1 truncate">
-                    <span className="font-medium">Ep {episode.episode}:</span> {episode.name}
+          <div className="flex items-center justify-between">
+            <h4 className="font-medium text-sm">Individual Episodes ({selectedEpisodes.size} of {recommendation.individualEpisodes.length} selected)</h4>
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => setSelectedEpisodes(new Set(recommendation.individualEpisodes.map(ep => ep.hash)))}
+              >
+                Select All
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => setSelectedEpisodes(new Set())}
+              >
+                Select None
+              </Button>
+            </div>
+          </div>
+          <div
+            ref={parentRef}
+            className="h-64 overflow-auto border rounded-lg"
+          >
+            <div
+              style={{
+                height: `${virtualizer.getTotalSize()}px`,
+                width: '100%',
+                position: 'relative',
+              }}
+            >
+              {virtualizer.getVirtualItems().map((virtualRow) => {
+                const episode = recommendation.individualEpisodes[virtualRow.index]
+                const episodeScore = calculateQualityScore(episode)
+                const isSelected = selectedEpisodes.has(episode.hash)
+                
+                return (
+                  <div
+                    key={virtualRow.index}
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      width: '100%',
+                      height: `${virtualRow.size}px`,
+                      transform: `translateY(${virtualRow.start}px)`,
+                    }}
+                    className="border-b border-border/50 last:border-b-0"
+                  >
+                    <div className="flex items-center gap-3 p-3 hover:bg-accent/20">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleEpisodeSelection(episode.hash)}
+                        className="rounded border-gray-300"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-medium text-sm">Ep {episode.episode}:</span>
+                          <span className="text-sm truncate" title={episode.name}>{episode.name}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge variant={episodeScore.color as any} className="text-xs">
+                            {episodeScore.label}
+                          </Badge>
+                          <span className="text-xs text-muted-foreground">{formatSize(episode.size)}</span>
+                          <span className="text-xs text-muted-foreground">Added {formatDate(episode.addedOn)}</span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 ml-2">
-                    <Badge variant={episodeScore.color as any} className="text-xs">
-                      {episodeScore.label}
-                    </Badge>
-                    <span className="text-muted-foreground">{formatSize(episode.size)}</span>
-                  </div>
-                </div>
-              )
-            })}
-            {recommendation.individualEpisodes.length > 5 && (
-              <div className="text-xs text-muted-foreground text-center py-1">
-                ... and {recommendation.individualEpisodes.length - 5} more episodes
-              </div>
-            )}
+                )
+              })}
+            </div>
           </div>
           <div className="text-xs text-muted-foreground border-t pt-2">
-            Total size: {formatSize(totalIndividualSize)}
+            Selected: {formatSize(totalIndividualSize)} • Potential savings: {formatSize(spaceSavings)}
           </div>
         </div>
         
@@ -1590,9 +1666,10 @@ function ConsolidationRecommendationCard({
             size="sm"
             onClick={() => handleConsolidationAction('consolidate')}
             className="flex-1"
+            disabled={selectedEpisodes.size === 0}
           >
             <Package className="mr-2 h-4 w-4" />
-            Consolidate Episodes
+            Consolidate Selected ({selectedEpisodes.size})
           </Button>
           {recommendation.canRelocate && (
             <Button 
