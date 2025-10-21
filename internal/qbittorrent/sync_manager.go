@@ -266,6 +266,10 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	supportsSubcategories := client.SupportsSubcategories()
 	useSubcategories := resolveUseSubcategories(supportsSubcategories, mainData, categories)
 
+	if len(filters.Hashes) > 0 {
+		torrentFilterOptions.Hashes = filters.Hashes
+	}
+
 	if useManualFiltering {
 		// Use manual filtering - get all torrents and filter manually
 		log.Debug().
@@ -282,6 +286,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 			Bool("needsManualStatus", needsManualStatusFiltering).
 			Bool("needsManualCategory", needsManualCategoryFiltering).
 			Bool("needsManualTag", needsManualTagFiltering).
+			Int("hashFilters", len(filters.Hashes)).
 			Msg("Using manual filtering due to multiple selections or unsupported filters")
 
 		// Get all torrents
@@ -301,6 +306,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		// Use library filtering for single selections
 		log.Debug().
 			Int("instanceID", instanceID).
+			Int("hashFilters", len(filters.Hashes)).
 			Msg("Using library filtering for single selections")
 
 		// Handle single status filter
@@ -1654,10 +1660,16 @@ func (sm *SyncManager) filterTorrentsBySearch(torrents []qbt.Torrent, search str
 		nameLower := strings.ToLower(torrent.Name)
 		categoryLower := strings.ToLower(torrent.Category)
 		tagsLower := strings.ToLower(torrent.Tags)
+		hashLower := strings.ToLower(torrent.Hash)
+		infohashV1Lower := strings.ToLower(torrent.InfohashV1)
+		infohashV2Lower := strings.ToLower(torrent.InfohashV2)
 
 		if strings.Contains(nameLower, searchLower) ||
 			strings.Contains(categoryLower, searchLower) ||
-			strings.Contains(tagsLower, searchLower) {
+			strings.Contains(tagsLower, searchLower) ||
+			strings.Contains(hashLower, searchLower) ||
+			strings.Contains(infohashV1Lower, searchLower) ||
+			strings.Contains(infohashV2Lower, searchLower) {
 			matches = append(matches, torrentMatch{
 				torrent: torrent,
 				score:   0, // Best score
@@ -1813,6 +1825,14 @@ func (sm *SyncManager) applyManualFilters(
 ) []qbt.Torrent {
 	var filtered []qbt.Torrent
 
+	hashFilterSet := make(map[string]struct{}, len(filters.Hashes))
+	for _, h := range filters.Hashes {
+		if h == "" {
+			continue
+		}
+		hashFilterSet[strings.ToUpper(h)] = struct{}{}
+	}
+
 	var categoryNames []string
 	if useSubcategories {
 		categoryNames = collectCategoryNames(mainData, categories)
@@ -1925,6 +1945,23 @@ func (sm *SyncManager) applyManualFilters(
 
 torrentsLoop:
 	for _, torrent := range torrents {
+		if len(hashFilterSet) > 0 {
+			match := false
+			candidates := []string{torrent.Hash, torrent.InfohashV1, torrent.InfohashV2}
+			for _, candidate := range candidates {
+				if candidate == "" {
+					continue
+				}
+				if _, ok := hashFilterSet[strings.ToUpper(candidate)]; ok {
+					match = true
+					break
+				}
+			}
+			if !match {
+				continue
+			}
+		}
+
 		// Status filters (OR logic)
 		if len(filters.Status) > 0 {
 			matched := false

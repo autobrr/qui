@@ -20,9 +20,9 @@ All intercepted endpoints are **GET requests only**. Write operations (POST, PUT
 - **Benefits**: 
   - Fast response using cached/synchronized data
   - Efficient filtering and sorting
-  - Supports standard qBittorrent parameters (category, tag, filter, sort, limit, offset)
+  - Supports standard qBittorrent parameters (`hashes`, `filter`, `category`, `tag`, `sort`, `reverse`, `limit`, `offset`)
   - Full qBittorrent API compatibility
-- **Note**: Does NOT support search parameter or advanced qui filtering
+- **Note**: If an unknown query parameter is provided the proxy forwards the request upstream to maintain compatibility; does NOT support search parameter or advanced qui filtering
 
 ### 2. Torrent List (Enhanced)
 - **Endpoint**: `/api/v2/torrents/search`

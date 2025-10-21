@@ -495,6 +495,29 @@ func (h *Handler) handleTorrentsInfo(w http.ResponseWriter, r *http.Request) {
 
 	// Extract standard qBittorrent API parameters (no advanced filtering)
 	queryParams := r.URL.Query()
+	allowedParams := map[string]struct{}{
+		"filter":   {},
+		"category": {},
+		"tag":      {},
+		"sort":     {},
+		"reverse":  {},
+		"limit":    {},
+		"offset":   {},
+		"hashes":   {},
+	}
+
+	for key := range queryParams {
+		if _, ok := allowedParams[strings.ToLower(key)]; !ok {
+			log.Debug().
+				Int("instanceId", instanceID).
+				Str("client", clientAPIKey.ClientName).
+				Str("param", key).
+				Msg("Unsupported torrents/info query parameter, proxying upstream")
+			h.ServeHTTP(w, r)
+			return
+		}
+	}
+
 	filter := queryParams.Get("filter")
 	category := queryParams.Get("category")
 	tag := queryParams.Get("tag")
@@ -515,8 +538,32 @@ func (h *Handler) handleTorrentsInfo(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	hashesParam := queryParams.Get("hashes")
+	var hashes []string
+	if hashesParam != "" && !strings.EqualFold(hashesParam, "all") {
+		hashSet := make(map[string]struct{})
+		for rawHash := range strings.SplitSeq(hashesParam, "|") {
+			trimmed := strings.TrimSpace(rawHash)
+			if trimmed == "" {
+				continue
+			}
+
+			dedupKey := strings.ToUpper(trimmed)
+			if _, exists := hashSet[dedupKey]; exists {
+				continue
+			}
+
+			hashSet[dedupKey] = struct{}{}
+			hashes = append(hashes, trimmed)
+		}
+	}
+
 	// Build basic filter options (standard qBittorrent parameters only)
 	filters := qbittorrent.FilterOptions{}
+
+	if len(hashes) > 0 {
+		filters.Hashes = hashes
+	}
 
 	if filter != "" {
 		filters.Status = []string{filter}
@@ -541,7 +588,11 @@ func (h *Handler) handleTorrentsInfo(w http.ResponseWriter, r *http.Request) {
 
 	// If no limit specified, use a reasonable default
 	if limit == 0 {
-		limit = 100000 // Large limit to get all results
+		if len(hashes) > 0 {
+			limit = len(hashes)
+		} else {
+			limit = 100000 // Large limit to get all results
+		}
 	}
 
 	log.Debug().
@@ -554,6 +605,7 @@ func (h *Handler) handleTorrentsInfo(w http.ResponseWriter, r *http.Request) {
 		Str("order", order).
 		Int("limit", limit).
 		Int("offset", offset).
+		Int("hashCount", len(hashes)).
 		Msg("Handling torrents/info request via qui sync manager")
 
 	// Use qui's sync manager
@@ -569,7 +621,7 @@ func (h *Handler) handleTorrentsInfo(w http.ResponseWriter, r *http.Request) {
 
 	// Convert qui's TorrentView format back to qBittorrent's Torrent format
 	// The TorrentView embeds qbt.Torrent, so we can extract it
-	torrents := make([]interface{}, len(response.Torrents))
+	torrents := make([]any, len(response.Torrents))
 	for i, tv := range response.Torrents {
 		torrents[i] = tv.Torrent
 	}
