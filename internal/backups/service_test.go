@@ -19,7 +19,9 @@ import (
 func setupTestBackupDB(t *testing.T) *sql.DB {
 	t.Helper()
 
-	db, err := sql.Open("sqlite", "file:queue_run_cleanup?mode=memory&cache=shared")
+	// Use a unique database name for each test to avoid conflicts when running in parallel
+	dbName := "file:" + t.Name() + "?mode=memory&cache=shared"
+	db, err := sql.Open("sqlite", dbName)
 	require.NoError(t, err)
 
 	db.SetMaxOpenConns(1)
