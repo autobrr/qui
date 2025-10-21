@@ -1220,3 +1220,96 @@ func (s *BackupStore) RemoveFailedRunsBefore(ctx context.Context, cutoff time.Ti
 	}
 	return res.RowsAffected()
 }
+
+// FindIncompleteRuns returns all backup runs that are in pending or running status.
+// These are runs that were interrupted by a restart or crash.
+func (s *BackupStore) FindIncompleteRuns(ctx context.Context) ([]*BackupRun, error) {
+	query := `
+        SELECT id, instance_id, kind, status, requested_by, requested_at, started_at, completed_at,
+               archive_path, manifest_path, total_bytes, torrent_count, category_counts_json, categories_json, tags_json, error_message
+        FROM instance_backup_runs
+        WHERE status IN (?, ?)
+        ORDER BY requested_at ASC
+    `
+
+	rows, err := s.db.QueryContext(ctx, query, string(BackupRunStatusPending), string(BackupRunStatusRunning))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var runs []*BackupRun
+	for rows.Next() {
+		var run BackupRun
+		var startedAt sql.NullTime
+		var completedAt sql.NullTime
+		var archivePath sql.NullString
+		var manifestPath sql.NullString
+		var errorMessage sql.NullString
+		var categoryJSON sql.NullString
+		var categoriesJSON sql.NullString
+		var tagsJSON sql.NullString
+
+		if err := rows.Scan(
+			&run.ID,
+			&run.InstanceID,
+			&run.Kind,
+			&run.Status,
+			&run.RequestedBy,
+			&run.RequestedAt,
+			&startedAt,
+			&completedAt,
+			&archivePath,
+			&manifestPath,
+			&run.TotalBytes,
+			&run.TorrentCount,
+			&categoryJSON,
+			&categoriesJSON,
+			&tagsJSON,
+			&errorMessage,
+		); err != nil {
+			return nil, err
+		}
+
+		if startedAt.Valid {
+			run.StartedAt = &startedAt.Time
+		}
+		if completedAt.Valid {
+			run.CompletedAt = &completedAt.Time
+		}
+		if archivePath.Valid {
+			run.ArchivePath = &archivePath.String
+		}
+		if manifestPath.Valid {
+			run.ManifestPath = &manifestPath.String
+		}
+		if errorMessage.Valid {
+			run.ErrorMessage = &errorMessage.String
+		}
+		counts, err := unmarshalCategoryCounts(categoryJSON)
+		if err != nil {
+			return nil, err
+		}
+		run.CategoryCounts = counts
+		if categories, err := unmarshalCategories(categoriesJSON); err != nil {
+			return nil, err
+		} else {
+			run.Categories = categories
+		}
+		if tagList, err := unmarshalTags(tagsJSON); err != nil {
+			return nil, err
+		} else {
+			run.Tags = tagList
+		}
+		if categoriesJSON.Valid {
+			run.categoriesJSON = &categoriesJSON.String
+		}
+		if tagsJSON.Valid {
+			run.tagsJSON = &tagsJSON.String
+		}
+
+		runs = append(runs, &run)
+	}
+
+	return runs, rows.Err()
+}

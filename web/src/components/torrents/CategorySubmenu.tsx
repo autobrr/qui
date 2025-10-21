@@ -20,9 +20,9 @@ import {
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import type { Category } from "@/types"
-import { Folder, Search, X } from "lucide-react"
-import { memo, useMemo, useRef, useState, useDeferredValue } from "react"
 import { useVirtualizer } from "@tanstack/react-virtual"
+import { Folder, Search, X } from "lucide-react"
+import { memo, useDeferredValue, useMemo, useRef, useState } from "react"
 import { buildCategoryTree, type CategoryNode } from "./CategoryTree"
 
 interface CategorySubmenuProps {

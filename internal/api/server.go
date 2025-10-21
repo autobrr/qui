@@ -165,7 +165,12 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	r.Use(middleware.RealIP)
 
 	// HTTP compression - handles gzip, brotli, zstd, deflate automatically
-	compressor, err := httpcompression.DefaultAdapter()
+	// Use faster compression levels for better proxy performance
+	compressor, err := httpcompression.DefaultAdapter(
+		httpcompression.MinSize(1024),                        // Only compress responses >= 1KB
+		httpcompression.GzipCompressionLevel(2),              // Use gzip level 2 (fast) instead of 6 (default)
+		httpcompression.Prefer(httpcompression.PreferServer), // Let server choose best compression
+	)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create HTTP compression adapter")
 	} else {
@@ -200,7 +205,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	qbittorrentInfoHandler := handlers.NewQBittorrentInfoHandler(s.clientPool)
 	backupsHandler := handlers.NewBackupsHandler(s.backupService)
 	trackerIconHandler := handlers.NewTrackerIconHandler(s.trackerIconService)
-	proxyHandler := proxy.NewHandler(s.clientPool, s.clientAPIKeyStore, s.instanceStore, s.config.Config.BaseURL)
+	proxyHandler := proxy.NewHandler(s.clientPool, s.clientAPIKeyStore, s.instanceStore, s.syncManager, s.config.Config.BaseURL)
 	licenseHandler := handlers.NewLicenseHandler(s.licenseService)
 
 	// API routes

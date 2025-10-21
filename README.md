@@ -366,7 +366,8 @@ The reverse proxy feature:
 - **Isolates clients** - Each client gets its own API key
 - **Provides transparent access** - Clients see qui as if it were qBittorrent directly
 - **Reduces login thrash** - qui maintains a shared cookie jar and session, so your automation tools stop racing to re-authenticate against qBittorrent. That means fewer failed logins, less load on qBittorrent, and faster announce races because downstream apps reuse the live session instead of waiting for new tokens.
-- **Future-aware sync** - A planned improvement will reuse the proxied responses from other tools to keep qui's own torrent data fresh without waiting for the next poll cycle.
+
+For a detailed list of the qBittorrent API endpoints served directly from qui's proxy (rather than forwarded upstream), see [internal/proxy/INTERCEPTED_ENDPOINTS.md](internal/proxy/INTERCEPTED_ENDPOINTS.md).
 
 ### Setup Instructions
 
