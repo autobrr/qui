@@ -117,14 +117,6 @@ type ExcludedTorrentMeta = {
   action: "add" | "update" | "delete"
 }
 
-const runKindLabels: Record<BackupRunKind, string> = {
-  manual: "Manual",
-  hourly: "Hourly",
-  daily: "Daily",
-  weekly: "Weekly",
-  monthly: "Monthly",
-}
-
 const statusVariants: Record<BackupRunStatus, "default" | "secondary" | "destructive" | "outline"> = {
   pending: "outline",
   running: "secondary",
