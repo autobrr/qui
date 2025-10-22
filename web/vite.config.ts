@@ -35,7 +35,7 @@ export default defineConfig(() => ({
       },
       workbox: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,webp}"],
-        maximumFileSizeToCacheInBytes: 3 * 1024 * 1024, // Allow larger bundles to be precached
+        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024, // Allow larger bundles to be precached
         sourcemap: true,
         navigateFallbackDenylist: [/^\/api/, /^\/proxy/],
       },
