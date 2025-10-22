@@ -64,6 +64,7 @@
     "generalSettings": "通用设置",
     "manageInstances": "管理实例",
     "github": "GitHub",
+    "backups": "备份",
     "appearance": {
       "title": "外观",
       "mode": "模式",
@@ -181,6 +182,20 @@
         "trackers": "自动添加 tracker",
         "exclusions": "文件排除项：{{exclusions}}"
       }
+    },
+    "duplicate_check": {
+      "checking": "正在检查重复项…",
+      "detected_one": "检测到 {{count}} 个重复选择",
+      "detected_other": "检测到 {{count}} 个重复选择",
+      "existing_torrents": "现有种子: {{names}}",
+      "more": "(还有 {{count}} 个)",
+      "highlighted_below": "重复的选择在下方突出显示。",
+      "remove_duplicates": "移除重复项",
+      "matches_existing": "匹配现有: {{names}}",
+      "remove_file": "移除文件",
+      "existing_torrent": "现有种子",
+      "duplicate_file_one": "{{count}} 个重复文件",
+      "duplicate_file_other": "{{count}} 个重复文件"
     }
   },
   "theme": {
@@ -518,12 +533,15 @@
       "category_item": "{{category}}",
       "category_item_count": "{{category}} ({{count}})",
       "no_categories_found": "未找到分类",
-      "create_new": "创建新分类..."
+      "create_new": "创建新分类...",
+      "item_count": "({{count}})"
     },
     "toasts": {
       "copied_success": "种子 {{type}} 已复制到剪贴板",
       "copy_failed": "复制到剪贴板失败",
-      "hash_not_available": "哈希不可用"
+      "hash_not_available": "哈希不可用",
+      "name_not_available": "名称不可用",
+      "full_path_not_available": "完整路径不可用"
     },
     "copy_options": {
       "title": "复制...",
@@ -569,7 +587,8 @@
       "title": "选择快捷键",
       "range": "Shift+单击选择范围",
       "multiple": "{{key}}+单击进行多选"
-    }
+    },
+    "clear_column_filters": "清除所有列过滤器 ({{count}})"
   },
   "instances": {
     "add": "添加实例",
@@ -746,7 +765,14 @@
       "ratio": "分享率:",
       "peers": "Peers:",
       "externalIPv4": "外部 IPv4",
-      "externalIPv6": "外部 IPv6"
+      "externalIPv6": "外部 IPv6",
+      "totalSizeTooltip": "所有种子的总大小，包括辅种",
+      "totalDownload": {
+        "description": "{{count}} 个活动 - 剩余 {{size}}"
+      },
+      "totalUpload": {
+        "description": "{{count}} 个活动 - 做种 {{size}}"
+      }
     },
     "globalStats": {
       "instances": {
@@ -1243,7 +1269,8 @@
       "no_available": "无可用分类",
       "edit": "编辑分类",
       "delete": "删除分类",
-      "remove_empty": "移除空分类"
+      "remove_empty": "移除空分类",
+      "create_subcategory": "创建子分类"
     },
     "tags": {
       "title": "标签",
@@ -1297,7 +1324,10 @@
       "path_label": "保存路径 (可选)",
       "path_placeholder": "例如 /downloads/movies",
       "success": "分类创建成功",
-      "error": "创建分类失败"
+      "error": "创建分类失败",
+      "title_subcategory": "创建子分类",
+      "description_subcategory": "在 {{parent}} 下创建子分类",
+      "name_label_subcategory": "子分类名称"
     },
     "edit_category": {
       "title": "编辑分类: {{name}}",
@@ -1430,7 +1460,10 @@
       "no_category": "(无分类)",
       "create_new_label": "或创建新分类",
       "new_category_placeholder": "输入新分类名称",
-      "set_category_button": "设置分类"
+      "set_category_button": "设置分类",
+      "select_category_label": "选择分类",
+      "loading_categories": "正在加载分类...",
+      "no_categories_found": "未找到与 {searchQuery} 匹配的分类"
     },
     "create_category": {
       "title": "创建并分配新分类",
@@ -1476,6 +1509,38 @@
       "set_upload_limit_label": "设置上传限制 (KB/s)",
       "set_download_limit_label": "设置下载限制 (KB/s)",
       "saving_button": "正在保存..."
+    },
+    "rename_torrent": {
+      "title": "重命名种子",
+      "description": "更新此种子的显示名称。这将改变它在 qBittorrent 和 qui 中的显示方式。",
+      "label": "种子名称",
+      "placeholder": "输入新的种子名称",
+      "cancel_button": "取消",
+      "rename_button": "重命名"
+    },
+    "rename_file": {
+      "title": "重命名文件",
+      "description": "从种子中选择一个文件并提供其新名称。文件夹结构将保留。",
+      "loading": "正在获取文件列表...",
+      "no_files": "此种子尚无可用文件。",
+      "select_file_label": "选择文件",
+      "new_name_label": "新文件名称",
+      "new_name_placeholder": "输入新文件名称",
+      "new_name_description": "仅更改文件名。文件夹路径保持不变。",
+      "cancel_button": "取消",
+      "rename_button": "重命名文件"
+    },
+    "rename_folder": {
+      "title": "重命名文件夹",
+      "description": "在种子中选择一个文件夹并提供其新名称。任何嵌套结构都将保持不变。",
+      "loading": "正在获取文件夹列表...",
+      "no_folders": "没有可重命名的文件夹。",
+      "select_folder_label": "选择文件夹",
+      "new_name_label": "新文件夹名称",
+      "new_name_placeholder": "输入新文件夹名称",
+      "new_name_description": "仅更改所选文件夹的名称。父目录保持不变。",
+      "cancel_button": "取消",
+      "rename_button": "重命名文件夹"
     }
   },
   "settings": {
@@ -1485,7 +1550,7 @@
       "datetime": "日期与时间",
       "themes": "主题",
       "api": "API 密钥",
-      "clientApi": "客户端代理"
+      "clientApi": "客户端 API 密钥"
     },
     "security": {
       "title": "修改密码",
@@ -1690,6 +1755,10 @@
       "id": "ID: {{id}}",
       "deleteAriaLabel": "删除 API 密钥 {{clientName}}",
       "lastUsedLabel": "上次使用：",
+      "showHost": "显示主机",
+      "hideHost": "隐藏主机",
+      "showProxyUrl": "显示代理URL",
+      "hideProxyUrl": "隐藏代理URL",
       "error": {
         "load": "无法加载客户端 API 密钥",
         "unavailable": "此版本中该功能可能不可用",
@@ -1873,7 +1942,10 @@
         "v1": "v1 (兼容)",
         "v2": "v2 (现代)",
         "hybrid": "混合 (v1 + v2)",
-        "description": "v1 提供最大兼容性，v2 适用于现代客户端，混合两者皆可"
+        "description": "v1 提供最大兼容性，v2 适用于现代客户端，混合两者皆可",
+        "unavailable_title": "Hybrid 和 v2 种子不可用",
+        "unavailable_description_1": "此 qBittorrent 版本使用 {libtorrentVersionLabel}，仅支持创建 v1 种子。",
+        "unavailable_description_2": "升级到使用 libtorrent v2 构建的 qBittorrent 版本以启用 hybrid 或 v2 种子创建。"
       },
       "piece_size": {
         "label": "区块大小",

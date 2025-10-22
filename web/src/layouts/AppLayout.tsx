@@ -4,9 +4,10 @@
  */
 
 import { Outlet } from "@tanstack/react-router"
-import { Sidebar } from "@/components/layout/Sidebar"
 import { MobileFooterNav } from "@/components/layout/MobileFooterNav"
 import { Header } from "@/components/layout/Header"
+import { Sidebar } from "@/components/layout/Sidebar"
+import { LayoutRouteProvider } from "@/contexts/LayoutRouteContext"
 import { usePersistedSidebarState } from "@/hooks/usePersistedSidebarState"
 import { Menu } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -72,10 +73,12 @@ function AppLayoutContent() {
 
 export function AppLayout() {
   return (
-    <TorrentSelectionProvider>
-      <MobileScrollProvider>
-        <AppLayoutContent />
-      </MobileScrollProvider>
-    </TorrentSelectionProvider>
+    <LayoutRouteProvider>
+      <TorrentSelectionProvider>
+        <MobileScrollProvider>
+          <AppLayoutContent />
+        </MobileScrollProvider>
+      </TorrentSelectionProvider>
+    </LayoutRouteProvider>
   )
 }

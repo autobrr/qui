@@ -23,6 +23,7 @@ import {
   TooltipContent,
   TooltipTrigger
 } from "@/components/ui/tooltip"
+import { useLayoutRoute } from "@/contexts/LayoutRouteContext"
 import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
 import { useAuth } from "@/hooks/useAuth"
 import { useDebounce } from "@/hooks/useDebounce"
@@ -33,7 +34,7 @@ import { api } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import type { InstanceCapabilities } from "@/types"
 import { useQuery } from "@tanstack/react-query"
-import { Link, useNavigate, useRouterState, useSearch } from "@tanstack/react-router"
+import { Link, useNavigate, useSearch } from "@tanstack/react-router"
 import { ChevronsUpDown, FileEdit, FunnelPlus, FunnelX, HardDrive, Home, Info, ListTodo, LogOut, Menu, Plus, Search, Server, Settings, X } from "lucide-react"
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useHotkeys } from "react-hotkeys-hook"
@@ -52,6 +53,7 @@ export function Header({
   const { logout } = useAuth()
   const navigate = useNavigate()
   const routeSearch = useSearch({ strict: false }) as { q?: string; modal?: string; [key: string]: unknown }
+  const { state: layoutRouteState } = useLayoutRoute()
 
   // Get selection state from context
   const {
@@ -65,14 +67,9 @@ export function Header({
     clearSelection,
   } = useTorrentSelection()
 
-  const instanceId = useRouterState({
-    select: (s) => s.matches.find((m) => m.routeId === "/_authenticated/instances/$instanceId")?.params?.instanceId as string | undefined,
-  })
-  const selectedInstanceId = useMemo(() => {
-    const parsed = instanceId ? parseInt(instanceId, 10) : NaN
-    return Number.isFinite(parsed) ? parsed : null
-  }, [instanceId])
+  const selectedInstanceId = layoutRouteState.instanceId
   const isInstanceRoute = selectedInstanceId !== null
+  const shouldShowInstanceControls = layoutRouteState.showInstanceControls && isInstanceRoute
 
   const shouldShowQuiOnMobile = !isInstanceRoute
   const [searchValue, setSearchValue] = useState<string>(routeSearch?.q || "")
@@ -93,13 +90,14 @@ export function Header({
 
   // Update URL search param after debounce
   useEffect(() => {
-    if (!isInstanceRoute) return
+    if (!shouldShowInstanceControls) return
+    const trimmedSearch = debouncedSearch.trim()
     const next = { ...(routeSearch || {}) }
-    if (debouncedSearch) next.q = debouncedSearch
+    if (trimmedSearch) next.q = trimmedSearch
     else delete next.q
     navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedSearch, isInstanceRoute])
+  }, [debouncedSearch, shouldShowInstanceControls])
 
   const isGlobSearch = !!searchValue && /[*?[\]]/.test(searchValue)
   const [filterSidebarCollapsed, setFilterSidebarCollapsed] = usePersistedFilterSidebarState(false)
@@ -130,8 +128,9 @@ export function Header({
     {
       preventDefault: true,
       enableOnFormTags: ["input", "textarea", "select"],
+      enabled: shouldShowInstanceControls,
     },
-    [isInstanceRoute]
+    [shouldShowInstanceControls]
   )
   const { theme } = useTheme()
 
@@ -139,7 +138,7 @@ export function Header({
   const { data: activeTaskCount = 0 } = useQuery({
     queryKey: ["active-task-count", selectedInstanceId],
     queryFn: () => selectedInstanceId !== null ? api.getActiveTaskCount(selectedInstanceId) : Promise.resolve(0),
-    enabled: selectedInstanceId !== null,
+    enabled: shouldShowInstanceControls && selectedInstanceId !== null,
     refetchInterval: 30000, // Poll every 30 seconds (lightweight check)
     refetchIntervalInBackground: true,
   })
@@ -148,7 +147,7 @@ export function Header({
   const { data: instanceCapabilities } = useQuery<InstanceCapabilities>({
     queryKey: ["instance-capabilities", selectedInstanceId],
     queryFn: () => api.getInstanceCapabilities(selectedInstanceId!),
-    enabled: selectedInstanceId !== null,
+    enabled: shouldShowInstanceControls && selectedInstanceId !== null,
     staleTime: 300000, // Cache for 5 minutes (capabilities don't change often)
   })
 
@@ -233,7 +232,7 @@ export function Header({
       </div>
 
       {/* Filter button and action buttons - always on first row */}
-      {isInstanceRoute && (
+      {shouldShowInstanceControls && (
         <>
           <div className={cn(
             "hidden md:flex items-center gap-2 h-12 lg:h-auto order-2 lg:order-none",
@@ -338,7 +337,7 @@ export function Header({
         </>
       )}
       {/* Instance route - search on right */}
-      {isInstanceRoute && (
+      {shouldShowInstanceControls && (
         <div className="flex items-center flex-1 gap-2 sm:order-3 lg:order-none sm:h-12 lg:h-auto">
 
           {/* Right side: Filter button and Search bar */}
@@ -354,7 +353,8 @@ export function Header({
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     const next = { ...(routeSearch || {}) }
-                    if (searchValue) next.q = searchValue
+                    const trimmedValue = searchValue.trim()
+                    if (trimmedValue) next.q = trimmedValue
                     else delete next.q
                     navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
                   } else if (e.key === "Escape") {
@@ -452,7 +452,8 @@ export function Header({
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
                 <Link
-                  to="/instances"
+                  to="/settings"
+                  search={{ tab: "instances" }}
                   className="flex cursor-pointer"
                 >
                   <Server className="mr-2 h-4 w-4"/>

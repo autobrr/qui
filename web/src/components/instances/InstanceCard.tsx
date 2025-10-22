@@ -4,16 +4,6 @@
  */
 
 import { InstanceErrorDisplay } from "@/components/instances/InstanceErrorDisplay"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger
-} from "@/components/ui/dropdown-menu"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,6 +14,16 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from "@/components/ui/alert-dialog"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu"
 import { useInstances } from "@/hooks/useInstances"
 import { useIncognitoMode } from "@/lib/incognito"
 import { cn, formatErrorMessage } from "@/lib/utils"
@@ -103,12 +103,12 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
     <Card>
       <div>
         <CardHeader className="flex flex-row items-center justify-between pr-2 space-y-0">
-          <div className="flex-1 max-w-45">
+          <div className="flex-1 min-w-0 overflow-hidden">
             <CardTitle className="text-base font-medium truncate" title={instance.name}>
               {instance.name}
             </CardTitle>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 shrink-0">
             <Badge
               variant={instance.connected ? "default" : "destructive"}
             >
@@ -145,7 +145,7 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
         <CardDescription className="flex items-center gap-1 text-sm pl-6 pr-8">
           <span
             className={incognitoMode ? "blur-sm select-none truncate" : "truncate"}
-            title={displayUrl}
+            {...(!incognitoMode && { title: displayUrl })}
           >
             {displayUrl}
           </span>
@@ -168,12 +168,16 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
           <div className="flex justify-between">
             <span className="text-muted-foreground">{t("instances.card.username")}</span>
             {/* qBittorrent's default username is 'admin' */}
-            <span>{instance.username || "admin"}</span>
+            <span className={incognitoMode ? "blur-sm select-none" : ""}>
+              {instance.username || "admin"}
+            </span>
           </div>
           {instance.basicUsername && (
             <div className="flex justify-between">
               <span className="text-muted-foreground">{t("instances.card.basicAuth")}</span>
-              <span>{instance.basicUsername}</span>
+              <span className={incognitoMode ? "blur-sm select-none" : ""}>
+                {instance.basicUsername}
+              </span>
             </div>
           )}
           <div className="flex justify-between">

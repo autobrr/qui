@@ -27,20 +27,13 @@ import { Tree } from "@/components/ui/file-tree"
 import { pathsToTreeView } from "@/components/ui/file-tree-utils"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import type { Torrent } from "@/types"
 import { Loader2, Plus, X } from "lucide-react"
 import type { ChangeEvent, KeyboardEvent } from "react"
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
+import { useVirtualizer } from "@tanstack/react-virtual"
 
 interface SetTagsDialogProps {
   open: boolean
@@ -50,6 +43,7 @@ interface SetTagsDialogProps {
   onConfirm: (tags: string[]) => void
   isPending?: boolean
   initialTags?: string[]
+  isLoadingTags?: boolean
 }
 
 interface AddTagsDialogProps {
@@ -60,6 +54,7 @@ interface AddTagsDialogProps {
   onConfirm: (tags: string[]) => void
   isPending?: boolean
   initialTags?: string[]
+  isLoadingTags?: boolean
 }
 
 export const AddTagsDialog = memo(function AddTagsDialog({
@@ -70,12 +65,14 @@ export const AddTagsDialog = memo(function AddTagsDialog({
   onConfirm,
   isPending = false,
   initialTags = [],
+  isLoadingTags = false,
 }: AddTagsDialogProps) {
   const { t } = useTranslation()
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [newTag, setNewTag] = useState("")
   const [temporaryTags, setTemporaryTags] = useState<string[]>([])
   const wasOpen = useRef(false)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
 
   // Initialize selected tags only when dialog transitions from closed to open
   useEffect(() => {
@@ -88,6 +85,17 @@ export const AddTagsDialog = memo(function AddTagsDialog({
 
   // Combine server tags with temporary tags for display
   const displayTags = [...(availableTags || []), ...temporaryTags].sort()
+
+  // Only use virtualization for large tag lists (>50 tags)
+  const shouldUseVirtualization = displayTags.length > 50
+
+  // Virtualization for large tag lists
+  const virtualizer = useVirtualizer({
+    count: shouldUseVirtualization ? displayTags.length : 0,
+    getScrollElement: () => scrollContainerRef.current,
+    estimateSize: () => 32, // Approximate height of each tag item
+    overscan: 5,
+  })
 
   const handleConfirm = useCallback((): void => {
     const allTags = [...selectedTags]
@@ -131,7 +139,17 @@ export const AddTagsDialog = memo(function AddTagsDialog({
         </DialogHeader>
         <div className="py-4 space-y-4">
           {/* Existing tags */}
-          {displayTags && displayTags.length > 0 && (
+          {isLoadingTags ? (
+            <div className="space-y-2">
+              <Label>Available Tags</Label>
+              <div className="h-48 border rounded-md p-3 flex items-center justify-center">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span className="text-sm">Loading tags...</span>
+                </div>
+              </div>
+            </div>
+          ) : displayTags && displayTags.length > 0 ? (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label>{t("torrent_dialogs.add_tags.available_tags_label")}</Label>
@@ -145,39 +163,96 @@ export const AddTagsDialog = memo(function AddTagsDialog({
                   {t("torrent_dialogs.add_tags.deselect_all_button")}
                 </Button>
               </div>
-              <ScrollArea className="h-48 border rounded-md p-3">
-                <div className="space-y-2">
-                  {displayTags.map((tag) => {
-                    const isTemporary = temporaryTags.includes(tag)
-                    return (
-                      <div key={tag} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`add-tag-${tag}`}
-                          checked={selectedTags.includes(tag)}
-                          onCheckedChange={(checked: boolean | string) => {
-                            if (checked) {
-                              setSelectedTags([...selectedTags, tag])
-                            } else {
-                              setSelectedTags(selectedTags.filter((t: string) => t !== tag))
-                            }
+              <div
+                ref={scrollContainerRef}
+                className="h-48 border rounded-md p-3 overflow-y-auto"
+              >
+                {shouldUseVirtualization ? (
+                  // Virtualized rendering for large tag lists
+                  <div
+                    style={{
+                      height: `${virtualizer.getTotalSize()}px`,
+                      width: "100%",
+                      position: "relative",
+                    }}
+                  >
+                    {virtualizer.getVirtualItems().map((virtualRow) => {
+                      const tag = displayTags[virtualRow.index]
+                      const isTemporary = temporaryTags.includes(tag)
+                      return (
+                        <div
+                          key={virtualRow.key}
+                          data-index={virtualRow.index}
+                          ref={virtualizer.measureElement}
+                          style={{
+                            position: "absolute",
+                            top: 0,
+                            left: 0,
+                            width: "100%",
+                            transform: `translateY(${virtualRow.start}px)`,
                           }}
-                        />
-                        <label
-                          htmlFor={`add-tag-${tag}`}
-                          className={`text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer ${
-                            isTemporary ? "text-primary italic" : ""
-                          }`}
                         >
-                          {tag}
-                          {isTemporary && <span className="ml-1 text-xs text-muted-foreground">{t("torrent_dialogs.add_tags.new_tag_indicator")}</span>}
-                        </label>
-                      </div>
-                    )
-                  })}
-                </div>
-              </ScrollArea>
+                          <div className="flex items-center space-x-2 py-1">
+                            <Checkbox
+                              id={`add-tag-${tag}`}
+                              checked={selectedTags.includes(tag)}
+                              onCheckedChange={(checked: boolean | string) => {
+                                if (checked) {
+                                  setSelectedTags([...selectedTags, tag])
+                                } else {
+                                  setSelectedTags(selectedTags.filter((t: string) => t !== tag))
+                                }
+                              }}
+                            />
+                            <label
+                              htmlFor={`add-tag-${tag}`}
+                              className={`text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer ${
+                                isTemporary ? "text-primary italic" : ""
+                              }`}
+                            >
+                              {tag}
+                              {isTemporary && <span className="ml-1 text-xs text-muted-foreground">{t("torrent_dialogs.add_tags.new_tag_indicator")}</span>}
+                            </label>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  // Simple rendering for small tag lists - faster!
+                  <div className="space-y-1">
+                    {displayTags.map((tag) => {
+                      const isTemporary = temporaryTags.includes(tag)
+                      return (
+                        <div key={tag} className="flex items-center space-x-2 py-1">
+                          <Checkbox
+                            id={`add-tag-${tag}`}
+                            checked={selectedTags.includes(tag)}
+                            onCheckedChange={(checked: boolean | string) => {
+                              if (checked) {
+                                setSelectedTags([...selectedTags, tag])
+                              } else {
+                                setSelectedTags(selectedTags.filter((t: string) => t !== tag))
+                              }
+                            }}
+                          />
+                          <label
+                            htmlFor={`add-tag-${tag}`}
+                            className={`text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer ${
+                              isTemporary ? "text-primary italic" : ""
+                            }`}
+                          >
+                            {tag}
+                            {isTemporary && <span className="ml-1 text-xs text-muted-foreground">{t("torrent_dialogs.add_tags.new_tag_indicator")}</span>}
+                          </label>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
-          )}
+          ) : null}
 
           {/* Add new tag */}
           <div className="space-y-2">
@@ -236,12 +311,14 @@ export const SetTagsDialog = memo(function SetTagsDialog({
   onConfirm,
   isPending = false,
   initialTags = [],
+  isLoadingTags = false,
 }: SetTagsDialogProps) {
   const { t } = useTranslation()
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [newTag, setNewTag] = useState("")
   const [temporaryTags, setTemporaryTags] = useState<string[]>([]) // New state for temporarily created tags
   const wasOpen = useRef(false)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
 
   // Initialize selected tags only when dialog transitions from closed to open
   useEffect(() => {
@@ -254,6 +331,17 @@ export const SetTagsDialog = memo(function SetTagsDialog({
 
   // Combine server tags with temporary tags for display
   const displayTags = [...(availableTags || []), ...temporaryTags].sort()
+
+  // Only use virtualization for large tag lists (>50 tags)
+  const shouldUseVirtualization = displayTags.length > 50
+
+  // Virtualization for large tag lists
+  const virtualizer = useVirtualizer({
+    count: shouldUseVirtualization ? displayTags.length : 0,
+    getScrollElement: () => scrollContainerRef.current,
+    estimateSize: () => 32, // Approximate height of each tag item
+    overscan: 5,
+  })
 
   const handleConfirm = useCallback((): void => {
     const allTags = [...selectedTags]
@@ -297,7 +385,17 @@ export const SetTagsDialog = memo(function SetTagsDialog({
         </DialogHeader>
         <div className="py-4 space-y-4">
           {/* Existing tags */}
-          {displayTags && displayTags.length > 0 && (
+          {isLoadingTags ? (
+            <div className="space-y-2">
+              <Label>Available Tags</Label>
+              <div className="h-48 border rounded-md p-3 flex items-center justify-center">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span className="text-sm">Loading tags...</span>
+                </div>
+              </div>
+            </div>
+          ) : displayTags && displayTags.length > 0 ? (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label>{t("torrent_dialogs.set_tags.available_tags_label")}</Label>
@@ -311,39 +409,96 @@ export const SetTagsDialog = memo(function SetTagsDialog({
                   {t("torrent_dialogs.set_tags.deselect_all_button")}
                 </Button>
               </div>
-              <ScrollArea className="h-48 border rounded-md p-3">
-                <div className="space-y-2">
-                  {displayTags.map((tag) => {
-                    const isTemporary = temporaryTags.includes(tag)
-                    return (
-                      <div key={tag} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`tag-${tag}`}
-                          checked={selectedTags.includes(tag)}
-                          onCheckedChange={(checked: boolean | string) => {
-                            if (checked) {
-                              setSelectedTags([...selectedTags, tag])
-                            } else {
-                              setSelectedTags(selectedTags.filter((t: string) => t !== tag))
-                            }
+              <div
+                ref={scrollContainerRef}
+                className="h-48 border rounded-md p-3 overflow-y-auto"
+              >
+                {shouldUseVirtualization ? (
+                  // Virtualized rendering for large tag lists
+                  <div
+                    style={{
+                      height: `${virtualizer.getTotalSize()}px`,
+                      width: "100%",
+                      position: "relative",
+                    }}
+                  >
+                    {virtualizer.getVirtualItems().map((virtualRow) => {
+                      const tag = displayTags[virtualRow.index]
+                      const isTemporary = temporaryTags.includes(tag)
+                      return (
+                        <div
+                          key={virtualRow.key}
+                          data-index={virtualRow.index}
+                          ref={virtualizer.measureElement}
+                          style={{
+                            position: "absolute",
+                            top: 0,
+                            left: 0,
+                            width: "100%",
+                            transform: `translateY(${virtualRow.start}px)`,
                           }}
-                        />
-                        <label
-                          htmlFor={`tag-${tag}`}
-                          className={`text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer ${
-                            isTemporary ? "text-primary italic" : ""
-                          }`}
                         >
-                          {tag}
-                          {isTemporary && <span className="ml-1 text-xs text-muted-foreground">{t("torrent_dialogs.set_tags.new_tag_indicator")}</span>}
-                        </label>
-                      </div>
-                    )
-                  })}
-                </div>
-              </ScrollArea>
+                          <div className="flex items-center space-x-2 py-1">
+                            <Checkbox
+                              id={`tag-${tag}`}
+                              checked={selectedTags.includes(tag)}
+                              onCheckedChange={(checked: boolean | string) => {
+                                if (checked) {
+                                  setSelectedTags([...selectedTags, tag])
+                                } else {
+                                  setSelectedTags(selectedTags.filter((t: string) => t !== tag))
+                                }
+                              }}
+                            />
+                            <label
+                              htmlFor={`tag-${tag}`}
+                              className={`text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer ${
+                                isTemporary ? "text-primary italic" : ""
+                              }`}
+                            >
+                              {tag}
+                              {isTemporary && <span className="ml-1 text-xs text-muted-foreground">{t("torrent_dialogs.set_tags.new_tag_indicator")}</span>}
+                            </label>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  // Simple rendering for small tag lists - faster!
+                  <div className="space-y-1">
+                    {displayTags.map((tag) => {
+                      const isTemporary = temporaryTags.includes(tag)
+                      return (
+                        <div key={tag} className="flex items-center space-x-2 py-1">
+                          <Checkbox
+                            id={`tag-${tag}`}
+                            checked={selectedTags.includes(tag)}
+                            onCheckedChange={(checked: boolean | string) => {
+                              if (checked) {
+                                setSelectedTags([...selectedTags, tag])
+                              } else {
+                                setSelectedTags(selectedTags.filter((t: string) => t !== tag))
+                              }
+                            }}
+                          />
+                          <label
+                            htmlFor={`tag-${tag}`}
+                            className={`text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer ${
+                              isTemporary ? "text-primary italic" : ""
+                            }`}
+                          >
+                            {tag}
+                            {isTemporary && <span className="ml-1 text-xs text-muted-foreground">{t("torrent_dialogs.set_tags.new_tag_indicator")}</span>}
+                          </label>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
-          )}
+          ) : null}
 
           {/* Add new tag */}
           <div className="space-y-2">
@@ -402,6 +557,7 @@ interface SetCategoryDialogProps {
   onConfirm: (category: string) => void
   isPending?: boolean
   initialCategory?: string
+  isLoadingCategories?: boolean
 }
 
 interface SetLocationDialogProps {
@@ -510,6 +666,7 @@ export const RenameTorrentDialog = memo(function RenameTorrentDialog({
   onConfirm,
   isPending = false,
 }: RenameTorrentDialogProps) {
+  const { t } = useTranslation()
   const [name, setName] = useState("")
   const wasOpen = useRef(false)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -539,20 +696,20 @@ export const RenameTorrentDialog = memo(function RenameTorrentDialog({
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Rename Torrent</DialogTitle>
+          <DialogTitle>{t("torrent_dialogs.rename_torrent.title")}</DialogTitle>
           <DialogDescription>
-            Update the display name for this torrent. This changes how it appears in qBittorrent and qui.
+            {t("torrent_dialogs.rename_torrent.description")}
           </DialogDescription>
         </DialogHeader>
         <div className="py-4 space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="torrentName">Torrent Name</Label>
+            <Label htmlFor="torrentName">{t("torrent_dialogs.rename_torrent.label")}</Label>
             <Input
               ref={inputRef}
               id="torrentName"
               value={name}
               onChange={(e: ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
-              placeholder="Enter new torrent name"
+              placeholder={t("torrent_dialogs.rename_torrent.placeholder")}
               disabled={isPending}
               onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
                 if (e.key === "Enter" && !isPending && name.trim()) {
@@ -565,10 +722,10 @@ export const RenameTorrentDialog = memo(function RenameTorrentDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => handleClose(false)} disabled={isPending}>
-            Cancel
+            {t("torrent_dialogs.rename_torrent.cancel_button")}
           </Button>
           <Button onClick={handleConfirm} disabled={isPending || !name.trim()}>
-            Rename
+            {t("torrent_dialogs.rename_torrent.rename_button")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -593,6 +750,7 @@ export const RenameTorrentFileDialog = memo(function RenameTorrentFileDialog({
   onConfirm,
   isPending = false,
 }: RenameTorrentFileDialogProps) {
+  const { t } = useTranslation()
   const [selectedPath, setSelectedPath] = useState("")
   const [newName, setNewName] = useState("")
   const wasOpen = useRef(false)
@@ -654,25 +812,25 @@ export const RenameTorrentFileDialog = memo(function RenameTorrentFileDialog({
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="w-[calc(100vw-2.5rem)] max-w-xl sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Rename File</DialogTitle>
+          <DialogTitle>{t("torrent_dialogs.rename_file.title")}</DialogTitle>
           <DialogDescription>
-            Choose a file from the torrent and provide its new name. Folder structure is preserved.
+            {t("torrent_dialogs.rename_file.description")}
           </DialogDescription>
         </DialogHeader>
         <div className="py-4 space-y-4">
           {isLoading ? (
             <div className="flex items-center justify-center py-8 text-muted-foreground">
               <Loader2 className="h-5 w-5 animate-spin mr-2" />
-              Fetching file list...
+              {t("torrent_dialogs.rename_file.loading")}
             </div>
           ) : sortedFiles.length === 0 ? (
             <div className="rounded-md border border-dashed py-6 text-center text-sm text-muted-foreground">
-              No files available for this torrent yet.
+              {t("torrent_dialogs.rename_file.no_files")}
             </div>
           ) : (
             <>
               <div className="space-y-2">
-                <Label>Select File</Label>
+                <Label>{t("torrent_dialogs.rename_file.select_file_label")}</Label>
                 <div className="rounded-md border p-2">
                   <Tree
                     className="h-64"
@@ -684,12 +842,12 @@ export const RenameTorrentFileDialog = memo(function RenameTorrentFileDialog({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="fileName">New File Name</Label>
+                <Label htmlFor="fileName">{t("torrent_dialogs.rename_file.new_name_label")}</Label>
                 <Input
                   id="fileName"
                   value={newName}
                   onChange={(e: ChangeEvent<HTMLInputElement>) => setNewName(e.target.value)}
-                  placeholder="Enter new file name"
+                  placeholder={t("torrent_dialogs.rename_file.new_name_placeholder")}
                   disabled={isPending}
                   className="font-mono"
                   title={newName}
@@ -701,7 +859,7 @@ export const RenameTorrentFileDialog = memo(function RenameTorrentFileDialog({
                   }}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Only the file name is changed. Folder paths remain the same.
+                  {t("torrent_dialogs.rename_file.new_name_description")}
                 </p>
               </div>
             </>
@@ -709,13 +867,13 @@ export const RenameTorrentFileDialog = memo(function RenameTorrentFileDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => handleClose(false)} disabled={isPending}>
-            Cancel
+            {t("torrent_dialogs.rename_file.cancel_button")}
           </Button>
           <Button
             onClick={handleConfirm}
             disabled={isPending || !selectedPath || !newName.trim() || sortedFiles.length === 0}
           >
-            Rename File
+            {t("torrent_dialogs.rename_file.rename_button")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -740,6 +898,7 @@ export const RenameTorrentFolderDialog = memo(function RenameTorrentFolderDialog
   onConfirm,
   isPending = false,
 }: RenameTorrentFolderDialogProps) {
+  const { t } = useTranslation()
   const [selectedPath, setSelectedPath] = useState("")
   const [newName, setNewName] = useState("")
   const wasOpen = useRef(false)
@@ -802,25 +961,25 @@ export const RenameTorrentFolderDialog = memo(function RenameTorrentFolderDialog
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="w-[calc(100vw-2.5rem)] max-w-xl sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Rename Folder</DialogTitle>
+          <DialogTitle>{t("torrent_dialogs.rename_folder.title")}</DialogTitle>
           <DialogDescription>
-            Choose a folder within the torrent and provide its new name. Any nested structure will be kept intact.
+            {t("torrent_dialogs.rename_folder.description")}
           </DialogDescription>
         </DialogHeader>
         <div className="py-4 space-y-4">
           {isLoading ? (
             <div className="flex items-center justify-center py-8 text-muted-foreground">
               <Loader2 className="h-5 w-5 animate-spin mr-2" />
-              Fetching folder list...
+              {t("torrent_dialogs.rename_folder.loading")}
             </div>
           ) : sortedFolders.length === 0 ? (
             <div className="rounded-md border border-dashed py-6 text-center text-sm text-muted-foreground">
-              No folders available to rename.
+              {t("torrent_dialogs.rename_folder.no_folders")}
             </div>
           ) : (
             <>
               <div className="space-y-2">
-                <Label>Select Folder</Label>
+                <Label>{t("torrent_dialogs.rename_folder.select_folder_label")}</Label>
                 <div className="rounded-md border p-2">
                   <Tree
                     className="h-64"
@@ -832,12 +991,12 @@ export const RenameTorrentFolderDialog = memo(function RenameTorrentFolderDialog
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="folderName">New Folder Name</Label>
+                <Label htmlFor="folderName">{t("torrent_dialogs.rename_folder.new_name_label")}</Label>
                 <Input
                   id="folderName"
                   value={newName}
                   onChange={(e: ChangeEvent<HTMLInputElement>) => setNewName(e.target.value)}
-                  placeholder="Enter new folder name"
+                  placeholder={t("torrent_dialogs.rename_folder.new_name_placeholder")}
                   disabled={isPending}
                   className="font-mono"
                   title={newName}
@@ -849,7 +1008,7 @@ export const RenameTorrentFolderDialog = memo(function RenameTorrentFolderDialog
                   }}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Only the selected folder name is changed. Parent directories remain the same.
+                  {t("torrent_dialogs.rename_folder.new_name_description")}
                 </p>
               </div>
             </>
@@ -857,13 +1016,13 @@ export const RenameTorrentFolderDialog = memo(function RenameTorrentFolderDialog
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => handleClose(false)} disabled={isPending}>
-            Cancel
+            {t("torrent_dialogs.rename_folder.cancel_button")}
           </Button>
           <Button
             onClick={handleConfirm}
             disabled={isPending || !selectedPath || !newName.trim() || sortedFolders.length === 0}
           >
-            Rename Folder
+            {t("torrent_dialogs.rename_folder.rename_button")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -879,15 +1038,19 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
   onConfirm,
   isPending = false,
   initialCategory = "",
+  isLoadingCategories = false,
 }: SetCategoryDialogProps) {
   const { t } = useTranslation()
   const [categoryInput, setCategoryInput] = useState("")
+  const [searchQuery, setSearchQuery] = useState("")
   const wasOpen = useRef(false)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
 
   // Initialize category only when dialog transitions from closed to open
   useEffect(() => {
     if (open && !wasOpen.current) {
       setCategoryInput(initialCategory)
+      setSearchQuery("")
     }
     wasOpen.current = open
   }, [open, initialCategory])
@@ -895,16 +1058,33 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
   const handleConfirm = useCallback(() => {
     onConfirm(categoryInput)
     setCategoryInput("")
+    setSearchQuery("")
   }, [categoryInput, onConfirm])
 
   const handleCancel = useCallback(() => {
     setCategoryInput("")
+    setSearchQuery("")
     onOpenChange(false)
   }, [onOpenChange])
 
+  // Filter categories based on search
+  const categoryList = Object.keys(availableCategories || {}).sort()
+  const filteredCategories = searchQuery.trim()
+    ? categoryList.filter(cat => cat.toLowerCase().includes(searchQuery.toLowerCase()))
+    : categoryList
+
+  const shouldUseVirtualization = filteredCategories.length > 50
+
+  const virtualizer = useVirtualizer({
+    count: shouldUseVirtualization ? filteredCategories.length : 0,
+    getScrollElement: () => scrollContainerRef.current,
+    estimateSize: () => 36,
+    overscan: 5,
+  })
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>{t("torrent_dialogs.set_category.title", { count: hashCount })}</DialogTitle>
           <DialogDescription>
@@ -912,22 +1092,107 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="py-4 space-y-4">
+          {/* Search bar for categories */}
+          {!isLoadingCategories && categoryList.length > 10 && (
+            <div className="space-y-2">
+              <Label htmlFor="categorySearch">Search Categories</Label>
+              <Input
+                id="categorySearch"
+                placeholder="Type to search..."
+                value={searchQuery}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
+              />
+            </div>
+          )}
+
+          {/* Category list with optional virtualization */}
           <div className="space-y-2">
-                          <Label>{t("common.category")}</Label>            <Select value={categoryInput || "__none__"} onValueChange={(value: string) => setCategoryInput(value === "__none__" ? "" : value)}>
-              <SelectTrigger>
-                <SelectValue placeholder={t("torrent_dialogs.set_category.select_placeholder")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none__">
-                  <span className="text-muted-foreground">{t("torrent_dialogs.set_category.no_category")}</span>
-                </SelectItem>
-                {availableCategories && Object.keys(availableCategories).map((category) => (
-                  <SelectItem key={category} value={category}>
-                    {category}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label>{t("torrent_dialogs.set_category.select_category_label")}</Label>
+            {isLoadingCategories ? (
+              <div className="max-h-64 border rounded-md p-3 flex items-center justify-center">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span className="text-sm">{t("torrent_dialogs.set_category.loading_categories")}</span>
+                </div>
+              </div>
+            ) : (
+              <div
+                ref={scrollContainerRef}
+                className="max-h-64 border rounded-md overflow-y-auto"
+              >
+              {/* No category option */}
+              <button
+                type="button"
+                onClick={() => setCategoryInput("")}
+                className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors ${
+                  categoryInput === "" ? "bg-accent" : ""
+                }`}
+              >
+                <span className="text-sm text-muted-foreground italic">{t("torrent_dialogs.set_category.no_category")}</span>
+              </button>
+
+              {shouldUseVirtualization ? (
+                // Virtualized rendering for large lists
+                <div
+                  style={{
+                    height: `${virtualizer.getTotalSize()}px`,
+                    width: "100%",
+                    position: "relative",
+                  }}
+                >
+                  {virtualizer.getVirtualItems().map((virtualRow) => {
+                    const category = filteredCategories[virtualRow.index]
+                    return (
+                      <div
+                        key={virtualRow.key}
+                        data-index={virtualRow.index}
+                        ref={virtualizer.measureElement}
+                        style={{
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          width: "100%",
+                          transform: `translateY(${virtualRow.start}px)`,
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setCategoryInput(category)}
+                          className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors ${
+                            categoryInput === category ? "bg-accent" : ""
+                          }`}
+                        >
+                          <span className="text-sm">{category}</span>
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                // Simple rendering for small lists - much faster!
+                <div>
+                  {filteredCategories.map((category) => (
+                    <button
+                      key={category}
+                      type="button"
+                      onClick={() => setCategoryInput(category)}
+                      className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors ${
+                        categoryInput === category ? "bg-accent" : ""
+                      }`}
+                    >
+                      <span className="text-sm">{category}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {filteredCategories.length === 0 && searchQuery && (
+                <div className="px-3 py-6 text-center text-sm text-muted-foreground">
+                  {t("torrent_dialogs.set_category.no_categories_found", { searchQuery })}
+                </div>
+              )}
+              </div>
+            )}
           </div>
 
           {/* Option to enter new category */}
@@ -936,7 +1201,7 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
             <Input
               id="newCategory"
               placeholder={t("torrent_dialogs.set_category.new_category_placeholder")}
-              value={categoryInput && categoryInput !== "__none__" && (!availableCategories || !Object.keys(availableCategories).includes(categoryInput)) ? categoryInput : ""}
+              value={categoryInput && !categoryList.includes(categoryInput) ? categoryInput : ""}
               onChange={(e: ChangeEvent<HTMLInputElement>) => setCategoryInput(e.target.value)}
               onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
                 if (e.key === "Enter") {
@@ -1059,6 +1324,7 @@ export const RemoveTagsDialog = memo(function RemoveTagsDialog({
   const { t } = useTranslation()
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const wasOpen = useRef(false)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
 
   // Initialize with current tags when dialog opens
   useEffect(() => {
@@ -1084,6 +1350,17 @@ export const RemoveTagsDialog = memo(function RemoveTagsDialog({
   // Filter available tags to only show those that are on the selected torrents
   const relevantTags = (availableTags || []).filter(tag => currentTags.includes(tag))
 
+  // Only use virtualization for large tag lists (>50 tags)
+  const shouldUseVirtualization = relevantTags.length > 50
+
+  // Virtualization for large tag lists
+  const virtualizer = useVirtualizer({
+    count: shouldUseVirtualization ? relevantTags.length : 0,
+    getScrollElement: () => scrollContainerRef.current,
+    estimateSize: () => 32, // Approximate height of each tag item
+    overscan: 5,
+  })
+
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent className="max-w-md">
@@ -1096,32 +1373,84 @@ export const RemoveTagsDialog = memo(function RemoveTagsDialog({
         <div className="py-4 space-y-4">
           {relevantTags.length > 0 ? (
             <div className="space-y-2">
-              <Label>{t("torrent_dialogs.remove_tags.tags_to_remove_label")}</Label>
-              <ScrollArea className="h-48 border rounded-md p-3">
-                <div className="space-y-2">
-                  {relevantTags.map((tag) => (
-                    <div key={tag} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`remove-tag-${tag}`}
-                        checked={selectedTags.includes(tag)}
-                        onCheckedChange={(checked) => {
-                          if (checked) {
-                            setSelectedTags([...selectedTags, tag])
-                          } else {
-                            setSelectedTags(selectedTags.filter(t => t !== tag))
-                          }
-                        }}
-                      />
-                      <label
-                        htmlFor={`remove-tag-${tag}`}
-                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                      >
-                        {tag}
-                      </label>
-                    </div>
-                  ))}
-                </div>
-              </ScrollArea>
+              <div
+                ref={scrollContainerRef}
+                className="h-48 border rounded-md p-3 overflow-y-auto"
+              >
+                {shouldUseVirtualization ? (
+                  // Virtualized rendering for large tag lists (>50 tags)
+                  <div
+                    style={{
+                      height: `${virtualizer.getTotalSize()}px`,
+                      width: "100%",
+                      position: "relative",
+                    }}
+                  >
+                    {virtualizer.getVirtualItems().map((virtualRow) => {
+                      const tag = relevantTags[virtualRow.index]
+                      return (
+                        <div
+                          key={virtualRow.key}
+                          data-index={virtualRow.index}
+                          ref={virtualizer.measureElement}
+                          style={{
+                            position: "absolute",
+                            top: 0,
+                            left: 0,
+                            width: "100%",
+                            transform: `translateY(${virtualRow.start}px)`,
+                          }}
+                        >
+                          <div className="flex items-center space-x-2 py-1">
+                            <Checkbox
+                              id={`remove-tag-${tag}`}
+                              checked={selectedTags.includes(tag)}
+                              onCheckedChange={(checked) => {
+                                if (checked) {
+                                  setSelectedTags([...selectedTags, tag])
+                                } else {
+                                  setSelectedTags(selectedTags.filter(t => t !== tag))
+                                }
+                              }}
+                            />
+                            <label
+                              htmlFor={`remove-tag-${tag}`}
+                              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                            >
+                              {tag}
+                            </label>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  // Simple rendering for small tag lists (≤50 tags)
+                  <div className="space-y-1">
+                    {relevantTags.map((tag) => (
+                      <div key={tag} className="flex items-center space-x-2 py-1">
+                        <Checkbox
+                          id={`remove-tag-${tag}`}
+                          checked={selectedTags.includes(tag)}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              setSelectedTags([...selectedTags, tag])
+                            } else {
+                              setSelectedTags(selectedTags.filter(t => t !== tag))
+                            }
+                          }}
+                        />
+                        <label
+                          htmlFor={`remove-tag-${tag}`}
+                          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                        >
+                          {tag}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           ) : (
             <div className="text-center py-8 text-muted-foreground">

@@ -228,7 +228,8 @@ export function Login() {
                     {typeof loginError === "string"
                       ? loginError
                       : loginError.message?.includes("Invalid credentials") ||
-                        loginError.message?.includes("401")
+                        loginError.message?.includes("401") ||
+                        loginError.message?.includes("403")
                       ? t("login.error.invalidCredentials")
                       : loginError.message || t("login.error.generic")}
                   </div>

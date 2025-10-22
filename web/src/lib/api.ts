@@ -6,11 +6,18 @@
 import type {
   AppPreferences,
   AuthResponse,
+  BackupManifest,
+  BackupRun,
+  BackupSettings,
   Category,
-  InstanceFormData,
+  DuplicateTorrentMatch,
   InstanceCapabilities,
+  InstanceFormData,
   InstanceResponse,
   QBittorrentAppInfo,
+  RestoreMode,
+  RestorePlan,
+  RestoreResult,
   SortedPeersResponse,
   TorrentCreationParams,
   TorrentCreationTask,
@@ -45,7 +52,7 @@ class ApiClient {
       // Don't auto-redirect for auth check endpoints - let React Router handle navigation
       const isAuthCheckEndpoint = endpoint === "/auth/me" || endpoint === "/auth/validate"
 
-      if (response.status === 401 && !isAuthCheckEndpoint && !window.location.pathname.startsWith(withBasePath("/login")) && !window.location.pathname.startsWith(withBasePath("/setup"))) {
+      if ((response.status === 401 || response.status === 403) && !isAuthCheckEndpoint && !window.location.pathname.startsWith(withBasePath("/login")) && !window.location.pathname.startsWith(withBasePath("/setup"))) {
         window.location.href = withBasePath("/login")
         throw new Error(i18n.t("lib.api.sessionExpired"))
       }
@@ -172,6 +179,100 @@ class ApiClient {
     return this.request<InstanceCapabilities>(`/instances/${id}/capabilities`)
   }
 
+  async getBackupSettings(instanceId: number): Promise<BackupSettings> {
+    return this.request<BackupSettings>(`/instances/${instanceId}/backups/settings`)
+  }
+
+  async updateBackupSettings(instanceId: number, payload: {
+    enabled: boolean
+    hourlyEnabled: boolean
+    dailyEnabled: boolean
+    weeklyEnabled: boolean
+    monthlyEnabled: boolean
+    keepHourly: number
+    keepDaily: number
+    keepWeekly: number
+    keepMonthly: number
+    includeCategories: boolean
+    includeTags: boolean
+  }): Promise<BackupSettings> {
+    return this.request<BackupSettings>(`/instances/${instanceId}/backups/settings`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async triggerBackup(instanceId: number, payload: { kind?: string; requestedBy?: string } = {}): Promise<BackupRun> {
+    return this.request<BackupRun>(`/instances/${instanceId}/backups/run`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async listBackupRuns(instanceId: number, params?: { limit?: number; offset?: number }): Promise<BackupRun[]> {
+    const search = new URLSearchParams()
+    if (params?.limit !== undefined) search.set("limit", params.limit.toString())
+    if (params?.offset !== undefined) search.set("offset", params.offset.toString())
+
+    const query = search.toString()
+    const suffix = query ? `?${query}` : ""
+    return this.request<BackupRun[]>(`/instances/${instanceId}/backups/runs${suffix}`)
+  }
+
+  async getBackupManifest(instanceId: number, runId: number): Promise<BackupManifest> {
+    return this.request<BackupManifest>(`/instances/${instanceId}/backups/runs/${runId}/manifest`)
+  }
+
+  async deleteBackupRun(instanceId: number, runId: number): Promise<{ deleted: boolean }> {
+    return this.request<{ deleted: boolean }>(`/instances/${instanceId}/backups/runs/${runId}`, {
+      method: "DELETE",
+    })
+  }
+
+  async deleteAllBackups(instanceId: number): Promise<{ deleted: boolean }> {
+    return this.request<{ deleted: boolean }>(`/instances/${instanceId}/backups/runs`, {
+      method: "DELETE",
+    })
+  }
+
+  async previewRestore(
+    instanceId: number,
+    runId: number,
+    payload: { mode?: RestoreMode; excludeHashes?: string[] } = {}
+  ): Promise<RestorePlan> {
+    return this.request<RestorePlan>(`/instances/${instanceId}/backups/runs/${runId}/restore/preview`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async executeRestore(
+    instanceId: number,
+    runId: number,
+    payload: {
+      mode: RestoreMode
+      dryRun?: boolean
+      excludeHashes?: string[]
+      startPaused?: boolean
+      skipHashCheck?: boolean
+      autoResumeVerified?: boolean
+    }
+  ): Promise<RestoreResult> {
+    return this.request<RestoreResult>(`/instances/${instanceId}/backups/runs/${runId}/restore`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  getBackupDownloadUrl(instanceId: number, runId: number): string {
+    return withBasePath(`/api/instances/${instanceId}/backups/runs/${runId}/download`)
+  }
+
+  getBackupTorrentDownloadUrl(instanceId: number, runId: number, torrentHash: string): string {
+    const encodedHash = encodeURIComponent(torrentHash)
+    return withBasePath(`/api/instances/${instanceId}/backups/runs/${runId}/items/${encodedHash}/download`)
+  }
+
 
   // Torrent endpoints
   async getTorrents(
@@ -264,6 +365,13 @@ class ApiClient {
     }
 
     return response.json()
+  }
+
+  async checkTorrentDuplicates(instanceId: number, hashes: string[]): Promise<{ duplicates: DuplicateTorrentMatch[] }> {
+    return this.request<{ duplicates: DuplicateTorrentMatch[] }>(`/instances/${instanceId}/torrents/check-duplicates`, {
+      method: "POST",
+      body: JSON.stringify({ hashes }),
+    })
   }
 
 
@@ -360,7 +468,7 @@ class ApiClient {
     })
 
     if (!response.ok) {
-      if (response.status === 401 && !window.location.pathname.startsWith(withBasePath("/login")) && !window.location.pathname.startsWith(withBasePath("/setup"))) {
+      if ((response.status === 401 || response.status === 403) && !window.location.pathname.startsWith(withBasePath("/login")) && !window.location.pathname.startsWith(withBasePath("/setup"))) {
         window.location.href = withBasePath("/login")
         throw new Error(i18n.t("lib.api.sessionExpired"))
       }

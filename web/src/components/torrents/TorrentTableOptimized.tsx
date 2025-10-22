@@ -84,9 +84,24 @@ import { getCommonCategory, getCommonSavePath, getCommonTags, getTotalSize } fro
 import type { Category, ServerState, Torrent, TorrentCounts, TorrentFilters } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useSearch } from "@tanstack/react-router"
-import { ArrowUpDown, Ban, BrickWallFire, ChevronDown, ChevronUp, Columns3, Eye, EyeOff, Globe, Loader2, Rabbit, Turtle } from "lucide-react"
+import {
+  ArrowUpDown,
+  Ban,
+  BrickWallFire,
+  ChevronDown,
+  ChevronUp,
+  Columns3,
+  EthernetPort,
+  Eye,
+  EyeOff,
+  Globe,
+  Loader2,
+  Rabbit,
+  Turtle,
+  X
+} from "lucide-react"
 import { createPortal } from "react-dom"
-import { AddTorrentDialog } from "./AddTorrentDialog"
+import { AddTorrentDialog, type AddTorrentDropPayload } from "./AddTorrentDialog"
 import { DraggableTableHeader } from "./DraggableTableHeader"
 import {
   AddTagsDialog,
@@ -101,6 +116,7 @@ import {
   ShareLimitDialog,
   SpeedLimitsDialog
 } from "./TorrentDialogs"
+import { TorrentDropZone } from "./TorrentDropZone"
 import { createColumns } from "./TorrentTableColumns"
 
 // Default values for persisted state hooks (module scope for stable references)
@@ -192,6 +208,39 @@ function shallowEqualTrackerIcons(
   return true
 }
 
+interface ExternalIPAddressProps {
+  address?: string | null
+  incognitoMode: boolean
+  label: string
+}
+
+const ExternalIPAddress = memo(
+  ({ address, incognitoMode, label }: ExternalIPAddressProps) => {
+    if (!address) return null
+
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            className="flex items-center gap-1 text-xs text-muted-foreground"
+            aria-label={`External ${label}`}
+          >
+            <EthernetPort className="h-3.5 w-3.5" />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p className="font-mono text-xs">
+            <span {...(incognitoMode && { style: { filter: "blur(4px)" } })}>{address}</span>
+          </p>
+        </TooltipContent>
+      </Tooltip>
+    )
+  },
+  (prev, next) =>
+    prev.address === next.address &&
+    prev.incognitoMode === next.incognitoMode &&
+    prev.label === next.label
+)
 
 interface TorrentTableOptimizedProps {
   instanceId: number
@@ -200,7 +249,14 @@ interface TorrentTableOptimizedProps {
   onTorrentSelect?: (torrent: Torrent | null) => void
   addTorrentModalOpen?: boolean
   onAddTorrentModalChange?: (open: boolean) => void
-  onFilteredDataUpdate?: (torrents: Torrent[], total: number, counts?: TorrentCounts, categories?: Record<string, Category>, tags?: string[]) => void
+  onFilteredDataUpdate?: (
+    torrents: Torrent[],
+    total: number,
+    counts?: TorrentCounts,
+    categories?: Record<string, Category>,
+    tags?: string[],
+    useSubcategories?: boolean
+  ) => void
   onSelectionChange?: (
     selectedHashes: string[],
     selectedTorrents: Torrent[],
@@ -210,11 +266,21 @@ interface TorrentTableOptimizedProps {
     selectedTotalSize: number,
     selectionFilters?: TorrentFilters
   ) => void
+  onResetSelection?: (handler?: () => void) => void
 }
 
-export const TorrentTableOptimized = memo(function TorrentTableOptimized({ instanceId, filters, selectedTorrent, onTorrentSelect, addTorrentModalOpen, onAddTorrentModalChange, onFilteredDataUpdate, onSelectionChange }: TorrentTableOptimizedProps) {
+export const TorrentTableOptimized = memo(function TorrentTableOptimized({
+  instanceId,
+  filters,
+  selectedTorrent,
+  onTorrentSelect,
+  addTorrentModalOpen,
+  onAddTorrentModalChange,
+  onFilteredDataUpdate,
+  onSelectionChange,
+  onResetSelection,
+}: TorrentTableOptimizedProps) {
   const { t } = useTranslation()
-
   // State management
   // Move default values outside the component for stable references
   // (This should be at module scope, not inside the component)
@@ -226,6 +292,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   // Custom "select all" state for handling large datasets
   const [isAllSelected, setIsAllSelected] = useState(false)
   const [excludedFromSelectAll, setExcludedFromSelectAll] = useState<Set<string>>(new Set())
+  const [dropPayload, setDropPayload] = useState<AddTorrentDropPayload | null>(null)
 
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const { exportTorrents, isExporting: isExportingTorrent } = useTorrentExporter({ instanceId, incognitoMode })
@@ -266,6 +333,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     tags?: string[]
     totalCount?: number
     torrentsLength?: number
+    useSubcategories?: boolean
+    supportsSubcategories?: boolean
   }>({})
   const serverStateRef = useRef<{ instanceId: number, state: ServerState | null }>({
     instanceId,
@@ -275,6 +344,24 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   // State for range select capabilities for checkboxes
   const shiftPressedRef = useRef<boolean>(false)
   const lastSelectedIndexRef = useRef<number | null>(null)
+
+  const resetSelectionState = useCallback(() => {
+    setIsAllSelected(false)
+    setExcludedFromSelectAll(new Set())
+    setRowSelection({})
+    lastSelectedIndexRef.current = null
+  }, [setIsAllSelected, setExcludedFromSelectAll, setRowSelection])
+
+  useEffect(() => {
+    if (!onResetSelection) {
+      return
+    }
+
+    onResetSelection(resetSelectionState)
+    return () => {
+      onResetSelection(undefined)
+    }
+  }, [onResetSelection, resetSelectionState])
 
   // These should be defined at module scope, not inside the component, to ensure stable references
   // (If not already, move them to the top of the file)
@@ -359,16 +446,19 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     prepareReannounceAction,
   } = useTorrentActions({
     instanceId,
-    onActionComplete: () => {
-      setRowSelection({})
-      lastSelectedIndexRef.current = null // Reset anchor after actions
+    onActionComplete: (action) => {
+      if (action === TORRENT_ACTIONS.DELETE) {
+        resetSelectionState()
+      }
     },
   })
 
   // Fetch metadata using shared hook
-  const { data: metadata } = useInstanceMetadata(instanceId)
+  const { data: metadata, isLoading: isMetadataLoading } = useInstanceMetadata(instanceId)
   const availableTags = metadata?.tags || []
   const availableCategories = metadata?.categories || {}
+  const isLoadingTags = isMetadataLoading && availableTags.length === 0
+  const isLoadingCategories = isMetadataLoading && Object.keys(availableCategories).length === 0
 
   const shouldLoadRenameEntries = (showRenameFileDialog || showRenameFolderDialog) && Boolean(contextHashes[0])
 
@@ -410,10 +500,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   // Debounce search to prevent excessive filtering (200ms delay for faster response)
   const debouncedSearch = useDebounce(globalFilter, 200)
   const routeSearch = useSearch({ strict: false }) as { q?: string }
-  const searchFromRoute = routeSearch?.q || ""
+  const rawRouteSearch = typeof routeSearch?.q === "string" ? routeSearch.q : ""
+  const searchFromRoute = rawRouteSearch.trim()
 
   // Use route search if present, otherwise fall back to local immediate/debounced search
-  const effectiveSearch = searchFromRoute || immediateSearch || debouncedSearch
+  const effectiveSearch = (searchFromRoute || immediateSearch || debouncedSearch).trim()
 
   // Keep local input state in sync with route query so internal effects remain consistent
   useEffect(() => {
@@ -462,6 +553,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const activeSortField = sorting.length > 0 ? getBackendSortField(sorting[0].id) : "added_on"
   const activeSortOrder: "asc" | "desc" = sorting.length > 0 ? (sorting[0].desc ? "desc" : "asc") : "desc"
 
+  const effectiveIncludedCategories = filters?.expandedCategories ?? filters?.categories ?? []
+  const effectiveExcludedCategories = filters?.expandedExcludeCategories ?? filters?.excludeCategories ?? []
+
   // Fetch torrents data with backend sorting
   const {
     torrents,
@@ -472,6 +566,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     tags,
     serverState,
     capabilities,
+    useSubcategories: subcategoriesFromData,
     isLoading,
     isCachedData,
     isStaleData,
@@ -483,12 +578,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     filters: {
       status: filters?.status || [],
       excludeStatus: filters?.excludeStatus || [],
-      categories: filters?.categories || [],
-      excludeCategories: filters?.excludeCategories || [],
+      categories: effectiveIncludedCategories,
+      excludeCategories: effectiveExcludedCategories,
       tags: filters?.tags || [],
       excludeTags: filters?.excludeTags || [],
       trackers: filters?.trackers || [],
       excludeTrackers: filters?.excludeTrackers || [],
+      expandedCategories: filters?.expandedCategories,
+      expandedExcludeCategories: filters?.expandedExcludeCategories,
       expr: columnFiltersExpr || undefined,
     },
     sort: activeSortField,
@@ -496,6 +593,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   })
 
   const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? true
+  const supportsSubcategories = capabilities?.supportsSubcategories ?? false
+  const allowSubcategories = Boolean(
+    supportsSubcategories && (preferences?.use_subcategories ?? subcategoriesFromData ?? false)
+  )
 
   // Delayed loading state to avoid flicker on fast loads
   useEffect(() => {
@@ -527,9 +628,17 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     const nextCounts = counts ?? lastMetadataRef.current.counts
     const nextCategories = categories ?? lastMetadataRef.current.categories
     const nextTags = tags ?? lastMetadataRef.current.tags
+    const prevSupportsSubcategories = lastMetadataRef.current.supportsSubcategories ?? false
+    const previousUseSubcategories = lastMetadataRef.current.useSubcategories ?? false
+    const nextSupportsSubcategories = supportsSubcategories
+    const nextUseSubcategories = nextSupportsSubcategories? (subcategoriesFromData ?? previousUseSubcategories): false
     const nextTotalCount = totalCount
 
-    const hasAnyMetadata = nextCounts !== undefined || nextCategories !== undefined || nextTags !== undefined
+    const hasAnyMetadata =
+      nextCounts !== undefined ||
+      nextCategories !== undefined ||
+      nextTags !== undefined ||
+      nextUseSubcategories !== undefined
     const hasExistingTorrents = torrents.length > 0
 
     if (!hasAnyMetadata && !hasExistingTorrents) {
@@ -540,6 +649,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       nextCounts !== lastMetadataRef.current.counts ||
       nextCategories !== lastMetadataRef.current.categories ||
       nextTags !== lastMetadataRef.current.tags ||
+      nextSupportsSubcategories !== prevSupportsSubcategories ||
+      nextUseSubcategories !== previousUseSubcategories ||
       nextTotalCount !== lastMetadataRef.current.totalCount
 
     const torrentsLengthChanged = torrents.length !== (lastMetadataRef.current.torrentsLength ?? -1)
@@ -548,7 +659,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       return
     }
 
-    onFilteredDataUpdate(torrents, totalCount, nextCounts, nextCategories, nextTags)
+    onFilteredDataUpdate(
+      torrents,
+      totalCount,
+      nextCounts,
+      nextCategories,
+      nextTags,
+      nextUseSubcategories
+    )
 
     lastMetadataRef.current = {
       counts: nextCounts,
@@ -556,8 +674,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       tags: nextTags,
       totalCount: nextTotalCount,
       torrentsLength: torrents.length,
+      useSubcategories: nextUseSubcategories,
+      supportsSubcategories: nextSupportsSubcategories,
     }
-  }, [counts, categories, tags, totalCount, torrents, isLoading, onFilteredDataUpdate])
+  }, [counts, categories, tags, totalCount, torrents, isLoading, onFilteredDataUpdate, subcategoriesFromData, supportsSubcategories])
 
   // Use torrents directly from backend (already sorted)
   const sortedTorrents = torrents
@@ -807,7 +927,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
   const isAltSpeedKnown = altSpeedOverride !== null || hasAltSpeedStatus
   const altSpeedEnabled = altSpeedOverride ?? serverAltSpeedEnabled ?? false
   const AltSpeedIcon = altSpeedEnabled ? Turtle : Rabbit
-  const altSpeedIconClass = isAltSpeedKnown? altSpeedEnabled? "text-destructive": "text-green-500": "text-muted-foreground"
+  const altSpeedIconClass = isAltSpeedKnown ? altSpeedEnabled ? "text-destructive" : "text-green-500" : "text-muted-foreground"
 
   useEffect(() => {
     setAltSpeedOverride(null)
@@ -848,20 +968,20 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     }
   }, [altSpeedOverride, serverAltSpeedEnabled, toggleAltSpeedLimits, isTogglingAltSpeed])
 
-  const altSpeedTooltip = isAltSpeedKnown? altSpeedEnabled? "Alternative speed limits: On": "Alternative speed limits: Off": "Alternative speed limits status unknown"
-  const altSpeedAriaLabel = isAltSpeedKnown? altSpeedEnabled? "Disable alternative speed limits": "Enable alternative speed limits": "Alternative speed limits status unknown"
+  const altSpeedTooltip = isAltSpeedKnown ? altSpeedEnabled ? "Alternative speed limits: On" : "Alternative speed limits: Off" : "Alternative speed limits status unknown"
+  const altSpeedAriaLabel = isAltSpeedKnown ? altSpeedEnabled ? "Disable alternative speed limits" : "Enable alternative speed limits" : "Alternative speed limits status unknown"
 
   const rawConnectionStatus = effectiveServerState?.connection_status ?? ""
   const normalizedConnectionStatus = rawConnectionStatus ? rawConnectionStatus.trim().toLowerCase() : ""
   const formattedConnectionStatus = normalizedConnectionStatus ? normalizedConnectionStatus.replace(/_/g, " ") : ""
-  const connectionStatusDisplay = formattedConnectionStatus? formattedConnectionStatus.replace(/\b\w/g, (char: string) => char.toUpperCase()): ""
+  const connectionStatusDisplay = formattedConnectionStatus ? formattedConnectionStatus.replace(/\b\w/g, (char: string) => char.toUpperCase()) : ""
   const hasConnectionStatus = Boolean(formattedConnectionStatus)
   const isConnectable = normalizedConnectionStatus === "connected"
   const isFirewalled = normalizedConnectionStatus === "firewalled"
   const ConnectionStatusIcon = isConnectable ? Globe : isFirewalled ? BrickWallFire : hasConnectionStatus ? Ban : Globe
   const connectionStatusTooltip = hasConnectionStatus ? (isConnectable ? "Connectable" : connectionStatusDisplay) : "Connection status unknown"
-  const connectionStatusIconClass = hasConnectionStatus? isConnectable? "text-green-500": isFirewalled? "text-amber-500": "text-destructive": "text-muted-foreground"
-  const connectionStatusAriaLabel = hasConnectionStatus? `qBittorrent connection status: ${connectionStatusDisplay || formattedConnectionStatus}`: "qBittorrent connection status unknown"
+  const connectionStatusIconClass = hasConnectionStatus ? isConnectable ? "text-green-500" : isFirewalled ? "text-amber-500" : "text-destructive" : "text-muted-foreground"
+  const connectionStatusAriaLabel = hasConnectionStatus ? `qBittorrent connection status: ${connectionStatusDisplay || formattedConnectionStatus}` : "qBittorrent connection status unknown"
 
   // Size shown in destructive dialogs - prefer the aggregate when select-all is active
   const deleteDialogTotalSize = useMemo(() => {
@@ -1052,10 +1172,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       setIsLoadingMoreRows(false)
 
       // Clear selection state when data changes
-      setIsAllSelected(false)
-      setExcludedFromSelectAll(new Set())
-      setRowSelection({})
-      lastSelectedIndexRef.current = null // Reset anchor on filter/search change
+      resetSelectionState() // Reset anchor on filter/search change
 
       // User-initiated change: scroll to top
       if (parentRef.current) {
@@ -1071,15 +1188,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         virtualizer.measure()
       }, 0)
     }
-  }, [filters, effectiveSearch, instanceId, virtualizer, sortedTorrents.length, setRowSelection, lastUserAction])
+  }, [filters, effectiveSearch, instanceId, virtualizer, sortedTorrents.length, lastUserAction, resetSelectionState])
 
   // Clear selection handler for keyboard navigation
   const clearSelection = useCallback(() => {
-    setIsAllSelected(false)
-    setExcludedFromSelectAll(new Set())
-    setRowSelection({})
-    lastSelectedIndexRef.current = null // Reset anchor on clear selection
-  }, [setRowSelection])
+    resetSelectionState()
+  }, [resetSelectionState])
 
   // Set up keyboard navigation with selection clearing
   useKeyboardNavigation({
@@ -1191,16 +1305,35 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
   // Direct category handler for context menu submenu
   const handleSetCategoryDirect = useCallback((category: string, hashes: string[]) => {
+    const usingSelectAll = isAllSelected
+    const resolvedFilters = usingSelectAll ? (selectAllFilters ?? filters) : undefined
+    const resolvedSearch = usingSelectAll ? effectiveSearch : undefined
+    const resolvedExclusions = usingSelectAll ? Array.from(excludedFromSelectAll) : undefined
+    const clientHashes = hashes.length > 0 ? hashes : selectedHashes
+    const totalSelected = usingSelectAll ? effectiveSelectionCount : (clientHashes.length || 1)
+
     handleSetCategory(
       category,
-      hashes,
-      false, // Not using select all when directly setting from context menu
-      undefined,
-      undefined,
-      Array.from(excludedFromSelectAll),
-      undefined
+      usingSelectAll ? [] : hashes,
+      usingSelectAll,
+      resolvedFilters,
+      resolvedSearch,
+      resolvedExclusions,
+      {
+        clientHashes,
+        totalSelected,
+      }
     )
-  }, [handleSetCategory, excludedFromSelectAll])
+  }, [
+    handleSetCategory,
+    isAllSelected,
+    selectAllFilters,
+    filters,
+    effectiveSearch,
+    excludedFromSelectAll,
+    selectedHashes,
+    effectiveSelectionCount,
+  ])
 
   const handleSetLocationWrapper = useCallback((location: string) => {
     handleSetLocation(
@@ -1308,6 +1441,15 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
     )
   }, [handleSetSpeedLimits, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, excludedFromSelectAll, contextClientMeta])
 
+  const handleDropPayload = useCallback((payload: AddTorrentDropPayload) => {
+    setDropPayload(payload)
+    onAddTorrentModalChange?.(true)
+  }, [onAddTorrentModalChange])
+
+  const handleDropPayloadConsumed = useCallback(() => {
+    setDropPayload(null)
+  }, [])
+
 
   // Drag and drop setup
   // Sensors must be called at the top level, not inside useMemo
@@ -1334,70 +1476,98 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
           {/* Action buttons - now handled by Management Bar in Header */}
           <div className="flex gap-1 sm:gap-2 flex-shrink-0">
 
-            {/* Column visibility dropdown moved next to search via portal, with inline fallback */}
+            {/* Column controls next to search via portal, with inline fallback */}
             {(() => {
               const container = typeof document !== "undefined" ? document.getElementById("header-search-actions") : null
-              const dropdown = (
-                <DropdownMenu>
-                  <Tooltip disableHoverableContent={true}>
-                    <TooltipTrigger
-                      asChild
-                      onFocus={(e) => {
-                        // Prevent tooltip from showing on focus - only show on hover
-                        e.preventDefault()
-                      }}
-                    >
-                      <DropdownMenuTrigger asChild>
+              const actions = (
+                <>
+                  {columnFilters.length > 0 && (
+                    <Tooltip>
+                      <TooltipTrigger
+                        asChild
+                        onFocus={(e) => {
+                          // Prevent tooltip from showing on focus - only show on hover
+                          e.preventDefault()
+                        }}
+                      >
                         <Button
                           variant="outline"
                           size="icon"
-                          className="relative"
+                          className="relative mr-1"
+                          onClick={() => setColumnFilters([])}
                         >
-                          <Columns3 className="h-4 w-4" />
-                          <span className="sr-only">Toggle columns</span>
+                          <X className="h-4 w-4"/>
+                          <span className="sr-only">{t("torrent_table_optimized.clear_column_filters")}</span>
                         </Button>
-                      </DropdownMenuTrigger>
-                    </TooltipTrigger>
-                    <TooltipContent>{t("torrent_table_optimized.toggle_columns")}</TooltipContent>
-                  </Tooltip>
-                  <DropdownMenuContent align="end" className="w-48">
-                    <DropdownMenuLabel>{t("torrent_table_optimized.toggle_columns")}</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    {table
-                      .getAllColumns()
-                      .filter(
-                        (column) =>
-                          column.id !== "select" && // Never show select in visibility options
-                          column.getCanHide()
-                      )
-                      .map((column) => {
-                        return (
-                          <DropdownMenuCheckboxItem
-                            key={column.id}
-                            className="capitalize"
-                            checked={column.getIsVisible()}
-                            onCheckedChange={(value) =>
-                              column.toggleVisibility(!!value)
-                            }
-                            onSelect={(e) => e.preventDefault()}
+                      </TooltipTrigger>
+                      <TooltipContent>{t("torrent_table_optimized.clear_column_filters_tooltip", { count: columnFilters.length })}</TooltipContent>
+                    </Tooltip>
+                  )}
+
+                  <DropdownMenu>
+                    <Tooltip disableHoverableContent={true}>
+                      <TooltipTrigger
+                        asChild
+                        onFocus={(e) => {
+                          // Prevent tooltip from showing on focus - only show on hover
+                          e.preventDefault()
+                        }}
+                      >
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="icon"
                           >
-                            <span className="truncate">
-                              {(column.columnDef.meta as { headerString?: string })?.headerString ||
-                               (typeof column.columnDef.header === "string" ? column.columnDef.header : column.id)}
-                            </span>
-                          </DropdownMenuCheckboxItem>
+                            <Columns3 className="h-4 w-4"/>
+                            <span className="sr-only">{t("torrent_table_optimized.toggle_columns")}</span>
+                          </Button>
+                        </DropdownMenuTrigger>
+                      </TooltipTrigger>
+                      <TooltipContent>{t("torrent_table_optimized.toggle_columns")}</TooltipContent>
+                    </Tooltip>
+                    <DropdownMenuContent align="end" className="w-48">
+                      <DropdownMenuLabel>{t("torrent_table_optimized.toggle_columns")}</DropdownMenuLabel>
+                      <DropdownMenuSeparator/>
+                      {table
+                        .getAllColumns()
+                        .filter(
+                          (column) =>
+                            column.id !== "select" && // Never show select in visibility options
+                            column.getCanHide()
                         )
-                      })}
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                        .map((column) => {
+                          return (
+                            <DropdownMenuCheckboxItem
+                              key={column.id}
+                              className="capitalize"
+                              checked={column.getIsVisible()}
+                              onCheckedChange={(value) =>
+                                column.toggleVisibility(!!value)
+                              }
+                              onSelect={(e) => e.preventDefault()}
+                            >
+                              <span className="truncate">
+                                {(column.columnDef.meta as { headerString?: string })?.headerString ||
+                                  (typeof column.columnDef.header === "string" ? column.columnDef.header : column.id)}
+                              </span>
+                            </DropdownMenuCheckboxItem>
+                          )
+                        })}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </>
               )
-              return container ? createPortal(dropdown, container) : dropdown
+
+              return container ? createPortal(actions, container) : actions
             })()}
 
             <AddTorrentDialog
               instanceId={instanceId}
               open={addTorrentModalOpen}
               onOpenChange={onAddTorrentModalChange}
+              dropPayload={dropPayload}
+              onDropPayloadConsumed={handleDropPayloadConsumed}
+              torrents={torrents}
             />
           </div>
         </div>
@@ -1406,13 +1576,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
       {/* Table container */}
       <div className="flex flex-col flex-1 min-h-0 mt-2 sm:mt-0 overflow-hidden">
         {/* Virtual scroll container with paint containment optimization for improved rendering performance */}
-        <div
-          className="relative flex-1 overflow-auto scrollbar-thin select-none will-change-transform contain-paint"
+        <TorrentDropZone
           ref={parentRef}
+          className="relative flex-1 overflow-auto scrollbar-thin select-none will-change-transform contain-paint"
           role="grid"
           aria-label="Torrents table"
           aria-rowcount={totalCount}
           aria-colcount={table.getVisibleLeafColumns().length}
+          onDropPayload={handleDropPayload}
         >
           {/* Loading overlay - positioned absolute to scroll container */}
           {torrents.length === 0 && showLoadingState && (
@@ -1549,6 +1720,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                     onExport={handleExportWrapper}
                     isExporting={isExportingTorrent}
                     capabilities={capabilities}
+                    useSubcategories={allowSubcategories}
                   >
                     <div
                       className={`flex border-b cursor-pointer hover:bg-muted/50 ${row.getIsSelected() ? "bg-muted/50" : ""} ${isSelected ? "bg-accent" : ""}`}
@@ -1631,7 +1803,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
               })}
             </div>
           </div>
-        </div>
+        </TorrentDropZone>
 
         {/* Status bar */}
         <div className="flex items-center justify-between p-2 border-t flex-shrink-0 select-none">
@@ -1683,13 +1855,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
 
           <div className="flex items-center gap-2 text-xs">
             <div className="flex items-center gap-1">
-              <ChevronDown className="h-3 w-3 text-muted-foreground" />
+              <ChevronDown className="h-3 w-3 text-muted-foreground"/>
               <span className="font-medium">{formatSpeedWithUnit(stats.totalDownloadSpeed || 0, speedUnit)}</span>
-              <ChevronUp className="h-3 w-3 text-muted-foreground" />
+              <ChevronUp className="h-3 w-3 text-muted-foreground"/>
               <span className="font-medium">{formatSpeedWithUnit(stats.totalUploadSpeed || 0, speedUnit)}</span>
             </div>
           </div>
-
 
 
           <div className="flex items-center gap-4">
@@ -1700,7 +1871,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                   onClick={() => setSpeedUnit(speedUnit === "bytes" ? "bits" : "bytes")}
                   className="flex items-center gap-1 pl-1.5 py-0.5 rounded-sm transition-all hover:bg-muted/50"
                 >
-                  <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground" />
+                  <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground"/>
                   <span className="text-xs text-muted-foreground">
                     {speedUnit === "bytes" ? "MiB/s" : "Mbps"}
                   </span>
@@ -1718,9 +1889,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                   className="p-1 rounded-sm transition-all hover:bg-muted/50"
                 >
                   {incognitoMode ? (
-                    <EyeOff className="h-3.5 w-3.5 text-muted-foreground" />
+                    <EyeOff className="h-3.5 w-3.5 text-muted-foreground"/>
                   ) : (
-                    <Eye className="h-3.5 w-3.5 text-muted-foreground" />
+                    <Eye className="h-3.5 w-3.5 text-muted-foreground"/>
                   )}
                 </button>
               </TooltipTrigger>
@@ -1728,6 +1899,18 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                 {incognitoMode ? t("torrent_table_optimized.exit_incognito") : t("torrent_table_optimized.enable_incognito")}
               </TooltipContent>
             </Tooltip>
+            {/* External IPv4 */}
+            <ExternalIPAddress
+              address={serverState?.last_external_address_v4}
+              incognitoMode={incognitoMode}
+              label="IPv4"
+            />
+            {/* External IPv6 */}
+            <ExternalIPAddress
+              address={serverState?.last_external_address_v6}
+              incognitoMode={incognitoMode}
+              label="IPv6"
+            />
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
@@ -1738,9 +1921,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                   className="p-1 rounded-sm transition-all hover:bg-muted/50 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {isTogglingAltSpeed ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground"/>
                   ) : (
-                    <AltSpeedIcon className={`h-3.5 w-3.5 ${altSpeedIconClass}`} />
+                    <AltSpeedIcon className={`h-3.5 w-3.5 ${altSpeedIconClass}`}/>
                   )}
                 </button>
               </TooltipTrigger>
@@ -1754,7 +1937,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
                   aria-label={connectionStatusAriaLabel}
                   className={`inline-flex h-5 w-5 items-center justify-center ${connectionStatusIconClass}`}
                 >
-                  <ConnectionStatusIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                  <ConnectionStatusIcon className="h-3.5 w-3.5" aria-hidden="true"/>
                 </span>
               </TooltipTrigger>
               <TooltipContent className="max-w-[220px]">
@@ -1773,7 +1956,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
               {t("torrent_table_optimized.delete_torrents_body")}
               {deleteDialogTotalSize > 0 && (
                 <span className="block mt-2 text-xs text-muted-foreground">
-                  Total size: {deleteDialogFormattedSize}
+                  {t("torrent_management_bar.dialogs.delete.total_size")} {deleteDialogFormattedSize}
                 </span>
               )}
             </AlertDialogDescription>
@@ -1810,6 +1993,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
         onConfirm={handleAddTagsWrapper}
         isPending={isPending}
+        isLoadingTags={isLoadingTags}
       />
 
       {/* Set Tags Dialog */}
@@ -1821,6 +2005,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         onConfirm={handleSetTagsWrapper}
         isPending={isPending}
         initialTags={getCommonTags(contextTorrents)}
+        isLoadingTags={isLoadingTags}
       />
 
       {/* Set Category Dialog */}
@@ -1832,6 +2017,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({ insta
         onConfirm={handleSetCategoryWrapper}
         isPending={isPending}
         initialCategory={getCommonCategory(contextTorrents)}
+        isLoadingCategories={isLoadingCategories}
       />
 
       {/* Create and Assign Category Dialog */}

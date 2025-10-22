@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select"
+import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { usePersistedStartPaused } from "@/hooks/usePersistedStartPaused"
 import { toast } from "sonner"
@@ -54,11 +55,14 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
   const { t } = useTranslation()
   const { preferences, isLoading, updatePreferences, isUpdating } = useInstancePreferences(instanceId)
   const [startPausedEnabled, setStartPausedEnabled] = usePersistedStartPaused(instanceId, false)
+  const { data: capabilities } = useInstanceCapabilities(instanceId)
+  const supportsSubcategories = capabilities?.supportsSubcategories ?? false
 
   const form = useForm({
     defaultValues: {
       auto_tmm_enabled: false,
       start_paused_enabled: false,
+      use_subcategories: false,
       save_path: "",
       torrent_content_layout: "Original",
     },
@@ -69,10 +73,13 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
         setStartPausedEnabled(value.start_paused_enabled)
 
         // Update other preferences to qBittorrent (excluding start_paused_enabled)
-        const qbittorrentPrefs = {
+        const qbittorrentPrefs: Record<string, unknown> = {
           auto_tmm_enabled: value.auto_tmm_enabled,
           save_path: value.save_path,
           torrent_content_layout: value.torrent_content_layout ?? "Original",
+        }
+        if (supportsSubcategories) {
+          qbittorrentPrefs.use_subcategories = Boolean(value.use_subcategories)
         }
         updatePreferences(qbittorrentPrefs)
         toast.success(t("instancePreferences.content.fileManagement.notifications.saveSuccess"))
@@ -87,10 +94,15 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
   React.useEffect(() => {
     if (preferences) {
       form.setFieldValue("auto_tmm_enabled", preferences.auto_tmm_enabled)
+      if (supportsSubcategories) {
+        form.setFieldValue("use_subcategories", Boolean(preferences.use_subcategories))
+      } else {
+        form.setFieldValue("use_subcategories", false)
+      }
       form.setFieldValue("save_path", preferences.save_path)
       form.setFieldValue("torrent_content_layout", preferences.torrent_content_layout ?? "Original")
     }
-  }, [preferences, form])
+  }, [preferences, form, supportsSubcategories])
 
   // Update form when localStorage start_paused_enabled changes
   React.useEffect(() => {
@@ -132,6 +144,19 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
             />
           )}
         </form.Field>
+
+        {supportsSubcategories && (
+          <form.Field name="use_subcategories">
+            {(field) => (
+              <SwitchSetting
+                label="Enable Subcategories"
+                checked={field.state.value as boolean}
+                onCheckedChange={field.handleChange}
+                description="Allow creating nested categories using slash separator (e.g., Movies/4K)"
+              />
+            )}
+          </form.Field>
+        )}
 
         <form.Field name="start_paused_enabled">
           {(field) => (

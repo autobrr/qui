@@ -18,7 +18,7 @@ import { Label } from "@/components/ui/label"
 import { api } from "@/lib/api"
 import type { Category } from "@/types"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
@@ -148,13 +148,26 @@ interface CreateCategoryDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   instanceId: number
+  parent?: string
 }
 
-export function CreateCategoryDialog({ open, onOpenChange, instanceId }: CreateCategoryDialogProps) {
+export function CreateCategoryDialog({ open, onOpenChange, instanceId, parent }: CreateCategoryDialogProps) {
   const { t } = useTranslation()
   const [name, setName] = useState("")
   const [savePath, setSavePath] = useState("")
   const queryClient = useQueryClient()
+
+  // Pre-fill with parent path when dialog opens
+  useEffect(() => {
+    if (open) {
+      if (parent) {
+        setName(parent + "/")
+      } else {
+        setName("")
+      }
+      setSavePath("")
+    }
+  }, [open, parent])
 
   const mutation = useMutation({
     mutationFn: ({ name, savePath }: { name: string; savePath?: string }) =>
@@ -185,14 +198,14 @@ export function CreateCategoryDialog({ open, onOpenChange, instanceId }: CreateC
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>{t("tag_category_management_dialogs.create_category.title")}</AlertDialogTitle>
+          <AlertDialogTitle>{parent ? t("tag_category_management_dialogs.create_category.title_subcategory") : t("tag_category_management_dialogs.create_category.title")}</AlertDialogTitle>
           <AlertDialogDescription>
-            {t("tag_category_management_dialogs.create_category.description")}
+            {parent ? t("tag_category_management_dialogs.create_category.description_subcategory", { parent }) : t("tag_category_management_dialogs.create_category.description")}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <div className="py-4 space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="categoryName">{t("tag_category_management_dialogs.create_category.name_label")}</Label>
+            <Label htmlFor="categoryName">{parent ? t("tag_category_management_dialogs.create_category.name_label_subcategory") : t("tag_category_management_dialogs.create_category.name_label")}</Label>
             <Input
               id="categoryName"
               value={name}

@@ -64,6 +64,7 @@
     "generalSettings": "General Settings",
     "manageInstances": "Manage Instances",
     "github": "GitHub",
+    "backups": "Backups",
     "appearance": {
       "title": "Appearance",
       "mode": "Mode",
@@ -181,6 +182,20 @@
         "trackers": "Auto-add trackers",
         "exclusions": "File exclusions: {{exclusions}}"
       }
+    },
+    "duplicate_check": {
+      "checking": "Checking for duplicates…",
+      "detected_one": "{{count}} duplicate selection detected",
+      "detected_other": "{{count}} duplicate selections detected",
+      "existing_torrents": "Existing torrents: {{names}}",
+      "more": "(+{{count}} more)",
+      "highlighted_below": "Duplicate selections are highlighted below.",
+      "remove_duplicates": "Remove duplicates",
+      "matches_existing": "Matches existing: {{names}}",
+      "remove_file": "Remove file",
+      "existing_torrent": "Existing torrent",
+      "duplicate_file_one": "{{count}} duplicate file",
+      "duplicate_file_other": "{{count}} duplicate files"
     }
   },
   "theme": {
@@ -518,12 +533,15 @@
       "category_item": "{{category}}",
       "category_item_count": "{{category}} ({{count}})",
       "no_categories_found": "No categories found",
-      "create_new": "Create New Category..."
+      "create_new": "Create New Category...",
+      "item_count": "({{count}})"
     },
     "toasts": {
       "copied_success": "Torrent {{type}} copied to clipboard",
       "copy_failed": "Failed to copy to clipboard",
-      "hash_not_available": "Hash not available"
+      "hash_not_available": "Hash not available",
+      "name_not_available": "Name not available",
+      "full_path_not_available": "Full path not available"
     },
     "copy_options": {
       "title": "Copy...",
@@ -569,7 +587,8 @@
       "title": "Selection shortcuts",
       "range": "Shift+click for range",
       "multiple": "{{key}}+click for multiple"
-    }
+    },
+    "clear_column_filters": "Clear all column filters ({{count}})"
   },
   "instances": {
     "add": "Add Instance",
@@ -746,7 +765,14 @@
       "ratio": "Ratio:",
       "peers": "Peers:",
       "externalIPv4": "External IPv4",
-      "externalIPv6": "External IPv6"
+      "externalIPv6": "External IPv6",
+      "totalSizeTooltip": "Total size of all torrents, including cross-seeds",
+      "totalDownload": {
+        "description": "{{count}} active - {{size}} remaining"
+      },
+      "totalUpload": {
+        "description": "{{count}} active - {{size}} seeding"
+      }
     },
     "globalStats": {
       "instances": {
@@ -1243,7 +1269,8 @@
       "no_available": "No categories available",
       "edit": "Edit Category",
       "delete": "Delete Category",
-      "remove_empty": "Remove Empty Categories"
+      "remove_empty": "Remove Empty Categories",
+      "create_subcategory": "Create Subcategory"
     },
     "tags": {
       "title": "Tags",
@@ -1297,7 +1324,10 @@
       "path_label": "Save Path (optional)",
       "path_placeholder": "e.g. /downloads/movies",
       "success": "Category created successfully",
-      "error": "Failed to create category"
+      "error": "Failed to create category",
+      "title_subcategory": "Create Subcategory",
+      "description_subcategory": "Creating subcategory under {{parent}}",
+      "name_label_subcategory": "Subcategory Name"
     },
     "edit_category": {
       "title": "Edit Category: {{name}}",
@@ -1430,7 +1460,10 @@
       "no_category": "(No Category)",
       "create_new_label": "Or create new category",
       "new_category_placeholder": "Enter new category name",
-      "set_category_button": "Set Category"
+      "set_category_button": "Set Category",
+      "select_category_label": "Select Category",
+      "loading_categories": "Loading categories...",
+      "no_categories_found": "No categories found matching {searchQuery}"
     },
     "create_category": {
       "title": "Create & Assign New Category",
@@ -1476,6 +1509,38 @@
       "set_upload_limit_label": "Set upload limit (KB/s)",
       "set_download_limit_label": "Set download limit (KB/s)",
       "saving_button": "Saving..."
+    },
+    "rename_torrent": {
+      "title": "Rename Torrent",
+      "description": "Update the display name for this torrent. This changes how it appears in qBittorrent and qui.",
+      "label": "Torrent Name",
+      "placeholder": "Enter new torrent name",
+      "cancel_button": "Cancel",
+      "rename_button": "Rename"
+    },
+    "rename_file": {
+      "title": "Rename File",
+      "description": "Choose a file from the torrent and provide its new name. Folder structure is preserved.",
+      "loading": "Fetching file list...",
+      "no_files": "No files available for this torrent yet.",
+      "select_file_label": "Select File",
+      "new_name_label": "New File Name",
+      "new_name_placeholder": "Enter new file name",
+      "new_name_description": "Only the file name is changed. Folder paths remain the same.",
+      "cancel_button": "Cancel",
+      "rename_button": "Rename File"
+    },
+    "rename_folder": {
+      "title": "Rename Folder",
+      "description": "Choose a folder within the torrent and provide its new name. Any nested structure will be kept intact.",
+      "loading": "Fetching folder list...",
+      "no_folders": "No folders available to rename.",
+      "select_folder_label": "Select Folder",
+      "new_name_label": "New Folder Name",
+      "new_name_placeholder": "Enter new folder name",
+      "new_name_description": "Only the selected folder name is changed. Parent directories remain the same.",
+      "cancel_button": "Cancel",
+      "rename_button": "Rename Folder"
     }
   },
   "settings": {
@@ -1485,7 +1550,7 @@
       "datetime": "Date & Time",
       "themes": "Themes",
       "api": "API Keys",
-      "clientApi": "Client Proxy"
+      "clientApi": "Client API Keys"
     },
     "security": {
       "title": "Change Password",
@@ -1690,6 +1755,10 @@
       "id": "ID: {{id}}",
       "deleteAriaLabel": "Delete API key {{clientName}}",
       "lastUsedLabel": "Last used:",
+      "showHost": "Show host",
+      "hideHost": "Hide host",
+      "showProxyUrl": "Show proxy URL",
+      "hideProxyUrl": "Hide proxy URL",
       "error": {
         "load": "Unable to load client API keys",
         "unavailable": "Feature may not be available in this version",
@@ -1873,7 +1942,10 @@
         "v1": "v1 (Compatible)",
         "v2": "v2 (Modern)",
         "hybrid": "Hybrid (v1 + v2)",
-        "description": "v1 for maximum compatibility, v2 for modern clients, hybrid for both"
+        "description": "v1 for maximum compatibility, v2 for modern clients, hybrid for both",
+        "unavailable_title": "Hybrid and v2 torrents are unavailable",
+        "unavailable_description_1": "This qBittorrent build uses {libtorrentVersionLabel}, which only supports creating v1 torrents.",
+        "unavailable_description_2": "Upgrade to a qBittorrent release built with libtorrent v2 to enable hybrid or v2 torrent creation."
       },
       "piece_size": {
         "label": "Piece Size",

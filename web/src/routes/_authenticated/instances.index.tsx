@@ -3,9 +3,24 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { createFileRoute } from "@tanstack/react-router"
-import { Instances } from "@/pages/Instances"
+import { createFileRoute, Navigate } from "@tanstack/react-router"
 
 export const Route = createFileRoute("/_authenticated/instances/")({
-  component: Instances,
+  component: InstancesRedirect,
 })
+
+function InstancesRedirect() {
+  const search = Route.useSearch() as Record<string, unknown>
+  const nextSearch = {
+    ...search,
+    tab: "instances" as const,
+  }
+
+  return (
+    <Navigate
+      to="/settings"
+      search={nextSearch}
+      replace
+    />
+  )
+}

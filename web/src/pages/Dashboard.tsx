@@ -31,7 +31,7 @@ import { formatBytes, getRatioColor } from "@/lib/utils"
 import type { InstanceResponse, ServerState, TorrentCounts, TorrentResponse, TorrentStats } from "@/types"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
-import { Activity, Ban, BrickWallFire, ChevronDown, ChevronUp, Download, ExternalLink, Eye, EyeOff, Globe, HardDrive, Minus, Plus, Rabbit, Turtle, Upload, Zap } from "lucide-react"
+import { Activity, Ban, BrickWallFire, ChevronDown, ChevronRight, ChevronUp, Download, ExternalLink, Eye, EyeOff, Globe, HardDrive, Minus, Plus, Rabbit, Turtle, Upload, Zap } from "lucide-react"
 import { useMemo, useState } from "react"
 
 import {
@@ -148,23 +148,6 @@ function InstanceCard({
   const connectionStatusDisplay = formattedConnectionStatus? formattedConnectionStatus.replace(/\b\w/g, (char: string) => char.toUpperCase()): ""
   const hasConnectionStatus = Boolean(formattedConnectionStatus)
 
-  // Determine badge variant and text
-  let badgeVariant: "default" | "secondary" | "destructive" = "default"
-  let badgeText = t("dashboard.instance.connected")
-
-  if (isFirstLoad) {
-    badgeVariant = "secondary"
-    badgeText = t("dashboard.instance.loading")
-  } else if (hasError) {
-    badgeVariant = "destructive"
-    badgeText = t("dashboard.instance.error")
-  } else if (isDisconnected) {
-    badgeVariant = "destructive"
-    badgeText = t("dashboard.instance.disconnected")
-  }
-
-  const badgeClassName = "whitespace-nowrap"
-
   const isConnectable = normalizedConnectionStatus === "connected"
   const isFirewalled = normalizedConnectionStatus === "firewalled"
   const ConnectionStatusIcon = isConnectable ? Globe : isFirewalled ? BrickWallFire : Ban
@@ -176,24 +159,31 @@ function InstanceCard({
   const showSettingsButton = instance.connected && !isFirstLoad && !hasDecryptionOrRecentErrors
 
   // Determine link destination
-  const linkTo = hasDecryptionOrRecentErrors ? "/instances" : "/instances/$instanceId"
-  const linkParams = hasDecryptionOrRecentErrors ? {} : { instanceId: instance.id.toString() }
+  const linkTo = hasDecryptionOrRecentErrors ? "/settings" : "/instances/$instanceId"
+  const linkParams = hasDecryptionOrRecentErrors ? undefined : { instanceId: instance.id.toString() }
+  const linkSearch = hasDecryptionOrRecentErrors ? { tab: "instances" as const } : undefined
 
   // Unified return statement
   return (
     <>
       <Card className="hover:shadow-lg transition-shadow">
-        <CardHeader className={!isFirstLoad ? "gap-1" : ""}>
-          <div className="flex items-center gap-2 sm:gap-3">
+        <CardHeader className={`${!isFirstLoad ? "gap-1" : ""} overflow-hidden`}>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 w-full">
             <Link
               to={linkTo}
               params={linkParams}
-              className="flex flex-1 items-center gap-2 hover:underline min-w-0"
+              search={linkSearch}
+              className="flex items-center gap-2 hover:underline overflow-hidden flex-1 min-w-0"
             >
-              <CardTitle className="text-lg truncate min-w-0 max-w-[80px] sm:max-w-[90px] md:max-w-[90px] lg:max-w-[90px] xl:max-w-[120px] 2xl:max-w-[250px]">{instance.name}</CardTitle>
+              <CardTitle
+                className="text-lg truncate min-w-0 max-w-[100px] sm:max-w-[130px] md:max-w-[160px] lg:max-w-[190px]"
+                title={instance.name}
+              >
+                {instance.name}
+              </CardTitle>
               <ExternalLink className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
             </Link>
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-1 justify-end shrink-0 basis-full sm:basis-auto sm:min-w-[4.5rem]">
               {instance.connected && !isFirstLoad && (
                 <>
                   <Tooltip>
@@ -220,30 +210,6 @@ function InstanceCard({
                       {altSpeedEnabled ? t("dashboard.instance.altSpeed.enabledTooltip") : t("dashboard.instance.altSpeed.disabledTooltip")}
                     </TooltipContent>
                   </Tooltip>
-                  <AlertDialog open={showSpeedLimitDialog} onOpenChange={setShowSpeedLimitDialog}>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>
-                          {altSpeedEnabled ? t("dashboard.instance.altSpeed.disableTitle") : t("dashboard.instance.altSpeed.enableTitle")}
-                        </AlertDialogTitle>
-                        <AlertDialogDescription>
-                          {altSpeedEnabled? t("dashboard.instance.altSpeed.disableDescription", { name: instance.name }): t("dashboard.instance.altSpeed.enableDescription", { name: instance.name })
-                          }
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
-                        <AlertDialogAction
-                          onClick={() => {
-                            toggleAltSpeed()
-                            setShowSpeedLimitDialog(false)
-                          }}
-                        >
-                          {altSpeedEnabled ? t("dashboard.instance.altSpeed.disableAction") : t("dashboard.instance.altSpeed.enableAction")}
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
                 </>
               )}
               {showSettingsButton && (
@@ -252,11 +218,33 @@ function InstanceCard({
                   instanceName={instance.name}
                 />
               )}
-              <Badge variant={badgeVariant} className={badgeClassName}>
-                {badgeText}
-              </Badge>
             </div>
           </div>
+
+          <AlertDialog open={showSpeedLimitDialog} onOpenChange={setShowSpeedLimitDialog}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  {altSpeedEnabled ? t("dashboard.instance.altSpeed.disableTitle") : t("dashboard.instance.altSpeed.enableTitle")}
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  {altSpeedEnabled? t("dashboard.instance.altSpeed.disableDescription", { name: instance.name }): t("dashboard.instance.altSpeed.enableDescription", { name: instance.name })
+                  }
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => {
+                    toggleAltSpeed()
+                    setShowSpeedLimitDialog(false)
+                  }}
+                >
+                  {altSpeedEnabled ? t("dashboard.instance.altSpeed.disableAction") : t("dashboard.instance.altSpeed.enableAction")}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
           {(appVersion || webAPIVersion || libtorrentVersion || formattedConnectionStatus) && (
             <CardDescription className="flex flex-wrap items-center gap-1.5 text-xs">
               {formattedConnectionStatus && (
@@ -293,7 +281,11 @@ function InstanceCard({
           )}
           <CardDescription className="text-xs">
             <div className="flex items-center gap-1 min-w-0">
-              <span className={`${incognitoMode ? "blur-sm select-none" : ""} truncate min-w-0`} style={incognitoMode ? { filter: "blur(8px)" } : {}} title={displayUrl}>
+              <span
+                className={`${incognitoMode ? "blur-sm select-none" : ""} truncate min-w-0`}
+                style={incognitoMode ? { filter: "blur(8px)" } : {}}
+                {...(!incognitoMode && { title: displayUrl })}
+              >
                 {displayUrl}
               </span>
               <Button
@@ -358,7 +350,16 @@ function InstanceCard({
 
                 <div className="flex items-center gap-2 text-xs">
                   <HardDrive className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-                  <span className="text-muted-foreground">{t("dashboard.serverStats.totalSize")}</span>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="text-muted-foreground cursor-help inline-flex items-center gap-1">
+                        {t("dashboard.serverStats.totalSize")}
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {t("dashboard.serverStats.totalSizeTooltip")}
+                    </TooltipContent>
+                  </Tooltip>
                   <span className="ml-auto font-medium truncate">{formatBytes(stats?.totalSize || 0)}</span>
                 </div>
               </div>
@@ -463,6 +464,14 @@ function GlobalStatsCards({ statsData }: { statsData: DashboardInstanceStats[] }
       sum + (torrentCounts?.status?.errored || 0), 0)
     const totalSize = statsData.reduce((sum, { stats }) =>
       sum + (stats?.totalSize || 0), 0)
+    const totalRemainingSize = statsData.reduce((sum, { stats }) =>
+      sum + (stats?.totalRemainingSize || 0), 0)
+    const totalSeedingSize = statsData.reduce((sum, { stats }) =>
+      sum + (stats?.totalSeedingSize || 0), 0)
+    const downloadingTorrents = statsData.reduce((sum, { stats }) =>
+      sum + (stats?.downloading || 0), 0)
+    const seedingTorrents = statsData.reduce((sum, { stats }) =>
+      sum + (stats?.seeding || 0), 0)
 
     // Calculate server stats
     const alltimeDl = statsData.reduce((sum, { serverState }) =>
@@ -487,6 +496,10 @@ function GlobalStatsCards({ statsData }: { statsData: DashboardInstanceStats[] }
       totalUpload,
       totalErrors,
       totalSize,
+      totalRemainingSize,
+      totalSeedingSize,
+      downloadingTorrents,
+      seedingTorrents,
       alltimeDl,
       alltimeUl,
       globalRatio,
@@ -529,7 +542,7 @@ function GlobalStatsCards({ statsData }: { statsData: DashboardInstanceStats[] }
         <CardContent>
           <div className="text-2xl font-bold">{formatSpeedWithUnit(globalStats.totalDownload, speedUnit)}</div>
           <p className="text-xs text-muted-foreground">
-            {t("dashboard.globalStats.allInstancesCombined")}
+            {t("dashboard.globalStats.totalDownload.description", { count: globalStats.downloadingTorrents, size: formatBytes(globalStats.totalRemainingSize) })}
           </p>
         </CardContent>
       </Card>
@@ -542,7 +555,7 @@ function GlobalStatsCards({ statsData }: { statsData: DashboardInstanceStats[] }
         <CardContent>
           <div className="text-2xl font-bold">{formatSpeedWithUnit(globalStats.totalUpload, speedUnit)}</div>
           <p className="text-xs text-muted-foreground">
-            {t("dashboard.globalStats.allInstancesCombined")}
+            {t("dashboard.globalStats.totalUpload.description", { count: globalStats.seedingTorrents, size: formatBytes(globalStats.totalSeedingSize) })}
           </p>
         </CardContent>
       </Card>
@@ -789,7 +802,7 @@ export function Dashboard() {
           {instances && instances.length > 0 && (
             <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
               <QuickActionsDropdown statsData={statsData} />
-              <Link to="/instances" search={{ modal: "add-instance" }} className="w-full sm:w-auto">
+              <Link to="/settings" search={{ tab: "instances" as const, modal: "add-instance" }} className="w-full sm:w-auto">
                 <Button variant="outline" size="sm" className="w-full sm:w-auto">
                   <Plus className="h-4 w-4 mr-2" />
               {t("instances.add")}
@@ -839,7 +852,7 @@ export function Dashboard() {
             <div>
                               <h3 className="text-lg font-semibold">{t("common.messages.noInstancesConfigured")}</h3>              <p className="text-muted-foreground">{t("dashboard.instances.getStarted")}</p>
             </div>
-            <Link to="/instances" search={{ modal: "add-instance" }}>
+            <Link to="/settings" search={{ tab: "instances" as const, modal: "add-instance" }}>
               <Button>
                 <Plus className="h-4 w-4 mr-2" />
                 {t("instances.add")}

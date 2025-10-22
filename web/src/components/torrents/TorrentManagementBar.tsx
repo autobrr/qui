@@ -33,12 +33,11 @@ import {
   TooltipContent,
   TooltipTrigger
 } from "@/components/ui/tooltip"
+import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
-import { api } from "@/lib/api"
-import { formatBytes } from "@/lib/utils"
 import { getCommonCategory, getCommonSavePath, getCommonTags, getTotalSize } from "@/lib/torrent-utils"
+import { formatBytes } from "@/lib/utils"
 import type { Torrent, TorrentFilters } from "@/types"
-import { useQuery } from "@tanstack/react-query"
 import {
   ArrowDown,
   ArrowUp,
@@ -96,21 +95,17 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
 }: TorrentManagementBarProps) {
   const { t } = useTranslation()
 
-  // Fetch available tags
-  const { data: availableTags = [] } = useQuery({
-    queryKey: ["tags", instanceId],
-    queryFn: () => instanceId ? api.getTags(instanceId) : Promise.resolve([]),
-    enabled: !!instanceId,
-    staleTime: 60000,
-  })
+  if (typeof instanceId !== "number" || instanceId <= 0) {
+    return null
+  }
 
-  // Fetch available categories
-  const { data: availableCategories = {} } = useQuery({
-    queryKey: ["categories", instanceId],
-    queryFn: () => instanceId ? api.getCategories(instanceId) : Promise.resolve({}),
-    enabled: !!instanceId,
-    staleTime: 60000,
-  })
+  // Use shared metadata hook to leverage cache from table and filter sidebar
+  const { data: metadata, isLoading: isMetadataLoading } = useInstanceMetadata(instanceId)
+  const availableTags = metadata?.tags || []
+  const availableCategories = metadata?.categories || {}
+  
+  const isLoadingTagsData = isMetadataLoading && availableTags.length === 0
+  const isLoadingCategoriesData = isMetadataLoading && Object.keys(availableCategories).length === 0
 
   // Use the shared torrent actions hook
   const {
@@ -154,8 +149,12 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     prepareRecheckAction,
     prepareReannounceAction,
   } = useTorrentActions({
-    instanceId: instanceId || 0,
-    onActionComplete: onComplete,
+    instanceId,
+    onActionComplete: (action) => {
+      if (action === TORRENT_ACTIONS.DELETE) {
+        onComplete?.()
+      }
+    },
   })
 
   const selectionCount = totalSelectionCount || selectedHashes.length
@@ -639,6 +638,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
         hashCount={totalSelectionCount || selectedHashes.length}
         onConfirm={handleAddTagsWrapper}
         isPending={isPending}
+        isLoadingTags={isLoadingTagsData}
       />
 
       {/* Set Tags Dialog */}
@@ -650,6 +650,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
         onConfirm={handleSetTagsWrapper}
         isPending={isPending}
         initialTags={getCommonTags(selectedTorrents)}
+        isLoadingTags={isLoadingTagsData}
       />
 
       {/* Set Category Dialog */}
@@ -661,6 +662,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
         onConfirm={handleSetCategoryWrapper}
         isPending={isPending}
         initialCategory={getCommonCategory(selectedTorrents)}
+        isLoadingCategories={isLoadingCategoriesData}
       />
 
       {/* Set Location Dialog */}

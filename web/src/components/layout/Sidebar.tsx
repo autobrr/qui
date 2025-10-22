@@ -10,18 +10,15 @@ import { SwizzinLogo } from "@/components/ui/SwizzinLogo"
 import { UpdateBanner } from "@/components/ui/UpdateBanner"
 import { useAuth } from "@/hooks/useAuth"
 import { useTheme } from "@/hooks/useTheme"
-import { api } from "@/lib/api"
 import { getAppVersion } from "@/lib/build-info"
 import { cn } from "@/lib/utils"
-import { useQuery } from "@tanstack/react-query"
 import { Link, useLocation } from "@tanstack/react-router"
 import {
+  Archive,
   Copyright,
   Github,
-  HardDrive,
   Home,
   LogOut,
-  Server,
   Settings
 } from "lucide-react"
 import { useTranslation } from "react-i18next"
@@ -45,9 +42,9 @@ export function Sidebar() {
       icon: Home,
     },
     {
-      title: t("common.titles.instances"),
-      href: "/instances",
-      icon: Server,
+      title: t("nav.backups"),
+      href: "/backups",
+      icon: Archive,
     },
     {
       title: t("common.titles.settings"),
@@ -55,11 +52,6 @@ export function Sidebar() {
       icon: Settings,
     },
   ]
-
-  const { data: instances } = useQuery({
-    queryKey: ["instances"],
-    queryFn: () => api.getInstances(),
-  })
 
   const appVersion = getAppVersion()
 
@@ -100,49 +92,7 @@ export function Sidebar() {
           })}
         </div>
 
-        <Separator className="my-4" />
-
-        <div className="flex-1 min-h-0">
-          <div className="flex h-full min-h-0 flex-col">
-            <p className="px-3 text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/70">
-              {t("common.titles.instances")}
-            </p>
-            <div className="mt-1 flex-1 overflow-y-auto space-y-1 pr-1">
-              {instances?.map((instance) => {
-                const instancePath = `/instances/${instance.id}`
-                const isActive = location.pathname === instancePath
-
-                return (
-                  <Link
-                    key={instance.id}
-                    to="/instances/$instanceId"
-                    params={{ instanceId: instance.id.toString() }}
-                    className={cn(
-                      "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-all duration-200 ease-out",
-                      isActive
-                        ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                        : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                    )}
-                  >
-                    <HardDrive className="h-4 w-4 flex-shrink-0" />
-                    <span className="truncate max-w-36" title={instance.name}>{instance.name}</span>
-                    <span
-                      className={cn(
-                        "ml-auto h-2 w-2 rounded-full",
-                        instance.connected ? "bg-green-500" : "bg-red-500"
-                      )}
-                    />
-                  </Link>
-                )
-              })}
-              {(!instances || instances.length === 0) && (
-                <p className="px-3 py-2 text-sm text-sidebar-foreground/50">
-                  {t("common.messages.noInstancesConfigured")}
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
+        <div className="flex-1" />
       </nav>
 
       <div className="mt-auto space-y-3 p-3">

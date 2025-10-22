@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import {
   Collapsible,
@@ -29,6 +29,7 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { useQBittorrentAppInfo } from "@/hooks/useQBittorrentAppInfo"
 import { api } from "@/lib/api"
 import type { TorrentCreationParams, TorrentFormat } from "@/types"
 import { useForm } from "@tanstack/react-form"
@@ -50,6 +51,12 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
   const [error, setError] = useState<string | null>(null)
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const queryClient = useQueryClient()
+
+  const { versionInfo } = useQBittorrentAppInfo(instanceId)
+  const supportsFormatSelection = versionInfo.isLibtorrent2 !== false
+  const formatSelectionUnavailable = versionInfo.isLibtorrent2 === false
+  const libtorrentVersionLabel =
+    formatSelectionUnavailable && versionInfo.libtorrentMajorVersion? `libtorrent ${versionInfo.libtorrentMajorVersion}.x`: "libtorrent 1.x"
 
   // Fetch active trackers for the select dropdown
   const { data: activeTrackers } = useQuery({
@@ -106,6 +113,8 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
         .map((u) => u.trim())
         .filter(Boolean)
 
+      const selectedFormat = supportsFormatSelection ? value.format : ""
+
       const params: TorrentCreationParams = {
         sourcePath: value.sourcePath,
         private: value.private,
@@ -114,7 +123,7 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
         source: value.source || undefined,
         startSeeding: value.startSeeding, // Always send boolean value
         // Advanced options
-        format: value.format || undefined,
+        format: selectedFormat || undefined,
         pieceSize: value.pieceSize ? parseInt(value.pieceSize) : undefined,
         torrentFilePath: value.torrentFilePath || undefined,
         urlSeeds: urlSeeds && urlSeeds.length > 0 ? urlSeeds : undefined,
@@ -123,6 +132,12 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
       mutation.mutate(params)
     },
   })
+
+  useEffect(() => {
+    if (formatSelectionUnavailable) {
+      form.setFieldValue("format", "")
+    }
+  }, [formatSelectionUnavailable, form])
 
   // Reset form and error state when dialog closes
   useEffect(() => {
@@ -318,29 +333,40 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
             </CollapsibleTrigger>
             <CollapsibleContent className="space-y-4 pt-4">
               {/* Torrent Format */}
-              <form.Field name="format">
-                {(field) => (
-                  <div className="space-y-2">
-                    <Label htmlFor="format">{t("torrent_creator_dialog.advanced_options.format.label")}</Label>
-                    <Select
-                      value={field.state.value}
-                      onValueChange={(value) => field.handleChange(value as TorrentFormat | "")}
-                    >
-                      <SelectTrigger id="format">
-                        <SelectValue placeholder={t("torrent_creator_dialog.advanced_options.format.placeholder")} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="v1">{t("torrent_creator_dialog.advanced_options.format.v1")}</SelectItem>
-                        <SelectItem value="v2">{t("torrent_creator_dialog.advanced_options.format.v2")}</SelectItem>
-                        <SelectItem value="hybrid">{t("torrent_creator_dialog.advanced_options.format.hybrid")}</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <p className="text-sm text-muted-foreground">
-                      {t("torrent_creator_dialog.advanced_options.format.description")}
-                    </p>
-                  </div>
-                )}
-              </form.Field>
+              {supportsFormatSelection ? (
+                <form.Field name="format">
+                  {(field) => (
+                    <div className="space-y-2">
+                      <Label htmlFor="format">{t("torrent_creator_dialog.advanced_options.format.label")}</Label>
+                      <Select
+                        value={field.state.value}
+                        onValueChange={(value) => field.handleChange(value as TorrentFormat | "")}
+                      >
+                        <SelectTrigger id="format">
+                          <SelectValue placeholder={t("torrent_creator_dialog.advanced_options.format.placeholder")} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="v1">{t("torrent_creator_dialog.advanced_options.format.v1")}</SelectItem>
+                          <SelectItem value="v2">{t("torrent_creator_dialog.advanced_options.format.v2")}</SelectItem>
+                          <SelectItem value="hybrid">{t("torrent_creator_dialog.advanced_options.format.hybrid")}</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-sm text-muted-foreground">
+                        {t("torrent_creator_dialog.advanced_options.format.description")}
+                      </p>
+                    </div>
+                  )}
+                </form.Field>
+              ) : (
+                <Alert className="bg-muted/40 text-muted-foreground">
+                  <Info className="h-4 w-4" />
+                  <AlertTitle>{t("torrent_creator_dialog.advanced_options.format.unavailable_title")}</AlertTitle>
+                  <AlertDescription>
+                    {t("torrent_creator_dialog.advanced_options.format.unavailable_description_1", { libtorrentVersionLabel })}
+                    {t("torrent_creator_dialog.advanced_options.format.unavailable_description_2")}
+                  </AlertDescription>
+                </Alert>
+              )}
 
               {/* Piece Size
                   https://github.com/qbittorrent/qBittorrent/blob/master/src/gui/torrentcreatordialog.cpp#L86-L92

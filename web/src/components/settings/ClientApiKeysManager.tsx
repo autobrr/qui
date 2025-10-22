@@ -41,11 +41,12 @@ import {
 } from "@/components/ui/tooltip"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { api } from "@/lib/api"
-import { withBasePath } from "@/lib/base-url"
+import { getBaseUrl } from "@/lib/base-url"
+import { useIncognitoMode } from "@/lib/incognito"
 import { copyTextToClipboard } from "@/lib/utils"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Copy, Plus, Server, Trash2 } from "lucide-react"
+import { Copy, Eye, EyeOff, Plus, Server, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { toast } from "sonner"
 import { useTranslation } from "react-i18next"
@@ -79,12 +80,32 @@ export function ClientApiKeysManager() {
   const [newKey, setNewKey] = useState<NewClientAPIKey | null>(null)
   const queryClient = useQueryClient()
   const { formatDate } = useDateTimeFormatters()
+  const [incognitoMode, setIncognitoMode] = useIncognitoMode()
 
   // Get the current browser URL to construct full proxy URL
+  const resolveProxyPath = (proxyPath: string) => {
+    const normalizedProxyPath = proxyPath.startsWith("/") ? proxyPath : `/${proxyPath}`
+    const base = getBaseUrl()
+    const baseWithoutTrailingSlash = base.endsWith("/") ? base.slice(0, -1) : base
+
+    if (!baseWithoutTrailingSlash) {
+      return normalizedProxyPath
+    }
+
+    if (
+      normalizedProxyPath === baseWithoutTrailingSlash ||
+      normalizedProxyPath.startsWith(`${baseWithoutTrailingSlash}/`)
+    ) {
+      return normalizedProxyPath
+    }
+
+    return `${baseWithoutTrailingSlash}${normalizedProxyPath}`
+  }
+
   const getFullProxyUrl = (proxyPath: string) => {
     const { protocol, hostname, port } = window.location
     const origin = port ? `${protocol}//${hostname}:${port}` : `${protocol}//${hostname}`
-    return `${origin}${withBasePath(proxyPath)}`
+    return `${origin}${resolveProxyPath(proxyPath)}`
   }
 
   // Fetch client API keys
@@ -199,14 +220,26 @@ export function ClientApiKeysManager() {
                     <CardContent className="space-y-3">
                       <div>
                         <Label htmlFor="proxy-url" className="text-xs uppercase text-muted-foreground">{t("settings.clientApiKeys.createDialog.proxyUrl")}</Label>
-                        <div className="mt-1 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
-                          <code id="proxy-url" className="w-full rounded bg-muted px-2 py-1.5 text-xs font-mono break-all">
+                        <div className="mt-1 flex flex-wrap items-center gap-2 sm:flex-nowrap">
+                          <code
+                            id="proxy-url"
+                            className={`w-full flex-1 rounded bg-muted px-2 py-1.5 text-xs font-mono break-all ${incognitoMode ? "blur-sm select-none" : ""}`}
+                          >
                             {getFullProxyUrl(newKey.proxyUrl)}
                           </code>
                           <Button
                             size="icon"
                             variant="outline"
-                            className="h-7 w-7 justify-self-start sm:justify-self-end"
+                            className="h-7 w-7"
+                            onClick={() => setIncognitoMode(!incognitoMode)}
+                            title={incognitoMode ? t("settings.clientApiKeys.showProxyUrl") : t("settings.clientApiKeys.hideProxyUrl")}
+                          >
+                            {incognitoMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="outline"
+                            className="h-7 w-7"
                             onClick={async () => {
                               try {
                                 await copyTextToClipboard(getFullProxyUrl(newKey.proxyUrl))
@@ -386,9 +419,22 @@ export function ClientApiKeysManager() {
                           )}
                         </p>
                         {key.instance?.host && (
-                          <p className="break-all">
-                            <span className="text-foreground">{t("settings.clientApiKeys.host")}</span> {key.instance.host}
-                          </p>
+                          <div className="flex flex-wrap items-center gap-1 break-all">
+                            <span className="text-foreground">{t("settings.clientApiKeys.host")}</span>
+                            <span className={incognitoMode ? "blur-sm select-none" : ""}>
+                              {key.instance.host}
+                            </span>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-6 w-6 px-0 text-muted-foreground hover:text-foreground"
+                              onClick={() => setIncognitoMode(!incognitoMode)}
+                              title={incognitoMode ? t("settings.clientApiKeys.showHost") : t("settings.clientApiKeys.hideHost")}
+                              aria-label={incognitoMode ? t("settings.clientApiKeys.showHost") : t("settings.clientApiKeys.hideHost")}
+                            >
+                              {incognitoMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                            </Button>
+                          </div>
                         )}
                       </div>
                     </div>
