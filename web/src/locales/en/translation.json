@@ -766,13 +766,7 @@
       "peers": "Peers:",
       "externalIPv4": "External IPv4",
       "externalIPv6": "External IPv6",
-      "totalSizeTooltip": "Total size of all torrents, including cross-seeds",
-      "totalDownload": {
-        "description": "{{count}} active - {{size}} remaining"
-      },
-      "totalUpload": {
-        "description": "{{count}} active - {{size}} seeding"
-      }
+      "totalSizeTooltip": "Total size of all torrents, including cross-seeds"
     },
     "globalStats": {
       "instances": {
@@ -783,10 +777,12 @@
         "description": "{{active}} active - {{size}} total size"
       },
       "totalDownload": {
-        "title": "Total Download"
+        "title": "Total Download",
+        "description": "{{count}} active - {{size}} remaining"
       },
       "totalUpload": {
-        "title": "Total Upload"
+        "title": "Total Upload",
+        "description": "{{count}} active - {{size}} seeding"
       },
       "allInstancesCombined": "All instances combined"
     },

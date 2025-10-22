@@ -766,13 +766,7 @@
       "peers": "Peers:",
       "externalIPv4": "外部 IPv4",
       "externalIPv6": "外部 IPv6",
-      "totalSizeTooltip": "所有种子的总大小，包括辅种",
-      "totalDownload": {
-        "description": "{{count}} 个活动 - 剩余 {{size}}"
-      },
-      "totalUpload": {
-        "description": "{{count}} 个活动 - 做种 {{size}}"
-      }
+      "totalSizeTooltip": "所有种子的总大小，包括辅种"
     },
     "globalStats": {
       "instances": {
@@ -783,10 +777,12 @@
         "description": "{{active}} 活动 - {{size}} 总大小"
       },
       "totalDownload": {
-        "title": "总下载"
+        "title": "总下载",
+        "description": "{{count}} 个活动 - 剩余 {{size}}"
       },
       "totalUpload": {
-        "title": "总上传"
+        "title": "总上传",
+        "description": "{{count}} 个活动 - 做种 {{size}}"
       },
       "allInstancesCombined": "所有实例合计"
     },
