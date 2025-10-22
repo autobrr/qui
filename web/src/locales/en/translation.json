@@ -2028,5 +2028,202 @@
       "checkingResumeData": "Checking Resume Data",
       "moving": "Moving"
     }
+  },
+  "backups": {
+    "title": "Backups",
+    "description": "Manage torrent backups for your instances",
+    "selectInstance": "Select instance",
+    "noCompatibleInstances": "No compatible instances found",
+    "noInstances": "No qBittorrent instances configured. Add an instance first to use the backup feature.",
+    "noSupportedInstances": "None of your qBittorrent instances support torrent backups yet. Upgrade to qBittorrent 4.5.0+ (Web API 2.8.11+) to enable this feature.",
+    "selectInstanceToManage": "Select an instance to manage backups",
+    "chooseInstance": "Choose a qBittorrent instance from the dropdown above to view and manage its backups.",
+    "goToInstances": "Go to Instances",
+    "loadingCapabilities": "Loading instance capabilities...",
+    "unavailable": {
+      "title": "Backups unavailable for this instance",
+      "description": "qBittorrent Web API 2.8.11+ (qBittorrent 4.5.0+) is required to export .torrent files for backups. This instance reports {{reportedVersion}}, so torrent exports are disabled."
+    },
+    "returnToInstance": "Return to instance overview",
+    "backToTorrents": "Back to Torrents",
+    "cards": {
+      "lastBackup": "Last backup",
+      "queuedBackups": "Queued backups",
+      "instance": "Instance",
+      "loading": "Loading...",
+      "noBackupsYet": "No backups yet",
+      "status": "Status: {{status}}",
+      "pendingOrRunning": "Pending or running backups"
+    },
+    "settings": {
+      "title": "Backup settings",
+      "loading": "Loading settings...",
+      "enable": {
+        "label": "Enable backups",
+        "description": "Turn on automatic backups for this instance. Pick at least one cadence below; leave this off for manual-only backups."
+      },
+      "includeCategories": {
+        "label": "Include categories",
+        "description": "Group torrents inside the archive by their category"
+      },
+      "includeTags": {
+        "label": "Include tags",
+        "description": "Store torrent tags in the manifest"
+      },
+      "cadences": {
+        "title": "Automatic cadences",
+        "description": "Hourly, daily, weekly, and monthly runs start after the previous backup finishes and their interval has elapsed. Leave them all off if you only trigger backups manually."
+      },
+      "schedule": {
+        "hourly": {
+          "label": "Hourly",
+          "description": "How many hourly snapshots to keep before older ones are pruned.",
+          "tooltip": "Runs roughly once per hour when backups are enabled and at least an hour has passed since the last run."
+        },
+        "daily": {
+          "label": "Daily",
+          "description": "How many daily snapshots to keep before rotation.",
+          "tooltip": "Runs about once every 24 hours after the previous job finishes."
+        },
+        "weekly": {
+          "label": "Weekly",
+          "description": "How many weekly snapshots to keep before rotation.",
+          "tooltip": "Runs once the last backup is at least seven days old."
+        },
+        "monthly": {
+          "label": "Monthly",
+          "description": "How many monthly snapshots to keep before rotation.",
+          "tooltip": "Runs when the previous run is from an earlier calendar month."
+        }
+      },
+      "runManual": "Run manual backup",
+      "save": "Save changes",
+      "errors": {
+        "selectCadenceTooltip": "Select at least one cadence to enable automatic backups.",
+        "selectCadence": "Select at least one cadence (hourly, daily, weekly, or monthly) before saving."
+      },
+      "saveDescription": "Changes apply to future backups as soon as you save."
+    },
+    "runKinds": {
+      "manual": "Manual",
+      "hourly": "Hourly",
+      "daily": "Daily",
+      "weekly": "Weekly",
+      "monthly": "Monthly"
+    },
+    "restore": {
+      "title": "Restore backup",
+      "description": "Run #${runId} ({{kind}})",
+      "selectBackup": "Select a backup to restore",
+      "mode": "Mode",
+      "selectMode": "Select restore mode",
+      "modes": {
+        "incremental": {
+          "label": "Incremental",
+          "description": "Adds missing categories, tags, and torrents without touching existing data."
+        },
+        "overwrite": {
+          "label": "Overwrite",
+          "description": "Adds missing items and updates existing categories/torrents to match the snapshot."
+        },
+        "complete": {
+          "label": "Complete",
+          "description": "Same as overwrite, then removes anything not recorded in the backup."
+        }
+      },
+      "dryRun": "Dry run",
+      "startPaused": "Start paused",
+      "skipRecheck": "Skip recheck",
+      "autoResume": {
+        "label": "Auto-resume completed torrents",
+        "tooltip": "When enabled, torrents resume automatically if qBittorrent reports the restored data as fully checked. In other words; no data is missing.",
+        "descriptionWithSkip": "Torrents will resume automatically once qBittorrent reports the restored data as fully checked.",
+        "descriptionWithoutSkip": "Auto resume is off. Torrents stay paused until you start them manually.",
+        "enableSkipRecheck": "Enable skip recheck to allow automatic resume after verification."
+      },
+      "reincludeAll": "Re-include all",
+      "refreshPlan": "Refresh plan",
+      "runDryRun": "Run dry-run",
+      "execute": "Execute restore",
+      "executing": "Executing...",
+      "loadingPlan": "Loading restore plan...",
+      "excludedTorrents": "{{count}} torrent excluded from this restore.",
+      "excludedTorrents_plural": "{{count}} torrents excluded from this restore.",
+      "refreshingPlan": "Refreshing plan...",
+      "noChangesRequired": "No changes are required for this restore mode.",
+      "manualFollowUp": "Manual follow-up required",
+      "lastExecution": "Last execution",
+      "applied": "Applied",
+      "warnings": "Warnings",
+      "errors": "Errors",
+      "plan": {
+        "categories": "Categories",
+        "tags": "Tags",
+        "torrents": "Torrents",
+        "create": "Create",
+        "update": "Update",
+        "delete": "Delete",
+        "noCategoryChanges": "No category changes.",
+        "noTagChanges": "No tag changes.",
+        "noTorrentChanges": "No torrent changes.",
+        "addCount": "Add ({{count}})",
+        "updateCount": "Update ({{count}})",
+        "deleteCount": "Delete ({{count}})",
+        "include": "Include",
+        "exclude": "Exclude",
+        "currentCategory": "Current category: {{category}}",
+        "change": {
+          "size": "Size",
+          "infohashV1": "Infohash v1",
+          "infohashV2": "Infohash v2"
+        }
+      }
+    },
+    "history": {
+      "title": "Backup history",
+      "deleteAll": "Delete all",
+      "deleteAllConfirm": {
+        "title": "Delete all backups?",
+        "description": "This removes every stored backup archive and manifest for this instance. This action cannot be undone."
+      },
+      "queueBackup": "Queue backup",
+      "loading": "Loading backups...",
+      "table": {
+        "type": "Type",
+        "status": "Status",
+        "requested": "Requested",
+        "completed": "Completed",
+        "torrents": "Torrents",
+        "size": "Size",
+        "actions": "Actions"
+      },
+      "deleteConfirm": {
+        "title": "Delete backup?",
+        "description": "This will remove the backup archive and manifest from disk. This action cannot be undone."
+      },
+      "noBackups": "No backups have been created yet."
+    },
+    "manifest": {
+      "title": "Backup manifest",
+      "description": "Run #${runId}",
+      "selectBackup": "Select a backup to view its manifest",
+      "loading": "Loading manifest...",
+      "torrents": "Torrents: {{count}}",
+      "categories": "Categories: {{count}}",
+      "tags": "Tags: {{count}}",
+      "generated": "Generated {{date}}",
+      "more": "+{{count}} more",
+      "search": "Search torrents, tags, categories...",
+      "table": {
+        "name": "Name",
+        "category": "Category",
+        "tags": "Tags",
+        "size": "Size",
+        "cached": "Cached Torrent"
+      },
+      "noTorrentsMatch": "No torrents match \"{{query}}\".",
+      "noTorrentsFound": "No torrents found.",
+      "unavailable": "Manifest unavailable."
+    }
   }
 }

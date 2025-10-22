@@ -2028,5 +2028,202 @@
       "checkingResumeData": "正在校验恢复数据",
       "moving": "移动中"
     }
+  },
+  "backups": {
+    "title": "备份",
+    "description": "管理实例的种子备份",
+    "selectInstance": "选择实例",
+    "noCompatibleInstances": "未找到兼容的实例",
+    "noInstances": "未配置 qBittorrent 实例。请先添加一个实例以使用备份功能。",
+    "noSupportedInstances": "您的 qBittorrent 实例均不支持种子备份。请升级到 qBittorrent 4.5.0+ (Web API 2.8.11+) 以启用此功能。",
+    "selectInstanceToManage": "选择一个实例来管理备份",
+    "chooseInstance": "从上面的下拉列表中选择一个 qBittorrent 实例以查看和管理其备份。",
+    "goToInstances": "前往实例",
+    "loadingCapabilities": "正在加载实例功能...",
+    "unavailable": {
+      "title": "此实例无法使用备份功能",
+      "description": "导出 .torrent 文件进行备份需要 qBittorrent Web API 2.8.11+ (qBittorrent 4.5.0+)。此实例报告为 {{reportedVersion}}，因此种子导出功能已禁用。"
+    },
+    "returnToInstance": "返回实例概览",
+    "backToTorrents": "返回种子列表",
+    "cards": {
+      "lastBackup": "上次备份",
+      "queuedBackups": "队列中的备份",
+      "instance": "实例",
+      "loading": "加载中...",
+      "noBackupsYet": "暂无备份",
+      "status": "状态: {{status}}",
+      "pendingOrRunning": "等待中或运行中的备份"
+    },
+    "settings": {
+      "title": "备份设置",
+      "loading": "正在加载设置...",
+      "enable": {
+        "label": "启用备份",
+        "description": "为此实例开启自动备份。请在下方至少选择一个备份周期；如果仅需手动备份，请保持关闭。"
+      },
+      "includeCategories": {
+        "label": "包含分类",
+        "description": "在存档中按分类组织种子"
+      },
+      "includeTags": {
+        "label": "包含标签",
+        "description": "在清单中存储种子标签"
+      },
+      "cadences": {
+        "title": "自动备份周期",
+        "description": "每小时、每天、每周和每月的备份会在上一次备份完成且间隔时间到达后开始。如果只手动触发备份，请全部关闭。"
+      },
+      "schedule": {
+        "hourly": {
+          "label": "每小时",
+          "description": "保留多少个每小时快照，旧的将被删除。",
+          "tooltip": "启用备份后，大约每小时运行一次，且距离上次运行至少一小时。"
+        },
+        "daily": {
+          "label": "每天",
+          "description": "保留多少个每日快照，之后进行轮换。",
+          "tooltip": "上一个任务完成后大约每24小时运行一次。"
+        },
+        "weekly": {
+          "label": "每周",
+          "description": "保留多少个每周快照，之后进行轮换。",
+          "tooltip": "当上次备份至少是七天前时运行。"
+        },
+        "monthly": {
+          "label": "每月",
+          "description": "保留多少个月度快照，之后进行轮换。",
+          "tooltip": "当上一次运行是在上一个日历月时运行。"
+        }
+      },
+      "runManual": "运行手动备份",
+      "save": "保存更改",
+      "errors": {
+        "selectCadenceTooltip": "要启用自动备份，请至少选择一个备份周期。",
+        "selectCadence": "保存前请至少选择一个备份周期（每小时、每天、每周或每月）。"
+      },
+      "saveDescription": "更改将在您保存后立即应用于未来的备份。"
+    },
+    "runKinds": {
+      "manual": "手动",
+      "hourly": "每小时",
+      "daily": "每天",
+      "weekly": "每周",
+      "monthly": "每月"
+    },
+    "restore": {
+      "title": "恢复备份",
+      "description": "运行 #${runId} ({{kind}})",
+      "selectBackup": "选择一个备份进行恢复",
+      "mode": "模式",
+      "selectMode": "选择恢复模式",
+      "modes": {
+        "incremental": {
+          "label": "增量",
+          "description": "添加缺失的分类、标签和种子，不影响现有数据。"
+        },
+        "overwrite": {
+          "label": "覆盖",
+          "description": "添加缺失的项目，并更新现有的分类/种子以匹配快照。"
+        },
+        "complete": {
+          "label": "完整",
+          "description": "与“覆盖”相同，然后删除备份中未记录的所有内容。"
+        }
+      },
+      "dryRun": "模拟运行",
+      "startPaused": "开始时暂停",
+      "skipRecheck": "跳过重新校验",
+      "autoResume": {
+        "label": "自动恢复已完成的种子",
+        "tooltip": "启用后，如果 qBittorrent 报告恢复的数据已完全校验，种子将自动恢复。换句话说，没有数据丢失。",
+        "descriptionWithSkip": "一旦 qBittorrent 报告恢复的数据已完全校验，种子将自动恢复。",
+        "descriptionWithoutSkip": "自动恢复已关闭。种子将保持暂停状态，直到您手动开始。",
+        "enableSkipRecheck": "启用“跳过重新校验”以允许在验证后自动恢复。"
+      },
+      "reincludeAll": "重新包含全部",
+      "refreshPlan": "刷新计划",
+      "runDryRun": "执行模拟运行",
+      "execute": "执行恢复",
+      "executing": "执行中...",
+      "loadingPlan": "正在加载恢复计划...",
+      "excludedTorrents": "已从此恢复中排除 {{count}} 个种子。",
+      "excludedTorrents_plural": "已从此恢复中排除 {{count}} 个种子。",
+      "refreshingPlan": "正在刷新计划...",
+      "noChangesRequired": "此恢复模式无需任何更改。",
+      "manualFollowUp": "需要手动跟进",
+      "lastExecution": "上次执行",
+      "applied": "已应用",
+      "warnings": "警告",
+      "errors": "错误",
+      "plan": {
+        "categories": "分类",
+        "tags": "标签",
+        "torrents": "种子",
+        "create": "创建",
+        "update": "更新",
+        "delete": "删除",
+        "noCategoryChanges": "无分类更改。",
+        "noTagChanges": "无标签更改。",
+        "noTorrentChanges": "无种子更改。",
+        "addCount": "添加 ({{count}})",
+        "updateCount": "更新 ({{count}})",
+        "deleteCount": "删除 ({{count}})",
+        "include": "包含",
+        "exclude": "排除",
+        "currentCategory": "当前分类: {{category}}",
+        "change": {
+          "size": "大小",
+          "infohashV1": "信息哈希 v1",
+          "infohashV2": "信息哈希 v2"
+        }
+      }
+    },
+    "history": {
+      "title": "备份历史",
+      "deleteAll": "全部删除",
+      "deleteAllConfirm": {
+        "title": "删除所有备份？",
+        "description": "这将删除此实例的所有已存储备份存档和清单。此操作无法撤销。"
+      },
+      "queueBackup": "将备份加入队列",
+      "loading": "正在加载备份...",
+      "table": {
+        "type": "类型",
+        "status": "状态",
+        "requested": "请求时间",
+        "completed": "完成时间",
+        "torrents": "种子",
+        "size": "大小",
+        "actions": "操作"
+      },
+      "deleteConfirm": {
+        "title": "删除备份？",
+        "description": "这将从磁盘中删除备份存档和清单。此操作无法撤销。"
+      },
+      "noBackups": "尚未创建任何备份。"
+    },
+    "manifest": {
+      "title": "备份清单",
+      "description": "运行 #${runId}",
+      "selectBackup": "选择一个备份以查看其清单",
+      "loading": "正在加载清单...",
+      "torrents": "种子: {{count}}",
+      "categories": "分类: {{count}}",
+      "tags": "标签: {{count}}",
+      "generated": "生成于 {{date}}",
+      "more": "还有 {{count}} 个",
+      "search": "搜索种子、标签、分类...",
+      "table": {
+        "name": "名称",
+        "category": "分类",
+        "tags": "标签",
+        "size": "大小",
+        "cached": "已缓存种子"
+      },
+      "noTorrentsMatch": "没有与 “{{query}}” 匹配的种子。",
+      "noTorrentsFound": "未找到种子。",
+      "unavailable": "清单不可用。"
+    }
   }
 }
