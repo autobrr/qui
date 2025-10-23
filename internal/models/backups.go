@@ -378,27 +378,29 @@ func unmarshalTags(raw sql.NullString) ([]string, error) {
 }
 
 func (s *BackupStore) UpdateRunMetadata(ctx context.Context, runID int64, updateFn func(*BackupRun) error) error {
+	// First, get the run data in a read transaction to prepare the update
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 
-	defer func() {
-		if err != nil {
-			_ = tx.Rollback()
-		}
-	}()
-
 	run, err := s.getRunForUpdate(ctx, tx, runID)
 	if err != nil {
+		_ = tx.Rollback()
 		return err
 	}
 
+	// Commit the read transaction immediately
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+
+	// Apply the update function
 	if err = updateFn(run); err != nil {
 		return err
 	}
 
-	// Intern status
+	// Intern strings before starting write transaction to avoid deadlocks
 	statusID, err := s.db.GetOrCreateStringID(ctx, string(run.Status))
 	if err != nil {
 		return fmt.Errorf("failed to intern status: %w", err)
@@ -413,6 +415,18 @@ func (s *BackupStore) UpdateRunMetadata(ctx context.Context, runID int64, update
 		}
 		errorMessageID = &id
 	}
+
+	// Now start the write transaction
+	tx, err = s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
 
 	categoryJSON, err := marshalCategoryCounts(run.CategoryCounts)
 	if err != nil {
