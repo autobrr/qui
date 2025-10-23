@@ -138,7 +138,9 @@ func TestCleanupUnusedStrings(t *testing.T) {
 
 	// Create a record that references id1
 	instanceNameID, _ := db.GetOrCreateStringID(ctx, "test")
-	_, err := db.ExecContext(ctx, "INSERT INTO instances (name_id, host, username, password_encrypted) VALUES (?, 'http://localhost', 'user', 'pass')", instanceNameID)
+	hostID, _ := db.GetOrCreateStringID(ctx, "http://localhost")
+	usernameID, _ := db.GetOrCreateStringID(ctx, "user")
+	_, err := db.ExecContext(ctx, "INSERT INTO instances (name_id, host_id, username_id, password_encrypted) VALUES (?, ?, ?, 'pass')", instanceNameID, hostID, usernameID)
 	if err != nil {
 		t.Fatalf("Failed to create test instance: %v", err)
 	}
@@ -388,7 +390,15 @@ func TestStringInterningViews(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to intern instance name: %v", err)
 		}
-		_, err = db.ExecContext(ctx, "INSERT INTO instances (name_id, host, username, password_encrypted) VALUES (?, 'http://localhost', 'user', 'pass')", instanceNameID)
+		hostID, err := db.GetOrCreateStringID(ctx, "http://localhost")
+		if err != nil {
+			t.Fatalf("Failed to intern host: %v", err)
+		}
+		usernameID, err := db.GetOrCreateStringID(ctx, "user")
+		if err != nil {
+			t.Fatalf("Failed to intern username: %v", err)
+		}
+		_, err = db.ExecContext(ctx, "INSERT INTO instances (name_id, host_id, username_id, password_encrypted) VALUES (?, ?, ?, 'pass')", instanceNameID, hostID, usernameID)
 		if err != nil {
 			t.Fatalf("Failed to create test instance: %v", err)
 		}

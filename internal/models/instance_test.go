@@ -151,36 +151,42 @@ func TestInstanceStoreWithHost(t *testing.T) {
 	`)
 	require.NoError(t, err, "Failed to create string_pool table")
 
-	// Create new schema (with host field)
+	// Create new schema (with interned host, username, basic_username fields)
 	_, err = db.ExecContext(ctx, `
 		CREATE TABLE instances (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			name_id INTEGER NOT NULL,
-			host TEXT NOT NULL,
-			username TEXT NOT NULL,
+			host_id INTEGER NOT NULL,
+			username_id INTEGER NOT NULL,
 			password_encrypted TEXT NOT NULL,
-			basic_username TEXT,
+			basic_username_id INTEGER,
 			basic_password_encrypted TEXT,
 			tls_skip_verify BOOLEAN NOT NULL DEFAULT 0,
 			is_active BOOLEAN DEFAULT 1,
 			last_connected_at TIMESTAMP,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			FOREIGN KEY (name_id) REFERENCES string_pool(id)
+			FOREIGN KEY (name_id) REFERENCES string_pool(id),
+			FOREIGN KEY (host_id) REFERENCES string_pool(id),
+			FOREIGN KEY (username_id) REFERENCES string_pool(id),
+			FOREIGN KEY (basic_username_id) REFERENCES string_pool(id)
 		);
 		
 		CREATE VIEW instances_view AS
 		SELECT 
 			i.id,
-			sp.value AS name,
-			i.host,
-			i.username,
+			sp_name.value AS name,
+			sp_host.value AS host,
+			sp_username.value AS username,
 			i.password_encrypted,
-			i.basic_username,
+			sp_basic_username.value AS basic_username,
 			i.basic_password_encrypted,
 			i.tls_skip_verify
 		FROM instances i
-		INNER JOIN string_pool sp ON i.name_id = sp.id;
+		INNER JOIN string_pool sp_name ON i.name_id = sp_name.id
+		INNER JOIN string_pool sp_host ON i.host_id = sp_host.id
+		INNER JOIN string_pool sp_username ON i.username_id = sp_username.id
+		LEFT JOIN string_pool sp_basic_username ON i.basic_username_id = sp_basic_username.id;
 	`)
 	require.NoError(t, err, "Failed to create test table")
 

@@ -522,9 +522,10 @@ func (db *DB) findPendingMigrations(ctx context.Context, allFiles []string) ([]s
 func (db *DB) applyAllMigrations(ctx context.Context, migrations []string) error {
 	// Migrations that need foreign keys disabled due to table recreation
 	needsForeignKeysOff := map[string]bool{
-		"011_add_string_interning.sql":         true,
-		"012_intern_infohashes.sql":            true,
-		"013_intern_backup_runs_and_names.sql": true,
+		"011_add_string_interning.sql":              true,
+		"012_intern_infohashes.sql":                 true,
+		"013_intern_backup_runs_and_names.sql":      true,
+		"015_intern_instance_and_path_fields.sql":   true,
 	}
 
 	// Begin single transaction for all migrations
@@ -643,7 +644,17 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 			UNION
 			SELECT DISTINCT error_message_id FROM instance_backup_runs WHERE error_message_id IS NOT NULL
 			UNION
+			SELECT DISTINCT archive_path_id FROM instance_backup_runs WHERE archive_path_id IS NOT NULL
+			UNION
+			SELECT DISTINCT manifest_path_id FROM instance_backup_runs WHERE manifest_path_id IS NOT NULL
+			UNION
 			SELECT DISTINCT name_id FROM instances WHERE name_id IS NOT NULL
+			UNION
+			SELECT DISTINCT host_id FROM instances WHERE host_id IS NOT NULL
+			UNION
+			SELECT DISTINCT username_id FROM instances WHERE username_id IS NOT NULL
+			UNION
+			SELECT DISTINCT basic_username_id FROM instances WHERE basic_username_id IS NOT NULL
 			UNION
 			SELECT DISTINCT name_id FROM api_keys WHERE name_id IS NOT NULL
 			UNION

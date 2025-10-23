@@ -259,10 +259,28 @@ func (s *BackupStore) CreateRun(ctx context.Context, run *BackupRun) error {
 		errorMessageID = &id
 	}
 
+	var archivePathID *int64
+	if run.ArchivePath != nil && *run.ArchivePath != "" {
+		id, err := s.db.GetOrCreateStringID(ctx, *run.ArchivePath)
+		if err != nil {
+			return fmt.Errorf("failed to intern archive_path: %w", err)
+		}
+		archivePathID = &id
+	}
+
+	var manifestPathID *int64
+	if run.ManifestPath != nil && *run.ManifestPath != "" {
+		id, err := s.db.GetOrCreateStringID(ctx, *run.ManifestPath)
+		if err != nil {
+			return fmt.Errorf("failed to intern manifest_path: %w", err)
+		}
+		manifestPathID = &id
+	}
+
 	query := `
         INSERT INTO instance_backup_runs (
             instance_id, kind_id, status_id, requested_by_id, requested_at, started_at, completed_at,
-            archive_path, manifest_path, total_bytes, torrent_count, category_counts_json, categories_json, tags_json, error_message_id
+            archive_path_id, manifest_path_id, total_bytes, torrent_count, category_counts_json, categories_json, tags_json, error_message_id
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `
 
@@ -281,8 +299,8 @@ func (s *BackupStore) CreateRun(ctx context.Context, run *BackupRun) error {
 		run.RequestedAt,
 		run.StartedAt,
 		run.CompletedAt,
-		run.ArchivePath,
-		run.ManifestPath,
+		archivePathID,
+		manifestPathID,
 		run.TotalBytes,
 		run.TorrentCount,
 		categoryJSON,
@@ -416,6 +434,26 @@ func (s *BackupStore) UpdateRunMetadata(ctx context.Context, runID int64, update
 		errorMessageID = &id
 	}
 
+	// Intern archive_path if present
+	var archivePathID *int64
+	if run.ArchivePath != nil && *run.ArchivePath != "" {
+		id, err := s.db.GetOrCreateStringID(ctx, *run.ArchivePath)
+		if err != nil {
+			return fmt.Errorf("failed to intern archive_path: %w", err)
+		}
+		archivePathID = &id
+	}
+
+	// Intern manifest_path if present
+	var manifestPathID *int64
+	if run.ManifestPath != nil && *run.ManifestPath != "" {
+		id, err := s.db.GetOrCreateStringID(ctx, *run.ManifestPath)
+		if err != nil {
+			return fmt.Errorf("failed to intern manifest_path: %w", err)
+		}
+		manifestPathID = &id
+	}
+
 	// Now start the write transaction
 	tx, err = s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -438,8 +476,8 @@ func (s *BackupStore) UpdateRunMetadata(ctx context.Context, runID int64, update
             status_id = ?,
             started_at = ?,
             completed_at = ?,
-            archive_path = ?,
-            manifest_path = ?,
+            archive_path_id = ?,
+            manifest_path_id = ?,
             total_bytes = ?,
             torrent_count = ?,
             category_counts_json = ?,
@@ -467,8 +505,8 @@ func (s *BackupStore) UpdateRunMetadata(ctx context.Context, runID int64, update
 		statusID,
 		run.StartedAt,
 		run.CompletedAt,
-		run.ArchivePath,
-		run.ManifestPath,
+		archivePathID,
+		manifestPathID,
 		run.TotalBytes,
 		run.TorrentCount,
 		categoryJSON,

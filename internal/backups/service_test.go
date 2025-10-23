@@ -18,12 +18,16 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// Helper function to insert a test instance with interned name
+// Helper function to insert a test instance with interned fields
 func insertTestInstance(t *testing.T, db *database.DB, ctx context.Context, name string) int {
 	t.Helper()
 	nameID, err := db.GetOrCreateStringID(ctx, name)
 	require.NoError(t, err)
-	result, err := db.ExecContext(ctx, "INSERT INTO instances (name_id, host, username, password_encrypted) VALUES (?, 'http://localhost', 'user', 'pass')", nameID)
+	hostID, err := db.GetOrCreateStringID(ctx, "http://localhost")
+	require.NoError(t, err)
+	usernameID, err := db.GetOrCreateStringID(ctx, "user")
+	require.NoError(t, err)
+	result, err := db.ExecContext(ctx, "INSERT INTO instances (name_id, host_id, username_id, password_encrypted) VALUES (?, ?, ?, 'pass')", nameID, hostID, usernameID)
 	require.NoError(t, err)
 	instanceID64, err := result.LastInsertId()
 	require.NoError(t, err)
