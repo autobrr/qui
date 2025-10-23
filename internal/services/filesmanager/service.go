@@ -56,6 +56,17 @@ func (s *Service) GetCachedFiles(ctx context.Context, instanceID int, hash strin
 		return nil, nil
 	}
 
+	// For in-progress torrents, check if progress has advanced significantly
+	// This ensures the UI shows up-to-date progress for actively downloading torrents
+	if torrentProgress < 1.0 {
+		const progressThreshold = 0.01 // 1% progress change triggers cache refresh
+		progressDelta := torrentProgress - syncInfo.TorrentProgress
+		if progressDelta > progressThreshold {
+			// Progress has advanced, bypass cache to get fresh data
+			return nil, nil
+		}
+	}
+
 	// Retrieve cached files
 	cachedFiles, err := s.repo.GetFiles(ctx, instanceID, hash)
 	if err != nil {
