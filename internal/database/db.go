@@ -520,6 +520,13 @@ func (db *DB) findPendingMigrations(ctx context.Context, allFiles []string) ([]s
 }
 
 func (db *DB) applyAllMigrations(ctx context.Context, migrations []string) error {
+	// Migrations that need foreign keys disabled due to table recreation
+	needsForeignKeysOff := map[string]bool{
+		"011_add_string_interning.sql":         true,
+		"012_intern_infohashes.sql":            true,
+		"013_intern_backup_runs_and_names.sql": true,
+	}
+
 	// Begin single transaction for all migrations
 	tx, err := db.conn.Begin()
 	if err != nil {
@@ -530,22 +537,61 @@ func (db *DB) applyAllMigrations(ctx context.Context, migrations []string) error
 
 	// Apply each migration within the transaction
 	for _, filename := range migrations {
-		// Read migration file
-		content, err := migrationsFS.ReadFile("migrations/" + filename)
-		if err != nil {
-			return fmt.Errorf("failed to read migration file %s: %w", filename, err)
-		}
+		// Check if this migration needs foreign keys disabled
+		if needsForeignKeysOff[filename] {
+			// Commit current transaction before disabling foreign keys
+			if err := tx.Commit(); err != nil {
+				return fmt.Errorf("failed to commit before %s: %w", filename, err)
+			}
 
-		// Execute migration
-		if _, err := tx.ExecContext(ctx, string(content)); err != nil {
-			return fmt.Errorf("failed to execute migration %s: %w", filename, err)
-		}
+			// Disable foreign keys (must be done outside transaction)
+			if _, err := db.conn.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
+				return fmt.Errorf("failed to disable foreign keys for %s: %w", filename, err)
+			}
 
-		// Record migration
-		if _, err := tx.ExecContext(ctx, "INSERT INTO migrations (filename) VALUES (?)", filename); err != nil {
-			return fmt.Errorf("failed to record migration %s: %w", filename, err)
-		}
+			// Read and execute migration outside transaction
+			content, err := migrationsFS.ReadFile("migrations/" + filename)
+			if err != nil {
+				return fmt.Errorf("failed to read migration file %s: %w", filename, err)
+			}
 
+			if _, err := db.conn.ExecContext(ctx, string(content)); err != nil {
+				return fmt.Errorf("failed to execute migration %s: %w", filename, err)
+			}
+
+			// Record migration
+			if _, err := db.conn.ExecContext(ctx, "INSERT INTO migrations (filename) VALUES (?)", filename); err != nil {
+				return fmt.Errorf("failed to record migration %s: %w", filename, err)
+			}
+
+			// Re-enable foreign keys
+			if _, err := db.conn.ExecContext(ctx, "PRAGMA foreign_keys = ON"); err != nil {
+				return fmt.Errorf("failed to re-enable foreign keys after %s: %w", filename, err)
+			}
+
+			// Start new transaction for remaining migrations
+			tx, err = db.conn.Begin()
+			if err != nil {
+				return fmt.Errorf("failed to begin new transaction after %s: %w", filename, err)
+			}
+		} else {
+			// Normal migration within transaction
+			// Read migration file
+			content, err := migrationsFS.ReadFile("migrations/" + filename)
+			if err != nil {
+				return fmt.Errorf("failed to read migration file %s: %w", filename, err)
+			}
+
+			// Execute migration
+			if _, err := tx.ExecContext(ctx, string(content)); err != nil {
+				return fmt.Errorf("failed to execute migration %s: %w", filename, err)
+			}
+
+			// Record migration
+			if _, err := tx.ExecContext(ctx, "INSERT INTO migrations (filename) VALUES (?)", filename); err != nil {
+				return fmt.Errorf("failed to record migration %s: %w", filename, err)
+			}
+		}
 	}
 
 	// Commit all migrations at once

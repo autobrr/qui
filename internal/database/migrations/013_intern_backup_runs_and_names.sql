@@ -12,32 +12,41 @@ ALTER TABLE client_api_keys ADD COLUMN client_name_id INTEGER REFERENCES string_
 
 -- Populate string_pool with unique values
 INSERT OR IGNORE INTO string_pool (value)
-SELECT DISTINCT kind FROM instance_backup_runs WHERE kind IS NOT NULL
+SELECT DISTINCT kind FROM instance_backup_runs WHERE kind IS NOT NULL AND kind != ''
 UNION
-SELECT DISTINCT status FROM instance_backup_runs WHERE status IS NOT NULL
+SELECT DISTINCT status FROM instance_backup_runs WHERE status IS NOT NULL AND status != ''
 UNION
-SELECT DISTINCT requested_by FROM instance_backup_runs WHERE requested_by IS NOT NULL
+SELECT DISTINCT requested_by FROM instance_backup_runs WHERE requested_by IS NOT NULL AND requested_by != ''
 UNION
 SELECT DISTINCT error_message FROM instance_backup_runs WHERE error_message IS NOT NULL AND error_message != ''
 UNION
-SELECT DISTINCT name FROM instances WHERE name IS NOT NULL
+SELECT DISTINCT name FROM instances WHERE name IS NOT NULL AND name != ''
 UNION
-SELECT DISTINCT name FROM api_keys WHERE name IS NOT NULL
+SELECT DISTINCT name FROM api_keys WHERE name IS NOT NULL AND name != ''
 UNION
-SELECT DISTINCT client_name FROM client_api_keys WHERE client_name IS NOT NULL;
+SELECT DISTINCT client_name FROM client_api_keys WHERE client_name IS NOT NULL AND client_name != '';
+
+-- Handle empty/NULL values by using a placeholder
+INSERT OR IGNORE INTO string_pool (value) VALUES ('(unknown)');
 
 -- Update references for instance_backup_runs
 UPDATE instance_backup_runs
-SET kind_id = (SELECT id FROM string_pool WHERE value = instance_backup_runs.kind)
-WHERE kind IS NOT NULL;
+SET kind_id = COALESCE(
+    (SELECT id FROM string_pool WHERE value = instance_backup_runs.kind),
+    (SELECT id FROM string_pool WHERE value = '(unknown)')
+);
 
 UPDATE instance_backup_runs
-SET status_id = (SELECT id FROM string_pool WHERE value = instance_backup_runs.status)
-WHERE status IS NOT NULL;
+SET status_id = COALESCE(
+    (SELECT id FROM string_pool WHERE value = instance_backup_runs.status),
+    (SELECT id FROM string_pool WHERE value = '(unknown)')
+);
 
 UPDATE instance_backup_runs
-SET requested_by_id = (SELECT id FROM string_pool WHERE value = instance_backup_runs.requested_by)
-WHERE requested_by IS NOT NULL;
+SET requested_by_id = COALESCE(
+    (SELECT id FROM string_pool WHERE value = instance_backup_runs.requested_by),
+    (SELECT id FROM string_pool WHERE value = '(unknown)')
+);
 
 UPDATE instance_backup_runs
 SET error_message_id = (SELECT id FROM string_pool WHERE value = instance_backup_runs.error_message)
@@ -48,27 +57,42 @@ WHERE error_message IS NOT NULL AND error_message != '';
 INSERT OR IGNORE INTO string_pool (value)
 SELECT DISTINCT name FROM instances WHERE name IS NOT NULL AND name != '';
 
+-- Handle empty/NULL names by using a placeholder
+INSERT OR IGNORE INTO string_pool (value) VALUES ('(unnamed)');
+
 UPDATE instances
-SET name_id = (SELECT id FROM string_pool WHERE value = instances.name)
-WHERE name IS NOT NULL AND name != '';
+SET name_id = COALESCE(
+    (SELECT id FROM string_pool WHERE value = instances.name),
+    (SELECT id FROM string_pool WHERE value = '(unnamed)')
+);
 
 -- Update references for api_keys
 -- First ensure all values are in string_pool
 INSERT OR IGNORE INTO string_pool (value)
 SELECT DISTINCT name FROM api_keys WHERE name IS NOT NULL AND name != '';
 
+-- Handle empty/NULL names by using a placeholder
+INSERT OR IGNORE INTO string_pool (value) VALUES ('(unnamed)');
+
 UPDATE api_keys
-SET name_id = (SELECT id FROM string_pool WHERE value = api_keys.name)
-WHERE name IS NOT NULL AND name != '';
+SET name_id = COALESCE(
+    (SELECT id FROM string_pool WHERE value = api_keys.name),
+    (SELECT id FROM string_pool WHERE value = '(unnamed)')
+);
 
 -- Update references for client_api_keys  
 -- First ensure all values are in string_pool
 INSERT OR IGNORE INTO string_pool (value)
 SELECT DISTINCT client_name FROM client_api_keys WHERE client_name IS NOT NULL AND client_name != '';
 
+-- Handle empty/NULL names by using a placeholder
+INSERT OR IGNORE INTO string_pool (value) VALUES ('(unnamed)');
+
 UPDATE client_api_keys
-SET client_name_id = (SELECT id FROM string_pool WHERE value = client_api_keys.client_name)
-WHERE client_name IS NOT NULL AND client_name != '';
+SET client_name_id = COALESCE(
+    (SELECT id FROM string_pool WHERE value = client_api_keys.client_name),
+    (SELECT id FROM string_pool WHERE value = '(unnamed)')
+);
 
 -- Recreate instance_backup_runs table
 CREATE TABLE IF NOT EXISTS instance_backup_runs_new (
@@ -137,8 +161,7 @@ CREATE TABLE IF NOT EXISTS api_keys_new (
 
 INSERT INTO api_keys_new (id, key_hash, name_id, created_at, last_used_at)
 SELECT id, key_hash, name_id, created_at, last_used_at
-FROM api_keys
-WHERE name_id IS NOT NULL;
+FROM api_keys;
 
 DROP TABLE api_keys;
 ALTER TABLE api_keys_new RENAME TO api_keys;
@@ -159,8 +182,7 @@ CREATE TABLE IF NOT EXISTS client_api_keys_new (
 
 INSERT INTO client_api_keys_new (id, key_hash, client_name_id, instance_id, created_at, last_used_at)
 SELECT id, key_hash, client_name_id, instance_id, created_at, last_used_at
-FROM client_api_keys
-WHERE client_name_id IS NOT NULL;
+FROM client_api_keys;
 
 DROP TABLE client_api_keys;
 ALTER TABLE client_api_keys_new RENAME TO client_api_keys;
