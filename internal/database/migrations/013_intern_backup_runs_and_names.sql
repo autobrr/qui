@@ -44,19 +44,31 @@ SET error_message_id = (SELECT id FROM string_pool WHERE value = instance_backup
 WHERE error_message IS NOT NULL AND error_message != '';
 
 -- Update references for instances
+-- First ensure all values are in string_pool
+INSERT OR IGNORE INTO string_pool (value)
+SELECT DISTINCT name FROM instances WHERE name IS NOT NULL AND name != '';
+
 UPDATE instances
 SET name_id = (SELECT id FROM string_pool WHERE value = instances.name)
-WHERE name IS NOT NULL;
+WHERE name IS NOT NULL AND name != '';
 
 -- Update references for api_keys
+-- First ensure all values are in string_pool
+INSERT OR IGNORE INTO string_pool (value)
+SELECT DISTINCT name FROM api_keys WHERE name IS NOT NULL AND name != '';
+
 UPDATE api_keys
 SET name_id = (SELECT id FROM string_pool WHERE value = api_keys.name)
-WHERE name IS NOT NULL;
+WHERE name IS NOT NULL AND name != '';
 
--- Update references for client_api_keys
+-- Update references for client_api_keys  
+-- First ensure all values are in string_pool
+INSERT OR IGNORE INTO string_pool (value)
+SELECT DISTINCT client_name FROM client_api_keys WHERE client_name IS NOT NULL AND client_name != '';
+
 UPDATE client_api_keys
 SET client_name_id = (SELECT id FROM string_pool WHERE value = client_api_keys.client_name)
-WHERE client_name IS NOT NULL;
+WHERE client_name IS NOT NULL AND client_name != '';
 
 -- Recreate instance_backup_runs table
 CREATE TABLE IF NOT EXISTS instance_backup_runs_new (
@@ -123,6 +135,12 @@ CREATE TABLE IF NOT EXISTS api_keys_new (
     FOREIGN KEY (name_id) REFERENCES string_pool(id) ON DELETE RESTRICT
 );
 
+-- Safety check: verify we're not losing data
+SELECT CASE 
+    WHEN (SELECT COUNT(*) FROM api_keys WHERE name_id IS NULL) > 0
+    THEN RAISE(ABORT, 'Migration would lose api_keys data - some rows have NULL name_id')
+END;
+
 INSERT INTO api_keys_new (id, key_hash, name_id, created_at, last_used_at)
 SELECT id, key_hash, name_id, created_at, last_used_at
 FROM api_keys;
@@ -143,6 +161,12 @@ CREATE TABLE IF NOT EXISTS client_api_keys_new (
     FOREIGN KEY (instance_id) REFERENCES instances(id) ON DELETE CASCADE,
     FOREIGN KEY (client_name_id) REFERENCES string_pool(id) ON DELETE RESTRICT
 );
+
+-- Safety check: verify we're not losing data
+SELECT CASE 
+    WHEN (SELECT COUNT(*) FROM client_api_keys WHERE client_name_id IS NULL) > 0
+    THEN RAISE(ABORT, 'Migration would lose client_api_keys data - some rows have NULL client_name_id')
+END;
 
 INSERT INTO client_api_keys_new (id, key_hash, client_name_id, instance_id, created_at, last_used_at)
 SELECT id, key_hash, client_name_id, instance_id, created_at, last_used_at
