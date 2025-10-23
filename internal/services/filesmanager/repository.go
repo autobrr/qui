@@ -10,6 +10,8 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/rs/zerolog/log"
+
 	"github.com/autobrr/qui/internal/dbinterface"
 )
 
@@ -104,7 +106,23 @@ type querier interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }
 
-// UpsertFiles inserts or updates cached file information
+// UpsertFiles inserts or updates cached file information.
+//
+// CONCURRENCY MODEL: This function uses eventual consistency with last-writer-wins semantics.
+// If two goroutines cache the same torrent concurrently:
+// - Each file row UPSERT is atomic at the SQLite level
+// - The last write wins for each individual file
+// - Progress/availability values may briefly be inconsistent across files
+// - This is acceptable because:
+//  1. Cache freshness checks (5min TTL for active torrents) limit staleness
+//  2. Complete torrents (100% progress) have stable values
+//  3. UI shows slightly stale data briefly, then refreshes naturally
+//  4. Strict consistency would require distributed locks with significant overhead
+//
+// Alternative approaches considered but rejected:
+// - Optimistic locking with version numbers: adds complexity, breaks on every concurrent write
+// - Exclusive locks during cache write: defeats purpose of caching, creates bottleneck
+// - Transactions for all files: minimal benefit since UPSERT is already atomic per-row
 func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error {
 	if len(files) == 0 {
 		return nil
@@ -175,7 +193,10 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 	return nil
 }
 
-// DeleteFiles removes all cached files for a torrent
+// DeleteFiles removes all cached files for a torrent.
+// Returns nil if successful or if no cache existed for the given torrent.
+// To distinguish between "deleted" vs "nothing to delete", check the logs or
+// use GetFiles before calling this method.
 func (r *Repository) DeleteFiles(ctx context.Context, instanceID int, hash string) error {
 	// Validate hash format before database operations
 	if !validateHash(hash) {
@@ -185,13 +206,23 @@ func (r *Repository) DeleteFiles(ctx context.Context, instanceID int, hash strin
 	// Get string ID for torrent hash
 	hashID, err := r.db.GetOrCreateStringID(ctx, hash, nil)
 	if err != nil {
-		// If hash doesn't exist in pool, no files exist
+		// If hash doesn't exist in pool, no files exist - this is not an error
 		return nil
 	}
 
 	query := `DELETE FROM torrent_files_cache WHERE instance_id = ? AND torrent_hash_id = ?`
-	_, err = r.db.ExecContext(ctx, query, instanceID, hashID)
-	return err
+	result, err := r.db.ExecContext(ctx, query, instanceID, hashID)
+	if err != nil {
+		return fmt.Errorf("failed to delete cached files: %w", err)
+	}
+
+	// Log how many rows were deleted for observability
+	if rowsAffected, err := result.RowsAffected(); err == nil && rowsAffected > 0 {
+		log.Debug().Int("instanceID", instanceID).Str("hash", hash).Int64("files", rowsAffected).
+			Msg("Deleted cached files")
+	}
+
+	return nil
 }
 
 // GetSyncInfo retrieves sync metadata for a torrent

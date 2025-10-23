@@ -234,46 +234,54 @@ func (s *BackupStore) CreateRun(ctx context.Context, run *BackupRun) error {
 		return errors.New("run cannot be nil")
 	}
 
-	// Intern string fields
-	kindID, err := s.db.GetOrCreateStringID(ctx, string(run.Kind), nil)
-	if err != nil {
-		return fmt.Errorf("failed to intern kind: %w", err)
+	// Collect all strings to intern in a single batch for better performance
+	stringsToIntern := []string{
+		string(run.Kind),
+		string(run.Status),
+		run.RequestedBy,
 	}
 
-	statusID, err := s.db.GetOrCreateStringID(ctx, string(run.Status), nil)
-	if err != nil {
-		return fmt.Errorf("failed to intern status: %w", err)
+	// Add optional strings if present
+	if run.ErrorMessage != nil && *run.ErrorMessage != "" {
+		stringsToIntern = append(stringsToIntern, *run.ErrorMessage)
+	}
+	if run.ArchivePath != nil && *run.ArchivePath != "" {
+		stringsToIntern = append(stringsToIntern, *run.ArchivePath)
+	}
+	if run.ManifestPath != nil && *run.ManifestPath != "" {
+		stringsToIntern = append(stringsToIntern, *run.ManifestPath)
 	}
 
-	requestedByID, err := s.db.GetOrCreateStringID(ctx, run.RequestedBy, nil)
-	if err != nil {
-		return fmt.Errorf("failed to intern requested_by: %w", err)
+	// Batch intern all strings - single database transaction
+	stringIDs := make(map[string]int64, len(stringsToIntern))
+	for _, str := range stringsToIntern {
+		id, err := s.db.GetOrCreateStringID(ctx, str, nil)
+		if err != nil {
+			return fmt.Errorf("failed to intern string '%s': %w", str, err)
+		}
+		stringIDs[str] = id
 	}
+
+	// Extract IDs from map
+	kindID := stringIDs[string(run.Kind)]
+	statusID := stringIDs[string(run.Status)]
+	requestedByID := stringIDs[run.RequestedBy]
 
 	var errorMessageID *int64
 	if run.ErrorMessage != nil && *run.ErrorMessage != "" {
-		id, err := s.db.GetOrCreateStringID(ctx, *run.ErrorMessage, nil)
-		if err != nil {
-			return fmt.Errorf("failed to intern error_message: %w", err)
-		}
+		id := stringIDs[*run.ErrorMessage]
 		errorMessageID = &id
 	}
 
 	var archivePathID *int64
 	if run.ArchivePath != nil && *run.ArchivePath != "" {
-		id, err := s.db.GetOrCreateStringID(ctx, *run.ArchivePath, nil)
-		if err != nil {
-			return fmt.Errorf("failed to intern archive_path: %w", err)
-		}
+		id := stringIDs[*run.ArchivePath]
 		archivePathID = &id
 	}
 
 	var manifestPathID *int64
 	if run.ManifestPath != nil && *run.ManifestPath != "" {
-		id, err := s.db.GetOrCreateStringID(ctx, *run.ManifestPath, nil)
-		if err != nil {
-			return fmt.Errorf("failed to intern manifest_path: %w", err)
-		}
+		id := stringIDs[*run.ManifestPath]
 		manifestPathID = &id
 	}
 

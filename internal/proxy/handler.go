@@ -210,21 +210,32 @@ func combineInstanceAndRequestPath(instanceBasePath, strippedPath string) string
 // This allows both parsing form data and forwarding the request body to the proxy.
 //
 // IMPORTANT: Limits body size to 10MB to prevent OOM attacks. Larger requests will be rejected.
+// This limit is appropriate for torrent operations which use small form data payloads.
 func bufferRequestBody(r *http.Request) ([]byte, error) {
 	const maxBodySize = 10 * 1024 * 1024 // 10MB limit
 
 	// Use LimitReader to prevent reading more than maxBodySize
-	limitedReader := io.LimitReader(r.Body, maxBodySize+1)
+	// Reading exactly maxBodySize bytes is sufficient - we don't need to read extra
+	limitedReader := io.LimitReader(r.Body, maxBodySize)
 	bodyBytes, err := io.ReadAll(limitedReader)
 	if err != nil {
 		r.Body.Close()
 		return nil, err
 	}
-	r.Body.Close()
 
-	// Check if body exceeds limit
-	if len(bodyBytes) > maxBodySize {
-		return nil, fmt.Errorf("request body too large: %d bytes (max %d)", len(bodyBytes), maxBodySize)
+	// If we read exactly maxBodySize bytes, check if there's more data
+	// This avoids reading unnecessary bytes for overflow detection
+	if len(bodyBytes) == maxBodySize {
+		// Try to read one more byte to see if body exceeds limit
+		oneByte := make([]byte, 1)
+		n, _ := r.Body.Read(oneByte)
+		r.Body.Close()
+		if n > 0 {
+			// Body exceeds limit - use generic error message
+			return nil, fmt.Errorf("request body exceeds maximum allowed size")
+		}
+	} else {
+		r.Body.Close()
 	}
 
 	// Restore body for ParseForm or other consumers

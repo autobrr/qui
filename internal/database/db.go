@@ -569,6 +569,20 @@ func (db *DB) findPendingMigrations(ctx context.Context, allFiles []string) ([]s
 	return pendingMigrations, nil
 }
 
+// applyAllMigrations applies pending database migrations in order.
+//
+// MIGRATION FAILURE HANDLING:
+// If a migration fails, any strings interned during the migration will remain in string_pool.
+// These orphaned strings will be automatically cleaned up by the periodic cleanup loop (24hrs).
+// This is acceptable because:
+// - Orphaned strings are harmless (just unused rows)
+// - CleanupUnusedStrings runs automatically and will remove them
+// - Manual cleanup can be triggered with: db.CleanupUnusedStrings(ctx)
+// - The migration system prevents retrying failed migrations automatically
+//
+// For immediate cleanup after a failed migration, manually run:
+//
+//	db.CleanupUnusedStrings(context.Background())
 func (db *DB) applyAllMigrations(ctx context.Context, migrations []string) error {
 	// Migrations that need foreign keys disabled due to table recreation
 	needsForeignKeysOff := map[string]bool{
@@ -892,6 +906,17 @@ func (db *DB) GetStringsByIDs(ctx context.Context, ids []int64) (map[int64]strin
 // background goroutines. The caller is responsible for managing the underlying
 // sql.DB connection lifecycle.
 //
+// IMPORTANT LIMITATIONS FOR TESTING:
+// - Does NOT start the stringPoolCleanupLoop (automatic cleanup is disabled)
+// - Tests must manually call CleanupUnusedStrings() if testing cleanup behavior
+// - String pool may grow unbounded during test execution
+// - Tests should use short-lived databases or manually clean up
+//
+// This differs from production where:
+// - stringPoolCleanupLoop runs automatically every 24 hours
+// - Unused strings are automatically removed
+// - String pool size is bounded
+//
 // Note: This function is intended for testing only and should not be used in
 // production code. Use New() for production database initialization.
 func NewForTest(conn *sql.DB) *DB {
@@ -921,6 +946,9 @@ func NewForTest(conn *sql.DB) *DB {
 	// Start single writer goroutine
 	db.writerWG.Add(1)
 	go db.writerLoop()
+
+	// Note: stringPoolCleanupLoop is NOT started for tests
+	// Tests that need cleanup must call CleanupUnusedStrings() explicitly
 
 	return db
 }
