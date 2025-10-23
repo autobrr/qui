@@ -45,6 +45,12 @@ type DB struct {
 	stmts         *ttlcache.Cache[string, *sql.Stmt]
 	stringIDCache *ttlcache.Cache[string, int64] // Cache for string -> ID mappings
 	cacheMu       sync.RWMutex                   // Protects stringIDCache operations
+
+	// Metrics for string pool cache performance
+	cacheHits      atomic.Uint64 // Cache hit counter
+	cacheMisses    atomic.Uint64 // Cache miss counter
+	cleanupDeleted atomic.Uint64 // Total strings deleted by cleanup
+
 	stop          chan struct{}
 	closeOnce     sync.Once
 	writerWG      sync.WaitGroup
@@ -766,8 +772,11 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 	}
 	db.cacheMu.Unlock()
 
+	// Update cleanup metrics
 	if rowsAffected > 0 {
-		log.Debug().Msgf("Cleaned up %d unused strings from string_pool (cache cleared)", rowsAffected)
+		db.cleanupDeleted.Add(uint64(rowsAffected))
+		log.Debug().Msgf("Cleaned up %d unused strings from string_pool (cache cleared, total deleted: %d)",
+			rowsAffected, db.cleanupDeleted.Load())
 	}
 
 	return rowsAffected, nil
@@ -781,14 +790,20 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 // IMPORTANT: Uses INSERT OR IGNORE to handle concurrent inserts safely. Multiple goroutines
 // can call this simultaneously with the same string value without causing conflicts.
 // Cache operations are protected by mutex to prevent races with cleanup.
+//
+// METRICS: Updates cacheHits and cacheMisses counters for observability.
 func (db *DB) GetOrCreateStringID(ctx context.Context, value string, tx *sql.Tx) (int64, error) {
 	// Check cache first with read lock
 	db.cacheMu.RLock()
 	id, found := db.stringIDCache.Get(value)
 	db.cacheMu.RUnlock()
 	if found {
+		db.cacheHits.Add(1)
 		return id, nil
 	}
+
+	// Cache miss - record metric
+	db.cacheMisses.Add(1)
 
 	// Use INSERT OR IGNORE to handle concurrent inserts gracefully
 	// This is safer and simpler than trying to SELECT then INSERT
@@ -951,4 +966,18 @@ func NewForTest(conn *sql.DB) *DB {
 	// Tests that need cleanup must call CleanupUnusedStrings() explicitly
 
 	return db
+}
+
+// GetStringPoolMetrics returns the current values of string pool cache metrics.
+// These metrics track cache effectiveness and cleanup activity:
+//   - cacheHits: Number of times a string ID was found in cache (avoided DB query)
+//   - cacheMisses: Number of times a cache miss required a DB query
+//   - cleanupDeleted: Total number of unused strings deleted since startup
+//
+// These counters are cumulative and never reset. Use them to:
+//   - Monitor cache hit ratio (hits / (hits + misses))
+//   - Tune cache TTL based on hit patterns
+//   - Track cleanup effectiveness
+func (db *DB) GetStringPoolMetrics() (cacheHits, cacheMisses, cleanupDeleted uint64) {
+	return db.cacheHits.Load(), db.cacheMisses.Load(), db.cleanupDeleted.Load()
 }
