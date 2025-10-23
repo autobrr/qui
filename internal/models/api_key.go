@@ -28,10 +28,10 @@ type APIKey struct {
 }
 
 type APIKeyStore struct {
-	db dbinterface.DBWithStringInterning
+	db dbinterface.Querier
 }
 
-func NewAPIKeyStore(db dbinterface.DBWithStringInterning) *APIKeyStore {
+func NewAPIKeyStore(db dbinterface.Querier) *APIKeyStore {
 	return &APIKeyStore{db: db}
 }
 

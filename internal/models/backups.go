@@ -114,10 +114,10 @@ type CategorySnapshot struct {
 }
 
 type BackupStore struct {
-	db dbinterface.DBWithStringInterning
+	db dbinterface.Querier
 }
 
-func NewBackupStore(db dbinterface.DBWithStringInterning) *BackupStore {
+func NewBackupStore(db dbinterface.Querier) *BackupStore {
 	return &BackupStore{db: db}
 }
 

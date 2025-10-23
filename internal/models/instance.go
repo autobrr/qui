@@ -113,11 +113,11 @@ func (i *Instance) UnmarshalJSON(data []byte) error {
 }
 
 type InstanceStore struct {
-	db            dbinterface.DBWithStringInterning
+	db            dbinterface.Querier
 	encryptionKey []byte
 }
 
-func NewInstanceStore(db dbinterface.DBWithStringInterning, encryptionKey []byte) (*InstanceStore, error) {
+func NewInstanceStore(db dbinterface.Querier, encryptionKey []byte) (*InstanceStore, error) {
 	if len(encryptionKey) != 32 {
 		return nil, errors.New("encryption key must be 32 bytes")
 	}
@@ -274,7 +274,7 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 	query := `
 		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify 
-		FROM instances 
+		FROM instances_view 
 		WHERE id = ?
 	`
 
@@ -303,7 +303,7 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 	query := `
 		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify 
-		FROM instances
+		FROM instances_view
 		ORDER BY name ASC
 	`
 

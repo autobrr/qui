@@ -7,7 +7,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"sync"
 	"testing"
 
 	"github.com/autobrr/qui/internal/dbinterface"
@@ -15,80 +14,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// mockDBWithStringInterning wraps sql.DB to implement DBWithStringInterning for tests
-type mockDBWithStringInterning struct {
-	*sql.DB
-	stringCache map[string]int64
-	nextID      int64
-	mu          sync.Mutex
-}
-
-func newMockDBWithStringInterning(db *sql.DB) *mockDBWithStringInterning {
-	return &mockDBWithStringInterning{
-		DB:          db,
-		stringCache: make(map[string]int64),
-		nextID:      1,
-	}
-}
-
-func (m *mockDBWithStringInterning) GetOrCreateStringID(ctx context.Context, value string) (int64, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	// Check cache first
-	if id, ok := m.stringCache[value]; ok {
-		return id, nil
-	}
-
-	// Check if it exists in the database
-	var id int64
-	err := m.QueryRowContext(ctx, "SELECT id FROM string_pool WHERE value = ?", value).Scan(&id)
-	if err == nil {
-		m.stringCache[value] = id
-		return id, nil
-	}
-	if err != sql.ErrNoRows {
-		return 0, err
-	}
-
-	// Insert new string
-	result, err := m.ExecContext(ctx, "INSERT INTO string_pool (value) VALUES (?)", value)
-	if err != nil {
-		return 0, err
-	}
-
-	id, err = result.LastInsertId()
-	if err != nil {
-		return 0, err
-	}
-
-	m.stringCache[value] = id
-	return id, nil
-}
-
-func (m *mockDBWithStringInterning) GetStringByID(ctx context.Context, id int64) (string, error) {
-	var value string
-	err := m.QueryRowContext(ctx, "SELECT value FROM string_pool WHERE id = ?", id).Scan(&value)
-	return value, err
-}
-
-func (m *mockDBWithStringInterning) GetStringsByIDs(ctx context.Context, ids []int64) (map[int64]string, error) {
-	result := make(map[int64]string)
-	for _, id := range ids {
-		value, err := m.GetStringByID(ctx, id)
-		if err != nil {
-			return nil, err
-		}
-		result[id] = value
-	}
-	return result, nil
-}
-
-func (m *mockDBWithStringInterning) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
-	return m.DB.BeginTx(ctx, opts)
-}
-
-func setupInstanceErrorTestDB(t *testing.T) (*mockDBWithStringInterning, *InstanceErrorStore) {
+func setupInstanceErrorTestDB(t *testing.T) (*mockQuerier, *InstanceErrorStore) {
 	t.Helper()
 
 	sqlDB, err := sql.Open("sqlite", ":memory:")
@@ -103,7 +29,14 @@ func setupInstanceErrorTestDB(t *testing.T) (*mockDBWithStringInterning, *Instan
 		CREATE INDEX idx_string_pool_value ON string_pool(value);
 		CREATE TABLE instances (
 			id INTEGER PRIMARY KEY,
-			name TEXT
+			name_id INTEGER NOT NULL,
+			host TEXT NOT NULL,
+			username TEXT NOT NULL,
+			password_encrypted TEXT NOT NULL,
+			basic_username TEXT,
+			basic_password_encrypted TEXT,
+			tls_skip_verify BOOLEAN NOT NULL DEFAULT 0,
+			FOREIGN KEY (name_id) REFERENCES string_pool(id)
 		);
 		CREATE TABLE instance_errors (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -128,8 +61,8 @@ func setupInstanceErrorTestDB(t *testing.T) (*mockDBWithStringInterning, *Instan
 	`)
 	require.NoError(t, err)
 
-	// Wrap with mock that implements DBWithStringInterning
-	db := newMockDBWithStringInterning(sqlDB)
+	// Wrap with mock that implements Querier
+	db := newMockQuerier(sqlDB)
 
 	t.Cleanup(func() {
 		require.NoError(t, sqlDB.Close())

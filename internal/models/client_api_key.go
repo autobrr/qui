@@ -25,10 +25,10 @@ type ClientAPIKey struct {
 }
 
 type ClientAPIKeyStore struct {
-	db dbinterface.DBWithStringInterning
+	db dbinterface.Querier
 }
 
-func NewClientAPIKeyStore(db dbinterface.DBWithStringInterning) *ClientAPIKeyStore {
+func NewClientAPIKeyStore(db dbinterface.Querier) *ClientAPIKeyStore {
 	return &ClientAPIKeyStore{db: db}
 }
 

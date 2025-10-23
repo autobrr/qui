@@ -29,13 +29,11 @@ type InstanceError struct {
 }
 
 type InstanceErrorStore struct {
-	db dbinterface.DBWithStringInterning
+	db dbinterface.Querier
 }
 
-func NewInstanceErrorStore(db dbinterface.DBWithStringInterning) *InstanceErrorStore {
-	return &InstanceErrorStore{
-		db: db,
-	}
+func NewInstanceErrorStore(db dbinterface.Querier) *InstanceErrorStore {
+	return &InstanceErrorStore{db: db}
 }
 
 // isContextError checks if an error is a standard context error that should be ignored
