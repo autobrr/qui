@@ -43,6 +43,7 @@ type DB struct {
 	conn          *sql.DB
 	writeCh       chan writeReq
 	stmts         *ttlcache.Cache[string, *sql.Stmt]
+	stringIDCache *ttlcache.Cache[string, int64] // Cache for string -> ID mappings
 	stop          chan struct{}
 	closeOnce     sync.Once
 	writerWG      sync.WaitGroup
@@ -137,20 +138,25 @@ func New(databasePath string) (*DB, error) {
 	}
 
 	// create ttlcache for prepared statements with 5 minute TTL and deallocation func
-	opts := ttlcache.Options[string, *sql.Stmt]{}.SetDefaultTTL(5 * time.Minute).
+	stmtOpts := ttlcache.Options[string, *sql.Stmt]{}.SetDefaultTTL(5 * time.Minute).
 		SetDeallocationFunc(func(k string, s *sql.Stmt, _ ttlcache.DeallocationReason) {
 			if s != nil {
 				_ = s.Close()
 			}
 		})
 
-	stmtsCache := ttlcache.New(opts)
+	stmtsCache := ttlcache.New(stmtOpts)
+
+	// create ttlcache for string ID mappings with 5 minute TTL
+	stringIDOpts := ttlcache.Options[string, int64]{}.SetDefaultTTL(5 * time.Minute)
+	stringIDCache := ttlcache.New(stringIDOpts)
 
 	db := &DB{
-		conn:    conn,
-		writeCh: make(chan writeReq, writeChannelBuffer),
-		stmts:   stmtsCache,
-		stop:    make(chan struct{}),
+		conn:          conn,
+		writeCh:       make(chan writeReq, writeChannelBuffer),
+		stmts:         stmtsCache,
+		stringIDCache: stringIDCache,
+		stop:          make(chan struct{}),
 	}
 	db.writeBarrier.Store((chan struct{})(nil))
 	db.barrierSignal.Store((chan struct{})(nil))
@@ -554,6 +560,7 @@ func (db *DB) applyAllMigrations(ctx context.Context, migrations []string) error
 // CleanupUnusedStrings removes strings from the string_pool table that are no longer
 // referenced by any other table. This should be run periodically to reclaim storage space.
 // Returns the number of strings deleted and any error encountered.
+// Also clears the string ID cache to ensure consistency.
 func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 	// Delete strings that are not referenced by any table
 	// This query finds string_pool entries that have no foreign key references
@@ -594,8 +601,14 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("failed to get rows affected: %w", err)
 	}
 
+	// Clear the string ID cache after cleanup to ensure consistency
+	// This prevents cached IDs from pointing to deleted strings
+	// We recreate the cache instead of clearing to ensure thread-safety
+	stringIDOpts := ttlcache.Options[string, int64]{}.SetDefaultTTL(5 * time.Minute)
+	db.stringIDCache = ttlcache.New(stringIDOpts)
+
 	if rowsAffected > 0 {
-		log.Info().Msgf("Cleaned up %d unused strings from string_pool", rowsAffected)
+		log.Debug().Msgf("Cleaned up %d unused strings from string_pool (cache cleared)", rowsAffected)
 	}
 
 	return rowsAffected, nil
@@ -603,11 +616,19 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 
 // GetOrCreateStringID retrieves the ID of a string from the string_pool, or creates it if it doesn't exist.
 // This is the primary method for string interning throughout the application.
+// Uses a TTL cache to avoid repeated database queries for frequently used strings.
 func (db *DB) GetOrCreateStringID(ctx context.Context, value string) (int64, error) {
+	// Check cache first
+	if id, found := db.stringIDCache.Get(value); found {
+		return id, nil
+	}
+
 	// First, try to get the existing string ID
 	var id int64
 	err := db.QueryRowContext(ctx, "SELECT id FROM string_pool WHERE value = ?", value).Scan(&id)
 	if err == nil {
+		// Cache the result
+		db.stringIDCache.Set(value, id, ttlcache.DefaultTTL)
 		return id, nil
 	}
 	if err != sql.ErrNoRows {
@@ -620,6 +641,8 @@ func (db *DB) GetOrCreateStringID(ctx context.Context, value string) (int64, err
 		// Check if another goroutine inserted it concurrently
 		err2 := db.QueryRowContext(ctx, "SELECT id FROM string_pool WHERE value = ?", value).Scan(&id)
 		if err2 == nil {
+			// Cache the result
+			db.stringIDCache.Set(value, id, ttlcache.DefaultTTL)
 			return id, nil
 		}
 		return 0, fmt.Errorf("failed to insert into string_pool: %w", err)
@@ -629,6 +652,9 @@ func (db *DB) GetOrCreateStringID(ctx context.Context, value string) (int64, err
 	if err != nil {
 		return 0, fmt.Errorf("failed to get last insert ID: %w", err)
 	}
+
+	// Cache the newly created ID
+	db.stringIDCache.Set(value, id, ttlcache.DefaultTTL)
 
 	return id, nil
 }
@@ -679,4 +705,42 @@ func (db *DB) GetStringsByIDs(ctx context.Context, ids []int64) (map[int64]strin
 	}
 
 	return result, nil
+}
+
+// NewForTest wraps an existing sql.DB connection for testing purposes.
+// This creates a minimal DB wrapper without running migrations or starting
+// background goroutines. The caller is responsible for managing the underlying
+// sql.DB connection lifecycle.
+//
+// Note: This function is intended for testing only and should not be used in
+// production code. Use New() for production database initialization.
+func NewForTest(conn *sql.DB) *DB {
+	stmtOpts := ttlcache.Options[string, *sql.Stmt]{}.SetDefaultTTL(5 * time.Minute).
+		SetDeallocationFunc(func(k string, s *sql.Stmt, _ ttlcache.DeallocationReason) {
+			if s != nil {
+				_ = s.Close()
+			}
+		})
+
+	stmtsCache := ttlcache.New(stmtOpts)
+
+	// create ttlcache for string ID mappings with 5 minute TTL
+	stringIDOpts := ttlcache.Options[string, int64]{}.SetDefaultTTL(5 * time.Minute)
+	stringIDCache := ttlcache.New(stringIDOpts)
+
+	db := &DB{
+		conn:          conn,
+		writeCh:       make(chan writeReq, writeChannelBuffer),
+		stmts:         stmtsCache,
+		stringIDCache: stringIDCache,
+		stop:          make(chan struct{}),
+	}
+	db.writeBarrier.Store((chan struct{})(nil))
+	db.barrierSignal.Store((chan struct{})(nil))
+
+	// Start single writer goroutine
+	db.writerWG.Add(1)
+	go db.writerLoop()
+
+	return db
 }

@@ -77,8 +77,6 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 		return nil
 	}
 
-	// First, delete existing files for this torrent
-	instanceID := files[0].InstanceID
 	hash := files[0].TorrentHash
 
 	// Get or create string ID for torrent hash
@@ -87,17 +85,22 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 		return fmt.Errorf("failed to intern torrent hash: %w", err)
 	}
 
-	deleteQuery := `DELETE FROM torrent_files_cache WHERE instance_id = ? AND torrent_hash_id = ?`
-	if _, err := r.db.ExecContext(ctx, deleteQuery, instanceID, hashID); err != nil {
-		return fmt.Errorf("failed to delete existing files: %w", err)
-	}
-
-	// Insert all files
+	// Upsert all files
 	insertQuery := `
 		INSERT INTO torrent_files_cache 
 		(instance_id, torrent_hash_id, file_index, name_id, size, progress, priority, 
 		 is_seed, piece_range_start, piece_range_end, availability, cached_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(instance_id, torrent_hash_id, file_index) DO UPDATE SET
+			name_id = excluded.name_id,
+			size = excluded.size,
+			progress = excluded.progress,
+			priority = excluded.priority,
+			is_seed = excluded.is_seed,
+			piece_range_start = excluded.piece_range_start,
+			piece_range_end = excluded.piece_range_end,
+			availability = excluded.availability,
+			cached_at = excluded.cached_at
 	`
 
 	for _, f := range files {
@@ -220,8 +223,8 @@ func (r *Repository) DeleteOldCache(ctx context.Context, olderThan time.Time) (i
 	// First delete from files cache
 	filesQuery := `
 		DELETE FROM torrent_files_cache 
-		WHERE (instance_id, torrent_hash) IN (
-			SELECT instance_id, torrent_hash 
+		WHERE (instance_id, torrent_hash_id) IN (
+			SELECT instance_id, torrent_hash_id 
 			FROM torrent_files_sync 
 			WHERE last_synced_at < ?
 		)

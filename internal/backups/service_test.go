@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,21 +17,99 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-func setupTestBackupDB(t *testing.T) *sql.DB {
+// mockDBWithStringInterning wraps sql.DB to implement DBWithStringInterning for tests
+type mockDBWithStringInterning struct {
+	*sql.DB
+	stringCache map[string]int64
+	nextID      int64
+	mu          sync.Mutex
+}
+
+func newMockDBWithStringInterning(db *sql.DB) *mockDBWithStringInterning {
+	return &mockDBWithStringInterning{
+		DB:          db,
+		stringCache: make(map[string]int64),
+		nextID:      1,
+	}
+}
+
+func (m *mockDBWithStringInterning) GetOrCreateStringID(ctx context.Context, value string) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Check cache first
+	if id, ok := m.stringCache[value]; ok {
+		return id, nil
+	}
+
+	// Check if it exists in the database
+	var id int64
+	err := m.QueryRowContext(ctx, "SELECT id FROM string_pool WHERE value = ?", value).Scan(&id)
+	if err == nil {
+		m.stringCache[value] = id
+		return id, nil
+	}
+	if err != sql.ErrNoRows {
+		return 0, err
+	}
+
+	// Insert new string
+	result, err := m.ExecContext(ctx, "INSERT INTO string_pool (value) VALUES (?)", value)
+	if err != nil {
+		return 0, err
+	}
+
+	id, err = result.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+
+	m.stringCache[value] = id
+	return id, nil
+}
+
+func (m *mockDBWithStringInterning) GetStringByID(ctx context.Context, id int64) (string, error) {
+	var value string
+	err := m.QueryRowContext(ctx, "SELECT value FROM string_pool WHERE id = ?", id).Scan(&value)
+	return value, err
+}
+
+func (m *mockDBWithStringInterning) GetStringsByIDs(ctx context.Context, ids []int64) (map[int64]string, error) {
+	result := make(map[int64]string)
+	for _, id := range ids {
+		value, err := m.GetStringByID(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		result[id] = value
+	}
+	return result, nil
+}
+
+func (m *mockDBWithStringInterning) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
+	return m.DB.BeginTx(ctx, opts)
+}
+
+func setupTestBackupDB(t *testing.T) *mockDBWithStringInterning {
 	t.Helper()
 
 	// Use a unique database name for each test to avoid conflicts when running in parallel
 	dbName := "file:" + t.Name() + "?mode=memory&cache=shared"
-	db, err := sql.Open("sqlite", dbName)
+	sqlDB, err := sql.Open("sqlite", dbName)
 	require.NoError(t, err)
 
-	db.SetMaxOpenConns(1)
-	db.SetMaxIdleConns(1)
+	sqlDB.SetMaxOpenConns(1)
+	sqlDB.SetMaxIdleConns(1)
 
-	_, err = db.Exec("PRAGMA foreign_keys = ON")
+	_, err = sqlDB.Exec("PRAGMA foreign_keys = ON")
 	require.NoError(t, err)
 
 	schema := []string{
+		`CREATE TABLE IF NOT EXISTS string_pool (
+		    id INTEGER PRIMARY KEY AUTOINCREMENT,
+		    value TEXT NOT NULL UNIQUE
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_string_pool_value ON string_pool(value)`,
 		`CREATE TABLE IF NOT EXISTS instances (
 		    id INTEGER PRIMARY KEY AUTOINCREMENT,
 		    name TEXT NOT NULL
@@ -71,14 +150,61 @@ func setupTestBackupDB(t *testing.T) *sql.DB {
 		    error_message TEXT,
 		    FOREIGN KEY (instance_id) REFERENCES instances(id) ON DELETE CASCADE
 		)`,
+		`CREATE TABLE IF NOT EXISTS instance_backup_items (
+		    id INTEGER PRIMARY KEY AUTOINCREMENT,
+		    run_id INTEGER NOT NULL,
+		    torrent_hash_id INTEGER NOT NULL,
+		    name_id INTEGER NOT NULL,
+		    category_id INTEGER,
+		    size_bytes INTEGER NOT NULL,
+		    archive_rel_path_id INTEGER,
+		    infohash_v1 TEXT,
+		    infohash_v2 TEXT,
+		    tags_id INTEGER,
+		    torrent_blob_path_id INTEGER,
+		    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		    FOREIGN KEY (run_id) REFERENCES instance_backup_runs(id) ON DELETE CASCADE,
+		    FOREIGN KEY (torrent_hash_id) REFERENCES string_pool(id),
+		    FOREIGN KEY (name_id) REFERENCES string_pool(id),
+		    FOREIGN KEY (category_id) REFERENCES string_pool(id),
+		    FOREIGN KEY (tags_id) REFERENCES string_pool(id),
+		    FOREIGN KEY (archive_rel_path_id) REFERENCES string_pool(id),
+		    FOREIGN KEY (torrent_blob_path_id) REFERENCES string_pool(id)
+		)`,
+		`CREATE VIEW IF NOT EXISTS instance_backup_items_view AS
+		SELECT 
+		    ibi.id,
+		    ibi.run_id,
+		    sp_hash.value AS torrent_hash,
+		    sp_name.value AS name,
+		    sp_category.value AS category,
+		    ibi.size_bytes,
+		    sp_archive.value AS archive_rel_path,
+		    ibi.infohash_v1,
+		    ibi.infohash_v2,
+		    sp_tags.value AS tags,
+		    sp_blob.value AS torrent_blob_path,
+		    ibi.created_at
+		FROM instance_backup_items ibi
+		JOIN string_pool sp_hash ON ibi.torrent_hash_id = sp_hash.id
+		JOIN string_pool sp_name ON ibi.name_id = sp_name.id
+		LEFT JOIN string_pool sp_category ON ibi.category_id = sp_category.id
+		LEFT JOIN string_pool sp_archive ON ibi.archive_rel_path_id = sp_archive.id
+		LEFT JOIN string_pool sp_tags ON ibi.tags_id = sp_tags.id
+		LEFT JOIN string_pool sp_blob ON ibi.torrent_blob_path_id = sp_blob.id`,
 	}
 
 	for _, stmt := range schema {
-		_, err = db.Exec(stmt)
+		_, err = sqlDB.Exec(stmt)
 		require.NoError(t, err)
 	}
 
-	t.Cleanup(func() { _ = db.Close() })
+	// Wrap with mock that implements DBWithStringInterning
+	db := newMockDBWithStringInterning(sqlDB)
+
+	t.Cleanup(func() {
+		_ = sqlDB.Close()
+	})
 
 	return db
 }

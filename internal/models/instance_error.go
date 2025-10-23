@@ -29,10 +29,10 @@ type InstanceError struct {
 }
 
 type InstanceErrorStore struct {
-	db dbinterface.Querier
+	db dbinterface.DBWithStringInterning
 }
 
-func NewInstanceErrorStore(db dbinterface.Querier) *InstanceErrorStore {
+func NewInstanceErrorStore(db dbinterface.DBWithStringInterning) *InstanceErrorStore {
 	return &InstanceErrorStore{
 		db: db,
 	}
@@ -62,9 +62,9 @@ func (s *InstanceErrorStore) RecordError(ctx context.Context, instanceID int, er
 		return nil
 	}
 
-	// Simple deduplication: check if same error was recorded in last minute
+	// Simple deduplication: check if same error was recorded in last minute using view
 	var count int
-	checkQuery := `SELECT COUNT(*) FROM instance_errors 
+	checkQuery := `SELECT COUNT(*) FROM instance_errors_view 
                    WHERE instance_id = ? AND error_type = ? AND error_message = ? 
                    AND occurred_at > datetime('now', '-1 minute')`
 
@@ -72,10 +72,21 @@ func (s *InstanceErrorStore) RecordError(ctx context.Context, instanceID int, er
 		return nil // Skip duplicate
 	}
 
-	// Insert the error (trigger will handle cleanup of old errors)
-	query := `INSERT INTO instance_errors (instance_id, error_type, error_message) 
+	// Intern the error strings
+	errorTypeID, err := s.db.GetOrCreateStringID(ctx, errorType)
+	if err != nil {
+		return err
+	}
+
+	errorMessageID, err := s.db.GetOrCreateStringID(ctx, errorMessage)
+	if err != nil {
+		return err
+	}
+
+	// Insert the error using interned IDs (trigger will handle cleanup of old errors)
+	query := `INSERT INTO instance_errors (instance_id, error_type_id, error_message_id) 
               VALUES (?, ?, ?)`
-	_, execErr := s.db.ExecContext(ctx, query, instanceID, errorType, errorMessage)
+	_, execErr := s.db.ExecContext(ctx, query, instanceID, errorTypeID, errorMessageID)
 
 	// Handle foreign key constraint errors gracefully
 	if execErr != nil && strings.Contains(execErr.Error(), "FOREIGN KEY constraint failed") {
@@ -89,7 +100,7 @@ func (s *InstanceErrorStore) RecordError(ctx context.Context, instanceID int, er
 // GetRecentErrors retrieves the last N errors for an instance
 func (s *InstanceErrorStore) GetRecentErrors(ctx context.Context, instanceID int, limit int) ([]InstanceError, error) {
 	query := `SELECT id, instance_id, error_type, error_message, occurred_at 
-              FROM instance_errors 
+              FROM instance_errors_view 
               WHERE instance_id = ? 
               ORDER BY occurred_at DESC 
               LIMIT ?`

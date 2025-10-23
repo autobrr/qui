@@ -113,10 +113,10 @@ type CategorySnapshot struct {
 }
 
 type BackupStore struct {
-	db dbinterface.TxBeginner
+	db dbinterface.DBWithStringInterning
 }
 
-func NewBackupStore(db dbinterface.TxBeginner) *BackupStore {
+func NewBackupStore(db dbinterface.DBWithStringInterning) *BackupStore {
 	return &BackupStore{db: db}
 }
 
@@ -651,7 +651,7 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO instance_backup_items (
-			run_id, torrent_hash, name, category, size_bytes, archive_rel_path, infohash_v1, infohash_v2, tags, torrent_blob_path
+			run_id, torrent_hash_id, name_id, category_id, size_bytes, archive_rel_path_id, infohash_v1, infohash_v2, tags_id, torrent_blob_path_id
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
@@ -661,18 +661,71 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 	defer stmt.Close()
 
 	for _, item := range items {
+		// Intern all string fields
+		torrentHashID, err := s.db.GetOrCreateStringID(ctx, item.TorrentHash)
+		if err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+
+		nameID, err := s.db.GetOrCreateStringID(ctx, item.Name)
+		if err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+
+		var categoryID *int64
+		if item.Category != nil && *item.Category != "" {
+			id, err := s.db.GetOrCreateStringID(ctx, *item.Category)
+			if err != nil {
+				_ = tx.Rollback()
+				return err
+			}
+			categoryID = &id
+		}
+
+		var tagsID *int64
+		if item.Tags != nil && *item.Tags != "" {
+			id, err := s.db.GetOrCreateStringID(ctx, *item.Tags)
+			if err != nil {
+				_ = tx.Rollback()
+				return err
+			}
+			tagsID = &id
+		}
+
+		var archiveRelPathID *int64
+		if item.ArchiveRelPath != nil && *item.ArchiveRelPath != "" {
+			id, err := s.db.GetOrCreateStringID(ctx, *item.ArchiveRelPath)
+			if err != nil {
+				_ = tx.Rollback()
+				return err
+			}
+			archiveRelPathID = &id
+		}
+
+		var torrentBlobPathID *int64
+		if item.TorrentBlobPath != nil && *item.TorrentBlobPath != "" {
+			id, err := s.db.GetOrCreateStringID(ctx, *item.TorrentBlobPath)
+			if err != nil {
+				_ = tx.Rollback()
+				return err
+			}
+			torrentBlobPathID = &id
+		}
+
 		_, err = stmt.ExecContext(
 			ctx,
 			runID,
-			item.TorrentHash,
-			item.Name,
-			item.Category,
+			torrentHashID,
+			nameID,
+			categoryID,
 			item.SizeBytes,
-			item.ArchiveRelPath,
+			archiveRelPathID,
 			item.InfoHashV1,
 			item.InfoHashV2,
-			item.Tags,
-			item.TorrentBlobPath,
+			tagsID,
+			torrentBlobPathID,
 		)
 		if err != nil {
 			_ = tx.Rollback()
@@ -686,7 +739,7 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 func (s *BackupStore) ListItems(ctx context.Context, runID int64) ([]*BackupItem, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, run_id, torrent_hash, name, category, size_bytes, archive_rel_path, infohash_v1, infohash_v2, tags, torrent_blob_path, created_at
-		FROM instance_backup_items
+		FROM instance_backup_items_view
 		WHERE run_id = ?
 		ORDER BY name COLLATE NOCASE
 	`, runID)
@@ -748,7 +801,7 @@ func (s *BackupStore) ListItems(ctx context.Context, runID int64) ([]*BackupItem
 func (s *BackupStore) GetItemByHash(ctx context.Context, runID int64, hash string) (*BackupItem, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, run_id, torrent_hash, name, category, size_bytes, archive_rel_path, infohash_v1, infohash_v2, tags, torrent_blob_path, created_at
-		FROM instance_backup_items
+		FROM instance_backup_items_view
 		WHERE run_id = ? AND torrent_hash = ?
 		LIMIT 1
 	`, runID, hash)
@@ -803,7 +856,7 @@ func (s *BackupStore) GetItemByHash(ctx context.Context, runID int64, hash strin
 func (s *BackupStore) FindCachedTorrentBlob(ctx context.Context, instanceID int, hash string) (*string, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT i.torrent_blob_path
-		FROM instance_backup_items i
+		FROM instance_backup_items_view i
 		JOIN instance_backup_runs r ON r.id = i.run_id
 		WHERE r.instance_id = ?
 		  AND i.torrent_hash = ?
@@ -836,7 +889,7 @@ func (s *BackupStore) CountBlobReferences(ctx context.Context, relPath string) (
 	var count int
 	err := s.db.QueryRowContext(ctx, `
 		SELECT COUNT(*)
-		FROM instance_backup_items
+		FROM instance_backup_items_view
 		WHERE torrent_blob_path = ?
 	`, relPath).Scan(&count)
 	return count, err
