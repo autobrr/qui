@@ -560,10 +560,19 @@ func (s *BackupStore) UpdateMultipleRunsStatus(ctx context.Context, runIDs []int
 	}
 
 	// Build args array: status_id, completed_at, error_message_id, then run IDs
+	// Dereference pointers or pass nil for SQLite compatibility
 	args := make([]interface{}, 3+len(runIDs))
 	args[0] = statusID
-	args[1] = completedAt
-	args[2] = errorMessageID
+	if completedAt != nil {
+		args[1] = *completedAt
+	} else {
+		args[1] = nil
+	}
+	if errorMessageID != nil {
+		args[2] = *errorMessageID
+	} else {
+		args[2] = nil
+	}
 	for i, runID := range runIDs {
 		args[i+3] = runID
 	}
@@ -1332,8 +1341,9 @@ func (s *BackupStore) ListEnabledSettings(ctx context.Context) ([]*BackupSetting
 
 func (s *BackupStore) DeleteRunsOlderThan(ctx context.Context, instanceID int, kind BackupRunKind, keep int) ([]int64, error) {
 	if keep <= 0 {
+		// Use view to query by kind string value
 		query := `
-            SELECT id FROM instance_backup_runs
+            SELECT id FROM instance_backup_runs_view
             WHERE instance_id = ? AND kind = ?
         `
 		rows, err := s.db.QueryContext(ctx, query, instanceID, string(kind))
@@ -1352,8 +1362,9 @@ func (s *BackupStore) DeleteRunsOlderThan(ctx context.Context, instanceID int, k
 		return ids, rows.Err()
 	}
 
+	// Use view to query by kind string value
 	query := `
-        SELECT id FROM instance_backup_runs
+        SELECT id FROM instance_backup_runs_view
         WHERE instance_id = ? AND kind = ?
         ORDER BY requested_at DESC
         LIMIT -1 OFFSET ?
