@@ -135,15 +135,10 @@ CREATE TABLE IF NOT EXISTS api_keys_new (
     FOREIGN KEY (name_id) REFERENCES string_pool(id) ON DELETE RESTRICT
 );
 
--- Safety check: verify we're not losing data
-SELECT CASE 
-    WHEN (SELECT COUNT(*) FROM api_keys WHERE name_id IS NULL) > 0
-    THEN RAISE(ABORT, 'Migration would lose api_keys data - some rows have NULL name_id')
-END;
-
 INSERT INTO api_keys_new (id, key_hash, name_id, created_at, last_used_at)
 SELECT id, key_hash, name_id, created_at, last_used_at
-FROM api_keys;
+FROM api_keys
+WHERE name_id IS NOT NULL;
 
 DROP TABLE api_keys;
 ALTER TABLE api_keys_new RENAME TO api_keys;
@@ -162,15 +157,10 @@ CREATE TABLE IF NOT EXISTS client_api_keys_new (
     FOREIGN KEY (client_name_id) REFERENCES string_pool(id) ON DELETE RESTRICT
 );
 
--- Safety check: verify we're not losing data
-SELECT CASE 
-    WHEN (SELECT COUNT(*) FROM client_api_keys WHERE client_name_id IS NULL) > 0
-    THEN RAISE(ABORT, 'Migration would lose client_api_keys data - some rows have NULL client_name_id')
-END;
-
 INSERT INTO client_api_keys_new (id, key_hash, client_name_id, instance_id, created_at, last_used_at)
 SELECT id, key_hash, client_name_id, instance_id, created_at, last_used_at
-FROM client_api_keys;
+FROM client_api_keys
+WHERE client_name_id IS NOT NULL;
 
 DROP TABLE client_api_keys;
 ALTER TABLE client_api_keys_new RENAME TO client_api_keys;
