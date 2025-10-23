@@ -760,10 +760,92 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 		return nil
 	}
 
+	// Intern all strings before starting transaction to avoid deadlocks
+	type internedItem struct {
+		torrentHashID     int64
+		nameID            int64
+		categoryID        *int64
+		tagsID            *int64
+		archiveRelPathID  *int64
+		infohashV1ID      *int64
+		infohashV2ID      *int64
+		torrentBlobPathID *int64
+	}
+
+	internedItems := make([]internedItem, len(items))
+
+	for i, item := range items {
+		torrentHashID, err := s.db.GetOrCreateStringID(ctx, item.TorrentHash)
+		if err != nil {
+			return fmt.Errorf("failed to intern torrent hash: %w", err)
+		}
+		internedItems[i].torrentHashID = torrentHashID
+
+		nameID, err := s.db.GetOrCreateStringID(ctx, item.Name)
+		if err != nil {
+			return fmt.Errorf("failed to intern name: %w", err)
+		}
+		internedItems[i].nameID = nameID
+
+		if item.Category != nil && *item.Category != "" {
+			id, err := s.db.GetOrCreateStringID(ctx, *item.Category)
+			if err != nil {
+				return fmt.Errorf("failed to intern category: %w", err)
+			}
+			internedItems[i].categoryID = &id
+		}
+
+		if item.Tags != nil && *item.Tags != "" {
+			id, err := s.db.GetOrCreateStringID(ctx, *item.Tags)
+			if err != nil {
+				return fmt.Errorf("failed to intern tags: %w", err)
+			}
+			internedItems[i].tagsID = &id
+		}
+
+		if item.ArchiveRelPath != nil && *item.ArchiveRelPath != "" {
+			id, err := s.db.GetOrCreateStringID(ctx, *item.ArchiveRelPath)
+			if err != nil {
+				return fmt.Errorf("failed to intern archive_rel_path: %w", err)
+			}
+			internedItems[i].archiveRelPathID = &id
+		}
+
+		if item.InfoHashV1 != nil && *item.InfoHashV1 != "" {
+			id, err := s.db.GetOrCreateStringID(ctx, *item.InfoHashV1)
+			if err != nil {
+				return fmt.Errorf("failed to intern infohash_v1: %w", err)
+			}
+			internedItems[i].infohashV1ID = &id
+		}
+
+		if item.InfoHashV2 != nil && *item.InfoHashV2 != "" {
+			id, err := s.db.GetOrCreateStringID(ctx, *item.InfoHashV2)
+			if err != nil {
+				return fmt.Errorf("failed to intern infohash_v2: %w", err)
+			}
+			internedItems[i].infohashV2ID = &id
+		}
+
+		if item.TorrentBlobPath != nil && *item.TorrentBlobPath != "" {
+			id, err := s.db.GetOrCreateStringID(ctx, *item.TorrentBlobPath)
+			if err != nil {
+				return fmt.Errorf("failed to intern torrent_blob_path: %w", err)
+			}
+			internedItems[i].torrentBlobPathID = &id
+		}
+	}
+
+	// Now start transaction for the insert operations
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
 
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO instance_backup_items (
@@ -771,100 +853,27 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
-		_ = tx.Rollback()
 		return err
 	}
 	defer stmt.Close()
 
-	for _, item := range items {
-		// Intern all string fields
-		torrentHashID, err := s.db.GetOrCreateStringID(ctx, item.TorrentHash)
-		if err != nil {
-			_ = tx.Rollback()
-			return err
-		}
-
-		nameID, err := s.db.GetOrCreateStringID(ctx, item.Name)
-		if err != nil {
-			_ = tx.Rollback()
-			return err
-		}
-
-		var categoryID *int64
-		if item.Category != nil && *item.Category != "" {
-			id, err := s.db.GetOrCreateStringID(ctx, *item.Category)
-			if err != nil {
-				_ = tx.Rollback()
-				return err
-			}
-			categoryID = &id
-		}
-
-		var tagsID *int64
-		if item.Tags != nil && *item.Tags != "" {
-			id, err := s.db.GetOrCreateStringID(ctx, *item.Tags)
-			if err != nil {
-				_ = tx.Rollback()
-				return err
-			}
-			tagsID = &id
-		}
-
-		var archiveRelPathID *int64
-		if item.ArchiveRelPath != nil && *item.ArchiveRelPath != "" {
-			id, err := s.db.GetOrCreateStringID(ctx, *item.ArchiveRelPath)
-			if err != nil {
-				_ = tx.Rollback()
-				return err
-			}
-			archiveRelPathID = &id
-		}
-
-		var infohashV1ID *int64
-		if item.InfoHashV1 != nil && *item.InfoHashV1 != "" {
-			id, err := s.db.GetOrCreateStringID(ctx, *item.InfoHashV1)
-			if err != nil {
-				_ = tx.Rollback()
-				return err
-			}
-			infohashV1ID = &id
-		}
-
-		var infohashV2ID *int64
-		if item.InfoHashV2 != nil && *item.InfoHashV2 != "" {
-			id, err := s.db.GetOrCreateStringID(ctx, *item.InfoHashV2)
-			if err != nil {
-				_ = tx.Rollback()
-				return err
-			}
-			infohashV2ID = &id
-		}
-
-		var torrentBlobPathID *int64
-		if item.TorrentBlobPath != nil && *item.TorrentBlobPath != "" {
-			id, err := s.db.GetOrCreateStringID(ctx, *item.TorrentBlobPath)
-			if err != nil {
-				_ = tx.Rollback()
-				return err
-			}
-			torrentBlobPathID = &id
-		}
+	for i, item := range items {
+		interned := internedItems[i]
 
 		_, err = stmt.ExecContext(
 			ctx,
 			runID,
-			torrentHashID,
-			nameID,
-			categoryID,
+			interned.torrentHashID,
+			interned.nameID,
+			interned.categoryID,
 			item.SizeBytes,
-			archiveRelPathID,
-			infohashV1ID,
-			infohashV2ID,
-			tagsID,
-			torrentBlobPathID,
+			interned.archiveRelPathID,
+			interned.infohashV1ID,
+			interned.infohashV2ID,
+			interned.tagsID,
+			interned.torrentBlobPathID,
 		)
 		if err != nil {
-			_ = tx.Rollback()
 			return err
 		}
 	}
