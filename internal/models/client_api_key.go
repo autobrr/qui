@@ -25,10 +25,10 @@ type ClientAPIKey struct {
 }
 
 type ClientAPIKeyStore struct {
-	db dbinterface.Querier
+	db dbinterface.DBWithStringInterning
 }
 
-func NewClientAPIKeyStore(db dbinterface.Querier) *ClientAPIKeyStore {
+func NewClientAPIKeyStore(db dbinterface.DBWithStringInterning) *ClientAPIKeyStore {
 	return &ClientAPIKeyStore{db: db}
 }
 
@@ -42,24 +42,36 @@ func (s *ClientAPIKeyStore) Create(ctx context.Context, clientName string, insta
 	// Hash the key for storage
 	keyHash := HashAPIKey(rawKey)
 
+	// Intern the client name
+	clientNameID, err := s.db.GetOrCreateStringID(ctx, clientName)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to intern client name: %w", err)
+	}
+
 	query := `
-		INSERT INTO client_api_keys (key_hash, client_name, instance_id) 
+		INSERT INTO client_api_keys (key_hash, client_name_id, instance_id) 
 		VALUES (?, ?, ?)
-		RETURNING id, key_hash, client_name, instance_id, created_at, last_used_at
+		RETURNING id, key_hash, instance_id, created_at, last_used_at
 	`
 
 	clientAPIKey := &ClientAPIKey{}
-	err = s.db.QueryRowContext(ctx, query, keyHash, clientName, instanceID).Scan(
+	var createdAt, lastUsedAt sql.NullTime
+	err = s.db.QueryRowContext(ctx, query, keyHash, clientNameID, instanceID).Scan(
 		&clientAPIKey.ID,
 		&clientAPIKey.KeyHash,
-		&clientAPIKey.ClientName,
 		&clientAPIKey.InstanceID,
-		&clientAPIKey.CreatedAt,
-		&clientAPIKey.LastUsedAt,
+		&createdAt,
+		&lastUsedAt,
 	)
 
 	if err != nil {
 		return "", nil, err
+	}
+
+	clientAPIKey.ClientName = clientName
+	clientAPIKey.CreatedAt = createdAt.Time
+	if lastUsedAt.Valid {
+		clientAPIKey.LastUsedAt = &lastUsedAt.Time
 	}
 
 	// Return both the raw key (to show user once) and the model
@@ -69,7 +81,7 @@ func (s *ClientAPIKeyStore) Create(ctx context.Context, clientName string, insta
 func (s *ClientAPIKeyStore) GetAll(ctx context.Context) ([]*ClientAPIKey, error) {
 	query := `
 		SELECT id, key_hash, client_name, instance_id, created_at, last_used_at 
-		FROM client_api_keys 
+		FROM client_api_keys_view 
 		ORDER BY created_at DESC
 	`
 
@@ -102,7 +114,7 @@ func (s *ClientAPIKeyStore) GetAll(ctx context.Context) ([]*ClientAPIKey, error)
 func (s *ClientAPIKeyStore) GetByKeyHash(ctx context.Context, keyHash string) (*ClientAPIKey, error) {
 	query := `
 		SELECT id, key_hash, client_name, instance_id, created_at, last_used_at 
-		FROM client_api_keys 
+		FROM client_api_keys_view 
 		WHERE key_hash = ?
 	`
 

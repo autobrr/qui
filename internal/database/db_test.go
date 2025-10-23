@@ -202,13 +202,13 @@ var expectedSchema = map[string][]columnSpec{
 	"api_keys": {
 		{Name: "id", Type: "INTEGER", PrimaryKey: true},
 		{Name: "key_hash", Type: "TEXT"},
-		{Name: "name", Type: "TEXT"},
+		{Name: "name_id", Type: "INTEGER"},
 		{Name: "created_at", Type: "TIMESTAMP"},
 		{Name: "last_used_at", Type: "TIMESTAMP"},
 	},
 	"instances": {
 		{Name: "id", Type: "INTEGER", PrimaryKey: true},
-		{Name: "name", Type: "TEXT"},
+		{Name: "name_id", Type: "INTEGER"},
 		{Name: "host", Type: "TEXT"},
 		{Name: "username", Type: "TEXT"},
 		{Name: "password_encrypted", Type: "TEXT"},
@@ -234,7 +234,7 @@ var expectedSchema = map[string][]columnSpec{
 	"client_api_keys": {
 		{Name: "id", Type: "INTEGER", PrimaryKey: true},
 		{Name: "key_hash", Type: "TEXT"},
-		{Name: "client_name", Type: "TEXT"},
+		{Name: "client_name_id", Type: "INTEGER"},
 		{Name: "instance_id", Type: "INTEGER"},
 		{Name: "created_at", Type: "TIMESTAMP"},
 		{Name: "last_used_at", Type: "TIMESTAMP"},

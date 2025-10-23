@@ -163,7 +163,10 @@ func TestInstanceErrorStore_RecordError_DeduplicatesWithinOneMinute(t *testing.T
 	ctx := context.Background()
 	db, store := setupInstanceErrorTestDB(t)
 
-	_, err := db.Exec("INSERT INTO instances (id, name) VALUES (?, ?)", 1, "test")
+	// Intern the instance name
+	nameID, err := db.GetOrCreateStringID(ctx, "test")
+	require.NoError(t, err)
+	_, err = db.Exec("INSERT INTO instances (id, name_id, host, username, password_encrypted) VALUES (?, ?, 'http://localhost', 'user', 'pass')", 1, nameID)
 	require.NoError(t, err)
 
 	firstErr := errors.New("connection refused")
