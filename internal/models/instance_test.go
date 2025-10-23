@@ -125,9 +125,9 @@ func TestInstanceStoreWithHost(t *testing.T) {
 	ctx := t.Context()
 
 	// Create in-memory database for testing
-	db, err := sql.Open("sqlite", ":memory:")
+	sqlDB, err := sql.Open("sqlite", ":memory:")
 	require.NoError(t, err, "Failed to open test database")
-	defer db.Close()
+	defer sqlDB.Close()
 
 	// Create test encryption key
 	encryptionKey := make([]byte, 32)
@@ -135,15 +135,27 @@ func TestInstanceStoreWithHost(t *testing.T) {
 		encryptionKey[i] = byte(i)
 	}
 
+	// Wrap with mock that implements Querier
+	db := newMockQuerier(sqlDB)
+
 	// Create instance store
 	store, err := NewInstanceStore(db, encryptionKey)
 	require.NoError(t, err, "Failed to create instance store")
+
+	// Create string_pool table
+	_, err = db.ExecContext(ctx, `
+		CREATE TABLE string_pool (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			value TEXT NOT NULL UNIQUE
+		)
+	`)
+	require.NoError(t, err, "Failed to create string_pool table")
 
 	// Create new schema (with host field)
 	_, err = db.ExecContext(ctx, `
 		CREATE TABLE instances (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			name TEXT NOT NULL,
+			name_id INTEGER NOT NULL,
 			host TEXT NOT NULL,
 			username TEXT NOT NULL,
 			password_encrypted TEXT NOT NULL,
@@ -153,8 +165,22 @@ func TestInstanceStoreWithHost(t *testing.T) {
 			is_active BOOLEAN DEFAULT 1,
 			last_connected_at TIMESTAMP,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-		)
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (name_id) REFERENCES string_pool(id)
+		);
+		
+		CREATE VIEW instances_view AS
+		SELECT 
+			i.id,
+			sp.value AS name,
+			i.host,
+			i.username,
+			i.password_encrypted,
+			i.basic_username,
+			i.basic_password_encrypted,
+			i.tls_skip_verify
+		FROM instances i
+		INNER JOIN string_pool sp ON i.name_id = sp.id;
 	`)
 	require.NoError(t, err, "Failed to create test table")
 

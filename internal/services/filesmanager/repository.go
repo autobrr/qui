@@ -14,11 +14,11 @@ import (
 
 // Repository handles database operations for torrent file caching
 type Repository struct {
-	db dbinterface.DBWithStringInterning
+	db dbinterface.Querier
 }
 
 // NewRepository creates a new files repository
-func NewRepository(db dbinterface.DBWithStringInterning) *Repository {
+func NewRepository(db dbinterface.Querier) *Repository {
 	return &Repository{db: db}
 }
 
