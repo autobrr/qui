@@ -397,13 +397,18 @@ func TestStringInterningViews(t *testing.T) {
 			t.Fatalf("GetOrCreateStringID failed: %v", err)
 		}
 
+		hashID, err := db.GetOrCreateStringID(ctx, "abc123")
+		if err != nil {
+			t.Fatalf("GetOrCreateStringID for hash failed: %v", err)
+		}
+
 		// Insert into torrent_files_cache
 		_, err = db.ExecContext(ctx, `
 			INSERT INTO torrent_files_cache (
-				instance_id, torrent_hash, file_index, name_id, 
+				instance_id, torrent_hash_id, file_index, name_id, 
 				size, progress, priority, availability
-			) VALUES (1, 'abc123', 0, ?, 1000, 1.0, 0, 1.0)
-		`, nameID)
+			) VALUES (1, ?, 0, ?, 1000, 1.0, 0, 1.0)
+		`, hashID, nameID)
 		if err != nil {
 			t.Fatalf("Failed to insert into torrent_files_cache: %v", err)
 		}
@@ -439,6 +444,7 @@ func TestStringInterningViews(t *testing.T) {
 		}
 
 		// Get string IDs
+		hashID, _ := db.GetOrCreateStringID(ctx, "def456")
 		nameID, _ := db.GetOrCreateStringID(ctx, "Ubuntu.iso")
 		categoryID, _ := db.GetOrCreateStringID(ctx, "linux")
 		tagsID, _ := db.GetOrCreateStringID(ctx, "hd,verified")
@@ -446,9 +452,9 @@ func TestStringInterningViews(t *testing.T) {
 		// Insert into instance_backup_items
 		_, err = db.ExecContext(ctx, `
 			INSERT INTO instance_backup_items (
-				run_id, torrent_hash, name_id, category_id, tags_id, size_bytes
-			) VALUES (1, 'def456', ?, ?, ?, 5000)
-		`, nameID, categoryID, tagsID)
+				run_id, torrent_hash_id, name_id, category_id, tags_id, size_bytes
+			) VALUES (1, ?, ?, ?, ?, 5000)
+		`, hashID, nameID, categoryID, tagsID)
 		if err != nil {
 			t.Fatalf("Failed to insert into instance_backup_items: %v", err)
 		}
@@ -516,12 +522,13 @@ func TestStringInterningViews(t *testing.T) {
 
 	t.Run("views handle NULL string IDs gracefully", func(t *testing.T) {
 		// Insert backup item with only name, no category
+		hashID, _ := db.GetOrCreateStringID(ctx, "ghi789")
 		nameID, _ := db.GetOrCreateStringID(ctx, "Minimal.torrent")
 		_, err := db.ExecContext(ctx, `
 			INSERT INTO instance_backup_items (
-				run_id, torrent_hash, name_id, size_bytes
-			) VALUES (1, 'ghi789', ?, 100)
-		`, nameID)
+				run_id, torrent_hash_id, name_id, size_bytes
+			) VALUES (1, ?, ?, 100)
+		`, hashID, nameID)
 		if err != nil {
 			t.Fatalf("Failed to insert backup item: %v", err)
 		}
