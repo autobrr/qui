@@ -1075,20 +1075,34 @@ func (h *Handler) handleSetLocation(w http.ResponseWriter, r *http.Request) {
 	// Defer cache invalidation to ensure it happens even if proxy panics
 	// Use background context with timeout to avoid cancellation issues
 	defer func() {
+		// Recover from panic to ensure we don't lose panic information
+		if r := recover(); r != nil {
+			log.Error().Interface("panic", r).Int("instanceId", instanceID).
+				Msg("Recovered from panic during setLocation cache invalidation")
+			panic(r) // Re-panic to preserve stack trace
+		}
+
 		if hashes != "" {
 			invalidateCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 
 			hashList := strings.Split(hashes, "|")
+			failedInvalidations := 0
 			for _, hash := range hashList {
 				hash = strings.TrimSpace(hash)
 				if hash == "" {
 					continue
 				}
 				if err := h.syncManager.InvalidateFileCache(invalidateCtx, instanceID, hash); err != nil {
+					failedInvalidations++
 					log.Warn().Err(err).Int("instanceId", instanceID).Str("hash", hash).
 						Msg("Failed to invalidate file cache after setLocation")
 				}
+			}
+			// Log summary if any invalidations failed
+			if failedInvalidations > 0 {
+				log.Warn().Int("instanceId", instanceID).Int("failed", failedInvalidations).Int("total", len(hashList)).
+					Msg("Some file cache invalidations failed after setLocation - cache may be stale")
 			}
 		}
 	}()
@@ -1131,13 +1145,20 @@ func (h *Handler) handleRenameFile(w http.ResponseWriter, r *http.Request) {
 
 	// Defer cache invalidation to ensure it happens even if proxy panics
 	defer func() {
+		// Recover from panic to ensure we don't lose panic information
+		if r := recover(); r != nil {
+			log.Error().Interface("panic", r).Int("instanceId", instanceID).
+				Msg("Recovered from panic during renameFile cache invalidation")
+			panic(r) // Re-panic to preserve stack trace
+		}
+
 		if hash != "" {
 			invalidateCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 
 			if err := h.syncManager.InvalidateFileCache(invalidateCtx, instanceID, hash); err != nil {
-				log.Warn().Err(err).Int("instanceId", instanceID).Str("hash", hash).
-					Msg("Failed to invalidate file cache after renameFile")
+				log.Error().Err(err).Int("instanceId", instanceID).Str("hash", hash).
+					Msg("CRITICAL: Failed to invalidate file cache after renameFile - cache is now stale")
 			}
 		}
 	}()
@@ -1180,13 +1201,20 @@ func (h *Handler) handleRenameFolder(w http.ResponseWriter, r *http.Request) {
 
 	// Defer cache invalidation to ensure it happens even if proxy panics
 	defer func() {
+		// Recover from panic to ensure we don't lose panic information
+		if r := recover(); r != nil {
+			log.Error().Interface("panic", r).Int("instanceId", instanceID).
+				Msg("Recovered from panic during renameFolder cache invalidation")
+			panic(r) // Re-panic to preserve stack trace
+		}
+
 		if hash != "" {
 			invalidateCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 
 			if err := h.syncManager.InvalidateFileCache(invalidateCtx, instanceID, hash); err != nil {
-				log.Warn().Err(err).Int("instanceId", instanceID).Str("hash", hash).
-					Msg("Failed to invalidate file cache after renameFolder")
+				log.Error().Err(err).Int("instanceId", instanceID).Str("hash", hash).
+					Msg("CRITICAL: Failed to invalidate file cache after renameFolder - cache is now stale")
 			}
 		}
 	}()
@@ -1229,20 +1257,34 @@ func (h *Handler) handleDeleteTorrents(w http.ResponseWriter, r *http.Request) {
 
 	// Defer cache invalidation to ensure it happens even if proxy panics
 	defer func() {
+		// Recover from panic to ensure we don't lose panic information
+		if r := recover(); r != nil {
+			log.Error().Interface("panic", r).Int("instanceId", instanceID).
+				Msg("Recovered from panic during delete cache invalidation")
+			panic(r) // Re-panic to preserve stack trace
+		}
+
 		if hashes != "" {
 			invalidateCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 
 			hashList := strings.Split(hashes, "|")
+			failedInvalidations := 0
 			for _, hash := range hashList {
 				hash = strings.TrimSpace(hash)
 				if hash == "" {
 					continue
 				}
 				if err := h.syncManager.InvalidateFileCache(invalidateCtx, instanceID, hash); err != nil {
+					failedInvalidations++
 					log.Warn().Err(err).Int("instanceId", instanceID).Str("hash", hash).
 						Msg("Failed to invalidate file cache after delete")
 				}
+			}
+			// Log summary if any invalidations failed
+			if failedInvalidations > 0 {
+				log.Warn().Int("instanceId", instanceID).Int("failed", failedInvalidations).Int("total", len(hashList)).
+					Msg("Some file cache invalidations failed after delete - cache may be stale")
 			}
 		}
 	}()

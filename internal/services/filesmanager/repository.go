@@ -7,23 +7,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"regexp"
 	"time"
 
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/dbinterface"
 )
-
-var (
-	// validHashRegex matches SHA-1 (40 hex) or SHA-256 (64 hex) hashes
-	validHashRegex = regexp.MustCompile(`^[a-fA-F0-9]{40}$|^[a-fA-F0-9]{64}$`)
-)
-
-// validateHash checks if a hash is a valid torrent hash format
-func validateHash(hash string) bool {
-	return validHashRegex.MatchString(hash)
-}
 
 // Repository handles database operations for torrent file caching
 type Repository struct {
@@ -47,11 +36,6 @@ func (r *Repository) GetFilesTx(ctx context.Context, tx *sql.Tx, instanceID int,
 
 // getFiles is the internal implementation that works with any querier (db or tx)
 func (r *Repository) getFiles(ctx context.Context, q querier, instanceID int, hash string) ([]CachedFile, error) {
-	// Validate hash format before database operations
-	if !validateHash(hash) {
-		return nil, fmt.Errorf("invalid torrent hash format: %s", hash)
-	}
-
 	query := `
 		SELECT id, instance_id, torrent_hash, file_index, name, size, progress, 
 		       priority, is_seed, piece_range_start, piece_range_end, availability, cached_at
@@ -122,7 +106,9 @@ type querier interface {
 // Alternative approaches considered but rejected:
 // - Optimistic locking with version numbers: adds complexity, breaks on every concurrent write
 // - Exclusive locks during cache write: defeats purpose of caching, creates bottleneck
-// - Transactions for all files: minimal benefit since UPSERT is already atomic per-row
+//
+// ATOMICITY: All files are upserted within a single transaction to ensure all-or-nothing semantics.
+// If any file insert fails, the entire operation is rolled back to prevent partial cache states.
 func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error {
 	if len(files) == 0 {
 		return nil
@@ -130,13 +116,15 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 
 	hash := files[0].TorrentHash
 
-	// Validate hash format before database operations
-	if !validateHash(hash) {
-		return fmt.Errorf("invalid torrent hash format: %s", hash)
+	// Begin transaction for atomic upsert of all files
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
+	defer tx.Rollback()
 
-	// Get or create string ID for torrent hash
-	hashID, err := r.db.GetOrCreateStringID(ctx, hash, nil)
+	// Get or create string ID for torrent hash within transaction
+	hashID, err := r.db.GetOrCreateStringID(ctx, hash, tx)
 	if err != nil {
 		return fmt.Errorf("failed to intern torrent hash: %w", err)
 	}
@@ -160,8 +148,8 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 	`
 
 	for _, f := range files {
-		// Get or create string ID for file name
-		nameID, err := r.db.GetOrCreateStringID(ctx, f.Name, nil)
+		// Get or create string ID for file name within transaction
+		nameID, err := r.db.GetOrCreateStringID(ctx, f.Name, tx)
 		if err != nil {
 			return fmt.Errorf("failed to intern file name: %w", err)
 		}
@@ -171,7 +159,7 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 			isSeed = *f.IsSeed
 		}
 
-		_, err = r.db.ExecContext(ctx, insertQuery,
+		_, err = tx.ExecContext(ctx, insertQuery,
 			f.InstanceID,
 			hashID,
 			f.FileIndex,
@@ -190,6 +178,11 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 		}
 	}
 
+	// Commit transaction to make all changes atomic
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
 	return nil
 }
 
@@ -198,11 +191,6 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 // To distinguish between "deleted" vs "nothing to delete", check the logs or
 // use GetFiles before calling this method.
 func (r *Repository) DeleteFiles(ctx context.Context, instanceID int, hash string) error {
-	// Validate hash format before database operations
-	if !validateHash(hash) {
-		return fmt.Errorf("invalid torrent hash format: %s", hash)
-	}
-
 	// Get string ID for torrent hash
 	hashID, err := r.db.GetOrCreateStringID(ctx, hash, nil)
 	if err != nil {
@@ -237,11 +225,6 @@ func (r *Repository) GetSyncInfoTx(ctx context.Context, tx *sql.Tx, instanceID i
 
 // getSyncInfo is the internal implementation that works with any querier (db or tx)
 func (r *Repository) getSyncInfo(ctx context.Context, q querier, instanceID int, hash string) (*SyncInfo, error) {
-	// Validate hash format before database operations
-	if !validateHash(hash) {
-		return nil, fmt.Errorf("invalid torrent hash format: %s", hash)
-	}
-
 	query := `
 		SELECT instance_id, torrent_hash, last_synced_at, torrent_progress, file_count
 		FROM torrent_files_sync_view
@@ -266,11 +249,6 @@ func (r *Repository) getSyncInfo(ctx context.Context, q querier, instanceID int,
 
 // UpsertSyncInfo inserts or updates sync metadata
 func (r *Repository) UpsertSyncInfo(ctx context.Context, info SyncInfo) error {
-	// Validate hash format before database operations
-	if !validateHash(info.TorrentHash) {
-		return fmt.Errorf("invalid torrent hash format: %s", info.TorrentHash)
-	}
-
 	// Get or create string ID for torrent hash
 	hashID, err := r.db.GetOrCreateStringID(ctx, info.TorrentHash, nil)
 	if err != nil {
@@ -300,11 +278,6 @@ func (r *Repository) UpsertSyncInfo(ctx context.Context, info SyncInfo) error {
 
 // DeleteSyncInfo removes sync metadata for a torrent
 func (r *Repository) DeleteSyncInfo(ctx context.Context, instanceID int, hash string) error {
-	// Validate hash format before database operations
-	if !validateHash(hash) {
-		return fmt.Errorf("invalid torrent hash format: %s", hash)
-	}
-
 	// Get string ID for torrent hash
 	hashID, err := r.db.GetOrCreateStringID(ctx, hash, nil)
 	if err != nil {

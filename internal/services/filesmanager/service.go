@@ -41,6 +41,19 @@ func NewService(db dbinterface.Querier) *Service {
 // 3. The cache has built-in freshness checks that limit staleness (5 min for active torrents)
 // 4. Complete torrents have stable file lists, so stale data is functionally equivalent
 //
+// TOCTOU RACE CONDITION: There's a time-of-check to time-of-use race between:
+//  1. Transaction commits with fresh cache data
+//  2. Data is returned to caller
+//  3. Another goroutine invalidates the cache (e.g., via file rename)
+//
+// Result: Caller receives data that's already been invalidated elsewhere.
+//
+// This is ACCEPTABLE because:
+// - The data was valid at read time (transaction guarantees)
+// - Staleness is bounded by natural cache refresh cycles
+// - Next request will fetch fresh data from qBittorrent
+// - Alternative (version numbers, optimistic locking) adds significant complexity
+//
 // If absolute consistency is required, the caller should invalidate the cache
 // before calling this method, or use the qBittorrent API directly.
 func (s *Service) GetCachedFiles(ctx context.Context, instanceID int, hash string, torrentProgress float64) (qbt.TorrentFiles, error) {
