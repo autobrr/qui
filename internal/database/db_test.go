@@ -242,8 +242,8 @@ var expectedSchema = map[string][]columnSpec{
 	"instance_errors": {
 		{Name: "id", Type: "INTEGER", PrimaryKey: true},
 		{Name: "instance_id", Type: "INTEGER"},
-		{Name: "error_type", Type: "TEXT"},
-		{Name: "error_message", Type: "TEXT"},
+		{Name: "error_type_id", Type: "INTEGER"},
+		{Name: "error_message_id", Type: "INTEGER"},
 		{Name: "occurred_at", Type: "TIMESTAMP"},
 	},
 	"sessions": {
@@ -254,9 +254,9 @@ var expectedSchema = map[string][]columnSpec{
 	"torrent_files_cache": {
 		{Name: "id", Type: "INTEGER", PrimaryKey: true},
 		{Name: "instance_id", Type: "INTEGER"},
-		{Name: "torrent_hash", Type: "TEXT"},
+		{Name: "torrent_hash_id", Type: "INTEGER"},
 		{Name: "file_index", Type: "INTEGER"},
-		{Name: "name", Type: "TEXT"},
+		{Name: "name_id", Type: "INTEGER"},
 		{Name: "size", Type: "INTEGER"},
 		{Name: "progress", Type: "REAL"},
 		{Name: "priority", Type: "INTEGER"},
@@ -268,7 +268,7 @@ var expectedSchema = map[string][]columnSpec{
 	},
 	"torrent_files_sync": {
 		{Name: "instance_id", Type: "INTEGER", PrimaryKey: true},
-		{Name: "torrent_hash", Type: "TEXT", PrimaryKey: true},
+		{Name: "torrent_hash_id", Type: "INTEGER", PrimaryKey: true},
 		{Name: "last_synced_at", Type: "TIMESTAMP"},
 		{Name: "torrent_progress", Type: "REAL"},
 		{Name: "file_count", Type: "INTEGER"},
