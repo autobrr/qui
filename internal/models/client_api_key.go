@@ -43,7 +43,7 @@ func (s *ClientAPIKeyStore) Create(ctx context.Context, clientName string, insta
 	keyHash := HashAPIKey(rawKey)
 
 	// Intern the client name
-	clientNameID, err := s.db.GetOrCreateStringID(ctx, clientName)
+	clientNameID, err := s.db.GetOrCreateStringID(ctx, clientName, nil)
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to intern client name: %w", err)
 	}

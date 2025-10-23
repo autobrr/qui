@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/rs/zerolog/log"
+
 	"github.com/autobrr/qui/internal/dbinterface"
 )
 
@@ -24,6 +26,16 @@ func NewRepository(db dbinterface.Querier) *Repository {
 
 // GetFiles retrieves all cached files for a torrent
 func (r *Repository) GetFiles(ctx context.Context, instanceID int, hash string) ([]CachedFile, error) {
+	return r.getFiles(ctx, r.db, instanceID, hash)
+}
+
+// GetFilesTx retrieves all cached files for a torrent within a transaction
+func (r *Repository) GetFilesTx(ctx context.Context, tx *sql.Tx, instanceID int, hash string) ([]CachedFile, error) {
+	return r.getFiles(ctx, tx, instanceID, hash)
+}
+
+// getFiles is the internal implementation that works with any querier (db or tx)
+func (r *Repository) getFiles(ctx context.Context, q querier, instanceID int, hash string) ([]CachedFile, error) {
 	query := `
 		SELECT id, instance_id, torrent_hash, file_index, name, size, progress, 
 		       priority, is_seed, piece_range_start, piece_range_end, availability, cached_at
@@ -32,7 +44,7 @@ func (r *Repository) GetFiles(ctx context.Context, instanceID int, hash string) 
 		ORDER BY file_index ASC
 	`
 
-	rows, err := r.db.QueryContext(ctx, query, instanceID, hash)
+	rows, err := q.QueryContext(ctx, query, instanceID, hash)
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +83,32 @@ func (r *Repository) GetFiles(ctx context.Context, instanceID int, hash string) 
 	return files, rows.Err()
 }
 
-// UpsertFiles inserts or updates cached file information
+// querier interface for methods that accept db or tx
+type querier interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+// UpsertFiles inserts or updates cached file information.
+//
+// CONCURRENCY MODEL: This function uses eventual consistency with last-writer-wins semantics.
+// If two goroutines cache the same torrent concurrently:
+// - Each file row UPSERT is atomic at the SQLite level
+// - The last write wins for each individual file
+// - Progress/availability values may briefly be inconsistent across files
+// - This is acceptable because:
+//  1. Cache freshness checks (5min TTL for active torrents) limit staleness
+//  2. Complete torrents (100% progress) have stable values
+//  3. UI shows slightly stale data briefly, then refreshes naturally
+//  4. Strict consistency would require distributed locks with significant overhead
+//
+// Alternative approaches considered but rejected:
+// - Optimistic locking with version numbers: adds complexity, breaks on every concurrent write
+// - Exclusive locks during cache write: defeats purpose of caching, creates bottleneck
+//
+// ATOMICITY: All files are upserted within a single transaction to ensure all-or-nothing semantics.
+// If any file insert fails, the entire operation is rolled back to prevent partial cache states.
 func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error {
 	if len(files) == 0 {
 		return nil
@@ -79,8 +116,15 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 
 	hash := files[0].TorrentHash
 
-	// Get or create string ID for torrent hash
-	hashID, err := r.db.GetOrCreateStringID(ctx, hash)
+	// Begin transaction for atomic upsert of all files
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Get or create string ID for torrent hash within transaction
+	hashID, err := r.db.GetOrCreateStringID(ctx, hash, tx)
 	if err != nil {
 		return fmt.Errorf("failed to intern torrent hash: %w", err)
 	}
@@ -104,8 +148,8 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 	`
 
 	for _, f := range files {
-		// Get or create string ID for file name
-		nameID, err := r.db.GetOrCreateStringID(ctx, f.Name)
+		// Get or create string ID for file name within transaction
+		nameID, err := r.db.GetOrCreateStringID(ctx, f.Name, tx)
 		if err != nil {
 			return fmt.Errorf("failed to intern file name: %w", err)
 		}
@@ -115,7 +159,7 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 			isSeed = *f.IsSeed
 		}
 
-		_, err = r.db.ExecContext(ctx, insertQuery,
+		_, err = tx.ExecContext(ctx, insertQuery,
 			f.InstanceID,
 			hashID,
 			f.FileIndex,
@@ -134,25 +178,53 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 		}
 	}
 
+	// Commit transaction to make all changes atomic
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
 	return nil
 }
 
-// DeleteFiles removes all cached files for a torrent
+// DeleteFiles removes all cached files for a torrent.
+// Returns nil if successful or if no cache existed for the given torrent.
+// To distinguish between "deleted" vs "nothing to delete", check the logs or
+// use GetFiles before calling this method.
 func (r *Repository) DeleteFiles(ctx context.Context, instanceID int, hash string) error {
 	// Get string ID for torrent hash
-	hashID, err := r.db.GetOrCreateStringID(ctx, hash)
+	hashID, err := r.db.GetOrCreateStringID(ctx, hash, nil)
 	if err != nil {
-		// If hash doesn't exist in pool, no files exist
+		// If hash doesn't exist in pool, no files exist - this is not an error
 		return nil
 	}
 
 	query := `DELETE FROM torrent_files_cache WHERE instance_id = ? AND torrent_hash_id = ?`
-	_, err = r.db.ExecContext(ctx, query, instanceID, hashID)
-	return err
+	result, err := r.db.ExecContext(ctx, query, instanceID, hashID)
+	if err != nil {
+		return fmt.Errorf("failed to delete cached files: %w", err)
+	}
+
+	// Log how many rows were deleted for observability
+	if rowsAffected, err := result.RowsAffected(); err == nil && rowsAffected > 0 {
+		log.Debug().Int("instanceID", instanceID).Str("hash", hash).Int64("files", rowsAffected).
+			Msg("Deleted cached files")
+	}
+
+	return nil
 }
 
 // GetSyncInfo retrieves sync metadata for a torrent
 func (r *Repository) GetSyncInfo(ctx context.Context, instanceID int, hash string) (*SyncInfo, error) {
+	return r.getSyncInfo(ctx, r.db, instanceID, hash)
+}
+
+// GetSyncInfoTx retrieves sync metadata for a torrent within a transaction
+func (r *Repository) GetSyncInfoTx(ctx context.Context, tx *sql.Tx, instanceID int, hash string) (*SyncInfo, error) {
+	return r.getSyncInfo(ctx, tx, instanceID, hash)
+}
+
+// getSyncInfo is the internal implementation that works with any querier (db or tx)
+func (r *Repository) getSyncInfo(ctx context.Context, q querier, instanceID int, hash string) (*SyncInfo, error) {
 	query := `
 		SELECT instance_id, torrent_hash, last_synced_at, torrent_progress, file_count
 		FROM torrent_files_sync_view
@@ -160,7 +232,7 @@ func (r *Repository) GetSyncInfo(ctx context.Context, instanceID int, hash strin
 	`
 
 	var info SyncInfo
-	err := r.db.QueryRowContext(ctx, query, instanceID, hash).Scan(
+	err := q.QueryRowContext(ctx, query, instanceID, hash).Scan(
 		&info.InstanceID,
 		&info.TorrentHash,
 		&info.LastSyncedAt,
@@ -178,7 +250,7 @@ func (r *Repository) GetSyncInfo(ctx context.Context, instanceID int, hash strin
 // UpsertSyncInfo inserts or updates sync metadata
 func (r *Repository) UpsertSyncInfo(ctx context.Context, info SyncInfo) error {
 	// Get or create string ID for torrent hash
-	hashID, err := r.db.GetOrCreateStringID(ctx, info.TorrentHash)
+	hashID, err := r.db.GetOrCreateStringID(ctx, info.TorrentHash, nil)
 	if err != nil {
 		return fmt.Errorf("failed to intern torrent hash: %w", err)
 	}
@@ -207,7 +279,7 @@ func (r *Repository) UpsertSyncInfo(ctx context.Context, info SyncInfo) error {
 // DeleteSyncInfo removes sync metadata for a torrent
 func (r *Repository) DeleteSyncInfo(ctx context.Context, instanceID int, hash string) error {
 	// Get string ID for torrent hash
-	hashID, err := r.db.GetOrCreateStringID(ctx, hash)
+	hashID, err := r.db.GetOrCreateStringID(ctx, hash, nil)
 	if err != nil {
 		// If hash doesn't exist in pool, no sync info exists
 		return nil

@@ -519,10 +519,10 @@ func TestMigrationDataTransformations(t *testing.T) {
 				runID, _ := result.LastInsertId()
 
 				// Get string IDs for the backup item fields that ARE interned at migration 11
-				hashID, err := db.GetOrCreateStringID(ctx, "hash456")
+				hashID, err := db.GetOrCreateStringID(ctx, "hash456", nil)
 				require.NoError(t, err)
 
-				nameID, err := db.GetOrCreateStringID(ctx, "Torrent A")
+				nameID, err := db.GetOrCreateStringID(ctx, "Torrent A", nil)
 				require.NoError(t, err)
 
 				// Insert backup items with infohashes (text columns at this point)

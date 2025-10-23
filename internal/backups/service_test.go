@@ -21,11 +21,11 @@ import (
 // Helper function to insert a test instance with interned fields
 func insertTestInstance(t *testing.T, db *database.DB, ctx context.Context, name string) int {
 	t.Helper()
-	nameID, err := db.GetOrCreateStringID(ctx, name)
+	nameID, err := db.GetOrCreateStringID(ctx, name, nil)
 	require.NoError(t, err)
-	hostID, err := db.GetOrCreateStringID(ctx, "http://localhost")
+	hostID, err := db.GetOrCreateStringID(ctx, "http://localhost", nil)
 	require.NoError(t, err)
-	usernameID, err := db.GetOrCreateStringID(ctx, "user")
+	usernameID, err := db.GetOrCreateStringID(ctx, "user", nil)
 	require.NoError(t, err)
 	result, err := db.ExecContext(ctx, "INSERT INTO instances (name_id, host_id, username_id, password_encrypted) VALUES (?, ?, ?, 'pass')", nameID, hostID, usernameID)
 	require.NoError(t, err)

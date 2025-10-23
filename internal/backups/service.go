@@ -204,7 +204,9 @@ func (s *Service) Start(ctx context.Context) {
 	}
 
 	// Check for missed backups and queue exactly one if applicable
+	s.wg.Add(1)
 	go func() {
+		defer s.wg.Done()
 		if err := s.checkMissedBackups(ctx); err != nil {
 			log.Warn().Err(err).Msg("Failed to check for missed backups")
 		}

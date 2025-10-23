@@ -25,7 +25,7 @@ func newMockQuerier(db *sql.DB) *mockQuerier {
 	}
 }
 
-func (m *mockQuerier) GetOrCreateStringID(ctx context.Context, value string) (int64, error) {
+func (m *mockQuerier) GetOrCreateStringID(ctx context.Context, value string, tx *sql.Tx) (int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -34,9 +34,29 @@ func (m *mockQuerier) GetOrCreateStringID(ctx context.Context, value string) (in
 		return id, nil
 	}
 
+	// Determine which executor to use
+	var queryRow func(query string, args ...any) *sql.Row
+	var exec func(query string, args ...any) (sql.Result, error)
+
+	if tx != nil {
+		queryRow = func(query string, args ...any) *sql.Row {
+			return tx.QueryRowContext(ctx, query, args...)
+		}
+		exec = func(query string, args ...any) (sql.Result, error) {
+			return tx.ExecContext(ctx, query, args...)
+		}
+	} else {
+		queryRow = func(query string, args ...any) *sql.Row {
+			return m.QueryRowContext(ctx, query, args...)
+		}
+		exec = func(query string, args ...any) (sql.Result, error) {
+			return m.ExecContext(ctx, query, args...)
+		}
+	}
+
 	// Check if it exists in the database
 	var id int64
-	err := m.QueryRowContext(ctx, "SELECT id FROM string_pool WHERE value = ?", value).Scan(&id)
+	err := queryRow("SELECT id FROM string_pool WHERE value = ?", value).Scan(&id)
 	if err == nil {
 		m.stringCache[value] = id
 		return id, nil
@@ -46,7 +66,7 @@ func (m *mockQuerier) GetOrCreateStringID(ctx context.Context, value string) (in
 	}
 
 	// Insert new string
-	result, err := m.ExecContext(ctx, "INSERT INTO string_pool (value) VALUES (?)", value)
+	result, err := exec("INSERT INTO string_pool (value) VALUES (?)", value)
 	if err != nil {
 		return 0, err
 	}
