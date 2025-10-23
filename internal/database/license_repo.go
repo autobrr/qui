@@ -35,7 +35,7 @@ func (r *LicenseRepo) GetLicenseByKey(ctx context.Context, licenseKey string) (*
 	license := &models.ProductLicense{}
 	var activationId sql.Null[string]
 
-	err := r.db.Conn().QueryRowContext(ctx, query, licenseKey).Scan(
+	err := r.db.QueryRowContext(ctx, query, licenseKey).Scan(
 		&license.ID,
 		&license.LicenseKey,
 		&license.ProductName,
@@ -72,7 +72,7 @@ func (r *LicenseRepo) GetAllLicenses(ctx context.Context) ([]*models.ProductLice
 		ORDER BY created_at DESC
 	`
 
-	rows, err := r.db.Conn().QueryContext(ctx, query)
+	rows, err := r.db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -122,7 +122,7 @@ func (r *LicenseRepo) HasPremiumAccess(ctx context.Context) (bool, error) {
 	`
 
 	var count int
-	err := r.db.Conn().QueryRowContext(ctx, query, models.LicenseStatusActive).Scan(&count)
+	err := r.db.QueryRowContext(ctx, query, models.LicenseStatusActive).Scan(&count)
 	if err != nil {
 		return false, err
 	}
@@ -134,7 +134,7 @@ func (r *LicenseRepo) HasPremiumAccess(ctx context.Context) (bool, error) {
 func (r *LicenseRepo) DeleteLicense(ctx context.Context, licenseKey string) error {
 	query := `DELETE FROM licenses WHERE license_key = ?`
 
-	result, err := r.db.Conn().ExecContext(ctx, query, licenseKey)
+	result, err := r.db.ExecContext(ctx, query, licenseKey)
 	if err != nil {
 		return err
 	}
@@ -162,7 +162,7 @@ func (r *LicenseRepo) StoreLicense(ctx context.Context, license *models.ProductL
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
-	_, err := r.db.Conn().ExecContext(ctx, query,
+	_, err := r.db.ExecContext(ctx, query,
 		license.LicenseKey,
 		license.ProductName,
 		license.Status,
@@ -187,7 +187,7 @@ func (r *LicenseRepo) UpdateLicenseStatus(ctx context.Context, licenseID int, st
 		WHERE id = ?
 	`
 
-	_, err := r.db.Conn().ExecContext(ctx, query, status, time.Now(), time.Now(), licenseID)
+	_, err := r.db.ExecContext(ctx, query, status, time.Now(), time.Now(), licenseID)
 	return err
 }
 
@@ -198,7 +198,7 @@ func (r *LicenseRepo) UpdateLicenseValidation(ctx context.Context, license *mode
 		WHERE id = ?
 	`
 
-	_, err := r.db.Conn().ExecContext(ctx, query, license.LastValidated, time.Now(), license.ID)
+	_, err := r.db.ExecContext(ctx, query, license.LastValidated, time.Now(), license.ID)
 	return err
 }
 
@@ -211,7 +211,7 @@ func (r *LicenseRepo) UpdateLicenseActivation(ctx context.Context, license *mode
 		WHERE id = ?
 	`
 
-	_, err := r.db.Conn().ExecContext(ctx, query,
+	_, err := r.db.ExecContext(ctx, query,
 		license.PolarActivationID,
 		license.PolarCustomerID,
 		license.PolarProductID,

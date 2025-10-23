@@ -161,6 +161,8 @@ func TestCache_DifferentDataTypes(t *testing.T) {
 			Error:              5,
 			TotalDownloadSpeed: 1000000,
 			TotalUploadSpeed:   500000,
+			TotalRemainingSize: 5000000000,
+			TotalSeedingSize:   10000000000,
 		},
 	}
 	cache.Set("torrents:1:0:50", torrentResponse, 2*time.Second)

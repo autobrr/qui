@@ -1082,12 +1082,14 @@ export function TorrentCardsMobile({
     prepareLocationAction,
   } = useTorrentActions({
     instanceId,
-    onActionComplete: () => {
-      setSelectedHashes(new Set())
-      setSelectionMode(false)
-      setIsSelectionMode(false)
-      setIsAllSelected(false)
-      setExcludedFromSelectAll(new Set())
+    onActionComplete: (action) => {
+      if (action === TORRENT_ACTIONS.DELETE) {
+        setSelectedHashes(new Set())
+        setSelectionMode(false)
+        setIsSelectionMode(false)
+        setIsAllSelected(false)
+        setExcludedFromSelectAll(new Set())
+      }
     },
   })
 

@@ -39,9 +39,6 @@ type Client struct {
 	mu                sync.RWMutex
 	serverStateMu     sync.RWMutex
 	healthMu          sync.RWMutex
-	hashIndexMu       sync.RWMutex
-	hashIndex         map[string]duplicateIndexEntry
-	hashIndexReady    bool
 }
 
 func NewClient(instanceID int, instanceHost, username, password string, basicUsername, basicPassword *string, tlsSkipVerify bool) (*Client, error) {
@@ -137,7 +134,6 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 			SetDefaultTTL(30 * time.Second)), // Updates expire after 30 seconds
 		trackerExclusions: make(map[string]map[string]struct{}),
 		peerSyncManager:   make(map[string]*qbt.PeerSyncManager),
-		hashIndex:         make(map[string]duplicateIndexEntry),
 	}
 
 	// Initialize sync manager with default options
@@ -148,7 +144,6 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 	syncOpts.OnUpdate = func(data *qbt.MainData) {
 		client.updateHealthStatus(true)
 		client.updateServerState(data)
-		client.rebuildHashIndex(data.Torrents)
 		log.Debug().Int("instanceID", instanceID).Int("torrentCount", len(data.Torrents)).Msg("Sync manager update received, marking client as healthy")
 	}
 
@@ -160,8 +155,6 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 
 	client.syncManager = qbtClient.NewSyncManager(syncOpts)
 
-	supportsInclude := client.supportsTrackerInclude()
-
 	log.Debug().
 		Int("instanceID", instanceID).
 		Str("host", instanceHost).
@@ -170,18 +163,9 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 		Bool("supportsTorrentCreation", supportsTorrentCreation).
 		Bool("supportsTorrentExport", supportsTorrentExport).
 		Bool("supportsTrackerEditing", supportsTrackerEditing).
-		Bool("includeTrackers", supportsInclude).
 		Bool("supportsSubcategories", supportsSubcategories).
 		Bool("tlsSkipVerify", tlsSkipVerify).
 		Msg("qBittorrent client created successfully")
-
-	if !supportsInclude {
-		log.Debug().
-			Int("instanceID", instanceID).
-			Str("host", instanceHost).
-			Str("webAPIVersion", webAPIVersion).
-			Msg("qBittorrent instance does not support includeTrackers; using fallback tracker queries for status detection")
-	}
 
 	return client, nil
 }
@@ -277,6 +261,47 @@ func (c *Client) GetCachedConnectionStatus() string {
 	return state.ConnectionStatus
 }
 
+// UpdateWithMainData updates the client's cached state with fresh MainData
+// This is used when intercepting sync/maindata responses to keep local state in sync
+func (c *Client) UpdateWithMainData(data *qbt.MainData) {
+	c.updateServerState(data)
+	c.updateHealthStatus(true)
+	log.Debug().
+		Int("instanceID", c.instanceID).
+		Int("torrentCount", len(data.Torrents)).
+		Msg("Updated client state with fresh maindata from intercepted request")
+}
+
+// UpdateWithPeersData triggers a sync on the peer manager to keep it warm after intercepting peer data
+// This ensures our local peer state stays synchronized with the proxy client's view
+func (c *Client) UpdateWithPeersData(hash string, data *qbt.TorrentPeersResponse) {
+	// Get or create the peer sync manager for this torrent
+	peerSync := c.GetOrCreatePeerSyncManager(hash)
+
+	// Trigger a background sync to refresh the peer state
+	// We can't directly inject the data, but we can trigger a sync to keep the cache warm
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		if err := peerSync.Sync(ctx); err != nil {
+			log.Error().
+				Err(err).
+				Int("instanceID", c.instanceID).
+				Str("hash", hash).
+				Msg("Failed to sync peer manager after intercepted peer data")
+			return
+		}
+
+		log.Debug().
+			Int("instanceID", c.instanceID).
+			Str("hash", hash).
+			Int("peerCount", len(data.Peers)).
+			Int64("rid", data.Rid).
+			Msg("Updated peer state with fresh data from intercepted request")
+	}()
+}
+
 func (c *Client) SupportsRenameTorrent() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -360,24 +385,29 @@ func (c *Client) trackerManager() *qbt.TrackerManager {
 }
 
 func (c *Client) supportsTrackerInclude() bool {
-	if tm := c.trackerManager(); tm != nil {
-		return tm.SupportsIncludeTrackers()
+	if c.trackerManager() == nil {
+		return false
 	}
-	return false
+
+	// Check if the underlying client supports tracker include
+	return c.trackerManager().SupportsIncludeTrackers()
 }
 
 func (c *Client) hydrateTorrentsWithTrackers(ctx context.Context, torrents []qbt.Torrent, allowFetch bool) ([]qbt.Torrent, map[string][]qbt.TorrentTracker, []string, error) {
+	// Call sync before getting trackers
+	if c.syncManager != nil {
+		if err := c.syncManager.Sync(ctx); err != nil {
+			return torrents, nil, nil, fmt.Errorf("failed to sync: %w", err)
+		}
+	}
+
 	tm := c.trackerManager()
 	if tm == nil {
 		return torrents, nil, nil, fmt.Errorf("tracker manager unavailable")
 	}
 
-	opts := make([]qbt.TrackerHydrateOption, 0, 2)
-	if !allowFetch {
-		opts = append(opts, qbt.WithTrackerAllowFetch(false))
-	}
-
-	return tm.HydrateTorrents(ctx, torrents, opts...)
+	enriched, trackerData := tm.HydrateTorrents(ctx, torrents)
+	return enriched, trackerData, nil, nil
 }
 
 func (c *Client) invalidateTrackerCache(hashes ...string) {

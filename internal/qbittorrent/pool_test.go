@@ -33,10 +33,10 @@ func setupTestPool(t *testing.T) *ClientPool {
 	// Use test encryption key
 	testKey := make([]byte, 32)
 
-	instanceStore, err := models.NewInstanceStore(db.Conn(), testKey)
+	instanceStore, err := models.NewInstanceStore(db, testKey)
 	require.NoError(t, err, "Failed to create instance store")
 
-	errorStore := models.NewInstanceErrorStore(db.Conn())
+	errorStore := models.NewInstanceErrorStore(db)
 	pool, err := NewClientPool(instanceStore, errorStore)
 	require.NoError(t, err, "Failed to create client pool")
 	return pool

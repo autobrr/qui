@@ -11,9 +11,13 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
+	"unicode"
 
+	"github.com/autobrr/autobrr/pkg/ttlcache"
 	"github.com/rs/zerolog/log"
 	"modernc.org/sqlite"
 )
@@ -21,14 +25,39 @@ import (
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
 
+// reader/writer control
+type writeReq struct {
+	ctx   context.Context
+	query string
+	args  []any
+	resCh chan writeRes
+}
+
+type writeRes struct {
+	result sql.Result
+	err    error
+}
+
+// reader/writer fields on DB
 type DB struct {
-	conn *sql.DB
+	conn          *sql.DB
+	writeCh       chan writeReq
+	stmts         *ttlcache.Cache[string, *sql.Stmt]
+	stringIDCache *ttlcache.Cache[string, int64] // Cache for string -> ID mappings
+	stop          chan struct{}
+	closeOnce     sync.Once
+	writerWG      sync.WaitGroup
+	closing       atomic.Bool
+	closeErr      error
+	writeBarrier  atomic.Value // stores chan struct{} to pause writer for tests
+	barrierSignal atomic.Value // stores chan struct{} to signal writer pause
 }
 
 const (
 	defaultBusyTimeout       = 5 * time.Second
 	defaultBusyTimeoutMillis = int(defaultBusyTimeout / time.Millisecond)
 	connectionSetupTimeout   = 5 * time.Second
+	writeChannelBuffer       = 256 // buffer for write operations to improve throughput
 )
 
 var driverInit sync.Once
@@ -108,9 +137,29 @@ func New(databasePath string) (*DB, error) {
 		return nil, fmt.Errorf("apply wal checkpoint: %w", err)
 	}
 
+	// create ttlcache for prepared statements with 5 minute TTL and deallocation func
+	stmtOpts := ttlcache.Options[string, *sql.Stmt]{}.SetDefaultTTL(5 * time.Minute).
+		SetDeallocationFunc(func(k string, s *sql.Stmt, _ ttlcache.DeallocationReason) {
+			if s != nil {
+				_ = s.Close()
+			}
+		})
+
+	stmtsCache := ttlcache.New(stmtOpts)
+
+	// create ttlcache for string ID mappings with 5 minute TTL
+	stringIDOpts := ttlcache.Options[string, int64]{}.SetDefaultTTL(5 * time.Minute)
+	stringIDCache := ttlcache.New(stringIDOpts)
+
 	db := &DB{
-		conn: conn,
+		conn:          conn,
+		writeCh:       make(chan writeReq, writeChannelBuffer),
+		stmts:         stmtsCache,
+		stringIDCache: stringIDCache,
+		stop:          make(chan struct{}),
 	}
+	db.writeBarrier.Store((chan struct{})(nil))
+	db.barrierSignal.Store((chan struct{})(nil))
 
 	// Run migrations with single connection
 	if err := db.migrate(); err != nil {
@@ -123,6 +172,14 @@ func New(databasePath string) (*DB, error) {
 	conn.SetMaxIdleConns(2)
 	conn.SetConnMaxLifetime(0)
 
+	// start single writer after migrations
+	db.writerWG.Add(1)
+	go db.writerLoop()
+
+	// start periodic string pool cleanup
+	db.writerWG.Add(1)
+	go db.stringPoolCleanupLoop()
+
 	// Verify database file was created
 	if _, err := os.Stat(databasePath); err != nil {
 		conn.Close()
@@ -133,13 +190,263 @@ func New(databasePath string) (*DB, error) {
 	return db, nil
 }
 
-func (db *DB) Close() error {
-	ctx, cancel := context.WithTimeout(context.Background(), connectionSetupTimeout)
-	defer cancel()
-	if _, err := db.conn.ExecContext(ctx, "PRAGMA optimize"); err != nil {
-		log.Warn().Err(err).Msg("failed to run PRAGMA optimize during close")
+// getStmt returns a prepared statement for the given query, preparing and
+// caching it if necessary. Statements are cached with TTL and automatically
+// closed on eviction. This is safe for concurrent use.
+func (db *DB) getStmt(ctx context.Context, query string) (*sql.Stmt, error) {
+	// Fast path: check cache first
+	if s, found := db.stmts.Get(query); found && s != nil {
+		return s, nil
 	}
-	return db.conn.Close()
+
+	// Slow path: prepare new statement
+	// Note: Multiple goroutines might prepare the same query simultaneously,
+	// but this is acceptable since:
+	// 1. It's rare (only on cache miss/eviction)
+	// 2. The extra statements will be garbage collected
+	// 3. TTL cache will eventually converge to one statement per query
+	s, err := db.conn.PrepareContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+
+	// Cache the statement - if another goroutine already cached it,
+	// that's fine, this one will be closed by the deallocation function
+	db.stmts.Set(query, s, ttlcache.DefaultTTL)
+
+	return s, nil
+}
+
+// execWrite executes a write query using ExecContext. If a prepared stmt
+// is provided it will be used, otherwise the connection is used directly.
+func (db *DB) execWrite(ctx context.Context, stmt *sql.Stmt, query string, args []any) (sql.Result, error) {
+	if stmt != nil {
+		return stmt.ExecContext(ctx, args...)
+	}
+	return db.conn.ExecContext(ctx, query, args...)
+}
+
+// isWriteQuery efficiently determines if a query is a write operation.
+// This uses a fast byte-level check to avoid string allocation and case conversion.
+func isWriteQuery(query string) bool {
+	// Trim leading whitespace (covers spaces, tabs, newlines, etc.)
+	q := strings.TrimLeftFunc(query, unicode.IsSpace)
+	if q == "" {
+		return false
+	}
+
+	// We only care about the first word. Convert to upper-case for
+	// case-insensitive comparison and use HasPrefix to avoid allocations
+	// beyond the ToUpper call.
+	upper := strings.ToUpper(q)
+	return strings.HasPrefix(upper, "INSERT") ||
+		strings.HasPrefix(upper, "UPDATE") ||
+		strings.HasPrefix(upper, "UPSERT") ||
+		strings.HasPrefix(upper, "REPLACE") ||
+		strings.HasPrefix(upper, "DELETE")
+}
+
+// ExecContext routes write queries through the single writer goroutine and
+// uses prepared statements when possible. Do NOT use this for queries with
+// RETURNING clauses - use QueryRowContext or QueryContext instead.
+func (db *DB) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	// Fast write detection without string allocation
+	if !isWriteQuery(query) {
+		// treat as reader and use prepared stmt when possible
+		stmt, err := db.getStmt(ctx, query)
+		if err != nil {
+			// fallback to direct Exec
+			return db.conn.ExecContext(ctx, query, args...)
+		}
+		return stmt.ExecContext(ctx, args...)
+	}
+
+	if db.closing.Load() {
+		return nil, fmt.Errorf("db stopping")
+	}
+
+	// route through writer
+	resCh := make(chan writeRes, 1)
+	req := writeReq{ctx: ctx, query: query, args: args, resCh: resCh}
+	select {
+	case db.writeCh <- req:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-db.stop:
+		return nil, fmt.Errorf("db stopping")
+	}
+
+	res := <-resCh
+	return res.result, res.err
+}
+
+// writerLoop processes write requests sequentially
+func (db *DB) writerLoop() {
+	defer db.writerWG.Done()
+
+	draining := false
+	for {
+		if draining {
+			select {
+			case req, ok := <-db.writeCh:
+				if !ok {
+					return
+				}
+				db.processWrite(req)
+			default:
+				return
+			}
+			continue
+		}
+
+		select {
+		case req, ok := <-db.writeCh:
+			if !ok {
+				return
+			}
+			db.processWrite(req)
+		case <-db.stop:
+			draining = true
+		}
+	}
+}
+
+func (db *DB) processWrite(req writeReq) {
+	if barrier, ok := db.writeBarrier.Load().(chan struct{}); ok && barrier != nil {
+		if signal, ok := db.barrierSignal.Load().(chan struct{}); ok && signal != nil {
+			select {
+			case signal <- struct{}{}:
+			default:
+			}
+		}
+		select {
+		case <-barrier:
+		case <-req.ctx.Done():
+		}
+	}
+
+	// use prepared stmt if possible
+	stmt, err := db.getStmt(req.ctx, req.query)
+	if err != nil {
+		// if we couldn't prepare a statement, execWrite will use
+		// the connection directly
+		res, execErr := db.execWrite(req.ctx, nil, req.query, req.args)
+		select {
+		case req.resCh <- writeRes{result: res, err: execErr}:
+		default:
+		}
+		return
+	}
+
+	res, execErr := db.execWrite(req.ctx, stmt, req.query, req.args)
+	select {
+	case req.resCh <- writeRes{result: res, err: execErr}:
+	default:
+	}
+}
+
+// stringPoolCleanupLoop runs periodic cleanup of unused strings from string_pool
+func (db *DB) stringPoolCleanupLoop() {
+	defer db.writerWG.Done()
+
+	// Run cleanup once per day
+	ticker := time.NewTicker(24 * time.Hour)
+	defer ticker.Stop()
+
+	// Run initial cleanup after 1 hour of startup
+	initialDelay := time.NewTimer(1 * time.Hour)
+	defer initialDelay.Stop()
+
+	for {
+		select {
+		case <-initialDelay.C:
+			// Run first cleanup after initial delay
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			if deleted, err := db.CleanupUnusedStrings(ctx); err != nil {
+				log.Warn().Err(err).Msg("failed to cleanup unused strings")
+			} else if deleted > 0 {
+				log.Debug().Msgf("Initial string pool cleanup: removed %d unused strings", deleted)
+			}
+			cancel()
+
+		case <-ticker.C:
+			// Run periodic cleanup
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			if deleted, err := db.CleanupUnusedStrings(ctx); err != nil {
+				log.Warn().Err(err).Msg("failed to cleanup unused strings")
+			} else if deleted > 0 {
+				log.Debug().Msgf("Periodic string pool cleanup: removed %d unused strings", deleted)
+			}
+			cancel()
+
+		case <-db.stop:
+			return
+		}
+	}
+}
+
+// QueryContext uses reader pool and prepared statements
+func (db *DB) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	// try to use prepared statement, fall back to db pool
+	stmt, err := db.getStmt(ctx, query)
+	if err != nil {
+		return db.conn.QueryContext(ctx, query, args...)
+	}
+	return stmt.QueryContext(ctx, args...)
+}
+
+// QueryRowContext uses QueryContext and scans first row
+func (db *DB) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
+	// prepare statement and use QueryRow on it (no reader release necessary because Row scans and doesn't return Rows)
+	stmt, err := db.getStmt(ctx, query)
+	if err != nil {
+		return db.conn.QueryRowContext(ctx, query, args...)
+	}
+	return stmt.QueryRowContext(ctx, args...)
+}
+
+// BeginTx starts a transaction. Note that transactions bypass the single writer
+// and use the underlying connection pool directly. This is safe because SQLite
+// handles transaction serialization internally.
+func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
+	return db.conn.BeginTx(ctx, opts)
+}
+
+func (db *DB) Close() error {
+	db.closeOnce.Do(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), connectionSetupTimeout)
+		defer cancel()
+		if _, err := db.conn.ExecContext(ctx, "PRAGMA optimize"); err != nil {
+			log.Warn().Err(err).Msg("failed to run PRAGMA optimize during close")
+		}
+
+		db.closing.Store(true)
+
+		select {
+		case <-db.stop:
+		default:
+			close(db.stop)
+		}
+
+		if barrier, ok := db.writeBarrier.Load().(chan struct{}); ok && barrier != nil {
+			select {
+			case <-barrier:
+			default:
+				close(barrier)
+			}
+			db.writeBarrier.Store((chan struct{})(nil))
+		}
+		db.barrierSignal.Store((chan struct{})(nil))
+
+		db.writerWG.Wait()
+
+		db.stmts.Close()
+
+		// deallocation of cached statements is handled by ttlcache
+		db.closeErr = db.conn.Close()
+	})
+
+	return db.closeErr
 }
 
 func (db *DB) Conn() *sql.DB {
@@ -248,4 +555,192 @@ func (db *DB) applyAllMigrations(ctx context.Context, migrations []string) error
 
 	log.Info().Msgf("Applied %d migrations successfully", len(migrations))
 	return nil
+}
+
+// CleanupUnusedStrings removes strings from the string_pool table that are no longer
+// referenced by any other table. This should be run periodically to reclaim storage space.
+// Returns the number of strings deleted and any error encountered.
+// Also clears the string ID cache to ensure consistency.
+func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
+	// Delete strings that are not referenced by any table
+	// This query finds string_pool entries that have no foreign key references
+	query := `
+		DELETE FROM string_pool
+		WHERE id NOT IN (
+			SELECT DISTINCT torrent_hash_id FROM torrent_files_cache WHERE torrent_hash_id IS NOT NULL
+			UNION
+			SELECT DISTINCT name_id FROM torrent_files_cache WHERE name_id IS NOT NULL
+			UNION
+			SELECT DISTINCT torrent_hash_id FROM torrent_files_sync WHERE torrent_hash_id IS NOT NULL
+			UNION
+			SELECT DISTINCT torrent_hash_id FROM instance_backup_items WHERE torrent_hash_id IS NOT NULL
+			UNION
+			SELECT DISTINCT name_id FROM instance_backup_items WHERE name_id IS NOT NULL
+			UNION
+			SELECT DISTINCT category_id FROM instance_backup_items WHERE category_id IS NOT NULL
+			UNION
+			SELECT DISTINCT tags_id FROM instance_backup_items WHERE tags_id IS NOT NULL
+			UNION
+			SELECT DISTINCT archive_rel_path_id FROM instance_backup_items WHERE archive_rel_path_id IS NOT NULL
+			UNION
+			SELECT DISTINCT torrent_blob_path_id FROM instance_backup_items WHERE torrent_blob_path_id IS NOT NULL
+			UNION
+			SELECT DISTINCT error_type_id FROM instance_errors WHERE error_type_id IS NOT NULL
+			UNION
+			SELECT DISTINCT error_message_id FROM instance_errors WHERE error_message_id IS NOT NULL
+		)
+	`
+
+	result, err := db.ExecContext(ctx, query)
+	if err != nil {
+		return 0, fmt.Errorf("failed to cleanup unused strings: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	// Clear the string ID cache after cleanup to ensure consistency
+	// This prevents cached IDs from pointing to deleted strings
+	// We recreate the cache instead of clearing to ensure thread-safety
+	stringIDOpts := ttlcache.Options[string, int64]{}.SetDefaultTTL(5 * time.Minute)
+	db.stringIDCache = ttlcache.New(stringIDOpts)
+
+	if rowsAffected > 0 {
+		log.Debug().Msgf("Cleaned up %d unused strings from string_pool (cache cleared)", rowsAffected)
+	}
+
+	return rowsAffected, nil
+}
+
+// GetOrCreateStringID retrieves the ID of a string from the string_pool, or creates it if it doesn't exist.
+// This is the primary method for string interning throughout the application.
+// Uses a TTL cache to avoid repeated database queries for frequently used strings.
+func (db *DB) GetOrCreateStringID(ctx context.Context, value string) (int64, error) {
+	// Check cache first
+	if id, found := db.stringIDCache.Get(value); found {
+		return id, nil
+	}
+
+	// First, try to get the existing string ID
+	var id int64
+	err := db.QueryRowContext(ctx, "SELECT id FROM string_pool WHERE value = ?", value).Scan(&id)
+	if err == nil {
+		// Cache the result
+		db.stringIDCache.Set(value, id, ttlcache.DefaultTTL)
+		return id, nil
+	}
+	if err != sql.ErrNoRows {
+		return 0, fmt.Errorf("failed to query string_pool: %w", err)
+	}
+
+	// String doesn't exist, insert it
+	result, err := db.ExecContext(ctx, "INSERT INTO string_pool (value) VALUES (?)", value)
+	if err != nil {
+		// Check if another goroutine inserted it concurrently
+		err2 := db.QueryRowContext(ctx, "SELECT id FROM string_pool WHERE value = ?", value).Scan(&id)
+		if err2 == nil {
+			// Cache the result
+			db.stringIDCache.Set(value, id, ttlcache.DefaultTTL)
+			return id, nil
+		}
+		return 0, fmt.Errorf("failed to insert into string_pool: %w", err)
+	}
+
+	id, err = result.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get last insert ID: %w", err)
+	}
+
+	// Cache the newly created ID
+	db.stringIDCache.Set(value, id, ttlcache.DefaultTTL)
+
+	return id, nil
+}
+
+// GetStringByID retrieves a string value from the string_pool by its ID.
+func (db *DB) GetStringByID(ctx context.Context, id int64) (string, error) {
+	var value string
+	err := db.QueryRowContext(ctx, "SELECT value FROM string_pool WHERE id = ?", id).Scan(&value)
+	if err != nil {
+		return "", fmt.Errorf("failed to get string from pool: %w", err)
+	}
+	return value, nil
+}
+
+// GetStringsByIDs retrieves multiple string values from the string_pool by their IDs.
+// Returns a map of ID to string value. Missing IDs will not appear in the map.
+func (db *DB) GetStringsByIDs(ctx context.Context, ids []int64) (map[int64]string, error) {
+	if len(ids) == 0 {
+		return make(map[int64]string), nil
+	}
+
+	// Build query with IN clause
+	query := "SELECT id, value FROM string_pool WHERE id IN (?" + strings.Repeat(",?", len(ids)-1) + ")"
+
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		args[i] = id
+	}
+
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query string_pool: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(map[int64]string, len(ids))
+	for rows.Next() {
+		var id int64
+		var value string
+		if err := rows.Scan(&id, &value); err != nil {
+			return nil, fmt.Errorf("failed to scan row: %w", err)
+		}
+		result[id] = value
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating rows: %w", err)
+	}
+
+	return result, nil
+}
+
+// NewForTest wraps an existing sql.DB connection for testing purposes.
+// This creates a minimal DB wrapper without running migrations or starting
+// background goroutines. The caller is responsible for managing the underlying
+// sql.DB connection lifecycle.
+//
+// Note: This function is intended for testing only and should not be used in
+// production code. Use New() for production database initialization.
+func NewForTest(conn *sql.DB) *DB {
+	stmtOpts := ttlcache.Options[string, *sql.Stmt]{}.SetDefaultTTL(5 * time.Minute).
+		SetDeallocationFunc(func(k string, s *sql.Stmt, _ ttlcache.DeallocationReason) {
+			if s != nil {
+				_ = s.Close()
+			}
+		})
+
+	stmtsCache := ttlcache.New(stmtOpts)
+
+	// create ttlcache for string ID mappings with 5 minute TTL
+	stringIDOpts := ttlcache.Options[string, int64]{}.SetDefaultTTL(5 * time.Minute)
+	stringIDCache := ttlcache.New(stringIDOpts)
+
+	db := &DB{
+		conn:          conn,
+		writeCh:       make(chan writeReq, writeChannelBuffer),
+		stmts:         stmtsCache,
+		stringIDCache: stringIDCache,
+		stop:          make(chan struct{}),
+	}
+	db.writeBarrier.Store((chan struct{})(nil))
+	db.barrierSignal.Store((chan struct{})(nil))
+
+	// Start single writer goroutine
+	db.writerWG.Add(1)
+	go db.writerLoop()
+
+	return db
 }

@@ -29,8 +29,5 @@ func (p *BufferPool) Get() []byte {
 
 // Put returns a buffer to the pool
 func (p *BufferPool) Put(buf []byte) {
-	// Only pool buffers of the expected size to avoid memory bloat
-	if cap(buf) == 32*1024 {
-		p.pool.Put(buf)
-	}
+	p.pool.Put(buf)
 }

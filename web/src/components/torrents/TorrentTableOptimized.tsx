@@ -444,13 +444,19 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     prepareReannounceAction,
   } = useTorrentActions({
     instanceId,
-    onActionComplete: resetSelectionState,
+    onActionComplete: (action) => {
+      if (action === TORRENT_ACTIONS.DELETE) {
+        resetSelectionState()
+      }
+    },
   })
 
   // Fetch metadata using shared hook
-  const { data: metadata } = useInstanceMetadata(instanceId)
+  const { data: metadata, isLoading: isMetadataLoading } = useInstanceMetadata(instanceId)
   const availableTags = metadata?.tags || []
   const availableCategories = metadata?.categories || {}
+  const isLoadingTags = isMetadataLoading && availableTags.length === 0
+  const isLoadingCategories = isMetadataLoading && Object.keys(availableCategories).length === 0
 
   const shouldLoadRenameEntries = (showRenameFileDialog || showRenameFolderDialog) && Boolean(contextHashes[0])
 
@@ -1985,6 +1991,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
         onConfirm={handleAddTagsWrapper}
         isPending={isPending}
+        isLoadingTags={isLoadingTags}
       />
 
       {/* Set Tags Dialog */}
@@ -1996,6 +2003,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         onConfirm={handleSetTagsWrapper}
         isPending={isPending}
         initialTags={getCommonTags(contextTorrents)}
+        isLoadingTags={isLoadingTags}
       />
 
       {/* Set Category Dialog */}
@@ -2007,6 +2015,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         onConfirm={handleSetCategoryWrapper}
         isPending={isPending}
         initialCategory={getCommonCategory(contextTorrents)}
+        isLoadingCategories={isLoadingCategories}
       />
 
       {/* Create and Assign Category Dialog */}
