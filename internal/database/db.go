@@ -583,7 +583,25 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 			UNION
 			SELECT DISTINCT archive_rel_path_id FROM instance_backup_items WHERE archive_rel_path_id IS NOT NULL
 			UNION
+			SELECT DISTINCT infohash_v1_id FROM instance_backup_items WHERE infohash_v1_id IS NOT NULL
+			UNION
+			SELECT DISTINCT infohash_v2_id FROM instance_backup_items WHERE infohash_v2_id IS NOT NULL
+			UNION
 			SELECT DISTINCT torrent_blob_path_id FROM instance_backup_items WHERE torrent_blob_path_id IS NOT NULL
+			UNION
+			SELECT DISTINCT kind_id FROM instance_backup_runs WHERE kind_id IS NOT NULL
+			UNION
+			SELECT DISTINCT status_id FROM instance_backup_runs WHERE status_id IS NOT NULL
+			UNION
+			SELECT DISTINCT requested_by_id FROM instance_backup_runs WHERE requested_by_id IS NOT NULL
+			UNION
+			SELECT DISTINCT error_message_id FROM instance_backup_runs WHERE error_message_id IS NOT NULL
+			UNION
+			SELECT DISTINCT name_id FROM instances WHERE name_id IS NOT NULL
+			UNION
+			SELECT DISTINCT name_id FROM api_keys WHERE name_id IS NOT NULL
+			UNION
+			SELECT DISTINCT client_name_id FROM client_api_keys WHERE client_name_id IS NOT NULL
 			UNION
 			SELECT DISTINCT error_type_id FROM instance_errors WHERE error_type_id IS NOT NULL
 			UNION

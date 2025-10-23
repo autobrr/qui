@@ -113,11 +113,11 @@ func (i *Instance) UnmarshalJSON(data []byte) error {
 }
 
 type InstanceStore struct {
-	db            dbinterface.Querier
+	db            dbinterface.DBWithStringInterning
 	encryptionKey []byte
 }
 
-func NewInstanceStore(db dbinterface.Querier, encryptionKey []byte) (*InstanceStore, error) {
+func NewInstanceStore(db dbinterface.DBWithStringInterning, encryptionKey []byte) (*InstanceStore, error) {
 	if len(encryptionKey) != 32 {
 		return nil, errors.New("encryption key must be 32 bytes")
 	}
@@ -236,16 +236,23 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 		encryptedBasicPassword = &encrypted
 	}
 
+	// Intern the instance name
+	nameID, err := s.db.GetOrCreateStringID(ctx, name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to intern instance name: %w", err)
+	}
+
 	query := `
-		INSERT INTO instances (name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify) 
+		INSERT INTO instances (name_id, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify) 
 		VALUES (?, ?, ?, ?, ?, ?, ?)
-		RETURNING id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify
+		RETURNING id, name_id, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify
 	`
 
 	instance := &Instance{}
-	err = s.db.QueryRowContext(ctx, query, name, normalizedHost, username, encryptedPassword, basicUsername, encryptedBasicPassword, tlsSkipVerify).Scan(
+	var returnedNameID int64
+	err = s.db.QueryRowContext(ctx, query, nameID, normalizedHost, username, encryptedPassword, basicUsername, encryptedBasicPassword, tlsSkipVerify).Scan(
 		&instance.ID,
-		&instance.Name,
+		&returnedNameID,
 		&instance.Host,
 		&instance.Username,
 		&instance.PasswordEncrypted,
@@ -257,6 +264,9 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 	if err != nil {
 		return nil, err
 	}
+
+	// Set the name from the nameID we just inserted
+	instance.Name = name
 
 	return instance, nil
 }
@@ -332,9 +342,15 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 		return nil, err
 	}
 
+	// Intern the instance name
+	nameID, err := s.db.GetOrCreateStringID(ctx, name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to intern instance name: %w", err)
+	}
+
 	// Start building the update query
-	query := `UPDATE instances SET name = ?, host = ?, username = ?, basic_username = ?`
-	args := []any{name, normalizedHost, username, basicUsername}
+	query := `UPDATE instances SET name_id = ?, host = ?, username = ?, basic_username = ?`
+	args := []any{nameID, normalizedHost, username, basicUsername}
 
 	// Handle password update - encrypt if provided
 	if password != "" {

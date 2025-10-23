@@ -137,20 +137,18 @@ func TestCleanupUnusedStrings(t *testing.T) {
 	_, _ = db.GetOrCreateStringID(ctx, "unused_string_2")
 
 	// Create a record that references id1
-	_, err := db.ExecContext(ctx, `
+	instanceNameID, _ := db.GetOrCreateStringID(ctx, "test")
+	_, err := db.ExecContext(ctx, "INSERT INTO instances (name_id, host, username, password_encrypted) VALUES (?, 'http://localhost', 'user', 'pass')", instanceNameID)
+	if err != nil {
+		t.Fatalf("Failed to create test instance: %v", err)
+	}
+
+	_, err = db.ExecContext(ctx, `
 		INSERT INTO instance_errors (instance_id, error_type_id, error_message_id)
 		VALUES (1, ?, ?)
 	`, id1, id1)
 	if err != nil {
-		// If instance doesn't exist, create it first
-		_, _ = db.ExecContext(ctx, "INSERT INTO instances (name, host, username, password_encrypted) VALUES ('test', 'http://localhost', 'user', 'pass')")
-		_, err = db.ExecContext(ctx, `
-			INSERT INTO instance_errors (instance_id, error_type_id, error_message_id)
-			VALUES (1, ?, ?)
-		`, id1, id1)
-		if err != nil {
-			t.Fatalf("Failed to create test error: %v", err)
-		}
+		t.Fatalf("Failed to create test error: %v", err)
 	}
 
 	// Count strings before cleanup
@@ -386,7 +384,11 @@ func TestStringInterningViews(t *testing.T) {
 
 	t.Run("torrent_files_cache_view resolves names", func(t *testing.T) {
 		// Create a test instance
-		_, err := db.ExecContext(ctx, "INSERT INTO instances (name, host, username, password_encrypted) VALUES ('test', 'http://localhost', 'user', 'pass')")
+		instanceNameID, err := db.GetOrCreateStringID(ctx, "test")
+		if err != nil {
+			t.Fatalf("Failed to intern instance name: %v", err)
+		}
+		_, err = db.ExecContext(ctx, "INSERT INTO instances (name_id, host, username, password_encrypted) VALUES (?, 'http://localhost', 'user', 'pass')", instanceNameID)
 		if err != nil {
 			t.Fatalf("Failed to create test instance: %v", err)
 		}
@@ -435,10 +437,13 @@ func TestStringInterningViews(t *testing.T) {
 
 	t.Run("instance_backup_items_view resolves multiple strings", func(t *testing.T) {
 		// Create backup run
+		kindID, _ := db.GetOrCreateStringID(ctx, "manual")
+		statusID, _ := db.GetOrCreateStringID(ctx, "completed")
+		requestedByID, _ := db.GetOrCreateStringID(ctx, "system")
 		_, err := db.ExecContext(ctx, `
-			INSERT INTO instance_backup_runs (instance_id, kind, status)
-			VALUES (1, 'manual', 'completed')
-		`)
+			INSERT INTO instance_backup_runs (instance_id, kind_id, status_id, requested_by_id)
+			VALUES (1, ?, ?, ?)
+		`, kindID, statusID, requestedByID)
 		if err != nil {
 			t.Fatalf("Failed to create backup run: %v", err)
 		}

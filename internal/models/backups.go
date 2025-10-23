@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -233,10 +234,35 @@ func (s *BackupStore) CreateRun(ctx context.Context, run *BackupRun) error {
 		return errors.New("run cannot be nil")
 	}
 
+	// Intern string fields
+	kindID, err := s.db.GetOrCreateStringID(ctx, string(run.Kind))
+	if err != nil {
+		return fmt.Errorf("failed to intern kind: %w", err)
+	}
+
+	statusID, err := s.db.GetOrCreateStringID(ctx, string(run.Status))
+	if err != nil {
+		return fmt.Errorf("failed to intern status: %w", err)
+	}
+
+	requestedByID, err := s.db.GetOrCreateStringID(ctx, run.RequestedBy)
+	if err != nil {
+		return fmt.Errorf("failed to intern requested_by: %w", err)
+	}
+
+	var errorMessageID *int64
+	if run.ErrorMessage != nil && *run.ErrorMessage != "" {
+		id, err := s.db.GetOrCreateStringID(ctx, *run.ErrorMessage)
+		if err != nil {
+			return fmt.Errorf("failed to intern error_message: %w", err)
+		}
+		errorMessageID = &id
+	}
+
 	query := `
         INSERT INTO instance_backup_runs (
-            instance_id, kind, status, requested_by, requested_at, started_at, completed_at,
-            archive_path, manifest_path, total_bytes, torrent_count, category_counts_json, categories_json, tags_json, error_message
+            instance_id, kind_id, status_id, requested_by_id, requested_at, started_at, completed_at,
+            archive_path, manifest_path, total_bytes, torrent_count, category_counts_json, categories_json, tags_json, error_message_id
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `
 
@@ -249,9 +275,9 @@ func (s *BackupStore) CreateRun(ctx context.Context, run *BackupRun) error {
 		ctx,
 		query,
 		run.InstanceID,
-		string(run.Kind),
-		string(run.Status),
-		run.RequestedBy,
+		kindID,
+		statusID,
+		requestedByID,
 		run.RequestedAt,
 		run.StartedAt,
 		run.CompletedAt,
@@ -262,7 +288,7 @@ func (s *BackupStore) CreateRun(ctx context.Context, run *BackupRun) error {
 		categoryJSON,
 		run.categoriesJSON,
 		run.tagsJSON,
-		run.ErrorMessage,
+		errorMessageID,
 	)
 	if err != nil {
 		return err
@@ -372,6 +398,22 @@ func (s *BackupStore) UpdateRunMetadata(ctx context.Context, runID int64, update
 		return err
 	}
 
+	// Intern status
+	statusID, err := s.db.GetOrCreateStringID(ctx, string(run.Status))
+	if err != nil {
+		return fmt.Errorf("failed to intern status: %w", err)
+	}
+
+	// Intern error message if present
+	var errorMessageID *int64
+	if run.ErrorMessage != nil && *run.ErrorMessage != "" {
+		id, err := s.db.GetOrCreateStringID(ctx, *run.ErrorMessage)
+		if err != nil {
+			return fmt.Errorf("failed to intern error_message: %w", err)
+		}
+		errorMessageID = &id
+	}
+
 	categoryJSON, err := marshalCategoryCounts(run.CategoryCounts)
 	if err != nil {
 		return err
@@ -379,7 +421,7 @@ func (s *BackupStore) UpdateRunMetadata(ctx context.Context, runID int64, update
 
 	query := `
         UPDATE instance_backup_runs SET
-            status = ?,
+            status_id = ?,
             started_at = ?,
             completed_at = ?,
             archive_path = ?,
@@ -389,7 +431,7 @@ func (s *BackupStore) UpdateRunMetadata(ctx context.Context, runID int64, update
             category_counts_json = ?,
             categories_json = ?,
             tags_json = ?,
-            error_message = ?
+            error_message_id = ?
         WHERE id = ?
     `
 
@@ -408,7 +450,7 @@ func (s *BackupStore) UpdateRunMetadata(ctx context.Context, runID int64, update
 	_, err = tx.ExecContext(
 		ctx,
 		query,
-		string(run.Status),
+		statusID,
 		run.StartedAt,
 		run.CompletedAt,
 		run.ArchivePath,
@@ -418,7 +460,7 @@ func (s *BackupStore) UpdateRunMetadata(ctx context.Context, runID int64, update
 		categoryJSON,
 		categoriesJSON,
 		tagsJSON,
-		run.ErrorMessage,
+		errorMessageID,
 		run.ID,
 	)
 	if err != nil {
@@ -428,11 +470,71 @@ func (s *BackupStore) UpdateRunMetadata(ctx context.Context, runID int64, update
 	return tx.Commit()
 }
 
+// UpdateMultipleRunsStatus updates the status of multiple backup runs in a single transaction
+func (s *BackupStore) UpdateMultipleRunsStatus(ctx context.Context, runIDs []int64, status BackupRunStatus, completedAt *time.Time, errorMessage *string) error {
+	if len(runIDs) == 0 {
+		return nil
+	}
+
+	// Intern strings before starting transaction to avoid deadlocks
+	statusID, err := s.db.GetOrCreateStringID(ctx, string(status))
+	if err != nil {
+		return fmt.Errorf("failed to intern status: %w", err)
+	}
+
+	var errorMessageID *int64
+	if errorMessage != nil && *errorMessage != "" {
+		id, err := s.db.GetOrCreateStringID(ctx, *errorMessage)
+		if err != nil {
+			return fmt.Errorf("failed to intern error_message: %w", err)
+		}
+		errorMessageID = &id
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	// Build placeholders for IN clause
+	placeholders := make([]string, len(runIDs))
+	for i := range runIDs {
+		placeholders[i] = "?"
+	}
+
+	// Build args array: status_id, completed_at, error_message_id, then run IDs
+	args := make([]interface{}, 3+len(runIDs))
+	args[0] = statusID
+	args[1] = completedAt
+	args[2] = errorMessageID
+	for i, runID := range runIDs {
+		args[i+3] = runID
+	}
+
+	query := fmt.Sprintf(`
+		UPDATE instance_backup_runs
+		SET status_id = ?, completed_at = ?, error_message_id = ?
+		WHERE id IN (%s)
+	`, strings.Join(placeholders, ","))
+
+	_, err = tx.ExecContext(ctx, query, args...)
+	if err != nil {
+		return fmt.Errorf("failed to execute update query: %w", err)
+	}
+
+	return tx.Commit()
+}
+
 func (s *BackupStore) getRunForUpdate(ctx context.Context, tx *sql.Tx, runID int64) (*BackupRun, error) {
 	query := `
 		SELECT id, instance_id, kind, status, requested_by, requested_at, started_at, completed_at,
 		       archive_path, manifest_path, total_bytes, torrent_count, category_counts_json, categories_json, tags_json, error_message
-		FROM instance_backup_runs
+		FROM instance_backup_runs_view
 		WHERE id = ?
 	`
 
@@ -522,7 +624,7 @@ func (s *BackupStore) ListRuns(ctx context.Context, instanceID int, limit, offse
 	query := `
         SELECT id, instance_id, kind, status, requested_by, requested_at, started_at, completed_at,
                archive_path, manifest_path, total_bytes, torrent_count, category_counts_json, categories_json, tags_json, error_message
-        FROM instance_backup_runs
+        FROM instance_backup_runs_view
         WHERE instance_id = ?
         ORDER BY requested_at DESC
         LIMIT ? OFFSET ?
@@ -651,7 +753,7 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO instance_backup_items (
-			run_id, torrent_hash_id, name_id, category_id, size_bytes, archive_rel_path_id, infohash_v1, infohash_v2, tags_id, torrent_blob_path_id
+			run_id, torrent_hash_id, name_id, category_id, size_bytes, archive_rel_path_id, infohash_v1_id, infohash_v2_id, tags_id, torrent_blob_path_id
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
@@ -704,6 +806,26 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 			archiveRelPathID = &id
 		}
 
+		var infohashV1ID *int64
+		if item.InfoHashV1 != nil && *item.InfoHashV1 != "" {
+			id, err := s.db.GetOrCreateStringID(ctx, *item.InfoHashV1)
+			if err != nil {
+				_ = tx.Rollback()
+				return err
+			}
+			infohashV1ID = &id
+		}
+
+		var infohashV2ID *int64
+		if item.InfoHashV2 != nil && *item.InfoHashV2 != "" {
+			id, err := s.db.GetOrCreateStringID(ctx, *item.InfoHashV2)
+			if err != nil {
+				_ = tx.Rollback()
+				return err
+			}
+			infohashV2ID = &id
+		}
+
 		var torrentBlobPathID *int64
 		if item.TorrentBlobPath != nil && *item.TorrentBlobPath != "" {
 			id, err := s.db.GetOrCreateStringID(ctx, *item.TorrentBlobPath)
@@ -722,8 +844,8 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 			categoryID,
 			item.SizeBytes,
 			archiveRelPathID,
-			item.InfoHashV1,
-			item.InfoHashV2,
+			infohashV1ID,
+			infohashV2ID,
 			tagsID,
 			torrentBlobPathID,
 		)
@@ -897,7 +1019,12 @@ func (s *BackupStore) CountBlobReferences(ctx context.Context, relPath string) (
 
 func (s *BackupStore) GetInstanceName(ctx context.Context, instanceID int) (string, error) {
 	var name string
-	err := s.db.QueryRowContext(ctx, "SELECT name FROM instances WHERE id = ?", instanceID).Scan(&name)
+	err := s.db.QueryRowContext(ctx, `
+		SELECT sp.value 
+		FROM instances i 
+		JOIN string_pool sp ON i.name_id = sp.id 
+		WHERE i.id = ?
+	`, instanceID).Scan(&name)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", ErrInstanceNotFound
@@ -915,7 +1042,7 @@ func (s *BackupStore) ListRunsByKind(ctx context.Context, instanceID int, kind B
 	query := `
 		SELECT id, instance_id, kind, status, requested_by, requested_at, started_at, completed_at,
 		       archive_path, manifest_path, total_bytes, torrent_count, category_counts_json, categories_json, tags_json, error_message
-		FROM instance_backup_runs
+		FROM instance_backup_runs_view
 		WHERE instance_id = ? AND kind = ?
 		ORDER BY requested_at DESC
 		LIMIT ?
@@ -1008,7 +1135,7 @@ func (s *BackupStore) GetRun(ctx context.Context, runID int64) (*BackupRun, erro
 	query := `
         SELECT id, instance_id, kind, status, requested_by, requested_at, started_at, completed_at,
                archive_path, manifest_path, total_bytes, torrent_count, category_counts_json, categories_json, tags_json, error_message
-        FROM instance_backup_runs
+        FROM instance_backup_runs_view
         WHERE id = ?
     `
 
@@ -1235,7 +1362,7 @@ func (s *BackupStore) CountRunsByKind(ctx context.Context, instanceID int, kind 
 	var count int
 	err := s.db.QueryRowContext(ctx, `
         SELECT COUNT(*)
-        FROM instance_backup_runs
+        FROM instance_backup_runs_view
         WHERE instance_id = ? AND kind = ?
     `, instanceID, string(kind)).Scan(&count)
 	return count, err
@@ -1264,10 +1391,16 @@ func (s *BackupStore) CleanupRun(ctx context.Context, runID int64) error {
 
 // RemoveFailedRunsBefore deletes failed runs older than the provided cutoff and returns the number of rows affected.
 func (s *BackupStore) RemoveFailedRunsBefore(ctx context.Context, cutoff time.Time) (int64, error) {
+	// Intern the status string to get its ID
+	statusID, err := s.db.GetOrCreateStringID(ctx, string(BackupRunStatusFailed))
+	if err != nil {
+		return 0, fmt.Errorf("failed to intern status: %w", err)
+	}
+
 	res, err := s.db.ExecContext(ctx, `
         DELETE FROM instance_backup_runs
-        WHERE status = ? AND requested_at < ?
-    `, string(BackupRunStatusFailed), cutoff)
+        WHERE status_id = ? AND requested_at < ?
+    `, statusID, cutoff)
 	if err != nil {
 		return 0, err
 	}
@@ -1280,7 +1413,7 @@ func (s *BackupStore) FindIncompleteRuns(ctx context.Context) ([]*BackupRun, err
 	query := `
         SELECT id, instance_id, kind, status, requested_by, requested_at, started_at, completed_at,
                archive_path, manifest_path, total_bytes, torrent_count, category_counts_json, categories_json, tags_json, error_message
-        FROM instance_backup_runs
+        FROM instance_backup_runs_view
         WHERE status IN (?, ?)
         ORDER BY requested_at ASC
     `

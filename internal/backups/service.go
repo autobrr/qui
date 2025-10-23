@@ -204,9 +204,11 @@ func (s *Service) Start(ctx context.Context) {
 	}
 
 	// Check for missed backups and queue exactly one if applicable
-	if err := s.checkMissedBackups(ctx); err != nil {
-		log.Warn().Err(err).Msg("Failed to check for missed backups")
-	}
+	go func() {
+		if err := s.checkMissedBackups(ctx); err != nil {
+			log.Warn().Err(err).Msg("Failed to check for missed backups")
+		}
+	}()
 
 	s.wg.Add(1)
 	go s.scheduler(ctx)
@@ -229,20 +231,19 @@ func (s *Service) recoverIncompleteRuns(ctx context.Context) error {
 	now := s.now()
 	errorMsg := "Backup interrupted by application restart"
 
-	for _, run := range incompleteRuns {
-		err := s.store.UpdateRunMetadata(ctx, run.ID, func(r *models.BackupRun) error {
-			r.Status = models.BackupRunStatusFailed
-			r.CompletedAt = &now
-			r.ErrorMessage = &errorMsg
-			return nil
-		})
-		if err != nil {
-			log.Warn().Err(err).Int64("runID", run.ID).Int("instanceID", run.InstanceID).Msg("Failed to mark incomplete run as failed")
-		} else {
-			log.Debug().Int64("runID", run.ID).Int("instanceID", run.InstanceID).Str("kind", string(run.Kind)).Str("previousStatus", string(run.Status)).Msg("Marked incomplete backup run as failed")
-		}
+	// Collect all run IDs to update
+	runIDs := make([]int64, len(incompleteRuns))
+	for i, run := range incompleteRuns {
+		runIDs[i] = run.ID
 	}
 
+	// Update all runs in a single transaction to avoid database locking issues
+	err = s.store.UpdateMultipleRunsStatus(ctx, runIDs, models.BackupRunStatusFailed, &now, &errorMsg)
+	if err != nil {
+		return fmt.Errorf("failed to update incomplete runs: %w", err)
+	}
+
+	log.Info().Int("count", len(incompleteRuns)).Msg("Successfully recovered incomplete backup runs")
 	return nil
 }
 

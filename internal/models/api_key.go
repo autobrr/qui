@@ -28,10 +28,10 @@ type APIKey struct {
 }
 
 type APIKeyStore struct {
-	db dbinterface.Querier
+	db dbinterface.DBWithStringInterning
 }
 
-func NewAPIKeyStore(db dbinterface.Querier) *APIKeyStore {
+func NewAPIKeyStore(db dbinterface.DBWithStringInterning) *APIKeyStore {
 	return &APIKeyStore{db: db}
 }
 
@@ -60,23 +60,35 @@ func (s *APIKeyStore) Create(ctx context.Context, name string) (string, *APIKey,
 	// Hash the key for storage
 	keyHash := HashAPIKey(rawKey)
 
+	// Intern the API key name
+	nameID, err := s.db.GetOrCreateStringID(ctx, name)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to intern api key name: %w", err)
+	}
+
 	query := `
-		INSERT INTO api_keys (key_hash, name) 
+		INSERT INTO api_keys (key_hash, name_id) 
 		VALUES (?, ?)
-		RETURNING id, key_hash, name, created_at, last_used_at
+		RETURNING id, key_hash, created_at, last_used_at
 	`
 
 	apiKey := &APIKey{}
-	err = s.db.QueryRowContext(ctx, query, keyHash, name).Scan(
+	var createdAt, lastUsedAt sql.NullTime
+	err = s.db.QueryRowContext(ctx, query, keyHash, nameID).Scan(
 		&apiKey.ID,
 		&apiKey.KeyHash,
-		&apiKey.Name,
-		&apiKey.CreatedAt,
-		&apiKey.LastUsedAt,
+		&createdAt,
+		&lastUsedAt,
 	)
 
 	if err != nil {
 		return "", nil, err
+	}
+
+	apiKey.Name = name
+	apiKey.CreatedAt = createdAt.Time
+	if lastUsedAt.Valid {
+		apiKey.LastUsedAt = &lastUsedAt.Time
 	}
 
 	// Return both the raw key (to show user once) and the model
@@ -86,7 +98,7 @@ func (s *APIKeyStore) Create(ctx context.Context, name string) (string, *APIKey,
 func (s *APIKeyStore) GetByHash(ctx context.Context, keyHash string) (*APIKey, error) {
 	query := `
 		SELECT id, key_hash, name, created_at, last_used_at 
-		FROM api_keys 
+		FROM api_keys_view 
 		WHERE key_hash = ?
 	`
 
@@ -113,7 +125,7 @@ func (s *APIKeyStore) GetByHash(ctx context.Context, keyHash string) (*APIKey, e
 func (s *APIKeyStore) List(ctx context.Context) ([]*APIKey, error) {
 	query := `
 		SELECT id, key_hash, name, created_at, last_used_at 
-		FROM api_keys 
+		FROM api_keys_view 
 		ORDER BY created_at DESC
 	`
 
