@@ -24,86 +24,103 @@ ALTER TABLE instance_errors ADD COLUMN error_message_id INTEGER REFERENCES strin
 
 -- Populate string_pool with unique torrent hashes
 INSERT OR IGNORE INTO string_pool (value)
-SELECT DISTINCT torrent_hash FROM torrent_files_cache WHERE torrent_hash IS NOT NULL
+SELECT DISTINCT torrent_hash FROM torrent_files_cache WHERE torrent_hash IS NOT NULL AND torrent_hash != ''
 UNION
-SELECT DISTINCT torrent_hash FROM torrent_files_sync WHERE torrent_hash IS NOT NULL
+SELECT DISTINCT torrent_hash FROM torrent_files_sync WHERE torrent_hash IS NOT NULL AND torrent_hash != ''
 UNION
-SELECT DISTINCT torrent_hash FROM instance_backup_items WHERE torrent_hash IS NOT NULL;
+SELECT DISTINCT torrent_hash FROM instance_backup_items WHERE torrent_hash IS NOT NULL AND torrent_hash != '';
+
+-- Handle missing torrent hashes with a placeholder
+INSERT OR IGNORE INTO string_pool (value) VALUES ('(unknown)');
 
 -- Update torrent_hash_id references
 UPDATE torrent_files_cache
-SET torrent_hash_id = (SELECT id FROM string_pool WHERE value = torrent_files_cache.torrent_hash)
-WHERE torrent_hash IS NOT NULL;
+SET torrent_hash_id = COALESCE(
+    (SELECT id FROM string_pool WHERE value = torrent_files_cache.torrent_hash),
+    (SELECT id FROM string_pool WHERE value = '(unknown)')
+);
 
 UPDATE torrent_files_sync
-SET torrent_hash_id = (SELECT id FROM string_pool WHERE value = torrent_files_sync.torrent_hash)
-WHERE torrent_hash IS NOT NULL;
+SET torrent_hash_id = COALESCE(
+    (SELECT id FROM string_pool WHERE value = torrent_files_sync.torrent_hash),
+    (SELECT id FROM string_pool WHERE value = '(unknown)')
+);
 
 UPDATE instance_backup_items
-SET torrent_hash_id = (SELECT id FROM string_pool WHERE value = instance_backup_items.torrent_hash)
-WHERE torrent_hash IS NOT NULL;
+SET torrent_hash_id = COALESCE(
+    (SELECT id FROM string_pool WHERE value = instance_backup_items.torrent_hash),
+    (SELECT id FROM string_pool WHERE value = '(unknown)')
+);
 
 -- Populate string_pool with unique values from torrent_files_cache.name
 INSERT OR IGNORE INTO string_pool (value)
-SELECT DISTINCT name FROM torrent_files_cache WHERE name IS NOT NULL;
+SELECT DISTINCT name FROM torrent_files_cache WHERE name IS NOT NULL AND name != '';
 
 -- Update torrent_files_cache.name_id to reference string_pool
 UPDATE torrent_files_cache
-SET name_id = (SELECT id FROM string_pool WHERE value = torrent_files_cache.name)
-WHERE name IS NOT NULL;
+SET name_id = COALESCE(
+    (SELECT id FROM string_pool WHERE value = torrent_files_cache.name),
+    (SELECT id FROM string_pool WHERE value = '(unknown)')
+);
 
 -- Populate string_pool with unique values from instance_backup_items
 INSERT OR IGNORE INTO string_pool (value)
-SELECT DISTINCT name FROM instance_backup_items WHERE name IS NOT NULL;
+SELECT DISTINCT name FROM instance_backup_items WHERE name IS NOT NULL AND name != '';
 
 INSERT OR IGNORE INTO string_pool (value)
-SELECT DISTINCT category FROM instance_backup_items WHERE category IS NOT NULL;
+SELECT DISTINCT category FROM instance_backup_items WHERE category IS NOT NULL AND category != '';
 
 INSERT OR IGNORE INTO string_pool (value)
-SELECT DISTINCT tags FROM instance_backup_items WHERE tags IS NOT NULL;
+SELECT DISTINCT tags FROM instance_backup_items WHERE tags IS NOT NULL AND tags != '';
 
 INSERT OR IGNORE INTO string_pool (value)
-SELECT DISTINCT archive_rel_path FROM instance_backup_items WHERE archive_rel_path IS NOT NULL;
+SELECT DISTINCT archive_rel_path FROM instance_backup_items WHERE archive_rel_path IS NOT NULL AND archive_rel_path != '';
 
 INSERT OR IGNORE INTO string_pool (value)
-SELECT DISTINCT torrent_blob_path FROM instance_backup_items WHERE torrent_blob_path IS NOT NULL;
+SELECT DISTINCT torrent_blob_path FROM instance_backup_items WHERE torrent_blob_path IS NOT NULL AND torrent_blob_path != '';
 
 -- Update instance_backup_items foreign key columns
 UPDATE instance_backup_items
-SET name_id = (SELECT id FROM string_pool WHERE value = instance_backup_items.name)
-WHERE name IS NOT NULL;
+SET name_id = COALESCE(
+    (SELECT id FROM string_pool WHERE value = instance_backup_items.name),
+    (SELECT id FROM string_pool WHERE value = '(unknown)')
+);
 
 UPDATE instance_backup_items
 SET category_id = (SELECT id FROM string_pool WHERE value = instance_backup_items.category)
-WHERE category IS NOT NULL;
+WHERE category IS NOT NULL AND category != '';
 
 UPDATE instance_backup_items
 SET tags_id = (SELECT id FROM string_pool WHERE value = instance_backup_items.tags)
-WHERE tags IS NOT NULL;
+WHERE tags IS NOT NULL AND tags != '';
 
 UPDATE instance_backup_items
 SET archive_rel_path_id = (SELECT id FROM string_pool WHERE value = instance_backup_items.archive_rel_path)
-WHERE archive_rel_path IS NOT NULL;
+WHERE archive_rel_path IS NOT NULL AND archive_rel_path != '';
 
 UPDATE instance_backup_items
 SET torrent_blob_path_id = (SELECT id FROM string_pool WHERE value = instance_backup_items.torrent_blob_path)
-WHERE torrent_blob_path IS NOT NULL;
+WHERE torrent_blob_path IS NOT NULL AND torrent_blob_path != '';
 
 -- Populate string_pool with unique values from instance_errors
 INSERT OR IGNORE INTO string_pool (value)
-SELECT DISTINCT error_type FROM instance_errors WHERE error_type IS NOT NULL;
+SELECT DISTINCT error_type FROM instance_errors WHERE error_type IS NOT NULL AND error_type != '';
 
 INSERT OR IGNORE INTO string_pool (value)
-SELECT DISTINCT error_message FROM instance_errors WHERE error_message IS NOT NULL;
+SELECT DISTINCT error_message FROM instance_errors WHERE error_message IS NOT NULL AND error_message != '';
 
 -- Update instance_errors foreign key columns
 UPDATE instance_errors
-SET error_type_id = (SELECT id FROM string_pool WHERE value = instance_errors.error_type)
-WHERE error_type IS NOT NULL;
+SET error_type_id = COALESCE(
+    (SELECT id FROM string_pool WHERE value = instance_errors.error_type),
+    (SELECT id FROM string_pool WHERE value = '(unknown)')
+);
 
 UPDATE instance_errors
-SET error_message_id = (SELECT id FROM string_pool WHERE value = instance_errors.error_message)
-WHERE error_message IS NOT NULL;
+SET error_message_id = COALESCE(
+    (SELECT id FROM string_pool WHERE value = instance_errors.error_message),
+    (SELECT id FROM string_pool WHERE value = '(unknown)')
+);
 
 -- Create new tables with string interning
 CREATE TABLE IF NOT EXISTS torrent_files_cache_new (
