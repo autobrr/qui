@@ -27,3 +27,18 @@ type TxBeginner interface {
 	Querier
 	BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error)
 }
+
+// StringInterning provides methods for string interning operations.
+// This interface is implemented by *database.DB to support efficient
+// string storage in the string_pool table.
+type StringInterning interface {
+	GetOrCreateStringID(ctx context.Context, value string) (int64, error)
+	GetStringByID(ctx context.Context, id int64) (string, error)
+	GetStringsByIDs(ctx context.Context, ids []int64) (map[int64]string, error)
+}
+
+// DBWithStringInterning combines all database capabilities including string interning.
+type DBWithStringInterning interface {
+	TxBeginner
+	StringInterning
+}

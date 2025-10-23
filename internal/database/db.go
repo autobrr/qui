@@ -170,6 +170,10 @@ func New(databasePath string) (*DB, error) {
 	db.writerWG.Add(1)
 	go db.writerLoop()
 
+	// start periodic string pool cleanup
+	db.writerWG.Add(1)
+	go db.stringPoolCleanupLoop()
+
 	// Verify database file was created
 	if _, err := os.Stat(databasePath); err != nil {
 		conn.Close()
@@ -332,6 +336,46 @@ func (db *DB) processWrite(req writeReq) {
 	select {
 	case req.resCh <- writeRes{result: res, err: execErr}:
 	default:
+	}
+}
+
+// stringPoolCleanupLoop runs periodic cleanup of unused strings from string_pool
+func (db *DB) stringPoolCleanupLoop() {
+	defer db.writerWG.Done()
+
+	// Run cleanup once per day
+	ticker := time.NewTicker(24 * time.Hour)
+	defer ticker.Stop()
+
+	// Run initial cleanup after 1 hour of startup
+	initialDelay := time.NewTimer(1 * time.Hour)
+	defer initialDelay.Stop()
+
+	for {
+		select {
+		case <-initialDelay.C:
+			// Run first cleanup after initial delay
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			if deleted, err := db.CleanupUnusedStrings(ctx); err != nil {
+				log.Warn().Err(err).Msg("failed to cleanup unused strings")
+			} else if deleted > 0 {
+				log.Debug().Msgf("Initial string pool cleanup: removed %d unused strings", deleted)
+			}
+			cancel()
+
+		case <-ticker.C:
+			// Run periodic cleanup
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			if deleted, err := db.CleanupUnusedStrings(ctx); err != nil {
+				log.Warn().Err(err).Msg("failed to cleanup unused strings")
+			} else if deleted > 0 {
+				log.Debug().Msgf("Periodic string pool cleanup: removed %d unused strings", deleted)
+			}
+			cancel()
+
+		case <-db.stop:
+			return
+		}
 	}
 }
 
@@ -505,4 +549,134 @@ func (db *DB) applyAllMigrations(ctx context.Context, migrations []string) error
 
 	log.Info().Msgf("Applied %d migrations successfully", len(migrations))
 	return nil
+}
+
+// CleanupUnusedStrings removes strings from the string_pool table that are no longer
+// referenced by any other table. This should be run periodically to reclaim storage space.
+// Returns the number of strings deleted and any error encountered.
+func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
+	// Delete strings that are not referenced by any table
+	// This query finds string_pool entries that have no foreign key references
+	query := `
+		DELETE FROM string_pool
+		WHERE id NOT IN (
+			SELECT DISTINCT torrent_hash_id FROM torrent_files_cache WHERE torrent_hash_id IS NOT NULL
+			UNION
+			SELECT DISTINCT name_id FROM torrent_files_cache WHERE name_id IS NOT NULL
+			UNION
+			SELECT DISTINCT torrent_hash_id FROM torrent_files_sync WHERE torrent_hash_id IS NOT NULL
+			UNION
+			SELECT DISTINCT torrent_hash_id FROM instance_backup_items WHERE torrent_hash_id IS NOT NULL
+			UNION
+			SELECT DISTINCT name_id FROM instance_backup_items WHERE name_id IS NOT NULL
+			UNION
+			SELECT DISTINCT category_id FROM instance_backup_items WHERE category_id IS NOT NULL
+			UNION
+			SELECT DISTINCT tags_id FROM instance_backup_items WHERE tags_id IS NOT NULL
+			UNION
+			SELECT DISTINCT archive_rel_path_id FROM instance_backup_items WHERE archive_rel_path_id IS NOT NULL
+			UNION
+			SELECT DISTINCT torrent_blob_path_id FROM instance_backup_items WHERE torrent_blob_path_id IS NOT NULL
+			UNION
+			SELECT DISTINCT error_type_id FROM instance_errors WHERE error_type_id IS NOT NULL
+			UNION
+			SELECT DISTINCT error_message_id FROM instance_errors WHERE error_message_id IS NOT NULL
+		)
+	`
+
+	result, err := db.ExecContext(ctx, query)
+	if err != nil {
+		return 0, fmt.Errorf("failed to cleanup unused strings: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected > 0 {
+		log.Info().Msgf("Cleaned up %d unused strings from string_pool", rowsAffected)
+	}
+
+	return rowsAffected, nil
+}
+
+// GetOrCreateStringID retrieves the ID of a string from the string_pool, or creates it if it doesn't exist.
+// This is the primary method for string interning throughout the application.
+func (db *DB) GetOrCreateStringID(ctx context.Context, value string) (int64, error) {
+	// First, try to get the existing string ID
+	var id int64
+	err := db.QueryRowContext(ctx, "SELECT id FROM string_pool WHERE value = ?", value).Scan(&id)
+	if err == nil {
+		return id, nil
+	}
+	if err != sql.ErrNoRows {
+		return 0, fmt.Errorf("failed to query string_pool: %w", err)
+	}
+
+	// String doesn't exist, insert it
+	result, err := db.ExecContext(ctx, "INSERT INTO string_pool (value) VALUES (?)", value)
+	if err != nil {
+		// Check if another goroutine inserted it concurrently
+		err2 := db.QueryRowContext(ctx, "SELECT id FROM string_pool WHERE value = ?", value).Scan(&id)
+		if err2 == nil {
+			return id, nil
+		}
+		return 0, fmt.Errorf("failed to insert into string_pool: %w", err)
+	}
+
+	id, err = result.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get last insert ID: %w", err)
+	}
+
+	return id, nil
+}
+
+// GetStringByID retrieves a string value from the string_pool by its ID.
+func (db *DB) GetStringByID(ctx context.Context, id int64) (string, error) {
+	var value string
+	err := db.QueryRowContext(ctx, "SELECT value FROM string_pool WHERE id = ?", id).Scan(&value)
+	if err != nil {
+		return "", fmt.Errorf("failed to get string from pool: %w", err)
+	}
+	return value, nil
+}
+
+// GetStringsByIDs retrieves multiple string values from the string_pool by their IDs.
+// Returns a map of ID to string value. Missing IDs will not appear in the map.
+func (db *DB) GetStringsByIDs(ctx context.Context, ids []int64) (map[int64]string, error) {
+	if len(ids) == 0 {
+		return make(map[int64]string), nil
+	}
+
+	// Build query with IN clause
+	query := "SELECT id, value FROM string_pool WHERE id IN (?" + strings.Repeat(",?", len(ids)-1) + ")"
+
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		args[i] = id
+	}
+
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query string_pool: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(map[int64]string, len(ids))
+	for rows.Next() {
+		var id int64
+		var value string
+		if err := rows.Scan(&id, &value); err != nil {
+			return nil, fmt.Errorf("failed to scan row: %w", err)
+		}
+		result[id] = value
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating rows: %w", err)
+	}
+
+	return result, nil
 }

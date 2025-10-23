@@ -17,12 +17,12 @@ import (
 
 // Service manages cached torrent file information
 type Service struct {
-	db   dbinterface.Querier
+	db   dbinterface.DBWithStringInterning
 	repo *Repository
 }
 
 // NewService creates a new files manager service
-func NewService(db dbinterface.Querier) *Service {
+func NewService(db dbinterface.DBWithStringInterning) *Service {
 	return &Service{
 		db:   db,
 		repo: NewRepository(db),
