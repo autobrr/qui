@@ -69,6 +69,10 @@ func (t *RetryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 			return nil, err
 		}
 
+		// Close idle connections to clear potentially stale connections from the pool
+		// This helps recover from connection pool issues
+		t.closeIdleConnections()
+
 		// Check if the request method is safe to retry
 		if !isIdempotentMethod(req.Method) {
 			log.Debug().
@@ -110,6 +114,19 @@ func (t *RetryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 
 	return nil, lastErr
+}
+
+// closeIdleConnections closes idle connections in the transport if supported
+// This helps clear potentially stale connections from the connection pool
+func (t *RetryTransport) closeIdleConnections() {
+	type closeIdler interface {
+		CloseIdleConnections()
+	}
+
+	if tr, ok := t.base.(closeIdler); ok {
+		tr.CloseIdleConnections()
+		log.Debug().Msg("Closed idle connections after network error")
+	}
 }
 
 // isRetryableError determines if an error is a transient network error that should be retried

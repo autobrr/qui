@@ -439,3 +439,78 @@ func TestCalculateBackoff(t *testing.T) {
 		})
 	}
 }
+
+// mockTransportWithIdleClose is a mock that tracks CloseIdleConnections calls
+type mockTransportWithIdleClose struct {
+	mockRoundTripper
+	closeIdleCalled int
+}
+
+func (m *mockTransportWithIdleClose) CloseIdleConnections() {
+	m.closeIdleCalled++
+}
+
+func TestRetryTransport_ClosesIdleConnections(t *testing.T) {
+	mock := &mockTransportWithIdleClose{
+		mockRoundTripper: mockRoundTripper{
+			err:        syscall.ECONNREFUSED,
+			maxAttempt: 1, // Fail once, then succeed
+		},
+	}
+
+	transport := NewRetryTransport(mock)
+
+	req, err := http.NewRequest(http.MethodGet, "http://example.com", nil)
+	require.NoError(t, err)
+
+	resp, err := transport.RoundTrip(req)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	// Should have called CloseIdleConnections once for the failed attempt
+	assert.Equal(t, 1, mock.closeIdleCalled, "Should close idle connections on network error")
+	assert.Equal(t, 2, mock.attempts, "Should have retried after network error")
+}
+
+func TestRetryTransport_ClosesIdleConnectionsMultipleTimes(t *testing.T) {
+	mock := &mockTransportWithIdleClose{
+		mockRoundTripper: mockRoundTripper{
+			err:        io.EOF,
+			maxAttempt: 2, // Fail twice, then succeed
+		},
+	}
+
+	transport := NewRetryTransport(mock)
+
+	req, err := http.NewRequest(http.MethodGet, "http://example.com", nil)
+	require.NoError(t, err)
+
+	resp, err := transport.RoundTrip(req)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	// Should have called CloseIdleConnections twice for the two failed attempts
+	assert.Equal(t, 2, mock.closeIdleCalled, "Should close idle connections for each network error")
+	assert.Equal(t, 3, mock.attempts, "Should have retried after network errors")
+}
+
+func TestRetryTransport_DoesNotCloseOnNonRetryableError(t *testing.T) {
+	mock := &mockTransportWithIdleClose{
+		mockRoundTripper: mockRoundTripper{
+			err:        errors.New("some non-retryable error"),
+			maxAttempt: 10,
+		},
+	}
+
+	transport := NewRetryTransport(mock)
+
+	req, err := http.NewRequest(http.MethodGet, "http://example.com", nil)
+	require.NoError(t, err)
+
+	_, err = transport.RoundTrip(req)
+	require.Error(t, err)
+
+	// Should not have called CloseIdleConnections for non-retryable error
+	assert.Equal(t, 0, mock.closeIdleCalled, "Should not close idle connections on non-retryable error")
+	assert.Equal(t, 1, mock.attempts, "Should not retry non-retryable error")
+}
