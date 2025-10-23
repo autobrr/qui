@@ -4,11 +4,13 @@
 package proxy
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -202,6 +204,21 @@ func combineInstanceAndRequestPath(instanceBasePath, strippedPath string) string
 	default:
 		return base + "/" + request
 	}
+}
+
+// bufferRequestBody reads the request body, restores it for ParseForm, and returns the buffered bytes.
+// This allows both parsing form data and forwarding the request body to the proxy.
+func bufferRequestBody(r *http.Request) ([]byte, error) {
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		return nil, err
+	}
+	r.Body.Close()
+
+	// Restore body for ParseForm or other consumers
+	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+
+	return bodyBytes, nil
 }
 
 // errorHandler handles proxy errors
@@ -1009,6 +1026,14 @@ func (h *Handler) handleSetLocation(w http.ResponseWriter, r *http.Request) {
 	instanceID := GetInstanceIDFromContext(ctx)
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
 
+	// Buffer body so we can parse form and still forward to proxy
+	bodyBytes, err := bufferRequestBody(r)
+	if err != nil {
+		log.Warn().Err(err).Int("instanceId", instanceID).Msg("Failed to read setLocation body")
+		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+		return
+	}
+
 	// Parse form data
 	if err := r.ParseForm(); err != nil {
 		log.Warn().Err(err).Int("instanceId", instanceID).Msg("Failed to parse setLocation form")
@@ -1023,6 +1048,9 @@ func (h *Handler) handleSetLocation(w http.ResponseWriter, r *http.Request) {
 		Str("client", clientAPIKey.ClientName).
 		Str("hashes", hashes).
 		Msg("Intercepting setLocation request for cache invalidation")
+
+	// Restore body for proxy
+	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 
 	// Forward to qBittorrent
 	h.proxy.ServeHTTP(w, r)
@@ -1049,6 +1077,14 @@ func (h *Handler) handleRenameFile(w http.ResponseWriter, r *http.Request) {
 	instanceID := GetInstanceIDFromContext(ctx)
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
 
+	// Buffer body so we can parse form and still forward to proxy
+	bodyBytes, err := bufferRequestBody(r)
+	if err != nil {
+		log.Warn().Err(err).Int("instanceId", instanceID).Msg("Failed to read renameFile body")
+		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+		return
+	}
+
 	// Parse form data
 	if err := r.ParseForm(); err != nil {
 		log.Warn().Err(err).Int("instanceId", instanceID).Msg("Failed to parse renameFile form")
@@ -1063,6 +1099,9 @@ func (h *Handler) handleRenameFile(w http.ResponseWriter, r *http.Request) {
 		Str("client", clientAPIKey.ClientName).
 		Str("hash", hash).
 		Msg("Intercepting renameFile request for cache invalidation")
+
+	// Restore body for proxy
+	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 
 	// Forward to qBittorrent
 	h.proxy.ServeHTTP(w, r)
@@ -1082,6 +1121,14 @@ func (h *Handler) handleRenameFolder(w http.ResponseWriter, r *http.Request) {
 	instanceID := GetInstanceIDFromContext(ctx)
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
 
+	// Buffer body so we can parse form and still forward to proxy
+	bodyBytes, err := bufferRequestBody(r)
+	if err != nil {
+		log.Warn().Err(err).Int("instanceId", instanceID).Msg("Failed to read renameFolder body")
+		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+		return
+	}
+
 	// Parse form data
 	if err := r.ParseForm(); err != nil {
 		log.Warn().Err(err).Int("instanceId", instanceID).Msg("Failed to parse renameFolder form")
@@ -1096,6 +1143,9 @@ func (h *Handler) handleRenameFolder(w http.ResponseWriter, r *http.Request) {
 		Str("client", clientAPIKey.ClientName).
 		Str("hash", hash).
 		Msg("Intercepting renameFolder request for cache invalidation")
+
+	// Restore body for proxy
+	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 
 	// Forward to qBittorrent
 	h.proxy.ServeHTTP(w, r)
@@ -1115,6 +1165,14 @@ func (h *Handler) handleDeleteTorrents(w http.ResponseWriter, r *http.Request) {
 	instanceID := GetInstanceIDFromContext(ctx)
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
 
+	// Buffer body so we can parse form and still forward to proxy
+	bodyBytes, err := bufferRequestBody(r)
+	if err != nil {
+		log.Warn().Err(err).Int("instanceId", instanceID).Msg("Failed to read delete body")
+		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+		return
+	}
+
 	// Parse form data
 	if err := r.ParseForm(); err != nil {
 		log.Warn().Err(err).Int("instanceId", instanceID).Msg("Failed to parse delete form")
@@ -1129,6 +1187,9 @@ func (h *Handler) handleDeleteTorrents(w http.ResponseWriter, r *http.Request) {
 		Str("client", clientAPIKey.ClientName).
 		Str("hashes", hashes).
 		Msg("Intercepting delete request for cache invalidation")
+
+	// Restore body for proxy
+	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 
 	// Forward to qBittorrent
 	h.proxy.ServeHTTP(w, r)
