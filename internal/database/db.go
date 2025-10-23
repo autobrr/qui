@@ -44,6 +44,7 @@ type DB struct {
 	writeCh       chan writeReq
 	stmts         *ttlcache.Cache[string, *sql.Stmt]
 	stringIDCache *ttlcache.Cache[string, int64] // Cache for string -> ID mappings
+	cacheMu       sync.RWMutex                   // Protects stringIDCache operations
 	stop          chan struct{}
 	closeOnce     sync.Once
 	writerWG      sync.WaitGroup
@@ -329,7 +330,9 @@ func (db *DB) processWrite(req writeReq) {
 		case <-req.ctx.Done():
 			log.Warn().Msg("Write barrier: request context cancelled")
 		case <-timeout.C:
-			log.Error().Msg("Write barrier timeout exceeded - test cleanup likely failed")
+			// Write barrier should only be set in tests. If timeout triggers in production,
+			// it indicates a bug where the barrier was not properly cleared.
+			log.Fatal().Msg("FATAL: Write barrier timeout exceeded in production - write barrier should only be used in tests")
 		}
 	}
 
@@ -365,15 +368,26 @@ func (db *DB) stringPoolCleanupLoop() {
 	initialDelay := time.NewTimer(1 * time.Hour)
 	defer initialDelay.Stop()
 
+	// Track consecutive failures to adjust cleanup frequency
+	consecutiveFailures := 0
+	const maxConsecutiveFailures = 5
+
 	for {
 		select {
 		case <-initialDelay.C:
 			// Run first cleanup after initial delay
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 			if deleted, err := db.CleanupUnusedStrings(ctx); err != nil {
-				log.Warn().Err(err).Msg("failed to cleanup unused strings")
-			} else if deleted > 0 {
-				log.Debug().Msgf("Initial string pool cleanup: removed %d unused strings", deleted)
+				consecutiveFailures++
+				log.Warn().Err(err).Int("consecutiveFailures", consecutiveFailures).Msg("failed to cleanup unused strings")
+				if consecutiveFailures >= maxConsecutiveFailures {
+					log.Error().Int("consecutiveFailures", consecutiveFailures).Msg("string pool cleanup failing repeatedly - manual intervention may be needed")
+				}
+			} else {
+				if deleted > 0 {
+					log.Debug().Msgf("Initial string pool cleanup: removed %d unused strings", deleted)
+				}
+				consecutiveFailures = 0 // Reset on success
 			}
 			cancel()
 
@@ -381,9 +395,16 @@ func (db *DB) stringPoolCleanupLoop() {
 			// Run periodic cleanup
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 			if deleted, err := db.CleanupUnusedStrings(ctx); err != nil {
-				log.Warn().Err(err).Msg("failed to cleanup unused strings")
-			} else if deleted > 0 {
-				log.Debug().Msgf("Periodic string pool cleanup: removed %d unused strings", deleted)
+				consecutiveFailures++
+				log.Warn().Err(err).Int("consecutiveFailures", consecutiveFailures).Msg("failed to cleanup unused strings")
+				if consecutiveFailures >= maxConsecutiveFailures {
+					log.Error().Int("consecutiveFailures", consecutiveFailures).Msg("string pool cleanup failing repeatedly - manual intervention may be needed")
+				}
+			} else {
+				if deleted > 0 {
+					log.Debug().Msgf("Periodic string pool cleanup: removed %d unused strings", deleted)
+				}
+				consecutiveFailures = 0 // Reset on success
 			}
 			cancel()
 
@@ -574,6 +595,13 @@ func (db *DB) applyAllMigrations(ctx context.Context, migrations []string) error
 				return fmt.Errorf("failed to commit before %s: %w", filename, err)
 			}
 
+			// Ensure foreign keys are re-enabled even if migration fails
+			defer func() {
+				if _, err := db.conn.ExecContext(context.Background(), "PRAGMA foreign_keys = ON"); err != nil {
+					log.Error().Err(err).Msg("CRITICAL: Failed to re-enable foreign keys after migration - manual intervention required")
+				}
+			}()
+
 			// Disable foreign keys (must be done outside transaction)
 			if _, err := db.conn.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
 				return fmt.Errorf("failed to disable foreign keys for %s: %w", filename, err)
@@ -594,7 +622,7 @@ func (db *DB) applyAllMigrations(ctx context.Context, migrations []string) error
 				return fmt.Errorf("failed to record migration %s: %w", filename, err)
 			}
 
-			// Re-enable foreign keys
+			// Re-enable foreign keys explicitly
 			if _, err := db.conn.ExecContext(ctx, "PRAGMA foreign_keys = ON"); err != nil {
 				return fmt.Errorf("failed to re-enable foreign keys after %s: %w", filename, err)
 			}
@@ -638,16 +666,9 @@ func (db *DB) applyAllMigrations(ctx context.Context, migrations []string) error
 // Returns the number of strings deleted and any error encountered.
 // Also clears the string ID cache to ensure consistency.
 //
-// IMPORTANT: This operation clears the cache BEFORE deletion and uses a transaction
-// to ensure atomicity. This prevents race conditions where cached IDs point to deleted strings.
+// IMPORTANT: This operation clears the cache AFTER deletion with mutex protection
+// to prevent race conditions where cached IDs point to deleted strings.
 func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
-	// Clear the string ID cache BEFORE deletion to prevent race conditions
-	// where cached IDs point to strings that are about to be deleted
-	log.Debug().Msg("Clearing string ID cache before cleanup")
-	for _, key := range db.stringIDCache.GetKeys() {
-		db.stringIDCache.Delete(key)
-	}
-
 	// Use a transaction to make the cleanup atomic
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
@@ -722,6 +743,15 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("failed to commit cleanup transaction: %w", err)
 	}
 
+	// Clear the string ID cache AFTER successful deletion with mutex protection
+	// This prevents race conditions where cached IDs point to deleted strings
+	db.cacheMu.Lock()
+	log.Debug().Msg("Clearing string ID cache after cleanup")
+	for _, key := range db.stringIDCache.GetKeys() {
+		db.stringIDCache.Delete(key)
+	}
+	db.cacheMu.Unlock()
+
 	if rowsAffected > 0 {
 		log.Debug().Msgf("Cleaned up %d unused strings from string_pool (cache cleared)", rowsAffected)
 	}
@@ -736,9 +766,12 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 //
 // IMPORTANT: Uses INSERT OR IGNORE to handle concurrent inserts safely. Multiple goroutines
 // can call this simultaneously with the same string value without causing conflicts.
+// Cache operations are protected by mutex to prevent races with cleanup.
 func (db *DB) GetOrCreateStringID(ctx context.Context, value string, tx *sql.Tx) (int64, error) {
-	// Check cache first
+	// Check cache first with read lock
+	db.cacheMu.RLock()
 	id, found := db.stringIDCache.Get(value)
+	db.cacheMu.RUnlock()
 	if found {
 		return id, nil
 	}
@@ -765,19 +798,43 @@ func (db *DB) GetOrCreateStringID(ctx context.Context, value string, tx *sql.Tx)
 	}
 
 	// If id is 0, another goroutine inserted it, so we need to query for it
+	// Retry up to 3 times to handle rare case where string was deleted between INSERT and SELECT
 	if id == 0 {
-		if tx != nil {
-			err = tx.QueryRowContext(ctx, "SELECT id FROM string_pool WHERE value = ?", value).Scan(&id)
-		} else {
-			err = db.QueryRowContext(ctx, "SELECT id FROM string_pool WHERE value = ?", value).Scan(&id)
+		for attempts := 0; attempts < 3; attempts++ {
+			if tx != nil {
+				err = tx.QueryRowContext(ctx, "SELECT id FROM string_pool WHERE value = ?", value).Scan(&id)
+			} else {
+				err = db.QueryRowContext(ctx, "SELECT id FROM string_pool WHERE value = ?", value).Scan(&id)
+			}
+			if err == nil {
+				break
+			}
+			if err != sql.ErrNoRows {
+				return 0, fmt.Errorf("failed to query string_pool after concurrent insert: %w", err)
+			}
+			// String was deleted, retry insert
+			if tx != nil {
+				result, err = tx.ExecContext(ctx, "INSERT OR IGNORE INTO string_pool (value) VALUES (?)", value)
+			} else {
+				result, err = db.ExecContext(ctx, "INSERT OR IGNORE INTO string_pool (value) VALUES (?)", value)
+			}
+			if err != nil {
+				return 0, fmt.Errorf("failed to retry insert into string_pool: %w", err)
+			}
+			id, _ = result.LastInsertId()
+			if id != 0 {
+				break
+			}
 		}
-		if err != nil {
-			return 0, fmt.Errorf("failed to query string_pool after concurrent insert: %w", err)
+		if id == 0 {
+			return 0, fmt.Errorf("failed to get or create string ID after retries")
 		}
 	}
 
-	// Cache the ID
+	// Cache the ID with write lock
+	db.cacheMu.Lock()
 	db.stringIDCache.Set(value, id, ttlcache.DefaultTTL)
+	db.cacheMu.Unlock()
 
 	return id, nil
 }

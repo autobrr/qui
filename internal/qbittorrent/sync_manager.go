@@ -99,10 +99,9 @@ type DuplicateTorrentMatch struct {
 
 // SyncManager manages torrent operations
 type SyncManager struct {
-	clientPool      *ClientPool
-	exprCache       *ttlcache.Cache[string, *vm.Program]
-	filesManager    atomic.Value // stores FilesManager interface, thread-safe
-	filesManagerSet atomic.Bool  // tracks if filesManager has been set
+	clientPool   *ClientPool
+	exprCache    *ttlcache.Cache[string, *vm.Program]
+	filesManager atomic.Value // stores FilesManager interface, single atomic operation
 }
 
 // ResumeWhenCompleteOptions configure resume monitoring behavior.
@@ -127,24 +126,25 @@ func NewSyncManager(clientPool *ClientPool) *SyncManager {
 		clientPool: clientPool,
 		exprCache:  ttlcache.New(ttlcache.Options[string, *vm.Program]{}.SetDefaultTTL(5 * time.Minute)),
 	}
+	// Initialize with nil FilesManager (wrapped in interface holder to avoid nil interface issues)
 	sm.filesManager.Store((FilesManager)(nil))
-	sm.filesManagerSet.Store(false)
 	return sm
 }
 
 // SetFilesManager sets the files manager for caching in a thread-safe manner
 func (sm *SyncManager) SetFilesManager(fm FilesManager) {
 	sm.filesManager.Store(fm)
-	sm.filesManagerSet.Store(fm != nil)
 }
 
 // getFilesManager returns the current files manager in a thread-safe manner
+// Returns nil if no files manager is set or if it's been cleared
 func (sm *SyncManager) getFilesManager() FilesManager {
-	if !sm.filesManagerSet.Load() {
+	v := sm.filesManager.Load()
+	if v == nil {
 		return nil
 	}
-	fm, ok := sm.filesManager.Load().(FilesManager)
-	if !ok {
+	fm, ok := v.(FilesManager)
+	if !ok || fm == nil {
 		return nil
 	}
 	return fm

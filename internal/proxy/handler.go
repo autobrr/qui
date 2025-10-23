@@ -1061,26 +1061,32 @@ func (h *Handler) handleSetLocation(w http.ResponseWriter, r *http.Request) {
 		Str("hashes", hashes).
 		Msg("Intercepting setLocation request for cache invalidation")
 
+	// Defer cache invalidation to ensure it happens even if proxy panics
+	// Use background context with timeout to avoid cancellation issues
+	defer func() {
+		if hashes != "" {
+			invalidateCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
+			hashList := strings.Split(hashes, "|")
+			for _, hash := range hashList {
+				hash = strings.TrimSpace(hash)
+				if hash == "" {
+					continue
+				}
+				if err := h.syncManager.InvalidateFileCache(invalidateCtx, instanceID, hash); err != nil {
+					log.Warn().Err(err).Int("instanceId", instanceID).Str("hash", hash).
+						Msg("Failed to invalidate file cache after setLocation")
+				}
+			}
+		}
+	}()
+
 	// Restore body for proxy
 	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 
 	// Forward to qBittorrent
 	h.proxy.ServeHTTP(w, r)
-
-	// Invalidate cache for affected torrents
-	if hashes != "" {
-		hashList := strings.Split(hashes, "|")
-		for _, hash := range hashList {
-			hash = strings.TrimSpace(hash)
-			if hash == "" {
-				continue
-			}
-			if err := h.syncManager.InvalidateFileCache(ctx, instanceID, hash); err != nil {
-				log.Warn().Err(err).Int("instanceId", instanceID).Str("hash", hash).
-					Msg("Failed to invalidate file cache after setLocation")
-			}
-		}
-	}
 }
 
 // handleRenameFile handles /api/v2/torrents/renameFile and invalidates file cache
@@ -1112,19 +1118,24 @@ func (h *Handler) handleRenameFile(w http.ResponseWriter, r *http.Request) {
 		Str("hash", hash).
 		Msg("Intercepting renameFile request for cache invalidation")
 
+	// Defer cache invalidation to ensure it happens even if proxy panics
+	defer func() {
+		if hash != "" {
+			invalidateCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
+			if err := h.syncManager.InvalidateFileCache(invalidateCtx, instanceID, hash); err != nil {
+				log.Warn().Err(err).Int("instanceId", instanceID).Str("hash", hash).
+					Msg("Failed to invalidate file cache after renameFile")
+			}
+		}
+	}()
+
 	// Restore body for proxy
 	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 
 	// Forward to qBittorrent
 	h.proxy.ServeHTTP(w, r)
-
-	// Invalidate cache for this torrent
-	if hash != "" {
-		if err := h.syncManager.InvalidateFileCache(ctx, instanceID, hash); err != nil {
-			log.Warn().Err(err).Int("instanceId", instanceID).Str("hash", hash).
-				Msg("Failed to invalidate file cache after renameFile")
-		}
-	}
 }
 
 // handleRenameFolder handles /api/v2/torrents/renameFolder and invalidates file cache
@@ -1156,19 +1167,24 @@ func (h *Handler) handleRenameFolder(w http.ResponseWriter, r *http.Request) {
 		Str("hash", hash).
 		Msg("Intercepting renameFolder request for cache invalidation")
 
+	// Defer cache invalidation to ensure it happens even if proxy panics
+	defer func() {
+		if hash != "" {
+			invalidateCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
+			if err := h.syncManager.InvalidateFileCache(invalidateCtx, instanceID, hash); err != nil {
+				log.Warn().Err(err).Int("instanceId", instanceID).Str("hash", hash).
+					Msg("Failed to invalidate file cache after renameFolder")
+			}
+		}
+	}()
+
 	// Restore body for proxy
 	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 
 	// Forward to qBittorrent
 	h.proxy.ServeHTTP(w, r)
-
-	// Invalidate cache for this torrent
-	if hash != "" {
-		if err := h.syncManager.InvalidateFileCache(ctx, instanceID, hash); err != nil {
-			log.Warn().Err(err).Int("instanceId", instanceID).Str("hash", hash).
-				Msg("Failed to invalidate file cache after renameFolder")
-		}
-	}
 }
 
 // handleDeleteTorrents handles /api/v2/torrents/delete and invalidates file cache
@@ -1200,24 +1216,29 @@ func (h *Handler) handleDeleteTorrents(w http.ResponseWriter, r *http.Request) {
 		Str("hashes", hashes).
 		Msg("Intercepting delete request for cache invalidation")
 
+	// Defer cache invalidation to ensure it happens even if proxy panics
+	defer func() {
+		if hashes != "" {
+			invalidateCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
+			hashList := strings.Split(hashes, "|")
+			for _, hash := range hashList {
+				hash = strings.TrimSpace(hash)
+				if hash == "" {
+					continue
+				}
+				if err := h.syncManager.InvalidateFileCache(invalidateCtx, instanceID, hash); err != nil {
+					log.Warn().Err(err).Int("instanceId", instanceID).Str("hash", hash).
+						Msg("Failed to invalidate file cache after delete")
+				}
+			}
+		}
+	}()
+
 	// Restore body for proxy
 	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 
 	// Forward to qBittorrent
 	h.proxy.ServeHTTP(w, r)
-
-	// Invalidate cache for deleted torrents
-	if hashes != "" {
-		hashList := strings.Split(hashes, "|")
-		for _, hash := range hashList {
-			hash = strings.TrimSpace(hash)
-			if hash == "" {
-				continue
-			}
-			if err := h.syncManager.InvalidateFileCache(ctx, instanceID, hash); err != nil {
-				log.Warn().Err(err).Int("instanceId", instanceID).Str("hash", hash).
-					Msg("Failed to invalidate file cache after delete")
-			}
-		}
-	}
 }
