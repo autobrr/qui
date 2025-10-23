@@ -30,13 +30,16 @@ func setupInstanceErrorTestDB(t *testing.T) (*mockQuerier, *InstanceErrorStore) 
 		CREATE TABLE instances (
 			id INTEGER PRIMARY KEY,
 			name_id INTEGER NOT NULL,
-			host TEXT NOT NULL,
-			username TEXT NOT NULL,
+			host_id INTEGER NOT NULL,
+			username_id INTEGER NOT NULL,
 			password_encrypted TEXT NOT NULL,
-			basic_username TEXT,
+			basic_username_id INTEGER,
 			basic_password_encrypted TEXT,
 			tls_skip_verify BOOLEAN NOT NULL DEFAULT 0,
-			FOREIGN KEY (name_id) REFERENCES string_pool(id)
+			FOREIGN KEY (name_id) REFERENCES string_pool(id),
+			FOREIGN KEY (host_id) REFERENCES string_pool(id),
+			FOREIGN KEY (username_id) REFERENCES string_pool(id),
+			FOREIGN KEY (basic_username_id) REFERENCES string_pool(id)
 		);
 		CREATE TABLE instance_errors (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -96,10 +99,14 @@ func TestInstanceErrorStore_RecordError_DeduplicatesWithinOneMinute(t *testing.T
 	ctx := context.Background()
 	db, store := setupInstanceErrorTestDB(t)
 
-	// Intern the instance name
+	// Intern the instance fields
 	nameID, err := db.GetOrCreateStringID(ctx, "test")
 	require.NoError(t, err)
-	_, err = db.Exec("INSERT INTO instances (id, name_id, host, username, password_encrypted) VALUES (?, ?, 'http://localhost', 'user', 'pass')", 1, nameID)
+	hostID, err := db.GetOrCreateStringID(ctx, "http://localhost")
+	require.NoError(t, err)
+	usernameID, err := db.GetOrCreateStringID(ctx, "user")
+	require.NoError(t, err)
+	_, err = db.Exec("INSERT INTO instances (id, name_id, host_id, username_id, password_encrypted) VALUES (?, ?, ?, ?, 'pass')", 1, nameID, hostID, usernameID)
 	require.NoError(t, err)
 
 	firstErr := errors.New("connection refused")

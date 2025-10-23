@@ -236,27 +236,47 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 		encryptedBasicPassword = &encrypted
 	}
 
-	// Intern the instance name
+	// Intern the instance name, host, username, and basic_username
 	nameID, err := s.db.GetOrCreateStringID(ctx, name)
 	if err != nil {
 		return nil, fmt.Errorf("failed to intern instance name: %w", err)
 	}
 
+	hostID, err := s.db.GetOrCreateStringID(ctx, normalizedHost)
+	if err != nil {
+		return nil, fmt.Errorf("failed to intern host: %w", err)
+	}
+
+	usernameID, err := s.db.GetOrCreateStringID(ctx, username)
+	if err != nil {
+		return nil, fmt.Errorf("failed to intern username: %w", err)
+	}
+
+	var basicUsernameID *int64
+	if basicUsername != nil && *basicUsername != "" {
+		id, err := s.db.GetOrCreateStringID(ctx, *basicUsername)
+		if err != nil {
+			return nil, fmt.Errorf("failed to intern basic username: %w", err)
+		}
+		basicUsernameID = &id
+	}
+
 	query := `
-		INSERT INTO instances (name_id, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify) 
+		INSERT INTO instances (name_id, host_id, username_id, password_encrypted, basic_username_id, basic_password_encrypted, tls_skip_verify) 
 		VALUES (?, ?, ?, ?, ?, ?, ?)
-		RETURNING id, name_id, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify
+		RETURNING id, name_id, host_id, username_id, password_encrypted, basic_username_id, basic_password_encrypted, tls_skip_verify
 	`
 
 	instance := &Instance{}
-	var returnedNameID int64
-	err = s.db.QueryRowContext(ctx, query, nameID, normalizedHost, username, encryptedPassword, basicUsername, encryptedBasicPassword, tlsSkipVerify).Scan(
+	var returnedNameID, returnedHostID, returnedUsernameID int64
+	var returnedBasicUsernameID *int64
+	err = s.db.QueryRowContext(ctx, query, nameID, hostID, usernameID, encryptedPassword, basicUsernameID, encryptedBasicPassword, tlsSkipVerify).Scan(
 		&instance.ID,
 		&returnedNameID,
-		&instance.Host,
-		&instance.Username,
+		&returnedHostID,
+		&returnedUsernameID,
 		&instance.PasswordEncrypted,
-		&instance.BasicUsername,
+		&returnedBasicUsernameID,
 		&instance.BasicPasswordEncrypted,
 		&instance.TLSSkipVerify,
 	)
@@ -265,8 +285,13 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 		return nil, err
 	}
 
-	// Set the name from the nameID we just inserted
+	// Set the fields from the IDs we just inserted
 	instance.Name = name
+	instance.Host = normalizedHost
+	instance.Username = username
+	if basicUsername != nil {
+		instance.BasicUsername = basicUsername
+	}
 
 	return instance, nil
 }
@@ -342,15 +367,41 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 		return nil, err
 	}
 
-	// Intern the instance name
+	// Intern the instance name, host, username
 	nameID, err := s.db.GetOrCreateStringID(ctx, name)
 	if err != nil {
 		return nil, fmt.Errorf("failed to intern instance name: %w", err)
 	}
 
+	hostID, err := s.db.GetOrCreateStringID(ctx, normalizedHost)
+	if err != nil {
+		return nil, fmt.Errorf("failed to intern host: %w", err)
+	}
+
+	usernameID, err := s.db.GetOrCreateStringID(ctx, username)
+	if err != nil {
+		return nil, fmt.Errorf("failed to intern username: %w", err)
+	}
+
 	// Start building the update query
-	query := `UPDATE instances SET name_id = ?, host = ?, username = ?, basic_username = ?`
-	args := []any{nameID, normalizedHost, username, basicUsername}
+	query := `UPDATE instances SET name_id = ?, host_id = ?, username_id = ?`
+	args := []any{nameID, hostID, usernameID}
+
+	// Handle basic_username update
+	if basicUsername != nil {
+		if *basicUsername == "" {
+			// Empty string explicitly provided - clear the basic username
+			query += ", basic_username_id = NULL"
+		} else {
+			// Basic username provided - intern and update
+			basicUsernameID, err := s.db.GetOrCreateStringID(ctx, *basicUsername)
+			if err != nil {
+				return nil, fmt.Errorf("failed to intern basic username: %w", err)
+			}
+			query += ", basic_username_id = ?"
+			args = append(args, basicUsernameID)
+		}
+	}
 
 	// Handle password update - encrypt if provided
 	if password != "" {

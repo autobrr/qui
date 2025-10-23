@@ -209,10 +209,10 @@ var expectedSchema = map[string][]columnSpec{
 	"instances": {
 		{Name: "id", Type: "INTEGER", PrimaryKey: true},
 		{Name: "name_id", Type: "INTEGER"},
-		{Name: "host", Type: "TEXT"},
-		{Name: "username", Type: "TEXT"},
+		{Name: "host_id", Type: "INTEGER"},
+		{Name: "username_id", Type: "INTEGER"},
 		{Name: "password_encrypted", Type: "TEXT"},
-		{Name: "basic_username", Type: "TEXT"},
+		{Name: "basic_username_id", Type: "INTEGER"},
 		{Name: "basic_password_encrypted", Type: "TEXT"},
 		{Name: "tls_skip_verify", Type: "BOOLEAN"},
 	},
