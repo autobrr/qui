@@ -80,7 +80,7 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 	hash := files[0].TorrentHash
 
 	// Get or create string ID for torrent hash
-	hashID, err := r.db.GetOrCreateStringID(ctx, hash)
+	hashID, err := r.db.GetOrCreateStringID(ctx, hash, nil)
 	if err != nil {
 		return fmt.Errorf("failed to intern torrent hash: %w", err)
 	}
@@ -105,7 +105,7 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 
 	for _, f := range files {
 		// Get or create string ID for file name
-		nameID, err := r.db.GetOrCreateStringID(ctx, f.Name)
+		nameID, err := r.db.GetOrCreateStringID(ctx, f.Name, nil)
 		if err != nil {
 			return fmt.Errorf("failed to intern file name: %w", err)
 		}
@@ -140,7 +140,7 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 // DeleteFiles removes all cached files for a torrent
 func (r *Repository) DeleteFiles(ctx context.Context, instanceID int, hash string) error {
 	// Get string ID for torrent hash
-	hashID, err := r.db.GetOrCreateStringID(ctx, hash)
+	hashID, err := r.db.GetOrCreateStringID(ctx, hash, nil)
 	if err != nil {
 		// If hash doesn't exist in pool, no files exist
 		return nil
@@ -178,7 +178,7 @@ func (r *Repository) GetSyncInfo(ctx context.Context, instanceID int, hash strin
 // UpsertSyncInfo inserts or updates sync metadata
 func (r *Repository) UpsertSyncInfo(ctx context.Context, info SyncInfo) error {
 	// Get or create string ID for torrent hash
-	hashID, err := r.db.GetOrCreateStringID(ctx, info.TorrentHash)
+	hashID, err := r.db.GetOrCreateStringID(ctx, info.TorrentHash, nil)
 	if err != nil {
 		return fmt.Errorf("failed to intern torrent hash: %w", err)
 	}
@@ -207,7 +207,7 @@ func (r *Repository) UpsertSyncInfo(ctx context.Context, info SyncInfo) error {
 // DeleteSyncInfo removes sync metadata for a torrent
 func (r *Repository) DeleteSyncInfo(ctx context.Context, instanceID int, hash string) error {
 	// Get string ID for torrent hash
-	hashID, err := r.db.GetOrCreateStringID(ctx, hash)
+	hashID, err := r.db.GetOrCreateStringID(ctx, hash, nil)
 	if err != nil {
 		// If hash doesn't exist in pool, no sync info exists
 		return nil

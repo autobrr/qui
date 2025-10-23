@@ -61,7 +61,7 @@ func (s *APIKeyStore) Create(ctx context.Context, name string) (string, *APIKey,
 	keyHash := HashAPIKey(rawKey)
 
 	// Intern the API key name
-	nameID, err := s.db.GetOrCreateStringID(ctx, name)
+	nameID, err := s.db.GetOrCreateStringID(ctx, name, nil)
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to intern api key name: %w", err)
 	}

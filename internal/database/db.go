@@ -522,10 +522,10 @@ func (db *DB) findPendingMigrations(ctx context.Context, allFiles []string) ([]s
 func (db *DB) applyAllMigrations(ctx context.Context, migrations []string) error {
 	// Migrations that need foreign keys disabled due to table recreation
 	needsForeignKeysOff := map[string]bool{
-		"011_add_string_interning.sql":              true,
-		"012_intern_infohashes.sql":                 true,
-		"013_intern_backup_runs_and_names.sql":      true,
-		"015_intern_instance_and_path_fields.sql":   true,
+		"011_add_string_interning.sql":            true,
+		"012_intern_infohashes.sql":               true,
+		"013_intern_backup_runs_and_names.sql":    true,
+		"015_intern_instance_and_path_fields.sql": true,
 	}
 
 	// Begin single transaction for all migrations
@@ -678,9 +678,9 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 
 	// Clear the string ID cache after cleanup to ensure consistency
 	// This prevents cached IDs from pointing to deleted strings
-	// We recreate the cache instead of clearing to ensure thread-safety
-	stringIDOpts := ttlcache.Options[string, int64]{}.SetDefaultTTL(5 * time.Minute)
-	db.stringIDCache = ttlcache.New(stringIDOpts)
+	for _, key := range db.stringIDCache.GetKeys() {
+		db.stringIDCache.Delete(key)
+	}
 
 	if rowsAffected > 0 {
 		log.Debug().Msgf("Cleaned up %d unused strings from string_pool (cache cleared)", rowsAffected)
@@ -692,15 +692,22 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 // GetOrCreateStringID retrieves the ID of a string from the string_pool, or creates it if it doesn't exist.
 // This is the primary method for string interning throughout the application.
 // Uses a TTL cache to avoid repeated database queries for frequently used strings.
-func (db *DB) GetOrCreateStringID(ctx context.Context, value string) (int64, error) {
+// If tx is provided, the operation will be executed within that transaction; otherwise, it uses the DB connection.
+func (db *DB) GetOrCreateStringID(ctx context.Context, value string, tx *sql.Tx) (int64, error) {
 	// Check cache first
-	if id, found := db.stringIDCache.Get(value); found {
+	id, found := db.stringIDCache.Get(value)
+	if found {
 		return id, nil
 	}
 
 	// First, try to get the existing string ID
-	var id int64
-	err := db.QueryRowContext(ctx, "SELECT id FROM string_pool WHERE value = ?", value).Scan(&id)
+	var err error
+	if tx != nil {
+		err = tx.QueryRowContext(ctx, "SELECT id FROM string_pool WHERE value = ?", value).Scan(&id)
+	} else {
+		err = db.QueryRowContext(ctx, "SELECT id FROM string_pool WHERE value = ?", value).Scan(&id)
+	}
+
 	if err == nil {
 		// Cache the result
 		db.stringIDCache.Set(value, id, ttlcache.DefaultTTL)
@@ -711,10 +718,22 @@ func (db *DB) GetOrCreateStringID(ctx context.Context, value string) (int64, err
 	}
 
 	// String doesn't exist, insert it
-	result, err := db.ExecContext(ctx, "INSERT INTO string_pool (value) VALUES (?)", value)
+	var result sql.Result
+	if tx != nil {
+		result, err = tx.ExecContext(ctx, "INSERT INTO string_pool (value) VALUES (?)", value)
+	} else {
+		result, err = db.ExecContext(ctx, "INSERT INTO string_pool (value) VALUES (?)", value)
+	}
+
 	if err != nil {
 		// Check if another goroutine inserted it concurrently
-		err2 := db.QueryRowContext(ctx, "SELECT id FROM string_pool WHERE value = ?", value).Scan(&id)
+		var err2 error
+		if tx != nil {
+			err2 = tx.QueryRowContext(ctx, "SELECT id FROM string_pool WHERE value = ?", value).Scan(&id)
+		} else {
+			err2 = db.QueryRowContext(ctx, "SELECT id FROM string_pool WHERE value = ?", value).Scan(&id)
+		}
+
 		if err2 == nil {
 			// Cache the result
 			db.stringIDCache.Set(value, id, ttlcache.DefaultTTL)

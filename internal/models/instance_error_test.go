@@ -100,11 +100,11 @@ func TestInstanceErrorStore_RecordError_DeduplicatesWithinOneMinute(t *testing.T
 	db, store := setupInstanceErrorTestDB(t)
 
 	// Intern the instance fields
-	nameID, err := db.GetOrCreateStringID(ctx, "test")
+	nameID, err := db.GetOrCreateStringID(ctx, "test", nil)
 	require.NoError(t, err)
-	hostID, err := db.GetOrCreateStringID(ctx, "http://localhost")
+	hostID, err := db.GetOrCreateStringID(ctx, "http://localhost", nil)
 	require.NoError(t, err)
-	usernameID, err := db.GetOrCreateStringID(ctx, "user")
+	usernameID, err := db.GetOrCreateStringID(ctx, "user", nil)
 	require.NoError(t, err)
 	_, err = db.Exec("INSERT INTO instances (id, name_id, host_id, username_id, password_encrypted) VALUES (?, ?, ?, ?, 'pass')", 1, nameID, hostID, usernameID)
 	require.NoError(t, err)

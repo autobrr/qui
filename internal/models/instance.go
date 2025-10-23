@@ -237,24 +237,24 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 	}
 
 	// Intern the instance name, host, username, and basic_username
-	nameID, err := s.db.GetOrCreateStringID(ctx, name)
+	nameID, err := s.db.GetOrCreateStringID(ctx, name, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to intern instance name: %w", err)
 	}
 
-	hostID, err := s.db.GetOrCreateStringID(ctx, normalizedHost)
+	hostID, err := s.db.GetOrCreateStringID(ctx, normalizedHost, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to intern host: %w", err)
 	}
 
-	usernameID, err := s.db.GetOrCreateStringID(ctx, username)
+	usernameID, err := s.db.GetOrCreateStringID(ctx, username, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to intern username: %w", err)
 	}
 
 	var basicUsernameID *int64
 	if basicUsername != nil && *basicUsername != "" {
-		id, err := s.db.GetOrCreateStringID(ctx, *basicUsername)
+		id, err := s.db.GetOrCreateStringID(ctx, *basicUsername, nil)
 		if err != nil {
 			return nil, fmt.Errorf("failed to intern basic username: %w", err)
 		}
@@ -368,17 +368,17 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 	}
 
 	// Intern the instance name, host, username
-	nameID, err := s.db.GetOrCreateStringID(ctx, name)
+	nameID, err := s.db.GetOrCreateStringID(ctx, name, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to intern instance name: %w", err)
 	}
 
-	hostID, err := s.db.GetOrCreateStringID(ctx, normalizedHost)
+	hostID, err := s.db.GetOrCreateStringID(ctx, normalizedHost, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to intern host: %w", err)
 	}
 
-	usernameID, err := s.db.GetOrCreateStringID(ctx, username)
+	usernameID, err := s.db.GetOrCreateStringID(ctx, username, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to intern username: %w", err)
 	}
@@ -394,7 +394,7 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 			query += ", basic_username_id = NULL"
 		} else {
 			// Basic username provided - intern and update
-			basicUsernameID, err := s.db.GetOrCreateStringID(ctx, *basicUsername)
+			basicUsernameID, err := s.db.GetOrCreateStringID(ctx, *basicUsername, nil)
 			if err != nil {
 				return nil, fmt.Errorf("failed to intern basic username: %w", err)
 			}

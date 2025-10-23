@@ -16,7 +16,7 @@ func TestStringInterning(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("GetOrCreateStringID creates new string", func(t *testing.T) {
-		id1, err := db.GetOrCreateStringID(ctx, "test_string_1")
+		id1, err := db.GetOrCreateStringID(ctx, "test_string_1", nil)
 		if err != nil {
 			t.Fatalf("GetOrCreateStringID failed: %v", err)
 		}
@@ -36,12 +36,12 @@ func TestStringInterning(t *testing.T) {
 	})
 
 	t.Run("GetOrCreateStringID returns existing ID", func(t *testing.T) {
-		id1, err := db.GetOrCreateStringID(ctx, "test_string_2")
+		id1, err := db.GetOrCreateStringID(ctx, "test_string_2", nil)
 		if err != nil {
 			t.Fatalf("GetOrCreateStringID failed: %v", err)
 		}
 
-		id2, err := db.GetOrCreateStringID(ctx, "test_string_2")
+		id2, err := db.GetOrCreateStringID(ctx, "test_string_2", nil)
 		if err != nil {
 			t.Fatalf("GetOrCreateStringID failed on second call: %v", err)
 		}
@@ -62,7 +62,7 @@ func TestStringInterning(t *testing.T) {
 	})
 
 	t.Run("GetStringByID retrieves correct value", func(t *testing.T) {
-		id, err := db.GetOrCreateStringID(ctx, "test_string_3")
+		id, err := db.GetOrCreateStringID(ctx, "test_string_3", nil)
 		if err != nil {
 			t.Fatalf("GetOrCreateStringID failed: %v", err)
 		}
@@ -78,9 +78,9 @@ func TestStringInterning(t *testing.T) {
 	})
 
 	t.Run("GetStringsByIDs retrieves multiple values", func(t *testing.T) {
-		id1, _ := db.GetOrCreateStringID(ctx, "string_a")
-		id2, _ := db.GetOrCreateStringID(ctx, "string_b")
-		id3, _ := db.GetOrCreateStringID(ctx, "string_c")
+		id1, _ := db.GetOrCreateStringID(ctx, "string_a", nil)
+		id2, _ := db.GetOrCreateStringID(ctx, "string_b", nil)
+		id3, _ := db.GetOrCreateStringID(ctx, "string_c", nil)
 
 		ids := []int64{id1, id2, id3}
 		values, err := db.GetStringsByIDs(ctx, ids)
@@ -132,14 +132,14 @@ func TestCleanupUnusedStrings(t *testing.T) {
 	ctx := context.Background()
 
 	// Create some strings and store them
-	id1, _ := db.GetOrCreateStringID(ctx, "used_string")
-	id2, _ := db.GetOrCreateStringID(ctx, "unused_string_1")
-	_, _ = db.GetOrCreateStringID(ctx, "unused_string_2")
+	id1, _ := db.GetOrCreateStringID(ctx, "used_string", nil)
+	id2, _ := db.GetOrCreateStringID(ctx, "unused_string_1", nil)
+	_, _ = db.GetOrCreateStringID(ctx, "unused_string_2", nil)
 
 	// Create a record that references id1
-	instanceNameID, _ := db.GetOrCreateStringID(ctx, "test")
-	hostID, _ := db.GetOrCreateStringID(ctx, "http://localhost")
-	usernameID, _ := db.GetOrCreateStringID(ctx, "user")
+	instanceNameID, _ := db.GetOrCreateStringID(ctx, "test", nil)
+	hostID, _ := db.GetOrCreateStringID(ctx, "http://localhost", nil)
+	usernameID, _ := db.GetOrCreateStringID(ctx, "user", nil)
 	_, err := db.ExecContext(ctx, "INSERT INTO instances (name_id, host_id, username_id, password_encrypted) VALUES (?, ?, ?, 'pass')", instanceNameID, hostID, usernameID)
 	if err != nil {
 		t.Fatalf("Failed to create test instance: %v", err)
@@ -263,7 +263,7 @@ func TestStringPoolHelper(t *testing.T) {
 		}
 
 		// Test with actual ID
-		id, _ := db.GetOrCreateStringID(ctx, "nullable_value")
+		id, _ := db.GetOrCreateStringID(ctx, "nullable_value", nil)
 		value, err = helper.GetStringByIDNullable(ctx, &id)
 		if err != nil {
 			t.Fatalf("GetStringByIDNullable failed: %v", err)
@@ -275,8 +275,8 @@ func TestStringPoolHelper(t *testing.T) {
 
 	t.Run("GetStringPoolStats", func(t *testing.T) {
 		// Create some test strings
-		db.GetOrCreateStringID(ctx, "stats_test_1")
-		db.GetOrCreateStringID(ctx, "stats_test_2")
+		db.GetOrCreateStringID(ctx, "stats_test_1", nil)
+		db.GetOrCreateStringID(ctx, "stats_test_2", nil)
 
 		stats, err := helper.GetStringPoolStats(ctx)
 		if err != nil {
@@ -301,7 +301,7 @@ func TestStringReference(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("Load populates value", func(t *testing.T) {
-		id, _ := db.GetOrCreateStringID(ctx, "reference_test")
+		id, _ := db.GetOrCreateStringID(ctx, "reference_test", nil)
 		ref := NewStringReference(id)
 
 		if ref.Value != "" {
@@ -346,7 +346,7 @@ func TestConcurrentStringInsertion(t *testing.T) {
 	done := make(chan int64, 10)
 	for i := 0; i < 10; i++ {
 		go func() {
-			id, err := db.GetOrCreateStringID(ctx, testString)
+			id, err := db.GetOrCreateStringID(ctx, testString, nil)
 			if err != nil {
 				t.Errorf("GetOrCreateStringID failed: %v", err)
 			}
@@ -386,15 +386,15 @@ func TestStringInterningViews(t *testing.T) {
 
 	t.Run("torrent_files_cache_view resolves names", func(t *testing.T) {
 		// Create a test instance
-		instanceNameID, err := db.GetOrCreateStringID(ctx, "test")
+		instanceNameID, err := db.GetOrCreateStringID(ctx, "test", nil)
 		if err != nil {
 			t.Fatalf("Failed to intern instance name: %v", err)
 		}
-		hostID, err := db.GetOrCreateStringID(ctx, "http://localhost")
+		hostID, err := db.GetOrCreateStringID(ctx, "http://localhost", nil)
 		if err != nil {
 			t.Fatalf("Failed to intern host: %v", err)
 		}
-		usernameID, err := db.GetOrCreateStringID(ctx, "user")
+		usernameID, err := db.GetOrCreateStringID(ctx, "user", nil)
 		if err != nil {
 			t.Fatalf("Failed to intern username: %v", err)
 		}
@@ -404,12 +404,12 @@ func TestStringInterningViews(t *testing.T) {
 		}
 
 		// Insert string and get ID
-		nameID, err := db.GetOrCreateStringID(ctx, "test_file.mkv")
+		nameID, err := db.GetOrCreateStringID(ctx, "test_file.mkv", nil)
 		if err != nil {
 			t.Fatalf("GetOrCreateStringID failed: %v", err)
 		}
 
-		hashID, err := db.GetOrCreateStringID(ctx, "abc123")
+		hashID, err := db.GetOrCreateStringID(ctx, "abc123", nil)
 		if err != nil {
 			t.Fatalf("GetOrCreateStringID for hash failed: %v", err)
 		}
@@ -447,9 +447,9 @@ func TestStringInterningViews(t *testing.T) {
 
 	t.Run("instance_backup_items_view resolves multiple strings", func(t *testing.T) {
 		// Create backup run
-		kindID, _ := db.GetOrCreateStringID(ctx, "manual")
-		statusID, _ := db.GetOrCreateStringID(ctx, "completed")
-		requestedByID, _ := db.GetOrCreateStringID(ctx, "system")
+		kindID, _ := db.GetOrCreateStringID(ctx, "manual", nil)
+		statusID, _ := db.GetOrCreateStringID(ctx, "completed", nil)
+		requestedByID, _ := db.GetOrCreateStringID(ctx, "system", nil)
 		_, err := db.ExecContext(ctx, `
 			INSERT INTO instance_backup_runs (instance_id, kind_id, status_id, requested_by_id)
 			VALUES (1, ?, ?, ?)
@@ -459,10 +459,10 @@ func TestStringInterningViews(t *testing.T) {
 		}
 
 		// Get string IDs
-		hashID, _ := db.GetOrCreateStringID(ctx, "def456")
-		nameID, _ := db.GetOrCreateStringID(ctx, "Ubuntu.iso")
-		categoryID, _ := db.GetOrCreateStringID(ctx, "linux")
-		tagsID, _ := db.GetOrCreateStringID(ctx, "hd,verified")
+		hashID, _ := db.GetOrCreateStringID(ctx, "def456", nil)
+		nameID, _ := db.GetOrCreateStringID(ctx, "Ubuntu.iso", nil)
+		categoryID, _ := db.GetOrCreateStringID(ctx, "linux", nil)
+		tagsID, _ := db.GetOrCreateStringID(ctx, "hd,verified", nil)
 
 		// Insert into instance_backup_items
 		_, err = db.ExecContext(ctx, `
@@ -502,8 +502,8 @@ func TestStringInterningViews(t *testing.T) {
 
 	t.Run("instance_errors_view resolves error strings", func(t *testing.T) {
 		// Get string IDs for error type and message
-		typeID, _ := db.GetOrCreateStringID(ctx, "connection_error")
-		msgID, _ := db.GetOrCreateStringID(ctx, "Failed to connect to qBittorrent")
+		typeID, _ := db.GetOrCreateStringID(ctx, "connection_error", nil)
+		msgID, _ := db.GetOrCreateStringID(ctx, "Failed to connect to qBittorrent", nil)
 
 		// Insert error
 		_, err := db.ExecContext(ctx, `
@@ -537,8 +537,8 @@ func TestStringInterningViews(t *testing.T) {
 
 	t.Run("views handle NULL string IDs gracefully", func(t *testing.T) {
 		// Insert backup item with only name, no category
-		hashID, _ := db.GetOrCreateStringID(ctx, "ghi789")
-		nameID, _ := db.GetOrCreateStringID(ctx, "Minimal.torrent")
+		hashID, _ := db.GetOrCreateStringID(ctx, "ghi789", nil)
+		nameID, _ := db.GetOrCreateStringID(ctx, "Minimal.torrent", nil)
 		_, err := db.ExecContext(ctx, `
 			INSERT INTO instance_backup_items (
 				run_id, torrent_hash_id, name_id, size_bytes

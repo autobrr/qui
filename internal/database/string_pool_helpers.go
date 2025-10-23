@@ -103,7 +103,7 @@ func (h *StringPoolHelper) GetOrCreateStringIDNullable(ctx context.Context, valu
 		return nil, nil
 	}
 
-	id, err := h.db.GetOrCreateStringID(ctx, value)
+	id, err := h.db.GetOrCreateStringID(ctx, value, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -170,7 +170,7 @@ func (s *StringReference) Load(ctx context.Context, db *DB) error {
 
 // GetOrCreateFromValue creates a StringReference from a string value
 func (h *StringPoolHelper) GetOrCreateFromValue(ctx context.Context, value string) (StringReference, error) {
-	id, err := h.db.GetOrCreateStringID(ctx, value)
+	id, err := h.db.GetOrCreateStringID(ctx, value, nil)
 	if err != nil {
 		return StringReference{}, err
 	}

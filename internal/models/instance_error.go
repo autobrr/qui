@@ -71,12 +71,12 @@ func (s *InstanceErrorStore) RecordError(ctx context.Context, instanceID int, er
 	}
 
 	// Intern the error strings
-	errorTypeID, err := s.db.GetOrCreateStringID(ctx, errorType)
+	errorTypeID, err := s.db.GetOrCreateStringID(ctx, errorType, nil)
 	if err != nil {
 		return err
 	}
 
-	errorMessageID, err := s.db.GetOrCreateStringID(ctx, errorMessage)
+	errorMessageID, err := s.db.GetOrCreateStringID(ctx, errorMessage, nil)
 	if err != nil {
 		return err
 	}
