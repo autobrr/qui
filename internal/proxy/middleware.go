@@ -21,25 +21,75 @@ type contextKey string
 const (
 	ClientAPIKeyContextKey contextKey = "client_api_key"
 	InstanceIDContextKey   contextKey = "instance_id"
+
+	apiKeyDebounceDelay   = 10 * time.Second
+	apiKeyDebouncerTTL    = 5 * time.Minute
+	apiKeyCleanupInterval = time.Minute
 )
 
+type debouncerEntry struct {
+	debouncer *debounce.Debouncer
+	lastUsed  time.Time
+}
+
 var (
-	apiKeyDebouncers   = make(map[string]*debounce.Debouncer)
-	apiKeyDebouncersMu sync.Mutex
+	apiKeyDebouncers           = make(map[string]*debouncerEntry)
+	apiKeyDebouncersMu         sync.Mutex
+	apiKeyDebouncerCleanupOnce sync.Once
 )
 
 // getOrCreateDebouncer returns a debouncer for the given key hash, creating one if it doesn't exist
 func getOrCreateDebouncer(keyHash string) *debounce.Debouncer {
+	startAPIKeyDebouncerCleanup()
+
+	now := time.Now()
 	apiKeyDebouncersMu.Lock()
-	if debouncer, exists := apiKeyDebouncers[keyHash]; exists {
+	if entry, exists := apiKeyDebouncers[keyHash]; exists {
+		entry.lastUsed = now
+		debouncer := entry.debouncer
 		apiKeyDebouncersMu.Unlock()
 		return debouncer
 	}
 
-	debouncer := debounce.New(10 * time.Second)
-	apiKeyDebouncers[keyHash] = debouncer
+	entry := &debouncerEntry{
+		debouncer: debounce.New(apiKeyDebounceDelay),
+		lastUsed:  now,
+	}
+
+	apiKeyDebouncers[keyHash] = entry
 	apiKeyDebouncersMu.Unlock()
-	return debouncer
+	return entry.debouncer
+}
+
+func startAPIKeyDebouncerCleanup() {
+	apiKeyDebouncerCleanupOnce.Do(func() {
+		go func() {
+			ticker := time.NewTicker(apiKeyCleanupInterval)
+			defer ticker.Stop()
+
+			for range ticker.C {
+				cleanupStaleDebouncers()
+			}
+		}()
+	})
+}
+
+func cleanupStaleDebouncers() {
+	now := time.Now()
+	var toStop []*debounce.Debouncer
+
+	apiKeyDebouncersMu.Lock()
+	for key, entry := range apiKeyDebouncers {
+		if now.Sub(entry.lastUsed) > apiKeyDebouncerTTL {
+			delete(apiKeyDebouncers, key)
+			toStop = append(toStop, entry.debouncer)
+		}
+	}
+	apiKeyDebouncersMu.Unlock()
+
+	for _, debouncer := range toStop {
+		debouncer.Stop()
+	}
 }
 
 // ClientAPIKeyMiddleware validates client API keys and extracts instance information
