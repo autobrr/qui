@@ -355,6 +355,12 @@ func (h *Handler) Routes(r chi.Router) {
 		pr.Get("/api/v2/torrents/files", h.handleTorrentFiles)
 		pr.Get("/api/v2/torrents/search", h.handleTorrentSearch)
 
+		// Intercepted write operations for cache invalidation
+		pr.Post("/api/v2/torrents/setLocation", h.handleSetLocation)
+		pr.Post("/api/v2/torrents/renameFile", h.handleRenameFile)
+		pr.Post("/api/v2/torrents/renameFolder", h.handleRenameFolder)
+		pr.Post("/api/v2/torrents/delete", h.handleDeleteTorrents)
+
 		// Handle the base proxy path and any nested paths requested through the proxy
 		pr.HandleFunc("/", h.ServeHTTP)
 		pr.HandleFunc("/*", h.ServeHTTP)
@@ -995,4 +1001,150 @@ func (h *Handler) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 	// Return success response
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(proxyLoginSuccessBody))
+}
+
+// handleSetLocation handles /api/v2/torrents/setLocation and invalidates file cache
+func (h *Handler) handleSetLocation(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	instanceID := GetInstanceIDFromContext(ctx)
+	clientAPIKey := GetClientAPIKeyFromContext(ctx)
+
+	// Parse form data
+	if err := r.ParseForm(); err != nil {
+		log.Warn().Err(err).Int("instanceId", instanceID).Msg("Failed to parse setLocation form")
+		http.Error(w, "Invalid form data", http.StatusBadRequest)
+		return
+	}
+
+	hashes := r.Form.Get("hashes")
+
+	log.Debug().
+		Int("instanceId", instanceID).
+		Str("client", clientAPIKey.ClientName).
+		Str("hashes", hashes).
+		Msg("Intercepting setLocation request for cache invalidation")
+
+	// Forward to qBittorrent
+	h.proxy.ServeHTTP(w, r)
+
+	// Invalidate cache for affected torrents
+	if hashes != "" {
+		hashList := strings.Split(hashes, "|")
+		for _, hash := range hashList {
+			hash = strings.TrimSpace(hash)
+			if hash == "" {
+				continue
+			}
+			if err := h.syncManager.InvalidateFileCache(ctx, instanceID, hash); err != nil {
+				log.Warn().Err(err).Int("instanceId", instanceID).Str("hash", hash).
+					Msg("Failed to invalidate file cache after setLocation")
+			}
+		}
+	}
+}
+
+// handleRenameFile handles /api/v2/torrents/renameFile and invalidates file cache
+func (h *Handler) handleRenameFile(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	instanceID := GetInstanceIDFromContext(ctx)
+	clientAPIKey := GetClientAPIKeyFromContext(ctx)
+
+	// Parse form data
+	if err := r.ParseForm(); err != nil {
+		log.Warn().Err(err).Int("instanceId", instanceID).Msg("Failed to parse renameFile form")
+		http.Error(w, "Invalid form data", http.StatusBadRequest)
+		return
+	}
+
+	hash := r.Form.Get("hash")
+
+	log.Debug().
+		Int("instanceId", instanceID).
+		Str("client", clientAPIKey.ClientName).
+		Str("hash", hash).
+		Msg("Intercepting renameFile request for cache invalidation")
+
+	// Forward to qBittorrent
+	h.proxy.ServeHTTP(w, r)
+
+	// Invalidate cache for this torrent
+	if hash != "" {
+		if err := h.syncManager.InvalidateFileCache(ctx, instanceID, hash); err != nil {
+			log.Warn().Err(err).Int("instanceId", instanceID).Str("hash", hash).
+				Msg("Failed to invalidate file cache after renameFile")
+		}
+	}
+}
+
+// handleRenameFolder handles /api/v2/torrents/renameFolder and invalidates file cache
+func (h *Handler) handleRenameFolder(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	instanceID := GetInstanceIDFromContext(ctx)
+	clientAPIKey := GetClientAPIKeyFromContext(ctx)
+
+	// Parse form data
+	if err := r.ParseForm(); err != nil {
+		log.Warn().Err(err).Int("instanceId", instanceID).Msg("Failed to parse renameFolder form")
+		http.Error(w, "Invalid form data", http.StatusBadRequest)
+		return
+	}
+
+	hash := r.Form.Get("hash")
+
+	log.Debug().
+		Int("instanceId", instanceID).
+		Str("client", clientAPIKey.ClientName).
+		Str("hash", hash).
+		Msg("Intercepting renameFolder request for cache invalidation")
+
+	// Forward to qBittorrent
+	h.proxy.ServeHTTP(w, r)
+
+	// Invalidate cache for this torrent
+	if hash != "" {
+		if err := h.syncManager.InvalidateFileCache(ctx, instanceID, hash); err != nil {
+			log.Warn().Err(err).Int("instanceId", instanceID).Str("hash", hash).
+				Msg("Failed to invalidate file cache after renameFolder")
+		}
+	}
+}
+
+// handleDeleteTorrents handles /api/v2/torrents/delete and invalidates file cache
+func (h *Handler) handleDeleteTorrents(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	instanceID := GetInstanceIDFromContext(ctx)
+	clientAPIKey := GetClientAPIKeyFromContext(ctx)
+
+	// Parse form data
+	if err := r.ParseForm(); err != nil {
+		log.Warn().Err(err).Int("instanceId", instanceID).Msg("Failed to parse delete form")
+		http.Error(w, "Invalid form data", http.StatusBadRequest)
+		return
+	}
+
+	hashes := r.Form.Get("hashes")
+
+	log.Debug().
+		Int("instanceId", instanceID).
+		Str("client", clientAPIKey.ClientName).
+		Str("hashes", hashes).
+		Msg("Intercepting delete request for cache invalidation")
+
+	// Forward to qBittorrent
+	h.proxy.ServeHTTP(w, r)
+
+	// Invalidate cache for deleted torrents
+	if hashes != "" {
+		hashList := strings.Split(hashes, "|")
+		for _, hash := range hashList {
+			hash = strings.TrimSpace(hash)
+			if hash == "" {
+				continue
+			}
+			if err := h.syncManager.InvalidateFileCache(ctx, instanceID, hash); err != nil {
+				log.Warn().Err(err).Int("instanceId", instanceID).Str("hash", hash).
+					Msg("Failed to invalidate file cache after delete")
+			}
+		}
+	}
 }

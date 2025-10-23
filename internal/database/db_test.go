@@ -251,14 +251,38 @@ var expectedSchema = map[string][]columnSpec{
 		{Name: "data", Type: "BLOB"},
 		{Name: "expiry", Type: "REAL"},
 	},
+	"torrent_files_cache": {
+		{Name: "id", Type: "INTEGER", PrimaryKey: true},
+		{Name: "instance_id", Type: "INTEGER"},
+		{Name: "torrent_hash", Type: "TEXT"},
+		{Name: "file_index", Type: "INTEGER"},
+		{Name: "name", Type: "TEXT"},
+		{Name: "size", Type: "INTEGER"},
+		{Name: "progress", Type: "REAL"},
+		{Name: "priority", Type: "INTEGER"},
+		{Name: "is_seed", Type: "INTEGER"},
+		{Name: "piece_range_start", Type: "INTEGER"},
+		{Name: "piece_range_end", Type: "INTEGER"},
+		{Name: "availability", Type: "REAL"},
+		{Name: "cached_at", Type: "TIMESTAMP"},
+	},
+	"torrent_files_sync": {
+		{Name: "instance_id", Type: "INTEGER", PrimaryKey: true},
+		{Name: "torrent_hash", Type: "TEXT", PrimaryKey: true},
+		{Name: "last_synced_at", Type: "TIMESTAMP"},
+		{Name: "torrent_progress", Type: "REAL"},
+		{Name: "file_count", Type: "INTEGER"},
+	},
 }
 
 var expectedIndexes = map[string][]string{
-	"api_keys":        {"idx_api_keys_hash"},
-	"licenses":        {"idx_licenses_status", "idx_licenses_theme", "idx_licenses_key"},
-	"client_api_keys": {"idx_client_api_keys_key_hash", "idx_client_api_keys_instance_id"},
-	"instance_errors": {"idx_instance_errors_lookup"},
-	"sessions":        {"sessions_expiry_idx"},
+	"api_keys":            {"idx_api_keys_hash"},
+	"licenses":            {"idx_licenses_status", "idx_licenses_theme", "idx_licenses_key"},
+	"client_api_keys":     {"idx_client_api_keys_key_hash", "idx_client_api_keys_instance_id"},
+	"instance_errors":     {"idx_instance_errors_lookup"},
+	"sessions":            {"sessions_expiry_idx"},
+	"torrent_files_cache": {"idx_torrent_files_cache_lookup", "idx_torrent_files_cache_cached_at"},
+	"torrent_files_sync":  {"idx_torrent_files_sync_last_synced"},
 }
 
 var expectedTriggers = []string{
