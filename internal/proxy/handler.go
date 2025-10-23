@@ -208,12 +208,24 @@ func combineInstanceAndRequestPath(instanceBasePath, strippedPath string) string
 
 // bufferRequestBody reads the request body, restores it for ParseForm, and returns the buffered bytes.
 // This allows both parsing form data and forwarding the request body to the proxy.
+//
+// IMPORTANT: Limits body size to 10MB to prevent OOM attacks. Larger requests will be rejected.
 func bufferRequestBody(r *http.Request) ([]byte, error) {
-	bodyBytes, err := io.ReadAll(r.Body)
+	const maxBodySize = 10 * 1024 * 1024 // 10MB limit
+
+	// Use LimitReader to prevent reading more than maxBodySize
+	limitedReader := io.LimitReader(r.Body, maxBodySize+1)
+	bodyBytes, err := io.ReadAll(limitedReader)
 	if err != nil {
+		r.Body.Close()
 		return nil, err
 	}
 	r.Body.Close()
+
+	// Check if body exceeds limit
+	if len(bodyBytes) > maxBodySize {
+		return nil, fmt.Errorf("request body too large: %d bytes (max %d)", len(bodyBytes), maxBodySize)
+	}
 
 	// Restore body for ParseForm or other consumers
 	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))

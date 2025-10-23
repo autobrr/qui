@@ -29,8 +29,20 @@ func NewService(db dbinterface.Querier) *Service {
 	}
 }
 
-// GetCachedFiles retrieves cached file information for a torrent
-// Returns nil if no cache exists or cache is stale
+// GetCachedFiles retrieves cached file information for a torrent.
+// Returns nil if no cache exists or cache is stale.
+//
+// CONCURRENCY NOTE: This function accepts eventual consistency for cache invalidation.
+// There is a TOCTOU (time-of-check-time-of-use) race between checking cache freshness
+// and retrieving files - another goroutine could invalidate the cache in between.
+// This is acceptable because:
+// 1. The worst case is serving slightly stale data (same as normal cache behavior)
+// 2. Cache invalidation is triggered by user actions (rename, delete, etc.)
+// 3. The cache has built-in freshness checks that limit staleness
+// 4. Using a transaction would significantly impact performance
+//
+// If absolute consistency is required, the caller should invalidate the cache
+// before calling this method, or use the qBittorrent API directly.
 func (s *Service) GetCachedFiles(ctx context.Context, instanceID int, hash string, torrentProgress float64) (qbt.TorrentFiles, error) {
 	// Check if we have sync metadata
 	syncInfo, err := s.repo.GetSyncInfo(ctx, instanceID, hash)

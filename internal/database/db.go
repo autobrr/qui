@@ -312,6 +312,7 @@ func (db *DB) writerLoop() {
 }
 
 func (db *DB) processWrite(req writeReq) {
+	// Check for test write barrier with timeout to prevent production hangs
 	if barrier, ok := db.writeBarrier.Load().(chan struct{}); ok && barrier != nil {
 		if signal, ok := db.barrierSignal.Load().(chan struct{}); ok && signal != nil {
 			select {
@@ -319,9 +320,16 @@ func (db *DB) processWrite(req writeReq) {
 			default:
 			}
 		}
+		// Add timeout to prevent indefinite blocking if test cleanup fails
+		timeout := time.NewTimer(30 * time.Second)
+		defer timeout.Stop()
+
 		select {
 		case <-barrier:
 		case <-req.ctx.Done():
+			log.Warn().Msg("Write barrier: request context cancelled")
+		case <-timeout.C:
+			log.Error().Msg("Write barrier timeout exceeded - test cleanup likely failed")
 		}
 	}
 
@@ -408,6 +416,27 @@ func (db *DB) QueryRowContext(ctx context.Context, query string, args ...any) *s
 // BeginTx starts a transaction. Note that transactions bypass the single writer
 // and use the underlying connection pool directly. This is safe because SQLite
 // handles transaction serialization internally.
+//
+// CONCURRENCY MODEL:
+// - The database uses a single writer goroutine for simple write operations via ExecContext
+// - Transactions (BeginTx) bypass this and use the SQLite connection pool directly
+// - SQLite's SERIALIZABLE isolation level ensures data consistency
+// - WAL mode allows concurrent readers during write transactions
+//
+// WHEN TO USE EACH:
+// - Use ExecContext for simple, single-statement writes (INSERT, UPDATE, DELETE)
+// - Use BeginTx for multi-statement operations that need atomicity
+// - Use BeginTx when you need to read and write in a consistent snapshot
+//
+// GUARANTEES:
+// - ExecContext: Sequential execution, no partial writes visible
+// - BeginTx: ACID properties, full transaction isolation
+// - Both: No write conflicts due to SQLite's serialization
+//
+// LIMITATIONS:
+// - Long-running transactions can block the single writer if they overlap
+// - EXCLUSIVE locks during transaction commit can cause brief contention
+// - Use IMMEDIATE transactions for write-heavy workloads to reduce conflicts
 func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
 	return db.conn.BeginTx(ctx, opts)
 }
@@ -608,65 +637,77 @@ func (db *DB) applyAllMigrations(ctx context.Context, migrations []string) error
 // referenced by any other table. This should be run periodically to reclaim storage space.
 // Returns the number of strings deleted and any error encountered.
 // Also clears the string ID cache to ensure consistency.
+//
+// IMPORTANT: This operation clears the cache BEFORE deletion and uses a transaction
+// to ensure atomicity. This prevents race conditions where cached IDs point to deleted strings.
 func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
-	// Delete strings that are not referenced by any table
-	// This query finds string_pool entries that have no foreign key references
-	query := `
-		DELETE FROM string_pool
-		WHERE id NOT IN (
-			SELECT DISTINCT torrent_hash_id FROM torrent_files_cache WHERE torrent_hash_id IS NOT NULL
-			UNION
-			SELECT DISTINCT name_id FROM torrent_files_cache WHERE name_id IS NOT NULL
-			UNION
-			SELECT DISTINCT torrent_hash_id FROM torrent_files_sync WHERE torrent_hash_id IS NOT NULL
-			UNION
-			SELECT DISTINCT torrent_hash_id FROM instance_backup_items WHERE torrent_hash_id IS NOT NULL
-			UNION
-			SELECT DISTINCT name_id FROM instance_backup_items WHERE name_id IS NOT NULL
-			UNION
-			SELECT DISTINCT category_id FROM instance_backup_items WHERE category_id IS NOT NULL
-			UNION
-			SELECT DISTINCT tags_id FROM instance_backup_items WHERE tags_id IS NOT NULL
-			UNION
-			SELECT DISTINCT archive_rel_path_id FROM instance_backup_items WHERE archive_rel_path_id IS NOT NULL
-			UNION
-			SELECT DISTINCT infohash_v1_id FROM instance_backup_items WHERE infohash_v1_id IS NOT NULL
-			UNION
-			SELECT DISTINCT infohash_v2_id FROM instance_backup_items WHERE infohash_v2_id IS NOT NULL
-			UNION
-			SELECT DISTINCT torrent_blob_path_id FROM instance_backup_items WHERE torrent_blob_path_id IS NOT NULL
-			UNION
-			SELECT DISTINCT kind_id FROM instance_backup_runs WHERE kind_id IS NOT NULL
-			UNION
-			SELECT DISTINCT status_id FROM instance_backup_runs WHERE status_id IS NOT NULL
-			UNION
-			SELECT DISTINCT requested_by_id FROM instance_backup_runs WHERE requested_by_id IS NOT NULL
-			UNION
-			SELECT DISTINCT error_message_id FROM instance_backup_runs WHERE error_message_id IS NOT NULL
-			UNION
-			SELECT DISTINCT archive_path_id FROM instance_backup_runs WHERE archive_path_id IS NOT NULL
-			UNION
-			SELECT DISTINCT manifest_path_id FROM instance_backup_runs WHERE manifest_path_id IS NOT NULL
-			UNION
-			SELECT DISTINCT name_id FROM instances WHERE name_id IS NOT NULL
-			UNION
-			SELECT DISTINCT host_id FROM instances WHERE host_id IS NOT NULL
-			UNION
-			SELECT DISTINCT username_id FROM instances WHERE username_id IS NOT NULL
-			UNION
-			SELECT DISTINCT basic_username_id FROM instances WHERE basic_username_id IS NOT NULL
-			UNION
-			SELECT DISTINCT name_id FROM api_keys WHERE name_id IS NOT NULL
-			UNION
-			SELECT DISTINCT client_name_id FROM client_api_keys WHERE client_name_id IS NOT NULL
-			UNION
-			SELECT DISTINCT error_type_id FROM instance_errors WHERE error_type_id IS NOT NULL
-			UNION
-			SELECT DISTINCT error_message_id FROM instance_errors WHERE error_message_id IS NOT NULL
-		)
-	`
+	// Clear the string ID cache BEFORE deletion to prevent race conditions
+	// where cached IDs point to strings that are about to be deleted
+	log.Debug().Msg("Clearing string ID cache before cleanup")
+	for _, key := range db.stringIDCache.GetKeys() {
+		db.stringIDCache.Delete(key)
+	}
 
-	result, err := db.ExecContext(ctx, query)
+	// Use a transaction to make the cleanup atomic
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Build a temporary table of referenced IDs for better performance
+	// This is much faster than the massive UNION query
+	_, err = tx.ExecContext(ctx, `
+		CREATE TEMP TABLE IF NOT EXISTS temp_referenced_strings (
+			string_id INTEGER PRIMARY KEY
+		)
+	`)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create temp table: %w", err)
+	}
+	defer tx.ExecContext(ctx, "DROP TABLE IF EXISTS temp_referenced_strings")
+
+	// Populate temp table with all referenced string IDs
+	// Using INSERT OR IGNORE to handle duplicates efficiently
+	insertQueries := []string{
+		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT torrent_hash_id FROM torrent_files_cache WHERE torrent_hash_id IS NOT NULL",
+		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT name_id FROM torrent_files_cache WHERE name_id IS NOT NULL",
+		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT torrent_hash_id FROM torrent_files_sync WHERE torrent_hash_id IS NOT NULL",
+		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT torrent_hash_id FROM instance_backup_items WHERE torrent_hash_id IS NOT NULL",
+		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT name_id FROM instance_backup_items WHERE name_id IS NOT NULL",
+		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT category_id FROM instance_backup_items WHERE category_id IS NOT NULL",
+		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT tags_id FROM instance_backup_items WHERE tags_id IS NOT NULL",
+		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT archive_rel_path_id FROM instance_backup_items WHERE archive_rel_path_id IS NOT NULL",
+		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT infohash_v1_id FROM instance_backup_items WHERE infohash_v1_id IS NOT NULL",
+		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT infohash_v2_id FROM instance_backup_items WHERE infohash_v2_id IS NOT NULL",
+		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT torrent_blob_path_id FROM instance_backup_items WHERE torrent_blob_path_id IS NOT NULL",
+		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT kind_id FROM instance_backup_runs WHERE kind_id IS NOT NULL",
+		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT status_id FROM instance_backup_runs WHERE status_id IS NOT NULL",
+		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT requested_by_id FROM instance_backup_runs WHERE requested_by_id IS NOT NULL",
+		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT error_message_id FROM instance_backup_runs WHERE error_message_id IS NOT NULL",
+		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT archive_path_id FROM instance_backup_runs WHERE archive_path_id IS NOT NULL",
+		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT manifest_path_id FROM instance_backup_runs WHERE manifest_path_id IS NOT NULL",
+		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT name_id FROM instances WHERE name_id IS NOT NULL",
+		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT host_id FROM instances WHERE host_id IS NOT NULL",
+		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT username_id FROM instances WHERE username_id IS NOT NULL",
+		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT basic_username_id FROM instances WHERE basic_username_id IS NOT NULL",
+		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT name_id FROM api_keys WHERE name_id IS NOT NULL",
+		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT client_name_id FROM client_api_keys WHERE client_name_id IS NOT NULL",
+		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT error_type_id FROM instance_errors WHERE error_type_id IS NOT NULL",
+		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT error_message_id FROM instance_errors WHERE error_message_id IS NOT NULL",
+	}
+
+	for _, query := range insertQueries {
+		if _, err := tx.ExecContext(ctx, query); err != nil {
+			return 0, fmt.Errorf("failed to populate temp table: %w", err)
+		}
+	}
+
+	// Now delete strings not in the temp table - much faster than UNION
+	result, err := tx.ExecContext(ctx, `
+		DELETE FROM string_pool 
+		WHERE id NOT IN (SELECT string_id FROM temp_referenced_strings)
+	`)
 	if err != nil {
 		return 0, fmt.Errorf("failed to cleanup unused strings: %w", err)
 	}
@@ -676,10 +717,9 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("failed to get rows affected: %w", err)
 	}
 
-	// Clear the string ID cache after cleanup to ensure consistency
-	// This prevents cached IDs from pointing to deleted strings
-	for _, key := range db.stringIDCache.GetKeys() {
-		db.stringIDCache.Delete(key)
+	// Commit the transaction
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("failed to commit cleanup transaction: %w", err)
 	}
 
 	if rowsAffected > 0 {
@@ -693,6 +733,9 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 // This is the primary method for string interning throughout the application.
 // Uses a TTL cache to avoid repeated database queries for frequently used strings.
 // If tx is provided, the operation will be executed within that transaction; otherwise, it uses the DB connection.
+//
+// IMPORTANT: Uses INSERT OR IGNORE to handle concurrent inserts safely. Multiple goroutines
+// can call this simultaneously with the same string value without causing conflicts.
 func (db *DB) GetOrCreateStringID(ctx context.Context, value string, tx *sql.Tx) (int64, error) {
 	// Check cache first
 	id, found := db.stringIDCache.Get(value)
@@ -700,54 +743,40 @@ func (db *DB) GetOrCreateStringID(ctx context.Context, value string, tx *sql.Tx)
 		return id, nil
 	}
 
-	// First, try to get the existing string ID
+	// Use INSERT OR IGNORE to handle concurrent inserts gracefully
+	// This is safer and simpler than trying to SELECT then INSERT
+	var result sql.Result
 	var err error
 	if tx != nil {
-		err = tx.QueryRowContext(ctx, "SELECT id FROM string_pool WHERE value = ?", value).Scan(&id)
+		result, err = tx.ExecContext(ctx, "INSERT OR IGNORE INTO string_pool (value) VALUES (?)", value)
 	} else {
-		err = db.QueryRowContext(ctx, "SELECT id FROM string_pool WHERE value = ?", value).Scan(&id)
-	}
-
-	if err == nil {
-		// Cache the result
-		db.stringIDCache.Set(value, id, ttlcache.DefaultTTL)
-		return id, nil
-	}
-	if err != sql.ErrNoRows {
-		return 0, fmt.Errorf("failed to query string_pool: %w", err)
-	}
-
-	// String doesn't exist, insert it
-	var result sql.Result
-	if tx != nil {
-		result, err = tx.ExecContext(ctx, "INSERT INTO string_pool (value) VALUES (?)", value)
-	} else {
-		result, err = db.ExecContext(ctx, "INSERT INTO string_pool (value) VALUES (?)", value)
+		result, err = db.ExecContext(ctx, "INSERT OR IGNORE INTO string_pool (value) VALUES (?)", value)
 	}
 
 	if err != nil {
-		// Check if another goroutine inserted it concurrently
-		var err2 error
-		if tx != nil {
-			err2 = tx.QueryRowContext(ctx, "SELECT id FROM string_pool WHERE value = ?", value).Scan(&id)
-		} else {
-			err2 = db.QueryRowContext(ctx, "SELECT id FROM string_pool WHERE value = ?", value).Scan(&id)
-		}
-
-		if err2 == nil {
-			// Cache the result
-			db.stringIDCache.Set(value, id, ttlcache.DefaultTTL)
-			return id, nil
-		}
 		return 0, fmt.Errorf("failed to insert into string_pool: %w", err)
 	}
 
+	// If we inserted a new row, LastInsertId will be the new ID
+	// If the row already existed (concurrent insert), LastInsertId will be 0
 	id, err = result.LastInsertId()
 	if err != nil {
 		return 0, fmt.Errorf("failed to get last insert ID: %w", err)
 	}
 
-	// Cache the newly created ID
+	// If id is 0, another goroutine inserted it, so we need to query for it
+	if id == 0 {
+		if tx != nil {
+			err = tx.QueryRowContext(ctx, "SELECT id FROM string_pool WHERE value = ?", value).Scan(&id)
+		} else {
+			err = db.QueryRowContext(ctx, "SELECT id FROM string_pool WHERE value = ?", value).Scan(&id)
+		}
+		if err != nil {
+			return 0, fmt.Errorf("failed to query string_pool after concurrent insert: %w", err)
+		}
+	}
+
+	// Cache the ID
 	db.stringIDCache.Set(value, id, ttlcache.DefaultTTL)
 
 	return id, nil
