@@ -233,6 +233,13 @@ func (h *Handler) handleSyncMainData(w http.ResponseWriter, r *http.Request) {
 	instanceID := GetInstanceIDFromContext(ctx)
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
 
+	allowedParams := map[string]struct{}{
+		"rid": {},
+	}
+	if !h.validateQueryParams(w, r, allowedParams, "sync/maindata") {
+		return
+	}
+
 	log.Debug().
 		Int("instanceId", instanceID).
 		Str("client", clientAPIKey.ClientName).
@@ -488,6 +495,30 @@ func isHTTPSRequest(r *http.Request) bool {
 	return false
 }
 
+// validateQueryParams checks if all query parameters are in the allowed list
+// Returns true if validation passes, false if validation fails (and proxies upstream)
+func (h *Handler) validateQueryParams(w http.ResponseWriter, r *http.Request, allowedParams map[string]struct{}, endpoint string) bool {
+	ctx := r.Context()
+	instanceID := GetInstanceIDFromContext(ctx)
+	clientAPIKey := GetClientAPIKeyFromContext(ctx)
+	queryParams := r.URL.Query()
+
+	for key := range queryParams {
+		if _, ok := allowedParams[strings.ToLower(key)]; !ok {
+			log.Trace().
+				Int("instanceId", instanceID).
+				Str("client", clientAPIKey.ClientName).
+				Str("endpoint", endpoint).
+				Str("param", key).
+				Str("value", queryParams.Get(key)).
+				Msg("Unsupported query parameter, proxying upstream")
+			h.ServeHTTP(w, r)
+			return false
+		}
+	}
+	return true
+}
+
 // handleTorrentsInfo handles /api/v2/torrents/info using qui's sync manager
 func (h *Handler) handleTorrentsInfo(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -495,7 +526,6 @@ func (h *Handler) handleTorrentsInfo(w http.ResponseWriter, r *http.Request) {
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
 
 	// Extract standard qBittorrent API parameters (no advanced filtering)
-	queryParams := r.URL.Query()
 	allowedParams := map[string]struct{}{
 		"filter":   {},
 		"category": {},
@@ -506,19 +536,11 @@ func (h *Handler) handleTorrentsInfo(w http.ResponseWriter, r *http.Request) {
 		"offset":   {},
 		"hashes":   {},
 	}
-
-	for key := range queryParams {
-		if _, ok := allowedParams[strings.ToLower(key)]; !ok {
-			log.Debug().
-				Int("instanceId", instanceID).
-				Str("client", clientAPIKey.ClientName).
-				Str("param", key).
-				Msg("Unsupported torrents/info query parameter, proxying upstream")
-			h.ServeHTTP(w, r)
-			return
-		}
+	if !h.validateQueryParams(w, r, allowedParams, "torrents/info") {
+		return
 	}
 
+	queryParams := r.URL.Query()
 	filter := queryParams.Get("filter")
 	category := queryParams.Get("category")
 	tag := queryParams.Get("tag")
@@ -640,6 +662,20 @@ func (h *Handler) handleTorrentSearch(w http.ResponseWriter, r *http.Request) {
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
 
 	// Extract qBittorrent API parameters
+	allowedParams := map[string]struct{}{
+		"search":   {},
+		"filter":   {},
+		"category": {},
+		"tag":      {},
+		"sort":     {},
+		"reverse":  {},
+		"limit":    {},
+		"offset":   {},
+	}
+	if !h.validateQueryParams(w, r, allowedParams, "torrents/search") {
+		return
+	}
+
 	queryParams := r.URL.Query()
 	search := queryParams.Get("search")
 	filter := queryParams.Get("filter")
@@ -734,6 +770,11 @@ func (h *Handler) handleCategories(w http.ResponseWriter, r *http.Request) {
 	instanceID := GetInstanceIDFromContext(ctx)
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
 
+	// Categories endpoint doesn't accept query parameters
+	if !h.validateQueryParams(w, r, map[string]struct{}{}, "torrents/categories") {
+		return
+	}
+
 	log.Debug().
 		Int("instanceId", instanceID).
 		Str("client", clientAPIKey.ClientName).
@@ -767,6 +808,11 @@ func (h *Handler) handleTags(w http.ResponseWriter, r *http.Request) {
 	instanceID := GetInstanceIDFromContext(ctx)
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
 
+	// Tags endpoint doesn't accept query parameters
+	if !h.validateQueryParams(w, r, map[string]struct{}{}, "torrents/tags") {
+		return
+	}
+
 	log.Debug().
 		Int("instanceId", instanceID).
 		Str("client", clientAPIKey.ClientName).
@@ -799,6 +845,13 @@ func (h *Handler) handleTorrentProperties(w http.ResponseWriter, r *http.Request
 	ctx := r.Context()
 	instanceID := GetInstanceIDFromContext(ctx)
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
+
+	allowedParams := map[string]struct{}{
+		"hash": {},
+	}
+	if !h.validateQueryParams(w, r, allowedParams, "torrents/properties") {
+		return
+	}
 
 	hash := r.URL.Query().Get("hash")
 
@@ -837,6 +890,13 @@ func (h *Handler) handleTorrentTrackers(w http.ResponseWriter, r *http.Request) 
 	instanceID := GetInstanceIDFromContext(ctx)
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
 
+	allowedParams := map[string]struct{}{
+		"hash": {},
+	}
+	if !h.validateQueryParams(w, r, allowedParams, "torrents/trackers") {
+		return
+	}
+
 	hash := r.URL.Query().Get("hash")
 
 	log.Debug().
@@ -874,6 +934,14 @@ func (h *Handler) handleTorrentPeers(w http.ResponseWriter, r *http.Request) {
 	instanceID := GetInstanceIDFromContext(ctx)
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
 
+	allowedParams := map[string]struct{}{
+		"hash": {},
+		"rid":  {},
+	}
+	if !h.validateQueryParams(w, r, allowedParams, "sync/torrentPeers") {
+		return
+	}
+
 	hash := r.URL.Query().Get("hash")
 
 	log.Debug().
@@ -910,6 +978,14 @@ func (h *Handler) handleTorrentFiles(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	instanceID := GetInstanceIDFromContext(ctx)
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
+
+	allowedParams := map[string]struct{}{
+		"hash":    {},
+		"indexes": {},
+	}
+	if !h.validateQueryParams(w, r, allowedParams, "torrents/files") {
+		return
+	}
 
 	hash := r.URL.Query().Get("hash")
 
