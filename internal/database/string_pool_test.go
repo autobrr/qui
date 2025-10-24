@@ -448,7 +448,7 @@ func TestStringInterningViews(t *testing.T) {
 	t.Run("instance_backup_items_view resolves multiple strings", func(t *testing.T) {
 		// Create backup run
 		kindID, _ := db.GetOrCreateStringID(ctx, "manual", nil)
-		statusID, _ := db.GetOrCreateStringID(ctx, "completed", nil)
+		statusID, _ := db.GetOrCreateStringID(ctx, "success", nil)
 		requestedByID, _ := db.GetOrCreateStringID(ctx, "system", nil)
 		_, err := db.ExecContext(ctx, `
 			INSERT INTO instance_backup_runs (instance_id, kind_id, status_id, requested_by_id)

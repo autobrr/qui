@@ -42,21 +42,24 @@ func (s *ClientAPIKeyStore) Create(ctx context.Context, clientName string, insta
 	// Hash the key for storage
 	keyHash := HashAPIKey(rawKey)
 
-	// Intern the client name
-	clientNameID, err := s.db.GetOrCreateStringID(ctx, clientName, nil)
+	// Use a transaction to atomically intern the string and insert the API key
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return "", nil, fmt.Errorf("failed to intern client name: %w", err)
+		return "", nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
+	defer tx.Rollback()
 
-	query := `
+	// Insert the client API key using a subquery to get or create the string ID atomically
+	internSubquery := s.db.GetOrCreateStringID()
+	query := fmt.Sprintf(`
 		INSERT INTO client_api_keys (key_hash, client_name_id, instance_id) 
-		VALUES (?, ?, ?)
+		VALUES (?, %s, ?)
 		RETURNING id, key_hash, instance_id, created_at, last_used_at
-	`
+	`, internSubquery)
 
 	clientAPIKey := &ClientAPIKey{}
 	var createdAt, lastUsedAt sql.NullTime
-	err = s.db.QueryRowContext(ctx, query, keyHash, clientNameID, instanceID).Scan(
+	err = tx.QueryRowContext(ctx, query, keyHash, clientName, instanceID).Scan(
 		&clientAPIKey.ID,
 		&clientAPIKey.KeyHash,
 		&clientAPIKey.InstanceID,
@@ -66,6 +69,10 @@ func (s *ClientAPIKeyStore) Create(ctx context.Context, clientName string, insta
 
 	if err != nil {
 		return "", nil, err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return "", nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	clientAPIKey.ClientName = clientName

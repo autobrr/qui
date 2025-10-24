@@ -1,51 +1,31 @@
 // Copyright (c) 2025, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Package database provides a SQLite database layer with string interning and caching.
+// Package database provides a SQLite database layer with string interning.
 //
-// STRING POOL CACHE COHERENCY GUARANTEES:
+// STRING POOL SYSTEM:
 //
-// The string pool system uses a two-level strategy:
-// 1. Database string_pool table (persistent, source of truth)
-// 2. In-memory cache with 5-minute TTL (performance optimization)
+// The string pool system uses the database string_pool table as the source of truth.
+// String interning is handled through INSERT OR IGNORE operations with retry logic.
 //
-// CACHE INVALIDATION STRATEGY:
+// RETRY LOGIC:
 //
-// The cache is cleared completely under these conditions:
-//   - During CleanupUnusedStrings() - BEFORE database deletion to prevent caching deleted IDs
-//   - On cache item TTL expiration (5 minutes) - Natural eviction by ttlcache
-//
-// WHY THIS WORKS:
-//
-// 1. Cache-before-delete ordering (Issue #1 - FIXED):
-//   - Old: Cache cleared AFTER deletion → race where deleted IDs could be cached
-//   - New: Cache cleared BEFORE deletion → No deleted IDs can enter cache
-//
-// 2. Cleanup concurrency protection (Issue #7 - FIXED):
-//   - atomic.Bool prevents overlapping cleanup operations
-//   - Only one cleanup can run at a time → No cache thrashing
-//
-// 3. Retry logic with exponential backoff (Issue #5 - FIXED):
-//   - GetOrCreateStringID retries up to 3 times with 10ms/20ms/40ms backoff
+// GetOrCreateStringID retries up to 3 times with 10ms/20ms/40ms exponential backoff:
 //   - Handles rare case where cleanup deletes string between INSERT and SELECT
 //   - Backoff reduces contention with cleanup operations
 //
-// 4. Transaction-aware operations (Issue #2 - FIXED):
-//   - GetOrCreateStringID accepts tx parameter
+// TRANSACTION-AWARE OPERATIONS:
+//
+// GetOrCreateStringID accepts tx parameter:
 //   - When tx != nil, uses tx.ExecContext (transaction-local)
 //   - When tx == nil, uses db.ExecContext (single writer channel)
 //   - Callers MUST pass tx to avoid deadlocks
 //
-// ACCEPTABLE RACE CONDITIONS:
+// CLEANUP CONCURRENCY PROTECTION:
 //
-//   - GetOrCreateStringID may cache an ID that's immediately deleted by cleanup
-//     → Mitigated by: cleanup protection (atomic.Bool) makes this extremely rare
-//     → Impact: Next GetOrCreateStringID will miss cache and recreate the string
-//     → Recovery: Automatic on next access
-//
-//   - TTL expiration may occur while ID is in use
-//     → Impact: Next access misses cache, queries database
-//     → Recovery: Automatic cache repopulation
+// atomic.Bool prevents overlapping cleanup operations:
+//   - Only one cleanup can run at a time
+//   - Prevents database contention
 //
 // FAILURE MODES & RECOVERY:
 //
@@ -54,22 +34,15 @@
 //   - Next cleanup (24hrs) will retry
 //   - Disk space gradually increases until next successful cleanup
 //
-// 2. Cache becomes inconsistent:
-//   - 5-minute TTL provides natural recovery
-//   - Worst case: Serving IDs for deleted strings (caught by foreign key constraints)
-//   - Database queries will fail gracefully, triggering cache refresh
-//
-// 3. GetOrCreateStringID exhausts retries:
+// 2. GetOrCreateStringID exhausts retries:
 //   - Returns error to caller
 //   - Caller can retry or propagate error
-//   - Does not corrupt database or cache state
+//   - Does not corrupt database state
 //
 // MONITORING:
 //
 // Use GetStringPoolMetrics() to monitor:
-//   - cacheHits / (cacheHits + cacheMisses) = hit ratio (target: >90%)
 //   - cleanupDeleted = total strings removed (growing = healthy cleanup)
-//   - Low hit ratio indicates TTL too short or excessive cleanup
 package database
 
 import (
@@ -109,15 +82,11 @@ type writeRes struct {
 
 // reader/writer fields on DB
 type DB struct {
-	conn          *sql.DB
-	writeCh       chan writeReq
-	stmts         *ttlcache.Cache[string, *sql.Stmt]
-	stringIDCache *ttlcache.Cache[string, int64] // Cache for string -> ID mappings
-	cacheMu       sync.RWMutex                   // Protects stringIDCache operations
+	conn    *sql.DB
+	writeCh chan writeReq
+	stmts   *ttlcache.Cache[string, *sql.Stmt]
 
 	// Metrics for string pool cache performance
-	cacheHits      atomic.Uint64 // Cache hit counter
-	cacheMisses    atomic.Uint64 // Cache miss counter
 	cleanupDeleted atomic.Uint64 // Total strings deleted by cleanup
 
 	// Cleanup coordination
@@ -226,16 +195,11 @@ func New(databasePath string) (*DB, error) {
 
 	stmtsCache := ttlcache.New(stmtOpts)
 
-	// create ttlcache for string ID mappings with 5 minute TTL
-	stringIDOpts := ttlcache.Options[string, int64]{}.SetDefaultTTL(5 * time.Minute)
-	stringIDCache := ttlcache.New(stringIDOpts)
-
 	db := &DB{
-		conn:          conn,
-		writeCh:       make(chan writeReq, writeChannelBuffer),
-		stmts:         stmtsCache,
-		stringIDCache: stringIDCache,
-		stop:          make(chan struct{}),
+		conn:    conn,
+		writeCh: make(chan writeReq, writeChannelBuffer),
+		stmts:   stmtsCache,
+		stop:    make(chan struct{}),
 	}
 	db.writeBarrier.Store((chan struct{})(nil))
 	db.barrierSignal.Store((chan struct{})(nil))
@@ -828,20 +792,6 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 		}
 	}
 
-	// Clear the string ID cache BEFORE deletion with mutex protection
-	// This prevents race conditions where GetOrCreateStringID could cache an ID
-	// that's about to be deleted. The sequence is:
-	// 1. Clear cache (prevents new caching of soon-to-be-deleted IDs)
-	// 2. Delete from database (removes unused strings)
-	// 3. Any concurrent GetOrCreateStringID after cache clear will re-populate cache
-	//    with valid IDs only (either existing or newly created)
-	db.cacheMu.Lock()
-	log.Debug().Msg("Clearing string ID cache before cleanup")
-	for _, key := range db.stringIDCache.GetKeys() {
-		db.stringIDCache.Delete(key)
-	}
-	db.cacheMu.Unlock()
-
 	// Now delete strings not in the temp table - much faster than UNION
 	result, err := tx.ExecContext(ctx, `
 		DELETE FROM string_pool 
@@ -871,107 +821,15 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 	return rowsAffected, nil
 }
 
-// GetOrCreateStringID retrieves the ID of a string from the string_pool, or creates it if it doesn't exist.
-// This is the primary method for string interning throughout the application.
-// Uses a TTL cache to avoid repeated database queries for frequently used strings.
-// If tx is provided, the operation will be executed within that transaction; otherwise, it uses the DB connection.
+// GetOrCreateStringID returns a SQL expression that can be embedded directly in INSERT/UPDATE statements
+// to atomically get or create a string ID. Uses INSERT with ON CONFLICT and RETURNING.
 //
-// IMPORTANT: Uses INSERT OR IGNORE to handle concurrent inserts safely. Multiple goroutines
-// can call this simultaneously with the same string value without causing conflicts.
-// Cache operations are protected by mutex to prevent races with cleanup.
+// Usage example:
 //
-// CRITICAL: When calling from within a transaction, ALWAYS pass the tx parameter.
-// Failing to do so will cause the operation to go through the single writer channel,
-// which can lead to deadlocks if the transaction is holding locks and the writer queue
-// is blocked. Always use: db.GetOrCreateStringID(ctx, value, tx) inside transactions.
-//
-// METRICS: Updates cacheHits and cacheMisses counters for observability.
-func (db *DB) GetOrCreateStringID(ctx context.Context, value string, tx *sql.Tx) (int64, error) {
-	// Check cache first with read lock
-	db.cacheMu.RLock()
-	id, found := db.stringIDCache.Get(value)
-	db.cacheMu.RUnlock()
-	if found {
-		db.cacheHits.Add(1)
-		return id, nil
-	}
-
-	// Cache miss - record metric
-	db.cacheMisses.Add(1)
-
-	// Use INSERT OR IGNORE to handle concurrent inserts gracefully
-	// This is safer and simpler than trying to SELECT then INSERT
-	var result sql.Result
-	var err error
-	if tx != nil {
-		result, err = tx.ExecContext(ctx, "INSERT OR IGNORE INTO string_pool (value) VALUES (?)", value)
-	} else {
-		result, err = db.ExecContext(ctx, "INSERT OR IGNORE INTO string_pool (value) VALUES (?)", value)
-	}
-
-	if err != nil {
-		return 0, fmt.Errorf("failed to insert into string_pool: %w", err)
-	}
-
-	// If we inserted a new row, LastInsertId will be the new ID
-	// If the row already existed (concurrent insert), LastInsertId will be 0
-	id, err = result.LastInsertId()
-	if err != nil {
-		return 0, fmt.Errorf("failed to get last insert ID: %w", err)
-	}
-
-	// If id is 0, another goroutine inserted it, so we need to query for it
-	// Retry up to 3 times to handle rare case where string was deleted between INSERT and SELECT
-	// Uses exponential backoff to handle potential interference from cleanup operations
-	if id == 0 {
-		backoff := 10 * time.Millisecond // Start with 10ms
-		for attempts := 0; attempts < 3; attempts++ {
-			if attempts > 0 {
-				// Exponential backoff: 10ms, 20ms, 40ms
-				select {
-				case <-ctx.Done():
-					return 0, fmt.Errorf("context cancelled during retry: %w", ctx.Err())
-				case <-time.After(backoff):
-					backoff *= 2
-				}
-			}
-
-			if tx != nil {
-				err = tx.QueryRowContext(ctx, "SELECT id FROM string_pool WHERE value = ?", value).Scan(&id)
-			} else {
-				err = db.QueryRowContext(ctx, "SELECT id FROM string_pool WHERE value = ?", value).Scan(&id)
-			}
-			if err == nil {
-				break
-			}
-			if err != sql.ErrNoRows {
-				return 0, fmt.Errorf("failed to query string_pool after concurrent insert: %w", err)
-			}
-			// String was deleted (possibly by cleanup), retry insert
-			if tx != nil {
-				result, err = tx.ExecContext(ctx, "INSERT OR IGNORE INTO string_pool (value) VALUES (?)", value)
-			} else {
-				result, err = db.ExecContext(ctx, "INSERT OR IGNORE INTO string_pool (value) VALUES (?)", value)
-			}
-			if err != nil {
-				return 0, fmt.Errorf("failed to retry insert into string_pool: %w", err)
-			}
-			id, _ = result.LastInsertId()
-			if id != 0 {
-				break
-			}
-		}
-		if id == 0 {
-			return 0, fmt.Errorf("failed to get or create string ID after retries")
-		}
-	}
-
-	// Cache the ID with write lock
-	db.cacheMu.Lock()
-	db.stringIDCache.Set(value, id, ttlcache.DefaultTTL)
-	db.cacheMu.Unlock()
-
-	return id, nil
+//	INSERT INTO client_api_keys (key_hash, client_name_id, instance_id)
+//	VALUES (?, (INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id), ?)
+func (db *DB) GetOrCreateStringID() string {
+	return "(INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id)"
 }
 
 // GetStringByID retrieves a string value from the string_pool by its ID.
@@ -1050,16 +908,11 @@ func NewForTest(conn *sql.DB) *DB {
 
 	stmtsCache := ttlcache.New(stmtOpts)
 
-	// create ttlcache for string ID mappings with 5 minute TTL
-	stringIDOpts := ttlcache.Options[string, int64]{}.SetDefaultTTL(5 * time.Minute)
-	stringIDCache := ttlcache.New(stringIDOpts)
-
 	db := &DB{
-		conn:          conn,
-		writeCh:       make(chan writeReq, writeChannelBuffer),
-		stmts:         stmtsCache,
-		stringIDCache: stringIDCache,
-		stop:          make(chan struct{}),
+		conn:    conn,
+		writeCh: make(chan writeReq, writeChannelBuffer),
+		stmts:   stmtsCache,
+		stop:    make(chan struct{}),
 	}
 	db.writeBarrier.Store((chan struct{})(nil))
 	db.barrierSignal.Store((chan struct{})(nil))
@@ -1074,16 +927,11 @@ func NewForTest(conn *sql.DB) *DB {
 	return db
 }
 
-// GetStringPoolMetrics returns the current values of string pool cache metrics.
-// These metrics track cache effectiveness and cleanup activity:
-//   - cacheHits: Number of times a string ID was found in cache (avoided DB query)
-//   - cacheMisses: Number of times a cache miss required a DB query
+// GetStringPoolMetrics returns the current values of string pool cleanup metrics.
+// These metrics track cleanup activity:
 //   - cleanupDeleted: Total number of unused strings deleted since startup
 //
-// These counters are cumulative and never reset. Use them to:
-//   - Monitor cache hit ratio (hits / (hits + misses))
-//   - Tune cache TTL based on hit patterns
-//   - Track cleanup effectiveness
-func (db *DB) GetStringPoolMetrics() (cacheHits, cacheMisses, cleanupDeleted uint64) {
-	return db.cacheHits.Load(), db.cacheMisses.Load(), db.cleanupDeleted.Load()
+// This counter is cumulative and never resets. Use it to track cleanup effectiveness.
+func (db *DB) GetStringPoolMetrics() (cleanupDeleted uint64) {
+	return db.cleanupDeleted.Load()
 }

@@ -236,41 +236,39 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 		encryptedBasicPassword = &encrypted
 	}
 
-	// Intern the instance name, host, username, and basic_username
-	nameID, err := s.db.GetOrCreateStringID(ctx, name, nil)
+	// Start a transaction to ensure atomicity
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to intern instance name: %w", err)
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
+	defer tx.Rollback()
 
-	hostID, err := s.db.GetOrCreateStringID(ctx, normalizedHost, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to intern host: %w", err)
-	}
-
-	usernameID, err := s.db.GetOrCreateStringID(ctx, username, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to intern username: %w", err)
-	}
-
-	var basicUsernameID *int64
+	// Build INSERT query with subqueries for string interning
+	internSubquery := s.db.GetOrCreateStringID()
+	
+	var query string
+	var args []any
+	
 	if basicUsername != nil && *basicUsername != "" {
-		id, err := s.db.GetOrCreateStringID(ctx, *basicUsername, nil)
-		if err != nil {
-			return nil, fmt.Errorf("failed to intern basic username: %w", err)
-		}
-		basicUsernameID = &id
+		query = fmt.Sprintf(`
+			INSERT INTO instances (name_id, host_id, username_id, password_encrypted, basic_username_id, basic_password_encrypted, tls_skip_verify) 
+			VALUES (%s, %s, %s, ?, %s, ?, ?)
+			RETURNING id, name_id, host_id, username_id, password_encrypted, basic_username_id, basic_password_encrypted, tls_skip_verify
+		`, internSubquery, internSubquery, internSubquery, internSubquery)
+		args = []any{name, normalizedHost, username, encryptedPassword, *basicUsername, encryptedBasicPassword, tlsSkipVerify}
+	} else {
+		query = fmt.Sprintf(`
+			INSERT INTO instances (name_id, host_id, username_id, password_encrypted, basic_username_id, basic_password_encrypted, tls_skip_verify) 
+			VALUES (%s, %s, %s, ?, NULL, ?, ?)
+			RETURNING id, name_id, host_id, username_id, password_encrypted, basic_username_id, basic_password_encrypted, tls_skip_verify
+		`, internSubquery, internSubquery, internSubquery)
+		args = []any{name, normalizedHost, username, encryptedPassword, encryptedBasicPassword, tlsSkipVerify}
 	}
-
-	query := `
-		INSERT INTO instances (name_id, host_id, username_id, password_encrypted, basic_username_id, basic_password_encrypted, tls_skip_verify) 
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-		RETURNING id, name_id, host_id, username_id, password_encrypted, basic_username_id, basic_password_encrypted, tls_skip_verify
-	`
 
 	instance := &Instance{}
 	var returnedNameID, returnedHostID, returnedUsernameID int64
 	var returnedBasicUsernameID *int64
-	err = s.db.QueryRowContext(ctx, query, nameID, hostID, usernameID, encryptedPassword, basicUsernameID, encryptedBasicPassword, tlsSkipVerify).Scan(
+	err = tx.QueryRowContext(ctx, query, args...).Scan(
 		&instance.ID,
 		&returnedNameID,
 		&returnedHostID,
@@ -283,6 +281,10 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 
 	if err != nil {
 		return nil, err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	// Set the fields from the IDs we just inserted
@@ -367,25 +369,19 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 		return nil, err
 	}
 
-	// Intern the instance name, host, username
-	nameID, err := s.db.GetOrCreateStringID(ctx, name, nil)
+	// Start a transaction
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to intern instance name: %w", err)
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
+	defer tx.Rollback()
 
-	hostID, err := s.db.GetOrCreateStringID(ctx, normalizedHost, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to intern host: %w", err)
-	}
-
-	usernameID, err := s.db.GetOrCreateStringID(ctx, username, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to intern username: %w", err)
-	}
-
-	// Start building the update query
-	query := `UPDATE instances SET name_id = ?, host_id = ?, username_id = ?`
-	args := []any{nameID, hostID, usernameID}
+	// Build UPDATE query with subqueries for string interning
+	internSubquery := s.db.GetOrCreateStringID()
+	
+	query := fmt.Sprintf(`UPDATE instances SET name_id = %s, host_id = %s, username_id = %s`,
+		internSubquery, internSubquery, internSubquery)
+	args := []any{name, normalizedHost, username}
 
 	// Handle basic_username update
 	if basicUsername != nil {
@@ -394,12 +390,8 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 			query += ", basic_username_id = NULL"
 		} else {
 			// Basic username provided - intern and update
-			basicUsernameID, err := s.db.GetOrCreateStringID(ctx, *basicUsername, nil)
-			if err != nil {
-				return nil, fmt.Errorf("failed to intern basic username: %w", err)
-			}
-			query += ", basic_username_id = ?"
-			args = append(args, basicUsernameID)
+			query += fmt.Sprintf(", basic_username_id = %s", internSubquery)
+			args = append(args, *basicUsername)
 		}
 	}
 
@@ -437,7 +429,7 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 	query += " WHERE id = ?"
 	args = append(args, id)
 
-	result, err := s.db.ExecContext(ctx, query, args...)
+	result, err := tx.ExecContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -449,6 +441,10 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 
 	if rows == 0 {
 		return nil, ErrInstanceNotFound
+	}
+
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return s.Get(ctx, id)

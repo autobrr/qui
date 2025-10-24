@@ -6,6 +6,7 @@ package models
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -70,21 +71,11 @@ func (s *InstanceErrorStore) RecordError(ctx context.Context, instanceID int, er
 		return nil // Skip duplicate
 	}
 
-	// Intern the error strings
-	errorTypeID, err := s.db.GetOrCreateStringID(ctx, errorType, nil)
-	if err != nil {
-		return err
-	}
-
-	errorMessageID, err := s.db.GetOrCreateStringID(ctx, errorMessage, nil)
-	if err != nil {
-		return err
-	}
-
-	// Insert the error using interned IDs (trigger will handle cleanup of old errors)
-	query := `INSERT INTO instance_errors (instance_id, error_type_id, error_message_id) 
-              VALUES (?, ?, ?)`
-	_, execErr := s.db.ExecContext(ctx, query, instanceID, errorTypeID, errorMessageID)
+	// Insert the error using a subquery to intern strings atomically
+	internSubquery := s.db.GetOrCreateStringID()
+	query := fmt.Sprintf(`INSERT INTO instance_errors (instance_id, error_type_id, error_message_id) 
+              VALUES (?, %s, %s)`, internSubquery, internSubquery)
+	_, execErr := s.db.ExecContext(ctx, query, instanceID, errorType, errorMessage)
 
 	// Handle foreign key constraint errors gracefully
 	if execErr != nil && strings.Contains(execErr.Error(), "FOREIGN KEY constraint failed") {

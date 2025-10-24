@@ -614,7 +614,7 @@ func newWithMigrations(path string, count int) (*DB, error) {
 		return nil, err
 	}
 
-	// Create minimal stmts and stringIDCache to satisfy the DB struct
+	// Create minimal stmts cache to satisfy the DB struct
 	stmtOpts := ttlcache.Options[string, *sql.Stmt]{}.SetDefaultTTL(5 * time.Minute).
 		SetDeallocationFunc(func(k string, s *sql.Stmt, _ ttlcache.DeallocationReason) {
 			if s != nil {
@@ -623,15 +623,11 @@ func newWithMigrations(path string, count int) (*DB, error) {
 		})
 	stmtsCache := ttlcache.New(stmtOpts)
 
-	stringIDOpts := ttlcache.Options[string, int64]{}.SetDefaultTTL(5 * time.Minute)
-	stringIDCache := ttlcache.New(stringIDOpts)
-
 	db := &DB{
-		conn:          sqlDB,
-		writeCh:       make(chan writeReq, writeChannelBuffer),
-		stmts:         stmtsCache,
-		stringIDCache: stringIDCache,
-		stop:          make(chan struct{}),
+		conn:    sqlDB,
+		writeCh: make(chan writeReq, writeChannelBuffer),
+		stmts:   stmtsCache,
+		stop:    make(chan struct{}),
 	}
 	db.writeBarrier.Store((chan struct{})(nil))
 	db.barrierSignal.Store((chan struct{})(nil))

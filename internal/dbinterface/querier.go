@@ -19,7 +19,7 @@ type Querier interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 	BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error)
-	GetOrCreateStringID(ctx context.Context, value string, tx *sql.Tx) (int64, error)
+	GetOrCreateStringID() string
 	GetStringByID(ctx context.Context, id int64) (string, error)
 	GetStringsByIDs(ctx context.Context, ids []int64) (map[int64]string, error)
 }

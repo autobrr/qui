@@ -123,18 +123,14 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 	}
 	defer tx.Rollback()
 
-	// Get or create string ID for torrent hash within transaction
-	hashID, err := r.db.GetOrCreateStringID(ctx, hash, tx)
-	if err != nil {
-		return fmt.Errorf("failed to intern torrent hash: %w", err)
-	}
-
-	// Upsert all files
-	insertQuery := `
+	// Build upsert query with subqueries for string interning
+	internSubquery := r.db.GetOrCreateStringID()
+	
+	insertQuery := fmt.Sprintf(`
 		INSERT INTO torrent_files_cache 
 		(instance_id, torrent_hash_id, file_index, name_id, size, progress, priority, 
 		 is_seed, piece_range_start, piece_range_end, availability, cached_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, %s, ?, %s, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(instance_id, torrent_hash_id, file_index) DO UPDATE SET
 			name_id = excluded.name_id,
 			size = excluded.size,
@@ -145,15 +141,9 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 			piece_range_end = excluded.piece_range_end,
 			availability = excluded.availability,
 			cached_at = excluded.cached_at
-	`
+	`, internSubquery, internSubquery)
 
 	for _, f := range files {
-		// Get or create string ID for file name within transaction
-		nameID, err := r.db.GetOrCreateStringID(ctx, f.Name, tx)
-		if err != nil {
-			return fmt.Errorf("failed to intern file name: %w", err)
-		}
-
 		var isSeed interface{}
 		if f.IsSeed != nil {
 			isSeed = *f.IsSeed
@@ -161,9 +151,9 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 
 		_, err = tx.ExecContext(ctx, insertQuery,
 			f.InstanceID,
-			hashID,
+			hash,
 			f.FileIndex,
-			nameID,
+			f.Name,
 			f.Size,
 			f.Progress,
 			f.Priority,
@@ -191,15 +181,11 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 // To distinguish between "deleted" vs "nothing to delete", check the logs or
 // use GetFiles before calling this method.
 func (r *Repository) DeleteFiles(ctx context.Context, instanceID int, hash string) error {
-	// Get string ID for torrent hash
-	hashID, err := r.db.GetOrCreateStringID(ctx, hash, nil)
-	if err != nil {
-		// If hash doesn't exist in pool, no files exist - this is not an error
-		return nil
-	}
-
-	query := `DELETE FROM torrent_files_cache WHERE instance_id = ? AND torrent_hash_id = ?`
-	result, err := r.db.ExecContext(ctx, query, instanceID, hashID)
+	// Use subquery to get the hash ID
+	internSubquery := r.db.GetOrCreateStringID()
+	query := fmt.Sprintf(`DELETE FROM torrent_files_cache WHERE instance_id = ? AND torrent_hash_id = %s`, internSubquery)
+	
+	result, err := r.db.ExecContext(ctx, query, instanceID, hash)
 	if err != nil {
 		return fmt.Errorf("failed to delete cached files: %w", err)
 	}
@@ -249,25 +235,22 @@ func (r *Repository) getSyncInfo(ctx context.Context, q querier, instanceID int,
 
 // UpsertSyncInfo inserts or updates sync metadata
 func (r *Repository) UpsertSyncInfo(ctx context.Context, info SyncInfo) error {
-	// Get or create string ID for torrent hash
-	hashID, err := r.db.GetOrCreateStringID(ctx, info.TorrentHash, nil)
-	if err != nil {
-		return fmt.Errorf("failed to intern torrent hash: %w", err)
-	}
-
-	query := `
+	// Use subquery to intern torrent hash
+	internSubquery := r.db.GetOrCreateStringID()
+	
+	query := fmt.Sprintf(`
 		INSERT INTO torrent_files_sync 
 		(instance_id, torrent_hash_id, last_synced_at, torrent_progress, file_count)
-		VALUES (?, ?, ?, ?, ?)
+		VALUES (?, %s, ?, ?, ?)
 		ON CONFLICT(instance_id, torrent_hash_id) DO UPDATE SET
 			last_synced_at = excluded.last_synced_at,
 			torrent_progress = excluded.torrent_progress,
 			file_count = excluded.file_count
-	`
+	`, internSubquery)
 
-	_, err = r.db.ExecContext(ctx, query,
+	_, err := r.db.ExecContext(ctx, query,
 		info.InstanceID,
-		hashID,
+		info.TorrentHash,
 		info.LastSyncedAt,
 		info.TorrentProgress,
 		info.FileCount,
@@ -278,15 +261,11 @@ func (r *Repository) UpsertSyncInfo(ctx context.Context, info SyncInfo) error {
 
 // DeleteSyncInfo removes sync metadata for a torrent
 func (r *Repository) DeleteSyncInfo(ctx context.Context, instanceID int, hash string) error {
-	// Get string ID for torrent hash
-	hashID, err := r.db.GetOrCreateStringID(ctx, hash, nil)
-	if err != nil {
-		// If hash doesn't exist in pool, no sync info exists
-		return nil
-	}
-
-	query := `DELETE FROM torrent_files_sync WHERE instance_id = ? AND torrent_hash_id = ?`
-	_, err = r.db.ExecContext(ctx, query, instanceID, hashID)
+	// Use subquery to get the hash ID
+	internSubquery := r.db.GetOrCreateStringID()
+	query := fmt.Sprintf(`DELETE FROM torrent_files_sync WHERE instance_id = ? AND torrent_hash_id = %s`, internSubquery)
+	
+	_, err := r.db.ExecContext(ctx, query, instanceID, hash)
 	return err
 }
 
