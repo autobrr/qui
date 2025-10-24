@@ -7,6 +7,11 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Progress } from "@/components/ui/progress"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { cn, formatBytes } from "@/lib/utils"
 import type { EconomyScore } from "@/types"
 import type { Column, ColumnDef } from "@tanstack/react-table"
@@ -143,6 +148,7 @@ export const createEconomyColumns = (): ColumnDef<EconomyScore>[] => [
     cell: ({ row }) => {
       const name = row.original.name
       const isDuplicate = row.original.duplicates && row.original.duplicates.length > 0
+      const duplicateCount = row.original.duplicates?.length || 0
       const isLastSeed = row.original.seeds === 0
 
       return (
@@ -151,14 +157,30 @@ export const createEconomyColumns = (): ColumnDef<EconomyScore>[] => [
             {name}
           </span>
           {isDuplicate && (
-            <Badge variant="secondary" className="text-xs">
-              Dup
-            </Badge>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge variant="secondary" className="text-xs cursor-help">
+                  {duplicateCount} dup{duplicateCount > 1 ? 's' : ''}
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p className="text-xs">
+                  This torrent shares data with {duplicateCount} other torrent{duplicateCount > 1 ? 's' : ''}
+                </p>
+              </TooltipContent>
+            </Tooltip>
           )}
           {isLastSeed && (
-            <span title="Last seed">
-              <AlertTriangle className="h-4 w-4 text-red-500" />
-            </span>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span title="Last seed">
+                  <AlertTriangle className="h-4 w-4 text-red-500" />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p className="text-xs">You are the last seed - critical to preserve!</p>
+              </TooltipContent>
+            </Tooltip>
           )}
         </div>
       )

@@ -5,6 +5,7 @@
 
 import { PaginationWrapper } from "@/components/economy/pagination-wrapper"
 import { TrackerExclusionFilter } from "@/components/economy/TrackerExclusionFilter"
+import { BulkActionsMenu } from "@/components/economy/BulkActionsMenu"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -66,6 +67,7 @@ interface EconomyTableProps {
 }
 
 export function EconomyTable({
+  instanceId,
   data,
   isLoading,
   filters,
@@ -107,6 +109,58 @@ export function EconomyTable({
 
   const handleExcludedTrackersChange = (excludedTrackers: string[]) => {
     onFilterChange({ ...filters, excludeTrackers: excludedTrackers })
+  }
+
+  // Build duplicate group lookup for group-aware selection
+  const duplicateGroups = useMemo(() => {
+    if (!data?.duplicates) return new Map<string, string[]>()
+    
+    const groups = new Map<string, string[]>()
+    
+    // For each hash, store all hashes in its duplicate group (including itself)
+    Object.entries(data.duplicates).forEach(([primary, duplicates]) => {
+      const group = [primary, ...duplicates]
+      // Store the same group for every hash in the group
+      group.forEach(hash => {
+        groups.set(hash, group)
+      })
+    })
+    
+    return groups
+  }, [data?.duplicates])
+
+  // Helper to select/deselect entire duplicate group
+  const toggleGroupSelection = (hash: string, selected: boolean) => {
+    const group = duplicateGroups.get(hash)
+    if (!group) {
+      // Not a duplicate, just toggle this torrent
+      setRowSelection(prev => {
+        const index = tableData.findIndex(t => t.hash === hash)
+        if (index === -1) return prev
+        return { ...prev, [index]: selected }
+      })
+      return
+    }
+
+    // Toggle entire group
+    setRowSelection(prev => {
+      const newSelection = { ...prev }
+      group.forEach(groupHash => {
+        const index = tableData.findIndex(t => t.hash === groupHash)
+        if (index !== -1) {
+          if (selected) {
+            newSelection[index] = true
+          } else {
+            delete newSelection[index]
+          }
+        }
+      })
+      return newSelection
+    })
+  }
+
+  const handleClearSelection = () => {
+    setRowSelection({})
   }
 
   // Sync sorting state with props when they change (from server-side sorting)
@@ -281,10 +335,20 @@ export function EconomyTable({
               disabled={isLoading}
             />
 
+            {/* Bulk Actions Menu */}
+            {selectedTorrents.length > 0 && (
+              <BulkActionsMenu
+                instanceId={instanceId}
+                selectedTorrents={selectedTorrents}
+                onActionComplete={onRefresh}
+                onClearSelection={handleClearSelection}
+              />
+            )}
+
             {/* Selected count */}
             {selectedTorrents.length > 0 && (
               <div className="text-sm text-muted-foreground">
-                {selectedTorrents.length} selected
+                {selectedTorrents.length} torrent(s)
               </div>
             )}
           </div>
