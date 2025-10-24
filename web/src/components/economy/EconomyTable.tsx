@@ -4,6 +4,8 @@
  */
 
 import { PaginationWrapper } from "@/components/economy/pagination-wrapper"
+import { TrackerExclusionFilter } from "@/components/economy/TrackerExclusionFilter"
+import { BulkActionsMenu } from "@/components/economy/BulkActionsMenu"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -33,14 +35,13 @@ import type { EconomyAnalysis, EconomyScore, FilterOptions } from "@/types"
 import {
   flexRender,
   getCoreRowModel,
-  getSortedRowModel,
   useReactTable,
   type SortingState,
   type VisibilityState
 } from "@tanstack/react-table"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { Columns3, Eye, EyeOff, Loader2, RefreshCw, Search } from "lucide-react"
-import { useMemo, useRef, useState } from "react"
+import { useMemo, useRef, useState, useEffect } from "react"
 import { useHotkeys } from "react-hotkeys-hook"
 import { createEconomyColumns } from "./EconomyTableColumns"
 
@@ -66,8 +67,11 @@ interface EconomyTableProps {
 }
 
 export function EconomyTable({
+  instanceId,
   data,
   isLoading,
+  filters,
+  onFilterChange,
   onPageChange,
   sortField,
   sortOrder,
@@ -88,8 +92,33 @@ export function EconomyTable({
     tags: false, // Hidden by default but available
     tracker: false,
   })
-  const [rowSelection, setRowSelection] = useState({})
+  const [rowSelection, setRowSelection] = useState<Record<number, boolean>>({})
   const searchInputRef = useRef<HTMLInputElement>(null)
+
+  // Extract available trackers from data
+  const availableTrackers = useMemo(() => {
+    if (!data?.reviewTorrents?.torrents) return []
+    const trackerSet = new Set<string>()
+    data.reviewTorrents.torrents.forEach((torrent) => {
+      if (torrent.tracker) {
+        trackerSet.add(torrent.tracker)
+      }
+    })
+    return Array.from(trackerSet).sort()
+  }, [data])
+
+  const handleExcludedTrackersChange = (excludedTrackers: string[]) => {
+    onFilterChange({ ...filters, excludeTrackers: excludedTrackers })
+  }
+
+  const handleClearSelection = () => {
+    setRowSelection({})
+  }
+
+  // Sync sorting state with props when they change (from server-side sorting)
+  useEffect(() => {
+    setSorting([{ id: sortField, desc: sortOrder === "desc" }])
+  }, [sortField, sortOrder])
 
   // Detect platform for appropriate key display
   const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.userAgent)
@@ -168,12 +197,13 @@ export function EconomyTable({
     data: tableData,
     columns,
     getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
+    // Server-side sorting - don't use getSortedRowModel() as it only sorts the current page
+    manualSorting: true,
     onSortingChange: (updater) => {
       const newSorting = typeof updater === "function" ? updater(sorting) : updater
       setSorting(newSorting)
 
-      // Notify parent about sort change
+      // Notify parent about sort change for server-side sorting
       if (newSorting.length > 0) {
         const sort = newSorting[0]
         onSortChange(sort.id, sort.desc ? "desc" : "asc")
@@ -207,7 +237,7 @@ export function EconomyTable({
   // Get selected torrent hashes for bulk operations
   const selectedTorrents = useMemo(() => {
     return Object.keys(rowSelection)
-      .filter((key) => rowSelection[key as keyof typeof rowSelection])
+      .filter((key) => rowSelection[parseInt(key)])
       .map((key) => tableData[parseInt(key)])
       .filter(Boolean)
   }, [rowSelection, tableData])
@@ -249,10 +279,28 @@ export function EconomyTable({
               />
             </div>
 
+            {/* Tracker Exclusion Filter */}
+            <TrackerExclusionFilter
+              availableTrackers={availableTrackers}
+              excludedTrackers={filters.excludeTrackers || []}
+              onExcludedTrackersChange={handleExcludedTrackersChange}
+              disabled={isLoading}
+            />
+
+            {/* Bulk Actions Menu */}
+            {selectedTorrents.length > 0 && (
+              <BulkActionsMenu
+                instanceId={instanceId}
+                selectedTorrents={selectedTorrents}
+                onActionComplete={onRefresh}
+                onClearSelection={handleClearSelection}
+              />
+            )}
+
             {/* Selected count */}
             {selectedTorrents.length > 0 && (
               <div className="text-sm text-muted-foreground">
-                {selectedTorrents.length} selected
+                {selectedTorrents.length} torrent(s)
               </div>
             )}
           </div>

@@ -947,4 +947,5 @@ export interface FilterOptions {
   categories: string[]
   tags: string[]
   trackers: string[]
+  excludeTrackers?: string[]
 }

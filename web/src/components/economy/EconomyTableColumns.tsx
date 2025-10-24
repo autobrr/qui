@@ -7,6 +7,11 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Progress } from "@/components/ui/progress"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { cn, formatBytes } from "@/lib/utils"
 import type { EconomyScore } from "@/types"
 import type { Column, ColumnDef } from "@tanstack/react-table"
@@ -14,20 +19,25 @@ import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Package, TrendingUp } f
 
 // Helper to create sortable header - defined inside the column factory to avoid export issues
 function createSortableHeader(column: Column<EconomyScore>, children: React.ReactNode) {
+  const isSorted = column.getIsSorted()
+  
   return (
     <Button
       variant="ghost"
       size="sm"
-      className="-ml-3 h-8 data-[state=open]:bg-accent"
+      className={cn(
+        "-ml-3 h-8",
+        isSorted && "bg-accent text-accent-foreground"
+      )}
       onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
     >
       {children}
-      {column.getIsSorted() === "asc" ? (
-        <ArrowUp className="ml-2 h-4 w-4" />
-      ) : column.getIsSorted() === "desc" ? (
-        <ArrowDown className="ml-2 h-4 w-4" />
+      {isSorted === "asc" ? (
+        <ArrowUp className="ml-2 h-4 w-4 text-primary" />
+      ) : isSorted === "desc" ? (
+        <ArrowDown className="ml-2 h-4 w-4 text-primary" />
       ) : (
-        <ArrowUpDown className="ml-2 h-4 w-4" />
+        <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
       )}
     </Button>
   )
@@ -138,6 +148,7 @@ export const createEconomyColumns = (): ColumnDef<EconomyScore>[] => [
     cell: ({ row }) => {
       const name = row.original.name
       const isDuplicate = row.original.duplicates && row.original.duplicates.length > 0
+      const duplicateCount = row.original.duplicates?.length || 0
       const isLastSeed = row.original.seeds === 0
 
       return (
@@ -146,14 +157,30 @@ export const createEconomyColumns = (): ColumnDef<EconomyScore>[] => [
             {name}
           </span>
           {isDuplicate && (
-            <Badge variant="secondary" className="text-xs">
-              Dup
-            </Badge>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge variant="secondary" className="text-xs cursor-help">
+                  {duplicateCount} dup{duplicateCount > 1 ? 's' : ''}
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p className="text-xs">
+                  This torrent shares data with {duplicateCount} other torrent{duplicateCount > 1 ? 's' : ''}
+                </p>
+              </TooltipContent>
+            </Tooltip>
           )}
           {isLastSeed && (
-            <span title="Last seed">
-              <AlertTriangle className="h-4 w-4 text-red-500" />
-            </span>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span title="Last seed">
+                  <AlertTriangle className="h-4 w-4 text-red-500" />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p className="text-xs">You are the last seed - critical to preserve!</p>
+              </TooltipContent>
+            </Tooltip>
           )}
         </div>
       )
