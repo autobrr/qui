@@ -23,8 +23,6 @@ import {
   RefreshCw,
   TrendingUp,
   TrendingDown,
-  Tag,
-  Folder,
 } from "lucide-react"
 import { toast } from "sonner"
 
