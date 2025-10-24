@@ -13,7 +13,7 @@ import { formatBytes } from "@/lib/utils"
 import type { FilterOptions } from "@/types"
 import { useQuery } from "@tanstack/react-query"
 import { HardDrive, Info, Loader2, Package, TrendingDown, TrendingUp } from "lucide-react"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 
 export function Economy() {
   const { instances, isLoading: instancesLoading } = useInstances()
@@ -96,18 +96,6 @@ export function Economy() {
 
   const reviewThreshold = economyData?.reviewThreshold ?? null
 
-  // Estimate duplicate copy count from economy analysis when available
-  const duplicateCopyCount = useMemo(() => {
-    if (!economyData?.duplicates) return null
-
-    let count = 0
-    for (const duplicateHashes of Object.values(economyData.duplicates)) {
-      count += duplicateHashes.length
-    }
-
-    return count
-  }, [economyData?.duplicates])
-
   if (instancesLoading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -183,16 +171,18 @@ export function Economy() {
 
               <Card>
                 <CardHeader className="pb-2">
-                  <CardDescription className="text-xs">Potential Dedup Savings</CardDescription>
+                  <CardDescription className="text-xs">Cleanup Potential</CardDescription>
                   <CardTitle className="text-lg flex items-center gap-2">
                     <TrendingDown className="h-4 w-4 text-green-500" />
-                    {formatBytes(stats.storageSavings)}
+                    {economyData?.storageOptimization?.oldContentCleanupSavings 
+                      ? formatBytes(economyData.storageOptimization.oldContentCleanupSavings)
+                      : formatBytes(0)}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-center gap-2">
                     <p className="text-xs text-muted-foreground">
-                      {duplicateCopyCount !== null? `If you remove ${duplicateCopyCount} duplicate ${duplicateCopyCount === 1 ? "copy" : "copies"}`: "If you keep only the best copy in each duplicate set"}
+                      Space recoverable from well-seeded old content
                     </p>
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -200,7 +190,7 @@ export function Economy() {
                       </TooltipTrigger>
                       <TooltipContent className="max-w-xs">
                         <p className="text-xs">
-                          Calculated as total storage minus deduplicated storage — the space reclaimed by keeping just the top-ranked torrent in every duplicate group.
+                          Storage you can free by removing well-seeded old torrents (&gt;10 seeds, &gt;30 days) that aren't duplicates. Keeps your valuable duplicate copies intact.
                         </p>
                       </TooltipContent>
                     </Tooltip>
