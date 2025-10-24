@@ -186,6 +186,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
     if (!open) {
       setSelectedTags([])
       setNewTag("")
+      setTagSearch("")
       setShowFileList(false)
       setDuplicateSummary(createEmptyDuplicateSummary())
       setDuplicateCheckStatus("idle")
@@ -533,6 +534,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
       form.reset()
       setSelectedTags([])
       setNewTag("")
+      setTagSearch("")
     },
   })
 
@@ -556,11 +558,8 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
       rename: "",
     },
     onSubmit: async ({ value }) => {
-      // Combine selected tags with any new tag
+      // Use the currently selected tags
       const allTags = [...selectedTags]
-      if (newTag.trim() && !allTags.includes(newTag.trim())) {
-        allTags.push(newTag.trim())
-      }
       await mutation.mutateAsync({ ...value, tags: allTags })
     },
   })
