@@ -4,20 +4,19 @@
  */
 
 import { getColumnType } from "@/lib/column-filter-utils"
-import type { Torrent } from "@/types"
 import { useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { flexRender, type Header } from "@tanstack/react-table"
 import { ChevronDown, ChevronUp } from "lucide-react"
 import { type ColumnFilter, ColumnFilterPopover } from "./ColumnFilterPopover"
 
-interface DraggableTableHeaderProps {
-  header: Header<Torrent, unknown>
+interface DraggableTableHeaderProps<T> {
+  header: Header<T, unknown>
   columnFilters?: ColumnFilter[]
   onFilterChange?: (columnId: string, filter: ColumnFilter | null) => void
 }
 
-export function DraggableTableHeader({ header, columnFilters = [], onFilterChange }: DraggableTableHeaderProps) {
+export function DraggableTableHeader<T>({ header, columnFilters = [], onFilterChange }: DraggableTableHeaderProps<T>) {
   const { column } = header
 
   const isSelectHeader = column.id === "select"

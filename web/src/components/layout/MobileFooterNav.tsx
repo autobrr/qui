@@ -3,24 +3,13 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { Link, useLocation } from "@tanstack/react-router"
-import { cn } from "@/lib/utils"
+import { Badge } from "@/components/ui/badge"
 import {
-  Home,
-  Settings,
-  HardDrive,
-  Server,
-  Github,
-  LogOut,
-  Sun,
-  Moon,
-  Monitor,
-  Archive,
-  Check,
-  Palette
-} from "lucide-react"
-import { useQuery } from "@tanstack/react-query"
-import { api } from "@/lib/api"
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle
+} from "@/components/ui/dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,26 +18,37 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog"
-import { useAuth } from "@/hooks/useAuth"
-import { Badge } from "@/components/ui/badge"
+import { isThemePremium, themes } from "@/config/themes"
 import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
-import { useState, useEffect, useCallback } from "react"
+import { useAuth } from "@/hooks/useAuth"
+import { useHasPremiumAccess } from "@/hooks/useLicense"
+import { api } from "@/lib/api"
+import { cn } from "@/lib/utils"
 import {
-  getCurrentThemeMode,
   getCurrentTheme,
+  getCurrentThemeMode,
   setTheme,
   setThemeMode,
   type ThemeMode
 } from "@/utils/theme"
-import { themes, isThemePremium } from "@/config/themes"
+import { useQuery } from "@tanstack/react-query"
+import { Link, useLocation } from "@tanstack/react-router"
+import {
+  Check,
+  Github,
+  HardDrive,
+  Home,
+  LogOut,
+  Monitor,
+  Moon,
+  Palette,
+  Server,
+  Settings,
+  Sun,
+  TrendingUp
+} from "lucide-react"
+import { useCallback, useEffect, useState } from "react"
 import { toast } from "sonner"
-import { useHasPremiumAccess } from "@/hooks/useLicense"
 
 
 // Helper to extract primary color from theme
@@ -145,6 +145,21 @@ export function MobileFooterNav() {
             location.pathname === "/dashboard" && "text-primary"
           )} />
           <span className="truncate">Dashboard</span>
+        </Link>
+
+        {/* Economy */}
+        <Link
+          to="/economy"
+          className={cn(
+            "flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1",
+            location.pathname === "/economy"? "text-primary": "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          <TrendingUp className={cn(
+            "h-5 w-5",
+            location.pathname === "/economy" && "text-primary"
+          )} />
+          <span className="truncate">Economy</span>
         </Link>
 
         {/* Clients dropdown */}

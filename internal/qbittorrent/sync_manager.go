@@ -99,9 +99,10 @@ type DuplicateTorrentMatch struct {
 
 // SyncManager manages torrent operations
 type SyncManager struct {
-	clientPool   *ClientPool
-	exprCache    *ttlcache.Cache[string, *vm.Program]
-	filesManager atomic.Value // stores FilesManager interface, single atomic operation
+	clientPool     *ClientPool
+	exprCache      *ttlcache.Cache[string, *vm.Program]
+	filesManager   atomic.Value // stores FilesManager interface, single atomic operation
+	economyService *EconomyService
 }
 
 // ResumeWhenCompleteOptions configure resume monitoring behavior.
@@ -127,6 +128,7 @@ func NewSyncManager(clientPool *ClientPool) *SyncManager {
 		exprCache:  ttlcache.New(ttlcache.Options[string, *vm.Program]{}.SetDefaultTTL(5 * time.Minute)),
 	}
 	// filesManager starts as zero value (nil), which getFilesManager() handles correctly
+	sm.economyService = NewEconomyService(sm)
 	return sm
 }
 
@@ -3573,4 +3575,42 @@ func (sm *SyncManager) DeleteTorrentCreationTask(ctx context.Context, instanceID
 	}
 
 	return client.DeleteTorrentCreationTaskCtx(ctx, taskID)
+}
+
+// GetEconomyAnalysis performs a complete economy analysis for an instance
+func (sm *SyncManager) GetEconomyAnalysis(ctx context.Context, instanceID int) (*EconomyAnalysis, error) {
+	return sm.GetEconomyAnalysisWithPaginationAndSorting(ctx, instanceID, 1, 50, "", false, FilterOptions{})
+}
+
+// GetEconomyAnalysisWithPagination performs a complete economy analysis for an instance with pagination
+func (sm *SyncManager) GetEconomyAnalysisWithPagination(ctx context.Context, instanceID int, page, pageSize int) (*EconomyAnalysis, error) {
+	return sm.GetEconomyAnalysisWithPaginationAndSorting(ctx, instanceID, page, pageSize, "", false, FilterOptions{})
+}
+
+// GetEconomyAnalysisWithPaginationAndSorting performs a complete economy analysis for an instance with pagination, sorting, and filtering
+func (sm *SyncManager) GetEconomyAnalysisWithPaginationAndSorting(ctx context.Context, instanceID int, page, pageSize int, sortField string, sortDesc bool, filters FilterOptions) (*EconomyAnalysis, error) {
+	return sm.economyService.AnalyzeEconomyWithPaginationAndSorting(ctx, instanceID, page, pageSize, sortField, sortDesc, filters)
+}
+
+// GetEconomyStats gets aggregated economy statistics for an instance
+func (sm *SyncManager) GetEconomyStats(ctx context.Context, instanceID int) (*EconomyStats, error) {
+	analysis, err := sm.economyService.AnalyzeEconomy(ctx, instanceID)
+	if err != nil {
+		return nil, err
+	}
+	return &analysis.Stats, nil
+}
+
+// GetTopValuableTorrents gets the most valuable torrents by economy score
+func (sm *SyncManager) GetTopValuableTorrents(ctx context.Context, instanceID int, limit int) ([]EconomyScore, error) {
+	analysis, err := sm.economyService.AnalyzeEconomyWithPagination(ctx, instanceID, 1, 1000) // Get a large page to ensure we have enough top items
+	if err != nil {
+		return nil, err
+	}
+
+	if limit <= 0 || limit > len(analysis.TopValuable) {
+		return analysis.TopValuable, nil
+	}
+
+	return analysis.TopValuable[:limit], nil
 }
