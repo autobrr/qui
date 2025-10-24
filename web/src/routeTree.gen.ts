@@ -17,6 +17,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticatedBackupsRouteImport } from './routes/_authenticated/backups'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
+import { Route as AuthenticatedEconomyRouteImport } from './routes/_authenticated/economy'
 import { Route as AuthenticatedInstancesRouteImport } from './routes/_authenticated/instances'
 import { Route as AuthenticatedInstancesInstanceIdRouteImport } from './routes/_authenticated/instances.$instanceId'
 import { Route as AuthenticatedInstancesIndexRouteImport } from './routes/_authenticated/instances.index'
@@ -59,6 +60,11 @@ const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedEconomyRoute = AuthenticatedEconomyRouteImport.update({
+  id: '/economy',
+  path: '/economy',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedBackupsRoute = AuthenticatedBackupsRouteImport.update({
   id: '/backups',
   path: '/backups',
@@ -83,6 +89,7 @@ export interface FileRoutesByFullPath {
   '/setup': typeof SetupRoute
   '/backups': typeof AuthenticatedBackupsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/economy': typeof AuthenticatedEconomyRoute
   '/instances': typeof AuthenticatedInstancesRouteWithChildren
   '/settings': typeof AuthenticatedSettingsRoute
   '/instances/$instanceId': typeof AuthenticatedInstancesInstanceIdRouteWithChildren
@@ -94,6 +101,7 @@ export interface FileRoutesByTo {
   '/setup': typeof SetupRoute
   '/backups': typeof AuthenticatedBackupsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/economy': typeof AuthenticatedEconomyRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/instances/$instanceId': typeof AuthenticatedInstancesInstanceIdRouteWithChildren
   '/instances': typeof AuthenticatedInstancesIndexRoute
@@ -106,6 +114,7 @@ export interface FileRoutesById {
   '/setup': typeof SetupRoute
   '/_authenticated/backups': typeof AuthenticatedBackupsRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
+  '/_authenticated/economy': typeof AuthenticatedEconomyRoute
   '/_authenticated/instances': typeof AuthenticatedInstancesRouteWithChildren
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/instances/$instanceId': typeof AuthenticatedInstancesInstanceIdRouteWithChildren
@@ -119,6 +128,7 @@ export interface FileRouteTypes {
     | '/setup'
     | '/backups'
     | '/dashboard'
+    | '/economy'
     | '/instances'
     | '/settings'
     | '/instances/$instanceId'
@@ -131,6 +141,7 @@ export interface FileRouteTypes {
     | '/setup'
     | '/backups'
     | '/dashboard'
+    | '/economy'
     | '/settings'
     | '/instances/$instanceId'
     | '/instances'
@@ -143,6 +154,7 @@ export interface FileRouteTypes {
     | '/setup'
     | '/_authenticated/backups'
     | '/_authenticated/dashboard'
+    | '/_authenticated/economy'
     | '/_authenticated/instances'
     | '/_authenticated/settings'
     | '/_authenticated/instances/$instanceId'
@@ -208,6 +220,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDashboardRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/economy': {
+      id: '/_authenticated/economy'
+      path: '/economy'
+      fullPath: '/economy'
+      preLoaderRoute: typeof AuthenticatedEconomyRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/backups': {
       id: '/_authenticated/backups'
       path: '/backups'
@@ -255,6 +274,7 @@ const AuthenticatedInstancesRouteWithChildren =
 interface AuthenticatedRouteChildren {
   AuthenticatedBackupsRoute: typeof AuthenticatedBackupsRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
+  AuthenticatedEconomyRoute: typeof AuthenticatedEconomyRoute
   AuthenticatedInstancesRoute: typeof AuthenticatedInstancesRouteWithChildren
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
 }
@@ -262,6 +282,7 @@ interface AuthenticatedRouteChildren {
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedBackupsRoute: AuthenticatedBackupsRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
+  AuthenticatedEconomyRoute: AuthenticatedEconomyRoute,
   AuthenticatedInstancesRoute: AuthenticatedInstancesRouteWithChildren,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
 }

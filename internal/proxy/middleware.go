@@ -6,11 +6,14 @@ package proxy
 import (
 	"context"
 	"net/http"
+	"sync"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/debounce"
 )
 
 type contextKey string
@@ -19,6 +22,25 @@ const (
 	ClientAPIKeyContextKey contextKey = "client_api_key"
 	InstanceIDContextKey   contextKey = "instance_id"
 )
+
+var (
+	apiKeyDebouncers   = make(map[string]*debounce.Debouncer)
+	apiKeyDebouncersMu sync.Mutex
+)
+
+// getOrCreateDebouncer returns a debouncer for the given key hash, creating one if it doesn't exist
+func getOrCreateDebouncer(keyHash string) *debounce.Debouncer {
+	apiKeyDebouncersMu.Lock()
+	if debouncer, exists := apiKeyDebouncers[keyHash]; exists {
+		apiKeyDebouncersMu.Unlock()
+		return debouncer
+	}
+
+	debouncer := debounce.New(10 * time.Second)
+	apiKeyDebouncers[keyHash] = debouncer
+	apiKeyDebouncersMu.Unlock()
+	return debouncer
+}
 
 // ClientAPIKeyMiddleware validates client API keys and extracts instance information
 func ClientAPIKeyMiddleware(store *models.ClientAPIKeyStore) func(http.Handler) http.Handler {
@@ -60,12 +82,16 @@ func ClientAPIKeyMiddleware(store *models.ClientAPIKeyStore) func(http.Handler) 
 				return
 			}
 
-			// Update last used timestamp asynchronously to avoid slowing down the request
-			go func() {
-				if err := store.UpdateLastUsed(context.Background(), clientAPIKey.KeyHash); err != nil {
-					log.Error().Err(err).Int("keyId", clientAPIKey.ID).Msg("Failed to update API key last used timestamp")
-				}
-			}()
+			// Update last used timestamp with debouncing per API key
+			debouncer := getOrCreateDebouncer(clientAPIKey.KeyHash)
+
+			if !debouncer.Queued() {
+				debouncer.Do(func() {
+					if err := store.UpdateLastUsed(context.Background(), clientAPIKey.KeyHash); err != nil {
+						log.Error().Err(err).Int("keyId", clientAPIKey.ID).Msg("Failed to update API key last used timestamp")
+					}
+				})
+			}
 
 			log.Debug().
 				Str("client", clientAPIKey.ClientName).

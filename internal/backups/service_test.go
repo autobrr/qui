@@ -7,78 +7,48 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
 
+	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
 )
 
-func setupTestBackupDB(t *testing.T) *sql.DB {
+// Helper function to insert a test instance with interned fields
+func insertTestInstance(t *testing.T, db *database.DB, ctx context.Context, name string) int {
+	t.Helper()
+	nameID, err := db.GetOrCreateStringID(ctx, name, nil)
+	require.NoError(t, err)
+	hostID, err := db.GetOrCreateStringID(ctx, "http://localhost", nil)
+	require.NoError(t, err)
+	usernameID, err := db.GetOrCreateStringID(ctx, "user", nil)
+	require.NoError(t, err)
+	result, err := db.ExecContext(ctx, "INSERT INTO instances (name_id, host_id, username_id, password_encrypted) VALUES (?, ?, ?, 'pass')", nameID, hostID, usernameID)
+	require.NoError(t, err)
+	instanceID64, err := result.LastInsertId()
+	require.NoError(t, err)
+	return int(instanceID64)
+}
+
+func setupTestBackupDB(t *testing.T) *database.DB {
 	t.Helper()
 
-	// Use a unique database name for each test to avoid conflicts when running in parallel
-	dbName := "file:" + t.Name() + "?mode=memory&cache=shared"
-	db, err := sql.Open("sqlite", dbName)
-	require.NoError(t, err)
+	// Create a unique database file for each test
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	db, err := database.New(dbPath)
+	require.NoError(t, err, "Failed to initialize test database with migrations")
 
-	db.SetMaxOpenConns(1)
-	db.SetMaxIdleConns(1)
+	// For tests, restrict to single connection to avoid SQLite locking issues
+	db.Conn().SetMaxOpenConns(1)
+	db.Conn().SetMaxIdleConns(1)
 
-	_, err = db.Exec("PRAGMA foreign_keys = ON")
-	require.NoError(t, err)
-
-	schema := []string{
-		`CREATE TABLE IF NOT EXISTS instances (
-		    id INTEGER PRIMARY KEY AUTOINCREMENT,
-		    name TEXT NOT NULL
-		)`,
-		`CREATE TABLE IF NOT EXISTS instance_backup_settings (
-		    instance_id INTEGER PRIMARY KEY,
-		    enabled BOOLEAN NOT NULL DEFAULT 0,
-		    hourly_enabled BOOLEAN NOT NULL DEFAULT 0,
-		    daily_enabled BOOLEAN NOT NULL DEFAULT 0,
-		    weekly_enabled BOOLEAN NOT NULL DEFAULT 0,
-		    monthly_enabled BOOLEAN NOT NULL DEFAULT 0,
-		    keep_hourly INTEGER NOT NULL DEFAULT 0,
-		    keep_daily INTEGER NOT NULL DEFAULT 7,
-		    keep_weekly INTEGER NOT NULL DEFAULT 4,
-		    keep_monthly INTEGER NOT NULL DEFAULT 12,
-		    include_categories BOOLEAN NOT NULL DEFAULT 1,
-		    include_tags BOOLEAN NOT NULL DEFAULT 1,
-		    custom_path TEXT,
-		    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-		    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-		)`,
-		`CREATE TABLE IF NOT EXISTS instance_backup_runs (
-		    id INTEGER PRIMARY KEY AUTOINCREMENT,
-		    instance_id INTEGER NOT NULL,
-		    kind TEXT NOT NULL,
-		    status TEXT NOT NULL DEFAULT 'pending',
-		    requested_by TEXT NOT NULL DEFAULT 'system',
-		    requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-		    started_at TIMESTAMP,
-		    completed_at TIMESTAMP,
-		    archive_path TEXT,
-		    manifest_path TEXT,
-		    total_bytes INTEGER NOT NULL DEFAULT 0,
-		    torrent_count INTEGER NOT NULL DEFAULT 0,
-		    category_counts_json TEXT,
-		    categories_json TEXT,
-		    tags_json TEXT,
-		    error_message TEXT,
-		    FOREIGN KEY (instance_id) REFERENCES instances(id) ON DELETE CASCADE
-		)`,
-	}
-
-	for _, stmt := range schema {
-		_, err = db.Exec(stmt)
-		require.NoError(t, err)
-	}
-
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+	})
 
 	return db
 }
@@ -87,12 +57,7 @@ func TestQueueRunCleansPendingRunOnContextCancel(t *testing.T) {
 	db := setupTestBackupDB(t)
 
 	ctx := context.Background()
-	result, err := db.ExecContext(ctx, "INSERT INTO instances (name) VALUES (?)", "test-instance")
-	require.NoError(t, err)
-
-	instanceID64, err := result.LastInsertId()
-	require.NoError(t, err)
-	instanceID := int(instanceID64)
+	instanceID := insertTestInstance(t, db, ctx, "test-instance")
 
 	store := models.NewBackupStore(db)
 	svc := NewService(store, nil, Config{WorkerCount: 1})
@@ -160,14 +125,10 @@ func TestStartBlocksWhileRecoveringMissedBackups(t *testing.T) {
 
 	instanceNames := []string{"instance-a", "instance-b", "instance-c"}
 	for _, name := range instanceNames {
-		result, err := db.ExecContext(context.Background(), "INSERT INTO instances (name) VALUES (?)", name)
-		require.NoError(t, err)
-
-		instanceID64, err := result.LastInsertId()
-		require.NoError(t, err)
+		instanceID := insertTestInstance(t, db, context.Background(), name)
 
 		settings := &models.BackupSettings{
-			InstanceID:    int(instanceID64),
+			InstanceID:    instanceID,
 			Enabled:       true,
 			HourlyEnabled: true,
 			KeepHourly:    1,
@@ -221,12 +182,7 @@ func TestUpdateSettingsNormalizesRetention(t *testing.T) {
 	db := setupTestBackupDB(t)
 
 	ctx := context.Background()
-	result, err := db.ExecContext(ctx, "INSERT INTO instances (name) VALUES (?)", "retention-instance")
-	require.NoError(t, err)
-
-	instanceID64, err := result.LastInsertId()
-	require.NoError(t, err)
-	instanceID := int(instanceID64)
+	instanceID := insertTestInstance(t, db, ctx, "retention-instance")
 
 	store := models.NewBackupStore(db)
 	svc := NewService(store, nil, Config{WorkerCount: 1})
@@ -275,12 +231,7 @@ func TestNormalizeAndPersistSettingsRepairsLegacyValues(t *testing.T) {
 	db := setupTestBackupDB(t)
 
 	ctx := context.Background()
-	result, err := db.ExecContext(ctx, "INSERT INTO instances (name) VALUES (?)", "legacy-retention")
-	require.NoError(t, err)
-
-	instanceID64, err := result.LastInsertId()
-	require.NoError(t, err)
-	instanceID := int(instanceID64)
+	instanceID := insertTestInstance(t, db, ctx, "legacy-retention")
 
 	store := models.NewBackupStore(db)
 	svc := NewService(store, nil, Config{WorkerCount: 1})
@@ -320,12 +271,7 @@ func TestUpdateSettingsClearsCustomPath(t *testing.T) {
 	db := setupTestBackupDB(t)
 
 	ctx := context.Background()
-	result, err := db.ExecContext(ctx, "INSERT INTO instances (name) VALUES (?)", "custom-path")
-	require.NoError(t, err)
-
-	instanceID64, err := result.LastInsertId()
-	require.NoError(t, err)
-	instanceID := int(instanceID64)
+	instanceID := insertTestInstance(t, db, ctx, "custom-path")
 
 	store := models.NewBackupStore(db)
 	svc := NewService(store, nil, Config{WorkerCount: 1})
@@ -352,12 +298,7 @@ func TestRecoverIncompleteRuns(t *testing.T) {
 	db := setupTestBackupDB(t)
 
 	ctx := context.Background()
-	result, err := db.ExecContext(ctx, "INSERT INTO instances (name) VALUES (?)", "test-instance")
-	require.NoError(t, err)
-
-	instanceID64, err := result.LastInsertId()
-	require.NoError(t, err)
-	instanceID := int(instanceID64)
+	instanceID := insertTestInstance(t, db, ctx, "test-instance")
 
 	store := models.NewBackupStore(db)
 	svc := NewService(store, nil, Config{WorkerCount: 1})
@@ -440,12 +381,7 @@ func TestCheckMissedBackups(t *testing.T) {
 	db := setupTestBackupDB(t)
 
 	ctx := context.Background()
-	result, err := db.ExecContext(ctx, "INSERT INTO instances (name) VALUES (?)", "test-instance")
-	require.NoError(t, err)
-
-	instanceID64, err := result.LastInsertId()
-	require.NoError(t, err)
-	instanceID := int(instanceID64)
+	instanceID := insertTestInstance(t, db, ctx, "test-instance")
 
 	store := models.NewBackupStore(db)
 	svc := NewService(store, nil, Config{WorkerCount: 1})
@@ -514,18 +450,18 @@ func TestCheckMissedBackups(t *testing.T) {
 	require.NoError(t, store.CreateRun(ctx, monthlyRun))
 
 	// Run checkMissedBackups
-	err = svc.checkMissedBackups(ctx)
+	err := svc.checkMissedBackups(ctx)
 	require.NoError(t, err)
 
 	// Check that exactly one new run was queued
 	var count int
-	err = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM instance_backup_runs WHERE requested_by = 'startup-recovery'").Scan(&count)
+	err = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM instance_backup_runs_view WHERE requested_by = 'startup-recovery'").Scan(&count)
 	require.NoError(t, err)
 	require.Equal(t, 1, count)
 
 	// Check the kind of the queued run
 	var kind string
-	err = db.QueryRowContext(ctx, "SELECT kind FROM instance_backup_runs WHERE requested_by = 'startup-recovery'").Scan(&kind)
+	err = db.QueryRowContext(ctx, "SELECT kind FROM instance_backup_runs_view WHERE requested_by = 'startup-recovery'").Scan(&kind)
 	require.NoError(t, err)
 	require.Equal(t, string(models.BackupRunKindHourly), kind)
 }
@@ -534,12 +470,7 @@ func TestCheckMissedBackupsMultipleMissed(t *testing.T) {
 	db := setupTestBackupDB(t)
 
 	ctx := context.Background()
-	result, err := db.ExecContext(ctx, "INSERT INTO instances (name) VALUES (?)", "test-instance")
-	require.NoError(t, err)
-
-	instanceID64, err := result.LastInsertId()
-	require.NoError(t, err)
-	instanceID := int(instanceID64)
+	instanceID := insertTestInstance(t, db, ctx, "test-instance")
 
 	store := models.NewBackupStore(db)
 	svc := NewService(store, nil, Config{WorkerCount: 1})
@@ -585,18 +516,18 @@ func TestCheckMissedBackupsMultipleMissed(t *testing.T) {
 	require.NoError(t, store.CreateRun(ctx, dailyRun))
 
 	// Run checkMissedBackups
-	err = svc.checkMissedBackups(ctx)
+	err := svc.checkMissedBackups(ctx)
 	require.NoError(t, err)
 
 	// Should queue the first missed backup even when multiple are missed
 	var count int
-	err = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM instance_backup_runs WHERE requested_by = 'startup-recovery'").Scan(&count)
+	err = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM instance_backup_runs_view WHERE requested_by = 'startup-recovery'").Scan(&count)
 	require.NoError(t, err)
 	require.Equal(t, 1, count)
 
 	// Check the kind of the queued run (should be the first missed one, which is hourly)
 	var kind string
-	err = db.QueryRowContext(ctx, "SELECT kind FROM instance_backup_runs WHERE requested_by = 'startup-recovery'").Scan(&kind)
+	err = db.QueryRowContext(ctx, "SELECT kind FROM instance_backup_runs_view WHERE requested_by = 'startup-recovery'").Scan(&kind)
 	require.NoError(t, err)
 	require.Equal(t, string(models.BackupRunKindHourly), kind)
 }
@@ -605,12 +536,7 @@ func TestCheckMissedBackupsNoneMissed(t *testing.T) {
 	db := setupTestBackupDB(t)
 
 	ctx := context.Background()
-	result, err := db.ExecContext(ctx, "INSERT INTO instances (name) VALUES (?)", "test-instance")
-	require.NoError(t, err)
-
-	instanceID64, err := result.LastInsertId()
-	require.NoError(t, err)
-	instanceID := int(instanceID64)
+	instanceID := insertTestInstance(t, db, ctx, "test-instance")
 
 	store := models.NewBackupStore(db)
 	svc := NewService(store, nil, Config{WorkerCount: 1})
@@ -678,12 +604,12 @@ func TestCheckMissedBackupsNoneMissed(t *testing.T) {
 	require.NoError(t, store.CreateRun(ctx, monthlyRun))
 
 	// Run checkMissedBackups
-	err = svc.checkMissedBackups(ctx)
+	err := svc.checkMissedBackups(ctx)
 	require.NoError(t, err)
 
 	// Should not queue any backups since none are missed
 	var count int
-	err = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM instance_backup_runs WHERE requested_by = 'startup-recovery'").Scan(&count)
+	err = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM instance_backup_runs_view WHERE requested_by = 'startup-recovery'").Scan(&count)
 	require.NoError(t, err)
 	require.Equal(t, 0, count)
 }
@@ -692,12 +618,7 @@ func TestCheckMissedBackupsFirstRun(t *testing.T) {
 	db := setupTestBackupDB(t)
 
 	ctx := context.Background()
-	result, err := db.ExecContext(ctx, "INSERT INTO instances (name) VALUES (?)", "test-instance")
-	require.NoError(t, err)
-
-	instanceID64, err := result.LastInsertId()
-	require.NoError(t, err)
-	instanceID := int(instanceID64)
+	instanceID := insertTestInstance(t, db, ctx, "test-instance")
 
 	store := models.NewBackupStore(db)
 	svc := NewService(store, nil, Config{WorkerCount: 1})
@@ -722,18 +643,18 @@ func TestCheckMissedBackupsFirstRun(t *testing.T) {
 	// No previous runs exist - this is the first time qui is running
 
 	// Run checkMissedBackups
-	err = svc.checkMissedBackups(ctx)
+	err := svc.checkMissedBackups(ctx)
 	require.NoError(t, err)
 
 	// Should queue the first backup (hourly) since no previous runs exist
 	var count int
-	err = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM instance_backup_runs WHERE requested_by = 'startup-recovery'").Scan(&count)
+	err = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM instance_backup_runs_view WHERE requested_by = 'startup-recovery'").Scan(&count)
 	require.NoError(t, err)
 	require.Equal(t, 1, count)
 
 	// Check the kind of the queued run (should be hourly as the first in the order)
 	var kind string
-	err = db.QueryRowContext(ctx, "SELECT kind FROM instance_backup_runs WHERE requested_by = 'startup-recovery'").Scan(&kind)
+	err = db.QueryRowContext(ctx, "SELECT kind FROM instance_backup_runs_view WHERE requested_by = 'startup-recovery'").Scan(&kind)
 	require.NoError(t, err)
 	require.Equal(t, string(models.BackupRunKindHourly), kind)
 }
@@ -742,12 +663,7 @@ func TestIsBackupMissedIgnoresFailedRuns(t *testing.T) {
 	db := setupTestBackupDB(t)
 
 	ctx := context.Background()
-	result, err := db.ExecContext(ctx, "INSERT INTO instances (name) VALUES (?)", "test-instance")
-	require.NoError(t, err)
-
-	instanceID64, err := result.LastInsertId()
-	require.NoError(t, err)
-	instanceID := int(instanceID64)
+	instanceID := insertTestInstance(t, db, ctx, "test-instance")
 
 	store := models.NewBackupStore(db)
 	svc := NewService(store, nil, Config{WorkerCount: 1})
@@ -787,12 +703,7 @@ func TestIsBackupMissedFailedRunsOnly(t *testing.T) {
 	db := setupTestBackupDB(t)
 
 	ctx := context.Background()
-	result, err := db.ExecContext(ctx, "INSERT INTO instances (name) VALUES (?)", "test-instance")
-	require.NoError(t, err)
-
-	instanceID64, err := result.LastInsertId()
-	require.NoError(t, err)
-	instanceID := int(instanceID64)
+	instanceID := insertTestInstance(t, db, ctx, "test-instance")
 
 	store := models.NewBackupStore(db)
 	svc := NewService(store, nil, Config{WorkerCount: 1})
@@ -831,12 +742,7 @@ func TestIsBackupMissedMixedStatusRuns(t *testing.T) {
 	db := setupTestBackupDB(t)
 
 	ctx := context.Background()
-	result, err := db.ExecContext(ctx, "INSERT INTO instances (name) VALUES (?)", "test-instance")
-	require.NoError(t, err)
-
-	instanceID64, err := result.LastInsertId()
-	require.NoError(t, err)
-	instanceID := int(instanceID64)
+	instanceID := insertTestInstance(t, db, ctx, "test-instance")
 
 	store := models.NewBackupStore(db)
 	svc := NewService(store, nil, Config{WorkerCount: 1})
@@ -896,12 +802,7 @@ func TestIsBackupMissedOverdueWithFailedRunsAfterSuccess(t *testing.T) {
 	db := setupTestBackupDB(t)
 
 	ctx := context.Background()
-	result, err := db.ExecContext(ctx, "INSERT INTO instances (name) VALUES (?)", "test-instance")
-	require.NoError(t, err)
-
-	instanceID64, err := result.LastInsertId()
-	require.NoError(t, err)
-	instanceID := int(instanceID64)
+	instanceID := insertTestInstance(t, db, ctx, "test-instance")
 
 	store := models.NewBackupStore(db)
 	svc := NewService(store, nil, Config{WorkerCount: 1})

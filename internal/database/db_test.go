@@ -202,17 +202,17 @@ var expectedSchema = map[string][]columnSpec{
 	"api_keys": {
 		{Name: "id", Type: "INTEGER", PrimaryKey: true},
 		{Name: "key_hash", Type: "TEXT"},
-		{Name: "name", Type: "TEXT"},
+		{Name: "name_id", Type: "INTEGER"},
 		{Name: "created_at", Type: "TIMESTAMP"},
 		{Name: "last_used_at", Type: "TIMESTAMP"},
 	},
 	"instances": {
 		{Name: "id", Type: "INTEGER", PrimaryKey: true},
-		{Name: "name", Type: "TEXT"},
-		{Name: "host", Type: "TEXT"},
-		{Name: "username", Type: "TEXT"},
+		{Name: "name_id", Type: "INTEGER"},
+		{Name: "host_id", Type: "INTEGER"},
+		{Name: "username_id", Type: "INTEGER"},
 		{Name: "password_encrypted", Type: "TEXT"},
-		{Name: "basic_username", Type: "TEXT"},
+		{Name: "basic_username_id", Type: "INTEGER"},
 		{Name: "basic_password_encrypted", Type: "TEXT"},
 		{Name: "tls_skip_verify", Type: "BOOLEAN"},
 	},
@@ -234,7 +234,7 @@ var expectedSchema = map[string][]columnSpec{
 	"client_api_keys": {
 		{Name: "id", Type: "INTEGER", PrimaryKey: true},
 		{Name: "key_hash", Type: "TEXT"},
-		{Name: "client_name", Type: "TEXT"},
+		{Name: "client_name_id", Type: "INTEGER"},
 		{Name: "instance_id", Type: "INTEGER"},
 		{Name: "created_at", Type: "TIMESTAMP"},
 		{Name: "last_used_at", Type: "TIMESTAMP"},
@@ -242,8 +242,8 @@ var expectedSchema = map[string][]columnSpec{
 	"instance_errors": {
 		{Name: "id", Type: "INTEGER", PrimaryKey: true},
 		{Name: "instance_id", Type: "INTEGER"},
-		{Name: "error_type", Type: "TEXT"},
-		{Name: "error_message", Type: "TEXT"},
+		{Name: "error_type_id", Type: "INTEGER"},
+		{Name: "error_message_id", Type: "INTEGER"},
 		{Name: "occurred_at", Type: "TIMESTAMP"},
 	},
 	"sessions": {
@@ -251,14 +251,38 @@ var expectedSchema = map[string][]columnSpec{
 		{Name: "data", Type: "BLOB"},
 		{Name: "expiry", Type: "REAL"},
 	},
+	"torrent_files_cache": {
+		{Name: "id", Type: "INTEGER", PrimaryKey: true},
+		{Name: "instance_id", Type: "INTEGER"},
+		{Name: "torrent_hash_id", Type: "INTEGER"},
+		{Name: "file_index", Type: "INTEGER"},
+		{Name: "name_id", Type: "INTEGER"},
+		{Name: "size", Type: "INTEGER"},
+		{Name: "progress", Type: "REAL"},
+		{Name: "priority", Type: "INTEGER"},
+		{Name: "is_seed", Type: "INTEGER"},
+		{Name: "piece_range_start", Type: "INTEGER"},
+		{Name: "piece_range_end", Type: "INTEGER"},
+		{Name: "availability", Type: "REAL"},
+		{Name: "cached_at", Type: "TIMESTAMP"},
+	},
+	"torrent_files_sync": {
+		{Name: "instance_id", Type: "INTEGER", PrimaryKey: true},
+		{Name: "torrent_hash_id", Type: "INTEGER", PrimaryKey: true},
+		{Name: "last_synced_at", Type: "TIMESTAMP"},
+		{Name: "torrent_progress", Type: "REAL"},
+		{Name: "file_count", Type: "INTEGER"},
+	},
 }
 
 var expectedIndexes = map[string][]string{
-	"api_keys":        {"idx_api_keys_hash"},
-	"licenses":        {"idx_licenses_status", "idx_licenses_theme", "idx_licenses_key"},
-	"client_api_keys": {"idx_client_api_keys_key_hash", "idx_client_api_keys_instance_id"},
-	"instance_errors": {"idx_instance_errors_lookup"},
-	"sessions":        {"sessions_expiry_idx"},
+	"api_keys":            {"idx_api_keys_hash"},
+	"licenses":            {"idx_licenses_status", "idx_licenses_theme", "idx_licenses_key"},
+	"client_api_keys":     {"idx_client_api_keys_key_hash", "idx_client_api_keys_instance_id"},
+	"instance_errors":     {"idx_instance_errors_lookup"},
+	"sessions":            {"sessions_expiry_idx"},
+	"torrent_files_cache": {"idx_torrent_files_cache_lookup", "idx_torrent_files_cache_cached_at"},
+	"torrent_files_sync":  {"idx_torrent_files_sync_last_synced"},
 }
 
 var expectedTriggers = []string{

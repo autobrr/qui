@@ -12,6 +12,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/autobrr/autobrr/pkg/ttlcache"
@@ -24,6 +25,13 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/trackericons"
 )
+
+// FilesManager interface for caching torrent files
+type FilesManager interface {
+	GetCachedFiles(ctx context.Context, instanceID int, hash string, torrentProgress float64) (qbt.TorrentFiles, error)
+	CacheFiles(ctx context.Context, instanceID int, hash string, torrentProgress float64, files qbt.TorrentFiles) error
+	InvalidateCache(ctx context.Context, instanceID int, hash string) error
+}
 
 // Global URL cache for domain extraction - shared across all sync managers
 var urlCache = ttlcache.New(ttlcache.Options[string, string]{}.SetDefaultTTL(5 * time.Minute))
@@ -91,8 +99,10 @@ type DuplicateTorrentMatch struct {
 
 // SyncManager manages torrent operations
 type SyncManager struct {
-	clientPool *ClientPool
-	exprCache  *ttlcache.Cache[string, *vm.Program]
+	clientPool     *ClientPool
+	exprCache      *ttlcache.Cache[string, *vm.Program]
+	filesManager   atomic.Value // stores FilesManager interface, single atomic operation
+	economyService *EconomyService
 }
 
 // ResumeWhenCompleteOptions configure resume monitoring behavior.
@@ -113,10 +123,41 @@ type OptimisticTorrentUpdate struct {
 
 // NewSyncManager creates a new sync manager
 func NewSyncManager(clientPool *ClientPool) *SyncManager {
-	return &SyncManager{
+	sm := &SyncManager{
 		clientPool: clientPool,
 		exprCache:  ttlcache.New(ttlcache.Options[string, *vm.Program]{}.SetDefaultTTL(5 * time.Minute)),
 	}
+	// filesManager starts as zero value (nil), which getFilesManager() handles correctly
+	sm.economyService = NewEconomyService(sm)
+	return sm
+}
+
+// SetFilesManager sets the files manager for caching in a thread-safe manner
+func (sm *SyncManager) SetFilesManager(fm FilesManager) {
+	sm.filesManager.Store(fm)
+}
+
+// getFilesManager returns the current files manager in a thread-safe manner
+// Returns nil if no files manager is set or if it's been cleared
+func (sm *SyncManager) getFilesManager() FilesManager {
+	v := sm.filesManager.Load()
+	if v == nil {
+		return nil
+	}
+	fm, ok := v.(FilesManager)
+	if !ok || fm == nil {
+		return nil
+	}
+	return fm
+}
+
+// InvalidateFileCache invalidates the file cache for a torrent
+func (sm *SyncManager) InvalidateFileCache(ctx context.Context, instanceID int, hash string) error {
+	fm := sm.getFilesManager()
+	if fm == nil {
+		return nil // No files manager configured, nothing to do
+	}
+	return fm.InvalidateCache(ctx, instanceID, hash)
 }
 
 // GetErrorStore returns the error store for recording errors
@@ -587,8 +628,30 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 		err = client.ResumeCtx(ctx, hashes)
 	case "delete":
 		err = client.DeleteTorrentsCtx(ctx, hashes, false)
+		// Invalidate file cache for deleted torrents
+		if err == nil {
+			if fm := sm.getFilesManager(); fm != nil {
+				for _, hash := range hashes {
+					if invalidateErr := fm.InvalidateCache(ctx, instanceID, hash); invalidateErr != nil {
+						log.Warn().Err(invalidateErr).Int("instanceID", instanceID).Str("hash", hash).
+							Msg("Failed to invalidate file cache after torrent deletion")
+					}
+				}
+			}
+		}
 	case "deleteWithFiles":
 		err = client.DeleteTorrentsCtx(ctx, hashes, true)
+		// Invalidate file cache for deleted torrents
+		if err == nil {
+			if fm := sm.getFilesManager(); fm != nil {
+				for _, hash := range hashes {
+					if invalidateErr := fm.InvalidateCache(ctx, instanceID, hash); invalidateErr != nil {
+						log.Warn().Err(invalidateErr).Int("instanceID", instanceID).Str("hash", hash).
+							Msg("Failed to invalidate file cache after torrent deletion")
+					}
+				}
+			}
+		}
 	case "recheck":
 		err = client.RecheckCtx(ctx, hashes)
 	case "reannounce":
@@ -770,10 +833,38 @@ func (sm *SyncManager) GetTorrentFiles(ctx context.Context, instanceID int, hash
 		return nil, err
 	}
 
-	// Get files (real-time)
+	// Get torrent progress to determine if we should use cache
+	var torrentProgress float64 = 0
+	if torrents := client.getTorrentsByHashes([]string{hash}); len(torrents) > 0 {
+		torrentProgress = float64(torrents[0].Progress)
+	}
+
+	// Try to get from cache if files manager is available
+	if fm := sm.getFilesManager(); fm != nil {
+		cachedFiles, err := fm.GetCachedFiles(ctx, instanceID, hash, torrentProgress)
+		if err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", hash).
+				Msg("Failed to get cached files, falling back to API")
+		} else if cachedFiles != nil {
+			log.Debug().Int("instanceID", instanceID).Str("hash", hash).
+				Int("fileCount", len(cachedFiles)).
+				Msg("Serving torrent files from cache")
+			return &cachedFiles, nil
+		}
+	}
+
+	// Get files from qBittorrent API
 	files, err := client.GetFilesInformationCtx(ctx, hash)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrent files: %w", err)
+	}
+
+	// Cache the files if files manager is available
+	if fm := sm.getFilesManager(); fm != nil && files != nil {
+		if err := fm.CacheFiles(ctx, instanceID, hash, torrentProgress, *files); err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", hash).
+				Msg("Failed to cache torrent files")
+		}
 	}
 
 	return files, nil
@@ -3079,6 +3170,16 @@ func (sm *SyncManager) SetLocation(ctx context.Context, instanceID int, hashes [
 		return fmt.Errorf("failed to set torrent location: %w", err)
 	}
 
+	// Invalidate file cache for all affected torrents since paths may change
+	if fm := sm.getFilesManager(); fm != nil {
+		for _, hash := range hashes {
+			if err := fm.InvalidateCache(ctx, instanceID, hash); err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", hash).
+					Msg("Failed to invalidate file cache after location change")
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -3138,6 +3239,14 @@ func (sm *SyncManager) RenameTorrentFile(ctx context.Context, instanceID int, ha
 		return fmt.Errorf("failed to rename file: %w", err)
 	}
 
+	// Invalidate file cache since file paths changed
+	if fm := sm.getFilesManager(); fm != nil {
+		if err := fm.InvalidateCache(ctx, instanceID, hash); err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", hash).
+				Msg("Failed to invalidate file cache after file rename")
+		}
+	}
+
 	sm.syncAfterModification(instanceID, client, "rename_torrent_file")
 
 	return nil
@@ -3168,6 +3277,14 @@ func (sm *SyncManager) RenameTorrentFolder(ctx context.Context, instanceID int, 
 
 	if err := client.RenameFolderCtx(ctx, hash, oldPath, newPath); err != nil {
 		return fmt.Errorf("failed to rename folder: %w", err)
+	}
+
+	// Invalidate file cache since folder paths changed
+	if fm := sm.getFilesManager(); fm != nil {
+		if err := fm.InvalidateCache(ctx, instanceID, hash); err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", hash).
+				Msg("Failed to invalidate file cache after folder rename")
+		}
 	}
 
 	sm.syncAfterModification(instanceID, client, "rename_torrent_folder")
@@ -3458,4 +3575,42 @@ func (sm *SyncManager) DeleteTorrentCreationTask(ctx context.Context, instanceID
 	}
 
 	return client.DeleteTorrentCreationTaskCtx(ctx, taskID)
+}
+
+// GetEconomyAnalysis performs a complete economy analysis for an instance
+func (sm *SyncManager) GetEconomyAnalysis(ctx context.Context, instanceID int) (*EconomyAnalysis, error) {
+	return sm.GetEconomyAnalysisWithPaginationAndSorting(ctx, instanceID, 1, 50, "", false, FilterOptions{})
+}
+
+// GetEconomyAnalysisWithPagination performs a complete economy analysis for an instance with pagination
+func (sm *SyncManager) GetEconomyAnalysisWithPagination(ctx context.Context, instanceID int, page, pageSize int) (*EconomyAnalysis, error) {
+	return sm.GetEconomyAnalysisWithPaginationAndSorting(ctx, instanceID, page, pageSize, "", false, FilterOptions{})
+}
+
+// GetEconomyAnalysisWithPaginationAndSorting performs a complete economy analysis for an instance with pagination, sorting, and filtering
+func (sm *SyncManager) GetEconomyAnalysisWithPaginationAndSorting(ctx context.Context, instanceID int, page, pageSize int, sortField string, sortDesc bool, filters FilterOptions) (*EconomyAnalysis, error) {
+	return sm.economyService.AnalyzeEconomyWithPaginationAndSorting(ctx, instanceID, page, pageSize, sortField, sortDesc, filters)
+}
+
+// GetEconomyStats gets aggregated economy statistics for an instance
+func (sm *SyncManager) GetEconomyStats(ctx context.Context, instanceID int) (*EconomyStats, error) {
+	analysis, err := sm.economyService.AnalyzeEconomy(ctx, instanceID)
+	if err != nil {
+		return nil, err
+	}
+	return &analysis.Stats, nil
+}
+
+// GetTopValuableTorrents gets the most valuable torrents by economy score
+func (sm *SyncManager) GetTopValuableTorrents(ctx context.Context, instanceID int, limit int) ([]EconomyScore, error) {
+	analysis, err := sm.economyService.AnalyzeEconomyWithPagination(ctx, instanceID, 1, 1000) // Get a large page to ensure we have enough top items
+	if err != nil {
+		return nil, err
+	}
+
+	if limit <= 0 || limit > len(analysis.TopValuable) {
+		return analysis.TopValuable, nil
+	}
+
+	return analysis.TopValuable[:limit], nil
 }
