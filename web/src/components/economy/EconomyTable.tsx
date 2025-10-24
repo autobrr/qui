@@ -33,14 +33,13 @@ import type { EconomyAnalysis, EconomyScore, FilterOptions } from "@/types"
 import {
   flexRender,
   getCoreRowModel,
-  getSortedRowModel,
   useReactTable,
   type SortingState,
   type VisibilityState
 } from "@tanstack/react-table"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { Columns3, Eye, EyeOff, Loader2, RefreshCw, Search } from "lucide-react"
-import { useMemo, useRef, useState } from "react"
+import { useMemo, useRef, useState, useEffect } from "react"
 import { useHotkeys } from "react-hotkeys-hook"
 import { createEconomyColumns } from "./EconomyTableColumns"
 
@@ -90,6 +89,11 @@ export function EconomyTable({
   })
   const [rowSelection, setRowSelection] = useState({})
   const searchInputRef = useRef<HTMLInputElement>(null)
+
+  // Sync sorting state with props when they change (from server-side sorting)
+  useEffect(() => {
+    setSorting([{ id: sortField, desc: sortOrder === "desc" }])
+  }, [sortField, sortOrder])
 
   // Detect platform for appropriate key display
   const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.userAgent)
@@ -168,12 +172,13 @@ export function EconomyTable({
     data: tableData,
     columns,
     getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
+    // Server-side sorting - don't use getSortedRowModel() as it only sorts the current page
+    manualSorting: true,
     onSortingChange: (updater) => {
       const newSorting = typeof updater === "function" ? updater(sorting) : updater
       setSorting(newSorting)
 
-      // Notify parent about sort change
+      // Notify parent about sort change for server-side sorting
       if (newSorting.length > 0) {
         const sort = newSorting[0]
         onSortChange(sort.id, sort.desc ? "desc" : "asc")

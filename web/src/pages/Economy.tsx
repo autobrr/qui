@@ -190,7 +190,7 @@ export function Economy() {
                       </TooltipTrigger>
                       <TooltipContent className="max-w-xs">
                         <p className="text-xs">
-                          Storage you can free by removing well-seeded old torrents (&gt;10 seeds, &gt;30 days) that aren't duplicates. Keeps your valuable duplicate copies intact.
+                          Storage you can free by removing well-seeded old torrents (&gt;10 seeds, &gt;60 days, score &lt;30) that aren't duplicates. Keeps your valuable duplicate copies intact.
                         </p>
                       </TooltipContent>
                     </Tooltip>
