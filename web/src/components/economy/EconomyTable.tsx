@@ -237,7 +237,7 @@ export function EconomyTable({
   // Get selected torrent hashes for bulk operations
   const selectedTorrents = useMemo(() => {
     return Object.keys(rowSelection)
-      .filter((key) => rowSelection[key as keyof typeof rowSelection])
+      .filter((key) => rowSelection[parseInt(key)])
       .map((key) => tableData[parseInt(key)])
       .filter(Boolean)
   }, [rowSelection, tableData])
