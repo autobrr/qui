@@ -85,6 +85,7 @@ export function EconomyTable({
     rarityBonus: true,
     reviewPriority: false,
     lastActivity: true,
+    tags: false, // Hidden by default but available
     tracker: false,
   })
   const [rowSelection, setRowSelection] = useState({})

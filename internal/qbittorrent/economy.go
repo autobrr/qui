@@ -25,15 +25,16 @@ type EconomyScore struct {
 	Peers               int      `json:"peers"` // Total peers from tracker
 	Ratio               float64  `json:"ratio"`
 	Age                 int64    `json:"age"`          // Age in days
-	EconomyScore        float64  `json:"economyScore"` // Retention-based score (higher = keep longer)
+	EconomyScore        float64  `json:"economyScore"` // Retention score (higher = keep, lower = remove)
 	StorageValue        float64  `json:"storageValue"`
 	RarityBonus         float64  `json:"rarityBonus"`
 	DeduplicationFactor float64  `json:"deduplicationFactor"`
-	ReviewPriority      float64  `json:"reviewPriority"`       // Priority for review (lower = needs more attention)
+	ReviewPriority      float64  `json:"reviewPriority"`       // Priority for review (lower = more urgent for removal)
 	Duplicates          []string `json:"duplicates,omitempty"` // Hash of duplicate torrents
 	Tracker             string   `json:"tracker"`
 	State               string   `json:"state"`
 	Category            string   `json:"category"`
+	Tags                string   `json:"tags"`         // Comma-separated tags
 	LastActivity        int64    `json:"lastActivity"`
 }
 
@@ -400,6 +401,18 @@ func (es *EconomyService) calculateSingleEconomyScore(torrent qbt.Torrent) Econo
 	// Calculate retention score based on age and other factors
 	retentionScore := es.calculateRetentionScore(torrent, ageInDays, daysSinceActivity)
 
+	// Calculate upload activity bonus - torrents actively sharing are more valuable
+	uploadBonus := es.calculateUploadBonus(torrent)
+	retentionScore = retentionScore * uploadBonus
+
+	// Calculate swarm health factor - consider connected peers, not just total
+	swarmHealthFactor := es.calculateSwarmHealthFactor(torrent)
+	retentionScore = retentionScore * swarmHealthFactor
+
+	// Calculate tracker-specific weight - private trackers may need ratio preservation
+	trackerWeight := es.calculateTrackerWeight(torrent.Tracker)
+	retentionScore = retentionScore * trackerWeight
+
 	// Calculate rarity bonus based on total seeds from tracker
 	rarityBonus := calculateRarityBonus(int(torrent.NumComplete))
 
@@ -419,6 +432,7 @@ func (es *EconomyService) calculateSingleEconomyScore(torrent qbt.Torrent) Econo
 		Tracker:             torrent.Tracker,
 		State:               string(torrent.State),
 		Category:            torrent.Category,
+		Tags:                torrent.Tags,
 		LastActivity:        torrent.LastActivity,
 	}
 }
@@ -459,6 +473,114 @@ func (es *EconomyService) calculateRetentionScore(torrent qbt.Torrent, ageInDays
 
 	// Calculate base retention score
 	return baseRetention * ageFactor * activityBonus * ratioFactor
+}
+
+// calculateUploadBonus calculates bonus based on upload activity
+// Torrents actively sharing data are more valuable to the swarm
+func (es *EconomyService) calculateUploadBonus(torrent qbt.Torrent) float64 {
+	// If size is 0, avoid division by zero
+	if torrent.Size == 0 {
+		return 1.0
+	}
+
+	// Calculate upload ratio (uploaded bytes / size)
+	uploadRatio := float64(torrent.Uploaded) / float64(torrent.Size)
+
+	// Bonus based on how much we've uploaded
+	switch {
+	case uploadRatio >= 5.0:
+		return 1.5 // Uploaded 5x+ the size - very active contributor
+	case uploadRatio >= 2.0:
+		return 1.3 // Uploaded 2x+ the size - active contributor
+	case uploadRatio >= 1.0:
+		return 1.2 // Uploaded 1x+ the size - good contributor
+	case uploadRatio >= 0.5:
+		return 1.0 // Uploaded 50%+ of size - average
+	case uploadRatio >= 0.1:
+		return 0.9 // Uploaded 10%+ of size - below average
+	default:
+		return 0.7 // Barely any upload activity - low value
+	}
+}
+
+// calculateSwarmHealthFactor evaluates the health of the torrent's swarm
+// Considers both total seeds and active connections
+func (es *EconomyService) calculateSwarmHealthFactor(torrent qbt.Torrent) float64 {
+	totalSeeds := int(torrent.NumComplete)
+	totalPeers := int(torrent.NumIncomplete)
+	connectedSeeds := int(torrent.NumSeeds)
+	connectedPeers := int(torrent.NumLeechs)
+
+	// Base factor
+	factor := 1.0
+
+	// If we have connected peer data, use it to assess swarm health
+	if connectedSeeds > 0 || connectedPeers > 0 {
+		// Active swarm with connections - good health
+		if connectedPeers > 5 && connectedSeeds > 0 {
+			factor *= 1.3 // Actively serving many leechers - very valuable
+		} else if connectedPeers > 0 && connectedSeeds > 0 {
+			factor *= 1.2 // Active swarm - valuable
+		} else if connectedSeeds > 0 && connectedPeers == 0 {
+			factor *= 0.9 // Only connected to seeds, no active demand
+		}
+	}
+
+	// If we have many total peers but few seeds, we're more valuable
+	if totalPeers > 10 && totalSeeds < 5 {
+		factor *= 1.4 // High demand, low supply - very valuable
+	} else if totalPeers > 5 && totalSeeds < 10 {
+		factor *= 1.2 // Good demand, limited supply - valuable
+	}
+
+	// Availability considerations
+	if totalSeeds == 0 && totalPeers > 0 {
+		// We might be the only seed with active peers trying to download
+		factor *= 2.0 // Critical to the swarm
+	}
+
+	return factor
+}
+
+// calculateTrackerWeight applies weight based on tracker characteristics
+// Private trackers often have ratio requirements and should be prioritized
+func (es *EconomyService) calculateTrackerWeight(tracker string) float64 {
+	if tracker == "" {
+		return 1.0
+	}
+
+	trackerLower := strings.ToLower(tracker)
+
+	// Known private tracker patterns (can be made configurable)
+	privateTrackerPatterns := []string{
+		"passthepopcorn",
+		"broadcasthe.net",
+		"redacted.ch",
+		"orpheus.network",
+		"gazellegames",
+		"beyondhd",
+		"blutopia",
+		"torrentleech",
+		"iptorrents",
+		"alpharatio",
+	}
+
+	// Check if this is a known private tracker
+	for _, pattern := range privateTrackerPatterns {
+		if strings.Contains(trackerLower, pattern) {
+			return 1.4 // Private tracker torrents get 40% bonus - ratio preservation
+		}
+	}
+
+	// Check for common private tracker indicators
+	if strings.Contains(trackerLower, "passkey") ||
+		strings.Contains(trackerLower, "/announce.php") ||
+		strings.Contains(trackerLower, "authkey") {
+		return 1.3 // Likely private tracker - 30% bonus
+	}
+
+	// Public trackers - standard weight
+	return 1.0
 }
 
 // findDuplicates finds duplicate content based on name similarity only (bypassing file overlap for performance)
@@ -589,6 +711,7 @@ func (es *EconomyService) findFileOverlaps(fileInfos map[string]qbt.TorrentFiles
 }
 
 // hasSignificantFileOverlap checks if two torrent file lists have significant overlap
+// Uses configurable thresholds for different scenarios
 func (es *EconomyService) hasSignificantFileOverlap(filesA, filesB qbt.TorrentFiles) bool {
 	if len(filesA) == 0 || len(filesB) == 0 {
 		return false
@@ -598,34 +721,66 @@ func (es *EconomyService) hasSignificantFileOverlap(filesA, filesB qbt.TorrentFi
 	fileMapA := make(map[string]int64)
 	fileMapB := make(map[string]int64)
 
+	var totalSizeA int64
 	for _, file := range filesA {
 		normalizedPath := es.normalizeFilePath(file.Name)
 		fileMapA[normalizedPath] = file.Size
+		totalSizeA += file.Size
 	}
 
+	var totalSizeB int64
 	for _, file := range filesB {
 		normalizedPath := es.normalizeFilePath(file.Name)
 		fileMapB[normalizedPath] = file.Size
+		totalSizeB += file.Size
 	}
 
-	// Count matching files (same path and size)
+	// Count matching files by both name and size
 	matchingFiles := 0
-	totalFilesA := len(fileMapA)
+	var matchingSizeA int64
+	var matchingSizeB int64
 
 	for path, sizeA := range fileMapA {
 		if sizeB, exists := fileMapB[path]; exists && sizeA == sizeB {
 			matchingFiles++
+			matchingSizeA += sizeA
+			matchingSizeB += sizeB
 		}
 	}
 
-	// Consider them duplicates if they have significant overlap
-	overlapRatio := float64(matchingFiles) / float64(totalFilesA)
-	minOverlap := 0.8
-	if len(fileMapA) > 1 {
-		minOverlap = 0.6
+	totalFilesA := len(fileMapA)
+	totalFilesB := len(fileMapB)
+
+	// Calculate overlap ratios
+	fileCountRatio := float64(matchingFiles) / math.Min(float64(totalFilesA), float64(totalFilesB))
+	sizeRatioA := float64(matchingSizeA) / float64(totalSizeA)
+	sizeRatioB := float64(matchingSizeB) / float64(totalSizeB)
+	avgSizeRatio := (sizeRatioA + sizeRatioB) / 2.0
+
+	// Configurable thresholds based on torrent characteristics
+	var fileCountThreshold float64
+	var sizeThreshold float64
+
+	if totalFilesA == 1 && totalFilesB == 1 {
+		// Single file torrents - require exact match
+		fileCountThreshold = 1.0
+		sizeThreshold = 0.99
+	} else if totalFilesA <= 5 || totalFilesB <= 5 {
+		// Small torrents - require high overlap
+		fileCountThreshold = 0.8
+		sizeThreshold = 0.85
+	} else if totalFilesA > 50 || totalFilesB > 50 {
+		// Large torrents (e.g., TV season packs) - allow more flexibility
+		fileCountThreshold = 0.60
+		sizeThreshold = 0.70
+	} else {
+		// Medium torrents - standard thresholds
+		fileCountThreshold = 0.70
+		sizeThreshold = 0.75
 	}
 
-	return overlapRatio >= minOverlap
+	// Consider them duplicates if both file count and size ratios meet thresholds
+	return fileCountRatio >= fileCountThreshold && avgSizeRatio >= sizeThreshold
 }
 
 // normalizeFilePath normalizes a file path for comparison
@@ -718,12 +873,9 @@ func (es *EconomyService) applySeedFactors(scores []EconomyScore, duplicateHashS
 		// Apply seed factor
 		seedFactor := calculateSeedFactor(score.Seeds, score.Age, isDuplicate)
 
-		if isDuplicate {
-			// Duplicates get a significant bonus for being "free" storage
-			score.EconomyScore = score.EconomyScore * seedFactor * 2.5
-		} else {
-			score.EconomyScore = score.EconomyScore * seedFactor
-		}
+		// NOTE: Don't apply duplicate bonus here - it will be applied selectively
+		// in processDuplicateGroups only to the best copy in each group
+		score.EconomyScore = score.EconomyScore * seedFactor
 	}
 }
 
@@ -743,7 +895,9 @@ func (es *EconomyService) processDuplicateGroups(scores []EconomyScore, duplicat
 		for _, hash := range allHashes {
 			if score := scoreMap[hash]; score != nil {
 				if hash == bestHash {
-					// Best copy is the keeper - no deduplication savings from this torrent
+					// Best copy is the keeper - apply duplicate bonus since it shares data with others
+					// This makes it high value (high economy score = keep)
+					score.EconomyScore = score.EconomyScore * 2.5
 					score.DeduplicationFactor = 0.0
 					score.Duplicates = make([]string, 0, len(allHashes)-1)
 					for _, h := range allHashes {
@@ -758,13 +912,17 @@ func (es *EconomyService) processDuplicateGroups(scores []EconomyScore, duplicat
 
 					if sharesStorage {
 						// Shares underlying files with the keeper - removing it won't free space
+						// Give it a small bonus since it's essentially "free" but not as valuable as the keeper
+						score.EconomyScore = score.EconomyScore * 1.5
 						score.DeduplicationFactor = 0.0
 						score.ReviewPriority = score.EconomyScore
 					} else {
-						// Other copies are marked for potential storage optimization
-						// 100% of their storage can be saved by removing them
+						// Other copies that DON'T share storage are LOW value removal candidates
+						// Apply a penalty to make them appear in the review list
+						score.EconomyScore = score.EconomyScore * 0.4 // Heavy penalty for non-best duplicate copies
 						score.DeduplicationFactor = 1.0
-						score.ReviewPriority = score.EconomyScore * 0.95
+						// Much lower review priority (higher urgency for removal)
+						score.ReviewPriority = score.EconomyScore * 0.5
 					}
 
 					// Populate duplicates array
@@ -1230,43 +1388,57 @@ func (es *EconomyService) formatBytes(bytes int64) string {
 }
 
 // calculateReviewThreshold calculates the dynamic threshold for torrents needing review
+// Returns a threshold where torrents with economy scores BELOW this value are removal candidates
+// LOW economy score = LOW value (well-seeded, old, unique OR non-best duplicate copies)
+// HIGH economy score = HIGH value (rare, last seed, or best copy in duplicate group)
 func (es *EconomyService) calculateReviewThreshold(scores []EconomyScore) float64 {
 	if len(scores) == 0 {
-		return 50.0 // Default fallback for retention scores
+		return 50.0 // Default fallback
 	}
 
-	// Calculate threshold as the 25th percentile of economy scores
-	// This ensures we focus on the worst 25% of torrents (lowest retention scores)
-	// Reduced from 40% to improve performance and focus on truly problematic torrents
+	// Calculate threshold as the 40th percentile of economy scores
+	// This focuses on the worst 40% of torrents (lowest retention scores)
+	// Increased from 25% to catch more removal candidates including non-best duplicate copies
 	sortedScores := make([]float64, len(scores))
 	for i, score := range scores {
 		sortedScores[i] = score.EconomyScore
 	}
 	sort.Float64s(sortedScores)
 
-	// 25th percentile (bottom 25% lowest retention scores)
-	thresholdIndex := int(float64(len(sortedScores)) * 0.25)
+	// 40th percentile (bottom 40% lowest retention scores)
+	thresholdIndex := int(float64(len(sortedScores)) * 0.40)
 	if thresholdIndex >= len(sortedScores) {
 		thresholdIndex = len(sortedScores) - 1
 	}
 
 	threshold := sortedScores[thresholdIndex]
 
-	// Ensure threshold is reasonable for the new scoring system
-	if threshold < 15.0 {
-		threshold = 15.0 // Low retention for unique torrents
-	} else if threshold > 100.0 {
-		threshold = 100.0 // High retention (shouldn't happen with new penalties)
+	// Ensure threshold is reasonable
+	if threshold < 10.0 {
+		threshold = 10.0
+	} else if threshold > 150.0 {
+		threshold = 150.0
 	}
 
 	return threshold
 }
 
 // buildReviewTorrents builds the filtered and sorted list of torrents needing review
+// Torrents with LOW economy scores are removal candidates:
+// - Well-seeded, old, unique torrents (not critical to the swarm)
+// - Non-best copies in duplicate groups (can be removed to save space)
+// Torrents with HIGH economy scores are keepers:
+// - Last seed or rare content (critical to preserve)
+// - Best copy in each duplicate group (shares data with other torrents)
 func (es *EconomyService) buildReviewTorrents(scores []EconomyScore, threshold float64) []EconomyScore {
 	// Filter torrents that need review
 	var reviewCandidates []EconomyScore
 	for _, score := range scores {
+		// Skip torrents with protected tags
+		if es.hasProtectedTag(score) {
+			continue
+		}
+
 		if score.EconomyScore < threshold {
 			reviewCandidates = append(reviewCandidates, score)
 		}
@@ -1304,6 +1476,56 @@ func (es *EconomyService) buildReviewTorrents(scores []EconomyScore, threshold f
 	}
 
 	return reviewTorrents
+}
+
+// hasProtectedTag checks if a torrent has any protected tags that should exclude it from review
+// Protected tags: "preserve", "keep", "protected", "important", "archive"
+func (es *EconomyService) hasProtectedTag(score EconomyScore) bool {
+	protectedTags := []string{
+		"preserve",
+		"keep",
+		"protected",
+		"important",
+		"archive",
+		"critical",
+		"permanent",
+	}
+
+	protectedCategories := []string{
+		"archive",
+		"preserve",
+		"keep",
+		"important",
+		"protected",
+	}
+
+	// Check tags (comma-separated string)
+	if score.Tags != "" {
+		tagsLower := strings.ToLower(score.Tags)
+		for _, protected := range protectedTags {
+			if strings.Contains(tagsLower, protected) {
+				log.Debug().
+					Str("hash", score.Hash).
+					Str("tags", score.Tags).
+					Msg("Torrent excluded from review due to protected tag")
+				return true
+			}
+		}
+	}
+
+	// Check category as fallback
+	categoryLower := strings.ToLower(score.Category)
+	for _, protected := range protectedCategories {
+		if strings.Contains(categoryLower, protected) {
+			log.Debug().
+				Str("hash", score.Hash).
+				Str("category", score.Category).
+				Msg("Torrent excluded from review due to protected category")
+			return true
+		}
+	}
+	
+	return false
 }
 
 // createTorrentGroups groups torrents by their duplicate relationships for review

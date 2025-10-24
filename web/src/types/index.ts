@@ -868,6 +868,7 @@ export interface EconomyScore {
   tracker: string
   state: string
   category: string
+  tags: string
   lastActivity: number
 }
 

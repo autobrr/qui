@@ -329,6 +329,30 @@ export const createEconomyColumns = (): ColumnDef<EconomyScore>[] => [
     size: 120,
   },
   {
+    accessorKey: "tags",
+    header: ({ column }) => createSortableHeader(column, "Tags"),
+    cell: ({ row }) => {
+      const tags = row.getValue("tags") as string
+      if (!tags) {
+        return <span className="text-muted-foreground text-xs">-</span>
+      }
+      const tagList = tags.split(",").map(t => t.trim()).filter(Boolean)
+      return (
+        <div className="flex flex-wrap gap-1 max-w-[200px]">
+          {tagList.slice(0, 2).map((tag, idx) => (
+            <Badge key={idx} variant="secondary" className="text-xs">
+              {tag}
+            </Badge>
+          ))}
+          {tagList.length > 2 && (
+            <span className="text-xs text-muted-foreground">+{tagList.length - 2}</span>
+          )}
+        </div>
+      )
+    },
+    size: 150,
+  },
+  {
     accessorKey: "tracker",
     header: ({ column }) => createSortableHeader(column, "Tracker"),
     cell: ({ row }) => {
