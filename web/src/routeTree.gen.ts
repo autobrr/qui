@@ -19,8 +19,10 @@ import { Route as AuthenticatedBackupsRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedInstancesRouteImport } from './routes/_authenticated/instances'
 import { Route as AuthenticatedInstancesInstanceIdRouteImport } from './routes/_authenticated/instances.$instanceId'
+import { Route as AuthenticatedInstancesInstanceIdTitlesRouteImport } from './routes/_authenticated/instances.$instanceId.titles'
 import { Route as AuthenticatedInstancesIndexRouteImport } from './routes/_authenticated/instances.index'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
+import { Route as AuthenticatedTitlesRouteImport } from './routes/_authenticated/titles'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as SetupRouteImport } from './routes/setup'
@@ -64,6 +66,11 @@ const AuthenticatedBackupsRoute = AuthenticatedBackupsRouteImport.update({
   path: '/backups',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedTitlesRoute = AuthenticatedTitlesRouteImport.update({
+  id: '/titles',
+  path: '/titles',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedInstancesIndexRoute =
   AuthenticatedInstancesIndexRouteImport.update({
     id: '/',
@@ -76,6 +83,12 @@ const AuthenticatedInstancesInstanceIdRoute =
     path: '/$instanceId',
     getParentRoute: () => AuthenticatedInstancesRoute,
   } as any)
+const AuthenticatedInstancesInstanceIdTitlesRoute =
+  AuthenticatedInstancesInstanceIdTitlesRouteImport.update({
+    id: '/titles',
+    path: '/titles',
+    getParentRoute: () => AuthenticatedInstancesInstanceIdRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -85,8 +98,10 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/instances': typeof AuthenticatedInstancesRouteWithChildren
   '/settings': typeof AuthenticatedSettingsRoute
+  '/titles': typeof AuthenticatedTitlesRoute
   '/instances/$instanceId': typeof AuthenticatedInstancesInstanceIdRouteWithChildren
   '/instances/': typeof AuthenticatedInstancesIndexRoute
+  '/instances/$instanceId/titles': typeof AuthenticatedInstancesInstanceIdTitlesRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -95,8 +110,10 @@ export interface FileRoutesByTo {
   '/backups': typeof AuthenticatedBackupsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/settings': typeof AuthenticatedSettingsRoute
+  '/titles': typeof AuthenticatedTitlesRoute
   '/instances/$instanceId': typeof AuthenticatedInstancesInstanceIdRouteWithChildren
   '/instances': typeof AuthenticatedInstancesIndexRoute
+  '/instances/$instanceId/titles': typeof AuthenticatedInstancesInstanceIdTitlesRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -108,8 +125,10 @@ export interface FileRoutesById {
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/instances': typeof AuthenticatedInstancesRouteWithChildren
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
+  '/_authenticated/titles': typeof AuthenticatedTitlesRoute
   '/_authenticated/instances/$instanceId': typeof AuthenticatedInstancesInstanceIdRouteWithChildren
   '/_authenticated/instances/': typeof AuthenticatedInstancesIndexRoute
+  '/_authenticated/instances/$instanceId/titles': typeof AuthenticatedInstancesInstanceIdTitlesRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -121,9 +140,11 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/instances'
     | '/settings'
+    | '/titles'
     | '/instances/$instanceId'
     | '/instances/'
     | '/instances/$instanceId/backups'
+    | '/instances/$instanceId/titles'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -132,9 +153,11 @@ export interface FileRouteTypes {
     | '/backups'
     | '/dashboard'
     | '/settings'
+    | '/titles'
     | '/instances/$instanceId'
     | '/instances'
     | '/instances/$instanceId/backups'
+    | '/instances/$instanceId/titles'
   id:
     | '__root__'
     | '/'
@@ -145,9 +168,11 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard'
     | '/_authenticated/instances'
     | '/_authenticated/settings'
+    | '/_authenticated/titles'
     | '/_authenticated/instances/$instanceId'
     | '/_authenticated/instances/'
     | '/_authenticated/instances/$instanceId/backups'
+    | '/_authenticated/instances/$instanceId/titles'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -215,6 +240,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedBackupsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/titles': {
+      id: '/_authenticated/titles'
+      path: '/titles'
+      fullPath: '/titles'
+      preLoaderRoute: typeof AuthenticatedTitlesRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/instances/': {
       id: '/_authenticated/instances/'
       path: '/'
@@ -229,11 +261,30 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedInstancesInstanceIdRouteImport
       parentRoute: typeof AuthenticatedInstancesRoute
     }
+    '/_authenticated/instances/$instanceId/titles': {
+      id: '/_authenticated/instances/$instanceId/titles'
+      path: '/titles'
+      fullPath: '/instances/$instanceId/titles'
+      preLoaderRoute: typeof AuthenticatedInstancesInstanceIdTitlesRouteImport
+      parentRoute: typeof AuthenticatedInstancesInstanceIdRoute
+    }
   }
 }
 
+interface AuthenticatedInstancesInstanceIdRouteChildren {
+  AuthenticatedInstancesInstanceIdTitlesRoute: typeof AuthenticatedInstancesInstanceIdTitlesRoute
+}
+
+const AuthenticatedInstancesInstanceIdRouteChildren: AuthenticatedInstancesInstanceIdRouteChildren =
+  {
+    AuthenticatedInstancesInstanceIdTitlesRoute:
+      AuthenticatedInstancesInstanceIdTitlesRoute,
+  }
+
 const AuthenticatedInstancesInstanceIdRouteWithChildren =
-  AuthenticatedInstancesInstanceIdRoute
+  AuthenticatedInstancesInstanceIdRoute._addFileChildren(
+    AuthenticatedInstancesInstanceIdRouteChildren,
+  )
 
 interface AuthenticatedInstancesRouteChildren {
   AuthenticatedInstancesInstanceIdRoute: typeof AuthenticatedInstancesInstanceIdRouteWithChildren
@@ -264,6 +315,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedInstancesRoute: AuthenticatedInstancesRouteWithChildren,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
+  AuthenticatedTitlesRoute: AuthenticatedTitlesRoute,
 }
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
