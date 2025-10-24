@@ -23,6 +23,7 @@ export function Economy() {
     categories: [],
     tags: [],
     trackers: [],
+    excludeTrackers: [],
   })
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(25)

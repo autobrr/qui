@@ -14,20 +14,25 @@ import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Package, TrendingUp } f
 
 // Helper to create sortable header - defined inside the column factory to avoid export issues
 function createSortableHeader(column: Column<EconomyScore>, children: React.ReactNode) {
+  const isSorted = column.getIsSorted()
+  
   return (
     <Button
       variant="ghost"
       size="sm"
-      className="-ml-3 h-8 data-[state=open]:bg-accent"
+      className={cn(
+        "-ml-3 h-8",
+        isSorted && "bg-accent text-accent-foreground"
+      )}
       onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
     >
       {children}
-      {column.getIsSorted() === "asc" ? (
-        <ArrowUp className="ml-2 h-4 w-4" />
-      ) : column.getIsSorted() === "desc" ? (
-        <ArrowDown className="ml-2 h-4 w-4" />
+      {isSorted === "asc" ? (
+        <ArrowUp className="ml-2 h-4 w-4 text-primary" />
+      ) : isSorted === "desc" ? (
+        <ArrowDown className="ml-2 h-4 w-4 text-primary" />
       ) : (
-        <ArrowUpDown className="ml-2 h-4 w-4" />
+        <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />
       )}
     </Button>
   )

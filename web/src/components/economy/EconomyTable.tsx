@@ -4,6 +4,7 @@
  */
 
 import { PaginationWrapper } from "@/components/economy/pagination-wrapper"
+import { TrackerExclusionFilter } from "@/components/economy/TrackerExclusionFilter"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -67,6 +68,8 @@ interface EconomyTableProps {
 export function EconomyTable({
   data,
   isLoading,
+  filters,
+  onFilterChange,
   onPageChange,
   sortField,
   sortOrder,
@@ -89,6 +92,22 @@ export function EconomyTable({
   })
   const [rowSelection, setRowSelection] = useState({})
   const searchInputRef = useRef<HTMLInputElement>(null)
+
+  // Extract available trackers from data
+  const availableTrackers = useMemo(() => {
+    if (!data?.reviewTorrents?.torrents) return []
+    const trackerSet = new Set<string>()
+    data.reviewTorrents.torrents.forEach((torrent) => {
+      if (torrent.tracker) {
+        trackerSet.add(torrent.tracker)
+      }
+    })
+    return Array.from(trackerSet).sort()
+  }, [data])
+
+  const handleExcludedTrackersChange = (excludedTrackers: string[]) => {
+    onFilterChange({ ...filters, excludeTrackers: excludedTrackers })
+  }
 
   // Sync sorting state with props when they change (from server-side sorting)
   useEffect(() => {
@@ -253,6 +272,14 @@ export function EconomyTable({
                 className="pl-8 h-9"
               />
             </div>
+
+            {/* Tracker Exclusion Filter */}
+            <TrackerExclusionFilter
+              availableTrackers={availableTrackers}
+              excludedTrackers={filters.excludeTrackers || []}
+              onExcludedTrackersChange={handleExcludedTrackersChange}
+              disabled={isLoading}
+            />
 
             {/* Selected count */}
             {selectedTorrents.length > 0 && (

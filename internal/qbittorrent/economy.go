@@ -34,7 +34,7 @@ type EconomyScore struct {
 	Tracker             string   `json:"tracker"`
 	State               string   `json:"state"`
 	Category            string   `json:"category"`
-	Tags                string   `json:"tags"`         // Comma-separated tags
+	Tags                string   `json:"tags"` // Comma-separated tags
 	LastActivity        int64    `json:"lastActivity"`
 }
 
@@ -307,7 +307,7 @@ func (es *EconomyService) AnalyzeEconomyWithPaginationAndSorting(ctx context.Con
 	scores = es.applyDeduplicationFactors(scores, duplicates, duplicateHashSet, torrentDetails)
 
 	// Apply filters to scores
-	scores = es.applyFiltersToScores(scores, filters)
+	scores = es.applyFiltersToScores(scores, filters, duplicates)
 
 	// Sort scores based on sortField and sortDesc
 	sortedScores := es.sortScores(scores, sortField, sortDesc)
@@ -1524,7 +1524,7 @@ func (es *EconomyService) hasProtectedTag(score EconomyScore) bool {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
@@ -1857,13 +1857,57 @@ func (es *EconomyService) createEnhancedGroupsForPage(pageTorrents []EconomyScor
 }
 
 // applyFiltersToScores applies the given filters to the economy scores
-func (es *EconomyService) applyFiltersToScores(scores []EconomyScore, filters FilterOptions) []EconomyScore {
-	if len(filters.Status) == 0 && len(filters.Categories) == 0 && len(filters.Tags) == 0 && len(filters.Trackers) == 0 {
+func (es *EconomyService) applyFiltersToScores(scores []EconomyScore, filters FilterOptions, duplicates map[string][]string) []EconomyScore {
+	if len(filters.Status) == 0 && len(filters.Categories) == 0 && len(filters.Tags) == 0 && len(filters.Trackers) == 0 && len(filters.ExcludeTrackers) == 0 {
 		return scores
+	}
+
+	// Build a set of hashes to exclude based on tracker exclusion and duplicate groups
+	excludedHashes := make(map[string]bool)
+
+	// If we're excluding trackers, we need to exclude entire duplicate groups
+	if len(filters.ExcludeTrackers) > 0 {
+		// First pass: identify all torrents from excluded trackers
+		for _, score := range scores {
+			for _, tracker := range filters.ExcludeTrackers {
+				if strings.Contains(strings.ToLower(score.Tracker), strings.ToLower(tracker)) {
+					excludedHashes[score.Hash] = true
+					break
+				}
+			}
+		}
+
+		// Second pass: expand exclusion to include all duplicates
+		// If any torrent in a duplicate group is excluded, exclude the entire group
+		for primaryHash, duplicateHashes := range duplicates {
+			// Check if the primary hash is excluded
+			if excludedHashes[primaryHash] {
+				for _, dupHash := range duplicateHashes {
+					excludedHashes[dupHash] = true
+				}
+			} else {
+				// Check if any duplicate is excluded
+				for _, dupHash := range duplicateHashes {
+					if excludedHashes[dupHash] {
+						// Exclude the primary and all other duplicates
+						excludedHashes[primaryHash] = true
+						for _, otherDupHash := range duplicateHashes {
+							excludedHashes[otherDupHash] = true
+						}
+						break
+					}
+				}
+			}
+		}
 	}
 
 	var filtered []EconomyScore
 	for _, score := range scores {
+		// Skip if hash is in excluded set (from tracker exclusion + duplicate groups)
+		if excludedHashes[score.Hash] {
+			continue
+		}
+
 		// Filter by status
 		if len(filters.Status) > 0 {
 			statusMatch := false
@@ -1892,7 +1936,7 @@ func (es *EconomyService) applyFiltersToScores(scores []EconomyScore, filters Fi
 			}
 		}
 
-		// Filter by tracker
+		// Filter by tracker (include only these trackers)
 		if len(filters.Trackers) > 0 {
 			trackerMatch := false
 			for _, tracker := range filters.Trackers {
