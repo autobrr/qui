@@ -34,6 +34,7 @@ import {
 import { useQuery } from "@tanstack/react-query"
 import { Link, useLocation } from "@tanstack/react-router"
 import {
+  Archive,
   Check,
   Github,
   HardDrive,
