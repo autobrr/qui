@@ -38,28 +38,31 @@ export function SelectAllHotkey({
           /Mac|iPhone|iPad|iPod/.test(window.navigator.userAgent)
 
     const handleSelectAllHotkey = (event: KeyboardEvent) => {
-      const usesSelectModifier = event.ctrlKey || (platformIsMac && event.metaKey)
-      if (!usesSelectModifier) {
-        return
-      }
-
       if (event.key !== "a" && event.key !== "A") {
         return
       }
 
       const target = event.target
-      if (!(target instanceof HTMLElement)) {
+      const elementTarget = target instanceof Element ? target : null
+
+      if (
+        elementTarget &&
+        (elementTarget.tagName === "INPUT" ||
+          elementTarget.tagName === "TEXTAREA" ||
+          elementTarget.tagName === "SELECT" ||
+          elementTarget instanceof HTMLElement && elementTarget.isContentEditable ||
+          elementTarget.closest("[role=\"dialog\"]") ||
+          elementTarget.closest("[role=\"combobox\"]"))
+      ) {
         return
       }
 
-      if (
-        target.tagName === "INPUT" ||
-        target.tagName === "TEXTAREA" ||
-        target.tagName === "SELECT" ||
-        target.isContentEditable ||
-        target.closest("[role=\"dialog\"]") ||
-        target.closest("[role=\"combobox\"]")
-      ) {
+      if (platformIsMac && event.ctrlKey && !event.metaKey) {
+        return
+      }
+
+      const usesSelectModifier = platformIsMac ? event.metaKey : event.ctrlKey
+      if (!usesSelectModifier) {
         return
       }
 
