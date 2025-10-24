@@ -126,8 +126,7 @@ func NewSyncManager(clientPool *ClientPool) *SyncManager {
 		clientPool: clientPool,
 		exprCache:  ttlcache.New(ttlcache.Options[string, *vm.Program]{}.SetDefaultTTL(5 * time.Minute)),
 	}
-	// Initialize with nil FilesManager (wrapped in interface holder to avoid nil interface issues)
-	sm.filesManager.Store((FilesManager)(nil))
+	// filesManager starts as zero value (nil), which getFilesManager() handles correctly
 	return sm
 }
 
