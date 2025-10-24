@@ -5,6 +5,7 @@
 
 import { api } from "@/lib/api"
 import type { Torrent, TorrentFilters } from "@/types"
+import { usePersistedDeleteFiles } from "@/hooks/usePersistedDeleteFiles"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useCallback, useState } from "react"
 import { toast } from "sonner"
@@ -77,7 +78,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
 
   // Dialog states
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
-  const [deleteFiles, setDeleteFiles] = useState(false)
+  const [deleteFiles, setDeleteFiles] = usePersistedDeleteFiles(false)
   const [showAddTagsDialog, setShowAddTagsDialog] = useState(false)
   const [showSetTagsDialog, setShowSetTagsDialog] = useState(false)
   const [showRemoveTagsDialog, setShowRemoveTagsDialog] = useState(false)
@@ -385,7 +386,6 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
       clientCount,
     })
     setShowDeleteDialog(false)
-    setDeleteFiles(false)
     setContextHashes([])
     setContextTorrents([])
   }, [mutation, deleteFiles])
