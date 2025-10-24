@@ -671,10 +671,7 @@ func (db *DB) findPendingMigrations(ctx context.Context, allFiles []string) ([]s
 func (db *DB) applyAllMigrations(ctx context.Context, migrations []string) error {
 	// Migrations that need foreign keys disabled due to table recreation
 	needsForeignKeysOff := map[string]bool{
-		"011_add_string_interning.sql":            true,
-		"012_intern_infohashes.sql":               true,
-		"013_intern_backup_runs_and_names.sql":    true,
-		"015_intern_instance_and_path_fields.sql": true,
+		"010_add_files_cache_and_string_interning.sql": true,
 	}
 
 	// Begin single transaction for all migrations
