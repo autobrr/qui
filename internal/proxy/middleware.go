@@ -24,10 +24,22 @@ const (
 func ClientAPIKeyMiddleware(store *models.ClientAPIKeyStore) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			log.Debug().
+				Str("fullPath", r.URL.Path).
+				Str("method", r.Method).
+				Msg("ClientAPIKeyMiddleware called")
+
 			// Extract API key from URL path parameter
 			apiKey := chi.URLParam(r, "api-key")
+			log.Debug().
+				Str("apiKey", apiKey).
+				Bool("isEmpty", apiKey == "").
+				Msg("Extracted API key from URL parameter")
+
 			if apiKey == "" {
-				log.Warn().Msg("Missing API key in proxy request")
+				log.Warn().
+					Str("path", r.URL.Path).
+					Msg("Missing API key in proxy request")
 				http.Error(w, "Missing API key", http.StatusUnauthorized)
 				return
 			}

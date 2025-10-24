@@ -7,7 +7,7 @@ require (
 	github.com/Masterminds/semver/v3 v3.4.0
 	github.com/alexedwards/scs/v2 v2.9.0
 	github.com/autobrr/autobrr v1.68.0
-	github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20251007112633-10647ad0ce4d
+	github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20251019202402-17f4c5993c23
 	github.com/coreos/go-oidc/v3 v3.16.0
 	github.com/creativeprojects/go-selfupdate v1.5.1
 	github.com/expr-lang/expr v1.17.6
@@ -24,6 +24,7 @@ require (
 	github.com/spf13/cobra v1.10.1
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.11.1
+	github.com/zeebo/bencode v1.0.0
 	golang.org/x/crypto v0.43.0
 	golang.org/x/image v0.32.0
 	golang.org/x/net v0.45.0

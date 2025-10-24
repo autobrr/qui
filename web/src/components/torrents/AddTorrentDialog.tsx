@@ -3,15 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState, useEffect, useRef } from "react"
-import { useForm } from "@tanstack/react-form"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { api } from "@/lib/api"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Switch } from "@/components/ui/switch"
 import {
   Dialog,
   DialogContent,
@@ -20,6 +13,8 @@ import {
   DialogTitle,
   DialogTrigger
 } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import {
   Select,
   SelectContent,
@@ -27,26 +22,91 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger
 } from "@/components/ui/tabs"
-import { Plus, Upload, Link } from "lucide-react"
-import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
-import { usePersistedStartPaused } from "@/hooks/usePersistedStartPaused"
-import { Badge } from "@/components/ui/badge"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger
 } from "@/components/ui/tooltip"
+import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
+import { usePersistedStartPaused } from "@/hooks/usePersistedStartPaused"
+import { api } from "@/lib/api"
+import type { Torrent } from "@/types"
+import { useForm } from "@tanstack/react-form"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { AlertCircle, Link, Loader2, Plus, Upload, X } from "lucide-react"
+import parseTorrent from "parse-torrent"
+import { useCallback, useEffect, useRef, useState } from "react"
+
+// Extract info hash from magnet link
+function extractHashFromMagnet(magnetUrl: string): string | null {
+  const btihMatch = magnetUrl.match(/[?&]xt=urn:btih:([a-f0-9]{40}|[a-z2-7]{32})/i)
+  if (btihMatch) {
+    return btihMatch[1].toLowerCase()
+  }
+
+  const btmhMatch = magnetUrl.match(/[?&]xt=urn:btmh:([a-f0-9]+)/i)
+  if (!btmhMatch) {
+    return null
+  }
+
+  const multihash = btmhMatch[1].toLowerCase()
+  // Multihash format: <code><digest-length><digest>. For v2 torrents qBittorrent expects SHA2-256 (0x12) with 32 byte digest.
+  if (!multihash.startsWith("1220")) {
+    return null
+  }
+
+  const digest = multihash.slice(4)
+  return /^[a-f0-9]{64}$/.test(digest) ? digest : null
+}
+
+// Parse torrent file and extract info hash
+async function parseTorrentFile(file: File): Promise<string | null> {
+  const timeoutId = window.setTimeout(() => {
+  }, 10000) // 10 second timeout
+
+  try {
+    const arrayBuffer = await file.arrayBuffer()
+    const parsed = await parseTorrent(new Uint8Array(arrayBuffer))
+    const parsedTorrent = parsed as parseTorrent.Instance & { infoHashV2?: string }
+
+    if (!parsedTorrent) {
+      return null
+    }
+
+    const hash = parsedTorrent.infoHash || parsedTorrent.infoHashV2
+
+    if (!hash) {
+      return null
+    }
+
+    const normalized = hash.toLowerCase()
+    return normalized
+  } catch {
+    return null
+  } finally {
+    window.clearTimeout(timeoutId)
+  }
+}
+
+export type AddTorrentDropPayload =
+  | { type: "file"; files: File[] }
+  | { type: "url"; urls: string[] }
 
 interface AddTorrentDialogProps {
   instanceId: number
   open?: boolean
   onOpenChange?: (open: boolean) => void
+  dropPayload?: AddTorrentDropPayload | null
+  onDropPayloadConsumed?: () => void
+  torrents?: Torrent[]
 }
 
 type TabValue = "file" | "url"
@@ -70,7 +130,30 @@ interface FormData {
   rename: string
 }
 
-export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChange }: AddTorrentDialogProps) {
+interface DuplicateEntryDetails {
+  label: string
+  matches: string[]
+}
+
+interface DuplicateSummary {
+  existingNames: string[]
+  fileMatches: Record<string, DuplicateEntryDetails>
+  urlMatches: Record<string, DuplicateEntryDetails>
+}
+
+function createEmptyDuplicateSummary(): DuplicateSummary {
+  return {
+    existingNames: [],
+    fileMatches: {},
+    urlMatches: {},
+  }
+}
+
+function createFileKey(file: File): string {
+  return `${file.name}__${file.size}__${file.lastModified}`
+}
+
+export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChange, dropPayload, onDropPayloadConsumed, torrents = [] }: AddTorrentDialogProps) {
   const [internalOpen, setInternalOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<TabValue>("file")
   const [selectedTags, setSelectedTags] = useState<string[]>([])
@@ -78,7 +161,11 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
   const [showFileList, setShowFileList] = useState(false)
   const [categorySearch, setCategorySearch] = useState("")
   const [tagSearch, setTagSearch] = useState("")
+  const [duplicateSummary, setDuplicateSummary] = useState<DuplicateSummary>(() => createEmptyDuplicateSummary())
+  const [duplicateCheckStatus, setDuplicateCheckStatus] = useState<"idle" | "pending" | "visible">("idle")
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const duplicateCheckRequestRef = useRef(0)
+  const duplicateCheckIndicatorTimeoutRef = useRef<number | null>(null)
   const queryClient = useQueryClient()
   // NOTE: Use localStorage-persisted preference instead of qBittorrent's preference
   // This works around qBittorrent API not supporting start_paused_enabled setting
@@ -99,12 +186,302 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
     if (!open) {
       setSelectedTags([])
       setNewTag("")
+      setTagSearch("")
+      setShowFileList(false)
+      setDuplicateSummary(createEmptyDuplicateSummary())
+      setDuplicateCheckStatus("idle")
+      if (duplicateCheckIndicatorTimeoutRef.current !== null) {
+        window.clearTimeout(duplicateCheckIndicatorTimeoutRef.current)
+        duplicateCheckIndicatorTimeoutRef.current = null
+      }
     }
   }, [open])
+
+  useEffect(() => {
+    return () => {
+      if (duplicateCheckIndicatorTimeoutRef.current !== null) {
+        window.clearTimeout(duplicateCheckIndicatorTimeoutRef.current)
+        duplicateCheckIndicatorTimeoutRef.current = null
+      }
+    }
+  }, [])
+
+  // Check for duplicate torrents when files or URLs are loaded
+  const checkForDuplicates = useCallback(async (files: File[] | null, urls: string) => {
+    duplicateCheckRequestRef.current += 1
+    const requestId = duplicateCheckRequestRef.current
+    setDuplicateSummary(createEmptyDuplicateSummary())
+    setDuplicateCheckStatus("pending")
+    if (duplicateCheckIndicatorTimeoutRef.current !== null) {
+      window.clearTimeout(duplicateCheckIndicatorTimeoutRef.current)
+      duplicateCheckIndicatorTimeoutRef.current = null
+    }
+    duplicateCheckIndicatorTimeoutRef.current = window.setTimeout(() => {
+      if (duplicateCheckRequestRef.current === requestId) {
+        setDuplicateCheckStatus("visible")
+      }
+    }, 300)
+
+    const isLatest = () => duplicateCheckRequestRef.current === requestId
+
+    type HashSource =
+      | { type: "file"; key: string; label: string }
+      | { type: "url"; key: string }
+
+    const duplicateNameSet = new Set<string>()
+    const duplicateFileMap = new Map<string, { label: string; matches: Set<string> }>()
+    const duplicateUrlMap = new Map<string, { label: string; matches: Set<string> }>()
+    const hashesForApi = new Set<string>()
+    const hashSources = new Map<string, HashSource[]>()
+    const finalizeCheck = () => {
+      if (duplicateCheckRequestRef.current !== requestId) {
+        return
+      }
+      if (duplicateCheckIndicatorTimeoutRef.current !== null) {
+        window.clearTimeout(duplicateCheckIndicatorTimeoutRef.current)
+        duplicateCheckIndicatorTimeoutRef.current = null
+      }
+      setDuplicateCheckStatus("idle")
+    }
+
+    const getHashSources = (hash: string) => {
+      const normalized = hash.toLowerCase()
+      let sources = hashSources.get(normalized)
+      if (!sources) {
+        sources = []
+        hashSources.set(normalized, sources)
+      }
+      return sources
+    }
+
+    const ensureFileEntry = (file: File) => {
+      const key = createFileKey(file)
+      let entry = duplicateFileMap.get(key)
+      if (!entry) {
+        entry = { label: file.name, matches: new Set<string>() }
+        duplicateFileMap.set(key, entry)
+      }
+      return { key, entry }
+    }
+
+    const ensureUrlEntry = (urlValue: string) => {
+      let entry = duplicateUrlMap.get(urlValue)
+      if (!entry) {
+        entry = { label: urlValue, matches: new Set<string>() }
+        duplicateUrlMap.set(urlValue, entry)
+      }
+      return entry
+    }
+
+    const recordFileMatch = (fileKey: string, matchLabel: string | undefined, fallback: string) => {
+      const entry = duplicateFileMap.get(fileKey)
+      if (!entry) {
+        return
+      }
+      const resolvedMatch = (matchLabel && matchLabel.trim()) || fallback
+      if (!resolvedMatch) {
+        return
+      }
+      entry.matches.add(resolvedMatch)
+      duplicateNameSet.add(resolvedMatch)
+    }
+
+    const recordUrlMatch = (urlKey: string, matchLabel: string | undefined, fallback: string) => {
+      const entry = duplicateUrlMap.get(urlKey)
+      if (!entry) {
+        return
+      }
+      const resolvedMatch = (matchLabel && matchLabel.trim()) || fallback
+      if (!resolvedMatch) {
+        return
+      }
+      entry.matches.add(resolvedMatch)
+      duplicateNameSet.add(resolvedMatch)
+    }
+
+    const findMatchingTorrent = (hash: string) => {
+      const normalized = hash.toLowerCase()
+      return torrents.find((torrent) => {
+        const candidates = [
+          torrent.hash,
+          torrent.infohash_v1,
+          torrent.infohash_v2,
+        ].filter(Boolean) as string[]
+
+        return candidates.some((candidate) => candidate.toLowerCase() === normalized)
+      })
+    }
+
+    if (files && files.length > 0) {
+      try {
+        const hashes = await Promise.all(files.map((file) => parseTorrentFile(file)))
+
+        files.forEach((file, index) => {
+          const hash = hashes[index]
+          if (!hash) {
+            return
+          }
+
+          const normalized = hash.toLowerCase()
+          const { key: fileKey } = ensureFileEntry(file)
+          const sources = getHashSources(normalized)
+          if (!sources.some((source) => source.type === "file" && source.key === fileKey)) {
+            sources.push({ type: "file", key: fileKey, label: file.name })
+          }
+
+          const existingTorrent = findMatchingTorrent(normalized)
+          if (existingTorrent) {
+            recordFileMatch(fileKey, existingTorrent.name, normalized)
+          } else {
+            hashesForApi.add(normalized)
+          }
+        })
+      } catch (error) {
+        console.error("[checkForDuplicates] Error parsing torrent files:", error)
+      }
+    }
+
+    if (urls) {
+      const urlList = urls
+        .split("\n")
+        .map((u) => u.trim())
+        .filter(Boolean)
+
+      for (const url of urlList) {
+        const hash = extractHashFromMagnet(url)
+        if (!hash) {
+          continue
+        }
+
+        const normalized = hash.toLowerCase()
+        ensureUrlEntry(url)
+        const sources = getHashSources(normalized)
+        if (!sources.some((source) => source.type === "url" && source.key === url)) {
+          sources.push({ type: "url", key: url })
+        }
+
+        const existingTorrent = findMatchingTorrent(normalized)
+        if (existingTorrent) {
+          recordUrlMatch(url, existingTorrent.name, normalized)
+        } else {
+          hashesForApi.add(normalized)
+        }
+      }
+    }
+
+    const publishResults = () => {
+      if (!isLatest()) {
+        return
+      }
+
+      const fileMatches: Record<string, DuplicateEntryDetails> = {}
+      duplicateFileMap.forEach((entry, key) => {
+        if (entry.matches.size === 0) {
+          return
+        }
+        fileMatches[key] = {
+          label: entry.label,
+          matches: Array.from(entry.matches).sort((a, b) => a.localeCompare(b)),
+        }
+      })
+
+      const urlMatches: Record<string, DuplicateEntryDetails> = {}
+      duplicateUrlMap.forEach((entry, key) => {
+        if (entry.matches.size === 0) {
+          return
+        }
+        urlMatches[key] = {
+          label: entry.label,
+          matches: Array.from(entry.matches).sort((a, b) => a.localeCompare(b)),
+        }
+      })
+
+      setDuplicateSummary({
+        existingNames: Array.from(duplicateNameSet).sort((a, b) => a.localeCompare(b)),
+        fileMatches,
+        urlMatches,
+      })
+    }
+
+    if (hashesForApi.size === 0) {
+      publishResults()
+      finalizeCheck()
+      return
+    }
+
+    if (!isLatest()) {
+      return
+    }
+
+    try {
+      const hashList = Array.from(hashesForApi).slice(0, 512)
+      const response = await api.checkTorrentDuplicates(instanceId, hashList)
+      if (!isLatest()) {
+        return
+      }
+
+      for (const duplicate of response.duplicates ?? []) {
+        const displayName =
+          duplicate.name ||
+          duplicate.hash ||
+          duplicate.infohash_v1 ||
+          duplicate.infohash_v2 ||
+          "Existing torrent"
+        if (displayName) {
+          duplicateNameSet.add(displayName)
+        }
+
+        const candidateHashes = new Set<string>()
+        if (duplicate.hash) {
+          candidateHashes.add(duplicate.hash.toLowerCase())
+        }
+        if (duplicate.infohash_v1) {
+          candidateHashes.add(duplicate.infohash_v1.toLowerCase())
+        }
+        if (duplicate.infohash_v2) {
+          candidateHashes.add(duplicate.infohash_v2.toLowerCase())
+        }
+        if (duplicate.matched_hashes) {
+          duplicate.matched_hashes.forEach((matched) => {
+            candidateHashes.add(matched.toLowerCase())
+          })
+        }
+
+        candidateHashes.forEach((candidateHash) => {
+          const sources = hashSources.get(candidateHash)
+          if (!sources) {
+            return
+          }
+
+          sources.forEach((source) => {
+            if (source.type === "file") {
+              recordFileMatch(source.key, displayName, candidateHash)
+            } else {
+              recordUrlMatch(source.key, displayName, candidateHash)
+            }
+          })
+        })
+      }
+    } catch (error) {
+      console.error("[checkForDuplicates] Failed to check duplicates via API:", error)
+    }
+
+    publishResults()
+    finalizeCheck()
+  }, [instanceId, torrents])
 
 
   // Combine API tags with temporarily added new tags and sort alphabetically
   const allAvailableTags = [...(availableTags || []), ...selectedTags.filter(tag => !availableTags?.includes(tag))].sort()
+
+  const duplicateFileEntries = duplicateSummary.fileMatches
+  const duplicateUrlEntries = duplicateSummary.urlMatches
+  const duplicateFileKeys = Object.keys(duplicateFileEntries)
+  const duplicateUrlKeys = Object.keys(duplicateUrlEntries)
+  const duplicateSelectionCount = duplicateFileKeys.length + duplicateUrlKeys.length
+  const duplicatePreviewNames = duplicateSummary.existingNames.slice(0, 2)
+  const duplicatePreviewRemaining = Math.max(duplicateSummary.existingNames.length - duplicatePreviewNames.length, 0)
+  const showDuplicateCheckIndicator = duplicateCheckStatus === "visible"
 
   const mutation = useMutation({
     retry: false, // Don't retry - could cause duplicate torrent additions
@@ -157,6 +534,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
       form.reset()
       setSelectedTags([])
       setNewTag("")
+      setTagSearch("")
     },
   })
 
@@ -180,14 +558,114 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
       rename: "",
     },
     onSubmit: async ({ value }) => {
-      // Combine selected tags with any new tag
+      // Use the currently selected tags
       const allTags = [...selectedTags]
-      if (newTag.trim() && !allTags.includes(newTag.trim())) {
-        allTags.push(newTag.trim())
-      }
       await mutation.mutateAsync({ ...value, tags: allTags })
     },
   })
+
+  const handleRemoveDuplicateSelections = useCallback(() => {
+    if (duplicateFileKeys.length === 0 && duplicateUrlKeys.length === 0) {
+      return
+    }
+
+    const duplicateFileKeySet = new Set(duplicateFileKeys)
+    const duplicateUrlKeySet = new Set(duplicateUrlKeys)
+
+    const rawFiles = form.getFieldValue("torrentFiles")
+    const currentFiles = Array.isArray(rawFiles) ? (rawFiles as File[]) : null
+    const rawUrls = form.getFieldValue("urls")
+    const currentUrls = typeof rawUrls === "string" ? rawUrls : ""
+
+    const filteredFiles = currentFiles? currentFiles.filter((file) => !duplicateFileKeySet.has(createFileKey(file))): []
+
+    const filteredUrls = currentUrls
+      .split("\n")
+      .map((u) => u.trim())
+      .filter(Boolean)
+      .filter((url) => !duplicateUrlKeySet.has(url))
+
+    const nextFiles = filteredFiles.length > 0 ? filteredFiles : null
+    const nextUrls = filteredUrls.join("\n")
+
+    form.setFieldValue("torrentFiles", nextFiles)
+    form.setFieldValue("urls", nextUrls)
+
+    if (!nextFiles) {
+      setShowFileList(false)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ""
+      }
+    }
+
+    checkForDuplicates(nextFiles, nextUrls)
+  }, [checkForDuplicates, duplicateFileKeys, duplicateUrlKeys, form])
+
+  const handleRemoveFile = useCallback((indexToRemove: number) => {
+    const rawFiles = form.getFieldValue("torrentFiles")
+    const currentFiles = Array.isArray(rawFiles) ? (rawFiles as File[]) : null
+
+    if (!currentFiles) {
+      return
+    }
+
+    const filteredFiles = currentFiles.filter((_, index) => index !== indexToRemove)
+    const nextFiles = filteredFiles.length > 0 ? filteredFiles : null
+
+    form.setFieldValue("torrentFiles", nextFiles)
+
+    if (!nextFiles) {
+      setShowFileList(false)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ""
+      }
+    }
+
+    checkForDuplicates(nextFiles, form.getFieldValue("urls") || "")
+  }, [checkForDuplicates, form])
+
+  useEffect(() => {
+    if (!dropPayload) {
+      return
+    }
+
+    if (dropPayload.type === "file") {
+      const files = dropPayload.files.filter((file): file is File => file instanceof File)
+      setActiveTab("file")
+      form.setFieldValue("torrentFiles", files.length > 0 ? files : null)
+      form.setFieldValue("urls", "")
+      setShowFileList(files.length > 0)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ""
+      }
+      // Check for duplicates when files are dropped
+      checkForDuplicates(files, "")
+    } else if (dropPayload.type === "url") {
+      const urls = dropPayload.urls.map((url) => url.trim()).filter(Boolean)
+      setActiveTab("url")
+      setShowFileList(false)
+      form.setFieldValue("urls", urls.join("\n"))
+      form.setFieldValue("torrentFiles", null)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ""
+      }
+      // Check for duplicates when URLs are dropped
+      checkForDuplicates(null, urls.join("\n"))
+    }
+
+    setOpen(true)
+    onDropPayloadConsumed?.()
+  }, [dropPayload, form, onDropPayloadConsumed, setOpen, checkForDuplicates])
+
+  useEffect(() => {
+    if (open) {
+      return
+    }
+    form.reset()
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""
+    }
+  }, [open, form])
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -239,6 +717,43 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
               </button>
             </div>
 
+            {showDuplicateCheckIndicator && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                Checking for duplicates…
+              </div>
+            )}
+
+            {duplicateSelectionCount > 0 && (
+              <div className="flex flex-wrap items-start justify-between gap-3 rounded-md border border-border bg-muted/60 px-3 py-2">
+                <div className="flex flex-col gap-1 text-sm">
+                  <span className="flex items-center gap-2 font-medium text-yellow-500">
+                    <AlertCircle className="h-4 w-4" />
+                    {duplicateSelectionCount} duplicate selection{duplicateSelectionCount > 1 ? "s" : ""} detected
+                  </span>
+                  {duplicatePreviewNames.length > 0 ? (
+                    <span className="text-xs text-muted-foreground">
+                      Existing torrents: {duplicatePreviewNames.join(", ")}
+                      {duplicatePreviewRemaining > 0 && ` (+${duplicatePreviewRemaining} more)`}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">
+                      Duplicate selections are highlighted below.
+                    </span>
+                  )}
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="text-yellow-600 border-yellow-600/40 hover:bg-yellow-600/10 hover:text-yellow-700"
+                  onClick={handleRemoveDuplicateSelections}
+                >
+                  Remove duplicates
+                </Button>
+              </div>
+            )}
+
             {/* Main Content Tabs */}
             <Tabs defaultValue="basic" className="w-full">
               <TabsList className="grid w-full grid-cols-2">
@@ -273,6 +788,10 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                           onChange={(e) => {
                             const files = e.target.files ? Array.from(e.target.files) : null
                             field.handleChange(files)
+                            // Check for duplicates when files are selected
+                            if (files) {
+                              checkForDuplicates(files, "")
+                            }
                           }}
                         />
                         <Button
@@ -285,10 +804,16 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                           Browse for Torrent Files
                         </Button>
                         {field.state.value && field.state.value.length > 0 && (
-                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
                             <span>
                               {field.state.value.length} file{field.state.value.length > 1 ? "s" : ""} selected
                             </span>
+                            {duplicateFileKeys.length > 0 && (
+                              <span className="flex items-center gap-1 text-xs font-medium text-yellow-500">
+                                <AlertCircle className="h-3 w-3" />
+                                {duplicateFileKeys.length} duplicate file{duplicateFileKeys.length > 1 ? "s" : ""}
+                              </span>
+                            )}
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <button
@@ -301,9 +826,18 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                               </TooltipTrigger>
                               <TooltipContent>
                                 <div className="max-w-xs">
-                                  {field.state.value.slice(0, 3).map((file, index) => (
-                                    <div key={index} className="text-xs truncate">• {file.name}</div>
-                                  ))}
+                                  {field.state.value.slice(0, 3).map((file, index) => {
+                                    const fileKey = createFileKey(file)
+                                    const duplicateInfo = duplicateFileEntries[fileKey]
+                                    return (
+                                      <div
+                                        key={`${fileKey}-${index}`}
+                                        className={`text-xs truncate ${duplicateInfo ? "text-yellow-500" : ""}`}
+                                      >
+                                        • {file.name}
+                                      </div>
+                                    )
+                                  })}
                                   {field.state.value.length > 3 && (
                                     <div className="text-xs">... and {field.state.value.length - 3} more</div>
                                   )}
@@ -314,10 +848,37 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                         )}
                         {showFileList && field.state.value && field.state.value.length > 0 && (
                           <div className="max-h-24 overflow-y-auto border rounded-md p-2">
-                            <div className="text-xs text-muted-foreground space-y-0.5">
-                              {field.state.value.map((file, index) => (
-                                <div key={index} className="break-all">• {file.name}</div>
-                              ))}
+                            <div className="space-y-1 text-xs">
+                              {field.state.value.map((file, index) => {
+                                const fileKey = createFileKey(file)
+                                const duplicateInfo = duplicateFileEntries[fileKey]
+                                const isDuplicate = Boolean(duplicateInfo)
+                                return (
+                                  <div
+                                    key={`${fileKey}-${index}`}
+                                    className={`flex items-start gap-2 rounded-sm px-2 py-1 ${isDuplicate ? "bg-yellow-500/10 text-yellow-600" : "text-muted-foreground"}`}
+                                  >
+                                    <span className="select-none leading-5">•</span>
+                                    <div className="flex-1 break-all">
+                                      <span>{file.name}</span>
+                                      {isDuplicate && duplicateInfo?.matches.length ? (
+                                        <span className="block text-[11px] text-yellow-700">
+                                          Matches existing: {duplicateInfo.matches.slice(0, 2).join(", ")}
+                                          {duplicateInfo.matches.length > 2 && ` (+${duplicateInfo.matches.length - 2} more)`}
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveFile(index)}
+                                      className="shrink-0 h-5 w-5 rounded-sm hover:bg-destructive/10 hover:text-destructive flex items-center justify-center transition-colors"
+                                      title="Remove file"
+                                    >
+                                      <X className="h-3 w-3" />
+                                    </button>
+                                  </div>
+                                )
+                              })}
                             </div>
                           </div>
                         )}
@@ -348,8 +909,33 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                           rows={4}
                           value={field.state.value}
                           onBlur={field.handleBlur}
-                          onChange={(e) => field.handleChange(e.target.value)}
+                          onChange={(e) => {
+                            field.handleChange(e.target.value)
+                            // Check for duplicates when URLs are entered
+                            checkForDuplicates(null, e.target.value)
+                          }}
                         />
+                        {duplicateUrlKeys.length > 0 && (
+                          <div className="rounded-md border border-yellow-600/30 bg-yellow-500/5 p-2 space-y-2 text-xs">
+                            {duplicateUrlKeys.map((urlKey) => {
+                              const duplicateInfo = duplicateUrlEntries[urlKey]
+                              if (!duplicateInfo) {
+                                return null
+                              }
+                              return (
+                                <div key={urlKey} className="text-yellow-600 space-y-1">
+                                  <div className="font-medium truncate">{duplicateInfo.label}</div>
+                                  {duplicateInfo.matches.length > 0 && (
+                                    <div className="text-yellow-700 text-[11px]">
+                                      Matches existing: {duplicateInfo.matches.slice(0, 2).join(", ")}
+                                      {duplicateInfo.matches.length > 2 && ` (+${duplicateInfo.matches.length - 2} more)`}
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
                         {field.state.meta.isTouched && field.state.meta.errors[0] && (
                           <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
                         )}
@@ -806,18 +1392,27 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
         <div className="flex-shrink-0 px-6 py-3 border-t bg-background">
           <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
             <form.Subscribe
-              selector={(state) => [state.canSubmit, state.isSubmitting]}
+              selector={(state) => ({
+                canSubmit: state.canSubmit,
+                isSubmitting: state.isSubmitting,
+                torrentFiles: state.values.torrentFiles,
+              })}
             >
-              {([canSubmit, isSubmitting]) => (
-                <Button
-                  type="submit"
-                  disabled={!canSubmit || isSubmitting || mutation.isPending}
-                  className="w-full sm:flex-1 h-11 sm:h-10 order-1 sm:order-2"
-                  onClick={() => form.handleSubmit()}
-                >
-                  {isSubmitting || mutation.isPending ? "Adding..." : "Add Torrent"}
-                </Button>
-              )}
+              {({ canSubmit, isSubmitting, torrentFiles }) => {
+                const hasSelectedFiles = Array.isArray(torrentFiles) && torrentFiles.length > 0
+                const requiresFileSelection = activeTab === "file" && !hasSelectedFiles
+                const isDisabled = !canSubmit || isSubmitting || mutation.isPending || requiresFileSelection
+                return (
+                  <Button
+                    type="submit"
+                    disabled={isDisabled}
+                    className="w-full sm:flex-1 h-11 sm:h-10 order-1 sm:order-2"
+                    onClick={() => form.handleSubmit()}
+                  >
+                    {isSubmitting || mutation.isPending ? "Adding..." : "Add Torrent"}
+                  </Button>
+                )
+              }}
             </form.Subscribe>
             <Button
               type="button"

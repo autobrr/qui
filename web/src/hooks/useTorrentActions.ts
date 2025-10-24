@@ -5,6 +5,7 @@
 
 import { api } from "@/lib/api"
 import type { Torrent, TorrentFilters } from "@/types"
+import { usePersistedDeleteFiles } from "@/hooks/usePersistedDeleteFiles"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useCallback, useState } from "react"
 import { toast } from "sonner"
@@ -34,9 +35,15 @@ export const TORRENT_ACTIONS = {
 // Derive the type from the const object - single source of truth
 export type TorrentAction = typeof TORRENT_ACTIONS[keyof typeof TORRENT_ACTIONS]
 
+export type TorrentActionComplete =
+  | TorrentAction
+  | "renameTorrent"
+  | "renameTorrentFile"
+  | "renameTorrentFolder"
+
 interface UseTorrentActionsProps {
   instanceId: number
-  onActionComplete?: () => void
+  onActionComplete?: (action: TorrentActionComplete) => void
 }
 
 interface TorrentActionData {
@@ -71,7 +78,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
 
   // Dialog states
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
-  const [deleteFiles, setDeleteFiles] = useState(false)
+  const [deleteFiles, setDeleteFiles] = usePersistedDeleteFiles(false)
   const [showAddTagsDialog, setShowAddTagsDialog] = useState(false)
   const [showSetTagsDialog, setShowSetTagsDialog] = useState(false)
   const [showRemoveTagsDialog, setShowRemoveTagsDialog] = useState(false)
@@ -95,6 +102,12 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
       const { clientHashes, clientCount, ...payload } = data
       void clientHashes
       void clientCount
+      const effectiveFilters = payload.filters? {
+        ...payload.filters,
+        categories: payload.filters.expandedCategories ?? payload.filters.categories ?? [],
+        excludeCategories: payload.filters.expandedExcludeCategories ?? payload.filters.excludeCategories ?? [],
+      }: undefined
+
       return api.bulkAction(instanceId, {
         hashes: payload.hashes,
         action: payload.action,
@@ -109,7 +122,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
         downloadLimit: payload.downloadLimit,
         location: payload.location,
         selectAll: payload.selectAll,
-        filters: payload.filters,
+        filters: effectiveFilters,
         search: payload.search,
         excludeHashes: payload.excludeHashes,
       })
@@ -219,7 +232,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
         setShowReannounceDialog(false)
       }
 
-      onActionComplete?.()
+      onActionComplete?.(variables.action)
     },
     onError: (error: Error, variables) => {
       const count = variables.hashes.length || 1
@@ -254,7 +267,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
       }, 750)
 
       toast.success(`Renamed torrent to "${variables.name}"`)
-      onActionComplete?.()
+      onActionComplete?.("renameTorrent")
     },
     onError: (error: Error) => {
       toast.error(`Failed to rename torrent: ${error.message}`)
@@ -292,7 +305,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
 
       const newFileName = variables.newPath.split("/").pop() ?? variables.newPath
       toast.success(`Renamed file to "${newFileName}"`)
-      onActionComplete?.()
+      onActionComplete?.("renameTorrentFile")
     },
     onError: (error: Error) => {
       toast.error(`Failed to rename file: ${error.message}`)
@@ -330,7 +343,7 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
 
       const newFolderName = variables.newPath.split("/").pop() ?? variables.newPath
       toast.success(`Renamed folder to "${newFolderName}"`)
-      onActionComplete?.()
+      onActionComplete?.("renameTorrentFolder")
     },
     onError: (error: Error) => {
       toast.error(`Failed to rename folder: ${error.message}`)
@@ -373,7 +386,6 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
       clientCount,
     })
     setShowDeleteDialog(false)
-    setDeleteFiles(false)
     setContextHashes([])
     setContextTorrents([])
   }, [mutation, deleteFiles])

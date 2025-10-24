@@ -22,10 +22,12 @@ type Client struct {
 	webAPIVersion           string
 	supportsSetTags         bool
 	supportsTorrentCreation bool
+	supportsTorrentExport   bool
 	supportsTrackerEditing  bool
 	supportsRenameTorrent   bool
 	supportsRenameFile      bool
 	supportsRenameFolder    bool
+	supportsSubcategories   bool
 	lastHealthCheck         time.Time
 	isHealthy               bool
 	syncManager             *qbt.SyncManager
@@ -75,10 +77,12 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 
 	supportsSetTags := false
 	supportsTorrentCreation := false
+	supportsTorrentExport := false
 	supportsTrackerEditing := false
 	supportsRenameTorrent := false
 	supportsRenameFile := false
 	supportsRenameFolder := false
+	supportsSubcategories := false
 	if webAPIVersion != "" {
 		if v, err := semver.NewVersion(webAPIVersion); err == nil {
 			setTagsMinVersion := semver.MustParse("2.11.4")
@@ -86,6 +90,10 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 
 			torrentCreationMinVersion := semver.MustParse("2.11.2")
 			supportsTorrentCreation = !v.LessThan(torrentCreationMinVersion)
+
+			// Torrent export endpoint: WebAPI 2.8.11+ (qBittorrent 4.5.0+, introduced in 4.5.0beta1)
+			exportTorrentMinVersion := semver.MustParse("2.8.11")
+			supportsTorrentExport = !v.LessThan(exportTorrentMinVersion)
 
 			trackerEditingMinVersion := semver.MustParse("2.2.0")
 			supportsTrackerEditing = !v.LessThan(trackerEditingMinVersion)
@@ -98,9 +106,13 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 			renameFileMinVersion := semver.MustParse("2.4.0")
 			supportsRenameFile = !v.LessThan(renameFileMinVersion)
 
-			// Rename folder: qBittorrent 4.4.0+ (WebAPI 2.8.4+)
-			renameFolderMinVersion := semver.MustParse("2.8.4")
+			// Rename folder: qBittorrent 4.3.3+ (WebAPI 2.7.0+)
+			renameFolderMinVersion := semver.MustParse("2.7.0")
 			supportsRenameFolder = !v.LessThan(renameFolderMinVersion)
+
+			// Subcategories: qBittorrent 4.6+ (WebAPI 2.9.0+)
+			subcategoriesMinVersion := semver.MustParse("2.9.0")
+			supportsSubcategories = !v.LessThan(subcategoriesMinVersion)
 		}
 	}
 
@@ -110,10 +122,12 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 		webAPIVersion:           webAPIVersion,
 		supportsSetTags:         supportsSetTags,
 		supportsTorrentCreation: supportsTorrentCreation,
+		supportsTorrentExport:   supportsTorrentExport,
 		supportsTrackerEditing:  supportsTrackerEditing,
 		supportsRenameTorrent:   supportsRenameTorrent,
 		supportsRenameFile:      supportsRenameFile,
 		supportsRenameFolder:    supportsRenameFolder,
+		supportsSubcategories:   supportsSubcategories,
 		lastHealthCheck:         time.Now(),
 		isHealthy:               true,
 		optimisticUpdates: ttlcache.New(ttlcache.Options[string, *OptimisticTorrentUpdate]{}.
@@ -141,26 +155,17 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 
 	client.syncManager = qbtClient.NewSyncManager(syncOpts)
 
-	supportsInclude := client.supportsTrackerInclude()
-
 	log.Debug().
 		Int("instanceID", instanceID).
 		Str("host", instanceHost).
 		Str("webAPIVersion", webAPIVersion).
 		Bool("supportsSetTags", supportsSetTags).
 		Bool("supportsTorrentCreation", supportsTorrentCreation).
+		Bool("supportsTorrentExport", supportsTorrentExport).
 		Bool("supportsTrackerEditing", supportsTrackerEditing).
-		Bool("includeTrackers", supportsInclude).
+		Bool("supportsSubcategories", supportsSubcategories).
 		Bool("tlsSkipVerify", tlsSkipVerify).
 		Msg("qBittorrent client created successfully")
-
-	if !supportsInclude {
-		log.Debug().
-			Int("instanceID", instanceID).
-			Str("host", instanceHost).
-			Str("webAPIVersion", webAPIVersion).
-			Msg("qBittorrent instance does not support includeTrackers; using fallback tracker queries for status detection")
-	}
 
 	return client, nil
 }
@@ -209,6 +214,12 @@ func (c *Client) SupportsTrackerEditing() bool {
 	return c.supportsTrackerEditing
 }
 
+func (c *Client) SupportsTorrentExport() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.supportsTorrentExport
+}
+
 func (c *Client) updateServerState(data *qbt.MainData) {
 	c.serverStateMu.Lock()
 	defer c.serverStateMu.Unlock()
@@ -250,6 +261,17 @@ func (c *Client) GetCachedConnectionStatus() string {
 	return state.ConnectionStatus
 }
 
+// UpdateWithMainData updates the client's cached state with fresh MainData
+// This is used when intercepting sync/maindata responses to keep local state in sync
+func (c *Client) UpdateWithMainData(data *qbt.MainData) {
+	c.updateServerState(data)
+	c.updateHealthStatus(true)
+	log.Debug().
+		Int("instanceID", c.instanceID).
+		Int("torrentCount", len(data.Torrents)).
+		Msg("Updated client state with fresh maindata from intercepted request")
+}
+
 func (c *Client) SupportsRenameTorrent() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -266,6 +288,12 @@ func (c *Client) SupportsRenameFolder() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.supportsRenameFolder
+}
+
+func (c *Client) SupportsSubcategories() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.supportsSubcategories
 }
 
 // getTorrentsByHashes returns multiple torrents by their hashes (O(n) where n is number of requested hashes)
@@ -327,24 +355,29 @@ func (c *Client) trackerManager() *qbt.TrackerManager {
 }
 
 func (c *Client) supportsTrackerInclude() bool {
-	if tm := c.trackerManager(); tm != nil {
-		return tm.SupportsIncludeTrackers()
+	if c.trackerManager() == nil {
+		return false
 	}
-	return false
+
+	// Check if the underlying client supports tracker include
+	return c.trackerManager().SupportsIncludeTrackers()
 }
 
 func (c *Client) hydrateTorrentsWithTrackers(ctx context.Context, torrents []qbt.Torrent, allowFetch bool) ([]qbt.Torrent, map[string][]qbt.TorrentTracker, []string, error) {
+	// Call sync before getting trackers
+	if c.syncManager != nil {
+		if err := c.syncManager.Sync(ctx); err != nil {
+			return torrents, nil, nil, fmt.Errorf("failed to sync: %w", err)
+		}
+	}
+
 	tm := c.trackerManager()
 	if tm == nil {
 		return torrents, nil, nil, fmt.Errorf("tracker manager unavailable")
 	}
 
-	opts := make([]qbt.TrackerHydrateOption, 0, 2)
-	if !allowFetch {
-		opts = append(opts, qbt.WithTrackerAllowFetch(false))
-	}
-
-	return tm.HydrateTorrents(ctx, torrents, opts...)
+	enriched, trackerData := tm.HydrateTorrents(ctx, torrents)
+	return enriched, trackerData, nil, nil
 }
 
 func (c *Client) invalidateTrackerCache(hashes ...string) {

@@ -233,12 +233,12 @@ export function MobileFooterNav() {
             <button
               className={cn(
                 "flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 hover:cursor-pointer",
-                (location.pathname === "/settings" || location.pathname === "/instances")? "text-primary": "text-muted-foreground hover:text-foreground"
+                location.pathname === "/settings"? "text-primary": "text-muted-foreground hover:text-foreground"
               )}
             >
               <Settings className={cn(
                 "h-5 w-5",
-                (location.pathname === "/settings" || location.pathname === "/instances") && "text-primary"
+                location.pathname === "/settings" && "text-primary"
               )} />
               <span className="truncate">Settings</span>
             </button>
@@ -255,11 +255,21 @@ export function MobileFooterNav() {
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
               <Link
-                to="/instances"
+                to="/settings"
+                search={{ tab: "instances" }}
                 className="flex items-center gap-2"
               >
                 <Server className="h-4 w-4" />
                 Manage Instances
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link
+                to="/backups"
+                className="flex items-center gap-2"
+              >
+                <Archive className="h-4 w-4" />
+                Instance Backups
               </Link>
             </DropdownMenuItem>
 

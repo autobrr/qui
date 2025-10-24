@@ -3,9 +3,11 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { createFileRoute, Navigate } from "@tanstack/react-router"
-import { Torrents } from "@/pages/Torrents"
+import { useLayoutRoute } from "@/contexts/LayoutRouteContext"
 import { useInstances } from "@/hooks/useInstances"
+import { Torrents } from "@/pages/Torrents"
+import { createFileRoute, Navigate } from "@tanstack/react-router"
+import { useLayoutEffect } from "react"
 import { z } from "zod"
 
 const instanceSearchSchema = z.object({
@@ -21,7 +23,25 @@ function InstanceTorrents() {
   const { instanceId } = Route.useParams()
   const search = Route.useSearch()
   const navigate = Route.useNavigate()
+  const { setLayoutRouteState, resetLayoutRouteState } = useLayoutRoute()
   const { instances, isLoading } = useInstances()
+  const instanceIdNumber = Number.parseInt(instanceId, 10)
+
+  useLayoutEffect(() => {
+    if (!Number.isFinite(instanceIdNumber)) {
+      resetLayoutRouteState()
+      return
+    }
+
+    setLayoutRouteState({
+      showInstanceControls: true,
+      instanceId: instanceIdNumber,
+    })
+
+    return () => {
+      resetLayoutRouteState()
+    }
+  }, [instanceIdNumber, resetLayoutRouteState, setLayoutRouteState])
 
   const handleSearchChange = (newSearch: { modal?: "add-torrent" | "create-torrent" | "tasks" | undefined }) => {
     navigate({
@@ -31,10 +51,10 @@ function InstanceTorrents() {
   }
 
   if (isLoading) {
-    return <div>Loading instances...</div>
+    return <div className="p-6">Loading instances...</div>
   }
 
-  const instance = instances?.find(i => i.id === parseInt(instanceId))
+  const instance = instances?.find(i => i.id === instanceIdNumber)
 
   if (!instance) {
     return (
@@ -42,14 +62,14 @@ function InstanceTorrents() {
         <h1>Instance not found</h1>
         <p>Instance ID: {instanceId}</p>
         <p>Available instances: {instances?.map(i => i.id).join(", ")}</p>
-        <Navigate to="/instances" />
+        <Navigate to="/settings" search={{ tab: "instances" }} />
       </div>
     )
   }
 
   return (
     <Torrents
-      instanceId={parseInt(instanceId)}
+      instanceId={instanceIdNumber}
       instanceName={instance.name}
       search={search}
       onSearchChange={handleSearchChange}

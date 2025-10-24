@@ -36,7 +36,7 @@ func IsAuthenticated(authService *auth.Service, sessionManager *scs.SessionManag
 
 			// Check session using SCS
 			if !sessionManager.GetBool(r.Context(), "authenticated") {
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				http.Error(w, "Unauthorized", http.StatusForbidden)
 				return
 			}
 

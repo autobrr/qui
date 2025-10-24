@@ -89,9 +89,14 @@ func TestSyncManager_FilteringAndSorting(t *testing.T) {
 		assert.Greater(t, stats.TotalDownloadSpeed, 0, "Should have download speed")
 		assert.Greater(t, stats.TotalUploadSpeed, 0, "Should have upload speed")
 
-		// Verify state counts are reasonable
-		totalStates := stats.Downloading + stats.Seeding + stats.Paused + stats.Error
-		assert.Equal(t, 10, totalStates, "All torrents should be categorized")
+		// Verify state counts are reasonable - only actively downloading/seeding torrents are counted
+		// Stalled and queued torrents are not counted in Downloading/Seeding
+		totalStates := stats.Downloading + stats.Seeding + stats.Paused + stats.Error + stats.Checking
+		assert.Equal(t, 7, totalStates, "Actively downloading/seeding/paused/errored/checking torrents should be categorized")
+
+		// Specifically check the active counts
+		assert.Equal(t, 2, stats.Downloading, "Should have 2 actively downloading torrents")
+		assert.Equal(t, 2, stats.Seeding, "Should have 2 actively seeding torrents")
 	})
 }
 
@@ -156,10 +161,15 @@ func TestSyncManager_ApplyManualFilters_Exclusions(t *testing.T) {
 			filters:  FilterOptions{Categories: []string{"movies"}, ExcludeTrackers: []string{"trackerc.com"}},
 			expected: []string{"hash1"},
 		},
+		{
+			name:     "hash filters include subset",
+			filters:  FilterOptions{Hashes: []string{"hash1", "HASH3"}},
+			expected: []string{"hash1", "hash3"},
+		},
 	}
 
 	for _, tc := range testCases {
-		result := sm.applyManualFilters(nil, torrents, tc.filters, mainData)
+		result := sm.applyManualFilters(nil, torrents, tc.filters, mainData, nil, false)
 		assert.ElementsMatch(t, tc.expected, hashes(result), tc.name)
 	}
 }
@@ -372,6 +382,13 @@ func TestSyncManager_SearchFunctionality(t *testing.T) {
 				contains(result.Name, "2023") || contains(result.Tags, "2023"),
 				"Result should contain '2023': %s", result.Name)
 		}
+	})
+
+	t.Run("filterTorrentsBySearch hash match", func(t *testing.T) {
+		results := sm.filterTorrentsBySearch(torrents, "hash4")
+
+		assert.Len(t, results, 1, "Should find torrent by hash")
+		assert.Equal(t, "Movie.2023.1080p.BluRay.x264", results[0].Name)
 	})
 
 	t.Run("filterTorrentsByGlob pattern match", func(t *testing.T) {

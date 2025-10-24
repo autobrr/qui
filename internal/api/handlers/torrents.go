@@ -17,15 +17,13 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode"
-	"unicode/utf8"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
-	"golang.org/x/net/publicsuffix"
 
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/torrentname"
 )
 
 type TorrentsHandler struct {
@@ -135,6 +133,60 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Data-Source", "fresh")
 
 	RespondJSON(w, http.StatusOK, response)
+}
+
+// CheckDuplicates validates if any of the provided hashes already exist in qBittorrent.
+func (h *TorrentsHandler) CheckDuplicates(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	var req struct {
+		Hashes []string `json:"hashes"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if len(req.Hashes) == 0 {
+		RespondJSON(w, http.StatusOK, struct {
+			Duplicates []qbittorrent.DuplicateTorrentMatch `json:"duplicates"`
+		}{Duplicates: []qbittorrent.DuplicateTorrentMatch{}})
+		return
+	}
+
+	if len(req.Hashes) > 512 {
+		RespondError(w, http.StatusBadRequest, "Too many hashes provided (maximum 512)")
+		return
+	}
+
+	syncManager, err := h.syncManager.GetQBittorrentSyncManager(r.Context(), instanceID)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get qBittorrent sync manager")
+		RespondError(w, http.StatusInternalServerError, "Failed to check duplicate torrents")
+		return
+	}
+
+	torrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{Hashes: req.Hashes})
+
+	matches := make([]qbittorrent.DuplicateTorrentMatch, len(torrents))
+	for i, torrent := range torrents {
+		matches[i] = qbittorrent.DuplicateTorrentMatch{
+			Hash:          torrent.Hash,
+			InfohashV1:    strings.TrimSpace(torrent.InfohashV1),
+			InfohashV2:    strings.TrimSpace(torrent.InfohashV2),
+			Name:          torrent.Name,
+			MatchedHashes: []string{torrent.Hash},
+		}
+	}
+
+	RespondJSON(w, http.StatusOK, struct {
+		Duplicates []qbittorrent.DuplicateTorrentMatch `json:"duplicates"`
+	}{Duplicates: matches})
 }
 
 // AddTorrentRequest represents a request to add a torrent
@@ -1201,7 +1253,7 @@ func (h *TorrentsHandler) ExportTorrent(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	filename := sanitizeTorrentExportFilename(suggestedName, hash, trackerDomain, hash)
+	filename := torrentname.SanitizeExportFilename(suggestedName, hash, trackerDomain, hash)
 
 	disposition := mime.FormatMediaType("attachment", map[string]string{"filename": filename})
 	if disposition == "" {
@@ -1292,167 +1344,6 @@ func (h *TorrentsHandler) BanPeers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	RespondJSON(w, http.StatusOK, map[string]bool{"success": true})
-}
-
-const (
-	// keep filenames comfortably under the 255 byte limit common across modern filesystems
-	maxExportFilenameBytes = 240
-	shortTorrentHashLength = 5
-	torrentFileExtension   = ".torrent"
-)
-
-// truncateUTF8 preserves valid rune boundaries while capping the returned string to maxBytes.
-func truncateUTF8(input string, maxBytes int) string {
-	if len(input) <= maxBytes {
-		return input
-	}
-
-	cut := 0
-	for cut < len(input) {
-		_, size := utf8.DecodeRuneInString(input[cut:])
-		if size <= 0 || cut+size > maxBytes {
-			break
-		}
-		cut += size
-	}
-
-	return input[:cut]
-}
-
-func sanitizeTorrentExportFilename(name, fallback, trackerDomain, hash string) string {
-	trimmed := strings.TrimSpace(name)
-	alt := strings.TrimSpace(fallback)
-
-	if trimmed == "" {
-		trimmed = alt
-	}
-
-	if trimmed == "" {
-		trimmed = "torrent"
-	}
-
-	sanitized := strings.Map(func(r rune) rune {
-		switch r {
-		case '/', '\\', ':', '*', '?', '"', '<', '>', '|':
-			return '_'
-		case 0:
-			return -1
-		}
-
-		if r < 32 || r == 127 {
-			return -1
-		}
-
-		return r
-	}, trimmed)
-
-	sanitized = strings.Trim(sanitized, " .")
-	if sanitized == "" {
-		sanitized = "torrent"
-	}
-
-	trackerTag := trackerTagFromDomain(trackerDomain)
-	shortHash := shortTorrentHash(hash)
-
-	prefix := ""
-	if trackerTag != "" {
-		prefix = "[" + trackerTag + "] "
-	}
-
-	suffix := ""
-	if shortHash != "" {
-		suffix = " - " + shortHash
-	}
-
-	coreBudget := max(maxExportFilenameBytes-len(torrentFileExtension), 0)
-
-	allowedBytes := coreBudget - len(prefix) - len(suffix)
-	if allowedBytes < 1 {
-		prefix = ""
-		allowedBytes = coreBudget - len(suffix)
-		if allowedBytes < 1 {
-			suffix = ""
-			allowedBytes = coreBudget
-			if allowedBytes < 1 {
-				allowedBytes = 0
-			}
-		}
-	}
-
-	sanitized = truncateUTF8(sanitized, allowedBytes)
-	if sanitized == "" {
-		sanitized = "torrent"
-	}
-
-	filename := prefix + sanitized + suffix
-	if !strings.HasSuffix(strings.ToLower(filename), torrentFileExtension) {
-		filename += torrentFileExtension
-	}
-
-	return filename
-}
-
-func trackerTagFromDomain(domain string) string {
-	domain = strings.TrimSpace(domain)
-	if domain == "" {
-		return ""
-	}
-
-	domain = strings.TrimSuffix(domain, ".")
-	domain = strings.TrimPrefix(domain, "www.")
-
-	base := domain
-	if registrable, err := publicsuffix.EffectiveTLDPlusOne(domain); err == nil {
-		base = registrable
-	}
-
-	if idx := strings.IndexRune(base, '.'); idx != -1 {
-		base = base[:idx]
-	}
-
-	base = strings.TrimSpace(base)
-	if base == "" {
-		return ""
-	}
-
-	// Domain labels should already be safe, but guard against unexpected characters
-	var builder strings.Builder
-	for _, r := range base {
-		switch {
-		case unicode.IsLetter(r):
-			builder.WriteRune(unicode.ToLower(r))
-		case unicode.IsDigit(r):
-			builder.WriteRune(r)
-		case r == '-':
-			builder.WriteRune(r)
-		}
-	}
-
-	tag := strings.Trim(builder.String(), "-")
-	return tag
-}
-
-func shortTorrentHash(hash string) string {
-	hash = strings.TrimSpace(hash)
-	if hash == "" {
-		return ""
-	}
-
-	var builder strings.Builder
-	builder.Grow(shortTorrentHashLength)
-	for i := 0; i < len(hash) && builder.Len() < shortTorrentHashLength; i++ {
-		c := hash[i]
-		switch {
-		case '0' <= c && c <= '9':
-			builder.WriteByte(c)
-		case 'a' <= c && c <= 'f':
-			builder.WriteByte(c)
-		case 'A' <= c && c <= 'F':
-			builder.WriteByte(c + ('a' - 'A'))
-		}
-	}
-
-	return builder.String()
 }
 
 // CreateTorrent creates a new torrent file from source path
