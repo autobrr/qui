@@ -387,17 +387,24 @@ func TestMigrationDataTransformations(t *testing.T) {
 			verifyData: func(t *testing.T, ctx context.Context, db *DB, data map[string]interface{}) {
 				// After migration 010, tables should exist with string interning
 				// Insert test data to verify functionality
-				torrentHashID, err := db.GetOrCreateStringID(ctx, data["torrentHash"].(string), nil)
+
+				// Intern the hash and name strings
+				var hashID, nameID int64
+				err := db.QueryRowContext(ctx,
+					"INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id",
+					data["torrentHash"].(string)).Scan(&hashID)
 				require.NoError(t, err)
 
-				fileNameID, err := db.GetOrCreateStringID(ctx, data["fileName"].(string), nil)
+				err = db.QueryRowContext(ctx,
+					"INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id",
+					data["fileName"].(string)).Scan(&nameID)
 				require.NoError(t, err)
 
 				// Insert torrent file cache entry using string IDs
 				result, err := db.ExecContext(ctx,
 					`INSERT INTO torrent_files_cache (instance_id, torrent_hash_id, file_index, name_id, size, progress, priority, availability) 
 					VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-					data["instanceID"], torrentHashID, 0, fileNameID, data["fileSize"], 1.0, 7, 1.0)
+					data["instanceID"], hashID, 0, nameID, data["fileSize"], 1.0, 7, 1.0)
 				require.NoError(t, err)
 				cacheID, _ := result.LastInsertId()
 
@@ -405,7 +412,7 @@ func TestMigrationDataTransformations(t *testing.T) {
 				_, err = db.ExecContext(ctx,
 					`INSERT INTO torrent_files_sync (instance_id, torrent_hash_id, torrent_progress, file_count) 
 					VALUES (?, ?, ?, ?)`,
-					data["instanceID"], torrentHashID, 1.0, 1)
+					data["instanceID"], hashID, 1.0, 1)
 				require.NoError(t, err)
 
 				// Verify via view

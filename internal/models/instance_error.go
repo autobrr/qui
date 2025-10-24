@@ -71,11 +71,27 @@ func (s *InstanceErrorStore) RecordError(ctx context.Context, instanceID int, er
 		return nil // Skip duplicate
 	}
 
-	// Insert the error using a subquery to intern strings atomically
-	internSubquery := s.db.GetOrCreateStringID()
-	query := fmt.Sprintf(`INSERT INTO instance_errors (instance_id, error_type_id, error_message_id) 
-              VALUES (?, %s, %s)`, internSubquery, internSubquery)
-	_, execErr := s.db.ExecContext(ctx, query, instanceID, errorType, errorMessage)
+	// Start a transaction to ensure atomicity
+	tx, txErr := s.db.BeginTx(ctx, nil)
+	if txErr != nil {
+		return fmt.Errorf("failed to begin transaction: %w", txErr)
+	}
+	defer tx.Rollback()
+
+	// Intern strings first
+	var errorTypeID, errorMessageID int64
+	err = tx.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", errorType).Scan(&errorTypeID)
+	if err != nil {
+		return fmt.Errorf("failed to intern error_type: %w", err)
+	}
+	err = tx.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", errorMessage).Scan(&errorMessageID)
+	if err != nil {
+		return fmt.Errorf("failed to intern error_message: %w", err)
+	}
+
+	// Insert the error with interned IDs
+	_, execErr := tx.ExecContext(ctx, `INSERT INTO instance_errors (instance_id, error_type_id, error_message_id) VALUES (?, ?, ?)`,
+		instanceID, errorTypeID, errorMessageID)
 
 	// Handle foreign key constraint errors gracefully
 	if execErr != nil && strings.Contains(execErr.Error(), "FOREIGN KEY constraint failed") {
@@ -83,7 +99,11 @@ func (s *InstanceErrorStore) RecordError(ctx context.Context, instanceID int, er
 		return nil
 	}
 
-	return execErr
+	if execErr != nil {
+		return execErr
+	}
+
+	return tx.Commit()
 }
 
 // GetRecentErrors retrieves the last N errors for an instance

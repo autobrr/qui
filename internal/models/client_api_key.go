@@ -49,17 +49,21 @@ func (s *ClientAPIKeyStore) Create(ctx context.Context, clientName string, insta
 	}
 	defer tx.Rollback()
 
-	// Insert the client API key using a subquery to get or create the string ID atomically
-	internSubquery := s.db.GetOrCreateStringID()
-	query := fmt.Sprintf(`
-		INSERT INTO client_api_keys (key_hash, client_name_id, instance_id) 
-		VALUES (?, %s, ?)
-		RETURNING id, key_hash, instance_id, created_at, last_used_at
-	`, internSubquery)
+	// Intern the client name first
+	var clientNameID int64
+	err = tx.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", clientName).Scan(&clientNameID)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to intern client_name: %w", err)
+	}
 
+	// Insert the client API key
 	clientAPIKey := &ClientAPIKey{}
 	var createdAt, lastUsedAt sql.NullTime
-	err = tx.QueryRowContext(ctx, query, keyHash, clientName, instanceID).Scan(
+	err = tx.QueryRowContext(ctx, `
+		INSERT INTO client_api_keys (key_hash, client_name_id, instance_id) 
+		VALUES (?, ?, ?)
+		RETURNING id, key_hash, instance_id, created_at, last_used_at
+	`, keyHash, clientNameID, instanceID).Scan(
 		&clientAPIKey.ID,
 		&clientAPIKey.KeyHash,
 		&clientAPIKey.InstanceID,

@@ -243,38 +243,41 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 	}
 	defer tx.Rollback()
 
-	// Build INSERT query with subqueries for string interning
-	internSubquery := s.db.GetOrCreateStringID()
-
-	var query string
-	var args []any
-
-	if basicUsername != nil && *basicUsername != "" {
-		query = fmt.Sprintf(`
-			INSERT INTO instances (name_id, host_id, username_id, password_encrypted, basic_username_id, basic_password_encrypted, tls_skip_verify) 
-			VALUES (%s, %s, %s, ?, %s, ?, ?)
-			RETURNING id, name_id, host_id, username_id, password_encrypted, basic_username_id, basic_password_encrypted, tls_skip_verify
-		`, internSubquery, internSubquery, internSubquery, internSubquery)
-		args = []any{name, normalizedHost, username, encryptedPassword, *basicUsername, encryptedBasicPassword, tlsSkipVerify}
-	} else {
-		query = fmt.Sprintf(`
-			INSERT INTO instances (name_id, host_id, username_id, password_encrypted, basic_username_id, basic_password_encrypted, tls_skip_verify) 
-			VALUES (%s, %s, %s, ?, NULL, ?, ?)
-			RETURNING id, name_id, host_id, username_id, password_encrypted, basic_username_id, basic_password_encrypted, tls_skip_verify
-		`, internSubquery, internSubquery, internSubquery)
-		args = []any{name, normalizedHost, username, encryptedPassword, encryptedBasicPassword, tlsSkipVerify}
+	// Intern strings first
+	var nameID, hostID, usernameID int64
+	err = tx.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", name).Scan(&nameID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to intern name: %w", err)
+	}
+	err = tx.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", normalizedHost).Scan(&hostID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to intern host: %w", err)
+	}
+	err = tx.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", username).Scan(&usernameID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to intern username: %w", err)
 	}
 
+	// Intern basic username if provided
+	var basicUsernameID sql.NullInt64
+	if basicUsername != nil && *basicUsername != "" {
+		var id int64
+		err = tx.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", *basicUsername).Scan(&id)
+		if err != nil {
+			return nil, fmt.Errorf("failed to intern basic_username: %w", err)
+		}
+		basicUsernameID = sql.NullInt64{Int64: id, Valid: true}
+	}
+
+	// Insert instance with the interned IDs
 	instance := &Instance{}
-	var returnedNameID, returnedHostID, returnedUsernameID int64
-	var returnedBasicUsernameID *int64
-	err = tx.QueryRowContext(ctx, query, args...).Scan(
+	err = tx.QueryRowContext(ctx, `
+		INSERT INTO instances (name_id, host_id, username_id, password_encrypted, basic_username_id, basic_password_encrypted, tls_skip_verify) 
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+		RETURNING id, password_encrypted, basic_password_encrypted, tls_skip_verify
+	`, nameID, hostID, usernameID, encryptedPassword, basicUsernameID, encryptedBasicPassword, tlsSkipVerify).Scan(
 		&instance.ID,
-		&returnedNameID,
-		&returnedHostID,
-		&returnedUsernameID,
 		&instance.PasswordEncrypted,
-		&returnedBasicUsernameID,
 		&instance.BasicPasswordEncrypted,
 		&instance.TLSSkipVerify,
 	)
@@ -376,12 +379,24 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 	}
 	defer tx.Rollback()
 
-	// Build UPDATE query with subqueries for string interning
-	internSubquery := s.db.GetOrCreateStringID()
+	// Intern required strings first
+	var nameID, hostID, usernameID int64
+	err = tx.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", name).Scan(&nameID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to intern name: %w", err)
+	}
+	err = tx.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", normalizedHost).Scan(&hostID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to intern host: %w", err)
+	}
+	err = tx.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", username).Scan(&usernameID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to intern username: %w", err)
+	}
 
-	query := fmt.Sprintf(`UPDATE instances SET name_id = %s, host_id = %s, username_id = %s`,
-		internSubquery, internSubquery, internSubquery)
-	args := []any{name, normalizedHost, username}
+	// Build UPDATE query
+	query := "UPDATE instances SET name_id = ?, host_id = ?, username_id = ?"
+	args := []any{nameID, hostID, usernameID}
 
 	// Handle basic_username update
 	if basicUsername != nil {
@@ -390,8 +405,13 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 			query += ", basic_username_id = NULL"
 		} else {
 			// Basic username provided - intern and update
-			query += fmt.Sprintf(", basic_username_id = %s", internSubquery)
-			args = append(args, *basicUsername)
+			var basicUsernameID int64
+			err = tx.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", *basicUsername).Scan(&basicUsernameID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to intern basic_username: %w", err)
+			}
+			query += ", basic_username_id = ?"
+			args = append(args, basicUsernameID)
 		}
 	}
 

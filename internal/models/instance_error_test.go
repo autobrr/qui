@@ -99,13 +99,15 @@ func TestInstanceErrorStore_RecordError_DeduplicatesWithinOneMinute(t *testing.T
 	ctx := context.Background()
 	db, store := setupInstanceErrorTestDB(t)
 
-	// Intern the instance fields
-	nameID, err := db.GetOrCreateStringID(ctx, "test", nil)
+	// Insert instance - intern strings first
+	var nameID, hostID, usernameID int64
+	err := db.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", "test").Scan(&nameID)
 	require.NoError(t, err)
-	hostID, err := db.GetOrCreateStringID(ctx, "http://localhost", nil)
+	err = db.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", "http://localhost").Scan(&hostID)
 	require.NoError(t, err)
-	usernameID, err := db.GetOrCreateStringID(ctx, "user", nil)
+	err = db.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", "user").Scan(&usernameID)
 	require.NoError(t, err)
+
 	_, err = db.Exec("INSERT INTO instances (id, name_id, host_id, username_id, password_encrypted) VALUES (?, ?, ?, ?, 'pass')", 1, nameID, hostID, usernameID)
 	require.NoError(t, err)
 

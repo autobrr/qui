@@ -103,7 +103,10 @@ func (h *StringPoolHelper) GetOrCreateStringIDNullable(ctx context.Context, valu
 		return nil, nil
 	}
 
-	id, err := h.db.GetOrCreateStringID(ctx, value, nil)
+	var id int64
+	err := h.db.QueryRowContext(ctx,
+		"INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id",
+		value).Scan(&id)
 	if err != nil {
 		return nil, err
 	}
@@ -170,7 +173,10 @@ func (s *StringReference) Load(ctx context.Context, db *DB) error {
 
 // GetOrCreateFromValue creates a StringReference from a string value
 func (h *StringPoolHelper) GetOrCreateFromValue(ctx context.Context, value string) (StringReference, error) {
-	id, err := h.db.GetOrCreateStringID(ctx, value, nil)
+	var id int64
+	err := h.db.QueryRowContext(ctx,
+		"INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id",
+		value).Scan(&id)
 	if err != nil {
 		return StringReference{}, err
 	}

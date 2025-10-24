@@ -60,21 +60,28 @@ func (s *APIKeyStore) Create(ctx context.Context, name string) (string, *APIKey,
 	// Hash the key for storage
 	keyHash := HashAPIKey(rawKey)
 
-	// Intern the API key name
-	nameID, err := s.db.GetOrCreateStringID(ctx, name, nil)
+	// Start a transaction
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return "", nil, fmt.Errorf("failed to intern api key name: %w", err)
+		return "", nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Intern the name first
+	var nameID int64
+	err = tx.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", name).Scan(&nameID)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to intern name: %w", err)
 	}
 
-	query := `
+	// Insert the API key
+	apiKey := &APIKey{}
+	var createdAt, lastUsedAt sql.NullTime
+	err = tx.QueryRowContext(ctx, `
 		INSERT INTO api_keys (key_hash, name_id) 
 		VALUES (?, ?)
 		RETURNING id, key_hash, created_at, last_used_at
-	`
-
-	apiKey := &APIKey{}
-	var createdAt, lastUsedAt sql.NullTime
-	err = s.db.QueryRowContext(ctx, query, keyHash, nameID).Scan(
+	`, keyHash, nameID).Scan(
 		&apiKey.ID,
 		&apiKey.KeyHash,
 		&createdAt,
@@ -83,6 +90,10 @@ func (s *APIKeyStore) Create(ctx context.Context, name string) (string, *APIKey,
 
 	if err != nil {
 		return "", nil, err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return "", nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	apiKey.Name = name

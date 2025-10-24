@@ -19,14 +19,19 @@ import (
 )
 
 // Helper function to insert a test instance with interned fields
-func insertTestInstance(t *testing.T, db *database.DB, ctx context.Context, name string) int {
+func insertTestInstance(t *testing.T, db *database.DB, name string) int {
 	t.Helper()
-	nameID, err := db.GetOrCreateStringID(ctx, name, nil)
+	ctx := context.Background()
+
+	// Intern strings
+	var nameID, hostID, usernameID int64
+	err := db.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", name).Scan(&nameID)
 	require.NoError(t, err)
-	hostID, err := db.GetOrCreateStringID(ctx, "http://localhost", nil)
+	err = db.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", "http://localhost").Scan(&hostID)
 	require.NoError(t, err)
-	usernameID, err := db.GetOrCreateStringID(ctx, "user", nil)
+	err = db.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", "user").Scan(&usernameID)
 	require.NoError(t, err)
+
 	result, err := db.ExecContext(ctx, "INSERT INTO instances (name_id, host_id, username_id, password_encrypted) VALUES (?, ?, ?, 'pass')", nameID, hostID, usernameID)
 	require.NoError(t, err)
 	instanceID64, err := result.LastInsertId()
@@ -56,8 +61,7 @@ func setupTestBackupDB(t *testing.T) *database.DB {
 func TestQueueRunCleansPendingRunOnContextCancel(t *testing.T) {
 	db := setupTestBackupDB(t)
 
-	ctx := context.Background()
-	instanceID := insertTestInstance(t, db, ctx, "test-instance")
+	instanceID := insertTestInstance(t, db, "test-instance")
 
 	store := models.NewBackupStore(db)
 	svc := NewService(store, nil, Config{WorkerCount: 1})
@@ -125,7 +129,7 @@ func TestStartBlocksWhileRecoveringMissedBackups(t *testing.T) {
 
 	instanceNames := []string{"instance-a", "instance-b", "instance-c"}
 	for _, name := range instanceNames {
-		instanceID := insertTestInstance(t, db, context.Background(), name)
+		instanceID := insertTestInstance(t, db, name)
 
 		settings := &models.BackupSettings{
 			InstanceID:    instanceID,
@@ -182,7 +186,7 @@ func TestUpdateSettingsNormalizesRetention(t *testing.T) {
 	db := setupTestBackupDB(t)
 
 	ctx := context.Background()
-	instanceID := insertTestInstance(t, db, ctx, "retention-instance")
+	instanceID := insertTestInstance(t, db, "retention-instance")
 
 	store := models.NewBackupStore(db)
 	svc := NewService(store, nil, Config{WorkerCount: 1})
@@ -231,7 +235,7 @@ func TestNormalizeAndPersistSettingsRepairsLegacyValues(t *testing.T) {
 	db := setupTestBackupDB(t)
 
 	ctx := context.Background()
-	instanceID := insertTestInstance(t, db, ctx, "legacy-retention")
+	instanceID := insertTestInstance(t, db, "legacy-retention")
 
 	store := models.NewBackupStore(db)
 	svc := NewService(store, nil, Config{WorkerCount: 1})
@@ -271,7 +275,7 @@ func TestUpdateSettingsClearsCustomPath(t *testing.T) {
 	db := setupTestBackupDB(t)
 
 	ctx := context.Background()
-	instanceID := insertTestInstance(t, db, ctx, "custom-path")
+	instanceID := insertTestInstance(t, db, "custom-path")
 
 	store := models.NewBackupStore(db)
 	svc := NewService(store, nil, Config{WorkerCount: 1})
@@ -298,7 +302,7 @@ func TestRecoverIncompleteRuns(t *testing.T) {
 	db := setupTestBackupDB(t)
 
 	ctx := context.Background()
-	instanceID := insertTestInstance(t, db, ctx, "test-instance")
+	instanceID := insertTestInstance(t, db, "test-instance")
 
 	store := models.NewBackupStore(db)
 	svc := NewService(store, nil, Config{WorkerCount: 1})
@@ -381,7 +385,7 @@ func TestCheckMissedBackups(t *testing.T) {
 	db := setupTestBackupDB(t)
 
 	ctx := context.Background()
-	instanceID := insertTestInstance(t, db, ctx, "test-instance")
+	instanceID := insertTestInstance(t, db, "test-instance")
 
 	store := models.NewBackupStore(db)
 	svc := NewService(store, nil, Config{WorkerCount: 1})
@@ -470,7 +474,7 @@ func TestCheckMissedBackupsMultipleMissed(t *testing.T) {
 	db := setupTestBackupDB(t)
 
 	ctx := context.Background()
-	instanceID := insertTestInstance(t, db, ctx, "test-instance")
+	instanceID := insertTestInstance(t, db, "test-instance")
 
 	store := models.NewBackupStore(db)
 	svc := NewService(store, nil, Config{WorkerCount: 1})
@@ -536,7 +540,7 @@ func TestCheckMissedBackupsNoneMissed(t *testing.T) {
 	db := setupTestBackupDB(t)
 
 	ctx := context.Background()
-	instanceID := insertTestInstance(t, db, ctx, "test-instance")
+	instanceID := insertTestInstance(t, db, "test-instance")
 
 	store := models.NewBackupStore(db)
 	svc := NewService(store, nil, Config{WorkerCount: 1})
@@ -618,7 +622,7 @@ func TestCheckMissedBackupsFirstRun(t *testing.T) {
 	db := setupTestBackupDB(t)
 
 	ctx := context.Background()
-	instanceID := insertTestInstance(t, db, ctx, "test-instance")
+	instanceID := insertTestInstance(t, db, "test-instance")
 
 	store := models.NewBackupStore(db)
 	svc := NewService(store, nil, Config{WorkerCount: 1})
@@ -663,7 +667,7 @@ func TestIsBackupMissedIgnoresFailedRuns(t *testing.T) {
 	db := setupTestBackupDB(t)
 
 	ctx := context.Background()
-	instanceID := insertTestInstance(t, db, ctx, "test-instance")
+	instanceID := insertTestInstance(t, db, "test-instance")
 
 	store := models.NewBackupStore(db)
 	svc := NewService(store, nil, Config{WorkerCount: 1})
@@ -703,7 +707,7 @@ func TestIsBackupMissedFailedRunsOnly(t *testing.T) {
 	db := setupTestBackupDB(t)
 
 	ctx := context.Background()
-	instanceID := insertTestInstance(t, db, ctx, "test-instance")
+	instanceID := insertTestInstance(t, db, "test-instance")
 
 	store := models.NewBackupStore(db)
 	svc := NewService(store, nil, Config{WorkerCount: 1})
@@ -742,7 +746,7 @@ func TestIsBackupMissedMixedStatusRuns(t *testing.T) {
 	db := setupTestBackupDB(t)
 
 	ctx := context.Background()
-	instanceID := insertTestInstance(t, db, ctx, "test-instance")
+	instanceID := insertTestInstance(t, db, "test-instance")
 
 	store := models.NewBackupStore(db)
 	svc := NewService(store, nil, Config{WorkerCount: 1})
@@ -802,7 +806,7 @@ func TestIsBackupMissedOverdueWithFailedRunsAfterSuccess(t *testing.T) {
 	db := setupTestBackupDB(t)
 
 	ctx := context.Background()
-	instanceID := insertTestInstance(t, db, ctx, "test-instance")
+	instanceID := insertTestInstance(t, db, "test-instance")
 
 	store := models.NewBackupStore(db)
 	svc := NewService(store, nil, Config{WorkerCount: 1})
