@@ -368,7 +368,7 @@ func TestMigrationDataTransformations(t *testing.T) {
 		},
 		{
 			name:           "migration_010_torrent_cache_persist",
-			setupMigration: 10, // After torrent_files_cache added, before string interning
+			setupMigration: 9, // Before migration 010 (which now includes both cache and string interning)
 			insertData: func(t *testing.T, ctx context.Context, db *DB) map[string]interface{} {
 				// Insert instance first
 				result, err := db.ExecContext(ctx,
@@ -377,23 +377,7 @@ func TestMigrationDataTransformations(t *testing.T) {
 				require.NoError(t, err)
 				instanceID, _ := result.LastInsertId()
 
-				// Insert torrent file cache entry
-				result, err = db.ExecContext(ctx,
-					`INSERT INTO torrent_files_cache (instance_id, torrent_hash, file_index, name, size, progress, priority, availability) 
-					VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-					instanceID, "xyz789", 0, "video.mkv", 1073741824, 1.0, 7, 1.0)
-				require.NoError(t, err)
-				cacheID, _ := result.LastInsertId()
-
-				// Insert torrent files sync metadata
-				_, err = db.ExecContext(ctx,
-					`INSERT INTO torrent_files_sync (instance_id, torrent_hash, torrent_progress, file_count) 
-					VALUES (?, ?, ?, ?)`,
-					instanceID, "xyz789", 1.0, 1)
-				require.NoError(t, err)
-
 				return map[string]interface{}{
-					"cacheID":     int(cacheID),
 					"instanceID":  int(instanceID),
 					"torrentHash": "xyz789",
 					"fileName":    "video.mkv",
@@ -401,33 +385,52 @@ func TestMigrationDataTransformations(t *testing.T) {
 				}
 			},
 			verifyData: func(t *testing.T, ctx context.Context, db *DB, data map[string]interface{}) {
-				// After migration 011, torrent_hash and name should be interned
-				var torrentHashID, nameID int64
-				err := db.QueryRowContext(ctx,
-					"SELECT torrent_hash_id, name_id FROM torrent_files_cache WHERE id = ?",
-					data["cacheID"]).Scan(&torrentHashID, &nameID)
-				require.NoError(t, err, "Torrent file cache should exist after migrations")
+				// After migration 010, tables should exist with string interning
+				// Insert test data to verify functionality
+				torrentHashID, err := db.GetOrCreateStringID(ctx, data["torrentHash"].(string), nil)
+				require.NoError(t, err)
 
-				torrentHash, err := db.GetStringByID(ctx, torrentHashID)
-				require.NoError(t, err, "Should be able to get torrent hash from string pool")
-				require.Equal(t, data["torrentHash"], torrentHash)
+				fileNameID, err := db.GetOrCreateStringID(ctx, data["fileName"].(string), nil)
+				require.NoError(t, err)
 
-				fileName, err := db.GetStringByID(ctx, nameID)
-				require.NoError(t, err, "Should be able to get file name from string pool")
-				require.Equal(t, data["fileName"], fileName)
+				// Insert torrent file cache entry using string IDs
+				result, err := db.ExecContext(ctx,
+					`INSERT INTO torrent_files_cache (instance_id, torrent_hash_id, file_index, name_id, size, progress, priority, availability) 
+					VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+					data["instanceID"], torrentHashID, 0, fileNameID, data["fileSize"], 1.0, 7, 1.0)
+				require.NoError(t, err)
+				cacheID, _ := result.LastInsertId()
 
-				// Verify torrent_files_sync also interned
-				var syncHashID int64
+				// Insert torrent files sync metadata
+				_, err = db.ExecContext(ctx,
+					`INSERT INTO torrent_files_sync (instance_id, torrent_hash_id, torrent_progress, file_count) 
+					VALUES (?, ?, ?, ?)`,
+					data["instanceID"], torrentHashID, 1.0, 1)
+				require.NoError(t, err)
+
+				// Verify via view
+				var torrentHash, fileName string
+				var fileSize int64
 				err = db.QueryRowContext(ctx,
-					"SELECT torrent_hash_id FROM torrent_files_sync WHERE instance_id = ? AND torrent_hash_id = ?",
-					data["instanceID"], torrentHashID).Scan(&syncHashID)
-				require.NoError(t, err, "Torrent files sync should exist after migrations")
-				require.Equal(t, torrentHashID, syncHashID)
+					"SELECT torrent_hash, name, size FROM torrent_files_cache_view WHERE id = ?",
+					cacheID).Scan(&torrentHash, &fileName, &fileSize)
+				require.NoError(t, err)
+				require.Equal(t, data["torrentHash"], torrentHash)
+				require.Equal(t, data["fileName"], fileName)
+				require.Equal(t, data["fileSize"], fileSize)
+
+				// Verify torrent_files_sync
+				var syncTorrentHash string
+				err = db.QueryRowContext(ctx,
+					"SELECT torrent_hash FROM torrent_files_sync_view WHERE instance_id = ?",
+					data["instanceID"]).Scan(&syncTorrentHash)
+				require.NoError(t, err)
+				require.Equal(t, data["torrentHash"], syncTorrentHash)
 			},
 		},
 		{
-			name:           "migration_011_deduplicates_strings",
-			setupMigration: 10, // Before migration 011 (string interning)
+			name:           "migration_010_comprehensive_string_interning",
+			setupMigration: 9, // Before migration 010 (consolidated string interning and files cache)
 			insertData: func(t *testing.T, ctx context.Context, db *DB) map[string]interface{} {
 				// Insert instance
 				result, err := db.ExecContext(ctx,
@@ -436,7 +439,7 @@ func TestMigrationDataTransformations(t *testing.T) {
 				require.NoError(t, err)
 				instanceID, _ := result.LastInsertId()
 
-				// Insert multiple backup items with duplicate strings (realistic: different torrents, same categories/tags)
+				// Insert multiple backup runs with duplicate strings
 				result, err = db.ExecContext(ctx,
 					`INSERT INTO instance_backup_runs (instance_id, kind, status, requested_by, total_bytes, torrent_count) 
 					VALUES (?, ?, ?, ?, ?, ?)`,
@@ -444,135 +447,14 @@ func TestMigrationDataTransformations(t *testing.T) {
 				require.NoError(t, err)
 				runID, _ := result.LastInsertId()
 
-				// Insert items with duplicate categories and tags but different hashes (realistic scenario)
+				// Insert items with duplicate categories, tags, and infohashes (realistic scenario)
 				for i := 0; i < 3; i++ {
 					_, err = db.ExecContext(ctx,
-						`INSERT INTO instance_backup_items (run_id, torrent_hash, name, category, size_bytes, tags) 
-						VALUES (?, ?, ?, ?, ?, ?)`,
-						runID, fmt.Sprintf("hash_%d", i), fmt.Sprintf("Torrent %d", i), "movies", 512000, "hd,x264")
+						`INSERT INTO instance_backup_items (run_id, torrent_hash, name, category, size_bytes, tags, infohash_v1, infohash_v2) 
+						VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+						runID, fmt.Sprintf("hash_%d", i), fmt.Sprintf("Torrent %d", i), "movies", 512000, "hd,x264", "v1hash_common", "v2hash_common")
 					require.NoError(t, err)
 				}
-
-				return map[string]interface{}{
-					"runID":      int(runID),
-					"category":   "movies",
-					"tags":       "hd,x264",
-					"itemCount":  3,
-					"instanceID": int(instanceID),
-				}
-			},
-			verifyData: func(t *testing.T, ctx context.Context, db *DB, data map[string]interface{}) {
-				// After migration 011, duplicate strings should use same string_pool ID
-				rows, err := db.QueryContext(ctx,
-					"SELECT category_id, tags_id FROM instance_backup_items WHERE run_id = ?",
-					data["runID"])
-				require.NoError(t, err)
-				defer rows.Close()
-
-				var firstCategoryID, firstTagsID int64
-				count := 0
-				for rows.Next() {
-					var categoryID, tagsID int64
-					err = rows.Scan(&categoryID, &tagsID)
-					require.NoError(t, err)
-
-					if count == 0 {
-						firstCategoryID = categoryID
-						firstTagsID = tagsID
-					} else {
-						// All items should share the same string pool IDs for category and tags
-						require.Equal(t, firstCategoryID, categoryID, "Duplicate categories should share string pool ID")
-						require.Equal(t, firstTagsID, tagsID, "Duplicate tags should share string pool ID")
-					}
-					count++
-				}
-				require.Equal(t, data["itemCount"], count, "Should have all backup items")
-
-				// Verify actual string values
-				category, err := db.GetStringByID(ctx, firstCategoryID)
-				require.NoError(t, err)
-				require.Equal(t, data["category"], category)
-
-				tags, err := db.GetStringByID(ctx, firstTagsID)
-				require.NoError(t, err)
-				require.Equal(t, data["tags"], tags)
-			},
-		},
-		{
-			name:           "migration_012_infohash_interning",
-			setupMigration: 11, // After string interning, before infohash interning
-			insertData: func(t *testing.T, ctx context.Context, db *DB) map[string]interface{} {
-				// At migration 11, instances still has TEXT columns, not name_id
-				// Insert instance using TEXT name column
-				result, err := db.ExecContext(ctx,
-					"INSERT INTO instances (name, host, username, password_encrypted) VALUES (?, ?, ?, ?)",
-					"Test Instance", "http://localhost:8080", "admin", "pass")
-				require.NoError(t, err)
-				instanceID, _ := result.LastInsertId()
-
-				// instance_backup_runs also still has TEXT columns at migration 11
-				result, err = db.ExecContext(ctx,
-					`INSERT INTO instance_backup_runs (instance_id, kind, status, requested_by, total_bytes, torrent_count) 
-					VALUES (?, ?, ?, ?, ?, ?)`,
-					instanceID, "manual", "completed", "system", 1024000, 2)
-				require.NoError(t, err)
-				runID, _ := result.LastInsertId()
-
-				// Get string IDs for the backup item fields that ARE interned at migration 11
-				hashID, err := db.GetOrCreateStringID(ctx, "hash456", nil)
-				require.NoError(t, err)
-
-				nameID, err := db.GetOrCreateStringID(ctx, "Torrent A", nil)
-				require.NoError(t, err)
-
-				// Insert backup items with infohashes (text columns at this point)
-				_, err = db.ExecContext(ctx,
-					`INSERT INTO instance_backup_items (run_id, torrent_hash_id, name_id, size_bytes, infohash_v1, infohash_v2) 
-					VALUES (?, ?, ?, ?, ?, ?)`,
-					runID, hashID, nameID, 512000, "v1hash_abc123", "v2hash_def456")
-				require.NoError(t, err)
-
-				return map[string]interface{}{
-					"runID":      int(runID),
-					"infohashV1": "v1hash_abc123",
-					"infohashV2": "v2hash_def456",
-				}
-			},
-			verifyData: func(t *testing.T, ctx context.Context, db *DB, data map[string]interface{}) {
-				// After migration 012, infohashes should be interned
-				var infohashV1, infohashV2 string
-				err := db.QueryRowContext(ctx,
-					"SELECT infohash_v1, infohash_v2 FROM instance_backup_items_view WHERE run_id = ?",
-					data["runID"]).Scan(&infohashV1, &infohashV2)
-				require.NoError(t, err)
-				require.Equal(t, data["infohashV1"], infohashV1)
-				require.Equal(t, data["infohashV2"], infohashV2)
-
-				// Verify they're actually in string_pool
-				var count int
-				err = db.QueryRowContext(ctx,
-					"SELECT COUNT(*) FROM string_pool WHERE value IN (?, ?)",
-					data["infohashV1"], data["infohashV2"]).Scan(&count)
-				require.NoError(t, err)
-				require.Equal(t, 2, count, "Both infohashes should be in string pool")
-			},
-		},
-		{
-			name:           "migration_013_comprehensive_interning",
-			setupMigration: 12, // Before migration 013 which interns instances, api_keys, etc.
-			insertData: func(t *testing.T, ctx context.Context, db *DB) map[string]interface{} {
-				// Insert instances with duplicate names
-				result, err := db.ExecContext(ctx,
-					"INSERT INTO instances (name, host, username, password_encrypted) VALUES (?, ?, ?, ?)",
-					"Duplicate Instance", "http://host1:8080", "admin", "pass1")
-				require.NoError(t, err)
-				id1, _ := result.LastInsertId()
-
-				result, err = db.ExecContext(ctx,
-					"INSERT INTO instances (name, host, username, password_encrypted) VALUES (?, ?, ?, ?)",
-					"Duplicate Instance", "http://host2:8080", "admin", "pass2")
-				require.NoError(t, err)
-				id2, _ := result.LastInsertId()
 
 				// Insert API keys with duplicate names
 				result, err = db.ExecContext(ctx,
@@ -588,26 +470,71 @@ func TestMigrationDataTransformations(t *testing.T) {
 				apiKeyID2, _ := result.LastInsertId()
 
 				return map[string]interface{}{
-					"instanceID1": int(id1),
-					"instanceID2": int(id2),
-					"apiKeyID1":   int(apiKeyID1),
-					"apiKeyID2":   int(apiKeyID2),
-					"name":        "Duplicate Instance",
-					"apiKeyName":  "API Key Name",
+					"runID":      int(runID),
+					"category":   "movies",
+					"tags":       "hd,x264",
+					"infohashV1": "v1hash_common",
+					"infohashV2": "v2hash_common",
+					"itemCount":  3,
+					"instanceID": int(instanceID),
+					"apiKeyID1":  int(apiKeyID1),
+					"apiKeyID2":  int(apiKeyID2),
+					"apiKeyName": "API Key Name",
+					"name":       "Test Instance",
 				}
 			},
 			verifyData: func(t *testing.T, ctx context.Context, db *DB, data map[string]interface{}) {
-				// After migration 013, duplicate names should use same string_pool entry
-				var nameID1, nameID2 int64
-				err := db.QueryRowContext(ctx, "SELECT name_id FROM instances WHERE id = ?", data["instanceID1"]).Scan(&nameID1)
+				// After migration 010, duplicate strings should use same string_pool ID
+				rows, err := db.QueryContext(ctx,
+					"SELECT category_id, tags_id, infohash_v1_id, infohash_v2_id FROM instance_backup_items WHERE run_id = ?",
+					data["runID"])
 				require.NoError(t, err)
-				err = db.QueryRowContext(ctx, "SELECT name_id FROM instances WHERE id = ?", data["instanceID2"]).Scan(&nameID2)
-				require.NoError(t, err)
-				require.Equal(t, nameID1, nameID2, "Duplicate instance names should reference same string_pool entry")
+				defer rows.Close()
 
-				// Verify instance name via view
+				var firstCategoryID, firstTagsID, firstV1ID, firstV2ID int64
+				count := 0
+				for rows.Next() {
+					var categoryID, tagsID, v1ID, v2ID int64
+					err = rows.Scan(&categoryID, &tagsID, &v1ID, &v2ID)
+					require.NoError(t, err)
+
+					if count == 0 {
+						firstCategoryID = categoryID
+						firstTagsID = tagsID
+						firstV1ID = v1ID
+						firstV2ID = v2ID
+					} else {
+						// All items should share the same string pool IDs
+						require.Equal(t, firstCategoryID, categoryID, "Duplicate categories should share string pool ID")
+						require.Equal(t, firstTagsID, tagsID, "Duplicate tags should share string pool ID")
+						require.Equal(t, firstV1ID, v1ID, "Duplicate infohash_v1 should share string pool ID")
+						require.Equal(t, firstV2ID, v2ID, "Duplicate infohash_v2 should share string pool ID")
+					}
+					count++
+				}
+				require.Equal(t, data["itemCount"], count, "Should have all backup items")
+
+				// Verify actual string values
+				category, err := db.GetStringByID(ctx, firstCategoryID)
+				require.NoError(t, err)
+				require.Equal(t, data["category"], category)
+
+				tags, err := db.GetStringByID(ctx, firstTagsID)
+				require.NoError(t, err)
+				require.Equal(t, data["tags"], tags)
+
+				// Verify infohashes via view
+				var infohashV1, infohashV2 string
+				err = db.QueryRowContext(ctx,
+					"SELECT infohash_v1, infohash_v2 FROM instance_backup_items_view WHERE run_id = ? LIMIT 1",
+					data["runID"]).Scan(&infohashV1, &infohashV2)
+				require.NoError(t, err)
+				require.Equal(t, data["infohashV1"], infohashV1)
+				require.Equal(t, data["infohashV2"], infohashV2)
+
+				// Verify instances have name_id
 				var instanceName string
-				err = db.QueryRowContext(ctx, "SELECT name FROM instances_view WHERE id = ?", data["instanceID1"]).Scan(&instanceName)
+				err = db.QueryRowContext(ctx, "SELECT name FROM instances_view WHERE id = ?", data["instanceID"]).Scan(&instanceName)
 				require.NoError(t, err)
 				require.Equal(t, data["name"], instanceName)
 
@@ -619,11 +546,12 @@ func TestMigrationDataTransformations(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, apiKeyNameID1, apiKeyNameID2, "Duplicate API key names should reference same string_pool entry")
 
-				// Verify API key name via view
-				var apiKeyName string
-				err = db.QueryRowContext(ctx, "SELECT name FROM api_keys_view WHERE id = ?", data["apiKeyID1"]).Scan(&apiKeyName)
+				// Verify torrent_files_cache and torrent_files_sync tables exist
+				var tableCount int
+				err = db.QueryRowContext(ctx,
+					"SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('torrent_files_cache', 'torrent_files_sync', 'string_pool')").Scan(&tableCount)
 				require.NoError(t, err)
-				require.Equal(t, data["apiKeyName"], apiKeyName)
+				require.Equal(t, 3, tableCount, "All new tables should exist")
 			},
 		},
 	}
