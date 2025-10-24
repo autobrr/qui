@@ -125,7 +125,7 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 
 	// Build upsert query with subqueries for string interning
 	internSubquery := r.db.GetOrCreateStringID()
-	
+
 	insertQuery := fmt.Sprintf(`
 		INSERT INTO torrent_files_cache 
 		(instance_id, torrent_hash_id, file_index, name_id, size, progress, priority, 
@@ -184,7 +184,7 @@ func (r *Repository) DeleteFiles(ctx context.Context, instanceID int, hash strin
 	// Use subquery to get the hash ID
 	internSubquery := r.db.GetOrCreateStringID()
 	query := fmt.Sprintf(`DELETE FROM torrent_files_cache WHERE instance_id = ? AND torrent_hash_id = %s`, internSubquery)
-	
+
 	result, err := r.db.ExecContext(ctx, query, instanceID, hash)
 	if err != nil {
 		return fmt.Errorf("failed to delete cached files: %w", err)
@@ -237,7 +237,7 @@ func (r *Repository) getSyncInfo(ctx context.Context, q querier, instanceID int,
 func (r *Repository) UpsertSyncInfo(ctx context.Context, info SyncInfo) error {
 	// Use subquery to intern torrent hash
 	internSubquery := r.db.GetOrCreateStringID()
-	
+
 	query := fmt.Sprintf(`
 		INSERT INTO torrent_files_sync 
 		(instance_id, torrent_hash_id, last_synced_at, torrent_progress, file_count)
@@ -264,7 +264,7 @@ func (r *Repository) DeleteSyncInfo(ctx context.Context, instanceID int, hash st
 	// Use subquery to get the hash ID
 	internSubquery := r.db.GetOrCreateStringID()
 	query := fmt.Sprintf(`DELETE FROM torrent_files_sync WHERE instance_id = ? AND torrent_hash_id = %s`, internSubquery)
-	
+
 	_, err := r.db.ExecContext(ctx, query, instanceID, hash)
 	return err
 }

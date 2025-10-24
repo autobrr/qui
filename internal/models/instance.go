@@ -245,10 +245,10 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 
 	// Build INSERT query with subqueries for string interning
 	internSubquery := s.db.GetOrCreateStringID()
-	
+
 	var query string
 	var args []any
-	
+
 	if basicUsername != nil && *basicUsername != "" {
 		query = fmt.Sprintf(`
 			INSERT INTO instances (name_id, host_id, username_id, password_encrypted, basic_username_id, basic_password_encrypted, tls_skip_verify) 
@@ -378,7 +378,7 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 
 	// Build UPDATE query with subqueries for string interning
 	internSubquery := s.db.GetOrCreateStringID()
-	
+
 	query := fmt.Sprintf(`UPDATE instances SET name_id = %s, host_id = %s, username_id = %s`,
 		internSubquery, internSubquery, internSubquery)
 	args := []any{name, normalizedHost, username}

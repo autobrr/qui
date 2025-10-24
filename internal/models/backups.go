@@ -234,88 +234,60 @@ func (s *BackupStore) CreateRun(ctx context.Context, run *BackupRun) error {
 		return errors.New("run cannot be nil")
 	}
 
-	// Collect all strings to intern in a single batch for better performance
-	stringsToIntern := []string{
-		string(run.Kind),
-		string(run.Status),
-		run.RequestedBy,
+	// Start transaction
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
+	defer tx.Rollback()
 
-	// Add optional strings if present
-	if run.ErrorMessage != nil && *run.ErrorMessage != "" {
-		stringsToIntern = append(stringsToIntern, *run.ErrorMessage)
-	}
-	if run.ArchivePath != nil && *run.ArchivePath != "" {
-		stringsToIntern = append(stringsToIntern, *run.ArchivePath)
-	}
-	if run.ManifestPath != nil && *run.ManifestPath != "" {
-		stringsToIntern = append(stringsToIntern, *run.ManifestPath)
-	}
+	// Build query with subqueries for string interning
+	internSubquery := s.db.GetOrCreateStringID()
 
-	// Batch intern all strings - single database transaction
-	stringIDs := make(map[string]int64, len(stringsToIntern))
-	for _, str := range stringsToIntern {
-		id, err := s.db.GetOrCreateStringID(ctx, str, nil)
-		if err != nil {
-			return fmt.Errorf("failed to intern string '%s': %w", str, err)
-		}
-		stringIDs[str] = id
-	}
-
-	// Extract IDs from map
-	kindID := stringIDs[string(run.Kind)]
-	statusID := stringIDs[string(run.Status)]
-	requestedByID := stringIDs[run.RequestedBy]
-
-	var errorMessageID *int64
-	if run.ErrorMessage != nil && *run.ErrorMessage != "" {
-		id := stringIDs[*run.ErrorMessage]
-		errorMessageID = &id
-	}
-
-	var archivePathID *int64
-	if run.ArchivePath != nil && *run.ArchivePath != "" {
-		id := stringIDs[*run.ArchivePath]
-		archivePathID = &id
-	}
-
-	var manifestPathID *int64
-	if run.ManifestPath != nil && *run.ManifestPath != "" {
-		id := stringIDs[*run.ManifestPath]
-		manifestPathID = &id
-	}
-
-	query := `
+	// Build the INSERT query
+	queryBuilder := fmt.Sprintf(`
         INSERT INTO instance_backup_runs (
             instance_id, kind_id, status_id, requested_by_id, requested_at, started_at, completed_at,
             archive_path_id, manifest_path_id, total_bytes, torrent_count, category_counts_json, categories_json, tags_json, error_message_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `
+        ) VALUES (?, %s, %s, %s, ?, ?, ?, `, internSubquery, internSubquery, internSubquery)
+
+	args := []any{run.InstanceID, string(run.Kind), string(run.Status), run.RequestedBy, run.RequestedAt, run.StartedAt, run.CompletedAt}
+
+	// Handle optional archive_path
+	if run.ArchivePath != nil && *run.ArchivePath != "" {
+		queryBuilder += fmt.Sprintf("%s, ", internSubquery)
+		args = append(args, *run.ArchivePath)
+	} else {
+		queryBuilder += "NULL, "
+	}
+
+	// Handle optional manifest_path
+	if run.ManifestPath != nil && *run.ManifestPath != "" {
+		queryBuilder += fmt.Sprintf("%s, ", internSubquery)
+		args = append(args, *run.ManifestPath)
+	} else {
+		queryBuilder += "NULL, "
+	}
+
+	// Add total_bytes, torrent_count, JSON fields
+	queryBuilder += "?, ?, ?, ?, ?, "
 
 	categoryJSON, err := marshalCategoryCounts(run.CategoryCounts)
 	if err != nil {
 		return err
 	}
 
-	res, err := s.db.ExecContext(
-		ctx,
-		query,
-		run.InstanceID,
-		kindID,
-		statusID,
-		requestedByID,
-		run.RequestedAt,
-		run.StartedAt,
-		run.CompletedAt,
-		archivePathID,
-		manifestPathID,
-		run.TotalBytes,
-		run.TorrentCount,
-		categoryJSON,
-		run.categoriesJSON,
-		run.tagsJSON,
-		errorMessageID,
-	)
+	args = append(args, run.TotalBytes, run.TorrentCount, categoryJSON, run.categoriesJSON, run.tagsJSON)
+
+	// Handle optional error_message
+	if run.ErrorMessage != nil && *run.ErrorMessage != "" {
+		queryBuilder += fmt.Sprintf("%s)", internSubquery)
+		args = append(args, *run.ErrorMessage)
+	} else {
+		queryBuilder += "NULL)"
+	}
+
+	res, err := tx.ExecContext(ctx, queryBuilder, args...)
 	if err != nil {
 		return err
 	}
@@ -325,6 +297,11 @@ func (s *BackupStore) CreateRun(ctx context.Context, run *BackupRun) error {
 		return err
 	}
 	run.ID = id
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
 	return nil
 }
 
@@ -426,74 +403,17 @@ func (s *BackupStore) UpdateRunMetadata(ctx context.Context, runID int64, update
 		return err
 	}
 
-	// Intern strings before starting write transaction to avoid deadlocks
-	statusID, err := s.db.GetOrCreateStringID(ctx, string(run.Status), nil)
-	if err != nil {
-		return fmt.Errorf("failed to intern status: %w", err)
-	}
-
-	// Intern error message if present
-	var errorMessageID *int64
-	if run.ErrorMessage != nil && *run.ErrorMessage != "" {
-		id, err := s.db.GetOrCreateStringID(ctx, *run.ErrorMessage, nil)
-		if err != nil {
-			return fmt.Errorf("failed to intern error_message: %w", err)
-		}
-		errorMessageID = &id
-	}
-
-	// Intern archive_path if present
-	var archivePathID *int64
-	if run.ArchivePath != nil && *run.ArchivePath != "" {
-		id, err := s.db.GetOrCreateStringID(ctx, *run.ArchivePath, nil)
-		if err != nil {
-			return fmt.Errorf("failed to intern archive_path: %w", err)
-		}
-		archivePathID = &id
-	}
-
-	// Intern manifest_path if present
-	var manifestPathID *int64
-	if run.ManifestPath != nil && *run.ManifestPath != "" {
-		id, err := s.db.GetOrCreateStringID(ctx, *run.ManifestPath, nil)
-		if err != nil {
-			return fmt.Errorf("failed to intern manifest_path: %w", err)
-		}
-		manifestPathID = &id
-	}
-
-	// Now start the write transaction
+	// Start write transaction
 	tx, err = s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-
-	defer func() {
-		if err != nil {
-			_ = tx.Rollback()
-		}
-	}()
+	defer tx.Rollback()
 
 	categoryJSON, err := marshalCategoryCounts(run.CategoryCounts)
 	if err != nil {
 		return err
 	}
-
-	query := `
-        UPDATE instance_backup_runs SET
-            status_id = ?,
-            started_at = ?,
-            completed_at = ?,
-            archive_path_id = ?,
-            manifest_path_id = ?,
-            total_bytes = ?,
-            torrent_count = ?,
-            category_counts_json = ?,
-            categories_json = ?,
-            tags_json = ?,
-            error_message_id = ?
-        WHERE id = ?
-    `
 
 	categoriesJSON, err := marshalCategories(run.Categories)
 	if err != nil {
@@ -507,22 +427,57 @@ func (s *BackupStore) UpdateRunMetadata(ctx context.Context, runID int64, update
 	}
 	run.tagsJSON = tagsJSON
 
-	_, err = tx.ExecContext(
-		ctx,
-		query,
-		statusID,
-		run.StartedAt,
-		run.CompletedAt,
-		archivePathID,
-		manifestPathID,
-		run.TotalBytes,
-		run.TorrentCount,
-		categoryJSON,
-		categoriesJSON,
-		tagsJSON,
-		errorMessageID,
-		run.ID,
-	)
+	// Build UPDATE query with subqueries for string interning
+	internSubquery := s.db.GetOrCreateStringID()
+
+	queryBuilder := fmt.Sprintf(`
+        UPDATE instance_backup_runs SET
+            status_id = %s,
+            started_at = ?,
+            completed_at = ?,
+            archive_path_id = `, internSubquery)
+
+	args := []any{string(run.Status), run.StartedAt, run.CompletedAt}
+
+	// Handle optional archive_path
+	if run.ArchivePath != nil && *run.ArchivePath != "" {
+		queryBuilder += fmt.Sprintf("%s, ", internSubquery)
+		args = append(args, *run.ArchivePath)
+	} else {
+		queryBuilder += "NULL, "
+	}
+
+	queryBuilder += "manifest_path_id = "
+	// Handle optional manifest_path
+	if run.ManifestPath != nil && *run.ManifestPath != "" {
+		queryBuilder += fmt.Sprintf("%s, ", internSubquery)
+		args = append(args, *run.ManifestPath)
+	} else {
+		queryBuilder += "NULL, "
+	}
+
+	queryBuilder += `
+            total_bytes = ?,
+            torrent_count = ?,
+            category_counts_json = ?,
+            categories_json = ?,
+            tags_json = ?,
+            error_message_id = `
+
+	args = append(args, run.TotalBytes, run.TorrentCount, categoryJSON, categoriesJSON, tagsJSON)
+
+	// Handle optional error_message
+	if run.ErrorMessage != nil && *run.ErrorMessage != "" {
+		queryBuilder += internSubquery
+		args = append(args, *run.ErrorMessage)
+	} else {
+		queryBuilder += "NULL"
+	}
+
+	queryBuilder += " WHERE id = ?"
+	args = append(args, runID)
+
+	_, err = tx.ExecContext(ctx, queryBuilder, args...)
 	if err != nil {
 		return err
 	}
@@ -536,30 +491,11 @@ func (s *BackupStore) UpdateMultipleRunsStatus(ctx context.Context, runIDs []int
 		return nil
 	}
 
-	// Intern strings before starting transaction to avoid deadlocks
-	statusID, err := s.db.GetOrCreateStringID(ctx, string(status), nil)
-	if err != nil {
-		return fmt.Errorf("failed to intern status: %w", err)
-	}
-
-	var errorMessageID *int64
-	if errorMessage != nil && *errorMessage != "" {
-		id, err := s.db.GetOrCreateStringID(ctx, *errorMessage, nil)
-		if err != nil {
-			return fmt.Errorf("failed to intern error_message: %w", err)
-		}
-		errorMessageID = &id
-	}
-
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if err != nil {
-			_ = tx.Rollback()
-		}
-	}()
+	defer tx.Rollback()
 
 	// Build placeholders for IN clause
 	placeholders := make([]string, len(runIDs))
@@ -567,31 +503,33 @@ func (s *BackupStore) UpdateMultipleRunsStatus(ctx context.Context, runIDs []int
 		placeholders[i] = "?"
 	}
 
-	// Build args array: status_id, completed_at, error_message_id, then run IDs
-	// Dereference pointers or pass nil for SQLite compatibility
-	args := make([]interface{}, 3+len(runIDs))
-	args[0] = statusID
+	internSubquery := s.db.GetOrCreateStringID()
+
+	// Build UPDATE query with subqueries
+	queryBuilder := fmt.Sprintf("UPDATE instance_backup_runs SET status_id = %s, completed_at = ?, error_message_id = ", internSubquery)
+
+	args := []any{string(status)}
+
 	if completedAt != nil {
-		args[1] = *completedAt
+		args = append(args, *completedAt)
 	} else {
-		args[1] = nil
-	}
-	if errorMessageID != nil {
-		args[2] = *errorMessageID
-	} else {
-		args[2] = nil
-	}
-	for i, runID := range runIDs {
-		args[i+3] = runID
+		args = append(args, nil)
 	}
 
-	query := fmt.Sprintf(`
-		UPDATE instance_backup_runs
-		SET status_id = ?, completed_at = ?, error_message_id = ?
-		WHERE id IN (%s)
-	`, strings.Join(placeholders, ","))
+	if errorMessage != nil && *errorMessage != "" {
+		queryBuilder += internSubquery
+		args = append(args, *errorMessage)
+	} else {
+		queryBuilder += "NULL"
+	}
 
-	_, err = tx.ExecContext(ctx, query, args...)
+	queryBuilder += fmt.Sprintf(" WHERE id IN (%s)", strings.Join(placeholders, ","))
+
+	for _, runID := range runIDs {
+		args = append(args, runID)
+	}
+
+	_, err = tx.ExecContext(ctx, queryBuilder, args...)
 	if err != nil {
 		return fmt.Errorf("failed to execute update query: %w", err)
 	}
@@ -815,119 +753,74 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 		return nil
 	}
 
-	// Intern all strings before starting transaction to avoid deadlocks
-	type internedItem struct {
-		torrentHashID     int64
-		nameID            int64
-		categoryID        *int64
-		tagsID            *int64
-		archiveRelPathID  *int64
-		infohashV1ID      *int64
-		infohashV2ID      *int64
-		torrentBlobPathID *int64
-	}
-
-	internedItems := make([]internedItem, len(items))
-
-	for i, item := range items {
-		torrentHashID, err := s.db.GetOrCreateStringID(ctx, item.TorrentHash, nil)
-		if err != nil {
-			return fmt.Errorf("failed to intern torrent hash: %w", err)
-		}
-		internedItems[i].torrentHashID = torrentHashID
-
-		nameID, err := s.db.GetOrCreateStringID(ctx, item.Name, nil)
-		if err != nil {
-			return fmt.Errorf("failed to intern name: %w", err)
-		}
-		internedItems[i].nameID = nameID
-
-		if item.Category != nil && *item.Category != "" {
-			id, err := s.db.GetOrCreateStringID(ctx, *item.Category, nil)
-			if err != nil {
-				return fmt.Errorf("failed to intern category: %w", err)
-			}
-			internedItems[i].categoryID = &id
-		}
-
-		if item.Tags != nil && *item.Tags != "" {
-			id, err := s.db.GetOrCreateStringID(ctx, *item.Tags, nil)
-			if err != nil {
-				return fmt.Errorf("failed to intern tags: %w", err)
-			}
-			internedItems[i].tagsID = &id
-		}
-
-		if item.ArchiveRelPath != nil && *item.ArchiveRelPath != "" {
-			id, err := s.db.GetOrCreateStringID(ctx, *item.ArchiveRelPath, nil)
-			if err != nil {
-				return fmt.Errorf("failed to intern archive_rel_path: %w", err)
-			}
-			internedItems[i].archiveRelPathID = &id
-		}
-
-		if item.InfoHashV1 != nil && *item.InfoHashV1 != "" {
-			id, err := s.db.GetOrCreateStringID(ctx, *item.InfoHashV1, nil)
-			if err != nil {
-				return fmt.Errorf("failed to intern infohash_v1: %w", err)
-			}
-			internedItems[i].infohashV1ID = &id
-		}
-
-		if item.InfoHashV2 != nil && *item.InfoHashV2 != "" {
-			id, err := s.db.GetOrCreateStringID(ctx, *item.InfoHashV2, nil)
-			if err != nil {
-				return fmt.Errorf("failed to intern infohash_v2: %w", err)
-			}
-			internedItems[i].infohashV2ID = &id
-		}
-
-		if item.TorrentBlobPath != nil && *item.TorrentBlobPath != "" {
-			id, err := s.db.GetOrCreateStringID(ctx, *item.TorrentBlobPath, nil)
-			if err != nil {
-				return fmt.Errorf("failed to intern torrent_blob_path: %w", err)
-			}
-			internedItems[i].torrentBlobPathID = &id
-		}
-	}
-
-	// Now start transaction for the insert operations
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if err != nil {
-			_ = tx.Rollback()
+	defer tx.Rollback()
+
+	internSubquery := s.db.GetOrCreateStringID()
+
+	for _, item := range items {
+		// Build INSERT query with subqueries for all string fields
+		queryBuilder := fmt.Sprintf(`
+			INSERT INTO instance_backup_items (
+				run_id, torrent_hash_id, name_id, category_id, size_bytes, 
+				archive_rel_path_id, infohash_v1_id, infohash_v2_id, tags_id, torrent_blob_path_id
+			) VALUES (?, %s, %s, `, internSubquery, internSubquery)
+
+		args := []any{runID, item.TorrentHash, item.Name}
+
+		// category_id
+		if item.Category != nil && *item.Category != "" {
+			queryBuilder += fmt.Sprintf("%s, ?, ", internSubquery)
+			args = append(args, *item.Category, item.SizeBytes)
+		} else {
+			queryBuilder += "NULL, ?, "
+			args = append(args, item.SizeBytes)
 		}
-	}()
 
-	stmt, err := tx.PrepareContext(ctx, `
-		INSERT INTO instance_backup_items (
-			run_id, torrent_hash_id, name_id, category_id, size_bytes, archive_rel_path_id, infohash_v1_id, infohash_v2_id, tags_id, torrent_blob_path_id
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`)
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
+		// archive_rel_path_id
+		if item.ArchiveRelPath != nil && *item.ArchiveRelPath != "" {
+			queryBuilder += fmt.Sprintf("%s, ", internSubquery)
+			args = append(args, *item.ArchiveRelPath)
+		} else {
+			queryBuilder += "NULL, "
+		}
 
-	for i, item := range items {
-		interned := internedItems[i]
+		// infohash_v1_id
+		if item.InfoHashV1 != nil && *item.InfoHashV1 != "" {
+			queryBuilder += fmt.Sprintf("%s, ", internSubquery)
+			args = append(args, *item.InfoHashV1)
+		} else {
+			queryBuilder += "NULL, "
+		}
 
-		_, err = stmt.ExecContext(
-			ctx,
-			runID,
-			interned.torrentHashID,
-			interned.nameID,
-			interned.categoryID,
-			item.SizeBytes,
-			interned.archiveRelPathID,
-			interned.infohashV1ID,
-			interned.infohashV2ID,
-			interned.tagsID,
-			interned.torrentBlobPathID,
-		)
+		// infohash_v2_id
+		if item.InfoHashV2 != nil && *item.InfoHashV2 != "" {
+			queryBuilder += fmt.Sprintf("%s, ", internSubquery)
+			args = append(args, *item.InfoHashV2)
+		} else {
+			queryBuilder += "NULL, "
+		}
+
+		// tags_id
+		if item.Tags != nil && *item.Tags != "" {
+			queryBuilder += fmt.Sprintf("%s, ", internSubquery)
+			args = append(args, *item.Tags)
+		} else {
+			queryBuilder += "NULL, "
+		}
+
+		// torrent_blob_path_id
+		if item.TorrentBlobPath != nil && *item.TorrentBlobPath != "" {
+			queryBuilder += fmt.Sprintf("%s)", internSubquery)
+			args = append(args, *item.TorrentBlobPath)
+		} else {
+			queryBuilder += "NULL)"
+		}
+
+		_, err = tx.ExecContext(ctx, queryBuilder, args...)
 		if err != nil {
 			return err
 		}
@@ -1471,16 +1364,14 @@ func (s *BackupStore) CleanupRun(ctx context.Context, runID int64) error {
 
 // RemoveFailedRunsBefore deletes failed runs older than the provided cutoff and returns the number of rows affected.
 func (s *BackupStore) RemoveFailedRunsBefore(ctx context.Context, cutoff time.Time) (int64, error) {
-	// Intern the status string to get its ID
-	statusID, err := s.db.GetOrCreateStringID(ctx, string(BackupRunStatusFailed), nil)
-	if err != nil {
-		return 0, fmt.Errorf("failed to intern status: %w", err)
-	}
+	internSubquery := s.db.GetOrCreateStringID()
 
-	res, err := s.db.ExecContext(ctx, `
-        DELETE FROM instance_backup_runs
-        WHERE status_id = ? AND requested_at < ?
-    `, statusID, cutoff)
+	query := fmt.Sprintf(`
+		DELETE FROM instance_backup_runs
+		WHERE status_id = %s AND requested_at < ?
+	`, internSubquery)
+
+	res, err := s.db.ExecContext(ctx, query, string(BackupRunStatusFailed), cutoff)
 	if err != nil {
 		return 0, err
 	}
