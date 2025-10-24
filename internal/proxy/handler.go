@@ -75,12 +75,13 @@ func NewHandler(clientPool *qbittorrent.ClientPool, clientAPIKeyStore *models.Cl
 		bufferPool:        bufferPool,
 	}
 
-	// Configure the reverse proxy
+	// Configure the reverse proxy with retry logic for transient network errors
+	retryTransport := NewRetryTransport(sharedhttp.Transport)
 	h.proxy = &httputil.ReverseProxy{
 		Rewrite:      h.rewriteRequest,
 		BufferPool:   bufferPool,
 		ErrorHandler: h.errorHandler,
-		Transport:    sharedhttp.Transport,
+		Transport:    retryTransport,
 	}
 
 	return h
@@ -487,6 +488,30 @@ func isHTTPSRequest(r *http.Request) bool {
 	return false
 }
 
+// validateQueryParams checks if all query parameters are in the allowed list
+// Returns true if validation passes, false if validation fails (and proxies upstream)
+func (h *Handler) validateQueryParams(w http.ResponseWriter, r *http.Request, allowedParams map[string]struct{}, endpoint string) bool {
+	ctx := r.Context()
+	instanceID := GetInstanceIDFromContext(ctx)
+	clientAPIKey := GetClientAPIKeyFromContext(ctx)
+	queryParams := r.URL.Query()
+
+	for key := range queryParams {
+		if _, ok := allowedParams[strings.ToLower(key)]; !ok {
+			log.Trace().
+				Int("instanceId", instanceID).
+				Str("client", clientAPIKey.ClientName).
+				Str("endpoint", endpoint).
+				Str("param", key).
+				Str("value", queryParams.Get(key)).
+				Msg("Unsupported query parameter, proxying upstream")
+			h.ServeHTTP(w, r)
+			return false
+		}
+	}
+	return true
+}
+
 // handleTorrentsInfo handles /api/v2/torrents/info using qui's sync manager
 func (h *Handler) handleTorrentsInfo(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -494,7 +519,6 @@ func (h *Handler) handleTorrentsInfo(w http.ResponseWriter, r *http.Request) {
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
 
 	// Extract standard qBittorrent API parameters (no advanced filtering)
-	queryParams := r.URL.Query()
 	allowedParams := map[string]struct{}{
 		"filter":   {},
 		"category": {},
@@ -505,19 +529,11 @@ func (h *Handler) handleTorrentsInfo(w http.ResponseWriter, r *http.Request) {
 		"offset":   {},
 		"hashes":   {},
 	}
-
-	for key := range queryParams {
-		if _, ok := allowedParams[strings.ToLower(key)]; !ok {
-			log.Debug().
-				Int("instanceId", instanceID).
-				Str("client", clientAPIKey.ClientName).
-				Str("param", key).
-				Msg("Unsupported torrents/info query parameter, proxying upstream")
-			h.ServeHTTP(w, r)
-			return
-		}
+	if !h.validateQueryParams(w, r, allowedParams, "torrents/info") {
+		return
 	}
 
+	queryParams := r.URL.Query()
 	filter := queryParams.Get("filter")
 	category := queryParams.Get("category")
 	tag := queryParams.Get("tag")
@@ -639,6 +655,20 @@ func (h *Handler) handleTorrentSearch(w http.ResponseWriter, r *http.Request) {
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
 
 	// Extract qBittorrent API parameters
+	allowedParams := map[string]struct{}{
+		"search":   {},
+		"filter":   {},
+		"category": {},
+		"tag":      {},
+		"sort":     {},
+		"reverse":  {},
+		"limit":    {},
+		"offset":   {},
+	}
+	if !h.validateQueryParams(w, r, allowedParams, "torrents/search") {
+		return
+	}
+
 	queryParams := r.URL.Query()
 	search := queryParams.Get("search")
 	filter := queryParams.Get("filter")
@@ -733,6 +763,11 @@ func (h *Handler) handleCategories(w http.ResponseWriter, r *http.Request) {
 	instanceID := GetInstanceIDFromContext(ctx)
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
 
+	// Categories endpoint doesn't accept query parameters
+	if !h.validateQueryParams(w, r, map[string]struct{}{}, "torrents/categories") {
+		return
+	}
+
 	log.Debug().
 		Int("instanceId", instanceID).
 		Str("client", clientAPIKey.ClientName).
@@ -766,6 +801,11 @@ func (h *Handler) handleTags(w http.ResponseWriter, r *http.Request) {
 	instanceID := GetInstanceIDFromContext(ctx)
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
 
+	// Tags endpoint doesn't accept query parameters
+	if !h.validateQueryParams(w, r, map[string]struct{}{}, "torrents/tags") {
+		return
+	}
+
 	log.Debug().
 		Int("instanceId", instanceID).
 		Str("client", clientAPIKey.ClientName).
@@ -798,6 +838,13 @@ func (h *Handler) handleTorrentProperties(w http.ResponseWriter, r *http.Request
 	ctx := r.Context()
 	instanceID := GetInstanceIDFromContext(ctx)
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
+
+	allowedParams := map[string]struct{}{
+		"hash": {},
+	}
+	if !h.validateQueryParams(w, r, allowedParams, "torrents/properties") {
+		return
+	}
 
 	hash := r.URL.Query().Get("hash")
 
@@ -835,6 +882,13 @@ func (h *Handler) handleTorrentTrackers(w http.ResponseWriter, r *http.Request) 
 	ctx := r.Context()
 	instanceID := GetInstanceIDFromContext(ctx)
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
+
+	allowedParams := map[string]struct{}{
+		"hash": {},
+	}
+	if !h.validateQueryParams(w, r, allowedParams, "torrents/trackers") {
+		return
+	}
 
 	hash := r.URL.Query().Get("hash")
 
@@ -879,28 +933,66 @@ func (h *Handler) handleTorrentPeers(w http.ResponseWriter, r *http.Request) {
 		Int("instanceId", instanceID).
 		Str("client", clientAPIKey.ClientName).
 		Str("hash", hash).
-		Msg("Handling torrent peers request via qui sync manager")
+		Msg("Proxying sync/torrentPeers request")
 
-	peers, err := h.syncManager.GetTorrentPeers(ctx, instanceID, hash)
-	if err != nil {
-		log.Error().
-			Err(err).
-			Int("instanceId", instanceID).
-			Str("hash", hash).
-			Msg("Failed to get torrent peers")
-		h.writeProxyError(w)
-		return
+	// Use a custom response writer to capture the response
+	buf := h.bufferPool.Get()
+	crwBody := buf[:0]
+	crw := &capturingResponseWriter{
+		ResponseWriter: w,
+		body:           crwBody,
+		statusCode:     http.StatusOK,
 	}
+	defer func() {
+		if buf != nil {
+			h.bufferPool.Put(buf[:cap(buf)])
+		}
+	}()
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
+	// Proxy the request
+	h.proxy.ServeHTTP(crw, r)
 
-	encoder := json.NewEncoder(w)
-	if err := encoder.Encode(peers); err != nil {
-		log.Error().
-			Err(err).
-			Int("instanceId", instanceID).
-			Msg("Failed to encode peers response")
+	// Update local peer sync manager state for successful responses
+	if crw.statusCode == http.StatusOK && len(crw.body) > 0 {
+		var peersData qbt.TorrentPeersResponse
+		if err := json.Unmarshal(crw.body, &peersData); err != nil {
+			log.Error().
+				Err(err).
+				Int("instanceId", instanceID).
+				Str("hash", hash).
+				Msg("Failed to parse sync/torrentPeers response")
+			return
+		}
+
+		// Check if this is a full update (FullUpdate field or rid == 0)
+		isFullUpdate := peersData.FullUpdate || peersData.Rid == 0
+
+		if isFullUpdate {
+			client, err := h.clientPool.GetClient(ctx, instanceID)
+			if err != nil {
+				log.Error().
+					Err(err).
+					Int("instanceId", instanceID).
+					Msg("Failed to get client for peer state update")
+				return
+			}
+
+			// Update peer state using the same pattern as maindata
+			client.UpdateWithPeersData(hash, &peersData)
+
+			log.Debug().
+				Int("instanceId", instanceID).
+				Str("hash", hash).
+				Int64("rid", peersData.Rid).
+				Int("peerCount", len(peersData.Peers)).
+				Msg("Updated local peer state from full sync/torrentPeers response")
+		} else {
+			log.Debug().
+				Int("instanceId", instanceID).
+				Str("hash", hash).
+				Int64("rid", peersData.Rid).
+				Msg("Skipping incremental sync/torrentPeers update")
+		}
 	}
 }
 
@@ -909,6 +1001,14 @@ func (h *Handler) handleTorrentFiles(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	instanceID := GetInstanceIDFromContext(ctx)
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
+
+	allowedParams := map[string]struct{}{
+		"hash":    {},
+		"indexes": {},
+	}
+	if !h.validateQueryParams(w, r, allowedParams, "torrents/files") {
+		return
+	}
 
 	hash := r.URL.Query().Get("hash")
 
