@@ -321,6 +321,12 @@ func (r *Repository) DeleteSyncInfo(ctx context.Context, instanceID int, hash st
 
 // DeleteOldCache removes cache entries older than the specified time
 func (r *Repository) DeleteOldCache(ctx context.Context, olderThan time.Time) (int, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
 	// First delete from files cache
 	filesQuery := `
 		DELETE FROM torrent_files_cache 
@@ -330,16 +336,20 @@ func (r *Repository) DeleteOldCache(ctx context.Context, olderThan time.Time) (i
 			WHERE last_synced_at < ?
 		)
 	`
-	result, err := r.db.ExecContext(ctx, filesQuery, olderThan)
+	result, err := tx.ExecContext(ctx, filesQuery, olderThan)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to delete old files: %w", err)
 	}
 
 	// Then delete from sync info
 	syncQuery := `DELETE FROM torrent_files_sync WHERE last_synced_at < ?`
-	_, err = r.db.ExecContext(ctx, syncQuery, olderThan)
+	_, err = tx.ExecContext(ctx, syncQuery, olderThan)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to delete old sync info: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	rowsAffected, _ := result.RowsAffected()
