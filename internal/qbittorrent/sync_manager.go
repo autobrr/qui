@@ -940,13 +940,30 @@ func (sm *SyncManager) enrichTorrentsWithTrackerData(ctx context.Context, client
 	}
 
 	if trackerMap == nil {
-		trackerMap = make(map[string][]qbt.TorrentTracker)
+		trackerMap = make(map[string][]qbt.TorrentTracker, len(torrents))
 	}
 
+	var needsHydration bool
+
 	for i := range torrents {
+		hash := torrents[i].Hash
 		if len(torrents[i].Trackers) > 0 {
-			trackerMap[torrents[i].Hash] = torrents[i].Trackers
+			trackerMap[hash] = torrents[i].Trackers
+			continue
 		}
+
+		if trackers, ok := trackerMap[hash]; ok && len(trackers) > 0 {
+			torrents[i].Trackers = trackers
+			continue
+		}
+
+		if allowFetch {
+			needsHydration = true
+		}
+	}
+
+	if !needsHydration {
+		return torrents, trackerMap, nil
 	}
 
 	enriched, trackerData, remaining, err := client.hydrateTorrentsWithTrackers(ctx, torrents, allowFetch)
