@@ -364,13 +364,16 @@ func (c *Client) supportsTrackerInclude() bool {
 }
 
 func (c *Client) hydrateTorrentsWithTrackers(ctx context.Context, torrents []qbt.Torrent, allowFetch bool) ([]qbt.Torrent, map[string][]qbt.TorrentTracker, []string, error) {
+	// Call sync before getting trackers
+	if c.syncManager != nil {
+		if err := c.syncManager.Sync(ctx); err != nil {
+			return torrents, nil, nil, fmt.Errorf("failed to sync: %w", err)
+		}
+	}
+
 	tm := c.trackerManager()
 	if tm == nil {
 		return torrents, nil, nil, fmt.Errorf("tracker manager unavailable")
-	}
-
-	if !allowFetch {
-		return torrents, nil, nil, nil
 	}
 
 	enriched, trackerData := tm.HydrateTorrents(ctx, torrents)
