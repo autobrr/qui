@@ -236,20 +236,48 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 		encryptedBasicPassword = &encrypted
 	}
 
-	query := `
-		INSERT INTO instances (name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify) 
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-		RETURNING id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify
-	`
+	// Start a transaction to ensure atomicity
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
 
+	// Intern strings first
+	var nameID, hostID, usernameID int64
+	err = tx.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", name).Scan(&nameID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to intern name: %w", err)
+	}
+	err = tx.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", normalizedHost).Scan(&hostID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to intern host: %w", err)
+	}
+	err = tx.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", username).Scan(&usernameID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to intern username: %w", err)
+	}
+
+	// Intern basic username if provided
+	var basicUsernameID sql.NullInt64
+	if basicUsername != nil && *basicUsername != "" {
+		var id int64
+		err = tx.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", *basicUsername).Scan(&id)
+		if err != nil {
+			return nil, fmt.Errorf("failed to intern basic_username: %w", err)
+		}
+		basicUsernameID = sql.NullInt64{Int64: id, Valid: true}
+	}
+
+	// Insert instance with the interned IDs
 	instance := &Instance{}
-	err = s.db.QueryRowContext(ctx, query, name, normalizedHost, username, encryptedPassword, basicUsername, encryptedBasicPassword, tlsSkipVerify).Scan(
+	err = tx.QueryRowContext(ctx, `
+		INSERT INTO instances (name_id, host_id, username_id, password_encrypted, basic_username_id, basic_password_encrypted, tls_skip_verify) 
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+		RETURNING id, password_encrypted, basic_password_encrypted, tls_skip_verify
+	`, nameID, hostID, usernameID, encryptedPassword, basicUsernameID, encryptedBasicPassword, tlsSkipVerify).Scan(
 		&instance.ID,
-		&instance.Name,
-		&instance.Host,
-		&instance.Username,
 		&instance.PasswordEncrypted,
-		&instance.BasicUsername,
 		&instance.BasicPasswordEncrypted,
 		&instance.TLSSkipVerify,
 	)
@@ -258,13 +286,25 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 		return nil, err
 	}
 
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	// Set the fields from the IDs we just inserted
+	instance.Name = name
+	instance.Host = normalizedHost
+	instance.Username = username
+	if basicUsername != nil {
+		instance.BasicUsername = basicUsername
+	}
+
 	return instance, nil
 }
 
 func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 	query := `
 		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify 
-		FROM instances 
+		FROM instances_view 
 		WHERE id = ?
 	`
 
@@ -293,7 +333,7 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 	query := `
 		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify 
-		FROM instances
+		FROM instances_view
 		ORDER BY name ASC
 	`
 
@@ -332,9 +372,48 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 		return nil, err
 	}
 
-	// Start building the update query
-	query := `UPDATE instances SET name = ?, host = ?, username = ?, basic_username = ?`
-	args := []any{name, normalizedHost, username, basicUsername}
+	// Start a transaction
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Intern required strings first
+	var nameID, hostID, usernameID int64
+	err = tx.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", name).Scan(&nameID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to intern name: %w", err)
+	}
+	err = tx.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", normalizedHost).Scan(&hostID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to intern host: %w", err)
+	}
+	err = tx.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", username).Scan(&usernameID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to intern username: %w", err)
+	}
+
+	// Build UPDATE query
+	query := "UPDATE instances SET name_id = ?, host_id = ?, username_id = ?"
+	args := []any{nameID, hostID, usernameID}
+
+	// Handle basic_username update
+	if basicUsername != nil {
+		if *basicUsername == "" {
+			// Empty string explicitly provided - clear the basic username
+			query += ", basic_username_id = NULL"
+		} else {
+			// Basic username provided - intern and update
+			var basicUsernameID int64
+			err = tx.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", *basicUsername).Scan(&basicUsernameID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to intern basic_username: %w", err)
+			}
+			query += ", basic_username_id = ?"
+			args = append(args, basicUsernameID)
+		}
+	}
 
 	// Handle password update - encrypt if provided
 	if password != "" {
@@ -370,7 +449,7 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 	query += " WHERE id = ?"
 	args = append(args, id)
 
-	result, err := s.db.ExecContext(ctx, query, args...)
+	result, err := tx.ExecContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -382,6 +461,10 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 
 	if rows == 0 {
 		return nil, ErrInstanceNotFound
+	}
+
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return s.Get(ctx, id)

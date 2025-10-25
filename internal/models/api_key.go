@@ -60,23 +60,46 @@ func (s *APIKeyStore) Create(ctx context.Context, name string) (string, *APIKey,
 	// Hash the key for storage
 	keyHash := HashAPIKey(rawKey)
 
-	query := `
-		INSERT INTO api_keys (key_hash, name) 
-		VALUES (?, ?)
-		RETURNING id, key_hash, name, created_at, last_used_at
-	`
+	// Start a transaction
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
 
+	// Intern the name first
+	var nameID int64
+	err = tx.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", name).Scan(&nameID)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to intern name: %w", err)
+	}
+
+	// Insert the API key
 	apiKey := &APIKey{}
-	err = s.db.QueryRowContext(ctx, query, keyHash, name).Scan(
+	var createdAt, lastUsedAt sql.NullTime
+	err = tx.QueryRowContext(ctx, `
+		INSERT INTO api_keys (key_hash, name_id) 
+		VALUES (?, ?)
+		RETURNING id, key_hash, created_at, last_used_at
+	`, keyHash, nameID).Scan(
 		&apiKey.ID,
 		&apiKey.KeyHash,
-		&apiKey.Name,
-		&apiKey.CreatedAt,
-		&apiKey.LastUsedAt,
+		&createdAt,
+		&lastUsedAt,
 	)
 
 	if err != nil {
 		return "", nil, err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return "", nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	apiKey.Name = name
+	apiKey.CreatedAt = createdAt.Time
+	if lastUsedAt.Valid {
+		apiKey.LastUsedAt = &lastUsedAt.Time
 	}
 
 	// Return both the raw key (to show user once) and the model
@@ -86,7 +109,7 @@ func (s *APIKeyStore) Create(ctx context.Context, name string) (string, *APIKey,
 func (s *APIKeyStore) GetByHash(ctx context.Context, keyHash string) (*APIKey, error) {
 	query := `
 		SELECT id, key_hash, name, created_at, last_used_at 
-		FROM api_keys 
+		FROM api_keys_view 
 		WHERE key_hash = ?
 	`
 
@@ -113,7 +136,7 @@ func (s *APIKeyStore) GetByHash(ctx context.Context, keyHash string) (*APIKey, e
 func (s *APIKeyStore) List(ctx context.Context) ([]*APIKey, error) {
 	query := `
 		SELECT id, key_hash, name, created_at, last_used_at 
-		FROM api_keys 
+		FROM api_keys_view 
 		ORDER BY created_at DESC
 	`
 

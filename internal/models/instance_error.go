@@ -6,6 +6,7 @@ package models
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -33,9 +34,7 @@ type InstanceErrorStore struct {
 }
 
 func NewInstanceErrorStore(db dbinterface.Querier) *InstanceErrorStore {
-	return &InstanceErrorStore{
-		db: db,
-	}
+	return &InstanceErrorStore{db: db}
 }
 
 // isContextError checks if an error is a standard context error that should be ignored
@@ -62,9 +61,9 @@ func (s *InstanceErrorStore) RecordError(ctx context.Context, instanceID int, er
 		return nil
 	}
 
-	// Simple deduplication: check if same error was recorded in last minute
+	// Simple deduplication: check if same error was recorded in last minute using view
 	var count int
-	checkQuery := `SELECT COUNT(*) FROM instance_errors 
+	checkQuery := `SELECT COUNT(*) FROM instance_errors_view 
                    WHERE instance_id = ? AND error_type = ? AND error_message = ? 
                    AND occurred_at > datetime('now', '-1 minute')`
 
@@ -72,10 +71,27 @@ func (s *InstanceErrorStore) RecordError(ctx context.Context, instanceID int, er
 		return nil // Skip duplicate
 	}
 
-	// Insert the error (trigger will handle cleanup of old errors)
-	query := `INSERT INTO instance_errors (instance_id, error_type, error_message) 
-              VALUES (?, ?, ?)`
-	_, execErr := s.db.ExecContext(ctx, query, instanceID, errorType, errorMessage)
+	// Start a transaction to ensure atomicity
+	tx, txErr := s.db.BeginTx(ctx, nil)
+	if txErr != nil {
+		return fmt.Errorf("failed to begin transaction: %w", txErr)
+	}
+	defer tx.Rollback()
+
+	// Intern strings first
+	var errorTypeID, errorMessageID int64
+	err = tx.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", errorType).Scan(&errorTypeID)
+	if err != nil {
+		return fmt.Errorf("failed to intern error_type: %w", err)
+	}
+	err = tx.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", errorMessage).Scan(&errorMessageID)
+	if err != nil {
+		return fmt.Errorf("failed to intern error_message: %w", err)
+	}
+
+	// Insert the error with interned IDs
+	_, execErr := tx.ExecContext(ctx, `INSERT INTO instance_errors (instance_id, error_type_id, error_message_id) VALUES (?, ?, ?)`,
+		instanceID, errorTypeID, errorMessageID)
 
 	// Handle foreign key constraint errors gracefully
 	if execErr != nil && strings.Contains(execErr.Error(), "FOREIGN KEY constraint failed") {
@@ -83,13 +99,17 @@ func (s *InstanceErrorStore) RecordError(ctx context.Context, instanceID int, er
 		return nil
 	}
 
-	return execErr
+	if execErr != nil {
+		return execErr
+	}
+
+	return tx.Commit()
 }
 
 // GetRecentErrors retrieves the last N errors for an instance
 func (s *InstanceErrorStore) GetRecentErrors(ctx context.Context, instanceID int, limit int) ([]InstanceError, error) {
 	query := `SELECT id, instance_id, error_type, error_message, occurred_at 
-              FROM instance_errors 
+              FROM instance_errors_view 
               WHERE instance_id = ? 
               ORDER BY occurred_at DESC 
               LIMIT ?`
