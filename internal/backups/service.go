@@ -239,10 +239,28 @@ func (s *Service) recoverIncompleteRuns(ctx context.Context) error {
 		runIDs[i] = run.ID
 	}
 
-	// Update all runs in a single transaction to avoid database locking issues
-	err = s.store.UpdateMultipleRunsStatus(ctx, runIDs, models.BackupRunStatusFailed, &now, &errorMsg)
-	if err != nil {
-		return fmt.Errorf("failed to update incomplete runs: %w", err)
+	// Process runIDs in chunks to avoid SQLite bind parameter limits
+	const chunkSize = 1000
+	totalChunks := (len(runIDs) + chunkSize - 1) / chunkSize
+
+	for i := 0; i < len(runIDs); i += chunkSize {
+		end := i + chunkSize
+		if end > len(runIDs) {
+			end = len(runIDs)
+		}
+		chunk := runIDs[i:end]
+		chunkNum := (i / chunkSize) + 1
+
+		log.Debug().
+			Int("chunk", chunkNum).
+			Int("total_chunks", totalChunks).
+			Int("chunk_size", len(chunk)).
+			Msg("Updating backup run status chunk")
+
+		err = s.store.UpdateMultipleRunsStatus(ctx, chunk, models.BackupRunStatusFailed, &now, &errorMsg)
+		if err != nil {
+			return fmt.Errorf("failed to update incomplete runs (chunk %d/%d): %w", chunkNum, totalChunks, err)
+		}
 	}
 
 	log.Info().Int("count", len(incompleteRuns)).Msg("Successfully recovered incomplete backup runs")
