@@ -47,9 +47,9 @@ func setupTestBackupDB(t *testing.T) *database.DB {
 	db, err := database.New(dbPath)
 	require.NoError(t, err, "Failed to initialize test database with migrations")
 
-	// For tests, restrict to single connection to avoid SQLite locking issues
-	db.Conn().SetMaxOpenConns(1)
-	db.Conn().SetMaxIdleConns(1)
+	// Allow multiple connections for tests that need concurrent access
+	db.Conn().SetMaxOpenConns(5)
+	db.Conn().SetMaxIdleConns(2)
 
 	t.Cleanup(func() {
 		require.NoError(t, db.Close())
