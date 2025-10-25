@@ -124,13 +124,14 @@ func verifyDataPersistence(t *testing.T, ctx context.Context, db *DB, data *test
 	require.NoError(t, err, "User should exist after migrations")
 	require.Equal(t, data.userName, userName, "Username should match")
 
-	// Verify API key exists using GetStringByID (name is now interned as of migration 013)
-	var nameID int64
-	err = db.QueryRowContext(ctx, "SELECT name_id FROM api_keys WHERE id = ?", data.apiKeyID).Scan(&nameID)
+	// Verify API key exists (name is now interned as of migration 013)
+	var apiKeyName string
+	err = db.QueryRowContext(ctx, `
+		SELECT sp.value 
+		FROM api_keys ak 
+		JOIN string_pool sp ON ak.name_id = sp.id 
+		WHERE ak.id = ?`, data.apiKeyID).Scan(&apiKeyName)
 	require.NoError(t, err, "API key should exist after migrations")
-
-	apiKeyName, err := db.GetStringByID(ctx, nameID)
-	require.NoError(t, err, "Should be able to get API key name from string pool")
 	require.Equal(t, data.apiKeyName, apiKeyName, "API key name should match")
 
 	// Verify instance exists using the InstanceStore
@@ -209,20 +210,9 @@ func TestMigrationDataTransformations(t *testing.T) {
 				}
 			},
 			verifyData: func(t *testing.T, ctx context.Context, db *DB, data map[string]interface{}) {
-				// After migration 013, client_name should be interned
-				var clientNameID int64
-				err := db.QueryRowContext(ctx,
-					"SELECT client_name_id FROM client_api_keys WHERE id = ?",
-					data["keyID"]).Scan(&clientNameID)
-				require.NoError(t, err, "Client API key should exist after migrations")
-
-				clientName, err := db.GetStringByID(ctx, clientNameID)
-				require.NoError(t, err, "Should be able to get client name from string pool")
-				require.Equal(t, data["clientName"], clientName, "Client name should match after interning")
-
-				// Verify via view
+				// Verify via view directly - migration 013 internedthe client_name
 				var viewClientName string
-				err = db.QueryRowContext(ctx,
+				err := db.QueryRowContext(ctx,
 					"SELECT client_name FROM client_api_keys_view WHERE id = ?",
 					data["keyID"]).Scan(&viewClientName)
 				require.NoError(t, err)
@@ -255,19 +245,13 @@ func TestMigrationDataTransformations(t *testing.T) {
 				}
 			},
 			verifyData: func(t *testing.T, ctx context.Context, db *DB, data map[string]interface{}) {
-				// After migration 011, error_type and error_message should be interned
-				var errorTypeID, errorMessageID int64
+				// Verify via view - migration 011 interned error_type and error_message
+				var errorType, errorMessage string
 				err := db.QueryRowContext(ctx,
-					"SELECT error_type_id, error_message_id FROM instance_errors WHERE id = ?",
-					data["errorID"]).Scan(&errorTypeID, &errorMessageID)
+					"SELECT error_type, error_message FROM instance_errors_view WHERE id = ?",
+					data["errorID"]).Scan(&errorType, &errorMessage)
 				require.NoError(t, err, "Instance error should exist after migrations")
-
-				errorType, err := db.GetStringByID(ctx, errorTypeID)
-				require.NoError(t, err, "Should be able to get error type from string pool")
 				require.Equal(t, data["errorType"], errorType, "Error type should match after interning")
-
-				errorMessage, err := db.GetStringByID(ctx, errorMessageID)
-				require.NoError(t, err, "Should be able to get error message from string pool")
 				require.Equal(t, data["errorMessage"], errorMessage, "Error message should match after interning")
 			},
 		},
@@ -521,13 +505,13 @@ func TestMigrationDataTransformations(t *testing.T) {
 				}
 				require.Equal(t, data["itemCount"], count, "Should have all backup items")
 
-				// Verify actual string values
-				category, err := db.GetStringByID(ctx, firstCategoryID)
+				// Verify actual string values via view
+				var category, tags string
+				err = db.QueryRowContext(ctx,
+					"SELECT category, tags FROM instance_backup_items_view WHERE run_id = ? AND category IS NOT NULL LIMIT 1",
+					data["runID"]).Scan(&category, &tags)
 				require.NoError(t, err)
 				require.Equal(t, data["category"], category)
-
-				tags, err := db.GetStringByID(ctx, firstTagsID)
-				require.NoError(t, err)
 				require.Equal(t, data["tags"], tags)
 
 				// Verify infohashes via view

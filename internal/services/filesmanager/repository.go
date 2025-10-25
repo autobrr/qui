@@ -30,7 +30,7 @@ func (r *Repository) GetFiles(ctx context.Context, instanceID int, hash string) 
 }
 
 // GetFilesTx retrieves all cached files for a torrent within a transaction
-func (r *Repository) GetFilesTx(ctx context.Context, tx *sql.Tx, instanceID int, hash string) ([]CachedFile, error) {
+func (r *Repository) GetFilesTx(ctx context.Context, tx dbinterface.TxQuerier, instanceID int, hash string) ([]CachedFile, error) {
 	return r.getFiles(ctx, tx, instanceID, hash)
 }
 
@@ -228,7 +228,7 @@ func (r *Repository) GetSyncInfo(ctx context.Context, instanceID int, hash strin
 }
 
 // GetSyncInfoTx retrieves sync metadata for a torrent within a transaction
-func (r *Repository) GetSyncInfoTx(ctx context.Context, tx *sql.Tx, instanceID int, hash string) (*SyncInfo, error) {
+func (r *Repository) GetSyncInfoTx(ctx context.Context, tx dbinterface.TxQuerier, instanceID int, hash string) (*SyncInfo, error) {
 	return r.getSyncInfo(ctx, tx, instanceID, hash)
 }
 

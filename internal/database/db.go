@@ -62,6 +62,8 @@ import (
 	"github.com/autobrr/autobrr/pkg/ttlcache"
 	"github.com/rs/zerolog/log"
 	"modernc.org/sqlite"
+
+	"github.com/autobrr/qui/internal/dbinterface"
 )
 
 //go:embed migrations/*.sql
@@ -99,6 +101,71 @@ type DB struct {
 	closeErr      error
 	writeBarrier  atomic.Value // stores chan struct{} to pause writer for tests
 	barrierSignal atomic.Value // stores chan struct{} to signal writer pause
+}
+
+// Tx wraps sql.Tx to provide prepared statement caching for transaction queries
+type Tx struct {
+	tx *sql.Tx
+	db *DB
+}
+
+// PrepareContext creates a new prepared statement within the transaction.
+// Note: Unlike other methods, this doesn't use the cache since transaction-specific
+// statements must be created from the transaction itself.
+func (t *Tx) PrepareContext(ctx context.Context, query string) (*sql.Stmt, error) {
+	return t.tx.PrepareContext(ctx, query)
+}
+
+// ExecContext executes a query within the transaction using cached prepared statements
+func (t *Tx) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	// Get or prepare statement from DB cache, then create transaction-specific statement
+	stmt, err := t.db.getStmt(ctx, query)
+	if err != nil {
+		// Fallback to direct execution
+		return t.tx.ExecContext(ctx, query, args...)
+	}
+
+	// Create a transaction-specific statement from the cached one using StmtContext for better cancellation
+	txStmt := t.tx.StmtContext(ctx, stmt)
+	return txStmt.ExecContext(ctx, args...)
+}
+
+// QueryContext executes a query within the transaction using cached prepared statements
+func (t *Tx) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	// Get or prepare statement from DB cache, then create transaction-specific statement
+	stmt, err := t.db.getStmt(ctx, query)
+	if err != nil {
+		// Fallback to direct execution
+		return t.tx.QueryContext(ctx, query, args...)
+	}
+
+	// Create a transaction-specific statement from the cached one using StmtContext for better cancellation
+	txStmt := t.tx.StmtContext(ctx, stmt)
+	return txStmt.QueryContext(ctx, args...)
+}
+
+// QueryRowContext executes a query within the transaction using cached prepared statements
+func (t *Tx) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
+	// Get or prepare statement from DB cache, then create transaction-specific statement
+	stmt, err := t.db.getStmt(ctx, query)
+	if err != nil {
+		// Fallback to direct execution
+		return t.tx.QueryRowContext(ctx, query, args...)
+	}
+
+	// Create a transaction-specific statement from the cached one using StmtContext for better cancellation
+	txStmt := t.tx.StmtContext(ctx, stmt)
+	return txStmt.QueryRowContext(ctx, args...)
+}
+
+// Commit commits the transaction
+func (t *Tx) Commit() error {
+	return t.tx.Commit()
+}
+
+// Rollback rolls back the transaction
+func (t *Tx) Rollback() error {
+	return t.tx.Rollback()
 }
 
 const (
@@ -476,8 +543,9 @@ func (db *DB) QueryRowContext(ctx context.Context, query string, args ...any) *s
 	return stmt.QueryRowContext(ctx, args...)
 }
 
-// BeginTx starts a transaction. Note that transactions bypass the single writer
-// and use the underlying connection pool directly. This is safe because SQLite
+// BeginTx starts a transaction. Returns a wrapped transaction that uses prepared
+// statement caching for better performance. Note that transactions bypass the single
+// writer and use the underlying connection pool directly. This is safe because SQLite
 // handles transaction serialization internally.
 //
 // CONCURRENCY MODEL:
@@ -503,12 +571,21 @@ func (db *DB) QueryRowContext(ctx context.Context, query string, args ...any) *s
 // - BeginTx: ACID properties, full transaction isolation
 // - Both: No write conflicts due to SQLite's serialization
 //
+// PREPARED STATEMENTS:
+// - Transaction queries automatically use the DB's prepared statement cache
+// - Statements are adapted to the transaction context using Tx.Stmt()
+// - This improves performance for transactions that execute the same queries multiple times
+//
 // LIMITATIONS:
 // - Long-running transactions can block the single writer if they overlap
 // - EXCLUSIVE locks during transaction commit can cause brief contention
 // - Use IMMEDIATE transactions for write-heavy workloads to reduce conflicts
-func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
-	return db.conn.BeginTx(ctx, opts)
+func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQuerier, error) {
+	tx, err := db.conn.BeginTx(ctx, opts)
+	if err != nil {
+		return nil, err
+	}
+	return &Tx{tx: tx, db: db}, nil
 }
 
 func (db *DB) Close() error {
@@ -819,65 +896,6 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 	}
 
 	return rowsAffected, nil
-}
-
-// GetOrCreateStringID returns a SQL expression that can be embedded directly in INSERT/UPDATE statements
-// to atomically get or create a string ID. Uses INSERT with ON CONFLICT and RETURNING.
-//
-// Usage example:
-//
-//	INSERT INTO client_api_keys (key_hash, client_name_id, instance_id)
-//	VALUES (?, (INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id), ?)
-func (db *DB) GetOrCreateStringID() string {
-	return "(INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id)"
-}
-
-// GetStringByID retrieves a string value from the string_pool by its ID.
-func (db *DB) GetStringByID(ctx context.Context, id int64) (string, error) {
-	var value string
-	err := db.QueryRowContext(ctx, "SELECT value FROM string_pool WHERE id = ?", id).Scan(&value)
-	if err != nil {
-		return "", fmt.Errorf("failed to get string from pool: %w", err)
-	}
-	return value, nil
-}
-
-// GetStringsByIDs retrieves multiple string values from the string_pool by their IDs.
-// Returns a map of ID to string value. Missing IDs will not appear in the map.
-func (db *DB) GetStringsByIDs(ctx context.Context, ids []int64) (map[int64]string, error) {
-	if len(ids) == 0 {
-		return make(map[int64]string), nil
-	}
-
-	// Build query with IN clause
-	query := "SELECT id, value FROM string_pool WHERE id IN (?" + strings.Repeat(",?", len(ids)-1) + ")"
-
-	args := make([]any, len(ids))
-	for i, id := range ids {
-		args[i] = id
-	}
-
-	rows, err := db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query string_pool: %w", err)
-	}
-	defer rows.Close()
-
-	result := make(map[int64]string, len(ids))
-	for rows.Next() {
-		var id int64
-		var value string
-		if err := rows.Scan(&id, &value); err != nil {
-			return nil, fmt.Errorf("failed to scan row: %w", err)
-		}
-		result[id] = value
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating rows: %w", err)
-	}
-
-	return result, nil
 }
 
 // NewForTest wraps an existing sql.DB connection for testing purposes.

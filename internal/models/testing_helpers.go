@@ -6,11 +6,38 @@ package models
 import (
 	"context"
 	"database/sql"
+
+	"github.com/autobrr/qui/internal/dbinterface"
 )
 
 // mockQuerier wraps sql.DB to implement dbinterface.Querier for tests
 type mockQuerier struct {
 	*sql.DB
+}
+
+// mockTx wraps sql.Tx to implement dbinterface.TxQuerier for tests
+type mockTx struct {
+	*sql.Tx
+}
+
+func (m *mockTx) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	return m.Tx.ExecContext(ctx, query, args...)
+}
+
+func (m *mockTx) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	return m.Tx.QueryContext(ctx, query, args...)
+}
+
+func (m *mockTx) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
+	return m.Tx.QueryRowContext(ctx, query, args...)
+}
+
+func (m *mockTx) Commit() error {
+	return m.Tx.Commit()
+}
+
+func (m *mockTx) Rollback() error {
+	return m.Tx.Rollback()
 }
 
 func newMockQuerier(db *sql.DB) *mockQuerier {
@@ -41,6 +68,10 @@ func (m *mockQuerier) GetStringsByIDs(ctx context.Context, ids []int64) (map[int
 	return result, nil
 }
 
-func (m *mockQuerier) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
-	return m.DB.BeginTx(ctx, opts)
+func (m *mockQuerier) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQuerier, error) {
+	tx, err := m.DB.BeginTx(ctx, opts)
+	if err != nil {
+		return nil, err
+	}
+	return &mockTx{Tx: tx}, nil
 }
