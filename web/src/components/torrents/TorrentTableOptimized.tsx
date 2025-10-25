@@ -102,6 +102,7 @@ import {
 import { createPortal } from "react-dom"
 import { AddTorrentDialog, type AddTorrentDropPayload } from "./AddTorrentDialog"
 import { DraggableTableHeader } from "./DraggableTableHeader"
+import { SelectAllHotkey } from "./SelectAllHotkey"
 import {
   AddTagsDialog,
   CreateAndAssignCategoryDialog,
@@ -1206,6 +1207,18 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     hasSelection: isAllSelected || selectedRowIds.length > 0,
   })
 
+  // Apply Ctrl/Cmd+A shortcut to select all torrents
+  const selectAllWithShortcut = useCallback(() => {
+    if (sortedTorrents.length === 0) {
+      return
+    }
+
+    setIsAllSelected(true)
+    setExcludedFromSelectAll(new Set())
+    setRowSelection({})
+    lastSelectedIndexRef.current = null
+  }, [sortedTorrents.length, setIsAllSelected, setExcludedFromSelectAll, setRowSelection])
+
   // Wrapper functions to adapt hook handlers to component needs
   const selectAllOptions = useMemo(() => ({
     selectAll: isAllSelected,
@@ -1466,7 +1479,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   )
 
   return (
-    <div className="h-full flex flex-col">
+    <>
+      <SelectAllHotkey
+        onSelectAll={selectAllWithShortcut}
+        isMac={isMac}
+        enabled={sortedTorrents.length > 0}
+      />
+      <div className="h-full flex flex-col">
       {/* Search and Actions */}
       <div className="flex flex-col gap-2 flex-shrink-0">
         {/* Search bar row */}
@@ -2138,6 +2157,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           className="bottom-20 right-6"
         />
       </div>
-    </div>
+      </div>
+    </>
   )
 });
