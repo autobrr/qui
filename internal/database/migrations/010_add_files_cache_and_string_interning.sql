@@ -19,54 +19,7 @@ CREATE TABLE IF NOT EXISTS string_pool (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_string_pool_value ON string_pool(value);
 
 -- ============================================================================
--- PART 2: Create torrent files cache tables
--- ============================================================================
-
--- Cache torrent file information to reduce API calls to qBittorrent
--- Files for 100% complete torrents are assumed stable and don't need frequent refreshing
-CREATE TABLE IF NOT EXISTS torrent_files_cache (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    instance_id INTEGER NOT NULL,
-    torrent_hash_id INTEGER NOT NULL,
-    file_index INTEGER NOT NULL,
-    name_id INTEGER NOT NULL,
-    size INTEGER NOT NULL,
-    progress REAL NOT NULL,
-    priority INTEGER NOT NULL,
-    is_seed INTEGER,
-    piece_range_start INTEGER,
-    piece_range_end INTEGER,
-    availability REAL NOT NULL,
-    cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (instance_id) REFERENCES instances(id) ON DELETE CASCADE,
-    FOREIGN KEY (torrent_hash_id) REFERENCES string_pool(id) ON DELETE RESTRICT,
-    FOREIGN KEY (name_id) REFERENCES string_pool(id) ON DELETE RESTRICT,
-    UNIQUE(instance_id, torrent_hash_id, file_index)
-);
-
--- Index for fast lookups by instance and torrent hash
-CREATE INDEX IF NOT EXISTS idx_torrent_files_cache_lookup ON torrent_files_cache(instance_id, torrent_hash_id);
-
--- Index for cache invalidation queries
-CREATE INDEX IF NOT EXISTS idx_torrent_files_cache_cached_at ON torrent_files_cache(cached_at);
-
--- Store metadata about when each torrent's files were last synced
-CREATE TABLE IF NOT EXISTS torrent_files_sync (
-    instance_id INTEGER NOT NULL,
-    torrent_hash_id INTEGER NOT NULL,
-    last_synced_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    torrent_progress REAL NOT NULL DEFAULT 0,
-    file_count INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (instance_id, torrent_hash_id),
-    FOREIGN KEY (instance_id) REFERENCES instances(id) ON DELETE CASCADE,
-    FOREIGN KEY (torrent_hash_id) REFERENCES string_pool(id) ON DELETE RESTRICT
-);
-
--- Index for finding stale caches
-CREATE INDEX IF NOT EXISTS idx_torrent_files_sync_last_synced ON torrent_files_sync(last_synced_at);
-
--- ============================================================================
--- PART 3: Migrate existing tables to use string interning
+-- PART 2: Migrate existing tables to use string interning
 -- ============================================================================
 
 -- Add temporary columns for string references to existing tables
@@ -262,46 +215,68 @@ SET client_name_id = COALESCE(
 );
 
 -- ============================================================================
--- PART 4: Recreate tables with string interning (drop old TEXT columns)
+-- PART 3: Recreate tables with string interning (drop old TEXT columns)
 -- ============================================================================
+-- NOTE: To avoid foreign key constraint violations when dropping/recreating instances:
+-- 1. First, create backup temp tables and save data from all tables being recreated
+-- 2. Drop all child tables that reference instances
+-- 3. Drop and recreate instances table
+-- 4. Recreate all child tables
+-- 5. Restore data from temp tables
+-- 6. Create new tables (torrent_files_cache, torrent_files_sync)
 
--- Recreate instance_backup_items table
-CREATE TABLE IF NOT EXISTS instance_backup_items_new (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    run_id INTEGER NOT NULL,
-    torrent_hash_id INTEGER NOT NULL,
-    name_id INTEGER NOT NULL,
-    category_id INTEGER,
-    size_bytes INTEGER NOT NULL,
-    archive_rel_path_id INTEGER,
-    infohash_v1_id INTEGER,
-    infohash_v2_id INTEGER,
-    tags_id INTEGER,
-    torrent_blob_path_id INTEGER,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (run_id) REFERENCES instance_backup_runs(id) ON DELETE CASCADE,
-    FOREIGN KEY (torrent_hash_id) REFERENCES string_pool(id) ON DELETE RESTRICT,
-    FOREIGN KEY (name_id) REFERENCES string_pool(id) ON DELETE RESTRICT,
-    FOREIGN KEY (category_id) REFERENCES string_pool(id) ON DELETE RESTRICT,
-    FOREIGN KEY (tags_id) REFERENCES string_pool(id) ON DELETE RESTRICT,
-    FOREIGN KEY (archive_rel_path_id) REFERENCES string_pool(id) ON DELETE RESTRICT,
-    FOREIGN KEY (infohash_v1_id) REFERENCES string_pool(id) ON DELETE RESTRICT,
-    FOREIGN KEY (infohash_v2_id) REFERENCES string_pool(id) ON DELETE RESTRICT,
-    FOREIGN KEY (torrent_blob_path_id) REFERENCES string_pool(id) ON DELETE RESTRICT
-);
+-- Step 1: Create temporary backup tables for data
+CREATE TEMPORARY TABLE temp_instances AS
+SELECT id, name_id, host_id, username_id, password_encrypted, basic_username_id, basic_password_encrypted, tls_skip_verify
+FROM instances;
 
-INSERT INTO instance_backup_items_new (id, run_id, torrent_hash_id, name_id, category_id, size_bytes, archive_rel_path_id, infohash_v1_id, infohash_v2_id, tags_id, torrent_blob_path_id, created_at)
-SELECT id, run_id, torrent_hash_id, name_id, category_id, size_bytes, archive_rel_path_id, infohash_v1_id, infohash_v2_id, tags_id, torrent_blob_path_id, created_at
+CREATE TEMPORARY TABLE temp_instance_errors AS
+SELECT id, instance_id, error_type_id, error_message_id, occurred_at
+FROM instance_errors;
+
+CREATE TEMPORARY TABLE temp_instance_backup_runs AS
+SELECT id, instance_id, kind_id, status_id, requested_by_id, requested_at, started_at, 
+       completed_at, archive_path_id, manifest_path_id, total_bytes, torrent_count, 
+       category_counts_json, categories_json, tags_json, error_message_id
+FROM instance_backup_runs;
+
+CREATE TEMPORARY TABLE temp_instance_backup_items AS
+SELECT id, run_id, torrent_hash_id, name_id, category_id, size_bytes, archive_rel_path_id, 
+       infohash_v1_id, infohash_v2_id, tags_id, torrent_blob_path_id, created_at
 FROM instance_backup_items;
 
-DROP TABLE instance_backup_items;
-ALTER TABLE instance_backup_items_new RENAME TO instance_backup_items;
+CREATE TEMPORARY TABLE temp_client_api_keys AS
+SELECT id, key_hash, client_name_id, instance_id, created_at, last_used_at
+FROM client_api_keys;
 
-CREATE INDEX IF NOT EXISTS idx_backup_items_run ON instance_backup_items(run_id);
-CREATE INDEX IF NOT EXISTS idx_backup_items_hash ON instance_backup_items(torrent_hash_id);
+-- Step 2: Drop all child tables that reference instances (in reverse dependency order)
+DROP TABLE instance_backup_items;
+DROP TABLE instance_backup_runs;
+DROP TABLE instance_errors;
+DROP TABLE client_api_keys;
+
+-- Step 3: Drop and recreate instances table
+DROP TABLE instances;
+
+CREATE TABLE instances (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name_id INTEGER NOT NULL,
+    host_id INTEGER NOT NULL,
+    username_id INTEGER NOT NULL,
+    password_encrypted TEXT NOT NULL,
+    basic_username_id INTEGER,
+    basic_password_encrypted TEXT,
+    tls_skip_verify BOOLEAN NOT NULL DEFAULT 0,
+    FOREIGN KEY (name_id) REFERENCES string_pool(id) ON DELETE RESTRICT,
+    FOREIGN KEY (host_id) REFERENCES string_pool(id) ON DELETE RESTRICT,
+    FOREIGN KEY (username_id) REFERENCES string_pool(id) ON DELETE RESTRICT,
+    FOREIGN KEY (basic_username_id) REFERENCES string_pool(id) ON DELETE RESTRICT
+);
+
+-- Step 4: Recreate all child tables that reference instances
 
 -- Recreate instance_errors table
-CREATE TABLE IF NOT EXISTS instance_errors_new (
+CREATE TABLE instance_errors (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     instance_id INTEGER NOT NULL,
     error_type_id INTEGER NOT NULL,
@@ -312,16 +287,9 @@ CREATE TABLE IF NOT EXISTS instance_errors_new (
     FOREIGN KEY (error_message_id) REFERENCES string_pool(id) ON DELETE RESTRICT
 );
 
-INSERT INTO instance_errors_new (id, instance_id, error_type_id, error_message_id, occurred_at)
-SELECT id, instance_id, error_type_id, error_message_id, occurred_at
-FROM instance_errors;
+CREATE INDEX idx_instance_errors_lookup ON instance_errors(instance_id, occurred_at DESC);
 
-DROP TABLE instance_errors;
-ALTER TABLE instance_errors_new RENAME TO instance_errors;
-
-CREATE INDEX IF NOT EXISTS idx_instance_errors_lookup ON instance_errors(instance_id, occurred_at DESC);
-
-CREATE TRIGGER IF NOT EXISTS cleanup_old_instance_errors
+CREATE TRIGGER cleanup_old_instance_errors
 AFTER INSERT ON instance_errors
 BEGIN
     DELETE FROM instance_errors
@@ -335,7 +303,7 @@ BEGIN
 END;
 
 -- Recreate instance_backup_runs table
-CREATE TABLE IF NOT EXISTS instance_backup_runs_new (
+CREATE TABLE instance_backup_runs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     instance_id INTEGER NOT NULL,
     kind_id INTEGER NOT NULL,
@@ -361,40 +329,74 @@ CREATE TABLE IF NOT EXISTS instance_backup_runs_new (
     FOREIGN KEY (manifest_path_id) REFERENCES string_pool(id) ON DELETE RESTRICT
 );
 
-INSERT INTO instance_backup_runs_new (id, instance_id, kind_id, status_id, requested_by_id, requested_at, started_at, completed_at, archive_path_id, manifest_path_id, total_bytes, torrent_count, category_counts_json, categories_json, tags_json, error_message_id)
-SELECT id, instance_id, kind_id, status_id, requested_by_id, requested_at, started_at, completed_at, archive_path_id, manifest_path_id, total_bytes, torrent_count, category_counts_json, categories_json, tags_json, error_message_id
-FROM instance_backup_runs;
+CREATE INDEX idx_instance_backup_runs_instance ON instance_backup_runs(instance_id, requested_at DESC);
 
-DROP TABLE instance_backup_runs;
-ALTER TABLE instance_backup_runs_new RENAME TO instance_backup_runs;
-
-CREATE INDEX IF NOT EXISTS idx_instance_backup_runs_instance ON instance_backup_runs(instance_id, requested_at DESC);
-
--- Recreate instances table
-CREATE TABLE IF NOT EXISTS instances_new (
+-- Recreate instance_backup_items table (references instance_backup_runs)
+CREATE TABLE instance_backup_items (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id INTEGER NOT NULL,
+    torrent_hash_id INTEGER NOT NULL,
     name_id INTEGER NOT NULL,
-    host_id INTEGER NOT NULL,
-    username_id INTEGER NOT NULL,
-    password_encrypted TEXT NOT NULL,
-    basic_username_id INTEGER,
-    basic_password_encrypted TEXT,
-    tls_skip_verify BOOLEAN NOT NULL DEFAULT 0,
+    category_id INTEGER,
+    size_bytes INTEGER NOT NULL,
+    archive_rel_path_id INTEGER,
+    infohash_v1_id INTEGER,
+    infohash_v2_id INTEGER,
+    tags_id INTEGER,
+    torrent_blob_path_id INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (run_id) REFERENCES instance_backup_runs(id) ON DELETE CASCADE,
+    FOREIGN KEY (torrent_hash_id) REFERENCES string_pool(id) ON DELETE RESTRICT,
     FOREIGN KEY (name_id) REFERENCES string_pool(id) ON DELETE RESTRICT,
-    FOREIGN KEY (host_id) REFERENCES string_pool(id) ON DELETE RESTRICT,
-    FOREIGN KEY (username_id) REFERENCES string_pool(id) ON DELETE RESTRICT,
-    FOREIGN KEY (basic_username_id) REFERENCES string_pool(id) ON DELETE RESTRICT
+    FOREIGN KEY (category_id) REFERENCES string_pool(id) ON DELETE RESTRICT,
+    FOREIGN KEY (tags_id) REFERENCES string_pool(id) ON DELETE RESTRICT,
+    FOREIGN KEY (archive_rel_path_id) REFERENCES string_pool(id) ON DELETE RESTRICT,
+    FOREIGN KEY (infohash_v1_id) REFERENCES string_pool(id) ON DELETE RESTRICT,
+    FOREIGN KEY (infohash_v2_id) REFERENCES string_pool(id) ON DELETE RESTRICT,
+    FOREIGN KEY (torrent_blob_path_id) REFERENCES string_pool(id) ON DELETE RESTRICT
 );
 
-INSERT INTO instances_new (id, name_id, host_id, username_id, password_encrypted, basic_username_id, basic_password_encrypted, tls_skip_verify)
+CREATE INDEX idx_backup_items_run ON instance_backup_items(run_id);
+CREATE INDEX idx_backup_items_hash ON instance_backup_items(torrent_hash_id);
+
+-- Recreate client_api_keys table
+CREATE TABLE client_api_keys (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    key_hash TEXT NOT NULL UNIQUE,
+    client_name_id INTEGER NOT NULL,
+    instance_id INTEGER NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_used_at TIMESTAMP,
+    FOREIGN KEY (instance_id) REFERENCES instances(id) ON DELETE CASCADE,
+    FOREIGN KEY (client_name_id) REFERENCES string_pool(id) ON DELETE RESTRICT
+);
+
+CREATE UNIQUE INDEX idx_client_api_keys_key_hash ON client_api_keys(key_hash);
+CREATE INDEX idx_client_api_keys_instance_id ON client_api_keys(instance_id);
+
+-- Step 5: Restore data from temporary tables
+INSERT INTO instances (id, name_id, host_id, username_id, password_encrypted, basic_username_id, basic_password_encrypted, tls_skip_verify)
 SELECT id, name_id, host_id, username_id, password_encrypted, basic_username_id, basic_password_encrypted, tls_skip_verify
-FROM instances;
+FROM temp_instances;
 
-DROP TABLE instances;
-ALTER TABLE instances_new RENAME TO instances;
+INSERT INTO instance_errors (id, instance_id, error_type_id, error_message_id, occurred_at)
+SELECT id, instance_id, error_type_id, error_message_id, occurred_at
+FROM temp_instance_errors;
 
--- Recreate api_keys table
-CREATE TABLE IF NOT EXISTS api_keys_new (
+INSERT INTO instance_backup_runs (id, instance_id, kind_id, status_id, requested_by_id, requested_at, started_at, completed_at, archive_path_id, manifest_path_id, total_bytes, torrent_count, category_counts_json, categories_json, tags_json, error_message_id)
+SELECT id, instance_id, kind_id, status_id, requested_by_id, requested_at, started_at, completed_at, archive_path_id, manifest_path_id, total_bytes, torrent_count, category_counts_json, categories_json, tags_json, error_message_id
+FROM temp_instance_backup_runs;
+
+INSERT INTO instance_backup_items (id, run_id, torrent_hash_id, name_id, category_id, size_bytes, archive_rel_path_id, infohash_v1_id, infohash_v2_id, tags_id, torrent_blob_path_id, created_at)
+SELECT id, run_id, torrent_hash_id, name_id, category_id, size_bytes, archive_rel_path_id, infohash_v1_id, infohash_v2_id, tags_id, torrent_blob_path_id, created_at
+FROM temp_instance_backup_items;
+
+INSERT INTO client_api_keys (id, key_hash, client_name_id, instance_id, created_at, last_used_at)
+SELECT id, key_hash, client_name_id, instance_id, created_at, last_used_at
+FROM temp_client_api_keys;
+
+-- Recreate api_keys table (no FK to instances, but needs string interning migration)
+CREATE TABLE api_keys_new (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     key_hash TEXT UNIQUE NOT NULL,
     name_id INTEGER NOT NULL,
@@ -410,29 +412,56 @@ FROM api_keys;
 DROP TABLE api_keys;
 ALTER TABLE api_keys_new RENAME TO api_keys;
 
-CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash);
+CREATE INDEX idx_api_keys_hash ON api_keys(key_hash);
 
--- Recreate client_api_keys table
-CREATE TABLE IF NOT EXISTS client_api_keys_new (
+-- ============================================================================
+-- PART 4: Create torrent files cache tables
+-- ============================================================================
+-- These tables are created AFTER instances is rebuilt so they can properly
+-- reference the new instances table with foreign key constraints
+
+-- Cache torrent file information to reduce API calls to qBittorrent
+-- Files for 100% complete torrents are assumed stable and don't need frequent refreshing
+CREATE TABLE torrent_files_cache (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    key_hash TEXT NOT NULL UNIQUE,
-    client_name_id INTEGER NOT NULL,
     instance_id INTEGER NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    last_used_at TIMESTAMP,
+    torrent_hash_id INTEGER NOT NULL,
+    file_index INTEGER NOT NULL,
+    name_id INTEGER NOT NULL,
+    size INTEGER NOT NULL,
+    progress REAL NOT NULL,
+    priority INTEGER NOT NULL,
+    is_seed INTEGER,
+    piece_range_start INTEGER,
+    piece_range_end INTEGER,
+    availability REAL NOT NULL,
+    cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (instance_id) REFERENCES instances(id) ON DELETE CASCADE,
-    FOREIGN KEY (client_name_id) REFERENCES string_pool(id) ON DELETE RESTRICT
+    FOREIGN KEY (torrent_hash_id) REFERENCES string_pool(id) ON DELETE RESTRICT,
+    FOREIGN KEY (name_id) REFERENCES string_pool(id) ON DELETE RESTRICT,
+    UNIQUE(instance_id, torrent_hash_id, file_index)
 );
 
-INSERT INTO client_api_keys_new (id, key_hash, client_name_id, instance_id, created_at, last_used_at)
-SELECT id, key_hash, client_name_id, instance_id, created_at, last_used_at
-FROM client_api_keys;
+-- Index for fast lookups by instance and torrent hash
+CREATE INDEX idx_torrent_files_cache_lookup ON torrent_files_cache(instance_id, torrent_hash_id);
 
-DROP TABLE client_api_keys;
-ALTER TABLE client_api_keys_new RENAME TO client_api_keys;
+-- Index for cache invalidation queries
+CREATE INDEX idx_torrent_files_cache_cached_at ON torrent_files_cache(cached_at);
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_client_api_keys_key_hash ON client_api_keys(key_hash);
-CREATE INDEX IF NOT EXISTS idx_client_api_keys_instance_id ON client_api_keys(instance_id);
+-- Store metadata about when each torrent's files were last synced
+CREATE TABLE torrent_files_sync (
+    instance_id INTEGER NOT NULL,
+    torrent_hash_id INTEGER NOT NULL,
+    last_synced_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    torrent_progress REAL NOT NULL DEFAULT 0,
+    file_count INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (instance_id, torrent_hash_id),
+    FOREIGN KEY (instance_id) REFERENCES instances(id) ON DELETE CASCADE,
+    FOREIGN KEY (torrent_hash_id) REFERENCES string_pool(id) ON DELETE RESTRICT
+);
+
+-- Index for finding stale caches
+CREATE INDEX idx_torrent_files_sync_last_synced ON torrent_files_sync(last_synced_at);
 
 -- ============================================================================
 -- PART 5: Create views for easier querying with automatic string resolution
