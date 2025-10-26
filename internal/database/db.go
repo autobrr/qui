@@ -3,29 +3,26 @@
 
 // Package database provides a SQLite database layer with string interning.
 //
+// WRITE CONCURRENCY MODEL:
+//
+// All write operations are serialized through a single dedicated write connection:
+//   - ExecContext: Routes write queries through single writer goroutine
+//   - BeginTx (write): Uses dedicated write connection for transactions
+//   - BeginTx (read-only): Uses connection pool for concurrent reads
+//   - WAL mode allows concurrent readers during writes
+//
 // STRING POOL SYSTEM:
 //
-// The string pool system uses the database string_pool table as the source of truth.
-// String interning is handled through INSERT OR IGNORE operations with retry logic.
-//
-// RETRY LOGIC:
-//
-// GetOrCreateStringID retries up to 3 times with 10ms/20ms/40ms exponential backoff:
-//   - Handles rare case where cleanup deletes string between INSERT and SELECT
-//   - Backoff reduces contention with cleanup operations
-//
-// TRANSACTION-AWARE OPERATIONS:
-//
-// GetOrCreateStringID accepts tx parameter:
-//   - When tx != nil, uses tx.ExecContext (transaction-local)
-//   - When tx == nil, uses db.ExecContext (single writer channel)
-//   - Callers MUST pass tx to avoid deadlocks
+// String interning uses the database string_pool table as the source of truth.
+// String operations are handled through dbinterface package functions that work
+// within transactions using INSERT ... ON CONFLICT for deduplication.
 //
 // CLEANUP CONCURRENCY PROTECTION:
 //
-// atomic.Bool prevents overlapping cleanup operations:
-//   - Only one cleanup can run at a time
-//   - Prevents database contention
+// Periodic cleanup removes unused strings from string_pool:
+//   - Runs automatically every 24 hours
+//   - atomic.Bool prevents overlapping cleanup operations
+//   - Uses write transaction for atomicity
 //
 // FAILURE MODES & RECOVERY:
 //
@@ -33,11 +30,6 @@
 //   - Strings remain in database (orphaned but harmless)
 //   - Next cleanup (24hrs) will retry
 //   - Disk space gradually increases until next successful cleanup
-//
-// 2. GetOrCreateStringID exhausts retries:
-//   - Returns error to caller
-//   - Caller can retry or propagate error
-//   - Does not corrupt database state
 //
 // MONITORING:
 //
@@ -95,13 +87,11 @@ type DB struct {
 	// Cleanup coordination
 	cleanupRunning atomic.Bool // Prevents concurrent cleanup operations
 
-	stop          chan struct{}
-	closeOnce     sync.Once
-	writerWG      sync.WaitGroup
-	closing       atomic.Bool
-	closeErr      error
-	writeBarrier  atomic.Value // stores chan struct{} to pause writer for tests
-	barrierSignal atomic.Value // stores chan struct{} to signal writer pause
+	stop      chan struct{}
+	closeOnce sync.Once
+	writerWG  sync.WaitGroup
+	closing   atomic.Bool
+	closeErr  error
 }
 
 // Tx wraps sql.Tx to provide prepared statement caching for transaction queries
@@ -272,8 +262,6 @@ func New(databasePath string) (*DB, error) {
 		stmts:   stmtsCache,
 		stop:    make(chan struct{}),
 	}
-	db.writeBarrier.Store((chan struct{})(nil))
-	db.barrierSignal.Store((chan struct{})(nil))
 
 	// Run migrations with single connection
 	if err := db.migrate(); err != nil {
@@ -437,28 +425,6 @@ func (db *DB) writerLoop() {
 }
 
 func (db *DB) processWrite(req writeReq) {
-	// Check for test write barrier with timeout to prevent production hangs
-	if barrier, ok := db.writeBarrier.Load().(chan struct{}); ok && barrier != nil {
-		if signal, ok := db.barrierSignal.Load().(chan struct{}); ok && signal != nil {
-			select {
-			case signal <- struct{}{}:
-			default:
-			}
-		}
-		// Add timeout to prevent indefinite blocking if test cleanup fails
-		timeout := time.NewTimer(30 * time.Second)
-		defer timeout.Stop()
-
-		select {
-		case <-barrier:
-		case <-req.ctx.Done():
-			log.Warn().Msg("Write barrier: request context cancelled")
-		case <-timeout.C:
-			// Write barrier should only be set in tests. If timeout triggers in production,
-			// it indicates a bug where the barrier was not properly cleared.
-			log.Fatal().Msg("FATAL: Write barrier timeout exceeded in production - write barrier should only be used in tests")
-		}
-	}
 
 	// use prepared stmt if possible
 	stmt, err := db.getStmt(req.ctx, req.query)
@@ -630,16 +596,6 @@ func (db *DB) Close() error {
 		default:
 			close(db.stop)
 		}
-
-		if barrier, ok := db.writeBarrier.Load().(chan struct{}); ok && barrier != nil {
-			select {
-			case <-barrier:
-			default:
-				close(barrier)
-			}
-			db.writeBarrier.Store((chan struct{})(nil))
-		}
-		db.barrierSignal.Store((chan struct{})(nil))
 
 		db.writerWG.Wait()
 
@@ -975,8 +931,6 @@ func NewForTest(conn *sql.DB) *DB {
 		stmts:     stmtsCache,
 		stop:      make(chan struct{}),
 	}
-	db.writeBarrier.Store((chan struct{})(nil))
-	db.barrierSignal.Store((chan struct{})(nil))
 
 	// Start single writer goroutine
 	db.writerWG.Add(1)

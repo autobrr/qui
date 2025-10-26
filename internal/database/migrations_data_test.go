@@ -629,8 +629,6 @@ func newWithMigrations(path string, count int) (*DB, error) {
 		stmts:     stmtsCache,
 		stop:      make(chan struct{}),
 	}
-	db.writeBarrier.Store((chan struct{})(nil))
-	db.barrierSignal.Store((chan struct{})(nil))
 
 	db.writerWG.Add(1)
 	go db.writerLoop()
