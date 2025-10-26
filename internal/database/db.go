@@ -1006,9 +1006,9 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("failed to create temp table: %w", err)
 	}
 
-	cleanup := func() {
+	cleanup := func() error {
 		_, _ = tx.ExecContext(context.Background(), "DROP TABLE IF EXISTS temp_referenced_strings")
-		tx.Commit()
+		return tx.Commit()
 	}
 	defer cleanup()
 
@@ -1062,10 +1062,8 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("failed to get rows affected: %w", err)
 	}
 
-	cleanup()
-
 	// Commit the transaction
-	if err := tx.Commit(); err != nil {
+	if err := cleanup(); err != nil {
 		return 0, fmt.Errorf("failed to commit cleanup transaction: %w", err)
 	}
 
