@@ -109,7 +109,8 @@ type DB struct {
 type Tx struct {
 	tx        *sql.Tx
 	db        *DB
-	isWriteTx bool // true if this is a write transaction that needs serialized commit
+	ctx       context.Context // context from BeginTx, used for commit/rollback
+	isWriteTx bool            // true if this is a write transaction that needs serialized commit
 }
 
 // PrepareContext creates a new prepared statement within the transaction.
@@ -173,10 +174,9 @@ func (t *Tx) Commit() error {
 		return fmt.Errorf("db stopping")
 	}
 
-	ctx := context.Background()
 	resCh := make(chan error, 1)
 	req := writeReq{
-		ctx:     ctx,
+		ctx:     t.ctx,
 		txOp:    txOpCommit,
 		tx:      t.tx,
 		txResCh: resCh,
@@ -184,6 +184,8 @@ func (t *Tx) Commit() error {
 
 	select {
 	case t.db.writeCh <- req:
+	case <-t.ctx.Done():
+		return t.ctx.Err()
 	case <-t.db.stop:
 		return fmt.Errorf("db stopping")
 	}
@@ -203,10 +205,9 @@ func (t *Tx) Rollback() error {
 		return fmt.Errorf("db stopping")
 	}
 
-	ctx := context.Background()
 	resCh := make(chan error, 1)
 	req := writeReq{
-		ctx:     ctx,
+		ctx:     t.ctx,
 		txOp:    txOpRollback,
 		tx:      t.tx,
 		txResCh: resCh,
@@ -214,6 +215,8 @@ func (t *Tx) Rollback() error {
 
 	select {
 	case t.db.writeCh <- req:
+	case <-t.ctx.Done():
+		return t.ctx.Err()
 	case <-t.db.stop:
 		return fmt.Errorf("db stopping")
 	}
@@ -628,7 +631,7 @@ func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQ
 		return nil, err
 	}
 
-	return &Tx{tx: tx, db: db, isWriteTx: !isReadOnly}, nil
+	return &Tx{tx: tx, db: db, ctx: ctx, isWriteTx: !isReadOnly}, nil
 }
 
 func (db *DB) Close() error {
