@@ -374,14 +374,14 @@ func (s *BackupStore) UpdateRunMetadata(ctx context.Context, runID int64, update
 	if err != nil {
 		return err
 	}
+	defer tx.Rollback()
 
 	run, err := s.getRunForUpdate(ctx, tx, runID)
 	if err != nil {
-		_ = tx.Rollback()
 		return err
 	}
 
-	// Commit the read transaction immediately
+	// Commit the read transaction immediately to release the lock
 	if err = tx.Commit(); err != nil {
 		return err
 	}
