@@ -232,9 +232,9 @@ func GetString(ctx context.Context, tx TxQuerier, ids ...int64) ([]string, error
 	// SQLite has SQLITE_MAX_VARIABLE_NUMBER limit (default 999)
 	// Process in chunks to avoid hitting this limit
 	results := make([]string, len(ids))
-	idToIndex := make(map[int64]int, len(ids))
+	idToPositions := make(map[int64][]int, len(ids))
 	for i, id := range ids {
-		idToIndex[id] = i
+		idToPositions[id] = append(idToPositions[id], i)
 	}
 
 	for i := 0; i < len(ids); i += maxParams {
@@ -273,8 +273,10 @@ func GetString(ctx context.Context, tx TxQuerier, ids ...int64) ([]string, error
 				rows.Close()
 				return nil, fmt.Errorf("failed to scan string pool row: %w", err)
 			}
-			if idx, exists := idToIndex[id]; exists {
-				results[idx] = value
+			if positions, exists := idToPositions[id]; exists {
+				for _, idx := range positions {
+					results[idx] = value
+				}
 			}
 		}
 
