@@ -452,14 +452,18 @@ func (s *BackupStore) UpdateMultipleRunsStatus(ctx context.Context, runIDs []int
 		return fmt.Errorf("failed to intern strings: %w", err)
 	}
 
-	// Build placeholders for IN clause
-	placeholders := make([]string, len(runIDs))
-	for i := range runIDs {
-		placeholders[i] = "?"
+	// Build IN clause with placeholders
+	var sb strings.Builder
+	sb.Grow(len(runIDs)*2 - 1) // Pre-allocate: ? followed by ,? for each additional
+	sb.WriteString("UPDATE instance_backup_runs SET status_id = ?, completed_at = ?, error_message_id = ? WHERE id IN (")
+	if len(runIDs) > 0 {
+		sb.WriteString("?")
+		for i := 1; i < len(runIDs); i++ {
+			sb.WriteString(",?")
+		}
 	}
-
-	// Build UPDATE query
-	query := fmt.Sprintf("UPDATE instance_backup_runs SET status_id = ?, completed_at = ?, error_message_id = ? WHERE id IN (%s)", strings.Join(placeholders, ","))
+	sb.WriteString(")")
+	query := sb.String()
 
 	args := []any{allIDs[0]}
 	if completedAt != nil {
@@ -797,11 +801,15 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 		chunk := items[i:end]
 
 		// Build multi-row INSERT
-		placeholders := make([]string, len(chunk))
 		args := make([]any, 0, len(chunk)*10)
+		var sb strings.Builder
+		sb.Grow(len(chunk) * 42) // Pre-allocate: each row is "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?), " = ~42 chars
 
 		for j, item := range chunk {
-			placeholders[j] = "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+			if j > 0 {
+				sb.WriteString(", ")
+			}
+			sb.WriteString("(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
 
 			// Get IDs from the pre-interned required strings
 			idxBase := (i + j) * 2
@@ -825,7 +833,7 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 		query := `INSERT INTO instance_backup_items (
 			run_id, torrent_hash_id, name_id, category_id, size_bytes, 
 			archive_rel_path_id, infohash_v1_id, infohash_v2_id, tags_id, torrent_blob_path_id
-		) VALUES ` + joinPlaceholders(placeholders, ", ")
+		) VALUES ` + sb.String()
 
 		_, err = tx.ExecContext(ctx, query, args...)
 		if err != nil {
@@ -839,11 +847,21 @@ func joinPlaceholders(placeholders []string, sep string) string {
 	if len(placeholders) == 0 {
 		return ""
 	}
-	result := placeholders[0]
-	for i := 1; i < len(placeholders); i++ {
-		result += sep + placeholders[i]
+	var sb strings.Builder
+	// Pre-calculate capacity: sum of all placeholder lengths + separators
+	totalLen := 0
+	for _, p := range placeholders {
+		totalLen += len(p)
 	}
-	return result
+	totalLen += len(sep) * (len(placeholders) - 1)
+	sb.Grow(totalLen)
+
+	sb.WriteString(placeholders[0])
+	for i := 1; i < len(placeholders); i++ {
+		sb.WriteString(sep)
+		sb.WriteString(placeholders[i])
+	}
+	return sb.String()
 }
 
 func (s *BackupStore) ListItems(ctx context.Context, runID int64) ([]*BackupItem, error) {
@@ -1344,7 +1362,7 @@ func (s *BackupStore) DeleteItemsByRunIDs(ctx context.Context, runIDs []int64) e
 	}
 	defer tx.Rollback()
 
-	query := "DELETE FROM instance_backup_items WHERE run_id IN (" + placeholders(len(runIDs)) + ")"
+	query := "DELETE FROM instance_backup_items WHERE run_id IN " + placeholders(len(runIDs))
 
 	args := make([]any, len(runIDs))
 	for i, id := range runIDs {
@@ -1365,13 +1383,17 @@ func (s *BackupStore) DeleteItemsByRunIDs(ctx context.Context, runIDs []int64) e
 
 func placeholders(count int) string {
 	if count <= 0 {
-		return ""
+		return "()"
 	}
-	s := "?"
+	var sb strings.Builder
+	sb.Grow(count*2 + 1) // Pre-allocate: ( followed by ? followed by ,? for each additional, then )
+	sb.WriteString("(")
+	sb.WriteString("?")
 	for i := 1; i < count; i++ {
-		s += ",?"
+		sb.WriteString(",?")
 	}
-	return s
+	sb.WriteString(")")
+	return sb.String()
 }
 
 func (s *BackupStore) DeleteRunsByIDs(ctx context.Context, runIDs []int64) error {
@@ -1385,7 +1407,7 @@ func (s *BackupStore) DeleteRunsByIDs(ctx context.Context, runIDs []int64) error
 	}
 	defer tx.Rollback()
 
-	query := "DELETE FROM instance_backup_runs WHERE id IN (" + placeholders(len(runIDs)) + ")"
+	query := "DELETE FROM instance_backup_runs WHERE id IN " + placeholders(len(runIDs))
 	args := make([]any, len(runIDs))
 	for i, id := range runIDs {
 		args[i] = id
