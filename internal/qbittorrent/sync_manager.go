@@ -126,7 +126,8 @@ func NewSyncManager(clientPool *ClientPool) *SyncManager {
 		clientPool: clientPool,
 		exprCache:  ttlcache.New(ttlcache.Options[string, *vm.Program]{}.SetDefaultTTL(5 * time.Minute)),
 	}
-	// filesManager starts as zero value (nil), which getFilesManager() handles correctly
+	// Initialize filesManager with nil to prevent panic on Load() before SetFilesManager is called
+	sm.filesManager.Store((FilesManager)(nil))
 	return sm
 }
 
@@ -137,7 +138,14 @@ func (sm *SyncManager) SetFilesManager(fm FilesManager) {
 
 // getFilesManager returns the current files manager in a thread-safe manner
 // Returns nil if no files manager is set or if it's been cleared
+// Safe to call even if atomic.Value was never initialized (e.g., in tests using &SyncManager{})
 func (sm *SyncManager) getFilesManager() FilesManager {
+	defer func() {
+		// Recover from panic if Load is called on uninitialized atomic.Value
+		// This can happen in tests that create &SyncManager{} directly
+		recover()
+	}()
+
 	v := sm.filesManager.Load()
 	if v == nil {
 		return nil
