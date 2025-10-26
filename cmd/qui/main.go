@@ -489,7 +489,8 @@ func (app *Application) runServer() {
 
 	// Initialize files manager for caching torrent file information
 	filesManagerService := filesmanager.NewService(db)
-	syncManager.SetFilesManager(filesManagerService)
+	var fm qbittorrent.FilesManager = filesManagerService
+	syncManager.SetFilesManager(&fm)
 
 	backupStore := models.NewBackupStore(db)
 	backupService := backups.NewService(backupStore, syncManager, backups.Config{DataDir: cfg.GetDataDir()})
