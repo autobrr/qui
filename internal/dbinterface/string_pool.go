@@ -15,7 +15,7 @@ import (
 func InternString(ctx context.Context, tx TxQuerier, value string) (int64, error) {
 	var id int64
 	err := tx.QueryRowContext(ctx,
-		"INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id",
+		"INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET id = id RETURNING id",
 		value).Scan(&id)
 	if err != nil {
 		return 0, err
