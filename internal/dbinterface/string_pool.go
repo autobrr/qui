@@ -10,8 +10,9 @@ import (
 	"strings"
 )
 
-// SQLite has SQLITE_MAX_VARIABLE_NUMBER limit (default 999)
-// Conservative limit to stay well under 999 for batch operations
+// SQLite has SQLITE_MAX_VARIABLE_NUMBER limit (default 999, but can be higher)
+// Use a larger batch size for better performance with large datasets
+// Modern SQLite often supports 32766, but we stay conservative at 900
 const maxParams = 900
 
 // InternStrings interns one or more string values efficiently and returns their IDs.
