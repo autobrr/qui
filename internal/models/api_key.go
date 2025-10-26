@@ -68,8 +68,7 @@ func (s *APIKeyStore) Create(ctx context.Context, name string) (string, *APIKey,
 	defer tx.Rollback()
 
 	// Intern the name first
-	var nameID int64
-	err = tx.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", name).Scan(&nameID)
+	nameID, err := dbinterface.InternString(ctx, tx, name)
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to intern name: %w", err)
 	}

@@ -124,16 +124,14 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 	defer tx.Rollback()
 
 	// Intern the torrent hash first
-	var hashID int64
-	err = tx.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", hash).Scan(&hashID)
+	hashID, err := dbinterface.InternString(ctx, tx, hash)
 	if err != nil {
 		return fmt.Errorf("failed to intern torrent_hash: %w", err)
 	}
 
 	for _, f := range files {
 		// Intern the file name
-		var nameID int64
-		err = tx.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", f.Name).Scan(&nameID)
+		nameID, err := dbinterface.InternString(ctx, tx, f.Name)
 		if err != nil {
 			return fmt.Errorf("failed to intern name: %w", err)
 		}
@@ -198,8 +196,7 @@ func (r *Repository) DeleteFiles(ctx context.Context, instanceID int, hash strin
 	defer tx.Rollback()
 
 	// Intern the hash to get its ID
-	var hashID int64
-	err = tx.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", hash).Scan(&hashID)
+	hashID, err := dbinterface.InternString(ctx, tx, hash)
 	if err != nil {
 		return fmt.Errorf("failed to intern torrent_hash: %w", err)
 	}
@@ -266,8 +263,7 @@ func (r *Repository) UpsertSyncInfo(ctx context.Context, info SyncInfo) error {
 	defer tx.Rollback()
 
 	// Intern the torrent hash
-	var hashID int64
-	err = tx.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", info.TorrentHash).Scan(&hashID)
+	hashID, err := dbinterface.InternString(ctx, tx, info.TorrentHash)
 	if err != nil {
 		return fmt.Errorf("failed to intern torrent_hash: %w", err)
 	}
@@ -305,8 +301,7 @@ func (r *Repository) DeleteSyncInfo(ctx context.Context, instanceID int, hash st
 	defer tx.Rollback()
 
 	// Intern the hash to get its ID
-	var hashID int64
-	err = tx.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", hash).Scan(&hashID)
+	hashID, err := dbinterface.InternString(ctx, tx, hash)
 	if err != nil {
 		return fmt.Errorf("failed to intern torrent_hash: %w", err)
 	}

@@ -79,12 +79,11 @@ func (s *InstanceErrorStore) RecordError(ctx context.Context, instanceID int, er
 	}
 
 	// Intern strings first
-	var errorTypeID, errorMessageID int64
-	err = tx.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", errorType).Scan(&errorTypeID)
+	errorTypeID, err := dbinterface.InternString(ctx, tx, errorType)
 	if err != nil {
 		return fmt.Errorf("failed to intern error_type: %w", err)
 	}
-	err = tx.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", errorMessage).Scan(&errorMessageID)
+	errorMessageID, err := dbinterface.InternString(ctx, tx, errorMessage)
 	if err != nil {
 		return fmt.Errorf("failed to intern error_message: %w", err)
 	}

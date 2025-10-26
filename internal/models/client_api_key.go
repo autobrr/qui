@@ -50,8 +50,7 @@ func (s *ClientAPIKeyStore) Create(ctx context.Context, clientName string, insta
 	defer tx.Rollback()
 
 	// Intern the client name first
-	var clientNameID int64
-	err = tx.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", clientName).Scan(&clientNameID)
+	clientNameID, err := dbinterface.InternString(ctx, tx, clientName)
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to intern client_name: %w", err)
 	}

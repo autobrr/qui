@@ -243,30 +243,24 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 	}
 	defer tx.Rollback()
 
-	// Intern strings first
-	var nameID, hostID, usernameID int64
-	err = tx.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", name).Scan(&nameID)
+	// Intern required strings
+	nameID, err := dbinterface.InternString(ctx, tx, name)
 	if err != nil {
 		return nil, fmt.Errorf("failed to intern name: %w", err)
 	}
-	err = tx.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", normalizedHost).Scan(&hostID)
+	hostID, err := dbinterface.InternString(ctx, tx, normalizedHost)
 	if err != nil {
 		return nil, fmt.Errorf("failed to intern host: %w", err)
 	}
-	err = tx.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", username).Scan(&usernameID)
+	usernameID, err := dbinterface.InternString(ctx, tx, username)
 	if err != nil {
 		return nil, fmt.Errorf("failed to intern username: %w", err)
 	}
 
 	// Intern basic username if provided
-	var basicUsernameID sql.NullInt64
-	if basicUsername != nil && *basicUsername != "" {
-		var id int64
-		err = tx.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", *basicUsername).Scan(&id)
-		if err != nil {
-			return nil, fmt.Errorf("failed to intern basic_username: %w", err)
-		}
-		basicUsernameID = sql.NullInt64{Int64: id, Valid: true}
+	basicUsernameID, err := dbinterface.InternStringNullable(ctx, tx, basicUsername)
+	if err != nil {
+		return nil, fmt.Errorf("failed to intern basic_username: %w", err)
 	}
 
 	// Insert instance with the interned IDs
@@ -384,16 +378,15 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 	defer tx.Rollback()
 
 	// Intern required strings first
-	var nameID, hostID, usernameID int64
-	err = tx.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", name).Scan(&nameID)
+	nameID, err := dbinterface.InternString(ctx, tx, name)
 	if err != nil {
 		return nil, fmt.Errorf("failed to intern name: %w", err)
 	}
-	err = tx.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", normalizedHost).Scan(&hostID)
+	hostID, err := dbinterface.InternString(ctx, tx, normalizedHost)
 	if err != nil {
 		return nil, fmt.Errorf("failed to intern host: %w", err)
 	}
-	err = tx.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", username).Scan(&usernameID)
+	usernameID, err := dbinterface.InternString(ctx, tx, username)
 	if err != nil {
 		return nil, fmt.Errorf("failed to intern username: %w", err)
 	}
@@ -409,8 +402,7 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 			query += ", basic_username_id = NULL"
 		} else {
 			// Basic username provided - intern and update
-			var basicUsernameID int64
-			err = tx.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", *basicUsername).Scan(&basicUsernameID)
+			basicUsernameID, err := dbinterface.InternString(ctx, tx, *basicUsername)
 			if err != nil {
 				return nil, fmt.Errorf("failed to intern basic_username: %w", err)
 			}
