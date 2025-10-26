@@ -283,7 +283,6 @@ func applyConnectionPragmas(ctx context.Context, exec pragmaExecFn) error {
 	pragmas := []string{
 		"PRAGMA journal_mode = WAL",
 		"PRAGMA synchronous = NORMAL",  // NORMAL is safe with WAL and much faster than FULL
-		"PRAGMA temp_store = MEMORY",   // Use memory for temp tables (faster for large operations)
 		"PRAGMA mmap_size = 268435456", // 256MB memory-mapped I/O for better performance
 		"PRAGMA page_size = 4096",      // Optimal page size for modern systems
 		"PRAGMA cache_size = -64000",   // 64MB cache (negative = KB, positive = pages)
