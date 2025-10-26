@@ -1003,7 +1003,6 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("failed to create temp table: %w", err)
 	}
-	defer tx.ExecContext(ctx, "DROP TABLE IF EXISTS temp_referenced_strings")
 
 	// Populate temp table with all referenced string IDs
 	// Using INSERT OR IGNORE to handle duplicates efficiently
@@ -1053,6 +1052,12 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
 		return 0, fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	// Drop the temp table before committing
+	_, err = tx.ExecContext(ctx, "DROP TABLE IF EXISTS temp_referenced_strings")
+	if err != nil {
+		return 0, fmt.Errorf("failed to drop temp table: %w", err)
 	}
 
 	// Commit the transaction

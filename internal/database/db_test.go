@@ -375,3 +375,48 @@ func verifyTriggers(t *testing.T, ctx context.Context, conn *sql.DB) {
 		require.Equal(t, trigger, name)
 	}
 }
+
+func TestCleanupUnusedStrings(t *testing.T) {
+	log.Logger = log.Output(io.Discard)
+	ctx := t.Context()
+	db := openTestDatabase(t)
+	conn := db.Conn()
+
+	// Get initial count of strings
+	var initialCount int
+	require.NoError(t, conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM string_pool").Scan(&initialCount))
+
+	// Insert some test strings into string_pool
+	var id1, id2, id3 int64
+	require.NoError(t, conn.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "referenced_string").Scan(&id1))
+	require.NoError(t, conn.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "orphaned_string").Scan(&id2))
+	require.NoError(t, conn.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "another_orphaned").Scan(&id3))
+
+	// Reference id1 in instances table (create a minimal instance)
+	_, err := conn.ExecContext(ctx, "INSERT INTO instances (name_id, host_id, username_id, password_encrypted) VALUES (?, ?, ?, ?)", id1, id1, id1, "dummy_password")
+	require.NoError(t, err)
+
+	// Verify 3 more strings exist
+	var count int
+	require.NoError(t, conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM string_pool").Scan(&count))
+	require.Equal(t, initialCount+3, count)
+
+	// Run cleanup
+	deleted, err := db.CleanupUnusedStrings(ctx)
+	require.NoError(t, err)
+	require.Greater(t, deleted, int64(0)) // Should delete some orphaned strings
+
+	// Verify our referenced string still exists
+	var exists bool
+	require.NoError(t, conn.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM string_pool WHERE id = ?)", id1).Scan(&exists))
+	require.True(t, exists)
+
+	// Run cleanup again - should delete nothing since temp table was properly dropped
+	deleted2, err := db.CleanupUnusedStrings(ctx)
+	require.NoError(t, err)
+	require.Equal(t, int64(0), deleted2)
+
+	// Verify our referenced string still exists
+	require.NoError(t, conn.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM string_pool WHERE id = ?)", id1).Scan(&exists))
+	require.True(t, exists)
+}
