@@ -32,40 +32,20 @@ func NewService(db dbinterface.Querier) *Service {
 // GetCachedFiles retrieves cached file information for a torrent.
 // Returns nil if no cache exists or cache is stale.
 //
-// CONCURRENCY NOTE: This function uses a read-only transaction to ensure consistency
-// between sync info check and file retrieval. While there's still a theoretical window
-// for invalidation to occur after the transaction completes but before data is returned,
-// this is acceptable because:
+// CONCURRENCY NOTE: This function does NOT use transactions to avoid deadlocks.
+// There's a small TOCTOU race where cache could be invalidated between sync check
+// and file retrieval, but this is acceptable because:
 // 1. The worst case is serving slightly stale data (same as normal cache behavior)
 // 2. Cache invalidation is triggered by user actions (rename, delete, etc.)
 // 3. The cache has built-in freshness checks that limit staleness (5 min for active torrents)
 // 4. Complete torrents have stable file lists, so stale data is functionally equivalent
-//
-// TOCTOU RACE CONDITION: There's a time-of-check to time-of-use race between:
-//  1. Transaction commits with fresh cache data
-//  2. Data is returned to caller
-//  3. Another goroutine invalidates the cache (e.g., via file rename)
-//
-// Result: Caller receives data that's already been invalidated elsewhere.
-//
-// This is ACCEPTABLE because:
-// - The data was valid at read time (transaction guarantees)
-// - Staleness is bounded by natural cache refresh cycles
-// - Next request will fetch fresh data from qBittorrent
-// - Alternative (version numbers, optimistic locking) adds significant complexity
+// 5. Avoiding transactions prevents deadlocks during concurrent operations (backups, writes, etc.)
 //
 // If absolute consistency is required, the caller should invalidate the cache
 // before calling this method, or use the qBittorrent API directly.
 func (s *Service) GetCachedFiles(ctx context.Context, instanceID int, hash string, torrentProgress float64) (qbt.TorrentFiles, error) {
-	// Use a read-only transaction for consistency between sync info and files
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	// Check if we have sync metadata
-	syncInfo, err := s.repo.GetSyncInfoTx(ctx, tx, instanceID, hash)
+	// Check if we have sync metadata (without transaction to avoid deadlocks)
+	syncInfo, err := s.repo.GetSyncInfo(ctx, instanceID, hash)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			// No cache exists
@@ -99,19 +79,14 @@ func (s *Service) GetCachedFiles(ctx context.Context, instanceID int, hash strin
 		}
 	}
 
-	// Retrieve cached files within the transaction
-	cachedFiles, err := s.repo.GetFilesTx(ctx, tx, instanceID, hash)
+	// Retrieve cached files (without transaction to avoid deadlocks)
+	cachedFiles, err := s.repo.GetFiles(ctx, instanceID, hash)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get cached files: %w", err)
 	}
 
 	if len(cachedFiles) == 0 {
 		return nil, nil
-	}
-
-	// Commit the read transaction
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	// Convert to qBittorrent format
