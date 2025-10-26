@@ -251,7 +251,7 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 
 	// Insert instance with the interned IDs
 	var instanceID int
-	var passwordEncrypted string
+	var passwordEncrypted sql.NullString
 	var basicPasswordEncrypted sql.NullString
 	var tlsSkipVerifyResult bool
 
@@ -275,7 +275,7 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 		Name:              name,
 		Host:              normalizedHost,
 		Username:          username,
-		PasswordEncrypted: passwordEncrypted,
+		PasswordEncrypted: passwordEncrypted.String,
 		TLSSkipVerify:     tlsSkipVerifyResult,
 	}
 

@@ -166,9 +166,18 @@ func (s *ClientAPIKeyStore) UpdateLastUsed(ctx context.Context, keyHash string) 
 	defer tx.Rollback()
 
 	query := `UPDATE client_api_keys SET last_used_at = CURRENT_TIMESTAMP WHERE key_hash = ?`
-	_, err = tx.ExecContext(ctx, query, keyHash)
+	result, err := tx.ExecContext(ctx, query, keyHash)
 	if err != nil {
 		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return ErrClientAPIKeyNotFound
 	}
 
 	if err = tx.Commit(); err != nil {
