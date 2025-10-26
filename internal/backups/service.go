@@ -208,7 +208,11 @@ func (s *Service) Start(ctx context.Context) {
 	go func() {
 		defer s.wg.Done()
 		if err := s.checkMissedBackups(ctx); err != nil {
-			log.Warn().Err(err).Msg("Failed to check for missed backups")
+			if ctx.Err() != nil || errors.Is(err, context.Canceled) {
+				log.Debug().Msg("Missed-backup check canceled")
+			} else {
+				log.Warn().Err(err).Msg("Failed to check for missed backups")
+			}
 		}
 	}()
 

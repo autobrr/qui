@@ -15,9 +15,6 @@ CREATE TABLE IF NOT EXISTS string_pool (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Index for fast string lookups when inserting/checking for duplicates
-CREATE UNIQUE INDEX IF NOT EXISTS idx_string_pool_value ON string_pool(value);
-
 -- ============================================================================
 -- PART 2: Migrate existing tables to use string interning
 -- ============================================================================
@@ -372,7 +369,6 @@ CREATE TABLE client_api_keys (
 );
 
 CREATE UNIQUE INDEX idx_client_api_keys_key_hash ON client_api_keys(key_hash);
-CREATE INDEX idx_client_api_keys_instance_id ON client_api_keys(instance_id);
 
 -- Step 5: Restore data from temporary tables
 INSERT INTO instances (id, name_id, host_id, username_id, password_encrypted, basic_username_id, basic_password_encrypted, tls_skip_verify)
@@ -411,8 +407,6 @@ FROM api_keys;
 
 DROP TABLE api_keys;
 ALTER TABLE api_keys_new RENAME TO api_keys;
-
-CREATE INDEX idx_api_keys_hash ON api_keys(key_hash);
 
 -- ============================================================================
 -- PART 4: Create torrent files cache tables
