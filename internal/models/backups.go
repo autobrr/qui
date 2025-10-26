@@ -369,20 +369,16 @@ func unmarshalTags(raw sql.NullString) ([]string, error) {
 }
 
 func (s *BackupStore) UpdateRunMetadata(ctx context.Context, runID int64, updateFn func(*BackupRun) error) error {
-	// First, get the run data in a read transaction to prepare the update
-	readTx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	// Start a transaction first to avoid deadlocks
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	defer readTx.Rollback()
+	defer tx.Rollback()
 
-	run, err := s.getRunForUpdate(ctx, readTx, runID)
+	// Read the current state WITHIN the transaction
+	run, err := s.getRunForUpdate(ctx, tx, runID)
 	if err != nil {
-		return err
-	}
-
-	// Commit the read transaction immediately to release the lock
-	if err = readTx.Commit(); err != nil {
 		return err
 	}
 
@@ -391,13 +387,7 @@ func (s *BackupStore) UpdateRunMetadata(ctx context.Context, runID int64, update
 		return err
 	}
 
-	// Start write transaction
-	writeTx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer writeTx.Rollback()
-
+	// Prepare JSON data
 	categoryJSON, err := marshalCategoryCounts(run.CategoryCounts)
 	if err != nil {
 		return err
@@ -407,39 +397,36 @@ func (s *BackupStore) UpdateRunMetadata(ctx context.Context, runID int64, update
 	if err != nil {
 		return err
 	}
-	run.categoriesJSON = categoriesJSON
 
 	tagsJSON, err := marshalTags(run.Tags)
 	if err != nil {
 		return err
 	}
-	run.tagsJSON = tagsJSON
 
-	// Intern required strings first
 	// Intern required strings
-	statusID, err := dbinterface.InternString(ctx, writeTx, string(run.Status))
+	statusID, err := dbinterface.InternString(ctx, tx, string(run.Status))
 	if err != nil {
 		return fmt.Errorf("failed to intern status: %w", err)
 	}
 
 	// Intern optional strings
-	archivePathID, err := dbinterface.InternStringNullable(ctx, writeTx, run.ArchivePath)
+	archivePathID, err := dbinterface.InternStringNullable(ctx, tx, run.ArchivePath)
 	if err != nil {
 		return fmt.Errorf("failed to intern archive_path: %w", err)
 	}
 
-	manifestPathID, err := dbinterface.InternStringNullable(ctx, writeTx, run.ManifestPath)
+	manifestPathID, err := dbinterface.InternStringNullable(ctx, tx, run.ManifestPath)
 	if err != nil {
 		return fmt.Errorf("failed to intern manifest_path: %w", err)
 	}
 
-	errorMessageID, err := dbinterface.InternStringNullable(ctx, writeTx, run.ErrorMessage)
+	errorMessageID, err := dbinterface.InternStringNullable(ctx, tx, run.ErrorMessage)
 	if err != nil {
 		return fmt.Errorf("failed to intern error_message: %w", err)
 	}
 
 	// Execute UPDATE with interned IDs
-	_, err = writeTx.ExecContext(ctx, `
+	_, err = tx.ExecContext(ctx, `
         UPDATE instance_backup_runs SET
             status_id = ?,
             started_at = ?,
@@ -459,7 +446,7 @@ func (s *BackupStore) UpdateRunMetadata(ctx context.Context, runID int64, update
 		return err
 	}
 
-	return writeTx.Commit()
+	return tx.Commit()
 }
 
 // UpdateMultipleRunsStatus updates the status of multiple backup runs in a single transaction
