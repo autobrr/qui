@@ -5,6 +5,7 @@ package models
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -64,7 +65,17 @@ func (s *InstanceErrorStore) RecordError(ctx context.Context, instanceID int, er
 	// Validate that the instance exists before trying to record error
 	var exists int
 	existsQuery := `SELECT COUNT(*) FROM instances WHERE id = ?`
-	if err := tx.QueryRowContext(ctx, existsQuery, instanceID).Scan(&exists); err != nil || exists == 0 {
+	scanErr := tx.QueryRowContext(ctx, existsQuery, instanceID).Scan(&exists)
+	if scanErr != nil {
+		if scanErr == sql.ErrNoRows {
+			// Instance doesn't exist, silently skip recording the error
+			// This can happen during instance deletion or with stale references
+			return nil
+		}
+		// Return any other Scan error up the stack with context
+		return fmt.Errorf("failed to check instance existence: %w", scanErr)
+	}
+	if exists == 0 {
 		// Instance doesn't exist, silently skip recording the error
 		// This can happen during instance deletion or with stale references
 		return nil

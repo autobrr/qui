@@ -250,32 +250,40 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 	}
 
 	// Insert instance with the interned IDs
-	instance := &Instance{}
+	var instanceID int
+	var passwordEncrypted string
+	var basicPasswordEncrypted sql.NullString
+	var tlsSkipVerifyResult bool
+
 	err = tx.QueryRowContext(ctx, `
 		INSERT INTO instances (name_id, host_id, username_id, password_encrypted, basic_username_id, basic_password_encrypted, tls_skip_verify) 
 		VALUES (?, ?, ?, ?, ?, ?, ?)
 		RETURNING id, password_encrypted, basic_password_encrypted, tls_skip_verify
 	`, allIDs[0], allIDs[1], allIDs[2], encryptedPassword, allIDs[3], encryptedBasicPassword, tlsSkipVerify).Scan(
-		&instance.ID,
-		&instance.PasswordEncrypted,
-		&instance.BasicPasswordEncrypted,
-		&instance.TLSSkipVerify,
+		&instanceID,
+		&passwordEncrypted,
+		&basicPasswordEncrypted,
+		&tlsSkipVerifyResult,
 	)
 
 	if err != nil {
 		return nil, err
 	}
 
-	if err = tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	instance := &Instance{
+		ID:                instanceID,
+		Name:              name,
+		Host:              normalizedHost,
+		Username:          username,
+		PasswordEncrypted: passwordEncrypted,
+		TLSSkipVerify:     tlsSkipVerifyResult,
 	}
 
-	// Set the fields from the IDs we just inserted
-	instance.Name = name
-	instance.Host = normalizedHost
-	instance.Username = username
 	if basicUsername != nil {
 		instance.BasicUsername = basicUsername
+	}
+	if basicPasswordEncrypted.Valid {
+		instance.BasicPasswordEncrypted = &basicPasswordEncrypted.String
 	}
 
 	return instance, nil
@@ -288,16 +296,20 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 		WHERE id = ?
 	`
 
-	instance := &Instance{}
+	var instanceID int
+	var name, host, username, passwordEncrypted string
+	var basicUsername, basicPasswordEncrypted sql.NullString
+	var tlsSkipVerify bool
+
 	err := s.db.QueryRowContext(ctx, query, id).Scan(
-		&instance.ID,
-		&instance.Name,
-		&instance.Host,
-		&instance.Username,
-		&instance.PasswordEncrypted,
-		&instance.BasicUsername,
-		&instance.BasicPasswordEncrypted,
-		&instance.TLSSkipVerify,
+		&instanceID,
+		&name,
+		&host,
+		&username,
+		&passwordEncrypted,
+		&basicUsername,
+		&basicPasswordEncrypted,
+		&tlsSkipVerify,
 	)
 
 	if err != nil {
@@ -305,6 +317,22 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 			return nil, ErrInstanceNotFound
 		}
 		return nil, err
+	}
+
+	instance := &Instance{
+		ID:                instanceID,
+		Name:              name,
+		Host:              host,
+		Username:          username,
+		PasswordEncrypted: passwordEncrypted,
+		TLSSkipVerify:     tlsSkipVerify,
+	}
+
+	if basicUsername.Valid {
+		instance.BasicUsername = &basicUsername.String
+	}
+	if basicPasswordEncrypted.Valid {
+		instance.BasicPasswordEncrypted = &basicPasswordEncrypted.String
 	}
 
 	return instance, nil
@@ -325,20 +353,41 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 
 	var instances []*Instance
 	for rows.Next() {
-		instance := &Instance{}
+		var id int
+		var name, host, username, passwordEncrypted string
+		var basicUsername, basicPasswordEncrypted sql.NullString
+		var tlsSkipVerify bool
+
 		err := rows.Scan(
-			&instance.ID,
-			&instance.Name,
-			&instance.Host,
-			&instance.Username,
-			&instance.PasswordEncrypted,
-			&instance.BasicUsername,
-			&instance.BasicPasswordEncrypted,
-			&instance.TLSSkipVerify,
+			&id,
+			&name,
+			&host,
+			&username,
+			&passwordEncrypted,
+			&basicUsername,
+			&basicPasswordEncrypted,
+			&tlsSkipVerify,
 		)
 		if err != nil {
 			return nil, err
 		}
+
+		instance := &Instance{
+			ID:                id,
+			Name:              name,
+			Host:              host,
+			Username:          username,
+			PasswordEncrypted: passwordEncrypted,
+			TLSSkipVerify:     tlsSkipVerify,
+		}
+
+		if basicUsername.Valid {
+			instance.BasicUsername = &basicUsername.String
+		}
+		if basicPasswordEncrypted.Valid {
+			instance.BasicPasswordEncrypted = &basicPasswordEncrypted.String
+		}
+
 		instances = append(instances, instance)
 	}
 
