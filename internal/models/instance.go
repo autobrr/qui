@@ -286,6 +286,10 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 		instance.BasicPasswordEncrypted = &basicPasswordEncrypted.String
 	}
 
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
 	return instance, nil
 }
 

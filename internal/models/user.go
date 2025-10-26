@@ -9,6 +9,8 @@ import (
 	"errors"
 
 	"github.com/autobrr/qui/internal/dbinterface"
+	"modernc.org/sqlite"
+	lib "modernc.org/sqlite/lib"
 )
 
 var ErrUserNotFound = errors.New("user not found")
@@ -49,11 +51,12 @@ func (s *UserStore) Create(ctx context.Context, username, passwordHash string) (
 	)
 
 	if err != nil {
-		if err.Error() == "UNIQUE constraint failed: user.username" {
-			return nil, ErrUserAlreadyExists
-		}
-		if err.Error() == "CHECK constraint failed: id = 1" {
-			return nil, ErrUserAlreadyExists
+		var sqlErr *sqlite.Error
+		if errors.As(err, &sqlErr) {
+			// UNIQUE constraint on username or CHECK constraint on id = 1
+			if sqlErr.Code() == lib.SQLITE_CONSTRAINT_UNIQUE || sqlErr.Code() == lib.SQLITE_CONSTRAINT_CHECK {
+				return nil, ErrUserAlreadyExists
+			}
 		}
 		return nil, err
 	}
