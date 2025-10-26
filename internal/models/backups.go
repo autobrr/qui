@@ -262,21 +262,12 @@ func (s *BackupStore) CreateRun(ctx context.Context, run *BackupRun) error {
 	}
 	kindID, statusID, requestedByID := ids[0], ids[1], ids[2]
 
-	// Intern optional strings
-	archivePathID, err := dbinterface.InternStringNullable(ctx, tx, run.ArchivePath)
+	// Batch intern optional strings
+	optionalIDs, err := dbinterface.InternStringNullable(ctx, tx, run.ArchivePath, run.ManifestPath, run.ErrorMessage)
 	if err != nil {
-		return fmt.Errorf("failed to intern archive_path: %w", err)
+		return fmt.Errorf("failed to intern optional strings: %w", err)
 	}
-
-	manifestPathID, err := dbinterface.InternStringNullable(ctx, tx, run.ManifestPath)
-	if err != nil {
-		return fmt.Errorf("failed to intern manifest_path: %w", err)
-	}
-
-	errorMessageID, err := dbinterface.InternStringNullable(ctx, tx, run.ErrorMessage)
-	if err != nil {
-		return fmt.Errorf("failed to intern error_message: %w", err)
-	}
+	archivePathID, manifestPathID, errorMessageID := optionalIDs[0], optionalIDs[1], optionalIDs[2]
 
 	categoryJSON, err := marshalCategoryCounts(run.CategoryCounts)
 	if err != nil {
@@ -418,26 +409,18 @@ func (s *BackupStore) UpdateRunMetadata(ctx context.Context, runID int64, update
 	}
 
 	// Intern required strings
-	statusID, err := dbinterface.InternString(ctx, tx, string(run.Status))
+	ids, err := dbinterface.InternStrings(ctx, tx, string(run.Status))
 	if err != nil {
 		return fmt.Errorf("failed to intern status: %w", err)
 	}
+	statusID := ids[0]
 
-	// Intern optional strings
-	archivePathID, err := dbinterface.InternStringNullable(ctx, tx, run.ArchivePath)
+	// Batch intern optional strings
+	optionalIDs, err := dbinterface.InternStringNullable(ctx, tx, run.ArchivePath, run.ManifestPath, run.ErrorMessage)
 	if err != nil {
-		return fmt.Errorf("failed to intern archive_path: %w", err)
+		return fmt.Errorf("failed to intern optional strings: %w", err)
 	}
-
-	manifestPathID, err := dbinterface.InternStringNullable(ctx, tx, run.ManifestPath)
-	if err != nil {
-		return fmt.Errorf("failed to intern manifest_path: %w", err)
-	}
-
-	errorMessageID, err := dbinterface.InternStringNullable(ctx, tx, run.ErrorMessage)
-	if err != nil {
-		return fmt.Errorf("failed to intern error_message: %w", err)
-	}
+	archivePathID, manifestPathID, errorMessageID := optionalIDs[0], optionalIDs[1], optionalIDs[2]
 
 	// Execute UPDATE with interned IDs
 	_, err = tx.ExecContext(ctx, `
@@ -476,16 +459,18 @@ func (s *BackupStore) UpdateMultipleRunsStatus(ctx context.Context, runIDs []int
 	defer tx.Rollback()
 
 	// Intern status string
-	statusID, err := dbinterface.InternString(ctx, tx, string(status))
+	ids, err := dbinterface.InternStrings(ctx, tx, string(status))
 	if err != nil {
 		return fmt.Errorf("failed to intern status: %w", err)
 	}
+	statusID := ids[0]
 
 	// Intern optional error message
-	errorMessageID, err := dbinterface.InternStringNullable(ctx, tx, errorMessage)
+	errorMessageIDs, err := dbinterface.InternStringNullable(ctx, tx, errorMessage)
 	if err != nil {
 		return fmt.Errorf("failed to intern error_message: %w", err)
 	}
+	errorMessageID := errorMessageIDs[0]
 
 	// Build placeholders for IN clause
 	placeholders := make([]string, len(runIDs))
@@ -761,59 +746,124 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 	}
 	defer tx.Rollback()
 
+	// Collect all unique strings that need to be interned
+	allStrings := make([]string, 0, len(items)*2) // At minimum: hash + name per item
+
 	for _, item := range items {
-		// Intern required strings
-		ids, err := dbinterface.InternStrings(ctx, tx, item.TorrentHash, item.Name)
-		if err != nil {
-			return fmt.Errorf("failed to intern required strings: %w", err)
-		}
-		torrentHashID, nameID := ids[0], ids[1]
+		allStrings = append(allStrings, item.TorrentHash, item.Name)
+	}
 
-		// Intern optional strings
-		categoryID, err := dbinterface.InternStringNullable(ctx, tx, item.Category)
+	// Batch intern all required strings at once (hash + name for each item)
+	allIDs, err := dbinterface.InternStrings(ctx, tx, allStrings...)
+	if err != nil {
+		return fmt.Errorf("failed to batch intern required strings: %w", err)
+	}
+
+	// Build a map from string -> ID for optional fields
+	// Collect all non-empty optional strings
+	optionalStrings := make([]string, 0)
+	for _, item := range items {
+		if item.Category != nil && *item.Category != "" {
+			optionalStrings = append(optionalStrings, *item.Category)
+		}
+		if item.ArchiveRelPath != nil && *item.ArchiveRelPath != "" {
+			optionalStrings = append(optionalStrings, *item.ArchiveRelPath)
+		}
+		if item.InfoHashV1 != nil && *item.InfoHashV1 != "" {
+			optionalStrings = append(optionalStrings, *item.InfoHashV1)
+		}
+		if item.InfoHashV2 != nil && *item.InfoHashV2 != "" {
+			optionalStrings = append(optionalStrings, *item.InfoHashV2)
+		}
+		if item.Tags != nil && *item.Tags != "" {
+			optionalStrings = append(optionalStrings, *item.Tags)
+		}
+		if item.TorrentBlobPath != nil && *item.TorrentBlobPath != "" {
+			optionalStrings = append(optionalStrings, *item.TorrentBlobPath)
+		}
+	}
+
+	// Intern all optional strings if any exist
+	stringToID := make(map[string]int64)
+	if len(optionalStrings) > 0 {
+		optionalIDs, err := dbinterface.InternStrings(ctx, tx, optionalStrings...)
 		if err != nil {
-			return fmt.Errorf("failed to intern category: %w", err)
+			return fmt.Errorf("failed to batch intern optional strings: %w", err)
+		}
+		// Build map for lookups
+		for i, s := range optionalStrings {
+			stringToID[s] = optionalIDs[i]
+		}
+	}
+
+	// Helper to get ID from map
+	getID := func(s *string) sql.NullInt64 {
+		if s == nil || *s == "" {
+			return sql.NullInt64{Valid: false}
+		}
+		if id, ok := stringToID[*s]; ok {
+			return sql.NullInt64{Int64: id, Valid: true}
+		}
+		return sql.NullInt64{Valid: false}
+	}
+
+	// Batch insert items - use chunks to avoid hitting SQL parameter limits
+	const chunkSize = 100 // SQLite default SQLITE_MAX_VARIABLE_NUMBER is 999, so 100 items * 10 params = 1000
+	for i := 0; i < len(items); i += chunkSize {
+		end := i + chunkSize
+		if end > len(items) {
+			end = len(items)
+		}
+		chunk := items[i:end]
+
+		// Build multi-row INSERT
+		placeholders := make([]string, len(chunk))
+		args := make([]any, 0, len(chunk)*10)
+
+		for j, item := range chunk {
+			placeholders[j] = "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+
+			// Get IDs from the pre-interned required strings
+			idxBase := (i + j) * 2
+			torrentHashID := allIDs[idxBase]
+			nameID := allIDs[idxBase+1]
+
+			args = append(args,
+				runID,
+				torrentHashID,
+				nameID,
+				getID(item.Category),
+				item.SizeBytes,
+				getID(item.ArchiveRelPath),
+				getID(item.InfoHashV1),
+				getID(item.InfoHashV2),
+				getID(item.Tags),
+				getID(item.TorrentBlobPath),
+			)
 		}
 
-		archiveRelPathID, err := dbinterface.InternStringNullable(ctx, tx, item.ArchiveRelPath)
-		if err != nil {
-			return fmt.Errorf("failed to intern archive_rel_path: %w", err)
-		}
+		query := `INSERT INTO instance_backup_items (
+			run_id, torrent_hash_id, name_id, category_id, size_bytes, 
+			archive_rel_path_id, infohash_v1_id, infohash_v2_id, tags_id, torrent_blob_path_id
+		) VALUES ` + joinPlaceholders(placeholders, ", ")
 
-		infohashV1ID, err := dbinterface.InternStringNullable(ctx, tx, item.InfoHashV1)
+		_, err = tx.ExecContext(ctx, query, args...)
 		if err != nil {
-			return fmt.Errorf("failed to intern infohash_v1: %w", err)
-		}
-
-		infohashV2ID, err := dbinterface.InternStringNullable(ctx, tx, item.InfoHashV2)
-		if err != nil {
-			return fmt.Errorf("failed to intern infohash_v2: %w", err)
-		}
-
-		tagsID, err := dbinterface.InternStringNullable(ctx, tx, item.Tags)
-		if err != nil {
-			return fmt.Errorf("failed to intern tags: %w", err)
-		}
-
-		torrentBlobPathID, err := dbinterface.InternStringNullable(ctx, tx, item.TorrentBlobPath)
-		if err != nil {
-			return fmt.Errorf("failed to intern torrent_blob_path: %w", err)
-		}
-
-		// Insert with interned IDs
-		_, err = tx.ExecContext(ctx, `
-			INSERT INTO instance_backup_items (
-				run_id, torrent_hash_id, name_id, category_id, size_bytes, 
-				archive_rel_path_id, infohash_v1_id, infohash_v2_id, tags_id, torrent_blob_path_id
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`, runID, torrentHashID, nameID, categoryID, item.SizeBytes,
-			archiveRelPathID, infohashV1ID, infohashV2ID, tagsID, torrentBlobPathID)
-		if err != nil {
-			return err
+			return fmt.Errorf("failed to batch insert items: %w", err)
 		}
 	}
 
 	return tx.Commit()
+} // Helper function to join placeholders
+func joinPlaceholders(placeholders []string, sep string) string {
+	if len(placeholders) == 0 {
+		return ""
+	}
+	result := placeholders[0]
+	for i := 1; i < len(placeholders); i++ {
+		result += sep + placeholders[i]
+	}
+	return result
 }
 
 func (s *BackupStore) ListItems(ctx context.Context, runID int64) ([]*BackupItem, error) {
@@ -1433,10 +1483,11 @@ func (s *BackupStore) RemoveFailedRunsBefore(ctx context.Context, cutoff time.Ti
 	defer tx.Rollback()
 
 	// Intern the status string
-	statusID, err := dbinterface.InternString(ctx, tx, string(BackupRunStatusFailed))
+	ids, err := dbinterface.InternStrings(ctx, tx, string(BackupRunStatusFailed))
 	if err != nil {
 		return 0, fmt.Errorf("failed to intern status: %w", err)
 	}
+	statusID := ids[0]
 
 	// Execute DELETE with interned ID
 	res, err := tx.ExecContext(ctx, `

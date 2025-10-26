@@ -123,18 +123,23 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 	}
 	defer tx.Rollback()
 
-	// Intern the torrent hash first
-	hashID, err := dbinterface.InternString(ctx, tx, hash)
-	if err != nil {
-		return fmt.Errorf("failed to intern torrent_hash: %w", err)
+	// Collect all unique strings to intern (hash + all file names)
+	allStrings := make([]string, 0, 1+len(files))
+	allStrings = append(allStrings, hash)
+	for _, f := range files {
+		allStrings = append(allStrings, f.Name)
 	}
 
-	for _, f := range files {
-		// Intern the file name
-		nameID, err := dbinterface.InternString(ctx, tx, f.Name)
-		if err != nil {
-			return fmt.Errorf("failed to intern name: %w", err)
-		}
+	// Batch intern all strings
+	allIDs, err := dbinterface.InternStrings(ctx, tx, allStrings...)
+	if err != nil {
+		return fmt.Errorf("failed to intern strings: %w", err)
+	}
+
+	hashID := allIDs[0]
+
+	for i, f := range files {
+		nameID := allIDs[1+i]
 
 		var isSeed interface{}
 		if f.IsSeed != nil {
@@ -196,10 +201,11 @@ func (r *Repository) DeleteFiles(ctx context.Context, instanceID int, hash strin
 	defer tx.Rollback()
 
 	// Intern the hash to get its ID
-	hashID, err := dbinterface.InternString(ctx, tx, hash)
+	ids, err := dbinterface.InternStrings(ctx, tx, hash)
 	if err != nil {
 		return fmt.Errorf("failed to intern torrent_hash: %w", err)
 	}
+	hashID := ids[0]
 
 	result, err := tx.ExecContext(ctx, `DELETE FROM torrent_files_cache WHERE instance_id = ? AND torrent_hash_id = ?`, instanceID, hashID)
 	if err != nil {
@@ -263,10 +269,11 @@ func (r *Repository) UpsertSyncInfo(ctx context.Context, info SyncInfo) error {
 	defer tx.Rollback()
 
 	// Intern the torrent hash
-	hashID, err := dbinterface.InternString(ctx, tx, info.TorrentHash)
+	ids, err := dbinterface.InternStrings(ctx, tx, info.TorrentHash)
 	if err != nil {
 		return fmt.Errorf("failed to intern torrent_hash: %w", err)
 	}
+	hashID := ids[0]
 
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO torrent_files_sync 
@@ -301,10 +308,11 @@ func (r *Repository) DeleteSyncInfo(ctx context.Context, instanceID int, hash st
 	defer tx.Rollback()
 
 	// Intern the hash to get its ID
-	hashID, err := dbinterface.InternString(ctx, tx, hash)
+	ids, err := dbinterface.InternStrings(ctx, tx, hash)
 	if err != nil {
 		return fmt.Errorf("failed to intern torrent_hash: %w", err)
 	}
+	hashID := ids[0]
 
 	_, err = tx.ExecContext(ctx, `DELETE FROM torrent_files_sync WHERE instance_id = ? AND torrent_hash_id = ?`, instanceID, hashID)
 	if err != nil {

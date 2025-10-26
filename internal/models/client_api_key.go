@@ -50,10 +50,11 @@ func (s *ClientAPIKeyStore) Create(ctx context.Context, clientName string, insta
 	defer tx.Rollback()
 
 	// Intern the client name first
-	clientNameID, err := dbinterface.InternString(ctx, tx, clientName)
+	ids, err := dbinterface.InternStrings(ctx, tx, clientName)
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to intern client_name: %w", err)
 	}
+	clientNameID := ids[0]
 
 	// Insert the client API key
 	clientAPIKey := &ClientAPIKey{}

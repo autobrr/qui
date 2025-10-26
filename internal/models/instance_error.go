@@ -79,14 +79,11 @@ func (s *InstanceErrorStore) RecordError(ctx context.Context, instanceID int, er
 	}
 
 	// Intern strings first
-	errorTypeID, err := dbinterface.InternString(ctx, tx, errorType)
+	ids, err := dbinterface.InternStrings(ctx, tx, errorType, errorMessage)
 	if err != nil {
-		return fmt.Errorf("failed to intern error_type: %w", err)
+		return fmt.Errorf("failed to intern error strings: %w", err)
 	}
-	errorMessageID, err := dbinterface.InternString(ctx, tx, errorMessage)
-	if err != nil {
-		return fmt.Errorf("failed to intern error_message: %w", err)
-	}
+	errorTypeID, errorMessageID := ids[0], ids[1]
 
 	// Insert the error with interned IDs
 	_, execErr := tx.ExecContext(ctx, `INSERT INTO instance_errors (instance_id, error_type_id, error_message_id) VALUES (?, ?, ?)`,

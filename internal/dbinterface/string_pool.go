@@ -7,63 +7,251 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 )
 
-// InternString interns a single string value and returns its ID.
-// This is designed for use within transactions.
-// For required (non-nullable) string fields.
-func InternString(ctx context.Context, tx TxQuerier, value string) (int64, error) {
-	var id int64
-	err := tx.QueryRowContext(ctx,
-		"INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET id = id RETURNING id",
-		value).Scan(&id)
-	if err != nil {
-		return 0, err
-	}
-	return id, nil
-}
+// SQLite has SQLITE_MAX_VARIABLE_NUMBER limit (default 999)
+// Conservative limit to stay well under 999 for batch operations
+const maxParams = 900
 
-// InternStringNullable interns an optional string value and returns its ID as sql.NullInt64.
-// Returns sql.NullInt64{Valid: false} if the value pointer is nil or the string is empty.
-// This is designed for use within transactions.
-func InternStringNullable(ctx context.Context, tx TxQuerier, value *string) (sql.NullInt64, error) {
-	if value == nil || *value == "" {
-		return sql.NullInt64{Valid: false}, nil
-	}
-
-	id, err := InternString(ctx, tx, *value)
-	if err != nil {
-		return sql.NullInt64{}, err
-	}
-
-	return sql.NullInt64{Int64: id, Valid: true}, nil
-}
-
-// InternStrings interns multiple string values in sequence and returns their IDs.
+// InternStrings interns one or more string values efficiently and returns their IDs.
 // This is designed for use within transactions.
 // All values are required (non-empty). Returns error if any value is empty.
+//
+// Performance: For a single string, uses a fast-path with one query.
+// For multiple strings, uses batch operations with deduplication for optimal performance.
 func InternStrings(ctx context.Context, tx TxQuerier, values ...string) ([]int64, error) {
-	ids := make([]int64, len(values))
+	if len(values) == 0 {
+		return []int64{}, nil
+	}
+
+	// Fast path for single string
+	if len(values) == 1 {
+		if values[0] == "" {
+			return nil, fmt.Errorf("value at index 0 is empty")
+		}
+		var id int64
+		err := tx.QueryRowContext(ctx,
+			"INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET id = id RETURNING id",
+			values[0]).Scan(&id)
+		if err != nil {
+			return nil, err
+		}
+		return []int64{id}, nil
+	}
+
+	// Batch path for multiple strings
+	// Validate all values first
 	for i, value := range values {
 		if value == "" {
 			return nil, fmt.Errorf("value at index %d is empty", i)
 		}
-		id, err := InternString(ctx, tx, value)
-		if err != nil {
-			return nil, fmt.Errorf("failed to intern value at index %d: %w", i, err)
-		}
-		ids[i] = id
 	}
+
+	// Deduplicate input values and track original positions
+	uniqueValues := make(map[string][]int) // value -> list of indices
+	for i, v := range values {
+		uniqueValues[v] = append(uniqueValues[v], i)
+	}
+
+	// Build list of unique values
+	valuesList := make([]string, 0, len(uniqueValues))
+	for v := range uniqueValues {
+		valuesList = append(valuesList, v)
+	}
+
+	// SQLite has SQLITE_MAX_VARIABLE_NUMBER limit (default 999)
+	// Process in chunks to avoid hitting this limit
+	valueToID := make(map[string]int64, len(valuesList))
+
+	for i := 0; i < len(valuesList); i += maxParams {
+		end := i + maxParams
+		if end > len(valuesList) {
+			end = len(valuesList)
+		}
+		chunk := valuesList[i:end]
+
+		// Build args for this chunk
+		args := make([]any, len(chunk))
+		for j, v := range chunk {
+			args[j] = v
+		}
+
+		// Build VALUES clause: (?),(?),(?)
+		var sb strings.Builder
+		sb.WriteString("INSERT INTO string_pool (value) VALUES ")
+		for j := range chunk {
+			if j > 0 {
+				sb.WriteString(",")
+			}
+			sb.WriteString("(?)")
+		}
+		sb.WriteString(" ON CONFLICT (value) DO UPDATE SET id = id RETURNING id, value")
+
+		// Use INSERT ... RETURNING to get IDs in a single query
+		rows, err := tx.QueryContext(ctx, sb.String(), args...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to batch insert strings: %w", err)
+		}
+
+		for rows.Next() {
+			var id int64
+			var value string
+			if err := rows.Scan(&id, &value); err != nil {
+				rows.Close()
+				return nil, fmt.Errorf("failed to scan string pool row: %w", err)
+			}
+			valueToID[value] = id
+		}
+
+		if err = rows.Err(); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("error iterating string pool rows: %w", err)
+		}
+		rows.Close()
+	}
+
+	// Map back to original order
+	ids := make([]int64, len(values))
+	for i, v := range values {
+		ids[i] = valueToID[v]
+	}
+
 	return ids, nil
 }
 
-// GetString retrieves a string value from the string_pool by its ID.
+// InternStringNullable interns one or more optional string values and returns their IDs as sql.NullInt64.
+// Returns sql.NullInt64{Valid: false} for any value pointer that is nil or points to an empty string.
 // This is designed for use within transactions.
-func GetString(ctx context.Context, tx TxQuerier, id int64) (string, error) {
-	var value string
-	err := tx.QueryRowContext(ctx, "SELECT value FROM string_pool WHERE id = ?", id).Scan(&value)
-	if err != nil {
-		return "", fmt.Errorf("failed to get string from pool: %w", err)
+//
+// Performance: For a single string, uses a fast-path. For multiple strings, collects non-empty values
+// and delegates to InternStrings for efficient batch processing.
+func InternStringNullable(ctx context.Context, tx TxQuerier, values ...*string) ([]sql.NullInt64, error) {
+	if len(values) == 0 {
+		return []sql.NullInt64{}, nil
 	}
-	return value, nil
+
+	// Fast path for single string
+	if len(values) == 1 {
+		if values[0] == nil || *values[0] == "" {
+			return []sql.NullInt64{{Valid: false}}, nil
+		}
+
+		ids, err := InternStrings(ctx, tx, *values[0])
+		if err != nil {
+			return nil, err
+		}
+
+		return []sql.NullInt64{{Int64: ids[0], Valid: true}}, nil
+	}
+
+	// Batch path: collect non-empty values and track their positions
+	results := make([]sql.NullInt64, len(values))
+	var nonEmptyValues []string
+	var positions []int
+
+	for i, v := range values {
+		if v == nil || *v == "" {
+			results[i] = sql.NullInt64{Valid: false}
+			continue
+		}
+		nonEmptyValues = append(nonEmptyValues, *v)
+		positions = append(positions, i)
+	}
+
+	// If no non-empty values, return early
+	if len(nonEmptyValues) == 0 {
+		return results, nil
+	}
+
+	// Intern all non-empty values (InternStrings handles deduplication internally)
+	ids, err := InternStrings(ctx, tx, nonEmptyValues...)
+	if err != nil {
+		return nil, err
+	}
+
+	// Map IDs back to original positions
+	for i, pos := range positions {
+		results[pos] = sql.NullInt64{Int64: ids[i], Valid: true}
+	}
+
+	return results, nil
+}
+
+// GetString retrieves one or more string values from the string_pool by their IDs.
+// This is designed for use within transactions.
+// Returns strings in the same order as the input IDs.
+func GetString(ctx context.Context, tx TxQuerier, ids ...int64) ([]string, error) {
+	if len(ids) == 0 {
+		return []string{}, nil
+	}
+
+	// Fast path for single ID
+	if len(ids) == 1 {
+		var value string
+		err := tx.QueryRowContext(ctx, "SELECT value FROM string_pool WHERE id = ?", ids[0]).Scan(&value)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get string from pool: %w", err)
+		}
+		return []string{value}, nil
+	}
+
+	// Batch path for multiple IDs
+	// SQLite has SQLITE_MAX_VARIABLE_NUMBER limit (default 999)
+	// Process in chunks to avoid hitting this limit
+	results := make([]string, len(ids))
+	idToIndex := make(map[int64]int, len(ids))
+	for i, id := range ids {
+		idToIndex[id] = i
+	}
+
+	for i := 0; i < len(ids); i += maxParams {
+		end := i + maxParams
+		if end > len(ids) {
+			end = len(ids)
+		}
+		chunk := ids[i:end]
+
+		// Build args for this chunk
+		args := make([]any, len(chunk))
+		for j, id := range chunk {
+			args[j] = id
+		}
+
+		// Build IN clause: id IN (?,?,?)
+		var sb strings.Builder
+		sb.WriteString("SELECT id, value FROM string_pool WHERE id IN (")
+		for j := range chunk {
+			if j > 0 {
+				sb.WriteString(",")
+			}
+			sb.WriteString("?")
+		}
+		sb.WriteString(")")
+
+		rows, err := tx.QueryContext(ctx, sb.String(), args...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to query string pool: %w", err)
+		}
+
+		for rows.Next() {
+			var id int64
+			var value string
+			if err := rows.Scan(&id, &value); err != nil {
+				rows.Close()
+				return nil, fmt.Errorf("failed to scan string pool row: %w", err)
+			}
+			if idx, exists := idToIndex[id]; exists {
+				results[idx] = value
+			}
+		}
+
+		if err = rows.Err(); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("error iterating string pool rows: %w", err)
+		}
+		rows.Close()
+	}
+
+	return results, nil
 }

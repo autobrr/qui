@@ -244,24 +244,18 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 	defer tx.Rollback()
 
 	// Intern required strings
-	nameID, err := dbinterface.InternString(ctx, tx, name)
+	ids, err := dbinterface.InternStrings(ctx, tx, name, normalizedHost, username)
 	if err != nil {
-		return nil, fmt.Errorf("failed to intern name: %w", err)
+		return nil, fmt.Errorf("failed to intern required strings: %w", err)
 	}
-	hostID, err := dbinterface.InternString(ctx, tx, normalizedHost)
-	if err != nil {
-		return nil, fmt.Errorf("failed to intern host: %w", err)
-	}
-	usernameID, err := dbinterface.InternString(ctx, tx, username)
-	if err != nil {
-		return nil, fmt.Errorf("failed to intern username: %w", err)
-	}
+	nameID, hostID, usernameID := ids[0], ids[1], ids[2]
 
 	// Intern basic username if provided
-	basicUsernameID, err := dbinterface.InternStringNullable(ctx, tx, basicUsername)
+	basicUsernameIDs, err := dbinterface.InternStringNullable(ctx, tx, basicUsername)
 	if err != nil {
 		return nil, fmt.Errorf("failed to intern basic_username: %w", err)
 	}
+	basicUsernameID := basicUsernameIDs[0]
 
 	// Insert instance with the interned IDs
 	instance := &Instance{}
@@ -378,18 +372,11 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 	defer tx.Rollback()
 
 	// Intern required strings first
-	nameID, err := dbinterface.InternString(ctx, tx, name)
+	ids, err := dbinterface.InternStrings(ctx, tx, name, normalizedHost, username)
 	if err != nil {
-		return nil, fmt.Errorf("failed to intern name: %w", err)
+		return nil, fmt.Errorf("failed to intern required strings: %w", err)
 	}
-	hostID, err := dbinterface.InternString(ctx, tx, normalizedHost)
-	if err != nil {
-		return nil, fmt.Errorf("failed to intern host: %w", err)
-	}
-	usernameID, err := dbinterface.InternString(ctx, tx, username)
-	if err != nil {
-		return nil, fmt.Errorf("failed to intern username: %w", err)
-	}
+	nameID, hostID, usernameID := ids[0], ids[1], ids[2]
 
 	// Build UPDATE query
 	query := "UPDATE instances SET name_id = ?, host_id = ?, username_id = ?"
@@ -402,12 +389,12 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 			query += ", basic_username_id = NULL"
 		} else {
 			// Basic username provided - intern and update
-			basicUsernameID, err := dbinterface.InternString(ctx, tx, *basicUsername)
+			basicIDs, err := dbinterface.InternStrings(ctx, tx, *basicUsername)
 			if err != nil {
 				return nil, fmt.Errorf("failed to intern basic_username: %w", err)
 			}
 			query += ", basic_username_id = ?"
-			args = append(args, basicUsernameID)
+			args = append(args, basicIDs[0])
 		}
 	}
 
