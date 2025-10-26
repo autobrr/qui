@@ -42,15 +42,15 @@ func InternStrings(ctx context.Context, tx TxQuerier, values ...string) ([]int64
 			return nil, err
 		}
 
-		// Then select the ID (fast with unique index)
-		var id int64
-		err = tx.QueryRowContext(ctx,
-			"SELECT id FROM string_pool WHERE value = ?",
-			values[0]).Scan(&id)
+		// Then get the ID (fast with unique index)
+		ids, err := GetStringID(ctx, tx, values[0])
 		if err != nil {
 			return nil, err
 		}
-		return []int64{id}, nil
+		if !ids[0].Valid {
+			return nil, fmt.Errorf("failed to get ID for interned string %q", values[0])
+		}
+		return []int64{ids[0].Int64}, nil
 	}
 
 	// Batch path for multiple strings
@@ -75,7 +75,6 @@ func InternStrings(ctx context.Context, tx TxQuerier, values ...string) ([]int64
 
 	// SQLite has SQLITE_MAX_VARIABLE_NUMBER limit (default 999)
 	// Process in chunks to avoid hitting this limit
-	valueToID := make(map[string]int64, len(valuesList))
 
 	for i := 0; i < len(valuesList); i += maxParams {
 		end := i + maxParams
@@ -92,64 +91,38 @@ func InternStrings(ctx context.Context, tx TxQuerier, values ...string) ([]int64
 
 		// Build placeholder patterns once
 		var sb strings.Builder
-		var valuesPattern strings.Builder
-
+		const queryPrefix = "INSERT OR IGNORE INTO string_pool (value) VALUES "
+		sb.Grow(len(queryPrefix) + (len(chunk) * 4) + 1) // preallocate
+		sb.WriteString(queryPrefix)
 		for j := range chunk {
 			if j > 0 {
 				sb.WriteString(",")
-				valuesPattern.WriteString(",")
 			}
-			sb.WriteString("?")
-			valuesPattern.WriteString("(?)")
+			sb.WriteString("(?)")
 		}
-		placeholders := sb.String()                  // ?,?,?
-		valuesPlaceholders := valuesPattern.String() // (?),(?),(?)
-
-		// Step 1: INSERT OR IGNORE (faster than ON CONFLICT)
-		sb.Reset()
-		sb.WriteString("INSERT OR IGNORE INTO string_pool (value) VALUES ")
-		sb.WriteString(valuesPlaceholders)
 
 		_, err := tx.ExecContext(ctx, sb.String(), args...)
 		if err != nil {
 			return nil, fmt.Errorf("failed to batch insert strings: %w", err)
 		}
-
-		// Step 2: SELECT to get IDs (fast with index on value)
-		sb.Reset()
-		sb.WriteString("SELECT id, value FROM string_pool WHERE value IN (")
-		sb.WriteString(placeholders)
-		sb.WriteString(")")
-
-		rows, err := tx.QueryContext(ctx, sb.String(), args...)
-		if err != nil {
-			return nil, fmt.Errorf("failed to query string pool: %w", err)
-		}
-
-		for rows.Next() {
-			var id int64
-			var value string
-			if err := rows.Scan(&id, &value); err != nil {
-				rows.Close()
-				return nil, fmt.Errorf("failed to scan string pool row: %w", err)
-			}
-			valueToID[value] = id
-		}
-
-		if err = rows.Err(); err != nil {
-			rows.Close()
-			return nil, fmt.Errorf("error iterating string pool rows: %w", err)
-		}
-		rows.Close()
 	}
 
-	// Map back to original order
-	ids := make([]int64, len(values))
-	for i, v := range values {
-		ids[i] = valueToID[v]
+	// Step 2: Get all IDs using GetStringID
+	ids, err := GetStringID(ctx, tx, values...)
+	if err != nil {
+		return nil, err
 	}
 
-	return ids, nil
+	// Verify all IDs are valid (they should be after INSERT OR IGNORE)
+	result := make([]int64, len(ids))
+	for i, id := range ids {
+		if !id.Valid {
+			return nil, fmt.Errorf("failed to get ID for interned string %q", values[i])
+		}
+		result[i] = id.Int64
+	}
+
+	return result, nil
 }
 
 // InternStringNullable interns one or more optional string values and returns their IDs as sql.NullInt64.
@@ -252,7 +225,9 @@ func GetString(ctx context.Context, tx TxQuerier, ids ...int64) ([]string, error
 
 		// Build IN clause: id IN (?,?,?)
 		var sb strings.Builder
-		sb.WriteString("SELECT id, value FROM string_pool WHERE id IN (")
+		const queryPrefix = "SELECT id, value FROM string_pool WHERE id IN ("
+		sb.Grow(len(queryPrefix) + (len(chunk) * 4) + 1) // preallocate
+		sb.WriteString(queryPrefix)
 		for j := range chunk {
 			if j > 0 {
 				sb.WriteString(",")
@@ -285,6 +260,131 @@ func GetString(ctx context.Context, tx TxQuerier, ids ...int64) ([]string, error
 			return nil, fmt.Errorf("error iterating string pool rows: %w", err)
 		}
 		rows.Close()
+	}
+
+	return results, nil
+}
+
+// GetStringID retrieves the IDs of string values from the string_pool without creating them.
+// Returns sql.NullInt64{Valid: false} for strings that do not exist.
+// This is designed for use within transactions.
+// For multiple strings, uses batch operations for optimal performance.
+func GetStringID(ctx context.Context, tx TxQuerier, values ...string) ([]sql.NullInt64, error) {
+	if len(values) == 0 {
+		return []sql.NullInt64{}, nil
+	}
+
+	// Fast path for single string
+	if len(values) == 1 {
+		if values[0] == "" {
+			return []sql.NullInt64{{Valid: false}}, nil
+		}
+
+		var id int64
+		err := tx.QueryRowContext(ctx, "SELECT id FROM string_pool WHERE value = ?", values[0]).Scan(&id)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				return []sql.NullInt64{{Valid: false}}, nil
+			}
+			return nil, fmt.Errorf("failed to get string ID from pool: %w", err)
+		}
+
+		return []sql.NullInt64{{Int64: id, Valid: true}}, nil
+	}
+
+	// Batch path for multiple strings
+	results := make([]sql.NullInt64, len(values))
+
+	// Filter out empty strings and track positions
+	var nonEmptyValues []string
+	var positions []int
+	for i, v := range values {
+		if v == "" {
+			results[i] = sql.NullInt64{Valid: false}
+			continue
+		}
+		nonEmptyValues = append(nonEmptyValues, v)
+		positions = append(positions, i)
+	}
+
+	// If no non-empty values, return early
+	if len(nonEmptyValues) == 0 {
+		return results, nil
+	}
+
+	// Deduplicate non-empty values and track their positions
+	uniqueValues := make(map[string][]int) // value -> list of result indices
+	for i, v := range nonEmptyValues {
+		resultIdx := positions[i]
+		uniqueValues[v] = append(uniqueValues[v], resultIdx)
+	}
+
+	// Build list of unique values
+	valuesList := make([]string, 0, len(uniqueValues))
+	for v := range uniqueValues {
+		valuesList = append(valuesList, v)
+	}
+
+	// SQLite has SQLITE_MAX_VARIABLE_NUMBER limit (default 999)
+	// Process in chunks to avoid hitting this limit
+	valueToID := make(map[string]int64, len(valuesList))
+
+	for i := 0; i < len(valuesList); i += maxParams {
+		end := i + maxParams
+		if end > len(valuesList) {
+			end = len(valuesList)
+		}
+		chunk := valuesList[i:end]
+
+		// Build args for this chunk
+		args := make([]any, len(chunk))
+		for j, v := range chunk {
+			args[j] = v
+		}
+
+		// Build IN clause: value IN (?,?,?)
+		var sb strings.Builder
+		const queryPrefix = "SELECT id, value FROM string_pool WHERE value IN ("
+		sb.Grow(len(queryPrefix) + (len(chunk) * 4) + 1) // preallocate
+		sb.WriteString(queryPrefix)
+		for j := range chunk {
+			if j > 0 {
+				sb.WriteString(",")
+			}
+			sb.WriteString("?")
+		}
+		sb.WriteString(")")
+
+		rows, err := tx.QueryContext(ctx, sb.String(), args...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to query string pool: %w", err)
+		}
+
+		for rows.Next() {
+			var id int64
+			var value string
+			if err := rows.Scan(&id, &value); err != nil {
+				rows.Close()
+				return nil, fmt.Errorf("failed to scan string pool row: %w", err)
+			}
+			valueToID[value] = id
+		}
+
+		if err = rows.Err(); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("error iterating string pool rows: %w", err)
+		}
+		rows.Close()
+	}
+
+	// Map IDs back to result positions
+	for value, resultIndices := range uniqueValues {
+		if id, exists := valueToID[value]; exists {
+			for _, idx := range resultIndices {
+				results[idx] = sql.NullInt64{Int64: id, Valid: true}
+			}
+		}
+		// If value doesn't exist, results[idx] remains {Valid: false}
 	}
 
 	return results, nil

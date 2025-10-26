@@ -245,3 +245,93 @@ func BenchmarkInternStringsBatch(b *testing.B) {
 		}
 	}
 }
+
+func TestGetStringID(t *testing.T) {
+	// Create in-memory database
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to open database: %v", err)
+	}
+	defer db.Close()
+
+	// Create string_pool table
+	_, err = db.Exec(`
+		CREATE TABLE string_pool (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			value TEXT NOT NULL UNIQUE
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create table: %v", err)
+	}
+
+	ctx := context.Background()
+
+	// Begin transaction for testing
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("Failed to begin transaction: %v", err)
+	}
+	defer tx.Rollback()
+
+	// Test getting IDs for non-existent strings
+	nullIDs, err := GetStringID(ctx, tx, "nonexistent1", "nonexistent2")
+	if err != nil {
+		t.Fatalf("GetStringID failed for non-existent strings: %v", err)
+	}
+	if len(nullIDs) != 2 {
+		t.Errorf("Expected 2 results, got %d", len(nullIDs))
+	}
+	for i, id := range nullIDs {
+		if id.Valid {
+			t.Errorf("Expected invalid NullInt64 for non-existent string %d, got valid: %v", i, id)
+		}
+	}
+
+	// Intern some strings first
+	ids, err := InternStrings(ctx, tx, "test_hash1", "test_hash2")
+	if err != nil {
+		t.Fatalf("InternStrings failed: %v", err)
+	}
+	expectedID1, expectedID2 := ids[0], ids[1]
+
+	// Test getting IDs for existing strings
+	resultIDs, err := GetStringID(ctx, tx, "test_hash1", "test_hash2", "nonexistent3")
+	if err != nil {
+		t.Fatalf("GetStringID failed for mixed strings: %v", err)
+	}
+	if len(resultIDs) != 3 {
+		t.Errorf("Expected 3 results, got %d", len(resultIDs))
+	}
+
+	// Check existing strings
+	if !resultIDs[0].Valid || resultIDs[0].Int64 != expectedID1 {
+		t.Errorf("Expected ID %d for test_hash1, got %v", expectedID1, resultIDs[0])
+	}
+	if !resultIDs[1].Valid || resultIDs[1].Int64 != expectedID2 {
+		t.Errorf("Expected ID %d for test_hash2, got %v", expectedID2, resultIDs[1])
+	}
+
+	// Check non-existent string
+	if resultIDs[2].Valid {
+		t.Errorf("Expected invalid NullInt64 for nonexistent3, got valid: %v", resultIDs[2])
+	}
+
+	// Test empty strings
+	emptyIDs, err := GetStringID(ctx, tx, "", "test_hash1", "")
+	if err != nil {
+		t.Fatalf("GetStringID failed for strings with empties: %v", err)
+	}
+	if len(emptyIDs) != 3 {
+		t.Errorf("Expected 3 results, got %d", len(emptyIDs))
+	}
+	if emptyIDs[0].Valid {
+		t.Errorf("Expected invalid NullInt64 for empty string at index 0, got valid: %v", emptyIDs[0])
+	}
+	if !emptyIDs[1].Valid || emptyIDs[1].Int64 != expectedID1 {
+		t.Errorf("Expected ID %d for test_hash1 at index 1, got %v", expectedID1, emptyIDs[1])
+	}
+	if emptyIDs[2].Valid {
+		t.Errorf("Expected invalid NullInt64 for empty string at index 2, got valid: %v", emptyIDs[2])
+	}
+}

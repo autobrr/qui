@@ -941,6 +941,8 @@ func (db *DB) applyAllMigrations(ctx context.Context, migrations []string) error
 			if err != nil {
 				return fmt.Errorf("failed to begin new transaction after %s: %w", filename, err)
 			}
+			// defer Rollback for the new transaction
+			defer tx.Rollback()
 		} else {
 			// Normal migration within transaction
 			// Read migration file

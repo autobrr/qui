@@ -200,14 +200,18 @@ func (r *Repository) DeleteFiles(ctx context.Context, instanceID int, hash strin
 	}
 	defer tx.Rollback()
 
-	// Intern the hash to get its ID
-	ids, err := dbinterface.InternStrings(ctx, tx, hash)
+	// Get the hash ID without creating it if it doesn't exist
+	hashIDs, err := dbinterface.GetStringID(ctx, tx, hash)
 	if err != nil {
-		return fmt.Errorf("failed to intern torrent_hash: %w", err)
+		return fmt.Errorf("failed to get torrent_hash ID: %w", err)
 	}
-	hashID := ids[0]
 
-	result, err := tx.ExecContext(ctx, `DELETE FROM torrent_files_cache WHERE instance_id = ? AND torrent_hash_id = ?`, instanceID, hashID)
+	// If the hash doesn't exist in the string pool, there's nothing to delete
+	if len(hashIDs) == 0 || !hashIDs[0].Valid {
+		return tx.Commit()
+	}
+
+	result, err := tx.ExecContext(ctx, `DELETE FROM torrent_files_cache WHERE instance_id = ? AND torrent_hash_id = ?`, instanceID, hashIDs[0].Int64)
 	if err != nil {
 		return fmt.Errorf("failed to delete cached files: %w", err)
 	}
@@ -307,14 +311,18 @@ func (r *Repository) DeleteSyncInfo(ctx context.Context, instanceID int, hash st
 	}
 	defer tx.Rollback()
 
-	// Intern the hash to get its ID
-	ids, err := dbinterface.InternStrings(ctx, tx, hash)
+	// Get the hash ID without creating it if it doesn't exist
+	hashIDs, err := dbinterface.GetStringID(ctx, tx, hash)
 	if err != nil {
-		return fmt.Errorf("failed to intern torrent_hash: %w", err)
+		return fmt.Errorf("failed to get torrent_hash ID: %w", err)
 	}
-	hashID := ids[0]
 
-	_, err = tx.ExecContext(ctx, `DELETE FROM torrent_files_sync WHERE instance_id = ? AND torrent_hash_id = ?`, instanceID, hashID)
+	// If the hash doesn't exist in the string pool, there's nothing to delete
+	if !hashIDs[0].Valid {
+		return tx.Commit()
+	}
+
+	_, err = tx.ExecContext(ctx, `DELETE FROM torrent_files_sync WHERE instance_id = ? AND torrent_hash_id = ?`, instanceID, hashIDs[0].Int64)
 	if err != nil {
 		return err
 	}
