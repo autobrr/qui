@@ -342,6 +342,7 @@ func verifyPragmas(t *testing.T, ctx context.Context, q pragmaQuerier) {
 	if rows.Next() {
 		t.Fatal("PRAGMA foreign_key_check reported violations")
 	}
+	require.NoError(t, rows.Err())
 
 	var integrity string
 	require.NoError(t, q.QueryRowContext(ctx, "PRAGMA integrity_check").Scan(&integrity))

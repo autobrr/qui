@@ -503,6 +503,7 @@ func TestMigrationDataTransformations(t *testing.T) {
 					}
 					count++
 				}
+				require.NoError(t, rows.Err())
 				require.Equal(t, data["itemCount"], count, "Should have all backup items")
 
 				// Verify actual string values via view
