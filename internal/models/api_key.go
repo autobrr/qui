@@ -114,7 +114,7 @@ func (s *APIKeyStore) GetByHash(ctx context.Context, keyHash string) (*APIKey, e
 
 	var id int
 	var keyHashResult, name string
-	var createdAt time.Time
+	var createdAt sql.NullTime
 	var lastUsedAt sql.NullTime
 
 	err := s.db.QueryRowContext(ctx, query, keyHash).Scan(
@@ -137,7 +137,7 @@ func (s *APIKeyStore) GetByHash(ctx context.Context, keyHash string) (*APIKey, e
 		ID:        id,
 		KeyHash:   keyHashResult,
 		Name:      name,
-		CreatedAt: createdAt,
+		CreatedAt: createdAt.Time,
 	}
 
 	if lastUsedAt.Valid {
@@ -164,7 +164,7 @@ func (s *APIKeyStore) List(ctx context.Context) ([]*APIKey, error) {
 	for rows.Next() {
 		var id int
 		var keyHash, name string
-		var createdAt time.Time
+		var createdAt sql.NullTime
 		var lastUsedAt sql.NullTime
 
 		err := rows.Scan(
@@ -182,7 +182,7 @@ func (s *APIKeyStore) List(ctx context.Context) ([]*APIKey, error) {
 			ID:        id,
 			KeyHash:   keyHash,
 			Name:      name,
-			CreatedAt: createdAt,
+			CreatedAt: createdAt.Time,
 		}
 
 		if lastUsedAt.Valid {
