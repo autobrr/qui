@@ -72,7 +72,7 @@ HostingByDesign App slots installer
 wget -O installer.sh https://get.autobrr.com/qui/hostingbydesign && chmod +x installer.sh && ./installer.sh
 ```
 
-Seedhost installer (NOT TESTED)
+Seedhost installer
 
 ```bash
 wget -O installer.sh https://get.autobrr.com/qui/seedhost && chmod +x installer.sh && ./installer.sh
@@ -84,7 +84,7 @@ Ultra.cc installer
 wget -O installer.sh https://get.autobrr.com/qui/ultra && chmod +x installer.sh && ./installer.sh
 ```
 
-Whatbox installer (NOT TESTED)
+Whatbox installer
 
 ```bash
 wget -O installer.sh https://get.autobrr.com/qui/whatbox && chmod +x installer.sh && ./installer.sh
