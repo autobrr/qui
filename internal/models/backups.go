@@ -122,12 +122,6 @@ func NewBackupStore(db dbinterface.Querier) *BackupStore {
 }
 
 func (s *BackupStore) GetSettings(ctx context.Context, instanceID int) (*BackupSettings, error) {
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
 	query := `
         SELECT instance_id, enabled, hourly_enabled, daily_enabled, weekly_enabled, monthly_enabled,
                keep_hourly, keep_daily, keep_weekly, keep_monthly,
@@ -136,14 +130,14 @@ func (s *BackupStore) GetSettings(ctx context.Context, instanceID int) (*BackupS
         WHERE instance_id = ?
     `
 
-	row := tx.QueryRowContext(ctx, query, instanceID)
+	row := s.db.QueryRowContext(ctx, query, instanceID)
 
 	var settings BackupSettings
 	var customPath sql.NullString
 	var createdAt sql.NullTime
 	var updatedAt sql.NullTime
 
-	err = row.Scan(
+	err := row.Scan(
 		&settings.InstanceID,
 		&settings.Enabled,
 		&settings.HourlyEnabled,
@@ -176,10 +170,6 @@ func (s *BackupStore) GetSettings(ctx context.Context, instanceID int) (*BackupS
 	}
 	if updatedAt.Valid {
 		settings.UpdatedAt = updatedAt.Time
-	}
-
-	if err = tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return &settings, nil
@@ -617,12 +607,6 @@ func (s *BackupStore) ListRuns(ctx context.Context, instanceID int, limit, offse
 		limit = 20
 	}
 
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
 	query := `
         SELECT id, instance_id, kind, status, requested_by, requested_at, started_at, completed_at,
                archive_path, manifest_path, total_bytes, torrent_count, category_counts_json, categories_json, tags_json, error_message
@@ -632,7 +616,7 @@ func (s *BackupStore) ListRuns(ctx context.Context, instanceID int, limit, offse
         LIMIT ? OFFSET ?
     `
 
-	rows, err := tx.QueryContext(ctx, query, instanceID, limit, offset)
+	rows, err := s.db.QueryContext(ctx, query, instanceID, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -716,21 +700,11 @@ func (s *BackupStore) ListRuns(ctx context.Context, instanceID int, limit, offse
 		return nil, err
 	}
 
-	if err = tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
 	return results, nil
 }
 
 func (s *BackupStore) ListRunIDs(ctx context.Context, instanceID int) ([]int64, error) {
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	rows, err := tx.QueryContext(ctx, `
+	rows, err := s.db.QueryContext(ctx, `
 		SELECT id
 		FROM instance_backup_runs
 		WHERE instance_id = ?
@@ -752,10 +726,6 @@ func (s *BackupStore) ListRunIDs(ctx context.Context, instanceID int) ([]int64, 
 
 	if err = rows.Err(); err != nil {
 		return nil, err
-	}
-
-	if err = tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return ids, nil
@@ -847,13 +817,7 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 }
 
 func (s *BackupStore) ListItems(ctx context.Context, runID int64) ([]*BackupItem, error) {
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	rows, err := tx.QueryContext(ctx, `
+	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, run_id, torrent_hash, name, category, size_bytes, archive_rel_path, infohash_v1, infohash_v2, tags, torrent_blob_path, created_at
 		FROM instance_backup_items_view
 		WHERE run_id = ?
@@ -915,21 +879,11 @@ func (s *BackupStore) ListItems(ctx context.Context, runID int64) ([]*BackupItem
 		return nil, err
 	}
 
-	if err = tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
 	return items, nil
 }
 
 func (s *BackupStore) GetItemByHash(ctx context.Context, runID int64, hash string) (*BackupItem, error) {
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	row := tx.QueryRowContext(ctx, `
+	row := s.db.QueryRowContext(ctx, `
 		SELECT id, run_id, torrent_hash, name, category, size_bytes, archive_rel_path, infohash_v1, infohash_v2, tags, torrent_blob_path, created_at
 		FROM instance_backup_items_view
 		WHERE run_id = ? AND torrent_hash = ?
@@ -980,21 +934,11 @@ func (s *BackupStore) GetItemByHash(ctx context.Context, runID int64, hash strin
 		item.TorrentBlobPath = &blobPath.String
 	}
 
-	if err = tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
 	return &item, nil
 }
 
 func (s *BackupStore) FindCachedTorrentBlob(ctx context.Context, instanceID int, hash string) (*string, error) {
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	row := tx.QueryRowContext(ctx, `
+	row := s.db.QueryRowContext(ctx, `
 		SELECT i.torrent_blob_path
 		FROM instance_backup_items_view i
 		JOIN instance_backup_runs r ON r.id = i.run_id
@@ -1022,22 +966,12 @@ func (s *BackupStore) FindCachedTorrentBlob(ctx context.Context, instanceID int,
 		return nil, nil
 	}
 
-	if err = tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
 	return &trimmed, nil
 }
 
 func (s *BackupStore) CountBlobReferences(ctx context.Context, relPath string) (int, error) {
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return 0, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
 	var count int
-	err = tx.QueryRowContext(ctx, `
+	err := s.db.QueryRowContext(ctx, `
 		SELECT COUNT(*)
 		FROM instance_backup_items_view
 		WHERE torrent_blob_path = ?
@@ -1047,22 +981,12 @@ func (s *BackupStore) CountBlobReferences(ctx context.Context, relPath string) (
 		return 0, err
 	}
 
-	if err = tx.Commit(); err != nil {
-		return 0, fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
 	return count, nil
 }
 
 func (s *BackupStore) GetInstanceName(ctx context.Context, instanceID int) (string, error) {
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return "", fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
 	var name string
-	err = tx.QueryRowContext(ctx, `
+	err := s.db.QueryRowContext(ctx, `
 		SELECT sp.value 
 		FROM instances i 
 		JOIN string_pool sp ON i.name_id = sp.id 
@@ -1075,10 +999,6 @@ func (s *BackupStore) GetInstanceName(ctx context.Context, instanceID int) (stri
 		return "", err
 	}
 
-	if err = tx.Commit(); err != nil {
-		return "", fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
 	return strings.TrimSpace(name), nil
 }
 
@@ -1086,12 +1006,6 @@ func (s *BackupStore) ListRunsByKind(ctx context.Context, instanceID int, kind B
 	if limit <= 0 {
 		limit = 10
 	}
-
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
 
 	query := `
 		SELECT id, instance_id, kind, status, requested_by, requested_at, started_at, completed_at,
@@ -1102,7 +1016,7 @@ func (s *BackupStore) ListRunsByKind(ctx context.Context, instanceID int, kind B
 		LIMIT ?
 	`
 
-	rows, err := tx.QueryContext(ctx, query, instanceID, string(kind), limit)
+	rows, err := s.db.QueryContext(ctx, query, instanceID, string(kind), limit)
 	if err != nil {
 		return nil, err
 	}
@@ -1186,20 +1100,10 @@ func (s *BackupStore) ListRunsByKind(ctx context.Context, instanceID int, kind B
 		return nil, err
 	}
 
-	if err = tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
 	return runs, nil
 }
 
 func (s *BackupStore) GetRun(ctx context.Context, runID int64) (*BackupRun, error) {
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
 	query := `
         SELECT id, instance_id, kind, status, requested_by, requested_at, started_at, completed_at,
                archive_path, manifest_path, total_bytes, torrent_count, category_counts_json, categories_json, tags_json, error_message
@@ -1217,7 +1121,7 @@ func (s *BackupStore) GetRun(ctx context.Context, runID int64) (*BackupRun, erro
 	var categoriesJSON sql.NullString
 	var tagsJSON sql.NullString
 
-	err = tx.QueryRowContext(ctx, query, runID).Scan(
+	err := s.db.QueryRowContext(ctx, query, runID).Scan(
 		&run.ID,
 		&run.InstanceID,
 		&run.Kind,
@@ -1277,21 +1181,11 @@ func (s *BackupStore) GetRun(ctx context.Context, runID int64) (*BackupRun, erro
 		run.tagsJSON = &tagsJSON.String
 	}
 
-	if err = tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
 	return &run, nil
 }
 
 func (s *BackupStore) ListEnabledSettings(ctx context.Context) ([]*BackupSettings, error) {
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	rows, err := tx.QueryContext(ctx, `
+	rows, err := s.db.QueryContext(ctx, `
 		SELECT instance_id, enabled, hourly_enabled, daily_enabled, weekly_enabled, monthly_enabled,
 		       keep_hourly, keep_daily, keep_weekly, keep_monthly,
 		       include_categories, include_tags, custom_path, created_at, updated_at
@@ -1348,27 +1242,17 @@ func (s *BackupStore) ListEnabledSettings(ctx context.Context) ([]*BackupSetting
 		return nil, err
 	}
 
-	if err = tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
 	return settings, nil
 }
 
 func (s *BackupStore) DeleteRunsOlderThan(ctx context.Context, instanceID int, kind BackupRunKind, keep int) ([]int64, error) {
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
 	if keep <= 0 {
 		// Use view to query by kind string value
 		query := `
             SELECT id FROM instance_backup_runs_view
             WHERE instance_id = ? AND kind = ?
         `
-		rows, err := tx.QueryContext(ctx, query, instanceID, string(kind))
+		rows, err := s.db.QueryContext(ctx, query, instanceID, string(kind))
 		if err != nil {
 			return nil, err
 		}
@@ -1386,10 +1270,6 @@ func (s *BackupStore) DeleteRunsOlderThan(ctx context.Context, instanceID int, k
 			return nil, err
 		}
 
-		if err = tx.Commit(); err != nil {
-			return nil, fmt.Errorf("failed to commit transaction: %w", err)
-		}
-
 		return ids, nil
 	}
 
@@ -1401,7 +1281,7 @@ func (s *BackupStore) DeleteRunsOlderThan(ctx context.Context, instanceID int, k
         LIMIT -1 OFFSET ?
     `
 
-	rows, err := tx.QueryContext(ctx, query, instanceID, string(kind), keep)
+	rows, err := s.db.QueryContext(ctx, query, instanceID, string(kind), keep)
 	if err != nil {
 		return nil, err
 	}
@@ -1418,10 +1298,6 @@ func (s *BackupStore) DeleteRunsOlderThan(ctx context.Context, instanceID int, k
 
 	if err = rows.Err(); err != nil {
 		return nil, err
-	}
-
-	if err = tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return ids, nil
@@ -1498,14 +1374,8 @@ func (s *BackupStore) DeleteRunsByIDs(ctx context.Context, runIDs []int64) error
 }
 
 func (s *BackupStore) CountRunsByKind(ctx context.Context, instanceID int, kind BackupRunKind) (int, error) {
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return 0, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
 	var count int
-	err = tx.QueryRowContext(ctx, `
+	err := s.db.QueryRowContext(ctx, `
         SELECT COUNT(*)
         FROM instance_backup_runs_view
         WHERE instance_id = ? AND kind = ?
@@ -1513,10 +1383,6 @@ func (s *BackupStore) CountRunsByKind(ctx context.Context, instanceID int, kind 
 
 	if err != nil {
 		return 0, err
-	}
-
-	if err = tx.Commit(); err != nil {
-		return 0, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return count, nil
@@ -1591,12 +1457,6 @@ func (s *BackupStore) RemoveFailedRunsBefore(ctx context.Context, cutoff time.Ti
 // FindIncompleteRuns returns all backup runs that are in pending or running status.
 // These are runs that were interrupted by a restart or crash.
 func (s *BackupStore) FindIncompleteRuns(ctx context.Context) ([]*BackupRun, error) {
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
 	query := `
         SELECT id, instance_id, kind, status, requested_by, requested_at, started_at, completed_at,
                archive_path, manifest_path, total_bytes, torrent_count, category_counts_json, categories_json, tags_json, error_message
@@ -1605,7 +1465,7 @@ func (s *BackupStore) FindIncompleteRuns(ctx context.Context) ([]*BackupRun, err
         ORDER BY requested_at ASC
     `
 
-	rows, err := tx.QueryContext(ctx, query, string(BackupRunStatusPending), string(BackupRunStatusRunning))
+	rows, err := s.db.QueryContext(ctx, query, string(BackupRunStatusPending), string(BackupRunStatusRunning))
 	if err != nil {
 		return nil, err
 	}
@@ -1686,10 +1546,6 @@ func (s *BackupStore) FindIncompleteRuns(ctx context.Context) ([]*BackupRun, err
 
 	if err = rows.Err(); err != nil {
 		return nil, err
-	}
-
-	if err = tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return runs, nil

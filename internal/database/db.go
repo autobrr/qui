@@ -127,6 +127,7 @@ func (t *Tx) ExecContext(ctx context.Context, query string, args ...any) (sql.Re
 
 	// Create a transaction-specific statement from the cached one using StmtContext for better cancellation
 	txStmt := t.tx.StmtContext(ctx, stmt)
+	defer txStmt.Close()
 	return txStmt.ExecContext(ctx, args...)
 }
 
@@ -141,6 +142,7 @@ func (t *Tx) QueryContext(ctx context.Context, query string, args ...any) (*sql.
 
 	// Create a transaction-specific statement from the cached one using StmtContext for better cancellation
 	txStmt := t.tx.StmtContext(ctx, stmt)
+	defer txStmt.Close()
 	return txStmt.QueryContext(ctx, args...)
 }
 
@@ -155,6 +157,7 @@ func (t *Tx) QueryRowContext(ctx context.Context, query string, args ...any) *sq
 
 	// Create a transaction-specific statement from the cached one using StmtContext for better cancellation
 	txStmt := t.tx.StmtContext(ctx, stmt)
+	defer txStmt.Close()
 	return txStmt.QueryRowContext(ctx, args...)
 }
 

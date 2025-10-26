@@ -90,19 +90,13 @@ func (s *ClientAPIKeyStore) Create(ctx context.Context, clientName string, insta
 }
 
 func (s *ClientAPIKeyStore) GetAll(ctx context.Context) ([]*ClientAPIKey, error) {
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
 	query := `
 		SELECT id, key_hash, client_name, instance_id, created_at, last_used_at 
 		FROM client_api_keys_view 
 		ORDER BY created_at DESC
 	`
 
-	rows, err := tx.QueryContext(ctx, query)
+	rows, err := s.db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -129,20 +123,10 @@ func (s *ClientAPIKeyStore) GetAll(ctx context.Context) ([]*ClientAPIKey, error)
 		return nil, err
 	}
 
-	if err = tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
 	return keys, nil
 }
 
 func (s *ClientAPIKeyStore) GetByKeyHash(ctx context.Context, keyHash string) (*ClientAPIKey, error) {
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
 	query := `
 		SELECT id, key_hash, client_name, instance_id, created_at, last_used_at 
 		FROM client_api_keys_view 
@@ -150,7 +134,7 @@ func (s *ClientAPIKeyStore) GetByKeyHash(ctx context.Context, keyHash string) (*
 	`
 
 	key := &ClientAPIKey{}
-	err = tx.QueryRowContext(ctx, query, keyHash).Scan(
+	err := s.db.QueryRowContext(ctx, query, keyHash).Scan(
 		&key.ID,
 		&key.KeyHash,
 		&key.ClientName,
@@ -165,10 +149,6 @@ func (s *ClientAPIKeyStore) GetByKeyHash(ctx context.Context, keyHash string) (*
 
 	if err != nil {
 		return nil, err
-	}
-
-	if err = tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return key, nil

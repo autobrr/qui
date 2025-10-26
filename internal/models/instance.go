@@ -302,12 +302,6 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 }
 
 func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
 	query := `
 		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify 
 		FROM instances_view 
@@ -315,7 +309,7 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 	`
 
 	instance := &Instance{}
-	err = tx.QueryRowContext(ctx, query, id).Scan(
+	err := s.db.QueryRowContext(ctx, query, id).Scan(
 		&instance.ID,
 		&instance.Name,
 		&instance.Host,
@@ -333,27 +327,17 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 		return nil, err
 	}
 
-	if err = tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
 	return instance, nil
 }
 
 func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
 	query := `
 		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify 
 		FROM instances_view
 		ORDER BY name ASC
 	`
 
-	rows, err := tx.QueryContext(ctx, query)
+	rows, err := s.db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -380,10 +364,6 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 
 	if err = rows.Err(); err != nil {
 		return nil, err
-	}
-
-	if err = tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return instances, nil

@@ -5,7 +5,6 @@ package models
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -109,19 +108,13 @@ func (s *InstanceErrorStore) RecordError(ctx context.Context, instanceID int, er
 
 // GetRecentErrors retrieves the last N errors for an instance
 func (s *InstanceErrorStore) GetRecentErrors(ctx context.Context, instanceID int, limit int) ([]InstanceError, error) {
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
 	query := `SELECT id, instance_id, error_type, error_message, occurred_at 
               FROM instance_errors_view 
               WHERE instance_id = ? 
               ORDER BY occurred_at DESC 
               LIMIT ?`
 
-	rows, err := tx.QueryContext(ctx, query, instanceID, limit)
+	rows, err := s.db.QueryContext(ctx, query, instanceID, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -138,10 +131,6 @@ func (s *InstanceErrorStore) GetRecentErrors(ctx context.Context, instanceID int
 
 	if err = rows.Err(); err != nil {
 		return nil, err
-	}
-
-	if err = tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return errors, nil

@@ -107,12 +107,6 @@ func (s *APIKeyStore) Create(ctx context.Context, name string) (string, *APIKey,
 }
 
 func (s *APIKeyStore) GetByHash(ctx context.Context, keyHash string) (*APIKey, error) {
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
 	query := `
 		SELECT id, key_hash, name, created_at, last_used_at 
 		FROM api_keys_view 
@@ -120,7 +114,7 @@ func (s *APIKeyStore) GetByHash(ctx context.Context, keyHash string) (*APIKey, e
 	`
 
 	apiKey := &APIKey{}
-	err = tx.QueryRowContext(ctx, query, keyHash).Scan(
+	err := s.db.QueryRowContext(ctx, query, keyHash).Scan(
 		&apiKey.ID,
 		&apiKey.KeyHash,
 		&apiKey.Name,
@@ -136,27 +130,17 @@ func (s *APIKeyStore) GetByHash(ctx context.Context, keyHash string) (*APIKey, e
 		return nil, err
 	}
 
-	if err = tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
 	return apiKey, nil
 }
 
 func (s *APIKeyStore) List(ctx context.Context) ([]*APIKey, error) {
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
 	query := `
 		SELECT id, key_hash, name, created_at, last_used_at 
 		FROM api_keys_view 
 		ORDER BY created_at DESC
 	`
 
-	rows, err := tx.QueryContext(ctx, query)
+	rows, err := s.db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -180,10 +164,6 @@ func (s *APIKeyStore) List(ctx context.Context) ([]*APIKey, error) {
 
 	if err = rows.Err(); err != nil {
 		return nil, err
-	}
-
-	if err = tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return keys, nil

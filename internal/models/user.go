@@ -66,12 +66,6 @@ func (s *UserStore) Create(ctx context.Context, username, passwordHash string) (
 }
 
 func (s *UserStore) Get(ctx context.Context) (*User, error) {
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
-
 	query := `
 		SELECT id, username, password_hash 
 		FROM user 
@@ -79,7 +73,7 @@ func (s *UserStore) Get(ctx context.Context) (*User, error) {
 	`
 
 	user := &User{}
-	err = tx.QueryRowContext(ctx, query).Scan(
+	err := s.db.QueryRowContext(ctx, query).Scan(
 		&user.ID,
 		&user.Username,
 		&user.PasswordHash,
@@ -89,10 +83,6 @@ func (s *UserStore) Get(ctx context.Context) (*User, error) {
 		return nil, ErrUserNotFound
 	}
 	if err != nil {
-		return nil, err
-	}
-
-	if err = tx.Commit(); err != nil {
 		return nil, err
 	}
 
@@ -100,12 +90,6 @@ func (s *UserStore) Get(ctx context.Context) (*User, error) {
 }
 
 func (s *UserStore) GetByUsername(ctx context.Context, username string) (*User, error) {
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
-
 	query := `
 		SELECT id, username, password_hash 
 		FROM user 
@@ -113,7 +97,7 @@ func (s *UserStore) GetByUsername(ctx context.Context, username string) (*User, 
 	`
 
 	user := &User{}
-	err = tx.QueryRowContext(ctx, query, username).Scan(
+	err := s.db.QueryRowContext(ctx, query, username).Scan(
 		&user.ID,
 		&user.Username,
 		&user.PasswordHash,
@@ -123,10 +107,6 @@ func (s *UserStore) GetByUsername(ctx context.Context, username string) (*User, 
 		return nil, ErrUserNotFound
 	}
 	if err != nil {
-		return nil, err
-	}
-
-	if err = tx.Commit(); err != nil {
 		return nil, err
 	}
 
@@ -168,19 +148,9 @@ func (s *UserStore) UpdatePassword(ctx context.Context, passwordHash string) err
 }
 
 func (s *UserStore) Exists(ctx context.Context) (bool, error) {
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return false, err
-	}
-	defer tx.Rollback()
-
 	var count int
-	err = tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM user").Scan(&count)
+	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM user").Scan(&count)
 	if err != nil {
-		return false, err
-	}
-
-	if err = tx.Commit(); err != nil {
 		return false, err
 	}
 
