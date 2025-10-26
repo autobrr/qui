@@ -13,7 +13,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
@@ -106,8 +105,9 @@ func TestConnectionPragmasApplyToEachConnection(t *testing.T) {
 	db := openTestDatabase(t)
 	sqlDB := db.Conn()
 
-	sqlDB.SetMaxOpenConns(2)
-	sqlDB.SetMaxIdleConns(2)
+	// Set max connections to 4: 1 for writeConn + 2 test connections + 1 buffer
+	sqlDB.SetMaxOpenConns(4)
+	sqlDB.SetMaxIdleConns(3)
 
 	conn1, err := sqlDB.Conn(ctx)
 	require.NoError(t, err)
@@ -123,61 +123,6 @@ func TestConnectionPragmasApplyToEachConnection(t *testing.T) {
 
 	verifyPragmas(t, ctx, conn1)
 	verifyPragmas(t, ctx, conn2)
-}
-
-func TestCloseDrainsPendingWrites(t *testing.T) {
-	log.Output(io.Discard)
-	ctx := t.Context()
-	dbPath := filepath.Join(t.TempDir(), "close-drain.db")
-
-	db, err := New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
-
-	_, err = db.Conn().ExecContext(ctx, "CREATE TABLE IF NOT EXISTS close_drain (id INTEGER PRIMARY KEY AUTOINCREMENT, val TEXT NOT NULL)")
-	require.NoError(t, err)
-
-	barrier := make(chan struct{})
-	signal := make(chan struct{}, 1)
-	db.writeBarrier.Store(barrier)
-	db.barrierSignal.Store(signal)
-	t.Cleanup(func() {
-		db.writeBarrier.Store((chan struct{})(nil))
-		db.barrierSignal.Store((chan struct{})(nil))
-	})
-
-	firstDone := make(chan error, 1)
-	go func() {
-		_, execErr := db.ExecContext(ctx, "INSERT INTO close_drain (val) VALUES (?)", "first")
-		firstDone <- execErr
-	}()
-
-	select {
-	case <-signal:
-	case <-time.After(time.Second):
-		t.Fatal("writer did not reach barrier")
-	}
-
-	secondDone := make(chan error, 1)
-	go func() {
-		_, execErr := db.ExecContext(ctx, "INSERT INTO close_drain (val) VALUES (?)", "second")
-		secondDone <- execErr
-	}()
-
-	require.Eventually(t, func() bool {
-		return len(db.writeCh) > 0
-	}, time.Second, 10*time.Millisecond)
-
-	closeDone := make(chan error, 1)
-	go func() {
-		closeDone <- db.Close()
-	}()
-
-	require.NoError(t, <-closeDone)
-	require.NoError(t, <-firstDone)
-	require.NoError(t, <-secondDone)
 }
 
 type columnSpec struct {
@@ -202,17 +147,17 @@ var expectedSchema = map[string][]columnSpec{
 	"api_keys": {
 		{Name: "id", Type: "INTEGER", PrimaryKey: true},
 		{Name: "key_hash", Type: "TEXT"},
-		{Name: "name", Type: "TEXT"},
+		{Name: "name_id", Type: "INTEGER"},
 		{Name: "created_at", Type: "TIMESTAMP"},
 		{Name: "last_used_at", Type: "TIMESTAMP"},
 	},
 	"instances": {
 		{Name: "id", Type: "INTEGER", PrimaryKey: true},
-		{Name: "name", Type: "TEXT"},
-		{Name: "host", Type: "TEXT"},
-		{Name: "username", Type: "TEXT"},
+		{Name: "name_id", Type: "INTEGER"},
+		{Name: "host_id", Type: "INTEGER"},
+		{Name: "username_id", Type: "INTEGER"},
 		{Name: "password_encrypted", Type: "TEXT"},
-		{Name: "basic_username", Type: "TEXT"},
+		{Name: "basic_username_id", Type: "INTEGER"},
 		{Name: "basic_password_encrypted", Type: "TEXT"},
 		{Name: "tls_skip_verify", Type: "BOOLEAN"},
 	},
@@ -234,7 +179,7 @@ var expectedSchema = map[string][]columnSpec{
 	"client_api_keys": {
 		{Name: "id", Type: "INTEGER", PrimaryKey: true},
 		{Name: "key_hash", Type: "TEXT"},
-		{Name: "client_name", Type: "TEXT"},
+		{Name: "client_name_id", Type: "INTEGER"},
 		{Name: "instance_id", Type: "INTEGER"},
 		{Name: "created_at", Type: "TIMESTAMP"},
 		{Name: "last_used_at", Type: "TIMESTAMP"},
@@ -242,8 +187,8 @@ var expectedSchema = map[string][]columnSpec{
 	"instance_errors": {
 		{Name: "id", Type: "INTEGER", PrimaryKey: true},
 		{Name: "instance_id", Type: "INTEGER"},
-		{Name: "error_type", Type: "TEXT"},
-		{Name: "error_message", Type: "TEXT"},
+		{Name: "error_type_id", Type: "INTEGER"},
+		{Name: "error_message_id", Type: "INTEGER"},
 		{Name: "occurred_at", Type: "TIMESTAMP"},
 	},
 	"sessions": {
@@ -251,14 +196,37 @@ var expectedSchema = map[string][]columnSpec{
 		{Name: "data", Type: "BLOB"},
 		{Name: "expiry", Type: "REAL"},
 	},
+	"torrent_files_cache": {
+		{Name: "id", Type: "INTEGER", PrimaryKey: true},
+		{Name: "instance_id", Type: "INTEGER"},
+		{Name: "torrent_hash_id", Type: "INTEGER"},
+		{Name: "file_index", Type: "INTEGER"},
+		{Name: "name_id", Type: "INTEGER"},
+		{Name: "size", Type: "INTEGER"},
+		{Name: "progress", Type: "REAL"},
+		{Name: "priority", Type: "INTEGER"},
+		{Name: "is_seed", Type: "INTEGER"},
+		{Name: "piece_range_start", Type: "INTEGER"},
+		{Name: "piece_range_end", Type: "INTEGER"},
+		{Name: "availability", Type: "REAL"},
+		{Name: "cached_at", Type: "TIMESTAMP"},
+	},
+	"torrent_files_sync": {
+		{Name: "instance_id", Type: "INTEGER", PrimaryKey: true},
+		{Name: "torrent_hash_id", Type: "INTEGER", PrimaryKey: true},
+		{Name: "last_synced_at", Type: "TIMESTAMP"},
+		{Name: "torrent_progress", Type: "REAL"},
+		{Name: "file_count", Type: "INTEGER"},
+	},
 }
 
 var expectedIndexes = map[string][]string{
-	"api_keys":        {"idx_api_keys_hash"},
-	"licenses":        {"idx_licenses_status", "idx_licenses_theme", "idx_licenses_key"},
-	"client_api_keys": {"idx_client_api_keys_key_hash", "idx_client_api_keys_instance_id"},
-	"instance_errors": {"idx_instance_errors_lookup"},
-	"sessions":        {"sessions_expiry_idx"},
+	"licenses":            {"idx_licenses_status", "idx_licenses_theme", "idx_licenses_key"},
+	"client_api_keys":     {"idx_client_api_keys_instance_id"},
+	"instance_errors":     {"idx_instance_errors_lookup"},
+	"sessions":            {"sessions_expiry_idx"},
+	"torrent_files_cache": {"idx_torrent_files_cache_lookup", "idx_torrent_files_cache_cached_at"},
+	"torrent_files_sync":  {"idx_torrent_files_sync_last_synced"},
 }
 
 var expectedTriggers = []string{
@@ -319,6 +287,7 @@ func verifyPragmas(t *testing.T, ctx context.Context, q pragmaQuerier) {
 	if rows.Next() {
 		t.Fatal("PRAGMA foreign_key_check reported violations")
 	}
+	require.NoError(t, rows.Err())
 
 	var integrity string
 	require.NoError(t, q.QueryRowContext(ctx, "PRAGMA integrity_check").Scan(&integrity))

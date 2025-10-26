@@ -42,24 +42,46 @@ func (s *ClientAPIKeyStore) Create(ctx context.Context, clientName string, insta
 	// Hash the key for storage
 	keyHash := HashAPIKey(rawKey)
 
-	query := `
-		INSERT INTO client_api_keys (key_hash, client_name, instance_id) 
-		VALUES (?, ?, ?)
-		RETURNING id, key_hash, client_name, instance_id, created_at, last_used_at
-	`
+	// Use a transaction to atomically intern the string and insert the API key
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
 
+	// Intern the client name
+	ids, err := dbinterface.InternStringNullable(ctx, tx, &clientName)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to intern client_name: %w", err)
+	}
+
+	// Insert the client API key
 	clientAPIKey := &ClientAPIKey{}
-	err = s.db.QueryRowContext(ctx, query, keyHash, clientName, instanceID).Scan(
+	var createdAt, lastUsedAt sql.NullTime
+	err = tx.QueryRowContext(ctx, `
+		INSERT INTO client_api_keys (key_hash, client_name_id, instance_id) 
+		VALUES (?, ?, ?)
+		RETURNING id, key_hash, instance_id, created_at, last_used_at
+	`, keyHash, ids[0], instanceID).Scan(
 		&clientAPIKey.ID,
 		&clientAPIKey.KeyHash,
-		&clientAPIKey.ClientName,
 		&clientAPIKey.InstanceID,
-		&clientAPIKey.CreatedAt,
-		&clientAPIKey.LastUsedAt,
+		&createdAt,
+		&lastUsedAt,
 	)
 
 	if err != nil {
 		return "", nil, err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return "", nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	clientAPIKey.ClientName = clientName
+	clientAPIKey.CreatedAt = createdAt.Time
+	if lastUsedAt.Valid {
+		clientAPIKey.LastUsedAt = &lastUsedAt.Time
 	}
 
 	// Return both the raw key (to show user once) and the model
@@ -69,7 +91,7 @@ func (s *ClientAPIKeyStore) Create(ctx context.Context, clientName string, insta
 func (s *ClientAPIKeyStore) GetAll(ctx context.Context) ([]*ClientAPIKey, error) {
 	query := `
 		SELECT id, key_hash, client_name, instance_id, created_at, last_used_at 
-		FROM client_api_keys 
+		FROM client_api_keys_view 
 		ORDER BY created_at DESC
 	`
 
@@ -96,13 +118,17 @@ func (s *ClientAPIKeyStore) GetAll(ctx context.Context) ([]*ClientAPIKey, error)
 		keys = append(keys, key)
 	}
 
-	return keys, rows.Err()
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return keys, nil
 }
 
 func (s *ClientAPIKeyStore) GetByKeyHash(ctx context.Context, keyHash string) (*ClientAPIKey, error) {
 	query := `
 		SELECT id, key_hash, client_name, instance_id, created_at, last_used_at 
-		FROM client_api_keys 
+		FROM client_api_keys_view 
 		WHERE key_hash = ?
 	`
 
@@ -133,14 +159,14 @@ func (s *ClientAPIKeyStore) ValidateKey(ctx context.Context, rawKey string) (*Cl
 }
 
 func (s *ClientAPIKeyStore) UpdateLastUsed(ctx context.Context, keyHash string) error {
-	query := `UPDATE client_api_keys SET last_used_at = CURRENT_TIMESTAMP WHERE key_hash = ?`
-	_, err := s.db.ExecContext(ctx, query, keyHash)
-	return err
-}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
 
-func (s *ClientAPIKeyStore) Delete(ctx context.Context, id int) error {
-	query := `DELETE FROM client_api_keys WHERE id = ?`
-	result, err := s.db.ExecContext(ctx, query, id)
+	query := `UPDATE client_api_keys SET last_used_at = CURRENT_TIMESTAMP WHERE key_hash = ?`
+	result, err := tx.ExecContext(ctx, query, keyHash)
 	if err != nil {
 		return err
 	}
@@ -154,11 +180,58 @@ func (s *ClientAPIKeyStore) Delete(ctx context.Context, id int) error {
 		return ErrClientAPIKeyNotFound
 	}
 
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
+}
+
+func (s *ClientAPIKeyStore) Delete(ctx context.Context, id int) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	query := `DELETE FROM client_api_keys WHERE id = ?`
+	result, err := tx.ExecContext(ctx, query, id)
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return ErrClientAPIKeyNotFound
+	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
 	return nil
 }
 
 func (s *ClientAPIKeyStore) DeleteByInstanceID(ctx context.Context, instanceID int) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
 	query := `DELETE FROM client_api_keys WHERE instance_id = ?`
-	_, err := s.db.ExecContext(ctx, query, instanceID)
-	return err
+	_, err = tx.ExecContext(ctx, query, instanceID)
+	if err != nil {
+		return err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
 }

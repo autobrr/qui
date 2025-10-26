@@ -272,6 +272,36 @@ func (c *Client) UpdateWithMainData(data *qbt.MainData) {
 		Msg("Updated client state with fresh maindata from intercepted request")
 }
 
+// UpdateWithPeersData triggers a sync on the peer manager to keep it warm after intercepting peer data
+// This ensures our local peer state stays synchronized with the proxy client's view
+func (c *Client) UpdateWithPeersData(hash string, data *qbt.TorrentPeersResponse) {
+	// Get or create the peer sync manager for this torrent
+	peerSync := c.GetOrCreatePeerSyncManager(hash)
+
+	// Trigger a background sync to refresh the peer state
+	// We can't directly inject the data, but we can trigger a sync to keep the cache warm
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		if err := peerSync.Sync(ctx); err != nil {
+			log.Error().
+				Err(err).
+				Int("instanceID", c.instanceID).
+				Str("hash", hash).
+				Msg("Failed to sync peer manager after intercepted peer data")
+			return
+		}
+
+		log.Debug().
+			Int("instanceID", c.instanceID).
+			Str("hash", hash).
+			Int("peerCount", len(data.Peers)).
+			Int64("rid", data.Rid).
+			Msg("Updated peer state with fresh data from intercepted request")
+	}()
+}
+
 func (c *Client) SupportsRenameTorrent() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()

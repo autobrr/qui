@@ -236,26 +236,58 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 		encryptedBasicPassword = &encrypted
 	}
 
-	query := `
-		INSERT INTO instances (name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify) 
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-		RETURNING id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify
-	`
+	// Start a transaction to ensure atomicity
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
 
-	instance := &Instance{}
-	err = s.db.QueryRowContext(ctx, query, name, normalizedHost, username, encryptedPassword, basicUsername, encryptedBasicPassword, tlsSkipVerify).Scan(
-		&instance.ID,
-		&instance.Name,
-		&instance.Host,
-		&instance.Username,
-		&instance.PasswordEncrypted,
-		&instance.BasicUsername,
-		&instance.BasicPasswordEncrypted,
-		&instance.TLSSkipVerify,
+	// Intern all strings in a single call
+	allIDs, err := dbinterface.InternStringNullable(ctx, tx, &name, &normalizedHost, &username, basicUsername)
+	if err != nil {
+		return nil, fmt.Errorf("failed to intern strings: %w", err)
+	}
+
+	// Insert instance with the interned IDs
+	var instanceID int
+	var passwordEncrypted sql.NullString
+	var basicPasswordEncrypted sql.NullString
+	var tlsSkipVerifyResult bool
+
+	err = tx.QueryRowContext(ctx, `
+		INSERT INTO instances (name_id, host_id, username_id, password_encrypted, basic_username_id, basic_password_encrypted, tls_skip_verify) 
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+		RETURNING id, password_encrypted, basic_password_encrypted, tls_skip_verify
+	`, allIDs[0], allIDs[1], allIDs[2], encryptedPassword, allIDs[3], encryptedBasicPassword, tlsSkipVerify).Scan(
+		&instanceID,
+		&passwordEncrypted,
+		&basicPasswordEncrypted,
+		&tlsSkipVerifyResult,
 	)
 
 	if err != nil {
 		return nil, err
+	}
+
+	instance := &Instance{
+		ID:                instanceID,
+		Name:              name,
+		Host:              normalizedHost,
+		Username:          username,
+		PasswordEncrypted: passwordEncrypted.String,
+		TLSSkipVerify:     tlsSkipVerifyResult,
+	}
+
+	if basicUsername != nil {
+		instance.BasicUsername = basicUsername
+	}
+	if basicPasswordEncrypted.Valid {
+		instance.BasicPasswordEncrypted = &basicPasswordEncrypted.String
+	}
+
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return instance, nil
@@ -264,20 +296,24 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 	query := `
 		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify 
-		FROM instances 
+		FROM instances_view 
 		WHERE id = ?
 	`
 
-	instance := &Instance{}
+	var instanceID int
+	var name, host, username, passwordEncrypted string
+	var basicUsername, basicPasswordEncrypted sql.NullString
+	var tlsSkipVerify bool
+
 	err := s.db.QueryRowContext(ctx, query, id).Scan(
-		&instance.ID,
-		&instance.Name,
-		&instance.Host,
-		&instance.Username,
-		&instance.PasswordEncrypted,
-		&instance.BasicUsername,
-		&instance.BasicPasswordEncrypted,
-		&instance.TLSSkipVerify,
+		&instanceID,
+		&name,
+		&host,
+		&username,
+		&passwordEncrypted,
+		&basicUsername,
+		&basicPasswordEncrypted,
+		&tlsSkipVerify,
 	)
 
 	if err != nil {
@@ -287,13 +323,29 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 		return nil, err
 	}
 
+	instance := &Instance{
+		ID:                instanceID,
+		Name:              name,
+		Host:              host,
+		Username:          username,
+		PasswordEncrypted: passwordEncrypted,
+		TLSSkipVerify:     tlsSkipVerify,
+	}
+
+	if basicUsername.Valid {
+		instance.BasicUsername = &basicUsername.String
+	}
+	if basicPasswordEncrypted.Valid {
+		instance.BasicPasswordEncrypted = &basicPasswordEncrypted.String
+	}
+
 	return instance, nil
 }
 
 func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 	query := `
 		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify 
-		FROM instances
+		FROM instances_view
 		ORDER BY name ASC
 	`
 
@@ -305,24 +357,49 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 
 	var instances []*Instance
 	for rows.Next() {
-		instance := &Instance{}
+		var id int
+		var name, host, username, passwordEncrypted string
+		var basicUsername, basicPasswordEncrypted sql.NullString
+		var tlsSkipVerify bool
+
 		err := rows.Scan(
-			&instance.ID,
-			&instance.Name,
-			&instance.Host,
-			&instance.Username,
-			&instance.PasswordEncrypted,
-			&instance.BasicUsername,
-			&instance.BasicPasswordEncrypted,
-			&instance.TLSSkipVerify,
+			&id,
+			&name,
+			&host,
+			&username,
+			&passwordEncrypted,
+			&basicUsername,
+			&basicPasswordEncrypted,
+			&tlsSkipVerify,
 		)
 		if err != nil {
 			return nil, err
 		}
+
+		instance := &Instance{
+			ID:                id,
+			Name:              name,
+			Host:              host,
+			Username:          username,
+			PasswordEncrypted: passwordEncrypted,
+			TLSSkipVerify:     tlsSkipVerify,
+		}
+
+		if basicUsername.Valid {
+			instance.BasicUsername = &basicUsername.String
+		}
+		if basicPasswordEncrypted.Valid {
+			instance.BasicPasswordEncrypted = &basicPasswordEncrypted.String
+		}
+
 		instances = append(instances, instance)
 	}
 
-	return instances, rows.Err()
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return instances, nil
 }
 
 func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, username, password string, basicUsername, basicPassword *string, tlsSkipVerify *bool) (*Instance, error) {
@@ -332,9 +409,41 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 		return nil, err
 	}
 
-	// Start building the update query
-	query := `UPDATE instances SET name = ?, host = ?, username = ?, basic_username = ?`
-	args := []any{name, normalizedHost, username, basicUsername}
+	// Start a transaction
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Prepare strings to intern - always intern name, host, username
+	// Also intern basic_username if it's provided and not empty
+	var basicUsernameToIntern *string
+	if basicUsername != nil && *basicUsername != "" {
+		basicUsernameToIntern = basicUsername
+	}
+
+	// Intern all strings in a single call
+	allIDs, err := dbinterface.InternStringNullable(ctx, tx, &name, &normalizedHost, &username, basicUsernameToIntern)
+	if err != nil {
+		return nil, fmt.Errorf("failed to intern strings: %w", err)
+	}
+
+	// Build UPDATE query
+	query := "UPDATE instances SET name_id = ?, host_id = ?, username_id = ?"
+	args := []any{allIDs[0], allIDs[1], allIDs[2]}
+
+	// Handle basic_username update
+	if basicUsername != nil {
+		if *basicUsername == "" {
+			// Empty string explicitly provided - clear the basic username
+			query += ", basic_username_id = NULL"
+		} else {
+			// Basic username provided - use the already interned ID
+			query += ", basic_username_id = ?"
+			args = append(args, allIDs[3])
+		}
+	}
 
 	// Handle password update - encrypt if provided
 	if password != "" {
@@ -370,7 +479,7 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 	query += " WHERE id = ?"
 	args = append(args, id)
 
-	result, err := s.db.ExecContext(ctx, query, args...)
+	result, err := tx.ExecContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -384,13 +493,23 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 		return nil, ErrInstanceNotFound
 	}
 
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
 	return s.Get(ctx, id)
 }
 
 func (s *InstanceStore) Delete(ctx context.Context, id int) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
 	query := `DELETE FROM instances WHERE id = ?`
 
-	result, err := s.db.ExecContext(ctx, query, id)
+	result, err := tx.ExecContext(ctx, query, id)
 	if err != nil {
 		return err
 	}
@@ -402,6 +521,10 @@ func (s *InstanceStore) Delete(ctx context.Context, id int) error {
 
 	if rows == 0 {
 		return ErrInstanceNotFound
+	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return nil
