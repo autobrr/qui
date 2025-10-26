@@ -100,9 +100,10 @@ func (p *SQLite3Store) CommitCtx(ctx context.Context, token string, b []byte, ex
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
-	_, err = tx.ExecContext(ctx, "REPLACE INTO sessions (token, data, expiry) VALUES ($1, $2, julianday($3))", token, b, expiry.UTC().Format("2006-01-02T15:04:05.999"))
+	_, err = tx.ExecContext(ctx, "REPLACE INTO sessions (token, data, expiry) VALUES (?, ?, julianday(?))",
+		token, b, expiry.UTC().Format("2006-01-02T15:04:05.999"))
 	if err != nil {
 		return err
 	}
