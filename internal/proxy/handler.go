@@ -1075,11 +1075,11 @@ func (h *Handler) handleSetLocation(w http.ResponseWriter, r *http.Request) {
 	// Defer cache invalidation to ensure it happens even if proxy panics
 	// Use background context with timeout to avoid cancellation issues
 	defer func() {
-		// Recover from panic to ensure we don't lose panic information
-		if r := recover(); r != nil {
-			log.Error().Interface("panic", r).Int("instanceId", instanceID).
+		// Capture panic value if any
+		panicValue := recover()
+		if panicValue != nil {
+			log.Error().Interface("panic", panicValue).Int("instanceId", instanceID).
 				Msg("Recovered from panic during setLocation cache invalidation")
-			panic(r) // Re-panic to preserve stack trace
 		}
 
 		if hashes != "" {
@@ -1104,6 +1104,11 @@ func (h *Handler) handleSetLocation(w http.ResponseWriter, r *http.Request) {
 				log.Warn().Int("instanceId", instanceID).Int("failed", failedInvalidations).Int("total", len(hashList)).
 					Msg("Some file cache invalidations failed after setLocation - cache may be stale")
 			}
+		}
+
+		// Re-panic with captured value to preserve stack trace
+		if panicValue != nil {
+			panic(panicValue)
 		}
 	}()
 
@@ -1145,11 +1150,11 @@ func (h *Handler) handleRenameFile(w http.ResponseWriter, r *http.Request) {
 
 	// Defer cache invalidation to ensure it happens even if proxy panics
 	defer func() {
-		// Recover from panic to ensure we don't lose panic information
-		if r := recover(); r != nil {
-			log.Error().Interface("panic", r).Int("instanceId", instanceID).
+		// Capture panic value if any
+		panicValue := recover()
+		if panicValue != nil {
+			log.Error().Interface("panic", panicValue).Int("instanceId", instanceID).
 				Msg("Recovered from panic during renameFile cache invalidation")
-			panic(r) // Re-panic to preserve stack trace
 		}
 
 		if hash != "" {
@@ -1160,6 +1165,11 @@ func (h *Handler) handleRenameFile(w http.ResponseWriter, r *http.Request) {
 				log.Error().Err(err).Int("instanceId", instanceID).Str("hash", hash).
 					Msg("CRITICAL: Failed to invalidate file cache after renameFile - cache is now stale")
 			}
+		}
+
+		// Re-panic with captured value to preserve stack trace
+		if panicValue != nil {
+			panic(panicValue)
 		}
 	}()
 
@@ -1201,11 +1211,11 @@ func (h *Handler) handleRenameFolder(w http.ResponseWriter, r *http.Request) {
 
 	// Defer cache invalidation to ensure it happens even if proxy panics
 	defer func() {
-		// Recover from panic to ensure we don't lose panic information
-		if r := recover(); r != nil {
-			log.Error().Interface("panic", r).Int("instanceId", instanceID).
+		// Capture panic value if any
+		panicValue := recover()
+		if panicValue != nil {
+			log.Error().Interface("panic", panicValue).Int("instanceId", instanceID).
 				Msg("Recovered from panic during renameFolder cache invalidation")
-			panic(r) // Re-panic to preserve stack trace
 		}
 
 		if hash != "" {
@@ -1216,6 +1226,11 @@ func (h *Handler) handleRenameFolder(w http.ResponseWriter, r *http.Request) {
 				log.Error().Err(err).Int("instanceId", instanceID).Str("hash", hash).
 					Msg("CRITICAL: Failed to invalidate file cache after renameFolder - cache is now stale")
 			}
+		}
+
+		// Re-panic with captured value to preserve stack trace
+		if panicValue != nil {
+			panic(panicValue)
 		}
 	}()
 
@@ -1257,11 +1272,11 @@ func (h *Handler) handleDeleteTorrents(w http.ResponseWriter, r *http.Request) {
 
 	// Defer cache invalidation to ensure it happens even if proxy panics
 	defer func() {
-		// Recover from panic to ensure we don't lose panic information
-		if r := recover(); r != nil {
-			log.Error().Interface("panic", r).Int("instanceId", instanceID).
+		// Capture panic value if any
+		panicValue := recover()
+		if panicValue != nil {
+			log.Error().Interface("panic", panicValue).Int("instanceId", instanceID).
 				Msg("Recovered from panic during delete cache invalidation")
-			panic(r) // Re-panic to preserve stack trace
 		}
 
 		if hashes != "" {
@@ -1286,6 +1301,11 @@ func (h *Handler) handleDeleteTorrents(w http.ResponseWriter, r *http.Request) {
 				log.Warn().Int("instanceId", instanceID).Int("failed", failedInvalidations).Int("total", len(hashList)).
 					Msg("Some file cache invalidations failed after delete - cache may be stale")
 			}
+		}
+
+		// Re-panic with captured value to preserve stack trace
+		if panicValue != nil {
+			panic(panicValue)
 		}
 	}()
 
