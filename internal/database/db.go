@@ -7,8 +7,9 @@
 //
 // All write operations are serialized through a single write loop goroutine:
 //   - ExecContext: Routes write queries through the write loop
-//   - BeginTx: All transactions use connection pool; write commits serialized through write loop
-//   - BeginTx (read-only): Commits execute directly without serialization
+//   - BeginTx (write): Serialized through write loop to prevent SQLITE_BUSY errors
+//   - BeginTx (read-only): Uses connection pool directly for concurrency
+//   - Commit/Rollback (write): Serialized through write loop
 //   - WAL mode allows concurrent readers during writes
 //
 // STRING POOL SYSTEM:
@@ -68,9 +69,11 @@ type writeReq struct {
 	args  []any
 	resCh chan writeRes
 	// For transaction operations
-	txOp    txOperation
-	tx      *sql.Tx
-	txResCh chan error
+	txOp         txOperation
+	tx           *sql.Tx
+	txOpts       *sql.TxOptions
+	txResCh      chan error
+	txBeginResCh chan txBeginRes
 }
 
 type writeRes struct {
@@ -78,10 +81,16 @@ type writeRes struct {
 	err    error
 }
 
+type txBeginRes struct {
+	tx  *sql.Tx
+	err error
+}
+
 type txOperation int
 
 const (
 	txOpNone txOperation = iota
+	txOpBegin
 	txOpCommit
 	txOpRollback
 )
@@ -487,6 +496,14 @@ func (db *DB) processWrite(req writeReq) {
 	if req.txOp != txOpNone {
 		var err error
 		switch req.txOp {
+		case txOpBegin:
+			// Begin a new write transaction
+			tx, beginErr := db.conn.BeginTx(req.ctx, req.txOpts)
+			select {
+			case req.txBeginResCh <- txBeginRes{tx: tx, err: beginErr}:
+			default:
+			}
+			return
 		case txOpCommit:
 			err = req.tx.Commit()
 		case txOpRollback:
@@ -595,9 +612,9 @@ func (db *DB) QueryRowContext(ctx context.Context, query string, args ...any) *s
 // statement caching for better performance.
 //
 // CONCURRENCY MODEL:
-// - All transactions (read and write) use the connection pool for BeginTx
-// - Write transaction commits/rollbacks are serialized through the write loop
-// - Read-only transaction commits/rollbacks execute directly (no serialization needed)
+// - Read-only transactions use the connection pool directly (concurrent)
+// - Write transactions are serialized through the write loop (prevents SQLITE_BUSY)
+// - Write transaction commits/rollbacks are also serialized through the write loop
 // - WAL mode allows concurrent readers during write transactions
 //
 // ISOLATION LEVEL:
@@ -605,7 +622,7 @@ func (db *DB) QueryRowContext(ctx context.Context, query string, args ...any) *s
 // - Pass nil for opts to use SERIALIZABLE (recommended for most cases)
 // - For read-only transactions, use: &sql.TxOptions{ReadOnly: true}
 // - Read-only transactions allow full concurrency with writers in WAL mode
-// - Write transaction commits are serialized through the single write loop
+// - Write transaction creation and commits are both serialized through the write loop
 //
 // WHEN TO USE EACH:
 // - Use ExecContext for simple, single-statement writes (INSERT, UPDATE, DELETE)
@@ -614,9 +631,9 @@ func (db *DB) QueryRowContext(ctx context.Context, query string, args ...any) *s
 //
 // GUARANTEES:
 // - ExecContext: Sequential execution through single writer, no partial writes visible
-// - BeginTx (write): ACID properties, full transaction isolation, serialized commits
+// - BeginTx (write): ACID properties, full transaction isolation, serialized begin/commit
 // - BeginTx (read-only): ACID properties, concurrent with writes
-// - All write commits: Serialized through single write loop
+// - All write operations: Serialized through single write loop (no SQLITE_BUSY errors)
 //
 // PREPARED STATEMENTS:
 // - Transaction queries automatically use the DB's prepared statement cache
@@ -624,21 +641,49 @@ func (db *DB) QueryRowContext(ctx context.Context, query string, args ...any) *s
 // - This improves performance for transactions that execute the same queries multiple times
 //
 // LIMITATIONS:
-// - Write transaction commits are serialized through the single write loop
-// - Long-running write transactions will block other commits
-// - Use read-only transactions when possible to avoid blocking commits
+// - Write transactions are serialized (one at a time) to prevent database lock contention
+// - Long-running write transactions will block other write transactions
+// - Use read-only transactions when possible to avoid blocking writes
 func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQuerier, error) {
 	// Determine if this is a read-only transaction
 	isReadOnly := opts != nil && opts.ReadOnly
 
-	// All transactions use the connection pool for BeginTx
-	// Write transaction commits will be routed through the write loop
-	tx, err := db.conn.BeginTx(ctx, opts)
-	if err != nil {
-		return nil, err
+	if isReadOnly {
+		// Read-only transactions can use the connection pool directly
+		tx, err := db.conn.BeginTx(ctx, opts)
+		if err != nil {
+			return nil, err
+		}
+		return &Tx{tx: tx, db: db, ctx: ctx, isWriteTx: false}, nil
 	}
 
-	return &Tx{tx: tx, db: db, ctx: ctx, isWriteTx: !isReadOnly}, nil
+	// Write transactions must be serialized through write loop to prevent SQLITE_BUSY
+	if db.closing.Load() {
+		return nil, fmt.Errorf("db stopping")
+	}
+
+	resCh := make(chan txBeginRes, 1)
+	req := writeReq{
+		ctx:          ctx,
+		txOp:         txOpBegin,
+		txOpts:       opts,
+		txBeginResCh: resCh,
+	}
+
+	select {
+	case db.writeCh <- req:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-db.stop:
+		return nil, fmt.Errorf("db stopping")
+	}
+
+	res := <-resCh
+	if res.err != nil {
+		return nil, res.err
+	}
+
+	return &Tx{tx: res.tx, db: db, ctx: ctx, isWriteTx: true}, nil
 }
 
 func (db *DB) Close() error {
