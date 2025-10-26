@@ -5,6 +5,7 @@ package models
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -52,10 +53,17 @@ func (s *InstanceErrorStore) RecordError(ctx context.Context, instanceID int, er
 	errorType := categorizeError(err)
 	errorMessage := err.Error()
 
+	// Start a transaction for the entire operation
+	tx, txErr := s.db.BeginTx(ctx, nil)
+	if txErr != nil {
+		return fmt.Errorf("failed to begin transaction: %w", txErr)
+	}
+	defer tx.Rollback()
+
 	// Validate that the instance exists before trying to record error
 	var exists int
 	existsQuery := `SELECT COUNT(*) FROM instances WHERE id = ?`
-	if err := s.db.QueryRowContext(ctx, existsQuery, instanceID).Scan(&exists); err != nil || exists == 0 {
+	if err := tx.QueryRowContext(ctx, existsQuery, instanceID).Scan(&exists); err != nil || exists == 0 {
 		// Instance doesn't exist, silently skip recording the error
 		// This can happen during instance deletion or with stale references
 		return nil
@@ -67,16 +75,9 @@ func (s *InstanceErrorStore) RecordError(ctx context.Context, instanceID int, er
                    WHERE instance_id = ? AND error_type = ? AND error_message = ? 
                    AND occurred_at > datetime('now', '-1 minute')`
 
-	if err := s.db.QueryRowContext(ctx, checkQuery, instanceID, errorType, errorMessage).Scan(&count); err == nil && count > 0 {
+	if err := tx.QueryRowContext(ctx, checkQuery, instanceID, errorType, errorMessage).Scan(&count); err == nil && count > 0 {
 		return nil // Skip duplicate
 	}
-
-	// Start a transaction to ensure atomicity
-	tx, txErr := s.db.BeginTx(ctx, nil)
-	if txErr != nil {
-		return fmt.Errorf("failed to begin transaction: %w", txErr)
-	}
-	defer tx.Rollback()
 
 	// Intern strings first
 	var errorTypeID, errorMessageID int64
@@ -108,13 +109,19 @@ func (s *InstanceErrorStore) RecordError(ctx context.Context, instanceID int, er
 
 // GetRecentErrors retrieves the last N errors for an instance
 func (s *InstanceErrorStore) GetRecentErrors(ctx context.Context, instanceID int, limit int) ([]InstanceError, error) {
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
 	query := `SELECT id, instance_id, error_type, error_message, occurred_at 
               FROM instance_errors_view 
               WHERE instance_id = ? 
               ORDER BY occurred_at DESC 
               LIMIT ?`
 
-	rows, err := s.db.QueryContext(ctx, query, instanceID, limit)
+	rows, err := tx.QueryContext(ctx, query, instanceID, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -128,14 +135,37 @@ func (s *InstanceErrorStore) GetRecentErrors(ctx context.Context, instanceID int
 		}
 		errors = append(errors, e)
 	}
-	return errors, rows.Err()
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return errors, nil
 }
 
 // ClearErrors removes all errors for an instance (called on successful connection)
 func (s *InstanceErrorStore) ClearErrors(ctx context.Context, instanceID int) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
 	query := `DELETE FROM instance_errors WHERE instance_id = ?`
-	_, err := s.db.ExecContext(ctx, query, instanceID)
-	return err
+	_, err = tx.ExecContext(ctx, query, instanceID)
+	if err != nil {
+		return err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
 }
 
 // categorizeError determines error type based on error message patterns

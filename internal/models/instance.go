@@ -302,6 +302,12 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 }
 
 func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
 	query := `
 		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify 
 		FROM instances_view 
@@ -309,7 +315,7 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 	`
 
 	instance := &Instance{}
-	err := s.db.QueryRowContext(ctx, query, id).Scan(
+	err = tx.QueryRowContext(ctx, query, id).Scan(
 		&instance.ID,
 		&instance.Name,
 		&instance.Host,
@@ -327,17 +333,27 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 		return nil, err
 	}
 
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
 	return instance, nil
 }
 
 func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
 	query := `
 		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify 
 		FROM instances_view
 		ORDER BY name ASC
 	`
 
-	rows, err := s.db.QueryContext(ctx, query)
+	rows, err := tx.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -362,7 +378,15 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 		instances = append(instances, instance)
 	}
 
-	return instances, rows.Err()
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return instances, nil
 }
 
 func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, username, password string, basicUsername, basicPassword *string, tlsSkipVerify *bool) (*Instance, error) {
@@ -471,9 +495,15 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 }
 
 func (s *InstanceStore) Delete(ctx context.Context, id int) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
 	query := `DELETE FROM instances WHERE id = ?`
 
-	result, err := s.db.ExecContext(ctx, query, id)
+	result, err := tx.ExecContext(ctx, query, id)
 	if err != nil {
 		return err
 	}
@@ -485,6 +515,10 @@ func (s *InstanceStore) Delete(ctx context.Context, id int) error {
 
 	if rows == 0 {
 		return ErrInstanceNotFound
+	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return nil

@@ -29,6 +29,12 @@ func NewUserStore(db dbinterface.Querier) *UserStore {
 }
 
 func (s *UserStore) Create(ctx context.Context, username, passwordHash string) (*User, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
 	query := `
 		INSERT INTO user (id, username, password_hash) 
 		VALUES (1, ?, ?)
@@ -36,7 +42,7 @@ func (s *UserStore) Create(ctx context.Context, username, passwordHash string) (
 	`
 
 	user := &User{}
-	err := s.db.QueryRowContext(ctx, query, username, passwordHash).Scan(
+	err = tx.QueryRowContext(ctx, query, username, passwordHash).Scan(
 		&user.ID,
 		&user.Username,
 		&user.PasswordHash,
@@ -52,10 +58,20 @@ func (s *UserStore) Create(ctx context.Context, username, passwordHash string) (
 		return nil, err
 	}
 
+	if err = tx.Commit(); err != nil {
+		return nil, err
+	}
+
 	return user, nil
 }
 
 func (s *UserStore) Get(ctx context.Context) (*User, error) {
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
 	query := `
 		SELECT id, username, password_hash 
 		FROM user 
@@ -63,7 +79,7 @@ func (s *UserStore) Get(ctx context.Context) (*User, error) {
 	`
 
 	user := &User{}
-	err := s.db.QueryRowContext(ctx, query).Scan(
+	err = tx.QueryRowContext(ctx, query).Scan(
 		&user.ID,
 		&user.Username,
 		&user.PasswordHash,
@@ -73,6 +89,10 @@ func (s *UserStore) Get(ctx context.Context) (*User, error) {
 		return nil, ErrUserNotFound
 	}
 	if err != nil {
+		return nil, err
+	}
+
+	if err = tx.Commit(); err != nil {
 		return nil, err
 	}
 
@@ -80,6 +100,12 @@ func (s *UserStore) Get(ctx context.Context) (*User, error) {
 }
 
 func (s *UserStore) GetByUsername(ctx context.Context, username string) (*User, error) {
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
 	query := `
 		SELECT id, username, password_hash 
 		FROM user 
@@ -87,7 +113,7 @@ func (s *UserStore) GetByUsername(ctx context.Context, username string) (*User, 
 	`
 
 	user := &User{}
-	err := s.db.QueryRowContext(ctx, query, username).Scan(
+	err = tx.QueryRowContext(ctx, query, username).Scan(
 		&user.ID,
 		&user.Username,
 		&user.PasswordHash,
@@ -100,17 +126,27 @@ func (s *UserStore) GetByUsername(ctx context.Context, username string) (*User, 
 		return nil, err
 	}
 
+	if err = tx.Commit(); err != nil {
+		return nil, err
+	}
+
 	return user, nil
 }
 
 func (s *UserStore) UpdatePassword(ctx context.Context, passwordHash string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
 	query := `
 		UPDATE user 
 		SET password_hash = ? 
 		WHERE id = 1
 	`
 
-	result, err := s.db.ExecContext(ctx, query, passwordHash)
+	result, err := tx.ExecContext(ctx, query, passwordHash)
 	if err != nil {
 		return err
 	}
@@ -124,14 +160,29 @@ func (s *UserStore) UpdatePassword(ctx context.Context, passwordHash string) err
 		return ErrUserNotFound
 	}
 
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+
 	return nil
 }
 
 func (s *UserStore) Exists(ctx context.Context) (bool, error) {
-	var count int
-	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM user").Scan(&count)
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return false, err
 	}
+	defer tx.Rollback()
+
+	var count int
+	err = tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM user").Scan(&count)
+	if err != nil {
+		return false, err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return false, err
+	}
+
 	return count > 0, nil
 }

@@ -358,6 +358,12 @@ func (r *Repository) DeleteOldCache(ctx context.Context, olderThan time.Time) (i
 
 // GetCacheStats returns statistics about the cache for an instance
 func (r *Repository) GetCacheStats(ctx context.Context, instanceID int) (*CacheStats, error) {
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
 	query := `
 		SELECT 
 			COUNT(DISTINCT torrent_hash) as cached_torrents,
@@ -372,7 +378,7 @@ func (r *Repository) GetCacheStats(ctx context.Context, instanceID int) (*CacheS
 	var stats CacheStats
 	var oldestSecs, newestSecs, avgSecs sql.NullFloat64
 
-	err := r.db.QueryRowContext(ctx, query, instanceID).Scan(
+	err = tx.QueryRowContext(ctx, query, instanceID).Scan(
 		&stats.CachedTorrents,
 		&stats.TotalFiles,
 		&oldestSecs,
@@ -397,6 +403,10 @@ func (r *Repository) GetCacheStats(ctx context.Context, instanceID int) (*CacheS
 	if avgSecs.Valid {
 		dur := time.Duration(avgSecs.Float64 * float64(time.Second))
 		stats.AverageCacheAge = &dur
+	}
+
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return &stats, nil

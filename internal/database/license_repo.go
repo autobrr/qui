@@ -25,6 +25,12 @@ func NewLicenseRepo(db *DB) *LicenseRepo {
 
 // GetLicenseByKey retrieves a license by its key
 func (r *LicenseRepo) GetLicenseByKey(ctx context.Context, licenseKey string) (*models.ProductLicense, error) {
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
 	query := `
 		SELECT id, license_key, product_name,  status, activated_at, expires_at, 
 		       last_validated, polar_customer_id, polar_product_id, polar_activation_id, username, created_at, updated_at
@@ -35,7 +41,7 @@ func (r *LicenseRepo) GetLicenseByKey(ctx context.Context, licenseKey string) (*
 	license := &models.ProductLicense{}
 	var activationId sql.Null[string]
 
-	err := r.db.QueryRowContext(ctx, query, licenseKey).Scan(
+	err = tx.QueryRowContext(ctx, query, licenseKey).Scan(
 		&license.ID,
 		&license.LicenseKey,
 		&license.ProductName,
@@ -60,11 +66,21 @@ func (r *LicenseRepo) GetLicenseByKey(ctx context.Context, licenseKey string) (*
 
 	license.PolarActivationID = activationId.V
 
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
 	return license, nil
 }
 
 // GetAllLicenses retrieves all licenses
 func (r *LicenseRepo) GetAllLicenses(ctx context.Context) ([]*models.ProductLicense, error) {
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
 	query := `
 		SELECT id, license_key, product_name, status, activated_at, expires_at, 
 		       last_validated, polar_customer_id, polar_product_id, polar_activation_id, username, created_at, updated_at
@@ -72,7 +88,7 @@ func (r *LicenseRepo) GetAllLicenses(ctx context.Context) ([]*models.ProductLice
 		ORDER BY created_at DESC
 	`
 
-	rows, err := r.db.QueryContext(ctx, query)
+	rows, err := tx.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -108,11 +124,25 @@ func (r *LicenseRepo) GetAllLicenses(ctx context.Context) ([]*models.ProductLice
 		licenses = append(licenses, license)
 	}
 
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
 	return licenses, nil
 }
 
 // HasPremiumAccess checks if the user has purchased premium access (one-time unlock)
 func (r *LicenseRepo) HasPremiumAccess(ctx context.Context) (bool, error) {
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return false, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
 	query := `
 		SELECT COUNT(*) 
 		FROM licenses 
@@ -122,9 +152,13 @@ func (r *LicenseRepo) HasPremiumAccess(ctx context.Context) (bool, error) {
 	`
 
 	var count int
-	err := r.db.QueryRowContext(ctx, query, models.LicenseStatusActive).Scan(&count)
+	err = tx.QueryRowContext(ctx, query, models.LicenseStatusActive).Scan(&count)
 	if err != nil {
 		return false, err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return false, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return count > 0, nil
@@ -132,9 +166,15 @@ func (r *LicenseRepo) HasPremiumAccess(ctx context.Context) (bool, error) {
 
 // DeleteLicense removes a license from the database
 func (r *LicenseRepo) DeleteLicense(ctx context.Context, licenseKey string) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
 	query := `DELETE FROM licenses WHERE license_key = ?`
 
-	result, err := r.db.ExecContext(ctx, query, licenseKey)
+	result, err := tx.ExecContext(ctx, query, licenseKey)
 	if err != nil {
 		return err
 	}
@@ -148,6 +188,10 @@ func (r *LicenseRepo) DeleteLicense(ctx context.Context, licenseKey string) erro
 		return fmt.Errorf("license not found")
 	}
 
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
 	log.Info().
 		Str("licenseKey", maskLicenseKey(licenseKey)).
 		Msg("License deleted successfully")
@@ -156,13 +200,19 @@ func (r *LicenseRepo) DeleteLicense(ctx context.Context, licenseKey string) erro
 }
 
 func (r *LicenseRepo) StoreLicense(ctx context.Context, license *models.ProductLicense) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
 	query := `
 		INSERT INTO licenses (license_key, product_name, status, activated_at, expires_at, 
 		                           last_validated, polar_customer_id, polar_product_id, polar_activation_id, username, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
-	_, err := r.db.ExecContext(ctx, query,
+	_, err = tx.ExecContext(ctx, query,
 		license.LicenseKey,
 		license.ProductName,
 		license.Status,
@@ -177,33 +227,75 @@ func (r *LicenseRepo) StoreLicense(ctx context.Context, license *models.ProductL
 		license.UpdatedAt,
 	)
 
-	return err
+	if err != nil {
+		return err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
 }
 
 func (r *LicenseRepo) UpdateLicenseStatus(ctx context.Context, licenseID int, status string) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
 	query := `
 		UPDATE licenses 
 		SET status = ?, last_validated = ?, updated_at = ?
 		WHERE id = ?
 	`
 
-	_, err := r.db.ExecContext(ctx, query, status, time.Now(), time.Now(), licenseID)
-	return err
+	_, err = tx.ExecContext(ctx, query, status, time.Now(), time.Now(), licenseID)
+	if err != nil {
+		return err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
 }
 
 func (r *LicenseRepo) UpdateLicenseValidation(ctx context.Context, license *models.ProductLicense) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
 	query := `
 		UPDATE licenses
 		SET last_validated = ?, updated_at = ?
 		WHERE id = ?
 	`
 
-	_, err := r.db.ExecContext(ctx, query, license.LastValidated, time.Now(), license.ID)
-	return err
+	_, err = tx.ExecContext(ctx, query, license.LastValidated, time.Now(), license.ID)
+	if err != nil {
+		return err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
 }
 
 // UpdateLicenseActivation updates a license with activation details
 func (r *LicenseRepo) UpdateLicenseActivation(ctx context.Context, license *models.ProductLicense) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
 	query := `
 		UPDATE licenses
 		SET polar_activation_id = ?, polar_customer_id = ?, polar_product_id = ?,
@@ -211,7 +303,7 @@ func (r *LicenseRepo) UpdateLicenseActivation(ctx context.Context, license *mode
 		WHERE id = ?
 	`
 
-	_, err := r.db.ExecContext(ctx, query,
+	_, err = tx.ExecContext(ctx, query,
 		license.PolarActivationID,
 		license.PolarCustomerID,
 		license.PolarProductID,
@@ -222,7 +314,16 @@ func (r *LicenseRepo) UpdateLicenseActivation(ctx context.Context, license *mode
 		license.Status,
 		license.ID,
 	)
-	return err
+
+	if err != nil {
+		return err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
 }
 
 func timeToNullTime(t *time.Time) sql.NullTime {
