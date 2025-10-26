@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/autobrr/qui/internal/dbinterface"
+	"modernc.org/sqlite"
+	"modernc.org/sqlite/lib"
 )
 
 // Error types for categorization
@@ -89,7 +91,8 @@ func (s *InstanceErrorStore) RecordError(ctx context.Context, instanceID int, er
 		instanceID, ids[0], ids[1])
 
 	// Handle foreign key constraint errors gracefully
-	if execErr != nil && strings.Contains(execErr.Error(), "FOREIGN KEY constraint failed") {
+	var sqlErr *sqlite.Error
+	if execErr != nil && errors.As(execErr, &sqlErr) && sqlErr.Code() == lib.SQLITE_CONSTRAINT_FOREIGNKEY {
 		// Instance was likely deleted between our check and insert, silently ignore
 		return nil
 	}
