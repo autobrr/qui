@@ -68,12 +68,8 @@ type writeReq struct {
 	query string
 	args  []any
 	op    writeOperation
-	// For Exec operations
-	resCh chan writeRes
-	// For Query operations
-	queryResCh chan queryRes
-	// For QueryRow operations
-	queryRowResCh chan queryRowRes
+	// For all operations (Exec, Query, QueryRow)
+	resCh chan writeResult
 	// For transaction operations
 	txOp         txOperation
 	tx           *sql.Tx
@@ -90,18 +86,17 @@ const (
 	opQueryRow
 )
 
-type writeRes struct {
-	result sql.Result
-	err    error
-}
-
-type queryRes struct {
-	rows *sql.Rows
-	err  error
-}
-
-type queryRowRes struct {
-	row *sql.Row
+// writeResult is a union type that holds the result of any write operation.
+// Only one of execResult, queryRows, or queryRow will be set, depending on the operation type.
+type writeResult struct {
+	// For Exec operations
+	execResult sql.Result
+	// For Query operations
+	queryRows *sql.Rows
+	// For QueryRow operations
+	queryRow *sql.Row
+	// Error for Exec and Query operations (QueryRow embeds errors in the Row itself)
+	err error
 }
 
 type txBeginRes struct {
@@ -469,7 +464,7 @@ func (db *DB) ExecContext(ctx context.Context, query string, args ...any) (sql.R
 	}
 
 	// route through writer
-	resCh := make(chan writeRes, 1)
+	resCh := make(chan writeResult, 1)
 	req := writeReq{ctx: ctx, query: query, args: args, op: opExec, resCh: resCh}
 	select {
 	case db.writeCh <- req:
@@ -480,7 +475,7 @@ func (db *DB) ExecContext(ctx context.Context, query string, args ...any) (sql.R
 	}
 
 	res := <-resCh
-	return res.result, res.err
+	return res.execResult, res.err
 }
 
 // writerLoop processes write requests sequentially
@@ -546,36 +541,27 @@ func (db *DB) processWrite(req writeReq) {
 		stmt = nil
 	}
 
+	var result writeResult
 	switch req.op {
 	case opExec:
-		res, execErr := db.execWrite(req.ctx, stmt, req.query, req.args)
-		select {
-		case req.resCh <- writeRes{result: res, err: execErr}:
-		default:
-		}
+		result.execResult, result.err = db.execWrite(req.ctx, stmt, req.query, req.args)
 	case opQuery:
-		var rows *sql.Rows
-		var queryErr error
 		if stmt != nil {
-			rows, queryErr = stmt.QueryContext(req.ctx, req.args...)
+			result.queryRows, result.err = stmt.QueryContext(req.ctx, req.args...)
 		} else {
-			rows, queryErr = db.conn.QueryContext(req.ctx, req.query, req.args...)
-		}
-		select {
-		case req.queryResCh <- queryRes{rows: rows, err: queryErr}:
-		default:
+			result.queryRows, result.err = db.conn.QueryContext(req.ctx, req.query, req.args...)
 		}
 	case opQueryRow:
-		var row *sql.Row
 		if stmt != nil {
-			row = stmt.QueryRowContext(req.ctx, req.args...)
+			result.queryRow = stmt.QueryRowContext(req.ctx, req.args...)
 		} else {
-			row = db.conn.QueryRowContext(req.ctx, req.query, req.args...)
+			result.queryRow = db.conn.QueryRowContext(req.ctx, req.query, req.args...)
 		}
-		select {
-		case req.queryRowResCh <- queryRowRes{row: row}:
-		default:
-		}
+	}
+
+	select {
+	case req.resCh <- result:
+	default:
 	}
 }
 
@@ -655,8 +641,8 @@ func (db *DB) QueryContext(ctx context.Context, query string, args ...any) (*sql
 	}
 
 	// route through writer
-	resCh := make(chan queryRes, 1)
-	req := writeReq{ctx: ctx, query: query, args: args, op: opQuery, queryResCh: resCh}
+	resCh := make(chan writeResult, 1)
+	req := writeReq{ctx: ctx, query: query, args: args, op: opQuery, resCh: resCh}
 	select {
 	case db.writeCh <- req:
 	case <-ctx.Done():
@@ -666,7 +652,7 @@ func (db *DB) QueryContext(ctx context.Context, query string, args ...any) (*sql
 	}
 
 	res := <-resCh
-	return res.rows, res.err
+	return res.queryRows, res.err
 }
 
 // QueryRowContext uses reader pool and prepared statements for read queries,
@@ -688,8 +674,8 @@ func (db *DB) QueryRowContext(ctx context.Context, query string, args ...any) *s
 	}
 
 	// route through writer
-	resCh := make(chan queryRowRes, 1)
-	req := writeReq{ctx: ctx, query: query, args: args, op: opQueryRow, queryRowResCh: resCh}
+	resCh := make(chan writeResult, 1)
+	req := writeReq{ctx: ctx, query: query, args: args, op: opQueryRow, resCh: resCh}
 	select {
 	case db.writeCh <- req:
 	case <-ctx.Done():
@@ -699,7 +685,7 @@ func (db *DB) QueryRowContext(ctx context.Context, query string, args ...any) *s
 	}
 
 	res := <-resCh
-	return res.row
+	return res.queryRow
 }
 
 // BeginTx starts a transaction. Returns a wrapped transaction that uses prepared
