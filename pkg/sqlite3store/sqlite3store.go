@@ -127,9 +127,9 @@ func (p *SQLite3Store) DeleteCtx(ctx context.Context, token string) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
-	_, err = tx.ExecContext(ctx, "DELETE FROM sessions WHERE token = $1", token)
+	_, err = tx.ExecContext(ctx, "DELETE FROM sessions WHERE token = ?", token)
 	if err != nil {
 		return err
 	}
