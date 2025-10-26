@@ -368,7 +368,7 @@ CREATE TABLE client_api_keys (
     FOREIGN KEY (client_name_id) REFERENCES string_pool(id) ON DELETE RESTRICT
 );
 
-CREATE UNIQUE INDEX idx_client_api_keys_key_hash ON client_api_keys(key_hash);
+CREATE INDEX idx_client_api_keys_instance_id ON client_api_keys(instance_id);
 
 -- Step 5: Restore data from temporary tables
 INSERT INTO instances (id, name_id, host_id, username_id, password_encrypted, basic_username_id, basic_password_encrypted, tls_skip_verify)

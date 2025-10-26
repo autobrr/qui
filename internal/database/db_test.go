@@ -276,9 +276,8 @@ var expectedSchema = map[string][]columnSpec{
 }
 
 var expectedIndexes = map[string][]string{
-	"api_keys":            {"idx_api_keys_hash"},
 	"licenses":            {"idx_licenses_status", "idx_licenses_theme", "idx_licenses_key"},
-	"client_api_keys":     {"idx_client_api_keys_key_hash", "idx_client_api_keys_instance_id"},
+	"client_api_keys":     {"idx_client_api_keys_instance_id"},
 	"instance_errors":     {"idx_instance_errors_lookup"},
 	"sessions":            {"sessions_expiry_idx"},
 	"torrent_files_cache": {"idx_torrent_files_cache_lookup", "idx_torrent_files_cache_cached_at"},
