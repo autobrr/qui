@@ -12,7 +12,7 @@ import (
 
 	"github.com/autobrr/qui/internal/dbinterface"
 	"modernc.org/sqlite"
-	"modernc.org/sqlite/lib"
+	lib "modernc.org/sqlite/lib"
 )
 
 // Error types for categorization
