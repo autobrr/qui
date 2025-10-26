@@ -112,13 +112,17 @@ func (s *APIKeyStore) GetByHash(ctx context.Context, keyHash string) (*APIKey, e
 		WHERE key_hash = ?
 	`
 
-	apiKey := &APIKey{}
+	var id int
+	var keyHashResult, name string
+	var createdAt time.Time
+	var lastUsedAt sql.NullTime
+
 	err := s.db.QueryRowContext(ctx, query, keyHash).Scan(
-		&apiKey.ID,
-		&apiKey.KeyHash,
-		&apiKey.Name,
-		&apiKey.CreatedAt,
-		&apiKey.LastUsedAt,
+		&id,
+		&keyHashResult,
+		&name,
+		&createdAt,
+		&lastUsedAt,
 	)
 
 	if err != nil {
@@ -127,6 +131,17 @@ func (s *APIKeyStore) GetByHash(ctx context.Context, keyHash string) (*APIKey, e
 		}
 
 		return nil, err
+	}
+
+	apiKey := &APIKey{
+		ID:        id,
+		KeyHash:   keyHashResult,
+		Name:      name,
+		CreatedAt: createdAt,
+	}
+
+	if lastUsedAt.Valid {
+		apiKey.LastUsedAt = &lastUsedAt.Time
 	}
 
 	return apiKey, nil
@@ -147,17 +162,33 @@ func (s *APIKeyStore) List(ctx context.Context) ([]*APIKey, error) {
 
 	keys := make([]*APIKey, 0)
 	for rows.Next() {
-		apiKey := &APIKey{}
+		var id int
+		var keyHash, name string
+		var createdAt time.Time
+		var lastUsedAt sql.NullTime
+
 		err := rows.Scan(
-			&apiKey.ID,
-			&apiKey.KeyHash,
-			&apiKey.Name,
-			&apiKey.CreatedAt,
-			&apiKey.LastUsedAt,
+			&id,
+			&keyHash,
+			&name,
+			&createdAt,
+			&lastUsedAt,
 		)
 		if err != nil {
 			return nil, err
 		}
+
+		apiKey := &APIKey{
+			ID:        id,
+			KeyHash:   keyHash,
+			Name:      name,
+			CreatedAt: createdAt,
+		}
+
+		if lastUsedAt.Valid {
+			apiKey.LastUsedAt = &lastUsedAt.Time
+		}
+
 		keys = append(keys, apiKey)
 	}
 
