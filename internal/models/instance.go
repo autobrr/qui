@@ -243,19 +243,11 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 	}
 	defer tx.Rollback()
 
-	// Intern required strings
-	ids, err := dbinterface.InternStrings(ctx, tx, name, normalizedHost, username)
+	// Intern all strings in a single call
+	allIDs, err := dbinterface.InternStringNullable(ctx, tx, &name, &normalizedHost, &username, basicUsername)
 	if err != nil {
-		return nil, fmt.Errorf("failed to intern required strings: %w", err)
+		return nil, fmt.Errorf("failed to intern strings: %w", err)
 	}
-	nameID, hostID, usernameID := ids[0], ids[1], ids[2]
-
-	// Intern basic username if provided
-	basicUsernameIDs, err := dbinterface.InternStringNullable(ctx, tx, basicUsername)
-	if err != nil {
-		return nil, fmt.Errorf("failed to intern basic_username: %w", err)
-	}
-	basicUsernameID := basicUsernameIDs[0]
 
 	// Insert instance with the interned IDs
 	instance := &Instance{}
@@ -263,7 +255,7 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 		INSERT INTO instances (name_id, host_id, username_id, password_encrypted, basic_username_id, basic_password_encrypted, tls_skip_verify) 
 		VALUES (?, ?, ?, ?, ?, ?, ?)
 		RETURNING id, password_encrypted, basic_password_encrypted, tls_skip_verify
-	`, nameID, hostID, usernameID, encryptedPassword, basicUsernameID, encryptedBasicPassword, tlsSkipVerify).Scan(
+	`, allIDs[0], allIDs[1], allIDs[2], encryptedPassword, allIDs[3], encryptedBasicPassword, tlsSkipVerify).Scan(
 		&instance.ID,
 		&instance.PasswordEncrypted,
 		&instance.BasicPasswordEncrypted,
@@ -371,16 +363,22 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 	}
 	defer tx.Rollback()
 
-	// Intern required strings first
-	ids, err := dbinterface.InternStrings(ctx, tx, name, normalizedHost, username)
-	if err != nil {
-		return nil, fmt.Errorf("failed to intern required strings: %w", err)
+	// Prepare strings to intern - always intern name, host, username
+	// Also intern basic_username if it's provided and not empty
+	var basicUsernameToIntern *string
+	if basicUsername != nil && *basicUsername != "" {
+		basicUsernameToIntern = basicUsername
 	}
-	nameID, hostID, usernameID := ids[0], ids[1], ids[2]
+
+	// Intern all strings in a single call
+	allIDs, err := dbinterface.InternStringNullable(ctx, tx, &name, &normalizedHost, &username, basicUsernameToIntern)
+	if err != nil {
+		return nil, fmt.Errorf("failed to intern strings: %w", err)
+	}
 
 	// Build UPDATE query
 	query := "UPDATE instances SET name_id = ?, host_id = ?, username_id = ?"
-	args := []any{nameID, hostID, usernameID}
+	args := []any{allIDs[0], allIDs[1], allIDs[2]}
 
 	// Handle basic_username update
 	if basicUsername != nil {
@@ -388,13 +386,9 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 			// Empty string explicitly provided - clear the basic username
 			query += ", basic_username_id = NULL"
 		} else {
-			// Basic username provided - intern and update
-			basicIDs, err := dbinterface.InternStrings(ctx, tx, *basicUsername)
-			if err != nil {
-				return nil, fmt.Errorf("failed to intern basic_username: %w", err)
-			}
+			// Basic username provided - use the already interned ID
 			query += ", basic_username_id = ?"
-			args = append(args, basicIDs[0])
+			args = append(args, allIDs[3])
 		}
 	}
 

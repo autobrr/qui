@@ -78,16 +78,15 @@ func (s *InstanceErrorStore) RecordError(ctx context.Context, instanceID int, er
 		return nil // Skip duplicate
 	}
 
-	// Intern strings first
-	ids, err := dbinterface.InternStrings(ctx, tx, errorType, errorMessage)
+	// Intern strings
+	ids, err := dbinterface.InternStringNullable(ctx, tx, &errorType, &errorMessage)
 	if err != nil {
 		return fmt.Errorf("failed to intern error strings: %w", err)
 	}
-	errorTypeID, errorMessageID := ids[0], ids[1]
 
 	// Insert the error with interned IDs
 	_, execErr := tx.ExecContext(ctx, `INSERT INTO instance_errors (instance_id, error_type_id, error_message_id) VALUES (?, ?, ?)`,
-		instanceID, errorTypeID, errorMessageID)
+		instanceID, ids[0], ids[1])
 
 	// Handle foreign key constraint errors gracefully
 	if execErr != nil && strings.Contains(execErr.Error(), "FOREIGN KEY constraint failed") {

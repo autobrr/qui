@@ -255,19 +255,13 @@ func (s *BackupStore) CreateRun(ctx context.Context, run *BackupRun) error {
 	}
 	defer tx.Rollback()
 
-	// Intern required strings
-	ids, err := dbinterface.InternStrings(ctx, tx, string(run.Kind), string(run.Status), run.RequestedBy)
+	// Intern all strings in a single call (convert required strings to pointers)
+	kind := string(run.Kind)
+	status := string(run.Status)
+	allIDs, err := dbinterface.InternStringNullable(ctx, tx, &kind, &status, &run.RequestedBy, run.ArchivePath, run.ManifestPath, run.ErrorMessage)
 	if err != nil {
-		return fmt.Errorf("failed to intern required strings: %w", err)
+		return fmt.Errorf("failed to intern strings: %w", err)
 	}
-	kindID, statusID, requestedByID := ids[0], ids[1], ids[2]
-
-	// Batch intern optional strings
-	optionalIDs, err := dbinterface.InternStringNullable(ctx, tx, run.ArchivePath, run.ManifestPath, run.ErrorMessage)
-	if err != nil {
-		return fmt.Errorf("failed to intern optional strings: %w", err)
-	}
-	archivePathID, manifestPathID, errorMessageID := optionalIDs[0], optionalIDs[1], optionalIDs[2]
 
 	categoryJSON, err := marshalCategoryCounts(run.CategoryCounts)
 	if err != nil {
@@ -279,8 +273,8 @@ func (s *BackupStore) CreateRun(ctx context.Context, run *BackupRun) error {
 			instance_id, kind_id, status_id, requested_by_id, requested_at, started_at, completed_at,
 			archive_path_id, manifest_path_id, total_bytes, torrent_count, category_counts_json, categories_json, tags_json, error_message_id
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, run.InstanceID, kindID, statusID, requestedByID, run.RequestedAt, run.StartedAt, run.CompletedAt,
-		archivePathID, manifestPathID, run.TotalBytes, run.TorrentCount, categoryJSON, run.categoriesJSON, run.tagsJSON, errorMessageID)
+	`, run.InstanceID, allIDs[0], allIDs[1], allIDs[2], run.RequestedAt, run.StartedAt, run.CompletedAt,
+		allIDs[3], allIDs[4], run.TotalBytes, run.TorrentCount, categoryJSON, run.categoriesJSON, run.tagsJSON, allIDs[5])
 	if err != nil {
 		return err
 	}
@@ -408,19 +402,12 @@ func (s *BackupStore) UpdateRunMetadata(ctx context.Context, runID int64, update
 		return err
 	}
 
-	// Intern required strings
-	ids, err := dbinterface.InternStrings(ctx, tx, string(run.Status))
+	// Intern all strings in a single call
+	status := string(run.Status)
+	allIDs, err := dbinterface.InternStringNullable(ctx, tx, &status, run.ArchivePath, run.ManifestPath, run.ErrorMessage)
 	if err != nil {
-		return fmt.Errorf("failed to intern status: %w", err)
+		return fmt.Errorf("failed to intern strings: %w", err)
 	}
-	statusID := ids[0]
-
-	// Batch intern optional strings
-	optionalIDs, err := dbinterface.InternStringNullable(ctx, tx, run.ArchivePath, run.ManifestPath, run.ErrorMessage)
-	if err != nil {
-		return fmt.Errorf("failed to intern optional strings: %w", err)
-	}
-	archivePathID, manifestPathID, errorMessageID := optionalIDs[0], optionalIDs[1], optionalIDs[2]
 
 	// Execute UPDATE with interned IDs
 	_, err = tx.ExecContext(ctx, `
@@ -437,8 +424,8 @@ func (s *BackupStore) UpdateRunMetadata(ctx context.Context, runID int64, update
             tags_json = ?,
             error_message_id = ?
         WHERE id = ?
-	`, statusID, run.StartedAt, run.CompletedAt, archivePathID, manifestPathID,
-		run.TotalBytes, run.TorrentCount, categoryJSON, categoriesJSON, tagsJSON, errorMessageID, runID)
+	`, allIDs[0], run.StartedAt, run.CompletedAt, allIDs[1], allIDs[2],
+		run.TotalBytes, run.TorrentCount, categoryJSON, categoriesJSON, tagsJSON, allIDs[3], runID)
 	if err != nil {
 		return err
 	}
@@ -458,19 +445,12 @@ func (s *BackupStore) UpdateMultipleRunsStatus(ctx context.Context, runIDs []int
 	}
 	defer tx.Rollback()
 
-	// Intern status string
-	ids, err := dbinterface.InternStrings(ctx, tx, string(status))
+	// Intern all strings in a single call
+	statusStr := string(status)
+	allIDs, err := dbinterface.InternStringNullable(ctx, tx, &statusStr, errorMessage)
 	if err != nil {
-		return fmt.Errorf("failed to intern status: %w", err)
+		return fmt.Errorf("failed to intern strings: %w", err)
 	}
-	statusID := ids[0]
-
-	// Intern optional error message
-	errorMessageIDs, err := dbinterface.InternStringNullable(ctx, tx, errorMessage)
-	if err != nil {
-		return fmt.Errorf("failed to intern error_message: %w", err)
-	}
-	errorMessageID := errorMessageIDs[0]
 
 	// Build placeholders for IN clause
 	placeholders := make([]string, len(runIDs))
@@ -481,13 +461,13 @@ func (s *BackupStore) UpdateMultipleRunsStatus(ctx context.Context, runIDs []int
 	// Build UPDATE query
 	query := fmt.Sprintf("UPDATE instance_backup_runs SET status_id = ?, completed_at = ?, error_message_id = ? WHERE id IN (%s)", strings.Join(placeholders, ","))
 
-	args := []any{statusID}
+	args := []any{allIDs[0]}
 	if completedAt != nil {
 		args = append(args, *completedAt)
 	} else {
 		args = append(args, nil)
 	}
-	args = append(args, errorMessageID)
+	args = append(args, allIDs[1])
 
 	for _, runID := range runIDs {
 		args = append(args, runID)
@@ -1483,17 +1463,17 @@ func (s *BackupStore) RemoveFailedRunsBefore(ctx context.Context, cutoff time.Ti
 	defer tx.Rollback()
 
 	// Intern the status string
-	ids, err := dbinterface.InternStrings(ctx, tx, string(BackupRunStatusFailed))
+	status := string(BackupRunStatusFailed)
+	ids, err := dbinterface.InternStringNullable(ctx, tx, &status)
 	if err != nil {
 		return 0, fmt.Errorf("failed to intern status: %w", err)
 	}
-	statusID := ids[0]
 
 	// Execute DELETE with interned ID
 	res, err := tx.ExecContext(ctx, `
 		DELETE FROM instance_backup_runs
 		WHERE status_id = ? AND requested_at < ?
-	`, statusID, cutoff)
+	`, ids[0], cutoff)
 	if err != nil {
 		return 0, err
 	}

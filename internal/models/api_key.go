@@ -67,12 +67,11 @@ func (s *APIKeyStore) Create(ctx context.Context, name string) (string, *APIKey,
 	}
 	defer tx.Rollback()
 
-	// Intern the name first
-	ids, err := dbinterface.InternStrings(ctx, tx, name)
+	// Intern the name
+	ids, err := dbinterface.InternStringNullable(ctx, tx, &name)
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to intern name: %w", err)
 	}
-	nameID := ids[0]
 
 	// Insert the API key
 	apiKey := &APIKey{}
@@ -81,7 +80,7 @@ func (s *APIKeyStore) Create(ctx context.Context, name string) (string, *APIKey,
 		INSERT INTO api_keys (key_hash, name_id) 
 		VALUES (?, ?)
 		RETURNING id, key_hash, created_at, last_used_at
-	`, keyHash, nameID).Scan(
+	`, keyHash, ids[0]).Scan(
 		&apiKey.ID,
 		&apiKey.KeyHash,
 		&createdAt,
