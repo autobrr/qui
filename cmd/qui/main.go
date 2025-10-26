@@ -507,7 +507,7 @@ func (app *Application) runServer() {
 
 	// Initialize client connections for all active instances on startup
 	go func() {
-		listCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		listCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		instances, err := instanceStore.List(listCtx)
 		cancel()
 

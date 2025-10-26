@@ -106,8 +106,9 @@ func TestConnectionPragmasApplyToEachConnection(t *testing.T) {
 	db := openTestDatabase(t)
 	sqlDB := db.Conn()
 
-	sqlDB.SetMaxOpenConns(2)
-	sqlDB.SetMaxIdleConns(2)
+	// Set max connections to 4: 1 for writeConn + 2 test connections + 1 buffer
+	sqlDB.SetMaxOpenConns(4)
+	sqlDB.SetMaxIdleConns(3)
 
 	conn1, err := sqlDB.Conn(ctx)
 	require.NoError(t, err)

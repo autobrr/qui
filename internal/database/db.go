@@ -84,9 +84,10 @@ type writeRes struct {
 
 // reader/writer fields on DB
 type DB struct {
-	conn    *sql.DB
-	writeCh chan writeReq
-	stmts   *ttlcache.Cache[string, *sql.Stmt]
+	conn      *sql.DB   // connection pool for reads
+	writeConn *sql.Conn // dedicated connection for all writes
+	writeCh   chan writeReq
+	stmts     *ttlcache.Cache[string, *sql.Stmt]
 
 	// Metrics for string pool cache performance
 	cleanupDeleted atomic.Uint64 // Total strings deleted by cleanup
@@ -285,6 +286,17 @@ func New(databasePath string) (*DB, error) {
 	conn.SetMaxIdleConns(2)
 	conn.SetConnMaxLifetime(0)
 
+	// Acquire dedicated write connection
+	ctx2, cancel2 := context.WithTimeout(context.Background(), connectionSetupTimeout)
+	defer cancel2()
+	writeConn, err := conn.Conn(ctx2)
+	if err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("failed to acquire write connection: %w", err)
+	}
+	db.writeConn = writeConn
+	log.Debug().Msg("Dedicated write connection acquired")
+
 	// start single writer after migrations
 	db.writerWG.Add(1)
 	go db.writerLoop()
@@ -331,12 +343,12 @@ func (db *DB) getStmt(ctx context.Context, query string) (*sql.Stmt, error) {
 }
 
 // execWrite executes a write query using ExecContext. If a prepared stmt
-// is provided it will be used, otherwise the connection is used directly.
+// is provided it will be used, otherwise the write connection is used directly.
 func (db *DB) execWrite(ctx context.Context, stmt *sql.Stmt, query string, args []any) (sql.Result, error) {
 	if stmt != nil {
 		return stmt.ExecContext(ctx, args...)
 	}
-	return db.conn.ExecContext(ctx, query, args...)
+	return db.writeConn.ExecContext(ctx, query, args...)
 }
 
 // isWriteQuery efficiently determines if a query is a write operation.
@@ -547,14 +559,12 @@ func (db *DB) QueryRowContext(ctx context.Context, query string, args ...any) *s
 }
 
 // BeginTx starts a transaction. Returns a wrapped transaction that uses prepared
-// statement caching for better performance. Note that transactions bypass the single
-// writer and use the underlying connection pool directly. This is safe because SQLite
-// handles transaction serialization internally.
+// statement caching for better performance.
 //
 // CONCURRENCY MODEL:
-// - The database uses a single writer goroutine for simple write operations via ExecContext
-// - Transactions (BeginTx) bypass this and use the SQLite connection pool directly
-// - SQLite's SERIALIZABLE isolation level ensures data consistency
+// - Write transactions (opts == nil or opts.ReadOnly == false) use the dedicated write connection
+// - Read-only transactions (opts.ReadOnly == true) use the connection pool for concurrency
+// - All write operations are serialized through the single write connection
 // - WAL mode allows concurrent readers during write transactions
 //
 // ISOLATION LEVEL:
@@ -562,7 +572,7 @@ func (db *DB) QueryRowContext(ctx context.Context, query string, args ...any) *s
 // - Pass nil for opts to use SERIALIZABLE (recommended for most cases)
 // - For read-only transactions, use: &sql.TxOptions{ReadOnly: true}
 // - Read-only transactions allow full concurrency with writers in WAL mode
-// - Write transactions may briefly acquire EXCLUSIVE locks during commit
+// - Write transactions are serialized through the single write connection
 //
 // WHEN TO USE EACH:
 // - Use ExecContext for simple, single-statement writes (INSERT, UPDATE, DELETE)
@@ -570,9 +580,10 @@ func (db *DB) QueryRowContext(ctx context.Context, query string, args ...any) *s
 // - Use BeginTx when you need to read and write in a consistent snapshot
 //
 // GUARANTEES:
-// - ExecContext: Sequential execution, no partial writes visible
-// - BeginTx: ACID properties, full transaction isolation
-// - Both: No write conflicts due to SQLite's serialization
+// - ExecContext: Sequential execution through single writer, no partial writes visible
+// - BeginTx (write): ACID properties, full transaction isolation, serialized writes
+// - BeginTx (read-only): ACID properties, concurrent with writes
+// - All writes: Serialized through single write connection
 //
 // PREPARED STATEMENTS:
 // - Transaction queries automatically use the DB's prepared statement cache
@@ -580,11 +591,24 @@ func (db *DB) QueryRowContext(ctx context.Context, query string, args ...any) *s
 // - This improves performance for transactions that execute the same queries multiple times
 //
 // LIMITATIONS:
-// - Long-running transactions can block the single writer if they overlap
-// - EXCLUSIVE locks during transaction commit can cause brief contention
-// - Use IMMEDIATE transactions for write-heavy workloads to reduce conflicts
+// - Write transactions are serialized through the single write connection
+// - Long-running write transactions will block other writes
+// - Use read-only transactions when possible to avoid blocking writes
 func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQuerier, error) {
-	tx, err := db.conn.BeginTx(ctx, opts)
+	// Determine if this is a read-only transaction
+	isReadOnly := opts != nil && opts.ReadOnly
+
+	var tx *sql.Tx
+	var err error
+
+	if isReadOnly {
+		// Read-only transactions can use the connection pool for concurrency
+		tx, err = db.conn.BeginTx(ctx, opts)
+	} else {
+		// Write transactions use the dedicated write connection for serialization
+		tx, err = db.writeConn.BeginTx(ctx, opts)
+	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -620,6 +644,13 @@ func (db *DB) Close() error {
 		db.writerWG.Wait()
 
 		db.stmts.Close()
+
+		// Close the dedicated write connection first
+		if db.writeConn != nil {
+			if err := db.writeConn.Close(); err != nil {
+				log.Warn().Err(err).Msg("failed to close write connection")
+			}
+		}
 
 		// deallocation of cached statements is handled by ttlcache
 		db.closeErr = db.conn.Close()
@@ -929,11 +960,20 @@ func NewForTest(conn *sql.DB) *DB {
 
 	stmtsCache := ttlcache.New(stmtOpts)
 
+	// Acquire dedicated write connection
+	ctx, cancel := context.WithTimeout(context.Background(), connectionSetupTimeout)
+	defer cancel()
+	writeConn, err := conn.Conn(ctx)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to acquire write connection in NewForTest")
+	}
+
 	db := &DB{
-		conn:    conn,
-		writeCh: make(chan writeReq, writeChannelBuffer),
-		stmts:   stmtsCache,
-		stop:    make(chan struct{}),
+		conn:      conn,
+		writeConn: writeConn,
+		writeCh:   make(chan writeReq, writeChannelBuffer),
+		stmts:     stmtsCache,
+		stop:      make(chan struct{}),
 	}
 	db.writeBarrier.Store((chan struct{})(nil))
 	db.barrierSignal.Store((chan struct{})(nil))

@@ -615,11 +615,19 @@ func newWithMigrations(path string, count int) (*DB, error) {
 		})
 	stmtsCache := ttlcache.New(stmtOpts)
 
+	// Acquire dedicated write connection
+	writeConn, err := sqlDB.Conn(ctx)
+	if err != nil {
+		sqlDB.Close()
+		return nil, fmt.Errorf("acquire write connection: %w", err)
+	}
+
 	db := &DB{
-		conn:    sqlDB,
-		writeCh: make(chan writeReq, writeChannelBuffer),
-		stmts:   stmtsCache,
-		stop:    make(chan struct{}),
+		conn:      sqlDB,
+		writeConn: writeConn,
+		writeCh:   make(chan writeReq, writeChannelBuffer),
+		stmts:     stmtsCache,
+		stop:      make(chan struct{}),
 	}
 	db.writeBarrier.Store((chan struct{})(nil))
 	db.barrierSignal.Store((chan struct{})(nil))
