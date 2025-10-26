@@ -147,23 +147,9 @@ func (s *InstanceErrorStore) GetRecentErrors(ctx context.Context, instanceID int
 
 // ClearErrors removes all errors for an instance (called on successful connection)
 func (s *InstanceErrorStore) ClearErrors(ctx context.Context, instanceID int) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
 	query := `DELETE FROM instance_errors WHERE instance_id = ?`
-	_, err = tx.ExecContext(ctx, query, instanceID)
-	if err != nil {
-		return err
-	}
-
-	if err = tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
-	return nil
+	_, err := s.db.ExecContext(ctx, query, instanceID)
+	return err
 }
 
 // categorizeError determines error type based on error message patterns
