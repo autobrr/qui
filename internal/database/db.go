@@ -407,7 +407,14 @@ func isWriteQuery(query string) bool {
 		strings.HasPrefix(upper, "UPDATE") ||
 		strings.HasPrefix(upper, "UPSERT") ||
 		strings.HasPrefix(upper, "REPLACE") ||
-		strings.HasPrefix(upper, "DELETE")
+		strings.HasPrefix(upper, "DELETE") ||
+		strings.HasPrefix(upper, "COMMIT") ||
+		strings.HasPrefix(upper, "ROLLBACK") ||
+		strings.HasPrefix(upper, "BEGIN") ||
+		strings.HasPrefix(upper, "CREATE") ||
+		strings.HasPrefix(upper, "ALTER") ||
+		strings.HasPrefix(upper, "DROP") ||
+		strings.HasPrefix(upper, "VACUUM")
 }
 
 // ExecContext routes write queries through the single writer goroutine and
