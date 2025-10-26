@@ -73,8 +73,8 @@ func (s *Service) GetCachedFiles(ctx context.Context, instanceID int, hash strin
 	if torrentProgress < 1.0 {
 		const progressThreshold = 0.01 // 1% progress change triggers cache refresh
 		progressDelta := torrentProgress - syncInfo.TorrentProgress
-		if progressDelta > progressThreshold {
-			// Progress has advanced, bypass cache to get fresh data
+		if progressDelta > progressThreshold || progressDelta < 0 {
+			// Progress has advanced significantly or regressed (torrent deleted/reset), bypass cache to get fresh data
 			return nil, nil
 		}
 	}
