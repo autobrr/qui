@@ -268,13 +268,23 @@ func (s *BackupStore) CreateRun(ctx context.Context, run *BackupRun) error {
 		return err
 	}
 
+	categoriesJSON, err := marshalCategories(run.Categories)
+	if err != nil {
+		return err
+	}
+
+	tagsJSON, err := marshalTags(run.Tags)
+	if err != nil {
+		return err
+	}
+
 	res, err := tx.ExecContext(ctx, `
 		INSERT INTO instance_backup_runs (
 			instance_id, kind_id, status_id, requested_by_id, requested_at, started_at, completed_at,
 			archive_path_id, manifest_path_id, total_bytes, torrent_count, category_counts_json, categories_json, tags_json, error_message_id
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, run.InstanceID, allIDs[0], allIDs[1], allIDs[2], run.RequestedAt, run.StartedAt, run.CompletedAt,
-		allIDs[3], allIDs[4], run.TotalBytes, run.TorrentCount, categoryJSON, run.categoriesJSON, run.tagsJSON, allIDs[5])
+		allIDs[3], allIDs[4], run.TotalBytes, run.TorrentCount, categoryJSON, categoriesJSON, tagsJSON, allIDs[5])
 	if err != nil {
 		return err
 	}
