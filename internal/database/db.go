@@ -282,6 +282,7 @@ func registerConnectionHook() {
 func applyConnectionPragmas(ctx context.Context, exec pragmaExecFn) error {
 	pragmas := []string{
 		"PRAGMA journal_mode = WAL",
+		"PRAGMA synchronous = NORMAL", // NORMAL is safe with WAL and much faster than FULL
 		"PRAGMA foreign_keys = ON",
 		fmt.Sprintf("PRAGMA busy_timeout = %d", defaultBusyTimeoutMillis),
 		"PRAGMA analysis_limit = 400",

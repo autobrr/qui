@@ -730,51 +730,70 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 	}
 	defer tx.Rollback()
 
-	// Collect all unique strings that need to be interned
-	allStrings := make([]string, 0, len(items)*2) // At minimum: hash + name per item
+	// Pre-deduplicate all strings before interning to minimize database operations
+	// This is crucial for performance when dealing with thousands of items
+	uniqueRequired := make(map[string]struct{})
+	uniqueOptional := make(map[string]struct{})
 
+	// Collect unique required strings (hash + name)
 	for _, item := range items {
-		allStrings = append(allStrings, item.TorrentHash, item.Name)
+		uniqueRequired[item.TorrentHash] = struct{}{}
+		uniqueRequired[item.Name] = struct{}{}
 	}
 
-	// Batch intern all required strings at once (hash + name for each item)
-	allIDs, err := dbinterface.InternStrings(ctx, tx, allStrings...)
+	// Collect unique optional strings
+	for _, item := range items {
+		if item.Category != nil && *item.Category != "" {
+			uniqueOptional[*item.Category] = struct{}{}
+		}
+		if item.ArchiveRelPath != nil && *item.ArchiveRelPath != "" {
+			uniqueOptional[*item.ArchiveRelPath] = struct{}{}
+		}
+		if item.InfoHashV1 != nil && *item.InfoHashV1 != "" {
+			uniqueOptional[*item.InfoHashV1] = struct{}{}
+		}
+		if item.InfoHashV2 != nil && *item.InfoHashV2 != "" {
+			uniqueOptional[*item.InfoHashV2] = struct{}{}
+		}
+		if item.Tags != nil && *item.Tags != "" {
+			uniqueOptional[*item.Tags] = struct{}{}
+		}
+		if item.TorrentBlobPath != nil && *item.TorrentBlobPath != "" {
+			uniqueOptional[*item.TorrentBlobPath] = struct{}{}
+		}
+	}
+
+	// Convert maps to slices for interning
+	requiredStrings := make([]string, 0, len(uniqueRequired))
+	for s := range uniqueRequired {
+		requiredStrings = append(requiredStrings, s)
+	}
+
+	// Batch intern all required strings at once
+	requiredIDs, err := dbinterface.InternStrings(ctx, tx, requiredStrings...)
 	if err != nil {
 		return fmt.Errorf("failed to batch intern required strings: %w", err)
 	}
 
-	// Build a map from string -> ID for optional fields
-	// Collect all non-empty optional strings
-	optionalStrings := make([]string, 0)
-	for _, item := range items {
-		if item.Category != nil && *item.Category != "" {
-			optionalStrings = append(optionalStrings, *item.Category)
-		}
-		if item.ArchiveRelPath != nil && *item.ArchiveRelPath != "" {
-			optionalStrings = append(optionalStrings, *item.ArchiveRelPath)
-		}
-		if item.InfoHashV1 != nil && *item.InfoHashV1 != "" {
-			optionalStrings = append(optionalStrings, *item.InfoHashV1)
-		}
-		if item.InfoHashV2 != nil && *item.InfoHashV2 != "" {
-			optionalStrings = append(optionalStrings, *item.InfoHashV2)
-		}
-		if item.Tags != nil && *item.Tags != "" {
-			optionalStrings = append(optionalStrings, *item.Tags)
-		}
-		if item.TorrentBlobPath != nil && *item.TorrentBlobPath != "" {
-			optionalStrings = append(optionalStrings, *item.TorrentBlobPath)
-		}
+	// Build map from string -> ID for required strings
+	stringToID := make(map[string]int64, len(requiredStrings))
+	for i, s := range requiredStrings {
+		stringToID[s] = requiredIDs[i]
 	}
 
-	// Intern all optional strings if any exist
-	stringToID := make(map[string]int64)
-	if len(optionalStrings) > 0 {
+	// Intern optional strings if any exist
+	if len(uniqueOptional) > 0 {
+		optionalStrings := make([]string, 0, len(uniqueOptional))
+		for s := range uniqueOptional {
+			optionalStrings = append(optionalStrings, s)
+		}
+
 		optionalIDs, err := dbinterface.InternStrings(ctx, tx, optionalStrings...)
 		if err != nil {
 			return fmt.Errorf("failed to batch intern optional strings: %w", err)
 		}
-		// Build map for lookups
+
+		// Add to the same map
 		for i, s := range optionalStrings {
 			stringToID[s] = optionalIDs[i]
 		}
@@ -811,10 +830,9 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 			}
 			sb.WriteString("(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
 
-			// Get IDs from the pre-interned required strings
-			idxBase := (i + j) * 2
-			torrentHashID := allIDs[idxBase]
-			nameID := allIDs[idxBase+1]
+			// Get IDs from the stringToID map for required fields
+			torrentHashID := stringToID[item.TorrentHash]
+			nameID := stringToID[item.Name]
 
 			args = append(args,
 				runID,
@@ -842,7 +860,7 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 	}
 
 	return tx.Commit()
-} // Helper function to join placeholders
+}
 func joinPlaceholders(placeholders []string, sep string) string {
 	if len(placeholders) == 0 {
 		return ""
