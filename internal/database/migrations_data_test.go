@@ -616,17 +616,15 @@ func newWithMigrations(path string, count int) (*DB, error) {
 	stmtsCache := ttlcache.New(stmtOpts)
 
 	db := &DB{
-		conn:    sqlDB,
-		writeCh: make(chan writeReq, writeChannelBuffer),
-		stmts:   stmtsCache,
-		stop:    make(chan struct{}),
+		writerConn: sqlDB,
+		readerPool: sqlDB, // For tests, use same connection for both
+		stmts:      stmtsCache,
 	}
 
-	db.writerWG.Add(1)
-	go db.writerLoop()
-
-	db.writerWG.Add(1)
-	go db.stringPoolCleanupLoop()
+	// Start cleanup loop with context
+	cleanupCtx, cleanupCancel := context.WithCancel(context.Background())
+	db.cleanupCancel = cleanupCancel
+	go db.stringPoolCleanupLoop(cleanupCtx)
 
 	return db, nil
 }
