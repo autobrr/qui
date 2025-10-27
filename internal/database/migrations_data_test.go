@@ -616,9 +616,10 @@ func newWithMigrations(path string, count int) (*DB, error) {
 	stmtsCache := ttlcache.New(stmtOpts)
 
 	db := &DB{
-		writerConn: sqlDB,
-		readerPool: sqlDB, // For tests, use same connection for both
-		stmts:      stmtsCache,
+		writerConn:  sqlDB,
+		readerPool:  sqlDB,      // For tests, use same connection for both
+		writerStmts: stmtsCache, // For tests, use same cache for both
+		readerStmts: stmtsCache, // For tests, use same cache for both
 	}
 
 	// Start cleanup loop with context

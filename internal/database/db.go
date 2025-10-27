@@ -71,9 +71,10 @@ var migrationsFS embed.FS
 
 // reader/writer fields on DB
 type DB struct {
-	writerConn *sql.DB // Single connection for all writes (SetMaxOpenConns=1)
-	readerPool *sql.DB // Read-only connection pool for concurrent reads
-	stmts      *ttlcache.Cache[string, *sql.Stmt]
+	writerConn  *sql.DB                            // Single connection for all writes (SetMaxOpenConns=1)
+	readerPool  *sql.DB                            // Read-only connection pool for concurrent reads
+	writerStmts *ttlcache.Cache[string, *sql.Stmt] // Prepared statements for writer connection
+	readerStmts *ttlcache.Cache[string, *sql.Stmt] // Prepared statements for reader pool
 
 	// Write transaction serialization
 	// Even though writerConn has SetMaxOpenConns=1, BeginTx doesn't queue properly
@@ -101,60 +102,72 @@ type Tx struct {
 	ctx       context.Context // context from BeginTx, used for commit/rollback
 	isWriteTx bool            // true if this is a write transaction that needs serialized commit
 	unlockFn  func()          // function to unlock writerMu when transaction completes (write tx only)
+
+	// Track statements prepared during this transaction for promotion to DB cache after commit
+	txStmts map[string]struct{} // query -> struct{} (used as set to track which queries to cache)
+	txMu    sync.Mutex          // protects txStmts map
 }
 
-// PrepareContext creates a new prepared statement within the transaction.
-// Note: Unlike other methods, this doesn't use the cache since transaction-specific
-// statements must be created from the transaction itself.
-func (t *Tx) PrepareContext(ctx context.Context, query string) (*sql.Stmt, error) {
-	return t.tx.PrepareContext(ctx, query)
+// markQueryForCaching marks a query for promotion to the DB cache
+func (t *Tx) markQueryForCaching(query string) {
+	t.txMu.Lock()
+	if t.txStmts == nil {
+		t.txStmts = make(map[string]struct{})
+	}
+	t.txStmts[query] = struct{}{}
+	t.txMu.Unlock()
 }
 
-// ExecContext executes a query within the transaction using cached prepared statements
+// ExecContext executes a query within the transaction.
+// Uses connection-specific statement cache when available. If statement is not cached,
+// prepares it on the transaction and marks it for promotion to DB cache after commit.
 func (t *Tx) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
-	// Get or prepare statement from DB cache, then create transaction-specific statement
-	stmt, err := t.db.getStmt(ctx, query)
+	// Get prepared statement (automatically uses correct cache and returns transaction statement)
+	stmt, err := t.db.getStmt(ctx, query, t)
 	if err != nil {
-		// Fallback to direct execution
+		// Fallback: prepare directly on transaction
+		t.markQueryForCaching(query)
 		return t.tx.ExecContext(ctx, query, args...)
 	}
-
-	// Create a transaction-specific statement from the cached one using StmtContext for better cancellation
-	txStmt := t.tx.StmtContext(ctx, stmt)
-	return txStmt.ExecContext(ctx, args...)
+	return stmt.ExecContext(ctx, args...)
 }
 
-// QueryContext executes a query within the transaction using cached prepared statements
+// QueryContext executes a query within the transaction.
+// Uses connection-specific statement cache when available. If statement is not cached,
+// prepares it on the transaction and marks it for promotion to DB cache after commit.
 func (t *Tx) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
-	// Get or prepare statement from DB cache, then create transaction-specific statement
-	stmt, err := t.db.getStmt(ctx, query)
+	// Get prepared statement (automatically uses correct cache and returns transaction statement)
+	stmt, err := t.db.getStmt(ctx, query, t)
 	if err != nil {
-		// Fallback to direct execution
+		// Fallback: prepare directly on transaction
+		t.markQueryForCaching(query)
 		return t.tx.QueryContext(ctx, query, args...)
 	}
-
-	// Create a transaction-specific statement from the cached one using StmtContext for better cancellation
-	txStmt := t.tx.StmtContext(ctx, stmt)
-	return txStmt.QueryContext(ctx, args...)
+	return stmt.QueryContext(ctx, args...)
 }
 
-// QueryRowContext executes a query within the transaction using cached prepared statements
+// QueryRowContext executes a query within the transaction.
+// Uses connection-specific statement cache when available. If statement is not cached,
+// prepares it on the transaction and marks it for promotion to DB cache after commit.
 func (t *Tx) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
-	// Get or prepare statement from DB cache, then create transaction-specific statement
-	stmt, err := t.db.getStmt(ctx, query)
+	// Get prepared statement (automatically uses correct cache and returns transaction statement)
+	stmt, err := t.db.getStmt(ctx, query, t)
 	if err != nil {
-		// Fallback to direct execution
+		// Fallback: prepare directly on transaction
+		t.markQueryForCaching(query)
 		return t.tx.QueryRowContext(ctx, query, args...)
 	}
-
-	// Create a transaction-specific statement from the cached one using StmtContext for better cancellation
-	txStmt := t.tx.StmtContext(ctx, stmt)
-	return txStmt.QueryRowContext(ctx, args...)
+	return stmt.QueryRowContext(ctx, args...)
 }
 
-// Commit commits the transaction and releases the writer mutex if this is a write transaction
+// Commit commits the transaction and releases the writer mutex if this is a write transaction.
+// Also promotes any transaction-prepared statements to the DB cache for future use.
 func (t *Tx) Commit() error {
 	err := t.tx.Commit()
+
+	// On successful commit, promote transaction statements to DB cache
+	defer t.promoteStatementsToCache()
+
 	// Release mutex after commit completes (for write transactions)
 	if t.unlockFn != nil {
 		t.unlockFn()
@@ -163,15 +176,66 @@ func (t *Tx) Commit() error {
 	return err
 }
 
-// Rollback rolls back the transaction and releases the writer mutex if this is a write transaction
+// Rollback rolls back the transaction and releases the writer mutex if this is a write transaction.
+// Does NOT promote statements to cache since the transaction failed.
 func (t *Tx) Rollback() error {
 	err := t.tx.Rollback()
 	// Release mutex after rollback completes (for write transactions)
+
+	// Promote transaction statements to DB cache
+	defer t.promoteStatementsToCache()
+
 	if t.unlockFn != nil {
 		t.unlockFn()
 		t.unlockFn = nil // Prevent double-unlock
 	}
 	return err
+}
+
+// promoteStatementsToCache prepares and caches statements that were used during the transaction
+// but weren't already in the cache. This is called after successful commit.
+func (t *Tx) promoteStatementsToCache() {
+	t.txMu.Lock()
+	queries := t.txStmts
+	t.txStmts = nil // Clear the map
+	t.txMu.Unlock()
+
+	if len(queries) == 0 {
+		return
+	}
+
+	// Determine which cache and connection to use based on transaction type
+	var stmts *ttlcache.Cache[string, *sql.Stmt]
+	var conn *sql.DB
+	if t.isWriteTx {
+		stmts = t.db.writerStmts
+		conn = t.db.writerConn
+	} else {
+		stmts = t.db.readerStmts
+		conn = t.db.readerPool
+	}
+
+	// Prepare statements on the appropriate connection and add to cache
+	// Use a background context since transaction is already committed
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	for query := range queries {
+		// Double-check it's not already cached (race condition protection)
+		if _, found := stmts.Get(query); found {
+			continue
+		}
+
+		// Prepare and cache the statement
+		stmt, err := conn.PrepareContext(ctx, query)
+		if err != nil {
+			// Log but don't fail - caching is an optimization
+			log.Debug().Err(err).Str("query", query).Msg("failed to promote transaction statement to cache")
+			continue
+		}
+
+		stmts.Set(query, stmt, ttlcache.DefaultTTL)
+	}
 }
 
 const (
@@ -287,19 +351,27 @@ func New(databasePath string) (*DB, error) {
 	}
 
 	// create ttlcache for prepared statements with 5 minute TTL and deallocation func
-	stmtOpts := ttlcache.Options[string, *sql.Stmt]{}.SetDefaultTTL(5 * time.Minute).
+	writerStmtOpts := ttlcache.Options[string, *sql.Stmt]{}.SetDefaultTTL(5 * time.Minute).
+		SetDeallocationFunc(func(k string, s *sql.Stmt, _ ttlcache.DeallocationReason) {
+			if s != nil {
+				_ = s.Close()
+			}
+		})
+	readerStmtOpts := ttlcache.Options[string, *sql.Stmt]{}.SetDefaultTTL(5 * time.Minute).
 		SetDeallocationFunc(func(k string, s *sql.Stmt, _ ttlcache.DeallocationReason) {
 			if s != nil {
 				_ = s.Close()
 			}
 		})
 
-	stmtsCache := ttlcache.New(stmtOpts)
+	writerStmtsCache := ttlcache.New(writerStmtOpts)
+	readerStmtsCache := ttlcache.New(readerStmtOpts)
 
 	db := &DB{
-		writerConn: writerConn,
-		readerPool: readerPool,
-		stmts:      stmtsCache,
+		writerConn:  writerConn,
+		readerPool:  readerPool,
+		writerStmts: writerStmtsCache,
+		readerStmts: readerStmtsCache,
 	}
 
 	// Run migrations with writer connection
@@ -328,19 +400,41 @@ func New(databasePath string) (*DB, error) {
 // getStmt returns a prepared statement for the given query, preparing and
 // caching it if necessary. Statements are cached with TTL and automatically
 // closed on eviction. This is safe for concurrent use.
-// Uses writerConn for write queries and readerPool for read queries.
-func (db *DB) getStmt(ctx context.Context, query string) (*sql.Stmt, error) {
-	// Fast path: check cache first
-	if s, found := db.stmts.Get(query); found && s != nil {
-		return s, nil
+// Uses writerStmts for write operations and readerStmts for read operations.
+// If tx is provided, uses the transaction type to determine the cache and
+// returns a transaction-specific statement. If tx is nil, uses query type
+// to determine the cache and returns a regular statement.
+// When tx is provided, only cached statements are returned - no preparation
+// is done to avoid conflicts with active transactions.
+func (db *DB) getStmt(ctx context.Context, query string, tx *Tx) (*sql.Stmt, error) {
+	// Determine which cache to use
+	var stmts *ttlcache.Cache[string, *sql.Stmt]
+
+	if tx != nil {
+		// Use transaction type to determine cache
+		if tx.isWriteTx {
+			stmts = db.writerStmts
+		} else {
+			stmts = db.readerStmts
+		}
+	} else {
+		// No transaction, use query type
+		if isWriteQuery(query) {
+			stmts = db.writerStmts
+		} else {
+			stmts = db.readerStmts
+		}
 	}
 
-	// Determine which connection to use based on query type
-	var conn *sql.DB
-	if isWriteQuery(query) {
-		conn = db.writerConn
-	} else {
-		conn = db.readerPool
+	// Check cache first
+	if s, found := stmts.Get(query); found && s != nil {
+		if tx != nil {
+			// Return transaction-specific statement
+			return tx.tx.StmtContext(ctx, s), nil
+		}
+		return s, nil
+	} else if tx != nil && tx.isWriteTx {
+		return nil, fmt.Errorf("statement not cached")
 	}
 
 	// Slow path: prepare new statement
@@ -349,14 +443,14 @@ func (db *DB) getStmt(ctx context.Context, query string) (*sql.Stmt, error) {
 	// 1. It's rare (only on cache miss/eviction)
 	// 2. The extra statements will be garbage collected
 	// 3. TTL cache will eventually converge to one statement per query
-	s, err := conn.PrepareContext(ctx, query)
+	s, err := db.readerPool.PrepareContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
 
 	// Cache the statement - if another goroutine already cached it,
 	// that's fine, this one will be closed by the deallocation function
-	db.stmts.Set(query, s, ttlcache.DefaultTTL)
+	stmts.Set(query, s, ttlcache.DefaultTTL)
 
 	return s, nil
 }
@@ -393,7 +487,7 @@ func isWriteQuery(query string) bool {
 // Do NOT use this for queries with RETURNING clauses - use QueryRowContext or QueryContext instead.
 func (db *DB) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
 	// Get prepared statement (automatically uses correct connection)
-	stmt, err := db.getStmt(ctx, query)
+	stmt, err := db.getStmt(ctx, query, nil)
 	if err != nil {
 		// Fallback to direct execution on appropriate connection
 		if isWriteQuery(query) {
@@ -408,7 +502,7 @@ func (db *DB) ExecContext(ctx context.Context, query string, args ...any) (sql.R
 // read queries to the reader pool. Uses prepared statements when possible.
 func (db *DB) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
 	// Get prepared statement (automatically uses correct connection)
-	stmt, err := db.getStmt(ctx, query)
+	stmt, err := db.getStmt(ctx, query, nil)
 	if err != nil {
 		// Fallback to direct execution on appropriate connection
 		if isWriteQuery(query) {
@@ -423,7 +517,7 @@ func (db *DB) QueryContext(ctx context.Context, query string, args ...any) (*sql
 // read queries to the reader pool. Uses prepared statements when possible.
 func (db *DB) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
 	// Get prepared statement (automatically uses correct connection)
-	stmt, err := db.getStmt(ctx, query)
+	stmt, err := db.getStmt(ctx, query, nil)
 	if err != nil {
 		// Fallback to direct execution on appropriate connection
 		if isWriteQuery(query) {
@@ -490,13 +584,26 @@ func (db *DB) stringPoolCleanupLoop(ctx context.Context) {
 	}
 }
 
-// BeginTx starts a transaction. Returns a wrapped transaction that uses prepared
-// statement caching for better performance.
+// BeginTx starts a transaction. Returns a wrapped transaction that uses statement caching.
 //
 // CONCURRENCY MODEL:
 // - Read-only transactions use the reader pool (concurrent)
 // - Write transactions use the single writer connection (serialized via mutex + SQLite)
 // - WAL mode allows concurrent readers during write transactions
+//
+// STATEMENT CACHING STRATEGY:
+// Uses separate prepared statement caches for writer and reader connections:
+// - writerStmts: Cache for statements prepared on writerConn (single connection)
+// - readerStmts: Cache for statements prepared on readerPool (concurrent connections)
+//
+// Transaction methods check the appropriate connection-specific cache first.
+// If a statement exists in the cache and was prepared on the same connection type
+// as the transaction, it can be reused safely via tx.StmtContext().
+//
+// If not cached, statements are prepared directly on the transaction and tracked
+// for promotion to the appropriate cache after successful commit.
+//
+// This ensures connection safety while providing caching benefits for repeated queries.
 //
 // ISOLATION LEVEL:
 // - SQLite defaults to SERIALIZABLE isolation (strongest guarantee)
@@ -514,11 +621,6 @@ func (db *DB) stringPoolCleanupLoop(ctx context.Context) {
 // - BeginTx (write): ACID properties, full transaction isolation, serialized via mutex + single writer connection
 // - BeginTx (read-only): ACID properties, concurrent with writes
 // - All write operations: Serialized through mutex + single writer connection (no "transaction within transaction" errors)
-//
-// PREPARED STATEMENTS:
-// - Transaction queries automatically use the DB's prepared statement cache
-// - Statements are adapted to the transaction context using Tx.Stmt()
-// - This improves performance for transactions that execute the same queries multiple times
 //
 // LIMITATIONS:
 // - Write transactions are serialized (one at a time) due to mutex + single writer connection
@@ -579,8 +681,20 @@ func (db *DB) Close() error {
 			log.Warn().Err(err).Msg("failed to run PRAGMA optimize during close")
 		}
 
-		// Close statement cache (will close all prepared statements)
-		db.stmts.Close()
+		// Close statement caches (will close all prepared statements)
+		// Track closed caches to avoid double-closing the same cache instance
+		closedCaches := make(map[*ttlcache.Cache[string, *sql.Stmt]]bool)
+
+		if db.writerStmts != nil && !closedCaches[db.writerStmts] {
+			db.writerStmts.Close()
+			closedCaches[db.writerStmts] = true
+			db.writerStmts = nil
+		}
+		if db.readerStmts != nil && !closedCaches[db.readerStmts] {
+			db.readerStmts.Close()
+			closedCaches[db.readerStmts] = true
+			db.readerStmts = nil
+		}
 
 		// Close both connections
 		if err := db.writerConn.Close(); err != nil {
@@ -803,15 +917,23 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("failed to begin transaction: %w", err)
 	}
+	// Ensure transaction is always cleaned up, which releases the writerMu
+	defer func() {
+		if tx != nil {
+			_ = tx.Rollback() // Rollback is safe to call even after Commit
+		}
+	}()
 
-	defer tx.Rollback()
+	// Drop temp table if it exists from previous run
+	// Note: We do this before creating the new temp table to ensure a clean state
+	_, _ = tx.ExecContext(ctx, "DROP TABLE IF EXISTS temp_referenced_strings")
 
-	cleanup := func() {
-		_, _ = tx.ExecContext(context.Background(), "DROP TABLE IF EXISTS temp_referenced_strings")
-	}
-
-	defer cleanup()
-	cleanup()
+	// Ensure temp table is cleaned up at the end
+	defer func() {
+		if tx != nil {
+			_, _ = tx.ExecContext(context.Background(), "DROP TABLE IF EXISTS temp_referenced_strings")
+		}
+	}()
 
 	_, err = tx.ExecContext(ctx, `
 		CREATE TEMP TABLE temp_referenced_strings (
@@ -821,8 +943,6 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("failed to create temp table: %w", err)
 	}
-
-	// Ensure temp table is cleaned up even if we error out
 
 	// Populate temp table with all referenced string IDs
 	// Using INSERT OR IGNORE to handle duplicates efficiently
@@ -872,11 +992,13 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("failed to cleanup unused strings: %w", err)
 	}
 
-	cleanup()
+	// Drop the temp table before committing (cleanup)
+	_, _ = tx.ExecContext(ctx, "DROP TABLE IF EXISTS temp_referenced_strings")
 
 	if err := tx.Commit(); err != nil {
 		return 0, fmt.Errorf("failed to commit transaction: %w", err)
 	}
+	tx = nil // Prevent defer from trying to rollback committed transaction
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
@@ -924,9 +1046,10 @@ func NewForTest(conn *sql.DB) *DB {
 	stmtsCache := ttlcache.New(stmtOpts)
 
 	db := &DB{
-		writerConn: conn,
-		readerPool: conn, // For tests, use same connection for both
-		stmts:      stmtsCache,
+		writerConn:  conn,
+		readerPool:  conn,       // For tests, use same connection for both
+		writerStmts: stmtsCache, // For tests, use same cache for both
+		readerStmts: stmtsCache, // For tests, use same cache for both
 	}
 
 	// Note: stringPoolCleanupLoop is NOT started for tests
