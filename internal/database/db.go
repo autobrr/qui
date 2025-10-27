@@ -901,9 +901,8 @@ func (db *DB) applyAllMigrations(ctx context.Context, migrations []string) error
 // already running, subsequent calls will return immediately with (0, nil). This prevents
 // excessive cache thrashing and database contention from overlapping cleanup operations.
 //
-// NOTE: Uses a temporary table approach for efficiency. Each operation goes through
-// the write loop for serialization, but without a long-running transaction that would
-// hold locks. The temp table is automatically cleaned up at the end.
+// NOTE: Uses an optimized temp table approach with a single UNION ALL query to minimize
+// transaction time while maintaining data consistency.
 func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 	// Prevent concurrent cleanup operations
 	if !db.cleanupRunning.CompareAndSwap(false, true) {
@@ -925,7 +924,6 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 	}()
 
 	// Drop temp table if it exists from previous run
-	// Note: We do this before creating the new temp table to ensure a clean state
 	_, _ = tx.ExecContext(ctx, "DROP TABLE IF EXISTS temp_referenced_strings")
 
 	// Ensure temp table is cleaned up at the end
@@ -944,40 +942,39 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("failed to create temp table: %w", err)
 	}
 
-	// Populate temp table with all referenced string IDs
-	// Using INSERT OR IGNORE to handle duplicates efficiently
-	insertQueries := []string{
-		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT torrent_hash_id FROM torrent_files_cache WHERE torrent_hash_id IS NOT NULL",
-		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT name_id FROM torrent_files_cache WHERE name_id IS NOT NULL",
-		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT torrent_hash_id FROM torrent_files_sync WHERE torrent_hash_id IS NOT NULL",
-		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT torrent_hash_id FROM instance_backup_items WHERE torrent_hash_id IS NOT NULL",
-		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT name_id FROM instance_backup_items WHERE name_id IS NOT NULL",
-		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT category_id FROM instance_backup_items WHERE category_id IS NOT NULL",
-		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT tags_id FROM instance_backup_items WHERE tags_id IS NOT NULL",
-		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT archive_rel_path_id FROM instance_backup_items WHERE archive_rel_path_id IS NOT NULL",
-		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT infohash_v1_id FROM instance_backup_items WHERE infohash_v1_id IS NOT NULL",
-		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT infohash_v2_id FROM instance_backup_items WHERE infohash_v2_id IS NOT NULL",
-		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT torrent_blob_path_id FROM instance_backup_items WHERE torrent_blob_path_id IS NOT NULL",
-		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT kind_id FROM instance_backup_runs WHERE kind_id IS NOT NULL",
-		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT status_id FROM instance_backup_runs WHERE status_id IS NOT NULL",
-		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT requested_by_id FROM instance_backup_runs WHERE requested_by_id IS NOT NULL",
-		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT error_message_id FROM instance_backup_runs WHERE error_message_id IS NOT NULL",
-		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT archive_path_id FROM instance_backup_runs WHERE archive_path_id IS NOT NULL",
-		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT manifest_path_id FROM instance_backup_runs WHERE manifest_path_id IS NOT NULL",
-		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT name_id FROM instances WHERE name_id IS NOT NULL",
-		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT host_id FROM instances WHERE host_id IS NOT NULL",
-		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT username_id FROM instances WHERE username_id IS NOT NULL",
-		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT basic_username_id FROM instances WHERE basic_username_id IS NOT NULL",
-		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT name_id FROM api_keys WHERE name_id IS NOT NULL",
-		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT client_name_id FROM client_api_keys WHERE client_name_id IS NOT NULL",
-		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT error_type_id FROM instance_errors WHERE error_type_id IS NOT NULL",
-		"INSERT OR IGNORE INTO temp_referenced_strings SELECT DISTINCT error_message_id FROM instance_errors WHERE error_message_id IS NOT NULL",
-	}
-
-	for _, query := range insertQueries {
-		if _, err := tx.ExecContext(ctx, query); err != nil {
-			return 0, fmt.Errorf("failed to populate temp table: %w", err)
-		}
+	// Populate temp table with all referenced string IDs in a single optimized query
+	// Using UNION ALL (allows duplicates) is faster than UNION (removes duplicates)
+	// The PRIMARY KEY constraint handles deduplication efficiently
+	_, err = tx.ExecContext(ctx, `
+		INSERT OR IGNORE INTO temp_referenced_strings
+		SELECT torrent_hash_id FROM torrent_files_cache WHERE torrent_hash_id IS NOT NULL
+		UNION ALL SELECT name_id FROM torrent_files_cache WHERE name_id IS NOT NULL
+		UNION ALL SELECT torrent_hash_id FROM torrent_files_sync WHERE torrent_hash_id IS NOT NULL
+		UNION ALL SELECT torrent_hash_id FROM instance_backup_items WHERE torrent_hash_id IS NOT NULL
+		UNION ALL SELECT name_id FROM instance_backup_items WHERE name_id IS NOT NULL
+		UNION ALL SELECT category_id FROM instance_backup_items WHERE category_id IS NOT NULL
+		UNION ALL SELECT tags_id FROM instance_backup_items WHERE tags_id IS NOT NULL
+		UNION ALL SELECT archive_rel_path_id FROM instance_backup_items WHERE archive_rel_path_id IS NOT NULL
+		UNION ALL SELECT infohash_v1_id FROM instance_backup_items WHERE infohash_v1_id IS NOT NULL
+		UNION ALL SELECT infohash_v2_id FROM instance_backup_items WHERE infohash_v2_id IS NOT NULL
+		UNION ALL SELECT torrent_blob_path_id FROM instance_backup_items WHERE torrent_blob_path_id IS NOT NULL
+		UNION ALL SELECT kind_id FROM instance_backup_runs WHERE kind_id IS NOT NULL
+		UNION ALL SELECT status_id FROM instance_backup_runs WHERE status_id IS NOT NULL
+		UNION ALL SELECT requested_by_id FROM instance_backup_runs WHERE requested_by_id IS NOT NULL
+		UNION ALL SELECT error_message_id FROM instance_backup_runs WHERE error_message_id IS NOT NULL
+		UNION ALL SELECT archive_path_id FROM instance_backup_runs WHERE archive_path_id IS NOT NULL
+		UNION ALL SELECT manifest_path_id FROM instance_backup_runs WHERE manifest_path_id IS NOT NULL
+		UNION ALL SELECT name_id FROM instances WHERE name_id IS NOT NULL
+		UNION ALL SELECT host_id FROM instances WHERE host_id IS NOT NULL
+		UNION ALL SELECT username_id FROM instances WHERE username_id IS NOT NULL
+		UNION ALL SELECT basic_username_id FROM instances WHERE basic_username_id IS NOT NULL
+		UNION ALL SELECT name_id FROM api_keys WHERE name_id IS NOT NULL
+		UNION ALL SELECT client_name_id FROM client_api_keys WHERE client_name_id IS NOT NULL
+		UNION ALL SELECT error_type_id FROM instance_errors WHERE error_type_id IS NOT NULL
+		UNION ALL SELECT error_message_id FROM instance_errors WHERE error_message_id IS NOT NULL
+	`)
+	if err != nil {
+		return 0, fmt.Errorf("failed to populate temp table: %w", err)
 	}
 
 	// Delete strings not in the temp table - fast due to PRIMARY KEY index on temp table
