@@ -409,20 +409,25 @@ func New(databasePath string) (*DB, error) {
 func (db *DB) getStmt(ctx context.Context, query string, tx *Tx) (*sql.Stmt, error) {
 	// Determine which cache to use
 	var stmts *ttlcache.Cache[string, *sql.Stmt]
+	var conn *sql.DB
 
 	if tx != nil {
 		// Use transaction type to determine cache
 		if tx.isWriteTx {
 			stmts = db.writerStmts
+			conn = db.writerConn
 		} else {
 			stmts = db.readerStmts
+			conn = db.readerPool
 		}
 	} else {
 		// No transaction, use query type
 		if isWriteQuery(query) {
 			stmts = db.writerStmts
+			conn = db.writerConn
 		} else {
 			stmts = db.readerStmts
+			conn = db.readerPool
 		}
 	}
 
@@ -443,7 +448,7 @@ func (db *DB) getStmt(ctx context.Context, query string, tx *Tx) (*sql.Stmt, err
 	// 1. It's rare (only on cache miss/eviction)
 	// 2. The extra statements will be garbage collected
 	// 3. TTL cache will eventually converge to one statement per query
-	s, err := db.readerPool.PrepareContext(ctx, query)
+	s, err := conn.PrepareContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
