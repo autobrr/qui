@@ -457,6 +457,11 @@ func (db *DB) getStmt(ctx context.Context, query string, tx *Tx) (*sql.Stmt, err
 	// that's fine, this one will be closed by the deallocation function
 	stmts.Set(query, s, ttlcache.DefaultTTL)
 
+	if tx != nil {
+		// Return transaction-specific statement
+		return tx.tx.StmtContext(ctx, s), nil
+	}
+
 	return s, nil
 }
 
