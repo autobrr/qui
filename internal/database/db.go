@@ -11,12 +11,13 @@
 //   - ExecContext: Routes writes to writerConn, reads to readerPool
 //   - QueryContext: Routes writes to writerConn, reads to readerPool
 //   - QueryRowContext: Routes writes to writerConn, reads to readerPool
-//   - BeginTx (write): Uses writerConn (serialized by single connection)
+//   - BeginTx (write): Uses writerConn, fully serialized by writerMu mutex
 //   - BeginTx (read-only): Uses readerPool (concurrent)
 //   - WAL mode allows concurrent readers during writes
 //
-// The single writer connection eliminates SQLITE_BUSY errors by naturally
-// serializing all write operations through SQLite's connection-level locking.
+// The single writer connection + writerMu mutex eliminates both SQLITE_BUSY errors
+// and "cannot start a transaction within a transaction" errors by fully serializing
+// all write transactions. Only one write transaction can be active at a time.
 //
 // STRING POOL SYSTEM:
 //
@@ -74,6 +75,12 @@ type DB struct {
 	readerPool *sql.DB // Read-only connection pool for concurrent reads
 	stmts      *ttlcache.Cache[string, *sql.Stmt]
 
+	// Write transaction serialization
+	// Even though writerConn has SetMaxOpenConns=1, BeginTx doesn't queue properly
+	// and fails immediately with "cannot start a transaction within a transaction"
+	// This mutex ensures write transactions are properly serialized
+	writerMu sync.Mutex
+
 	// Metrics for string pool cache performance
 	cleanupDeleted atomic.Uint64 // Total strings deleted by cleanup
 
@@ -93,6 +100,7 @@ type Tx struct {
 	db        *DB
 	ctx       context.Context // context from BeginTx, used for commit/rollback
 	isWriteTx bool            // true if this is a write transaction that needs serialized commit
+	unlockFn  func()          // function to unlock writerMu when transaction completes (write tx only)
 }
 
 // PrepareContext creates a new prepared statement within the transaction.
@@ -104,35 +112,66 @@ func (t *Tx) PrepareContext(ctx context.Context, query string) (*sql.Stmt, error
 
 // ExecContext executes a query within the transaction using cached prepared statements
 func (t *Tx) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
-	// Transaction queries execute directly without using the cache
-	// This avoids "statement from different database" errors
-	return t.tx.ExecContext(ctx, query, args...)
+	// Get or prepare statement from DB cache, then create transaction-specific statement
+	stmt, err := t.db.getStmt(ctx, query)
+	if err != nil {
+		// Fallback to direct execution
+		return t.tx.ExecContext(ctx, query, args...)
+	}
+
+	// Create a transaction-specific statement from the cached one using StmtContext for better cancellation
+	txStmt := t.tx.StmtContext(ctx, stmt)
+	return txStmt.ExecContext(ctx, args...)
 }
 
 // QueryContext executes a query within the transaction using cached prepared statements
 func (t *Tx) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
-	// Transaction queries execute directly without using the cache
-	// This avoids "statement from different database" errors
-	return t.tx.QueryContext(ctx, query, args...)
+	// Get or prepare statement from DB cache, then create transaction-specific statement
+	stmt, err := t.db.getStmt(ctx, query)
+	if err != nil {
+		// Fallback to direct execution
+		return t.tx.QueryContext(ctx, query, args...)
+	}
+
+	// Create a transaction-specific statement from the cached one using StmtContext for better cancellation
+	txStmt := t.tx.StmtContext(ctx, stmt)
+	return txStmt.QueryContext(ctx, args...)
 }
 
 // QueryRowContext executes a query within the transaction using cached prepared statements
 func (t *Tx) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
-	// Transaction queries execute directly without using the cache
-	// This avoids "statement from different database" errors
-	return t.tx.QueryRowContext(ctx, query, args...)
+	// Get or prepare statement from DB cache, then create transaction-specific statement
+	stmt, err := t.db.getStmt(ctx, query)
+	if err != nil {
+		// Fallback to direct execution
+		return t.tx.QueryRowContext(ctx, query, args...)
+	}
+
+	// Create a transaction-specific statement from the cached one using StmtContext for better cancellation
+	txStmt := t.tx.StmtContext(ctx, stmt)
+	return txStmt.QueryRowContext(ctx, args...)
 }
 
-// Commit commits the transaction
+// Commit commits the transaction and releases the writer mutex if this is a write transaction
 func (t *Tx) Commit() error {
-	// Both read and write transactions can commit directly
-	return t.tx.Commit()
+	err := t.tx.Commit()
+	// Release mutex after commit completes (for write transactions)
+	if t.unlockFn != nil {
+		t.unlockFn()
+		t.unlockFn = nil // Prevent double-unlock
+	}
+	return err
 }
 
-// Rollback rolls back the transaction
+// Rollback rolls back the transaction and releases the writer mutex if this is a write transaction
 func (t *Tx) Rollback() error {
-	// Both read and write transactions can rollback directly
-	return t.tx.Rollback()
+	err := t.tx.Rollback()
+	// Release mutex after rollback completes (for write transactions)
+	if t.unlockFn != nil {
+		t.unlockFn()
+		t.unlockFn = nil // Prevent double-unlock
+	}
+	return err
 }
 
 const (
@@ -456,7 +495,7 @@ func (db *DB) stringPoolCleanupLoop(ctx context.Context) {
 //
 // CONCURRENCY MODEL:
 // - Read-only transactions use the reader pool (concurrent)
-// - Write transactions use the single writer connection (serialized via SQLite)
+// - Write transactions use the single writer connection (serialized via mutex + SQLite)
 // - WAL mode allows concurrent readers during write transactions
 //
 // ISOLATION LEVEL:
@@ -472,9 +511,9 @@ func (db *DB) stringPoolCleanupLoop(ctx context.Context) {
 //
 // GUARANTEES:
 // - ExecContext: Sequential execution through single writer connection, no partial writes visible
-// - BeginTx (write): ACID properties, full transaction isolation, serialized via single writer connection
+// - BeginTx (write): ACID properties, full transaction isolation, serialized via mutex + single writer connection
 // - BeginTx (read-only): ACID properties, concurrent with writes
-// - All write operations: Serialized through single writer connection (no SQLITE_BUSY errors)
+// - All write operations: Serialized through mutex + single writer connection (no "transaction within transaction" errors)
 //
 // PREPARED STATEMENTS:
 // - Transaction queries automatically use the DB's prepared statement cache
@@ -482,29 +521,48 @@ func (db *DB) stringPoolCleanupLoop(ctx context.Context) {
 // - This improves performance for transactions that execute the same queries multiple times
 //
 // LIMITATIONS:
-// - Write transactions are serialized (one at a time) due to single writer connection
+// - Write transactions are serialized (one at a time) due to mutex + single writer connection
 // - Long-running write transactions will block other write transactions
 // - Use read-only transactions when possible to avoid blocking writes
+//
+// NOTE ON SERIALIZATION:
+// SQLite with SetMaxOpenConns=1 does NOT properly queue BeginTx calls - it fails immediately
+// with "cannot start a transaction within a transaction" instead of waiting. The writerMu
+// mutex serializes write transactions for their ENTIRE lifetime (BeginTx through Commit/Rollback)
+// to prevent this error. The mutex is released only when the transaction completes (Commit or Rollback).
+// This means write transactions are fully serialized, but that's acceptable since SQLite can only
+// handle one write transaction at a time anyway.
 func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQuerier, error) {
 	// Determine if this is a read-only transaction
 	isReadOnly := opts != nil && opts.ReadOnly
 
 	if isReadOnly {
-		// Read-only transactions use the reader pool
+		// Read-only transactions use the reader pool (no mutex needed, unlimited concurrency)
 		tx, err := db.readerPool.BeginTx(ctx, opts)
 		if err != nil {
 			return nil, err
 		}
-		return &Tx{tx: tx, db: db, ctx: ctx, isWriteTx: false}, nil
+		return &Tx{tx: tx, db: db, ctx: ctx, isWriteTx: false, unlockFn: nil}, nil
 	}
 
-	// Write transactions use the single writer connection
+	// Write transactions: Lock mutex for the ENTIRE transaction lifetime.
+	// The mutex will be unlocked by Commit() or Rollback().
+	db.writerMu.Lock()
+
 	tx, err := db.writerConn.BeginTx(ctx, opts)
 	if err != nil {
+		db.writerMu.Unlock() // Unlock on error
 		return nil, err
 	}
 
-	return &Tx{tx: tx, db: db, ctx: ctx, isWriteTx: true}, nil
+	// Pass unlock function to Tx so it can release the mutex on Commit/Rollback
+	return &Tx{
+		tx:        tx,
+		db:        db,
+		ctx:       ctx,
+		isWriteTx: true,
+		unlockFn:  db.writerMu.Unlock,
+	}, nil
 }
 
 func (db *DB) Close() error {
@@ -626,13 +684,21 @@ func (db *DB) applyAllMigrations(ctx context.Context, migrations []string) error
 		"010_add_files_cache_and_string_interning.sql": true,
 	}
 
-	// Begin single transaction for all migrations
-	tx, err := db.writerConn.Begin()
+	// Begin single transaction for all migrations using BeginTx for proper connection handling
+	tx, err := db.writerConn.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	// defer Rollback - will be no-op if Commit succeeds
-	defer tx.Rollback()
+
+	// CRITICAL: Track whether we have an active transaction to rollback
+	// This prevents double-rollback issues when recreating transactions mid-migration
+	rollbackActive := func() {
+		if tx != nil {
+			tx.Rollback()
+			tx = nil
+		}
+	}
+	defer rollbackActive()
 
 	// Apply each migration within the transaction
 	for _, filename := range migrations {
@@ -642,6 +708,7 @@ func (db *DB) applyAllMigrations(ctx context.Context, migrations []string) error
 			if err := tx.Commit(); err != nil {
 				return fmt.Errorf("failed to commit before %s: %w", filename, err)
 			}
+			tx = nil // Clear tx so rollbackActive() won't try to rollback committed tx
 
 			// Ensure foreign keys are re-enabled even if migration fails
 			defer func() {
@@ -675,13 +742,12 @@ func (db *DB) applyAllMigrations(ctx context.Context, migrations []string) error
 				return fmt.Errorf("failed to re-enable foreign keys after %s: %w", filename, err)
 			}
 
-			// Start new transaction for remaining migrations
-			tx, err = db.writerConn.Begin()
+			// Start new transaction for remaining migrations using BeginTx
+			tx, err = db.writerConn.BeginTx(ctx, nil)
 			if err != nil {
 				return fmt.Errorf("failed to begin new transaction after %s: %w", filename, err)
 			}
-			// defer Rollback for the new transaction
-			defer tx.Rollback()
+			// rollbackActive() will handle this new transaction via the defer
 		} else {
 			// Normal migration within transaction
 			// Read migration file
@@ -702,10 +768,11 @@ func (db *DB) applyAllMigrations(ctx context.Context, migrations []string) error
 		}
 	}
 
-	// Commit all migrations at once
+	// Commit final transaction
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("failed to commit migrations: %w", err)
 	}
+	tx = nil // Clear tx so rollbackActive() won't try to rollback committed tx
 
 	log.Info().Msgf("Applied %d migrations successfully", len(migrations))
 	return nil
