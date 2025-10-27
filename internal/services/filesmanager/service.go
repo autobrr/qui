@@ -57,6 +57,10 @@ func (s *Service) GetCachedFiles(ctx context.Context, instanceID int, hash strin
 	// If torrent is 100% complete and we have a cache, use it
 	// Otherwise, check if cache is fresh enough (less than 5 minutes old)
 	cacheFreshDuration := 5 * time.Minute
+	if torrentProgress >= 1.0 && syncInfo.TorrentProgress < 1.0 {
+		// Torrent reached completion since we cached it; bypass stale snapshot
+		return nil, nil
+	}
 	if torrentProgress >= 1.0 {
 		// For complete torrents, cache is valid indefinitely
 		cacheFreshDuration = 365 * 24 * time.Hour
