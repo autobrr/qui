@@ -125,6 +125,24 @@ func TestConnectionPragmasApplyToEachConnection(t *testing.T) {
 	verifyPragmas(t, ctx, conn2)
 }
 
+func TestReadOnlyConnectionsDoNotApplyWritePragmas(t *testing.T) {
+	log.Output(io.Discard)
+	ctx := t.Context()
+	statementsRW := make([]string, 0, 8)
+	require.NoError(t, applyConnectionPragmas(ctx, func(ctx context.Context, stmt string) error {
+		statementsRW = append(statementsRW, stmt)
+		return nil
+	}, false))
+	require.Contains(t, statementsRW, "PRAGMA journal_mode = WAL", "write connections must set journal_mode")
+
+	statementsRO := make([]string, 0, 8)
+	require.NoError(t, applyConnectionPragmas(ctx, func(ctx context.Context, stmt string) error {
+		statementsRO = append(statementsRO, stmt)
+		return nil
+	}, true))
+	require.NotContains(t, statementsRO, "PRAGMA journal_mode = WAL", "read-only connections must not attempt to set journal_mode")
+}
+
 type columnSpec struct {
 	Name       string
 	Type       string

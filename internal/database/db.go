@@ -254,35 +254,60 @@ func registerConnectionHook() {
 			ctx, cancel := context.WithTimeout(context.Background(), connectionSetupTimeout)
 			defer cancel()
 
+			readOnly := isReadOnlyDSN(dsn)
+
 			return applyConnectionPragmas(ctx, func(ctx context.Context, stmt string) error {
 				_, err := conn.ExecContext(ctx, stmt, nil)
 				if err != nil {
 					return fmt.Errorf("connection hook exec %q: %w", stmt, err)
 				}
 				return nil
-			})
+			}, readOnly)
 		})
 	})
 }
 
-func applyConnectionPragmas(ctx context.Context, exec pragmaExecFn) error {
-	pragmas := []string{
-		"PRAGMA journal_mode = WAL",
-		"PRAGMA synchronous = NORMAL",  // NORMAL is safe with WAL and much faster than FULL
-		"PRAGMA mmap_size = 268435456", // 256MB memory-mapped I/O for better performance
-		"PRAGMA page_size = 4096",      // Optimal page size for modern systems
-		"PRAGMA cache_size = -64000",   // 64MB cache (negative = KB, positive = pages)
-		"PRAGMA foreign_keys = ON",
-		fmt.Sprintf("PRAGMA busy_timeout = %d", defaultBusyTimeoutMillis),
-		"PRAGMA analysis_limit = 400",
+func isReadOnlyDSN(dsn string) bool {
+	queryStart := strings.IndexByte(dsn, '?')
+	if queryStart == -1 {
+		return false
 	}
-
-	for _, pragma := range pragmas {
-		if err := exec(ctx, pragma); err != nil {
-			return fmt.Errorf("apply connection pragma %q: %w", pragma, err)
+	query := dsn[queryStart+1:]
+	for _, segment := range strings.FieldsFunc(query, func(r rune) bool {
+		return r == '&' || r == ';'
+	}) {
+		if segment == "mode=ro" {
+			return true
 		}
 	}
+	return false
+}
 
+type pragmaDirective struct {
+	stmt          string
+	allowReadOnly bool
+}
+
+var connectionPragmas = []pragmaDirective{
+	{stmt: "PRAGMA journal_mode = WAL", allowReadOnly: false},
+	{stmt: "PRAGMA synchronous = NORMAL", allowReadOnly: false}, // NORMAL is safe with WAL and much faster than FULL
+	{stmt: "PRAGMA mmap_size = 268435456", allowReadOnly: true}, // 256MB memory-mapped I/O for better performance
+	{stmt: "PRAGMA page_size = 4096", allowReadOnly: false},     // Optimal page size for modern systems
+	{stmt: "PRAGMA cache_size = -64000", allowReadOnly: true},   // 64MB cache (negative = KB, positive = pages)
+	{stmt: "PRAGMA foreign_keys = ON", allowReadOnly: true},
+	{stmt: fmt.Sprintf("PRAGMA busy_timeout = %d", defaultBusyTimeoutMillis), allowReadOnly: true},
+	{stmt: "PRAGMA analysis_limit = 400", allowReadOnly: true},
+}
+
+func applyConnectionPragmas(ctx context.Context, exec pragmaExecFn, readOnly bool) error {
+	for _, pragma := range connectionPragmas {
+		if readOnly && !pragma.allowReadOnly {
+			continue
+		}
+		if err := exec(ctx, pragma.stmt); err != nil {
+			return fmt.Errorf("apply connection pragma %q: %w", pragma.stmt, err)
+		}
+	}
 	return nil
 }
 
@@ -315,7 +340,7 @@ func New(databasePath string) (*DB, error) {
 	if err := applyConnectionPragmas(ctx, func(ctx context.Context, stmt string) error {
 		_, execErr := writerConn.ExecContext(ctx, stmt)
 		return execErr
-	}); err != nil {
+	}, false); err != nil {
 		writerConn.Close()
 		return nil, err
 	}
@@ -344,7 +369,7 @@ func New(databasePath string) (*DB, error) {
 	if err := applyConnectionPragmas(ctx2, func(ctx context.Context, stmt string) error {
 		_, execErr := readerPool.ExecContext(ctx, stmt)
 		return execErr
-	}); err != nil {
+	}, true); err != nil {
 		writerConn.Close()
 		readerPool.Close()
 		return nil, err

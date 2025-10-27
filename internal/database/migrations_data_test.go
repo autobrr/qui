@@ -13,9 +13,10 @@ import (
 	"time"
 
 	"github.com/autobrr/autobrr/pkg/ttlcache"
-	"github.com/autobrr/qui/internal/models"
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/models"
 )
 
 // Migration data persistence tests
@@ -595,7 +596,7 @@ func newWithMigrations(path string, count int) (*DB, error) {
 	if err := applyConnectionPragmas(ctx, func(ctx context.Context, stmt string) error {
 		_, err := conn.ExecContext(ctx, stmt)
 		return err
-	}); err != nil {
+	}, false); err != nil {
 		sqlDB.Close()
 		return nil, err
 	}
