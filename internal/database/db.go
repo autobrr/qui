@@ -236,13 +236,13 @@ func isWriteQuery(query string) bool {
 		strings.HasPrefix(upper, "DELETE")
 }
 
-const stmtClosedErrMsg = "sql: statement is closed"
+const stmtClosedErrMsg = "statement is closed"
 
 func isStmtClosedErr(err error) bool {
 	if err == nil {
 		return false
 	}
-	return err.Error() == stmtClosedErrMsg
+	return strings.Contains(err.Error(), stmtClosedErrMsg)
 }
 
 // ExecContext routes write queries through the single writer goroutine and
