@@ -545,12 +545,14 @@ const ExternalIPAddress = memo(
     return (
       <Tooltip>
         <TooltipTrigger asChild>
-          <span
-            className="flex items-center gap-1 text-xs text-muted-foreground"
+          <Badge
+            variant="outline"
+            className="gap-1 px-1.5 py-0.5 text-[11px] leading-none text-muted-foreground"
             aria-label={`External ${label}`}
           >
-            <EthernetPort className="h-3.5 w-3.5" />
-          </span>
+            <EthernetPort className="h-3.5 w-3.5 text-muted-foreground" />
+            <span>{label}</span>
+          </Badge>
         </TooltipTrigger>
         <TooltipContent>
           <p className="font-mono text-xs">
@@ -2435,39 +2437,19 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         </TorrentDropZone>
 
         {/* Status bar */}
-        <div className="flex items-center justify-between p-2 border-t flex-shrink-0 select-none">
-          <div className="text-sm text-muted-foreground">
-            {/* Show special loading message when fetching without cache (cold load) */}
-            {isLoading && !isCachedData && !isStaleData && torrents.length === 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 px-2 py-1.5 border-t flex-shrink-0 select-none">
+          <div className="text-xs text-muted-foreground min-w-[200px]">
+            {effectiveSelectionCount > 0 ? (
               <>
-                <Loader2 className="h-3 w-3 animate-spin inline mr-1"/>
-                Loading torrents...
-              </>
-            ) : totalCount === 0 ? (
-              "No torrents found"
-            ) : (
-              <>
-                {hasLoadedAll ? (
-                  `${torrents.length} torrent${torrents.length !== 1 ? "s" : ""}`
-                ) : isLoadingMore ? (
-                  "Loading more torrents..."
-                ) : (
-                  `${torrents.length} of ${totalCount} torrents loaded`
-                )}
-                {hasLoadedAll && safeLoadedRows < rows.length && " (scroll for more)"}
-              </>
-            )}
-            {effectiveSelectionCount > 0 && (
-              <>
-                <span className="ml-2">
-                  ({isAllSelected && excludedFromSelectAll.size === 0 ? `All ${effectiveSelectionCount}` : effectiveSelectionCount} selected
-                  {selectedTotalSize > 0 && <> • {selectedFormattedSize}</>})
+                <span>
+                  {isAllSelected && excludedFromSelectAll.size === 0 ? "All" : effectiveSelectionCount} selected
+                  {selectedTotalSize > 0 && <> • {selectedFormattedSize}</>}
                 </span>
                 {/* Keyboard shortcuts helper - only show on desktop */}
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span className="hidden sm:inline-block ml-2 text-xs opacity-70 cursor-help">
-                      • Selection shortcuts
+                      Selection shortcuts
                     </span>
                   </TooltipTrigger>
                   <TooltipContent>
@@ -2478,119 +2460,146 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                   </TooltipContent>
                 </Tooltip>
               </>
+            ) : (
+              <>
+                {/* Show special loading message when fetching without cache (cold load) */}
+                {isLoading && !isCachedData && !isStaleData && torrents.length === 0 ? (
+                  <>
+                    <Loader2 className="h-3 w-3 animate-spin inline mr-1"/>
+                    Loading torrents...
+                  </>
+                ) : totalCount === 0 ? (
+                  "No torrents found"
+                ) : (
+                  <>
+                    {hasLoadedAll ? (
+                      `${torrents.length} torrent${torrents.length !== 1 ? "s" : ""}`
+                    ) : isLoadingMore ? (
+                      "Loading more torrents..."
+                    ) : (
+                      `${torrents.length} of ${totalCount} torrents loaded`
+                    )}
+                    {hasLoadedAll && safeLoadedRows < rows.length && " (scroll for more)"}
+                  </>
+                )}
+              </>
             )}
           </div>
 
-
-          <div className="flex items-center gap-2 text-xs">
-            <div className="flex items-center gap-1">
+          <div className="flex flex-wrap items-center justify-end gap-2 text-xs">
+            <div className="flex items-center gap-2 pr-2 border-r last:border-r-0 last:pr-0">
               <ChevronDown className="h-3 w-3 text-muted-foreground"/>
-              <span className="font-medium">{formatSpeedWithUnit(stats.totalDownloadSpeed || 0, speedUnit)}</span>
+              <span className="font-medium">{formatSpeedWithUnit(stats?.totalDownloadSpeed ?? 0, speedUnit)}</span>
               <ChevronUp className="h-3 w-3 text-muted-foreground"/>
-              <span className="font-medium">{formatSpeedWithUnit(stats.totalUploadSpeed || 0, speedUnit)}</span>
+              <span className="font-medium">{formatSpeedWithUnit(stats?.totalUploadSpeed ?? 0, speedUnit)}</span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSpeedUnit(speedUnit === "bytes" ? "bits" : "bytes")}
+                    className="h-6 px-2 text-xs text-muted-foreground hover:text-accent-foreground"
+                  >
+                    <ArrowUpDown className="h-3 w-3" />
+                    <span>{speedUnit === "bytes" ? "MiB/s" : "Mbps"}</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {speedUnit === "bytes" ? "Switch to bits per second (bps)" : "Switch to bytes per second (B/s)"}
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => void handleToggleAltSpeedLimits()}
+                    disabled={isTogglingAltSpeed}
+                    aria-pressed={isAltSpeedKnown ? altSpeedEnabled : undefined}
+                    aria-label={altSpeedAriaLabel}
+                    className={cn(
+                      "h-6 w-6 text-muted-foreground hover:text-accent-foreground",
+                      "disabled:opacity-60 disabled:cursor-not-allowed"
+                    )}
+                  >
+                    {isTogglingAltSpeed ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <AltSpeedIcon className={cn("h-3 w-3", altSpeedIconClass)} />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{altSpeedTooltip}</TooltipContent>
+              </Tooltip>
             </div>
-          </div>
-
-
-          <div className="flex items-center gap-4">
-            {/* Speed units toggle */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => setSpeedUnit(speedUnit === "bytes" ? "bits" : "bytes")}
-                  className="flex items-center gap-1 pl-1.5 py-0.5 rounded-sm transition-all hover:bg-muted/50"
-                >
-                  <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground"/>
-                  <span className="text-xs text-muted-foreground">
-                    {speedUnit === "bytes" ? "MiB/s" : "Mbps"}
-                  </span>
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {speedUnit === "bytes" ? "Switch to bits per second (bps)" : "Switch to bytes per second (B/s)"}
-              </TooltipContent>
-            </Tooltip>
-            {/* View mode toggle */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={cycleViewMode}
-                  className="p-1 rounded-sm transition-all hover:bg-muted/50"
-                >
-                  {desktopViewMode === "normal" ? (
-                    <TableIcon className="h-3.5 w-3.5 text-muted-foreground"/>
-                  ) : (
-                    <LayoutGrid className="h-3.5 w-3.5 text-muted-foreground"/>
-                  )}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {desktopViewMode === "normal" ? "Switch to stacked view" : "Switch to table view"}
-              </TooltipContent>
-            </Tooltip>
-            {/* Incognito mode toggle */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => setIncognitoMode(!incognitoMode)}
-                  className="p-1 rounded-sm transition-all hover:bg-muted/50"
-                >
-                  {incognitoMode ? (
-                    <EyeOff className="h-3.5 w-3.5 text-muted-foreground"/>
-                  ) : (
-                    <Eye className="h-3.5 w-3.5 text-muted-foreground"/>
-                  )}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {incognitoMode ? "Exit incognito mode" : "Enable incognito mode"}
-              </TooltipContent>
-            </Tooltip>
-            {/* External IPv4 */}
-            <ExternalIPAddress
-              address={serverState?.last_external_address_v4}
-              incognitoMode={incognitoMode}
-              label="IPv4"
-            />
-            {/* External IPv6 */}
-            <ExternalIPAddress
-              address={serverState?.last_external_address_v6}
-              incognitoMode={incognitoMode}
-              label="IPv6"
-            />
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => void handleToggleAltSpeedLimits()}
-                  disabled={isTogglingAltSpeed}
-                  aria-pressed={isAltSpeedKnown ? altSpeedEnabled : undefined}
-                  aria-label={altSpeedAriaLabel}
-                  className="p-1 rounded-sm transition-all hover:bg-muted/50 disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  {isTogglingAltSpeed ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground"/>
-                  ) : (
-                    <AltSpeedIcon className={`h-3.5 w-3.5 ${altSpeedIconClass}`}/>
-                  )}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {altSpeedTooltip}
-              </TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span
-                  aria-label={connectionStatusAriaLabel}
-                  className={`inline-flex h-5 w-5 items-center justify-center ${connectionStatusIconClass}`}
-                >
-                  <ConnectionStatusIcon className="h-3.5 w-3.5" aria-hidden="true"/>
+            <div className="flex items-center gap-2 pr-2 border-r last:border-r-0 last:pr-0">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={cycleViewMode}
+                className={cn(
+                  "h-6 px-2 text-xs hover:text-accent-foreground",
+                  "text-muted-foreground"
+                )}
+              >
+                {desktopViewMode === "normal" ? (
+                  <TableIcon className="h-3 w-3" />
+                ) : (
+                  <LayoutGrid className="h-3 w-3" />
+                )}
+                <span className="hidden sm:inline">
+                  {desktopViewMode === "normal" ? "Table view" : "Stacked view"}
                 </span>
-              </TooltipTrigger>
-              <TooltipContent className="max-w-[220px]">
-                <p>{connectionStatusTooltip}</p>
-              </TooltipContent>
-            </Tooltip>
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIncognitoMode(!incognitoMode)}
+                className={cn(
+                  "h-6 px-2 text-xs hover:text-accent-foreground",
+                  incognitoMode ? "text-foreground" : "text-muted-foreground"
+                )}
+              >
+                {incognitoMode ? (
+                  <EyeOff className="h-3 w-3" />
+                ) : (
+                  <Eye className="h-3 w-3" />
+                )}
+                <span className="hidden sm:inline">
+                  {incognitoMode ? "Incognito on" : "Incognito off"}
+                </span>
+              </Button>
+            </div>
+            <div className="flex items-center gap-2">
+              <ExternalIPAddress
+                address={serverState?.last_external_address_v4}
+                incognitoMode={incognitoMode}
+                label="IPv4"
+              />
+              <ExternalIPAddress
+                address={serverState?.last_external_address_v6}
+                incognitoMode={incognitoMode}
+                label="IPv6"
+              />
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span
+                    tabIndex={0}
+                    aria-label={connectionStatusAriaLabel}
+                    className={cn(
+                      "inline-flex h-6 w-6 items-center justify-center rounded-md border border-transparent",
+                      "text-muted-foreground",
+                      connectionStatusIconClass
+                    )}
+                  >
+                    <ConnectionStatusIcon className="h-3 w-3" aria-hidden="true"/>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-[220px]">
+                  <p>{connectionStatusTooltip}</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
           </div>
         </div>
       </div>
