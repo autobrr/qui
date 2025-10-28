@@ -28,6 +28,7 @@ import {
 
 import { useDebounce } from "@/hooks/useDebounce"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
+import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { usePersistedAccordion } from "@/hooks/usePersistedAccordion"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
@@ -35,7 +36,6 @@ import { getLinuxCount, LINUX_CATEGORIES, LINUX_TAGS, LINUX_TRACKERS, useIncogni
 import { cn } from "@/lib/utils"
 import type { Category, TorrentFilters } from "@/types"
 import { useVirtualizer } from "@tanstack/react-virtual"
-import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import {
   AlertCircle,
   CheckCircle2,
@@ -55,6 +55,7 @@ import {
   type LucideIcon
 } from "lucide-react"
 import { memo, startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { CategoryTree } from "./CategoryTree"
 import {
   CreateCategoryDialog,
   CreateTagDialog,
@@ -65,7 +66,6 @@ import {
   EditCategoryDialog
 } from "./TagCategoryManagement"
 import { EditTrackerDialog } from "./TorrentDialogs"
-import { CategoryTree } from "./CategoryTree"
 // import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
 import { api } from "@/lib/api"
 import { useMutation } from "@tanstack/react-query"
@@ -1166,7 +1166,7 @@ const FilterSidebarComponent = ({
                 <TooltipTrigger asChild>
                   <button
                     type="button"
-                    className="text-muted-foreground hover:text-foreground transition-colors"
+                    className="text-muted-foreground hover:text-foreground"
                     aria-label="Filter selection tips"
                   >
                     <Info className="h-4 w-4" />
@@ -1201,7 +1201,7 @@ const FilterSidebarComponent = ({
               </div>
               <button
                 onClick={cycleViewMode}
-                className="px-3 py-1 text-xs font-medium rounded border bg-background hover:bg-muted transition-colors"
+                className="px-3 py-1 text-xs font-medium rounded border bg-background hover:bg-muted"
               >
                 {viewMode === "normal" ? "Normal" :viewMode === "compact" ? "Compact" : "Ultra"}
               </button>
@@ -1228,15 +1228,17 @@ const FilterSidebarComponent = ({
                 </div>
               </AccordionTrigger>
               <AccordionContent className="px-3 pb-2">
-                <div className="space-y-1">
+                <div className="flex flex-col">
                   {visibleTorrentStates.map((state) => {
                     const statusState = getStatusState(state.value)
                     return (
                       <label
                         key={state.value}
                         className={cn(
-                          "flex items-center space-x-2 py-1 px-2 rounded cursor-pointer transition-colors",
-                          statusState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": "hover:bg-muted"
+                          "flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer",
+                          statusState === "exclude"
+                            ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
+                            : "hover:bg-muted"
                         )}
                         onPointerDown={(event) => handleStatusPointerDown(event, state.value)}
                       >
@@ -1282,10 +1284,10 @@ const FilterSidebarComponent = ({
                 </div>
               </AccordionTrigger>
               <AccordionContent className="px-3 pb-2">
-                <div className="space-y-1">
+                <div className="flex flex-col gap-0">
                   {/* Add new category button */}
                   <button
-                    className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-1 px-2 w-full cursor-pointer"
+                    className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground py-1.5 px-2 w-full cursor-pointer"
                     onClick={() => {
                       setParentCategoryForNew(undefined)
                       setShowCreateCategoryDialog(true)
@@ -1310,7 +1312,7 @@ const FilterSidebarComponent = ({
                   {!allowSubcategories && (
                     <label
                       className={cn(
-                        "flex items-center space-x-2 py-1 px-2 rounded cursor-pointer transition-colors",
+                        "flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer",
                         uncategorizedState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": "hover:bg-muted"
                       )}
                       onPointerDown={(event) => handleCategoryPointerDown(event, "")}
@@ -1412,8 +1414,10 @@ const FilterSidebarComponent = ({
                                 <ContextMenuTrigger asChild>
                                   <label
                                     className={cn(
-                                      "flex items-center space-x-2 py-1 px-2 rounded cursor-pointer transition-colors",
-                                      categoryState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": "hover:bg-muted"
+                                      "flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer",
+                                      categoryState === "exclude"
+                                        ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
+                                        : "hover:bg-muted"
                                     )}
                                     onPointerDown={(event) => handleCategoryPointerDown(event, name)}
                                   >
@@ -1510,8 +1514,10 @@ const FilterSidebarComponent = ({
                           <ContextMenuTrigger asChild>
                             <label
                               className={cn(
-                                "flex items-center space-x-2 py-1 px-2 rounded cursor-pointer transition-colors",
-                                categoryState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": "hover:bg-muted"
+                                "flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer",
+                                categoryState === "exclude"
+                                  ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
+                                  : "hover:bg-muted"
                               )}
                               onPointerDown={(event) => handleCategoryPointerDown(event, name)}
                             >
@@ -1613,10 +1619,10 @@ const FilterSidebarComponent = ({
                 </div>
               </AccordionTrigger>
               <AccordionContent className="px-3 pb-2">
-                <div className="space-y-1">
+                <div className="flex flex-col gap-0">
                   {/* Add new tag button */}
                   <button
-                    className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-1 px-2 w-full cursor-pointer"
+                    className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground py-1.5 px-2 w-full cursor-pointer"
                     onClick={() => setShowCreateTagDialog(true)}
                   >
                     <Plus className="h-3 w-3" />
@@ -1637,7 +1643,7 @@ const FilterSidebarComponent = ({
                   {/* Untagged option */}
                   <label
                     className={cn(
-                      "flex items-center space-x-2 py-1 px-2 rounded cursor-pointer transition-colors",
+                      "flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer",
                       untaggedState === "exclude" ? "bg-destructive/10 text-destructive hover:bg-destructive/15" : "hover:bg-muted"
                     )}
                     onPointerDown={(event) => handleTagPointerDown(event, "")}
@@ -1715,8 +1721,10 @@ const FilterSidebarComponent = ({
                                 <ContextMenuTrigger asChild>
                                   <label
                                     className={cn(
-                                      "flex items-center space-x-2 py-1 px-2 rounded cursor-pointer transition-colors",
-                                      tagState === "exclude" ? "bg-destructive/10 text-destructive hover:bg-destructive/15" : "hover:bg-muted"
+                                      "flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer",
+                                      tagState === "exclude"
+                                        ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
+                                        : "hover:bg-muted"
                                     )}
                                     onPointerDown={(event) => handleTagPointerDown(event, tag)}
                                   >
@@ -1777,8 +1785,10 @@ const FilterSidebarComponent = ({
                           <ContextMenuTrigger asChild>
                             <label
                               className={cn(
-                                "flex items-center space-x-2 py-1 px-2 rounded cursor-pointer transition-colors",
-                                tagState === "exclude" ? "bg-destructive/10 text-destructive hover:bg-destructive/15" : "hover:bg-muted"
+                                "flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer",
+                                tagState === "exclude"
+                                  ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
+                                  : "hover:bg-muted"
                               )}
                               onPointerDown={(event) => handleTagPointerDown(event, tag)}
                             >
@@ -1847,7 +1857,7 @@ const FilterSidebarComponent = ({
                 </div>
               </AccordionTrigger>
               <AccordionContent className="px-3 pb-2">
-                <div className="space-y-1">
+                <div className="flex flex-col gap-0">
                   {/* Search input for trackers */}
                   <div className="mb-2">
                     <SearchInput
@@ -1862,8 +1872,10 @@ const FilterSidebarComponent = ({
                   {/* No tracker option */}
                   <label
                     className={cn(
-                      "flex items-center space-x-2 py-1 px-2 rounded cursor-pointer transition-colors",
-                      noTrackerState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": "hover:bg-muted"
+                      "flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer",
+                      noTrackerState === "exclude"
+                        ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
+                        : "hover:bg-muted"
                     )}
                     onPointerDown={(event) => handleTrackerPointerDown(event, "")}
                   >
@@ -1933,8 +1945,10 @@ const FilterSidebarComponent = ({
                                 <ContextMenuTrigger asChild>
                                   <label
                                     className={cn(
-                                      "flex items-center space-x-2 py-1 px-2 rounded cursor-pointer transition-colors",
-                                      trackerState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": "hover:bg-muted"
+                                      "flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer",
+                                      trackerState === "exclude"
+                                        ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
+                                        : "hover:bg-muted"
                                     )}
                                     onPointerDown={(event) => handleTrackerPointerDown(event, tracker)}
                                   >
@@ -1992,8 +2006,10 @@ const FilterSidebarComponent = ({
                           <ContextMenuTrigger asChild>
                             <label
                               className={cn(
-                                "flex items-center space-x-2 py-1 px-2 rounded cursor-pointer transition-colors",
-                                trackerState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": "hover:bg-muted"
+                                "flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer",
+                                trackerState === "exclude"
+                                  ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
+                                  : "hover:bg-muted"
                               )}
                               onPointerDown={(event) => handleTrackerPointerDown(event, tracker)}
                             >
