@@ -2,9 +2,9 @@ name: Check for missing License Headers
 description: Automatically adds missing license headers and create PR if changes needed
 
 on:
-  schedule:
+  #schedule:
     # Run every Monday at 9:00 AM UTC
-    - cron: '0 9 * * 1'
+    #- cron: '0 9 * * 1'
   workflow_dispatch:
 
 jobs:

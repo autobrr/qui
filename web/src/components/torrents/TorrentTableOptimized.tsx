@@ -1829,7 +1829,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
             {isLoading && !isCachedData && !isStaleData && torrents.length === 0 ? (
               <>
                 <Loader2 className="h-3 w-3 animate-spin inline mr-1"/>
-                Loading torrents from instance... (no cache available)
+                Loading torrents...
               </>
             ) : totalCount === 0 ? (
               "No torrents found"
