@@ -13,6 +13,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { usePersistedTabState } from "@/hooks/usePersistedTabState"
@@ -20,6 +21,7 @@ import { api } from "@/lib/api"
 import { getLinuxComment, getLinuxCreatedBy, getLinuxFileName, getLinuxHash, getLinuxIsoName, getLinuxSavePath, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { renderTextWithLinks } from "@/lib/linkUtils"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
+import { getPeerFlagDetails } from "@/lib/torrent-peer-flags"
 import { resolveTorrentHashes } from "@/lib/torrent-utils"
 import { copyTextToClipboard, formatBytes, formatDuration } from "@/lib/utils"
 import type { SortedPeersResponse, Torrent, TorrentPeer } from "@/types"
@@ -676,16 +678,18 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
                         // A seeder has exactly 1.0 progress
                         const isSeeder = progressValue === 1.0
+                        const flagDetails = getPeerFlagDetails(peer.flags, peer.flags_desc)
+                        const hasFlagDetails = flagDetails.length > 0
 
                         return (
                           <ContextMenu key={peerKey}>
                             <ContextMenuTrigger asChild>
-                              <div className={`bg-card/50 backdrop-blur-sm border ${isActive ? "border-border/70" : "border-border/30"} hover:border-border transition-all rounded-lg p-4 space-y-3 cursor-context-menu`}>
+                              <div className={`bg-card/50 backdrop-blur-sm border ${isActive ? "border-border/70" : "border-border/30"} hover:border-border transition-all rounded-lg p-4 space-y-3`}>
                                 {/* Peer Header */}
                                 <div className="flex items-start justify-between gap-3">
                                   <div className="flex-1 space-y-1">
                                     <div className="flex items-center gap-2 flex-wrap">
-                                      <span className="font-mono text-sm">{peer.ip}:{peer.port}</span>
+                                      <span className="font-mono text-sm cursor-context-menu">{peer.ip}:{peer.port}</span>
                                       {peer.country_code && (
                                         <span
                                           className={`fi fi-${peer.country_code.toLowerCase()} rounded text-sm`}
@@ -742,7 +746,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                                 </div>
 
                                 {/* Connection Info */}
-                                {(peer.connection || peer.flags) && (
+                                {(peer.connection || hasFlagDetails) && (
                                   <>
                                     <Separator className="opacity-50" />
                                     <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
@@ -751,9 +755,44 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                                           <span className="opacity-70">Connection:</span> {peer.connection}
                                         </div>
                                       )}
-                                      {peer.flags && (
-                                        <div>
-                                          <span className="opacity-70">Flags:</span> {peer.flags}
+                                      {hasFlagDetails && (
+                                        <div className="flex items-center gap-2">
+                                          <span className="opacity-70">Flags:</span>
+                                          <span className="inline-flex flex-wrap gap-1">
+                                            {flagDetails.map(({ flag, description }, index) => {
+                                              const flagKey = `${flag}-${index}`
+                                              const badgeClass =
+                                                "inline-flex items-center justify-center rounded border border-border/60 bg-muted/20 px-1 text-[12px] font-semibold leading-none text-foreground cursor-pointer"
+
+                                              if (!description) {
+                                                return (
+                                                  <span
+                                                    key={flagKey}
+                                                    className={badgeClass}
+                                                    aria-label={`Flag ${flag}`}
+                                                  >
+                                                    {flag}
+                                                  </span>
+                                                )
+                                              }
+
+                                              return (
+                                                <Tooltip key={flagKey}>
+                                                  <TooltipTrigger asChild>
+                                                    <span
+                                                      className={badgeClass}
+                                                      aria-label={description}
+                                                    >
+                                                      {flag}
+                                                    </span>
+                                                  </TooltipTrigger>
+                                                  <TooltipContent side="top">
+                                                    {description}
+                                                  </TooltipContent>
+                                                </Tooltip>
+                                              )
+                                            })}
+                                          </span>
                                         </div>
                                       )}
                                     </div>

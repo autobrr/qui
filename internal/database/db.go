@@ -236,6 +236,15 @@ func isWriteQuery(query string) bool {
 		strings.HasPrefix(upper, "DELETE")
 }
 
+const stmtClosedErrMsg = "statement is closed"
+
+func isStmtClosedErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), stmtClosedErrMsg)
+}
+
 // ExecContext routes write queries through the single writer goroutine and
 // uses prepared statements when possible. Do NOT use this for queries with
 // RETURNING clauses - use QueryRowContext or QueryContext instead.
@@ -246,6 +255,18 @@ func (db *DB) ExecContext(ctx context.Context, query string, args ...any) (sql.R
 		stmt, err := db.getStmt(ctx, query)
 		if err != nil {
 			// fallback to direct Exec
+			return db.conn.ExecContext(ctx, query, args...)
+		}
+		res, execErr := stmt.ExecContext(ctx, args...)
+		if !isStmtClosedErr(execErr) {
+			return res, execErr
+		}
+
+		// statement was evicted and closed between prepare and exec; drop from cache and retry
+		db.stmts.Delete(query)
+
+		stmt, err = db.getStmt(ctx, query)
+		if err != nil {
 			return db.conn.ExecContext(ctx, query, args...)
 		}
 		return stmt.ExecContext(ctx, args...)
@@ -329,6 +350,16 @@ func (db *DB) processWrite(req writeReq) {
 	}
 
 	res, execErr := db.execWrite(req.ctx, stmt, req.query, req.args)
+	if isStmtClosedErr(execErr) {
+		db.stmts.Delete(req.query)
+		stmt, err = db.getStmt(req.ctx, req.query)
+		if err != nil {
+			res, execErr = db.execWrite(req.ctx, nil, req.query, req.args)
+		} else {
+			res, execErr = db.execWrite(req.ctx, stmt, req.query, req.args)
+		}
+	}
+
 	select {
 	case req.resCh <- writeRes{result: res, err: execErr}:
 	default:
@@ -342,6 +373,18 @@ func (db *DB) QueryContext(ctx context.Context, query string, args ...any) (*sql
 	if err != nil {
 		return db.conn.QueryContext(ctx, query, args...)
 	}
+	rows, queryErr := stmt.QueryContext(ctx, args...)
+	if !isStmtClosedErr(queryErr) {
+		return rows, queryErr
+	}
+
+	// Statement closed underneath us; drop cache entry and retry
+	db.stmts.Delete(query)
+
+	stmt, err = db.getStmt(ctx, query)
+	if err != nil {
+		return db.conn.QueryContext(ctx, query, args...)
+	}
 	return stmt.QueryContext(ctx, args...)
 }
 
@@ -349,6 +392,17 @@ func (db *DB) QueryContext(ctx context.Context, query string, args ...any) (*sql
 func (db *DB) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
 	// prepare statement and use QueryRow on it (no reader release necessary because Row scans and doesn't return Rows)
 	stmt, err := db.getStmt(ctx, query)
+	if err != nil {
+		return db.conn.QueryRowContext(ctx, query, args...)
+	}
+	row := stmt.QueryRowContext(ctx, args...)
+	if !isStmtClosedErr(row.Err()) {
+		return row
+	}
+
+	db.stmts.Delete(query)
+
+	stmt, err = db.getStmt(ctx, query)
 	if err != nil {
 		return db.conn.QueryRowContext(ctx, query, args...)
 	}

@@ -6,11 +6,14 @@ package proxy
 import (
 	"context"
 	"net/http"
+	"sync"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/debounce"
 )
 
 type contextKey string
@@ -18,7 +21,83 @@ type contextKey string
 const (
 	ClientAPIKeyContextKey contextKey = "client_api_key"
 	InstanceIDContextKey   contextKey = "instance_id"
+
+	apiKeyDebounceDelay   = 10 * time.Second
+	apiKeyDebouncerTTL    = 5 * time.Minute
+	apiKeyCleanupInterval = time.Minute
 )
+
+type debouncerEntry struct {
+	debouncer *debounce.Debouncer
+	lastUsed  time.Time
+}
+
+var (
+	apiKeyDebouncers           = make(map[string]*debouncerEntry)
+	apiKeyDebouncersMu         sync.Mutex
+	apiKeyDebouncerCleanupOnce sync.Once
+)
+
+func userAgentOrUnknown(r *http.Request) string {
+	if ua := r.UserAgent(); ua != "" {
+		return ua
+	}
+	return "unknown"
+}
+
+// getOrCreateDebouncer returns a debouncer for the given key hash, creating one if it doesn't exist
+func getOrCreateDebouncer(keyHash string) *debounce.Debouncer {
+	startAPIKeyDebouncerCleanup()
+
+	now := time.Now()
+	apiKeyDebouncersMu.Lock()
+	if entry, exists := apiKeyDebouncers[keyHash]; exists {
+		entry.lastUsed = now
+		debouncer := entry.debouncer
+		apiKeyDebouncersMu.Unlock()
+		return debouncer
+	}
+
+	entry := &debouncerEntry{
+		debouncer: debounce.New(apiKeyDebounceDelay),
+		lastUsed:  now,
+	}
+
+	apiKeyDebouncers[keyHash] = entry
+	apiKeyDebouncersMu.Unlock()
+	return entry.debouncer
+}
+
+func startAPIKeyDebouncerCleanup() {
+	apiKeyDebouncerCleanupOnce.Do(func() {
+		go func() {
+			ticker := time.NewTicker(apiKeyCleanupInterval)
+			defer ticker.Stop()
+
+			for range ticker.C {
+				cleanupStaleDebouncers()
+			}
+		}()
+	})
+}
+
+func cleanupStaleDebouncers() {
+	now := time.Now()
+	var toStop []*debounce.Debouncer
+
+	apiKeyDebouncersMu.Lock()
+	for key, entry := range apiKeyDebouncers {
+		if now.Sub(entry.lastUsed) > apiKeyDebouncerTTL {
+			delete(apiKeyDebouncers, key)
+			toStop = append(toStop, entry.debouncer)
+		}
+	}
+	apiKeyDebouncersMu.Unlock()
+
+	for _, debouncer := range toStop {
+		debouncer.Stop()
+	}
+}
 
 // ClientAPIKeyMiddleware validates client API keys and extracts instance information
 func ClientAPIKeyMiddleware(store *models.ClientAPIKeyStore) func(http.Handler) http.Handler {
@@ -39,6 +118,7 @@ func ClientAPIKeyMiddleware(store *models.ClientAPIKeyStore) func(http.Handler) 
 			if apiKey == "" {
 				log.Warn().
 					Str("path", r.URL.Path).
+					Str("user_agent", userAgentOrUnknown(r)).
 					Msg("Missing API key in proxy request")
 				http.Error(w, "Missing API key", http.StatusUnauthorized)
 				return
@@ -51,6 +131,7 @@ func ClientAPIKeyMiddleware(store *models.ClientAPIKeyStore) func(http.Handler) 
 				if err == models.ErrClientAPIKeyNotFound {
 					log.Warn().
 						Str("key_prefix", apiKey[:min(8, len(apiKey))]).
+						Str("user_agent", userAgentOrUnknown(r)).
 						Msg("Invalid client API key")
 					http.Error(w, "Invalid API key", http.StatusUnauthorized)
 					return
@@ -60,12 +141,16 @@ func ClientAPIKeyMiddleware(store *models.ClientAPIKeyStore) func(http.Handler) 
 				return
 			}
 
-			// Update last used timestamp asynchronously to avoid slowing down the request
-			go func() {
-				if err := store.UpdateLastUsed(context.Background(), clientAPIKey.KeyHash); err != nil {
-					log.Error().Err(err).Int("keyId", clientAPIKey.ID).Msg("Failed to update API key last used timestamp")
-				}
-			}()
+			// Update last used timestamp with debouncing per API key
+			debouncer := getOrCreateDebouncer(clientAPIKey.KeyHash)
+
+			if !debouncer.Queued() {
+				debouncer.Do(func() {
+					if err := store.UpdateLastUsed(context.Background(), clientAPIKey.KeyHash); err != nil {
+						log.Error().Err(err).Int("keyId", clientAPIKey.ID).Msg("Failed to update API key last used timestamp")
+					}
+				})
+			}
 
 			log.Debug().
 				Str("client", clientAPIKey.ClientName).
