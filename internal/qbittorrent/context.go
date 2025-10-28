@@ -9,7 +9,7 @@ const skipTrackerHydrationKey contextKey = "qui_skip_tracker_hydration"
 // WithSkipTrackerHydration marks the context so tracker enrichment/hydration is skipped.
 func WithSkipTrackerHydration(ctx context.Context) context.Context {
 	if ctx == nil {
-		return context.Background()
+		ctx = context.Background()
 	}
 	return context.WithValue(ctx, skipTrackerHydrationKey, true)
 }

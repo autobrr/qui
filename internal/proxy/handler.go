@@ -729,7 +729,7 @@ func (h *Handler) handleTorrentSearch(w http.ResponseWriter, r *http.Request) {
 
 // handleCategories handles /api/v2/torrents/categories requests
 func (h *Handler) handleCategories(w http.ResponseWriter, r *http.Request) {
-	ctx := qbittorrent.WithSkipTrackerHydration(r.Context())
+	ctx := r.Context()
 	instanceID := GetInstanceIDFromContext(ctx)
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
 
@@ -762,7 +762,7 @@ func (h *Handler) handleCategories(w http.ResponseWriter, r *http.Request) {
 
 // handleTags handles /api/v2/torrents/tags requests
 func (h *Handler) handleTags(w http.ResponseWriter, r *http.Request) {
-	ctx := qbittorrent.WithSkipTrackerHydration(r.Context())
+	ctx := r.Context()
 	instanceID := GetInstanceIDFromContext(ctx)
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
 
@@ -795,7 +795,7 @@ func (h *Handler) handleTags(w http.ResponseWriter, r *http.Request) {
 
 // handleTorrentProperties handles /api/v2/torrents/properties requests
 func (h *Handler) handleTorrentProperties(w http.ResponseWriter, r *http.Request) {
-	ctx := qbittorrent.WithSkipTrackerHydration(r.Context())
+	ctx := r.Context()
 	instanceID := GetInstanceIDFromContext(ctx)
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
 
@@ -832,7 +832,7 @@ func (h *Handler) handleTorrentProperties(w http.ResponseWriter, r *http.Request
 
 // handleTorrentTrackers handles /api/v2/torrents/trackers requests
 func (h *Handler) handleTorrentTrackers(w http.ResponseWriter, r *http.Request) {
-	ctx := qbittorrent.WithSkipTrackerHydration(r.Context())
+	ctx := r.Context()
 	instanceID := GetInstanceIDFromContext(ctx)
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
 
@@ -869,7 +869,7 @@ func (h *Handler) handleTorrentTrackers(w http.ResponseWriter, r *http.Request) 
 
 // handleTorrentPeers handles /api/v2/sync/torrentPeers requests
 func (h *Handler) handleTorrentPeers(w http.ResponseWriter, r *http.Request) {
-	ctx := qbittorrent.WithSkipTrackerHydration(r.Context())
+	ctx := r.Context()
 	instanceID := GetInstanceIDFromContext(ctx)
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
 
@@ -906,7 +906,7 @@ func (h *Handler) handleTorrentPeers(w http.ResponseWriter, r *http.Request) {
 
 // handleTorrentFiles handles /api/v2/torrents/files requests
 func (h *Handler) handleTorrentFiles(w http.ResponseWriter, r *http.Request) {
-	ctx := qbittorrent.WithSkipTrackerHydration(r.Context())
+	ctx := r.Context()
 	instanceID := GetInstanceIDFromContext(ctx)
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
 
