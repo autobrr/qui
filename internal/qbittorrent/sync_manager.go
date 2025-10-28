@@ -902,9 +902,9 @@ func (sm *SyncManager) torrentTrackerIsDown(torrent qbt.Torrent) bool {
 		case qbt.TrackerStatusDisabled:
 			// Skip DHT/PeX entries
 			continue
-		case qbt.TrackerStatusOK:
+		case qbt.TrackerStatusOK, qbt.TrackerStatusUpdating:
 			hasWorking = true
-		case qbt.TrackerStatusUpdating, qbt.TrackerStatusNotWorking:
+		case qbt.TrackerStatusNotWorking:
 			if trackerMessageMatches(tracker.Message, trackerDownStatuses) {
 				hasDown = true
 			}

@@ -132,10 +132,20 @@ func TestSyncManager_TorrentIsUnregistered_TrackerUpdating(t *testing.T) {
 func TestSyncManager_TorrentTrackerIsDown_TrackerUpdating(t *testing.T) {
 	sm := &SyncManager{}
 
-	t.Run("marks tracker down when updating message matches", func(t *testing.T) {
+	t.Run("does not mark tracker down when updating", func(t *testing.T) {
 		torrent := qbt.Torrent{
 			Trackers: []qbt.TorrentTracker{
 				{Status: qbt.TrackerStatusUpdating, Message: "Tracker is down for maintenance"},
+			},
+		}
+
+		assert.False(t, sm.torrentTrackerIsDown(torrent))
+	})
+
+	t.Run("marks tracker down when not working", func(t *testing.T) {
+		torrent := qbt.Torrent{
+			Trackers: []qbt.TorrentTracker{
+				{Status: qbt.TrackerStatusNotWorking, Message: "Tracker is down for maintenance"},
 			},
 		}
 
@@ -145,7 +155,7 @@ func TestSyncManager_TorrentTrackerIsDown_TrackerUpdating(t *testing.T) {
 	t.Run("ignores when working tracker present", func(t *testing.T) {
 		torrent := qbt.Torrent{
 			Trackers: []qbt.TorrentTracker{
-				{Status: qbt.TrackerStatusUpdating, Message: "Tracker is down for maintenance"},
+				{Status: qbt.TrackerStatusNotWorking, Message: "Tracker is down for maintenance"},
 				{Status: qbt.TrackerStatusOK, Message: ""},
 			},
 		}
