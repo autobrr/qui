@@ -11,7 +11,7 @@ import { usePersistedColumnOrder } from "@/hooks/usePersistedColumnOrder"
 import { usePersistedColumnSizing } from "@/hooks/usePersistedColumnSizing"
 import { usePersistedColumnSorting } from "@/hooks/usePersistedColumnSorting"
 import { usePersistedColumnVisibility } from "@/hooks/usePersistedColumnVisibility"
-import { usePersistedCompactViewState, type ViewMode } from "@/hooks/usePersistedCompactViewState"
+import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
 import { useTorrentExporter } from "@/hooks/useTorrentExporter"
 import { useTorrentsList } from "@/hooks/useTorrentsList"
@@ -127,6 +127,8 @@ import {
 } from "./TorrentDialogs"
 import { TorrentDropZone } from "./TorrentDropZone"
 import { createColumns } from "./TorrentTableColumns"
+
+const TABLE_ALLOWED_VIEW_MODES = ["normal", "compact"] as const
 
 // Default values for persisted state hooks (module scope for stable references)
 const DEFAULT_COLUMN_VISIBILITY = {
@@ -362,7 +364,6 @@ interface CompactRowProps {
   speedUnit: "bytes" | "bits"
   supportsTrackerHealth: boolean
   trackerIcons?: Record<string, string>
-  viewMode: ViewMode
   style: React.CSSProperties
 }
 
@@ -379,7 +380,6 @@ const CompactRow = memo(({
   speedUnit,
   supportsTrackerHealth,
   trackerIcons,
-  viewMode,
   style,
 }: CompactRowProps) => {
   const displayName = incognitoMode ? getLinuxIsoName(torrent.hash) : torrent.name
@@ -395,80 +395,6 @@ const CompactRow = memo(({
   const trackerValue = incognitoMode ? getLinuxTracker(torrent.hash) : torrent.tracker
   const trackerMeta = useMemo(() => getTrackerDisplayMeta(trackerValue), [trackerValue])
   const trackerIconSrc = trackerMeta.host ? trackerIcons?.[trackerMeta.host] ?? null : null
-
-  if (viewMode === "ultra-compact") {
-    return (
-      <div
-        className={cn(
-          "flex items-center gap-2 px-3 py-1 border-b cursor-pointer hover:bg-muted/50",
-          isRowSelected && "bg-muted/50",
-          isSelected && "bg-accent"
-        )}
-        style={style}
-        onClick={(e) => onClick(e)}
-        onContextMenu={onContextMenu}
-      >
-        <div
-          className="flex items-center justify-center flex-shrink-0"
-          data-slot="checkbox"
-          onPointerDown={onCheckboxPointerDown}
-        >
-          <Checkbox
-            checked={isRowSelected}
-            onCheckedChange={(checked) => onCheckboxChange(torrent, rowId, checked === true)}
-            aria-label="Select torrent"
-            className="h-4 w-4"
-          />
-        </div>
-        <div className="flex-1 min-w-0 overflow-hidden">
-          <div className="flex items-center gap-1 whitespace-nowrap overflow-x-auto scrollbar-thin">
-            <TrackerIcon
-              title={trackerMeta.title}
-              fallback={trackerMeta.fallback}
-              src={trackerIconSrc}
-              size="xs"
-              className="flex-shrink-0"
-            />
-            <h3 className="font-medium text-xs truncate" title={displayName}>
-              {displayName}
-            </h3>
-          </div>
-        </div>
-
-        {/* Speeds if applicable */}
-        {(torrent.dlspeed > 0 || torrent.upspeed > 0) && (
-          <div className="flex items-center gap-1 text-[10px] flex-shrink-0">
-            {torrent.dlspeed > 0 && (
-              <span className="text-chart-2 font-medium">
-                ↓{formatSpeedWithUnit(torrent.dlspeed, speedUnit)}
-              </span>
-            )}
-            {torrent.upspeed > 0 && (
-              <span className="text-chart-3 font-medium">
-                ↑{formatSpeedWithUnit(torrent.upspeed, speedUnit)}
-              </span>
-            )}
-          </div>
-        )}
-
-        {/* State badge */}
-        <Badge variant={statusBadgeVariant} className={cn("text-[10px] px-1 py-0 h-4 flex-shrink-0", statusBadgeClass)}>
-          {statusBadgeLabel}
-        </Badge>
-
-        {/* Percentage if not 100% */}
-        {torrent.progress * 100 !== 100 && (
-          <span className="text-[10px] text-muted-foreground flex-shrink-0">
-            {torrent.progress >= 0.99 && torrent.progress < 1 ? (
-              (Math.floor(torrent.progress * 1000) / 10).toFixed(1)
-            ) : (
-              Math.round(torrent.progress * 100)
-            )}%
-          </span>
-        )}
-      </div>
-    )
-  }
 
   // Compact view
   return (
@@ -598,7 +524,6 @@ const CompactRow = memo(({
   prev.isRowSelected === next.isRowSelected &&
   prev.incognitoMode === next.incognitoMode &&
   prev.speedUnit === next.speedUnit &&
-  prev.viewMode === next.viewMode &&
   prev.supportsTrackerHealth === next.supportsTrackerHealth &&
   prev.trackerIcons === next.trackerIcons &&
   prev.style === next.style
@@ -696,7 +621,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const { preferences } = useInstancePreferences(instanceId)
 
   // Desktop view mode state (separate from mobile view mode)
-  const { viewMode: desktopViewMode, cycleViewMode } = usePersistedCompactViewState("normal")
+  const { viewMode: desktopViewMode, cycleViewMode } = usePersistedCompactViewState("normal", TABLE_ALLOWED_VIEW_MODES)
 
   const trackerIconsQuery = useTrackerIcons()
   const trackerIconsRef = useRef<Record<string, string> | undefined>(undefined)
@@ -1520,7 +1445,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const virtualizer = useVirtualizer({
     count: safeLoadedRows,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => desktopViewMode === "ultra-compact" ? 39 : desktopViewMode === "compact" ? 88 : 40,
+    estimateSize: () => (desktopViewMode === "compact" ? 88 : 40),
     // Optimized overscan based on TanStack Virtual recommendations
     // Start small and adjust based on dataset size and performance
     overscan: sortedTorrents.length > 50000 ? 3 : sortedTorrents.length > 10000 ? 5 : sortedTorrents.length > 1000 ? 10 : 15,
@@ -2143,8 +2068,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                 const isSelected = selectedTorrent?.hash === torrent.hash
                 const isRowSelected = isAllSelected ? !excludedFromSelectAll.has(torrent.hash) : row.getIsSelected()
 
-                // Render compact view for compact and ultra-compact modes
-                if (desktopViewMode === "compact" || desktopViewMode === "ultra-compact") {
+                // Render compact view for compact mode
+                if (desktopViewMode === "compact") {
                   return (
                     <TorrentContextMenu
                       key={row.id}
@@ -2225,7 +2150,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                         trackerIcons={trackerIcons}
                         onCheckboxPointerDown={handleCompactCheckboxPointerDown}
                         onCheckboxChange={handleCompactCheckboxChange}
-                        viewMode={desktopViewMode}
                         style={{
                           position: "absolute",
                           top: 0,
@@ -2445,7 +2369,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                 </button>
               </TooltipTrigger>
               <TooltipContent>
-                {desktopViewMode === "normal" ? "Switch to compact view" : desktopViewMode === "compact" ? "Switch to ultra-compact view" : "Switch to table view"}
+                {desktopViewMode === "normal" ? "Switch to compact view" : "Switch to table view"}
               </TooltipContent>
             </Tooltip>
             {/* Incognito mode toggle */}
