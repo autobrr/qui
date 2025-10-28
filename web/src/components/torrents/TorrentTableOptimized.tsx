@@ -40,6 +40,7 @@ import {
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { TorrentContextMenu } from "./TorrentContextMenu"
+import { TORRENT_SORT_OPTIONS, type TorrentSortOptionValue, getDefaultSortOrder } from "./torrentSortOptions"
 
 import {
   AlertDialog,
@@ -53,6 +54,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -66,10 +68,11 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Logo } from "@/components/ui/Logo"
 import { ScrollToTopButton } from "@/components/ui/scroll-to-top-button"
 import {
@@ -1180,6 +1183,93 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     autoResetExpanded: false,
   })
 
+  const resolveSortColumnId = useCallback((field: string): string => {
+    const columns = table.getAllLeafColumns()
+    const directMatch = columns.find(column => column.id === field)
+    if (directMatch) {
+      return directMatch.id
+    }
+
+    const backendMatch = columns.find(column => getBackendSortField(column.id) === field)
+    if (backendMatch) {
+      return backendMatch.id
+    }
+
+    return field
+  }, [table, columnVisibility, columnOrder])
+
+  const compactSortOptions = useMemo(() => {
+    const columns = table.getAllLeafColumns()
+    const availableFields = new Set<string>()
+
+    for (const column of columns) {
+      availableFields.add(column.id)
+      availableFields.add(getBackendSortField(column.id))
+    }
+
+    return TORRENT_SORT_OPTIONS.filter(option => availableFields.has(option.value))
+  }, [table, columnVisibility, columnOrder])
+
+  const currentCompactSortLabel = useMemo(() => {
+    const directOption = compactSortOptions.find(option => option.value === activeSortField)
+    if (directOption) {
+      return directOption.label
+    }
+
+    const columns = table.getAllLeafColumns()
+    const directColumn = columns.find(column => column.id === activeSortField)
+    if (directColumn) {
+      const meta = directColumn.columnDef.meta as { headerString?: string } | undefined
+      if (meta?.headerString) {
+        return meta.headerString
+      }
+      if (typeof directColumn.columnDef.header === "string") {
+        return directColumn.columnDef.header
+      }
+      return directColumn.id
+    }
+
+    const backendColumn = columns.find(column => getBackendSortField(column.id) === activeSortField)
+    if (backendColumn) {
+      const meta = backendColumn.columnDef.meta as { headerString?: string } | undefined
+      if (meta?.headerString) {
+        return meta.headerString
+      }
+      if (typeof backendColumn.columnDef.header === "string") {
+        return backendColumn.columnDef.header
+      }
+      return backendColumn.id
+    }
+
+    return activeSortField
+  }, [compactSortOptions, activeSortField, table, columnVisibility, columnOrder])
+
+  const handleCompactSortFieldChange = useCallback((value: TorrentSortOptionValue) => {
+    if (activeSortField === value) {
+      return
+    }
+
+    const columnId = resolveSortColumnId(value)
+    const defaultOrder = getDefaultSortOrder(value)
+
+    setSorting([{ id: columnId, desc: defaultOrder === "desc" }])
+    setLastUserAction({
+      type: "sort",
+      timestamp: Date.now(),
+    })
+  }, [activeSortField, resolveSortColumnId, setSorting, setLastUserAction])
+
+  const handleCompactSortOrderToggle = useCallback(() => {
+    const columnId = resolveSortColumnId(activeSortField)
+    const nextDesc = activeSortOrder === "asc"
+
+    setSorting([{ id: columnId, desc: nextDesc }])
+    setLastUserAction({
+      type: "sort",
+      timestamp: Date.now(),
+    })
+  }, [activeSortField, activeSortOrder, resolveSortColumnId, setSorting, setLastUserAction])
+
   const handleCompactCheckboxChange = useCallback((torrent: Torrent, rowId: string, checked: boolean) => {
     const nextChecked = !!checked
     const allRows = table.getRowModel().rows
@@ -1856,6 +1946,70 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
               const container = typeof document !== "undefined" ? document.getElementById("header-search-actions") : null
               const actions = (
                 <>
+                  {desktopViewMode === "compact" && compactSortOptions.length > 0 && (
+                    <div className="flex items-center">
+                      <DropdownMenu>
+                        <Tooltip disableHoverableContent={true}>
+                          <TooltipTrigger
+                            asChild
+                            onFocus={(e) => {
+                              e.preventDefault()
+                            }}
+                          >
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 px-2 text-xs font-medium gap-1"
+                              >
+                                <ArrowUpDown className="h-3.5 w-3.5" />
+                                <span className="truncate">{currentCompactSortLabel}</span>
+                              </Button>
+                            </DropdownMenuTrigger>
+                          </TooltipTrigger>
+                          <TooltipContent>Change sort field</TooltipContent>
+                        </Tooltip>
+                        <DropdownMenuContent align="end" className="w-56 max-h-72 overflow-y-auto">
+                          <DropdownMenuLabel>Sort by</DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuRadioGroup
+                            value={activeSortField}
+                            onValueChange={(value) => handleCompactSortFieldChange(value as TorrentSortOptionValue)}
+                          >
+                            {compactSortOptions.map(option => (
+                              <DropdownMenuRadioItem key={option.value} value={option.value} className="text-sm">
+                                {option.label}
+                              </DropdownMenuRadioItem>
+                            ))}
+                          </DropdownMenuRadioGroup>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                      <Tooltip disableHoverableContent={true}>
+                        <TooltipTrigger
+                          asChild
+                          onFocus={(e) => {
+                            e.preventDefault()
+                          }}
+                        >
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={handleCompactSortOrderToggle}
+                            aria-label={`Sort ${activeSortOrder === "desc" ? "ascending" : "descending"}`}
+                          >
+                            {activeSortOrder === "desc" ? (
+                              <ChevronDown className="h-4 w-4" />
+                            ) : (
+                              <ChevronUp className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Sort {activeSortOrder === "desc" ? "ascending" : "descending"}</TooltipContent>
+                      </Tooltip>
+                    </div>
+                  )}
+
                   {columnFilters.length > 0 && (
                     <Tooltip>
                       <TooltipTrigger
@@ -1879,57 +2033,59 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                     </Tooltip>
                   )}
 
-                  <DropdownMenu>
-                    <Tooltip disableHoverableContent={true}>
-                      <TooltipTrigger
-                        asChild
-                        onFocus={(e) => {
-                          // Prevent tooltip from showing on focus - only show on hover
-                          e.preventDefault()
-                        }}
-                      >
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="outline"
-                            size="icon"
-                          >
-                            <Columns3 className="h-4 w-4"/>
-                            <span className="sr-only">Toggle columns</span>
-                          </Button>
-                        </DropdownMenuTrigger>
-                      </TooltipTrigger>
-                      <TooltipContent>Toggle columns</TooltipContent>
-                    </Tooltip>
-                    <DropdownMenuContent align="end" className="w-48">
-                      <DropdownMenuLabel>Toggle columns</DropdownMenuLabel>
-                      <DropdownMenuSeparator/>
-                      {table
-                        .getAllColumns()
-                        .filter(
-                          (column) =>
-                            column.id !== "select" && // Never show select in visibility options
-                            column.getCanHide()
-                        )
-                        .map((column) => {
-                          return (
-                            <DropdownMenuCheckboxItem
-                              key={column.id}
-                              className="capitalize"
-                              checked={column.getIsVisible()}
-                              onCheckedChange={(value) =>
-                                column.toggleVisibility(!!value)
-                              }
-                              onSelect={(e) => e.preventDefault()}
+                  {desktopViewMode !== "compact" && (
+                    <DropdownMenu>
+                      <Tooltip disableHoverableContent={true}>
+                        <TooltipTrigger
+                          asChild
+                          onFocus={(e) => {
+                            // Prevent tooltip from showing on focus - only show on hover
+                            e.preventDefault()
+                          }}
+                        >
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="outline"
+                              size="icon"
                             >
-                              <span className="truncate">
-                                {(column.columnDef.meta as { headerString?: string })?.headerString ||
-                                  (typeof column.columnDef.header === "string" ? column.columnDef.header : column.id)}
-                              </span>
-                            </DropdownMenuCheckboxItem>
+                              <Columns3 className="h-4 w-4"/>
+                              <span className="sr-only">Toggle columns</span>
+                            </Button>
+                          </DropdownMenuTrigger>
+                        </TooltipTrigger>
+                        <TooltipContent>Toggle columns</TooltipContent>
+                      </Tooltip>
+                      <DropdownMenuContent align="end" className="w-48">
+                        <DropdownMenuLabel>Toggle columns</DropdownMenuLabel>
+                        <DropdownMenuSeparator/>
+                        {table
+                          .getAllColumns()
+                          .filter(
+                            (column) =>
+                              column.id !== "select" && // Never show select in visibility options
+                              column.getCanHide()
                           )
-                        })}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                          .map((column) => {
+                            return (
+                              <DropdownMenuCheckboxItem
+                                key={column.id}
+                                className="capitalize"
+                                checked={column.getIsVisible()}
+                                onCheckedChange={(value) =>
+                                  column.toggleVisibility(!!value)
+                                }
+                                onSelect={(e) => e.preventDefault()}
+                              >
+                                <span className="truncate">
+                                  {(column.columnDef.meta as { headerString?: string })?.headerString ||
+                                    (typeof column.columnDef.header === "string" ? column.columnDef.header : column.id)}
+                                </span>
+                              </DropdownMenuCheckboxItem>
+                            )
+                          })}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
                 </>
               )
 
