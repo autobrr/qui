@@ -6,6 +6,7 @@ package qbittorrent
 import (
 	"strings"
 	"testing"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog"
@@ -97,6 +98,69 @@ func TestSyncManager_FilteringAndSorting(t *testing.T) {
 		// Specifically check the active counts
 		assert.Equal(t, 2, stats.Downloading, "Should have 2 actively downloading torrents")
 		assert.Equal(t, 2, stats.Seeding, "Should have 2 actively seeding torrents")
+	})
+}
+
+func TestSyncManager_TorrentIsUnregistered_TrackerUpdating(t *testing.T) {
+	sm := &SyncManager{}
+	addedOn := time.Now().Add(-2 * time.Hour).Unix()
+
+	t.Run("marks unregistered when updating message matches", func(t *testing.T) {
+		torrent := qbt.Torrent{
+			AddedOn: addedOn,
+			Trackers: []qbt.TorrentTracker{
+				{Status: qbt.TrackerStatusUpdating, Message: "Torrent not registered on tracker"},
+			},
+		}
+
+		assert.True(t, sm.torrentIsUnregistered(torrent))
+	})
+
+	t.Run("ignores when working tracker present", func(t *testing.T) {
+		torrent := qbt.Torrent{
+			AddedOn: addedOn,
+			Trackers: []qbt.TorrentTracker{
+				{Status: qbt.TrackerStatusUpdating, Message: "Torrent not registered on tracker"},
+				{Status: qbt.TrackerStatusOK, Message: ""},
+			},
+		}
+
+		assert.False(t, sm.torrentIsUnregistered(torrent))
+	})
+}
+
+func TestSyncManager_TorrentTrackerIsDown_TrackerUpdating(t *testing.T) {
+	sm := &SyncManager{}
+
+	t.Run("does not mark tracker down when updating", func(t *testing.T) {
+		torrent := qbt.Torrent{
+			Trackers: []qbt.TorrentTracker{
+				{Status: qbt.TrackerStatusUpdating, Message: "Tracker is down for maintenance"},
+			},
+		}
+
+		assert.False(t, sm.torrentTrackerIsDown(torrent))
+	})
+
+	t.Run("marks tracker down when not working", func(t *testing.T) {
+		torrent := qbt.Torrent{
+			Trackers: []qbt.TorrentTracker{
+				{Status: qbt.TrackerStatusNotWorking, Message: "Tracker is down for maintenance"},
+			},
+		}
+
+		assert.True(t, sm.torrentTrackerIsDown(torrent))
+	})
+
+	t.Run("ignores when working tracker present", func(t *testing.T) {
+		torrent := qbt.Torrent{
+			Trackers: []qbt.TorrentTracker{
+				{Status: qbt.TrackerStatusNotWorking, Message: "Tracker is down for maintenance"},
+				{Status: qbt.TrackerStatusOK, Message: ""},
+			},
+		}
+
+		assert.False(t, sm.torrentTrackerIsDown(torrent))
 	})
 }
 
