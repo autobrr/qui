@@ -1535,7 +1535,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const virtualizer = useVirtualizer({
     count: safeLoadedRows,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => (desktopViewMode === "compact" ? 88 : 40),
+    estimateSize: () => (desktopViewMode === "compact" ? 80 : 40),
     // Optimized overscan based on TanStack Virtual recommendations
     // Start small and adjust based on dataset size and performance
     overscan: sortedTorrents.length > 50000 ? 3 : sortedTorrents.length > 10000 ? 5 : sortedTorrents.length > 1000 ? 10 : 15,
@@ -2525,7 +2525,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                 </button>
               </TooltipTrigger>
               <TooltipContent>
-                {desktopViewMode === "normal" ? "Switch to compact view" : "Switch to table view"}
+                {desktopViewMode === "normal" ? "Switch to stacked view" : "Switch to table view"}
               </TooltipContent>
             </Tooltip>
             {/* Incognito mode toggle */}
