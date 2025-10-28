@@ -54,7 +54,7 @@ import {
   XCircle,
   type LucideIcon
 } from "lucide-react"
-import { memo, startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { CategoryTree } from "./CategoryTree"
 import {
   CreateCategoryDialog,
@@ -483,9 +483,7 @@ const FilterSidebarComponent = ({
       filtersWithExpansion.expandedExcludeCategories = undefined
     }
 
-    startTransition(() => {
-      onFilterChange(filtersWithExpansion)
-    })
+    onFilterChange(filtersWithExpansion)
   }, [allowSubcategories, expandCategoryList, onFilterChange])
 
   const selectedIncludeCategories = selectedFilters.categories

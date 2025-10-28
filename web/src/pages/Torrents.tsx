@@ -15,7 +15,7 @@ import { usePersistedFilters } from "@/hooks/usePersistedFilters"
 import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSidebarState"
 import { cn } from "@/lib/utils"
 import type { Category, Torrent, TorrentCounts } from "@/types"
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 
 interface TorrentsProps {
   instanceId: number
@@ -30,17 +30,6 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
   const [selectedTorrent, setSelectedTorrent] = useState<Torrent | null>(null)
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false)
   // Navigation is handled by parent component via onSearchChange prop
-
-  // Debounced filter updates to prevent excessive API calls during rapid filter changes
-  const filterTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const debouncedSetFilters = useCallback((newFilters: typeof filters) => {
-    if (filterTimeoutRef.current) {
-      clearTimeout(filterTimeoutRef.current)
-    }
-    filterTimeoutRef.current = setTimeout(() => {
-      setFilters(newFilters)
-    }, 150) // 150ms delay to batch rapid filter changes
-  }, [setFilters])
 
   // Check if add torrent modal should be open
   const isAddTorrentModalOpen = search?.modal === "add-torrent"
@@ -216,7 +205,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
             key={`filter-sidebar-${instanceId}`}
             instanceId={instanceId}
             selectedFilters={filters}
-            onFilterChange={debouncedSetFilters}
+            onFilterChange={setFilters}
             torrentCounts={torrentCounts}
             categories={categories}
             tags={tags}
@@ -249,7 +238,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
               key={`filter-sidebar-mobile-${instanceId}`}
               instanceId={instanceId}
               selectedFilters={filters}
-              onFilterChange={debouncedSetFilters}
+              onFilterChange={setFilters}
               torrentCounts={torrentCounts}
               categories={categories}
               tags={tags}
