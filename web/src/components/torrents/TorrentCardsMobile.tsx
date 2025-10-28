@@ -82,7 +82,6 @@ import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata.ts"
 import { usePersistedCompactViewState, type ViewMode } from "@/hooks/usePersistedCompactViewState"
 import { api } from "@/lib/api"
-import { getColumnType } from "@/lib/column-filter-utils"
 import { getLinuxCategory, getLinuxIsoName, getLinuxRatio, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { formatSpeedWithUnit, useSpeedUnits, type SpeedUnit } from "@/lib/speedUnits"
 import { getStateLabel } from "@/lib/torrent-state-utils"
@@ -90,6 +89,7 @@ import { getCommonCategory, getCommonSavePath, getCommonTags } from "@/lib/torre
 import { cn, formatBytes } from "@/lib/utils"
 import type { Category, Torrent, TorrentCounts, TorrentFilters } from "@/types"
 import { useQuery } from "@tanstack/react-query"
+import { getDefaultSortOrder, TORRENT_SORT_OPTIONS, type TorrentSortOptionValue } from "./torrentSortOptions"
 
 // Mobile-friendly Share Limits Dialog
 function MobileShareLimitsDialog({
@@ -409,48 +409,6 @@ function shallowEqualTrackerIcons(
   return true
 }
 
-const TORRENT_SORT_OPTIONS = [
-  { value: "added_on", label: "Recently Added" },
-  { value: "name", label: "Name" },
-  { value: "size", label: "Size" },
-  // { value: "total_size", label: "Total Size" },
-  { value: "progress", label: "Progress" },
-  { value: "state", label: "Status" },
-  { value: "priority", label: "Priority" },
-  { value: "num_seeds", label: "Seeds" },
-  { value: "num_leechs", label: "Leechers" },
-  { value: "dlspeed", label: "Download Speed" },
-  { value: "upspeed", label: "Upload Speed" },
-  { value: "eta", label: "ETA" },
-  { value: "ratio", label: "Ratio" },
-  { value: "popularity", label: "Popularity" },
-  { value: "category", label: "Category" },
-  { value: "tags", label: "Tags" },
-  { value: "completion_on", label: "Completed On" },
-  { value: "tracker", label: "Tracker" },
-  { value: "dl_limit", label: "Download Limit" },
-  { value: "up_limit", label: "Upload Limit" },
-  { value: "downloaded", label: "Downloaded" },
-  { value: "uploaded", label: "Uploaded" },
-  { value: "downloaded_session", label: "Session Downloaded" },
-  { value: "uploaded_session", label: "Session Uploaded" },
-  { value: "amount_left", label: "Remaining" },
-  { value: "time_active", label: "Time Active" },
-  { value: "seeding_time", label: "Seeding Time" },
-  { value: "save_path", label: "Save Path" },
-  { value: "completed", label: "Completed" },
-  { value: "ratio_limit", label: "Ratio Limit" },
-  { value: "seen_complete", label: "Last Seen Complete" },
-  { value: "last_activity", label: "Last Activity" },
-  { value: "availability", label: "Availability" },
-  { value: "infohash_v1", label: "Info Hash v1" },
-  { value: "infohash_v2", label: "Info Hash v2" },
-  { value: "reannounce", label: "Reannounce In" },
-  { value: "private", label: "Private" },
-] as const
-
-type TorrentSortOptionValue = typeof TORRENT_SORT_OPTIONS[number]["value"]
-
 interface MobileSortState {
   field: TorrentSortOptionValue
   order: "asc" | "desc"
@@ -458,18 +416,13 @@ interface MobileSortState {
 
 const DEFAULT_MOBILE_SORT_STATE: MobileSortState = {
   field: "added_on",
-  order: getDefaultMobileSortOrder("added_on"),
+  order: getDefaultSortOrder("added_on"),
 }
 
 const MOBILE_SORT_STORAGE_KEY = "qui:torrent-mobile-sort"
 
 function isValidSortField(value: unknown): value is TorrentSortOptionValue {
   return TORRENT_SORT_OPTIONS.some(option => option.value === value)
-}
-
-function getDefaultMobileSortOrder(field: TorrentSortOptionValue): "asc" | "desc" {
-  const columnType = getColumnType(field)
-  return columnType === "string" || columnType === "enum" ? "asc" : "desc"
 }
 
 const trackerIconSizeClasses = {
@@ -960,7 +913,7 @@ export function TorrentCardsMobile({
       if (stored) {
         const parsed = JSON.parse(stored) as Partial<MobileSortState>
         const field = isValidSortField(parsed?.field) ? parsed?.field : DEFAULT_MOBILE_SORT_STATE.field
-        const defaultOrder = getDefaultMobileSortOrder(field)
+        const defaultOrder = getDefaultSortOrder(field)
         const order = parsed?.order === "asc" || parsed?.order === "desc" ? parsed.order : defaultOrder
         return { field, order }
       }
@@ -997,7 +950,7 @@ export function TorrentCardsMobile({
       }
       return {
         field: value,
-        order: getDefaultMobileSortOrder(value),
+        order: getDefaultSortOrder(value),
       }
     })
   }, [])
@@ -1133,7 +1086,7 @@ export function TorrentCardsMobile({
 
         const parsed = JSON.parse(stored) as Partial<MobileSortState>
         const field = isValidSortField(parsed?.field) ? parsed?.field : DEFAULT_MOBILE_SORT_STATE.field
-        const defaultOrder = getDefaultMobileSortOrder(field)
+        const defaultOrder = getDefaultSortOrder(field)
         const order = parsed?.order === "asc" || parsed?.order === "desc" ? parsed.order : defaultOrder
 
         if (prev.field === field && prev.order === order) {
