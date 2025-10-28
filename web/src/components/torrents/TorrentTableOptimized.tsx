@@ -2489,9 +2489,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           <div className="flex flex-wrap items-center justify-end gap-2 text-xs">
             <div className="flex items-center gap-2 pr-2 border-r last:border-r-0 last:pr-0">
               <ChevronDown className="h-3 w-3 text-muted-foreground"/>
-              <span className="font-medium">{formatSpeedWithUnit(stats.totalDownloadSpeed || 0, speedUnit)}</span>
+              <span className="font-medium">{formatSpeedWithUnit(stats?.totalDownloadSpeed ?? 0, speedUnit)}</span>
               <ChevronUp className="h-3 w-3 text-muted-foreground"/>
-              <span className="font-medium">{formatSpeedWithUnit(stats.totalUploadSpeed || 0, speedUnit)}</span>
+              <span className="font-medium">{formatSpeedWithUnit(stats?.totalUploadSpeed ?? 0, speedUnit)}</span>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -2584,6 +2584,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <span
+                    tabIndex={0}
                     aria-label={connectionStatusAriaLabel}
                     className={cn(
                       "inline-flex h-6 w-6 items-center justify-center rounded-md border border-transparent",
