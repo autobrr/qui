@@ -491,7 +491,7 @@ func setupLogFile(path string, base io.Writer, maxSize, maxBackups int) (io.Writ
 	return io.MultiWriter(base, rotator), nil
 }
 
-func baseLogWriterForVersion(version string) io.Writer {
+func baseLogWriter(version string) io.Writer {
 	if isDevBuild(version) {
 		writer := zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339}
 		writer.PartsOrder = []string{zerolog.TimestampFieldName, zerolog.LevelFieldName, zerolog.MessageFieldName}
@@ -509,7 +509,7 @@ func baseLogWriterForVersion(version string) io.Writer {
 			if msg == "" {
 				return ""
 			}
-			return "--> " + msg
+			return msg
 		}
 		return writer
 	}
@@ -517,12 +517,12 @@ func baseLogWriterForVersion(version string) io.Writer {
 }
 
 func (c *AppConfig) baseLogWriter() io.Writer {
-	return baseLogWriterForVersion(c.version)
+	return baseLogWriter(c.version)
 }
 
 // DefaultLogWriter returns the base log writer for the provided version.
 func DefaultLogWriter(version string) io.Writer {
-	return baseLogWriterForVersion(version)
+	return baseLogWriter(version)
 }
 
 // InitDefaultLogger configures zerolog with the default writer for this version.
