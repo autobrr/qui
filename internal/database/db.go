@@ -1087,9 +1087,12 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 	}
 	defer tx.Rollback()
 
-	tx.ExecContext(ctx, `INSERT INTO temp_referenced_strings (string_id) SELECT DISTINCT string_id FROM (
+	_, err = tx.ExecContext(ctx, `INSERT INTO temp_referenced_strings (string_id) SELECT DISTINCT string_id FROM (
 `+referencedStringsInsertQuery+`
 		) AS subquery`)
+	if err != nil {
+		return 0, fmt.Errorf("failed to populate temp table with referenced string IDs: %w", err)
+	}
 	// Delete strings not in the temp table - fast due to PRIMARY KEY index on temp table
 	// Using NOT EXISTS instead of NOT IN to avoid any potential SQLite limitations
 	result, err := tx.ExecContext(ctx, `
