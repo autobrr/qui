@@ -18,6 +18,7 @@ import { Link, useLocation } from "@tanstack/react-router"
 import {
   Archive,
   Copyright,
+  FileText,
   Github,
   HardDrive,
   Home,
@@ -41,6 +42,11 @@ const navigation: NavItem[] = [
     title: "Backups",
     href: "/backups",
     icon: Archive,
+  },
+  {
+    title: "Titles",
+    href: "/titles",
+    icon: FileText,
   },
   {
     title: "Settings",

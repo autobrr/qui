@@ -29,6 +29,8 @@ github.com/coreos/go-systemd/v22 v22.5.0/go.mod h1:Y58oyj3AT4RCenI/lSvhwexgC+NSV
 github.com/cpuguy83/go-md2man/v2 v2.0.6/go.mod h1:oOW0eioCTA6cOiMLiUPZOpcVxMig6NIQQ7OS05n1F4g=
 github.com/creativeprojects/go-selfupdate v1.5.1 h1:fuyEGFFfqcC8SxDGolcEPYPLXGQ9Mcrc5uRyRG2Mqnk=
 github.com/creativeprojects/go-selfupdate v1.5.1/go.mod h1:2uY75rP8z/D/PBuDn6mlBnzu+ysEmwOJfcgF8np0JIM=
+github.com/cytec/releaseparser v0.0.0-20200706155913-2341b265c370 h1:g9q5BGfDdhcXn4EmVZD8UydPXrvhSvgz3FRBn7zAJNs=
+github.com/cytec/releaseparser v0.0.0-20200706155913-2341b265c370/go.mod h1:T6MvuEQy8BSy+4Aol7AjqObp2g3wTv2HjcFrGToHVVE=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc h1:U9qPSI2PIWSS1VwoXQT9A3Wy9MM3WgvqSxFWenqJduM=
@@ -102,6 +104,8 @@ github.com/mattn/go-isatty v0.0.16/go.mod h1:kYGgaQfpe5nmfYZH+SKPsOc2e4SrIfOl2e/
 github.com/mattn/go-isatty v0.0.19/go.mod h1:W+V8PltTTMOvKvAeJH7IuucS94S2C6jfK/D7dTCTo3Y=
 github.com/mattn/go-isatty v0.0.20 h1:xfD0iDuEKnDkl03q4limB+vH+GxLEtL/jb4xVJSWWEY=
 github.com/mattn/go-isatty v0.0.20/go.mod h1:W+V8PltTTMOvKvAeJH7IuucS94S2C6jfK/D7dTCTo3Y=
+github.com/moistari/rls v0.6.0 h1:9AWzsLaTN2zMTdUBkljQsUr5YlXxCQuHMhhoqBYUo5A=
+github.com/moistari/rls v0.6.0/go.mod h1:11YJWgNe5H+UQrfFaNGjnkEy0OEsMFnmV4IL2tRKpPk=
 github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 h1:C3w9PqII01/Oq1c1nUAm88MOHcQC9l5mIlSMApZMrHA=
 github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822/go.mod h1:+n7T8mK8HuQTcFwEeznm/DIxMOiR9yIdICNftLE1DvQ=
 github.com/ncruces/go-strftime v0.1.9 h1:bY0MQC28UADQmHmaF5dgpLmImcShSi2kHU9XLdhx/f4=

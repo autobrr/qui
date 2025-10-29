@@ -1313,6 +1313,53 @@ paths:
         '409':
           description: Torrent creation is still in progress or failed
 
+  /api/instances/{instanceId}/titles:
+    get:
+      tags:
+        - Torrents
+      summary: List parsed torrent titles
+      description: Get parsed torrent names using the RLS (Release Parser) library with optional filtering
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [Movie, Episode, Music]
+          description: Filter by parsed release type
+        - name: source
+          in: query
+          schema:
+            type: string
+          description: Filter by source (e.g., BluRay, WEB-DL, HDTV)
+        - name: resolution
+          in: query
+          schema:
+            type: string
+          description: Filter by resolution (e.g., 2160p, 1080p, 720p)
+        - name: group
+          in: query
+          schema:
+            type: string
+          description: Filter by release group
+        - name: year
+          in: query
+          schema:
+            type: integer
+          description: Filter by year
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Search query for title or torrent name
+      responses:
+        '200':
+          description: List of parsed torrent titles
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TitlesResponse'
+
   /api/instances/{instanceId}/categories:
     get:
       tags:
@@ -2219,6 +2266,194 @@ components:
           items:
             type: string
           description: Hashes from the request that matched this torrent
+
+    ParsedTitle:
+      type: object
+      description: Parsed torrent release information from RLS library
+      properties:
+        hash:
+          type: string
+          description: Torrent hash
+        name:
+          type: string
+          description: Original torrent name
+        parsed:
+          type: object
+          description: Parsed release information
+          properties:
+            title:
+              type: string
+              nullable: true
+              description: Title of the content
+            year:
+              type: integer
+              nullable: true
+              description: Release year
+            resolution:
+              type: string
+              nullable: true
+              description: Video resolution (e.g., 1080p, 720p, 2160p)
+            source:
+              type: string
+              nullable: true
+              description: Release source (e.g., BluRay, WEB-DL, HDTV)
+            codec:
+              type: string
+              nullable: true
+              description: Video codec (e.g., x264, HEVC, AVC)
+            audio:
+              type: string
+              nullable: true
+              description: Audio codec (e.g., AAC, DTS, TrueHD)
+            group:
+              type: string
+              nullable: true
+              description: Release group name
+            region:
+              type: string
+              nullable: true
+              description: Region code
+            container:
+              type: string
+              nullable: true
+              description: Container format (e.g., MKV, MP4)
+            language:
+              type: string
+              nullable: true
+              description: Language of the release
+            type:
+              type: string
+              nullable: true
+              description: Release type (Movie, Episode, or Music)
+            season:
+              type: integer
+              nullable: true
+              description: Season number for TV episodes
+            episode:
+              type: integer
+              nullable: true
+              description: Episode number for TV episodes
+            artist:
+              type: string
+              nullable: true
+              description: Artist name for music releases
+            album:
+              type: string
+              nullable: true
+              description: Album name for music releases
+            label:
+              type: string
+              nullable: true
+              description: Record label for music releases
+            catalogNumber:
+              type: string
+              nullable: true
+              description: Catalog number for music releases
+            genres:
+              type: array
+              items:
+                type: string
+              nullable: true
+              description: List of genres
+            website:
+              type: string
+              nullable: true
+              description: Website information
+            hdr:
+              type: string
+              nullable: true
+              description: HDR format (e.g., HDR10, Dolby Vision)
+            bitDepth:
+              type: string
+              nullable: true
+              description: Video bit depth
+            audioChannels:
+              type: string
+              nullable: true
+              description: Audio channel configuration
+            cut:
+              type: string
+              nullable: true
+              description: Cut version (e.g., Director's Cut)
+            edition:
+              type: string
+              nullable: true
+              description: Edition information
+            repack:
+              type: boolean
+              nullable: true
+              description: Whether this is a repack
+            proper:
+              type: boolean
+              nullable: true
+              description: Whether this is a proper release
+            remux:
+              type: boolean
+              nullable: true
+              description: Whether this is a remux
+            untouched:
+              type: boolean
+              nullable: true
+              description: Whether this is untouched source
+            unrated:
+              type: boolean
+              nullable: true
+              description: Whether this is unrated
+            retail:
+              type: boolean
+              nullable: true
+              description: Whether this is retail
+            hardcoded:
+              type: boolean
+              nullable: true
+              description: Whether subtitles are hardcoded
+            subbed:
+              type: boolean
+              nullable: true
+              description: Whether subtitles are included
+            internal:
+              type: boolean
+              nullable: true
+              description: Whether this is an internal release
+            limited:
+              type: boolean
+              nullable: true
+              description: Whether this is a limited release
+            complete:
+              type: boolean
+              nullable: true
+              description: Whether this is a complete release
+            documentaryType:
+              type: string
+              nullable: true
+              description: Type of documentary if applicable
+            hybrid:
+              type: boolean
+              nullable: true
+              description: Whether this is a hybrid release
+            site:
+              type: string
+              nullable: true
+              description: Site information
+            daily:
+              type: boolean
+              nullable: true
+              description: Whether this is a daily release
+            raw:
+              type: string
+              description: Original unparsed release name
+
+    TitlesResponse:
+      type: object
+      description: Response containing parsed torrent titles
+      properties:
+        titles:
+          type: array
+          items:
+            $ref: '#/components/schemas/ParsedTitle'
+        total:
+          type: integer
+          description: Total number of titles
 
     Category:
       type: object

@@ -17,6 +17,7 @@ require (
 	github.com/keygen-sh/machineid v1.1.1
 	github.com/lithammer/fuzzysearch v1.1.8
 	github.com/mat/besticon/v3 v3.21.0
+	github.com/moistari/rls v0.6.0
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.23.2
 	github.com/rs/cors v1.11.1
