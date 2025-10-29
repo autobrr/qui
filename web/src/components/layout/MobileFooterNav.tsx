@@ -21,6 +21,7 @@ import {
 } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { api } from "@/lib/api"
+import { getAppVersion } from "@/lib/build-info"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -89,6 +90,7 @@ export function MobileFooterNav() {
   const { currentMode, currentTheme } = useThemeChange()
   const { hasPremiumAccess } = useHasPremiumAccess()
   const [showThemeDialog, setShowThemeDialog] = useState(false)
+  const appVersion = getAppVersion()
 
   const { data: instances } = useQuery({
     queryKey: ["instances"],
@@ -278,6 +280,9 @@ export function MobileFooterNav() {
                 <Github className="h-4 w-4" />
                 GitHub
               </a>
+            </DropdownMenuItem>
+            <DropdownMenuItem disabled className="flex items-center gap-2 text-xs opacity-80 focus:bg-transparent">
+              <span className="flex-1 text-left">Version {appVersion}</span>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
