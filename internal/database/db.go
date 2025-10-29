@@ -1071,6 +1071,7 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 		_, _ = db.ExecContext(context.Background(), "DROP TABLE IF EXISTS temp_referenced_strings")
 	}()
 
+	// Create temp table for referenced string IDs (automatically indexed due to PRIMARY KEY)
 	_, err := db.ExecContext(ctx, `
 		CREATE TEMP TABLE temp_referenced_strings (
 			string_id INTEGER PRIMARY KEY
@@ -1080,7 +1081,22 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("failed to create temp table: %w", err)
 	}
 
-	// Create temp table for referenced string IDs (automatically indexed due to PRIMARY KEY)
+	// CRITICAL: Disable foreign key checks for cleanup operation
+	// All string_pool references use ON DELETE RESTRICT which prevents deletion
+	// even when there are no actual references. We must disable FKs temporarily.
+	// NOTE: PRAGMA foreign_keys cannot be changed inside a transaction, must be done first.
+	if _, err := db.writerConn.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
+		return 0, fmt.Errorf("failed to disable foreign keys: %w", err)
+	}
+
+	// Ensure foreign keys are re-enabled even if cleanup fails
+	defer func() {
+		if _, err := db.writerConn.ExecContext(context.Background(), "PRAGMA foreign_keys = ON"); err != nil {
+			log.Error().Err(err).Msg("CRITICAL: Failed to re-enable foreign keys after cleanup - manual intervention required")
+		}
+	}()
+
+	// Begin transaction for the actual cleanup work
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, fmt.Errorf("failed to begin transaction: %w", err)
@@ -1093,6 +1109,7 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("failed to populate temp table with referenced string IDs: %w", err)
 	}
+
 	// Delete strings not in the temp table - fast due to PRIMARY KEY index on temp table
 	// Using NOT EXISTS instead of NOT IN to avoid any potential SQLite limitations
 	result, err := tx.ExecContext(ctx, `
@@ -1102,7 +1119,7 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 		)
 	`)
 	if err != nil {
-		return 0, fmt.Errorf("failed to cleanup unused strings: %w", err)
+		return 0, fmt.Errorf("failed to delete unused strings: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
