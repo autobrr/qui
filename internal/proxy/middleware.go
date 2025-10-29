@@ -38,6 +38,13 @@ var (
 	apiKeyDebouncerCleanupOnce sync.Once
 )
 
+func userAgentOrUnknown(r *http.Request) string {
+	if ua := r.UserAgent(); ua != "" {
+		return ua
+	}
+	return "unknown"
+}
+
 // getOrCreateDebouncer returns a debouncer for the given key hash, creating one if it doesn't exist
 func getOrCreateDebouncer(keyHash string) *debounce.Debouncer {
 	startAPIKeyDebouncerCleanup()
@@ -111,6 +118,7 @@ func ClientAPIKeyMiddleware(store *models.ClientAPIKeyStore) func(http.Handler) 
 			if apiKey == "" {
 				log.Warn().
 					Str("path", r.URL.Path).
+					Str("user_agent", userAgentOrUnknown(r)).
 					Msg("Missing API key in proxy request")
 				http.Error(w, "Missing API key", http.StatusUnauthorized)
 				return
@@ -123,6 +131,7 @@ func ClientAPIKeyMiddleware(store *models.ClientAPIKeyStore) func(http.Handler) 
 				if err == models.ErrClientAPIKeyNotFound {
 					log.Warn().
 						Str("key_prefix", apiKey[:min(8, len(apiKey))]).
+						Str("user_agent", userAgentOrUnknown(r)).
 						Msg("Invalid client API key")
 					http.Error(w, "Invalid API key", http.StatusUnauthorized)
 					return

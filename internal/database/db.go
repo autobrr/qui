@@ -507,6 +507,15 @@ func isWriteQuery(query string) bool {
 		strings.HasPrefix(upper, "VACUUM")
 }
 
+const stmtClosedErrMsg = "statement is closed"
+
+func isStmtClosedErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), stmtClosedErrMsg)
+}
+
 // ExecContext routes write queries to the single writer connection and
 // read queries to the reader pool. Uses prepared statements when possible.
 // Do NOT use this for queries with RETURNING clauses - use QueryRowContext or QueryContext instead.
@@ -515,6 +524,28 @@ func (db *DB) ExecContext(ctx context.Context, query string, args ...any) (sql.R
 	stmt, err := db.getStmt(ctx, query, nil)
 	if err != nil {
 		// Fallback to direct execution on appropriate connection
+		if isWriteQuery(query) {
+			return db.writerConn.ExecContext(ctx, query, args...)
+		}
+		return db.readerPool.ExecContext(ctx, query, args...)
+	}
+	
+	res, execErr := stmt.ExecContext(ctx, args...)
+	if !isStmtClosedErr(execErr) {
+		return res, execErr
+	}
+
+	// statement was evicted and closed between prepare and exec; drop from cache and retry
+	var stmts *ttlcache.Cache[string, *sql.Stmt]
+	if isWriteQuery(query) {
+		stmts = db.writerStmts
+	} else {
+		stmts = db.readerStmts
+	}
+	stmts.Delete(query)
+
+	stmt, err = db.getStmt(ctx, query, nil)
+	if err != nil {
 		if isWriteQuery(query) {
 			return db.writerConn.ExecContext(ctx, query, args...)
 		}
@@ -535,6 +566,28 @@ func (db *DB) QueryContext(ctx context.Context, query string, args ...any) (*sql
 		}
 		return db.readerPool.QueryContext(ctx, query, args...)
 	}
+	
+	rows, queryErr := stmt.QueryContext(ctx, args...)
+	if !isStmtClosedErr(queryErr) {
+		return rows, queryErr
+	}
+
+	// Statement closed underneath us; drop cache entry and retry
+	var stmts *ttlcache.Cache[string, *sql.Stmt]
+	if isWriteQuery(query) {
+		stmts = db.writerStmts
+	} else {
+		stmts = db.readerStmts
+	}
+	stmts.Delete(query)
+
+	stmt, err = db.getStmt(ctx, query, nil)
+	if err != nil {
+		if isWriteQuery(query) {
+			return db.writerConn.QueryContext(ctx, query, args...)
+		}
+		return db.readerPool.QueryContext(ctx, query, args...)
+	}
 	return stmt.QueryContext(ctx, args...)
 }
 
@@ -545,6 +598,28 @@ func (db *DB) QueryRowContext(ctx context.Context, query string, args ...any) *s
 	stmt, err := db.getStmt(ctx, query, nil)
 	if err != nil {
 		// Fallback to direct execution on appropriate connection
+		if isWriteQuery(query) {
+			return db.writerConn.QueryRowContext(ctx, query, args...)
+		}
+		return db.readerPool.QueryRowContext(ctx, query, args...)
+	}
+	
+	row := stmt.QueryRowContext(ctx, args...)
+	if !isStmtClosedErr(row.Err()) {
+		return row
+	}
+
+	// Statement closed underneath us; drop cache entry and retry
+	var stmts *ttlcache.Cache[string, *sql.Stmt]
+	if isWriteQuery(query) {
+		stmts = db.writerStmts
+	} else {
+		stmts = db.readerStmts
+	}
+	stmts.Delete(query)
+
+	stmt, err = db.getStmt(ctx, query, nil)
+	if err != nil {
 		if isWriteQuery(query) {
 			return db.writerConn.QueryRowContext(ctx, query, args...)
 		}

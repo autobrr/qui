@@ -333,7 +333,7 @@ export const CategoryTree = memo(({
   const uncategorizedCount = getCategoryCount("")
 
   return (
-    <div className="space-y-1">
+    <div className="flex flex-col gap-0">
       {/* All/Uncategorized special items */}
 
       <li
