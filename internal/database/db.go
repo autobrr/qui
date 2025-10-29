@@ -118,46 +118,78 @@ func (t *Tx) markQueryForCaching(query string) {
 	t.txMu.Unlock()
 }
 
+type txExecResult struct{ tx *Tx }
+
+func (e txExecResult) execStmt(stmt *sql.Stmt, ctx context.Context, args []any) (sql.Result, error) {
+	return stmt.ExecContext(ctx, args...)
+}
+
+func (e txExecResult) execDirect(_ *sql.DB, ctx context.Context, query string, args []any) (sql.Result, error) {
+	e.tx.markQueryForCaching(query)
+	return e.tx.tx.ExecContext(ctx, query, args...)
+}
+
+func (txExecResult) getErr(sql.Result) error { return nil }
+func (e txExecResult) getTx() *Tx            { return e.tx }
+
+type txQueryRows struct{ tx *Tx }
+
+func (q txQueryRows) execStmt(stmt *sql.Stmt, ctx context.Context, args []any) (*sql.Rows, error) {
+	return stmt.QueryContext(ctx, args...)
+}
+
+func (q txQueryRows) execDirect(_ *sql.DB, ctx context.Context, query string, args []any) (*sql.Rows, error) {
+	q.tx.markQueryForCaching(query)
+	return q.tx.tx.QueryContext(ctx, query, args...)
+}
+
+func (txQueryRows) getErr(r *sql.Rows) error {
+	if r == nil {
+		return nil
+	}
+	return r.Err()
+}
+func (q txQueryRows) getTx() *Tx { return q.tx }
+
+type txQueryRow struct{ tx *Tx }
+
+func (q txQueryRow) execStmt(stmt *sql.Stmt, ctx context.Context, args []any) (*sql.Row, error) {
+	return stmt.QueryRowContext(ctx, args...), nil
+}
+
+func (q txQueryRow) execDirect(_ *sql.DB, ctx context.Context, query string, args []any) (*sql.Row, error) {
+	q.tx.markQueryForCaching(query)
+	return q.tx.tx.QueryRowContext(ctx, query, args...), nil
+}
+
+func (txQueryRow) getErr(r *sql.Row) error {
+	if r == nil {
+		return nil
+	}
+	return r.Err()
+}
+func (q txQueryRow) getTx() *Tx { return q.tx }
+
 // ExecContext executes a query within the transaction.
 // Uses connection-specific statement cache when available. If statement is not cached,
 // prepares it on the transaction and marks it for promotion to DB cache after commit.
 func (t *Tx) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
-	// Get prepared statement (automatically uses correct cache and returns transaction statement)
-	stmt, err := t.db.getStmt(ctx, query, t)
-	if err != nil {
-		// Fallback: prepare directly on transaction
-		t.markQueryForCaching(query)
-		return t.tx.ExecContext(ctx, query, args...)
-	}
-	return stmt.ExecContext(ctx, args...)
+	return execWithRetry(t.db, ctx, query, args, txExecResult{tx: t})
 }
 
 // QueryContext executes a query within the transaction.
 // Uses connection-specific statement cache when available. If statement is not cached,
 // prepares it on the transaction and marks it for promotion to DB cache after commit.
 func (t *Tx) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
-	// Get prepared statement (automatically uses correct cache and returns transaction statement)
-	stmt, err := t.db.getStmt(ctx, query, t)
-	if err != nil {
-		// Fallback: prepare directly on transaction
-		t.markQueryForCaching(query)
-		return t.tx.QueryContext(ctx, query, args...)
-	}
-	return stmt.QueryContext(ctx, args...)
+	return execWithRetry(t.db, ctx, query, args, txQueryRows{tx: t})
 }
 
 // QueryRowContext executes a query within the transaction.
 // Uses connection-specific statement cache when available. If statement is not cached,
 // prepares it on the transaction and marks it for promotion to DB cache after commit.
 func (t *Tx) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
-	// Get prepared statement (automatically uses correct cache and returns transaction statement)
-	stmt, err := t.db.getStmt(ctx, query, t)
-	if err != nil {
-		// Fallback: prepare directly on transaction
-		t.markQueryForCaching(query)
-		return t.tx.QueryRowContext(ctx, query, args...)
-	}
-	return stmt.QueryRowContext(ctx, args...)
+	row, _ := execWithRetry(t.db, ctx, query, args, txQueryRow{tx: t})
+	return row
 }
 
 // Commit commits the transaction and releases the writer mutex if this is a write transaction.
@@ -519,123 +551,115 @@ func isWriteQuery(query string) bool {
 
 const stmtClosedErrMsg = "statement is closed"
 
-func isStmtClosedErr(err error) bool {
-	if err == nil {
-		return false
+type stmtExecutor[T any] interface {
+	execStmt(*sql.Stmt, context.Context, []any) (T, error)
+	execDirect(*sql.DB, context.Context, string, []any) (T, error)
+	getErr(T) error
+	getTx() *Tx // Returns tx if this is a transaction executor, nil otherwise
+}
+
+type execResult struct{}
+
+func (execResult) execStmt(stmt *sql.Stmt, ctx context.Context, args []any) (sql.Result, error) {
+	return stmt.ExecContext(ctx, args...)
+}
+
+func (execResult) execDirect(conn *sql.DB, ctx context.Context, query string, args []any) (sql.Result, error) {
+	return conn.ExecContext(ctx, query, args...)
+}
+
+func (execResult) getErr(sql.Result) error { return nil }
+func (execResult) getTx() *Tx              { return nil }
+
+type queryRows struct{}
+
+func (queryRows) execStmt(stmt *sql.Stmt, ctx context.Context, args []any) (*sql.Rows, error) {
+	return stmt.QueryContext(ctx, args...)
+}
+
+func (queryRows) execDirect(conn *sql.DB, ctx context.Context, query string, args []any) (*sql.Rows, error) {
+	return conn.QueryContext(ctx, query, args...)
+}
+
+func (queryRows) getErr(r *sql.Rows) error {
+	if r == nil {
+		return nil
 	}
-	return strings.Contains(err.Error(), stmtClosedErrMsg)
+	return r.Err()
+}
+func (queryRows) getTx() *Tx { return nil }
+
+type queryRow struct{}
+
+func (queryRow) execStmt(stmt *sql.Stmt, ctx context.Context, args []any) (*sql.Row, error) {
+	return stmt.QueryRowContext(ctx, args...), nil
+}
+
+func (queryRow) execDirect(conn *sql.DB, ctx context.Context, query string, args []any) (*sql.Row, error) {
+	return conn.QueryRowContext(ctx, query, args...), nil
+}
+
+func (queryRow) getErr(r *sql.Row) error {
+	if r == nil {
+		return nil
+	}
+	return r.Err()
+}
+func (queryRow) getTx() *Tx { return nil }
+
+func execWithRetry[T any, E stmtExecutor[T]](db *DB, ctx context.Context, query string, args []any, executor E) (T, error) {
+	stmt, err := db.getStmt(ctx, query, executor.getTx())
+	if err != nil {
+		if isWriteQuery(query) {
+			return executor.execDirect(db.writerConn, ctx, query, args)
+		}
+		return executor.execDirect(db.readerPool, ctx, query, args)
+	}
+
+	result, execErr := executor.execStmt(stmt, ctx, args)
+	resultErr := executor.getErr(result)
+	if (execErr == nil || !strings.Contains(execErr.Error(), stmtClosedErrMsg)) &&
+		(resultErr == nil || !strings.Contains(resultErr.Error(), stmtClosedErrMsg)) {
+		return result, execErr
+	}
+
+	// Statement was evicted and closed between prepare and exec; drop from cache and retry
+	if isWriteQuery(query) {
+		db.writerStmts.Delete(query)
+	} else {
+		db.readerStmts.Delete(query)
+	}
+
+	stmt, err = db.getStmt(ctx, query, executor.getTx())
+	if err != nil {
+		if isWriteQuery(query) {
+			return executor.execDirect(db.writerConn, ctx, query, args)
+		}
+		return executor.execDirect(db.readerPool, ctx, query, args)
+	}
+
+	result, execErr = executor.execStmt(stmt, ctx, args)
+	return result, execErr
 }
 
 // ExecContext routes write queries to the single writer connection and
 // read queries to the reader pool. Uses prepared statements when possible.
 // Do NOT use this for queries with RETURNING clauses - use QueryRowContext or QueryContext instead.
 func (db *DB) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
-	// Get prepared statement (automatically uses correct connection)
-	stmt, err := db.getStmt(ctx, query, nil)
-	if err != nil {
-		// Fallback to direct execution on appropriate connection
-		if isWriteQuery(query) {
-			return db.writerConn.ExecContext(ctx, query, args...)
-		}
-		return db.readerPool.ExecContext(ctx, query, args...)
-	}
-
-	res, execErr := stmt.ExecContext(ctx, args...)
-	if !isStmtClosedErr(execErr) {
-		return res, execErr
-	}
-
-	// statement was evicted and closed between prepare and exec; drop from cache and retry
-	var stmts *ttlcache.Cache[string, *sql.Stmt]
-	if isWriteQuery(query) {
-		stmts = db.writerStmts
-	} else {
-		stmts = db.readerStmts
-	}
-	stmts.Delete(query)
-
-	stmt, err = db.getStmt(ctx, query, nil)
-	if err != nil {
-		if isWriteQuery(query) {
-			return db.writerConn.ExecContext(ctx, query, args...)
-		}
-		return db.readerPool.ExecContext(ctx, query, args...)
-	}
-	return stmt.ExecContext(ctx, args...)
+	return execWithRetry(db, ctx, query, args, execResult{})
 }
 
 // QueryContext routes write queries to the single writer connection and
 // read queries to the reader pool. Uses prepared statements when possible.
 func (db *DB) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
-	// Get prepared statement (automatically uses correct connection)
-	stmt, err := db.getStmt(ctx, query, nil)
-	if err != nil {
-		// Fallback to direct execution on appropriate connection
-		if isWriteQuery(query) {
-			return db.writerConn.QueryContext(ctx, query, args...)
-		}
-		return db.readerPool.QueryContext(ctx, query, args...)
-	}
-
-	rows, queryErr := stmt.QueryContext(ctx, args...)
-	if !isStmtClosedErr(queryErr) {
-		return rows, queryErr
-	}
-
-	// Statement closed underneath us; drop cache entry and retry
-	var stmts *ttlcache.Cache[string, *sql.Stmt]
-	if isWriteQuery(query) {
-		stmts = db.writerStmts
-	} else {
-		stmts = db.readerStmts
-	}
-	stmts.Delete(query)
-
-	stmt, err = db.getStmt(ctx, query, nil)
-	if err != nil {
-		if isWriteQuery(query) {
-			return db.writerConn.QueryContext(ctx, query, args...)
-		}
-		return db.readerPool.QueryContext(ctx, query, args...)
-	}
-	return stmt.QueryContext(ctx, args...)
+	return execWithRetry(db, ctx, query, args, queryRows{})
 }
 
 // QueryRowContext routes write queries to the single writer connection and
 // read queries to the reader pool. Uses prepared statements when possible.
 func (db *DB) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
-	// Get prepared statement (automatically uses correct connection)
-	stmt, err := db.getStmt(ctx, query, nil)
-	if err != nil {
-		// Fallback to direct execution on appropriate connection
-		if isWriteQuery(query) {
-			return db.writerConn.QueryRowContext(ctx, query, args...)
-		}
-		return db.readerPool.QueryRowContext(ctx, query, args...)
-	}
-
-	row := stmt.QueryRowContext(ctx, args...)
-	if !isStmtClosedErr(row.Err()) {
-		return row
-	}
-
-	// Statement closed underneath us; drop cache entry and retry
-	var stmts *ttlcache.Cache[string, *sql.Stmt]
-	if isWriteQuery(query) {
-		stmts = db.writerStmts
-	} else {
-		stmts = db.readerStmts
-	}
-	stmts.Delete(query)
-
-	stmt, err = db.getStmt(ctx, query, nil)
-	if err != nil {
-		if isWriteQuery(query) {
-			return db.writerConn.QueryRowContext(ctx, query, args...)
-		}
-		return db.readerPool.QueryRowContext(ctx, query, args...)
-	}
-	return stmt.QueryRowContext(ctx, args...)
+	row, _ := execWithRetry(db, ctx, query, args, queryRow{})
+	return row
 }
 
 // stringPoolCleanupLoop runs periodic cleanup of unused strings from string_pool
