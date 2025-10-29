@@ -634,7 +634,7 @@ func (db *DB) stringPoolCleanupLoop(ctx context.Context) {
 	ticker := time.NewTicker(24 * time.Hour)
 	defer ticker.Stop()
 
-	// Run initial cleanup after 1 hour of startup
+	// Run initial cleanup after 1 minute of startup
 	initialDelay := time.NewTimer(1 * time.Minute)
 	defer initialDelay.Stop()
 
@@ -1086,23 +1086,13 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 	}()
 
 	_, err = tx.ExecContext(ctx, `
-		CREATE TEMP TABLE temp_referenced_strings (
-			string_id INTEGER PRIMARY KEY
-		)
+		CREATE TEMP TABLE temp_referenced_strings AS
+		SELECT DISTINCT * FROM (
+`+referencedStringsInsertQuery+`
+		) AS subquery(string_id)
 	`)
 	if err != nil {
-		return 0, fmt.Errorf("failed to create temp table: %w", err)
-	}
-
-	// Populate temp table with all referenced string IDs in a single optimized query
-	// Each source uses SELECT DISTINCT to filter duplicates locally while UNION ALL
-	// avoids the global sort/merge overhead of UNION. The PRIMARY KEY on the temp table
-	// guards against any remaining cross-source duplicates.
-	_, err = tx.ExecContext(ctx, `
-		INSERT OR IGNORE INTO temp_referenced_strings
-`+referencedStringsInsertQuery)
-	if err != nil {
-		return 0, fmt.Errorf("failed to populate temp table: %w", err)
+		return 0, fmt.Errorf("failed to create and populate temp table: %w", err)
 	}
 
 	// Delete strings not in the temp table - fast due to PRIMARY KEY index on temp table
