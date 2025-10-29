@@ -151,25 +151,6 @@ func (txQueryRows) getErr(r *sql.Rows) error {
 }
 func (q txQueryRows) getTx() *Tx { return q.tx }
 
-type txQueryRow struct{ tx *Tx }
-
-func (q txQueryRow) execStmt(stmt *sql.Stmt, ctx context.Context, args []any) (*sql.Row, error) {
-	return stmt.QueryRowContext(ctx, args...), nil
-}
-
-func (q txQueryRow) execDirect(_ *sql.DB, ctx context.Context, query string, args []any) (*sql.Row, error) {
-	q.tx.markQueryForCaching(query)
-	return q.tx.tx.QueryRowContext(ctx, query, args...), nil
-}
-
-func (txQueryRow) getErr(r *sql.Row) error {
-	if r == nil {
-		return nil
-	}
-	return r.Err()
-}
-func (q txQueryRow) getTx() *Tx { return q.tx }
-
 // ExecContext executes a query within the transaction.
 // Uses connection-specific statement cache when available. If statement is not cached,
 // prepares it on the transaction and marks it for promotion to DB cache after commit.
@@ -188,8 +169,30 @@ func (t *Tx) QueryContext(ctx context.Context, query string, args ...any) (*sql.
 // Uses connection-specific statement cache when available. If statement is not cached,
 // prepares it on the transaction and marks it for promotion to DB cache after commit.
 func (t *Tx) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
-	row, _ := execWithRetry(t.db, ctx, query, args, txQueryRow{tx: t})
-	return row
+	stmt, err := t.db.getStmt(ctx, query, t)
+	if err != nil {
+		t.markQueryForCaching(query)
+		return t.tx.QueryRowContext(ctx, query, args...)
+	}
+
+	row := stmt.QueryRowContext(ctx, args...)
+	if row.Err() == nil || !strings.Contains(row.Err().Error(), stmtClosedErrMsg) {
+		return row
+	}
+
+	// Statement was evicted and closed between prepare and exec; drop from cache and retry
+	if t.isWriteTx {
+		t.db.writerStmts.Delete(query)
+	} else {
+		t.db.readerStmts.Delete(query)
+	}
+
+	stmt, err = t.db.getStmt(ctx, query, t)
+	if err != nil {
+		t.markQueryForCaching(query)
+		return t.tx.QueryRowContext(ctx, query, args...)
+	}
+	return stmt.QueryRowContext(ctx, args...)
 }
 
 // Commit commits the transaction and releases the writer mutex if this is a write transaction.
@@ -589,24 +592,6 @@ func (queryRows) getErr(r *sql.Rows) error {
 }
 func (queryRows) getTx() *Tx { return nil }
 
-type queryRow struct{}
-
-func (queryRow) execStmt(stmt *sql.Stmt, ctx context.Context, args []any) (*sql.Row, error) {
-	return stmt.QueryRowContext(ctx, args...), nil
-}
-
-func (queryRow) execDirect(conn *sql.DB, ctx context.Context, query string, args []any) (*sql.Row, error) {
-	return conn.QueryRowContext(ctx, query, args...), nil
-}
-
-func (queryRow) getErr(r *sql.Row) error {
-	if r == nil {
-		return nil
-	}
-	return r.Err()
-}
-func (queryRow) getTx() *Tx { return nil }
-
 func execWithRetry[T any, E stmtExecutor[T]](db *DB, ctx context.Context, query string, args []any, executor E) (T, error) {
 	stmt, err := db.getStmt(ctx, query, executor.getTx())
 	if err != nil {
@@ -658,8 +643,34 @@ func (db *DB) QueryContext(ctx context.Context, query string, args ...any) (*sql
 // QueryRowContext routes write queries to the single writer connection and
 // read queries to the reader pool. Uses prepared statements when possible.
 func (db *DB) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
-	row, _ := execWithRetry(db, ctx, query, args, queryRow{})
-	return row
+	stmt, err := db.getStmt(ctx, query, nil)
+	if err != nil {
+		if isWriteQuery(query) {
+			return db.writerConn.QueryRowContext(ctx, query, args...)
+		}
+		return db.readerPool.QueryRowContext(ctx, query, args...)
+	}
+
+	row := stmt.QueryRowContext(ctx, args...)
+	if row.Err() == nil || !strings.Contains(row.Err().Error(), stmtClosedErrMsg) {
+		return row
+	}
+
+	// Statement was evicted and closed between prepare and exec; drop from cache and retry
+	if isWriteQuery(query) {
+		db.writerStmts.Delete(query)
+	} else {
+		db.readerStmts.Delete(query)
+	}
+
+	stmt, err = db.getStmt(ctx, query, nil)
+	if err != nil {
+		if isWriteQuery(query) {
+			return db.writerConn.QueryRowContext(ctx, query, args...)
+		}
+		return db.readerPool.QueryRowContext(ctx, query, args...)
+	}
+	return stmt.QueryRowContext(ctx, args...)
 }
 
 // stringPoolCleanupLoop runs periodic cleanup of unused strings from string_pool
