@@ -529,7 +529,7 @@ func (db *DB) ExecContext(ctx context.Context, query string, args ...any) (sql.R
 		}
 		return db.readerPool.ExecContext(ctx, query, args...)
 	}
-	
+
 	res, execErr := stmt.ExecContext(ctx, args...)
 	if !isStmtClosedErr(execErr) {
 		return res, execErr
@@ -566,7 +566,7 @@ func (db *DB) QueryContext(ctx context.Context, query string, args ...any) (*sql
 		}
 		return db.readerPool.QueryContext(ctx, query, args...)
 	}
-	
+
 	rows, queryErr := stmt.QueryContext(ctx, args...)
 	if !isStmtClosedErr(queryErr) {
 		return rows, queryErr
@@ -603,7 +603,7 @@ func (db *DB) QueryRowContext(ctx context.Context, query string, args ...any) *s
 		}
 		return db.readerPool.QueryRowContext(ctx, query, args...)
 	}
-	
+
 	row := stmt.QueryRowContext(ctx, args...)
 	if !isStmtClosedErr(row.Err()) {
 		return row
@@ -635,7 +635,7 @@ func (db *DB) stringPoolCleanupLoop(ctx context.Context) {
 	defer ticker.Stop()
 
 	// Run initial cleanup after 1 hour of startup
-	initialDelay := time.NewTimer(1 * time.Hour)
+	initialDelay := time.NewTimer(1 * time.Minute)
 	defer initialDelay.Stop()
 
 	// Track consecutive failures to adjust cleanup frequency
