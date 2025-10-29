@@ -438,15 +438,3 @@ func TestCleanupUnusedStrings(t *testing.T) {
 	require.NoError(t, conn.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM string_pool WHERE id = ?)", id1).Scan(&exists))
 	require.True(t, exists)
 }
-
-func TestReferencedStringsInsertQueryUsesDeduplication(t *testing.T) {
-	selectCount := 0
-	for _, line := range strings.Split(referencedStringsInsertQuery, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "SELECT") {
-			selectCount++
-			require.Truef(t, strings.HasPrefix(trimmed, "SELECT DISTINCT"), "line %q should use SELECT DISTINCT", trimmed)
-		}
-	}
-	require.Greater(t, selectCount, 0, "expected referencedStringsInsertQuery to contain SELECT statements")
-}

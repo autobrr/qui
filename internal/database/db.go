@@ -1004,55 +1004,55 @@ func (db *DB) applyAllMigrations(ctx context.Context, migrations []string) error
 // NOTE: Uses an optimized temp table approach with a single UNION ALL query to minimize
 // transaction time while maintaining data consistency.
 const referencedStringsInsertQuery = `
-	SELECT DISTINCT torrent_hash_id AS string_id FROM torrent_files_cache WHERE torrent_hash_id IS NOT NULL
+	SELECT torrent_hash_id AS string_id FROM torrent_files_cache WHERE torrent_hash_id IS NOT NULL
 	UNION ALL
-	SELECT DISTINCT name_id AS string_id FROM torrent_files_cache WHERE name_id IS NOT NULL
+	SELECT name_id AS string_id FROM torrent_files_cache WHERE name_id IS NOT NULL
 	UNION ALL
-	SELECT DISTINCT torrent_hash_id AS string_id FROM torrent_files_sync WHERE torrent_hash_id IS NOT NULL
+	SELECT torrent_hash_id AS string_id FROM torrent_files_sync WHERE torrent_hash_id IS NOT NULL
 	UNION ALL
-	SELECT DISTINCT torrent_hash_id AS string_id FROM instance_backup_items WHERE torrent_hash_id IS NOT NULL
+	SELECT torrent_hash_id AS string_id FROM instance_backup_items WHERE torrent_hash_id IS NOT NULL
 	UNION ALL
-	SELECT DISTINCT name_id AS string_id FROM instance_backup_items WHERE name_id IS NOT NULL
+	SELECT name_id AS string_id FROM instance_backup_items WHERE name_id IS NOT NULL
 	UNION ALL
-	SELECT DISTINCT category_id AS string_id FROM instance_backup_items WHERE category_id IS NOT NULL
+	SELECT category_id AS string_id FROM instance_backup_items WHERE category_id IS NOT NULL
 	UNION ALL
-	SELECT DISTINCT tags_id AS string_id FROM instance_backup_items WHERE tags_id IS NOT NULL
+	SELECT tags_id AS string_id FROM instance_backup_items WHERE tags_id IS NOT NULL
 	UNION ALL
-	SELECT DISTINCT archive_rel_path_id AS string_id FROM instance_backup_items WHERE archive_rel_path_id IS NOT NULL
+	SELECT archive_rel_path_id AS string_id FROM instance_backup_items WHERE archive_rel_path_id IS NOT NULL
 	UNION ALL
-	SELECT DISTINCT infohash_v1_id AS string_id FROM instance_backup_items WHERE infohash_v1_id IS NOT NULL
+	SELECT infohash_v1_id AS string_id FROM instance_backup_items WHERE infohash_v1_id IS NOT NULL
 	UNION ALL
-	SELECT DISTINCT infohash_v2_id AS string_id FROM instance_backup_items WHERE infohash_v2_id IS NOT NULL
+	SELECT infohash_v2_id AS string_id FROM instance_backup_items WHERE infohash_v2_id IS NOT NULL
 	UNION ALL
-	SELECT DISTINCT torrent_blob_path_id AS string_id FROM instance_backup_items WHERE torrent_blob_path_id IS NOT NULL
+	SELECT torrent_blob_path_id AS string_id FROM instance_backup_items WHERE torrent_blob_path_id IS NOT NULL
 	UNION ALL
-	SELECT DISTINCT kind_id AS string_id FROM instance_backup_runs WHERE kind_id IS NOT NULL
+	SELECT kind_id AS string_id FROM instance_backup_runs WHERE kind_id IS NOT NULL
 	UNION ALL
-	SELECT DISTINCT status_id AS string_id FROM instance_backup_runs WHERE status_id IS NOT NULL
+	SELECT status_id AS string_id FROM instance_backup_runs WHERE status_id IS NOT NULL
 	UNION ALL
-	SELECT DISTINCT requested_by_id AS string_id FROM instance_backup_runs WHERE requested_by_id IS NOT NULL
+	SELECT requested_by_id AS string_id FROM instance_backup_runs WHERE requested_by_id IS NOT NULL
 	UNION ALL
-	SELECT DISTINCT error_message_id AS string_id FROM instance_backup_runs WHERE error_message_id IS NOT NULL
+	SELECT error_message_id AS string_id FROM instance_backup_runs WHERE error_message_id IS NOT NULL
 	UNION ALL
-	SELECT DISTINCT archive_path_id AS string_id FROM instance_backup_runs WHERE archive_path_id IS NOT NULL
+	SELECT archive_path_id AS string_id FROM instance_backup_runs WHERE archive_path_id IS NOT NULL
 	UNION ALL
-	SELECT DISTINCT manifest_path_id AS string_id FROM instance_backup_runs WHERE manifest_path_id IS NOT NULL
+	SELECT manifest_path_id AS string_id FROM instance_backup_runs WHERE manifest_path_id IS NOT NULL
 	UNION ALL
-	SELECT DISTINCT name_id AS string_id FROM instances WHERE name_id IS NOT NULL
+	SELECT name_id AS string_id FROM instances WHERE name_id IS NOT NULL
 	UNION ALL
-	SELECT DISTINCT host_id AS string_id FROM instances WHERE host_id IS NOT NULL
+	SELECT host_id AS string_id FROM instances WHERE host_id IS NOT NULL
 	UNION ALL
-	SELECT DISTINCT username_id AS string_id FROM instances WHERE username_id IS NOT NULL
+	SELECT username_id AS string_id FROM instances WHERE username_id IS NOT NULL
 	UNION ALL
-	SELECT DISTINCT basic_username_id AS string_id FROM instances WHERE basic_username_id IS NOT NULL
+	SELECT basic_username_id AS string_id FROM instances WHERE basic_username_id IS NOT NULL
 	UNION ALL
-	SELECT DISTINCT name_id AS string_id FROM api_keys WHERE name_id IS NOT NULL
+	SELECT name_id AS string_id FROM api_keys WHERE name_id IS NOT NULL
 	UNION ALL
-	SELECT DISTINCT client_name_id AS string_id FROM client_api_keys WHERE client_name_id IS NOT NULL
+	SELECT client_name_id AS string_id FROM client_api_keys WHERE client_name_id IS NOT NULL
 	UNION ALL
-	SELECT DISTINCT error_type_id AS string_id FROM instance_errors WHERE error_type_id IS NOT NULL
+	SELECT error_type_id AS string_id FROM instance_errors WHERE error_type_id IS NOT NULL
 	UNION ALL
-	SELECT DISTINCT error_message_id AS string_id FROM instance_errors WHERE error_message_id IS NOT NULL
+	SELECT error_message_id AS string_id FROM instance_errors WHERE error_message_id IS NOT NULL
 `
 
 func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
@@ -1077,7 +1077,7 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 		)
 	`)
 	if err != nil {
-		return 0, fmt.Errorf("failed to create and populate temp table: %w", err)
+		return 0, fmt.Errorf("failed to create temp table: %w", err)
 	}
 
 	// Create temp table for referenced string IDs (automatically indexed due to PRIMARY KEY)
@@ -1087,7 +1087,7 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 	}
 	defer tx.Rollback()
 
-	_, err = tx.ExecContext(ctx, `INSERT INTO temp_referenced_strings (string_id) SELECT DISTINCT string_id FROM (
+	_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO temp_referenced_strings (string_id) SELECT string_id FROM (
 `+referencedStringsInsertQuery+`
 		) AS subquery`)
 	if err != nil {
