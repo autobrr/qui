@@ -1063,38 +1063,33 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 	}
 	defer db.cleanupRunning.Store(false)
 
-	// Create temp table for referenced string IDs (automatically indexed due to PRIMARY KEY)
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		return 0, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	// Ensure transaction is always cleaned up, which releases the writerMu
-	defer func() {
-		if tx != nil {
-			_ = tx.Rollback() // Rollback is safe to call even after Commit
-		}
-	}()
-
 	// Drop temp table if it exists from previous run
-	_, _ = tx.ExecContext(ctx, "DROP TABLE IF EXISTS temp_referenced_strings")
+	_, _ = db.ExecContext(ctx, "DROP TABLE IF EXISTS temp_referenced_strings")
 
 	// Ensure temp table is cleaned up at the end
 	defer func() {
-		if tx != nil {
-			_, _ = tx.ExecContext(context.Background(), "DROP TABLE IF EXISTS temp_referenced_strings")
-		}
+		_, _ = db.ExecContext(context.Background(), "DROP TABLE IF EXISTS temp_referenced_strings")
 	}()
 
-	_, err = tx.ExecContext(ctx, `
-		CREATE TEMP TABLE temp_referenced_strings AS
-		SELECT DISTINCT string_id FROM (
-`+referencedStringsInsertQuery+`
-		) AS subquery
+	_, err := db.ExecContext(ctx, `
+		CREATE TEMP TABLE temp_referenced_strings (
+			string_id INTEGER PRIMARY KEY
+		)
 	`)
 	if err != nil {
 		return 0, fmt.Errorf("failed to create and populate temp table: %w", err)
 	}
 
+	// Create temp table for referenced string IDs (automatically indexed due to PRIMARY KEY)
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	tx.ExecContext(ctx, `INSERT INTO temp_referenced_strings (string_id) SELECT DISTINCT string_id FROM (
+`+referencedStringsInsertQuery+`
+		) AS subquery`)
 	// Delete strings not in the temp table - fast due to PRIMARY KEY index on temp table
 	// Using NOT EXISTS instead of NOT IN to avoid any potential SQLite limitations
 	result, err := tx.ExecContext(ctx, `
@@ -1107,13 +1102,9 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("failed to cleanup unused strings: %w", err)
 	}
 
-	// Drop the temp table before committing (cleanup)
-	_, _ = tx.ExecContext(ctx, "DROP TABLE IF EXISTS temp_referenced_strings")
-
 	if err := tx.Commit(); err != nil {
 		return 0, fmt.Errorf("failed to commit transaction: %w", err)
 	}
-	tx = nil // Prevent defer from trying to rollback committed transaction
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
