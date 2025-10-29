@@ -1081,27 +1081,20 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("failed to create temp table: %w", err)
 	}
 
-	// CRITICAL: Disable foreign key checks for cleanup operation
-	// All string_pool references use ON DELETE RESTRICT which prevents deletion
-	// even when there are no actual references. We must disable FKs temporarily.
-	// NOTE: PRAGMA foreign_keys cannot be changed inside a transaction, must be done first.
-	if _, err := db.writerConn.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
-		return 0, fmt.Errorf("failed to disable foreign keys: %w", err)
-	}
-
-	// Ensure foreign keys are re-enabled even if cleanup fails
-	defer func() {
-		if _, err := db.writerConn.ExecContext(context.Background(), "PRAGMA foreign_keys = ON"); err != nil {
-			log.Error().Err(err).Msg("CRITICAL: Failed to re-enable foreign keys after cleanup - manual intervention required")
-		}
-	}()
-
 	// Begin transaction for the actual cleanup work
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer tx.Rollback()
+
+	// CRITICAL: Defer foreign key checks until end of transaction
+	// All string_pool references use ON DELETE RESTRICT which would prevent deletion
+	// even when there are no actual references. Deferring allows the transaction to
+	// complete and verify constraints at commit time rather than immediately.
+	if _, err := tx.ExecContext(ctx, "PRAGMA defer_foreign_keys = ON"); err != nil {
+		return 0, fmt.Errorf("failed to defer foreign keys: %w", err)
+	}
 
 	_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO temp_referenced_strings (string_id) SELECT string_id FROM (
 `+referencedStringsInsertQuery+`
