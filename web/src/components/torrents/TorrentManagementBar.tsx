@@ -95,16 +95,11 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
 
   const selectionCount = totalSelectionCount || selectedHashes.length
 
-  // Don't render if there's no selection
-  if (selectionCount === 0 && !isAllSelected) {
-    return null
-  }
-
   // Use shared metadata hook to leverage cache from table and filter sidebar
   const { data: metadata, isLoading: isMetadataLoading } = useInstanceMetadata(instanceId)
   const availableTags = metadata?.tags || []
   const availableCategories = metadata?.categories || {}
-  
+
   const isLoadingTagsData = isMetadataLoading && availableTags.length === 0
   const isLoadingCategoriesData = isMetadataLoading && Object.keys(availableCategories).length === 0
 
@@ -335,6 +330,10 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   const hasSelection = selectionCount > 0 || isAllSelected
   const isDisabled = !instanceId || !hasSelection
 
+  // Keep this guard after hooks so their invocation order stays stable.
+  if (!hasSelection) {
+    return null
+  }
 
   return (
     <>
