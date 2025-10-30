@@ -9,34 +9,42 @@ export function usePersistedDeleteFiles(defaultValue: boolean = false) {
   const storageKey = "qui-delete-files-default"
   const lockKey = "qui-delete-files-lock"
 
-  const [isLocked, setIsLocked] = useState<boolean>(() => {
+  const readStoredPreference = () => {
     try {
-      const stored = localStorage.getItem(lockKey)
-      if (stored) {
-        return JSON.parse(stored) === true
+      const existingPreference = localStorage.getItem(storageKey)
+      if (existingPreference) {
+        const parsedPreference = JSON.parse(existingPreference)
+        if (typeof parsedPreference === "boolean") {
+          return parsedPreference
+        }
       }
+    } catch (error) {
+      console.error("Failed to read delete files preference from localStorage:", error)
+    }
+
+    return undefined
+  }
+
+  const readStoredLock = () => {
+    try {
+      const storedLock = localStorage.getItem(lockKey)
+      if (storedLock) {
+        return JSON.parse(storedLock) === true
+      }
+
+      const preference = readStoredPreference()
+      return typeof preference === "boolean"
     } catch (error) {
       console.error("Failed to read delete files lock state from localStorage:", error)
     }
 
     return false
-  })
+  }
 
-  // Initialize state from localStorage or default value (only when locked)
-  const [deleteFiles, setDeleteFiles] = useState<boolean>(() => {
-    try {
-      const storedLock = localStorage.getItem(lockKey)
-      const storedValue = localStorage.getItem(storageKey)
+  const [isLocked, setIsLocked] = useState<boolean>(() => readStoredLock())
 
-      if (storedLock && JSON.parse(storedLock) === true && storedValue) {
-        return JSON.parse(storedValue)
-      }
-    } catch (error) {
-      console.error("Failed to load delete files preference from localStorage:", error)
-    }
-
-    return defaultValue
-  })
+  // Initialize state from localStorage or default value
+  const [deleteFiles, setDeleteFiles] = useState<boolean>(() => readStoredPreference() ?? defaultValue)
 
   // Persist the lock state and clear stored values when unlocking
   useEffect(() => {
@@ -79,4 +87,3 @@ export function usePersistedDeleteFiles(defaultValue: boolean = false) {
     toggleLock,
   } as const
 }
-
