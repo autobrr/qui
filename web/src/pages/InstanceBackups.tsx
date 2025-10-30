@@ -768,6 +768,23 @@ export function InstanceBackups() {
               <p className="text-sm text-muted-foreground">Loading settings...</p>
             ) : (
               <div className="space-y-6">
+                {settings?.backupsDir && (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <HardDrive className="h-4 w-4 text-muted-foreground" />
+                      <span>Backup location</span>
+                    </div>
+                    <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+                      <code className="block rounded text-foreground px-3 py-2 font-mono text-xs font-bold break-all">
+                        {settings.backupsDir}
+                      </code>
+                      <p className="text-xs text-muted-foreground">
+                        Archives, manifests, and torrent blobs are kept in per-instance folders inside this directory.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                   <SettingToggle
                     label="Enable backups"
@@ -1681,7 +1698,7 @@ function SettingToggle({
   onCheckedChange: (checked: boolean) => void
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 rounded-lg border p-4">
+    <div className="flex items-start justify-between gap-4 rounded-lg border bg-muted/30 p-4">
       <div>
         <p className="font-medium leading-none mb-1">{label}</p>
         <p className="text-sm text-muted-foreground">{description}</p>

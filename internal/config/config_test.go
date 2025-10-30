@@ -74,6 +74,50 @@ func TestDatabasePathResolution(t *testing.T) {
 	}
 }
 
+func TestGetBackupsDir(t *testing.T) {
+	base := t.TempDir()
+	resolve := func(path string) string {
+		if resolved, err := filepath.EvalSymlinks(path); err == nil {
+			return resolved
+		}
+		return filepath.Clean(path)
+	}
+
+	canonicalBase := resolve(base)
+	dataDir := filepath.Join(canonicalBase, "data")
+	require.NoError(t, os.MkdirAll(dataDir, 0o755))
+
+	cfg := &AppConfig{
+		Config:  &domain.Config{DataDir: dataDir},
+		dataDir: dataDir,
+	}
+
+	assert.Equal(t, resolve(dataDir), resolve(cfg.GetBackupsDir()))
+
+	override := filepath.Join(canonicalBase, "override-backups")
+	require.NoError(t, os.MkdirAll(override, 0o755))
+	cfg.Config.BackupsDir = override
+	assert.Equal(t, resolve(override), resolve(cfg.GetBackupsDir()))
+
+	wd, err := os.Getwd()
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = os.Chdir(wd)
+	})
+	require.NoError(t, os.Chdir(canonicalBase))
+
+	cfg.Config.BackupsDir = "relative-backups"
+	expectedRelative := filepath.Join(canonicalBase, "relative-backups")
+	require.NoError(t, os.MkdirAll(expectedRelative, 0o755))
+	assert.Equal(t, resolve(expectedRelative), resolve(cfg.GetBackupsDir()))
+
+	if home, err := os.UserHomeDir(); err == nil {
+		cfg.Config.BackupsDir = "~/home-backups"
+		expectedHome := filepath.Join(home, "home-backups")
+		assert.Equal(t, resolve(expectedHome), resolve(cfg.GetBackupsDir()))
+	}
+}
+
 func TestGenerateSecureTokenHexOutput(t *testing.T) {
 	tests := []struct {
 		name   string

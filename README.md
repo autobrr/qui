@@ -133,6 +133,7 @@ QUI__LOG_MAX_BACKUPS=3   # Optional: retain N rotated files (default: 3, 0 keeps
 
 # Storage
 QUI__DATA_DIR=...        # Optional: custom data directory (default: next to config)
+QUI__BACKUPS_DIR=...     # Optional: store backups in a separate location (default: QUI__DATA_DIR)
 
 # Metrics
 QUI__METRICS_ENABLED=true   # Optional: enable Prometheus metrics (default: false)
@@ -168,7 +169,7 @@ You can set the same options in `config.toml` using the `oidc*` keys generated b
 
 ## Backups & Restore Modes
 
-qui can take scheduled or ad-hoc snapshots of a qBittorrent instance. Each snapshot includes the torrent archive, tags, categories (with save paths), and cached `.torrent` blobs so that you can recreate the original state later.
+qui can take scheduled or ad-hoc snapshots of a qBittorrent instance. Each snapshot includes the torrent archive, tags, categories (with save paths), and cached `.torrent` blobs so that you can recreate the original state later. Set `backupsDir` in `config.toml` (or `QUI__BACKUPS_DIR` in the environment) when you want archives to live outside the main data directory, such as on a slower but redundant storage array.
 
 Once backups are enabled for an instance the backlog UI exposes a **Restore** action for each run. Restores support three distinct modes:
 

@@ -343,6 +343,7 @@ export interface BackupSettings {
   keepMonthly: number
   includeCategories: boolean
   includeTags: boolean
+  backupsDir?: string
   createdAt?: string
   updatedAt?: string
 }
