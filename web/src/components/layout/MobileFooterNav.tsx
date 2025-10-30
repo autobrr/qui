@@ -3,25 +3,13 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { Link, useLocation } from "@tanstack/react-router"
-import { cn } from "@/lib/utils"
+import { Badge } from "@/components/ui/badge"
 import {
-  Home,
-  Settings,
-  HardDrive,
-  Server,
-  Github,
-  LogOut,
-  Sun,
-  Moon,
-  Monitor,
-  Archive,
-  Check,
-  Palette
-} from "lucide-react"
-import { useQuery } from "@tanstack/react-query"
-import { api } from "@/lib/api"
-import { getAppVersion } from "@/lib/build-info"
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle
+} from "@/components/ui/dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -30,26 +18,40 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog"
-import { useAuth } from "@/hooks/useAuth"
-import { Badge } from "@/components/ui/badge"
+import { isThemePremium, themes } from "@/config/themes"
 import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
-import { useState, useEffect, useCallback } from "react"
+import { useAuth } from "@/hooks/useAuth"
+import { useHasPremiumAccess } from "@/hooks/useLicense"
+import { api } from "@/lib/api"
+import { getAppVersion } from "@/lib/build-info"
+import { cn } from "@/lib/utils"
 import {
-  getCurrentThemeMode,
   getCurrentTheme,
+  getCurrentThemeMode,
   setTheme,
   setThemeMode,
   type ThemeMode
 } from "@/utils/theme"
-import { themes, isThemePremium } from "@/config/themes"
+import { useQuery } from "@tanstack/react-query"
+import { Link, useLocation } from "@tanstack/react-router"
+import {
+  Archive,
+  Check,
+  Copyright,
+  Download,
+  Github,
+  HardDrive,
+  Home,
+  LogOut,
+  Monitor,
+  Moon,
+  Palette,
+  Server,
+  Settings,
+  Sun
+} from "lucide-react"
+import { useCallback, useEffect, useState } from "react"
 import { toast } from "sonner"
-import { useHasPremiumAccess } from "@/hooks/useLicense"
 
 
 // Helper to extract primary color from theme
@@ -95,6 +97,14 @@ export function MobileFooterNav() {
   const { data: instances } = useQuery({
     queryKey: ["instances"],
     queryFn: () => api.getInstances(),
+  })
+
+  const { data: updateInfo } = useQuery({
+    queryKey: ["latest-version"],
+    queryFn: () => api.getLatestVersion(),
+    refetchInterval: 2 * 60 * 1000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
   })
 
   const activeInstances = instances?.filter(i => i.connected) || []
@@ -223,14 +233,43 @@ export function MobileFooterNav() {
                 location.pathname === "/settings"? "text-primary": "text-muted-foreground hover:text-foreground"
               )}
             >
-              <Settings className={cn(
-                "h-5 w-5",
-                location.pathname === "/settings" && "text-primary"
-              )} />
+              <div className="relative">
+                <Settings className={cn(
+                  "h-5 w-5",
+                  location.pathname === "/settings" && "text-primary"
+                )} />
+                {updateInfo && (
+                  <Badge
+                    className="absolute -top-1 -right-2 h-4 w-4 p-0 flex items-center justify-center bg-green-500 hover:bg-green-500 text-white"
+                    variant="default"
+                  >
+                    <Download className="h-2.5 w-2.5" />
+                  </Badge>
+                )}
+              </div>
               <span className="truncate">Settings</span>
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" side="top" className="mb-2 w-56">
+            {updateInfo && (
+              <>
+                <DropdownMenuItem asChild>
+                  <a
+                    href={updateInfo.html_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 text-green-600 dark:text-green-400 focus:text-green-600 dark:focus:text-green-400"
+                  >
+                    <Download className="h-4 w-4" />
+                    <div className="flex flex-col">
+                      <span className="font-medium">Update Available</span>
+                      <span className="text-[10px] opacity-80">Version {updateInfo.tag_name}</span>
+                    </div>
+                  </a>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
+            )}
             <DropdownMenuItem asChild>
               <Link
                 to="/settings"
@@ -270,20 +309,24 @@ export function MobileFooterNav() {
 
             <DropdownMenuSeparator />
 
-            <DropdownMenuItem asChild>
+            <div className="flex items-center justify-between px-3 py-2">
+              <div className="flex flex-col gap-0.5 text-[10px] text-muted-foreground/60 select-none">
+                <span className="font-medium text-muted-foreground/70">Version {appVersion}</span>
+                <div className="flex items-center gap-1">
+                  <Copyright className="h-2.5 w-2.5 flex-shrink-0" />
+                  <span>{new Date().getFullYear()} autobrr</span>
+                </div>
+              </div>
               <a
                 href="https://github.com/autobrr/qui"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-2"
+                aria-label="View on GitHub"
+                className="h-6 w-6 flex items-center justify-center text-muted-foreground/60 hover:text-foreground transition-colors"
               >
-                <Github className="h-4 w-4" />
-                GitHub
+                <Github className="h-3.5 w-3.5" />
               </a>
-            </DropdownMenuItem>
-            <DropdownMenuItem disabled className="flex items-center gap-2 text-xs opacity-80 focus:bg-transparent">
-              <span className="flex-1 text-left">Version {appVersion}</span>
-            </DropdownMenuItem>
+            </div>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={() => logout()}
