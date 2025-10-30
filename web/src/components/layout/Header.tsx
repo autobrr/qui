@@ -35,7 +35,7 @@ import { cn } from "@/lib/utils"
 import type { InstanceCapabilities } from "@/types"
 import { useQuery } from "@tanstack/react-query"
 import { Link, useNavigate, useSearch } from "@tanstack/react-router"
-import { ChevronsUpDown, FileEdit, FunnelPlus, FunnelX, HardDrive, Home, Info, ListTodo, LogOut, Menu, Plus, Search, Server, Settings, X } from "lucide-react"
+import { ChevronsUpDown, Download, FileEdit, FunnelPlus, FunnelX, HardDrive, Home, Info, ListTodo, LogOut, Menu, Plus, Search, Server, Settings, X } from "lucide-react"
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useHotkeys } from "react-hotkeys-hook"
 
@@ -139,6 +139,15 @@ export function Header({
     enabled: shouldShowInstanceControls && selectedInstanceId !== null,
     refetchInterval: 30000, // Poll every 30 seconds (lightweight check)
     refetchIntervalInBackground: true,
+  })
+
+  // Query for available updates
+  const { data: updateInfo } = useQuery({
+    queryKey: ["latest-version"],
+    queryFn: () => api.getLatestVersion(),
+    refetchInterval: 2 * 60 * 1000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
   })
 
   // Query instance capabilities via the dedicated lightweight endpoint
@@ -434,11 +443,33 @@ export function Header({
         )}>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="hover:bg-muted hover:text-foreground transition-colors">
+              <Button variant="ghost" size="icon" className="hover:bg-muted hover:text-foreground transition-colors relative">
                 <Menu className="h-4 w-4"/>
+                {updateInfo && (
+                  <span className="absolute top-1 right-1 h-2 w-2 bg-green-500 rounded-full" />
+                )}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52">
+              {updateInfo && (
+                <>
+                  <DropdownMenuItem asChild>
+                    <a
+                      href={updateInfo.html_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 text-green-600 dark:text-green-400 focus:text-green-600 dark:focus:text-green-400 cursor-pointer"
+                    >
+                      <Download className="mr-2 h-4 w-4" />
+                      <div className="flex flex-col">
+                        <span className="font-medium">Update Available</span>
+                        <span className="text-[10px] opacity-80">Version {updateInfo.tag_name}</span>
+                      </div>
+                    </a>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              )}
               <DropdownMenuItem asChild>
                 <Link
                   to="/dashboard"

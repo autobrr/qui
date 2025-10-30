@@ -243,10 +243,22 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
   return (
     <div className="h-full flex flex-col">
-      <div className="flex items-center justify-between px-4 py-3 sm:px-6 border-b bg-muted/30">
-        <h3 className="text-sm font-semibold truncate flex-1 pr-2" title={displayName}>
-          {displayName}
-        </h3>
+      <div className="flex items-center px-4 py-3 sm:px-6 border-b bg-muted/30 gap-2">
+        <div className="flex flex-1 items-center gap-2 min-w-0 pr-12">
+          <h3 className="text-sm font-semibold truncate flex-1 min-w-0" title={displayName}>
+            {displayName}
+          </h3>
+          {displayName && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 shrink-0"
+              onClick={() => copyToClipboard(displayName, "Torrent name")}
+            >
+              <Copy className="h-3.5 w-3.5" />
+            </Button>
+          )}
+        </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="flex-1 flex flex-col overflow-hidden">

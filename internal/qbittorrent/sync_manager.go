@@ -881,9 +881,9 @@ func (sm *SyncManager) torrentIsUnregistered(torrent qbt.Torrent) bool {
 		case qbt.TrackerStatusDisabled:
 			// Skip DHT/PeX entries
 			continue
-		case qbt.TrackerStatusOK, qbt.TrackerStatusUpdating:
+		case qbt.TrackerStatusOK:
 			hasWorking = true
-		case qbt.TrackerStatusNotWorking:
+		case qbt.TrackerStatusUpdating, qbt.TrackerStatusNotWorking:
 			if trackerMessageMatches(tracker.Message, defaultUnregisteredStatuses) {
 				hasUnregistered = true
 			}
