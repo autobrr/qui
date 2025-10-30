@@ -78,7 +78,12 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
 
   // Dialog states
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
-  const [deleteFiles, setDeleteFiles] = usePersistedDeleteFiles(false)
+  const {
+    deleteFiles,
+    setDeleteFiles,
+    isLocked: isDeleteFilesLocked,
+    toggleLock: toggleDeleteFilesLock,
+  } = usePersistedDeleteFiles(false)
   const [showAddTagsDialog, setShowAddTagsDialog] = useState(false)
   const [showSetTagsDialog, setShowSetTagsDialog] = useState(false)
   const [showRemoveTagsDialog, setShowRemoveTagsDialog] = useState(false)
@@ -815,6 +820,8 @@ export function useTorrentActions({ instanceId, onActionComplete }: UseTorrentAc
     setShowDeleteDialog,
     deleteFiles,
     setDeleteFiles,
+    isDeleteFilesLocked,
+    toggleDeleteFilesLock,
     showAddTagsDialog,
     setShowAddTagsDialog,
     showSetTagsDialog,

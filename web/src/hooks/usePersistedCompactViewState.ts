@@ -22,7 +22,7 @@ function sanitizeAllowedModes(allowedModes?: readonly ViewMode[]): ViewMode[] {
 }
 
 export function usePersistedCompactViewState(
-  defaultMode: ViewMode = "compact",
+  defaultMode: ViewMode = "normal",
   allowedModesInput?: readonly ViewMode[]
 ) {
   const allowedModes = useMemo(() => sanitizeAllowedModes(allowedModesInput), [allowedModesInput])
