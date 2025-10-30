@@ -169,7 +169,7 @@ You can set the same options in `config.toml` using the `oidc*` keys generated b
 
 ## Backups & Restore Modes
 
-qui can take scheduled or ad-hoc snapshots of a qBittorrent instance. Each snapshot includes the torrent archive, tags, categories (with save paths), and cached `.torrent` blobs so that you can recreate the original state later. Set `backupsDir` in `config.toml` (or `QUI__BACKUPS_DIR` in the environment) when you want archives to live outside the main data directory, such as on a slower but redundant storage array.
+qui can take scheduled or ad-hoc snapshots of a qBittorrent instance. Each snapshot includes the torrent archive, tags, categories (with save paths), and cached `.torrent` blobs so that you can recreate the original state later. Set `backupsDir` in `config.toml` (or `QUI__BACKUPS_DIR` in the environment) when you want archives to live outside the main data directory.
 
 Once backups are enabled for an instance the backlog UI exposes a **Restore** action for each run. Restores support three distinct modes:
 
