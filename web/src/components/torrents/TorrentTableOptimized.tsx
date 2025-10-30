@@ -1049,6 +1049,47 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   }, [rowSelection])
   const selectedRowIdSet = useMemo(() => new Set(selectedRowIds), [selectedRowIds])
 
+  useEffect(() => {
+    if (isAllSelected) {
+      if (excludedFromSelectAll.size === 0) {
+        return
+      }
+
+      const visibleHashes = new Set(sortedTorrents.map(torrent => torrent.hash))
+      const hasInvalidExclusion = Array.from(excludedFromSelectAll).some(hash => !visibleHashes.has(hash))
+
+      if (hasInvalidExclusion) {
+        resetSelectionState()
+      }
+
+      return
+    }
+
+    if (Object.keys(rowSelection).length === 0) {
+      return
+    }
+
+    const visibleRowIds = new Set(table.getRowModel().rows.map(row => row.id))
+    const hasInvalidSelection = Object.entries(rowSelection).some(([rowId, selected]) => selected && !visibleRowIds.has(rowId))
+
+    if (hasInvalidSelection) {
+      resetSelectionState()
+    }
+  }, [
+    excludedFromSelectAll,
+    isAllSelected,
+    resetSelectionState,
+    rowSelection,
+    sortedTorrents,
+  ])
+
+  // Reset selection when table becomes empty
+  useEffect(() => {
+    if (sortedTorrents.length === 0 && (isAllSelected || Object.keys(rowSelection).length > 0)) {
+      resetSelectionState()
+    }
+  }, [sortedTorrents.length, isAllSelected, rowSelection, resetSelectionState])
+
   // Custom selection handlers for "select all" functionality
   const handleSelectAll = useCallback(() => {
     // Gmail-style behavior: if any rows are selected, always deselect all
