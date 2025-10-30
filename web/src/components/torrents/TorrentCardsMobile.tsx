@@ -74,6 +74,7 @@ import {
 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { AddTorrentDialog } from "./AddTorrentDialog"
+import { DeleteFilesPreference } from "./DeleteFilesPreference"
 import { RemoveTagsDialog, SetCategoryDialog, SetLocationDialog, SetTagsDialog } from "./TorrentDialogs"
 // import { createPortal } from 'react-dom'
 // Columns dropdown removed on mobile
@@ -1015,6 +1016,8 @@ export function TorrentCardsMobile({
     setShowDeleteDialog,
     deleteFiles,
     setDeleteFiles,
+    isDeleteFilesLocked,
+    toggleDeleteFilesLock,
     showSetTagsDialog,
     setShowSetTagsDialog,
     showRemoveTagsDialog,
@@ -2057,16 +2060,13 @@ export function TorrentCardsMobile({
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <div className="flex items-center space-x-2 py-4">
-            <Checkbox
-              id="deleteFiles"
-              checked={deleteFiles}
-              onCheckedChange={(checked) => setDeleteFiles(checked as boolean)}
-            />
-            <label htmlFor="deleteFiles" className="text-sm font-medium">
-              Also delete files from disk
-            </label>
-          </div>
+          <DeleteFilesPreference
+            id="deleteFiles"
+            checked={deleteFiles}
+            onCheckedChange={setDeleteFiles}
+            isLocked={isDeleteFilesLocked}
+            onToggleLock={toggleDeleteFilesLock}
+          />
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
