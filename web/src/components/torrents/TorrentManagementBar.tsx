@@ -96,6 +96,13 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     return null
   }
 
+  const selectionCount = totalSelectionCount || selectedHashes.length
+
+  // Don't render if there's no selection
+  if (selectionCount === 0 && !isAllSelected) {
+    return null
+  }
+
   // Use shared metadata hook to leverage cache from table and filter sidebar
   const { data: metadata, isLoading: isMetadataLoading } = useInstanceMetadata(instanceId)
   const availableTags = metadata?.tags || []
@@ -153,8 +160,6 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
       }
     },
   })
-
-  const selectionCount = totalSelectionCount || selectedHashes.length
 
   // Wrapper functions to adapt hook handlers to component needs
   const actionHashes = useMemo(() => (isAllSelected ? [] : selectedHashes), [isAllSelected, selectedHashes])
