@@ -28,11 +28,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger
-} from "@/components/ui/tooltip"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
 import { getCommonCategory, getCommonSavePath, getCommonTags, getTotalSize } from "@/lib/torrent-utils"
@@ -57,7 +53,8 @@ import {
   Tag,
   Trash2
 } from "lucide-react"
-import { memo, useCallback, useMemo, type ChangeEvent } from "react"
+import { memo, useCallback, useMemo } from "react"
+import { DeleteFilesPreference } from "./DeleteFilesPreference"
 import {
   AddTagsDialog,
   SetCategoryDialog,
@@ -117,6 +114,8 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     setShowDeleteDialog,
     deleteFiles,
     setDeleteFiles,
+    isDeleteFilesLocked,
+    toggleDeleteFilesLock,
     showAddTagsDialog,
     setShowAddTagsDialog,
     showSetTagsDialog,
@@ -608,18 +607,13 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <div className="flex items-center space-x-2 py-4">
-            <input
-              type="checkbox"
-              id="deleteFiles"
-              checked={deleteFiles}
-              onChange={(e: ChangeEvent<HTMLInputElement>) => setDeleteFiles(e.target.checked)}
-              className="rounded border-input"
-            />
-            <label htmlFor="deleteFiles" className="text-sm font-medium">
-              Also delete files from disk
-            </label>
-          </div>
+          <DeleteFilesPreference
+            id="deleteFiles"
+            checked={deleteFiles}
+            onCheckedChange={setDeleteFiles}
+            isLocked={isDeleteFilesLocked}
+            onToggleLock={toggleDeleteFilesLock}
+          />
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction

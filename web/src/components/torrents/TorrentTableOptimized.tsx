@@ -130,6 +130,7 @@ import {
 } from "./TorrentDialogs"
 import { TorrentDropZone } from "./TorrentDropZone"
 import { createColumns } from "./TorrentTableColumns"
+import { DeleteFilesPreference } from "./DeleteFilesPreference"
 
 const TABLE_ALLOWED_VIEW_MODES = ["normal", "compact"] as const
 
@@ -721,6 +722,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     setShowDeleteDialog,
     deleteFiles,
     setDeleteFiles,
+    isDeleteFilesLocked,
+    toggleDeleteFilesLock,
     showAddTagsDialog,
     setShowAddTagsDialog,
     showSetTagsDialog,
@@ -2658,18 +2661,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <div className="flex items-center space-x-2 py-4">
-            <input
-              type="checkbox"
-              id="deleteFiles"
-              checked={deleteFiles}
-              onChange={(e) => setDeleteFiles(e.target.checked)}
-              className="rounded border-input"
-            />
-            <label htmlFor="deleteFiles" className="text-sm font-medium">
-              Also delete files from disk
-            </label>
-          </div>
+          <DeleteFilesPreference
+            id="deleteFiles"
+            checked={deleteFiles}
+            onCheckedChange={setDeleteFiles}
+            isLocked={isDeleteFilesLocked}
+            onToggleLock={toggleDeleteFilesLock}
+          />
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
