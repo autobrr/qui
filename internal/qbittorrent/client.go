@@ -83,7 +83,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 	supportsRenameTorrent := false
 	supportsRenameFile := false
 	supportsRenameFolder := false
-	supportsFilePriority := true
+	supportsFilePriority := false
 	supportsSubcategories := false
 	if webAPIVersion != "" {
 		if v, err := semver.NewVersion(webAPIVersion); err == nil {
@@ -112,8 +112,8 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 			renameFolderMinVersion := semver.MustParse("2.7.0")
 			supportsRenameFolder = !v.LessThan(renameFolderMinVersion)
 
-			// File priority: present since the earliest WebAPI versions (default to false for very old releases)
-			filePriorityMinVersion := semver.MustParse("2.0.0")
+			// File priority: batch updates are available from qBittorrent 4.1.5+ (WebAPI 2.2.0+)
+			filePriorityMinVersion := semver.MustParse("2.2.0")
 			supportsFilePriority = !v.LessThan(filePriorityMinVersion)
 
 			// Subcategories: qBittorrent 4.6+ (WebAPI 2.9.0+)

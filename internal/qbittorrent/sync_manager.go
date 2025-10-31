@@ -3092,7 +3092,7 @@ func (sm *SyncManager) SetTorrentFilePriority(ctx context.Context, instanceID in
 	}
 
 	if !client.SupportsFilePriority() {
-		return fmt.Errorf("qBittorrent instance does not support file priority changes (requires WebAPI 2.0.0+)")
+		return fmt.Errorf("qBittorrent instance does not support file priority changes (requires WebAPI 2.2.0+)")
 	}
 
 	if err := sm.validateTorrentsExist(client, []string{hash}, "set file priorities"); err != nil {
