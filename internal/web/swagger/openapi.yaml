@@ -380,6 +380,40 @@ paths:
               schema:
                 $ref: '#/components/schemas/Instance'
 
+  /api/instances/order:
+    put:
+      tags:
+        - Instances
+      summary: Reorder instances
+      description: Update the display order for all configured instances. The list must include every instance ID exactly once.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - instanceIds
+              properties:
+                instanceIds:
+                  type: array
+                  items:
+                    type: integer
+                  description: Instance IDs in the desired display order.
+      responses:
+        '200':
+          description: Updated list of instances in the new order
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Instance'
+        '400':
+          description: Invalid reorder request
+        '500':
+          description: Failed to persist the new instance order
+
   /api/instances/{instanceId}:
     put:
       tags:
@@ -2049,6 +2083,9 @@ components:
         tlsSkipVerify:
           type: boolean
           description: When true, TLS certificate errors from the upstream qBittorrent instance are ignored.
+        sortOrder:
+          type: integer
+          description: Display order preference for the instance.
 
 
     InstanceCapabilities:

@@ -215,6 +215,7 @@ var expectedSchema = map[string][]columnSpec{
 		{Name: "basic_username", Type: "TEXT"},
 		{Name: "basic_password_encrypted", Type: "TEXT"},
 		{Name: "tls_skip_verify", Type: "BOOLEAN"},
+		{Name: "sort_order", Type: "INTEGER"},
 	},
 	"licenses": {
 		{Name: "id", Type: "INTEGER", PrimaryKey: true},
@@ -254,6 +255,7 @@ var expectedSchema = map[string][]columnSpec{
 }
 
 var expectedIndexes = map[string][]string{
+	"instances":       {"idx_instances_sort_order"},
 	"api_keys":        {"idx_api_keys_hash"},
 	"licenses":        {"idx_licenses_status", "idx_licenses_theme", "idx_licenses_key"},
 	"client_api_keys": {"idx_client_api_keys_key_hash", "idx_client_api_keys_instance_id"},
