@@ -27,6 +27,7 @@ type Client struct {
 	supportsRenameTorrent   bool
 	supportsRenameFile      bool
 	supportsRenameFolder    bool
+	supportsFilePriority    bool
 	supportsSubcategories   bool
 	lastHealthCheck         time.Time
 	isHealthy               bool
@@ -82,6 +83,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 	supportsRenameTorrent := false
 	supportsRenameFile := false
 	supportsRenameFolder := false
+	supportsFilePriority := true
 	supportsSubcategories := false
 	if webAPIVersion != "" {
 		if v, err := semver.NewVersion(webAPIVersion); err == nil {
@@ -110,6 +112,10 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 			renameFolderMinVersion := semver.MustParse("2.7.0")
 			supportsRenameFolder = !v.LessThan(renameFolderMinVersion)
 
+			// File priority: present since the earliest WebAPI versions (default to false for very old releases)
+			filePriorityMinVersion := semver.MustParse("2.0.0")
+			supportsFilePriority = !v.LessThan(filePriorityMinVersion)
+
 			// Subcategories: qBittorrent 4.6+ (WebAPI 2.9.0+)
 			subcategoriesMinVersion := semver.MustParse("2.9.0")
 			supportsSubcategories = !v.LessThan(subcategoriesMinVersion)
@@ -127,6 +133,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 		supportsRenameTorrent:   supportsRenameTorrent,
 		supportsRenameFile:      supportsRenameFile,
 		supportsRenameFolder:    supportsRenameFolder,
+		supportsFilePriority:    supportsFilePriority,
 		supportsSubcategories:   supportsSubcategories,
 		lastHealthCheck:         time.Now(),
 		isHealthy:               true,
@@ -163,6 +170,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 		Bool("supportsTorrentCreation", supportsTorrentCreation).
 		Bool("supportsTorrentExport", supportsTorrentExport).
 		Bool("supportsTrackerEditing", supportsTrackerEditing).
+		Bool("supportsFilePriority", supportsFilePriority).
 		Bool("supportsSubcategories", supportsSubcategories).
 		Bool("tlsSkipVerify", tlsSkipVerify).
 		Msg("qBittorrent client created successfully")
@@ -318,6 +326,12 @@ func (c *Client) SupportsRenameFolder() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.supportsRenameFolder
+}
+
+func (c *Client) SupportsFilePriority() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.supportsFilePriority
 }
 
 func (c *Client) SupportsSubcategories() bool {

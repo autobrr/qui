@@ -1232,6 +1232,58 @@ func (h *TorrentsHandler) GetTorrentFiles(w http.ResponseWriter, r *http.Request
 	RespondJSON(w, http.StatusOK, files)
 }
 
+// SetTorrentFilePriorityRequest represents a request to update torrent file priorities.
+type SetTorrentFilePriorityRequest struct {
+	Indices  []int `json:"indices"`
+	Priority int   `json:"priority"`
+}
+
+// SetTorrentFilePriority updates the download priority for one or more files in a torrent.
+func (h *TorrentsHandler) SetTorrentFilePriority(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	hash := chi.URLParam(r, "hash")
+	if strings.TrimSpace(hash) == "" {
+		RespondError(w, http.StatusBadRequest, "Torrent hash is required")
+		return
+	}
+
+	var req SetTorrentFilePriorityRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if len(req.Indices) == 0 {
+		RespondError(w, http.StatusBadRequest, "At least one file index must be provided")
+		return
+	}
+
+	if req.Priority < 0 || req.Priority > 7 {
+		RespondError(w, http.StatusBadRequest, "Priority must be between 0 and 7")
+		return
+	}
+
+	if err := h.syncManager.SetTorrentFilePriority(r.Context(), instanceID, hash, req.Indices, req.Priority); err != nil {
+		switch {
+		case errors.Is(err, qbt.ErrInvalidPriority):
+			RespondError(w, http.StatusBadRequest, "Invalid priority or file indices")
+		case errors.Is(err, qbt.ErrTorrentMetdataNotDownloadedYet):
+			RespondError(w, http.StatusConflict, "Torrent metadata is not yet available. Try again once metadata has downloaded.")
+		default:
+			log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to update torrent file priority")
+			RespondError(w, http.StatusInternalServerError, "Failed to update torrent file priority")
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // ExportTorrent streams the .torrent file for a specific torrent
 func (h *TorrentsHandler) ExportTorrent(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))

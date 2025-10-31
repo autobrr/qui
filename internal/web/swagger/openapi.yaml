@@ -911,6 +911,45 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/TorrentFile'
+    put:
+      tags:
+        - Torrent Details
+      summary: Update torrent file priorities
+      description: Adjust the download priority (including do-not-download) for one or more files in a torrent.
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/hash'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - indices
+                - priority
+              properties:
+                indices:
+                  type: array
+                  description: File indices to update.
+                  minItems: 1
+                  items:
+                    type: integer
+                    minimum: 0
+                priority:
+                  type: integer
+                  description: Desired priority value (0-7, where 0 marks files as do-not-download).
+                  minimum: 0
+                  maximum: 7
+      responses:
+        '204':
+          description: File priorities updated successfully
+        '400':
+          description: Invalid request payload or priority
+        '409':
+          description: Torrent metadata not yet available
+        '500':
+          description: Failed to update file priorities
 
   /api/instances/{instanceId}/torrents/{hash}/rename:
     put:
@@ -2078,6 +2117,9 @@ components:
         supportsRenameFolder:
           type: boolean
           description: Whether the instance supports renaming folders within torrents (requires WebAPI 2.7.0+, qBittorrent 4.3.3+).
+        supportsFilePriority:
+          type: boolean
+          description: Whether the instance supports updating torrent file priorities (requires WebAPI 2.0.0+, qBittorrent 4.1.0+).
         supportsSubcategories:
           type: boolean
           description: Whether the instance supports nested torrent categories (requires WebAPI 2.9.0+, qBittorrent 4.6.0+).
