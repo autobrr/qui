@@ -6,6 +6,7 @@ package qbittorrent
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,6 +15,17 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
+)
+
+var (
+	setTagsMinVersion         = semver.MustParse("2.11.4")
+	torrentCreationMinVersion = semver.MustParse("2.11.2")
+	exportTorrentMinVersion   = semver.MustParse("2.8.11")
+	trackerEditingMinVersion  = semver.MustParse("2.2.0")
+	renameTorrentMinVersion   = semver.MustParse("2.0.0")
+	renameFileMinVersion      = semver.MustParse("2.4.0")
+	renameFolderMinVersion    = semver.MustParse("2.7.0")
+	subcategoriesMinVersion   = semver.MustParse("2.9.0")
 )
 
 type Client struct {
@@ -70,70 +82,26 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 		return nil, fmt.Errorf("failed to connect to qBittorrent instance: %w", err)
 	}
 
-	webAPIVersion, err := qbtClient.GetWebAPIVersionCtx(ctx)
-	if err != nil {
-		webAPIVersion = ""
-	}
-
-	supportsSetTags := false
-	supportsTorrentCreation := false
-	supportsTorrentExport := false
-	supportsTrackerEditing := false
-	supportsRenameTorrent := false
-	supportsRenameFile := false
-	supportsRenameFolder := false
-	supportsSubcategories := false
-	if webAPIVersion != "" {
-		if v, err := semver.NewVersion(webAPIVersion); err == nil {
-			setTagsMinVersion := semver.MustParse("2.11.4")
-			supportsSetTags = !v.LessThan(setTagsMinVersion)
-
-			torrentCreationMinVersion := semver.MustParse("2.11.2")
-			supportsTorrentCreation = !v.LessThan(torrentCreationMinVersion)
-
-			// Torrent export endpoint: WebAPI 2.8.11+ (qBittorrent 4.5.0+, introduced in 4.5.0beta1)
-			exportTorrentMinVersion := semver.MustParse("2.8.11")
-			supportsTorrentExport = !v.LessThan(exportTorrentMinVersion)
-
-			trackerEditingMinVersion := semver.MustParse("2.2.0")
-			supportsTrackerEditing = !v.LessThan(trackerEditingMinVersion)
-
-			// Rename torrent: qBittorrent 4.1.0+ (WebAPI 2.0.0+)
-			renameTorrentMinVersion := semver.MustParse("2.0.0")
-			supportsRenameTorrent = !v.LessThan(renameTorrentMinVersion)
-
-			// Rename file: qBittorrent 4.2.1+ (WebAPI 2.4.0+)
-			renameFileMinVersion := semver.MustParse("2.4.0")
-			supportsRenameFile = !v.LessThan(renameFileMinVersion)
-
-			// Rename folder: qBittorrent 4.3.3+ (WebAPI 2.7.0+)
-			renameFolderMinVersion := semver.MustParse("2.7.0")
-			supportsRenameFolder = !v.LessThan(renameFolderMinVersion)
-
-			// Subcategories: qBittorrent 4.6+ (WebAPI 2.9.0+)
-			subcategoriesMinVersion := semver.MustParse("2.9.0")
-			supportsSubcategories = !v.LessThan(subcategoriesMinVersion)
-		}
-	}
-
 	client := &Client{
-		Client:                  qbtClient,
-		instanceID:              instanceID,
-		webAPIVersion:           webAPIVersion,
-		supportsSetTags:         supportsSetTags,
-		supportsTorrentCreation: supportsTorrentCreation,
-		supportsTorrentExport:   supportsTorrentExport,
-		supportsTrackerEditing:  supportsTrackerEditing,
-		supportsRenameTorrent:   supportsRenameTorrent,
-		supportsRenameFile:      supportsRenameFile,
-		supportsRenameFolder:    supportsRenameFolder,
-		supportsSubcategories:   supportsSubcategories,
-		lastHealthCheck:         time.Now(),
-		isHealthy:               true,
+		Client:          qbtClient,
+		instanceID:      instanceID,
+		lastHealthCheck: time.Now(),
+		isHealthy:       true,
 		optimisticUpdates: ttlcache.New(ttlcache.Options[string, *OptimisticTorrentUpdate]{}.
 			SetDefaultTTL(30 * time.Second)), // Updates expire after 30 seconds
 		trackerExclusions: make(map[string]map[string]struct{}),
 		peerSyncManager:   make(map[string]*qbt.PeerSyncManager),
+	}
+
+	if err := client.RefreshCapabilities(ctx); err != nil {
+		log.Warn().
+			Err(err).
+			Int("instanceID", instanceID).
+			Str("host", instanceHost).
+			Msg("Failed to refresh qBittorrent capabilities during client creation")
+		client.updateHealthStatus(false)
+	} else {
+		client.updateHealthStatus(true)
 	}
 
 	// Initialize sync manager with default options
@@ -158,12 +126,12 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 	log.Debug().
 		Int("instanceID", instanceID).
 		Str("host", instanceHost).
-		Str("webAPIVersion", webAPIVersion).
-		Bool("supportsSetTags", supportsSetTags).
-		Bool("supportsTorrentCreation", supportsTorrentCreation).
-		Bool("supportsTorrentExport", supportsTorrentExport).
-		Bool("supportsTrackerEditing", supportsTrackerEditing).
-		Bool("supportsSubcategories", supportsSubcategories).
+		Str("webAPIVersion", client.GetWebAPIVersion()).
+		Bool("supportsSetTags", client.SupportsSetTags()).
+		Bool("supportsTorrentCreation", client.SupportsTorrentCreation()).
+		Bool("supportsTorrentExport", client.SupportsTorrentExport()).
+		Bool("supportsTrackerEditing", client.SupportsTrackerEditing()).
+		Bool("supportsSubcategories", client.SupportsSubcategories()).
 		Bool("tlsSkipVerify", tlsSkipVerify).
 		Msg("qBittorrent client created successfully")
 
@@ -218,6 +186,57 @@ func (c *Client) SupportsTorrentExport() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.supportsTorrentExport
+}
+
+// RefreshCapabilities fetches the latest WebAPI version information and recalculates feature support flags.
+func (c *Client) RefreshCapabilities(ctx context.Context) error {
+	version, err := c.Client.GetWebAPIVersionCtx(ctx)
+	if err != nil {
+		return err
+	}
+
+	version = strings.TrimSpace(version)
+	if version == "" {
+		return fmt.Errorf("web API version is empty")
+	}
+
+	c.mu.Lock()
+	previousVersion := c.webAPIVersion
+	c.applyCapabilitiesLocked(version)
+	c.mu.Unlock()
+
+	if previousVersion != version {
+		log.Trace().
+			Int("instanceID", c.instanceID).
+			Str("previousWebAPIVersion", previousVersion).
+			Str("webAPIVersion", version).
+			Msg("Refreshed qBittorrent capabilities")
+	}
+
+	return nil
+}
+
+func (c *Client) applyCapabilitiesLocked(version string) {
+	c.webAPIVersion = version
+
+	v, err := semver.NewVersion(version)
+	if err != nil {
+		log.Warn().
+			Int("instanceID", c.instanceID).
+			Str("webAPIVersion", version).
+			Err(err).
+			Msg("Failed to parse qBittorrent WebAPI version; leaving capability flags unchanged")
+		return
+	}
+
+	c.supportsSetTags = !v.LessThan(setTagsMinVersion)
+	c.supportsTorrentCreation = !v.LessThan(torrentCreationMinVersion)
+	c.supportsTorrentExport = !v.LessThan(exportTorrentMinVersion)
+	c.supportsTrackerEditing = !v.LessThan(trackerEditingMinVersion)
+	c.supportsRenameTorrent = !v.LessThan(renameTorrentMinVersion)
+	c.supportsRenameFile = !v.LessThan(renameFileMinVersion)
+	c.supportsRenameFolder = !v.LessThan(renameFolderMinVersion)
+	c.supportsSubcategories = !v.LessThan(subcategoriesMinVersion)
 }
 
 func (c *Client) updateServerState(data *qbt.MainData) {
@@ -343,13 +362,12 @@ func (c *Client) HealthCheck(ctx context.Context) error {
 		return nil
 	}
 
-	_, err := c.GetWebAPIVersionCtx(ctx)
-	c.updateHealthStatus(err == nil)
-
-	if err != nil {
+	if err := c.RefreshCapabilities(ctx); err != nil {
+		c.updateHealthStatus(false)
 		return errors.Wrap(err, "health check failed")
 	}
 
+	c.updateHealthStatus(true)
 	return nil
 }
 
