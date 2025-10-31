@@ -80,8 +80,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const displayName = incognitoMode ? getLinuxIsoName(torrent?.hash ?? "") : torrent?.name
   const incognitoHash = incognitoMode && torrent?.hash ? getLinuxHash(torrent.hash) : undefined
   const [pendingFileIndices, setPendingFileIndices] = useState<Set<number>>(() => new Set())
-  const supportsFilePriority = capabilities?.supportsFilePriority ?? true
-
+  const supportsFilePriority = capabilities?.supportsFilePriority ?? false
   const copyToClipboard = useCallback(async (text: string, type: string) => {
     try {
       await copyTextToClipboard(text)
