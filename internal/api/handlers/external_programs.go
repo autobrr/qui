@@ -249,10 +249,14 @@ func (h *ExternalProgramsHandler) executeForHash(ctx context.Context, program *m
 		if runtime.GOOS == "windows" {
 			// Windows: Use cmd.exe /c start cmd /k to open a new visible terminal window
 			// Empty string after "start" prevents quoted paths from being interpreted as window title
-			// Go's exec.Command automatically handles quoting for Windows, so we don't need cmdQuote here
-			cmdArgs := []string{"/c", "start", "", "cmd", "/k", program.Path}
+			// We must escape for cmd.exe's parser (^-escape metacharacters) before exec.Command quotes for CreateProcess
+			// This prevents command injection via torrent names like "test&calc"
+			escapedPath := cmdEscape(program.Path)
+			cmdArgs := []string{"/c", "start", "", "cmd", "/k", escapedPath}
 			if len(args) > 0 {
-				cmdArgs = append(cmdArgs, args...)
+				for _, arg := range args {
+					cmdArgs = append(cmdArgs, cmdEscape(arg))
+				}
 			}
 			cmd = exec.Command("cmd.exe", cmdArgs...)
 		} else {
@@ -275,11 +279,14 @@ func (h *ExternalProgramsHandler) executeForHash(ctx context.Context, program *m
 		if runtime.GOOS == "windows" {
 			// Windows: Use 'start' to launch GUI apps properly (detached from parent process)
 			// Empty string after "start" prevents quoted paths from being interpreted as window title
-			// Go's exec.Command automatically handles quoting for Windows, so we don't need cmdQuote here
-			// This allows the app to continue running after qui closes
-			cmdArgs := []string{"/c", "start", "", "/b", program.Path}
+			// We must escape for cmd.exe's parser (^-escape metacharacters) before exec.Command quotes for CreateProcess
+			// This prevents command injection via torrent names like "test&calc"
+			escapedPath := cmdEscape(program.Path)
+			cmdArgs := []string{"/c", "start", "", "/b", escapedPath}
 			if len(args) > 0 {
-				cmdArgs = append(cmdArgs, args...)
+				for _, arg := range args {
+					cmdArgs = append(cmdArgs, cmdEscape(arg))
+				}
 			}
 			cmd = exec.Command("cmd.exe", cmdArgs...)
 		} else {
@@ -514,4 +521,22 @@ func shellQuote(s string) string {
 	// by closing the quote, adding an escaped single quote, then reopening the quote
 	// Example: "it's" becomes 'it'\''s'
 	return fmt.Sprintf("'%s'", strings.ReplaceAll(s, "'", `'\''`))
+}
+
+// cmdEscape escapes a string for safe use with cmd.exe on Windows
+// This protects against cmd.exe metacharacter interpretation when using cmd.exe /c
+// Note: This is different from exec.Command quoting - this escapes for cmd.exe's parser,
+// then exec.Command will add additional quotes for CreateProcess API
+func cmdEscape(s string) string {
+	// cmd.exe special characters that need escaping: & | < > ^ %
+	// We use ^ to escape these characters
+	replacer := strings.NewReplacer(
+		"^", "^^",
+		"&", "^&",
+		"|", "^|",
+		"<", "^<",
+		">", "^>",
+		"%", "^%",
+	)
+	return replacer.Replace(s)
 }
