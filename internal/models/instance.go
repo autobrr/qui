@@ -416,8 +416,18 @@ func (s *InstanceStore) UpdateOrder(ctx context.Context, instanceIDs []int) erro
 
 	updateQuery := `UPDATE instances SET sort_order = ? WHERE id = ?`
 	for order, id := range instanceIDs {
-		if _, err := tx.ExecContext(ctx, updateQuery, order, id); err != nil {
+		result, err := tx.ExecContext(ctx, updateQuery, order, id)
+		if err != nil {
 			return err
+		}
+
+		rows, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+
+		if rows != 1 {
+			return ErrInstanceNotFound
 		}
 	}
 
