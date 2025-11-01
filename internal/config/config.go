@@ -99,6 +99,7 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("logMaxSize", 50)
 	c.viper.SetDefault("logMaxBackups", 3)
 	c.viper.SetDefault("dataDir", "") // Empty means auto-detect (next to config file)
+	c.viper.SetDefault("backupsDir", "")
 	c.viper.SetDefault("checkForUpdates", true)
 	c.viper.SetDefault("pprofEnabled", false)
 	c.viper.SetDefault("metricsEnabled", false)
@@ -184,6 +185,7 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("logMaxSize", envPrefix+"LOG_MAX_SIZE")
 	c.viper.BindEnv("logMaxBackups", envPrefix+"LOG_MAX_BACKUPS")
 	c.viper.BindEnv("dataDir", envPrefix+"DATA_DIR")
+	c.viper.BindEnv("backupsDir", envPrefix+"BACKUPS_DIR")
 	c.viper.BindEnv("checkForUpdates", envPrefix+"CHECK_FOR_UPDATES")
 	c.viper.BindEnv("pprofEnabled", envPrefix+"PPROF_ENABLED")
 	c.viper.BindEnv("metricsEnabled", envPrefix+"METRICS_ENABLED")
@@ -303,6 +305,11 @@ sessionSecret = "{{ .sessionSecret }}"
 # Data directory (default: next to config file)
 # Database file (qui.db) will be created inside this directory
 #dataDir = "/var/db/qui"
+
+# Optional backups directory override
+# Archives, manifests, and torrent blobs are stored here when set.
+# Defaults to the dataDir above if omitted.
+#backupsDir = "/mnt/storage/qui"
 
 # Check for new releases via api.autobrr.com
 # Default: true
@@ -573,6 +580,35 @@ func (c *AppConfig) GetDatabasePath() string {
 // GetDataDir returns the resolved data directory path.
 func (c *AppConfig) GetDataDir() string {
 	return c.dataDir
+}
+
+// GetBackupsDir returns the root directory used for backup archives, manifests, and torrent blobs.
+// Falls back to the data directory when no explicit override is configured.
+func (c *AppConfig) GetBackupsDir() string {
+	raw := strings.TrimSpace(c.Config.BackupsDir)
+	if raw == "" {
+		return c.GetDataDir()
+	}
+
+	expanded := os.ExpandEnv(raw)
+	if strings.HasPrefix(expanded, "~") {
+		if home, err := os.UserHomeDir(); err == nil {
+			remainder := strings.TrimPrefix(expanded, "~")
+			remainder = strings.TrimLeft(remainder, "/\\")
+			expanded = filepath.Join(home, remainder)
+		}
+	}
+
+	if filepath.IsAbs(expanded) {
+		return expanded
+	}
+
+	if abs, err := filepath.Abs(expanded); err == nil {
+		return abs
+	}
+
+	log.Warn().Str("backupsDir", expanded).Msg("Unable to resolve backups directory, using raw value")
+	return expanded
 }
 
 // SetDataDir sets the data directory (used by CLI flags)

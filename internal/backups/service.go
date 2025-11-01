@@ -104,9 +104,16 @@ func NewService(store *models.BackupStore, syncManager *qbittorrent.SyncManager,
 		cfg.PollInterval = time.Minute
 	}
 
+	cfg.DataDir = strings.TrimSpace(cfg.DataDir)
+
 	cacheDir := ""
-	if strings.TrimSpace(cfg.DataDir) != "" {
-		cacheDir = filepath.Join(cfg.DataDir, "backups", "torrents")
+	if cfg.DataDir != "" {
+		backupsRoot := filepath.Join(cfg.DataDir, "backups")
+		if err := os.MkdirAll(backupsRoot, 0o755); err != nil {
+			log.Warn().Err(err).Str("path", backupsRoot).Msg("Failed to prepare backups directory")
+		}
+
+		cacheDir = filepath.Join(backupsRoot, "torrents")
 		if err := os.MkdirAll(cacheDir, 0o755); err != nil {
 			log.Warn().Err(err).Str("cacheDir", cacheDir).Msg("Failed to prepare torrent cache directory")
 		}
@@ -1094,12 +1101,18 @@ func (s *Service) GetSettings(ctx context.Context, instanceID int) (*models.Back
 	}
 
 	s.normalizeAndPersistSettings(ctx, settings)
+	settings.BackupsDir = nil
+	if strings.TrimSpace(s.cfg.DataDir) != "" {
+		root := filepath.Join(s.cfg.DataDir, "backups")
+		settings.BackupsDir = &root
+	}
 	settings.CustomPath = nil
 
 	return settings, nil
 }
 
 func (s *Service) UpdateSettings(ctx context.Context, settings *models.BackupSettings) error {
+	settings.BackupsDir = nil
 	settings.CustomPath = nil
 	normalizeBackupSettings(settings)
 	return s.store.UpsertSettings(ctx, settings)

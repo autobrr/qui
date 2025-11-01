@@ -28,6 +28,7 @@ type BackupSettings struct {
 	IncludeCategories bool      `json:"includeCategories"`
 	IncludeTags       bool      `json:"includeTags"`
 	CustomPath        *string   `json:"customPath,omitempty"`
+	BackupsDir        *string   `json:"backupsDir,omitempty"`
 	CreatedAt         time.Time `json:"createdAt"`
 	UpdatedAt         time.Time `json:"updatedAt"`
 }
@@ -47,6 +48,7 @@ func DefaultBackupSettings(instanceID int) *BackupSettings {
 		IncludeCategories: true,
 		IncludeTags:       true,
 		CustomPath:        nil,
+		BackupsDir:        nil,
 		CreatedAt:         time.Now().UTC(),
 		UpdatedAt:         time.Now().UTC(),
 	}

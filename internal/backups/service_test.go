@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -346,6 +347,28 @@ func TestUpdateSettingsClearsCustomPath(t *testing.T) {
 	view, err := svc.GetSettings(ctx, instanceID)
 	require.NoError(t, err)
 	require.Nil(t, view.CustomPath)
+	require.Nil(t, view.BackupsDir)
+}
+
+func TestGetSettingsIncludesBackupsDir(t *testing.T) {
+	db := setupTestBackupDB(t)
+
+	ctx := context.Background()
+	result, err := db.ExecContext(ctx, "INSERT INTO instances (name) VALUES (?)", "storage-path")
+	require.NoError(t, err)
+
+	instanceID64, err := result.LastInsertId()
+	require.NoError(t, err)
+	instanceID := int(instanceID64)
+
+	store := models.NewBackupStore(db)
+	baseDir := t.TempDir()
+	svc := NewService(store, nil, Config{WorkerCount: 1, DataDir: baseDir})
+
+	settings, err := svc.GetSettings(ctx, instanceID)
+	require.NoError(t, err)
+	require.NotNil(t, settings.BackupsDir)
+	require.Equal(t, filepath.Join(baseDir, "backups"), *settings.BackupsDir)
 }
 
 func TestRecoverIncompleteRuns(t *testing.T) {

@@ -15,6 +15,7 @@ type Config struct {
 	LogMaxSize            int    `toml:"logMaxSize" mapstructure:"logMaxSize"`
 	LogMaxBackups         int    `toml:"logMaxBackups" mapstructure:"logMaxBackups"`
 	DataDir               string `toml:"dataDir" mapstructure:"dataDir"`
+	BackupsDir            string `toml:"backupsDir" mapstructure:"backupsDir"`
 	CheckForUpdates       bool   `toml:"checkForUpdates" mapstructure:"checkForUpdates"`
 	PprofEnabled          bool   `toml:"pprofEnabled" mapstructure:"pprofEnabled"`
 	MetricsEnabled        bool   `toml:"metricsEnabled" mapstructure:"metricsEnabled"`
