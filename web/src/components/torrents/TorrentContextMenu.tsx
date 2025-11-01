@@ -32,10 +32,14 @@ import {
   Sparkles,
   Sprout,
   Tag,
+  Terminal,
   Trash2
 } from "lucide-react"
 import { memo, useCallback, useMemo } from "react"
 import { toast } from "sonner"
+import { useQuery, useMutation } from "@tanstack/react-query"
+import { api } from "@/lib/api"
+import type { ExternalProgram } from "@/types"
 import { CategorySubmenu } from "./CategorySubmenu"
 import { QueueSubmenu } from "./QueueSubmenu"
 import { RenameSubmenu } from "./RenameSubmenu"
@@ -346,6 +350,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
           </ContextMenuItem>
         )}
         <ContextMenuSeparator />
+        <ExternalProgramsSubmenu hashes={hashes} />
         {supportsTorrentExport && (
           <ContextMenuItem
             onClick={handleExport}
@@ -385,3 +390,84 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
     </ContextMenu>
   )
 })
+
+interface ExternalProgramsSubmenuProps {
+  hashes: string[]
+}
+
+function ExternalProgramsSubmenu({ hashes }: ExternalProgramsSubmenuProps) {
+  const { data: programs, isLoading } = useQuery({
+    queryKey: ["externalPrograms"],
+    queryFn: () => api.listExternalPrograms(),
+    staleTime: 60 * 1000, // 1 minute
+  })
+
+  const executeMutation = useMutation({
+    mutationFn: async (program: ExternalProgram) => {
+      return api.executeExternalProgram({
+        program_id: program.id,
+        hashes,
+      })
+    },
+    onSuccess: (response) => {
+      const successCount = response.results.filter(r => r.success).length
+      const failureCount = response.results.length - successCount
+
+      if (failureCount === 0) {
+        toast.success(`External program executed successfully for ${successCount} torrent(s)`)
+      } else if (successCount === 0) {
+        toast.error(`Failed to execute external program for all ${failureCount} torrent(s)`)
+      } else {
+        toast.warning(`Executed for ${successCount} torrent(s), failed for ${failureCount}`)
+      }
+
+      // Show detailed errors if any
+      response.results.forEach(result => {
+        if (!result.success && result.error) {
+          console.error(`External program failed for ${result.hash}:`, result.error)
+        }
+      })
+    },
+    onError: (error: any) => {
+      toast.error(`Failed to execute external program: ${error.message || "Unknown error"}`)
+    },
+  })
+
+  const handleExecute = useCallback((program: ExternalProgram) => {
+    executeMutation.mutate(program)
+  }, [executeMutation])
+
+  const enabledPrograms = programs?.filter(p => p.enabled) || []
+
+  if (isLoading) {
+    return (
+      <ContextMenuItem disabled>
+        Loading programs...
+      </ContextMenuItem>
+    )
+  }
+
+  if (enabledPrograms.length === 0) {
+    return null // Don't show the submenu if no programs are enabled
+  }
+
+  return (
+    <ContextMenuSub>
+      <ContextMenuSubTrigger>
+        <Terminal className="mr-4 h-4 w-4" />
+        External Programs
+      </ContextMenuSubTrigger>
+      <ContextMenuSubContent>
+        {enabledPrograms.map(program => (
+          <ContextMenuItem
+            key={program.id}
+            onClick={() => handleExecute(program)}
+            disabled={executeMutation.isPending}
+          >
+            {program.name}
+          </ContextMenuItem>
+        ))}
+      </ContextMenuSubContent>
+    </ContextMenuSub>
+  )
+}

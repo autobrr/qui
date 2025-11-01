@@ -792,3 +792,48 @@ export interface TorrentCreationTask {
 export interface TorrentCreationTaskResponse {
   taskID: string
 }
+
+// External Program Types
+export interface ExternalProgram {
+  id: number
+  name: string
+  path: string
+  args_template: string
+  enabled: boolean
+  use_terminal: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface ExternalProgramCreate {
+  name: string
+  path: string
+  args_template: string
+  enabled: boolean
+  use_terminal: boolean
+}
+
+export interface ExternalProgramUpdate {
+  name: string
+  path: string
+  args_template: string
+  enabled: boolean
+  use_terminal: boolean
+}
+
+export interface ExternalProgramExecute {
+  program_id: number
+  hashes: string[]
+}
+
+export interface ExternalProgramExecuteResult {
+  hash: string
+  success: boolean
+  stdout?: string
+  stderr?: string
+  error?: string
+}
+
+export interface ExternalProgramExecuteResponse {
+  results: ExternalProgramExecuteResult[]
+}
