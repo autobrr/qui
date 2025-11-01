@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 
+	shellquote "github.com/Hellseher/go-shellquote"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
@@ -289,30 +290,16 @@ func (h *ExternalProgramsHandler) executeForHash(ctx context.Context, program *m
 		if runtime.GOOS == "windows" {
 			// Windows: Use cmd.exe /c start cmd /k to open a new visible terminal window
 			// Empty string after "start" prevents quoted paths from being interpreted as window title
-			// CRITICAL SECURITY: We use two-layer escaping for Windows:
-			// 1. cmdEscape() escapes cmd.exe metacharacters (&|<>^%) with ^ for cmd.exe's parser
-			// 2. exec.Command() adds quotes for the Windows CreateProcess API
-			// This prevents command injection via torrent metadata like names containing "test&calc"
-			escapedPath := cmdEscape(program.Path)
-			cmdArgs := []string{"/c", "start", "", "cmd", "/k", escapedPath}
-			if len(args) > 0 {
-				for _, arg := range args {
-					cmdArgs = append(cmdArgs, cmdEscape(arg))
-				}
-			}
+			// When using "cmd /k", we need to pass the program path and args as separate arguments
+			// exec.Command will handle quoting for CreateProcess, and cmd.exe will receive them properly
+			cmdArgs := []string{"/c", "start", "", "cmd", "/k", program.Path}
+			cmdArgs = append(cmdArgs, args...)
 			cmd = exec.Command("cmd.exe", cmdArgs...)
 		} else {
 			// Unix/Linux: Build command string and spawn in a terminal
-			// Quote the program path to protect against shell metacharacters
-			cmdParts := []string{shellQuote(program.Path)}
-			if len(args) > 0 {
-				// Quote all arguments to prevent shell injection
-				// Torrent metadata can contain malicious shell metacharacters
-				for _, arg := range args {
-					cmdParts = append(cmdParts, shellQuote(arg))
-				}
-			}
-			fullCmd := strings.Join(cmdParts, " ")
+			// Use shellquote library to properly escape for Unix shells
+			allArgs := append([]string{program.Path}, args...)
+			fullCmd := shellquote.Join(allArgs...)
 			// Try to find an available terminal emulator and spawn the command in it
 			cmd = h.createTerminalCommand(fullCmd)
 		}
@@ -321,17 +308,9 @@ func (h *ExternalProgramsHandler) executeForHash(ctx context.Context, program *m
 		if runtime.GOOS == "windows" {
 			// Windows: Use 'start' to launch GUI apps properly (detached from parent process)
 			// Empty string after "start" prevents quoted paths from being interpreted as window title
-			// CRITICAL SECURITY: We use two-layer escaping for Windows:
-			// 1. cmdEscape() escapes cmd.exe metacharacters (&|<>^%) with ^ for cmd.exe's parser
-			// 2. exec.Command() adds quotes for the Windows CreateProcess API
-			// This prevents command injection via torrent metadata like names containing "test&calc"
-			escapedPath := cmdEscape(program.Path)
-			cmdArgs := []string{"/c", "start", "", "/b", escapedPath}
-			if len(args) > 0 {
-				for _, arg := range args {
-					cmdArgs = append(cmdArgs, cmdEscape(arg))
-				}
-			}
+			// Pass program path and args as separate arguments - exec.Command handles quoting
+			cmdArgs := []string{"/c", "start", "", "/b", program.Path}
+			cmdArgs = append(cmdArgs, args...)
 			cmd = exec.Command("cmd.exe", cmdArgs...)
 		} else {
 			// Unix/Linux: Direct execution
@@ -522,47 +501,6 @@ func splitArgs(s string) []string {
 	}
 
 	return args
-}
-
-// shellQuote safely quotes a string for use in a shell command
-// This prevents shell injection by escaping all single quotes and wrapping in single quotes
-func shellQuote(s string) string {
-	// Use single quotes for safety, and escape any single quotes in the string
-	// by closing the quote, adding an escaped single quote, then reopening the quote
-	// Example: "it's" becomes 'it'\''s'
-	return fmt.Sprintf("'%s'", strings.ReplaceAll(s, "'", `'\''`))
-}
-
-// cmdEscape escapes a string for safe use with cmd.exe on Windows when used with exec.Command
-//
-// IMPORTANT: This function does NOT add quotes because exec.Command will handle quoting
-// automatically for arguments containing spaces or special characters. We only need to
-// escape characters that are special INSIDE quotes:
-//
-// 1. Caret (^) - cmd.exe's escape character, must be doubled inside quotes
-// 2. Percent (%) - Environment variable expansion, must be doubled to prevent %VAR% expansion
-//
-// Note: When exec.Command quotes an argument (due to spaces/special chars), cmd.exe will
-// receive it as a quoted string. Inside quotes, most metacharacters (&|<>) are literals,
-// but ^ and % still have special meaning and need escaping.
-//
-// Example flow:
-//
-//	Input: "test&calc"
-//	After cmdEscape: "test&calc" (unchanged, & is safe inside quotes)
-//	After exec.Command quoting: "test&calc" (exec adds quotes due to &)
-//	cmd.exe receives: quoted string with literal &
-//
-//	Input: "test%PATH%"
-//	After cmdEscape: "test%%PATH%%" (% doubled)
-//	After exec.Command quoting: "test%%PATH%%"
-//	cmd.exe receives: literal text "test%PATH%" (doubled %% becomes single %)
-func cmdEscape(s string) string {
-	// Escape caret - it's cmd.exe's escape character and needs doubling inside quotes
-	s = strings.ReplaceAll(s, "^", "^^")
-	// Escape percent signs to prevent environment variable expansion
-	s = strings.ReplaceAll(s, "%", "%%")
-	return s
 }
 
 // applyPathMappings applies configured path mappings to convert remote paths to local paths

@@ -40,6 +40,7 @@ require (
 require (
 	code.gitea.io/sdk/gitea v0.22.0 // indirect
 	github.com/42wim/httpsig v1.2.3 // indirect
+	github.com/Hellseher/go-shellquote v0.1.0 // indirect
 	github.com/Masterminds/semver v1.5.0 // indirect
 	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/avast/retry-go v3.0.0+incompatible // indirect
