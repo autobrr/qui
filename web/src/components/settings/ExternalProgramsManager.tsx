@@ -380,7 +380,8 @@ function ProgramForm({ program, onSubmit, onCancel, isPending }: ProgramFormProp
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">
-          Path mappings convert remote paths to local mount points. Useful when running external programs on a local qui server while qBittorrent is remote. Paths are matched by prefix.
+          Path mappings convert remote paths to local mount points. Useful when running external programs on a local qui server while qBittorrent is remote. 
+          Paths are matched by longest prefix first. Use the same path separator style as the remote qBittorrent instance (/ for Linux, \ for Windows).
         </p>
       </div>
 

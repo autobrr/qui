@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os/exec"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -532,19 +533,34 @@ func shellQuote(s string) string {
 	return fmt.Sprintf("'%s'", strings.ReplaceAll(s, "'", `'\''`))
 }
 
-// cmdEscape escapes a string for safe use with cmd.exe on Windows
-// Since exec.Command on Windows will quote arguments that contain spaces or special chars,
-// and inside quotes most metacharacters lose their special meaning in cmd.exe,
-// we only need to handle:
-// - Double quotes: escaped by doubling them ("" inside quoted string)
-// - Percent signs: doubled to prevent %VAR% environment variable expansion
+// cmdEscape escapes a string for safe use with cmd.exe on Windows when used with exec.Command
 //
-// Note: & | < > ^ do NOT need escaping inside quotes - they are treated as literals
+// IMPORTANT: This function does NOT add quotes because exec.Command will handle quoting
+// automatically for arguments containing spaces or special characters. We only need to
+// escape characters that are special INSIDE quotes:
+//
+// 1. Caret (^) - cmd.exe's escape character, must be doubled inside quotes
+// 2. Percent (%) - Environment variable expansion, must be doubled to prevent %VAR% expansion
+//
+// Note: When exec.Command quotes an argument (due to spaces/special chars), cmd.exe will
+// receive it as a quoted string. Inside quotes, most metacharacters (&|<>) are literals,
+// but ^ and % still have special meaning and need escaping.
+//
+// Example flow:
+//
+//	Input: "test&calc"
+//	After cmdEscape: "test&calc" (unchanged, & is safe inside quotes)
+//	After exec.Command quoting: "test&calc" (exec adds quotes due to &)
+//	cmd.exe receives: quoted string with literal &
+//
+//	Input: "test%PATH%"
+//	After cmdEscape: "test%%PATH%%" (% doubled)
+//	After exec.Command quoting: "test%%PATH%%"
+//	cmd.exe receives: literal text "test%PATH%" (doubled %% becomes single %)
 func cmdEscape(s string) string {
-	// Inside cmd.exe quotes, only " and % need special handling
-	// Double quotes are escaped by doubling them
-	s = strings.ReplaceAll(s, `"`, `""`)
-	// Percent signs are doubled to prevent environment variable expansion
+	// Escape caret - it's cmd.exe's escape character and needs doubling inside quotes
+	s = strings.ReplaceAll(s, "^", "^^")
+	// Escape percent signs to prevent environment variable expansion
 	s = strings.ReplaceAll(s, "%", "%%")
 	return s
 }
@@ -552,13 +568,30 @@ func cmdEscape(s string) string {
 // applyPathMappings applies configured path mappings to convert remote paths to local paths
 // This allows external programs to work with torrents on remote qBittorrent instances
 // where the filesystem paths differ between the remote and local machine
+//
+// IMPORTANT: Path mappings use prefix-based matching and should use the same path separator
+// style as the remote qBittorrent instance (e.g., / for Linux, \ for Windows). Cross-platform
+// path separator conversion is not performed automatically.
+//
+// Mappings are matched longest-prefix-first to handle overlapping prefixes correctly.
+// For example, if you have both /data and /data/torrents, the more specific /data/torrents
+// will be tried first.
 func applyPathMappings(path string, mappings []models.PathMapping) string {
 	if len(mappings) == 0 {
 		return path
 	}
 
-	// Try each mapping in order (first match wins)
-	for _, mapping := range mappings {
+	// Sort mappings by "from" prefix length (longest first) to handle overlapping prefixes
+	// This ensures more specific paths match before more general ones
+	// Example: /data/torrents matches before /data
+	sortedMappings := make([]models.PathMapping, len(mappings))
+	copy(sortedMappings, mappings)
+	sort.Slice(sortedMappings, func(i, j int) bool {
+		return len(sortedMappings[i].From) > len(sortedMappings[j].From)
+	})
+
+	// Try each mapping in order (longest prefix first)
+	for _, mapping := range sortedMappings {
 		if mapping.From == "" || mapping.To == "" {
 			continue
 		}
