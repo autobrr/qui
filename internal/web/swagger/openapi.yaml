@@ -2529,6 +2529,8 @@ tags:
     description: API key management
   - name: Client API Keys
     description: Client API key management for external applications
+  - name: External Programs
+    description: Manage and execute external applications
   - name: Instances
     description: qBittorrent instance management
   - name: Torrents

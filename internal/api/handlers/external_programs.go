@@ -209,10 +209,32 @@ func (h *ExternalProgramsHandler) ExecuteExternalProgram(w http.ResponseWriter, 
 		return
 	}
 
+	// Get client for the instance
+	client, err := h.clientPool.GetClient(ctx, req.InstanceID)
+	if err != nil {
+		log.Error().Err(err).Int("instanceId", req.InstanceID).Msg("Failed to get client for instance")
+		http.Error(w, fmt.Sprintf("Failed to get client for instance: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Fetch all torrents once (O(m) instead of O(n·m) where n=hashes, m=torrents)
+	torrents, err := client.GetTorrents(qbt.TorrentFilterOptions{})
+	if err != nil {
+		log.Error().Err(err).Int("instanceId", req.InstanceID).Msg("Failed to get torrents from instance")
+		http.Error(w, fmt.Sprintf("Failed to get torrents: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Build hash index for O(1) lookups
+	torrentIndex := make(map[string]*qbt.Torrent, len(torrents))
+	for i := range torrents {
+		torrentIndex[strings.ToLower(torrents[i].Hash)] = &torrents[i]
+	}
+
 	// Execute for each torrent hash
 	results := make([]map[string]any, 0, len(req.Hashes))
 	for _, hash := range req.Hashes {
-		result := h.executeForHash(ctx, program, req.InstanceID, hash)
+		result := h.executeForHash(ctx, program, hash, torrentIndex)
 		results = append(results, result)
 	}
 
@@ -223,21 +245,34 @@ func (h *ExternalProgramsHandler) ExecuteExternalProgram(w http.ResponseWriter, 
 }
 
 // executeForHash executes the external program for a single torrent hash
-func (h *ExternalProgramsHandler) executeForHash(ctx context.Context, program *models.ExternalProgram, instanceID int, hash string) map[string]any {
+func (h *ExternalProgramsHandler) executeForHash(ctx context.Context, program *models.ExternalProgram, hash string, torrentIndex map[string]*qbt.Torrent) map[string]any {
 	result := map[string]any{
 		"hash":    hash,
 		"success": false,
 	}
 
-	// Get torrent info from the specific instance
-	torrent, err := h.getTorrentInfo(ctx, instanceID, hash)
-	if err != nil {
-		result["error"] = fmt.Sprintf("Failed to get torrent info: %v", err)
+	// Look up torrent in the pre-built index (O(1) lookup)
+	torrent, found := torrentIndex[strings.ToLower(hash)]
+	if !found {
+		result["error"] = fmt.Sprintf("Torrent with hash %s not found", hash)
 		return result
 	}
 
+	// Convert torrent to map format for variable substitution
+	torrentData := map[string]string{
+		"hash":         torrent.Hash,
+		"name":         torrent.Name,
+		"save_path":    torrent.SavePath,
+		"category":     torrent.Category,
+		"tags":         torrent.Tags,
+		"state":        string(torrent.State),
+		"size":         fmt.Sprintf("%d", torrent.Size),
+		"progress":     fmt.Sprintf("%.2f", torrent.Progress),
+		"content_path": torrent.ContentPath,
+	}
+
 	// Build command arguments by substituting variables
-	args := h.buildArguments(program.ArgsTemplate, torrent)
+	args := h.buildArguments(program.ArgsTemplate, torrentData)
 
 	// Build the command - construct as array then let shell handle it
 	// Use context.Background() so the command isn't cancelled when the HTTP request completes
@@ -378,40 +413,6 @@ func (h *ExternalProgramsHandler) executeForHash(ctx context.Context, program *m
 	}
 
 	return result
-}
-
-// getTorrentInfo retrieves torrent information from the client pool for a specific instance
-func (h *ExternalProgramsHandler) getTorrentInfo(ctx context.Context, instanceID int, hash string) (map[string]string, error) {
-	// Get client for the specific instance
-	client, err := h.clientPool.GetClient(ctx, instanceID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get client for instance %d: %w", instanceID, err)
-	}
-
-	// Get all torrents from the instance
-	torrents, err := client.GetTorrents(qbt.TorrentFilterOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get torrents from instance %d: %w", instanceID, err)
-	}
-
-	// Find the torrent with the matching hash
-	for _, torrent := range torrents {
-		if strings.EqualFold(torrent.Hash, hash) {
-			return map[string]string{
-				"hash":         torrent.Hash,
-				"name":         torrent.Name,
-				"save_path":    torrent.SavePath,
-				"category":     torrent.Category,
-				"tags":         torrent.Tags,
-				"state":        string(torrent.State),
-				"size":         fmt.Sprintf("%d", torrent.Size),
-				"progress":     fmt.Sprintf("%.2f", torrent.Progress),
-				"content_path": torrent.ContentPath,
-			}, nil
-		}
-	}
-
-	return nil, fmt.Errorf("torrent with hash %s not found in instance %d", hash, instanceID)
 }
 
 // buildArguments substitutes variables in the args template with torrent data
