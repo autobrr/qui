@@ -533,31 +533,20 @@ func shellQuote(s string) string {
 }
 
 // cmdEscape escapes a string for safe use with cmd.exe on Windows
-// This protects against cmd.exe metacharacter interpretation when using cmd.exe /c
+// Since exec.Command on Windows will quote arguments that contain spaces or special chars,
+// and inside quotes most metacharacters lose their special meaning in cmd.exe,
+// we only need to handle:
+// - Double quotes: escaped by doubling them ("" inside quoted string)
+// - Percent signs: doubled to prevent %VAR% environment variable expansion
 //
-// CRITICAL SECURITY NOTE: This function implements the FIRST layer of a two-layer escaping strategy:
-// 1. cmdEscape() escapes for cmd.exe's parser (this function)
-// 2. exec.Command() adds quotes for Windows CreateProcess API
-//
-// Why both are needed:
-// - exec.Command handles CreateProcess quoting BUT cmd.exe still parses the command line
-// - When we use "cmd.exe /c start program args", cmd.exe interprets & | < > ^ % as special
-// - Torrent names like "test&calc" would execute calc.exe without this escaping
-// - We escape with ^ (cmd.exe's escape character) BEFORE exec.Command adds quotes
-//
-// Example: "test&calc" -> "test^&calc" -> exec.Command adds quotes -> cmd.exe sees literal &
+// Note: & | < > ^ do NOT need escaping inside quotes - they are treated as literals
 func cmdEscape(s string) string {
-	// cmd.exe special characters that need escaping with ^: & | < > ^ %
-	// Note: We escape ^ first to prevent double-escaping issues
-	replacer := strings.NewReplacer(
-		"^", "^^",
-		"&", "^&",
-		"|", "^|",
-		"<", "^<",
-		">", "^>",
-		"%", "^%",
-	)
-	return replacer.Replace(s)
+	// Inside cmd.exe quotes, only " and % need special handling
+	// Double quotes are escaped by doubling them
+	s = strings.ReplaceAll(s, `"`, `""`)
+	// Percent signs are doubled to prevent environment variable expansion
+	s = strings.ReplaceAll(s, "%", "%%")
+	return s
 }
 
 // applyPathMappings applies configured path mappings to convert remote paths to local paths
