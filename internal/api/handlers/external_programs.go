@@ -266,7 +266,7 @@ func (h *ExternalProgramsHandler) executeForHash(ctx context.Context, program *m
 			}
 			fullCmd := strings.Join(cmdParts, " ")
 			// Try to find an available terminal emulator and spawn the command in it
-			cmd = h.createTerminalCommand(context.Background(), fullCmd)
+			cmd = h.createTerminalCommand(fullCmd)
 		}
 	} else {
 		// Launch directly without terminal (for GUI apps or background processes)
@@ -429,7 +429,8 @@ func (h *ExternalProgramsHandler) buildArguments(template string, torrentData ma
 
 // createTerminalCommand creates a command that spawns a terminal window on Unix/Linux
 // It tries different terminal emulators in order of preference
-func (h *ExternalProgramsHandler) createTerminalCommand(ctx context.Context, cmdLine string) *exec.Cmd {
+// Note: Does not use context so the terminal process isn't cancelled when the HTTP request completes
+func (h *ExternalProgramsHandler) createTerminalCommand(cmdLine string) *exec.Cmd {
 	// List of terminal emulators to try, in order of preference
 	// Each has different syntax for executing a command
 	terminals := []struct {
@@ -462,7 +463,7 @@ func (h *ExternalProgramsHandler) createTerminalCommand(ctx context.Context, cmd
 				Str("terminal", term.name).
 				Str("command", cmdLine).
 				Msg("Using terminal emulator for external program")
-			return exec.CommandContext(ctx, term.name, term.args...)
+			return exec.Command(term.name, term.args...)
 		}
 	}
 
@@ -470,7 +471,7 @@ func (h *ExternalProgramsHandler) createTerminalCommand(ctx context.Context, cmd
 	log.Warn().
 		Str("command", cmdLine).
 		Msg("No terminal emulator found, running command in background")
-	return exec.CommandContext(ctx, "sh", "-c", cmdLine)
+	return exec.Command("sh", "-c", cmdLine)
 }
 
 // splitArgs splits a command line string into arguments, respecting quoted strings
