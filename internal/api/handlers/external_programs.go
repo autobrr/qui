@@ -244,22 +244,21 @@ func (h *ExternalProgramsHandler) executeForHash(ctx context.Context, program *m
 		// Launch in a terminal window
 		if runtime.GOOS == "windows" {
 			// Windows: Use cmd.exe /c start cmd /k to open a new visible terminal window
-			cmdArgs := []string{"/c", "start", "cmd", "/k", program.Path}
+			// Empty string after "start" prevents quoted paths from being interpreted as window title
+			cmdArgs := []string{"/c", "start", "", "cmd", "/k", program.Path}
 			if len(args) > 0 {
 				cmdArgs = append(cmdArgs, args...)
 			}
 			cmd = exec.Command("cmd.exe", cmdArgs...)
 		} else {
 			// Unix/Linux: Build command string and spawn in a terminal
-			cmdParts := []string{program.Path}
+			// Quote the program path to protect against shell metacharacters
+			cmdParts := []string{shellQuote(program.Path)}
 			if len(args) > 0 {
-				// For Unix shell execution, we need to quote arguments with spaces
+				// Quote all arguments to prevent shell injection
+				// Torrent metadata can contain malicious shell metacharacters
 				for _, arg := range args {
-					if strings.Contains(arg, " ") && !strings.HasPrefix(arg, `"`) && !strings.HasPrefix(arg, `'`) {
-						cmdParts = append(cmdParts, fmt.Sprintf(`'%s'`, strings.ReplaceAll(arg, `'`, `'\''`)))
-					} else {
-						cmdParts = append(cmdParts, arg)
-					}
+					cmdParts = append(cmdParts, shellQuote(arg))
 				}
 			}
 			fullCmd := strings.Join(cmdParts, " ")
@@ -270,8 +269,9 @@ func (h *ExternalProgramsHandler) executeForHash(ctx context.Context, program *m
 		// Launch directly without terminal (for GUI apps or background processes)
 		if runtime.GOOS == "windows" {
 			// Windows: Use 'start' to launch GUI apps properly (detached from parent process)
+			// Empty string after "start" prevents quoted paths from being interpreted as window title
 			// This allows the app to continue running after qui closes
-			cmdArgs := []string{"/c", "start", "/b", program.Path}
+			cmdArgs := []string{"/c", "start", "", "/b", program.Path}
 			if len(args) > 0 {
 				cmdArgs = append(cmdArgs, args...)
 			}
@@ -501,4 +501,13 @@ func splitArgs(s string) []string {
 	}
 
 	return args
+}
+
+// shellQuote safely quotes a string for use in a shell command
+// This prevents shell injection by escaping all single quotes and wrapping in single quotes
+func shellQuote(s string) string {
+	// Use single quotes for safety, and escape any single quotes in the string
+	// by closing the quote, adding an escaped single quote, then reopening the quote
+	// Example: "it's" becomes 'it'\''s'
+	return fmt.Sprintf("'%s'", strings.ReplaceAll(s, "'", `'\''`))
 }
