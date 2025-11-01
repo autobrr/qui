@@ -30,9 +30,9 @@ import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { api } from "@/lib/api"
-import type { ExternalProgram, ExternalProgramCreate, ExternalProgramUpdate } from "@/types"
+import type { ExternalProgram, ExternalProgramCreate, ExternalProgramUpdate, PathMapping } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Edit, Plus, Trash2 } from "lucide-react"
+import { Edit, Plus, Trash2, X } from "lucide-react"
 import { useState } from "react"
 import { toast } from "sonner"
 
@@ -249,6 +249,7 @@ function ProgramForm({ program, onSubmit, onCancel, isPending }: ProgramFormProp
   const [argsTemplate, setArgsTemplate] = useState(program?.args_template || "")
   const [enabled, setEnabled] = useState(program?.enabled !== false)
   const [useTerminal, setUseTerminal] = useState(program?.use_terminal !== false)
+  const [pathMappings, setPathMappings] = useState<PathMapping[]>(program?.path_mappings || [])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -269,6 +270,7 @@ function ProgramForm({ program, onSubmit, onCancel, isPending }: ProgramFormProp
       args_template: argsTemplate.trim(),
       enabled,
       use_terminal: useTerminal,
+      path_mappings: pathMappings,
     })
   }
 
@@ -323,6 +325,63 @@ function ProgramForm({ program, onSubmit, onCancel, isPending }: ProgramFormProp
             <li><code className="bg-muted px-1 rounded">{"{progress}"}</code> - Progress (0-1)</li>
           </ul>
         </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label>Path Mappings</Label>
+        <div className="space-y-2">
+          {pathMappings.map((mapping, index) => (
+            <div key={index} className="flex gap-2 items-start">
+              <div className="flex-1">
+                <Input
+                  placeholder="Remote path (e.g., /mnt/remote-storage)"
+                  value={mapping.from}
+                  onChange={(e) => {
+                    const newMappings = [...pathMappings]
+                    newMappings[index] = { ...newMappings[index], from: e.target.value }
+                    setPathMappings(newMappings)
+                  }}
+                />
+              </div>
+              <div className="flex-1">
+                <Input
+                  placeholder="Local path (e.g., /home/user/mounts/remote)"
+                  value={mapping.to}
+                  onChange={(e) => {
+                    const newMappings = [...pathMappings]
+                    newMappings[index] = { ...newMappings[index], to: e.target.value }
+                    setPathMappings(newMappings)
+                  }}
+                />
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  const newMappings = pathMappings.filter((_, i) => i !== index)
+                  setPathMappings(newMappings)
+                }}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          ))}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setPathMappings([...pathMappings, { from: "", to: "" }])
+            }}
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            Add Path Mapping
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Path mappings convert remote paths to local mount points. Useful when running external programs on a local qui server while qBittorrent is remote. Paths are matched by prefix.
+        </p>
       </div>
 
       <div className="space-y-3">

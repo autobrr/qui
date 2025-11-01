@@ -259,16 +259,20 @@ func (h *ExternalProgramsHandler) executeForHash(ctx context.Context, program *m
 	}
 
 	// Convert torrent to map format for variable substitution
+	// Apply path mappings to convert remote paths to local paths
+	savePath := applyPathMappings(torrent.SavePath, program.PathMappings)
+	contentPath := applyPathMappings(torrent.ContentPath, program.PathMappings)
+
 	torrentData := map[string]string{
 		"hash":         torrent.Hash,
 		"name":         torrent.Name,
-		"save_path":    torrent.SavePath,
+		"save_path":    savePath,
 		"category":     torrent.Category,
 		"tags":         torrent.Tags,
 		"state":        string(torrent.State),
 		"size":         fmt.Sprintf("%d", torrent.Size),
 		"progress":     fmt.Sprintf("%.2f", torrent.Progress),
-		"content_path": torrent.ContentPath,
+		"content_path": contentPath,
 	}
 
 	// Build command arguments by substituting variables
@@ -554,4 +558,36 @@ func cmdEscape(s string) string {
 		"%", "^%",
 	)
 	return replacer.Replace(s)
+}
+
+// applyPathMappings applies configured path mappings to convert remote paths to local paths
+// This allows external programs to work with torrents on remote qBittorrent instances
+// where the filesystem paths differ between the remote and local machine
+func applyPathMappings(path string, mappings []models.PathMapping) string {
+	if len(mappings) == 0 {
+		return path
+	}
+
+	// Try each mapping in order (first match wins)
+	for _, mapping := range mappings {
+		if mapping.From == "" || mapping.To == "" {
+			continue
+		}
+
+		// Check if path starts with the "from" prefix
+		if strings.HasPrefix(path, mapping.From) {
+			// Replace the prefix
+			mappedPath := mapping.To + strings.TrimPrefix(path, mapping.From)
+			log.Debug().
+				Str("original", path).
+				Str("from", mapping.From).
+				Str("to", mapping.To).
+				Str("mapped", mappedPath).
+				Msg("Applied path mapping")
+			return mappedPath
+		}
+	}
+
+	// No mapping matched, return original path
+	return path
 }

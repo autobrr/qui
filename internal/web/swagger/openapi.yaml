@@ -364,6 +364,12 @@ paths:
                   type: boolean
                   default: true
                   description: Whether to launch in a terminal window
+                path_mappings:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/PathMapping'
+                  default: []
+                  description: Path mappings to convert remote paths to local paths (useful for remote instances)
       responses:
         '201':
           description: External program created
@@ -411,6 +417,11 @@ paths:
                 use_terminal:
                   type: boolean
                   description: Whether to launch in a terminal window
+                path_mappings:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/PathMapping'
+                  description: Path mappings to convert remote paths to local paths
       responses:
         '200':
           description: External program updated
@@ -446,6 +457,9 @@ paths:
       summary: Execute external program
       description: |
         Execute an external program for one or more torrents.
+        
+        The program is launched asynchronously, and this endpoint returns immediately after starting the process.
+        The 'success' field in the response indicates whether the program was successfully launched, not whether it completed successfully.
         
         The program path and arguments are passed through variable substitution where placeholders
         like {hash}, {name}, {save_path}, etc. are replaced with actual torrent metadata.
@@ -2190,6 +2204,19 @@ components:
           format: date-time
           nullable: true
 
+    PathMapping:
+      type: object
+      description: Maps remote paths to local paths for external program execution
+      properties:
+        from:
+          type: string
+          description: Remote path prefix to match (e.g., "/mnt/remote-storage/downloads")
+          example: "/mnt/remote-storage/downloads"
+        to:
+          type: string
+          description: Local path prefix to replace with (e.g., "/home/user/downloads")
+          example: "/home/user/downloads"
+
     ExternalProgram:
       type: object
       properties:
@@ -2210,6 +2237,11 @@ components:
         use_terminal:
           type: boolean
           description: Whether to launch in a terminal window
+        path_mappings:
+          type: array
+          items:
+            $ref: '#/components/schemas/PathMapping'
+          description: Path mappings to convert remote paths to local paths for remote instances
         created_at:
           type: string
           format: date-time

@@ -794,6 +794,11 @@ export interface TorrentCreationTaskResponse {
 }
 
 // External Program Types
+export interface PathMapping {
+  from: string
+  to: string
+}
+
 export interface ExternalProgram {
   id: number
   name: string
@@ -801,6 +806,7 @@ export interface ExternalProgram {
   args_template: string
   enabled: boolean
   use_terminal: boolean
+  path_mappings: PathMapping[]
   created_at: string
   updated_at: string
 }
@@ -811,6 +817,7 @@ export interface ExternalProgramCreate {
   args_template: string
   enabled: boolean
   use_terminal: boolean
+  path_mappings: PathMapping[]
 }
 
 export interface ExternalProgramUpdate {
@@ -819,6 +826,7 @@ export interface ExternalProgramUpdate {
   args_template: string
   enabled: boolean
   use_terminal: boolean
+  path_mappings: PathMapping[]
 }
 
 export interface ExternalProgramExecute {
