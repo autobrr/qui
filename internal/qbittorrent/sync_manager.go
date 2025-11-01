@@ -5,12 +5,14 @@ package qbittorrent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"net/url"
 	"path/filepath"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -3078,6 +3080,55 @@ func (sm *SyncManager) SetLocation(ctx context.Context, instanceID int, hashes [
 	if err := client.SetLocationCtx(ctx, hashes, location); err != nil {
 		return fmt.Errorf("failed to set torrent location: %w", err)
 	}
+
+	return nil
+}
+
+// SetTorrentFilePriority updates the download priority for one or more files within a torrent.
+func (sm *SyncManager) SetTorrentFilePriority(ctx context.Context, instanceID int, hash string, indices []int, priority int) error {
+	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		return err
+	}
+
+	if !client.SupportsFilePriority() {
+		return fmt.Errorf("qBittorrent instance does not support file priority changes (requires WebAPI 2.2.0+)")
+	}
+
+	if err := sm.validateTorrentsExist(client, []string{hash}, "set file priorities"); err != nil {
+		return err
+	}
+
+	if len(indices) == 0 {
+		return fmt.Errorf("at least one file index is required")
+	}
+
+	if priority < 0 || priority > 7 {
+		return fmt.Errorf("file priority must be between 0 and 7")
+	}
+
+	ids := make([]string, len(indices))
+	for i, idx := range indices {
+		if idx < 0 {
+			return fmt.Errorf("file indices must be non-negative")
+		}
+		ids[i] = strconv.Itoa(idx)
+	}
+
+	idString := strings.Join(ids, "|")
+
+	if err := client.SetFilePriorityCtx(ctx, hash, idString, priority); err != nil {
+		switch {
+		case errors.Is(err, qbt.ErrInvalidPriority):
+			return fmt.Errorf("invalid file priority or file indices: %w", err)
+		case errors.Is(err, qbt.ErrTorrentMetdataNotDownloadedYet):
+			return fmt.Errorf("torrent metadata is not yet available, please try again once metadata has downloaded: %w", err)
+		default:
+			return fmt.Errorf("failed to set file priority: %w", err)
+		}
+	}
+
+	sm.syncAfterModification(instanceID, client, "set_file_priority")
 
 	return nil
 }

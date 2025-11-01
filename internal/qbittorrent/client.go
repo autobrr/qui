@@ -22,6 +22,7 @@ var (
 	torrentCreationMinVersion = semver.MustParse("2.11.2")
 	exportTorrentMinVersion   = semver.MustParse("2.8.11")
 	trackerEditingMinVersion  = semver.MustParse("2.2.0")
+	filePriorityMinVersion    = semver.MustParse("2.2.0")
 	renameTorrentMinVersion   = semver.MustParse("2.0.0")
 	renameFileMinVersion      = semver.MustParse("2.4.0")
 	renameFolderMinVersion    = semver.MustParse("2.7.0")
@@ -39,6 +40,7 @@ type Client struct {
 	supportsRenameTorrent   bool
 	supportsRenameFile      bool
 	supportsRenameFolder    bool
+	supportsFilePriority    bool
 	supportsSubcategories   bool
 	lastHealthCheck         time.Time
 	isHealthy               bool
@@ -131,6 +133,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 		Bool("supportsTorrentCreation", client.SupportsTorrentCreation()).
 		Bool("supportsTorrentExport", client.SupportsTorrentExport()).
 		Bool("supportsTrackerEditing", client.SupportsTrackerEditing()).
+		Bool("supportsFilePriority", client.SupportsFilePriority()).
 		Bool("supportsSubcategories", client.SupportsSubcategories()).
 		Bool("tlsSkipVerify", tlsSkipVerify).
 		Msg("qBittorrent client created successfully")
@@ -233,6 +236,7 @@ func (c *Client) applyCapabilitiesLocked(version string) {
 	c.supportsTorrentCreation = !v.LessThan(torrentCreationMinVersion)
 	c.supportsTorrentExport = !v.LessThan(exportTorrentMinVersion)
 	c.supportsTrackerEditing = !v.LessThan(trackerEditingMinVersion)
+	c.supportsFilePriority = !v.LessThan(filePriorityMinVersion)
 	c.supportsRenameTorrent = !v.LessThan(renameTorrentMinVersion)
 	c.supportsRenameFile = !v.LessThan(renameFileMinVersion)
 	c.supportsRenameFolder = !v.LessThan(renameFolderMinVersion)
@@ -337,6 +341,12 @@ func (c *Client) SupportsRenameFolder() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.supportsRenameFolder
+}
+
+func (c *Client) SupportsFilePriority() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.supportsFilePriority
 }
 
 func (c *Client) SupportsSubcategories() bool {
