@@ -9,6 +9,8 @@ import (
 	"errors"
 
 	"github.com/autobrr/qui/internal/dbinterface"
+	"modernc.org/sqlite"
+	lib "modernc.org/sqlite/lib"
 )
 
 var ErrUserNotFound = errors.New("user not found")
@@ -29,6 +31,12 @@ func NewUserStore(db dbinterface.Querier) *UserStore {
 }
 
 func (s *UserStore) Create(ctx context.Context, username, passwordHash string) (*User, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
 	query := `
 		INSERT INTO user (id, username, password_hash) 
 		VALUES (1, ?, ?)
@@ -36,19 +44,24 @@ func (s *UserStore) Create(ctx context.Context, username, passwordHash string) (
 	`
 
 	user := &User{}
-	err := s.db.QueryRowContext(ctx, query, username, passwordHash).Scan(
+	err = tx.QueryRowContext(ctx, query, username, passwordHash).Scan(
 		&user.ID,
 		&user.Username,
 		&user.PasswordHash,
 	)
 
 	if err != nil {
-		if err.Error() == "UNIQUE constraint failed: user.username" {
-			return nil, ErrUserAlreadyExists
+		var sqlErr *sqlite.Error
+		if errors.As(err, &sqlErr) {
+			// UNIQUE constraint on username or CHECK constraint on id = 1
+			if sqlErr.Code() == lib.SQLITE_CONSTRAINT_UNIQUE || sqlErr.Code() == lib.SQLITE_CONSTRAINT_CHECK {
+				return nil, ErrUserAlreadyExists
+			}
 		}
-		if err.Error() == "CHECK constraint failed: id = 1" {
-			return nil, ErrUserAlreadyExists
-		}
+		return nil, err
+	}
+
+	if err = tx.Commit(); err != nil {
 		return nil, err
 	}
 
@@ -104,13 +117,19 @@ func (s *UserStore) GetByUsername(ctx context.Context, username string) (*User, 
 }
 
 func (s *UserStore) UpdatePassword(ctx context.Context, passwordHash string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
 	query := `
 		UPDATE user 
 		SET password_hash = ? 
 		WHERE id = 1
 	`
 
-	result, err := s.db.ExecContext(ctx, query, passwordHash)
+	result, err := tx.ExecContext(ctx, query, passwordHash)
 	if err != nil {
 		return err
 	}
@@ -124,6 +143,10 @@ func (s *UserStore) UpdatePassword(ctx context.Context, passwordHash string) err
 		return ErrUserNotFound
 	}
 
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -133,5 +156,6 @@ func (s *UserStore) Exists(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+
 	return count > 0, nil
 }

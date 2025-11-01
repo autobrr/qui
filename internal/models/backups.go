@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -113,10 +114,10 @@ type CategorySnapshot struct {
 }
 
 type BackupStore struct {
-	db dbinterface.TxBeginner
+	db dbinterface.Querier
 }
 
-func NewBackupStore(db dbinterface.TxBeginner) *BackupStore {
+func NewBackupStore(db dbinterface.Querier) *BackupStore {
 	return &BackupStore{db: db}
 }
 
@@ -179,6 +180,12 @@ func (s *BackupStore) UpsertSettings(ctx context.Context, settings *BackupSettin
 		return errors.New("settings cannot be nil")
 	}
 
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
 	query := `
         INSERT INTO instance_backup_settings (
             instance_id, enabled, hourly_enabled, daily_enabled, weekly_enabled, monthly_enabled,
@@ -200,7 +207,7 @@ func (s *BackupStore) UpsertSettings(ctx context.Context, settings *BackupSettin
             custom_path = excluded.custom_path
     `
 
-	_, err := s.db.ExecContext(
+	_, err = tx.ExecContext(
 		ctx,
 		query,
 		settings.InstanceID,
@@ -218,7 +225,15 @@ func (s *BackupStore) UpsertSettings(ctx context.Context, settings *BackupSettin
 		settings.CustomPath,
 	)
 
-	return err
+	if err != nil {
+		return err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
 }
 
 func maxInt(v int, floor int) int {
@@ -233,37 +248,43 @@ func (s *BackupStore) CreateRun(ctx context.Context, run *BackupRun) error {
 		return errors.New("run cannot be nil")
 	}
 
-	query := `
-        INSERT INTO instance_backup_runs (
-            instance_id, kind, status, requested_by, requested_at, started_at, completed_at,
-            archive_path, manifest_path, total_bytes, torrent_count, category_counts_json, categories_json, tags_json, error_message
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `
+	// Start transaction
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Intern all strings in a single call (convert required strings to pointers)
+	kind := string(run.Kind)
+	status := string(run.Status)
+	allIDs, err := dbinterface.InternStringNullable(ctx, tx, &kind, &status, &run.RequestedBy, run.ArchivePath, run.ManifestPath, run.ErrorMessage)
+	if err != nil {
+		return fmt.Errorf("failed to intern strings: %w", err)
+	}
 
 	categoryJSON, err := marshalCategoryCounts(run.CategoryCounts)
 	if err != nil {
 		return err
 	}
 
-	res, err := s.db.ExecContext(
-		ctx,
-		query,
-		run.InstanceID,
-		string(run.Kind),
-		string(run.Status),
-		run.RequestedBy,
-		run.RequestedAt,
-		run.StartedAt,
-		run.CompletedAt,
-		run.ArchivePath,
-		run.ManifestPath,
-		run.TotalBytes,
-		run.TorrentCount,
-		categoryJSON,
-		run.categoriesJSON,
-		run.tagsJSON,
-		run.ErrorMessage,
-	)
+	categoriesJSON, err := marshalCategories(run.Categories)
+	if err != nil {
+		return err
+	}
+
+	tagsJSON, err := marshalTags(run.Tags)
+	if err != nil {
+		return err
+	}
+
+	res, err := tx.ExecContext(ctx, `
+		INSERT INTO instance_backup_runs (
+			instance_id, kind_id, status_id, requested_by_id, requested_at, started_at, completed_at,
+			archive_path_id, manifest_path_id, total_bytes, torrent_count, category_counts_json, categories_json, tags_json, error_message_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, run.InstanceID, allIDs[0], allIDs[1], allIDs[2], run.RequestedAt, run.StartedAt, run.CompletedAt,
+		allIDs[3], allIDs[4], run.TotalBytes, run.TorrentCount, categoryJSON, categoriesJSON, tagsJSON, allIDs[5])
 	if err != nil {
 		return err
 	}
@@ -273,6 +294,11 @@ func (s *BackupStore) CreateRun(ctx context.Context, run *BackupRun) error {
 		return err
 	}
 	run.ID = id
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
 	return nil
 }
 
@@ -352,75 +378,64 @@ func unmarshalTags(raw sql.NullString) ([]string, error) {
 }
 
 func (s *BackupStore) UpdateRunMetadata(ctx context.Context, runID int64, updateFn func(*BackupRun) error) error {
+	// Start a transaction first to avoid deadlocks
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
+	defer tx.Rollback()
 
-	defer func() {
-		if err != nil {
-			_ = tx.Rollback()
-		}
-	}()
-
+	// Read the current state WITHIN the transaction
 	run, err := s.getRunForUpdate(ctx, tx, runID)
 	if err != nil {
 		return err
 	}
 
+	// Apply the update function
 	if err = updateFn(run); err != nil {
 		return err
 	}
 
+	// Prepare JSON data
 	categoryJSON, err := marshalCategoryCounts(run.CategoryCounts)
 	if err != nil {
 		return err
 	}
 
-	query := `
-        UPDATE instance_backup_runs SET
-            status = ?,
-            started_at = ?,
-            completed_at = ?,
-            archive_path = ?,
-            manifest_path = ?,
-            total_bytes = ?,
-            torrent_count = ?,
-            category_counts_json = ?,
-            categories_json = ?,
-            tags_json = ?,
-            error_message = ?
-        WHERE id = ?
-    `
-
 	categoriesJSON, err := marshalCategories(run.Categories)
 	if err != nil {
 		return err
 	}
-	run.categoriesJSON = categoriesJSON
 
 	tagsJSON, err := marshalTags(run.Tags)
 	if err != nil {
 		return err
 	}
-	run.tagsJSON = tagsJSON
 
-	_, err = tx.ExecContext(
-		ctx,
-		query,
-		string(run.Status),
-		run.StartedAt,
-		run.CompletedAt,
-		run.ArchivePath,
-		run.ManifestPath,
-		run.TotalBytes,
-		run.TorrentCount,
-		categoryJSON,
-		categoriesJSON,
-		tagsJSON,
-		run.ErrorMessage,
-		run.ID,
-	)
+	// Intern all strings in a single call
+	status := string(run.Status)
+	allIDs, err := dbinterface.InternStringNullable(ctx, tx, &status, run.ArchivePath, run.ManifestPath, run.ErrorMessage)
+	if err != nil {
+		return fmt.Errorf("failed to intern strings: %w", err)
+	}
+
+	// Execute UPDATE with interned IDs
+	_, err = tx.ExecContext(ctx, `
+        UPDATE instance_backup_runs SET
+            status_id = ?,
+            started_at = ?,
+            completed_at = ?,
+            archive_path_id = ?,
+            manifest_path_id = ?,
+            total_bytes = ?,
+            torrent_count = ?,
+            category_counts_json = ?,
+            categories_json = ?,
+            tags_json = ?,
+            error_message_id = ?
+        WHERE id = ?
+	`, allIDs[0], run.StartedAt, run.CompletedAt, allIDs[1], allIDs[2],
+		run.TotalBytes, run.TorrentCount, categoryJSON, categoriesJSON, tagsJSON, allIDs[3], runID)
 	if err != nil {
 		return err
 	}
@@ -428,11 +443,63 @@ func (s *BackupStore) UpdateRunMetadata(ctx context.Context, runID int64, update
 	return tx.Commit()
 }
 
-func (s *BackupStore) getRunForUpdate(ctx context.Context, tx *sql.Tx, runID int64) (*BackupRun, error) {
+// UpdateMultipleRunsStatus updates the status of multiple backup runs in a single transaction
+func (s *BackupStore) UpdateMultipleRunsStatus(ctx context.Context, runIDs []int64, status BackupRunStatus, completedAt *time.Time, errorMessage *string) error {
+	if len(runIDs) == 0 {
+		return nil
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Intern all strings in a single call
+	statusStr := string(status)
+	allIDs, err := dbinterface.InternStringNullable(ctx, tx, &statusStr, errorMessage)
+	if err != nil {
+		return fmt.Errorf("failed to intern strings: %w", err)
+	}
+
+	// Build IN clause with placeholders
+	var sb strings.Builder
+	sb.Grow(len(runIDs)*2 - 1) // Pre-allocate: ? followed by ,? for each additional
+	sb.WriteString("UPDATE instance_backup_runs SET status_id = ?, completed_at = ?, error_message_id = ? WHERE id IN (")
+	if len(runIDs) > 0 {
+		sb.WriteString("?")
+		for i := 1; i < len(runIDs); i++ {
+			sb.WriteString(",?")
+		}
+	}
+	sb.WriteString(")")
+	query := sb.String()
+
+	args := []any{allIDs[0]}
+	if completedAt != nil {
+		args = append(args, *completedAt)
+	} else {
+		args = append(args, nil)
+	}
+	args = append(args, allIDs[1])
+
+	for _, runID := range runIDs {
+		args = append(args, runID)
+	}
+
+	_, err = tx.ExecContext(ctx, query, args...)
+	if err != nil {
+		return fmt.Errorf("failed to execute update query: %w", err)
+	}
+
+	return tx.Commit()
+}
+
+func (s *BackupStore) getRunForUpdate(ctx context.Context, tx dbinterface.TxQuerier, runID int64) (*BackupRun, error) {
 	query := `
 		SELECT id, instance_id, kind, status, requested_by, requested_at, started_at, completed_at,
 		       archive_path, manifest_path, total_bytes, torrent_count, category_counts_json, categories_json, tags_json, error_message
-		FROM instance_backup_runs
+		FROM instance_backup_runs_view
 		WHERE id = ?
 	`
 
@@ -522,7 +589,7 @@ func (s *BackupStore) ListRuns(ctx context.Context, instanceID int, limit, offse
 	query := `
         SELECT id, instance_id, kind, status, requested_by, requested_at, started_at, completed_at,
                archive_path, manifest_path, total_bytes, torrent_count, category_counts_json, categories_json, tags_json, error_message
-        FROM instance_backup_runs
+        FROM instance_backup_runs_view
         WHERE instance_id = ?
         ORDER BY requested_at DESC
         LIMIT ? OFFSET ?
@@ -608,7 +675,11 @@ func (s *BackupStore) ListRuns(ctx context.Context, instanceID int, limit, offse
 		results = append(results, &run)
 	}
 
-	return results, rows.Err()
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return results, nil
 }
 
 func (s *BackupStore) ListRunIDs(ctx context.Context, instanceID int) ([]int64, error) {
@@ -631,12 +702,31 @@ func (s *BackupStore) ListRunIDs(ctx context.Context, instanceID int) ([]int64, 
 		}
 		ids = append(ids, id)
 	}
-	return ids, rows.Err()
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return ids, nil
 }
 
 func (s *BackupStore) DeleteRun(ctx context.Context, runID int64) error {
-	_, err := s.db.ExecContext(ctx, "DELETE FROM instance_backup_runs WHERE id = ?", runID)
-	return err
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	_, err = tx.ExecContext(ctx, "DELETE FROM instance_backup_runs WHERE id = ?", runID)
+	if err != nil {
+		return err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
 }
 
 func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []BackupItem) error {
@@ -648,45 +738,179 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 	if err != nil {
 		return err
 	}
+	defer tx.Rollback()
 
-	stmt, err := tx.PrepareContext(ctx, `
-		INSERT INTO instance_backup_items (
-			run_id, torrent_hash, name, category, size_bytes, archive_rel_path, infohash_v1, infohash_v2, tags, torrent_blob_path
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`)
-	if err != nil {
-		_ = tx.Rollback()
-		return err
+	// Optimize for large bulk inserts (e.g., 180k+ torrents)
+	// Temporarily disable foreign key checks for massive performance boost
+	if _, err := tx.ExecContext(ctx, "PRAGMA defer_foreign_keys = ON"); err != nil {
+		return fmt.Errorf("failed to defer foreign keys: %w", err)
 	}
-	defer stmt.Close()
 
+	// Pre-deduplicate all strings before interning to minimize database operations
+	// This is crucial for performance when dealing with thousands of items
+	// Estimate capacity: torrents often share categories/tags, so less unique values than items
+	estimatedUniqueStrings := len(items) / 10
+	if estimatedUniqueStrings < 100 {
+		estimatedUniqueStrings = 100
+	}
+
+	uniqueRequired := make(map[string]struct{}, estimatedUniqueStrings)
+	uniqueOptional := make(map[string]struct{}, estimatedUniqueStrings)
+
+	// Collect unique required strings (hash + name)
 	for _, item := range items {
-		_, err = stmt.ExecContext(
-			ctx,
-			runID,
-			item.TorrentHash,
-			item.Name,
-			item.Category,
-			item.SizeBytes,
-			item.ArchiveRelPath,
-			item.InfoHashV1,
-			item.InfoHashV2,
-			item.Tags,
-			item.TorrentBlobPath,
-		)
+		uniqueRequired[item.TorrentHash] = struct{}{}
+		uniqueRequired[item.Name] = struct{}{}
+	}
+
+	// Collect unique optional strings
+	for _, item := range items {
+		if item.Category != nil && *item.Category != "" {
+			uniqueOptional[*item.Category] = struct{}{}
+		}
+		if item.ArchiveRelPath != nil && *item.ArchiveRelPath != "" {
+			uniqueOptional[*item.ArchiveRelPath] = struct{}{}
+		}
+		if item.InfoHashV1 != nil && *item.InfoHashV1 != "" {
+			uniqueOptional[*item.InfoHashV1] = struct{}{}
+		}
+		if item.InfoHashV2 != nil && *item.InfoHashV2 != "" {
+			uniqueOptional[*item.InfoHashV2] = struct{}{}
+		}
+		if item.Tags != nil && *item.Tags != "" {
+			uniqueOptional[*item.Tags] = struct{}{}
+		}
+		if item.TorrentBlobPath != nil && *item.TorrentBlobPath != "" {
+			uniqueOptional[*item.TorrentBlobPath] = struct{}{}
+		}
+	}
+
+	// Convert maps to slices for interning
+	requiredStrings := make([]string, 0, len(uniqueRequired))
+	for s := range uniqueRequired {
+		requiredStrings = append(requiredStrings, s)
+	}
+
+	// Batch intern all required strings at once
+	requiredIDs, err := dbinterface.InternStrings(ctx, tx, requiredStrings...)
+	if err != nil {
+		return fmt.Errorf("failed to batch intern required strings: %w", err)
+	}
+
+	// Build map from string -> ID with proper capacity
+	totalUniqueStrings := len(uniqueRequired) + len(uniqueOptional)
+	stringToID := make(map[string]int64, totalUniqueStrings)
+	for i, s := range requiredStrings {
+		stringToID[s] = requiredIDs[i]
+	}
+
+	// Intern optional strings if any exist
+	if len(uniqueOptional) > 0 {
+		optionalStrings := make([]string, 0, len(uniqueOptional))
+		for s := range uniqueOptional {
+			optionalStrings = append(optionalStrings, s)
+		}
+
+		optionalIDs, err := dbinterface.InternStrings(ctx, tx, optionalStrings...)
 		if err != nil {
-			_ = tx.Rollback()
-			return err
+			return fmt.Errorf("failed to batch intern optional strings: %w", err)
+		}
+
+		// Add to the same map
+		for i, s := range optionalStrings {
+			stringToID[s] = optionalIDs[i]
+		}
+	}
+
+	// Helper to get ID from map
+	getID := func(s *string) sql.NullInt64 {
+		if s == nil || *s == "" {
+			return sql.NullInt64{Valid: false}
+		}
+		if id, ok := stringToID[*s]; ok {
+			return sql.NullInt64{Int64: id, Valid: true}
+		}
+		return sql.NullInt64{Valid: false}
+	}
+
+	// Batch insert items with larger chunks for better performance
+	// SQLite SQLITE_MAX_VARIABLE_NUMBER is typically 32766 on modern systems
+	// but default is 999. Use 90 items * 10 params = 900 to stay safe
+	const chunkSize = 90
+	for i := 0; i < len(items); i += chunkSize {
+		end := i + chunkSize
+		if end > len(items) {
+			end = len(items)
+		}
+		chunk := items[i:end]
+
+		// Build multi-row INSERT
+		args := make([]any, 0, len(chunk)*10)
+		var sb strings.Builder
+		sb.Grow(len(chunk) * 42) // Pre-allocate: each row is "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?), " = ~42 chars
+
+		for j, item := range chunk {
+			if j > 0 {
+				sb.WriteString(", ")
+			}
+			sb.WriteString("(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+
+			// Get IDs from the stringToID map for required fields
+			torrentHashID := stringToID[item.TorrentHash]
+			nameID := stringToID[item.Name]
+
+			args = append(args,
+				runID,
+				torrentHashID,
+				nameID,
+				getID(item.Category),
+				item.SizeBytes,
+				getID(item.ArchiveRelPath),
+				getID(item.InfoHashV1),
+				getID(item.InfoHashV2),
+				getID(item.Tags),
+				getID(item.TorrentBlobPath),
+			)
+		}
+
+		query := `INSERT INTO instance_backup_items (
+			run_id, torrent_hash_id, name_id, category_id, size_bytes, 
+			archive_rel_path_id, infohash_v1_id, infohash_v2_id, tags_id, torrent_blob_path_id
+		) VALUES ` + sb.String()
+
+		_, err = tx.ExecContext(ctx, query, args...)
+		if err != nil {
+			return fmt.Errorf("failed to batch insert items: %w", err)
 		}
 	}
 
 	return tx.Commit()
 }
+func joinPlaceholders(placeholders []string, sep string) string {
+	if len(placeholders) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	// Pre-calculate capacity: sum of all placeholder lengths + separators
+	totalLen := 0
+	for _, p := range placeholders {
+		totalLen += len(p)
+	}
+	totalLen += len(sep) * (len(placeholders) - 1)
+	sb.Grow(totalLen)
+
+	sb.WriteString(placeholders[0])
+	for i := 1; i < len(placeholders); i++ {
+		sb.WriteString(sep)
+		sb.WriteString(placeholders[i])
+	}
+	return sb.String()
+}
 
 func (s *BackupStore) ListItems(ctx context.Context, runID int64) ([]*BackupItem, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, run_id, torrent_hash, name, category, size_bytes, archive_rel_path, infohash_v1, infohash_v2, tags, torrent_blob_path, created_at
-		FROM instance_backup_items
+		FROM instance_backup_items_view
 		WHERE run_id = ?
 		ORDER BY name COLLATE NOCASE
 	`, runID)
@@ -742,13 +966,17 @@ func (s *BackupStore) ListItems(ctx context.Context, runID int64) ([]*BackupItem
 		items = append(items, &item)
 	}
 
-	return items, rows.Err()
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
 }
 
 func (s *BackupStore) GetItemByHash(ctx context.Context, runID int64, hash string) (*BackupItem, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, run_id, torrent_hash, name, category, size_bytes, archive_rel_path, infohash_v1, infohash_v2, tags, torrent_blob_path, created_at
-		FROM instance_backup_items
+		FROM instance_backup_items_view
 		WHERE run_id = ? AND torrent_hash = ?
 		LIMIT 1
 	`, runID, hash)
@@ -803,7 +1031,7 @@ func (s *BackupStore) GetItemByHash(ctx context.Context, runID int64, hash strin
 func (s *BackupStore) FindCachedTorrentBlob(ctx context.Context, instanceID int, hash string) (*string, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT i.torrent_blob_path
-		FROM instance_backup_items i
+		FROM instance_backup_items_view i
 		JOIN instance_backup_runs r ON r.id = i.run_id
 		WHERE r.instance_id = ?
 		  AND i.torrent_hash = ?
@@ -836,21 +1064,32 @@ func (s *BackupStore) CountBlobReferences(ctx context.Context, relPath string) (
 	var count int
 	err := s.db.QueryRowContext(ctx, `
 		SELECT COUNT(*)
-		FROM instance_backup_items
+		FROM instance_backup_items_view
 		WHERE torrent_blob_path = ?
 	`, relPath).Scan(&count)
-	return count, err
+
+	if err != nil {
+		return 0, err
+	}
+
+	return count, nil
 }
 
 func (s *BackupStore) GetInstanceName(ctx context.Context, instanceID int) (string, error) {
 	var name string
-	err := s.db.QueryRowContext(ctx, "SELECT name FROM instances WHERE id = ?", instanceID).Scan(&name)
+	err := s.db.QueryRowContext(ctx, `
+		SELECT sp.value 
+		FROM instances i 
+		JOIN string_pool sp ON i.name_id = sp.id 
+		WHERE i.id = ?
+	`, instanceID).Scan(&name)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", ErrInstanceNotFound
 		}
 		return "", err
 	}
+
 	return strings.TrimSpace(name), nil
 }
 
@@ -862,7 +1101,7 @@ func (s *BackupStore) ListRunsByKind(ctx context.Context, instanceID int, kind B
 	query := `
 		SELECT id, instance_id, kind, status, requested_by, requested_at, started_at, completed_at,
 		       archive_path, manifest_path, total_bytes, torrent_count, category_counts_json, categories_json, tags_json, error_message
-		FROM instance_backup_runs
+		FROM instance_backup_runs_view
 		WHERE instance_id = ? AND kind = ?
 		ORDER BY requested_at DESC
 		LIMIT ?
@@ -948,14 +1187,18 @@ func (s *BackupStore) ListRunsByKind(ctx context.Context, instanceID int, kind B
 		runs = append(runs, &run)
 	}
 
-	return runs, rows.Err()
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return runs, nil
 }
 
 func (s *BackupStore) GetRun(ctx context.Context, runID int64) (*BackupRun, error) {
 	query := `
         SELECT id, instance_id, kind, status, requested_by, requested_at, started_at, completed_at,
                archive_path, manifest_path, total_bytes, torrent_count, category_counts_json, categories_json, tags_json, error_message
-        FROM instance_backup_runs
+        FROM instance_backup_runs_view
         WHERE id = ?
     `
 
@@ -1086,13 +1329,18 @@ func (s *BackupStore) ListEnabledSettings(ctx context.Context) ([]*BackupSetting
 		settings = append(settings, &s)
 	}
 
-	return settings, rows.Err()
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return settings, nil
 }
 
 func (s *BackupStore) DeleteRunsOlderThan(ctx context.Context, instanceID int, kind BackupRunKind, keep int) ([]int64, error) {
 	if keep <= 0 {
+		// Use view to query by kind string value
 		query := `
-            SELECT id FROM instance_backup_runs
+            SELECT id FROM instance_backup_runs_view
             WHERE instance_id = ? AND kind = ?
         `
 		rows, err := s.db.QueryContext(ctx, query, instanceID, string(kind))
@@ -1108,11 +1356,17 @@ func (s *BackupStore) DeleteRunsOlderThan(ctx context.Context, instanceID int, k
 			}
 			ids = append(ids, id)
 		}
-		return ids, rows.Err()
+
+		if err = rows.Err(); err != nil {
+			return nil, err
+		}
+
+		return ids, nil
 	}
 
+	// Use view to query by kind string value
 	query := `
-        SELECT id FROM instance_backup_runs
+        SELECT id FROM instance_backup_runs_view
         WHERE instance_id = ? AND kind = ?
         ORDER BY requested_at DESC
         LIMIT -1 OFFSET ?
@@ -1133,7 +1387,11 @@ func (s *BackupStore) DeleteRunsOlderThan(ctx context.Context, instanceID int, k
 		ids = append(ids, id)
 	}
 
-	return ids, rows.Err()
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return ids, nil
 }
 
 func (s *BackupStore) DeleteItemsByRunIDs(ctx context.Context, runIDs []int64) error {
@@ -1141,26 +1399,44 @@ func (s *BackupStore) DeleteItemsByRunIDs(ctx context.Context, runIDs []int64) e
 		return nil
 	}
 
-	query := "DELETE FROM instance_backup_items WHERE run_id IN (" + placeholders(len(runIDs)) + ")"
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	query := "DELETE FROM instance_backup_items WHERE run_id IN " + placeholders(len(runIDs))
 
 	args := make([]any, len(runIDs))
 	for i, id := range runIDs {
 		args[i] = id
 	}
 
-	_, err := s.db.ExecContext(ctx, query, args...)
-	return err
+	_, err = tx.ExecContext(ctx, query, args...)
+	if err != nil {
+		return err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
 }
 
 func placeholders(count int) string {
 	if count <= 0 {
-		return ""
+		return "()"
 	}
-	s := "?"
+	var sb strings.Builder
+	sb.Grow(count*2 + 1) // Pre-allocate: ( followed by ? followed by ,? for each additional, then )
+	sb.WriteString("(")
+	sb.WriteString("?")
 	for i := 1; i < count; i++ {
-		s += ",?"
+		sb.WriteString(",?")
 	}
-	return s
+	sb.WriteString(")")
+	return sb.String()
 }
 
 func (s *BackupStore) DeleteRunsByIDs(ctx context.Context, runIDs []int64) error {
@@ -1168,24 +1444,43 @@ func (s *BackupStore) DeleteRunsByIDs(ctx context.Context, runIDs []int64) error
 		return nil
 	}
 
-	query := "DELETE FROM instance_backup_runs WHERE id IN (" + placeholders(len(runIDs)) + ")"
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	query := "DELETE FROM instance_backup_runs WHERE id IN " + placeholders(len(runIDs))
 	args := make([]any, len(runIDs))
 	for i, id := range runIDs {
 		args[i] = id
 	}
 
-	_, err := s.db.ExecContext(ctx, query, args...)
-	return err
+	_, err = tx.ExecContext(ctx, query, args...)
+	if err != nil {
+		return err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
 }
 
 func (s *BackupStore) CountRunsByKind(ctx context.Context, instanceID int, kind BackupRunKind) (int, error) {
 	var count int
 	err := s.db.QueryRowContext(ctx, `
         SELECT COUNT(*)
-        FROM instance_backup_runs
+        FROM instance_backup_runs_view
         WHERE instance_id = ? AND kind = ?
     `, instanceID, string(kind)).Scan(&count)
-	return count, err
+
+	if err != nil {
+		return 0, err
+	}
+
+	return count, nil
 }
 
 func (s *BackupStore) LatestRunByKind(ctx context.Context, instanceID int, kind BackupRunKind) (*BackupRun, error) {
@@ -1200,24 +1495,58 @@ func (s *BackupStore) LatestRunByKind(ctx context.Context, instanceID int, kind 
 }
 
 func (s *BackupStore) CleanupRun(ctx context.Context, runID int64) error {
-	_, err := s.db.ExecContext(ctx, "DELETE FROM instance_backup_items WHERE run_id = ?", runID)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	_, err = tx.ExecContext(ctx, "DELETE FROM instance_backup_items WHERE run_id = ?", runID)
 	if err != nil {
 		return err
 	}
 
-	_, err = s.db.ExecContext(ctx, "DELETE FROM instance_backup_runs WHERE id = ?", runID)
-	return err
+	_, err = tx.ExecContext(ctx, "DELETE FROM instance_backup_runs WHERE id = ?", runID)
+	if err != nil {
+		return err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
 }
 
 // RemoveFailedRunsBefore deletes failed runs older than the provided cutoff and returns the number of rows affected.
 func (s *BackupStore) RemoveFailedRunsBefore(ctx context.Context, cutoff time.Time) (int64, error) {
-	res, err := s.db.ExecContext(ctx, `
-        DELETE FROM instance_backup_runs
-        WHERE status = ? AND requested_at < ?
-    `, string(BackupRunStatusFailed), cutoff)
+	// Start a transaction
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Intern the status string
+	status := string(BackupRunStatusFailed)
+	ids, err := dbinterface.InternStringNullable(ctx, tx, &status)
+	if err != nil {
+		return 0, fmt.Errorf("failed to intern status: %w", err)
+	}
+
+	// Execute DELETE with interned ID
+	res, err := tx.ExecContext(ctx, `
+		DELETE FROM instance_backup_runs
+		WHERE status_id = ? AND requested_at < ?
+	`, ids[0], cutoff)
 	if err != nil {
 		return 0, err
 	}
+
+	if err = tx.Commit(); err != nil {
+		return 0, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
 	return res.RowsAffected()
 }
 
@@ -1227,7 +1556,7 @@ func (s *BackupStore) FindIncompleteRuns(ctx context.Context) ([]*BackupRun, err
 	query := `
         SELECT id, instance_id, kind, status, requested_by, requested_at, started_at, completed_at,
                archive_path, manifest_path, total_bytes, torrent_count, category_counts_json, categories_json, tags_json, error_message
-        FROM instance_backup_runs
+        FROM instance_backup_runs_view
         WHERE status IN (?, ?)
         ORDER BY requested_at ASC
     `
@@ -1311,5 +1640,9 @@ func (s *BackupStore) FindIncompleteRuns(ctx context.Context) ([]*BackupRun, err
 		runs = append(runs, &run)
 	}
 
-	return runs, rows.Err()
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return runs, nil
 }
