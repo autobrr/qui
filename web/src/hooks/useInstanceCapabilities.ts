@@ -23,5 +23,12 @@ export function useInstanceCapabilities(
     queryFn: () => api.getInstanceCapabilities(instanceId!),
     enabled: shouldEnable && instanceId !== null && instanceId !== undefined,
     staleTime: 300000,
+    refetchInterval: (query) => {
+      const data = query.state.data as InstanceCapabilities | undefined
+      if (!data?.webAPIVersion) {
+        return 5_000
+      }
+      return false
+    },
   })
 }

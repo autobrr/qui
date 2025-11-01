@@ -298,7 +298,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 		// Apply manual filtering for multiple selections
 		if trackerHealthSupported && needsTrackerHydration {
-			filteredTorrents, trackerMap, _ = sm.enrichTorrentsWithTrackerData(ctx, client, filteredTorrents, trackerMap, true)
+			filteredTorrents, trackerMap, _ = sm.enrichTorrentsWithTrackerData(ctx, client, filteredTorrents, trackerMap)
 		}
 
 		filteredTorrents = sm.applyManualFilters(client, filteredTorrents, filters, mainData, categories, useSubcategories)
@@ -362,7 +362,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		filteredTorrents = syncManager.GetTorrents(torrentFilterOptions)
 
 		if trackerHealthSupported && needsTrackerHealthSorting {
-			filteredTorrents, trackerMap, _ = sm.enrichTorrentsWithTrackerData(ctx, client, filteredTorrents, trackerMap, true)
+			filteredTorrents, trackerMap, _ = sm.enrichTorrentsWithTrackerData(ctx, client, filteredTorrents, trackerMap)
 		}
 	}
 
@@ -931,7 +931,7 @@ func (sm *SyncManager) determineTrackerHealth(torrent qbt.Torrent) TrackerHealth
 	return ""
 }
 
-func (sm *SyncManager) enrichTorrentsWithTrackerData(ctx context.Context, client *Client, torrents []qbt.Torrent, trackerMap map[string][]qbt.TorrentTracker, allowFetch bool) ([]qbt.Torrent, map[string][]qbt.TorrentTracker, []string) {
+func (sm *SyncManager) enrichTorrentsWithTrackerData(ctx context.Context, client *Client, torrents []qbt.Torrent, trackerMap map[string][]qbt.TorrentTracker) ([]qbt.Torrent, map[string][]qbt.TorrentTracker, []string) {
 	if client == nil || len(torrents) == 0 {
 		return torrents, trackerMap, nil
 	}
@@ -951,8 +951,8 @@ func (sm *SyncManager) enrichTorrentsWithTrackerData(ctx context.Context, client
 		}
 	}
 
-	enriched, trackerData, remaining, err := client.hydrateTorrentsWithTrackers(ctx, torrents, allowFetch)
-	if err != nil && allowFetch {
+	enriched, trackerData, remaining, err := client.hydrateTorrentsWithTrackers(ctx, torrents)
+	if err != nil {
 		log.Debug().Err(err).Int("count", len(torrents)).Msg("Failed to fetch tracker details for enrichment")
 	}
 
@@ -1092,7 +1092,7 @@ func (sm *SyncManager) countTorrentStatuses(torrent qbt.Torrent, counts map[stri
 func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(ctx context.Context, client *Client, allTorrents []qbt.Torrent, mainData *qbt.MainData, trackerMap map[string][]qbt.TorrentTracker, trackerHealthSupported bool, useSubcategories bool) (*TorrentCounts, map[string][]qbt.TorrentTracker, []qbt.Torrent) {
 	var enriched []qbt.Torrent
 	if trackerHealthSupported {
-		enriched, trackerMap, _ = sm.enrichTorrentsWithTrackerData(ctx, client, allTorrents, trackerMap, true)
+		enriched, trackerMap, _ = sm.enrichTorrentsWithTrackerData(ctx, client, allTorrents, trackerMap)
 		allTorrents = enriched
 	}
 
@@ -1482,7 +1482,7 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 	torrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{})
 
 	// Enrich torrents with tracker data so downstream calculations can inspect tracker errors
-	if enriched, _, _ := sm.enrichTorrentsWithTrackerData(ctx, client, torrents, nil, true); len(enriched) > 0 {
+	if enriched, _, _ := sm.enrichTorrentsWithTrackerData(ctx, client, torrents, nil); len(enriched) > 0 {
 		torrents = enriched
 	}
 
