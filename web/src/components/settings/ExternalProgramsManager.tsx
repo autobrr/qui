@@ -266,13 +266,18 @@ function ProgramForm({ program, onSubmit, onCancel, isPending }: ProgramFormProp
       return
     }
 
+    // Filter out empty path mappings
+    const validPathMappings = pathMappings.filter(
+      (mapping) => mapping.from.trim() !== "" && mapping.to.trim() !== ""
+    )
+
     onSubmit({
       name: name.trim(),
       path: path.trim(),
       args_template: argsTemplate.trim(),
       enabled,
       use_terminal: useTerminal,
-      path_mappings: pathMappings,
+      path_mappings: validPathMappings,
     })
   }
 
