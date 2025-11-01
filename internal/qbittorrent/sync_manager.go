@@ -2761,6 +2761,31 @@ func (sm *SyncManager) SetAutoTMM(ctx context.Context, instanceID int, hashes []
 	return nil
 }
 
+// SetForceStart toggles force start state for torrents
+func (sm *SyncManager) SetForceStart(ctx context.Context, instanceID int, hashes []string, enable bool) error {
+	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		return err
+	}
+
+	// Validate that torrents exist
+	if err := sm.validateTorrentsExist(client, hashes, "set force start"); err != nil {
+		return err
+	}
+
+	if err := client.SetForceStartCtx(ctx, hashes, enable); err != nil {
+		return err
+	}
+
+	if enable {
+		sm.applyOptimisticCacheUpdate(instanceID, hashes, "force_resume", nil)
+	}
+
+	sm.syncAfterModification(instanceID, client, "set_force_start")
+
+	return nil
+}
+
 // CreateTags creates new tags
 func (sm *SyncManager) CreateTags(ctx context.Context, instanceID int, tags []string) error {
 	client, err := sm.clientPool.GetClient(ctx, instanceID)
