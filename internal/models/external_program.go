@@ -47,8 +47,9 @@ type ExternalProgramUpdate struct {
 
 // ExternalProgramExecute represents a request to execute an external program with torrent data
 type ExternalProgramExecute struct {
-	ProgramID int      `json:"program_id"`
-	Hashes    []string `json:"hashes"`
+	ProgramID  int      `json:"program_id"`
+	InstanceID int      `json:"instance_id"`
+	Hashes     []string `json:"hashes"`
 }
 
 type ExternalProgramStore struct {

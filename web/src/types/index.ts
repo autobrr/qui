@@ -823,6 +823,7 @@ export interface ExternalProgramUpdate {
 
 export interface ExternalProgramExecute {
   program_id: number
+  instance_id: number
   hashes: string[]
 }
 

@@ -180,6 +180,11 @@ func (h *ExternalProgramsHandler) ExecuteExternalProgram(w http.ResponseWriter, 
 		return
 	}
 
+	if req.InstanceID == 0 {
+		http.Error(w, "Instance ID is required", http.StatusBadRequest)
+		return
+	}
+
 	if len(req.Hashes) == 0 {
 		http.Error(w, "At least one torrent hash is required", http.StatusBadRequest)
 		return
@@ -207,7 +212,7 @@ func (h *ExternalProgramsHandler) ExecuteExternalProgram(w http.ResponseWriter, 
 	// Execute for each torrent hash
 	results := make([]map[string]any, 0, len(req.Hashes))
 	for _, hash := range req.Hashes {
-		result := h.executeForHash(ctx, program, hash)
+		result := h.executeForHash(ctx, program, req.InstanceID, hash)
 		results = append(results, result)
 	}
 
@@ -218,15 +223,14 @@ func (h *ExternalProgramsHandler) ExecuteExternalProgram(w http.ResponseWriter, 
 }
 
 // executeForHash executes the external program for a single torrent hash
-func (h *ExternalProgramsHandler) executeForHash(ctx context.Context, program *models.ExternalProgram, hash string) map[string]any {
+func (h *ExternalProgramsHandler) executeForHash(ctx context.Context, program *models.ExternalProgram, instanceID int, hash string) map[string]any {
 	result := map[string]any{
 		"hash":    hash,
 		"success": false,
 	}
 
-	// Get torrent info from any available instance
-	// Note: We might want to add instance ID to the execution request in the future
-	torrent, err := h.getTorrentInfo(ctx, hash)
+	// Get torrent info from the specific instance
+	torrent, err := h.getTorrentInfo(ctx, instanceID, hash)
 	if err != nil {
 		result["error"] = fmt.Sprintf("Failed to get torrent info: %v", err)
 		return result
@@ -365,41 +369,38 @@ func (h *ExternalProgramsHandler) executeForHash(ctx context.Context, program *m
 	return result
 }
 
-// getTorrentInfo retrieves torrent information from the client pool
-func (h *ExternalProgramsHandler) getTorrentInfo(ctx context.Context, hash string) (map[string]string, error) {
-	// Try to get torrent info from all instances
-	// This is a simple implementation - you might want to make this more sophisticated
-	instances := h.clientPool.GetAllInstances(ctx)
+// getTorrentInfo retrieves torrent information from the client pool for a specific instance
+func (h *ExternalProgramsHandler) getTorrentInfo(ctx context.Context, instanceID int, hash string) (map[string]string, error) {
+	// Get client for the specific instance
+	client, err := h.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client for instance %d: %w", instanceID, err)
+	}
 
-	for _, instance := range instances {
-		client, err := h.clientPool.GetClient(ctx, instance.ID)
-		if err != nil {
-			continue
-		}
+	// Get all torrents from the instance
+	torrents, err := client.GetTorrents(qbt.TorrentFilterOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get torrents from instance %d: %w", instanceID, err)
+	}
 
-		torrents, err := client.GetTorrents(qbt.TorrentFilterOptions{})
-		if err != nil {
-			continue
-		}
-
-		for _, torrent := range torrents {
-			if strings.EqualFold(torrent.Hash, hash) {
-				return map[string]string{
-					"hash":         torrent.Hash,
-					"name":         torrent.Name,
-					"save_path":    torrent.SavePath,
-					"category":     torrent.Category,
-					"tags":         torrent.Tags,
-					"state":        string(torrent.State),
-					"size":         fmt.Sprintf("%d", torrent.Size),
-					"progress":     fmt.Sprintf("%.2f", torrent.Progress),
-					"content_path": torrent.ContentPath,
-				}, nil
-			}
+	// Find the torrent with the matching hash
+	for _, torrent := range torrents {
+		if strings.EqualFold(torrent.Hash, hash) {
+			return map[string]string{
+				"hash":         torrent.Hash,
+				"name":         torrent.Name,
+				"save_path":    torrent.SavePath,
+				"category":     torrent.Category,
+				"tags":         torrent.Tags,
+				"state":        string(torrent.State),
+				"size":         fmt.Sprintf("%d", torrent.Size),
+				"progress":     fmt.Sprintf("%.2f", torrent.Progress),
+				"content_path": torrent.ContentPath,
+			}, nil
 		}
 	}
 
-	return nil, fmt.Errorf("torrent not found in any instance")
+	return nil, fmt.Errorf("torrent with hash %s not found in instance %d", hash, instanceID)
 }
 
 // buildArguments substitutes variables in the args template with torrent data

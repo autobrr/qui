@@ -46,6 +46,7 @@ import { RenameSubmenu } from "./RenameSubmenu"
 
 interface TorrentContextMenuProps {
   children: React.ReactNode
+  instanceId: number
   torrent: Torrent
   isSelected: boolean
   isAllSelected?: boolean
@@ -77,6 +78,7 @@ interface TorrentContextMenuProps {
 
 export const TorrentContextMenu = memo(function TorrentContextMenu({
   children,
+  instanceId,
   torrent,
   isSelected,
   isAllSelected = false,
@@ -350,7 +352,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
           </ContextMenuItem>
         )}
         <ContextMenuSeparator />
-        <ExternalProgramsSubmenu hashes={hashes} />
+        <ExternalProgramsSubmenu instanceId={instanceId} hashes={hashes} />
         {supportsTorrentExport && (
           <ContextMenuItem
             onClick={handleExport}
@@ -392,10 +394,11 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
 })
 
 interface ExternalProgramsSubmenuProps {
+  instanceId: number
   hashes: string[]
 }
 
-function ExternalProgramsSubmenu({ hashes }: ExternalProgramsSubmenuProps) {
+function ExternalProgramsSubmenu({ instanceId, hashes }: ExternalProgramsSubmenuProps) {
   const { data: programs, isLoading } = useQuery({
     queryKey: ["externalPrograms"],
     queryFn: () => api.listExternalPrograms(),
@@ -406,6 +409,7 @@ function ExternalProgramsSubmenu({ hashes }: ExternalProgramsSubmenuProps) {
     mutationFn: async (program: ExternalProgram) => {
       return api.executeExternalProgram({
         program_id: program.id,
+        instance_id: instanceId,
         hashes,
       })
     },

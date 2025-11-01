@@ -453,11 +453,15 @@ paths:
               type: object
               required:
                 - programId
+                - instanceId
                 - hashes
               properties:
                 programId:
                   type: integer
                   description: ID of the external program to execute
+                instanceId:
+                  type: integer
+                  description: ID of the qBittorrent instance where the torrents are located
                 hashes:
                   type: array
                   items:
