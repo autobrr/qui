@@ -245,9 +245,12 @@ func (h *ExternalProgramsHandler) executeForHash(ctx context.Context, program *m
 		if runtime.GOOS == "windows" {
 			// Windows: Use cmd.exe /c start cmd /k to open a new visible terminal window
 			// Empty string after "start" prevents quoted paths from being interpreted as window title
-			cmdArgs := []string{"/c", "start", "", "cmd", "/k", program.Path}
+			cmdArgs := []string{"/c", "start", "", "cmd", "/k", cmdQuote(program.Path)}
 			if len(args) > 0 {
-				cmdArgs = append(cmdArgs, args...)
+				// Escape all arguments to prevent cmd.exe metacharacter injection
+				for _, arg := range args {
+					cmdArgs = append(cmdArgs, cmdQuote(arg))
+				}
 			}
 			cmd = exec.Command("cmd.exe", cmdArgs...)
 		} else {
@@ -271,9 +274,12 @@ func (h *ExternalProgramsHandler) executeForHash(ctx context.Context, program *m
 			// Windows: Use 'start' to launch GUI apps properly (detached from parent process)
 			// Empty string after "start" prevents quoted paths from being interpreted as window title
 			// This allows the app to continue running after qui closes
-			cmdArgs := []string{"/c", "start", "", "/b", program.Path}
+			cmdArgs := []string{"/c", "start", "", "/b", cmdQuote(program.Path)}
 			if len(args) > 0 {
-				cmdArgs = append(cmdArgs, args...)
+				// Escape all arguments to prevent cmd.exe metacharacter injection
+				for _, arg := range args {
+					cmdArgs = append(cmdArgs, cmdQuote(arg))
+				}
 			}
 			cmd = exec.Command("cmd.exe", cmdArgs...)
 		} else {
@@ -437,7 +443,7 @@ func (h *ExternalProgramsHandler) createTerminalCommand(ctx context.Context, cmd
 		// xfce4-terminal (XFCE)
 		{"xfce4-terminal", []string{"--hold", "-e", "bash", "-c", cmdLine}},
 		// mate-terminal (MATE)
-		{"mate-terminal", []string{"-e", "bash -c '" + cmdLine + "; exec bash'"}},
+		{"mate-terminal", []string{"-e", "bash", "-c", cmdLine + "; exec bash"}},
 		// xterm (fallback, available on most systems)
 		{"xterm", []string{"-hold", "-e", "bash", "-c", cmdLine}},
 		// kitty (modern terminal)
@@ -445,7 +451,7 @@ func (h *ExternalProgramsHandler) createTerminalCommand(ctx context.Context, cmd
 		// alacritty (modern terminal)
 		{"alacritty", []string{"-e", "bash", "-c", cmdLine + "; exec bash"}},
 		// terminator
-		{"terminator", []string{"-e", "bash -c '" + cmdLine + "; exec bash'"}},
+		{"terminator", []string{"-e", "bash", "-c", cmdLine + "; exec bash"}},
 	}
 
 	// Try each terminal until we find one that exists
@@ -510,4 +516,22 @@ func shellQuote(s string) string {
 	// by closing the quote, adding an escaped single quote, then reopening the quote
 	// Example: "it's" becomes 'it'\''s'
 	return fmt.Sprintf("'%s'", strings.ReplaceAll(s, "'", `'\''`))
+}
+
+// cmdQuote safely quotes a string for use in a Windows cmd.exe command
+// This prevents command injection by escaping cmd.exe metacharacters and wrapping in double quotes
+func cmdQuote(s string) string {
+	// cmd.exe metacharacters that need escaping: & | < > ^ %
+	// We escape them with ^ (the cmd.exe escape character)
+	// Also escape double quotes by doubling them
+	s = strings.ReplaceAll(s, "^", "^^")
+	s = strings.ReplaceAll(s, "&", "^&")
+	s = strings.ReplaceAll(s, "|", "^|")
+	s = strings.ReplaceAll(s, "<", "^<")
+	s = strings.ReplaceAll(s, ">", "^>")
+	s = strings.ReplaceAll(s, "%", "^%")
+	s = strings.ReplaceAll(s, `"`, `""`)
+
+	// Wrap in double quotes for cmd.exe
+	return fmt.Sprintf(`"%s"`, s)
 }
