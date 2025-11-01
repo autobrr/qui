@@ -178,6 +178,13 @@ class ApiClient {
     return this.request<InstanceCapabilities>(`/instances/${id}/capabilities`)
   }
 
+  async reorderInstances(instanceIds: number[]): Promise<InstanceResponse[]> {
+    return this.request<InstanceResponse[]>("/instances/order", {
+      method: "PUT",
+      body: JSON.stringify({ instanceIds }),
+    })
+  }
+
   async getBackupSettings(instanceId: number): Promise<BackupSettings> {
     return this.request<BackupSettings>(`/instances/${instanceId}/backups/settings`)
   }

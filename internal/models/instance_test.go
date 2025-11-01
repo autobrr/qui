@@ -150,6 +150,7 @@ func TestInstanceStoreWithHost(t *testing.T) {
 			basic_username TEXT,
 			basic_password_encrypted TEXT,
 			tls_skip_verify BOOLEAN NOT NULL DEFAULT 0,
+			sort_order INTEGER NOT NULL DEFAULT 0,
 			is_active BOOLEAN DEFAULT 1,
 			last_connected_at TIMESTAMP,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -163,6 +164,7 @@ func TestInstanceStoreWithHost(t *testing.T) {
 	require.NoError(t, err, "Failed to create instance")
 	assert.Equal(t, "http://localhost:8080", instance.Host, "host should match")
 	assert.False(t, instance.TLSSkipVerify)
+	assert.Equal(t, 0, instance.SortOrder)
 
 	// Test retrieving the instance
 	retrieved, err := store.Get(ctx, instance.ID)
@@ -176,4 +178,59 @@ func TestInstanceStoreWithHost(t *testing.T) {
 	require.NoError(t, err, "Failed to update instance")
 	assert.Equal(t, "https://example.com:8443/qbittorrent", updated.Host, "updated host should match")
 	assert.True(t, updated.TLSSkipVerify)
+}
+
+func TestInstanceStoreUpdateOrder(t *testing.T) {
+	ctx := t.Context()
+
+	db, err := sql.Open("sqlite", ":memory:")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+
+	encryptionKey := make([]byte, 32)
+	for i := range encryptionKey {
+		encryptionKey[i] = byte(i)
+	}
+
+	store, err := NewInstanceStore(db, encryptionKey)
+	require.NoError(t, err)
+
+	_, err = db.ExecContext(ctx, `
+		CREATE TABLE instances (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL,
+			host TEXT NOT NULL,
+			username TEXT NOT NULL,
+			password_encrypted TEXT NOT NULL,
+			basic_username TEXT,
+			basic_password_encrypted TEXT,
+			tls_skip_verify BOOLEAN NOT NULL DEFAULT 0,
+			sort_order INTEGER NOT NULL DEFAULT 0,
+			is_active BOOLEAN DEFAULT 1,
+			last_connected_at TIMESTAMP,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	require.NoError(t, err)
+
+	first, err := store.Create(ctx, "First", "http://first.local", "user1", "pass1", nil, nil, false)
+	require.NoError(t, err)
+	second, err := store.Create(ctx, "Second", "http://second.local", "user2", "pass2", nil, nil, false)
+	require.NoError(t, err)
+
+	assert.Equal(t, 0, first.SortOrder)
+	assert.Equal(t, 1, second.SortOrder)
+
+	err = store.UpdateOrder(ctx, []int{second.ID, first.ID})
+	require.NoError(t, err)
+
+	instances, err := store.List(ctx)
+	require.NoError(t, err)
+	require.Len(t, instances, 2)
+
+	assert.Equal(t, second.ID, instances[0].ID)
+	assert.Equal(t, 0, instances[0].SortOrder)
+	assert.Equal(t, first.ID, instances[1].ID)
+	assert.Equal(t, 1, instances[1].SortOrder)
 }

@@ -23,6 +23,7 @@ export interface Instance {
   username: string
   basicUsername?: string
   tlsSkipVerify: boolean
+  sortOrder: number
 }
 
 export interface InstanceFormData {
