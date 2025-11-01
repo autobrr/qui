@@ -249,8 +249,10 @@ func (h *ExternalProgramsHandler) executeForHash(ctx context.Context, program *m
 		if runtime.GOOS == "windows" {
 			// Windows: Use cmd.exe /c start cmd /k to open a new visible terminal window
 			// Empty string after "start" prevents quoted paths from being interpreted as window title
-			// We must escape for cmd.exe's parser (^-escape metacharacters) before exec.Command quotes for CreateProcess
-			// This prevents command injection via torrent names like "test&calc"
+			// CRITICAL SECURITY: We use two-layer escaping for Windows:
+			// 1. cmdEscape() escapes cmd.exe metacharacters (&|<>^%) with ^ for cmd.exe's parser
+			// 2. exec.Command() adds quotes for the Windows CreateProcess API
+			// This prevents command injection via torrent metadata like names containing "test&calc"
 			escapedPath := cmdEscape(program.Path)
 			cmdArgs := []string{"/c", "start", "", "cmd", "/k", escapedPath}
 			if len(args) > 0 {
@@ -279,8 +281,10 @@ func (h *ExternalProgramsHandler) executeForHash(ctx context.Context, program *m
 		if runtime.GOOS == "windows" {
 			// Windows: Use 'start' to launch GUI apps properly (detached from parent process)
 			// Empty string after "start" prevents quoted paths from being interpreted as window title
-			// We must escape for cmd.exe's parser (^-escape metacharacters) before exec.Command quotes for CreateProcess
-			// This prevents command injection via torrent names like "test&calc"
+			// CRITICAL SECURITY: We use two-layer escaping for Windows:
+			// 1. cmdEscape() escapes cmd.exe metacharacters (&|<>^%) with ^ for cmd.exe's parser
+			// 2. exec.Command() adds quotes for the Windows CreateProcess API
+			// This prevents command injection via torrent metadata like names containing "test&calc"
 			escapedPath := cmdEscape(program.Path)
 			cmdArgs := []string{"/c", "start", "", "/b", escapedPath}
 			if len(args) > 0 {
@@ -525,11 +529,21 @@ func shellQuote(s string) string {
 
 // cmdEscape escapes a string for safe use with cmd.exe on Windows
 // This protects against cmd.exe metacharacter interpretation when using cmd.exe /c
-// Note: This is different from exec.Command quoting - this escapes for cmd.exe's parser,
-// then exec.Command will add additional quotes for CreateProcess API
+//
+// CRITICAL SECURITY NOTE: This function implements the FIRST layer of a two-layer escaping strategy:
+// 1. cmdEscape() escapes for cmd.exe's parser (this function)
+// 2. exec.Command() adds quotes for Windows CreateProcess API
+//
+// Why both are needed:
+// - exec.Command handles CreateProcess quoting BUT cmd.exe still parses the command line
+// - When we use "cmd.exe /c start program args", cmd.exe interprets & | < > ^ % as special
+// - Torrent names like "test&calc" would execute calc.exe without this escaping
+// - We escape with ^ (cmd.exe's escape character) BEFORE exec.Command adds quotes
+//
+// Example: "test&calc" -> "test^&calc" -> exec.Command adds quotes -> cmd.exe sees literal &
 func cmdEscape(s string) string {
-	// cmd.exe special characters that need escaping: & | < > ^ %
-	// We use ^ to escape these characters
+	// cmd.exe special characters that need escaping with ^: & | < > ^ %
+	// Note: We escape ^ first to prevent double-escaping issues
 	replacer := strings.NewReplacer(
 		"^", "^^",
 		"&", "^&",
