@@ -459,6 +459,13 @@ class ApiClient {
     return this.request<TorrentFile[]>(`/instances/${instanceId}/torrents/${hash}/files`)
   }
 
+  async setTorrentFilePriority(instanceId: number, hash: string, indices: number[], priority: number): Promise<void> {
+    return this.request(`/instances/${instanceId}/torrents/${hash}/files`, {
+      method: "PUT",
+      body: JSON.stringify({ indices, priority }),
+    })
+  }
+
   async exportTorrent(instanceId: number, hash: string): Promise<{ blob: Blob; filename: string | null }> {
     const encodedHash = encodeURIComponent(hash)
     const response = await fetch(`${API_BASE}/instances/${instanceId}/torrents/${encodedHash}/export`, {
