@@ -369,6 +369,7 @@ function ProgramForm({ program, onSubmit, onCancel, isPending }: ProgramFormProp
                   const newMappings = pathMappings.filter((_, i) => i !== index)
                   setPathMappings(newMappings)
                 }}
+                aria-label="Remove path mapping"
               >
                 <X className="h-4 w-4" />
               </Button>
