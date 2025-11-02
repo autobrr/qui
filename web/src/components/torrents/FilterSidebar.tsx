@@ -911,6 +911,14 @@ const FilterSidebarComponent = ({
     }
   }, [cancelLongPress, handleStatusExcludeToggle, isMobile, makeToggleKey, scheduleLongPressExclude])
 
+  const handlePointerLeave = useCallback((event: React.PointerEvent<HTMLElement>) => {
+    const pointerType = event.pointerType
+    if (pointerType === "mouse") {
+      return
+    }
+    cancelLongPress()
+  }, [cancelLongPress])
+
   const handleCategoryIncludeToggle = useCallback((category: string) => {
     const currentState = getCategoryState(category)
 
@@ -1343,14 +1351,15 @@ const FilterSidebarComponent = ({
                     return (
                       <label
                         key={state.value}
-                        className={cn(
-                          "flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer",
-                          statusState === "exclude"
-                            ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
-                            : "hover:bg-muted"
-                        )}
-                        onPointerDown={(event) => handleStatusPointerDown(event, state.value)}
-                      >
+                      className={cn(
+                        "flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer",
+                        statusState === "exclude"
+                          ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
+                          : "hover:bg-muted"
+                      )}
+                      onPointerDown={(event) => handleStatusPointerDown(event, state.value)}
+                      onPointerLeave={handlePointerLeave}
+                    >
                         <Checkbox
                           checked={getCheckboxVisualState(statusState)}
                           onCheckedChange={() => handleStatusCheckboxChange(state.value)}
@@ -1425,6 +1434,7 @@ const FilterSidebarComponent = ({
                         uncategorizedState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": "hover:bg-muted"
                       )}
                       onPointerDown={(event) => handleCategoryPointerDown(event, "")}
+                      onPointerLeave={handlePointerLeave}
                     >
                       <Checkbox
                         checked={getCheckboxVisualState(uncategorizedState)}
@@ -1484,6 +1494,7 @@ const FilterSidebarComponent = ({
                       getCheckboxState={getCheckboxVisualState}
                       onCategoryCheckboxChange={handleCategoryCheckboxChange}
                       onCategoryPointerDown={handleCategoryPointerDown}
+                      onCategoryPointerLeave={handlePointerLeave}
                       onCreateSubcategory={handleCreateSubcategory}
                       onEditCategory={handleEditCategoryByName}
                       onDeleteCategory={handleDeleteCategoryByName}
@@ -1529,6 +1540,7 @@ const FilterSidebarComponent = ({
                                         : "hover:bg-muted"
                                     )}
                                     onPointerDown={(event) => handleCategoryPointerDown(event, name)}
+                                    onPointerLeave={handlePointerLeave}
                                   >
                                     <Checkbox
                                       checked={getCheckboxVisualState(categoryState)}
@@ -1622,14 +1634,15 @@ const FilterSidebarComponent = ({
                         <ContextMenu key={name}>
                           <ContextMenuTrigger asChild>
                             <label
-                              className={cn(
-                                "flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer",
-                                categoryState === "exclude"
-                                  ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
-                                  : "hover:bg-muted"
-                              )}
-                              onPointerDown={(event) => handleCategoryPointerDown(event, name)}
-                            >
+                            className={cn(
+                              "flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer",
+                              categoryState === "exclude"
+                                ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
+                                : "hover:bg-muted"
+                            )}
+                            onPointerDown={(event) => handleCategoryPointerDown(event, name)}
+                            onPointerLeave={handlePointerLeave}
+                          >
                               <Checkbox
                                 checked={getCheckboxVisualState(categoryState)}
                                 onCheckedChange={() => handleCategoryCheckboxChange(name)}
@@ -1756,6 +1769,7 @@ const FilterSidebarComponent = ({
                       untaggedState === "exclude" ? "bg-destructive/10 text-destructive hover:bg-destructive/15" : "hover:bg-muted"
                     )}
                     onPointerDown={(event) => handleTagPointerDown(event, "")}
+                    onPointerLeave={handlePointerLeave}
                   >
                     <Checkbox
                       checked={getCheckboxVisualState(untaggedState)}
@@ -1836,6 +1850,7 @@ const FilterSidebarComponent = ({
                                         : "hover:bg-muted"
                                     )}
                                     onPointerDown={(event) => handleTagPointerDown(event, tag)}
+                                    onPointerLeave={handlePointerLeave}
                                   >
                                     <Checkbox
                                       checked={getCheckboxVisualState(tagState)}
@@ -1893,14 +1908,15 @@ const FilterSidebarComponent = ({
                         <ContextMenu key={tag}>
                           <ContextMenuTrigger asChild>
                             <label
-                              className={cn(
-                                "flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer",
-                                tagState === "exclude"
-                                  ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
-                                  : "hover:bg-muted"
-                              )}
-                              onPointerDown={(event) => handleTagPointerDown(event, tag)}
-                            >
+                            className={cn(
+                              "flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer",
+                              tagState === "exclude"
+                                ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
+                                : "hover:bg-muted"
+                            )}
+                            onPointerDown={(event) => handleTagPointerDown(event, tag)}
+                            onPointerLeave={handlePointerLeave}
+                          >
                               <Checkbox
                                 checked={getCheckboxVisualState(tagState)}
                                 onCheckedChange={() => handleTagCheckboxChange(tag)}
@@ -1987,6 +2003,7 @@ const FilterSidebarComponent = ({
                         : "hover:bg-muted"
                     )}
                     onPointerDown={(event) => handleTrackerPointerDown(event, "")}
+                    onPointerLeave={handlePointerLeave}
                   >
                     <Checkbox
                       checked={getCheckboxVisualState(noTrackerState)}
@@ -2060,6 +2077,7 @@ const FilterSidebarComponent = ({
                                         : "hover:bg-muted"
                                     )}
                                     onPointerDown={(event) => handleTrackerPointerDown(event, tracker)}
+                                    onPointerLeave={handlePointerLeave}
                                   >
                                     <Checkbox
                                       checked={getCheckboxVisualState(trackerState)}
@@ -2114,14 +2132,15 @@ const FilterSidebarComponent = ({
                         <ContextMenu key={tracker}>
                           <ContextMenuTrigger asChild>
                             <label
-                              className={cn(
-                                "flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer",
-                                trackerState === "exclude"
-                                  ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
-                                  : "hover:bg-muted"
-                              )}
-                              onPointerDown={(event) => handleTrackerPointerDown(event, tracker)}
-                            >
+                            className={cn(
+                              "flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer",
+                              trackerState === "exclude"
+                                ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
+                                : "hover:bg-muted"
+                            )}
+                            onPointerDown={(event) => handleTrackerPointerDown(event, tracker)}
+                            onPointerLeave={handlePointerLeave}
+                          >
                               <Checkbox
                                 checked={getCheckboxVisualState(trackerState)}
                                 onCheckedChange={() => handleTrackerCheckboxChange(tracker)}
