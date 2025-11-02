@@ -27,9 +27,9 @@ import { getPeerFlagDetails } from "@/lib/torrent-peer-flags"
 import { resolveTorrentHashes } from "@/lib/torrent-utils"
 import { cn, copyTextToClipboard, formatBytes, formatDuration } from "@/lib/utils"
 import type { SortedPeersResponse, Torrent, TorrentFile, TorrentPeer } from "@/types"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQueries, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import "flag-icons/css/flag-icons.min.css"
-import { Ban, Copy, Loader2, UserPlus } from "lucide-react"
+import { Ban, Copy, Loader2, Trash2, UserPlus } from "lucide-react"
 import { memo, useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 
@@ -38,7 +38,7 @@ interface TorrentDetailsPanelProps {
   torrent: Torrent | null;
 }
 
-const TAB_VALUES = ["general", "trackers", "peers", "content"] as const
+const TAB_VALUES = ["general", "trackers", "peers", "content", "crossseed"] as const
 type TabValue = typeof TAB_VALUES[number]
 const DEFAULT_TAB: TabValue = "general"
 const TAB_STORAGE_KEY = "torrent-details-last-tab"
@@ -81,6 +81,11 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const incognitoHash = incognitoMode && torrent?.hash ? getLinuxHash(torrent.hash) : undefined
   const [pendingFileIndices, setPendingFileIndices] = useState<Set<number>>(() => new Set())
   const supportsFilePriority = capabilities?.supportsFilePriority ?? false
+  const [selectedCrossSeedTorrents, setSelectedCrossSeedTorrents] = useState<Set<string>>(() => new Set())
+  const [showDeleteCrossSeedDialog, setShowDeleteCrossSeedDialog] = useState(false)
+  const [deleteCrossSeedFiles, setDeleteCrossSeedFiles] = useState(true)
+  const [showDeleteCurrentDialog, setShowDeleteCurrentDialog] = useState(false)
+  const [deleteCurrentFiles, setDeleteCurrentFiles] = useState(true)
   const copyToClipboard = useCallback(async (text: string, type: string) => {
     try {
       await copyTextToClipboard(text)
@@ -103,7 +108,8 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   }, [setActiveTab])
 
   const isContentTabActive = activeTab === "content"
-
+  const isCrossSeedTabActive = activeTab === "crossseed"
+  
   // Fetch torrent properties
   const { data: properties, isLoading: loadingProperties } = useQuery({
     queryKey: ["torrent-properties", instanceId, torrent?.hash],
@@ -114,6 +120,309 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   })
 
   const { infohashV1: resolvedInfohashV1, infohashV2: resolvedInfohashV2 } = resolveTorrentHashes(properties as { hash?: string; infohash_v1?: string; infohash_v2?: string } | undefined, torrent ?? undefined)
+
+  // Fetch all instances for cross-seed tab
+  const { data: allInstances } = useQuery({
+    queryKey: ["instances"],
+    queryFn: api.getInstances,
+    enabled: isCrossSeedTabActive,
+  })
+
+  // Fetch matching torrents from all instances
+  const matchingTorrentsQueries = useQueries({
+    queries: (allInstances || []).map((instance) => ({
+      queryKey: ["torrents", instance.id, "crossseed", resolvedInfohashV1, resolvedInfohashV2, torrent?.name, torrent?.content_path],
+      queryFn: async () => {
+        if (!torrent) return []
+        
+        // Strategy: Make multiple targeted searches to find matches efficiently
+        // 1. Search by torrent name (will match name-based matches)
+        // 2. Search by base name without extension (to catch folder vs file variants)
+        
+        const allMatches: Torrent[] = []
+        
+        // Extract base name without extension for broader search
+        // e.g., "Movie.mkv" -> "Movie" to also find "Movie" folder
+        let searchName = torrent.name
+        const hasVideoExtension = /\.(mkv|mp4|avi|mov|wmv|flv|webm|m4v|mpg|mpeg)$/i.test(torrent.name)
+        if (hasVideoExtension) {
+          searchName = torrent.name.replace(/\.(mkv|mp4|avi|mov|wmv|flv|webm|m4v|mpg|mpeg)$/i, '')
+        }
+        
+        // First, try searching by base name - this catches both "name.mkv" and "name" folder
+        const nameSearchResponse = await api.getTorrents(instance.id, {
+          search: searchName,
+          limit: 2000,
+        })
+        
+        // Add name search results
+        allMatches.push(...nameSearchResponse.torrents)
+        
+        // If we have info hashes, also search by them
+        if (resolvedInfohashV1 || resolvedInfohashV2) {
+          const hashToSearch = resolvedInfohashV1 || resolvedInfohashV2
+          const hashSearchResponse = await api.getTorrents(instance.id, {
+            search: hashToSearch,
+            limit: 2000,
+          })
+          
+          // Merge results, avoiding duplicates
+          for (const t of hashSearchResponse.torrents) {
+            if (!allMatches.some(m => m.hash === t.hash)) {
+              allMatches.push(t)
+            }
+          }
+        }
+        
+        // Normalize strings for comparison
+        const normalizePath = (path: string) => path?.toLowerCase().replace(/[\\\/]+/g, '/').replace(/\/$/, '') || ''
+        const normalizeName = (name: string) => name?.toLowerCase().trim() || ''
+        
+        const currentContentPath = normalizePath(torrent.content_path || '')
+        const currentName = normalizeName(torrent.name)
+        
+        // Helper to extract base filename from a path (removes folder structure)
+        const getBaseFileName = (path: string): string => {
+          const normalized = path.replace(/\\/g, '/').trim()
+          const parts = normalized.split('/')
+          return parts[parts.length - 1].toLowerCase()
+        }
+        
+        // Helper to normalize file name for comparison (removes common variations)
+        const normalizeFileName = (name: string): string => {
+          return name.toLowerCase()
+            .replace(/\.(mkv|mp4|avi|mov|wmv|flv|webm|m4v|mpg|mpeg)$/i, '') // Remove extension
+            .replace(/[._\-\s]+/g, '') // Remove separators
+        }
+        
+        // Helper to calculate string similarity (0-1) using longest common substring ratio
+        const calculateSimilarity = (str1: string, str2: string): number => {
+          if (str1 === str2) return 1.0
+          if (!str1 || !str2) return 0
+          
+          // Use the longer string as reference
+          const longer = str1.length >= str2.length ? str1 : str2
+          const shorter = str1.length < str2.length ? str1 : str2
+          
+          // If shorter string is contained in longer, high similarity
+          if (longer.includes(shorter)) {
+            return shorter.length / longer.length
+          }
+          
+          // Calculate Levenshtein distance
+          const matrix: number[][] = []
+          for (let i = 0; i <= longer.length; i++) {
+            matrix[i] = [i]
+          }
+          for (let j = 0; j <= shorter.length; j++) {
+            matrix[0][j] = j
+          }
+          
+          for (let i = 1; i <= longer.length; i++) {
+            for (let j = 1; j <= shorter.length; j++) {
+              if (longer[i - 1] === shorter[j - 1]) {
+                matrix[i][j] = matrix[i - 1][j - 1]
+              } else {
+                matrix[i][j] = Math.min(
+                  matrix[i - 1][j - 1] + 1, // substitution
+                  matrix[i][j - 1] + 1,     // insertion
+                  matrix[i - 1][j] + 1      // deletion
+                )
+              }
+            }
+          }
+          
+          const distance = matrix[longer.length][shorter.length]
+          return 1 - (distance / longer.length)
+        }
+        
+        // Filter matching torrents with different matching strategies
+        const matches = allMatches.filter((t: Torrent) => {
+          // Exclude the exact current torrent (same instance AND same hash)
+          if (instance.id === instanceId && t.hash === torrent.hash) {
+            return false
+          }
+          
+          // Strategy 1: Exact info hash match (cross-seeding same torrent)
+          if ((resolvedInfohashV1 && t.infohash_v1 === resolvedInfohashV1) || 
+              (resolvedInfohashV2 && t.infohash_v2 === resolvedInfohashV2)) {
+            return true
+          }
+          
+          // Strategy 2: Same content path (same files, different torrent)
+          if (currentContentPath && t.content_path) {
+            const otherContentPath = normalizePath(t.content_path)
+            if (otherContentPath === currentContentPath) {
+              return true
+            }
+          }
+          
+          // Strategy 3: Same torrent name (likely same content)
+          if (currentName && t.name) {
+            const otherName = normalizeName(t.name)
+            if (otherName === currentName) {
+              return true
+            }
+          }
+          
+          // Strategy 4: Similar save path (for single-file torrents)
+          if (torrent.save_path && t.save_path) {
+            const currentSavePath = normalizePath(torrent.save_path)
+            const otherSavePath = normalizePath(t.save_path)
+            if (currentSavePath && otherSavePath === currentSavePath) {
+              // Also check if file names match for single files
+              const currentBaseName = currentName.split('/').pop() || ''
+              const otherBaseName = normalizeName(t.name).split('/').pop() || ''
+              if (currentBaseName === otherBaseName) {
+                return true
+              }
+            }
+          }
+          
+          // Strategy 5: Fuzzy file name matching with similarity threshold
+          // Compare base file names (stripped of paths) and also full names, both normalized
+          const currentBaseFile = getBaseFileName(torrent.name)
+          const otherBaseFile = getBaseFileName(t.name)
+          
+          // Try base file comparison (handles folder/file.mkv scenarios)
+          if (currentBaseFile && otherBaseFile) {
+            const currentNormalized = normalizeFileName(currentBaseFile)
+            const otherNormalized = normalizeFileName(otherBaseFile)
+            
+            // Calculate similarity - check if one string contains most of the other
+            // or if they share a significant portion
+            const similarity = calculateSimilarity(currentNormalized, otherNormalized)
+            
+            // If similarity is high (>= 90%), consider it a potential match
+            if (similarity >= 0.9 && currentNormalized.length > 0) {
+              return true
+            }
+          }
+          
+          // Also try full name comparison with normalization (catches "name.mkv" vs "name")
+          const currentFullNormalized = normalizeFileName(torrent.name)
+          const otherFullNormalized = normalizeFileName(t.name)
+          const fullSimilarity = calculateSimilarity(currentFullNormalized, otherFullNormalized)
+          
+          if (fullSimilarity >= 0.9 && currentFullNormalized.length > 0) {
+            return true
+          }
+          
+          return false
+        })
+        
+        // Detect if this is Blu-ray/DVD content by folder structure (skip deep file matching for these)
+        // Only check for actual disc folder structures, not release type keywords
+        const discContentPatterns = [
+          /\bBDMV\b/i,        // Blu-ray folder structure
+          /\bVIDEO_TS\b/i,    // DVD folder structure
+          /\bAUDIO_TS\b/i,    // DVD audio folder structure
+        ]
+        const isDiscContent = discContentPatterns.some(pattern => 
+          pattern.test(torrent.name) || pattern.test(torrent.content_path || '')
+        )
+        
+        // Strategy 6: Deep file content matching (for uncertain matches)
+        // Fetch current torrent's files for comparison (skip for disc content)
+        let currentFiles: TorrentFile[] = []
+        if (!isDiscContent) {
+          try {
+            currentFiles = await api.getTorrentFiles(instanceId, torrent.hash)
+          } catch (err) {
+            console.log('[CrossSeed Debug] Could not fetch current torrent files for deep matching')
+          }
+        }
+        
+        // For each match, check if we should do deep file matching
+        const deepMatchResults = await Promise.all(
+          matches.map(async (t: Torrent) => {
+            // Skip deep matching if we already have strong matches (info hash, content path)
+            const hasStrongMatch = 
+              (resolvedInfohashV1 && t.infohash_v1 === resolvedInfohashV1) ||
+              (resolvedInfohashV2 && t.infohash_v2 === resolvedInfohashV2) ||
+              (currentContentPath && normalizePath(t.content_path) === currentContentPath)
+            
+            if (hasStrongMatch) {
+              return { torrent: t, isMatch: true, matchType: 'strong' }
+            }
+            
+            // If we have files, do deep comparison
+            if (currentFiles.length > 0) {
+              try {
+                const otherFiles = await api.getTorrentFiles(instance.id, t.hash)
+                
+                // Compare file structures
+                const currentFileSet = new Set(
+                  currentFiles.map(f => ({
+                    name: normalizeFileName(getBaseFileName(f.name)),
+                    size: f.size
+                  })).map(f => `${f.name}:${f.size}`)
+                )
+                
+                const otherFileSet = new Set(
+                  otherFiles.map(f => ({
+                    name: normalizeFileName(getBaseFileName(f.name)),
+                    size: f.size
+                  })).map(f => `${f.name}:${f.size}`)
+                )
+                
+                // Check overlap - if significant overlap, it's a match
+                const intersection = new Set([...currentFileSet].filter(x => otherFileSet.has(x)))
+                const overlapPercent = intersection.size / Math.max(currentFileSet.size, otherFileSet.size)
+                
+                if (overlapPercent > 0.8) { // 80% of files match
+                  return { torrent: t, isMatch: true, matchType: 'file_content' }
+                }
+              } catch (err) {
+                console.log('[CrossSeed Debug] Could not fetch files for deep matching:', t.name)
+              }
+            }
+            
+            // Keep weak matches (name, path) without deep verification
+            return { torrent: t, isMatch: true, matchType: 'weak' }
+          })
+        )
+        
+        const finalMatches = deepMatchResults.filter(r => r.isMatch).map(r => r.torrent)
+        
+        return finalMatches.map((t: Torrent) => {
+          // Determine match type for display
+          let matchType = 'name'
+          if ((resolvedInfohashV1 && t.infohash_v1 === resolvedInfohashV1) || 
+              (resolvedInfohashV2 && t.infohash_v2 === resolvedInfohashV2)) {
+            matchType = 'infohash'
+          } else if (currentContentPath && normalizePath(t.content_path) === currentContentPath) {
+            matchType = 'content_path'
+          } else if (torrent.save_path && normalizePath(t.save_path) === normalizePath(torrent.save_path)) {
+            matchType = 'save_path'
+          }
+          
+          return { ...t, instanceId: instance.id, instanceName: instance.name, matchType }
+        })
+      },
+      enabled: isCrossSeedTabActive && !!torrent,
+      staleTime: 60000, // Consider data fresh for 60 seconds
+      gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
+      refetchOnMount: false, // Don't refetch when component remounts
+      refetchOnWindowFocus: false, // Don't refetch when window regains focus
+    })),
+  })
+
+  // Flatten matching torrents from all instances and sort by match quality (memoized for performance)
+  // Show results as they arrive - don't wait for all queries to complete
+  const matchingTorrents = useMemo(() => {
+    return matchingTorrentsQueries
+      .filter((query: { isSuccess: boolean }) => query.isSuccess) // Only include successful queries
+      .flatMap((query: { data?: unknown }) => (query.data as Array<Torrent & { instanceId: number; instanceName: string; matchType: string }>) || [])
+      .sort((a, b) => {
+        // Prioritize: infohash > content_path > save_path > name
+        const priority = { infohash: 0, content_path: 1, save_path: 2, name: 3 }
+        return priority[a.matchType as keyof typeof priority] - priority[b.matchType as keyof typeof priority]
+      })
+  }, [matchingTorrentsQueries])
+  
+  // Show loading indicator only if ANY query is still loading AND we have no results yet
+  const isLoadingMatches = matchingTorrents.length === 0 && matchingTorrentsQueries.some((query: { isLoading: boolean }) => query.isLoading)
 
   // Fetch torrent trackers
   const { data: trackers, isLoading: loadingTrackers } = useQuery({
@@ -319,6 +628,91 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     }
   }, [peersToAdd, addPeersMutation])
 
+  // Handle cross-seed torrent selection
+  const handleToggleCrossSeedSelection = useCallback((key: string) => {
+    setSelectedCrossSeedTorrents(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) {
+        next.delete(key)
+      } else {
+        next.add(key)
+      }
+      return next
+    })
+  }, [])
+
+  const handleSelectAllCrossSeed = useCallback(() => {
+    const allKeys = matchingTorrents.map(m => `${m.instanceId}-${m.hash}`)
+    setSelectedCrossSeedTorrents(new Set(allKeys))
+  }, [matchingTorrents])
+
+  const handleDeselectAllCrossSeed = useCallback(() => {
+    setSelectedCrossSeedTorrents(new Set())
+  }, [])
+
+  // Handle cross-seed deletion
+  const handleDeleteCrossSeed = useCallback(async () => {
+    const torrentsToDelete = matchingTorrents.filter(m => 
+      selectedCrossSeedTorrents.has(`${m.instanceId}-${m.hash}`)
+    )
+
+    if (torrentsToDelete.length === 0) return
+
+    try {
+      // Group by instance for efficient bulk deletion
+      const byInstance = new Map<number, string[]>()
+      for (const t of torrentsToDelete) {
+        const hashes = byInstance.get(t.instanceId) || []
+        hashes.push(t.hash)
+        byInstance.set(t.instanceId, hashes)
+      }
+
+      // Delete from each instance
+      await Promise.all(
+        Array.from(byInstance.entries()).map(([instId, hashes]) =>
+          api.bulkAction(instId, {
+            hashes,
+            action: "delete",
+            deleteFiles: deleteCrossSeedFiles
+          })
+        )
+      )
+
+      toast.success(`Deleted ${torrentsToDelete.length} torrent${torrentsToDelete.length > 1 ? 's' : ''}`)
+      
+      // Refresh all instances
+      for (const instId of byInstance.keys()) {
+        queryClient.invalidateQueries({ queryKey: ["torrents", instId] })
+      }
+
+      setSelectedCrossSeedTorrents(new Set())
+      setShowDeleteCrossSeedDialog(false)
+    } catch (error) {
+      toast.error(`Failed to delete: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }, [selectedCrossSeedTorrents, matchingTorrents, deleteCrossSeedFiles, queryClient])
+
+  const handleDeleteCurrent = useCallback(async () => {
+    if (!torrent) return
+
+    try {
+      await api.bulkAction(instanceId, {
+        hashes: [torrent.hash],
+        action: "delete",
+        deleteFiles: deleteCurrentFiles
+      })
+
+      toast.success(`Deleted torrent: ${torrent.name}`)
+      queryClient.invalidateQueries({ queryKey: ["torrents", instanceId] })
+      setShowDeleteCurrentDialog(false)
+      
+      // Close the details panel by clearing selection (parent component should handle this)
+      // The user will be returned to the torrent list
+    } catch (error) {
+      toast.error(`Failed to delete: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }, [torrent, instanceId, deleteCurrentFiles, queryClient])
+
   if (!torrent) return null
 
   const displayCreatedBy = incognitoMode && properties?.created_by ? getLinuxCreatedBy(torrent.hash) : properties?.created_by
@@ -392,6 +786,12 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
             className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform"
           >
             Content
+          </TabsTrigger>
+          <TabsTrigger
+            value="crossseed"
+            className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform"
+          >
+            Cross-Seed
           </TabsTrigger>
         </TabsList>
 
@@ -1073,6 +1473,185 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
               </div>
             </ScrollArea>
           </TabsContent>
+
+          <TabsContent value="crossseed" className="m-0 h-full">
+            <ScrollArea className="h-full">
+              <div className="p-4 sm:p-6">
+                {isLoadingMatches ? (
+                  <div className="flex items-center justify-center p-8">
+                    <Loader2 className="h-6 w-6 animate-spin" />
+                  </div>
+                ) : matchingTorrents.length > 0 ? (
+                  <div className="space-y-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Cross-Seed Matches</h3>
+                          {matchingTorrentsQueries.some((q: { isLoading: boolean }) => q.isLoading) && (
+                            <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                          )}
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          {selectedCrossSeedTorrents.size > 0
+                            ? `${selectedCrossSeedTorrents.size} of ${matchingTorrents.length} selected`
+                            : matchingTorrentsQueries.some((q: { isLoading: boolean }) => q.isLoading)
+                            ? `${matchingTorrents.length} matching torrent${matchingTorrents.length !== 1 ? 's' : ''} found, checking more instances...`
+                            : `${matchingTorrents.length} matching torrent${matchingTorrents.length !== 1 ? 's' : ''} found across all instances`}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {selectedCrossSeedTorrents.size > 0 ? (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={handleDeselectAllCrossSeed}
+                            >
+                              Deselect All
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => setShowDeleteCrossSeedDialog(true)}
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Delete Matches ({selectedCrossSeedTorrents.size})
+                            </Button>
+                          </>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleSelectAllCrossSeed}
+                          >
+                            Select All
+                          </Button>
+                        )}
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => setShowDeleteCurrentDialog(true)}
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Delete This Torrent
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      {matchingTorrents.map((match) => {
+                        const displayName = incognitoMode ? getLinuxFileName(match.hash, 0) : match.name
+                        const progressPercent = match.progress * 100
+                        const isComplete = progressPercent === 100
+                        const torrentKey = `${match.instanceId}-${match.hash}`
+                        const isSelected = selectedCrossSeedTorrents.has(torrentKey)
+                        
+                        // Extract tracker hostname
+                        let trackerHostname = match.tracker
+                        if (match.tracker) {
+                          try {
+                            trackerHostname = new URL(match.tracker).hostname
+                          } catch {
+                            // Keep original if parsing fails
+                          }
+                        }
+                        
+                        // Match type display
+                        const matchType = match.matchType as 'infohash' | 'content_path' | 'save_path' | 'name'
+                        const matchLabel = matchType === 'infohash' ? 'Info Hash' 
+                          : matchType === 'content_path' ? 'Content Path'
+                          : matchType === 'save_path' ? 'Save Path'
+                          : 'Name'
+                        const matchDescription = matchType === 'infohash' ? 'Exact same torrent (same info hash)'
+                          : matchType === 'content_path' ? 'Same content location on disk'
+                          : matchType === 'save_path' ? 'Same save directory and filename'
+                          : 'Same torrent name'
+                        
+                        return (
+                          <div key={torrentKey} className="rounded-lg border bg-card p-4 space-y-3">
+                            <div className="space-y-2">
+                              <div className="flex items-start gap-3">
+                                <Checkbox
+                                  checked={isSelected}
+                                  onCheckedChange={() => handleToggleCrossSeedSelection(torrentKey)}
+                                  className="mt-0.5 shrink-0"
+                                  aria-label={`Select ${displayName}`}
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium truncate">{displayName}</p>
+                                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                    <span>Instance: {match.instanceName}</span>
+                                    <span>•</span>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <span className="cursor-help underline decoration-dotted">
+                                          Match: {matchLabel}
+                                        </span>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>{matchDescription}</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                    {trackerHostname && (
+                                      <>
+                                        <span>•</span>
+                                        <span>Tracker: {trackerHostname}</span>
+                                      </>
+                                    )}
+                                    {match.category && (
+                                      <>
+                                        <span>•</span>
+                                        <span>Category: {match.category}</span>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="flex flex-wrap gap-1.5 justify-end shrink-0">
+                                  <Badge variant={isComplete ? "default" : "secondary"} className="text-xs">
+                                    {match.state}
+                                  </Badge>
+                                  <Badge variant="outline" className="text-xs">
+                                    {formatBytes(match.size)}
+                                  </Badge>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <Progress value={progressPercent} className="flex-1 h-1.5" />
+                                <span className={cn("text-xs font-medium", isComplete ? "text-green-500" : "text-muted-foreground")}>
+                                  {Math.round(progressPercent)}%
+                                </span>
+                              </div>
+                              {(match.upspeed > 0 || match.dlspeed > 0) && (
+                                <div className="flex gap-4 text-xs text-muted-foreground">
+                                  {match.dlspeed > 0 && (
+                                    <span>↓ {formatSpeedWithUnit(match.dlspeed, speedUnit)}</span>
+                                  )}
+                                  {match.upspeed > 0 && (
+                                    <span>↑ {formatSpeedWithUnit(match.upspeed, speedUnit)}</span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                    {matchingTorrentsQueries.some((q: { isLoading: boolean }) => q.isLoading) && (
+                      <div className="flex items-center justify-center gap-2 p-3 rounded-lg bg-muted/50 text-xs text-muted-foreground">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        <span>
+                          Checking {matchingTorrentsQueries.filter((q: { isLoading: boolean }) => q.isLoading).length} more instance{matchingTorrentsQueries.filter((q: { isLoading: boolean }) => q.isLoading).length !== 1 ? 's' : ''}...
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
+                    No matching torrents found on other instances
+                  </div>
+                )}
+              </div>
+            </ScrollArea>
+          </TabsContent>
         </div>
       </Tabs>
 
@@ -1161,6 +1740,104 @@ tracker.example.com:8080
             >
               {banPeerMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Ban Peer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Cross-Seed Torrents Dialog */}
+      <Dialog open={showDeleteCrossSeedDialog} onOpenChange={setShowDeleteCrossSeedDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Selected Torrents</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete {selectedCrossSeedTorrents.size} torrent{selectedCrossSeedTorrents.size !== 1 ? 's' : ''}?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="delete-files"
+                checked={deleteCrossSeedFiles}
+                onCheckedChange={(checked) => setDeleteCrossSeedFiles(checked === true)}
+              />
+              <Label
+                htmlFor="delete-files"
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+              >
+                Also delete files from disk
+              </Label>
+            </div>
+            <div className="text-sm text-muted-foreground">
+              {deleteCrossSeedFiles ? (
+                <p className="text-destructive">⚠️ This will permanently delete the torrent files from disk!</p>
+              ) : (
+                <p>Torrents will be removed but files will remain on disk.</p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowDeleteCrossSeedDialog(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteCrossSeed}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete {selectedCrossSeedTorrents.size} Torrent{selectedCrossSeedTorrents.size !== 1 ? 's' : ''}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Current Torrent Dialog */}
+      <Dialog open={showDeleteCurrentDialog} onOpenChange={setShowDeleteCurrentDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete This Torrent</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete "{incognitoMode ? getLinuxFileName(torrent?.hash ?? "", 0) : torrent?.name}"?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="delete-current-files"
+                checked={deleteCurrentFiles}
+                onCheckedChange={(checked) => setDeleteCurrentFiles(checked === true)}
+              />
+              <Label
+                htmlFor="delete-current-files"
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+              >
+                Also delete files from disk
+              </Label>
+            </div>
+            <div className="text-sm text-muted-foreground">
+              {deleteCurrentFiles ? (
+                <p className="text-destructive">⚠️ This will permanently delete the torrent files from disk!</p>
+              ) : (
+                <p>Torrent will be removed but files will remain on disk.</p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowDeleteCurrentDialog(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteCurrent}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete Torrent
             </Button>
           </DialogFooter>
         </DialogContent>
