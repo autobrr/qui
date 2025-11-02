@@ -229,7 +229,12 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		return nil, err
 	}
 
+	skipTrackerHydration := shouldSkipTrackerHydration(ctx)
+
 	trackerHealthSupported := client != nil && client.supportsTrackerInclude()
+	if skipTrackerHydration {
+		trackerHealthSupported = false
+	}
 	needsTrackerHealthSorting := trackerHealthSupported && sort == "state"
 
 	// Get MainData for tracker filtering (if needed)
@@ -287,16 +292,24 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	var counts *TorrentCounts
 
 	// Fetch categories and tags (cached separately for 60s)
-	categories, err := sm.GetCategories(ctx, instanceID)
-	if err != nil {
-		log.Warn().Err(err).Msg("Failed to get categories")
-		categories = make(map[string]qbt.Category)
-	}
+	var categories map[string]qbt.Category
+	var tags []string
 
-	tags, err := sm.GetTags(ctx, instanceID)
-	if err != nil {
-		log.Warn().Err(err).Msg("Failed to get tags")
-		tags = []string{}
+	if !skipTrackerHydration {
+		categories, err = sm.GetCategories(ctx, instanceID)
+		if err != nil {
+			log.Warn().Err(err).Msg("Failed to get categories")
+			categories = make(map[string]qbt.Category)
+		}
+
+		tags, err = sm.GetTags(ctx, instanceID)
+		if err != nil {
+			log.Warn().Err(err).Msg("Failed to get tags")
+			tags = []string{}
+		}
+	} else {
+		categories = nil
+		tags = nil
 	}
 
 	supportsSubcategories := client.SupportsSubcategories()
@@ -461,7 +474,13 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 	useSubcategories = resolveUseSubcategories(supportsSubcategories, mainData, categories)
 
-	counts, trackerMap, enrichedAll := sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents, mainData, trackerMap, trackerHealthSupported, useSubcategories)
+	var enrichedAll []qbt.Torrent
+
+	if skipTrackerHydration {
+		counts = nil
+	} else {
+		counts, trackerMap, enrichedAll = sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents, mainData, trackerMap, trackerHealthSupported, useSubcategories)
+	}
 
 	// Reuse enriched tracker data for paginated torrents to avoid duplicate fetches
 	if len(paginatedTorrents) > 0 && trackerHealthSupported {

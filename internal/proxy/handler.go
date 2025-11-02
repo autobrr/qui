@@ -560,7 +560,7 @@ func (h *Handler) validateQueryParams(w http.ResponseWriter, r *http.Request, al
 
 // handleTorrentsInfo handles /api/v2/torrents/info using qui's sync manager
 func (h *Handler) handleTorrentsInfo(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+	ctx := qbittorrent.WithSkipTrackerHydration(r.Context())
 	instanceID := GetInstanceIDFromContext(ctx)
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
 
