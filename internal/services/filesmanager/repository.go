@@ -116,6 +116,16 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 	}
 
 	hash := files[0].TorrentHash
+	instanceID := files[0].InstanceID
+
+	for i, f := range files[1:] {
+		if f.TorrentHash != hash {
+			return fmt.Errorf("UpsertFiles: mismatched torrent hash at index %d (expected %s, got %s)", i+1, hash, f.TorrentHash)
+		}
+		if f.InstanceID != instanceID {
+			return fmt.Errorf("UpsertFiles: mismatched instance ID at index %d (expected %d, got %d)", i+1, instanceID, f.InstanceID)
+		}
+	}
 
 	// Begin transaction for atomic upsert of all files
 	tx, err := r.db.BeginTx(ctx, nil)
