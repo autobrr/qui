@@ -11,7 +11,6 @@ import (
 	"net/url"
 	"path/filepath"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -1776,11 +1775,6 @@ func (sm *SyncManager) filterTorrentsBySearch(torrents []qbt.Torrent, search str
 			}
 		}
 	}
-
-	// Sort by score (lower is better)
-	sort.Slice(matches, func(i, j int) bool {
-		return matches[i].score < matches[j].score
-	})
 
 	// Extract just the torrents
 	filtered := make([]qbt.Torrent, len(matches))
