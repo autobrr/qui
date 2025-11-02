@@ -139,6 +139,13 @@ QUI__METRICS_ENABLED=true   # Optional: enable Prometheus metrics (default: fals
 QUI__METRICS_HOST=127.0.0.1  # Optional: metrics server bind address (default: 127.0.0.1)
 QUI__METRICS_PORT=9074       # Optional: metrics server port (default: 9074)
 QUI__METRICS_BASIC_AUTH_USERS=user:hash  # Optional: basic auth for metrics (bcrypt hashed)
+
+# Profiling (for performance debugging)
+QUI__PPROF_ENABLED=true      # Optional: enable pprof profiling server (default: false)
+QUI__PPROF_HOST=127.0.0.1    # Optional: pprof server bind address (default: 127.0.0.1, use 0.0.0.0 for remote)
+QUI__PPROF_PORT=6060         # Optional: pprof server port (default: 6060)
+QUI__BLOCK_PROFILE_RATE=0    # Optional: block profiling (default: 0=disabled, enable on-demand via API)
+QUI__MUTEX_PROFILE_FRACTION=0  # Optional: mutex profiling (default: 0=disabled, enable on-demand via API)
 ```
 
 When `logPath` is set the server writes to disk using size-based rotation. Adjust `logMaxSize` and `logMaxBackups` in `config.toml` or the corresponding environment variables shown above to control the rotation thresholds and retention.
@@ -323,9 +330,119 @@ scrape_configs:
 
 All metrics are labeled with `instance_id` and `instance_name` for multi-instance monitoring.
 
+## Performance Profiling
+
+Go's built-in pprof profiler can be enabled for debugging performance issues, memory leaks, and concurrency problems. When enabled, profiling data is served on a **separate port** (default: 6060).
+
+⚠️ **Security Warning:** Never expose the profiling server to the public internet! It reveals sensitive application internals and memory contents. Only use on trusted networks or via SSH tunneling.
+
+### Enable Profiling
+
+Profiling is **disabled by default**. Enable it via command-line flag, configuration file, or environment variable:
+
+**Command-line flag:**
+```bash
+qui serve --pprof
+```
+
+**Config file (`config.toml`):**
+```toml
+pprofEnabled = true
+pprofHost = "127.0.0.1"        # Bind to localhost only (recommended)
+pprofPort = 6060               # Standard pprof port
+blockProfileRate = 0           # Keep disabled (enable on-demand via API)
+mutexProfileFraction = 0       # Keep disabled (enable on-demand via API)
+```
+
+**Environment variables:**
+```bash
+QUI__PPROF_ENABLED=true
+QUI__PPROF_HOST=127.0.0.1      # Use 0.0.0.0 for remote access (not recommended)
+QUI__PPROF_PORT=6060
+QUI__BLOCK_PROFILE_RATE=0      # Keep disabled (enable on-demand via API)
+QUI__MUTEX_PROFILE_FRACTION=0  # Keep disabled (enable on-demand via API)
+```
+
+### Secure Remote Access
+
+For remote debugging over the network, use SSH port forwarding instead of binding to `0.0.0.0`:
+
+```bash
+# On your local machine, create tunnel to remote server
+ssh -L 6060:localhost:6060 user@remote-server
+
+# Then access profiling at http://localhost:6060/debug/pprof/
+```
+
+### Available Profiles
+
+| Profile | Command | Use Case |
+|---------|---------|----------|
+| **CPU** | `go tool pprof http://localhost:6060/debug/pprof/profile?seconds=30` | Identify CPU hotspots |
+| **Heap** | `go tool pprof http://localhost:6060/debug/pprof/heap` | Find memory leaks |
+| **Goroutines** | `go tool pprof http://localhost:6060/debug/pprof/goroutine` | Debug goroutine leaks |
+| **Block** | Enable first, then profile (see below) | Find blocking operations |
+| **Mutex** | Enable first, then profile (see below) | Identify lock contention |
+| **Allocations** | `go tool pprof http://localhost:6060/debug/pprof/allocs` | Analyze GC pressure |
+
+**Web UI:** Access the interactive profiling dashboard at `http://localhost:6060/debug/pprof/`
+
+### On-Demand Block & Mutex Profiling
+
+Block and mutex profiling are **disabled by default** to avoid overhead. Enable them only when investigating specific issues:
+
+```bash
+# Check current status
+curl http://localhost:6060/debug/pprof/status
+
+# Enable block profiling, collect data, then disable
+curl -X POST http://localhost:6060/debug/pprof/block/enable
+go tool pprof http://localhost:6060/debug/pprof/block
+curl -X POST http://localhost:6060/debug/pprof/block/disable
+
+# Enable mutex profiling, collect data, then disable
+curl -X POST http://localhost:6060/debug/pprof/mutex/enable
+go tool pprof http://localhost:6060/debug/pprof/mutex
+curl -X POST http://localhost:6060/debug/pprof/mutex/disable
+```
+
+### Example: Debugging High CPU
+
+```bash
+# Collect 30 seconds of CPU profiling data
+go tool pprof http://localhost:6060/debug/pprof/profile?seconds=30
+
+# Interactive commands:
+# top20      - Show top 20 functions by CPU usage
+# list <fn>  - Show source code with annotations
+# web        - Open graphical view (requires graphviz)
+```
+
+### Example: Finding Memory Leaks
+
+```bash
+# Take baseline snapshot
+curl -o heap1.pb.gz http://localhost:6060/debug/pprof/heap
+
+# Wait for memory to grow, then take second snapshot
+curl -o heap2.pb.gz http://localhost:6060/debug/pprof/heap
+
+# Compare to find what grew
+go tool pprof -base heap1.pb.gz heap2.pb.gz
+```
+
+### Configuration Reference
+
+- **blockProfileRate**: Block profiling sampling at startup (0 = disabled by default, recommended)
+- **mutexProfileFraction**: Mutex profiling sampling at startup (0 = disabled by default, recommended)
+
+**Best Practice:** Leave these at 0 in the config and enable them dynamically via API endpoints only when needed to minimize overhead.
+
+**Detailed Guide:** See [docs/PROFILING.md](docs/PROFILING.md) for comprehensive profiling workflows and troubleshooting tips.
+
 ## Tracker Icons
 
-Cached icons live in your data directory under `tracker-icons/` (next to `qui.db`). Icons are stored as normalised 16×16 PNGs; anything larger than 1 024×1 024 is rejected, so resize first if you are supplying files manually. qui automatically attempts to download a favicon the first time it encounters a tracker host, caching the result for future sessions. After a failed download it waits 30 minutes before retrying the same host, and the next retry is triggered automatically the next time that host appears in your tracker list.
+Cached icons live in your data directory under `tracker-icons/` (next to `qui.db`). Icons are stored as normalised 16×16 PNGs; anything larger than 1 024×1 024 is rejected, so resize first if you are supplying files manually. qui automatically attempts to download a favicon the first time it encounters a tracker host, caching the result for future sessions. After a failed download it waits 30 minutes before retrying the same host, and the next retry is triggered automatically the next time that host appears in your tracker list.
 
 ### Add icons manually
 

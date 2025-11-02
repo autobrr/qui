@@ -204,9 +204,17 @@ func (s *Service) Start(ctx context.Context) {
 	}
 
 	// Check for missed backups and queue exactly one if applicable
-	if err := s.checkMissedBackups(ctx); err != nil {
-		log.Warn().Err(err).Msg("Failed to check for missed backups")
-	}
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		if err := s.checkMissedBackups(ctx); err != nil {
+			if ctx.Err() != nil || errors.Is(err, context.Canceled) {
+				log.Debug().Msg("Missed-backup check canceled")
+			} else {
+				log.Warn().Err(err).Msg("Failed to check for missed backups")
+			}
+		}
+	}()
 
 	s.wg.Add(1)
 	go s.scheduler(ctx)
@@ -229,20 +237,37 @@ func (s *Service) recoverIncompleteRuns(ctx context.Context) error {
 	now := s.now()
 	errorMsg := "Backup interrupted by application restart"
 
-	for _, run := range incompleteRuns {
-		err := s.store.UpdateRunMetadata(ctx, run.ID, func(r *models.BackupRun) error {
-			r.Status = models.BackupRunStatusFailed
-			r.CompletedAt = &now
-			r.ErrorMessage = &errorMsg
-			return nil
-		})
+	// Collect all run IDs to update
+	runIDs := make([]int64, len(incompleteRuns))
+	for i, run := range incompleteRuns {
+		runIDs[i] = run.ID
+	}
+
+	// Process runIDs in chunks to avoid SQLite bind parameter limits
+	const chunkSize = 1000
+	totalChunks := (len(runIDs) + chunkSize - 1) / chunkSize
+
+	for i := 0; i < len(runIDs); i += chunkSize {
+		end := i + chunkSize
+		if end > len(runIDs) {
+			end = len(runIDs)
+		}
+		chunk := runIDs[i:end]
+		chunkNum := (i / chunkSize) + 1
+
+		log.Debug().
+			Int("chunk", chunkNum).
+			Int("total_chunks", totalChunks).
+			Int("chunk_size", len(chunk)).
+			Msg("Updating backup run status chunk")
+
+		err = s.store.UpdateMultipleRunsStatus(ctx, chunk, models.BackupRunStatusFailed, &now, &errorMsg)
 		if err != nil {
-			log.Warn().Err(err).Int64("runID", run.ID).Int("instanceID", run.InstanceID).Msg("Failed to mark incomplete run as failed")
-		} else {
-			log.Debug().Int64("runID", run.ID).Int("instanceID", run.InstanceID).Str("kind", string(run.Kind)).Str("previousStatus", string(run.Status)).Msg("Marked incomplete backup run as failed")
+			return fmt.Errorf("failed to update incomplete runs (chunk %d/%d): %w", chunkNum, totalChunks, err)
 		}
 	}
 
+	log.Info().Int("count", len(incompleteRuns)).Msg("Successfully recovered incomplete backup runs")
 	return nil
 }
 

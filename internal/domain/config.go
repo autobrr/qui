@@ -17,6 +17,10 @@ type Config struct {
 	DataDir               string `toml:"dataDir" mapstructure:"dataDir"`
 	CheckForUpdates       bool   `toml:"checkForUpdates" mapstructure:"checkForUpdates"`
 	PprofEnabled          bool   `toml:"pprofEnabled" mapstructure:"pprofEnabled"`
+	PprofHost             string `toml:"pprofHost" mapstructure:"pprofHost"`
+	PprofPort             int    `toml:"pprofPort" mapstructure:"pprofPort"`
+	BlockProfileRate      int    `toml:"blockProfileRate" mapstructure:"blockProfileRate"`
+	MutexProfileFraction  int    `toml:"mutexProfileFraction" mapstructure:"mutexProfileFraction"`
 	MetricsEnabled        bool   `toml:"metricsEnabled" mapstructure:"metricsEnabled"`
 	MetricsHost           string `toml:"metricsHost" mapstructure:"metricsHost"`
 	MetricsPort           int    `toml:"metricsPort" mapstructure:"metricsPort"`

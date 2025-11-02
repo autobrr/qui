@@ -63,12 +63,22 @@ func (p *SQLite3Store) Find(token string) (b []byte, exists bool, err error) {
 // If the session token is not found or is expired, the returned exists flag will
 // be set to false.
 func (p *SQLite3Store) FindCtx(ctx context.Context, token string) (b []byte, exists bool, err error) {
-	row := p.db.QueryRowContext(ctx, "SELECT data FROM sessions WHERE token = $1 AND julianday('now') < expiry", token)
+	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, false, err
+	}
+	defer tx.Rollback()
+
+	row := tx.QueryRowContext(ctx, "SELECT data FROM sessions WHERE token = $1 AND julianday('now') < expiry", token)
 	err = row.Scan(&b)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, false, nil
 		}
+		return nil, false, err
+	}
+
+	if err = tx.Commit(); err != nil {
 		return nil, false, err
 	}
 
@@ -86,10 +96,22 @@ func (p *SQLite3Store) Commit(token string, b []byte, expiry time.Time) error {
 // given expiry time. If the session token already exists, then the data and expiry
 // time are updated.
 func (p *SQLite3Store) CommitCtx(ctx context.Context, token string, b []byte, expiry time.Time) error {
-	_, err := p.db.ExecContext(ctx, "REPLACE INTO sessions (token, data, expiry) VALUES ($1, $2, julianday($3))", token, b, expiry.UTC().Format("2006-01-02T15:04:05.999"))
+	tx, err := p.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
+	defer func() { _ = tx.Rollback() }()
+
+	_, err = tx.ExecContext(ctx, "REPLACE INTO sessions (token, data, expiry) VALUES (?, ?, julianday(?))",
+		token, b, expiry.UTC().Format("2006-01-02T15:04:05.999"))
+	if err != nil {
+		return err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -102,8 +124,22 @@ func (p *SQLite3Store) Delete(token string) error {
 // DeleteCtx removes a session token and corresponding data from the SQLite3Store
 // instance.
 func (p *SQLite3Store) DeleteCtx(ctx context.Context, token string) error {
-	_, err := p.db.ExecContext(ctx, "DELETE FROM sessions WHERE token = $1", token)
-	return err
+	tx, err := p.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	_, err = tx.ExecContext(ctx, "DELETE FROM sessions WHERE token = ?", token)
+	if err != nil {
+		return err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // All returns a map containing the token and data for all active (i.e.
@@ -115,7 +151,13 @@ func (p *SQLite3Store) All() (map[string][]byte, error) {
 // AllCtx returns a map containing the token and data for all active (i.e.
 // not expired) sessions in the SQLite3Store instance.
 func (p *SQLite3Store) AllCtx(ctx context.Context) (map[string][]byte, error) {
-	rows, err := p.db.QueryContext(ctx, "SELECT token, data FROM sessions WHERE julianday('now') < expiry")
+	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	rows, err := tx.QueryContext(ctx, "SELECT token, data FROM sessions WHERE julianday('now') < expiry")
 	if err != nil {
 		return nil, err
 	}
@@ -139,6 +181,10 @@ func (p *SQLite3Store) AllCtx(ctx context.Context) (map[string][]byte, error) {
 
 	err = rows.Err()
 	if err != nil {
+		return nil, err
+	}
+
+	if err = tx.Commit(); err != nil {
 		return nil, err
 	}
 
@@ -178,6 +224,20 @@ func (p *SQLite3Store) StopCleanup() {
 }
 
 func (p *SQLite3Store) deleteExpired(ctx context.Context) error {
-	_, err := p.db.ExecContext(ctx, "DELETE FROM sessions WHERE expiry < julianday('now')")
-	return err
+	tx, err := p.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	_, err = tx.ExecContext(ctx, "DELETE FROM sessions WHERE expiry < julianday('now')")
+	if err != nil {
+		return err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+
+	return nil
 }
