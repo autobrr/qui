@@ -50,9 +50,12 @@ type Client struct {
 	optimisticUpdates *ttlcache.Cache[string, *OptimisticTorrentUpdate]
 	trackerExclusions map[string]map[string]struct{} // Domains to hide hashes from until fresh sync arrives
 	lastServerState   *qbt.ServerState
+	appInfoCache      *AppInfo
+	appInfoFetchedAt  time.Time
 	mu                sync.RWMutex
 	serverStateMu     sync.RWMutex
 	healthMu          sync.RWMutex
+	appInfoMu         sync.RWMutex
 	syncEventSink     SyncEventSink
 }
 

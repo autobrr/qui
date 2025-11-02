@@ -28,7 +28,14 @@ import { usePersistedAccordionState } from "@/hooks/usePersistedAccordionState"
 import { useQBittorrentAppInfo } from "@/hooks/useQBittorrentAppInfo"
 import { api } from "@/lib/api"
 import { formatBytes, getRatioColor } from "@/lib/utils"
-import type { CacheMetadata, InstanceResponse, ServerState, TorrentCounts, TorrentStats } from "@/types"
+import type {
+  CacheMetadata,
+  InstanceResponse,
+  QBittorrentAppInfo,
+  ServerState,
+  TorrentCounts,
+  TorrentStats
+} from "@/types"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
 import { Activity, Ban, BrickWallFire, ChevronDown, ChevronRight, ChevronUp, Download, ExternalLink, Eye, EyeOff, Globe, HardDrive, Minus, Plus, Rabbit, Turtle, Upload, Zap } from "lucide-react"
@@ -53,6 +60,7 @@ interface DashboardInstanceStats {
   stats: TorrentStats | null
   serverState: ServerState | null
   torrentCounts?: TorrentCounts
+  appInfo: QBittorrentAppInfo | null
   altSpeedEnabled: boolean
   isLoading: boolean
   error: unknown
@@ -65,6 +73,7 @@ type InstanceStreamData = {
   stats: TorrentStats | null
   serverState: ServerState | null
   torrentCounts?: TorrentCounts
+  appInfo: QBittorrentAppInfo | null
   altSpeedEnabled: boolean
   isLoading: boolean
   error: unknown
@@ -77,6 +86,7 @@ const createDefaultInstanceStreamData = (): InstanceStreamData => ({
   stats: null,
   serverState: null,
   torrentCounts: undefined,
+  appInfo: null,
   altSpeedEnabled: false,
   isLoading: true,
   error: null,
@@ -88,6 +98,7 @@ const createDefaultInstanceStreamData = (): InstanceStreamData => ({
 // Optimized hook to get all instance stats using shared TorrentResponse cache
 function useAllInstanceStats(instances: InstanceResponse[]): DashboardInstanceStats[] {
   const syncStream = useSyncStreamManager()
+  const queryClient = useQueryClient()
   const streamConnectionsRef = useRef(
     new Map<
       number,
@@ -164,20 +175,29 @@ function useAllInstanceStats(instances: InstanceResponse[]): DashboardInstanceSt
         }
 
         const data = payload.data
-        setInstanceData(prev => ({
-          ...prev,
-          [instance.id]: {
-            stats: data.stats ?? null,
-            serverState: data.serverState ?? null,
-            torrentCounts: data.counts,
-            altSpeedEnabled: data.serverState?.use_alt_speed_limits || false,
-            isLoading: false,
-            error: null,
-            streamConnected: true,
-            streamError: null,
-            cacheMetadata: data.cacheMetadata ?? null,
-          },
-        }))
+        if (data.appInfo) {
+          queryClient.setQueryData(["qbittorrent-app-info", instance.id], data.appInfo)
+        }
+
+        setInstanceData(prev => {
+          const current = prev[instance.id] ?? createDefaultInstanceStreamData()
+
+          return {
+            ...prev,
+            [instance.id]: {
+              stats: data.stats ?? null,
+              serverState: data.serverState ?? null,
+              torrentCounts: data.counts,
+              appInfo: data.appInfo ?? current.appInfo,
+              altSpeedEnabled: data.serverState?.use_alt_speed_limits || false,
+              isLoading: false,
+              error: null,
+              streamConnected: true,
+              streamError: null,
+              cacheMetadata: data.cacheMetadata ?? null,
+            },
+          }
+        })
       })
 
       const unsubscribe = syncStream.subscribe(streamKey, snapshot => {
@@ -235,7 +255,7 @@ function useAllInstanceStats(instances: InstanceResponse[]): DashboardInstanceSt
         streamConnectionsRef.current.delete(instanceId)
       }
     })
-  }, [instances, syncStream, baseStreamParams])
+  }, [instances, syncStream, baseStreamParams, queryClient])
 
   useEffect(() => {
     return () => {
@@ -255,6 +275,7 @@ function useAllInstanceStats(instances: InstanceResponse[]): DashboardInstanceSt
       stats: state.stats,
       serverState: state.serverState,
       torrentCounts: state.torrentCounts,
+      appInfo: state.appInfo,
       altSpeedEnabled: state.altSpeedEnabled,
       isLoading: state.isLoading,
       error: state.error,
@@ -280,6 +301,7 @@ function InstanceCard({
     stats,
     serverState,
     torrentCounts,
+    appInfo,
     altSpeedEnabled,
     isLoading,
     error,
@@ -302,7 +324,10 @@ function InstanceCard({
   const {
     data: qbittorrentAppInfo,
     versionInfo: qbittorrentVersionInfo,
-  } = useQBittorrentAppInfo(instance.id)
+  } = useQBittorrentAppInfo(instance.id, {
+    initialData: appInfo ?? undefined,
+    fetchIfMissing: false,
+  })
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const [speedUnit] = useSpeedUnits()
   const appVersion = qbittorrentAppInfo?.version || qbittorrentVersionInfo?.appVersion || ""

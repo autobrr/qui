@@ -67,6 +67,7 @@ type TorrentResponse struct {
 	Categories             map[string]qbt.Category `json:"categories,omitempty"`  // Include categories for sidebar
 	Tags                   []string                `json:"tags,omitempty"`        // Include tags for sidebar
 	ServerState            *qbt.ServerState        `json:"serverState,omitempty"` // Include server state for Dashboard
+	AppInfo                *AppInfo                `json:"appInfo,omitempty"`     // Include qBittorrent application info
 	UseSubcategories       bool                    `json:"useSubcategories"`      // Whether subcategories are enabled
 	HasMore                bool                    `json:"hasMore"`               // Whether more pages are available
 	SessionID              string                  `json:"sessionId,omitempty"`   // Optional session tracking
@@ -559,30 +560,39 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	// Determine cache metadata based on last sync update time
 	var cacheMetadata *CacheMetadata
 	var serverState *qbt.ServerState
-	client, clientErr := sm.clientPool.GetClient(ctx, instanceID)
-	if clientErr == nil {
-		syncManager := client.GetSyncManager()
-		if syncManager != nil {
-			lastSyncTime := syncManager.LastSyncTime()
-			now := time.Now()
-			age := int(now.Sub(lastSyncTime).Seconds())
-			isFresh := age <= 1 // Fresh if updated within the last second
+	var appInfo *AppInfo
 
-			source := "cache"
-			if isFresh {
-				source = "fresh"
-			}
+	if syncManager != nil {
+		lastSyncTime := syncManager.LastSyncTime()
+		now := time.Now()
+		age := int(now.Sub(lastSyncTime).Seconds())
+		isFresh := age <= 1 // Fresh if updated within the last second
 
-			cacheMetadata = &CacheMetadata{
-				Source:      source,
-				Age:         age,
-				IsStale:     !isFresh,
-				NextRefresh: now.Add(time.Second).Format(time.RFC3339),
-			}
+		source := "cache"
+		if isFresh {
+			source = "fresh"
 		}
 
+		cacheMetadata = &CacheMetadata{
+			Source:      source,
+			Age:         age,
+			IsStale:     !isFresh,
+			NextRefresh: now.Add(time.Second).Format(time.RFC3339),
+		}
+	}
+
+	if client != nil {
 		if cached := client.GetCachedServerState(); cached != nil {
 			serverState = cached
+		}
+
+		if info, err := client.GetAppInfo(ctx); err != nil {
+			log.Error().
+				Err(err).
+				Int("instanceID", instanceID).
+				Msg("Failed to retrieve qBittorrent app info for torrent stream")
+		} else {
+			appInfo = info
 		}
 	}
 
@@ -594,6 +604,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		Categories:             categories,  // Include categories for sidebar
 		Tags:                   tags,        // Include tags for sidebar
 		ServerState:            serverState, // Include server state for Dashboard
+		AppInfo:                appInfo,     // Include application info for frontend consumers
 		UseSubcategories:       useSubcategories,
 		HasMore:                hasMore,
 		CacheMetadata:          cacheMetadata,

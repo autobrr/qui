@@ -7,7 +7,7 @@ import { useSyncStream } from "@/contexts/SyncStreamContext"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import type { InstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { api } from "@/lib/api"
-import type { Torrent, TorrentFilters, TorrentResponse, TorrentStreamPayload } from "@/types"
+import type { QBittorrentAppInfo, Torrent, TorrentFilters, TorrentResponse, TorrentStreamPayload } from "@/types"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useCallback, useEffect, useMemo, useState } from "react"
 
@@ -49,6 +49,11 @@ export function useTorrentsList(
     [instanceId]
   )
 
+  const appInfoQueryKey = useMemo(
+    () => ["qbittorrent-app-info", instanceId] as const,
+    [instanceId]
+  )
+
   const updateMetadataCache = useCallback(
     (source?: TorrentResponse | null) => {
       if (!source) {
@@ -87,6 +92,17 @@ export function useTorrentsList(
     [metadataQueryKey, queryClient]
   )
 
+  const updateAppInfoCache = useCallback(
+    (source?: Pick<TorrentResponse, "appInfo"> | null) => {
+      if (!source?.appInfo) {
+        return
+      }
+
+      queryClient.setQueryData<QBittorrentAppInfo | undefined>(appInfoQueryKey, source.appInfo)
+    },
+    [appInfoQueryKey, queryClient]
+  )
+
   const streamQueryKey = useMemo(
     () => ["torrents-list", instanceId, 0, filters, search, sort, order] as const,
     [instanceId, filters, search, sort, order]
@@ -114,6 +130,7 @@ export function useTorrentsList(
         return
       }
       setLastStreamSnapshot(payload.data)
+      updateAppInfoCache(payload.data)
       updateMetadataCache(payload.data)
       queryClient.setQueryData(streamQueryKey, payload.data)
       setAllTorrents(prev => {
@@ -165,7 +182,7 @@ export function useTorrentsList(
         setHasLoadedAll(!payload.data.hasMore)
       }
     },
-    [currentPage, queryClient, streamQueryKey, updateMetadataCache]
+    [currentPage, queryClient, streamQueryKey, updateAppInfoCache, updateMetadataCache]
   )
 
   const streamState = useSyncStream(streamParams, {
@@ -246,6 +263,7 @@ export function useTorrentsList(
       return
     }
 
+    updateAppInfoCache(data)
     updateMetadataCache(data)
 
     if (data.total !== undefined) {
@@ -387,6 +405,7 @@ export function useTorrentsList(
     totalCount: effectiveTotalCount,
     stats,
     counts: activeData?.counts ?? data?.counts,
+    appInfo: activeData?.appInfo ?? data?.appInfo ?? null,
     categories: activeData?.categories ?? data?.categories,
     tags: activeData?.tags ?? data?.tags,
     supportsTorrentCreation: capabilities?.supportsTorrentCreation ?? true,

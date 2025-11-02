@@ -50,7 +50,7 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const queryClient = useQueryClient()
 
-  const { versionInfo } = useQBittorrentAppInfo(instanceId)
+  const { versionInfo } = useQBittorrentAppInfo(instanceId, { fetchIfMissing: false })
   const supportsFormatSelection = versionInfo.isLibtorrent2 !== false
   const formatSelectionUnavailable = versionInfo.isLibtorrent2 === false
   const libtorrentVersionLabel =
