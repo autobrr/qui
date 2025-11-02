@@ -160,6 +160,15 @@ func (s *Server) tryToServe(addr, protocol string) error {
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {
+	if s.streamManager != nil {
+		shutdownCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+
+		if err := s.streamManager.Shutdown(shutdownCtx); err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+			s.logger.Warn().Err(err).Msg("failed to shut down stream manager cleanly")
+		}
+	}
+
 	return s.server.Shutdown(ctx)
 }
 

@@ -75,6 +75,7 @@ type StreamManager struct {
 	instanceDB  *models.InstanceStore
 
 	counter atomic.Uint64
+	closing atomic.Bool
 	mu      sync.RWMutex
 
 	subscriptions  map[string]*subscriptionState
@@ -83,6 +84,9 @@ type StreamManager struct {
 	instanceGroups map[int]map[string]*subscriptionGroup
 	syncLoops      map[int]*syncLoopState
 	syncBackoff    map[int]*backoffState
+
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 type subscriptionState struct {
@@ -142,6 +146,8 @@ func NewStreamManager(clientPool *qbittorrent.ClientPool, syncManager *qbittorre
 		replayer = nil
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+
 	m := &StreamManager{
 		server: &sse.Server{
 			Provider: &sse.Joe{Replayer: replayer},
@@ -155,6 +161,8 @@ func NewStreamManager(clientPool *qbittorrent.ClientPool, syncManager *qbittorre
 		instanceGroups: make(map[int]map[string]*subscriptionGroup),
 		syncLoops:      make(map[int]*syncLoopState),
 		syncBackoff:    make(map[int]*backoffState),
+		ctx:            ctx,
+		cancel:         cancel,
 	}
 
 	m.server.OnSession = m.onSession
@@ -168,6 +176,10 @@ func (m *StreamManager) Server() http.Handler {
 
 // Prepare registers a new subscriber and returns a context that carries its session id.
 func (m *StreamManager) Prepare(ctx context.Context, opts StreamOptions) (context.Context, string, error) {
+	if m.closing.Load() {
+		return ctx, "", fmt.Errorf("stream manager shutting down")
+	}
+
 	if opts.InstanceID <= 0 {
 		return ctx, "", fmt.Errorf("invalid instance id")
 	}
@@ -268,6 +280,10 @@ func (m *StreamManager) HandleMainData(instanceID int, data *qbt.MainData) {
 		return
 	}
 
+	if m.closing.Load() {
+		return
+	}
+
 	m.markSyncSuccess(instanceID)
 
 	meta := &StreamMeta{
@@ -283,6 +299,10 @@ func (m *StreamManager) HandleMainData(instanceID int, data *qbt.MainData) {
 // HandleSyncError implements qbittorrent.SyncEventSink.
 func (m *StreamManager) HandleSyncError(instanceID int, err error) {
 	if err == nil {
+		return
+	}
+
+	if m.closing.Load() {
 		return
 	}
 
@@ -315,6 +335,11 @@ func (m *StreamManager) HandleSyncError(instanceID int, err error) {
 
 // ServeInstance implements the HTTP handler for GET /instances/{instanceID}/stream.
 func (m *StreamManager) ServeInstance(w http.ResponseWriter, r *http.Request) {
+	if m.closing.Load() {
+		http.Error(w, "stream shutting down", http.StatusServiceUnavailable)
+		return
+	}
+
 	instanceID, err := strconvParam(r, "instanceID")
 	if err != nil {
 		http.Error(w, "invalid instance ID", http.StatusBadRequest)
@@ -347,6 +372,11 @@ func (m *StreamManager) ServeInstance(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *StreamManager) onSession(w http.ResponseWriter, r *http.Request) ([]string, bool) {
+	if m.closing.Load() {
+		http.Error(w, "stream shutting down", http.StatusServiceUnavailable)
+		return nil, false
+	}
+
 	id, _ := r.Context().Value(subscriptionContextKey).(string)
 	if id == "" {
 		http.Error(w, "missing subscription context", http.StatusBadRequest)
@@ -385,6 +415,10 @@ func (m *StreamManager) subscriptionInstance(id string) int {
 }
 
 func (m *StreamManager) publishInstance(instanceID int, eventType string, meta *StreamMeta) {
+	if m.closing.Load() {
+		return
+	}
+
 	groups := m.groupsForInstance(instanceID)
 	if len(groups) == 0 {
 		return
@@ -396,8 +430,17 @@ func (m *StreamManager) publishInstance(instanceID int, eventType string, meta *
 }
 
 func (m *StreamManager) groupsForInstance(instanceID int) []*subscriptionGroup {
+	if m.closing.Load() {
+		return nil
+	}
+
 	m.mu.RLock()
 	groupMap := m.instanceGroups[instanceID]
+	if groupMap == nil {
+		m.mu.RUnlock()
+		return nil
+	}
+
 	result := make([]*subscriptionGroup, 0, len(groupMap))
 	for _, group := range groupMap {
 		result = append(result, group)
@@ -407,7 +450,7 @@ func (m *StreamManager) groupsForInstance(instanceID int) []*subscriptionGroup {
 }
 
 func (m *StreamManager) enqueueGroup(group *subscriptionGroup, eventType string, meta *StreamMeta) {
-	if group == nil {
+	if group == nil || m.closing.Load() {
 		return
 	}
 
@@ -429,6 +472,10 @@ func (m *StreamManager) enqueueGroup(group *subscriptionGroup, eventType string,
 
 func (m *StreamManager) processGroup(groupKey string) {
 	for {
+		if m.closing.Load() {
+			return
+		}
+
 		group := m.getGroup(groupKey)
 		if group == nil {
 			return
@@ -466,9 +513,13 @@ func (m *StreamManager) buildGroupPayload(group *subscriptionGroup, eventType st
 		return nil
 	}
 
+	if m.closing.Load() {
+		return nil
+	}
+
 	metaCopy := cloneMeta(meta)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(m.ctx, 10*time.Second)
 	defer cancel()
 
 	opts := group.options
@@ -525,43 +576,15 @@ func (g *subscriptionGroup) snapshotSubscribers() []*subscriptionState {
 }
 
 func (m *StreamManager) publishToInstance(instanceID int, payload *StreamPayload) {
+	if payload == nil || m.closing.Load() {
+		return
+	}
+
 	m.mu.RLock()
 	for id := range m.instanceIndex[instanceID] {
 		m.publish(id, payload)
 	}
 	m.mu.RUnlock()
-}
-
-func (m *StreamManager) publishSubscription(id string, eventType string, meta *StreamMeta) {
-	sub := m.getSubscription(id)
-	if sub == nil {
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	response, err := m.syncManager.GetTorrentsWithFilters(ctx, sub.options.InstanceID, sub.options.Limit, sub.options.Page*sub.options.Limit, sub.options.Sort, sub.options.Order, sub.options.Search, sub.options.Filters)
-	if err != nil {
-		log.Error().Err(err).
-			Int("instanceID", sub.options.InstanceID).
-			Str("subscriptionID", id).
-			Msg("Failed to build torrent response for SSE subscriber")
-
-		m.publish(id, &StreamPayload{
-			Type: streamEventError,
-			Meta: meta,
-			Err:  "failed to refresh torrent list",
-		})
-		return
-	}
-
-	payload := &StreamPayload{
-		Type: eventType,
-		Data: response,
-		Meta: meta,
-	}
-	m.publish(id, payload)
 }
 
 func (m *StreamManager) publish(id string, payload *StreamPayload) {
@@ -598,6 +621,46 @@ func cloneMeta(meta *StreamMeta) *StreamMeta {
 	}
 	copy := *meta
 	return &copy
+}
+
+func (m *StreamManager) Shutdown(ctx context.Context) error {
+	if m == nil {
+		return nil
+	}
+
+	if !m.closing.CompareAndSwap(false, true) {
+		return nil
+	}
+
+	m.cancel()
+
+	m.mu.Lock()
+	loops := make([]*syncLoopState, 0, len(m.syncLoops))
+	for _, loop := range m.syncLoops {
+		loops = append(loops, loop)
+	}
+	m.syncLoops = make(map[int]*syncLoopState)
+	m.syncBackoff = make(map[int]*backoffState)
+	m.mu.Unlock()
+
+	for _, loop := range loops {
+		if loop != nil && loop.cancel != nil {
+			loop.cancel()
+		}
+	}
+
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	if err := m.server.Shutdown(ctx); err != nil &&
+		!errors.Is(err, sse.ErrProviderClosed) &&
+		!errors.Is(err, context.Canceled) &&
+		!errors.Is(err, context.DeadlineExceeded) {
+		return err
+	}
+
+	return nil
 }
 
 func (m *StreamManager) markSyncFailure(instanceID int) time.Duration {
@@ -680,7 +743,7 @@ func (m *StreamManager) startSyncLoop(instanceID int, interval time.Duration) *s
 		interval = defaultSyncInterval
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(m.ctx)
 	loop := &syncLoopState{
 		cancel:   cancel,
 		interval: interval,
@@ -704,7 +767,11 @@ func (m *StreamManager) startSyncLoop(instanceID int, interval time.Duration) *s
 }
 
 func (m *StreamManager) forceSync(instanceID int) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	if m.closing.Load() {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(m.ctx, 5*time.Second)
 	defer cancel()
 
 	syncMgr, err := m.syncManager.GetQBittorrentSyncManager(ctx, instanceID)
