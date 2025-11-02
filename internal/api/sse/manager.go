@@ -14,11 +14,11 @@ import (
 	"sync/atomic"
 	"time"
 
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 	"github.com/tmaxmax/go-sse"
 
-	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
@@ -307,7 +307,7 @@ func (m *StreamManager) HandleSyncError(instanceID int, err error) {
 	}
 
 	backoff := m.markSyncFailure(instanceID)
-	retrySeconds := int(backoff.Round(time.Second) / time.Second)
+	retrySeconds := int(backoff.Seconds())
 	if retrySeconds <= 0 {
 		retrySeconds = int(defaultSyncInterval.Round(time.Second) / time.Second)
 	}
