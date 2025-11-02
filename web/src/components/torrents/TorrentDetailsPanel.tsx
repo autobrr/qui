@@ -47,6 +47,62 @@ function isTabValue(value: string): value is TabValue {
   return TAB_VALUES.includes(value as TabValue)
 }
 
+// Helper functions for cross-seed matching
+const normalizePath = (path: string) => path?.toLowerCase().replace(/[\\\/]+/g, '/').replace(/\/$/, '') || ''
+const normalizeName = (name: string) => name?.toLowerCase().trim() || ''
+
+const getBaseFileName = (path: string): string => {
+  const normalized = path.replace(/\\/g, '/').trim()
+  const parts = normalized.split('/')
+  return parts[parts.length - 1].toLowerCase()
+}
+
+const normalizeFileName = (name: string): string => {
+  return name.toLowerCase()
+    .replace(/\.(mkv|mp4|avi|mov|wmv|flv|webm|m4v|mpg|mpeg)$/i, '') // Remove extension
+    .replace(/[._\-\s]+/g, '') // Remove separators
+}
+
+const calculateSimilarity = (str1: string, str2: string): number => {
+  if (str1 === str2) return 1.0
+  if (!str1 || !str2) return 0
+  
+  // Use the longer string as reference
+  const longer = str1.length >= str2.length ? str1 : str2
+  const shorter = str1.length < str2.length ? str1 : str2
+  
+  // If shorter string is contained in longer, high similarity
+  if (longer.includes(shorter)) {
+    return shorter.length / longer.length
+  }
+  
+  // Calculate Levenshtein distance
+  const matrix: number[][] = []
+  for (let i = 0; i <= longer.length; i++) {
+    matrix[i] = [i]
+  }
+  for (let j = 0; j <= shorter.length; j++) {
+    matrix[0][j] = j
+  }
+  
+  for (let i = 1; i <= longer.length; i++) {
+    for (let j = 1; j <= shorter.length; j++) {
+      if (longer[i - 1] === shorter[j - 1]) {
+        matrix[i][j] = matrix[i - 1][j - 1]
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1, // substitution
+          matrix[i][j - 1] + 1,     // insertion
+          matrix[i - 1][j] + 1      // deletion
+        )
+      }
+    }
+  }
+  
+  const distance = matrix[longer.length][shorter.length]
+  return 1 - (distance / longer.length)
+}
+
 function getTrackerStatusBadge(status: number) {
   switch (status) {
     case 0:
@@ -179,67 +235,9 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
           }
         }
         
-        // Normalize strings for comparison
-        const normalizePath = (path: string) => path?.toLowerCase().replace(/[\\\/]+/g, '/').replace(/\/$/, '') || ''
-        const normalizeName = (name: string) => name?.toLowerCase().trim() || ''
-        
+        // Normalize strings for comparison using module-scope helpers
         const currentContentPath = normalizePath(torrent.content_path || '')
         const currentName = normalizeName(torrent.name)
-        
-        // Helper to extract base filename from a path (removes folder structure)
-        const getBaseFileName = (path: string): string => {
-          const normalized = path.replace(/\\/g, '/').trim()
-          const parts = normalized.split('/')
-          return parts[parts.length - 1].toLowerCase()
-        }
-        
-        // Helper to normalize file name for comparison (removes common variations)
-        const normalizeFileName = (name: string): string => {
-          return name.toLowerCase()
-            .replace(/\.(mkv|mp4|avi|mov|wmv|flv|webm|m4v|mpg|mpeg)$/i, '') // Remove extension
-            .replace(/[._\-\s]+/g, '') // Remove separators
-        }
-        
-        // Helper to calculate string similarity (0-1) using longest common substring ratio
-        const calculateSimilarity = (str1: string, str2: string): number => {
-          if (str1 === str2) return 1.0
-          if (!str1 || !str2) return 0
-          
-          // Use the longer string as reference
-          const longer = str1.length >= str2.length ? str1 : str2
-          const shorter = str1.length < str2.length ? str1 : str2
-          
-          // If shorter string is contained in longer, high similarity
-          if (longer.includes(shorter)) {
-            return shorter.length / longer.length
-          }
-          
-          // Calculate Levenshtein distance
-          const matrix: number[][] = []
-          for (let i = 0; i <= longer.length; i++) {
-            matrix[i] = [i]
-          }
-          for (let j = 0; j <= shorter.length; j++) {
-            matrix[0][j] = j
-          }
-          
-          for (let i = 1; i <= longer.length; i++) {
-            for (let j = 1; j <= shorter.length; j++) {
-              if (longer[i - 1] === shorter[j - 1]) {
-                matrix[i][j] = matrix[i - 1][j - 1]
-              } else {
-                matrix[i][j] = Math.min(
-                  matrix[i - 1][j - 1] + 1, // substitution
-                  matrix[i][j - 1] + 1,     // insertion
-                  matrix[i - 1][j] + 1      // deletion
-                )
-              }
-            }
-          }
-          
-          const distance = matrix[longer.length][shorter.length]
-          return 1 - (distance / longer.length)
-        }
         
         // Filter matching torrents with different matching strategies
         const matches = allMatches.filter((t: Torrent) => {
@@ -429,21 +427,34 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   // Show loading indicator only if ANY query is still loading AND we have no results yet
   const isLoadingMatches = matchingTorrents.length === 0 && matchingTorrentsQueries.some((query: { isLoading: boolean }) => query.isLoading)
 
+  // Create a stable key string for detecting changes in matching torrents
+  const matchingTorrentsKeys = useMemo(() => {
+    return matchingTorrents.map(t => `${t.instanceId}-${t.hash}`).sort().join(',')
+  }, [matchingTorrents])
+
   // Prune stale selections when matching torrents change
   useEffect(() => {
-    if (matchingTorrents.length === 0) {
-      // No matches, clear all selections
-      setSelectedCrossSeedTorrents(new Set())
-    } else {
+    const validKeysArray = matchingTorrentsKeys.split(',').filter(k => k)
+    
+    setSelectedCrossSeedTorrents(prev => {
+      if (validKeysArray.length === 0 && prev.size === 0) {
+        // Already empty, no change needed
+        return prev
+      }
+      
+      if (validKeysArray.length === 0) {
+        // No matches, clear all selections
+        return new Set()
+      }
+      
       // Remove selections for torrents that no longer exist in matches
-      const validKeys = new Set(matchingTorrents.map(t => `${t.instanceId}-${t.hash}`))
-      setSelectedCrossSeedTorrents(prev => {
-        const updated = new Set(Array.from(prev).filter(key => validKeys.has(key)))
-        // Only update if something changed to avoid infinite loops
-        return updated.size !== prev.size ? updated : prev
-      })
-    }
-  }, [matchingTorrents])
+      const validKeys = new Set(validKeysArray)
+      const updated = new Set(Array.from(prev).filter(key => validKeys.has(key)))
+      
+      // Only update if something changed to avoid infinite loops
+      return updated.size !== prev.size ? updated : prev
+    })
+  }, [matchingTorrentsKeys])
 
   // Fetch torrent trackers
   const { data: trackers, isLoading: loadingTrackers } = useQuery({
