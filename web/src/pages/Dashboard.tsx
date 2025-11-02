@@ -28,8 +28,8 @@ import { usePersistedAccordionState } from "@/hooks/usePersistedAccordionState"
 import { useQBittorrentAppInfo } from "@/hooks/useQBittorrentAppInfo"
 import { api } from "@/lib/api"
 import { formatBytes, getRatioColor } from "@/lib/utils"
-import type { InstanceResponse, ServerState, TorrentCounts, TorrentResponse, TorrentStats } from "@/types"
-import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
+import type { InstanceResponse, ServerState, TorrentCounts, TorrentStats } from "@/types"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
 import { Activity, Ban, BrickWallFire, ChevronDown, ChevronRight, ChevronUp, Download, ExternalLink, Eye, EyeOff, Globe, HardDrive, Minus, Plus, Rabbit, Turtle, Upload, Zap } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
@@ -60,11 +60,41 @@ interface DashboardInstanceStats {
   streamError: string | null
 }
 
+type InstanceStreamData = {
+  stats: TorrentStats | null
+  serverState: ServerState | null
+  torrentCounts?: TorrentCounts
+  altSpeedEnabled: boolean
+  isLoading: boolean
+  error: unknown
+  streamConnected: boolean
+  streamError: string | null
+}
+
+const createDefaultInstanceStreamData = (): InstanceStreamData => ({
+  stats: null,
+  serverState: null,
+  torrentCounts: undefined,
+  altSpeedEnabled: false,
+  isLoading: true,
+  error: null,
+  streamConnected: false,
+  streamError: null,
+})
+
 // Optimized hook to get all instance stats using shared TorrentResponse cache
 function useAllInstanceStats(instances: InstanceResponse[]): DashboardInstanceStats[] {
-  const queryClient = useQueryClient()
   const syncStream = useSyncStreamManager()
-  const streamConnectionsRef = useRef(new Map<number, { key: string; disconnect: () => void }>())
+  const streamConnectionsRef = useRef(
+    new Map<
+      number,
+      {
+        key: string
+        disconnect: () => void
+        unsubscribe: () => void
+      }
+    >()
+  )
   const baseStreamParams = useMemo(
     () => ({
       page: 0,
@@ -74,6 +104,17 @@ function useAllInstanceStats(instances: InstanceResponse[]): DashboardInstanceSt
     }),
     []
   )
+  const [instanceData, setInstanceData] = useState<Record<number, InstanceStreamData>>({})
+
+  useEffect(() => {
+    setInstanceData(prev => {
+      const next: Record<number, InstanceStreamData> = {}
+      instances.forEach(instance => {
+        next[instance.id] = prev[instance.id] ?? createDefaultInstanceStreamData()
+      })
+      return next
+    })
+  }, [instances])
 
   useEffect(() => {
     const activeInstanceIds = new Set<number>()
@@ -87,93 +128,134 @@ function useAllInstanceStats(instances: InstanceResponse[]): DashboardInstanceSt
       activeInstanceIds.add(instance.id)
 
       const existing = streamConnectionsRef.current.get(instance.id)
-      if (!existing || existing.key !== streamKey) {
-        existing?.disconnect()
+      if (existing && existing.key === streamKey) {
+        return
+      }
 
-        const disconnect = syncStream.connect(params, (payload: TorrentStreamPayload) => {
-          if (!payload?.data) {
-            return
+      existing?.disconnect()
+      existing?.unsubscribe()
+
+      const disconnect = syncStream.connect(params, (payload: TorrentStreamPayload) => {
+        if (!payload) {
+          return
+        }
+
+        if (payload.type === "error") {
+          setInstanceData(prev => {
+            const current = prev[instance.id] ?? createDefaultInstanceStreamData()
+            return {
+              ...prev,
+              [instance.id]: {
+                ...current,
+                isLoading: false,
+                error: payload.error ?? current.error,
+                streamError: payload.error ?? current.streamError,
+              },
+            }
+          })
+          return
+        }
+
+        if (!payload.data) {
+          return
+        }
+
+        const data = payload.data
+        setInstanceData(prev => ({
+          ...prev,
+          [instance.id]: {
+            stats: data.stats ?? null,
+            serverState: data.serverState ?? null,
+            torrentCounts: data.counts,
+            altSpeedEnabled: data.serverState?.use_alt_speed_limits || false,
+            isLoading: false,
+            error: null,
+            streamConnected: true,
+            streamError: null,
+          },
+        }))
+      })
+
+      const unsubscribe = syncStream.subscribe(streamKey, snapshot => {
+        setInstanceData(prev => {
+          const current = prev[instance.id] ?? createDefaultInstanceStreamData()
+          const next: InstanceStreamData = {
+            ...current,
+            streamConnected: snapshot.connected,
+            streamError: snapshot.error ?? (snapshot.connected ? null : current.streamError),
           }
 
-          queryClient.setQueryData(
-            ["torrents-list", instance.id, 0, undefined, undefined, "added_on", "desc"],
-            payload.data
-          )
-        })
+          if (snapshot.error) {
+            next.error = snapshot.error
+            next.isLoading = false
+          } else if (snapshot.connected && !current.isLoading) {
+            next.error = null
+          }
 
-        streamConnectionsRef.current.set(instance.id, { key: streamKey, disconnect })
+          return {
+            ...prev,
+            [instance.id]: next,
+          }
+        })
+      })
+
+      const initialSnapshot = syncStream.getState(streamKey)
+      if (initialSnapshot) {
+        setInstanceData(prev => {
+          const current = prev[instance.id] ?? createDefaultInstanceStreamData()
+          const next: InstanceStreamData = {
+            ...current,
+            streamConnected: initialSnapshot.connected,
+            streamError: initialSnapshot.error ?? current.streamError,
+          }
+
+          if (initialSnapshot.error) {
+            next.error = initialSnapshot.error
+            next.isLoading = false
+          }
+
+          return {
+            ...prev,
+            [instance.id]: next,
+          }
+        })
       }
+
+      streamConnectionsRef.current.set(instance.id, { key: streamKey, disconnect, unsubscribe })
     })
 
     streamConnectionsRef.current.forEach((entry, instanceId) => {
       if (!activeInstanceIds.has(instanceId)) {
         entry.disconnect()
+        entry.unsubscribe()
         streamConnectionsRef.current.delete(instanceId)
       }
     })
-  }, [instances, syncStream, queryClient, baseStreamParams])
+  }, [instances, syncStream, baseStreamParams])
 
   useEffect(() => {
     return () => {
       streamConnectionsRef.current.forEach(entry => {
         entry.disconnect()
+        entry.unsubscribe()
       })
       streamConnectionsRef.current.clear()
     }
   }, [])
 
-  const dashboardQueries = useQueries({
-    queries: instances.map(instance => {
-      const streamParams = {
-        ...baseStreamParams,
-        instanceId: instance.id,
-      }
-      const streamState = syncStream.getState(createStreamKey(streamParams))
-      const isStreaming = Boolean(streamState?.connected && !streamState?.error)
-
-      return {
-        // Use same query key pattern as useTorrentsList for first page with no filters
-        queryKey: ["torrents-list", instance.id, 0, undefined, undefined, "added_on", "desc"] as const,
-        queryFn: () => api.getTorrents(instance.id, {
-          page: 0,
-          limit: 1, // Only need metadata, not actual torrents for Dashboard
-          sort: "added_on",
-          order: "desc" as const,
-        }),
-        enabled: true,
-        refetchInterval: isStreaming ? false : 5000, // Disable polling when streaming is active
-        staleTime: 2000,
-        gcTime: 300000, // Match TorrentTable cache time
-        placeholderData: (previousData: TorrentResponse | undefined) => previousData,
-        retry: 1,
-        retryDelay: 1000,
-      }
-    }),
-  })
-
-  return instances.map<DashboardInstanceStats>((instance, index) => {
-    const query = dashboardQueries[index]
-    const data = query.data as TorrentResponse | undefined
-
-    const streamParams = {
-      ...baseStreamParams,
-      instanceId: instance.id,
-    }
-    const streamState = syncStream.getState(createStreamKey(streamParams))
+  return instances.map<DashboardInstanceStats>((instance) => {
+    const state = instanceData[instance.id] ?? createDefaultInstanceStreamData()
 
     return {
       instance,
-      // Return TorrentStats directly - no more backwards compatibility conversion
-      stats: data?.stats ?? null,
-      serverState: data?.serverState ?? null,
-      torrentCounts: data?.counts,
-      // Include alt speed status from server state to avoid separate API call
-      altSpeedEnabled: data?.serverState?.use_alt_speed_limits || false,
-      // Include loading/error state for individual instances
-      isLoading: query.isLoading,
-      error: query.error,
-      streamConnected: Boolean(streamState?.connected),
-      streamError: streamState?.error ?? null,
+      stats: state.stats,
+      serverState: state.serverState,
+      torrentCounts: state.torrentCounts,
+      altSpeedEnabled: state.altSpeedEnabled,
+      isLoading: state.isLoading,
+      error: state.error,
+      streamConnected: state.streamConnected,
+      streamError: state.streamError,
     }
   })
 }
