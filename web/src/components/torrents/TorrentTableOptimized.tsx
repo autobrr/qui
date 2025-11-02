@@ -660,6 +660,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const previousInstanceIdRef = useRef(instanceId)
   const previousSearchRef = useRef("")
   const lastMetadataRef = useRef<{
+    instanceId?: number
     counts?: TorrentCounts
     categories?: Record<string, Category>
     tags?: string[]
@@ -1073,11 +1074,16 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       return
     }
 
-    const nextCounts = counts ?? lastMetadataRef.current.counts
-    const nextCategories = categories ?? lastMetadataRef.current.categories
-    const nextTags = tags ?? lastMetadataRef.current.tags
-    const prevSupportsSubcategories = lastMetadataRef.current.supportsSubcategories ?? false
-    const previousUseSubcategories = lastMetadataRef.current.useSubcategories ?? false
+    const cachedMetadata =
+      lastMetadataRef.current.instanceId === instanceId
+        ? lastMetadataRef.current
+        : ({} as typeof lastMetadataRef.current)
+
+    const nextCounts = counts ?? cachedMetadata.counts
+    const nextCategories = categories ?? cachedMetadata.categories
+    const nextTags = tags ?? cachedMetadata.tags
+    const prevSupportsSubcategories = cachedMetadata.supportsSubcategories ?? false
+    const previousUseSubcategories = cachedMetadata.useSubcategories ?? false
     const nextSupportsSubcategories = supportsSubcategories
     const nextUseSubcategories = nextSupportsSubcategories? (subcategoriesFromData ?? previousUseSubcategories): false
     const nextTotalCount = totalCount
@@ -1094,14 +1100,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     }
 
     const metadataChanged =
-      nextCounts !== lastMetadataRef.current.counts ||
-      nextCategories !== lastMetadataRef.current.categories ||
-      nextTags !== lastMetadataRef.current.tags ||
+      nextCounts !== cachedMetadata.counts ||
+      nextCategories !== cachedMetadata.categories ||
+      nextTags !== cachedMetadata.tags ||
       nextSupportsSubcategories !== prevSupportsSubcategories ||
       nextUseSubcategories !== previousUseSubcategories ||
-      nextTotalCount !== lastMetadataRef.current.totalCount
+      nextTotalCount !== cachedMetadata.totalCount
 
-    const torrentsLengthChanged = torrents.length !== (lastMetadataRef.current.torrentsLength ?? -1)
+    const torrentsLengthChanged = torrents.length !== (cachedMetadata.torrentsLength ?? -1)
 
     if (!metadataChanged && !torrentsLengthChanged) {
       return
@@ -1117,6 +1123,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     )
 
     lastMetadataRef.current = {
+      instanceId,
       counts: nextCounts,
       categories: nextCategories,
       tags: nextTags,
