@@ -40,7 +40,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Switch } from "@/components/ui/switch"
 import { useDebounce } from "@/hooks/useDebounce"
 import { TORRENT_ACTIONS, useTorrentActions, type TorrentAction } from "@/hooks/useTorrentActions"
-import { useTorrentsList } from "@/hooks/useTorrentsList"
+import { useTorrentsList, TORRENT_STREAM_POLL_INTERVAL_SECONDS } from "@/hooks/useTorrentsList"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { useNavigate, useSearch } from "@tanstack/react-router"
 import { useVirtualizer } from "@tanstack/react-virtual"
@@ -1193,11 +1193,13 @@ export function TorrentCardsMobile({
       typeof streamMeta?.retryInSeconds === "number" && streamMeta.retryInSeconds > 0
         ? streamMeta.retryInSeconds
         : null
+    const safeRetryAttempt =
+      typeof streamRetryAttempt === "number" && streamRetryAttempt > 0 ? streamRetryAttempt : 1
 
     if (streamRetrying || (clientRetrySeconds !== null && clientRetrySeconds > 0)) {
       const baseHelper =
         clientRetrySeconds && clientRetrySeconds > 0
-          ? `Retry in ${clientRetrySeconds}s (attempt ${Math.max(streamRetryAttempt, 1)})`
+          ? `Retry in ${clientRetrySeconds}s (attempt ${safeRetryAttempt})`
           : "Retry scheduled shortly"
       return {
         label: "Reconnecting…",
@@ -1228,7 +1230,7 @@ export function TorrentCardsMobile({
 
     return {
       label: "Connecting to stream…",
-      helper: "Polling every 3s",
+      helper: `Polling every ${TORRENT_STREAM_POLL_INTERVAL_SECONDS}s`,
       tone: streamConnected ? ("warning" as const) : ("muted" as const),
     }
   }, [

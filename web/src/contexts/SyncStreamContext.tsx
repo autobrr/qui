@@ -5,7 +5,7 @@
 
 import { api } from "@/lib/api"
 import type { TorrentFilters, TorrentStreamMeta, TorrentStreamPayload } from "@/types"
-import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef } from "react"
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react"
 
 const RETRY_BASE_DELAY_MS = 4000
 const RETRY_MAX_DELAY_MS = 30000
@@ -35,6 +35,7 @@ export interface StreamState {
 interface SyncStreamContextValue {
   connect: (params: StreamParams, listener: StreamListener) => () => void
   getState: (key: string | null) => StreamState | undefined
+  subscribe: (key: string, listener: (state: StreamState) => void) => () => void
 }
 
 interface StreamEntry {
@@ -56,9 +57,78 @@ interface StreamEntry {
 
 const SyncStreamContext = createContext<SyncStreamContextValue | null>(null)
 
+const DEFAULT_STREAM_STATE: StreamState = {
+  connected: false,
+  error: null,
+  retrying: false,
+  retryAttempt: 0,
+  nextRetryAt: undefined,
+}
+
 export function SyncStreamProvider({ children }: { children: React.ReactNode }) {
   const streamsRef = useRef<Record<string, StreamEntry>>({})
-  const [, forceUpdate] = useReducer((count: number) => count + 1, 0)
+  const stateSubscribersRef = useRef<Record<string, Set<(state: StreamState) => void>>>({})
+
+  const getSnapshot = useCallback(
+    (key: string): StreamState => {
+      const entry = streamsRef.current[key]
+      if (!entry) {
+        return DEFAULT_STREAM_STATE
+      }
+
+      return {
+        connected: entry.connected,
+        error: entry.error,
+        lastMeta: entry.lastMeta,
+        retrying: entry.retryTimer !== undefined,
+        retryAttempt: entry.retryAttempt,
+        nextRetryAt: entry.nextRetryAt,
+      }
+    },
+    []
+  )
+
+  const notifyStateSubscribers = useCallback(
+    (key: string) => {
+      const subscribers = stateSubscribersRef.current[key]
+      if (!subscribers || subscribers.size === 0) {
+        return
+      }
+
+      const snapshot = getSnapshot(key)
+
+      subscribers.forEach(listener => {
+        try {
+          listener(snapshot)
+        } catch (err) {
+          console.error("SyncStream subscriber failed", err)
+        }
+      })
+    },
+    [getSnapshot]
+  )
+
+  const subscribeToState = useCallback(
+    (key: string, listener: (state: StreamState) => void) => {
+      if (!stateSubscribersRef.current[key]) {
+        stateSubscribersRef.current[key] = new Set()
+      }
+      stateSubscribersRef.current[key].add(listener)
+
+      return () => {
+        const subscribers = stateSubscribersRef.current[key]
+        if (!subscribers) {
+          return
+        }
+
+        subscribers.delete(listener)
+        if (subscribers.size === 0) {
+          delete stateSubscribersRef.current[key]
+        }
+      }
+    },
+    []
+  )
 
   const clearRetryState = useCallback((entry: StreamEntry) => {
     if (entry.retryTimer !== undefined) {
@@ -103,7 +173,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         entry.error = "Server-sent events are not supported in this environment"
         entry.connected = false
         clearRetryState(entry)
-        forceUpdate()
+        notifyStateSubscribers(entry.key)
         return
       }
 
@@ -161,7 +231,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
           openStream(entry)
         }, delay)
 
-        forceUpdate()
+        notifyStateSubscribers(entry.key)
       }
 
       try {
@@ -185,7 +255,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
             }
 
             entry.listeners.forEach(listener => listener(payload))
-            forceUpdate()
+            notifyStateSubscribers(entry.key)
           } catch (err) {
             console.error("Failed to parse SSE payload", err)
           }
@@ -209,7 +279,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
             entry.retryTimer = undefined
           }
 
-          forceUpdate()
+          notifyStateSubscribers(entry.key)
         }
         source.onerror = networkErrorHandler
 
@@ -222,7 +292,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         if (resetRetry) {
           entry.error = null
         }
-        forceUpdate()
+        notifyStateSubscribers(entry.key)
       } catch (err) {
         entry.connected = false
         entry.error = err instanceof Error ? err.message : "Failed to open stream"
@@ -237,16 +307,17 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
           entry.nextRetryAt = undefined
 
           if (streamsRef.current[entry.key] !== entry || entry.listeners.size === 0) {
+            notifyStateSubscribers(entry.key)
             return
           }
 
           openStream(entry)
         }, delay)
 
-        forceUpdate()
+        notifyStateSubscribers(entry.key)
       }
     },
-    [clearRetryState, closeStream, forceUpdate]
+    [clearRetryState, closeStream, notifyStateSubscribers]
   )
 
   const ensureStream = useCallback(
@@ -280,7 +351,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
     (params: StreamParams, listener: StreamListener) => {
       const entry = ensureStream(params)
       entry.listeners.add(listener)
-      forceUpdate()
+      notifyStateSubscribers(entry.key)
 
       return () => {
         entry.listeners.delete(listener)
@@ -289,10 +360,10 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
           clearRetryState(entry)
           delete streamsRef.current[entry.key]
         }
-        forceUpdate()
+        notifyStateSubscribers(entry.key)
       }
     },
-    [clearRetryState, closeStream, ensureStream]
+    [clearRetryState, closeStream, ensureStream, notifyStateSubscribers]
   )
 
   const getState = useCallback((key: string | null) => {
@@ -319,8 +390,9 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
     () => ({
       connect,
       getState,
+      subscribe: subscribeToState,
     }),
-    [connect, getState]
+    [connect, getState, subscribeToState]
   )
 
   return <SyncStreamContext.Provider value={contextValue}>{children}</SyncStreamContext.Provider>
@@ -359,15 +431,27 @@ export function useSyncStream(
     })
   }, [context, enabled, key])
 
-  return (
-    context.getState(key) ?? {
-      connected: false,
-      error: null,
-      retrying: false,
-      retryAttempt: 0,
-      nextRetryAt: undefined,
+  const [state, setState] = useState<StreamState>(() => {
+    if (!enabled || !key) {
+      return DEFAULT_STREAM_STATE
     }
-  )
+    return context.getState(key) ?? DEFAULT_STREAM_STATE
+  })
+
+  useEffect(() => {
+    if (!enabled || !key) {
+      setState(DEFAULT_STREAM_STATE)
+      return
+    }
+
+    setState(context.getState(key) ?? DEFAULT_STREAM_STATE)
+
+    return context.subscribe(key, snapshot => {
+      setState(snapshot)
+    })
+  }, [context, enabled, key])
+
+  return state
 }
 
 export function useSyncStreamManager(): SyncStreamContextValue {

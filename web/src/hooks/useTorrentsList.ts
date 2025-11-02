@@ -10,6 +10,12 @@ import type { Torrent, TorrentFilters, TorrentResponse, TorrentStreamPayload } f
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useCallback, useEffect, useMemo, useState } from "react"
 
+export const TORRENT_STREAM_POLL_INTERVAL_MS = 3000
+export const TORRENT_STREAM_POLL_INTERVAL_SECONDS = Math.max(
+  1,
+  Math.round(TORRENT_STREAM_POLL_INTERVAL_MS / 1000)
+)
+
 interface UseTorrentsListOptions {
   enabled?: boolean
   search?: string
@@ -33,6 +39,7 @@ export function useTorrentsList(
   const [lastRequestTime, setLastRequestTime] = useState(0)
   const [lastKnownTotal, setLastKnownTotal] = useState(0)
   const [lastProcessedPage, setLastProcessedPage] = useState(-1)
+  const [lastStreamSnapshot, setLastStreamSnapshot] = useState<TorrentResponse | null>(null)
   const pageSize = 300 // Load 300 at a time (backend default)
   const queryClient = useQueryClient()
 
@@ -62,9 +69,50 @@ export function useTorrentsList(
       if (!payload?.data) {
         return
       }
+      setLastStreamSnapshot(payload.data)
       queryClient.setQueryData(streamQueryKey, payload.data)
+      setAllTorrents(prev => {
+        const nextTorrents = payload.data?.torrents ?? []
+
+        if (payload.data?.total === 0 || nextTorrents.length === 0) {
+          return []
+        }
+
+        if (prev.length === 0) {
+          return nextTorrents
+        }
+
+        const seen = new Set(nextTorrents.map(torrent => torrent.hash))
+        const merged = [...nextTorrents]
+        const totalFromPayload =
+          typeof payload.data?.total === "number" ? payload.data.total : undefined
+        let remainingSlots =
+          totalFromPayload !== undefined ? Math.max(0, totalFromPayload - nextTorrents.length) : undefined
+
+        for (const torrent of prev) {
+          if (!seen.has(torrent.hash)) {
+            if (remainingSlots !== undefined) {
+              if (remainingSlots === 0) {
+                break
+              }
+              remainingSlots -= 1
+            }
+            merged.push(torrent)
+          }
+        }
+
+        return merged
+      })
+
+      if (typeof payload.data.total === "number") {
+        setLastKnownTotal(payload.data.total)
+      }
+
+      if (currentPage === 0 && typeof payload.data.hasMore === "boolean") {
+        setHasLoadedAll(!payload.data.hasMore)
+      }
     },
-    [queryClient, streamQueryKey]
+    [currentPage, queryClient, streamQueryKey]
   )
 
   const streamState = useSyncStream(streamParams, {
@@ -72,7 +120,43 @@ export function useTorrentsList(
     onMessage: handleStreamPayload,
   })
 
+  const [httpFallbackAllowed, setHttpFallbackAllowed] = useState(() => !streamParams)
+
+  useEffect(() => {
+    if (!enabled || !streamParams) {
+      setHttpFallbackAllowed(true)
+      return
+    }
+
+    if (streamState.error) {
+      setHttpFallbackAllowed(true)
+      return
+    }
+
+    if (streamState.connected) {
+      setHttpFallbackAllowed(false)
+      return
+    }
+
+    setHttpFallbackAllowed(false)
+
+    if (typeof window === "undefined") {
+      return
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setHttpFallbackAllowed(true)
+    }, TORRENT_STREAM_POLL_INTERVAL_MS)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [enabled, streamParams, streamState.connected, streamState.error])
+
   const shouldDisablePolling = Boolean(streamParams) && streamState.connected && !streamState.error
+  const queryEnabled =
+    enabled &&
+    (currentPage > 0 || Boolean(streamState.error) || (!streamState.connected && httpFallbackAllowed))
 
   // Reset state when instanceId, filters, search, or sort changes
   // Use JSON.stringify to avoid resetting on every object reference change during polling
@@ -85,6 +169,7 @@ export function useTorrentsList(
     setHasLoadedAll(false)
     setLastKnownTotal(0)
     setLastProcessedPage(-1)
+    setLastStreamSnapshot(null)
   }, [instanceId, filterKey, searchKey, sort, order])
 
   // Query for torrents - backend handles stale-while-revalidate
@@ -106,12 +191,25 @@ export function useTorrentsList(
     // Reuse the previous page's data while the next page is loading so the UI doesn't flash empty state
     placeholderData: currentPage > 0 ? ((previousData) => previousData) : undefined,
     // Only poll the first page to get fresh data - don't poll pagination pages
-    refetchInterval: currentPage === 0 ? (shouldDisablePolling ? false : 3000) : false,
+    refetchInterval:
+      currentPage === 0 ? (shouldDisablePolling ? false : TORRENT_STREAM_POLL_INTERVAL_MS) : false,
     refetchIntervalInBackground: false, // Don't poll when tab is not active
-    enabled,
+    enabled: queryEnabled,
   })
 
   const { data: capabilities } = useInstanceCapabilities(instanceId, { enabled })
+
+  const activeData = useMemo(() => {
+    if (shouldDisablePolling && lastStreamSnapshot) {
+      return lastStreamSnapshot
+    }
+
+    if (currentPage === 0) {
+      return data ?? lastStreamSnapshot ?? null
+    }
+
+    return lastStreamSnapshot ?? data ?? null
+  }, [currentPage, data, lastStreamSnapshot, shouldDisablePolling])
 
   // Update torrents when data arrives or changes (including optimistic updates)
   useEffect(() => {
@@ -210,37 +308,43 @@ export function useTorrentsList(
 
   // Extract stats from response or calculate defaults
   const stats = useMemo(() => {
-    if (data?.stats) {
+    const source = activeData ?? data
+
+    if (source?.stats) {
       return {
-        total: data.total || data.stats.total || 0,
-        downloading: data.stats.downloading || 0,
-        seeding: data.stats.seeding || 0,
-        paused: data.stats.paused || 0,
-        error: data.stats.error || 0,
-        totalDownloadSpeed: data.stats.totalDownloadSpeed || 0,
-        totalUploadSpeed: data.stats.totalUploadSpeed || 0,
-        totalSize: data.stats.totalSize || 0,
+        total: source.total || source.stats.total || 0,
+        downloading: source.stats.downloading || 0,
+        seeding: source.stats.seeding || 0,
+        paused: source.stats.paused || 0,
+        error: source.stats.error || 0,
+        totalDownloadSpeed: source.stats.totalDownloadSpeed || 0,
+        totalUploadSpeed: source.stats.totalUploadSpeed || 0,
+        totalSize: source.stats.totalSize || 0,
       }
     }
 
     return {
-      total: data?.total || 0,
+      total: source?.total || 0,
       downloading: 0,
       seeding: 0,
       paused: 0,
       error: 0,
       totalDownloadSpeed: 0,
       totalUploadSpeed: 0,
-      totalSize: data?.stats?.totalSize || 0,
+      totalSize: source?.stats?.totalSize || 0,
     }
-  }, [data])
+  }, [activeData, data])
 
   // Check if data is from cache or fresh (backend provides this info)
-  const isCachedData = data?.cacheMetadata?.source === "cache"
-  const isStaleData = data?.cacheMetadata?.isStale === true
+  const cacheMetadata = activeData?.cacheMetadata ?? data?.cacheMetadata
+  const isCachedData = cacheMetadata?.source === "cache"
+  const isStaleData = cacheMetadata?.isStale === true
 
   // Use lastKnownTotal when loading more pages to prevent flickering
-  const effectiveTotalCount = currentPage > 0 && !data?.total ? lastKnownTotal : (data?.total ?? 0)
+  const effectiveTotalCount =
+    currentPage > 0 && typeof activeData?.total !== "number"
+      ? lastKnownTotal
+      : activeData?.total ?? lastKnownTotal
 
   const supportsSubcategories = capabilities?.supportsSubcategories ?? false
 
@@ -248,14 +352,20 @@ export function useTorrentsList(
     torrents: allTorrents,
     totalCount: effectiveTotalCount,
     stats,
-    counts: data?.counts,
-    categories: data?.categories,
-    tags: data?.tags,
+    counts: activeData?.counts ?? data?.counts,
+    categories: activeData?.categories ?? data?.categories,
+    tags: activeData?.tags ?? data?.tags,
     supportsTorrentCreation: capabilities?.supportsTorrentCreation ?? true,
     capabilities,
-    serverState: data?.serverState ?? null,
+    serverState: activeData?.serverState ?? data?.serverState ?? null,
     useSubcategories: supportsSubcategories
-      ? (data?.useSubcategories ?? data?.serverState?.use_subcategories ?? false)
+      ? (
+          activeData?.useSubcategories ??
+          activeData?.serverState?.use_subcategories ??
+          data?.useSubcategories ??
+          data?.serverState?.use_subcategories ??
+          false
+        )
       : false,
     isLoading: isLoading && currentPage === 0,
     isFetching,
@@ -266,7 +376,7 @@ export function useTorrentsList(
     isFreshData: !isCachedData || !isStaleData,
     isCachedData,
     isStaleData,
-    cacheAge: data?.cacheMetadata?.age,
+    cacheAge: cacheMetadata?.age,
     isStreaming: shouldDisablePolling,
     streamConnected: streamState.connected,
     streamError: streamState.error,

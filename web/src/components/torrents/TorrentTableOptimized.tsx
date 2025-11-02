@@ -14,7 +14,7 @@ import { usePersistedColumnVisibility } from "@/hooks/usePersistedColumnVisibili
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
 import { useTorrentExporter } from "@/hooks/useTorrentExporter"
-import { useTorrentsList } from "@/hooks/useTorrentsList"
+import { useTorrentsList, TORRENT_STREAM_POLL_INTERVAL_SECONDS } from "@/hooks/useTorrentsList"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { columnFiltersToExpr } from "@/lib/column-filter-utils"
 import { formatBytes } from "@/lib/utils"
@@ -957,6 +957,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       typeof streamMeta?.retryInSeconds === "number" && streamMeta.retryInSeconds > 0
         ? streamMeta.retryInSeconds
         : null
+    const safeRetryAttempt =
+      typeof streamRetryAttempt === "number" && streamRetryAttempt > 0 ? streamRetryAttempt : 1
 
     if (streamRetrying || (clientRetrySeconds !== null && clientRetrySeconds > 0)) {
       return {
@@ -964,7 +966,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         message: streamError ?? "Attempting to restore SSE connection.",
         secondary:
           clientRetrySeconds && clientRetrySeconds > 0
-            ? `Retrying in ${clientRetrySeconds}s (attempt ${Math.max(streamRetryAttempt, 1)})`
+            ? `Retrying in ${clientRetrySeconds}s (attempt ${safeRetryAttempt})`
             : "Retry scheduled",
         tone: "warning" as const,
         animate: true,
@@ -997,8 +999,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
     return {
       label: "Connecting to stream…",
-      message: "Using 3s polling until the SSE connection is ready.",
-      secondary: "Polling every 3s",
+      message: `Using ${TORRENT_STREAM_POLL_INTERVAL_SECONDS}s polling until the SSE connection is ready.`,
+      secondary: `Polling every ${TORRENT_STREAM_POLL_INTERVAL_SECONDS}s`,
       tone: streamConnected ? ("warning" as const) : ("muted" as const),
       animate: !streamConnected,
     }

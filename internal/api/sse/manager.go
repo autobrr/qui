@@ -48,6 +48,25 @@ type StreamOptions struct {
 	Filters    qbittorrent.FilterOptions
 }
 
+func streamOptionsKey(opts StreamOptions) string {
+	filtersKey := "__none__"
+	if raw, err := json.Marshal(opts.Filters); err == nil && len(raw) > 0 && string(raw) != "null" {
+		filtersKey = string(raw)
+	}
+
+	search := opts.Search
+	return fmt.Sprintf(
+		"%d|%d|%d|%s|%s|%s|%s",
+		opts.InstanceID,
+		opts.Page,
+		opts.Limit,
+		opts.Sort,
+		opts.Order,
+		search,
+		filtersKey,
+	)
+}
+
 // StreamManager owns the SSE server and keeps subscriptions in sync with qBittorrent updates.
 type StreamManager struct {
 	server      *sse.Server
@@ -58,16 +77,33 @@ type StreamManager struct {
 	counter atomic.Uint64
 	mu      sync.RWMutex
 
-	subscriptions map[string]*subscriptionState
-	instanceIndex map[int]map[string]*subscriptionState
-	syncLoops     map[int]*syncLoopState
-	syncBackoff   map[int]*backoffState
+	subscriptions  map[string]*subscriptionState
+	instanceIndex  map[int]map[string]*subscriptionState
+	groups         map[string]*subscriptionGroup
+	instanceGroups map[int]map[string]*subscriptionGroup
+	syncLoops      map[int]*syncLoopState
+	syncBackoff    map[int]*backoffState
 }
 
 type subscriptionState struct {
-	id      string
+	id       string
+	options  StreamOptions
+	created  time.Time
+	groupKey string
+}
+
+type subscriptionGroup struct {
+	key     string
 	options StreamOptions
-	created time.Time
+
+	mu          sync.Mutex
+	sending     bool
+	hasPending  bool
+	pendingMeta *StreamMeta
+	pendingType string
+
+	subsMu sync.RWMutex
+	subs   map[string]*subscriptionState
 }
 
 type syncLoopState struct {
@@ -110,13 +146,15 @@ func NewStreamManager(clientPool *qbittorrent.ClientPool, syncManager *qbittorre
 		server: &sse.Server{
 			Provider: &sse.Joe{Replayer: replayer},
 		},
-		clientPool:    clientPool,
-		syncManager:   syncManager,
-		instanceDB:    instanceStore,
-		subscriptions: make(map[string]*subscriptionState),
-		instanceIndex: make(map[int]map[string]*subscriptionState),
-		syncLoops:     make(map[int]*syncLoopState),
-		syncBackoff:   make(map[int]*backoffState),
+		clientPool:     clientPool,
+		syncManager:    syncManager,
+		instanceDB:     instanceStore,
+		subscriptions:  make(map[string]*subscriptionState),
+		instanceIndex:  make(map[int]map[string]*subscriptionState),
+		groups:         make(map[string]*subscriptionGroup),
+		instanceGroups: make(map[int]map[string]*subscriptionGroup),
+		syncLoops:      make(map[int]*syncLoopState),
+		syncBackoff:    make(map[int]*backoffState),
 	}
 
 	m.server.OnSession = m.onSession
@@ -136,12 +174,33 @@ func (m *StreamManager) Prepare(ctx context.Context, opts StreamOptions) (contex
 
 	id := fmt.Sprintf("qui-session-%d", m.counter.Add(1))
 	state := &subscriptionState{
-		id:      id,
-		options: opts,
-		created: time.Now(),
+		id:       id,
+		options:  opts,
+		created:  time.Now(),
+		groupKey: streamOptionsKey(opts),
 	}
 
 	m.mu.Lock()
+	group, ok := m.groups[state.groupKey]
+	if !ok {
+		group = &subscriptionGroup{
+			key:     state.groupKey,
+			options: opts,
+			subs:    make(map[string]*subscriptionState),
+		}
+		m.groups[state.groupKey] = group
+		if _, exists := m.instanceGroups[opts.InstanceID]; !exists {
+			m.instanceGroups[opts.InstanceID] = make(map[string]*subscriptionGroup)
+		}
+		m.instanceGroups[opts.InstanceID][state.groupKey] = group
+	} else {
+		group.options = opts
+	}
+
+	group.subsMu.Lock()
+	group.subs[id] = state
+	group.subsMu.Unlock()
+
 	m.subscriptions[id] = state
 	if _, ok := m.instanceIndex[opts.InstanceID]; !ok {
 		m.instanceIndex[opts.InstanceID] = make(map[string]*subscriptionState)
@@ -168,7 +227,26 @@ func (m *StreamManager) Unregister(id string) {
 	m.mu.Lock()
 	if state, ok := m.subscriptions[id]; ok {
 		instanceID = state.options.InstanceID
+		groupKey := state.groupKey
 		delete(m.subscriptions, id)
+
+		if group, exists := m.groups[groupKey]; exists {
+			group.subsMu.Lock()
+			delete(group.subs, id)
+			remaining := len(group.subs)
+			group.subsMu.Unlock()
+
+			if remaining == 0 {
+				delete(m.groups, groupKey)
+				if groups := m.instanceGroups[instanceID]; groups != nil {
+					delete(groups, groupKey)
+					if len(groups) == 0 {
+						delete(m.instanceGroups, instanceID)
+					}
+				}
+			}
+		}
+
 		if subs := m.instanceIndex[instanceID]; subs != nil {
 			delete(subs, id)
 			if len(subs) == 0 {
@@ -275,9 +353,21 @@ func (m *StreamManager) onSession(w http.ResponseWriter, r *http.Request) ([]str
 		return nil, false
 	}
 
+	sub := m.getSubscription(id)
+	if sub == nil {
+		http.Error(w, "subscription not found", http.StatusBadRequest)
+		return nil, false
+	}
+
+	group := m.getGroup(sub.groupKey)
+	if group == nil {
+		http.Error(w, "subscription group not found", http.StatusBadRequest)
+		return nil, false
+	}
+
 	// Send initial snapshot once the subscription is active.
-	go m.publishSubscription(id, streamEventInit, &StreamMeta{
-		InstanceID: m.subscriptionInstance(id),
+	m.enqueueGroup(group, streamEventInit, &StreamMeta{
+		InstanceID: sub.options.InstanceID,
 		FullUpdate: true,
 		Timestamp:  time.Now(),
 	})
@@ -295,16 +385,143 @@ func (m *StreamManager) subscriptionInstance(id string) int {
 }
 
 func (m *StreamManager) publishInstance(instanceID int, eventType string, meta *StreamMeta) {
+	groups := m.groupsForInstance(instanceID)
+	if len(groups) == 0 {
+		return
+	}
+
+	for _, group := range groups {
+		m.enqueueGroup(group, eventType, meta)
+	}
+}
+
+func (m *StreamManager) groupsForInstance(instanceID int) []*subscriptionGroup {
 	m.mu.RLock()
-	subs := make([]*subscriptionState, 0, len(m.instanceIndex[instanceID]))
-	for _, state := range m.instanceIndex[instanceID] {
-		subs = append(subs, state)
+	groupMap := m.instanceGroups[instanceID]
+	result := make([]*subscriptionGroup, 0, len(groupMap))
+	for _, group := range groupMap {
+		result = append(result, group)
 	}
 	m.mu.RUnlock()
+	return result
+}
 
-	for _, sub := range subs {
-		go m.publishSubscription(sub.id, eventType, meta)
+func (m *StreamManager) enqueueGroup(group *subscriptionGroup, eventType string, meta *StreamMeta) {
+	if group == nil {
+		return
 	}
+
+	metaCopy := cloneMeta(meta)
+
+	group.mu.Lock()
+	group.pendingMeta = metaCopy
+	group.pendingType = eventType
+	group.hasPending = true
+	if group.sending {
+		group.mu.Unlock()
+		return
+	}
+	group.sending = true
+	group.mu.Unlock()
+
+	go m.processGroup(group.key)
+}
+
+func (m *StreamManager) processGroup(groupKey string) {
+	for {
+		group := m.getGroup(groupKey)
+		if group == nil {
+			return
+		}
+
+		group.mu.Lock()
+		if !group.hasPending {
+			group.sending = false
+			group.mu.Unlock()
+			return
+		}
+		eventType := group.pendingType
+		meta := group.pendingMeta
+		group.hasPending = false
+		group.mu.Unlock()
+
+		subs := group.snapshotSubscribers()
+		if len(subs) == 0 {
+			continue
+		}
+
+		payload := m.buildGroupPayload(group, eventType, meta)
+		if payload == nil {
+			continue
+		}
+
+		for _, sub := range subs {
+			m.publish(sub.id, payload)
+		}
+	}
+}
+
+func (m *StreamManager) buildGroupPayload(group *subscriptionGroup, eventType string, meta *StreamMeta) *StreamPayload {
+	if group == nil {
+		return nil
+	}
+
+	metaCopy := cloneMeta(meta)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	opts := group.options
+	response, err := m.syncManager.GetTorrentsWithFilters(
+		ctx,
+		opts.InstanceID,
+		opts.Limit,
+		opts.Page*opts.Limit,
+		opts.Sort,
+		opts.Order,
+		opts.Search,
+		opts.Filters,
+	)
+	if err != nil {
+		log.Error().Err(err).
+			Int("instanceID", opts.InstanceID).
+			Str("groupKey", group.key).
+			Msg("Failed to build torrent response for SSE subscribers")
+
+		return &StreamPayload{
+			Type: streamEventError,
+			Meta: metaCopy,
+			Err:  "failed to refresh torrent list",
+		}
+	}
+
+	return &StreamPayload{
+		Type: eventType,
+		Data: response,
+		Meta: metaCopy,
+	}
+}
+
+func (m *StreamManager) getGroup(key string) *subscriptionGroup {
+	if key == "" {
+		return nil
+	}
+
+	m.mu.RLock()
+	group := m.groups[key]
+	m.mu.RUnlock()
+	return group
+}
+
+func (g *subscriptionGroup) snapshotSubscribers() []*subscriptionState {
+	g.subsMu.RLock()
+	defer g.subsMu.RUnlock()
+
+	result := make([]*subscriptionState, 0, len(g.subs))
+	for _, sub := range g.subs {
+		result = append(result, sub)
+	}
+	return result
 }
 
 func (m *StreamManager) publishToInstance(instanceID int, payload *StreamPayload) {
@@ -373,6 +590,14 @@ func (m *StreamManager) getSubscription(id string) *subscriptionState {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.subscriptions[id]
+}
+
+func cloneMeta(meta *StreamMeta) *StreamMeta {
+	if meta == nil {
+		return nil
+	}
+	copy := *meta
+	return &copy
 }
 
 func (m *StreamManager) markSyncFailure(instanceID int) time.Duration {
