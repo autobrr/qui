@@ -29,7 +29,7 @@ const (
 	streamEventInit     = "init"
 	streamEventUpdate   = "update"
 	streamEventError    = "error"
-	defaultSyncInterval = 2 * time.Second
+	defaultSyncInterval = 3 * time.Second
 	maxSyncInterval     = 30 * time.Second
 )
 
