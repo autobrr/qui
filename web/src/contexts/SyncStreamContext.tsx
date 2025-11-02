@@ -242,8 +242,8 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
             const payload = JSON.parse(event.data) as TorrentStreamPayload
             entry.lastMeta = payload.meta
 
-            if (payload.type === "error" && payload.err) {
-              entry.error = payload.err
+            if (payload.type === "error" && payload.error) {
+              entry.error = payload.error
             } else {
               entry.error = null
             }

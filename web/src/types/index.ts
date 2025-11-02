@@ -263,7 +263,7 @@ export interface TorrentStreamPayload {
   type: "init" | "update" | "error"
   data?: TorrentResponse
   meta?: TorrentStreamMeta
-  err?: string
+  error?: string
 }
 
 // Simplified MainData - only used for Dashboard server stats
