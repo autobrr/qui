@@ -84,7 +84,7 @@ func newTestDependencies(t *testing.T) *Dependencies {
 		require.NoError(t, db.Close())
 	})
 
-	authService := auth.NewService(db.Conn())
+	authService := auth.NewService(db)
 	_, err = authService.SetupUser(context.Background(), "test-user", "password123")
 	if err != nil && !errors.Is(err, models.ErrUserAlreadyExists) {
 		require.NoError(t, err)

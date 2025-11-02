@@ -125,9 +125,9 @@ func TestInstanceStoreWithHost(t *testing.T) {
 	ctx := t.Context()
 
 	// Create in-memory database for testing
-	db, err := sql.Open("sqlite", ":memory:")
+	sqlDB, err := sql.Open("sqlite", ":memory:")
 	require.NoError(t, err, "Failed to open test database")
-	defer db.Close()
+	defer sqlDB.Close()
 
 	// Create test encryption key
 	encryptionKey := make([]byte, 32)
@@ -135,27 +135,60 @@ func TestInstanceStoreWithHost(t *testing.T) {
 		encryptionKey[i] = byte(i)
 	}
 
+	// Wrap with mock that implements Querier
+	db := newMockQuerier(sqlDB)
+
 	// Create instance store
 	store, err := NewInstanceStore(db, encryptionKey)
 	require.NoError(t, err, "Failed to create instance store")
 
-	// Create new schema (with host field)
+	// Create string_pool table
+	_, err = db.ExecContext(ctx, `
+		CREATE TABLE string_pool (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			value TEXT NOT NULL UNIQUE
+		)
+	`)
+	require.NoError(t, err, "Failed to create string_pool table")
+
+	// Create new schema (with interned host, username, basic_username fields)
 	_, err = db.ExecContext(ctx, `
 		CREATE TABLE instances (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			name TEXT NOT NULL,
-			host TEXT NOT NULL,
-			username TEXT NOT NULL,
+			name_id INTEGER NOT NULL,
+			host_id INTEGER NOT NULL,
+			username_id INTEGER NOT NULL,
 			password_encrypted TEXT NOT NULL,
-			basic_username TEXT,
+			basic_username_id INTEGER,
 			basic_password_encrypted TEXT,
 			tls_skip_verify BOOLEAN NOT NULL DEFAULT 0,
 			sort_order INTEGER NOT NULL DEFAULT 0,
 			is_active BOOLEAN DEFAULT 1,
 			last_connected_at TIMESTAMP,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-		)
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (name_id) REFERENCES string_pool(id),
+			FOREIGN KEY (host_id) REFERENCES string_pool(id),
+			FOREIGN KEY (username_id) REFERENCES string_pool(id),
+			FOREIGN KEY (basic_username_id) REFERENCES string_pool(id)
+		);
+		
+		CREATE VIEW instances_view AS
+		SELECT 
+			i.id,
+			sp_name.value AS name,
+			sp_host.value AS host,
+			sp_username.value AS username,
+			i.password_encrypted,
+			sp_basic_username.value AS basic_username,
+			i.basic_password_encrypted,
+			i.tls_skip_verify,
+			i.sort_order
+		FROM instances i
+		INNER JOIN string_pool sp_name ON i.name_id = sp_name.id
+		INNER JOIN string_pool sp_host ON i.host_id = sp_host.id
+		INNER JOIN string_pool sp_username ON i.username_id = sp_username.id
+		LEFT JOIN string_pool sp_basic_username ON i.basic_username_id = sp_basic_username.id;
 	`)
 	require.NoError(t, err, "Failed to create test table")
 
@@ -183,9 +216,11 @@ func TestInstanceStoreWithHost(t *testing.T) {
 func TestInstanceStoreUpdateOrder(t *testing.T) {
 	ctx := t.Context()
 
-	db, err := sql.Open("sqlite", ":memory:")
+	sqlDB, err := sql.Open("sqlite", ":memory:")
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() { _ = sqlDB.Close() })
+
+	db := newMockQuerier(sqlDB)
 
 	encryptionKey := make([]byte, 32)
 	for i := range encryptionKey {
@@ -196,21 +231,50 @@ func TestInstanceStoreUpdateOrder(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = db.ExecContext(ctx, `
+		CREATE TABLE string_pool (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			value TEXT NOT NULL UNIQUE
+		)
+	`)
+	require.NoError(t, err)
+
+	_, err = db.ExecContext(ctx, `
 		CREATE TABLE instances (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			name TEXT NOT NULL,
-			host TEXT NOT NULL,
-			username TEXT NOT NULL,
+			name_id INTEGER NOT NULL,
+			host_id INTEGER NOT NULL,
+			username_id INTEGER NOT NULL,
 			password_encrypted TEXT NOT NULL,
-			basic_username TEXT,
+			basic_username_id INTEGER,
 			basic_password_encrypted TEXT,
 			tls_skip_verify BOOLEAN NOT NULL DEFAULT 0,
 			sort_order INTEGER NOT NULL DEFAULT 0,
 			is_active BOOLEAN DEFAULT 1,
 			last_connected_at TIMESTAMP,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-		)
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (name_id) REFERENCES string_pool(id),
+			FOREIGN KEY (host_id) REFERENCES string_pool(id),
+			FOREIGN KEY (username_id) REFERENCES string_pool(id),
+			FOREIGN KEY (basic_username_id) REFERENCES string_pool(id)
+		);
+
+		CREATE VIEW instances_view AS
+		SELECT 
+			i.id,
+			sp_name.value AS name,
+			sp_host.value AS host,
+			sp_username.value AS username,
+			i.password_encrypted,
+			sp_basic_username.value AS basic_username,
+			i.basic_password_encrypted,
+			i.tls_skip_verify,
+			i.sort_order
+		FROM instances i
+		INNER JOIN string_pool sp_name ON i.name_id = sp_name.id
+		INNER JOIN string_pool sp_host ON i.host_id = sp_host.id
+		INNER JOIN string_pool sp_username ON i.username_id = sp_username.id
+		LEFT JOIN string_pool sp_basic_username ON i.basic_username_id = sp_basic_username.id;
 	`)
 	require.NoError(t, err)
 

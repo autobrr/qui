@@ -4,11 +4,13 @@
 package proxy
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -205,6 +207,44 @@ func combineInstanceAndRequestPath(instanceBasePath, strippedPath string) string
 	}
 }
 
+// bufferRequestBody reads the request body, restores it for ParseForm, and returns the buffered bytes.
+// This allows both parsing form data and forwarding the request body to the proxy.
+//
+// IMPORTANT: Limits body size to 10MB to prevent OOM attacks. Larger requests will be rejected.
+// This limit is appropriate for torrent operations which use small form data payloads.
+func bufferRequestBody(r *http.Request) ([]byte, error) {
+	const maxBodySize = 10 * 1024 * 1024 // 10MB limit
+
+	// Use LimitReader to prevent reading more than maxBodySize
+	// Reading exactly maxBodySize bytes is sufficient - we don't need to read extra
+	limitedReader := io.LimitReader(r.Body, maxBodySize)
+	bodyBytes, err := io.ReadAll(limitedReader)
+	if err != nil {
+		r.Body.Close()
+		return nil, err
+	}
+
+	// If we read exactly maxBodySize bytes, check if there's more data
+	// This avoids reading unnecessary bytes for overflow detection
+	if len(bodyBytes) == maxBodySize {
+		// Try to read one more byte to see if body exceeds limit
+		oneByte := make([]byte, 1)
+		n, _ := r.Body.Read(oneByte)
+		r.Body.Close()
+		if n > 0 {
+			// Body exceeds limit - use generic error message
+			return nil, fmt.Errorf("request body exceeds maximum allowed size")
+		}
+	} else {
+		r.Body.Close()
+	}
+
+	// Restore body for ParseForm or other consumers
+	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+
+	return bodyBytes, nil
+}
+
 // errorHandler handles proxy errors
 func (h *Handler) errorHandler(w http.ResponseWriter, r *http.Request, err error) {
 	ctx := r.Context()
@@ -355,6 +395,12 @@ func (h *Handler) Routes(r chi.Router) {
 		pr.Get("/api/v2/torrents/trackers", h.handleTorrentTrackers)
 		pr.Get("/api/v2/torrents/files", h.handleTorrentFiles)
 		pr.Get("/api/v2/torrents/search", h.handleTorrentSearch)
+
+		// Intercepted write operations for cache invalidation
+		pr.Post("/api/v2/torrents/setLocation", h.handleSetLocation)
+		pr.Post("/api/v2/torrents/renameFile", h.handleRenameFile)
+		pr.Post("/api/v2/torrents/renameFolder", h.handleRenameFolder)
+		pr.Post("/api/v2/torrents/delete", h.handleDeleteTorrents)
 
 		// Handle the base proxy path and any nested paths requested through the proxy
 		pr.HandleFunc("/", h.ServeHTTP)
@@ -514,7 +560,7 @@ func (h *Handler) validateQueryParams(w http.ResponseWriter, r *http.Request, al
 
 // handleTorrentsInfo handles /api/v2/torrents/info using qui's sync manager
 func (h *Handler) handleTorrentsInfo(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+	ctx := qbittorrent.WithSkipTrackerHydration(r.Context())
 	instanceID := GetInstanceIDFromContext(ctx)
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
 
@@ -1095,4 +1141,277 @@ func (h *Handler) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 	// Return success response
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(proxyLoginSuccessBody))
+}
+
+// handleSetLocation handles /api/v2/torrents/setLocation and invalidates file cache
+func (h *Handler) handleSetLocation(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	instanceID := GetInstanceIDFromContext(ctx)
+	clientAPIKey := GetClientAPIKeyFromContext(ctx)
+
+	// Buffer body so we can parse form and still forward to proxy
+	bodyBytes, err := bufferRequestBody(r)
+	if err != nil {
+		log.Warn().Err(err).Int("instanceId", instanceID).Msg("Failed to read setLocation body")
+		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+		return
+	}
+
+	// Parse form data
+	if err := r.ParseForm(); err != nil {
+		log.Warn().Err(err).Int("instanceId", instanceID).Msg("Failed to parse setLocation form")
+		http.Error(w, "Invalid form data", http.StatusBadRequest)
+		return
+	}
+
+	hashes := r.Form.Get("hashes")
+
+	log.Debug().
+		Int("instanceId", instanceID).
+		Str("client", clientAPIKey.ClientName).
+		Str("hashes", hashes).
+		Msg("Intercepting setLocation request for cache invalidation")
+
+	// Defer cache invalidation to ensure it happens even if proxy panics
+	// Use background context with timeout to avoid cancellation issues
+	defer func() {
+		// Capture panic value if any
+		panicValue := recover()
+		if panicValue != nil {
+			log.Error().Interface("panic", panicValue).Int("instanceId", instanceID).
+				Msg("Recovered from panic during setLocation cache invalidation")
+		}
+
+		if hashes != "" {
+			invalidateCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
+			hashList := strings.Split(hashes, "|")
+			failedInvalidations := 0
+			for _, hash := range hashList {
+				hash = strings.TrimSpace(hash)
+				if hash == "" {
+					continue
+				}
+				if err := h.syncManager.InvalidateFileCache(invalidateCtx, instanceID, hash); err != nil {
+					failedInvalidations++
+					log.Warn().Err(err).Int("instanceId", instanceID).Str("hash", hash).
+						Msg("Failed to invalidate file cache after setLocation")
+				}
+			}
+			// Log summary if any invalidations failed
+			if failedInvalidations > 0 {
+				log.Warn().Int("instanceId", instanceID).Int("failed", failedInvalidations).Int("total", len(hashList)).
+					Msg("Some file cache invalidations failed after setLocation - cache may be stale")
+			}
+		}
+
+		// Re-panic with captured value to preserve stack trace
+		if panicValue != nil {
+			panic(panicValue)
+		}
+	}()
+
+	// Restore body for proxy
+	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+
+	// Forward to qBittorrent
+	h.proxy.ServeHTTP(w, r)
+}
+
+// handleRenameFile handles /api/v2/torrents/renameFile and invalidates file cache
+func (h *Handler) handleRenameFile(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	instanceID := GetInstanceIDFromContext(ctx)
+	clientAPIKey := GetClientAPIKeyFromContext(ctx)
+
+	// Buffer body so we can parse form and still forward to proxy
+	bodyBytes, err := bufferRequestBody(r)
+	if err != nil {
+		log.Warn().Err(err).Int("instanceId", instanceID).Msg("Failed to read renameFile body")
+		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+		return
+	}
+
+	// Parse form data
+	if err := r.ParseForm(); err != nil {
+		log.Warn().Err(err).Int("instanceId", instanceID).Msg("Failed to parse renameFile form")
+		http.Error(w, "Invalid form data", http.StatusBadRequest)
+		return
+	}
+
+	hash := r.Form.Get("hash")
+
+	log.Debug().
+		Int("instanceId", instanceID).
+		Str("client", clientAPIKey.ClientName).
+		Str("hash", hash).
+		Msg("Intercepting renameFile request for cache invalidation")
+
+	// Defer cache invalidation to ensure it happens even if proxy panics
+	defer func() {
+		// Capture panic value if any
+		panicValue := recover()
+		if panicValue != nil {
+			log.Error().Interface("panic", panicValue).Int("instanceId", instanceID).
+				Msg("Recovered from panic during renameFile cache invalidation")
+		}
+
+		if hash != "" {
+			invalidateCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
+			if err := h.syncManager.InvalidateFileCache(invalidateCtx, instanceID, hash); err != nil {
+				log.Error().Err(err).Int("instanceId", instanceID).Str("hash", hash).
+					Msg("CRITICAL: Failed to invalidate file cache after renameFile - cache is now stale")
+			}
+		}
+
+		// Re-panic with captured value to preserve stack trace
+		if panicValue != nil {
+			panic(panicValue)
+		}
+	}()
+
+	// Restore body for proxy
+	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+
+	// Forward to qBittorrent
+	h.proxy.ServeHTTP(w, r)
+}
+
+// handleRenameFolder handles /api/v2/torrents/renameFolder and invalidates file cache
+func (h *Handler) handleRenameFolder(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	instanceID := GetInstanceIDFromContext(ctx)
+	clientAPIKey := GetClientAPIKeyFromContext(ctx)
+
+	// Buffer body so we can parse form and still forward to proxy
+	bodyBytes, err := bufferRequestBody(r)
+	if err != nil {
+		log.Warn().Err(err).Int("instanceId", instanceID).Msg("Failed to read renameFolder body")
+		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+		return
+	}
+
+	// Parse form data
+	if err := r.ParseForm(); err != nil {
+		log.Warn().Err(err).Int("instanceId", instanceID).Msg("Failed to parse renameFolder form")
+		http.Error(w, "Invalid form data", http.StatusBadRequest)
+		return
+	}
+
+	hash := r.Form.Get("hash")
+
+	log.Debug().
+		Int("instanceId", instanceID).
+		Str("client", clientAPIKey.ClientName).
+		Str("hash", hash).
+		Msg("Intercepting renameFolder request for cache invalidation")
+
+	// Defer cache invalidation to ensure it happens even if proxy panics
+	defer func() {
+		// Capture panic value if any
+		panicValue := recover()
+		if panicValue != nil {
+			log.Error().Interface("panic", panicValue).Int("instanceId", instanceID).
+				Msg("Recovered from panic during renameFolder cache invalidation")
+		}
+
+		if hash != "" {
+			invalidateCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
+			if err := h.syncManager.InvalidateFileCache(invalidateCtx, instanceID, hash); err != nil {
+				log.Error().Err(err).Int("instanceId", instanceID).Str("hash", hash).
+					Msg("CRITICAL: Failed to invalidate file cache after renameFolder - cache is now stale")
+			}
+		}
+
+		// Re-panic with captured value to preserve stack trace
+		if panicValue != nil {
+			panic(panicValue)
+		}
+	}()
+
+	// Restore body for proxy
+	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+
+	// Forward to qBittorrent
+	h.proxy.ServeHTTP(w, r)
+}
+
+// handleDeleteTorrents handles /api/v2/torrents/delete and invalidates file cache
+func (h *Handler) handleDeleteTorrents(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	instanceID := GetInstanceIDFromContext(ctx)
+	clientAPIKey := GetClientAPIKeyFromContext(ctx)
+
+	// Buffer body so we can parse form and still forward to proxy
+	bodyBytes, err := bufferRequestBody(r)
+	if err != nil {
+		log.Warn().Err(err).Int("instanceId", instanceID).Msg("Failed to read delete body")
+		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+		return
+	}
+
+	// Parse form data
+	if err := r.ParseForm(); err != nil {
+		log.Warn().Err(err).Int("instanceId", instanceID).Msg("Failed to parse delete form")
+		http.Error(w, "Invalid form data", http.StatusBadRequest)
+		return
+	}
+
+	hashes := r.Form.Get("hashes")
+
+	log.Debug().
+		Int("instanceId", instanceID).
+		Str("client", clientAPIKey.ClientName).
+		Str("hashes", hashes).
+		Msg("Intercepting delete request for cache invalidation")
+
+	// Defer cache invalidation to ensure it happens even if proxy panics
+	defer func() {
+		// Capture panic value if any
+		panicValue := recover()
+		if panicValue != nil {
+			log.Error().Interface("panic", panicValue).Int("instanceId", instanceID).
+				Msg("Recovered from panic during delete cache invalidation")
+		}
+
+		if hashes != "" {
+			invalidateCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
+			hashList := strings.Split(hashes, "|")
+			failedInvalidations := 0
+			for _, hash := range hashList {
+				hash = strings.TrimSpace(hash)
+				if hash == "" {
+					continue
+				}
+				if err := h.syncManager.InvalidateFileCache(invalidateCtx, instanceID, hash); err != nil {
+					failedInvalidations++
+					log.Warn().Err(err).Int("instanceId", instanceID).Str("hash", hash).
+						Msg("Failed to invalidate file cache after delete")
+				}
+			}
+			// Log summary if any invalidations failed
+			if failedInvalidations > 0 {
+				log.Warn().Int("instanceId", instanceID).Int("failed", failedInvalidations).Int("total", len(hashList)).
+					Msg("Some file cache invalidations failed after delete - cache may be stale")
+			}
+		}
+
+		// Re-panic with captured value to preserve stack trace
+		if panicValue != nil {
+			panic(panicValue)
+		}
+	}()
+
+	// Restore body for proxy
+	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+
+	// Forward to qBittorrent
+	h.proxy.ServeHTTP(w, r)
 }

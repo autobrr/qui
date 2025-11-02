@@ -110,6 +110,8 @@ interface FilterSidebarProps {
 
 type TriState = "include" | "exclude" | "neutral"
 
+const LONG_PRESS_DURATION = 400
+
 const arraysEqual = (a?: string[], b?: string[]) => {
   if (a === b) {
     return true
@@ -573,6 +575,55 @@ const FilterSidebarComponent = ({
   const tagListRef = useRef<HTMLDivElement>(null)
   const trackerListRef = useRef<HTMLDivElement>(null)
   const skipNextToggleRef = useRef<string | null>(null)
+  const longPressTimeoutRef = useRef<number | null>(null)
+
+  const cancelLongPress = useCallback(() => {
+    if (longPressTimeoutRef.current !== null) {
+      if (typeof window !== "undefined") {
+        window.clearTimeout(longPressTimeoutRef.current)
+      }
+      longPressTimeoutRef.current = null
+    }
+  }, [])
+
+  const scheduleLongPressExclude = useCallback((key: string, onLongPress: () => void) => {
+    if (typeof window === "undefined") {
+      return
+    }
+
+    cancelLongPress()
+    longPressTimeoutRef.current = window.setTimeout(() => {
+      skipNextToggleRef.current = key
+      onLongPress()
+      cancelLongPress()
+    }, LONG_PRESS_DURATION)
+  }, [cancelLongPress])
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return
+    }
+
+    const handlePointerEnd = () => {
+      cancelLongPress()
+    }
+
+    window.addEventListener("pointerup", handlePointerEnd)
+    window.addEventListener("pointercancel", handlePointerEnd)
+    window.addEventListener("pointerleave", handlePointerEnd)
+
+    return () => {
+      window.removeEventListener("pointerup", handlePointerEnd)
+      window.removeEventListener("pointercancel", handlePointerEnd)
+      window.removeEventListener("pointerleave", handlePointerEnd)
+    }
+  }, [cancelLongPress])
+
+  useEffect(() => {
+    return () => {
+      cancelLongPress()
+    }
+  }, [cancelLongPress])
 
   const makeToggleKey = useCallback((group: "status" | "category" | "tag" | "tracker", value: string) => {
     return `${group}:${value === "" ? "__empty__" : value}`
@@ -831,6 +882,7 @@ const FilterSidebarComponent = ({
   const handleStatusPointerDown = useCallback((event: React.PointerEvent<HTMLElement>, status: string) => {
     if (event.button !== 0) {
       skipNextToggleRef.current = null
+      cancelLongPress()
       return
     }
 
@@ -839,11 +891,33 @@ const FilterSidebarComponent = ({
       event.stopPropagation()
       skipNextToggleRef.current = makeToggleKey("status", status)
       handleStatusExcludeToggle(status)
+      cancelLongPress()
       return
     }
 
     skipNextToggleRef.current = null
-  }, [handleStatusExcludeToggle, makeToggleKey])
+
+    const pointerType = event.pointerType
+    const isTouchLike =
+      pointerType === "touch" ||
+      pointerType === "pen" ||
+      (pointerType !== "mouse" && isMobile)
+
+    if (isTouchLike) {
+      const key = makeToggleKey("status", status)
+      scheduleLongPressExclude(key, () => handleStatusExcludeToggle(status))
+    } else {
+      cancelLongPress()
+    }
+  }, [cancelLongPress, handleStatusExcludeToggle, isMobile, makeToggleKey, scheduleLongPressExclude])
+
+  const handlePointerLeave = useCallback((event: React.PointerEvent<HTMLElement>) => {
+    const pointerType = event.pointerType
+    if (pointerType === "mouse") {
+      return
+    }
+    cancelLongPress()
+  }, [cancelLongPress])
 
   const handleCategoryIncludeToggle = useCallback((category: string) => {
     const currentState = getCategoryState(category)
@@ -876,6 +950,7 @@ const FilterSidebarComponent = ({
   const handleCategoryPointerDown = useCallback((event: React.PointerEvent<HTMLElement>, category: string) => {
     if (event.button !== 0) {
       skipNextToggleRef.current = null
+      cancelLongPress()
       return
     }
 
@@ -884,11 +959,25 @@ const FilterSidebarComponent = ({
       event.stopPropagation()
       skipNextToggleRef.current = makeToggleKey("category", category)
       handleCategoryExcludeToggle(category)
+      cancelLongPress()
       return
     }
 
     skipNextToggleRef.current = null
-  }, [handleCategoryExcludeToggle, makeToggleKey])
+
+    const pointerType = event.pointerType
+    const isTouchLike =
+      pointerType === "touch" ||
+      pointerType === "pen" ||
+      (pointerType !== "mouse" && isMobile)
+
+    if (isTouchLike) {
+      const key = makeToggleKey("category", category)
+      scheduleLongPressExclude(key, () => handleCategoryExcludeToggle(category))
+    } else {
+      cancelLongPress()
+    }
+  }, [cancelLongPress, handleCategoryExcludeToggle, isMobile, makeToggleKey, scheduleLongPressExclude])
 
   const handleTagIncludeToggle = useCallback((tag: string) => {
     const currentState = getTagState(tag)
@@ -921,6 +1010,7 @@ const FilterSidebarComponent = ({
   const handleTagPointerDown = useCallback((event: React.PointerEvent<HTMLElement>, tag: string) => {
     if (event.button !== 0) {
       skipNextToggleRef.current = null
+      cancelLongPress()
       return
     }
 
@@ -929,11 +1019,25 @@ const FilterSidebarComponent = ({
       event.stopPropagation()
       skipNextToggleRef.current = makeToggleKey("tag", tag)
       handleTagExcludeToggle(tag)
+      cancelLongPress()
       return
     }
 
     skipNextToggleRef.current = null
-  }, [handleTagExcludeToggle, makeToggleKey])
+
+    const pointerType = event.pointerType
+    const isTouchLike =
+      pointerType === "touch" ||
+      pointerType === "pen" ||
+      (pointerType !== "mouse" && isMobile)
+
+    if (isTouchLike) {
+      const key = makeToggleKey("tag", tag)
+      scheduleLongPressExclude(key, () => handleTagExcludeToggle(tag))
+    } else {
+      cancelLongPress()
+    }
+  }, [cancelLongPress, handleTagExcludeToggle, isMobile, makeToggleKey, scheduleLongPressExclude])
 
   const handleTrackerIncludeToggle = useCallback((tracker: string) => {
     const currentState = getTrackerState(tracker)
@@ -966,6 +1070,7 @@ const FilterSidebarComponent = ({
   const handleTrackerPointerDown = useCallback((event: React.PointerEvent<HTMLElement>, tracker: string) => {
     if (event.button !== 0) {
       skipNextToggleRef.current = null
+      cancelLongPress()
       return
     }
 
@@ -974,11 +1079,25 @@ const FilterSidebarComponent = ({
       event.stopPropagation()
       skipNextToggleRef.current = makeToggleKey("tracker", tracker)
       handleTrackerExcludeToggle(tracker)
+      cancelLongPress()
       return
     }
 
     skipNextToggleRef.current = null
-  }, [handleTrackerExcludeToggle, makeToggleKey])
+
+    const pointerType = event.pointerType
+    const isTouchLike =
+      pointerType === "touch" ||
+      pointerType === "pen" ||
+      (pointerType !== "mouse" && isMobile)
+
+    if (isTouchLike) {
+      const key = makeToggleKey("tracker", tracker)
+      scheduleLongPressExclude(key, () => handleTrackerExcludeToggle(tracker))
+    } else {
+      cancelLongPress()
+    }
+  }, [cancelLongPress, handleTrackerExcludeToggle, isMobile, makeToggleKey, scheduleLongPressExclude])
 
   const untaggedState = getTagState("")
   const uncategorizedState = getCategoryState("")
@@ -1171,7 +1290,7 @@ const FilterSidebarComponent = ({
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom" align="start" className="max-w-[220px]">
-                  Left click cycles include and neutral. Cmd/Ctrl + click toggles exclusion.
+                  Left click cycles include and neutral. Cmd/Ctrl + click or a long press toggles exclusion.
                 </TooltipContent>
               </Tooltip>
               {(isLoading || isStaleData) && (
@@ -1232,14 +1351,15 @@ const FilterSidebarComponent = ({
                     return (
                       <label
                         key={state.value}
-                        className={cn(
-                          "flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer",
-                          statusState === "exclude"
-                            ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
-                            : "hover:bg-muted"
-                        )}
-                        onPointerDown={(event) => handleStatusPointerDown(event, state.value)}
-                      >
+                      className={cn(
+                        "flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer",
+                        statusState === "exclude"
+                          ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
+                          : "hover:bg-muted"
+                      )}
+                      onPointerDown={(event) => handleStatusPointerDown(event, state.value)}
+                      onPointerLeave={handlePointerLeave}
+                    >
                         <Checkbox
                           checked={getCheckboxVisualState(statusState)}
                           onCheckedChange={() => handleStatusCheckboxChange(state.value)}
@@ -1314,6 +1434,7 @@ const FilterSidebarComponent = ({
                         uncategorizedState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": "hover:bg-muted"
                       )}
                       onPointerDown={(event) => handleCategoryPointerDown(event, "")}
+                      onPointerLeave={handlePointerLeave}
                     >
                       <Checkbox
                         checked={getCheckboxVisualState(uncategorizedState)}
@@ -1373,6 +1494,7 @@ const FilterSidebarComponent = ({
                       getCheckboxState={getCheckboxVisualState}
                       onCategoryCheckboxChange={handleCategoryCheckboxChange}
                       onCategoryPointerDown={handleCategoryPointerDown}
+                      onCategoryPointerLeave={handlePointerLeave}
                       onCreateSubcategory={handleCreateSubcategory}
                       onEditCategory={handleEditCategoryByName}
                       onDeleteCategory={handleDeleteCategoryByName}
@@ -1418,6 +1540,7 @@ const FilterSidebarComponent = ({
                                         : "hover:bg-muted"
                                     )}
                                     onPointerDown={(event) => handleCategoryPointerDown(event, name)}
+                                    onPointerLeave={handlePointerLeave}
                                   >
                                     <Checkbox
                                       checked={getCheckboxVisualState(categoryState)}
@@ -1511,14 +1634,15 @@ const FilterSidebarComponent = ({
                         <ContextMenu key={name}>
                           <ContextMenuTrigger asChild>
                             <label
-                              className={cn(
-                                "flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer",
-                                categoryState === "exclude"
-                                  ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
-                                  : "hover:bg-muted"
-                              )}
-                              onPointerDown={(event) => handleCategoryPointerDown(event, name)}
-                            >
+                            className={cn(
+                              "flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer",
+                              categoryState === "exclude"
+                                ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
+                                : "hover:bg-muted"
+                            )}
+                            onPointerDown={(event) => handleCategoryPointerDown(event, name)}
+                            onPointerLeave={handlePointerLeave}
+                          >
                               <Checkbox
                                 checked={getCheckboxVisualState(categoryState)}
                                 onCheckedChange={() => handleCategoryCheckboxChange(name)}
@@ -1645,6 +1769,7 @@ const FilterSidebarComponent = ({
                       untaggedState === "exclude" ? "bg-destructive/10 text-destructive hover:bg-destructive/15" : "hover:bg-muted"
                     )}
                     onPointerDown={(event) => handleTagPointerDown(event, "")}
+                    onPointerLeave={handlePointerLeave}
                   >
                     <Checkbox
                       checked={getCheckboxVisualState(untaggedState)}
@@ -1725,6 +1850,7 @@ const FilterSidebarComponent = ({
                                         : "hover:bg-muted"
                                     )}
                                     onPointerDown={(event) => handleTagPointerDown(event, tag)}
+                                    onPointerLeave={handlePointerLeave}
                                   >
                                     <Checkbox
                                       checked={getCheckboxVisualState(tagState)}
@@ -1782,14 +1908,15 @@ const FilterSidebarComponent = ({
                         <ContextMenu key={tag}>
                           <ContextMenuTrigger asChild>
                             <label
-                              className={cn(
-                                "flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer",
-                                tagState === "exclude"
-                                  ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
-                                  : "hover:bg-muted"
-                              )}
-                              onPointerDown={(event) => handleTagPointerDown(event, tag)}
-                            >
+                            className={cn(
+                              "flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer",
+                              tagState === "exclude"
+                                ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
+                                : "hover:bg-muted"
+                            )}
+                            onPointerDown={(event) => handleTagPointerDown(event, tag)}
+                            onPointerLeave={handlePointerLeave}
+                          >
                               <Checkbox
                                 checked={getCheckboxVisualState(tagState)}
                                 onCheckedChange={() => handleTagCheckboxChange(tag)}
@@ -1876,6 +2003,7 @@ const FilterSidebarComponent = ({
                         : "hover:bg-muted"
                     )}
                     onPointerDown={(event) => handleTrackerPointerDown(event, "")}
+                    onPointerLeave={handlePointerLeave}
                   >
                     <Checkbox
                       checked={getCheckboxVisualState(noTrackerState)}
@@ -1949,6 +2077,7 @@ const FilterSidebarComponent = ({
                                         : "hover:bg-muted"
                                     )}
                                     onPointerDown={(event) => handleTrackerPointerDown(event, tracker)}
+                                    onPointerLeave={handlePointerLeave}
                                   >
                                     <Checkbox
                                       checked={getCheckboxVisualState(trackerState)}
@@ -2003,14 +2132,15 @@ const FilterSidebarComponent = ({
                         <ContextMenu key={tracker}>
                           <ContextMenuTrigger asChild>
                             <label
-                              className={cn(
-                                "flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer",
-                                trackerState === "exclude"
-                                  ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
-                                  : "hover:bg-muted"
-                              )}
-                              onPointerDown={(event) => handleTrackerPointerDown(event, tracker)}
-                            >
+                            className={cn(
+                              "flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer",
+                              trackerState === "exclude"
+                                ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
+                                : "hover:bg-muted"
+                            )}
+                            onPointerDown={(event) => handleTrackerPointerDown(event, tracker)}
+                            onPointerLeave={handlePointerLeave}
+                          >
                               <Checkbox
                                 checked={getCheckboxVisualState(trackerState)}
                                 onCheckedChange={() => handleTrackerCheckboxChange(tracker)}
