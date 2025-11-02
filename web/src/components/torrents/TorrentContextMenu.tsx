@@ -437,7 +437,7 @@ interface ExternalProgramsSubmenuProps {
 }
 
 function ExternalProgramsSubmenu({ instanceId, hashes }: ExternalProgramsSubmenuProps) {
-  const { data: programs, isLoading, isError } = useQuery({
+  const { data: programs, isLoading } = useQuery({
     queryKey: ["externalPrograms", "enabled"],
     queryFn: () => api.listExternalPrograms(),
     select: (data) => data.filter(p => p.enabled),
@@ -483,14 +483,6 @@ function ExternalProgramsSubmenu({ instanceId, hashes }: ExternalProgramsSubmenu
   const handleExecute = useCallback((program: ExternalProgram) => {
     executeMutation.mutate({ program, instanceId, hashes })
   }, [executeMutation, instanceId, hashes])
-
-  if (isError) {
-    return (
-      <ContextMenuItem disabled>
-        Failed to load programs
-      </ContextMenuItem>
-    )
-  }
 
   if (isLoading) {
     return (
