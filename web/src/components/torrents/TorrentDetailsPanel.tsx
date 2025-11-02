@@ -1516,7 +1516,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                   </div>
                 ) : matchingTorrents.length > 0 ? (
                   <div className="space-y-4">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex flex-col gap-3">
                       <div className="flex flex-col gap-1">
                         <div className="flex items-center gap-2">
                           <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Cross-Seed Matches</h3>
@@ -1532,7 +1532,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                             : `${matchingTorrents.length} matching torrent${matchingTorrents.length !== 1 ? 's' : ''} found across all instances`}
                         </span>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         {selectedCrossSeedTorrents.size > 0 ? (
                           <>
                             <Button
@@ -1609,14 +1609,14 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                                   className="mt-0.5 shrink-0"
                                   aria-label={`Select ${displayName}`}
                                 />
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-medium truncate">{displayName}</p>
-                                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                                    <span>Instance: {match.instanceName}</span>
-                                    <span>•</span>
+                                <div className="flex-1 min-w-0 space-y-1">
+                                  <p className="text-sm font-medium break-words" title={displayName}>{displayName}</p>
+                                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                                    <span className="shrink-0">Instance: {match.instanceName}</span>
+                                    <span className="shrink-0">•</span>
                                     <Tooltip>
                                       <TooltipTrigger asChild>
-                                        <span className="cursor-help underline decoration-dotted">
+                                        <span className="cursor-help underline decoration-dotted shrink-0">
                                           Match: {matchLabel}
                                         </span>
                                       </TooltipTrigger>
@@ -1626,23 +1626,23 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                                     </Tooltip>
                                     {!incognitoMode && trackerHostname && (
                                       <>
-                                        <span>•</span>
-                                        <span>Tracker: {trackerHostname}</span>
+                                        <span className="shrink-0">•</span>
+                                        <span className="break-all">Tracker: {trackerHostname}</span>
                                       </>
                                     )}
                                     {!incognitoMode && match.category && (
                                       <>
-                                        <span>•</span>
-                                        <span>Category: {match.category}</span>
+                                        <span className="shrink-0">•</span>
+                                        <span className="break-all">Category: {match.category}</span>
                                       </>
                                     )}
                                   </div>
                                 </div>
-                                <div className="flex flex-wrap gap-1.5 justify-end shrink-0">
-                                  <Badge variant={isComplete ? "default" : "secondary"} className="text-xs">
+                                <div className="flex flex-col gap-1.5 shrink-0">
+                                  <Badge variant={isComplete ? "default" : "secondary"} className="text-xs whitespace-nowrap">
                                     {match.state}
                                   </Badge>
-                                  <Badge variant="outline" className="text-xs">
+                                  <Badge variant="outline" className="text-xs whitespace-nowrap">
                                     {formatBytes(match.size)}
                                   </Badge>
                                 </div>
