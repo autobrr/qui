@@ -328,6 +328,8 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	supportsSubcategories := client.SupportsSubcategories()
 	useSubcategories := resolveUseSubcategories(supportsSubcategories, mainData, categories)
 
+	var manualSourceTorrents []qbt.Torrent
+
 	if useManualFiltering {
 		// Use manual filtering - get all torrents and filter manually
 		log.Debug().
@@ -359,6 +361,9 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		if trackerHealthSupported && needsTrackerHydration {
 			filteredTorrents, trackerMap, _ = sm.enrichTorrentsWithTrackerData(ctx, client, filteredTorrents, trackerMap)
 		}
+
+		// Preserve the full torrent list so we can reuse it for counts without performing another fetch.
+		manualSourceTorrents = filteredTorrents
 
 		filteredTorrents = sm.applyManualFilters(client, filteredTorrents, filters, mainData, categories, useSubcategories)
 	} else {
@@ -483,7 +488,12 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 	// Calculate counts from ALL torrents (not filtered) for sidebar
 	// This uses the same cached data, so it's very fast
-	allTorrents := getTorrents(qbt.TorrentFilterOptions{})
+	var allTorrents []qbt.Torrent
+	if useManualFiltering {
+		allTorrents = manualSourceTorrents
+	} else {
+		allTorrents = getTorrents(qbt.TorrentFilterOptions{})
+	}
 
 	useSubcategories = resolveUseSubcategories(supportsSubcategories, mainData, categories)
 
@@ -492,6 +502,13 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	if skipTrackerHydration {
 		counts = nil
 	} else {
+		if len(allTorrents) == 0 {
+			log.Trace().
+				Int("instanceID", instanceID).
+				Bool("useManualFiltering", useManualFiltering).
+				Msg("All torrent list empty when calculating counts; refetching")
+			allTorrents = getTorrents(qbt.TorrentFilterOptions{})
+		}
 		counts, trackerMap, enrichedAll = sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents, mainData, trackerMap, trackerHealthSupported, useSubcategories)
 	}
 
