@@ -487,6 +487,7 @@ func (m *StreamManager) processGroup(groupKey string) {
 		}
 		eventType := group.pendingType
 		meta := group.pendingMeta
+		opts := group.options
 		group.hasPending = false
 		group.mu.Unlock()
 
@@ -495,7 +496,7 @@ func (m *StreamManager) processGroup(groupKey string) {
 			continue
 		}
 
-		payload := m.buildGroupPayload(group, eventType, meta)
+		payload := m.buildGroupPayload(group, opts, eventType, meta)
 		if payload == nil {
 			continue
 		}
@@ -506,7 +507,7 @@ func (m *StreamManager) processGroup(groupKey string) {
 	}
 }
 
-func (m *StreamManager) buildGroupPayload(group *subscriptionGroup, eventType string, meta *StreamMeta) *StreamPayload {
+func (m *StreamManager) buildGroupPayload(group *subscriptionGroup, opts StreamOptions, eventType string, meta *StreamMeta) *StreamPayload {
 	if group == nil {
 		return nil
 	}
@@ -520,7 +521,6 @@ func (m *StreamManager) buildGroupPayload(group *subscriptionGroup, eventType st
 	ctx, cancel := context.WithTimeout(m.ctx, 10*time.Second)
 	defer cancel()
 
-	opts := group.options
 	response, err := m.syncManager.GetTorrentsWithFilters(
 		ctx,
 		opts.InstanceID,
