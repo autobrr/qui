@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS external_programs (
     args_template TEXT NOT NULL DEFAULT '',
     enabled INTEGER NOT NULL DEFAULT 1,
     use_terminal INTEGER NOT NULL DEFAULT 1,
+    path_mappings TEXT NOT NULL DEFAULT '[]',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
