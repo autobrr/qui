@@ -49,6 +49,7 @@ import (
 	"context"
 	"database/sql"
 	"embed"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -980,19 +981,41 @@ func (db *DB) applyAllMigrations(ctx context.Context, migrations []string) error
 				return fmt.Errorf("failed to disable foreign keys for %s: %w", filename, err)
 			}
 
-			// Read and execute migration outside transaction
-			content, err := migrationsFS.ReadFile("migrations/" + filename)
-			if err != nil {
-				return fmt.Errorf("failed to read migration file %s: %w", filename, err)
-			}
+			// Run migration within explicit transaction while foreign keys are disabled
+			if err := func() error {
+				fkTx, err := db.writerConn.BeginTx(ctx, nil)
+				if err != nil {
+					return fmt.Errorf("failed to begin migration transaction for %s: %w", filename, err)
+				}
+				committed := false
+				defer func() {
+					if !committed {
+						if rollErr := fkTx.Rollback(); rollErr != nil && !errors.Is(rollErr, sql.ErrTxDone) {
+							log.Error().Err(rollErr).Str("migration", filename).Msg("rollback failed for migration transaction")
+						}
+					}
+				}()
 
-			if _, err := db.writerConn.ExecContext(ctx, string(content)); err != nil {
-				return fmt.Errorf("failed to execute migration %s: %w", filename, err)
-			}
+				content, err := migrationsFS.ReadFile("migrations/" + filename)
+				if err != nil {
+					return fmt.Errorf("failed to read migration file %s: %w", filename, err)
+				}
 
-			// Record migration
-			if _, err := db.writerConn.ExecContext(ctx, "INSERT INTO migrations (filename) VALUES (?)", filename); err != nil {
-				return fmt.Errorf("failed to record migration %s: %w", filename, err)
+				if _, err := fkTx.ExecContext(ctx, string(content)); err != nil {
+					return fmt.Errorf("failed to execute migration %s: %w", filename, err)
+				}
+
+				if _, err := fkTx.ExecContext(ctx, "INSERT INTO migrations (filename) VALUES (?)", filename); err != nil {
+					return fmt.Errorf("failed to record migration %s: %w", filename, err)
+				}
+
+				if err := fkTx.Commit(); err != nil {
+					return fmt.Errorf("failed to commit migration %s: %w", filename, err)
+				}
+				committed = true
+				return nil
+			}(); err != nil {
+				return err
 			}
 
 			// Re-enable foreign keys explicitly
