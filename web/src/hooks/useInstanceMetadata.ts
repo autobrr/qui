@@ -3,14 +3,15 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useQuery } from "@tanstack/react-query"
+import { useMemo } from "react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import type { AppPreferences, Category } from "@/types"
 
-interface InstanceMetadata {
+export interface InstanceMetadata {
   categories: Record<string, Category>
   tags: string[]
-  preferences: AppPreferences
+  preferences?: AppPreferences
 }
 
 /**
@@ -19,18 +20,35 @@ interface InstanceMetadata {
  * Note: Counts are now included in the torrents response, so we don't fetch them separately
  */
 export function useInstanceMetadata(instanceId: number) {
+  const queryClient = useQueryClient()
+  const queryKey = useMemo(() => ["instance-metadata", instanceId] as const, [instanceId])
+
   const query = useQuery<InstanceMetadata>({
-    queryKey: ["instance-metadata", instanceId],
+    queryKey,
     queryFn: async () => {
-      // Fetch metadata in parallel for efficiency
+      const cached = queryClient.getQueryData<InstanceMetadata>(queryKey)
+
+      const categoriesPromise =
+        cached && typeof cached.categories !== "undefined"
+          ? Promise.resolve(cached.categories)
+          : api.getCategories(instanceId)
+
+      const tagsPromise =
+        cached && typeof cached.tags !== "undefined"
+          ? Promise.resolve(cached.tags)
+          : api.getTags(instanceId)
+
+      const preferencesPromise = api.getInstancePreferences(instanceId)
+
       const [categories, tags, preferences] = await Promise.all([
-        api.getCategories(instanceId),
-        api.getTags(instanceId),
-        api.getInstancePreferences(instanceId),
+        categoriesPromise,
+        tagsPromise,
+        preferencesPromise,
       ])
 
       return { categories, tags, preferences }
     },
+    initialData: () => queryClient.getQueryData<InstanceMetadata>(queryKey),
     staleTime: 60000, // 1 minute - metadata doesn't change often
     gcTime: 1800000, // Keep in cache for 30 minutes to support cross-instance navigation
     refetchInterval: 30000, // Refetch every 30 seconds

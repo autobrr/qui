@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import type { InstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { api } from "@/lib/api"
 import { useSyncStream } from "@/contexts/SyncStreamContext"
@@ -43,6 +44,49 @@ export function useTorrentsList(
   const pageSize = 300 // Load 300 at a time (backend default)
   const queryClient = useQueryClient()
 
+  const metadataQueryKey = useMemo(
+    () => ["instance-metadata", instanceId] as const,
+    [instanceId]
+  )
+
+  const updateMetadataCache = useCallback(
+    (source?: TorrentResponse | null) => {
+      if (!source) {
+        return
+      }
+
+      const hasCategories = Object.prototype.hasOwnProperty.call(source, "categories")
+      const hasTags = Object.prototype.hasOwnProperty.call(source, "tags")
+
+      if (!hasCategories && !hasTags) {
+        return
+      }
+
+      queryClient.setQueryData<InstanceMetadata | undefined>(
+        metadataQueryKey,
+        previous => {
+          const nextCategories =
+            hasCategories && source.categories !== undefined
+              ? source.categories ?? {}
+              : previous?.categories ?? {}
+          const nextTags =
+            hasTags && source.tags !== undefined
+              ? source.tags ?? []
+              : previous?.tags ?? []
+
+          const next: InstanceMetadata = {
+            categories: nextCategories,
+            tags: nextTags,
+            preferences: previous?.preferences,
+          }
+
+          return next
+        }
+      )
+    },
+    [metadataQueryKey, queryClient]
+  )
+
   const streamQueryKey = useMemo(
     () => ["torrents-list", instanceId, 0, filters, search, sort, order] as const,
     [instanceId, filters, search, sort, order]
@@ -70,6 +114,7 @@ export function useTorrentsList(
         return
       }
       setLastStreamSnapshot(payload.data)
+      updateMetadataCache(payload.data)
       queryClient.setQueryData(streamQueryKey, payload.data)
       setAllTorrents(prev => {
         const nextTorrents = payload.data?.torrents ?? []
@@ -120,7 +165,7 @@ export function useTorrentsList(
         setHasLoadedAll(!payload.data.hasMore)
       }
     },
-    [currentPage, queryClient, streamQueryKey]
+    [currentPage, queryClient, streamQueryKey, updateMetadataCache]
   )
 
   const streamState = useSyncStream(streamParams, {
@@ -214,6 +259,8 @@ export function useTorrentsList(
       return
     }
 
+    updateMetadataCache(data)
+
     if (data.total !== undefined) {
       setLastKnownTotal(data.total)
     }
@@ -265,7 +312,7 @@ export function useTorrentsList(
     }
 
     setIsLoadingMore(false)
-  }, [data, currentPage, lastProcessedPage, isFetching, isPlaceholderData])
+  }, [data, currentPage, lastProcessedPage, isFetching, isPlaceholderData, updateMetadataCache])
 
   // Load more function for pagination - following TanStack Query best practices
   const loadMore = () => {
