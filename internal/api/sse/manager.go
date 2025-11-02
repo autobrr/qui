@@ -578,10 +578,21 @@ func (m *StreamManager) publishToInstance(instanceID int, payload *StreamPayload
 	}
 
 	m.mu.RLock()
-	for id := range m.instanceIndex[instanceID] {
-		m.publish(id, payload)
+	subscribers := m.instanceIndex[instanceID]
+	if len(subscribers) == 0 {
+		m.mu.RUnlock()
+		return
+	}
+
+	ids := make([]string, 0, len(subscribers))
+	for id := range subscribers {
+		ids = append(ids, id)
 	}
 	m.mu.RUnlock()
+
+	for _, id := range ids {
+		m.publish(id, payload)
+	}
 }
 
 func (m *StreamManager) publish(id string, payload *StreamPayload) {
