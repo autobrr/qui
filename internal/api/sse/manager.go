@@ -205,8 +205,6 @@ func (m *StreamManager) Prepare(ctx context.Context, opts StreamOptions) (contex
 			m.instanceGroups[opts.InstanceID] = make(map[string]*subscriptionGroup)
 		}
 		m.instanceGroups[opts.InstanceID][state.groupKey] = group
-	} else {
-		group.options = opts
 	}
 
 	group.subsMu.Lock()
