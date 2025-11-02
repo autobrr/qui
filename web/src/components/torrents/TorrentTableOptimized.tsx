@@ -14,7 +14,7 @@ import { usePersistedColumnVisibility } from "@/hooks/usePersistedColumnVisibili
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
 import { useTorrentExporter } from "@/hooks/useTorrentExporter"
-import { useTorrentsList, TORRENT_STREAM_POLL_INTERVAL_SECONDS } from "@/hooks/useTorrentsList"
+import { TORRENT_STREAM_POLL_INTERVAL_SECONDS, useTorrentsList } from "@/hooks/useTorrentsList"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { columnFiltersToExpr } from "@/lib/column-filter-utils"
 import { formatBytes } from "@/lib/utils"
@@ -113,6 +113,7 @@ import {
 } from "lucide-react"
 import { createPortal } from "react-dom"
 import { AddTorrentDialog, type AddTorrentDropPayload } from "./AddTorrentDialog"
+import { DeleteFilesPreference } from "./DeleteFilesPreference"
 import { DraggableTableHeader } from "./DraggableTableHeader"
 import { SelectAllHotkey } from "./SelectAllHotkey"
 import {
@@ -130,7 +131,6 @@ import {
 } from "./TorrentDialogs"
 import { TorrentDropZone } from "./TorrentDropZone"
 import { createColumns } from "./TorrentTableColumns"
-import { DeleteFilesPreference } from "./DeleteFilesPreference"
 
 const TABLE_ALLOWED_VIEW_MODES = ["normal", "compact"] as const
 
@@ -2285,7 +2285,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           {/* Loading overlay - positioned absolute to scroll container */}
           {torrents.length === 0 && showLoadingState && (
             <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm z-50 animate-in fade-in duration-300">
-              <div className="text-center animate-in zoom-in-95 duration-300">
+              <div className="text-center text-xs animate-in zoom-in-95 duration-300">
                 <Logo className="h-12 w-12 animate-pulse mx-auto mb-3"/>
                 <p>Loading torrents...</p>
               </div>
@@ -2293,7 +2293,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           )}
           {torrents.length === 0 && !isLoading && (
             <div className="absolute inset-0 flex items-center justify-center z-40 animate-in fade-in duration-300 pointer-events-none">
-              <div className="text-center animate-in zoom-in-95 duration-300 text-muted-foreground">
+              <div className="text-center text-xs animate-in zoom-in-95 duration-300 text-muted-foreground">
                 <p>No torrents found</p>
               </div>
             </div>
