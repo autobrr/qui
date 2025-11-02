@@ -82,23 +82,31 @@ export function useTorrentsList(
           return nextTorrents
         }
 
-        const seen = new Set(nextTorrents.map(torrent => torrent.hash))
-        const merged = [...nextTorrents]
         const totalFromPayload =
           typeof payload.data?.total === "number" ? payload.data.total : undefined
-        let remainingSlots =
-          totalFromPayload !== undefined ? Math.max(0, totalFromPayload - nextTorrents.length) : undefined
 
-        for (const torrent of prev) {
-          if (!seen.has(torrent.hash)) {
-            if (remainingSlots !== undefined) {
-              if (remainingSlots === 0) {
-                break
-              }
-              remainingSlots -= 1
-            }
-            merged.push(torrent)
-          }
+        const pageFromMeta =
+          typeof payload.meta?.page === "number" && payload.meta.page >= 0
+            ? payload.meta.page
+            : undefined
+        const pageIndex = pageFromMeta ?? 0
+        const pageStart = Math.max(0, pageIndex * pageSize)
+        const pageEnd = pageStart + nextTorrents.length
+
+        const seen = new Set(nextTorrents.map(torrent => torrent.hash))
+
+        const leadingSliceEnd = Math.min(pageStart, prev.length)
+        const leading = leadingSliceEnd > 0 ? prev.slice(0, leadingSliceEnd) : []
+        const trailingStart = Math.min(pageEnd, prev.length)
+        const trailing = trailingStart < prev.length ? prev.slice(trailingStart) : []
+
+        const dedupedLeading = leading.filter(torrent => !seen.has(torrent.hash))
+        const dedupedTrailing = trailing.filter(torrent => !seen.has(torrent.hash))
+
+        const merged = [...dedupedLeading, ...nextTorrents, ...dedupedTrailing]
+
+        if (totalFromPayload !== undefined && merged.length > totalFromPayload) {
+          return merged.slice(0, totalFromPayload)
         }
 
         return merged
