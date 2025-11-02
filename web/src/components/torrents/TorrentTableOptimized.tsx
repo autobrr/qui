@@ -623,7 +623,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const { exportTorrents, isExporting: isExportingTorrent } = useTorrentExporter({ instanceId, incognitoMode })
   const [speedUnit, setSpeedUnit] = useSpeedUnits()
-  const { formatTimestamp } = useDateTimeFormatters()
+  const { formatTimestamp, formatDate } = useDateTimeFormatters()
   const { preferences } = useInstancePreferences(instanceId)
 
   // Desktop view mode state (separate from mobile view mode)
@@ -908,6 +908,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     isLoadingMore,
     hasLoadedAll,
     loadMore: backendLoadMore,
+    streamConnected,
+    streamMeta,
+    isStreaming,
+    streamError,
+    streamRetrying,
+    streamNextRetryAt,
+    streamRetryAttempt,
   } = useTorrentsList(instanceId, {
     search: effectiveSearch,
     filters: {
@@ -926,6 +933,99 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     sort: activeSortField,
     order: activeSortOrder,
   })
+
+  const lastStreamUpdate = useMemo(() => {
+    if (!streamMeta?.timestamp) {
+      return null
+    }
+
+    const parsed = new Date(streamMeta.timestamp)
+    if (Number.isNaN(parsed.getTime())) {
+      return null
+    }
+
+    return parsed
+  }, [streamMeta])
+
+  const streamStatus = useMemo(() => {
+    const now = Date.now()
+    const clientRetrySeconds =
+      typeof streamNextRetryAt === "number"
+        ? Math.max(0, Math.ceil((streamNextRetryAt - now) / 1000))
+        : null
+    const serverRetrySeconds =
+      typeof streamMeta?.retryInSeconds === "number" && streamMeta.retryInSeconds > 0
+        ? streamMeta.retryInSeconds
+        : null
+
+    if (streamRetrying || (clientRetrySeconds !== null && clientRetrySeconds > 0)) {
+      return {
+        label: "Stream reconnecting…",
+        message: streamError ?? "Attempting to restore SSE connection.",
+        secondary:
+          clientRetrySeconds && clientRetrySeconds > 0
+            ? `Retrying in ${clientRetrySeconds}s (attempt ${Math.max(streamRetryAttempt, 1)})`
+            : "Retry scheduled",
+        tone: "warning" as const,
+        animate: true,
+      }
+    }
+
+    if (streamError) {
+      const secondary =
+        serverRetrySeconds && serverRetrySeconds > 0
+          ? `Server retry in ${serverRetrySeconds}s — polling fallback active`
+          : "Retrying automatically with polling fallback"
+      return {
+        label: "Stream offline – using polling",
+        message: streamError,
+        secondary,
+        tone: "error" as const,
+        animate: false,
+      }
+    }
+
+    if (isStreaming) {
+      return {
+        label: "Live updates via SSE",
+        message: "Polling is paused while the stream is healthy.",
+        secondary: lastStreamUpdate ? `Last update ${formatDate(lastStreamUpdate)}` : "Polling paused",
+        tone: "success" as const,
+        animate: false,
+      }
+    }
+
+    return {
+      label: "Connecting to stream…",
+      message: "Using 3s polling until the SSE connection is ready.",
+      secondary: "Polling every 3s",
+      tone: streamConnected ? ("warning" as const) : ("muted" as const),
+      animate: !streamConnected,
+    }
+  }, [
+    formatDate,
+    isStreaming,
+    lastStreamUpdate,
+    streamConnected,
+    streamError,
+    streamRetrying,
+    streamNextRetryAt,
+    streamRetryAttempt,
+    streamMeta,
+  ])
+
+  const streamToneStyles = useMemo(() => {
+    switch (streamStatus.tone) {
+      case "success":
+        return { dot: "bg-emerald-500 shadow-[0_0_0_2px] shadow-emerald-500/25", text: "text-emerald-600 dark:text-emerald-400" }
+      case "error":
+        return { dot: "bg-destructive shadow-[0_0_0_2px] shadow-destructive/20", text: "text-destructive" }
+      case "warning":
+        return { dot: "bg-amber-400 shadow-[0_0_0_2px] shadow-amber-400/25", text: "text-amber-600 dark:text-amber-400" }
+      default:
+        return { dot: "bg-muted-foreground/60", text: "text-muted-foreground" }
+    }
+  }, [streamStatus.tone])
 
   const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? true
   const supportsSubcategories = capabilities?.supportsSubcategories ?? false
@@ -2482,52 +2582,76 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
         {/* Status bar */}
         <div className="flex flex-wrap items-center justify-between gap-2 px-2 py-1.5 border-t flex-shrink-0 select-none">
-          <div className="text-xs text-muted-foreground min-w-[200px]">
-            {effectiveSelectionCount > 0 ? (
-              <>
-                <span>
-                  {isAllSelected && excludedFromSelectAll.size === 0 ? "All" : effectiveSelectionCount} selected
-                  {selectedTotalSize > 0 && <> • {selectedFormattedSize}</>}
-                </span>
-                {/* Keyboard shortcuts helper - only show on desktop */}
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="hidden sm:inline-block ml-2 text-xs opacity-70 cursor-help">
-                      Selection shortcuts
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <div className="text-xs">
-                      <div>Shift+click for range</div>
-                      <div>{isMac ? "Cmd" : "Ctrl"}+click for multiple</div>
-                    </div>
-                  </TooltipContent>
-                </Tooltip>
-              </>
-            ) : (
-              <>
-                {/* Show special loading message when fetching without cache (cold load) */}
-                {isLoading && !isCachedData && !isStaleData && torrents.length === 0 ? (
-                  <>
-                    <Loader2 className="h-3 w-3 animate-spin inline mr-1"/>
-                    Loading torrents...
-                  </>
-                ) : totalCount === 0 ? (
-                  "No torrents found"
-                ) : (
-                  <>
-                    {hasLoadedAll ? (
-                      `${torrents.length} torrent${torrents.length !== 1 ? "s" : ""}`
-                    ) : isLoadingMore ? (
-                      "Loading more torrents..."
-                    ) : (
-                      `${torrents.length} of ${totalCount} torrents loaded`
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            {/* Compact SSE status */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="flex items-center gap-1.5 cursor-default text-[11px]">
+                  <span
+                    className={cn(
+                      "h-1.5 w-1.5 rounded-full transition",
+                      streamToneStyles.dot,
+                      streamStatus.animate && "animate-pulse"
                     )}
-                    {hasLoadedAll && safeLoadedRows < rows.length && " (scroll for more)"}
-                  </>
-                )}
-              </>
-            )}
+                  />
+                  <span className={cn("opacity-80", streamToneStyles.text)}>{streamStatus.label}</span>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs text-xs">
+                <div className="space-y-1">
+                  <p className="font-medium">{streamStatus.label}</p>
+                  {streamStatus.message && <p>{streamStatus.message}</p>}
+                  {streamStatus.secondary && <p className="text-muted-foreground">{streamStatus.secondary}</p>}
+                </div>
+              </TooltipContent>
+            </Tooltip>
+            <div>
+              {effectiveSelectionCount > 0 ? (
+                <>
+                  <span>
+                    {isAllSelected && excludedFromSelectAll.size === 0 ? "All" : effectiveSelectionCount} selected
+                    {selectedTotalSize > 0 && <> • {selectedFormattedSize}</>}
+                  </span>
+                  {/* Keyboard shortcuts helper - only show on desktop */}
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="hidden sm:inline-block ml-2 text-xs opacity-70 cursor-help">
+                        Selection shortcuts
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <div className="text-xs">
+                        <div>Shift+click for range</div>
+                        <div>{isMac ? "Cmd" : "Ctrl"}+click for multiple</div>
+                      </div>
+                    </TooltipContent>
+                  </Tooltip>
+                </>
+              ) : (
+                <>
+                  {/* Show special loading message when fetching without cache (cold load) */}
+                  {isLoading && !isCachedData && !isStaleData && torrents.length === 0 ? (
+                    <>
+                      <Loader2 className="h-3 w-3 animate-spin inline mr-1"/>
+                      Loading torrents...
+                    </>
+                  ) : totalCount === 0 ? (
+                    "No torrents found"
+                  ) : (
+                    <>
+                      {hasLoadedAll ? (
+                        `${torrents.length} torrent${torrents.length !== 1 ? "s" : ""}`
+                      ) : isLoadingMore ? (
+                        "Loading more torrents..."
+                      ) : (
+                        `${torrents.length} of ${totalCount} torrents loaded`
+                      )}
+                      {hasLoadedAll && safeLoadedRows < rows.length && " (scroll for more)"}
+                    </>
+                  )}
+                </>
+              )}
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center justify-end gap-2 text-xs">

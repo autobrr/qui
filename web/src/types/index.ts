@@ -250,6 +250,21 @@ export interface TorrentResponse {
   trackerHealthSupported?: boolean
 }
 
+export interface TorrentStreamMeta {
+  instanceId: number
+  rid?: number
+  fullUpdate?: boolean
+  timestamp: string
+  retryInSeconds?: number
+}
+
+export interface TorrentStreamPayload {
+  type: "init" | "update" | "error"
+  data?: TorrentResponse
+  meta?: TorrentStreamMeta
+  err?: string
+}
+
 // Simplified MainData - only used for Dashboard server stats
 export interface MainData {
   rid: number

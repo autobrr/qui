@@ -21,6 +21,7 @@ import (
 
 	"github.com/autobrr/qui/internal/api/handlers"
 	"github.com/autobrr/qui/internal/api/middleware"
+	"github.com/autobrr/qui/internal/api/sse"
 	"github.com/autobrr/qui/internal/auth"
 	"github.com/autobrr/qui/internal/backups"
 	"github.com/autobrr/qui/internal/config"
@@ -51,6 +52,7 @@ type Server struct {
 	updateService      *update.Service
 	trackerIconService *trackericons.Service
 	backupService      *backups.Service
+	streamManager      *sse.StreamManager
 }
 
 type Dependencies struct {
@@ -70,6 +72,11 @@ type Dependencies struct {
 }
 
 func NewServer(deps *Dependencies) *Server {
+	streamManager := sse.NewStreamManager(deps.ClientPool, deps.SyncManager, deps.InstanceStore)
+	if deps.ClientPool != nil {
+		deps.ClientPool.SetSyncEventSink(streamManager)
+	}
+
 	s := Server{
 		server: &http.Server{
 			ReadHeaderTimeout: time.Second * 15,
@@ -90,6 +97,7 @@ func NewServer(deps *Dependencies) *Server {
 		updateService:      deps.UpdateService,
 		trackerIconService: deps.TrackerIconService,
 		backupService:      deps.BackupService,
+		streamManager:      streamManager,
 	}
 
 	return &s
@@ -300,6 +308,9 @@ func (s *Server) Handler() (*chi.Mux, error) {
 					})
 
 					r.Get("/capabilities", instancesHandler.GetInstanceCapabilities)
+					if s.streamManager != nil {
+						r.Get("/stream", s.streamManager.ServeInstance)
+					}
 
 					// Torrent creator
 					r.Route("/torrent-creator", func(r chi.Router) {

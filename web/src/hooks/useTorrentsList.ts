@@ -5,9 +5,10 @@
 
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { api } from "@/lib/api"
-import type { Torrent, TorrentFilters, TorrentResponse } from "@/types"
-import { useQuery } from "@tanstack/react-query"
-import { useEffect, useMemo, useState } from "react"
+import { useSyncStream } from "@/contexts/SyncStreamContext"
+import type { Torrent, TorrentFilters, TorrentResponse, TorrentStreamPayload } from "@/types"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useCallback, useEffect, useMemo, useState } from "react"
 
 interface UseTorrentsListOptions {
   enabled?: boolean
@@ -33,6 +34,45 @@ export function useTorrentsList(
   const [lastKnownTotal, setLastKnownTotal] = useState(0)
   const [lastProcessedPage, setLastProcessedPage] = useState(-1)
   const pageSize = 300 // Load 300 at a time (backend default)
+  const queryClient = useQueryClient()
+
+  const streamQueryKey = useMemo(
+    () => ["torrents-list", instanceId, 0, filters, search, sort, order] as const,
+    [instanceId, filters, search, sort, order]
+  )
+
+  const streamParams = useMemo(() => {
+    if (!enabled) {
+      return null
+    }
+
+    return {
+      instanceId,
+      page: 0,
+      limit: pageSize,
+      sort,
+      order,
+      search: search || undefined,
+      filters,
+    }
+  }, [enabled, instanceId, pageSize, sort, order, search, filters])
+
+  const handleStreamPayload = useCallback(
+    (payload: TorrentStreamPayload) => {
+      if (!payload?.data) {
+        return
+      }
+      queryClient.setQueryData(streamQueryKey, payload.data)
+    },
+    [queryClient, streamQueryKey]
+  )
+
+  const streamState = useSyncStream(streamParams, {
+    enabled: Boolean(streamParams),
+    onMessage: handleStreamPayload,
+  })
+
+  const shouldDisablePolling = Boolean(streamParams) && streamState.connected && !streamState.error
 
   // Reset state when instanceId, filters, search, or sort changes
   // Use JSON.stringify to avoid resetting on every object reference change during polling
@@ -66,7 +106,7 @@ export function useTorrentsList(
     // Reuse the previous page's data while the next page is loading so the UI doesn't flash empty state
     placeholderData: currentPage > 0 ? ((previousData) => previousData) : undefined,
     // Only poll the first page to get fresh data - don't poll pagination pages
-    refetchInterval: currentPage === 0 ? 3000 : false,
+    refetchInterval: currentPage === 0 ? (shouldDisablePolling ? false : 3000) : false,
     refetchIntervalInBackground: false, // Don't poll when tab is not active
     enabled,
   })
@@ -227,5 +267,12 @@ export function useTorrentsList(
     isCachedData,
     isStaleData,
     cacheAge: data?.cacheMetadata?.age,
+    isStreaming: shouldDisablePolling,
+    streamConnected: streamState.connected,
+    streamError: streamState.error,
+    streamMeta: streamState.lastMeta,
+    streamRetrying: streamState.retrying,
+    streamNextRetryAt: streamState.nextRetryAt,
+    streamRetryAttempt: streamState.retryAttempt,
   }
 }

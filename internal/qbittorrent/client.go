@@ -53,6 +53,7 @@ type Client struct {
 	mu                sync.RWMutex
 	serverStateMu     sync.RWMutex
 	healthMu          sync.RWMutex
+	syncEventSink     SyncEventSink
 }
 
 func NewClient(instanceID int, instanceHost, username, password string, basicUsername, basicPassword *string, tlsSkipVerify bool) (*Client, error) {
@@ -115,12 +116,16 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 		client.updateHealthStatus(true)
 		client.updateServerState(data)
 		log.Debug().Int("instanceID", instanceID).Int("torrentCount", len(data.Torrents)).Msg("Sync manager update received, marking client as healthy")
+
+		client.dispatchMainData(data)
 	}
 
 	syncOpts.OnError = func(err error) {
 		client.updateHealthStatus(false)
 		client.clearServerState()
 		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Sync manager error received, marking client as unhealthy")
+
+		client.dispatchSyncError(err)
 	}
 
 	client.syncManager = qbtClient.NewSyncManager(syncOpts)
@@ -183,6 +188,13 @@ func (c *Client) SupportsTrackerEditing() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.supportsTrackerEditing
+}
+
+// SetSyncEventSink registers the sink that should receive sync notifications.
+func (c *Client) SetSyncEventSink(sink SyncEventSink) {
+	c.mu.Lock()
+	c.syncEventSink = sink
+	c.mu.Unlock()
 }
 
 func (c *Client) SupportsTorrentExport() bool {
@@ -434,6 +446,32 @@ func (c *Client) hydrateTorrentsWithTrackers(ctx context.Context, torrents []qbt
 func (c *Client) invalidateTrackerCache(hashes ...string) {
 	if tm := c.trackerManager(); tm != nil {
 		tm.Invalidate(hashes...)
+	}
+}
+
+func (c *Client) getSyncEventSink() SyncEventSink {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.syncEventSink
+}
+
+func (c *Client) dispatchMainData(data *qbt.MainData) {
+	if data == nil {
+		return
+	}
+
+	if sink := c.getSyncEventSink(); sink != nil {
+		sink.HandleMainData(c.instanceID, data)
+	}
+}
+
+func (c *Client) dispatchSyncError(err error) {
+	if err == nil {
+		return
+	}
+
+	if sink := c.getSyncEventSink(); sink != nil {
+		sink.HandleSyncError(c.instanceID, err)
 	}
 }
 

@@ -298,6 +298,30 @@ class ApiClient {
     )
   }
 
+  getTorrentsStreamUrl(
+    instanceId: number,
+    params: {
+      page?: number
+      limit?: number
+      sort?: string
+      order?: "asc" | "desc"
+      search?: string
+      filters?: TorrentFilters
+    }
+  ): string {
+    const searchParams = new URLSearchParams()
+    if (params.page !== undefined) searchParams.set("page", params.page.toString())
+    if (params.limit !== undefined) searchParams.set("limit", params.limit.toString())
+    if (params.sort) searchParams.set("sort", params.sort)
+    if (params.order) searchParams.set("order", params.order)
+    if (params.search) searchParams.set("search", params.search)
+    if (params.filters) searchParams.set("filters", JSON.stringify(params.filters))
+
+    const suffix = searchParams.toString()
+    const query = suffix ? `?${suffix}` : ""
+    return withBasePath(`/api/instances/${instanceId}/stream${query}`)
+  }
+
   async addTorrent(
     instanceId: number,
     data: {
