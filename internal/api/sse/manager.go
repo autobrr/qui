@@ -54,16 +54,15 @@ func streamOptionsKey(opts StreamOptions) string {
 		filtersKey = string(raw)
 	}
 
-	search := opts.Search
 	return fmt.Sprintf(
 		"%d|%d|%d|%s|%s|%s|%s",
 		opts.InstanceID,
 		opts.Page,
 		opts.Limit,
-		opts.Sort,
-		opts.Order,
-		search,
-		filtersKey,
+		strconv.Quote(opts.Sort),
+		strconv.Quote(opts.Order),
+		strconv.Quote(opts.Search),
+		strconv.Quote(filtersKey),
 	)
 }
 
