@@ -413,7 +413,7 @@ func (cp *ClientPool) resetFailureTrackingLocked(instanceID int) {
 
 	// Always clear errors from database on successful connection
 	// This ensures database cleanup even if in-memory tracking was reset (e.g., after restart)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	if clearErr := cp.errorStore.ClearErrors(ctx, instanceID); clearErr != nil {
 		log.Error().Err(clearErr).Int("instanceID", instanceID).Msg("Failed to clear errors from database")
