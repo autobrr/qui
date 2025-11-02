@@ -437,7 +437,7 @@ interface ExternalProgramsSubmenuProps {
 }
 
 function ExternalProgramsSubmenu({ instanceId, hashes }: ExternalProgramsSubmenuProps) {
-  const { data: programs, isLoading } = useQuery({
+  const { data: programs, isLoading, isError } = useQuery({
     queryKey: ["externalPrograms"],
     queryFn: () => api.listExternalPrograms(),
     staleTime: 60 * 1000, // 1 minute
@@ -480,6 +480,14 @@ function ExternalProgramsSubmenu({ instanceId, hashes }: ExternalProgramsSubmenu
   }, [executeMutation])
 
   const enabledPrograms = programs?.filter(p => p.enabled) || []
+
+  if (isError) {
+    return (
+      <ContextMenuItem disabled>
+        Failed to load programs
+      </ContextMenuItem>
+    )
+  }
 
   if (isLoading) {
     return (
