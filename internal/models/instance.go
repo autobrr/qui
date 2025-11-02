@@ -548,8 +548,22 @@ func (s *InstanceStore) UpdateOrder(ctx context.Context, instanceIDs []int) erro
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	var totalInstances int
+	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM instances").Scan(&totalInstances); err != nil {
+		return fmt.Errorf("failed to validate instance list: %w", err)
+	}
+	if len(instanceIDs) != totalInstances {
+		return fmt.Errorf("partial reordering not allowed: expected %d instances, got %d", totalInstances, len(instanceIDs))
+	}
+
+	seen := make(map[int]struct{}, len(instanceIDs))
 	updateQuery := `UPDATE instances SET sort_order = ? WHERE id = ?`
 	for order, id := range instanceIDs {
+		if _, exists := seen[id]; exists {
+			return fmt.Errorf("duplicate instance id %d in reorder payload", id)
+		}
+		seen[id] = struct{}{}
+
 		result, err := tx.ExecContext(ctx, updateQuery, order, id)
 		if err != nil {
 			return err

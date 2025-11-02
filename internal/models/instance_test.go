@@ -289,6 +289,12 @@ func TestInstanceStoreUpdateOrder(t *testing.T) {
 	err = store.UpdateOrder(ctx, []int{second.ID, first.ID})
 	require.NoError(t, err)
 
+	err = store.UpdateOrder(ctx, []int{first.ID})
+	require.ErrorContains(t, err, "partial reordering not allowed")
+
+	err = store.UpdateOrder(ctx, []int{second.ID, second.ID})
+	require.ErrorContains(t, err, "duplicate instance id")
+
 	instances, err := store.List(ctx)
 	require.NoError(t, err)
 	require.Len(t, instances, 2)
