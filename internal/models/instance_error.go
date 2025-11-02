@@ -5,11 +5,15 @@ package models
 
 import (
 	"context"
+	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
 	"github.com/autobrr/qui/internal/dbinterface"
+	"modernc.org/sqlite"
+	lib "modernc.org/sqlite/lib"
 )
 
 // Error types for categorization
@@ -33,9 +37,7 @@ type InstanceErrorStore struct {
 }
 
 func NewInstanceErrorStore(db dbinterface.Querier) *InstanceErrorStore {
-	return &InstanceErrorStore{
-		db: db,
-	}
+	return &InstanceErrorStore{db: db}
 }
 
 // isContextError checks if an error is a standard context error that should be ignored
@@ -53,43 +55,70 @@ func (s *InstanceErrorStore) RecordError(ctx context.Context, instanceID int, er
 	errorType := categorizeError(err)
 	errorMessage := err.Error()
 
+	// Start a transaction for the entire operation
+	tx, txErr := s.db.BeginTx(ctx, nil)
+	if txErr != nil {
+		return fmt.Errorf("failed to begin transaction: %w", txErr)
+	}
+	defer tx.Rollback()
+
 	// Validate that the instance exists before trying to record error
 	var exists int
 	existsQuery := `SELECT COUNT(*) FROM instances WHERE id = ?`
-	if err := s.db.QueryRowContext(ctx, existsQuery, instanceID).Scan(&exists); err != nil || exists == 0 {
+	scanErr := tx.QueryRowContext(ctx, existsQuery, instanceID).Scan(&exists)
+	if scanErr != nil {
+		if scanErr == sql.ErrNoRows {
+			// Instance doesn't exist, silently skip recording the error
+			// This can happen during instance deletion or with stale references
+			return nil
+		}
+		// Return any other Scan error up the stack with context
+		return fmt.Errorf("failed to check instance existence: %w", scanErr)
+	}
+	if exists == 0 {
 		// Instance doesn't exist, silently skip recording the error
 		// This can happen during instance deletion or with stale references
 		return nil
 	}
 
-	// Simple deduplication: check if same error was recorded in last minute
+	// Simple deduplication: check if same error was recorded in last minute using view
 	var count int
-	checkQuery := `SELECT COUNT(*) FROM instance_errors 
+	checkQuery := `SELECT COUNT(*) FROM instance_errors_view 
                    WHERE instance_id = ? AND error_type = ? AND error_message = ? 
                    AND occurred_at > datetime('now', '-1 minute')`
 
-	if err := s.db.QueryRowContext(ctx, checkQuery, instanceID, errorType, errorMessage).Scan(&count); err == nil && count > 0 {
+	if err := tx.QueryRowContext(ctx, checkQuery, instanceID, errorType, errorMessage).Scan(&count); err == nil && count > 0 {
 		return nil // Skip duplicate
 	}
 
-	// Insert the error (trigger will handle cleanup of old errors)
-	query := `INSERT INTO instance_errors (instance_id, error_type, error_message) 
-              VALUES (?, ?, ?)`
-	_, execErr := s.db.ExecContext(ctx, query, instanceID, errorType, errorMessage)
+	// Intern strings
+	ids, err := dbinterface.InternStringNullable(ctx, tx, &errorType, &errorMessage)
+	if err != nil {
+		return fmt.Errorf("failed to intern error strings: %w", err)
+	}
+
+	// Insert the error with interned IDs
+	_, execErr := tx.ExecContext(ctx, `INSERT INTO instance_errors (instance_id, error_type_id, error_message_id) VALUES (?, ?, ?)`,
+		instanceID, ids[0], ids[1])
 
 	// Handle foreign key constraint errors gracefully
-	if execErr != nil && strings.Contains(execErr.Error(), "FOREIGN KEY constraint failed") {
+	var sqlErr *sqlite.Error
+	if execErr != nil && errors.As(execErr, &sqlErr) && sqlErr.Code() == lib.SQLITE_CONSTRAINT_FOREIGNKEY {
 		// Instance was likely deleted between our check and insert, silently ignore
 		return nil
 	}
 
-	return execErr
+	if execErr != nil {
+		return execErr
+	}
+
+	return tx.Commit()
 }
 
 // GetRecentErrors retrieves the last N errors for an instance
 func (s *InstanceErrorStore) GetRecentErrors(ctx context.Context, instanceID int, limit int) ([]InstanceError, error) {
 	query := `SELECT id, instance_id, error_type, error_message, occurred_at 
-              FROM instance_errors 
+              FROM instance_errors_view 
               WHERE instance_id = ? 
               ORDER BY occurred_at DESC 
               LIMIT ?`
@@ -108,7 +137,12 @@ func (s *InstanceErrorStore) GetRecentErrors(ctx context.Context, instanceID int
 		}
 		errors = append(errors, e)
 	}
-	return errors, rows.Err()
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return errors, nil
 }
 
 // ClearErrors removes all errors for an instance (called on successful connection)
