@@ -23,6 +23,7 @@ import {
   CheckCircle,
   Copy,
   Download,
+  FastForward,
   FolderOpen,
   Gauge,
   Pause,
@@ -193,6 +194,11 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
     void onExport(hashes, torrents)
   }, [hashes, onExport, torrents])
 
+  const forceStartStates = torrents.map(t => t.force_start)
+  const allForceStarted = forceStartStates.length > 0 && forceStartStates.every(state => state === true)
+  const allForceDisabled = forceStartStates.length > 0 && forceStartStates.every(state => state === false)
+  const forceStartMixed = forceStartStates.length > 0 && !allForceStarted && !allForceDisabled
+
   // TMM state calculation
   const tmmStates = torrents.map(t => t.auto_tmm)
   const allEnabled = tmmStates.length > 0 && tmmStates.every(state => state === true)
@@ -201,6 +207,10 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
 
   const handleQueueAction = useCallback((action: "topPriority" | "increasePriority" | "decreasePriority" | "bottomPriority") => {
     onAction(action as TorrentAction, hashes)
+  }, [onAction, hashes])
+
+  const handleForceStartToggle = useCallback((enable: boolean) => {
+    onAction(TORRENT_ACTIONS.FORCE_START, hashes, { enable })
   }, [onAction, hashes])
 
   const handleSetCategory = useCallback((category: string) => {
@@ -232,6 +242,34 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
           <Play className="mr-2 h-4 w-4" />
           Resume {count > 1 ? `(${count})` : ""}
         </ContextMenuItem>
+        {forceStartMixed ? (
+          <>
+            <ContextMenuItem
+              onClick={() => handleForceStartToggle(true)}
+              disabled={isPending}
+            >
+              <FastForward className="mr-2 h-4 w-4" />
+              Force Start {count > 1 ? `(${count} Mixed)` : "(Mixed)"}
+            </ContextMenuItem>
+            <ContextMenuItem
+              onClick={() => handleForceStartToggle(false)}
+              disabled={isPending}
+            >
+              <FastForward className="mr-2 h-4 w-4" />
+              Disable Force Start {count > 1 ? `(${count} Mixed)` : "(Mixed)"}
+            </ContextMenuItem>
+          </>
+        ) : (
+          <ContextMenuItem
+            onClick={() => handleForceStartToggle(!allForceStarted)}
+            disabled={isPending}
+          >
+            <FastForward className="mr-2 h-4 w-4" />
+            {allForceStarted
+              ? `Disable Force Start ${count > 1 ? `(${count})` : ""}`
+              : `Force Start ${count > 1 ? `(${count})` : ""}`}
+          </ContextMenuItem>
+        )}
         <ContextMenuItem
           onClick={() => onAction(TORRENT_ACTIONS.PAUSE, hashes)}
           disabled={isPending}

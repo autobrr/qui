@@ -479,7 +479,7 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 		"pause", "resume", "delete", "deleteWithFiles",
 		"recheck", "reannounce", "increasePriority", "decreasePriority",
 		"topPriority", "bottomPriority", "addTags", "removeTags", "setTags", "setCategory",
-		"toggleAutoTMM", "setShareLimit", "setUploadLimit", "setDownloadLimit", "setLocation",
+		"toggleAutoTMM", "forceStart", "setShareLimit", "setUploadLimit", "setDownloadLimit", "setLocation",
 		"editTrackers", "addTrackers", "removeTrackers",
 	}
 
@@ -556,6 +556,8 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 		err = h.syncManager.SetCategory(r.Context(), instanceID, targetHashes, req.Category)
 	case "toggleAutoTMM":
 		err = h.syncManager.SetAutoTMM(r.Context(), instanceID, targetHashes, req.Enable)
+	case "forceStart":
+		err = h.syncManager.SetForceStart(r.Context(), instanceID, targetHashes, req.Enable)
 	case "setShareLimit":
 		err = h.syncManager.SetTorrentShareLimit(r.Context(), instanceID, targetHashes, req.RatioLimit, req.SeedingTimeLimit, req.InactiveSeedingTimeLimit)
 	case "setUploadLimit":
