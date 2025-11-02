@@ -438,8 +438,9 @@ interface ExternalProgramsSubmenuProps {
 
 function ExternalProgramsSubmenu({ instanceId, hashes }: ExternalProgramsSubmenuProps) {
   const { data: programs, isLoading, isError } = useQuery({
-    queryKey: ["externalPrograms"],
+    queryKey: ["externalPrograms", "enabled"],
     queryFn: () => api.listExternalPrograms(),
+    select: (data) => data.filter(p => p.enabled),
     staleTime: 60 * 1000, // 1 minute
   })
 
@@ -466,12 +467,12 @@ function ExternalProgramsSubmenu({ instanceId, hashes }: ExternalProgramsSubmenu
         toast.warning(`Executed for ${successCount} torrent(s), failed for ${failureCount}`)
       }
 
-      // Show detailed errors if any
-      response.results.forEach(result => {
-        if (!result.success && result.error) {
-          console.error(`External program failed for ${result.hash}:`, result.error)
-        }
-      })
+      // Log detailed errors in development only to avoid leaking PII/paths in production
+      if (import.meta.env.DEV) {
+        response.results.forEach(r => {
+          if (!r.success && r.error) console.error(`External program failed for ${r.hash}:`, r.error)
+        })
+      }
     },
     onError: (error) => {
       const message = error instanceof Error ? error.message : String(error)
@@ -482,8 +483,6 @@ function ExternalProgramsSubmenu({ instanceId, hashes }: ExternalProgramsSubmenu
   const handleExecute = useCallback((program: ExternalProgram) => {
     executeMutation.mutate({ program, instanceId, hashes })
   }, [executeMutation, instanceId, hashes])
-
-  const enabledPrograms = programs?.filter(p => p.enabled) || []
 
   if (isError) {
     return (
@@ -501,7 +500,8 @@ function ExternalProgramsSubmenu({ instanceId, hashes }: ExternalProgramsSubmenu
     )
   }
 
-  if (enabledPrograms.length === 0) {
+  // programs is already filtered to enabled by select
+  if (!programs || programs.length === 0) {
     return null // Don't show the submenu if no programs are enabled
   }
 
@@ -512,7 +512,7 @@ function ExternalProgramsSubmenu({ instanceId, hashes }: ExternalProgramsSubmenu
         External Programs
       </ContextMenuSubTrigger>
       <ContextMenuSubContent>
-        {enabledPrograms.map(program => (
+        {programs.map(program => (
           <ContextMenuItem
             key={program.id}
             onClick={() => handleExecute(program)}
