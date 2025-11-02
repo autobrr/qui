@@ -102,6 +102,11 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     return () => clearTimeout(timer)
   }, [torrent?.hash])
 
+  // Clear cross-seed selection when torrent changes
+  useEffect(() => {
+    setSelectedCrossSeedTorrents(new Set())
+  }, [torrent?.hash])
+
   const handleTabChange = useCallback((value: string) => {
     const nextTab = isTabValue(value) ? value : DEFAULT_TAB
     setActiveTab(nextTab)
@@ -423,6 +428,22 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   
   // Show loading indicator only if ANY query is still loading AND we have no results yet
   const isLoadingMatches = matchingTorrents.length === 0 && matchingTorrentsQueries.some((query: { isLoading: boolean }) => query.isLoading)
+
+  // Prune stale selections when matching torrents change
+  useEffect(() => {
+    if (matchingTorrents.length === 0) {
+      // No matches, clear all selections
+      setSelectedCrossSeedTorrents(new Set())
+    } else {
+      // Remove selections for torrents that no longer exist in matches
+      const validKeys = new Set(matchingTorrents.map(t => `${t.instanceId}-${t.hash}`))
+      setSelectedCrossSeedTorrents(prev => {
+        const updated = new Set(Array.from(prev).filter(key => validKeys.has(key)))
+        // Only update if something changed to avoid infinite loops
+        return updated.size !== prev.size ? updated : prev
+      })
+    }
+  }, [matchingTorrents])
 
   // Fetch torrent trackers
   const { data: trackers, isLoading: loadingTrackers } = useQuery({
