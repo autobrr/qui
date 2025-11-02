@@ -182,6 +182,25 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
   const { infohashV1: resolvedInfohashV1, infohashV2: resolvedInfohashV2 } = resolveTorrentHashes(properties as { hash?: string; infohash_v1?: string; infohash_v2?: string } | undefined, torrent ?? undefined)
 
+  // Detect if this is Blu-ray/DVD content by folder structure (skip deep file matching for these)
+  const discContentPatterns = [
+    /\bBDMV\b/i,        // Blu-ray folder structure
+    /\bVIDEO_TS\b/i,    // DVD folder structure
+    /\bAUDIO_TS\b/i,    // DVD audio folder structure
+  ]
+  const isDiscContent = torrent ? discContentPatterns.some(pattern => 
+    pattern.test(torrent.name) || pattern.test(torrent.content_path || '')
+  ) : false
+
+  // Fetch current torrent's files once for cross-seed deep matching (skip for disc content)
+  const { data: currentTorrentFiles } = useQuery({
+    queryKey: ["torrent-files-crossseed", instanceId, torrent?.hash],
+    queryFn: () => api.getTorrentFiles(instanceId, torrent!.hash),
+    enabled: isCrossSeedTabActive && !!torrent && !isDiscContent,
+    staleTime: 60000,
+    gcTime: 5 * 60 * 1000,
+  })
+
   // Fetch all instances for cross-seed tab
   const { data: allInstances } = useQuery({
     queryKey: ["instances"],
@@ -192,9 +211,12 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   // Fetch matching torrents from all instances
   const matchingTorrentsQueries = useQueries({
     queries: (allInstances || []).map((instance) => ({
-      queryKey: ["torrents", instance.id, "crossseed", resolvedInfohashV1, resolvedInfohashV2, torrent?.name, torrent?.content_path],
+      queryKey: ["torrents", instance.id, "crossseed", resolvedInfohashV1, resolvedInfohashV2, torrent?.name, torrent?.content_path, currentTorrentFiles?.length],
       queryFn: async () => {
         if (!torrent) return []
+        
+        // Use pre-fetched current torrent files for deep matching
+        const currentFiles = currentTorrentFiles || []
         
         // Strategy: Make multiple targeted searches to find matches efficiently
         // 1. Search by torrent name (will match name-based matches)
@@ -314,36 +336,15 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
           return false
         })
         
-        // Detect if this is Blu-ray/DVD content by folder structure (skip deep file matching for these)
-        // Only check for actual disc folder structures, not release type keywords
-        const discContentPatterns = [
-          /\bBDMV\b/i,        // Blu-ray folder structure
-          /\bVIDEO_TS\b/i,    // DVD folder structure
-          /\bAUDIO_TS\b/i,    // DVD audio folder structure
-        ]
-        const isDiscContent = discContentPatterns.some(pattern => 
-          pattern.test(torrent.name) || pattern.test(torrent.content_path || '')
-        )
-        
-        // Strategy 6: Deep file content matching (for uncertain matches)
-        // Fetch current torrent's files for comparison (skip for disc content)
-        let currentFiles: TorrentFile[] = []
-        if (!isDiscContent) {
-          try {
-            currentFiles = await api.getTorrentFiles(instanceId, torrent.hash)
-          } catch (err) {
-            console.log('[CrossSeed Debug] Could not fetch current torrent files for deep matching')
-          }
-        }
-        
-        // For each match, check if we should do deep file matching
+        // For each match, check if we should do deep file matching (using pre-fetched currentFiles)
         const deepMatchResults = await Promise.all(
           matches.map(async (t: Torrent) => {
-            // Skip deep matching if we already have strong matches (info hash, content path)
+            // Skip deep matching if we already have strong matches (info hash, content path, or torrent name)
             const hasStrongMatch = 
               (resolvedInfohashV1 && t.infohash_v1 === resolvedInfohashV1) ||
               (resolvedInfohashV2 && t.infohash_v2 === resolvedInfohashV2) ||
-              (currentContentPath && normalizePath(t.content_path) === currentContentPath)
+              (currentContentPath && normalizePath(t.content_path) === currentContentPath) ||
+              (currentName && normalizeName(t.name) === currentName)
             
             if (hasStrongMatch) {
               return { torrent: t, isMatch: true, matchType: 'strong' }
