@@ -120,37 +120,15 @@ export function useTorrentsList(
     onMessage: handleStreamPayload,
   })
 
-  const [httpFallbackAllowed, setHttpFallbackAllowed] = useState(() => !streamParams)
+  const [httpFallbackAllowed, setHttpFallbackAllowed] = useState(true)
 
   useEffect(() => {
-    if (!enabled || !streamParams) {
-      setHttpFallbackAllowed(true)
-      return
-    }
+    const shouldAllowFallback =
+      !enabled || !streamParams || Boolean(streamState.error) || !streamState.connected
 
-    if (streamState.error) {
-      setHttpFallbackAllowed(true)
-      return
-    }
-
-    if (streamState.connected) {
-      setHttpFallbackAllowed(false)
-      return
-    }
-
-    setHttpFallbackAllowed(false)
-
-    if (typeof window === "undefined") {
-      return
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      setHttpFallbackAllowed(true)
-    }, TORRENT_STREAM_POLL_INTERVAL_MS)
-
-    return () => {
-      window.clearTimeout(timeoutId)
-    }
+    setHttpFallbackAllowed(prev =>
+      prev === shouldAllowFallback ? prev : shouldAllowFallback
+    )
   }, [enabled, streamParams, streamState.connected, streamState.error])
 
   const shouldDisablePolling = Boolean(streamParams) && streamState.connected && !streamState.error
