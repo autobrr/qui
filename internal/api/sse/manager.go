@@ -519,6 +519,7 @@ func (m *StreamManager) buildGroupPayload(group *subscriptionGroup, opts StreamO
 
 	ctx, cancel := context.WithTimeout(m.ctx, 10*time.Second)
 	defer cancel()
+	ctx = qbittorrent.WithSkipFreshData(ctx)
 
 	response, err := m.syncManager.GetTorrentsWithFilters(
 		ctx,

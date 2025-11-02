@@ -217,9 +217,7 @@ func (sm *SyncManager) validateTorrentsExist(client *Client, hashes []string, op
 }
 
 // GetTorrentsWithFilters gets torrents with filters, search, sorting, and pagination
-// Always fetches fresh data from sync manager for real-time updates
 func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID int, limit, offset int, sort, order, search string, filters FilterOptions) (*TorrentResponse, error) {
-	// Always get fresh data from sync manager for real-time updates
 	var filteredTorrents []qbt.Torrent
 	var err error
 
@@ -229,6 +227,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		return nil, err
 	}
 
+	skipFreshData := shouldSkipFreshData(ctx)
 	skipTrackerHydration := shouldSkipTrackerHydration(ctx)
 
 	trackerHealthSupported := client != nil && client.supportsTrackerInclude()
@@ -238,7 +237,21 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	needsTrackerHealthSorting := trackerHealthSupported && sort == "state"
 
 	// Get MainData for tracker filtering (if needed)
-	mainData := syncManager.GetData()
+	var mainData *qbt.MainData
+	if skipFreshData {
+		mainData = syncManager.GetDataUnchecked()
+		if mainData == nil {
+			mainData = syncManager.GetData()
+		}
+	} else {
+		mainData = syncManager.GetData()
+	}
+
+	// Choose torrent getter based on freshness preference
+	getTorrents := syncManager.GetTorrents
+	if skipFreshData {
+		getTorrents = syncManager.GetTorrentsUnchecked
+	}
 
 	// Determine if we can use library filtering or need manual filtering
 	// Use library filtering only if we have single filters that the library supports
@@ -340,7 +353,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		torrentFilterOptions.Sort = sort
 		torrentFilterOptions.Reverse = (order == "desc")
 
-		filteredTorrents = syncManager.GetTorrents(torrentFilterOptions)
+		filteredTorrents = getTorrents(torrentFilterOptions)
 
 		// Apply manual filtering for multiple selections
 		if trackerHealthSupported && needsTrackerHydration {
@@ -405,7 +418,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		torrentFilterOptions.Reverse = (order == "desc")
 
 		// Use library filtering and sorting
-		filteredTorrents = syncManager.GetTorrents(torrentFilterOptions)
+		filteredTorrents = getTorrents(torrentFilterOptions)
 
 		if trackerHealthSupported && needsTrackerHealthSorting {
 			filteredTorrents, trackerMap, _ = sm.enrichTorrentsWithTrackerData(ctx, client, filteredTorrents, trackerMap)
@@ -470,7 +483,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 	// Calculate counts from ALL torrents (not filtered) for sidebar
 	// This uses the same cached data, so it's very fast
-	allTorrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{})
+	allTorrents := getTorrents(qbt.TorrentFilterOptions{})
 
 	useSubcategories = resolveUseSubcategories(supportsSubcategories, mainData, categories)
 
@@ -750,8 +763,18 @@ func (sm *SyncManager) GetCategories(ctx context.Context, instanceID int) (map[s
 		return nil, err
 	}
 
-	// Get categories from sync manager (real-time)
-	categories := syncManager.GetCategories()
+	skipFreshData := shouldSkipFreshData(ctx)
+
+	// Get categories from sync manager
+	var categories map[string]qbt.Category
+	if skipFreshData {
+		categories = syncManager.GetCategoriesUnchecked()
+		if categories == nil {
+			categories = syncManager.GetCategories()
+		}
+	} else {
+		categories = syncManager.GetCategories()
+	}
 
 	return categories, nil
 }
@@ -764,8 +787,18 @@ func (sm *SyncManager) GetTags(ctx context.Context, instanceID int) ([]string, e
 		return nil, err
 	}
 
-	// Get tags from sync manager (real-time)
-	tags := syncManager.GetTags()
+	skipFreshData := shouldSkipFreshData(ctx)
+
+	// Get tags from sync manager
+	var tags []string
+	if skipFreshData {
+		tags = syncManager.GetTagsUnchecked()
+		if tags == nil {
+			tags = syncManager.GetTags()
+		}
+	} else {
+		tags = syncManager.GetTags()
+	}
 
 	slices.SortFunc(tags, func(a, b string) int {
 		return strings.Compare(strings.ToLower(a), strings.ToLower(b))
