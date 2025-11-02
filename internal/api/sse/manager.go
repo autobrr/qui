@@ -747,16 +747,23 @@ func (m *StreamManager) startSyncLoop(instanceID int, interval time.Duration) *s
 		interval: interval,
 	}
 
-	go func(tick time.Duration) {
-		ticker := time.NewTicker(tick)
-		defer ticker.Stop()
+	go func(wait time.Duration) {
+		timer := time.NewTimer(wait)
+		defer timer.Stop()
 
 		for {
 			select {
-			case <-ticker.C:
-				m.forceSync(instanceID)
 			case <-ctx.Done():
 				return
+			case <-timer.C:
+				// Timer ensures each sync is spaced out, even if the previous run took longer than wait.
+				m.forceSync(instanceID)
+
+				if ctx.Err() != nil {
+					return
+				}
+
+				timer.Reset(wait)
 			}
 		}
 	}(interval)
