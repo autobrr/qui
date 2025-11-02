@@ -28,7 +28,7 @@ import { usePersistedAccordionState } from "@/hooks/usePersistedAccordionState"
 import { useQBittorrentAppInfo } from "@/hooks/useQBittorrentAppInfo"
 import { api } from "@/lib/api"
 import { formatBytes, getRatioColor } from "@/lib/utils"
-import type { InstanceResponse, ServerState, TorrentCounts, TorrentStats } from "@/types"
+import type { CacheMetadata, InstanceResponse, ServerState, TorrentCounts, TorrentStats } from "@/types"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
 import { Activity, Ban, BrickWallFire, ChevronDown, ChevronRight, ChevronUp, Download, ExternalLink, Eye, EyeOff, Globe, HardDrive, Minus, Plus, Rabbit, Turtle, Upload, Zap } from "lucide-react"
@@ -58,6 +58,7 @@ interface DashboardInstanceStats {
   error: unknown
   streamConnected: boolean
   streamError: string | null
+  cacheMetadata: CacheMetadata | null | undefined
 }
 
 type InstanceStreamData = {
@@ -69,6 +70,7 @@ type InstanceStreamData = {
   error: unknown
   streamConnected: boolean
   streamError: string | null
+  cacheMetadata: CacheMetadata | null | undefined
 }
 
 const createDefaultInstanceStreamData = (): InstanceStreamData => ({
@@ -80,6 +82,7 @@ const createDefaultInstanceStreamData = (): InstanceStreamData => ({
   error: null,
   streamConnected: false,
   streamError: null,
+  cacheMetadata: null,
 })
 
 // Optimized hook to get all instance stats using shared TorrentResponse cache
@@ -172,6 +175,7 @@ function useAllInstanceStats(instances: InstanceResponse[]): DashboardInstanceSt
             error: null,
             streamConnected: true,
             streamError: null,
+            cacheMetadata: data.cacheMetadata ?? null,
           },
         }))
       })
@@ -256,6 +260,7 @@ function useAllInstanceStats(instances: InstanceResponse[]): DashboardInstanceSt
       error: state.error,
       streamConnected: state.streamConnected,
       streamError: state.streamError,
+      cacheMetadata: state.cacheMetadata,
     }
   })
 }
@@ -270,7 +275,15 @@ function InstanceCard({
   isAdvancedMetricsOpen: boolean
   setIsAdvancedMetricsOpen: (open: boolean) => void
 }) {
-  const { instance, stats, serverState, torrentCounts, altSpeedEnabled, isLoading, error } = instanceData
+  const {
+    instance,
+    stats,
+    serverState,
+    torrentCounts,
+    altSpeedEnabled,
+    isLoading,
+    error,
+  } = instanceData
   const [showSpeedLimitDialog, setShowSpeedLimitDialog] = useState(false)
 
   // Alternative speed limits toggle - no need to track state, just provide toggle function
@@ -316,7 +329,6 @@ function InstanceCard({
   const connectionStatusIconClass = hasConnectionStatus? isConnectable? "text-green-500": isFirewalled? "text-amber-500": "text-destructive": ""
 
   const connectionStatusTooltip = connectionStatusDisplay ? (isConnectable ? "Connectable" : connectionStatusDisplay) : ""
-
   // Determine if settings button should show
   const showSettingsButton = instance.connected && !isFirstLoad && !hasDecryptionOrRecentErrors
 

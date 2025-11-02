@@ -122,7 +122,6 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 
 	syncOpts.OnError = func(err error) {
 		client.updateHealthStatus(false)
-		client.clearServerState()
 		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Sync manager error received, marking client as unhealthy")
 
 		client.dispatchSyncError(err)

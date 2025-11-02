@@ -29,7 +29,7 @@ const (
 	streamEventInit     = "init"
 	streamEventUpdate   = "update"
 	streamEventError    = "error"
-	defaultSyncInterval = 3 * time.Second
+	defaultSyncInterval = 2 * time.Second
 	maxSyncInterval     = 30 * time.Second
 )
 
@@ -400,15 +400,6 @@ func (m *StreamManager) onSession(w http.ResponseWriter, r *http.Request) ([]str
 	})
 
 	return []string{id}, true
-}
-
-func (m *StreamManager) subscriptionInstance(id string) int {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	if sub, ok := m.subscriptions[id]; ok {
-		return sub.options.InstanceID
-	}
-	return 0
 }
 
 func (m *StreamManager) publishInstance(instanceID int, eventType string, meta *StreamMeta) {
@@ -787,7 +778,7 @@ func (m *StreamManager) forceSync(instanceID int) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(m.ctx, 5*time.Second)
+	ctx, cancel := context.WithTimeout(m.ctx, 10*time.Second)
 	defer cancel()
 
 	syncMgr, err := m.syncManager.GetQBittorrentSyncManager(ctx, instanceID)

@@ -177,6 +177,9 @@ const DEFAULT_COLUMN_VISIBILITY = {
   private: false,
 }
 const DEFAULT_COLUMN_SIZING = {}
+const STREAM_STATUS_TRANSITION_DELAY_MS = 800
+
+type StreamPhase = "connecting" | "healthy" | "reconnecting" | "fallback"
 
 // Helper function to get default column order (module scope for stable reference)
 function getDefaultColumnOrder(): string[] {
@@ -944,76 +947,84 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       return null
     }
 
-    return parsed
+  return parsed
   }, [streamMeta])
 
+  const derivedStreamPhase = useMemo<StreamPhase>(() => {
+    if (streamRetrying || typeof streamNextRetryAt === "number") {
+      return "reconnecting"
+    }
+    if (streamError) {
+      return "fallback"
+    }
+    if (isStreaming) {
+      return "healthy"
+    }
+    return "connecting"
+  }, [isStreaming, streamError, streamNextRetryAt, streamRetrying])
+
+  const stableStreamPhase = useDebounce(
+    derivedStreamPhase,
+    derivedStreamPhase === "healthy" || derivedStreamPhase === "fallback" ? 0 : STREAM_STATUS_TRANSITION_DELAY_MS
+  )
+
   const streamStatus = useMemo(() => {
-    const now = Date.now()
-    const clientRetrySeconds =
-      typeof streamNextRetryAt === "number"
-        ? Math.max(0, Math.ceil((streamNextRetryAt - now) / 1000))
-        : null
     const serverRetrySeconds =
       typeof streamMeta?.retryInSeconds === "number" && streamMeta.retryInSeconds > 0
         ? streamMeta.retryInSeconds
         : null
     const safeRetryAttempt =
       typeof streamRetryAttempt === "number" && streamRetryAttempt > 0 ? streamRetryAttempt : 1
+    const hasClientRetryScheduled = typeof streamNextRetryAt === "number"
 
-    if (streamRetrying || (clientRetrySeconds !== null && clientRetrySeconds > 0)) {
-      return {
-        label: "Stream reconnecting…",
-        message: streamError ?? "Attempting to restore SSE connection.",
-        secondary:
-          clientRetrySeconds && clientRetrySeconds > 0
-            ? `Retrying in ${clientRetrySeconds}s (attempt ${safeRetryAttempt})`
-            : "Retry scheduled",
-        tone: "warning" as const,
-        animate: true,
-      }
-    }
-
-    if (streamError) {
-      const secondary =
-        serverRetrySeconds && serverRetrySeconds > 0
-          ? `Server retry in ${serverRetrySeconds}s — polling fallback active`
-          : "Retrying automatically with polling fallback"
-      return {
-        label: "Stream offline – using polling",
-        message: streamError,
-        secondary,
-        tone: "error" as const,
-        animate: false,
-      }
-    }
-
-    if (isStreaming) {
-      return {
-        label: "Live updates via SSE",
-        message: "Polling is paused while the stream is healthy.",
-        secondary: lastStreamUpdate ? `Last update ${formatDate(lastStreamUpdate)}` : "Polling paused",
-        tone: "success" as const,
-        animate: false,
-      }
-    }
-
-    return {
-      label: "Connecting to stream…",
-      message: `Using ${TORRENT_STREAM_POLL_INTERVAL_SECONDS}s polling until the SSE connection is ready.`,
-      secondary: `Polling every ${TORRENT_STREAM_POLL_INTERVAL_SECONDS}s`,
-      tone: streamConnected ? ("warning" as const) : ("muted" as const),
-      animate: !streamConnected,
+    switch (stableStreamPhase) {
+      case "reconnecting":
+        return {
+          label: "Stream reconnecting…",
+          message: streamError ?? "Attempting to restore SSE connection.",
+          secondary: hasClientRetryScheduled
+            ? `Retry attempt ${safeRetryAttempt} queued`
+            : "Polling continues while the stream recovers.",
+          tone: "warning" as const,
+          animate: true,
+        }
+      case "fallback":
+        return {
+          label: "Stream offline – using polling",
+          message: streamError ?? "Falling back to periodic refresh while the stream is unavailable.",
+          secondary:
+            serverRetrySeconds && serverRetrySeconds > 0
+              ? `Server retry in ${serverRetrySeconds}s — polling fallback active`
+              : "Retrying automatically with polling fallback",
+          tone: "error" as const,
+          animate: false,
+        }
+      case "healthy":
+        return {
+          label: "Live updates via SSE",
+          message: "Polling is paused while the stream is healthy.",
+          secondary: lastStreamUpdate ? `Last update ${formatDate(lastStreamUpdate)}` : "Polling paused",
+          tone: "success" as const,
+          animate: false,
+        }
+      default:
+        return {
+          label: "Connecting to stream…",
+          message: `Using ${TORRENT_STREAM_POLL_INTERVAL_SECONDS}s polling until the SSE connection is ready.`,
+          secondary: `Polling every ${TORRENT_STREAM_POLL_INTERVAL_SECONDS}s`,
+          tone: streamConnected ? ("warning" as const) : ("muted" as const),
+          animate: !streamConnected,
+        }
     }
   }, [
     formatDate,
-    isStreaming,
     lastStreamUpdate,
+    stableStreamPhase,
     streamConnected,
     streamError,
-    streamRetrying,
+    streamMeta,
     streamNextRetryAt,
     streamRetryAttempt,
-    streamMeta,
   ])
 
   const streamToneStyles = useMemo(() => {
