@@ -463,9 +463,15 @@ export function useSyncStreamManager(): SyncStreamContextValue {
 }
 
 export function createStreamKey(params: StreamParams): string {
-  const filtersKey = params.filters ? JSON.stringify(params.filters) : "__none__"
-  const search = params.search ?? ""
-  return [params.instanceId, params.page, params.limit, params.sort, params.order, search, filtersKey].join("|")
+  return JSON.stringify({
+    instanceId: params.instanceId,
+    page: params.page,
+    limit: params.limit,
+    sort: params.sort,
+    order: params.order,
+    search: params.search ?? "",
+    filters: params.filters ?? null,
+  })
 }
 
 function isSameParams(a: StreamParams, b: StreamParams): boolean {
