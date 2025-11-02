@@ -60,23 +60,45 @@ func (s *APIKeyStore) Create(ctx context.Context, name string) (string, *APIKey,
 	// Hash the key for storage
 	keyHash := HashAPIKey(rawKey)
 
-	query := `
-		INSERT INTO api_keys (key_hash, name) 
-		VALUES (?, ?)
-		RETURNING id, key_hash, name, created_at, last_used_at
-	`
+	// Start a transaction
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
 
+	// Intern the name
+	ids, err := dbinterface.InternStringNullable(ctx, tx, &name)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to intern name: %w", err)
+	}
+
+	// Insert the API key
 	apiKey := &APIKey{}
-	err = s.db.QueryRowContext(ctx, query, keyHash, name).Scan(
+	var createdAt, lastUsedAt sql.NullTime
+	err = tx.QueryRowContext(ctx, `
+		INSERT INTO api_keys (key_hash, name_id) 
+		VALUES (?, ?)
+		RETURNING id, key_hash, created_at, last_used_at
+	`, keyHash, ids[0]).Scan(
 		&apiKey.ID,
 		&apiKey.KeyHash,
-		&apiKey.Name,
-		&apiKey.CreatedAt,
-		&apiKey.LastUsedAt,
+		&createdAt,
+		&lastUsedAt,
 	)
 
 	if err != nil {
 		return "", nil, err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return "", nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	apiKey.Name = name
+	apiKey.CreatedAt = createdAt.Time
+	if lastUsedAt.Valid {
+		apiKey.LastUsedAt = &lastUsedAt.Time
 	}
 
 	// Return both the raw key (to show user once) and the model
@@ -86,17 +108,21 @@ func (s *APIKeyStore) Create(ctx context.Context, name string) (string, *APIKey,
 func (s *APIKeyStore) GetByHash(ctx context.Context, keyHash string) (*APIKey, error) {
 	query := `
 		SELECT id, key_hash, name, created_at, last_used_at 
-		FROM api_keys 
+		FROM api_keys_view 
 		WHERE key_hash = ?
 	`
 
-	apiKey := &APIKey{}
+	var id int
+	var keyHashResult, name string
+	var createdAt sql.NullTime
+	var lastUsedAt sql.NullTime
+
 	err := s.db.QueryRowContext(ctx, query, keyHash).Scan(
-		&apiKey.ID,
-		&apiKey.KeyHash,
-		&apiKey.Name,
-		&apiKey.CreatedAt,
-		&apiKey.LastUsedAt,
+		&id,
+		&keyHashResult,
+		&name,
+		&createdAt,
+		&lastUsedAt,
 	)
 
 	if err != nil {
@@ -107,13 +133,24 @@ func (s *APIKeyStore) GetByHash(ctx context.Context, keyHash string) (*APIKey, e
 		return nil, err
 	}
 
+	apiKey := &APIKey{
+		ID:        id,
+		KeyHash:   keyHashResult,
+		Name:      name,
+		CreatedAt: createdAt.Time,
+	}
+
+	if lastUsedAt.Valid {
+		apiKey.LastUsedAt = &lastUsedAt.Time
+	}
+
 	return apiKey, nil
 }
 
 func (s *APIKeyStore) List(ctx context.Context) ([]*APIKey, error) {
 	query := `
 		SELECT id, key_hash, name, created_at, last_used_at 
-		FROM api_keys 
+		FROM api_keys_view 
 		ORDER BY created_at DESC
 	`
 
@@ -125,31 +162,57 @@ func (s *APIKeyStore) List(ctx context.Context) ([]*APIKey, error) {
 
 	keys := make([]*APIKey, 0)
 	for rows.Next() {
-		apiKey := &APIKey{}
+		var id int
+		var keyHash, name string
+		var createdAt sql.NullTime
+		var lastUsedAt sql.NullTime
+
 		err := rows.Scan(
-			&apiKey.ID,
-			&apiKey.KeyHash,
-			&apiKey.Name,
-			&apiKey.CreatedAt,
-			&apiKey.LastUsedAt,
+			&id,
+			&keyHash,
+			&name,
+			&createdAt,
+			&lastUsedAt,
 		)
 		if err != nil {
 			return nil, err
 		}
+
+		apiKey := &APIKey{
+			ID:        id,
+			KeyHash:   keyHash,
+			Name:      name,
+			CreatedAt: createdAt.Time,
+		}
+
+		if lastUsedAt.Valid {
+			apiKey.LastUsedAt = &lastUsedAt.Time
+		}
+
 		keys = append(keys, apiKey)
 	}
 
-	return keys, rows.Err()
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return keys, nil
 }
 
 func (s *APIKeyStore) UpdateLastUsed(ctx context.Context, id int) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
 	query := `
 		UPDATE api_keys 
 		SET last_used_at = CURRENT_TIMESTAMP 
 		WHERE id = ?
 	`
 
-	result, err := s.db.ExecContext(ctx, query, id)
+	result, err := tx.ExecContext(ctx, query, id)
 	if err != nil {
 		return err
 	}
@@ -161,15 +224,25 @@ func (s *APIKeyStore) UpdateLastUsed(ctx context.Context, id int) error {
 
 	if rows == 0 {
 		return ErrAPIKeyNotFound
+	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return nil
 }
 
 func (s *APIKeyStore) Delete(ctx context.Context, id int) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
 	query := `DELETE FROM api_keys WHERE id = ?`
 
-	result, err := s.db.ExecContext(ctx, query, id)
+	result, err := tx.ExecContext(ctx, query, id)
 	if err != nil {
 		return err
 	}
@@ -181,6 +254,10 @@ func (s *APIKeyStore) Delete(ctx context.Context, id int) error {
 
 	if rows == 0 {
 		return ErrAPIKeyNotFound
+	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return nil
