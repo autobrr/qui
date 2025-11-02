@@ -101,6 +101,10 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("dataDir", "") // Empty means auto-detect (next to config file)
 	c.viper.SetDefault("checkForUpdates", true)
 	c.viper.SetDefault("pprofEnabled", false)
+	c.viper.SetDefault("pprofHost", "127.0.0.1")
+	c.viper.SetDefault("pprofPort", 6060)
+	c.viper.SetDefault("blockProfileRate", 0)     // 0 = disabled; enable on-demand via API
+	c.viper.SetDefault("mutexProfileFraction", 0) // 0 = disabled; enable on-demand via API
 	c.viper.SetDefault("metricsEnabled", false)
 	c.viper.SetDefault("metricsHost", "127.0.0.1")
 	c.viper.SetDefault("metricsPort", 9074)
@@ -186,6 +190,10 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("dataDir", envPrefix+"DATA_DIR")
 	c.viper.BindEnv("checkForUpdates", envPrefix+"CHECK_FOR_UPDATES")
 	c.viper.BindEnv("pprofEnabled", envPrefix+"PPROF_ENABLED")
+	c.viper.BindEnv("pprofHost", envPrefix+"PPROF_HOST")
+	c.viper.BindEnv("pprofPort", envPrefix+"PPROF_PORT")
+	c.viper.BindEnv("blockProfileRate", envPrefix+"BLOCK_PROFILE_RATE")
+	c.viper.BindEnv("mutexProfileFraction", envPrefix+"MUTEX_PROFILE_FRACTION")
 	c.viper.BindEnv("metricsEnabled", envPrefix+"METRICS_ENABLED")
 	c.viper.BindEnv("metricsHost", envPrefix+"METRICS_HOST")
 	c.viper.BindEnv("metricsPort", envPrefix+"METRICS_PORT")
