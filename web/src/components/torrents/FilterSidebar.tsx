@@ -897,10 +897,11 @@ const FilterSidebarComponent = ({
 
     skipNextToggleRef.current = null
 
+    const pointerType = event.pointerType
     const isTouchLike =
-      event.pointerType === "touch" ||
-      event.pointerType === "pen" ||
-      (event.pointerType === "" && isMobile)
+      pointerType === "touch" ||
+      pointerType === "pen" ||
+      (pointerType !== "mouse" && isMobile)
 
     if (isTouchLike) {
       const key = makeToggleKey("status", status)
@@ -956,10 +957,11 @@ const FilterSidebarComponent = ({
 
     skipNextToggleRef.current = null
 
+    const pointerType = event.pointerType
     const isTouchLike =
-      event.pointerType === "touch" ||
-      event.pointerType === "pen" ||
-      (event.pointerType === "" && isMobile)
+      pointerType === "touch" ||
+      pointerType === "pen" ||
+      (pointerType !== "mouse" && isMobile)
 
     if (isTouchLike) {
       const key = makeToggleKey("category", category)
@@ -1015,10 +1017,11 @@ const FilterSidebarComponent = ({
 
     skipNextToggleRef.current = null
 
+    const pointerType = event.pointerType
     const isTouchLike =
-      event.pointerType === "touch" ||
-      event.pointerType === "pen" ||
-      (event.pointerType === "" && isMobile)
+      pointerType === "touch" ||
+      pointerType === "pen" ||
+      (pointerType !== "mouse" && isMobile)
 
     if (isTouchLike) {
       const key = makeToggleKey("tag", tag)
@@ -1074,10 +1077,11 @@ const FilterSidebarComponent = ({
 
     skipNextToggleRef.current = null
 
+    const pointerType = event.pointerType
     const isTouchLike =
-      event.pointerType === "touch" ||
-      event.pointerType === "pen" ||
-      (event.pointerType === "" && isMobile)
+      pointerType === "touch" ||
+      pointerType === "pen" ||
+      (pointerType !== "mouse" && isMobile)
 
     if (isTouchLike) {
       const key = makeToggleKey("tracker", tracker)
