@@ -173,15 +173,8 @@ export function useTorrentsList(
     onMessage: handleStreamPayload,
   })
 
-  const preferCachedQuery = useMemo(() => {
-    if (currentPage !== 0) {
-      return false
-    }
-
-    return !streamState.error
-  }, [currentPage, streamState.error])
-
   const shouldDisablePolling = Boolean(streamParams) && streamState.connected && !streamState.error
+  const preferCachedQuery = currentPage === 0 && shouldDisablePolling
   const queryEnabled =
     enabled &&
     (currentPage > 0 || Boolean(streamState.error) || !streamParams)
