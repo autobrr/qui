@@ -26,17 +26,8 @@ export function useInstanceMetadata(instanceId: number) {
   const query = useQuery<InstanceMetadata>({
     queryKey,
     queryFn: async () => {
-      const cached = queryClient.getQueryData<InstanceMetadata>(queryKey)
-
-      const categoriesPromise =
-        cached && typeof cached.categories !== "undefined"
-          ? Promise.resolve(cached.categories)
-          : api.getCategories(instanceId)
-
-      const tagsPromise =
-        cached && typeof cached.tags !== "undefined"
-          ? Promise.resolve(cached.tags)
-          : api.getTags(instanceId)
+      const categoriesPromise = api.getCategories(instanceId)
+      const tagsPromise = api.getTags(instanceId)
 
       const preferencesPromise = api.getInstancePreferences(instanceId)
 
