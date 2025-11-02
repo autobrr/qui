@@ -280,6 +280,10 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			// Version endpoint for update checks
 			r.Get("/version/latest", versionHandler.GetLatestVersion)
 
+			if s.streamManager != nil {
+				r.Get("/stream", s.streamManager.Serve)
+			}
+
 			// Instance management
 			r.Route("/instances", func(r chi.Router) {
 				r.Get("/", instancesHandler.ListInstances)
@@ -317,9 +321,6 @@ func (s *Server) Handler() (*chi.Mux, error) {
 					})
 
 					r.Get("/capabilities", instancesHandler.GetInstanceCapabilities)
-					if s.streamManager != nil {
-						r.Get("/stream", s.streamManager.ServeInstance)
-					}
 
 					// Torrent creator
 					r.Route("/torrent-creator", func(r chi.Router) {

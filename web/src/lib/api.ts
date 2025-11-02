@@ -300,28 +300,31 @@ class ApiClient {
     )
   }
 
-  getTorrentsStreamUrl(
-    instanceId: number,
-    params: {
-      page?: number
-      limit?: number
-      sort?: string
-      order?: "asc" | "desc"
+  getTorrentsStreamBatchUrl(
+    streams: Array<{
+      key: string
+      instanceId: number
+      page: number
+      limit: number
+      sort: string
+      order: "asc" | "desc"
       search?: string
-      filters?: TorrentFilters
-    }
+      filters?: TorrentFilters | null
+    }>
   ): string {
-    const searchParams = new URLSearchParams()
-    if (params.page !== undefined) searchParams.set("page", params.page.toString())
-    if (params.limit !== undefined) searchParams.set("limit", params.limit.toString())
-    if (params.sort) searchParams.set("sort", params.sort)
-    if (params.order) searchParams.set("order", params.order)
-    if (params.search) searchParams.set("search", params.search)
-    if (params.filters) searchParams.set("filters", JSON.stringify(params.filters))
+    const normalized = streams.map(stream => ({
+      key: stream.key,
+      instanceId: stream.instanceId,
+      page: stream.page,
+      limit: stream.limit,
+      sort: stream.sort,
+      order: stream.order,
+      search: stream.search ?? "",
+      filters: stream.filters ?? null,
+    }))
 
-    const suffix = searchParams.toString()
-    const query = suffix ? `?${suffix}` : ""
-    return withBasePath(`/api/instances/${instanceId}/stream${query}`)
+    const payload = encodeURIComponent(JSON.stringify(normalized))
+    return withBasePath(`/api/stream?streams=${payload}`)
   }
 
   async addTorrent(

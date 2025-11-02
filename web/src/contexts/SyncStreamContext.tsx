@@ -47,19 +47,23 @@ interface StreamEntry {
   key: string
   params: StreamParams
   listeners: Set<StreamListener>
-  source?: EventSource
   connected: boolean
   error: string | null
   lastMeta?: TorrentStreamMeta
-  retryAttempt: number
-  retryTimer?: number
-  nextRetryAt?: number
+  handoffTimer?: number
+  handoffPending?: boolean
+}
+
+interface StreamConnection {
+  source?: EventSource
   handlers?: {
     payload: (event: MessageEvent) => void
     networkError: (event: Event) => void
   }
-  handoffTimer?: number
-  handoffPending?: boolean
+  signature?: string
+  retryAttempt: number
+  retryTimer?: number
+  nextRetryAt?: number
 }
 
 const SyncStreamContext = createContext<SyncStreamContextValue | null>(null)
@@ -75,21 +79,29 @@ const DEFAULT_STREAM_STATE: StreamState = {
 export function SyncStreamProvider({ children }: { children: React.ReactNode }) {
   const streamsRef = useRef<Record<string, StreamEntry>>({})
   const stateSubscribersRef = useRef<Record<string, Set<(state: StreamState) => void>>>({})
+  const connectionRef = useRef<StreamConnection>({ retryAttempt: 0 })
+  const scheduleReconnectRef = useRef<() => void>(() => {})
 
   const getSnapshot = useCallback(
     (key: string): StreamState => {
       const entry = streamsRef.current[key]
+      const connection = connectionRef.current
       if (!entry) {
-        return DEFAULT_STREAM_STATE
+        return {
+          ...DEFAULT_STREAM_STATE,
+          retrying: connection.retryTimer !== undefined,
+          retryAttempt: connection.retryAttempt,
+          nextRetryAt: connection.nextRetryAt,
+        }
       }
 
       return {
         connected: entry.connected,
         error: entry.error,
         lastMeta: entry.lastMeta,
-        retrying: entry.retryTimer !== undefined,
-        retryAttempt: entry.retryAttempt,
-        nextRetryAt: entry.nextRetryAt,
+        retrying: connection.retryTimer !== undefined,
+        retryAttempt: connection.retryAttempt,
+        nextRetryAt: connection.nextRetryAt,
       }
     },
     []
@@ -149,235 +161,276 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
     entry.handoffPending = false
   }, [])
 
-  const clearRetryState = useCallback((entry: StreamEntry) => {
-    if (entry.retryTimer !== undefined) {
+  const clearConnectionRetryState = useCallback(() => {
+    const connection = connectionRef.current
+    if (connection.retryTimer !== undefined) {
       if (typeof window !== "undefined") {
-        window.clearTimeout(entry.retryTimer)
+        window.clearTimeout(connection.retryTimer)
       } else {
-        clearTimeout(entry.retryTimer)
+        clearTimeout(connection.retryTimer)
       }
-      entry.retryTimer = undefined
+      connection.retryTimer = undefined
     }
+    connection.retryAttempt = 0
+    connection.nextRetryAt = undefined
+  }, [])
 
-    entry.retryAttempt = 0
-    entry.nextRetryAt = undefined
-    clearHandoffState(entry)
-  }, [clearHandoffState])
+  const notifyAllStateSubscribers = useCallback(() => {
+    Object.keys(stateSubscribersRef.current).forEach(key => {
+      notifyStateSubscribers(key)
+    })
+  }, [notifyStateSubscribers])
 
-  const closeStream = useCallback((entry: StreamEntry) => {
-    if (!entry.source) {
-      return
-    }
-
-    const { source, handlers } = entry
-    if (handlers) {
-      source.removeEventListener("init", handlers.payload)
-      source.removeEventListener("update", handlers.payload)
-      source.removeEventListener("error", handlers.payload)
-    }
-
-    source.onopen = null
-    source.onerror = null
-    source.close()
-
-    entry.source = undefined
-    entry.connected = false
-    entry.handlers = undefined
-    clearHandoffState(entry)
-  }, [clearHandoffState])
-
-  const openStream = useCallback(
-    (
-      entry: StreamEntry,
-      options: { resetRetry?: boolean; preserveConnected?: boolean } = {}
-    ) => {
-      const resetRetry = options.resetRetry ?? false
-      const preserveConnected = options.preserveConnected ?? false
-
-      if (typeof window === "undefined" || typeof EventSource === "undefined") {
-        entry.error = "Server-sent events are not supported in this environment"
-        entry.connected = false
-        clearRetryState(entry)
-        notifyStateSubscribers(entry.key)
+  const closeConnection = useCallback(
+    (options: { preserveRetry?: boolean } = {}) => {
+      const { preserveRetry = false } = options
+      const connection = connectionRef.current
+      if (!connection.source) {
+        if (!preserveRetry) {
+          clearConnectionRetryState()
+        }
+        connection.signature = undefined
+        connection.handlers = undefined
         return
       }
 
-      if (resetRetry) {
-        clearRetryState(entry)
-      } else {
-        clearHandoffState(entry)
+      const { source, handlers } = connection
+      if (handlers) {
+        source.removeEventListener("init", handlers.payload)
+        source.removeEventListener("update", handlers.payload)
+        source.removeEventListener("error", handlers.payload)
       }
 
-      if (entry.retryTimer !== undefined) {
-        window.clearTimeout(entry.retryTimer)
-        entry.retryTimer = undefined
-      }
-      entry.nextRetryAt = undefined
+      source.onopen = null
+      source.onerror = null
+      source.close()
 
-      const url = api.getTorrentsStreamUrl(entry.params.instanceId, {
+      connection.source = undefined
+      connection.handlers = undefined
+      connection.signature = undefined
+
+      if (!preserveRetry) {
+        clearConnectionRetryState()
+      }
+    },
+    [clearConnectionRetryState]
+  )
+
+  const buildStreamPayload = (entries: StreamEntry[]) =>
+    entries
+      .map(entry => ({
+        key: entry.key,
+        instanceId: entry.params.instanceId,
         page: entry.params.page,
         limit: entry.params.limit,
         sort: entry.params.sort,
         order: entry.params.order,
-        search: entry.params.search,
-        filters: entry.params.filters,
-      })
+        search: entry.params.search ?? "",
+        filters: entry.params.filters ?? null,
+      }))
+      .sort((a, b) => a.key.localeCompare(b.key))
 
-      const scheduleReconnect = () => {
-        if (entry.listeners.size === 0) {
-          return
-        }
-        if (streamsRef.current[entry.key] !== entry) {
-          return
-        }
-        if (entry.retryTimer !== undefined) {
-          return
-        }
+  const openConnection = useCallback(
+    (
+      entries: StreamEntry[],
+      options: { preserveState?: boolean; resetRetry?: boolean } = {}
+    ) => {
+      const normalized = buildStreamPayload(entries)
+      const signature = JSON.stringify(normalized)
+      const connection = connectionRef.current
 
-        closeStream(entry)
-        entry.connected = false
-        clearHandoffState(entry)
-
-        entry.retryAttempt = Math.min(entry.retryAttempt + 1, MAX_RETRY_ATTEMPTS)
-        const exponent = Math.max(0, entry.retryAttempt - 1)
-        const delay = Math.min(RETRY_BASE_DELAY_MS * Math.pow(2, exponent), RETRY_MAX_DELAY_MS)
-
-        if (!entry.error) {
-          entry.error = "Stream disconnected"
-        }
-
-        entry.nextRetryAt = Date.now() + delay
-
-        entry.retryTimer = window.setTimeout(() => {
-          entry.retryTimer = undefined
-          entry.nextRetryAt = undefined
-
-          if (streamsRef.current[entry.key] !== entry || entry.listeners.size === 0) {
-            return
-          }
-
-          openStream(entry)
-        }, delay)
-
-        notifyStateSubscribers(entry.key)
+      if (connection.signature === signature && connection.source) {
+        return
       }
 
-      try {
-        const source = new EventSource(url, { withCredentials: true })
+      const preserveState = options.preserveState ?? Boolean(connection.source)
+      const resetRetry = options.resetRetry ?? false
 
-        const payloadHandler = (event: MessageEvent) => {
-          try {
-            const payload = JSON.parse(event.data) as TorrentStreamPayload
-            entry.lastMeta = payload.meta
-
-            if (payload.type === "error" && payload.error) {
-              entry.error = payload.error
-            } else {
-              entry.error = null
-            }
-
-            if (payload.type !== "error") {
-              entry.connected = true
-              entry.retryAttempt = 0
-              entry.nextRetryAt = undefined
-              clearHandoffState(entry)
-            }
-
-            entry.listeners.forEach(listener => listener(payload))
-            notifyStateSubscribers(entry.key)
-          } catch (err) {
-            console.error("Failed to parse SSE payload", err)
-          }
-        }
-
-        const networkErrorHandler = (_event?: Event) => {
+      if (typeof window === "undefined" || typeof EventSource === "undefined") {
+        entries.forEach(entry => {
+          entry.connected = false
+          entry.error = "Server-sent events are not supported in this environment"
           clearHandoffState(entry)
-          scheduleReconnect()
-        }
-
-        source.addEventListener("init", payloadHandler)
-        source.addEventListener("update", payloadHandler)
-        source.addEventListener("error", payloadHandler)
-        source.onopen = () => {
-          entry.connected = true
-          entry.error = null
-          entry.retryAttempt = 0
-          entry.nextRetryAt = undefined
-
-          clearHandoffState(entry)
-
-          if (entry.retryTimer !== undefined) {
-            window.clearTimeout(entry.retryTimer)
-            entry.retryTimer = undefined
-          }
-
           notifyStateSubscribers(entry.key)
-        }
-        source.onerror = networkErrorHandler
+        })
+        closeConnection()
+        return
+      }
 
-        entry.source = source
-        entry.handlers = {
-          payload: payloadHandler,
-          networkError: networkErrorHandler,
+      if (resetRetry) {
+        clearConnectionRetryState()
+      } else if (connection.retryTimer !== undefined) {
+        if (typeof window !== "undefined") {
+          window.clearTimeout(connection.retryTimer)
+        } else {
+          clearTimeout(connection.retryTimer)
         }
+        connection.retryTimer = undefined
+        connection.nextRetryAt = undefined
+      }
 
-        if (preserveConnected) {
+      if (preserveState) {
+        entries.forEach(entry => {
+          if (!entry.connected || entry.handoffPending) {
+            return
+          }
           entry.handoffPending = true
           if (entry.handoffTimer !== undefined) {
-            window.clearTimeout(entry.handoffTimer)
-          }
-          entry.handoffTimer = window.setTimeout(() => {
-            entry.handoffTimer = undefined
-            if (!entry.handoffPending) {
-              return
+            if (typeof window !== "undefined") {
+              window.clearTimeout(entry.handoffTimer)
+            } else {
+              clearTimeout(entry.handoffTimer)
             }
-            entry.handoffPending = false
-            entry.connected = false
-            if (resetRetry) {
-              entry.error = null
-            }
-            notifyStateSubscribers(entry.key)
-          }, HANDOFF_GRACE_PERIOD_MS)
-          if (resetRetry) {
-            entry.error = null
           }
-          notifyStateSubscribers(entry.key)
-        } else {
+          const timer = (typeof window !== "undefined"
+            ? window.setTimeout
+            : (setTimeout as unknown as (handler: () => void, timeout: number) => number))(() => {
+              entry.handoffTimer = undefined
+              if (!entry.handoffPending) {
+                return
+              }
+              entry.handoffPending = false
+              entry.connected = false
+              notifyStateSubscribers(entry.key)
+            }, HANDOFF_GRACE_PERIOD_MS)
+          entry.handoffTimer = timer
+        })
+      } else {
+        entries.forEach(entry => {
           entry.connected = false
-          entry.handoffPending = false
-          if (resetRetry) {
-            entry.error = null
-          }
+          clearHandoffState(entry)
           notifyStateSubscribers(entry.key)
-        }
-      } catch (err) {
-        entry.connected = false
-        entry.error = err instanceof Error ? err.message : "Failed to open stream"
-        entry.retryAttempt = Math.min(entry.retryAttempt + 1, MAX_RETRY_ATTEMPTS)
+        })
+      }
 
-        clearHandoffState(entry)
+      const url = api.getTorrentsStreamBatchUrl(normalized)
+      closeConnection({ preserveRetry: true })
 
-        const exponent = Math.max(0, entry.retryAttempt - 1)
-        const delay = Math.min(RETRY_BASE_DELAY_MS * Math.pow(2, exponent), RETRY_MAX_DELAY_MS)
-
-        entry.nextRetryAt = Date.now() + delay
-        entry.retryTimer = window.setTimeout(() => {
-          entry.retryTimer = undefined
-          entry.nextRetryAt = undefined
-
-          if (streamsRef.current[entry.key] !== entry || entry.listeners.size === 0) {
-            notifyStateSubscribers(entry.key)
+      const payloadHandler = (event: MessageEvent) => {
+        try {
+          const payload = JSON.parse(event.data) as TorrentStreamPayload
+          const streamKey = payload.meta?.streamKey
+          if (!streamKey) {
             return
           }
 
-          openStream(entry)
-        }, delay)
+          const entry = streamsRef.current[streamKey]
+          if (!entry) {
+            return
+          }
 
-        notifyStateSubscribers(entry.key)
+          entry.lastMeta = payload.meta
+
+          if (payload.type === "error" && payload.error) {
+            entry.error = payload.error
+            entry.connected = false
+          } else {
+            entry.error = null
+            entry.connected = true
+          }
+
+          clearHandoffState(entry)
+          entry.listeners.forEach(listener => listener(payload))
+          notifyStateSubscribers(streamKey)
+        } catch (err) {
+          console.error("Failed to parse SSE payload", err)
+        }
       }
+
+      const handleNetworkError = (_event?: Event) => {
+        closeConnection({ preserveRetry: true })
+
+        Object.values(streamsRef.current).forEach(entry => {
+          clearHandoffState(entry)
+          if (!entry.error) {
+            entry.error = "Stream disconnected"
+          }
+          entry.connected = false
+          notifyStateSubscribers(entry.key)
+        })
+
+        scheduleReconnectRef.current()
+      }
+
+      const source = new EventSource(url, { withCredentials: true })
+      source.addEventListener("init", payloadHandler)
+      source.addEventListener("update", payloadHandler)
+      source.addEventListener("error", payloadHandler)
+      source.onopen = () => {
+        clearConnectionRetryState()
+        connection.retryAttempt = 0
+        connection.nextRetryAt = undefined
+        normalized.forEach(({ key }) => {
+          const entry = streamsRef.current[key]
+          if (!entry) {
+            return
+          }
+          if (!entry.handoffPending) {
+            entry.error = null
+          }
+          notifyStateSubscribers(key)
+        })
+      }
+      source.onerror = handleNetworkError
+
+      connection.source = source
+      connection.handlers = {
+        payload: payloadHandler,
+        networkError: handleNetworkError,
+      }
+      connection.signature = signature
     },
-    [clearHandoffState, clearRetryState, closeStream, notifyStateSubscribers]
+    [clearConnectionRetryState, clearHandoffState, closeConnection, notifyStateSubscribers]
   )
+
+  const ensureConnection = useCallback(
+    (options: { preserveState?: boolean; resetRetry?: boolean } = {}) => {
+      const entries = Object.values(streamsRef.current)
+      if (entries.length === 0) {
+        closeConnection()
+        clearConnectionRetryState()
+        notifyAllStateSubscribers()
+        return
+      }
+
+      openConnection(entries, options)
+    },
+    [clearConnectionRetryState, closeConnection, notifyAllStateSubscribers, openConnection]
+  )
+
+  const scheduleReconnect = useCallback(() => {
+    const connection = connectionRef.current
+    if (connection.retryTimer !== undefined) {
+      return
+    }
+
+    connection.retryAttempt = Math.min(connection.retryAttempt + 1, MAX_RETRY_ATTEMPTS)
+    const exponent = Math.max(0, connection.retryAttempt - 1)
+    const delay = Math.min(RETRY_BASE_DELAY_MS * Math.pow(2, exponent), RETRY_MAX_DELAY_MS)
+
+    connection.nextRetryAt = Date.now() + delay
+
+    const timer = (typeof window !== "undefined"
+      ? window.setTimeout
+      : (setTimeout as unknown as (handler: () => void, timeout: number) => number))(() => {
+        connection.retryTimer = undefined
+        connection.nextRetryAt = undefined
+
+        if (Object.keys(streamsRef.current).length === 0) {
+          clearConnectionRetryState()
+          notifyAllStateSubscribers()
+          return
+        }
+
+        ensureConnection({ preserveState: false })
+        notifyAllStateSubscribers()
+      }, delay)
+
+    connection.retryTimer = timer
+    notifyAllStateSubscribers()
+  }, [clearConnectionRetryState, ensureConnection, notifyAllStateSubscribers])
+
+  scheduleReconnectRef.current = scheduleReconnect
 
   const ensureStream = useCallback(
     (params: StreamParams, options: { preserveConnected?: boolean } = {}) => {
@@ -391,25 +444,20 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
           listeners: new Set(),
           connected: options.preserveConnected ?? false,
           error: null,
-          retryAttempt: 0,
         }
         streamsRef.current[key] = entry
-        openStream(entry, {
-          resetRetry: true,
-          preserveConnected: options.preserveConnected,
-        })
+        ensureConnection({ preserveState: true })
       } else if (!isSameParams(entry.params, params)) {
-        closeStream(entry)
         entry.params = params
-        openStream(entry, {
-          resetRetry: true,
-          preserveConnected: options.preserveConnected,
-        })
+        entry.error = null
+        ensureConnection({ preserveState: true, resetRetry: true })
+      } else {
+        ensureConnection({ preserveState: true })
       }
 
       return entry
     },
-    [closeStream, openStream]
+    [ensureConnection]
   )
 
   const connect = useCallback(
@@ -425,35 +473,43 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       return () => {
         entry.listeners.delete(listener)
         if (entry.listeners.size === 0) {
-          closeStream(entry)
-          clearRetryState(entry)
           delete streamsRef.current[entry.key]
+          clearHandoffState(entry)
+          entry.connected = false
+          entry.error = null
+          notifyStateSubscribers(entry.key)
+          ensureConnection({ preserveState: true })
+        } else {
+          notifyStateSubscribers(entry.key)
         }
-        notifyStateSubscribers(entry.key)
       }
     },
-    [clearRetryState, closeStream, ensureStream, notifyStateSubscribers]
+    [clearHandoffState, ensureConnection, ensureStream, notifyStateSubscribers]
   )
 
-  const getState = useCallback((key: string | null) => {
-    if (!key) {
-      return undefined
-    }
+  const getState = useCallback(
+    (key: string | null) => {
+      if (!key) {
+        return undefined
+      }
 
-    const entry = streamsRef.current[key]
-    if (!entry) {
-      return undefined
-    }
+      const entry = streamsRef.current[key]
+      if (!entry) {
+        return undefined
+      }
 
-    return {
-      connected: entry.connected,
-      error: entry.error,
-      lastMeta: entry.lastMeta,
-      retrying: entry.retryTimer !== undefined,
-      retryAttempt: entry.retryAttempt,
-      nextRetryAt: entry.nextRetryAt,
-    }
-  }, [])
+      const connection = connectionRef.current
+      return {
+        connected: entry.connected,
+        error: entry.error,
+        lastMeta: entry.lastMeta,
+        retrying: connection.retryTimer !== undefined,
+        retryAttempt: connection.retryAttempt,
+        nextRetryAt: connection.nextRetryAt,
+      }
+    },
+    []
+  )
 
   const contextValue = useMemo<SyncStreamContextValue>(
     () => ({
@@ -463,6 +519,16 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
     }),
     [connect, getState, subscribeToState]
   )
+
+  useEffect(() => {
+    return () => {
+      closeConnection()
+      Object.values(streamsRef.current).forEach(entry => {
+        clearHandoffState(entry)
+      })
+      streamsRef.current = {}
+    }
+  }, [clearHandoffState, closeConnection])
 
   return <SyncStreamContext.Provider value={contextValue}>{children}</SyncStreamContext.Provider>
 }

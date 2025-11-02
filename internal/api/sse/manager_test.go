@@ -10,12 +10,12 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
 	"github.com/tmaxmax/go-sse"
 
@@ -69,11 +69,25 @@ func TestStreamManagerServeInstanceNotFound(t *testing.T) {
 
 	manager := NewStreamManager(nil, nil, store)
 
-	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/api/instances/99/stream", nil)
-	request = withRouteParam(request, "instanceID", "99")
+	payload := []map[string]any{
+		{
+			"key":        "stream-99",
+			"instanceId": 99,
+			"page":       0,
+			"limit":      50,
+			"sort":       "addedOn",
+			"order":      "desc",
+			"search":     "",
+			"filters":    nil,
+		},
+	}
+	raw, err := json.Marshal(payload)
+	require.NoError(t, err)
 
-	manager.ServeInstance(recorder, request)
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/stream?streams="+url.QueryEscape(string(raw)), nil)
+
+	manager.Serve(recorder, request)
 	require.Equal(t, http.StatusNotFound, recorder.Code)
 }
 
@@ -87,11 +101,25 @@ func TestStreamManagerServeInstanceValidationError(t *testing.T) {
 
 	manager := NewStreamManager(nil, nil, store)
 
-	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/api/instances/1/stream?limit=invalid", nil)
-	request = withRouteParam(request, "instanceID", "1")
+	payload := []map[string]any{
+		{
+			"key":        "invalid-limit",
+			"instanceId": 1,
+			"page":       -1,
+			"limit":      50,
+			"sort":       "addedOn",
+			"order":      "desc",
+			"search":     "",
+			"filters":    nil,
+		},
+	}
+	raw, err := json.Marshal(payload)
+	require.NoError(t, err)
 
-	manager.ServeInstance(recorder, request)
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/stream?streams="+url.QueryEscape(string(raw)), nil)
+
+	manager.Serve(recorder, request)
 	require.Equal(t, http.StatusBadRequest, recorder.Code)
 }
 
@@ -164,13 +192,6 @@ func decodeStreamPayload(t *testing.T, message *sse.Message) *StreamPayload {
 	err = json.Unmarshal([]byte(builder.String()), &payload)
 	require.NoError(t, err, "failed to decode stream payload")
 	return &payload
-}
-
-func withRouteParam(req *http.Request, key, value string) *http.Request {
-	routeCtx := chi.NewRouteContext()
-	routeCtx.URLParams.Add(key, value)
-	ctx := context.WithValue(req.Context(), chi.RouteCtxKey, routeCtx)
-	return req.WithContext(ctx)
 }
 
 // testQuerier wraps *sql.DB to satisfy dbinterface.Querier for tests.

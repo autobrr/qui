@@ -10,12 +10,12 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
-	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 	"github.com/tmaxmax/go-sse"
 
@@ -33,9 +33,14 @@ const (
 	maxSyncInterval     = 30 * time.Second
 )
 
+var (
+	errInvalidInstanceID = errors.New("invalid instance id")
+	errNoStreamRequests  = errors.New("no stream subscriptions requested")
+)
+
 type ctxKey string
 
-const subscriptionContextKey ctxKey = "qui.sse.subscriptionID"
+const subscriptionIDsContextKey ctxKey = "qui.sse.subscriptionIDs"
 
 // StreamOptions captures the torrent view that the subscriber wants to keep in sync.
 type StreamOptions struct {
@@ -46,6 +51,11 @@ type StreamOptions struct {
 	Order      string
 	Search     string
 	Filters    qbittorrent.FilterOptions
+}
+
+type streamRequest struct {
+	key     string
+	options StreamOptions
 }
 
 func streamOptionsKey(opts StreamOptions) string {
@@ -89,10 +99,11 @@ type StreamManager struct {
 }
 
 type subscriptionState struct {
-	id       string
-	options  StreamOptions
-	created  time.Time
-	groupKey string
+	id        string
+	options   StreamOptions
+	created   time.Time
+	groupKey  string
+	clientKey string
 }
 
 type subscriptionGroup struct {
@@ -134,6 +145,7 @@ type StreamMeta struct {
 	FullUpdate     bool      `json:"fullUpdate,omitempty"`
 	Timestamp      time.Time `json:"timestamp"`
 	RetryInSeconds int       `json:"retryInSeconds,omitempty"`
+	StreamKey      string    `json:"streamKey,omitempty"`
 }
 
 // NewStreamManager constructs a manager with a configured SSE server.
@@ -173,22 +185,52 @@ func (m *StreamManager) Server() http.Handler {
 	return m.server
 }
 
-// Prepare registers a new subscriber and returns a context that carries its session id.
-func (m *StreamManager) Prepare(ctx context.Context, opts StreamOptions) (context.Context, string, error) {
+// PrepareBatch registers one or more subscribers and returns a context that carries their session ids.
+func (m *StreamManager) PrepareBatch(ctx context.Context, requests []streamRequest) (context.Context, []string, error) {
 	if m.closing.Load() {
-		return ctx, "", fmt.Errorf("stream manager shutting down")
+		return ctx, nil, fmt.Errorf("stream manager shutting down")
 	}
 
-	if opts.InstanceID <= 0 {
-		return ctx, "", fmt.Errorf("invalid instance id")
+	if len(requests) == 0 {
+		return ctx, nil, errNoStreamRequests
+	}
+
+	ids := make([]string, 0, len(requests))
+	for _, req := range requests {
+		if req.options.InstanceID <= 0 {
+			m.unregisterMany(ids)
+			return ctx, nil, errInvalidInstanceID
+		}
+
+		clientKey := req.key
+		if clientKey == "" {
+			clientKey = streamOptionsKey(req.options)
+		}
+
+		id, err := m.registerSubscription(req.options, clientKey)
+		if err != nil {
+			m.unregisterMany(ids)
+			return ctx, nil, err
+		}
+
+		ids = append(ids, id)
+	}
+
+	return context.WithValue(ctx, subscriptionIDsContextKey, ids), ids, nil
+}
+
+func (m *StreamManager) registerSubscription(opts StreamOptions, clientKey string) (string, error) {
+	if m.closing.Load() {
+		return "", fmt.Errorf("stream manager shutting down")
 	}
 
 	id := fmt.Sprintf("qui-session-%d", m.counter.Add(1))
 	state := &subscriptionState{
-		id:       id,
-		options:  opts,
-		created:  time.Now(),
-		groupKey: streamOptionsKey(opts),
+		id:        id,
+		options:   opts,
+		created:   time.Now(),
+		groupKey:  streamOptionsKey(opts),
+		clientKey: clientKey,
 	}
 
 	m.mu.Lock()
@@ -222,7 +264,7 @@ func (m *StreamManager) Prepare(ctx context.Context, opts StreamOptions) (contex
 	}
 	m.mu.Unlock()
 
-	return context.WithValue(ctx, subscriptionContextKey, id), id, nil
+	return id, nil
 }
 
 // Unregister removes and cleans up a subscriber when the HTTP connection closes.
@@ -269,6 +311,12 @@ func (m *StreamManager) Unregister(id string) {
 		}
 	}
 	m.mu.Unlock()
+}
+
+func (m *StreamManager) unregisterMany(ids []string) {
+	for _, id := range ids {
+		m.Unregister(id)
+	}
 }
 
 // HandleMainData implements qbittorrent.SyncEventSink.
@@ -330,37 +378,42 @@ func (m *StreamManager) HandleSyncError(instanceID int, err error) {
 	m.publishToInstance(instanceID, payload)
 }
 
-// ServeInstance implements the HTTP handler for GET /instances/{instanceID}/stream.
-func (m *StreamManager) ServeInstance(w http.ResponseWriter, r *http.Request) {
+// Serve implements the HTTP handler for GET /stream and multiplexes multiple subscriptions over one SSE session.
+func (m *StreamManager) Serve(w http.ResponseWriter, r *http.Request) {
 	if m.closing.Load() {
 		http.Error(w, "stream shutting down", http.StatusServiceUnavailable)
 		return
 	}
 
-	instanceID, err := strconvParam(r, "instanceID")
-	if err != nil {
-		http.Error(w, "invalid instance ID", http.StatusBadRequest)
-		return
-	}
-
-	if !m.instanceExists(r.Context(), instanceID) {
-		http.Error(w, "instance not found", http.StatusNotFound)
-		return
-	}
-
-	opts, err := parseStreamOptions(r, instanceID)
+	requests, err := parseStreamRequests(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	ctx, subscriptionID, err := m.Prepare(r.Context(), opts)
+	instanceIDs := make(map[int]struct{}, len(requests))
+	for _, req := range requests {
+		instanceIDs[req.options.InstanceID] = struct{}{}
+	}
+
+	for instanceID := range instanceIDs {
+		if !m.instanceExists(r.Context(), instanceID) {
+			http.Error(w, "instance not found", http.StatusNotFound)
+			return
+		}
+	}
+
+	ctx, subscriptionIDs, err := m.PrepareBatch(r.Context(), requests)
 	if err != nil {
-		log.Error().Err(err).Msg("failed to prepare SSE subscription")
-		http.Error(w, "failed to prepare SSE stream", http.StatusInternalServerError)
+		status := http.StatusInternalServerError
+		if errors.Is(err, errInvalidInstanceID) || errors.Is(err, errNoStreamRequests) {
+			status = http.StatusBadRequest
+		}
+		log.Error().Err(err).Msg("failed to prepare SSE subscriptions")
+		http.Error(w, "failed to prepare SSE stream", status)
 		return
 	}
-	defer m.Unregister(subscriptionID)
+	defer m.unregisterMany(subscriptionIDs)
 
 	req := r.WithContext(ctx)
 
@@ -374,32 +427,34 @@ func (m *StreamManager) onSession(w http.ResponseWriter, r *http.Request) ([]str
 		return nil, false
 	}
 
-	id, _ := r.Context().Value(subscriptionContextKey).(string)
-	if id == "" {
+	raw, _ := r.Context().Value(subscriptionIDsContextKey).([]string)
+	if len(raw) == 0 {
 		http.Error(w, "missing subscription context", http.StatusBadRequest)
 		return nil, false
 	}
 
-	sub := m.getSubscription(id)
-	if sub == nil {
-		http.Error(w, "subscription not found", http.StatusBadRequest)
-		return nil, false
+	for _, id := range raw {
+		sub := m.getSubscription(id)
+		if sub == nil {
+			http.Error(w, "subscription not found", http.StatusBadRequest)
+			return nil, false
+		}
+
+		group := m.getGroup(sub.groupKey)
+		if group == nil {
+			http.Error(w, "subscription group not found", http.StatusBadRequest)
+			return nil, false
+		}
+
+		// Send initial snapshot once the subscription is active.
+		m.enqueueGroup(group, streamEventInit, &StreamMeta{
+			InstanceID: sub.options.InstanceID,
+			FullUpdate: true,
+			Timestamp:  time.Now(),
+		})
 	}
 
-	group := m.getGroup(sub.groupKey)
-	if group == nil {
-		http.Error(w, "subscription group not found", http.StatusBadRequest)
-		return nil, false
-	}
-
-	// Send initial snapshot once the subscription is active.
-	m.enqueueGroup(group, streamEventInit, &StreamMeta{
-		InstanceID: sub.options.InstanceID,
-		FullUpdate: true,
-		Timestamp:  time.Now(),
-	})
-
-	return []string{id}, true
+	return raw, true
 }
 
 func (m *StreamManager) publishInstance(instanceID int, eventType string, meta *StreamMeta) {
@@ -492,7 +547,7 @@ func (m *StreamManager) processGroup(groupKey string) {
 		}
 
 		for _, sub := range subs {
-			m.publish(sub.id, payload)
+			m.publish(sub.id, clonePayloadForSubscriber(payload, sub))
 		}
 	}
 }
@@ -577,13 +632,15 @@ func (m *StreamManager) publishToInstance(instanceID int, payload *StreamPayload
 	}
 
 	ids := make([]string, 0, len(subscribers))
-	for id := range subscribers {
+	messages := make(map[string]*StreamPayload, len(subscribers))
+	for id, sub := range subscribers {
 		ids = append(ids, id)
+		messages[id] = clonePayloadForSubscriber(payload, sub)
 	}
 	m.mu.RUnlock()
 
 	for _, id := range ids {
-		m.publish(id, payload)
+		m.publish(id, messages[id])
 	}
 }
 
@@ -621,6 +678,30 @@ func cloneMeta(meta *StreamMeta) *StreamMeta {
 	}
 	copy := *meta
 	return &copy
+}
+
+func clonePayloadForSubscriber(payload *StreamPayload, sub *subscriptionState) *StreamPayload {
+	if payload == nil {
+		return nil
+	}
+
+	clone := *payload
+	if payload.Meta != nil {
+		metaCopy := *payload.Meta
+		if metaCopy.InstanceID == 0 {
+			metaCopy.InstanceID = sub.options.InstanceID
+		}
+		metaCopy.StreamKey = sub.clientKey
+		clone.Meta = &metaCopy
+	} else if sub != nil {
+		clone.Meta = &StreamMeta{
+			InstanceID: sub.options.InstanceID,
+			StreamKey:  sub.clientKey,
+			Timestamp:  time.Now(),
+		}
+	}
+
+	return &clone
 }
 
 func (m *StreamManager) Shutdown(ctx context.Context) error {
@@ -797,61 +878,88 @@ func (m *StreamManager) instanceExists(ctx context.Context, instanceID int) bool
 	return err == nil
 }
 
-func parseStreamOptions(r *http.Request, instanceID int) (StreamOptions, error) {
+type streamRequestPayload struct {
+	Key        string                     `json:"key"`
+	InstanceID int                        `json:"instanceId"`
+	Page       int                        `json:"page"`
+	Limit      int                        `json:"limit"`
+	Sort       string                     `json:"sort"`
+	Order      string                     `json:"order"`
+	Search     string                     `json:"search"`
+	Filters    *qbittorrent.FilterOptions `json:"filters"`
+}
+
+func parseStreamRequests(r *http.Request) ([]streamRequest, error) {
 	query := r.URL.Query()
-
-	limit := defaultLimit
-	if v := query.Get("limit"); v != "" {
-		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 && parsed <= maxLimit {
-			limit = parsed
-		} else {
-			return StreamOptions{}, fmt.Errorf("invalid limit value")
-		}
+	raw := query.Get("streams")
+	if raw == "" {
+		return nil, fmt.Errorf("missing streams parameter")
 	}
 
-	page := 0
-	if v := query.Get("page"); v != "" {
-		if parsed, err := strconv.Atoi(v); err == nil && parsed >= 0 {
-			page = parsed
-		} else {
-			return StreamOptions{}, fmt.Errorf("invalid page value")
-		}
+	var payloads []streamRequestPayload
+	if err := json.Unmarshal([]byte(raw), &payloads); err != nil {
+		return nil, fmt.Errorf("invalid streams payload")
 	}
 
-	sort := query.Get("sort")
+	if len(payloads) == 0 {
+		return nil, errNoStreamRequests
+	}
+
+	requests := make([]streamRequest, 0, len(payloads))
+	for _, payload := range payloads {
+		opts, err := payload.toStreamOptions()
+		if err != nil {
+			return nil, err
+		}
+
+		requests = append(requests, streamRequest{
+			key:     payload.Key,
+			options: opts,
+		})
+	}
+
+	return requests, nil
+}
+
+func (p streamRequestPayload) toStreamOptions() (StreamOptions, error) {
+	if p.InstanceID <= 0 {
+		return StreamOptions{}, errInvalidInstanceID
+	}
+
+	limit := p.Limit
+	if limit <= 0 {
+		limit = defaultLimit
+	} else if limit > maxLimit {
+		return StreamOptions{}, fmt.Errorf("invalid limit value")
+	}
+
+	page := p.Page
+	if page < 0 {
+		return StreamOptions{}, fmt.Errorf("invalid page value")
+	}
+
+	sort := p.Sort
 	if sort == "" {
 		sort = "addedOn"
 	}
 
-	order := query.Get("order")
+	order := strings.ToLower(p.Order)
 	if order != "asc" && order != "desc" {
 		order = "desc"
 	}
 
-	search := query.Get("search")
-
 	var filters qbittorrent.FilterOptions
-	if raw := query.Get("filters"); raw != "" {
-		if err := json.Unmarshal([]byte(raw), &filters); err != nil {
-			return StreamOptions{}, fmt.Errorf("invalid filters payload")
-		}
+	if p.Filters != nil {
+		filters = *p.Filters
 	}
 
 	return StreamOptions{
-		InstanceID: instanceID,
+		InstanceID: p.InstanceID,
 		Page:       page,
 		Limit:      limit,
 		Sort:       sort,
 		Order:      order,
-		Search:     search,
+		Search:     p.Search,
 		Filters:    filters,
 	}, nil
-}
-
-func strconvParam(r *http.Request, name string) (int, error) {
-	value := chi.URLParam(r, name)
-	if value == "" {
-		return 0, fmt.Errorf("missing parameter %s", name)
-	}
-	return strconv.Atoi(value)
 }

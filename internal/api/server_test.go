@@ -41,7 +41,7 @@ type routeKey struct {
 
 var undocumentedRoutes = map[routeKey]struct{}{
 	{Method: http.MethodGet, Path: "/api/auth/validate"}:                                                            {},
-	{Method: http.MethodGet, Path: "/api/instances/{instanceId}/stream"}:                                            {},
+	{Method: http.MethodGet, Path: "/api/stream"}:                                                                   {},
 	{Method: http.MethodPost, Path: "/api/instances/{instanceId}/backups/run"}:                                      {},
 	{Method: http.MethodGet, Path: "/api/instances/{instanceId}/backups/runs"}:                                      {},
 	{Method: http.MethodDelete, Path: "/api/instances/{instanceId}/backups/runs"}:                                   {},

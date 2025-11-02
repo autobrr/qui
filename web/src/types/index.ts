@@ -257,6 +257,7 @@ export interface TorrentStreamMeta {
   timestamp: string
   retryInSeconds?: number
   page?: number
+  streamKey?: string
 }
 
 export interface TorrentStreamPayload {
