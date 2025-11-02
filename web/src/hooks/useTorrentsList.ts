@@ -3,10 +3,10 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import type { InstanceMetadata } from "@/hooks/useInstanceMetadata"
-import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
-import { api } from "@/lib/api"
 import { useSyncStream } from "@/contexts/SyncStreamContext"
+import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
+import type { InstanceMetadata } from "@/hooks/useInstanceMetadata"
+import { api } from "@/lib/api"
 import type { Torrent, TorrentFilters, TorrentResponse, TorrentStreamPayload } from "@/types"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useCallback, useEffect, useMemo, useState } from "react"
@@ -226,12 +226,8 @@ export function useTorrentsList(
       return lastStreamSnapshot
     }
 
-    if (currentPage === 0) {
-      return data ?? lastStreamSnapshot ?? null
-    }
-
-    return lastStreamSnapshot ?? data ?? null
-  }, [currentPage, data, lastStreamSnapshot, shouldDisablePolling])
+    return data ?? lastStreamSnapshot ?? null
+  }, [data, lastStreamSnapshot, shouldDisablePolling])
 
   // Update torrents when data arrives or changes (including optimistic updates)
   useEffect(() => {
