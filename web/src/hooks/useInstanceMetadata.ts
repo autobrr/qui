@@ -26,18 +26,14 @@ export function useInstanceMetadata(instanceId: number) {
   const query = useQuery<InstanceMetadata>({
     queryKey,
     queryFn: async () => {
-      const categoriesPromise = api.getCategories(instanceId)
-      const tagsPromise = api.getTags(instanceId)
+      const previous = queryClient.getQueryData<InstanceMetadata>(queryKey)
+      const preferences = await api.getInstancePreferences(instanceId)
 
-      const preferencesPromise = api.getInstancePreferences(instanceId)
-
-      const [categories, tags, preferences] = await Promise.all([
-        categoriesPromise,
-        tagsPromise,
-        preferencesPromise,
-      ])
-
-      return { categories, tags, preferences }
+      return {
+        categories: previous?.categories ?? {},
+        tags: previous?.tags ?? [],
+        preferences,
+      }
     },
     initialData: () => queryClient.getQueryData<InstanceMetadata>(queryKey),
     staleTime: 60000, // 1 minute - metadata doesn't change often
