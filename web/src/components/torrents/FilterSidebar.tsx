@@ -110,6 +110,8 @@ interface FilterSidebarProps {
 
 type TriState = "include" | "exclude" | "neutral"
 
+const LONG_PRESS_DURATION = 400
+
 const arraysEqual = (a?: string[], b?: string[]) => {
   if (a === b) {
     return true
@@ -573,6 +575,55 @@ const FilterSidebarComponent = ({
   const tagListRef = useRef<HTMLDivElement>(null)
   const trackerListRef = useRef<HTMLDivElement>(null)
   const skipNextToggleRef = useRef<string | null>(null)
+  const longPressTimeoutRef = useRef<number | null>(null)
+
+  const cancelLongPress = useCallback(() => {
+    if (longPressTimeoutRef.current !== null) {
+      if (typeof window !== "undefined") {
+        window.clearTimeout(longPressTimeoutRef.current)
+      }
+      longPressTimeoutRef.current = null
+    }
+  }, [])
+
+  const scheduleLongPressExclude = useCallback((key: string, onLongPress: () => void) => {
+    if (typeof window === "undefined") {
+      return
+    }
+
+    cancelLongPress()
+    longPressTimeoutRef.current = window.setTimeout(() => {
+      skipNextToggleRef.current = key
+      onLongPress()
+      cancelLongPress()
+    }, LONG_PRESS_DURATION)
+  }, [cancelLongPress])
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return
+    }
+
+    const handlePointerEnd = () => {
+      cancelLongPress()
+    }
+
+    window.addEventListener("pointerup", handlePointerEnd)
+    window.addEventListener("pointercancel", handlePointerEnd)
+    window.addEventListener("pointerleave", handlePointerEnd)
+
+    return () => {
+      window.removeEventListener("pointerup", handlePointerEnd)
+      window.removeEventListener("pointercancel", handlePointerEnd)
+      window.removeEventListener("pointerleave", handlePointerEnd)
+    }
+  }, [cancelLongPress])
+
+  useEffect(() => {
+    return () => {
+      cancelLongPress()
+    }
+  }, [cancelLongPress])
 
   const makeToggleKey = useCallback((group: "status" | "category" | "tag" | "tracker", value: string) => {
     return `${group}:${value === "" ? "__empty__" : value}`
@@ -831,6 +882,7 @@ const FilterSidebarComponent = ({
   const handleStatusPointerDown = useCallback((event: React.PointerEvent<HTMLElement>, status: string) => {
     if (event.button !== 0) {
       skipNextToggleRef.current = null
+      cancelLongPress()
       return
     }
 
@@ -839,11 +891,24 @@ const FilterSidebarComponent = ({
       event.stopPropagation()
       skipNextToggleRef.current = makeToggleKey("status", status)
       handleStatusExcludeToggle(status)
+      cancelLongPress()
       return
     }
 
     skipNextToggleRef.current = null
-  }, [handleStatusExcludeToggle, makeToggleKey])
+
+    const isTouchLike =
+      event.pointerType === "touch" ||
+      event.pointerType === "pen" ||
+      (event.pointerType === "" && isMobile)
+
+    if (isTouchLike) {
+      const key = makeToggleKey("status", status)
+      scheduleLongPressExclude(key, () => handleStatusExcludeToggle(status))
+    } else {
+      cancelLongPress()
+    }
+  }, [cancelLongPress, handleStatusExcludeToggle, isMobile, makeToggleKey, scheduleLongPressExclude])
 
   const handleCategoryIncludeToggle = useCallback((category: string) => {
     const currentState = getCategoryState(category)
@@ -876,6 +941,7 @@ const FilterSidebarComponent = ({
   const handleCategoryPointerDown = useCallback((event: React.PointerEvent<HTMLElement>, category: string) => {
     if (event.button !== 0) {
       skipNextToggleRef.current = null
+      cancelLongPress()
       return
     }
 
@@ -884,11 +950,24 @@ const FilterSidebarComponent = ({
       event.stopPropagation()
       skipNextToggleRef.current = makeToggleKey("category", category)
       handleCategoryExcludeToggle(category)
+      cancelLongPress()
       return
     }
 
     skipNextToggleRef.current = null
-  }, [handleCategoryExcludeToggle, makeToggleKey])
+
+    const isTouchLike =
+      event.pointerType === "touch" ||
+      event.pointerType === "pen" ||
+      (event.pointerType === "" && isMobile)
+
+    if (isTouchLike) {
+      const key = makeToggleKey("category", category)
+      scheduleLongPressExclude(key, () => handleCategoryExcludeToggle(category))
+    } else {
+      cancelLongPress()
+    }
+  }, [cancelLongPress, handleCategoryExcludeToggle, isMobile, makeToggleKey, scheduleLongPressExclude])
 
   const handleTagIncludeToggle = useCallback((tag: string) => {
     const currentState = getTagState(tag)
@@ -921,6 +1000,7 @@ const FilterSidebarComponent = ({
   const handleTagPointerDown = useCallback((event: React.PointerEvent<HTMLElement>, tag: string) => {
     if (event.button !== 0) {
       skipNextToggleRef.current = null
+      cancelLongPress()
       return
     }
 
@@ -929,11 +1009,24 @@ const FilterSidebarComponent = ({
       event.stopPropagation()
       skipNextToggleRef.current = makeToggleKey("tag", tag)
       handleTagExcludeToggle(tag)
+      cancelLongPress()
       return
     }
 
     skipNextToggleRef.current = null
-  }, [handleTagExcludeToggle, makeToggleKey])
+
+    const isTouchLike =
+      event.pointerType === "touch" ||
+      event.pointerType === "pen" ||
+      (event.pointerType === "" && isMobile)
+
+    if (isTouchLike) {
+      const key = makeToggleKey("tag", tag)
+      scheduleLongPressExclude(key, () => handleTagExcludeToggle(tag))
+    } else {
+      cancelLongPress()
+    }
+  }, [cancelLongPress, handleTagExcludeToggle, isMobile, makeToggleKey, scheduleLongPressExclude])
 
   const handleTrackerIncludeToggle = useCallback((tracker: string) => {
     const currentState = getTrackerState(tracker)
@@ -966,6 +1059,7 @@ const FilterSidebarComponent = ({
   const handleTrackerPointerDown = useCallback((event: React.PointerEvent<HTMLElement>, tracker: string) => {
     if (event.button !== 0) {
       skipNextToggleRef.current = null
+      cancelLongPress()
       return
     }
 
@@ -974,11 +1068,24 @@ const FilterSidebarComponent = ({
       event.stopPropagation()
       skipNextToggleRef.current = makeToggleKey("tracker", tracker)
       handleTrackerExcludeToggle(tracker)
+      cancelLongPress()
       return
     }
 
     skipNextToggleRef.current = null
-  }, [handleTrackerExcludeToggle, makeToggleKey])
+
+    const isTouchLike =
+      event.pointerType === "touch" ||
+      event.pointerType === "pen" ||
+      (event.pointerType === "" && isMobile)
+
+    if (isTouchLike) {
+      const key = makeToggleKey("tracker", tracker)
+      scheduleLongPressExclude(key, () => handleTrackerExcludeToggle(tracker))
+    } else {
+      cancelLongPress()
+    }
+  }, [cancelLongPress, handleTrackerExcludeToggle, isMobile, makeToggleKey, scheduleLongPressExclude])
 
   const untaggedState = getTagState("")
   const uncategorizedState = getCategoryState("")
@@ -1171,7 +1278,7 @@ const FilterSidebarComponent = ({
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom" align="start" className="max-w-[220px]">
-                  Left click cycles include and neutral. Cmd/Ctrl + click toggles exclusion.
+                  Left click cycles include and neutral. Cmd/Ctrl + click or a long press toggles exclusion.
                 </TooltipContent>
               </Tooltip>
               {(isLoading || isStaleData) && (
