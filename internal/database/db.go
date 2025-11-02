@@ -199,16 +199,17 @@ func (t *Tx) QueryRowContext(ctx context.Context, query string, args ...any) *sq
 // Also promotes any transaction-prepared statements to the DB cache for future use.
 func (t *Tx) Commit() error {
 	err := t.tx.Commit()
-
-	// On successful commit, promote transaction statements to DB cache
-	defer t.promoteStatementsToCache()
-
 	// Release mutex after commit completes (for write transactions)
 	if t.unlockFn != nil {
 		t.unlockFn()
 		t.unlockFn = nil // Prevent double-unlock
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	// Promote only on successful commit
+	t.promoteStatementsToCache()
+	return nil
 }
 
 // Rollback rolls back the transaction and releases the writer mutex if this is a write transaction.
@@ -216,14 +217,11 @@ func (t *Tx) Commit() error {
 func (t *Tx) Rollback() error {
 	err := t.tx.Rollback()
 	// Release mutex after rollback completes (for write transactions)
-
-	// Promote transaction statements to DB cache
-	defer t.promoteStatementsToCache()
-
 	if t.unlockFn != nil {
 		t.unlockFn()
 		t.unlockFn = nil // Prevent double-unlock
 	}
+	// Do NOT promote on rollback
 	return err
 }
 
@@ -386,7 +384,8 @@ func New(databasePath string) (*DB, error) {
 	}
 
 	// Open reader pool (read-only connection pool for concurrent reads)
-	readerPool, err := sql.Open("sqlite", databasePath+"?mode=ro")
+	readerDSN := fmt.Sprintf("file:%s?mode=ro", databasePath)
+	readerPool, err := sql.Open("sqlite", readerDSN)
 	if err != nil {
 		writerConn.Close()
 		return nil, fmt.Errorf("failed to open reader pool at %s: %w", databasePath, err)
