@@ -378,7 +378,7 @@ class ApiClient {
     instanceId: number,
     data: {
       hashes: string[]
-      action: "pause" | "resume" | "delete" | "recheck" | "reannounce" | "increasePriority" | "decreasePriority" | "topPriority" | "bottomPriority" | "setCategory" | "addTags" | "removeTags" | "setTags" | "toggleAutoTMM" | "setShareLimit" | "setUploadLimit" | "setDownloadLimit" | "setLocation" | "editTrackers" | "addTrackers" | "removeTrackers"
+      action: "pause" | "resume" | "delete" | "recheck" | "reannounce" | "increasePriority" | "decreasePriority" | "topPriority" | "bottomPriority" | "setCategory" | "addTags" | "removeTags" | "setTags" | "toggleAutoTMM" | "forceStart" | "setShareLimit" | "setUploadLimit" | "setDownloadLimit" | "setLocation" | "editTrackers" | "addTrackers" | "removeTrackers"
       deleteFiles?: boolean
       category?: string
       tags?: string  // Comma-separated tags string
@@ -457,6 +457,13 @@ class ApiClient {
 
   async getTorrentFiles(instanceId: number, hash: string): Promise<TorrentFile[]> {
     return this.request<TorrentFile[]>(`/instances/${instanceId}/torrents/${hash}/files`)
+  }
+
+  async setTorrentFilePriority(instanceId: number, hash: string, indices: number[], priority: number): Promise<void> {
+    return this.request(`/instances/${instanceId}/torrents/${hash}/files`, {
+      method: "PUT",
+      body: JSON.stringify({ indices, priority }),
+    })
   }
 
   async exportTorrent(instanceId: number, hash: string): Promise<{ blob: Blob; filename: string | null }> {

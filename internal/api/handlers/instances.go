@@ -56,6 +56,15 @@ func (h *InstancesHandler) GetInstanceCapabilities(w http.ResponseWriter, r *htt
 		}
 	}
 
+	if client.GetWebAPIVersion() == "" {
+		if err := client.RefreshCapabilities(ctx); err != nil {
+			log.Error().
+				Err(err).
+				Int("instanceID", instanceID).
+				Msg("Unable to refresh qBittorrent capabilities during request")
+		}
+	}
+
 	capabilities := NewInstanceCapabilitiesResponse(client)
 	RespondJSON(w, http.StatusOK, capabilities)
 }

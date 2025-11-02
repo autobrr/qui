@@ -5,12 +5,14 @@ package qbittorrent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"net/url"
 	"path/filepath"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -330,7 +332,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 		// Apply manual filtering for multiple selections
 		if trackerHealthSupported && needsTrackerHydration {
-			filteredTorrents, trackerMap, _ = sm.enrichTorrentsWithTrackerData(ctx, client, filteredTorrents, trackerMap, true)
+			filteredTorrents, trackerMap, _ = sm.enrichTorrentsWithTrackerData(ctx, client, filteredTorrents, trackerMap)
 		}
 
 		filteredTorrents = sm.applyManualFilters(client, filteredTorrents, filters, mainData, categories, useSubcategories)
@@ -394,7 +396,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		filteredTorrents = syncManager.GetTorrents(torrentFilterOptions)
 
 		if trackerHealthSupported && needsTrackerHealthSorting {
-			filteredTorrents, trackerMap, _ = sm.enrichTorrentsWithTrackerData(ctx, client, filteredTorrents, trackerMap, true)
+			filteredTorrents, trackerMap, _ = sm.enrichTorrentsWithTrackerData(ctx, client, filteredTorrents, trackerMap)
 		}
 	}
 
@@ -1013,7 +1015,7 @@ func (sm *SyncManager) determineTrackerHealth(torrent qbt.Torrent) TrackerHealth
 	return ""
 }
 
-func (sm *SyncManager) enrichTorrentsWithTrackerData(ctx context.Context, client *Client, torrents []qbt.Torrent, trackerMap map[string][]qbt.TorrentTracker, allowFetch bool) ([]qbt.Torrent, map[string][]qbt.TorrentTracker, []string) {
+func (sm *SyncManager) enrichTorrentsWithTrackerData(ctx context.Context, client *Client, torrents []qbt.Torrent, trackerMap map[string][]qbt.TorrentTracker) ([]qbt.Torrent, map[string][]qbt.TorrentTracker, []string) {
 	if client == nil || len(torrents) == 0 {
 		return torrents, trackerMap, nil
 	}
@@ -1033,8 +1035,8 @@ func (sm *SyncManager) enrichTorrentsWithTrackerData(ctx context.Context, client
 		}
 	}
 
-	enriched, trackerData, remaining, err := client.hydrateTorrentsWithTrackers(ctx, torrents, allowFetch)
-	if err != nil && allowFetch {
+	enriched, trackerData, remaining, err := client.hydrateTorrentsWithTrackers(ctx, torrents)
+	if err != nil {
 		log.Debug().Err(err).Int("count", len(torrents)).Msg("Failed to fetch tracker details for enrichment")
 	}
 
@@ -1174,7 +1176,7 @@ func (sm *SyncManager) countTorrentStatuses(torrent qbt.Torrent, counts map[stri
 func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(ctx context.Context, client *Client, allTorrents []qbt.Torrent, mainData *qbt.MainData, trackerMap map[string][]qbt.TorrentTracker, trackerHealthSupported bool, useSubcategories bool) (*TorrentCounts, map[string][]qbt.TorrentTracker, []qbt.Torrent) {
 	var enriched []qbt.Torrent
 	if trackerHealthSupported {
-		enriched, trackerMap, _ = sm.enrichTorrentsWithTrackerData(ctx, client, allTorrents, trackerMap, true)
+		enriched, trackerMap, _ = sm.enrichTorrentsWithTrackerData(ctx, client, allTorrents, trackerMap)
 		allTorrents = enriched
 	}
 
@@ -1564,7 +1566,7 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 	torrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{})
 
 	// Enrich torrents with tracker data so downstream calculations can inspect tracker errors
-	if enriched, _, _ := sm.enrichTorrentsWithTrackerData(ctx, client, torrents, nil, true); len(enriched) > 0 {
+	if enriched, _, _ := sm.enrichTorrentsWithTrackerData(ctx, client, torrents, nil); len(enriched) > 0 {
 		torrents = enriched
 	}
 
@@ -2843,6 +2845,31 @@ func (sm *SyncManager) SetAutoTMM(ctx context.Context, instanceID int, hashes []
 	return nil
 }
 
+// SetForceStart toggles force start state for torrents
+func (sm *SyncManager) SetForceStart(ctx context.Context, instanceID int, hashes []string, enable bool) error {
+	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		return err
+	}
+
+	// Validate that torrents exist
+	if err := sm.validateTorrentsExist(client, hashes, "set force start"); err != nil {
+		return err
+	}
+
+	if err := client.SetForceStartCtx(ctx, hashes, enable); err != nil {
+		return err
+	}
+
+	if enable {
+		sm.applyOptimisticCacheUpdate(instanceID, hashes, "force_resume", nil)
+	}
+
+	sm.syncAfterModification(instanceID, client, "set_force_start")
+
+	return nil
+}
+
 // CreateTags creates new tags
 func (sm *SyncManager) CreateTags(ctx context.Context, instanceID int, tags []string) error {
 	client, err := sm.clientPool.GetClient(ctx, instanceID)
@@ -3172,6 +3199,55 @@ func (sm *SyncManager) SetLocation(ctx context.Context, instanceID int, hashes [
 			}
 		}
 	}
+
+	return nil
+}
+
+// SetTorrentFilePriority updates the download priority for one or more files within a torrent.
+func (sm *SyncManager) SetTorrentFilePriority(ctx context.Context, instanceID int, hash string, indices []int, priority int) error {
+	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		return err
+	}
+
+	if !client.SupportsFilePriority() {
+		return fmt.Errorf("qBittorrent instance does not support file priority changes (requires WebAPI 2.2.0+)")
+	}
+
+	if err := sm.validateTorrentsExist(client, []string{hash}, "set file priorities"); err != nil {
+		return err
+	}
+
+	if len(indices) == 0 {
+		return fmt.Errorf("at least one file index is required")
+	}
+
+	if priority < 0 || priority > 7 {
+		return fmt.Errorf("file priority must be between 0 and 7")
+	}
+
+	ids := make([]string, len(indices))
+	for i, idx := range indices {
+		if idx < 0 {
+			return fmt.Errorf("file indices must be non-negative")
+		}
+		ids[i] = strconv.Itoa(idx)
+	}
+
+	idString := strings.Join(ids, "|")
+
+	if err := client.SetFilePriorityCtx(ctx, hash, idString, priority); err != nil {
+		switch {
+		case errors.Is(err, qbt.ErrInvalidPriority):
+			return fmt.Errorf("invalid file priority or file indices: %w", err)
+		case errors.Is(err, qbt.ErrTorrentMetdataNotDownloadedYet):
+			return fmt.Errorf("torrent metadata is not yet available, please try again once metadata has downloaded: %w", err)
+		default:
+			return fmt.Errorf("failed to set file priority: %w", err)
+		}
+	}
+
+	sm.syncAfterModification(instanceID, client, "set_file_priority")
 
 	return nil
 }
