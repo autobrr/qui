@@ -443,14 +443,17 @@ function ExternalProgramsSubmenu({ instanceId, hashes }: ExternalProgramsSubmenu
     staleTime: 60 * 1000, // 1 minute
   })
 
-  const executeMutation = useMutation({
-    mutationFn: async (program: ExternalProgram) => {
-      return api.executeExternalProgram({
+  // Types derived from API for strong typing
+  type ExecResp = Awaited<ReturnType<typeof api.executeExternalProgram>>
+  type ExecVars = { program: ExternalProgram; instanceId: number; hashes: string[] }
+
+  const executeMutation = useMutation<ExecResp, Error, ExecVars>({
+    mutationFn: async ({ program, instanceId, hashes }) =>
+      api.executeExternalProgram({
         program_id: program.id,
         instance_id: instanceId,
         hashes,
-      })
-    },
+      }),
     onSuccess: (response) => {
       const successCount = response.results.filter(r => r.success).length
       const failureCount = response.results.length - successCount
@@ -470,14 +473,15 @@ function ExternalProgramsSubmenu({ instanceId, hashes }: ExternalProgramsSubmenu
         }
       })
     },
-    onError: (error: any) => {
-      toast.error(`Failed to execute external program: ${error.message || "Unknown error"}`)
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : String(error)
+      toast.error(`Failed to execute external program: ${message}`)
     },
   })
 
   const handleExecute = useCallback((program: ExternalProgram) => {
-    executeMutation.mutate(program)
-  }, [executeMutation])
+    executeMutation.mutate({ program, instanceId, hashes })
+  }, [executeMutation, instanceId, hashes])
 
   const enabledPrograms = programs?.filter(p => p.enabled) || []
 
