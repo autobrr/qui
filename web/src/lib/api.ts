@@ -283,6 +283,7 @@ class ApiClient {
       order?: "asc" | "desc"
       search?: string
       filters?: TorrentFilters
+      preferCached?: boolean
     }
   ): Promise<TorrentResponse> {
     const searchParams = new URLSearchParams()
@@ -292,6 +293,7 @@ class ApiClient {
     if (params.order) searchParams.set("order", params.order)
     if (params.search) searchParams.set("search", params.search)
     if (params.filters) searchParams.set("filters", JSON.stringify(params.filters))
+    if (params.preferCached) searchParams.set("prefer", "stale")
 
     return this.request<TorrentResponse>(
       `/instances/${instanceId}/torrents?${searchParams}`

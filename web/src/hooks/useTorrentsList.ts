@@ -173,21 +173,18 @@ export function useTorrentsList(
     onMessage: handleStreamPayload,
   })
 
-  const [httpFallbackAllowed, setHttpFallbackAllowed] = useState(true)
+  const preferCachedQuery = useMemo(() => {
+    if (currentPage !== 0) {
+      return false
+    }
 
-  useEffect(() => {
-    const shouldAllowFallback =
-      !enabled || !streamParams || Boolean(streamState.error) || !streamState.connected
-
-    setHttpFallbackAllowed(prev =>
-      prev === shouldAllowFallback ? prev : shouldAllowFallback
-    )
-  }, [enabled, streamParams, streamState.connected, streamState.error])
+    return !streamState.error
+  }, [currentPage, streamState.error])
 
   const shouldDisablePolling = Boolean(streamParams) && streamState.connected && !streamState.error
   const queryEnabled =
     enabled &&
-    (currentPage > 0 || Boolean(streamState.error) || (!streamState.connected && httpFallbackAllowed))
+    (currentPage > 0 || Boolean(streamState.error) || !streamParams)
 
   // Reset state when instanceId, filters, search, or sort changes
   // Use JSON.stringify to avoid resetting on every object reference change during polling
@@ -214,6 +211,7 @@ export function useTorrentsList(
         order,
         search,
         filters,
+        preferCached: preferCachedQuery,
       })
     },
     // Trust backend cache - it returns immediately with stale data if needed
@@ -373,6 +371,20 @@ export function useTorrentsList(
   const isCachedData = cacheMetadata?.source === "cache"
   const isStaleData = cacheMetadata?.isStale === true
 
+  const isInitialStreamLoading =
+    currentPage === 0 &&
+    enabled &&
+    Boolean(streamParams) &&
+    !streamState.error &&
+    !lastStreamSnapshot &&
+    !data
+
+  const effectiveIsLoading =
+    currentPage === 0 ? (isInitialStreamLoading || (queryEnabled && isLoading)) : isLoading
+
+  const effectiveIsFetching =
+    currentPage === 0 ? (queryEnabled && isFetching) : isFetching
+
   // Use lastKnownTotal when loading more pages to prevent flickering
   const effectiveTotalCount =
     currentPage > 0 && typeof activeData?.total !== "number"
@@ -400,8 +412,8 @@ export function useTorrentsList(
           false
         )
       : false,
-    isLoading: isLoading && currentPage === 0,
-    isFetching,
+    isLoading: effectiveIsLoading,
+    isFetching: effectiveIsFetching,
     isLoadingMore,
     hasLoadedAll,
     loadMore,
