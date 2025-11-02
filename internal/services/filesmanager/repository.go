@@ -6,6 +6,7 @@ package filesmanager
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -303,31 +304,41 @@ func (r *Repository) UpsertSyncInfo(ctx context.Context, info SyncInfo) error {
 }
 
 // DeleteSyncInfo removes sync metadata for a torrent
-func (r *Repository) DeleteSyncInfo(ctx context.Context, instanceID int, hash string) error {
+func (r *Repository) DeleteSyncInfo(ctx context.Context, instanceID int, hash string) (err error) {
 	// Start a transaction
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
+		return fmt.Errorf("DeleteSyncInfo: failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if rollErr := tx.Rollback(); rollErr != nil && !errors.Is(rollErr, sql.ErrTxDone) && err == nil {
+			err = fmt.Errorf("DeleteSyncInfo: rollback failed: %w", rollErr)
+		}
+	}()
 
 	// Get the hash ID without creating it if it doesn't exist
 	hashIDs, err := dbinterface.GetStringID(ctx, tx, hash)
 	if err != nil {
-		return fmt.Errorf("failed to get torrent_hash ID: %w", err)
+		return fmt.Errorf("DeleteSyncInfo: failed to get torrent_hash ID: %w", err)
 	}
 
 	// If the hash doesn't exist in the string pool, there's nothing to delete
-	if !hashIDs[0].Valid {
-		return tx.Commit()
+	if len(hashIDs) == 0 || !hashIDs[0].Valid {
+		if commitErr := tx.Commit(); commitErr != nil {
+			return fmt.Errorf("DeleteSyncInfo: commit failed when torrent hash missing: %w", commitErr)
+		}
+		return nil
 	}
 
-	_, err = tx.ExecContext(ctx, `DELETE FROM torrent_files_sync WHERE instance_id = ? AND torrent_hash_id = ?`, instanceID, hashIDs[0].Int64)
-	if err != nil {
-		return err
+	if _, err = tx.ExecContext(ctx, `DELETE FROM torrent_files_sync WHERE instance_id = ? AND torrent_hash_id = ?`, instanceID, hashIDs[0].Int64); err != nil {
+		return fmt.Errorf("DeleteSyncInfo: failed to delete sync info: %w", err)
 	}
 
-	return tx.Commit()
+	if commitErr := tx.Commit(); commitErr != nil {
+		return fmt.Errorf("DeleteSyncInfo: commit failed: %w", commitErr)
+	}
+
+	return nil
 }
 
 // DeleteOldCache removes cache entries older than the specified time
