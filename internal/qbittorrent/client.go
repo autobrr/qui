@@ -47,16 +47,19 @@ type Client struct {
 	syncManager             *qbt.SyncManager
 	peerSyncManager         map[string]*qbt.PeerSyncManager // Map of torrent hash to PeerSyncManager
 	// optimisticUpdates stores temporary optimistic state changes for this instance
-	optimisticUpdates *ttlcache.Cache[string, *OptimisticTorrentUpdate]
-	trackerExclusions map[string]map[string]struct{} // Domains to hide hashes from until fresh sync arrives
-	lastServerState   *qbt.ServerState
-	appInfoCache      *AppInfo
-	appInfoFetchedAt  time.Time
-	mu                sync.RWMutex
-	serverStateMu     sync.RWMutex
-	healthMu          sync.RWMutex
-	appInfoMu         sync.RWMutex
-	syncEventSink     SyncEventSink
+	optimisticUpdates    *ttlcache.Cache[string, *OptimisticTorrentUpdate]
+	trackerExclusions    map[string]map[string]struct{} // Domains to hide hashes from until fresh sync arrives
+	lastServerState      *qbt.ServerState
+	appInfoCache         *AppInfo
+	appInfoFetchedAt     time.Time
+	mu                   sync.RWMutex
+	serverStateMu        sync.RWMutex
+	healthMu             sync.RWMutex
+	appInfoMu            sync.RWMutex
+	preferencesCache     *qbt.AppPreferences
+	preferencesFetchedAt time.Time
+	preferencesMu        sync.RWMutex
+	syncEventSink        SyncEventSink
 }
 
 func NewClient(instanceID int, instanceHost, username, password string, basicUsername, basicPassword *string, tlsSkipVerify bool) (*Client, error) {

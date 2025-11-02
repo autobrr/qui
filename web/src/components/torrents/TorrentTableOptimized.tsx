@@ -627,7 +627,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const { exportTorrents, isExporting: isExportingTorrent } = useTorrentExporter({ instanceId, incognitoMode })
   const [speedUnit, setSpeedUnit] = useSpeedUnits()
   const { formatTimestamp, formatDate } = useDateTimeFormatters()
-  const { preferences } = useInstancePreferences(instanceId)
+  const { preferences } = useInstancePreferences(instanceId, { fetchIfMissing: false })
 
   // Desktop view mode state (separate from mobile view mode)
   const { viewMode: desktopViewMode, cycleViewMode } = usePersistedCompactViewState("normal", TABLE_ALLOWED_VIEW_MODES)
@@ -793,7 +793,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   })
 
   // Fetch metadata using shared hook
-  const { data: metadata, isLoading: isMetadataLoading } = useInstanceMetadata(instanceId)
+  const { data: metadata, isLoading: isMetadataLoading } = useInstanceMetadata(instanceId, {
+    fallbackDelayMs: 1500,
+  })
   const availableTags = metadata?.tags || []
   const availableCategories = metadata?.categories || {}
   const isLoadingTags = isMetadataLoading && availableTags.length === 0

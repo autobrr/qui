@@ -213,7 +213,7 @@ const FilterSidebarComponent = ({
   const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? true
   const supportsTrackerEditing = capabilities?.supportsTrackerEditing ?? true
   const supportsSubcategories = capabilities?.supportsSubcategories ?? false
-  const { preferences } = useInstancePreferences(instanceId)
+  const { preferences } = useInstancePreferences(instanceId, { fetchIfMissing: false })
   const preferenceUseSubcategories = preferences?.use_subcategories
   const subcategoriesEnabled = Boolean(
     supportsSubcategories && (preferenceUseSubcategories ?? useSubcategories ?? false)

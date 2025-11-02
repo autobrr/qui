@@ -245,6 +245,7 @@ export interface TorrentResponse {
   tags?: string[]
   serverState?: ServerState
   appInfo?: QBittorrentAppInfo
+  preferences?: AppPreferences
   useSubcategories?: boolean
   cacheMetadata?: CacheMetadata
   hasMore?: boolean

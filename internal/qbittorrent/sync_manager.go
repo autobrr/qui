@@ -68,6 +68,7 @@ type TorrentResponse struct {
 	Tags                   []string                `json:"tags,omitempty"`        // Include tags for sidebar
 	ServerState            *qbt.ServerState        `json:"serverState,omitempty"` // Include server state for Dashboard
 	AppInfo                *AppInfo                `json:"appInfo,omitempty"`     // Include qBittorrent application info
+	AppPreferences         *qbt.AppPreferences     `json:"preferences,omitempty"` // Include qBittorrent application preferences
 	UseSubcategories       bool                    `json:"useSubcategories"`      // Whether subcategories are enabled
 	HasMore                bool                    `json:"hasMore"`               // Whether more pages are available
 	SessionID              string                  `json:"sessionId,omitempty"`   // Optional session tracking
@@ -561,6 +562,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	var cacheMetadata *CacheMetadata
 	var serverState *qbt.ServerState
 	var appInfo *AppInfo
+	var appPreferences *qbt.AppPreferences
 
 	if syncManager != nil {
 		lastSyncTime := syncManager.LastSyncTime()
@@ -594,6 +596,15 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		} else {
 			appInfo = info
 		}
+
+		if prefs, err := client.GetAppPreferences(ctx); err != nil {
+			log.Warn().
+				Err(err).
+				Int("instanceID", instanceID).
+				Msg("Failed to retrieve qBittorrent app preferences for torrent stream")
+		} else {
+			appPreferences = prefs
+		}
 	}
 
 	response := &TorrentResponse{
@@ -605,6 +616,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		Tags:                   tags,        // Include tags for sidebar
 		ServerState:            serverState, // Include server state for Dashboard
 		AppInfo:                appInfo,     // Include application info for frontend consumers
+		AppPreferences:         appPreferences,
 		UseSubcategories:       useSubcategories,
 		HasMore:                hasMore,
 		CacheMetadata:          cacheMetadata,
@@ -3037,12 +3049,16 @@ func (sm *SyncManager) GetAppPreferences(ctx context.Context, instanceID int) (q
 		return qbt.AppPreferences{}, fmt.Errorf("failed to get client: %w", err)
 	}
 
-	prefs, err := client.GetAppPreferencesCtx(ctx)
+	prefs, err := client.GetAppPreferences(ctx)
 	if err != nil {
 		return qbt.AppPreferences{}, fmt.Errorf("failed to get app preferences: %w", err)
 	}
 
-	return prefs, nil
+	if prefs == nil {
+		return qbt.AppPreferences{}, fmt.Errorf("failed to get app preferences: empty response")
+	}
+
+	return *prefs, nil
 }
 
 // SetAppPreferences updates app preferences
@@ -3055,6 +3071,8 @@ func (sm *SyncManager) SetAppPreferences(ctx context.Context, instanceID int, pr
 	if err := client.SetPreferencesCtx(ctx, prefs); err != nil {
 		return fmt.Errorf("failed to set preferences: %w", err)
 	}
+
+	client.InvalidateAppPreferencesCache()
 
 	// Sync after modification
 	sm.syncAfterModification(instanceID, client, "set_app_preferences")

@@ -7,7 +7,14 @@ import { useSyncStream } from "@/contexts/SyncStreamContext"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import type { InstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { api } from "@/lib/api"
-import type { QBittorrentAppInfo, Torrent, TorrentFilters, TorrentResponse, TorrentStreamPayload } from "@/types"
+import type {
+  AppPreferences,
+  QBittorrentAppInfo,
+  Torrent,
+  TorrentFilters,
+  TorrentResponse,
+  TorrentStreamPayload,
+} from "@/types"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useCallback, useEffect, useMemo, useState } from "react"
 
@@ -62,8 +69,9 @@ export function useTorrentsList(
 
       const hasCategories = Object.prototype.hasOwnProperty.call(source, "categories")
       const hasTags = Object.prototype.hasOwnProperty.call(source, "tags")
+      const hasPreferences = Object.prototype.hasOwnProperty.call(source, "preferences")
 
-      if (!hasCategories && !hasTags) {
+      if (!hasCategories && !hasTags && !hasPreferences) {
         return
       }
 
@@ -78,18 +86,32 @@ export function useTorrentsList(
             hasTags && source.tags !== undefined
               ? source.tags ?? []
               : previous?.tags ?? []
+          const nextPreferences =
+            hasPreferences && source.preferences !== undefined
+              ? (source.preferences as AppPreferences | undefined) ?? previous?.preferences
+              : previous?.preferences
 
           const next: InstanceMetadata = {
             categories: nextCategories,
             tags: nextTags,
-            preferences: previous?.preferences,
+            preferences: nextPreferences,
           }
 
           return next
         }
       )
+
+      if (hasPreferences && source.preferences !== undefined) {
+        const nextPreferences = source.preferences as AppPreferences | undefined
+        if (nextPreferences !== undefined) {
+          queryClient.setQueryData<AppPreferences | undefined>(
+            ["instance-preferences", instanceId],
+            nextPreferences
+          )
+        }
+      }
     },
-    [metadataQueryKey, queryClient]
+    [instanceId, metadataQueryKey, queryClient]
   )
 
   const updateAppInfoCache = useCallback(
