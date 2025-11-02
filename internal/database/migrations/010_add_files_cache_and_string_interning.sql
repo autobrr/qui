@@ -82,19 +82,20 @@ SELECT DISTINCT archive_path FROM instance_backup_runs WHERE archive_path IS NOT
 UNION
 SELECT DISTINCT manifest_path FROM instance_backup_runs WHERE manifest_path IS NOT NULL AND manifest_path != ''
 UNION
-SELECT DISTINCT name FROM instances WHERE name IS NOT NULL AND name != ''
+SELECT DISTINCT name FROM instances WHERE name IS NOT NULL
 UNION
-SELECT DISTINCT host FROM instances WHERE host IS NOT NULL AND host != ''
+SELECT DISTINCT host FROM instances WHERE host IS NOT NULL
 UNION
-SELECT DISTINCT username FROM instances WHERE username IS NOT NULL AND username != ''
+SELECT DISTINCT username FROM instances WHERE username IS NOT NULL
 UNION
 SELECT DISTINCT basic_username FROM instances WHERE basic_username IS NOT NULL AND basic_username != ''
 UNION
-SELECT DISTINCT name FROM api_keys WHERE name IS NOT NULL AND name != ''
+SELECT DISTINCT name FROM api_keys WHERE name IS NOT NULL
 UNION
 SELECT DISTINCT client_name FROM client_api_keys WHERE client_name IS NOT NULL AND client_name != '';
 
--- Insert placeholder values for empty/NULL strings
+-- Insert placeholder/empty values for NULL strings
+INSERT OR IGNORE INTO string_pool (value) VALUES ('');
 INSERT OR IGNORE INTO string_pool (value) VALUES ('(unknown)');
 INSERT OR IGNORE INTO string_pool (value) VALUES ('(unnamed)');
 
@@ -186,14 +187,11 @@ SET name_id = COALESCE(
 UPDATE instances
 SET host_id = COALESCE(
     (SELECT id FROM string_pool WHERE value = instances.host),
-    (SELECT id FROM string_pool WHERE value = '(unknown)')
+    (SELECT id FROM string_pool WHERE value = '')
 );
 
 UPDATE instances
-SET username_id = COALESCE(
-    (SELECT id FROM string_pool WHERE value = instances.username),
-    (SELECT id FROM string_pool WHERE value = '(unknown)')
-);
+SET username_id = (SELECT id FROM string_pool WHERE value = COALESCE(instances.username, ''));
 
 UPDATE instances
 SET basic_username_id = (SELECT id FROM string_pool WHERE value = instances.basic_username)
