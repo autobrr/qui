@@ -1591,13 +1591,13 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                                         <p>{matchDescription}</p>
                                       </TooltipContent>
                                     </Tooltip>
-                                    {trackerHostname && (
+                                    {!incognitoMode && trackerHostname && (
                                       <>
                                         <span>•</span>
                                         <span>Tracker: {trackerHostname}</span>
                                       </>
                                     )}
-                                    {match.category && (
+                                    {!incognitoMode && match.category && (
                                       <>
                                         <span>•</span>
                                         <span>Category: {match.category}</span>
