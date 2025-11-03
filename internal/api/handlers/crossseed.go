@@ -52,6 +52,10 @@ func (h *CrossSeedHandler) Routes(r chi.Router) {
 	r.Route("/cross-seed", func(r chi.Router) {
 		r.Post("/find-candidates", h.FindCandidates)
 		r.Post("/cross", h.CrossSeed)
+		r.Route("/torrents", func(r chi.Router) {
+			r.Post("/{instanceID}/{hash}/search", h.SearchTorrentMatches)
+			r.Post("/{instanceID}/{hash}/apply", h.ApplyTorrentSearchResults)
+		})
 		r.Get("/settings", h.GetAutomationSettings)
 		r.Put("/settings", h.UpdateAutomationSettings)
 		r.Get("/status", h.GetAutomationStatus)
@@ -143,6 +147,138 @@ func (h *CrossSeedHandler) CrossSeed(w http.ResponseWriter, r *http.Request) {
 	}
 
 	RespondJSON(w, status, response)
+}
+
+// SearchTorrentMatches godoc
+// @Summary Search Torznab indexers for cross-seed matches for a specific torrent
+// @Description Uses the seeded torrent's metadata to find compatible releases on the configured Torznab indexers.
+// @Tags cross-seed
+// @Accept json
+// @Produce json
+// @Param instanceID path int true "Instance ID"
+// @Param hash path string true "Torrent hash"
+// @Param request body crossseed.TorrentSearchOptions false "Optional search configuration"
+// @Success 200 {object} crossseed.TorrentSearchResponse
+// @Failure 400 {object} httphelpers.ErrorResponse
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/cross-seed/torrents/{instanceID}/{hash}/search [post]
+func (h *CrossSeedHandler) SearchTorrentMatches(w http.ResponseWriter, r *http.Request) {
+	instanceIDStr := chi.URLParam(r, "instanceID")
+	instanceID, err := strconv.Atoi(instanceIDStr)
+	if err != nil || instanceID <= 0 {
+		RespondError(w, http.StatusBadRequest, "instanceID must be a positive integer")
+		return
+	}
+
+	hash := strings.TrimSpace(chi.URLParam(r, "hash"))
+	if hash == "" {
+		RespondError(w, http.StatusBadRequest, "hash is required")
+		return
+	}
+
+	var opts crossseed.TorrentSearchOptions
+	if r.Body != nil {
+		if err := json.NewDecoder(r.Body).Decode(&opts); err != nil && !errors.Is(err, io.EOF) {
+			log.Error().
+				Err(err).
+				Int("instanceID", instanceID).
+				Str("hash", hash).
+				Msg("Failed to decode torrent search request")
+			RespondError(w, http.StatusBadRequest, "Invalid request body")
+			return
+		}
+	}
+
+	response, err := h.service.SearchTorrentMatches(r.Context(), instanceID, hash, opts)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if shouldReturnBadRequest(err) {
+			status = http.StatusBadRequest
+		}
+		log.Error().
+			Err(err).
+			Int("instanceID", instanceID).
+			Str("hash", hash).
+			Msg("Failed to search cross-seed matches")
+		RespondError(w, status, err.Error())
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, response)
+}
+
+// ApplyTorrentSearchResults godoc
+// @Summary Add torrents discovered via cross-seed search
+// @Description Downloads the selected releases and reuses the cross-seed pipeline to add them to the specified instance.
+// @Tags cross-seed
+// @Accept json
+// @Produce json
+// @Param instanceID path int true "Instance ID"
+// @Param hash path string true "Torrent hash"
+// @Param request body crossseed.ApplyTorrentSearchRequest true "Selections to add"
+// @Success 200 {object} crossseed.ApplyTorrentSearchResponse
+// @Failure 400 {object} httphelpers.ErrorResponse
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/cross-seed/torrents/{instanceID}/{hash}/apply [post]
+func (h *CrossSeedHandler) ApplyTorrentSearchResults(w http.ResponseWriter, r *http.Request) {
+	instanceIDStr := chi.URLParam(r, "instanceID")
+	instanceID, err := strconv.Atoi(instanceIDStr)
+	if err != nil || instanceID <= 0 {
+		RespondError(w, http.StatusBadRequest, "instanceID must be a positive integer")
+		return
+	}
+
+	hash := strings.TrimSpace(chi.URLParam(r, "hash"))
+	if hash == "" {
+		RespondError(w, http.StatusBadRequest, "hash is required")
+		return
+	}
+
+	var req crossseed.ApplyTorrentSearchRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Error().
+			Err(err).
+			Int("instanceID", instanceID).
+			Str("hash", hash).
+			Msg("Failed to decode cross-seed apply request")
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if len(req.Selections) == 0 {
+		RespondError(w, http.StatusBadRequest, "selections are required")
+		return
+	}
+
+	response, err := h.service.ApplyTorrentSearchResults(r.Context(), instanceID, hash, &req)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if shouldReturnBadRequest(err) {
+			status = http.StatusBadRequest
+		}
+		log.Error().
+			Err(err).
+			Int("instanceID", instanceID).
+			Str("hash", hash).
+			Msg("Failed to apply cross-seed search results")
+		RespondError(w, status, err.Error())
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, response)
+}
+
+func shouldReturnBadRequest(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "not found") ||
+		strings.Contains(msg, "not fully downloaded") ||
+		strings.Contains(msg, "invalid")
 }
 
 // GetAutomationSettings returns scheduler configuration.

@@ -950,6 +950,7 @@ export interface CrossSeedTorrentInfo {
   instanceName?: string
   hash?: string
   name: string
+  category?: string
   size?: number
   progress?: number
   totalFiles?: number
@@ -980,6 +981,53 @@ export interface CrossSeedResponse {
   success: boolean
   results: CrossSeedInstanceResult[]
   torrentInfo?: CrossSeedTorrentInfo
+}
+
+export interface CrossSeedTorrentSearchResult {
+  indexer: string
+  indexerId: number
+  title: string
+  downloadUrl: string
+  infoUrl?: string
+  size: number
+  seeders: number
+  leechers: number
+  categoryId: number
+  categoryName: string
+  publishDate: string
+  downloadVolumeFactor: number
+  uploadVolumeFactor: number
+  guid: string
+  imdbId?: string
+  tvdbId?: string
+  matchReason?: string
+  matchScore: number
+}
+
+export interface CrossSeedTorrentSearchResponse {
+  sourceTorrent: CrossSeedTorrentInfo
+  results: CrossSeedTorrentSearchResult[]
+}
+
+export interface CrossSeedTorrentSearchSelection {
+  indexerId: number
+  indexer: string
+  downloadUrl: string
+  title: string
+  guid?: string
+}
+
+export interface CrossSeedApplyResult {
+  title: string
+  indexer: string
+  torrentName?: string
+  success: boolean
+  instanceResults?: CrossSeedInstanceResult[]
+  error?: string
+}
+
+export interface CrossSeedApplyResponse {
+  results: CrossSeedApplyResult[]
 }
 
 export interface CrossSeedRunResult {

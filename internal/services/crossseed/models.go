@@ -24,6 +24,9 @@ type CrossSeedRequest struct {
 	SkipIfExists bool `json:"skip_if_exists,omitempty"`
 	// StartPaused controls whether newly added torrents start paused
 	StartPaused *bool `json:"start_paused,omitempty"`
+	// AddCrossSeedTag controls whether the service should automatically tag added torrents as cross-seeds.
+	// Defaults to true when omitted.
+	AddCrossSeedTag *bool `json:"add_cross_seed_tag,omitempty"`
 }
 
 // CrossSeedResponse represents the result of a cross-seed operation
@@ -62,6 +65,7 @@ type TorrentInfo struct {
 	InstanceName  string        `json:"instance_name,omitempty"`
 	Hash          string        `json:"hash,omitempty"`
 	Name          string        `json:"name"`
+	Category      string        `json:"category,omitempty"`
 	Size          int64         `json:"size"`
 	Progress      float64       `json:"progress,omitempty"`
 	TotalFiles    int           `json:"total_files,omitempty"`    // Total files in torrent
@@ -126,4 +130,74 @@ type CrossSeedCandidate struct {
 	//   "partial-contains" - new torrent is a season pack containing existing episode(s)
 	//   "size" - total size matches but structure differs
 	MatchType string `json:"match_type"`
+}
+
+// TorrentSearchOptions controls how the service searches for cross-seed matches for an existing torrent.
+type TorrentSearchOptions struct {
+	// Optional override for the search query; defaults to the torrent name.
+	Query string `json:"query,omitempty"`
+	// Limit controls how many results are returned (after filtering). Defaults to 20.
+	Limit int `json:"limit,omitempty"`
+	// IndexerIDs restricts the search to specific Torznab indexers.
+	IndexerIDs []int `json:"indexer_ids,omitempty"`
+}
+
+// TorrentSearchResult represents an indexer search result that appears to match the seeded torrent.
+type TorrentSearchResult struct {
+	Indexer              string  `json:"indexer"`
+	IndexerID            int     `json:"indexer_id"`
+	Title                string  `json:"title"`
+	DownloadURL          string  `json:"download_url"`
+	InfoURL              string  `json:"info_url,omitempty"`
+	Size                 int64   `json:"size"`
+	Seeders              int     `json:"seeders"`
+	Leechers             int     `json:"leechers"`
+	CategoryID           int     `json:"category_id"`
+	CategoryName         string  `json:"category_name"`
+	PublishDate          string  `json:"publish_date"`
+	DownloadVolumeFactor float64 `json:"download_volume_factor"`
+	UploadVolumeFactor   float64 `json:"upload_volume_factor"`
+	GUID                 string  `json:"guid"`
+	IMDbID               string  `json:"imdb_id,omitempty"`
+	TVDbID               string  `json:"tvdb_id,omitempty"`
+	MatchReason          string  `json:"match_reason,omitempty"`
+	MatchScore           float64 `json:"match_score"`
+}
+
+// TorrentSearchResponse bundles the seeded torrent information with potential cross-seed matches.
+type TorrentSearchResponse struct {
+	SourceTorrent TorrentInfo           `json:"source_torrent"`
+	Results       []TorrentSearchResult `json:"results"`
+}
+
+// TorrentSearchSelection represents a user-selected search result that should be added for cross-seeding.
+type TorrentSearchSelection struct {
+	IndexerID   int    `json:"indexer_id"`
+	Indexer     string `json:"indexer"`
+	DownloadURL string `json:"download_url"`
+	Title       string `json:"title"`
+	GUID        string `json:"guid,omitempty"`
+}
+
+// ApplyTorrentSearchRequest describes the payload used when adding torrents found via cross-seed search.
+type ApplyTorrentSearchRequest struct {
+	Selections  []TorrentSearchSelection `json:"selections"`
+	UseTag      bool                     `json:"use_tag"`
+	TagName     string                   `json:"tag_name,omitempty"`
+	StartPaused *bool                    `json:"start_paused,omitempty"`
+}
+
+// TorrentSearchAddResult summarises a single add attempt from a search selection.
+type TorrentSearchAddResult struct {
+	Title           string                    `json:"title"`
+	Indexer         string                    `json:"indexer"`
+	TorrentName     string                    `json:"torrent_name,omitempty"`
+	Success         bool                      `json:"success"`
+	InstanceResults []InstanceCrossSeedResult `json:"instance_results,omitempty"`
+	Error           string                    `json:"error,omitempty"`
+}
+
+// ApplyTorrentSearchResponse aggregates the results of adding multiple search selections.
+type ApplyTorrentSearchResponse struct {
+	Results []TorrentSearchAddResult `json:"results"`
 }

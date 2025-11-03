@@ -88,7 +88,16 @@ import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { getStateLabel } from "@/lib/torrent-state-utils"
 import { getCommonCategory, getCommonSavePath, getCommonTags, getTotalSize } from "@/lib/torrent-utils"
 import { cn } from "@/lib/utils"
-import type { Category, ServerState, Torrent, TorrentCounts, TorrentFilters } from "@/types"
+import type {
+  Category,
+  CrossSeedApplyResponse,
+  CrossSeedTorrentSearchResponse,
+  CrossSeedTorrentSearchSelection,
+  ServerState,
+  Torrent,
+  TorrentCounts,
+  TorrentFilters
+} from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useSearch } from "@tanstack/react-router"
 import {
@@ -113,6 +122,7 @@ import {
 } from "lucide-react"
 import { createPortal } from "react-dom"
 import { AddTorrentDialog, type AddTorrentDropPayload } from "./AddTorrentDialog"
+import { CrossSeedDialog } from "./CrossSeedDialog"
 import { DraggableTableHeader } from "./DraggableTableHeader"
 import { SelectAllHotkey } from "./SelectAllHotkey"
 import {
@@ -131,6 +141,7 @@ import {
 import { TorrentDropZone } from "./TorrentDropZone"
 import { createColumns } from "./TorrentTableColumns"
 import { DeleteFilesPreference } from "./DeleteFilesPreference"
+import { toast } from "sonner"
 
 const TABLE_ALLOWED_VIEW_MODES = ["normal", "compact"] as const
 
@@ -619,6 +630,16 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const [isAllSelected, setIsAllSelected] = useState(false)
   const [excludedFromSelectAll, setExcludedFromSelectAll] = useState<Set<string>>(new Set())
   const [dropPayload, setDropPayload] = useState<AddTorrentDropPayload | null>(null)
+  const [crossSeedDialogOpen, setCrossSeedDialogOpen] = useState(false)
+  const [crossSeedTorrent, setCrossSeedTorrent] = useState<Torrent | null>(null)
+  const [crossSeedSearchResponse, setCrossSeedSearchResponse] = useState<CrossSeedTorrentSearchResponse | null>(null)
+  const [crossSeedSearchLoading, setCrossSeedSearchLoading] = useState(false)
+  const [crossSeedSearchError, setCrossSeedSearchError] = useState<string | null>(null)
+  const [crossSeedSelectedKeys, setCrossSeedSelectedKeys] = useState<Set<string>>(new Set())
+  const [crossSeedUseTag, setCrossSeedUseTag] = useState(true)
+  const [crossSeedTagName, setCrossSeedTagName] = useState("cross-seed")
+  const [crossSeedSubmitting, setCrossSeedSubmitting] = useState(false)
+  const [crossSeedApplyResult, setCrossSeedApplyResult] = useState<CrossSeedApplyResponse | null>(null)
 
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const { exportTorrents, isExporting: isExportingTorrent } = useTorrentExporter({ instanceId, incognitoMode })
@@ -645,6 +666,17 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     trackerIconsRef.current = latest
     return latest
   }, [trackerIconsQuery.data])
+
+  const { data: torznabIndexers } = useQuery({
+    queryKey: ["torznab", "indexers"],
+    queryFn: () => api.listTorznabIndexers(),
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const hasEnabledCrossSeedIndexers = useMemo(
+    () => (torznabIndexers ?? []).some(indexer => indexer.enabled),
+    [torznabIndexers]
+  )
 
   // Detect platform for keyboard shortcuts
   const isMac = useMemo(() => {
@@ -1409,6 +1441,176 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   }, [isAllSelected, stats?.totalSize, excludedFromSelectAll, sortedTorrents, selectedTorrents])
   const selectedFormattedSize = useMemo(() => formatBytes(selectedTotalSize), [selectedTotalSize])
   const queryClient = useQueryClient()
+  const getCrossSeedResultKey = useCallback(
+    (result: CrossSeedTorrentSearchResponse["results"][number], index: number) =>
+      result.guid || result.downloadUrl || `${result.indexer}-${index}`,
+    []
+  )
+
+  const resetCrossSeedState = useCallback(() => {
+    setCrossSeedTorrent(null)
+    setCrossSeedSearchResponse(null)
+    setCrossSeedSearchError(null)
+    setCrossSeedSearchLoading(false)
+    setCrossSeedSelectedKeys(new Set())
+    setCrossSeedUseTag(true)
+    setCrossSeedTagName("cross-seed")
+    setCrossSeedSubmitting(false)
+    setCrossSeedApplyResult(null)
+  }, [])
+
+  const handleCrossSeedSearch = useCallback(
+    (torrent: Torrent) => {
+      if (!hasEnabledCrossSeedIndexers) {
+        toast.error("Configure at least one Torznab indexer to search for cross-seeds")
+        return
+      }
+
+      if (typeof torrent.progress === "number" && torrent.progress < 1) {
+        toast.info("Only completed torrents can be cross-seeded")
+        return
+      }
+
+      setCrossSeedTorrent(torrent)
+      setCrossSeedDialogOpen(true)
+      setCrossSeedSearchLoading(true)
+      setCrossSeedSearchError(null)
+      setCrossSeedSearchResponse(null)
+      setCrossSeedApplyResult(null)
+      setCrossSeedSelectedKeys(new Set())
+      setCrossSeedUseTag(true)
+      setCrossSeedTagName("cross-seed")
+
+      void api
+        .searchCrossSeedTorrent(instanceId, torrent.hash)
+        .then((response) => {
+          setCrossSeedSearchResponse(response)
+
+          const defaultSelection = new Set<string>()
+          response.results.forEach((result, index) => {
+            defaultSelection.add(getCrossSeedResultKey(result, index))
+          })
+          setCrossSeedSelectedKeys(defaultSelection)
+
+          if (response.results.length === 0) {
+            toast.info("No cross-seed matches found")
+          }
+        })
+        .catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : "Failed to search for cross-seeds"
+          setCrossSeedSearchError(message)
+          toast.error(message)
+        })
+        .finally(() => {
+          setCrossSeedSearchLoading(false)
+        })
+    },
+    [getCrossSeedResultKey, hasEnabledCrossSeedIndexers, instanceId]
+  )
+
+  const handleRetryCrossSeedSearch = useCallback(() => {
+    if (crossSeedTorrent) {
+      handleCrossSeedSearch(crossSeedTorrent)
+    }
+  }, [crossSeedTorrent, handleCrossSeedSearch])
+
+  const toggleCrossSeedSelection = useCallback(
+    (result: CrossSeedTorrentSearchResponse["results"][number], index: number) => {
+      setCrossSeedSelectedKeys(prev => {
+        const next = new Set(prev)
+        const key = getCrossSeedResultKey(result, index)
+        if (next.has(key)) {
+          next.delete(key)
+        } else {
+          next.add(key)
+        }
+        return next
+      })
+    },
+    [getCrossSeedResultKey]
+  )
+
+  const selectAllCrossSeedResults = useCallback(() => {
+    if (!crossSeedSearchResponse) {
+      return
+    }
+    const next = new Set<string>()
+    crossSeedSearchResponse.results.forEach((result, index) => {
+      next.add(getCrossSeedResultKey(result, index))
+    })
+    setCrossSeedSelectedKeys(next)
+  }, [crossSeedSearchResponse, getCrossSeedResultKey])
+
+  const clearCrossSeedSelection = useCallback(() => {
+    setCrossSeedSelectedKeys(new Set())
+  }, [])
+
+  const closeCrossSeedDialog = useCallback(() => {
+    setCrossSeedDialogOpen(false)
+    resetCrossSeedState()
+  }, [resetCrossSeedState])
+
+  const handleApplyCrossSeed = useCallback(async () => {
+    if (!crossSeedTorrent || !crossSeedSearchResponse) {
+      return
+    }
+
+    const selections: CrossSeedTorrentSearchSelection[] = []
+    crossSeedSearchResponse.results.forEach((result, index) => {
+      const key = getCrossSeedResultKey(result, index)
+      if (crossSeedSelectedKeys.has(key)) {
+        selections.push({
+          indexerId: result.indexerId,
+          indexer: result.indexer,
+          downloadUrl: result.downloadUrl,
+          title: result.title,
+          guid: result.guid,
+        })
+      }
+    })
+
+    if (selections.length === 0) {
+      toast.warning("Select at least one result to add")
+      return
+    }
+
+    try {
+      setCrossSeedSubmitting(true)
+      setCrossSeedApplyResult(null)
+
+      const response = await api.applyCrossSeedSearchResults(instanceId, crossSeedTorrent.hash, {
+        selections,
+        useTag: crossSeedUseTag,
+        tagName: crossSeedUseTag ? (crossSeedTagName.trim() || "cross-seed") : undefined,
+        startPaused: true,
+      })
+
+      setCrossSeedApplyResult(response)
+
+      toast.success(`Submitted ${selections.length} cross-seed${selections.length > 1 ? "s" : ""}`)
+      queryClient.invalidateQueries({ queryKey: ["torrents-list", instanceId], exact: false })
+      queryClient.invalidateQueries({ queryKey: ["torrent-counts", instanceId], exact: false })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to add cross-seeds"
+      toast.error(message)
+    } finally {
+      setCrossSeedSubmitting(false)
+    }
+  }, [
+    api,
+    crossSeedSearchResponse,
+    crossSeedSelectedKeys,
+    crossSeedTagName,
+    crossSeedTorrent,
+    crossSeedUseTag,
+    getCrossSeedResultKey,
+    instanceId,
+    queryClient,
+  ])
+  const crossSeedResults = crossSeedSearchResponse?.results ?? []
+  const crossSeedSourceTorrent = crossSeedSearchResponse?.sourceTorrent
+  const crossSeedSelectionCount = crossSeedSelectedKeys.size
+
   const [altSpeedOverride, setAltSpeedOverride] = useState<boolean | null>(null)
   const serverAltSpeedEnabled = effectiveServerState?.use_alt_speed_limits
   const hasAltSpeedStatus = typeof serverAltSpeedEnabled === "boolean"
@@ -2302,6 +2504,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                       isExporting={isExportingTorrent}
                       capabilities={capabilities}
                       useSubcategories={allowSubcategories}
+                      canCrossSeedSearch={hasEnabledCrossSeedIndexers}
+                      onCrossSeedSearch={handleCrossSeedSearch}
+                      isCrossSeedSearching={crossSeedSearchLoading || crossSeedSubmitting}
                     >
                       <CompactRow
                         torrent={torrent}
@@ -2396,6 +2601,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                     isExporting={isExportingTorrent}
                     capabilities={capabilities}
                     useSubcategories={allowSubcategories}
+                    canCrossSeedSearch={hasEnabledCrossSeedIndexers}
+                    onCrossSeedSearch={handleCrossSeedSearch}
+                    isCrossSeedSearching={crossSeedSearchLoading || crossSeedSubmitting}
                   >
                     <div
                       className={`flex border-b cursor-pointer hover:bg-muted/50 ${isRowSelected ? "bg-muted/50" : ""} ${isSelected ? "bg-accent" : ""}`}
@@ -2647,6 +2855,37 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           </div>
         </div>
       </div>
+
+      <CrossSeedDialog
+        open={crossSeedDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeCrossSeedDialog()
+          } else {
+            setCrossSeedDialogOpen(true)
+          }
+        }}
+        torrent={crossSeedTorrent}
+        sourceTorrent={crossSeedSourceTorrent}
+        results={crossSeedResults}
+        selectedKeys={crossSeedSelectedKeys}
+        selectionCount={crossSeedSelectionCount}
+        isLoading={crossSeedSearchLoading}
+        isSubmitting={crossSeedSubmitting}
+        error={crossSeedSearchError}
+        applyResult={crossSeedApplyResult}
+        getResultKey={getCrossSeedResultKey}
+        onToggleSelection={toggleCrossSeedSelection}
+        onSelectAll={selectAllCrossSeedResults}
+        onClearSelection={clearCrossSeedSelection}
+        onRetry={handleRetryCrossSeedSearch}
+        onClose={closeCrossSeedDialog}
+        onApply={handleApplyCrossSeed}
+        useTag={crossSeedUseTag}
+        onUseTagChange={setCrossSeedUseTag}
+        tagName={crossSeedTagName}
+        onTagNameChange={setCrossSeedTagName}
+      />
 
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>

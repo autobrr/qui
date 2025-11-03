@@ -1879,6 +1879,172 @@ paths:
         '500':
           description: Failed to cross-seed
 
+  /api/cross-seed/settings:
+    get:
+      tags:
+        - Cross-Seed
+      summary: Get cross-seed automation settings
+      description: Retrieve the current automation configuration for cross-seeding
+      responses:
+        '200':
+          description: Current automation settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrossSeedAutomationSettings'
+        '500':
+          description: Failed to load automation settings
+    put:
+      tags:
+        - Cross-Seed
+      summary: Update cross-seed automation settings
+      description: Persist a new automation schedule and cross-seed preferences
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrossSeedAutomationSettings'
+      responses:
+        '200':
+          description: Updated automation settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrossSeedAutomationSettings'
+        '400':
+          description: Invalid request body
+        '500':
+          description: Failed to update automation settings
+
+  /api/cross-seed/status:
+    get:
+      tags:
+        - Cross-Seed
+      summary: Get cross-seed automation status
+      description: Returns scheduler state, last run information, and next scheduled run
+      responses:
+        '200':
+          description: Current automation status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrossSeedAutomationStatus'
+        '500':
+          description: Failed to load automation status
+
+  /api/cross-seed/runs:
+    get:
+      tags:
+        - Cross-Seed
+      summary: List cross-seed automation runs
+      description: Returns the most recent automation runs
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+          description: Maximum number of runs to return
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+          description: Offset for pagination
+      responses:
+        '200':
+          description: Automation run history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CrossSeedRun'
+        '500':
+          description: Failed to load automation runs
+
+  /api/cross-seed/run:
+    post:
+      tags:
+        - Cross-Seed
+      summary: Trigger cross-seed automation run
+      description: Starts an on-demand automation pass
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrossSeedRunRequest'
+      responses:
+        '202':
+          description: Automation run started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrossSeedRun'
+        '400':
+          description: Invalid request body
+        '409':
+          description: Automation is already running
+        '500':
+          description: Failed to trigger automation run
+
+  /api/cross-seed/torrents/{instanceId}/{hash}/search:
+    post:
+      tags:
+        - Cross-Seed
+      summary: Search cross-seed candidates for a torrent
+      description: Query configured Torznab indexers for releases matching an existing torrent
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/hash'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrossSeedTorrentSearchRequest'
+      responses:
+        '200':
+          description: Matching releases were found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrossSeedTorrentSearchResponse'
+        '400':
+          description: Invalid request parameters
+        '500':
+          description: Failed to search indexers
+
+  /api/cross-seed/torrents/{instanceId}/{hash}/apply:
+    post:
+      tags:
+        - Cross-Seed
+      summary: Add torrents found via cross-seed search
+      description: Downloads selected results and queues them for cross-seeding on the specified instance
+      parameters:
+        - $ref: '#/components/parameters/instanceId'
+        - $ref: '#/components/parameters/hash'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrossSeedApplyRequest'
+      responses:
+        '200':
+          description: Add operation completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrossSeedApplyResponse'
+        '400':
+          description: Invalid request body
+        '500':
+          description: Failed to add torrents
+
   /api/version/latest:
     get:
       tags:
@@ -2442,6 +2608,307 @@ components:
           example: "2.11.4"
         buildInfo:
           $ref: '#/components/schemas/QBittorrentBuildInfo'
+
+    CrossSeedInstanceResult:
+      type: object
+      properties:
+        instanceId:
+          type: integer
+        instanceName:
+          type: string
+        success:
+          type: boolean
+        status:
+          type: string
+        message:
+          type: string
+          nullable: true
+
+    CrossSeedRunResult:
+      type: object
+      properties:
+        instanceId:
+          type: integer
+        instanceName:
+          type: string
+        success:
+          type: boolean
+        status:
+          type: string
+        message:
+          type: string
+          nullable: true
+        matchedTorrentHash:
+          type: string
+          nullable: true
+        matchedTorrentName:
+          type: string
+          nullable: true
+
+    CrossSeedRun:
+      type: object
+      properties:
+        id:
+          type: integer
+        triggeredBy:
+          type: string
+        mode:
+          type: string
+          enum: [auto, manual]
+        status:
+          type: string
+          enum: [pending, running, success, partial, failed]
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        totalFeedItems:
+          type: integer
+        candidatesFound:
+          type: integer
+        torrentsAdded:
+          type: integer
+        torrentsFailed:
+          type: integer
+        torrentsSkipped:
+          type: integer
+        message:
+          type: string
+          nullable: true
+        errorMessage:
+          type: string
+          nullable: true
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/CrossSeedRunResult'
+
+    CrossSeedAutomationSettings:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        runIntervalMinutes:
+          type: integer
+        startPaused:
+          type: boolean
+        category:
+          type: string
+          nullable: true
+        tags:
+          type: array
+          items:
+            type: string
+        ignorePatterns:
+          type: array
+          items:
+            type: string
+        targetInstanceIds:
+          type: array
+          items:
+            type: integer
+        targetIndexerIds:
+          type: array
+          items:
+            type: integer
+        maxResultsPerRun:
+          type: integer
+
+    CrossSeedAutomationStatus:
+      type: object
+      properties:
+        settings:
+          $ref: '#/components/schemas/CrossSeedAutomationSettings'
+        lastRun:
+          $ref: '#/components/schemas/CrossSeedRun'
+          nullable: true
+        nextRunAt:
+          type: string
+          format: date-time
+          nullable: true
+        running:
+          type: boolean
+
+    CrossSeedRunRequest:
+      type: object
+      properties:
+        limit:
+          type: integer
+          minimum: 1
+        dryRun:
+          type: boolean
+
+    CrossSeedTorrentInfo:
+      type: object
+      properties:
+        instanceId:
+          type: integer
+          nullable: true
+        instanceName:
+          type: string
+          nullable: true
+        hash:
+          type: string
+          nullable: true
+        name:
+          type: string
+        category:
+          type: string
+          nullable: true
+        size:
+          type: integer
+          nullable: true
+        progress:
+          type: number
+          format: float
+          nullable: true
+        totalFiles:
+          type: integer
+          nullable: true
+        matchingFiles:
+          type: integer
+          nullable: true
+        fileCount:
+          type: integer
+          nullable: true
+
+    CrossSeedTorrentSearchRequest:
+      type: object
+      properties:
+        query:
+          type: string
+        limit:
+          type: integer
+          minimum: 1
+        indexerIds:
+          type: array
+          items:
+            type: integer
+
+    CrossSeedTorrentSearchResult:
+      type: object
+      properties:
+        indexer:
+          type: string
+        indexerId:
+          type: integer
+        title:
+          type: string
+        downloadUrl:
+          type: string
+        infoUrl:
+          type: string
+          nullable: true
+        size:
+          type: integer
+        seeders:
+          type: integer
+        leechers:
+          type: integer
+        categoryId:
+          type: integer
+        categoryName:
+          type: string
+        publishDate:
+          type: string
+          format: date-time
+        downloadVolumeFactor:
+          type: number
+        uploadVolumeFactor:
+          type: number
+        guid:
+          type: string
+        imdbId:
+          type: string
+          nullable: true
+        tvdbId:
+          type: string
+          nullable: true
+        matchReason:
+          type: string
+          nullable: true
+        matchScore:
+          type: number
+
+    CrossSeedTorrentSearchResponse:
+      type: object
+      properties:
+        sourceTorrent:
+          $ref: '#/components/schemas/CrossSeedTorrentInfo'
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/CrossSeedTorrentSearchResult'
+
+    CrossSeedApplySelection:
+      type: object
+      required:
+        - indexerId
+        - indexer
+        - downloadUrl
+        - title
+      properties:
+        indexerId:
+          type: integer
+        indexer:
+          type: string
+        downloadUrl:
+          type: string
+        title:
+          type: string
+        guid:
+          type: string
+          nullable: true
+
+    CrossSeedApplyRequest:
+      type: object
+      required:
+        - selections
+        - useTag
+      properties:
+        selections:
+          type: array
+          items:
+            $ref: '#/components/schemas/CrossSeedApplySelection'
+        useTag:
+          type: boolean
+        tagName:
+          type: string
+          nullable: true
+        startPaused:
+          type: boolean
+          nullable: true
+
+    CrossSeedApplyResult:
+      type: object
+      properties:
+        title:
+          type: string
+        indexer:
+          type: string
+        torrentName:
+          type: string
+          nullable: true
+        success:
+          type: boolean
+        instanceResults:
+          type: array
+          items:
+            $ref: '#/components/schemas/CrossSeedInstanceResult'
+        error:
+          type: string
+          nullable: true
+
+    CrossSeedApplyResponse:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/CrossSeedApplyResult'
 
 tags:
   - name: Authentication

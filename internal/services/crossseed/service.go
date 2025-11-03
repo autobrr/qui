@@ -19,12 +19,14 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/anacrolix/torrent/metainfo"
+	"github.com/autobrr/autobrr/pkg/ttlcache"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/moistari/rls"
 	"github.com/rs/zerolog/log"
@@ -41,6 +43,9 @@ type Service struct {
 	syncManager   *qbittorrent.SyncManager
 	filesManager  *filesmanager.Service
 	releaseCache  *ReleaseCache
+	// searchResultCache stores the most recent search results per torrent hash so that
+	// apply requests can be validated without trusting client-provided URLs.
+	searchResultCache *ttlcache.Cache[string, []TorrentSearchResult]
 
 	automationStore *models.CrossSeedStore
 	jackettService  *jackett.Service
@@ -51,6 +56,8 @@ type Service struct {
 	runActive        atomic.Bool
 }
 
+const searchResultCacheTTL = 5 * time.Minute
+
 // NewService creates a new cross-seed service
 func NewService(
 	instanceStore *models.InstanceStore,
@@ -59,14 +66,18 @@ func NewService(
 	automationStore *models.CrossSeedStore,
 	jackettService *jackett.Service,
 ) *Service {
+	searchCache := ttlcache.New(ttlcache.Options[string, []TorrentSearchResult]{}.
+		SetDefaultTTL(searchResultCacheTTL))
+
 	return &Service{
-		instanceStore:   instanceStore,
-		syncManager:     syncManager,
-		filesManager:    filesManager,
-		releaseCache:    NewReleaseCache(),
-		automationStore: automationStore,
-		jackettService:  jackettService,
-		automationWake:  make(chan struct{}, 1),
+		instanceStore:     instanceStore,
+		syncManager:       syncManager,
+		filesManager:      filesManager,
+		releaseCache:      NewReleaseCache(),
+		searchResultCache: searchCache,
+		automationStore:   automationStore,
+		jackettService:    jackettService,
+		automationWake:    make(chan struct{}, 1),
 	}
 }
 
@@ -1017,17 +1028,42 @@ func (s *Service) processCrossSeedCandidate(
 		}
 	}
 
-	// Add tags
-	tags := req.Tags
-	if len(tags) == 0 && len(matchedTorrent.Tags) > 0 {
-		tags = strings.Split(matchedTorrent.Tags, ", ")
+	addCrossSeedTag := true
+	if req.AddCrossSeedTag != nil {
+		addCrossSeedTag = *req.AddCrossSeedTag
 	}
-	if len(tags) > 0 {
-		// Add a cross-seed tag to identify it
-		tags = append(tags, "cross-seed")
-		options["tags"] = strings.Join(tags, ",")
-	} else {
-		options["tags"] = "cross-seed"
+
+	tagSet := make(map[string]struct{})
+	finalTags := make([]string, 0)
+	addTag := func(tag string) {
+		tag = strings.TrimSpace(tag)
+		if tag == "" {
+			return
+		}
+		if _, exists := tagSet[tag]; exists {
+			return
+		}
+		tagSet[tag] = struct{}{}
+		finalTags = append(finalTags, tag)
+	}
+
+	for _, tag := range req.Tags {
+		addTag(tag)
+	}
+
+	if len(req.Tags) == 0 && matchedTorrent.Tags != "" {
+		split := strings.Split(matchedTorrent.Tags, ",")
+		for _, tag := range split {
+			addTag(tag)
+		}
+	}
+
+	if addCrossSeedTag {
+		addTag("cross-seed")
+	}
+
+	if len(finalTags) > 0 {
+		options["tags"] = strings.Join(finalTags, ",")
 	}
 
 	// Add the torrent
@@ -1286,6 +1322,425 @@ func (s *Service) determineSavePath(newTorrentName string, matchedTorrent *qbt.T
 		Msg("Cross-seeding same content type, using matched torrent's path")
 
 	return baseSavePath
+}
+
+// SearchTorrentMatches queries Torznab indexers for candidate torrents that match an existing torrent.
+func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash string, opts TorrentSearchOptions) (*TorrentSearchResponse, error) {
+	if s.jackettService == nil {
+		return nil, errors.New("torznab search is not configured")
+	}
+
+	if instanceID <= 0 {
+		return nil, fmt.Errorf("invalid instance id: %d", instanceID)
+	}
+	if strings.TrimSpace(hash) == "" {
+		return nil, fmt.Errorf("torrent hash is required")
+	}
+
+	instance, err := s.instanceStore.Get(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("load instance: %w", err)
+	}
+	if instance == nil {
+		return nil, fmt.Errorf("instance %d not found", instanceID)
+	}
+
+	sourceTorrent, err := s.getTorrentByHash(ctx, instanceID, hash)
+	if err != nil {
+		return nil, err
+	}
+	if sourceTorrent.Progress < 1.0 {
+		return nil, fmt.Errorf("torrent %s is not fully downloaded (progress %.2f)", sourceTorrent.Name, sourceTorrent.Progress)
+	}
+
+	query := strings.TrimSpace(opts.Query)
+	if query == "" {
+		query = sourceTorrent.Name
+	}
+
+	limit := opts.Limit
+	if limit <= 0 {
+		limit = 20
+	}
+	requestLimit := limit * 3
+	if requestLimit < limit {
+		requestLimit = limit
+	}
+
+	searchReq := &jackett.TorznabSearchRequest{
+		Query:      query,
+		Limit:      requestLimit,
+		IndexerIDs: opts.IndexerIDs,
+	}
+
+	searchResp, err := s.jackettService.Search(ctx, searchReq)
+	if err != nil {
+		return nil, fmt.Errorf("torznab search failed: %w", err)
+	}
+
+	sourceRelease := s.releaseCache.Parse(sourceTorrent.Name)
+
+	type scoredResult struct {
+		result jackett.SearchResult
+		score  float64
+		reason string
+	}
+
+	scored := make([]scoredResult, 0, len(searchResp.Results))
+	seen := make(map[string]struct{})
+	for _, res := range searchResp.Results {
+		key := res.GUID
+		if key == "" {
+			key = res.DownloadURL
+		}
+		if key != "" {
+			if _, exists := seen[key]; exists {
+				continue
+			}
+			seen[key] = struct{}{}
+		}
+
+		candidateRelease := s.releaseCache.Parse(res.Title)
+		if !s.releasesMatch(sourceRelease, candidateRelease) {
+			continue
+		}
+
+		score, reason := evaluateReleaseMatch(sourceRelease, candidateRelease)
+		if score <= 0 {
+			score = 1.0
+		}
+
+		scored = append(scored, scoredResult{
+			result: res,
+			score:  score,
+			reason: reason,
+		})
+	}
+
+	sourceInfo := TorrentInfo{
+		InstanceID:   instanceID,
+		InstanceName: instance.Name,
+		Hash:         sourceTorrent.Hash,
+		Name:         sourceTorrent.Name,
+		Category:     sourceTorrent.Category,
+		Size:         sourceTorrent.Size,
+		Progress:     sourceTorrent.Progress,
+	}
+
+	if len(scored) == 0 {
+		return &TorrentSearchResponse{
+			SourceTorrent: sourceInfo,
+			Results:       []TorrentSearchResult{},
+		}, nil
+	}
+
+	files, err := s.syncManager.GetTorrentFiles(ctx, instanceID, sourceTorrent.Hash)
+	if err == nil && files != nil {
+		sourceInfo.TotalFiles = len(*files)
+		sourceInfo.FileCount = len(*files)
+	}
+
+	sort.SliceStable(scored, func(i, j int) bool {
+		if scored[i].score == scored[j].score {
+			if scored[i].result.Seeders == scored[j].result.Seeders {
+				return scored[i].result.PublishDate.After(scored[j].result.PublishDate)
+			}
+			return scored[i].result.Seeders > scored[j].result.Seeders
+		}
+		return scored[i].score > scored[j].score
+	})
+
+	if len(scored) > limit {
+		scored = scored[:limit]
+	}
+
+	results := make([]TorrentSearchResult, 0, len(scored))
+	for _, item := range scored {
+		res := item.result
+		results = append(results, TorrentSearchResult{
+			Indexer:              res.Indexer,
+			IndexerID:            res.IndexerID,
+			Title:                res.Title,
+			DownloadURL:          res.DownloadURL,
+			InfoURL:              res.InfoURL,
+			Size:                 res.Size,
+			Seeders:              res.Seeders,
+			Leechers:             res.Leechers,
+			CategoryID:           res.CategoryID,
+			CategoryName:         res.CategoryName,
+			PublishDate:          res.PublishDate.Format(time.RFC3339),
+			DownloadVolumeFactor: res.DownloadVolumeFactor,
+			UploadVolumeFactor:   res.UploadVolumeFactor,
+			GUID:                 res.GUID,
+			IMDbID:               res.IMDbID,
+			TVDbID:               res.TVDbID,
+			MatchReason:          item.reason,
+			MatchScore:           item.score,
+		})
+	}
+
+	s.cacheSearchResults(instanceID, sourceTorrent.Hash, results)
+
+	return &TorrentSearchResponse{
+		SourceTorrent: sourceInfo,
+		Results:       results,
+	}, nil
+}
+
+// ApplyTorrentSearchResults downloads and adds torrents selected from search results for cross-seeding.
+func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int, hash string, req *ApplyTorrentSearchRequest) (*ApplyTorrentSearchResponse, error) {
+	if s.jackettService == nil {
+		return nil, errors.New("torznab search is not configured")
+	}
+
+	if req == nil || len(req.Selections) == 0 {
+		return nil, fmt.Errorf("no selections provided")
+	}
+
+	if _, err := s.getTorrentByHash(ctx, instanceID, hash); err != nil {
+		return nil, err
+	}
+
+	cachedSelections := s.getCachedSearchResults(instanceID, hash)
+	if len(cachedSelections) == 0 {
+		return nil, fmt.Errorf("no cached cross-seed search results found for torrent %s; please run a search before applying selections", hash)
+	}
+
+	startPaused := true
+	if req.StartPaused != nil {
+		startPaused = *req.StartPaused
+	}
+
+	useTag := req.UseTag
+	tagName := strings.TrimSpace(req.TagName)
+	if useTag && tagName == "" {
+		tagName = "cross-seed"
+	}
+
+	results := make([]TorrentSearchAddResult, 0, len(req.Selections))
+
+	for _, selection := range req.Selections {
+		downloadURL := strings.TrimSpace(selection.DownloadURL)
+		guid := strings.TrimSpace(selection.GUID)
+
+		if selection.IndexerID <= 0 || (downloadURL == "" && guid == "") {
+			results = append(results, TorrentSearchAddResult{
+				Title:   selection.Title,
+				Indexer: selection.Indexer,
+				Success: false,
+				Error:   "invalid selection",
+			})
+			continue
+		}
+
+		cachedResult, err := s.resolveSelectionFromCache(cachedSelections, selection)
+		if err != nil {
+			results = append(results, TorrentSearchAddResult{
+				Title:   selection.Title,
+				Indexer: selection.Indexer,
+				Success: false,
+				Error:   err.Error(),
+			})
+			continue
+		}
+
+		indexerName := selection.Indexer
+		if indexerName == "" {
+			indexerName = cachedResult.Indexer
+		}
+
+		title := selection.Title
+		if title == "" {
+			title = cachedResult.Title
+		}
+
+		torrentBytes, err := s.jackettService.DownloadTorrent(ctx, cachedResult.IndexerID, cachedResult.DownloadURL)
+		if err != nil {
+			results = append(results, TorrentSearchAddResult{
+				Title:   title,
+				Indexer: indexerName,
+				Success: false,
+				Error:   fmt.Sprintf("download torrent: %v", err),
+			})
+			continue
+		}
+
+		startPausedCopy := startPaused
+		addCrossSeedTag := useTag
+
+		payload := &CrossSeedRequest{
+			TorrentData:       base64.StdEncoding.EncodeToString(torrentBytes),
+			TargetInstanceIDs: []int{instanceID},
+			StartPaused:       &startPausedCopy,
+			AddCrossSeedTag:   &addCrossSeedTag,
+		}
+
+		if useTag {
+			payload.Tags = []string{tagName}
+		}
+
+		resp, err := s.CrossSeed(ctx, payload)
+		if err != nil {
+			results = append(results, TorrentSearchAddResult{
+				Title:   title,
+				Indexer: indexerName,
+				Success: false,
+				Error:   err.Error(),
+			})
+			continue
+		}
+
+		torrentName := ""
+		if resp.TorrentInfo != nil {
+			torrentName = resp.TorrentInfo.Name
+		}
+
+		results = append(results, TorrentSearchAddResult{
+			Title:           title,
+			Indexer:         indexerName,
+			TorrentName:     torrentName,
+			Success:         resp.Success,
+			InstanceResults: resp.Results,
+		})
+	}
+
+	return &ApplyTorrentSearchResponse{
+		Results: results,
+	}, nil
+}
+
+func (s *Service) cacheSearchResults(instanceID int, hash string, results []TorrentSearchResult) {
+	if s.searchResultCache == nil || len(results) == 0 {
+		return
+	}
+
+	key := searchResultCacheKey(instanceID, hash)
+
+	cloned := make([]TorrentSearchResult, len(results))
+	copy(cloned, results)
+
+	s.searchResultCache.Set(key, cloned, ttlcache.DefaultTTL)
+}
+
+func (s *Service) getCachedSearchResults(instanceID int, hash string) []TorrentSearchResult {
+	if s.searchResultCache == nil {
+		return nil
+	}
+
+	key := searchResultCacheKey(instanceID, hash)
+	if cached, found := s.searchResultCache.Get(key); found {
+		return cached
+	}
+
+	return nil
+}
+
+func (s *Service) resolveSelectionFromCache(cached []TorrentSearchResult, selection TorrentSearchSelection) (*TorrentSearchResult, error) {
+	if len(cached) == 0 {
+		return nil, errors.New("no cached search results available")
+	}
+
+	downloadURL := strings.TrimSpace(selection.DownloadURL)
+	guid := strings.TrimSpace(selection.GUID)
+
+	if downloadURL == "" && guid == "" {
+		return nil, fmt.Errorf("selection %s is missing identifiers", selection.Title)
+	}
+
+	for i := range cached {
+		result := &cached[i]
+		if result.IndexerID != selection.IndexerID {
+			continue
+		}
+
+		if guid != "" && result.GUID != "" && guid == result.GUID {
+			return result, nil
+		}
+
+		if downloadURL != "" && downloadURL == result.DownloadURL {
+			return result, nil
+		}
+	}
+
+	return nil, fmt.Errorf("selection %s does not match cached search results", selection.Title)
+}
+
+func searchResultCacheKey(instanceID int, hash string) string {
+	cleanHash := strings.ToLower(strings.TrimSpace(hash))
+	if cleanHash == "" {
+		return fmt.Sprintf("%d", instanceID)
+	}
+	return fmt.Sprintf("%d:%s", instanceID, cleanHash)
+}
+
+// getTorrentByHash retrieves a torrent by matching any known hash variant.
+func (s *Service) getTorrentByHash(ctx context.Context, instanceID int, hash string) (*qbt.Torrent, error) {
+	torrents, err := s.syncManager.GetAllTorrents(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("load torrents: %w", err)
+	}
+
+	needle := strings.ToLower(strings.TrimSpace(hash))
+	for _, torrent := range torrents {
+		candidates := []string{
+			strings.ToLower(torrent.Hash),
+			strings.ToLower(torrent.InfohashV1),
+			strings.ToLower(torrent.InfohashV2),
+		}
+
+		for _, candidate := range candidates {
+			if candidate != "" && candidate == needle {
+				t := torrent
+				return &t, nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("torrent %s not found in instance %d", hash, instanceID)
+}
+
+func evaluateReleaseMatch(source, candidate rls.Release) (float64, string) {
+	score := 1.0
+	reasons := make([]string, 0, 6)
+
+	if source.Group != "" && candidate.Group != "" && strings.EqualFold(source.Group, candidate.Group) {
+		score += 0.35
+		reasons = append(reasons, fmt.Sprintf("group %s", candidate.Group))
+	}
+	if source.Resolution != "" && candidate.Resolution != "" && strings.EqualFold(source.Resolution, candidate.Resolution) {
+		score += 0.15
+		reasons = append(reasons, fmt.Sprintf("resolution %s", candidate.Resolution))
+	}
+	if source.Source != "" && candidate.Source != "" && strings.EqualFold(source.Source, candidate.Source) {
+		score += 0.1
+		reasons = append(reasons, fmt.Sprintf("source %s", candidate.Source))
+	}
+	if source.Series > 0 && candidate.Series == source.Series {
+		reasons = append(reasons, fmt.Sprintf("season %d", source.Series))
+		score += 0.1
+		if source.Episode > 0 && candidate.Episode == source.Episode {
+			reasons = append(reasons, fmt.Sprintf("episode %d", source.Episode))
+			score += 0.1
+		}
+	}
+	if source.Year > 0 && candidate.Year == source.Year {
+		score += 0.05
+		reasons = append(reasons, fmt.Sprintf("year %d", source.Year))
+	}
+	if len(source.Codec) > 0 && len(candidate.Codec) > 0 && strings.EqualFold(source.Codec[0], candidate.Codec[0]) {
+		score += 0.05
+		reasons = append(reasons, fmt.Sprintf("codec %s", candidate.Codec[0]))
+	}
+	if len(source.Audio) > 0 && len(candidate.Audio) > 0 && strings.EqualFold(source.Audio[0], candidate.Audio[0]) {
+		score += 0.05
+		reasons = append(reasons, fmt.Sprintf("audio %s", candidate.Audio[0]))
+	}
+
+	if len(reasons) == 0 {
+		reasons = append(reasons, "title match")
+	}
+
+	return score, strings.Join(reasons, ", ")
 }
 
 // waitForTorrentRecheck waits for a torrent to finish rechecking after being added

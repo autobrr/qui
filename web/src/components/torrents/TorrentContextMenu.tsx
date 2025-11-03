@@ -29,6 +29,7 @@ import {
   Pause,
   Play,
   Radio,
+  Search,
   Settings2,
   Sparkles,
   Sprout,
@@ -70,6 +71,9 @@ interface TorrentContextMenuProps {
   isExporting?: boolean
   capabilities?: InstanceCapabilities
   useSubcategories?: boolean
+  canCrossSeedSearch?: boolean
+  onCrossSeedSearch?: (torrent: Torrent) => void
+  isCrossSeedSearching?: boolean
 }
 
 export const TorrentContextMenu = memo(function TorrentContextMenu({
@@ -99,6 +103,9 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   isExporting = false,
   capabilities,
   useSubcategories = false,
+  canCrossSeedSearch = false,
+  onCrossSeedSearch,
+  isCrossSeedSearching = false,
 }: TorrentContextMenuProps) {
   const [incognitoMode] = useIncognitoMode()
 
@@ -293,6 +300,16 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
           isPending={isPending}
         />
         <ContextMenuSeparator />
+        {canCrossSeedSearch && (
+          <ContextMenuItem
+            onClick={() => onCrossSeedSearch?.(torrent)}
+            disabled={isPending || isCrossSeedSearching}
+          >
+            <Search className="mr-2 h-4 w-4" />
+            Search Cross-Seeds
+          </ContextMenuItem>
+        )}
+        {canCrossSeedSearch && <ContextMenuSeparator />}
         <ContextMenuItem
           onClick={() => onPrepareTags("add", hashes, torrents)}
           disabled={isPending}
