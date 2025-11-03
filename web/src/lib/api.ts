@@ -15,6 +15,14 @@ import type {
   InstanceFormData,
   InstanceResponse,
   JackettIndexer,
+  CrossSeedAutomationSettings,
+  CrossSeedAutomationStatus,
+  CrossSeedCandidate,
+  CrossSeedCandidateTorrent,
+  CrossSeedFindCandidatesResponse,
+  CrossSeedResponse,
+  CrossSeedRun,
+  CrossSeedTorrentInfo,
   QBittorrentAppInfo,
   RestoreMode,
   RestorePlan,
@@ -409,6 +417,142 @@ class ApiClient {
     return this.request(`/instances/${instanceId}/torrents/bulk-action`, {
       method: "POST",
       body: JSON.stringify(data),
+    })
+  }
+
+  // Cross-seed endpoints
+  async findCrossSeedCandidates(payload: {
+    torrentName: string
+    ignorePatterns?: string[]
+    targetInstanceIds?: number[]
+  }): Promise<CrossSeedFindCandidatesResponse> {
+    const body: Record<string, unknown> = {
+      torrent_name: payload.torrentName,
+    }
+    if (payload.ignorePatterns) body.ignore_patterns = payload.ignorePatterns
+    if (payload.targetInstanceIds) body.target_instance_ids = payload.targetInstanceIds
+
+    type RawTorrentInfo = {
+      instance_id?: number
+      instance_name?: string
+      hash?: string
+      name?: string
+      size?: number
+      progress?: number
+      total_files?: number
+      matching_files?: number
+      file_count?: number
+    } | null
+
+    type RawCandidateTorrent = {
+      hash?: string
+      name?: string
+      progress?: number
+      size?: number
+      category?: string
+    }
+
+    type RawCandidate = {
+      instance_id?: number
+      instance_name?: string
+      match_type?: string
+      matchType?: string
+      torrents?: RawCandidateTorrent[]
+    }
+
+    type RawFindCandidatesResponse = {
+      source_torrent?: RawTorrentInfo
+      sourceTorrent?: RawTorrentInfo
+      candidates?: RawCandidate[]
+    }
+
+    const response = await this.request<RawFindCandidatesResponse>("/cross-seed/find-candidates", {
+      method: "POST",
+      body: JSON.stringify(body),
+    })
+
+    const normalizeTorrentInfo = (torrent?: RawTorrentInfo): CrossSeedTorrentInfo => ({
+      instanceId: torrent?.instance_id ?? undefined,
+      instanceName: torrent?.instance_name ?? undefined,
+      hash: torrent?.hash ?? undefined,
+      name: torrent?.name ?? payload.torrentName,
+      size: torrent?.size ?? undefined,
+      progress: torrent?.progress ?? undefined,
+      totalFiles: torrent?.total_files ?? undefined,
+      matchingFiles: torrent?.matching_files ?? undefined,
+      fileCount: torrent?.file_count ?? undefined,
+    })
+
+    const source = response.source_torrent ?? response.sourceTorrent ?? null
+
+    return {
+      sourceTorrent: normalizeTorrentInfo(source),
+      candidates: (response.candidates ?? []).map((candidate): CrossSeedCandidate => ({
+        instanceId: candidate.instance_id ?? 0,
+        instanceName: candidate.instance_name ?? "Unknown instance",
+        matchType: candidate.match_type ?? candidate.matchType ?? "unknown",
+        torrents: (candidate.torrents ?? []).map((torrent): CrossSeedCandidateTorrent => ({
+          hash: torrent.hash ?? "",
+          name: torrent.name ?? "Unknown torrent",
+          progress: torrent.progress ?? 0,
+          size: torrent.size ?? 0,
+          category: torrent.category ?? undefined,
+        })),
+      })),
+    }
+  }
+
+  async crossSeed(payload: {
+    torrentData: string
+    targetInstanceIds?: number[]
+    category?: string
+    tags?: string[]
+    skipIfExists?: boolean
+    startPaused?: boolean
+  }): Promise<CrossSeedResponse> {
+    const body: Record<string, unknown> = {
+      torrent_data: payload.torrentData,
+    }
+    if (payload.targetInstanceIds) body.target_instance_ids = payload.targetInstanceIds
+    if (payload.category) body.category = payload.category
+    if (payload.tags) body.tags = payload.tags
+    if (payload.skipIfExists !== undefined) body.skip_if_exists = payload.skipIfExists
+    if (payload.startPaused !== undefined) body.start_paused = payload.startPaused
+
+    return this.request<CrossSeedResponse>("/cross-seed/cross", {
+      method: "POST",
+      body: JSON.stringify(body),
+    })
+  }
+
+  async getCrossSeedSettings(): Promise<CrossSeedAutomationSettings> {
+    return this.request<CrossSeedAutomationSettings>("/cross-seed/settings")
+  }
+
+  async updateCrossSeedSettings(payload: CrossSeedAutomationSettings): Promise<CrossSeedAutomationSettings> {
+    return this.request<CrossSeedAutomationSettings>("/cross-seed/settings", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async getCrossSeedStatus(): Promise<CrossSeedAutomationStatus> {
+    return this.request<CrossSeedAutomationStatus>("/cross-seed/status")
+  }
+
+  async listCrossSeedRuns(params?: { limit?: number; offset?: number }): Promise<CrossSeedRun[]> {
+    const search = new URLSearchParams()
+    if (params?.limit !== undefined) search.set("limit", params.limit.toString())
+    if (params?.offset !== undefined) search.set("offset", params.offset.toString())
+    const query = search.toString()
+    const suffix = query ? `?${query}` : ""
+    return this.request<CrossSeedRun[]>(`/cross-seed/runs${suffix}`)
+  }
+
+  async triggerCrossSeedRun(payload: { limit?: number; dryRun?: boolean } = {}): Promise<CrossSeedRun> {
+    return this.request<CrossSeedRun>("/cross-seed/run", {
+      method: "POST",
+      body: JSON.stringify(payload),
     })
   }
 

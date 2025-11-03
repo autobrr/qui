@@ -40,6 +40,7 @@ import {
   Copyright,
   Download,
   Github,
+  GitBranch,
   HardDrive,
   Home,
   LogOut,
@@ -296,6 +297,16 @@ export function MobileFooterNav() {
               >
                 <Archive className="h-4 w-4" />
                 Instance Backups
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link
+                to="/cross-seed"
+                params={{}}
+                className="flex items-center gap-2"
+              >
+                <GitBranch className="h-4 w-4" />
+                Cross-Seed
               </Link>
             </DropdownMenuItem>
 

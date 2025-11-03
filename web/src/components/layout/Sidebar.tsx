@@ -20,6 +20,7 @@ import {
   Copyright,
   Database,
   Github,
+  GitBranch,
   HardDrive,
   Home,
   LogOut,
@@ -31,6 +32,7 @@ interface NavItem {
   title: string
   href: string
   icon: React.ComponentType<{ className?: string }>
+  params?: Record<string, string>
 }
 
 const navigation: NavItem[] = [
@@ -48,6 +50,12 @@ const navigation: NavItem[] = [
     title: "Indexers",
     href: "/indexers",
     icon: Database,
+  },
+  {
+    title: "Cross-Seed",
+    href: "/cross-seed",
+    icon: GitBranch,
+    params: {},
   },
   {
     title: "Backups",
@@ -96,6 +104,7 @@ export function Sidebar() {
               <Link
                 key={item.href}
                 to={item.href}
+                params={item.params}
                 className={cn(
                   "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-all duration-200 ease-out",
                   isActive? "bg-sidebar-primary text-sidebar-primary-foreground": "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"

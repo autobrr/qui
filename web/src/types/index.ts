@@ -928,3 +928,104 @@ export interface DiscoverJackettRequest {
 export interface DiscoverJackettResponse {
   indexers: JackettIndexer[]
 }
+
+export interface CrossSeedCandidateTorrent {
+  hash: string
+  name: string
+  progress: number
+  size: number
+  category?: string
+}
+
+export interface CrossSeedCandidate {
+  instanceId: number
+  instanceName: string
+  torrents: CrossSeedCandidateTorrent[]
+  matchType: string
+}
+
+export interface CrossSeedTorrentInfo {
+  instanceId?: number
+  instanceName?: string
+  hash?: string
+  name: string
+  size?: number
+  progress?: number
+  totalFiles?: number
+  matchingFiles?: number
+  fileCount?: number
+}
+
+export interface CrossSeedFindCandidatesResponse {
+  sourceTorrent: CrossSeedTorrentInfo
+  candidates: CrossSeedCandidate[]
+}
+
+export interface CrossSeedInstanceResult {
+  instanceId: number
+  instanceName: string
+  success: boolean
+  status: string
+  message?: string
+  matchedTorrent?: {
+    hash: string
+    name: string
+    progress: number
+    size: number
+  }
+}
+
+export interface CrossSeedResponse {
+  success: boolean
+  results: CrossSeedInstanceResult[]
+  torrentInfo?: CrossSeedTorrentInfo
+}
+
+export interface CrossSeedRunResult {
+  instanceId: number
+  instanceName: string
+  success: boolean
+  status: string
+  message?: string
+  matchedTorrentHash?: string
+  matchedTorrentName?: string
+}
+
+export interface CrossSeedRun {
+  id: number
+  triggeredBy: string
+  mode: "auto" | "manual"
+  status: "pending" | "running" | "success" | "partial" | "failed"
+  startedAt: string
+  completedAt?: string
+  totalFeedItems: number
+  candidatesFound: number
+  torrentsAdded: number
+  torrentsFailed: number
+  torrentsSkipped: number
+  message?: string
+  errorMessage?: string
+  results?: CrossSeedRunResult[]
+  createdAt: string
+}
+
+export interface CrossSeedAutomationSettings {
+  enabled: boolean
+  runIntervalMinutes: number
+  startPaused: boolean
+  category?: string | null
+  tags: string[]
+  ignorePatterns: string[]
+  targetInstanceIds: number[]
+  targetIndexerIds: number[]
+  maxResultsPerRun: number
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface CrossSeedAutomationStatus {
+  settings: CrossSeedAutomationSettings
+  lastRun?: CrossSeedRun | null
+  nextRunAt?: string
+  running: boolean
+}

@@ -18,8 +18,12 @@ type CrossSeedRequest struct {
 	Category string `json:"category,omitempty"`
 	// Tags to apply to the cross-seeded torrent
 	Tags []string `json:"tags,omitempty"`
+	// IgnorePatterns specify files to ignore when matching
+	IgnorePatterns []string `json:"ignore_patterns,omitempty"`
 	// SkipIfExists if true, skip cross-seeding if torrent already exists on target
 	SkipIfExists bool `json:"skip_if_exists,omitempty"`
+	// StartPaused controls whether newly added torrents start paused
+	StartPaused *bool `json:"start_paused,omitempty"`
 }
 
 // CrossSeedResponse represents the result of a cross-seed operation
@@ -80,6 +84,8 @@ type FindCandidatesRequest struct {
 	TorrentName string `json:"torrent_name"`
 	// IgnorePatterns are file patterns to ignore when matching (e.g., "*.srt", "*sample*.mkv")
 	IgnorePatterns []string `json:"ignore_patterns,omitempty"`
+	// SourceIndexer optionally records where the request originated (e.g., automation feed indexer)
+	SourceIndexer string `json:"source_indexer,omitempty"`
 	// TargetInstanceIDs specifies which instances to search for EXISTING torrents with matching files
 	// If empty, will search all instances
 	TargetInstanceIDs []int `json:"target_instance_ids,omitempty"`

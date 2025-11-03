@@ -5,18 +5,39 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/crossseed"
 )
 
 // CrossSeedHandler handles cross-seed API endpoints
 type CrossSeedHandler struct {
 	service *crossseed.Service
+}
+
+type automationSettingsRequest struct {
+	Enabled            bool     `json:"enabled"`
+	RunIntervalMinutes int      `json:"runIntervalMinutes"`
+	StartPaused        bool     `json:"startPaused"`
+	Category           *string  `json:"category"`
+	Tags               []string `json:"tags"`
+	IgnorePatterns     []string `json:"ignorePatterns"`
+	TargetInstanceIDs  []int    `json:"targetInstanceIds"`
+	TargetIndexerIDs   []int    `json:"targetIndexerIds"`
+	MaxResultsPerRun   int      `json:"maxResultsPerRun"`
+}
+
+type automationRunRequest struct {
+	Limit  int  `json:"limit"`
+	DryRun bool `json:"dryRun"`
 }
 
 // NewCrossSeedHandler creates a new cross-seed handler
@@ -31,6 +52,11 @@ func (h *CrossSeedHandler) Routes(r chi.Router) {
 	r.Route("/cross-seed", func(r chi.Router) {
 		r.Post("/find-candidates", h.FindCandidates)
 		r.Post("/cross", h.CrossSeed)
+		r.Get("/settings", h.GetAutomationSettings)
+		r.Put("/settings", h.UpdateAutomationSettings)
+		r.Get("/status", h.GetAutomationStatus)
+		r.Get("/runs", h.ListAutomationRuns)
+		r.Post("/run", h.TriggerAutomationRun)
 	})
 }
 
@@ -117,6 +143,177 @@ func (h *CrossSeedHandler) CrossSeed(w http.ResponseWriter, r *http.Request) {
 	}
 
 	RespondJSON(w, status, response)
+}
+
+// GetAutomationSettings returns scheduler configuration.
+// GetAutomationSettings godoc
+// @Summary Get cross-seed automation settings
+// @Description Returns current automation configuration for cross-seeding
+// @Tags cross-seed
+// @Produce json
+// @Success 200 {object} models.CrossSeedAutomationSettings
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/cross-seed/settings [get]
+func (h *CrossSeedHandler) GetAutomationSettings(w http.ResponseWriter, r *http.Request) {
+	settings, err := h.service.GetAutomationSettings(r.Context())
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to load cross-seed automation settings")
+		RespondError(w, http.StatusInternalServerError, "Failed to load automation settings")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, settings)
+}
+
+// UpdateAutomationSettings updates scheduler configuration.
+// UpdateAutomationSettings godoc
+// @Summary Update cross-seed automation settings
+// @Description Updates the automation scheduler configuration for cross-seeding
+// @Tags cross-seed
+// @Accept json
+// @Produce json
+// @Param request body automationSettingsRequest true "Automation settings"
+// @Success 200 {object} models.CrossSeedAutomationSettings
+// @Failure 400 {object} httphelpers.ErrorResponse
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/cross-seed/settings [put]
+func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *http.Request) {
+	var req automationSettingsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	category := req.Category
+	if category != nil {
+		trimmed := strings.TrimSpace(*category)
+		if trimmed == "" {
+			category = nil
+		} else {
+			category = &trimmed
+		}
+	}
+
+	settings := &models.CrossSeedAutomationSettings{
+		Enabled:            req.Enabled,
+		RunIntervalMinutes: req.RunIntervalMinutes,
+		StartPaused:        req.StartPaused,
+		Category:           category,
+		Tags:               req.Tags,
+		IgnorePatterns:     req.IgnorePatterns,
+		TargetInstanceIDs:  req.TargetInstanceIDs,
+		TargetIndexerIDs:   req.TargetIndexerIDs,
+		MaxResultsPerRun:   req.MaxResultsPerRun,
+	}
+
+	updated, err := h.service.UpdateAutomationSettings(r.Context(), settings)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to update cross-seed automation settings")
+		RespondError(w, http.StatusInternalServerError, "Failed to update automation settings")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, updated)
+}
+
+// GetAutomationStatus returns scheduler state and latest run metadata.
+// GetAutomationStatus godoc
+// @Summary Get cross-seed automation status
+// @Description Returns current scheduler state and last automation run details
+// @Tags cross-seed
+// @Produce json
+// @Success 200 {object} crossseed.AutomationStatus
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/cross-seed/status [get]
+func (h *CrossSeedHandler) GetAutomationStatus(w http.ResponseWriter, r *http.Request) {
+	status, err := h.service.GetAutomationStatus(r.Context())
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to load cross-seed automation status")
+		RespondError(w, http.StatusInternalServerError, "Failed to load automation status")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, status)
+}
+
+// ListAutomationRuns returns automation history.
+// ListAutomationRuns godoc
+// @Summary List cross-seed automation runs
+// @Description Returns paginated automation run history
+// @Tags cross-seed
+// @Produce json
+// @Param limit query int false "Limit"
+// @Param offset query int false "Offset"
+// @Success 200 {array} models.CrossSeedRun
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/cross-seed/runs [get]
+func (h *CrossSeedHandler) ListAutomationRuns(w http.ResponseWriter, r *http.Request) {
+	limit := 25
+	offset := 0
+
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 && parsed <= 200 {
+			limit = parsed
+		}
+	}
+	if v := r.URL.Query().Get("offset"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed >= 0 {
+			offset = parsed
+		}
+	}
+
+	runs, err := h.service.ListAutomationRuns(r.Context(), limit, offset)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to list cross-seed automation runs")
+		RespondError(w, http.StatusInternalServerError, "Failed to list automation runs")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, runs)
+}
+
+// TriggerAutomationRun queues a manual automation pass.
+// TriggerAutomationRun godoc
+// @Summary Trigger cross-seed automation run
+// @Description Starts an on-demand automation pass
+// @Tags cross-seed
+// @Accept json
+// @Produce json
+// @Param request body automationRunRequest false "Automation run options"
+// @Success 202 {object} models.CrossSeedRun
+// @Failure 400 {object} httphelpers.ErrorResponse
+// @Failure 409 {object} httphelpers.ErrorResponse
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/cross-seed/run [post]
+func (h *CrossSeedHandler) TriggerAutomationRun(w http.ResponseWriter, r *http.Request) {
+	var req automationRunRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	run, err := h.service.RunAutomation(r.Context(), crossseed.AutomationRunOptions{
+		RequestedBy: "api",
+		Mode:        models.CrossSeedRunModeManual,
+		DryRun:      req.DryRun,
+		Limit:       req.Limit,
+	})
+	if err != nil {
+		if errors.Is(err, crossseed.ErrAutomationRunning) {
+			RespondError(w, http.StatusConflict, "Automation already running")
+			return
+		}
+		log.Error().Err(err).Msg("Failed to trigger cross-seed automation run")
+		RespondError(w, http.StatusInternalServerError, "Failed to start automation run")
+		return
+	}
+
+	RespondJSON(w, http.StatusAccepted, run)
 }
 
 // GetCrossSeedStatus godoc

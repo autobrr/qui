@@ -39,6 +39,8 @@ type SearchResponse struct {
 type SearchResult struct {
 	// Indexer name
 	Indexer string `json:"indexer"`
+	// Indexer identifier
+	IndexerID int `json:"indexer_id"`
 	// Title of the release
 	Title string `json:"title"`
 	// Download URL for the torrent

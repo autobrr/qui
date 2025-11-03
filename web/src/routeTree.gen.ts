@@ -16,6 +16,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticatedBackupsRouteImport } from './routes/_authenticated/backups'
+import { Route as AuthenticatedCrossSeedRouteImport } from './routes/_authenticated/cross-seed'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedIndexersRouteImport } from './routes/_authenticated/indexers'
 import { Route as AuthenticatedSearchRouteImport } from './routes/_authenticated/search'
@@ -66,6 +67,11 @@ const AuthenticatedBackupsRoute = AuthenticatedBackupsRouteImport.update({
   path: '/backups',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedCrossSeedRoute = AuthenticatedCrossSeedRouteImport.update({
+  id: '/cross-seed',
+  path: '/cross-seed',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedIndexersRoute = AuthenticatedIndexersRouteImport.update({
   id: '/indexers',
   path: '/indexers',
@@ -94,6 +100,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
   '/backups': typeof AuthenticatedBackupsRoute
+  '/cross-seed': typeof AuthenticatedCrossSeedRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/indexers': typeof AuthenticatedIndexersRoute
   '/search': typeof AuthenticatedSearchRoute
@@ -107,6 +114,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
   '/backups': typeof AuthenticatedBackupsRoute
+  '/cross-seed': typeof AuthenticatedCrossSeedRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/indexers': typeof AuthenticatedIndexersRoute
   '/search': typeof AuthenticatedSearchRoute
@@ -121,6 +129,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
   '/_authenticated/backups': typeof AuthenticatedBackupsRoute
+  '/_authenticated/cross-seed': typeof AuthenticatedCrossSeedRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/indexers': typeof AuthenticatedIndexersRoute
   '/_authenticated/search': typeof AuthenticatedSearchRoute
@@ -136,6 +145,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/setup'
     | '/backups'
+    | '/cross-seed'
     | '/dashboard'
     | '/indexers'
     | '/search'
@@ -150,6 +160,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/setup'
     | '/backups'
+    | '/cross-seed'
     | '/dashboard'
     | '/indexers'
     | '/search'
@@ -164,6 +175,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/setup'
     | '/_authenticated/backups'
+    | '/_authenticated/cross-seed'
     | '/_authenticated/dashboard'
     | '/_authenticated/indexers'
     | '/_authenticated/search'
@@ -171,6 +183,7 @@ export interface FileRouteTypes {
     | '/_authenticated/settings'
     | '/_authenticated/instances/$instanceId'
     | '/_authenticated/instances/'
+    | '/_authenticated/cross-seed'
     | '/'
     | '/_authenticated'
     | '/login'
@@ -250,6 +263,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedBackupsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/cross-seed': {
+      id: '/_authenticated/cross-seed'
+      path: '/cross-seed'
+      fullPath: '/cross-seed'
+      preLoaderRoute: typeof AuthenticatedCrossSeedRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/indexers': {
       id: '/_authenticated/indexers'
       path: '/indexers'
@@ -304,6 +324,7 @@ const AuthenticatedInstancesRouteWithChildren =
 interface AuthenticatedRouteChildren {
   AuthenticatedBackupsRoute: typeof AuthenticatedBackupsRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
+  AuthenticatedCrossSeedRoute: typeof AuthenticatedCrossSeedRoute
   AuthenticatedIndexersRoute: typeof AuthenticatedIndexersRoute
   AuthenticatedSearchRoute: typeof AuthenticatedSearchRoute
   AuthenticatedInstancesRoute: typeof AuthenticatedInstancesRouteWithChildren
@@ -313,6 +334,7 @@ interface AuthenticatedRouteChildren {
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedBackupsRoute: AuthenticatedBackupsRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
+  AuthenticatedCrossSeedRoute: AuthenticatedCrossSeedRoute,
   AuthenticatedIndexersRoute: AuthenticatedIndexersRoute,
   AuthenticatedSearchRoute: AuthenticatedSearchRoute,
   AuthenticatedInstancesRoute: AuthenticatedInstancesRouteWithChildren,

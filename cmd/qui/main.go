@@ -493,9 +493,6 @@ func (app *Application) runServer() {
 	filesManagerService := filesmanager.NewService(db) // implements qbittorrent.FilesManager
 	syncManager.SetFilesManager(filesManagerService)
 
-	// Initialize cross-seed service
-	crossSeedService := crossseed.NewService(instanceStore, syncManager, filesManagerService)
-
 	// Initialize Torznab indexer store
 	torznabIndexerStore, err := models.NewTorznabIndexerStore(db, cfg.GetEncryptionKey())
 	if err != nil {
@@ -505,6 +502,17 @@ func (app *Application) runServer() {
 	// Initialize Jackett/Torznab service
 	jackettService := jackett.NewService(torznabIndexerStore)
 	log.Info().Msg("Torznab/Jackett service initialized")
+
+	// Initialize cross-seed automation store and service
+	crossSeedStore := models.NewCrossSeedStore(db)
+	crossSeedService := crossseed.NewService(instanceStore, syncManager, filesManagerService, crossSeedStore, jackettService)
+
+	automationCtx, automationCancel := context.WithCancel(context.Background())
+	crossSeedService.StartAutomation(automationCtx)
+	defer func() {
+		automationCancel()
+		crossSeedService.StopAutomation()
+	}()
 
 	backupStore := models.NewBackupStore(db)
 	backupService := backups.NewService(backupStore, syncManager, backups.Config{DataDir: cfg.GetDataDir()})

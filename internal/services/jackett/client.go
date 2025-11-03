@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/xml"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -71,6 +72,7 @@ func NewClient(baseURL, apiKey string, backend models.TorznabBackend, timeoutSec
 // Result represents a single search result (simplified format)
 type Result struct {
 	Tracker              string
+	IndexerID            int
 	Title                string
 	Link                 string
 	Details              string
@@ -177,6 +179,52 @@ func (c *Client) searchProwlarr(indexerID string, params map[string]string) ([]R
 	}
 
 	return c.convertRssToResults(rss), nil
+}
+
+// Download retrieves the raw torrent bytes for the provided download URL.
+func (c *Client) Download(ctx context.Context, downloadURL string) ([]byte, error) {
+	if strings.TrimSpace(downloadURL) == "" {
+		return nil, fmt.Errorf("download URL is required")
+	}
+
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	// Normalise relative URLs
+	if !strings.HasPrefix(downloadURL, "http://") && !strings.HasPrefix(downloadURL, "https://") {
+		downloadURL = strings.TrimRight(c.baseURL, "/") + "/" + strings.TrimLeft(downloadURL, "/")
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("build download request: %w", err)
+	}
+	req.Header.Set("Accept", "application/x-bittorrent, application/octet-stream")
+
+	// Ensure API key is present for backends that require it
+	if c.apiKey != "" && !strings.Contains(downloadURL, "apikey=") {
+		query := req.URL.Query()
+		query.Set("apikey", c.apiKey)
+		req.URL.RawQuery = query.Encode()
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("torrent download failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf("torrent download returned status %d", resp.StatusCode)
+	}
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read torrent body: %w", err)
+	}
+
+	return data, nil
 }
 
 // convertRssToResults converts go-jackett RSS response to our Result format

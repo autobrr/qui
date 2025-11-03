@@ -36,6 +36,27 @@ func NewService(indexerStore IndexerStore) *Service {
 	}
 }
 
+// GetIndexerName resolves a Torznab indexer ID to its configured name.
+func (s *Service) GetIndexerName(ctx context.Context, id int) string {
+	if id <= 0 {
+		return ""
+	}
+
+	indexer, err := s.indexerStore.Get(ctx, id)
+	if err != nil {
+		log.Debug().
+			Err(err).
+			Int("indexer_id", id).
+			Msg("Failed to resolve indexer name")
+		return ""
+	}
+	if indexer == nil {
+		return ""
+	}
+
+	return indexer.Name
+}
+
 // Search searches enabled Torznab indexers with intelligent category detection
 func (s *Service) Search(ctx context.Context, req *TorznabSearchRequest) (*SearchResponse, error) {
 	if req.Query == "" {
@@ -206,6 +227,66 @@ func (s *Service) GetIndexers(ctx context.Context) (*IndexersResponse, error) {
 	}, nil
 }
 
+// Recent fetches the latest releases across selected indexers without a search query.
+func (s *Service) Recent(ctx context.Context, limit int, indexerIDs []int) (*SearchResponse, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+
+	params := url.Values{}
+	params.Set("t", "search")
+	params.Set("limit", strconv.Itoa(limit))
+
+	indexersToSearch, err := s.resolveIndexerSelection(ctx, indexerIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(indexersToSearch) == 0 {
+		return &SearchResponse{
+			Results: []SearchResult{},
+			Total:   0,
+		}, nil
+	}
+
+	results := s.searchMultipleIndexers(ctx, indexersToSearch, params)
+	searchResults := s.convertResults(results)
+
+	if len(searchResults) > limit {
+		searchResults = searchResults[:limit]
+	}
+
+	return &SearchResponse{
+		Results: searchResults,
+		Total:   len(searchResults),
+	}, nil
+}
+
+// DownloadTorrent fetches the raw torrent bytes for a specific indexer result.
+func (s *Service) DownloadTorrent(ctx context.Context, indexerID int, downloadURL string) ([]byte, error) {
+	if indexerID <= 0 {
+		return nil, fmt.Errorf("indexer ID must be positive")
+	}
+
+	indexer, err := s.indexerStore.Get(ctx, indexerID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load indexer %d: %w", indexerID, err)
+	}
+
+	apiKey, err := s.indexerStore.GetDecryptedAPIKey(indexer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt API key for indexer %d: %w", indexerID, err)
+	}
+
+	client := NewClient(indexer.BaseURL, apiKey, indexer.Backend, indexer.TimeoutSeconds)
+	data, err := client.Download(ctx, downloadURL)
+	if err != nil {
+		return nil, fmt.Errorf("torrent download failed: %w", err)
+	}
+
+	return data, nil
+}
+
 // searchMultipleIndexers searches multiple indexers in parallel and aggregates results
 func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values) []Result {
 	type indexerResult struct {
@@ -304,6 +385,15 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 				return
 			}
 
+			for i := range results {
+				results[i].IndexerID = idx.ID
+				if idx.Backend == models.TorznabBackendProwlarr {
+					results[i].Tracker = idx.Name
+				} else if strings.TrimSpace(results[i].Tracker) == "" {
+					results[i].Tracker = idx.Name
+				}
+			}
+
 			resultsChan <- indexerResult{results, nil}
 		}(indexer)
 	}
@@ -369,6 +459,7 @@ func (s *Service) convertResults(results []Result) []SearchResult {
 	for _, r := range results {
 		result := SearchResult{
 			Indexer:              r.Tracker,
+			IndexerID:            r.IndexerID,
 			Title:                r.Title,
 			DownloadURL:          r.Link,
 			InfoURL:              r.Details,
@@ -433,6 +524,34 @@ func (s *Service) parseTVDbID(r Result) string {
 	// TVDb ID might be in various places depending on indexer
 	// This is a placeholder - would need to check actual Jackett response structure
 	return ""
+}
+
+func (s *Service) resolveIndexerSelection(ctx context.Context, indexerIDs []int) ([]*models.TorznabIndexer, error) {
+	if len(indexerIDs) == 0 {
+		indexers, err := s.indexerStore.ListEnabled(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list enabled indexers: %w", err)
+		}
+		return indexers, nil
+	}
+
+	var selected []*models.TorznabIndexer
+	for _, id := range indexerIDs {
+		indexer, err := s.indexerStore.Get(ctx, id)
+		if err != nil {
+			log.Warn().
+				Err(err).
+				Int("indexer_id", id).
+				Msg("Failed to load requested indexer")
+			continue
+		}
+		if !indexer.Enabled {
+			continue
+		}
+		selected = append(selected, indexer)
+	}
+
+	return selected, nil
 }
 
 // extractIndexerIDFromURL extracts the indexer ID from a Jackett URL
