@@ -5,6 +5,7 @@ package jackett
 
 import (
 	"context"
+	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -294,15 +295,34 @@ func (c *Client) convertRssToResults(rss gojackett.Rss) []Result {
 
 // JackettIndexer represents an indexer from Jackett's indexer list
 type JackettIndexer struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Type        string `json:"type"`
-	Configured  bool   `json:"configured"`
+	ID          string                `json:"id"`
+	Name        string                `json:"name"`
+	Description string                `json:"description"`
+	Type        string                `json:"type"`
+	Configured  bool                  `json:"configured"`
+	Backend     models.TorznabBackend `json:"backend"`
 }
 
 // DiscoverJackettIndexers discovers all configured indexers from a Jackett instance
 func DiscoverJackettIndexers(baseURL, apiKey string) ([]JackettIndexer, error) {
+	if baseURL = strings.TrimSpace(baseURL); baseURL == "" {
+		return nil, fmt.Errorf("base url is required")
+	}
+
+	jackettIndexers, jackettErr := discoverJackettIndexers(baseURL, apiKey)
+	if jackettErr == nil {
+		return jackettIndexers, nil
+	}
+
+	prowlarrIndexers, prowlarrErr := discoverProwlarrIndexers(baseURL, apiKey)
+	if prowlarrErr == nil {
+		return prowlarrIndexers, nil
+	}
+
+	return nil, fmt.Errorf("jackett discovery failed: %v; prowlarr discovery failed: %w", jackettErr, prowlarrErr)
+}
+
+func discoverJackettIndexers(baseURL, apiKey string) ([]JackettIndexer, error) {
 	// Use the go-jackett library
 	client := gojackett.NewClient(gojackett.Config{
 		Host:   baseURL,
@@ -324,6 +344,78 @@ func DiscoverJackettIndexers(baseURL, apiKey string) ([]JackettIndexer, error) {
 			Description: idx.Description,
 			Type:        idx.Type,
 			Configured:  idx.Configured == "true",
+			Backend:     models.TorznabBackendJackett,
+		})
+	}
+
+	return indexers, nil
+}
+
+func discoverProwlarrIndexers(baseURL, apiKey string) ([]JackettIndexer, error) {
+	endpoint, err := url.JoinPath(strings.TrimRight(baseURL, "/"), "api", "v1", "indexer")
+	if err != nil {
+		return nil, fmt.Errorf("failed to build prowlarr endpoint: %w", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build prowlarr request: %w", err)
+	}
+	req.Header.Set("X-Api-Key", apiKey)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query prowlarr: %w", err)
+	}
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case http.StatusOK:
+		// continue
+	case http.StatusNotFound:
+		return nil, fmt.Errorf("prowlarr endpoint not found (404)")
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return nil, fmt.Errorf("prowlarr returned %d (unauthorized)", resp.StatusCode)
+	default:
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return nil, fmt.Errorf("prowlarr unexpected status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	var payload []struct {
+		ID                 int    `json:"id"`
+		Name               string `json:"name"`
+		Description        string `json:"description"`
+		Implementation     string `json:"implementation"`
+		ImplementationName string `json:"implementationName"`
+		Enable             bool   `json:"enable"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return nil, fmt.Errorf("failed to decode prowlarr response: %w", err)
+	}
+
+	indexers := make([]JackettIndexer, 0, len(payload))
+	for _, idx := range payload {
+		description := idx.Description
+		if description == "" {
+			description = idx.ImplementationName
+		}
+
+		backendType := idx.Implementation
+		if backendType == "" {
+			backendType = idx.ImplementationName
+		}
+
+		indexers = append(indexers, JackettIndexer{
+			ID:          strconv.Itoa(idx.ID),
+			Name:        idx.Name,
+			Description: description,
+			Type:        backendType,
+			Configured:  idx.Enable,
+			Backend:     models.TorznabBackendProwlarr,
 		})
 	}
 

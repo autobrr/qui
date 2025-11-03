@@ -135,7 +135,7 @@ export function IndexersPage() {
                 onClick={() => setAutodiscoveryOpen(true)}
               >
                 <RefreshCw className="mr-2 h-4 w-4" />
-                Discover Jackett
+                Discover Indexers
               </Button>
               <Button onClick={() => setAddDialogOpen(true)}>
                 <Plus className="mr-2 h-4 w-4" />

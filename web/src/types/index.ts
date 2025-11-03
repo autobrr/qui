@@ -917,6 +917,7 @@ export interface JackettIndexer {
   description: string
   type: string
   configured: boolean
+  backend?: "jackett" | "prowlarr" | "native"
   caps?: string[]
 }
 

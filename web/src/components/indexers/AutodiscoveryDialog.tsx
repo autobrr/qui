@@ -85,16 +85,26 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
     let errorCount = 0
     const errors: string[] = []
 
+    const normalizedBaseUrl = baseUrl.trim().replace(/\/+$/, '') || baseUrl
+
     for (const indexer of discoveredIndexers) {
       if (!selectedIndexers.has(indexer.id)) continue
+
+      const backend = indexer.backend ?? 'jackett'
+      const indexerId = indexer.id?.trim() ?? ''
+      const normalizedIndexerId = indexerId !== '' ? indexerId : undefined
+      const enabled = indexer.configured
 
       try {
         const existing = existingIndexersMap.get(indexer.name)
         if (existing) {
-          // Update existing indexer - only update base_url and api_key
+          // Update existing indexer - keep base URL, API key, and backend aligned
           const updateData: TorznabIndexerUpdate = {
-            base_url: baseUrl,
+            base_url: normalizedBaseUrl,
             api_key: apiKey,
+            backend,
+            enabled,
+            indexer_id: normalizedIndexerId,
           }
           await api.updateTorznabIndexer(existing.id, updateData)
           updatedCount++
@@ -102,8 +112,11 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
           // Create new indexer - backend applies defaults
           const createData: TorznabIndexerFormData = {
             name: indexer.name,
-            base_url: baseUrl,
+            base_url: normalizedBaseUrl,
             api_key: apiKey,
+            backend,
+            enabled,
+            indexer_id: normalizedIndexerId,
           }
           await api.createTorznabIndexer(createData)
           createdCount++
@@ -160,10 +173,10 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-[525px]">
         <DialogHeader>
-          <DialogTitle>Discover Jackett Indexers</DialogTitle>
+          <DialogTitle>Discover Indexers</DialogTitle>
           <DialogDescription>
             {step === 'input'
-              ? 'Connect to Jackett to discover configured indexers'
+              ? 'Connect to Jackett or Prowlarr to discover configured indexers'
               : 'Select indexers to import'}
           </DialogDescription>
         </DialogHeader>
@@ -172,24 +185,27 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
           <form onSubmit={handleDiscover}>
             <div className="grid gap-4 py-4">
               <div className="grid gap-2">
-                <Label htmlFor="jackettUrl">Jackett URL</Label>
+                <Label htmlFor="torznabUrl">Indexer URL</Label>
                 <Input
-                  id="jackettUrl"
+                  id="torznabUrl"
                   type="url"
                   value={baseUrl}
                   onChange={(e) => setBaseUrl(e.target.value)}
                   placeholder="http://localhost:9117"
                   required
                 />
+                <p className="text-xs text-muted-foreground">
+                  Jackett defaults to http://localhost:9117, Prowlarr to http://localhost:9696.
+                </p>
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="jackettApiKey">API Key</Label>
+                <Label htmlFor="torznabApiKey">API Key</Label>
                 <Input
-                  id="jackettApiKey"
+                  id="torznabApiKey"
                   type="password"
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
-                  placeholder="Your Jackett API key"
+                  placeholder="Your indexer API key"
                   required
                 />
               </div>
@@ -266,6 +282,7 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
                         )}
                         <p className="text-xs text-muted-foreground mt-1">
                           Type: {indexer.type}
+                          {indexer.backend && ` • Backend: ${indexer.backend}`}
                           {!indexer.configured && ' (Not configured)'}
                         </p>
                       </div>
