@@ -65,6 +65,34 @@ export function IndexersPage() {
     }
   }
 
+  const handleTestAll = async () => {
+    if (indexers.length === 0) {
+      toast.info('No indexers to test')
+      return
+    }
+
+    let successCount = 0
+    let failCount = 0
+
+    toast.info(`Testing ${indexers.length} indexers...`)
+
+    for (const indexer of indexers) {
+      try {
+        await api.testTorznabIndexer(indexer.id)
+        successCount++
+      } catch (error) {
+        failCount++
+        console.error(`Failed to test ${indexer.name}:`, error)
+      }
+    }
+
+    if (failCount === 0) {
+      toast.success(`All ${successCount} indexers tested successfully`)
+    } else {
+      toast.warning(`${successCount} passed, ${failCount} failed`)
+    }
+  }
+
   const handleDialogClose = () => {
     setAddDialogOpen(false)
     setEditDialogOpen(false)
@@ -84,6 +112,14 @@ export function IndexersPage() {
               </CardDescription>
             </div>
             <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={handleTestAll}
+                disabled={loading || indexers.length === 0}
+              >
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Test All
+              </Button>
               <Button
                 variant="outline"
                 onClick={() => setAutodiscoveryOpen(true)}

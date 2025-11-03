@@ -33,16 +33,34 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
   const [apiKey, setApiKey] = useState('')
   const [discoveredIndexers, setDiscoveredIndexers] = useState<JackettIndexer[]>([])
   const [selectedIndexers, setSelectedIndexers] = useState<Set<string>>(new Set())
+  const [existingIndexers, setExistingIndexers] = useState<Map<string, number>>(new Map())
 
   const handleDiscover = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
 
     try {
-      const response = await api.discoverJackettIndexers(baseUrl, apiKey)
+      const [response, existing] = await Promise.all([
+        api.discoverJackettIndexers(baseUrl, apiKey),
+        api.listTorznabIndexers()
+      ])
+      
       setDiscoveredIndexers(response)
+      
+      // Build map of existing indexers by name for quick lookup
+      const existingMap = new Map<string, number>()
+      for (const idx of existing) {
+        existingMap.set(idx.name, idx.id)
+      }
+      setExistingIndexers(existingMap)
+      
       setStep('select')
-      toast.success(`Found ${response.length} indexers`)
+      const existingCount = response.filter(idx => existingMap.has(idx.name)).length
+      if (existingCount > 0) {
+        toast.success(`Found ${response.length} indexers (${existingCount} already exist)`)
+      } else {
+        toast.success(`Found ${response.length} indexers`)
+      }
     } catch (error) {
       toast.error('Failed to discover indexers. Check your URL and API key.')
     } finally {
@@ -62,7 +80,8 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
 
   const handleImport = async () => {
     setLoading(true)
-    let successCount = 0
+    let createdCount = 0
+    let updatedCount = 0
     let errorCount = 0
     const errors: string[] = []
 
@@ -71,7 +90,7 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
 
       const formData: TorznabIndexerFormData = {
         name: indexer.name,
-        base_url: `${baseUrl}/api/v2.0/indexers/${indexer.id}/results/torznab`,
+        base_url: `${baseUrl}/api/v2.0/indexers/${indexer.id}/results/torznab/api`,
         api_key: apiKey,
         enabled: true,
         priority: 0,
@@ -79,8 +98,16 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
       }
 
       try {
-        await api.createTorznabIndexer(formData)
-        successCount++
+        const existingId = existingIndexers.get(indexer.name)
+        if (existingId) {
+          // Update existing indexer
+          await api.updateTorznabIndexer(existingId, formData)
+          updatedCount++
+        } else {
+          // Create new indexer
+          await api.createTorznabIndexer(formData)
+          createdCount++
+        }
       } catch (error) {
         errorCount++
         const errorMessage = error instanceof Error ? error.message : String(error)
@@ -92,9 +119,16 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
     setLoading(false)
 
     if (errorCount === 0) {
-      toast.success(`Imported ${successCount} indexers`)
+      const messages = []
+      if (createdCount > 0) messages.push(`${createdCount} created`)
+      if (updatedCount > 0) messages.push(`${updatedCount} updated`)
+      toast.success(`Success: ${messages.join(', ')}`)
     } else {
-      toast.error(`Imported ${successCount} indexers, ${errorCount} failed`)
+      const messages = []
+      if (createdCount > 0) messages.push(`${createdCount} created`)
+      if (updatedCount > 0) messages.push(`${updatedCount} updated`)
+      if (errorCount > 0) messages.push(`${errorCount} failed`)
+      toast.error(messages.join(', '))
       // Show first error detail
       if (errors.length > 0) {
         toast.error(errors[0])
@@ -212,12 +246,19 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
                         onCheckedChange={() => toggleIndexer(indexer.id)}
                       />
                       <div className="flex-1">
-                        <label
-                          htmlFor={indexer.id}
-                          className="text-sm font-medium leading-none cursor-pointer"
-                        >
-                          {indexer.name}
-                        </label>
+                        <div className="flex items-center gap-2">
+                          <label
+                            htmlFor={indexer.id}
+                            className="text-sm font-medium leading-none cursor-pointer"
+                          >
+                            {indexer.name}
+                          </label>
+                          {existingIndexers.has(indexer.name) && (
+                            <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-0.5 rounded">
+                              Will Update
+                            </span>
+                          )}
+                        </div>
                         {indexer.description && (
                           <p className="text-sm text-muted-foreground mt-1">
                             {indexer.description}
