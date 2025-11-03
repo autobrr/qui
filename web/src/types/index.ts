@@ -809,9 +809,18 @@ export interface TorznabIndexerFormData {
   name: string
   base_url: string
   api_key: string
-  enabled: boolean
-  priority: number
-  timeout_seconds: number
+  enabled?: boolean
+  priority?: number
+  timeout_seconds?: number
+}
+
+export interface TorznabIndexerUpdate {
+  name?: string
+  base_url?: string
+  api_key?: string
+  enabled?: boolean
+  priority?: number
+  timeout_seconds?: number
 }
 
 export interface JackettIndexer {

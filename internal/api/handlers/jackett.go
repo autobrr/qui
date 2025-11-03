@@ -167,9 +167,9 @@ func (h *JackettHandler) CreateIndexer(w http.ResponseWriter, r *http.Request) {
 		Name           string `json:"name"`
 		BaseURL        string `json:"base_url"`
 		APIKey         string `json:"api_key"`
-		Enabled        bool   `json:"enabled"`
-		Priority       int    `json:"priority"`
-		TimeoutSeconds int    `json:"timeout_seconds"`
+		Enabled        *bool  `json:"enabled"`
+		Priority       *int   `json:"priority"`
+		TimeoutSeconds *int   `json:"timeout_seconds"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -192,7 +192,21 @@ func (h *JackettHandler) CreateIndexer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	indexer, err := h.indexerStore.Create(r.Context(), req.Name, req.BaseURL, req.APIKey, req.Enabled, req.Priority, req.TimeoutSeconds)
+	// Apply defaults
+	enabled := true
+	if req.Enabled != nil {
+		enabled = *req.Enabled
+	}
+	priority := 0
+	if req.Priority != nil {
+		priority = *req.Priority
+	}
+	timeoutSeconds := 30
+	if req.TimeoutSeconds != nil {
+		timeoutSeconds = *req.TimeoutSeconds
+	}
+
+	indexer, err := h.indexerStore.Create(r.Context(), req.Name, req.BaseURL, req.APIKey, enabled, priority, timeoutSeconds)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create indexer")
 		RespondError(w, http.StatusInternalServerError, "Failed to create indexer")
