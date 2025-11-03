@@ -793,3 +793,62 @@ export interface TorrentCreationTask {
 export interface TorrentCreationTaskResponse {
   taskID: string
 }
+
+export interface TorznabIndexer {
+  id: number
+  name: string
+  baseUrl: string
+  enabled: boolean
+  priority: number
+  timeoutSeconds: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface TorznabIndexerFormData {
+  name: string
+  baseUrl: string
+  apiKey: string
+  enabled: boolean
+  priority: number
+  timeoutSeconds: number
+}
+
+export interface JackettIndexer {
+  id: string
+  name: string
+  description: string
+  type: string
+  configured: boolean
+  caps?: string[]
+}
+
+export interface DiscoverJackettRequest {
+  base_url: string
+  api_key: string
+}
+
+export interface DiscoverJackettResponse {
+  indexers: JackettIndexer[]
+}
+
+export interface TorznabSearchRequest {
+  query: string
+  category?: string
+  indexer_ids?: number[]
+}
+
+export interface TorznabSearchResult {
+  title: string
+  size: number
+  link: string
+  pubDate: string
+  indexer: string
+  seeders?: number
+  peers?: number
+  category?: string
+}
+
+export interface TorznabSearchResponse {
+  results: TorznabSearchResult[]
+}

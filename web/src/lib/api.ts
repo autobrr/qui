@@ -799,8 +799,50 @@ class ApiClient {
     }
   }
 
-  async getTrackerIcons(): Promise<Record<string, string>> {
-    return this.request<Record<string, string>>("/tracker-icons")
+  async getTrackerIcons(): Promise<string[]> {
+    return this.request<string[]>("/tracker-icons")
+  }
+
+  // Torznab Indexer endpoints
+  async listTorznabIndexers(): Promise<TorznabIndexer[]> {
+    return this.request<TorznabIndexer[]>("/torznab/indexers")
+  }
+
+  async getTorznabIndexer(id: number): Promise<TorznabIndexer> {
+    return this.request<TorznabIndexer>(`/torznab/indexers/${id}`)
+  }
+
+  async createTorznabIndexer(data: TorznabIndexerCreate): Promise<TorznabIndexer> {
+    return this.request<TorznabIndexer>("/torznab/indexers", {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async updateTorznabIndexer(id: number, data: Partial<TorznabIndexerCreate>): Promise<TorznabIndexer> {
+    return this.request<TorznabIndexer>(`/torznab/indexers/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async deleteTorznabIndexer(id: number): Promise<void> {
+    return this.request<void>(`/torznab/indexers/${id}`, {
+      method: "DELETE",
+    })
+  }
+
+  async testTorznabIndexer(id: number): Promise<{ status: string }> {
+    return this.request<{ status: string }>(`/torznab/indexers/${id}/test`, {
+      method: "POST",
+    })
+  }
+
+  async discoverJackettIndexers(baseUrl: string, apiKey: string): Promise<JackettIndexer[]> {
+    return this.request<JackettIndexer[]>("/torznab/indexers/discover", {
+      method: "POST",
+      body: JSON.stringify({ base_url: baseUrl, api_key: apiKey }),
+    })
   }
 }
 

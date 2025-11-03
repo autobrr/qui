@@ -1,0 +1,406 @@
+// Copyright (c) 2025, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package handlers
+
+import (
+	"encoding/json"
+	"net/http"
+
+	"strconv"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/rs/zerolog/log"
+
+	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/services/jackett"
+)
+
+// JackettHandler handles Jackett/Torznab API endpoints
+type JackettHandler struct {
+	service      *jackett.Service
+	indexerStore *models.TorznabIndexerStore
+}
+
+// NewJackettHandler creates a new Jackett handler
+func NewJackettHandler(service *jackett.Service, indexerStore *models.TorznabIndexerStore) *JackettHandler {
+	return &JackettHandler{
+		service:      service,
+		indexerStore: indexerStore,
+	}
+}
+
+// Routes registers the Jackett routes
+func (h *JackettHandler) Routes(r chi.Router) {
+	r.Route("/torznab", func(r chi.Router) {
+		// Indexer management
+		r.Route("/indexers", func(r chi.Router) {
+			r.Get("/", h.ListIndexers)
+			r.Post("/", h.CreateIndexer)
+			r.Post("/discover", h.DiscoverIndexers)
+			r.Get("/{indexerID}", h.GetIndexer)
+			r.Put("/{indexerID}", h.UpdateIndexer)
+			r.Delete("/{indexerID}", h.DeleteIndexer)
+			r.Post("/{indexerID}/test", h.TestIndexer)
+		})
+
+		// Cross-seed search - intelligent category detection
+		r.Post("/cross-seed/search", h.CrossSeedSearch)
+
+		// General Torznab search
+		r.Post("/search", h.Search)
+	})
+}
+
+// CrossSeedSearch godoc
+// @Summary Search Jackett for cross-seeds with intelligent category detection
+// @Description Searches Jackett indexers for potential cross-seeds. Automatically detects content type (TV shows, movies, daily shows, XXX, etc.) and applies appropriate Torznab categories based on the search parameters.
+// @Tags jackett
+// @Accept json
+// @Produce json
+// @Param request body jackett.CrossSeedSearchRequest true "Cross-seed search request"
+// @Success 200 {object} jackett.SearchResponse
+// @Failure 400 {object} httphelpers.ErrorResponse
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/jackett/cross-seed/search [post]
+func (h *JackettHandler) CrossSeedSearch(w http.ResponseWriter, r *http.Request) {
+	var req jackett.CrossSeedSearchRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Error().Err(err).Msg("Failed to decode cross-seed search request")
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	// Validate request
+	if req.Query == "" {
+		RespondError(w, http.StatusBadRequest, "query is required")
+		return
+	}
+
+	// Perform search
+	response, err := h.service.SearchForCrossSeed(r.Context(), &req)
+	if err != nil {
+		log.Error().
+			Err(err).
+			Str("query", req.Query).
+			Msg("Failed to search Jackett for cross-seeds")
+		RespondError(w, http.StatusInternalServerError, "Failed to search for cross-seeds")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, response)
+}
+
+// Search godoc
+// @Summary General Torznab search
+// @Description Performs a general Torznab search across Jackett indexers. Allows specifying categories, IMDb/TVDb IDs, and other search parameters.
+// @Tags jackett
+// @Accept json
+// @Produce json
+// @Param request body jackett.TorznabSearchRequest true "Torznab search request"
+// @Success 200 {object} jackett.SearchResponse
+// @Failure 400 {object} httphelpers.ErrorResponse
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/jackett/search [post]
+func (h *JackettHandler) Search(w http.ResponseWriter, r *http.Request) {
+	var req jackett.TorznabSearchRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Error().Err(err).Msg("Failed to decode search request")
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	// Validate request
+	if req.Query == "" {
+		RespondError(w, http.StatusBadRequest, "query is required")
+		return
+	}
+
+	// Perform search
+	response, err := h.service.Search(r.Context(), &req)
+	if err != nil {
+		log.Error().
+			Err(err).
+			Str("query", req.Query).
+			Msg("Failed to search Jackett")
+		RespondError(w, http.StatusInternalServerError, "Failed to search")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, response)
+}
+
+// ListIndexers godoc
+// @Summary List all Torznab indexers
+// @Description Retrieves all configured Torznab indexers
+// @Tags torznab
+// @Produce json
+// @Success 200 {array} models.TorznabIndexer
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/torznab/indexers [get]
+func (h *JackettHandler) ListIndexers(w http.ResponseWriter, r *http.Request) {
+	indexers, err := h.indexerStore.List(r.Context())
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to list indexers")
+		RespondError(w, http.StatusInternalServerError, "Failed to list indexers")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, indexers)
+}
+
+// CreateIndexer godoc
+// @Summary Create a new Torznab indexer
+// @Description Creates a new Torznab indexer configuration
+// @Tags torznab
+// @Accept json
+// @Produce json
+// @Success 201 {object} models.TorznabIndexer
+// @Failure 400 {object} httphelpers.ErrorResponse
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/torznab/indexers [post]
+func (h *JackettHandler) CreateIndexer(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Name           string `json:"name"`
+		BaseURL        string `json:"base_url"`
+		APIKey         string `json:"api_key"`
+		Enabled        bool   `json:"enabled"`
+		Priority       int    `json:"priority"`
+		TimeoutSeconds int    `json:"timeout_seconds"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Error().Err(err).Msg("Failed to decode create indexer request")
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	// Validate required fields
+	if req.Name == "" {
+		RespondError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+	if req.BaseURL == "" {
+		RespondError(w, http.StatusBadRequest, "base_url is required")
+		return
+	}
+	if req.APIKey == "" {
+		RespondError(w, http.StatusBadRequest, "api_key is required")
+		return
+	}
+
+	indexer, err := h.indexerStore.Create(r.Context(), req.Name, req.BaseURL, req.APIKey, req.Enabled, req.Priority, req.TimeoutSeconds)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to create indexer")
+		RespondError(w, http.StatusInternalServerError, "Failed to create indexer")
+		return
+	}
+
+	RespondJSON(w, http.StatusCreated, indexer)
+}
+
+// GetIndexer godoc
+// @Summary Get a Torznab indexer
+// @Description Retrieves a specific Torznab indexer by ID
+// @Tags torznab
+// @Produce json
+// @Param indexerID path int true "Indexer ID"
+// @Success 200 {object} models.TorznabIndexer
+// @Failure 404 {object} httphelpers.ErrorResponse
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/torznab/indexers/{indexerID} [get]
+func (h *JackettHandler) GetIndexer(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(chi.URLParam(r, "indexerID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid indexer ID")
+		return
+	}
+
+	indexer, err := h.indexerStore.Get(r.Context(), id)
+	if err != nil {
+		if err == models.ErrTorznabIndexerNotFound {
+			RespondError(w, http.StatusNotFound, "Indexer not found")
+			return
+		}
+		log.Error().Err(err).Int("indexer_id", id).Msg("Failed to get indexer")
+		RespondError(w, http.StatusInternalServerError, "Failed to get indexer")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, indexer)
+}
+
+// UpdateIndexer godoc
+// @Summary Update a Torznab indexer
+// @Description Updates an existing Torznab indexer
+// @Tags torznab
+// @Accept json
+// @Produce json
+// @Param indexerID path int true "Indexer ID"
+// @Success 200 {object} models.TorznabIndexer
+// @Failure 400 {object} httphelpers.ErrorResponse
+// @Failure 404 {object} httphelpers.ErrorResponse
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/torznab/indexers/{indexerID} [put]
+func (h *JackettHandler) UpdateIndexer(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(chi.URLParam(r, "indexerID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid indexer ID")
+		return
+	}
+
+	var req struct {
+		Name           string `json:"name"`
+		BaseURL        string `json:"base_url"`
+		APIKey         string `json:"api_key"`
+		Enabled        *bool  `json:"enabled"`
+		Priority       *int   `json:"priority"`
+		TimeoutSeconds *int   `json:"timeout_seconds"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Error().Err(err).Msg("Failed to decode update indexer request")
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	indexer, err := h.indexerStore.Update(r.Context(), id, req.Name, req.BaseURL, req.APIKey, req.Enabled, req.Priority, req.TimeoutSeconds)
+	if err != nil {
+		if err == models.ErrTorznabIndexerNotFound {
+			RespondError(w, http.StatusNotFound, "Indexer not found")
+			return
+		}
+		log.Error().Err(err).Int("indexer_id", id).Msg("Failed to update indexer")
+		RespondError(w, http.StatusInternalServerError, "Failed to update indexer")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, indexer)
+}
+
+// DeleteIndexer godoc
+// @Summary Delete a Torznab indexer
+// @Description Deletes a Torznab indexer
+// @Tags torznab
+// @Param indexerID path int true "Indexer ID"
+// @Success 204
+// @Failure 404 {object} httphelpers.ErrorResponse
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/torznab/indexers/{indexerID} [delete]
+func (h *JackettHandler) DeleteIndexer(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(chi.URLParam(r, "indexerID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid indexer ID")
+		return
+	}
+
+	err = h.indexerStore.Delete(r.Context(), id)
+	if err != nil {
+		if err == models.ErrTorznabIndexerNotFound {
+			RespondError(w, http.StatusNotFound, "Indexer not found")
+			return
+		}
+		log.Error().Err(err).Int("indexer_id", id).Msg("Failed to delete indexer")
+		RespondError(w, http.StatusInternalServerError, "Failed to delete indexer")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// TestIndexer godoc
+// @Summary Test a Torznab indexer connection
+// @Description Tests the connection to a Torznab indexer
+// @Tags torznab
+// @Param indexerID path int true "Indexer ID"
+// @Success 200
+// @Failure 400 {object} httphelpers.ErrorResponse
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/torznab/indexers/{indexerID}/test [post]
+func (h *JackettHandler) TestIndexer(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(chi.URLParam(r, "indexerID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid indexer ID")
+		return
+	}
+
+	indexer, err := h.indexerStore.Get(r.Context(), id)
+	if err != nil {
+		if err == models.ErrTorznabIndexerNotFound {
+			RespondError(w, http.StatusNotFound, "Indexer not found")
+			return
+		}
+		log.Error().Err(err).Int("indexer_id", id).Msg("Failed to get indexer")
+		RespondError(w, http.StatusInternalServerError, "Failed to get indexer")
+		return
+	}
+
+	// Get decrypted API key
+	apiKey, err := h.indexerStore.GetDecryptedAPIKey(indexer)
+	if err != nil {
+		log.Error().Err(err).Int("indexer_id", id).Msg("Failed to decrypt API key")
+		RespondError(w, http.StatusInternalServerError, "Failed to decrypt API key")
+		return
+	}
+
+	// Create client and test connection
+	client := jackett.NewClient(indexer.BaseURL, apiKey)
+	_, err = client.GetCaps("all")
+	if err != nil {
+		log.Error().Err(err).Int("indexer_id", id).Msg("Failed to test indexer connection")
+		RespondError(w, http.StatusInternalServerError, "Failed to connect to indexer: "+err.Error())
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// DiscoverIndexers godoc
+// @Summary Discover indexers from a Jackett instance
+// @Description Discovers all configured indexers from a Jackett instance using its API
+// @Tags torznab
+// @Accept json
+// @Produce json
+// @Success 200 {array} jackett.JackettIndexer
+// @Failure 400 {object} httphelpers.ErrorResponse
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/torznab/indexers/discover [post]
+func (h *JackettHandler) DiscoverIndexers(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		BaseURL string `json:"base_url"`
+		APIKey  string `json:"api_key"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Error().Err(err).Msg("Failed to decode discover request")
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if req.BaseURL == "" {
+		RespondError(w, http.StatusBadRequest, "base_url is required")
+		return
+	}
+	if req.APIKey == "" {
+		RespondError(w, http.StatusBadRequest, "api_key is required")
+		return
+	}
+
+	indexers, err := jackett.DiscoverJackettIndexers(req.BaseURL, req.APIKey)
+	if err != nil {
+		log.Error().Err(err).Str("base_url", req.BaseURL).Msg("Failed to discover indexers")
+		RespondError(w, http.StatusInternalServerError, "Failed to discover indexers: "+err.Error())
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, indexers)
+}

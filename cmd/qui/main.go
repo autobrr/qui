@@ -34,6 +34,7 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/filesmanager"
+	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/license"
 	"github.com/autobrr/qui/internal/services/trackericons"
 	"github.com/autobrr/qui/internal/update"
@@ -495,6 +496,16 @@ func (app *Application) runServer() {
 	// Initialize cross-seed service
 	crossSeedService := crossseed.NewService(instanceStore, syncManager, filesManagerService)
 
+	// Initialize Torznab indexer store
+	torznabIndexerStore, err := models.NewTorznabIndexerStore(db, cfg.GetEncryptionKey())
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to initialize torznab indexer store")
+	}
+
+	// Initialize Jackett/Torznab service
+	jackettService := jackett.NewService(torznabIndexerStore, crossSeedService)
+	log.Info().Msg("Torznab/Jackett service initialized")
+
 	backupStore := models.NewBackupStore(db)
 	backupService := backups.NewService(backupStore, syncManager, backups.Config{DataDir: cfg.GetDataDir()})
 	backupService.Start(context.Background())
@@ -550,20 +561,22 @@ func (app *Application) runServer() {
 
 	// Start server in goroutine
 	httpServer := api.NewServer(&api.Dependencies{
-		Config:             cfg,
-		Version:            buildinfo.Version,
-		AuthService:        authService,
-		SessionManager:     sessionManager,
-		InstanceStore:      instanceStore,
-		ClientAPIKeyStore:  clientAPIKeyStore,
-		ClientPool:         clientPool,
-		SyncManager:        syncManager,
-		LicenseService:     licenseService,
-		UpdateService:      updateService,
-		TrackerIconService: trackerIconService,
-		BackupService:      backupService,
-		FilesManager:       filesManagerService,
-		CrossSeedService:   crossSeedService,
+		Config:              cfg,
+		Version:             buildinfo.Version,
+		AuthService:         authService,
+		SessionManager:      sessionManager,
+		InstanceStore:       instanceStore,
+		ClientAPIKeyStore:   clientAPIKeyStore,
+		ClientPool:          clientPool,
+		SyncManager:         syncManager,
+		LicenseService:      licenseService,
+		UpdateService:       updateService,
+		TrackerIconService:  trackerIconService,
+		BackupService:       backupService,
+		FilesManager:        filesManagerService,
+		CrossSeedService:    crossSeedService,
+		JackettService:      jackettService,
+		TorznabIndexerStore: torznabIndexerStore,
 	})
 
 	errorChannel := make(chan error)
