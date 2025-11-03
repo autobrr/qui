@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/anacrolix/torrent/metainfo"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/moistari/rls"
 	"github.com/rs/zerolog/log"
@@ -815,39 +816,23 @@ func (s *Service) decodeTorrentData(data string) ([]byte, error) {
 	return decoded, nil
 }
 
-// parseTorrentName extracts the name and info hash from torrent bytes
+// parseTorrentName extracts the name and info hash from torrent bytes using anacrolix/torrent
 func (s *Service) parseTorrentName(torrentBytes []byte) (name string, hash string, err error) {
-	// Simple bencode parsing to extract name and calculate info hash
-	// For now, we'll use a basic approach - in production you might want a proper bencode parser
-
-	// This is a simplified parser - you may want to use a proper bencode library
-	// For the name, we'll look for the "name" field in the torrent
-	namePattern := []byte("4:name")
-	nameIdx := bytes.Index(torrentBytes, namePattern)
-	if nameIdx != -1 {
-		// Skip past "4:name" and parse the length
-		idx := nameIdx + len(namePattern)
-		lengthEnd := bytes.IndexByte(torrentBytes[idx:], ':')
-		if lengthEnd != -1 {
-			lengthStr := string(torrentBytes[idx : idx+lengthEnd])
-			nameLen := 0
-			fmt.Sscanf(lengthStr, "%d", &nameLen)
-			if nameLen > 0 && nameLen < 1024 {
-				nameStart := idx + lengthEnd + 1
-				if nameStart+nameLen <= len(torrentBytes) {
-					name = string(torrentBytes[nameStart : nameStart+nameLen])
-				}
-			}
-		}
+	mi, err := metainfo.Load(bytes.NewReader(torrentBytes))
+	if err != nil {
+		return "", "", fmt.Errorf("failed to parse torrent metainfo: %w", err)
 	}
 
-	// Calculate info hash (SHA1 of the info dictionary)
-	// For simplicity, we'll leave hash empty for now - it will be populated when torrent is added
-	// A proper implementation would parse the bencode and calculate SHA1 of info dict
-	hash = ""
+	info, err := mi.UnmarshalInfo()
+	if err != nil {
+		return "", "", fmt.Errorf("failed to unmarshal torrent info: %w", err)
+	}
+
+	name = info.Name
+	hash = mi.HashInfoBytes().HexString()
 
 	if name == "" {
-		return "", "", fmt.Errorf("could not extract torrent name")
+		return "", "", fmt.Errorf("torrent has no name")
 	}
 
 	return name, hash, nil
