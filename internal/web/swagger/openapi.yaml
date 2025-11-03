@@ -1765,6 +1765,75 @@ paths:
         '500':
           description: Failed to refresh licenses
 
+  /api/torrents/cross-instance:
+    get:
+      tags:
+        - Torrents
+      summary: List torrents across all instances
+      description: Get paginated list of torrents from all instances (primarily used for cross-seed filtering)
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 500
+            maximum: 2000
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [name, size, progress, priority, added_on, instance]
+        - name: order
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: filters
+          in: query
+          schema:
+            type: string
+            description: JSON object with filter criteria (`status`, `categories`, `tags`, `excludeTags`, `trackers`, `expr`)
+      responses:
+        '200':
+          description: Paginated torrent list from all instances
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  crossInstanceTorrents:
+                    type: array
+                    items:
+                      allOf:
+                        - $ref: '#/components/schemas/Torrent'
+                        - type: object
+                          properties:
+                            instanceId:
+                              type: integer
+                              description: ID of the instance this torrent belongs to
+                            instanceName:
+                              type: string
+                              description: Name of the instance this torrent belongs to
+                  total:
+                    type: integer
+                  hasMore:
+                    type: boolean
+                  isCrossInstance:
+                    type: boolean
+                    default: true
+        '500':
+          description: Failed to get cross-instance torrents
+
   /api/tracker-icons:
     get:
       tags:
