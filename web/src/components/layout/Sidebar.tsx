@@ -18,7 +18,6 @@ import { Link, useLocation } from "@tanstack/react-router"
 import {
   Archive,
   Copyright,
-  Database,
   Github,
   GitBranch,
   HardDrive,
@@ -45,11 +44,6 @@ const navigation: NavItem[] = [
     title: "Search",
     href: "/search",
     icon: Search,
-  },
-  {
-    title: "Indexers",
-    href: "/indexers",
-    icon: Database,
   },
   {
     title: "Cross-Seed",

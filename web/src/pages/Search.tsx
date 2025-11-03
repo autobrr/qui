@@ -213,7 +213,7 @@ export function Search() {
 
             {!loadingIndexers && indexers.length === 0 && (
               <div className="text-sm text-muted-foreground">
-                No enabled indexers available. Please add and enable indexers in the <a href="/indexers" className="text-primary hover:underline">Indexers page</a>.
+                No enabled indexers available. Please add and enable indexers in the <a href="/settings?tab=indexers" className="text-primary hover:underline">Indexers page</a>.
               </div>
             )}
           </form>

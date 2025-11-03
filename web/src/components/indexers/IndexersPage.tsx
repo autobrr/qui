@@ -3,18 +3,22 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState, useEffect } from 'react'
-import { toast } from 'sonner'
-import { Plus, RefreshCw } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { IndexerTable } from './IndexerTable'
-import { IndexerDialog } from './IndexerDialog'
-import { AutodiscoveryDialog } from './AutodiscoveryDialog'
-import type { TorznabIndexer } from '@/types'
-import { api } from '@/lib/api'
+import { useEffect, useState } from "react"
+import { toast } from "sonner"
+import { Plus, RefreshCw } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { AutodiscoveryDialog } from "./AutodiscoveryDialog"
+import { IndexerDialog } from "./IndexerDialog"
+import { IndexerTable } from "./IndexerTable"
+import type { TorznabIndexer } from "@/types"
+import { api } from "@/lib/api"
 
-export function IndexersPage() {
+interface IndexersPageProps {
+  withContainer?: boolean
+}
+
+export function IndexersPage({ withContainer = true }: IndexersPageProps) {
   const [indexers, setIndexers] = useState<TorznabIndexer[]>([])
   const [loading, setLoading] = useState(true)
   const [addDialogOpen, setAddDialogOpen] = useState(false)
@@ -28,7 +32,7 @@ export function IndexersPage() {
       const data = await api.listTorznabIndexers()
       setIndexers(data || [])
     } catch (error) {
-      toast.error('Failed to load indexers')
+      toast.error("Failed to load indexers")
       setIndexers([])
     } finally {
       setLoading(false)
@@ -45,29 +49,29 @@ export function IndexersPage() {
   }
 
   const handleDelete = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this indexer?')) return
+    if (!confirm("Are you sure you want to delete this indexer?")) return
 
     try {
       await api.deleteTorznabIndexer(id)
-      toast.success('Indexer deleted successfully')
+      toast.success("Indexer deleted successfully")
       loadIndexers()
     } catch (error) {
-      toast.error('Failed to delete indexer')
+      toast.error("Failed to delete indexer")
     }
   }
 
   const handleTest = async (id: number) => {
     try {
       await api.testTorznabIndexer(id)
-      toast.success('Connection test successful')
+      toast.success("Connection test successful")
     } catch (error) {
-      toast.error('Connection test failed')
+      toast.error("Connection test failed")
     }
   }
 
   const handleTestAll = async () => {
     if (indexers.length === 0) {
-      toast.info('No indexers to test')
+      toast.info("No indexers to test")
       return
     }
 
@@ -90,15 +94,13 @@ export function IndexersPage() {
       }
     }
 
-    // Reload indexers to show updated test status
     await loadIndexers()
 
     if (failCount === 0) {
       toast.success(`All ${successCount} indexers tested successfully`)
     } else {
       toast.warning(`${successCount} passed, ${failCount} failed`)
-      // Show details of failed indexers
-      const failedNames = results.filter(r => !r.success).map(r => r.name).join(', ')
+      const failedNames = results.filter((result) => !result.success).map((result) => result.name).join(", ")
       toast.error(`Failed indexers: ${failedNames}`)
     }
   }
@@ -110,18 +112,18 @@ export function IndexersPage() {
     loadIndexers()
   }
 
-  return (
-    <div className="container mx-auto p-6">
+  const content = (
+    <>
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-4">
             <div>
               <CardTitle>Torznab Indexers</CardTitle>
               <CardDescription>
                 Manage Torznab indexers powered by Jackett, Prowlarr, or native tracker endpoints
               </CardDescription>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2 justify-end">
               <Button
                 variant="outline"
                 onClick={handleTestAll}
@@ -175,6 +177,16 @@ export function IndexersPage() {
           loadIndexers()
         }}
       />
-    </div>
+    </>
   )
+
+  if (withContainer) {
+    return (
+      <div className="container mx-auto space-y-4 p-6">
+        {content}
+      </div>
+    )
+  }
+
+  return <div className="space-y-4">{content}</div>
 }

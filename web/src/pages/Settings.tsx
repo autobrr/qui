@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { IndexersPage } from "@/components/indexers/IndexersPage"
 import { InstanceCard } from "@/components/instances/InstanceCard"
 import { InstanceForm } from "@/components/instances/InstanceForm"
 import { PasswordIssuesBanner } from "@/components/instances/PasswordIssuesBanner"
@@ -49,11 +50,11 @@ import type { Instance } from "@/types"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useNavigate, useSearch } from "@tanstack/react-router"
-import { Clock, Copy, ExternalLink, Key, Palette, Plus, Server, Share2, Shield, Trash2 } from "lucide-react"
+import { Clock, Copy, Database, ExternalLink, Key, Palette, Plus, Server, Share2, Shield, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { toast } from "sonner"
 
-const settingsTabs = ["instances", "client-api", "api", "datetime", "themes", "security"] as const
+const settingsTabs = ["instances", "indexers", "client-api", "api", "datetime", "themes", "security"] as const
 type SettingsTab = (typeof settingsTabs)[number]
 
 const isSettingsTab = (value: unknown): value is SettingsTab => {
@@ -564,6 +565,12 @@ export function Settings() {
                 Instances
               </div>
             </SelectItem>
+            <SelectItem value="indexers">
+              <div className="flex items-center">
+                <Database className="w-4 h-4 mr-2" />
+                Indexers
+              </div>
+            </SelectItem>
             <SelectItem value="client-api">
               <div className="flex items-center">
                 <Share2 className="w-4 h-4 mr-2" />
@@ -610,6 +617,15 @@ export function Settings() {
             >
               <Server className="w-4 h-4 mr-2" />
               Instances
+            </button>
+            <button
+              onClick={() => handleTabChange("indexers")}
+              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                activeTab === "indexers"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+              }`}
+            >
+              <Database className="w-4 h-4 mr-2" />
+              Indexers
             </button>
             <button
               onClick={() => handleTabChange("client-api")}
@@ -675,6 +691,12 @@ export function Settings() {
                   <InstancesManager />
                 </CardContent>
               </Card>
+            </div>
+          )}
+
+          {activeTab === "indexers" && (
+            <div className="space-y-4">
+              <IndexersPage withContainer={false} />
             </div>
           )}
 
