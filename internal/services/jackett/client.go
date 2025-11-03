@@ -4,7 +4,6 @@
 package jackett
 
 import (
-	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -265,23 +264,22 @@ func DiscoverJackettIndexers(baseURL, apiKey string) ([]JackettIndexer, error) {
 		Timeout: 30 * time.Second,
 	}
 
-	// Build URL: baseURL/api/v2.0/indexers
-	// Jackett's admin API endpoint for listing indexers
-	// Join the base URL with the API path
+	// Jackett's /api/v2.0/indexers endpoint requires admin/web authentication (cookies)
+	// Instead, we query the "all" aggregator endpoint and parse the response to discover indexers
+	// Build URL: baseURL/api/v2.0/indexers/all/results/torznab/api
 	u, err := url.Parse(baseURL)
 	if err != nil {
 		return nil, fmt.Errorf("invalid base URL: %w", err)
 	}
 
-	// Use url.JoinPath to properly append the API path
-	u, err = u.Parse("/api/v2.0/indexers")
+	u, err = u.Parse("/api/v2.0/indexers/all/results/torznab/api")
 	if err != nil {
 		return nil, fmt.Errorf("failed to construct API URL: %w", err)
 	}
 
-	// Add query parameters
+	// Query with t=indexers to get indexer list (Jackett-specific extension)
 	q := u.Query()
-	q.Set("configured", "true")
+	q.Set("t", "indexers")
 	q.Set("apikey", apiKey)
 	u.RawQuery = q.Encode()
 
@@ -289,11 +287,6 @@ func DiscoverJackettIndexers(baseURL, apiKey string) ([]JackettIndexer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-
-	// Add API key as Authorization header (some Jackett versions prefer this)
-	req.Header.Set("Authorization", apiKey)
-	// Also add X-Api-Key header as fallback for different Jackett configurations
-	req.Header.Set("X-Api-Key", apiKey)
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -303,13 +296,40 @@ func DiscoverJackettIndexers(baseURL, apiKey string) ([]JackettIndexer, error) {
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("jackett returned status %d: %s (URL: %s)", resp.StatusCode, string(body), u.String())
+		return nil, fmt.Errorf("jackett returned status %d: %s", resp.StatusCode, string(body))
 	}
 
-	// Parse JSON response
-	var indexers []JackettIndexer
-	if err := json.NewDecoder(resp.Body).Decode(&indexers); err != nil {
-		return nil, fmt.Errorf("failed to parse indexers JSON: %w", err)
+	// The t=indexers response returns XML with indexer information
+	// Parse as a special indexer list response
+	type IndexerXML struct {
+		XMLName xml.Name `xml:"indexers"`
+		Indexer []struct {
+			ID          string `xml:"id,attr"`
+			Title       string `xml:"title,attr"`
+			Description string `xml:"description,attr"`
+			Type        string `xml:"type,attr"`
+			Configured  string `xml:"configured,attr"`
+		} `xml:"indexer"`
+	}
+
+	var indexerList IndexerXML
+	if err := xml.NewDecoder(resp.Body).Decode(&indexerList); err != nil {
+		return nil, fmt.Errorf("failed to parse indexers XML: %w", err)
+	}
+
+	// Convert to JackettIndexer format
+	indexers := make([]JackettIndexer, 0)
+	for _, idx := range indexerList.Indexer {
+		// Only include configured indexers
+		if idx.Configured == "true" {
+			indexers = append(indexers, JackettIndexer{
+				ID:          idx.ID,
+				Name:        idx.Title,
+				Description: idx.Description,
+				Type:        idx.Type,
+				Configured:  true,
+			})
+		}
 	}
 
 	return indexers, nil
