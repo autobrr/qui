@@ -594,6 +594,7 @@ interface TorrentTableOptimizedProps {
     selectionFilters?: TorrentFilters
   ) => void
   onResetSelection?: (handler?: () => void) => void
+  onFilterChange?: (filters: TorrentFilters) => void
 }
 
 export const TorrentTableOptimized = memo(function TorrentTableOptimized({
@@ -606,6 +607,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   onFilteredDataUpdate,
   onSelectionChange,
   onResetSelection,
+  onFilterChange,
 }: TorrentTableOptimizedProps) {
   // State management
   // Move default values outside the component for stable references
@@ -852,6 +854,17 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   // Convert column filters to expr format for backend
   const columnFiltersExpr = useMemo(() => columnFiltersToExpr(columnFilters), [columnFilters])
 
+  // Combine column filters with any existing filter expression
+  const combinedFiltersExpr = useMemo(() => {
+    const columnExpr = columnFiltersExpr
+    const filterExpr = filters?.expr
+    
+    if (columnExpr && filterExpr) {
+      return `(${columnExpr}) && (${filterExpr})`
+    }
+    return columnExpr || filterExpr
+  }, [columnFiltersExpr, filters?.expr])
+
   // Detect user-initiated changes
   useEffect(() => {
     const filtersChanged = JSON.stringify(previousFiltersRef.current) !== JSON.stringify(filters)
@@ -921,7 +934,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       excludeTrackers: filters?.excludeTrackers || [],
       expandedCategories: filters?.expandedCategories,
       expandedExcludeCategories: filters?.expandedExcludeCategories,
-      expr: columnFiltersExpr || undefined,
+      expr: combinedFiltersExpr || undefined,
     },
     sort: activeSortField,
     order: activeSortOrder,
@@ -2275,6 +2288,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                   return (
                     <TorrentContextMenu
                       key={row.id}
+                      instanceId={instanceId}
                       torrent={torrent}
                       isSelected={isRowSelected}
                       isAllSelected={isAllSelected}
@@ -2302,6 +2316,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                       isExporting={isExportingTorrent}
                       capabilities={capabilities}
                       useSubcategories={allowSubcategories}
+                      onFilterChange={onFilterChange}
                     >
                       <CompactRow
                         torrent={torrent}
@@ -2369,6 +2384,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                 return (
                   <TorrentContextMenu
                     key={row.id}
+                    instanceId={instanceId}
                     torrent={torrent}
                     isSelected={isRowSelected}
                     isAllSelected={isAllSelected}
@@ -2396,6 +2412,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                     isExporting={isExportingTorrent}
                     capabilities={capabilities}
                     useSubcategories={allowSubcategories}
+                    onFilterChange={onFilterChange}
                   >
                     <div
                       className={`flex border-b cursor-pointer hover:bg-muted/50 ${isRowSelected ? "bg-muted/50" : ""} ${isSelected ? "bg-accent" : ""}`}
