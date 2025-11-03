@@ -18,7 +18,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import type { JackettIndexer, TorznabIndexerFormData } from '@/types'
+import type { JackettIndexer, TorznabIndexer, TorznabIndexerFormData } from '@/types'
 import { api } from '@/lib/api'
 
 interface AutodiscoveryDialogProps {
@@ -33,7 +33,7 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
   const [apiKey, setApiKey] = useState('')
   const [discoveredIndexers, setDiscoveredIndexers] = useState<JackettIndexer[]>([])
   const [selectedIndexers, setSelectedIndexers] = useState<Set<string>>(new Set())
-  const [existingIndexers, setExistingIndexers] = useState<Map<string, number>>(new Map())
+  const [existingIndexersMap, setExistingIndexersMap] = useState<Map<string, TorznabIndexer>>(new Map())
 
   const handleDiscover = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -47,12 +47,12 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
       
       setDiscoveredIndexers(response)
       
-      // Build map of existing indexers by name for quick lookup
-      const existingMap = new Map<string, number>()
+      // Build map of existing indexers by name with full indexer data
+      const existingMap = new Map<string, TorznabIndexer>()
       for (const idx of existing) {
-        existingMap.set(idx.name, idx.id)
+        existingMap.set(idx.name, idx)
       }
-      setExistingIndexers(existingMap)
+      setExistingIndexersMap(existingMap)
       
       setStep('select')
       const existingCount = response.filter(idx => existingMap.has(idx.name)).length
@@ -98,10 +98,13 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
       }
 
       try {
-        const existingId = existingIndexers.get(indexer.name)
-        if (existingId) {
-          // Update existing indexer
-          await api.updateTorznabIndexer(existingId, formData)
+        const existing = existingIndexersMap.get(indexer.name)
+        if (existing) {
+          // Update existing indexer - only update base_url and api_key
+          await api.updateTorznabIndexer(existing.id, {
+            base_url: formData.base_url,
+            api_key: formData.api_key,
+          })
           updatedCount++
         } else {
           // Create new indexer
@@ -253,7 +256,7 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
                           >
                             {indexer.name}
                           </label>
-                          {existingIndexers.has(indexer.name) && (
+                          {existingIndexersMap.has(indexer.name) && (
                             <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-0.5 rounded">
                               Will Update
                             </span>
