@@ -232,8 +232,16 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 			// Create client for this indexer
 			client := NewClient(idx.BaseURL, apiKey)
 
+			// Convert url.Values to map[string]string (take first value for each key)
+			paramsMap := make(map[string]string)
+			for key, values := range params {
+				if len(values) > 0 {
+					paramsMap[key] = values[0]
+				}
+			}
+
 			// Perform search
-			results, err := client.SearchAll(params)
+			results, err := client.SearchAll(paramsMap)
 			if err != nil {
 				log.Warn().
 					Err(err).
@@ -372,25 +380,6 @@ func (s *Service) parseTVDbID(r Result) string {
 	// TVDb ID might be in various places depending on indexer
 	// This is a placeholder - would need to check actual Jackett response structure
 	return ""
-}
-
-// convertCategories converts Jackett categories to our CategoryInfo format
-func (s *Service) convertCategories(cats []TorznabCategory) []CategoryInfo {
-	result := make([]CategoryInfo, 0, len(cats))
-	for _, cat := range cats {
-		result = append(result, CategoryInfo{
-			ID:   cat.ID,
-			Name: cat.Name,
-		})
-		// Also add subcategories
-		for _, subcat := range cat.Subcats {
-			result = append(result, CategoryInfo{
-				ID:   subcat.ID,
-				Name: subcat.Name,
-			})
-		}
-	}
-	return result
 }
 
 // contentType represents the type of content being searched (internal use only)

@@ -4,105 +4,27 @@
 package jackett
 
 import (
-	"encoding/xml"
+	"context"
 	"fmt"
-	"io"
-	"net/http"
-	"net/url"
 	"strconv"
 	"time"
+
+	gojackett "github.com/kylesanderson/go-jackett"
 )
 
-// Client is a simple Jackett/Torznab API client
+// Client wraps the go-jackett client
 type Client struct {
-	baseURL string
-	apiKey  string
-	client  *http.Client
+	client *gojackett.Client
 }
 
 // NewClient creates a new Jackett client
 func NewClient(baseURL, apiKey string) *Client {
 	return &Client{
-		baseURL: baseURL,
-		apiKey:  apiKey,
-		client: &http.Client{
-			Timeout: 30 * time.Second,
-		},
+		client: gojackett.NewClient(gojackett.Config{
+			Host:   baseURL,
+			APIKey: apiKey,
+		}),
 	}
-}
-
-// TorznabFeed represents the XML response from a Torznab API
-type TorznabFeed struct {
-	XMLName xml.Name       `xml:"rss"`
-	Channel TorznabChannel `xml:"channel"`
-}
-
-// TorznabChannel represents the channel element in Torznab XML
-type TorznabChannel struct {
-	Title       string        `xml:"title"`
-	Description string        `xml:"description"`
-	Items       []TorznabItem `xml:"item"`
-}
-
-// TorznabItem represents a single result item
-type TorznabItem struct {
-	Title      string           `xml:"title"`
-	GUID       string           `xml:"guid"`
-	Link       string           `xml:"link"`
-	Comments   string           `xml:"comments"`
-	PubDate    string           `xml:"pubDate"`
-	Size       int64            `xml:"size"`
-	Category   string           `xml:"category"`
-	Enclosure  TorznabEnclosure `xml:"enclosure"`
-	Attributes []TorznabAttr    `xml:"attr"`
-}
-
-// TorznabEnclosure represents the enclosure element (download link)
-type TorznabEnclosure struct {
-	URL    string `xml:"url,attr"`
-	Length int64  `xml:"length,attr"`
-	Type   string `xml:"type,attr"`
-}
-
-// TorznabAttr represents Torznab attributes
-type TorznabAttr struct {
-	Name  string `xml:"name,attr"`
-	Value string `xml:"value,attr"`
-}
-
-// TorznabCaps represents the capabilities response
-type TorznabCaps struct {
-	XMLName    xml.Name          `xml:"caps"`
-	Server     TorznabServer     `xml:"server"`
-	Searching  TorznabSearching  `xml:"searching"`
-	Categories []TorznabCategory `xml:"categories>category"`
-}
-
-// TorznabServer represents server information
-type TorznabServer struct {
-	Title   string `xml:"title,attr"`
-	Version string `xml:"version,attr"`
-}
-
-// TorznabSearching represents search capabilities
-type TorznabSearching struct {
-	Search      TorznabSearchType `xml:"search"`
-	TVSearch    TorznabSearchType `xml:"tv-search"`
-	MovieSearch TorznabSearchType `xml:"movie-search"`
-}
-
-// TorznabSearchType represents a search type capability
-type TorznabSearchType struct {
-	Available       string `xml:"available,attr"`
-	SupportedParams string `xml:"supportedParams,attr"`
-}
-
-// TorznabCategory represents a category
-type TorznabCategory struct {
-	ID          int               `xml:"id,attr"`
-	Name        string            `xml:"name,attr"`
-	Description string            `xml:"description,attr"`
-	Subcats     []TorznabCategory `xml:"subcat"`
 }
 
 // Result represents a single search result (simplified format)
@@ -122,65 +44,37 @@ type Result struct {
 	Imdb                 string
 }
 
-// Category represents a simplified category
-type Category struct {
-	ID   int
-	Name string
-}
-
 // SearchAll searches across all indexers using the "all" endpoint
-func (c *Client) SearchAll(params url.Values) ([]Result, error) {
+func (c *Client) SearchAll(params map[string]string) ([]Result, error) {
 	return c.Search("all", params)
 }
 
 // Search performs a search on a specific indexer or "all"
-func (c *Client) Search(indexer string, params url.Values) ([]Result, error) {
-	// Build URL: /api/v2.0/indexers/{indexer}/results/torznab/api
-	searchURL := fmt.Sprintf("%s/api/v2.0/indexers/%s/results/torznab/api", c.baseURL, indexer)
-
-	// Create a copy of params to avoid concurrent modification
-	queryParams := url.Values{}
-	if params != nil {
-		for k, v := range params {
-			queryParams[k] = v
-		}
-	}
-	queryParams.Set("apikey", c.apiKey)
-	queryParams.Set("t", "search") // Torznab search type
-
-	fullURL := fmt.Sprintf("%s?%s", searchURL, queryParams.Encode())
-
-	// Make HTTP request
-	resp, err := c.client.Get(fullURL)
+func (c *Client) Search(indexer string, params map[string]string) ([]Result, error) {
+	// Use go-jackett library to perform the search
+	rss, err := c.client.GetTorrentsCtx(context.Background(), indexer, params)
 	if err != nil {
-		return nil, fmt.Errorf("http request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("jackett returned status %d: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("search failed: %w", err)
 	}
 
-	// Parse XML response
-	var feed TorznabFeed
-	if err := xml.NewDecoder(resp.Body).Decode(&feed); err != nil {
-		return nil, fmt.Errorf("failed to parse XML response: %w", err)
-	}
-
-	// Convert to Result format
-	results := make([]Result, 0, len(feed.Channel.Items))
-	for _, item := range feed.Channel.Items {
+	// Convert go-jackett RSS response to our Result format
+	results := make([]Result, 0, len(rss.Channel.Item))
+	for _, item := range rss.Channel.Item {
 		result := Result{
-			Tracker:              feed.Channel.Title,
+			Tracker:              rss.Channel.Title,
 			Title:                item.Title,
 			Link:                 item.Enclosure.URL,
 			Details:              item.Comments,
-			GUID:                 item.GUID,
-			Category:             item.Category,
-			Size:                 item.Size,
+			GUID:                 item.Guid,
+			Category:             "", // Categories are in item.Category array
+			Size:                 0,
 			DownloadVolumeFactor: 1.0,
 			UploadVolumeFactor:   1.0,
+		}
+
+		// Parse size
+		if size, err := strconv.ParseInt(item.Size, 10, 64); err == nil {
+			result.Size = size
 		}
 
 		// Parse pub date
@@ -192,8 +86,13 @@ func (c *Client) Search(indexer string, params url.Values) ([]Result, error) {
 			}
 		}
 
-		// Parse attributes
-		for _, attr := range item.Attributes {
+		// Set first category if available
+		if len(item.Category) > 0 {
+			result.Category = item.Category[0]
+		}
+
+		// Parse torznab attributes
+		for _, attr := range item.Attr {
 			switch attr.Name {
 			case "seeders":
 				if v, err := strconv.Atoi(attr.Value); err == nil {
@@ -222,33 +121,6 @@ func (c *Client) Search(indexer string, params url.Values) ([]Result, error) {
 	return results, nil
 }
 
-// GetCaps retrieves the capabilities of an indexer
-func (c *Client) GetCaps(indexer string) (*TorznabCaps, error) {
-	// Build URL: /api/v2.0/indexers/{indexer}/results/torznab/api?t=caps
-	capsURL := fmt.Sprintf("%s/api/v2.0/indexers/%s/results/torznab/api?t=caps&apikey=%s",
-		c.baseURL, indexer, c.apiKey)
-
-	// Make HTTP request
-	resp, err := c.client.Get(capsURL)
-	if err != nil {
-		return nil, fmt.Errorf("http request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("jackett returned status %d: %s", resp.StatusCode, string(body))
-	}
-
-	// Parse XML response
-	var caps TorznabCaps
-	if err := xml.NewDecoder(resp.Body).Decode(&caps); err != nil {
-		return nil, fmt.Errorf("failed to parse caps XML: %w", err)
-	}
-
-	return &caps, nil
-}
-
 // JackettIndexer represents an indexer from Jackett's indexer list
 type JackettIndexer struct {
 	ID          string `json:"id"`
@@ -260,76 +132,28 @@ type JackettIndexer struct {
 
 // DiscoverJackettIndexers discovers all configured indexers from a Jackett instance
 func DiscoverJackettIndexers(baseURL, apiKey string) ([]JackettIndexer, error) {
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-	}
+	// Use the go-jackett library
+	client := gojackett.NewClient(gojackett.Config{
+		Host:   baseURL,
+		APIKey: apiKey,
+	})
 
-	// Jackett's /api/v2.0/indexers endpoint requires admin/web authentication (cookies)
-	// Instead, we query the "all" aggregator endpoint and parse the response to discover indexers
-	// Build URL: baseURL/api/v2.0/indexers/all/results/torznab/api
-	u, err := url.Parse(baseURL)
+	// Get all configured indexers
+	indexersResp, err := client.GetIndexersCtx(context.Background())
 	if err != nil {
-		return nil, fmt.Errorf("invalid base URL: %w", err)
+		return nil, fmt.Errorf("failed to get indexers: %w", err)
 	}
 
-	u, err = u.Parse("/api/v2.0/indexers/all/results/torznab/api")
-	if err != nil {
-		return nil, fmt.Errorf("failed to construct API URL: %w", err)
-	}
-
-	// Query with t=indexers to get indexer list (Jackett-specific extension)
-	q := u.Query()
-	q.Set("t", "indexers")
-	q.Set("apikey", apiKey)
-	u.RawQuery = q.Encode()
-
-	req, err := http.NewRequest("GET", u.String(), nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("http request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("jackett returned status %d: %s", resp.StatusCode, string(body))
-	}
-
-	// The t=indexers response returns XML with indexer information
-	// Parse as a special indexer list response
-	type IndexerXML struct {
-		XMLName xml.Name `xml:"indexers"`
-		Indexer []struct {
-			ID          string `xml:"id,attr"`
-			Title       string `xml:"title,attr"`
-			Description string `xml:"description,attr"`
-			Type        string `xml:"type,attr"`
-			Configured  string `xml:"configured,attr"`
-		} `xml:"indexer"`
-	}
-
-	var indexerList IndexerXML
-	if err := xml.NewDecoder(resp.Body).Decode(&indexerList); err != nil {
-		return nil, fmt.Errorf("failed to parse indexers XML: %w", err)
-	}
-
-	// Convert to JackettIndexer format
-	indexers := make([]JackettIndexer, 0)
-	for _, idx := range indexerList.Indexer {
-		// Only include configured indexers
-		if idx.Configured == "true" {
-			indexers = append(indexers, JackettIndexer{
-				ID:          idx.ID,
-				Name:        idx.Title,
-				Description: idx.Description,
-				Type:        idx.Type,
-				Configured:  true,
-			})
-		}
+	// Convert to our JackettIndexer format
+	indexers := make([]JackettIndexer, 0, len(indexersResp.Indexer))
+	for _, idx := range indexersResp.Indexer {
+		indexers = append(indexers, JackettIndexer{
+			ID:          idx.ID,
+			Name:        idx.Title,
+			Description: idx.Description,
+			Type:        idx.Type,
+			Configured:  idx.Configured == "true",
+		})
 	}
 
 	return indexers, nil

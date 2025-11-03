@@ -350,9 +350,9 @@ func (h *JackettHandler) TestIndexer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create client and test connection
+	// Create client and test connection with a simple search
 	client := jackett.NewClient(indexer.BaseURL, apiKey)
-	_, err = client.GetCaps("all")
+	_, err = client.Search("all", map[string]string{"q": "test", "limit": "1"})
 	if err != nil {
 		log.Error().Err(err).Int("indexer_id", id).Msg("Failed to test indexer connection")
 		RespondError(w, http.StatusInternalServerError, "Failed to connect to indexer: "+err.Error())
