@@ -268,14 +268,15 @@ func DiscoverJackettIndexers(baseURL, apiKey string) ([]JackettIndexer, error) {
 	// Build URL: /api/v2.0/indexers/all/results/torznab/api?t=indexers
 	// Note: Jackett doesn't have a dedicated indexers endpoint in the standard API
 	// We'll use the /api/v2.0/indexers endpoint which is Jackett-specific
-	indexersURL := fmt.Sprintf("%s/api/v2.0/indexers?configured=true", baseURL)
+	// Pass API key as query parameter to match Torznab API pattern
+	indexersURL := fmt.Sprintf("%s/api/v2.0/indexers?configured=true&apikey=%s", baseURL, url.QueryEscape(apiKey))
 
 	req, err := http.NewRequest("GET", indexersURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	// Add API key header for Jackett API
+	// Also add API key header as fallback for different Jackett configurations
 	req.Header.Set("X-Api-Key", apiKey)
 
 	resp, err := client.Do(req)
