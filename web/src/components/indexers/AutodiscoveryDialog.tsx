@@ -88,14 +88,12 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
     for (const indexer of discoveredIndexers) {
       if (!selectedIndexers.has(indexer.id)) continue
 
-      const torznabUrl = `${baseUrl}/api/v2.0/indexers/${indexer.id}/results/torznab/api`
-
       try {
         const existing = existingIndexersMap.get(indexer.name)
         if (existing) {
           // Update existing indexer - only update base_url and api_key
           const updateData: TorznabIndexerUpdate = {
-            base_url: torznabUrl,
+            base_url: baseUrl,
             api_key: apiKey,
           }
           await api.updateTorznabIndexer(existing.id, updateData)
@@ -104,7 +102,7 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
           // Create new indexer - backend applies defaults
           const createData: TorznabIndexerFormData = {
             name: indexer.name,
-            base_url: torznabUrl,
+            base_url: baseUrl,
             api_key: apiKey,
           }
           await api.createTorznabIndexer(createData)
