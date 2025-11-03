@@ -503,7 +503,7 @@ func (app *Application) runServer() {
 	}
 
 	// Initialize Jackett/Torznab service
-	jackettService := jackett.NewService(torznabIndexerStore, crossSeedService)
+	jackettService := jackett.NewService(torznabIndexerStore)
 	log.Info().Msg("Torznab/Jackett service initialized")
 
 	backupStore := models.NewBackupStore(db)

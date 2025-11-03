@@ -14,37 +14,42 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/internal/services/crossseed"
 )
+
+// IndexerStore defines the interface for indexer storage operations
+type IndexerStore interface {
+	Get(ctx context.Context, id int) (*models.TorznabIndexer, error)
+	List(ctx context.Context) ([]*models.TorznabIndexer, error)
+	ListEnabled(ctx context.Context) ([]*models.TorznabIndexer, error)
+	GetDecryptedAPIKey(indexer *models.TorznabIndexer) (string, error)
+}
 
 // Service provides Jackett integration for Torznab searching
 type Service struct {
-	indexerStore *models.TorznabIndexerStore
-	crossSeed    *crossseed.Service
+	indexerStore IndexerStore
 }
 
 // NewService creates a new Jackett service
-func NewService(indexerStore *models.TorznabIndexerStore, crossSeedService *crossseed.Service) *Service {
+func NewService(indexerStore IndexerStore) *Service {
 	return &Service{
 		indexerStore: indexerStore,
-		crossSeed:    crossSeedService,
 	}
 }
 
-// SearchForCrossSeed searches enabled Torznab indexers for potential cross-seeds with intelligent category detection
-func (s *Service) SearchForCrossSeed(ctx context.Context, req *CrossSeedSearchRequest) (*SearchResponse, error) {
+// Search searches enabled Torznab indexers with intelligent category detection
+func (s *Service) Search(ctx context.Context, req *TorznabSearchRequest) (*SearchResponse, error) {
 	if req.Query == "" {
 		return nil, fmt.Errorf("query is required")
 	}
 
 	// Auto-detect content type if categories not provided
 	if len(req.Categories) == 0 {
-		contentType := DetectContentType(req)
-		req.Categories = GetCategoriesForContentType(contentType)
+		contentType := detectContentType(req)
+		req.Categories = getCategoriesForContentType(contentType)
 
 		log.Debug().
 			Str("query", req.Query).
-			Str("content_type", contentType.String()).
+			Int("content_type", int(contentType)).
 			Ints("categories", req.Categories).
 			Msg("Auto-detected content type and categories")
 	}
@@ -90,8 +95,8 @@ func (s *Service) SearchForCrossSeed(ctx context.Context, req *CrossSeedSearchRe
 	}, nil
 }
 
-// Search performs a general Torznab search across specified or all enabled indexers
-func (s *Service) Search(ctx context.Context, req *TorznabSearchRequest) (*SearchResponse, error) {
+// SearchGeneric performs a general Torznab search across specified or all enabled indexers
+func (s *Service) SearchGeneric(ctx context.Context, req *TorznabSearchRequest) (*SearchResponse, error) {
 	if req.Query == "" {
 		return nil, fmt.Errorf("query is required")
 	}
@@ -255,8 +260,8 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 	return allResults
 }
 
-// buildSearchParams builds URL parameters from a CrossSeedSearchRequest
-func (s *Service) buildSearchParams(req *CrossSeedSearchRequest) url.Values {
+// buildSearchParams builds URL parameters from a TorznabSearchRequest
+func (s *Service) buildSearchParams(req *TorznabSearchRequest) url.Values {
 	params := url.Values{}
 	params.Set("q", req.Query)
 
@@ -388,26 +393,58 @@ func (s *Service) convertCategories(cats []TorznabCategory) []CategoryInfo {
 	return result
 }
 
-// Helper method for ContentType
-func (ct ContentType) String() string {
+// contentType represents the type of content being searched (internal use only)
+type contentType int
+
+const (
+	contentTypeUnknown contentType = iota
+	contentTypeMovie
+	contentTypeTVShow
+	contentTypeTVDaily
+	contentTypeXXX
+)
+
+// detectContentType attempts to detect the content type from search parameters
+func detectContentType(req *TorznabSearchRequest) contentType {
+	queryLower := strings.ReplaceAll(strings.ToLower(req.Query), ".", " ")
+	if strings.Contains(queryLower, "xxx") {
+		return contentTypeXXX
+	}
+
+	// If we have episode info, it's TV
+	if req.Episode != nil && *req.Episode > 0 {
+		return contentTypeTVShow
+	}
+
+	// If we have season but no episode, could be season pack
+	if req.Season != nil && *req.Season > 0 {
+		return contentTypeTVShow
+	}
+
+	// If we have TVDbID, it's TV
+	if req.TVDbID != "" {
+		return contentTypeTVShow
+	}
+
+	// If we have year but no season/episode, likely a movie
+	if req.IMDbID != "" {
+		return contentTypeMovie
+	}
+
+	return contentTypeUnknown
+}
+
+// getCategoriesForContentType returns the appropriate Torznab categories for a content type
+func getCategoriesForContentType(ct contentType) []int {
 	switch ct {
-	case ContentTypeMovie:
-		return "movie"
-	case ContentTypeTVShow:
-		return "tv_show"
-	case ContentTypeTVDaily:
-		return "tv_daily"
-	case ContentTypeTVAnime:
-		return "tv_anime"
-	case ContentTypeXXX:
-		return "xxx"
-	case ContentTypeAudio:
-		return "audio"
-	case ContentTypeBooks:
-		return "books"
-	case ContentTypePC:
-		return "pc"
+	case contentTypeMovie:
+		return []int{CategoryMovies, CategoryMoviesSD, CategoryMoviesHD, CategoryMovies4K}
+	case contentTypeTVShow, contentTypeTVDaily:
+		return []int{CategoryTV, CategoryTVSD, CategoryTVHD, CategoryTV4K}
+	case contentTypeXXX:
+		return []int{CategoryXXX, CategoryXXXDVD, CategoryXXXx264, CategoryXXXPack}
 	default:
-		return "unknown"
+		// Return common categories
+		return []int{CategoryMovies, CategoryTV}
 	}
 }

@@ -6,7 +6,6 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
-
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
@@ -58,14 +57,14 @@ func (h *JackettHandler) Routes(r chi.Router) {
 // @Tags jackett
 // @Accept json
 // @Produce json
-// @Param request body jackett.CrossSeedSearchRequest true "Cross-seed search request"
+// @Param request body jackett.TorznabSearchRequest true "Cross-seed search request"
 // @Success 200 {object} jackett.SearchResponse
 // @Failure 400 {object} httphelpers.ErrorResponse
 // @Failure 500 {object} httphelpers.ErrorResponse
 // @Security ApiKeyAuth
 // @Router /api/jackett/cross-seed/search [post]
 func (h *JackettHandler) CrossSeedSearch(w http.ResponseWriter, r *http.Request) {
-	var req jackett.CrossSeedSearchRequest
+	var req jackett.TorznabSearchRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		log.Error().Err(err).Msg("Failed to decode cross-seed search request")
 		RespondError(w, http.StatusBadRequest, "Invalid request body")
@@ -78,8 +77,8 @@ func (h *JackettHandler) CrossSeedSearch(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Perform search
-	response, err := h.service.SearchForCrossSeed(r.Context(), &req)
+	// Search for cross-seeds
+	response, err := h.service.Search(r.Context(), &req)
 	if err != nil {
 		log.Error().
 			Err(err).
@@ -119,7 +118,7 @@ func (h *JackettHandler) Search(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Perform search
-	response, err := h.service.Search(r.Context(), &req)
+	response, err := h.service.SearchGeneric(r.Context(), &req)
 	if err != nil {
 		log.Error().
 			Err(err).

@@ -223,7 +223,7 @@ func (c *Client) Search(indexer string, params url.Values) ([]Result, error) {
 // GetCaps retrieves the capabilities of an indexer
 func (c *Client) GetCaps(indexer string) (*TorznabCaps, error) {
 	// Build URL: /api/v2.0/indexers/{indexer}/results/torznab/api?t=caps
-	capsURL := fmt.Sprintf("%s/api/v2.0/indexers/%s/results/torznab/api?t=caps&apikey=%s", 
+	capsURL := fmt.Sprintf("%s/api/v2.0/indexers/%s/results/torznab/api?t=caps&apikey=%s",
 		c.baseURL, indexer, c.apiKey)
 
 	// Make HTTP request
