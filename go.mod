@@ -16,6 +16,7 @@ require (
 	github.com/go-chi/chi/v5 v5.2.3
 	github.com/hashicorp/go-version v1.7.0
 	github.com/keygen-sh/machineid v1.1.1
+	github.com/kylesanderson/go-jackett v0.0.0-20251103071502-c403eee359f6
 	github.com/lithammer/fuzzysearch v1.1.8
 	github.com/mat/besticon/v3 v3.21.0
 	github.com/moistari/rls v0.6.0
@@ -65,7 +66,6 @@ require (
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.7 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
-	github.com/kylesanderson/go-jackett v0.0.0-20251103071502-c403eee359f6 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/minio/sha256-simd v1.0.0 // indirect
