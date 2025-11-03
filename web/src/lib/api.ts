@@ -14,6 +14,7 @@ import type {
   InstanceCapabilities,
   InstanceFormData,
   InstanceResponse,
+  JackettIndexer,
   QBittorrentAppInfo,
   RestoreMode,
   RestorePlan,
@@ -27,6 +28,8 @@ import type {
   TorrentProperties,
   TorrentResponse,
   TorrentTracker,
+  TorznabIndexer,
+  TorznabIndexerFormData,
   User
 } from "@/types"
 import { getApiBaseUrl, withBasePath } from "./base-url"
@@ -799,8 +802,8 @@ class ApiClient {
     }
   }
 
-  async getTrackerIcons(): Promise<string[]> {
-    return this.request<string[]>("/tracker-icons")
+  async getTrackerIcons(): Promise<Record<string, string>> {
+    return this.request<Record<string, string>>("/tracker-icons")
   }
 
   // Torznab Indexer endpoints
@@ -812,14 +815,14 @@ class ApiClient {
     return this.request<TorznabIndexer>(`/torznab/indexers/${id}`)
   }
 
-  async createTorznabIndexer(data: TorznabIndexerCreate): Promise<TorznabIndexer> {
+  async createTorznabIndexer(data: TorznabIndexerFormData): Promise<TorznabIndexer> {
     return this.request<TorznabIndexer>("/torznab/indexers", {
       method: "POST",
       body: JSON.stringify(data),
     })
   }
 
-  async updateTorznabIndexer(id: number, data: Partial<TorznabIndexerCreate>): Promise<TorznabIndexer> {
+  async updateTorznabIndexer(id: number, data: Partial<TorznabIndexerFormData>): Promise<TorznabIndexer> {
     return this.request<TorznabIndexer>(`/torznab/indexers/${id}`, {
       method: "PUT",
       body: JSON.stringify(data),

@@ -4,6 +4,7 @@
  */
 
 import { useState } from 'react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -17,9 +18,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { useToast } from '@/hooks/use-toast'
 import type { JackettIndexer, TorznabIndexerFormData } from '@/types'
-import * as API from '@/lib/api'
+import { api } from '@/lib/api'
 
 interface AutodiscoveryDialogProps {
   open: boolean
@@ -27,7 +27,6 @@ interface AutodiscoveryDialogProps {
 }
 
 export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps) {
-  const { toast } = useToast()
   const [step, setStep] = useState<'input' | 'select'>('input')
   const [loading, setLoading] = useState(false)
   const [baseUrl, setBaseUrl] = useState('http://localhost:9117')
@@ -40,19 +39,12 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
     setLoading(true)
 
     try {
-      const response = await API.discoverJackettIndexers(baseUrl, apiKey)
-      setDiscoveredIndexers(response.indexers)
+      const response = await api.discoverJackettIndexers(baseUrl, apiKey)
+      setDiscoveredIndexers(response)
       setStep('select')
-      toast({
-        title: 'Success',
-        description: `Found ${response.indexers.length} indexers`,
-      })
+      toast.success(`Found ${response.length} indexers`)
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to discover indexers. Check your URL and API key.',
-        variant: 'destructive',
-      })
+      toast.error('Failed to discover indexers. Check your URL and API key.')
     } finally {
       setLoading(false)
     }
@@ -86,7 +78,7 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
       }
 
       try {
-        await API.createTorznabIndexer(formData)
+        await api.createTorznabIndexer(formData)
         successCount++
       } catch (error) {
         errorCount++
@@ -96,16 +88,9 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
     setLoading(false)
 
     if (errorCount === 0) {
-      toast({
-        title: 'Success',
-        description: `Imported ${successCount} indexers`,
-      })
+      toast.success(`Imported ${successCount} indexers`)
     } else {
-      toast({
-        title: 'Partial Success',
-        description: `Imported ${successCount} indexers, ${errorCount} failed`,
-        variant: 'destructive',
-      })
+      toast.error(`Imported ${successCount} indexers, ${errorCount} failed`)
     }
 
     handleClose()

@@ -4,6 +4,7 @@
  */
 
 import { useState, useEffect } from 'react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -16,9 +17,8 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
-import { useToast } from '@/hooks/use-toast'
 import type { TorznabIndexer, TorznabIndexerFormData } from '@/types'
-import * as API from '@/lib/api'
+import { api } from '@/lib/api'
 
 interface IndexerDialogProps {
   open: boolean
@@ -28,7 +28,6 @@ interface IndexerDialogProps {
 }
 
 export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogProps) {
-  const { toast } = useToast()
   const [loading, setLoading] = useState(false)
   const [formData, setFormData] = useState<TorznabIndexerFormData>({
     name: '',
@@ -67,25 +66,15 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
 
     try {
       if (mode === 'create') {
-        await API.createTorznabIndexer(formData)
-        toast({
-          title: 'Success',
-          description: 'Indexer created successfully',
-        })
+        await api.createTorznabIndexer(formData)
+        toast.success('Indexer created successfully')
       } else if (mode === 'edit' && indexer) {
-        await API.updateTorznabIndexer(indexer.id, formData)
-        toast({
-          title: 'Success',
-          description: 'Indexer updated successfully',
-        })
+        await api.updateTorznabIndexer(indexer.id, formData)
+        toast.success('Indexer updated successfully')
       }
       onClose()
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: `Failed to ${mode} indexer`,
-        variant: 'destructive',
-      })
+      toast.error(`Failed to ${mode} indexer`)
     } finally {
       setLoading(false)
     }

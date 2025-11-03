@@ -4,18 +4,17 @@
  */
 
 import { useState, useEffect } from 'react'
+import { toast } from 'sonner'
 import { Plus, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { useToast } from '@/hooks/use-toast'
 import { IndexerTable } from './IndexerTable'
 import { IndexerDialog } from './IndexerDialog'
 import { AutodiscoveryDialog } from './AutodiscoveryDialog'
 import type { TorznabIndexer } from '@/types'
-import * as API from '@/lib/api'
+import { api } from '@/lib/api'
 
 export function IndexersPage() {
-  const { toast } = useToast()
   const [indexers, setIndexers] = useState<TorznabIndexer[]>([])
   const [loading, setLoading] = useState(true)
   const [addDialogOpen, setAddDialogOpen] = useState(false)
@@ -26,14 +25,10 @@ export function IndexersPage() {
   const loadIndexers = async () => {
     try {
       setLoading(true)
-      const data = await API.listTorznabIndexers()
+      const data = await api.listTorznabIndexers()
       setIndexers(data)
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to load indexers',
-        variant: 'destructive',
-      })
+      toast.error('Failed to load indexers')
     } finally {
       setLoading(false)
     }
@@ -52,34 +47,20 @@ export function IndexersPage() {
     if (!confirm('Are you sure you want to delete this indexer?')) return
 
     try {
-      await API.deleteTorznabIndexer(id)
-      toast({
-        title: 'Success',
-        description: 'Indexer deleted successfully',
-      })
+      await api.deleteTorznabIndexer(id)
+      toast.success('Indexer deleted successfully')
       loadIndexers()
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to delete indexer',
-        variant: 'destructive',
-      })
+      toast.error('Failed to delete indexer')
     }
   }
 
   const handleTest = async (id: number) => {
     try {
-      await API.testTorznabIndexer(id)
-      toast({
-        title: 'Success',
-        description: 'Connection test successful',
-      })
+      await api.testTorznabIndexer(id)
+      toast.success('Connection test successful')
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Connection test failed',
-        variant: 'destructive',
-      })
+      toast.error('Connection test failed')
     }
   }
 
