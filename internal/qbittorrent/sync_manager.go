@@ -652,8 +652,12 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 			})
 		case "size":
 			slices.SortFunc(allTorrents, func(a, b CrossInstanceTorrentView) int {
-				result := int(a.Size - b.Size)
-				if result == 0 {
+				var result int
+				if a.Size < b.Size {
+					result = -1
+				} else if a.Size > b.Size {
+					result = 1
+				} else {
 					// Secondary sort by name for deterministic ordering
 					result = strings.Compare(a.Name, b.Name)
 				}
@@ -664,8 +668,12 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 			})
 		case "progress":
 			slices.SortFunc(allTorrents, func(a, b CrossInstanceTorrentView) int {
-				result := int((a.Progress * 1000) - (b.Progress * 1000))
-				if result == 0 {
+				var result int
+				if a.Progress < b.Progress {
+					result = -1
+				} else if a.Progress > b.Progress {
+					result = 1
+				} else {
 					// Secondary sort by name for deterministic ordering
 					result = strings.Compare(a.Name, b.Name)
 				}
