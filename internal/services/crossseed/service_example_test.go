@@ -11,6 +11,11 @@ import (
 
 // TestExtractBasename tests the basename extraction logic using rls parser
 func TestExtractBasename(t *testing.T) {
+	// Create a service with release cache for testing
+	s := &Service{
+		releaseCache: NewReleaseCache(),
+	}
+
 	tests := []struct {
 		name     string
 		input    string
@@ -60,7 +65,7 @@ func TestExtractBasename(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := extractBasename(tt.input)
+			result := s.extractBasename(tt.input)
 			if result != tt.expected {
 				t.Errorf("extractBasename(%q) = %q, want %q", tt.input, result, tt.expected)
 			}

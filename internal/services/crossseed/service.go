@@ -5,6 +5,7 @@
 //
 // Key features:
 // - Uses moistari/rls parser for robust release name parsing on both torrent names and file names
+// - TTL-based caching (5 minutes) of rls parsing results for performance (rls parsing is slow)
 // - Fuzzy matching for finding related content (single episodes, season packs, etc.)
 // - Metadata enrichment: fills missing group, resolution, codec, source, etc. from season pack torrent names
 // - Season pack support: matches individual episodes with season packs and vice versa
@@ -30,6 +31,7 @@ type Service struct {
 	instanceStore *models.InstanceStore
 	syncManager   *qbittorrent.SyncManager
 	filesManager  *filesmanager.Service
+	releaseCache  *ReleaseCache
 }
 
 // NewService creates a new cross-seed service
@@ -42,6 +44,7 @@ func NewService(
 		instanceStore: instanceStore,
 		syncManager:   syncManager,
 		filesManager:  filesManager,
+		releaseCache:  NewReleaseCache(),
 	}
 }
 
@@ -96,8 +99,8 @@ func (s *Service) FindCandidates(ctx context.Context, req *FindCandidatesRequest
 		}
 	}
 
-	// Parse source release name for normalized matching
-	sourceRelease := rls.ParseString(sourceTorrent.Name)
+	// Parse source release name for normalized matching (cached)
+	sourceRelease := s.releaseCache.Parse(sourceTorrent.Name)
 
 	// Find matching torrents on SAME instance
 	var matchedTorrents []qbt.Torrent
@@ -113,8 +116,8 @@ func (s *Service) FindCandidates(ctx context.Context, req *FindCandidatesRequest
 			continue
 		}
 
-		// Parse candidate release name
-		candidateRelease := rls.ParseString(torrent.Name)
+		// Parse candidate release name (cached)
+		candidateRelease := s.releaseCache.Parse(torrent.Name)
 
 		// Check if releases are related early - use fuzzy matching
 		// We're looking for similar content, not exact matches
@@ -226,15 +229,15 @@ func (s *Service) getMatchType(sourceRelease, candidateRelease rls.Release, sour
 		if !shouldIgnoreFile(sf.Name, ignorePatterns) {
 			sourceMap[sf.Name] = sf.Size
 
-			// Parse file and enrich with torrent metadata
-			fileRelease := rls.ParseString(sf.Name)
+			// Parse file and enrich with torrent metadata (cached)
+			fileRelease := s.releaseCache.Parse(sf.Name)
 			enrichedRelease := enrichReleaseFromTorrent(fileRelease, sourceRelease)
-			
+
 			// Extract basename using enriched release for better matching
-			basename := extractBasename(sf.Name)
+			basename := s.extractBasename(sf.Name)
 			if basename != "" {
 				sourceBasenames[basename] = sf.Size
-				
+
 				// Log enriched metadata for debugging
 				if fileRelease.Group == "" && enrichedRelease.Group != "" {
 					log.Debug().
@@ -257,14 +260,14 @@ func (s *Service) getMatchType(sourceRelease, candidateRelease rls.Release, sour
 		if !shouldIgnoreFile(cf.Name, ignorePatterns) {
 			candidateMap[cf.Name] = cf.Size
 
-			// Parse file and enrich with torrent metadata
-			fileRelease := rls.ParseString(cf.Name)
+			// Parse file and enrich with torrent metadata (cached)
+			fileRelease := s.releaseCache.Parse(cf.Name)
 			enrichedRelease := enrichReleaseFromTorrent(fileRelease, candidateRelease)
-			
-			basename := extractBasename(cf.Name)
+
+			basename := s.extractBasename(cf.Name)
 			if basename != "" {
 				candidateBasenames[basename] = cf.Size
-				
+
 				// Log enriched metadata for debugging
 				if fileRelease.Resolution == "" && enrichedRelease.Resolution != "" {
 					log.Debug().
@@ -340,13 +343,13 @@ func (s *Service) checkPartialMatch(subset, superset map[string]int64) bool {
 //
 //	"Show.Name.S01E05.1080p.mkv" -> "S01E05"
 //	"dir/Show.S01E05.mkv" -> "S01E05"
-func extractBasename(fullPath string) string {
+func (s *Service) extractBasename(fullPath string) string {
 	// Get filename without directory
 	parts := strings.Split(fullPath, "/")
 	filename := parts[len(parts)-1]
 
-	// Parse filename with rls
-	release := rls.ParseString(filename)
+	// Parse filename with rls (cached)
+	release := s.releaseCache.Parse(filename)
 
 	// Build season/episode identifier
 	if release.Series > 0 {
