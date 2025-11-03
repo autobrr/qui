@@ -125,12 +125,26 @@ func (s *TorznabIndexerStore) Create(ctx context.Context, name, baseURL, apiKey 
 		timeoutSeconds = 30
 	}
 
+	// Begin transaction for string interning and insert
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Intern strings into string_pool
+	ids, err := dbinterface.InternStrings(ctx, tx, name, baseURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to intern strings: %w", err)
+	}
+	nameID, baseURLID := ids[0], ids[1]
+
 	query := `
-		INSERT INTO torznab_indexers (name, base_url, api_key_encrypted, enabled, priority, timeout_seconds)
+		INSERT INTO torznab_indexers (name_id, base_url_id, api_key_encrypted, enabled, priority, timeout_seconds)
 		VALUES (?, ?, ?, ?, ?, ?)
 	`
 
-	result, err := s.db.ExecContext(ctx, query, name, baseURL, encryptedAPIKey, enabled, priority, timeoutSeconds)
+	result, err := tx.ExecContext(ctx, query, nameID, baseURLID, encryptedAPIKey, enabled, priority, timeoutSeconds)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create torznab indexer: %w", err)
 	}
@@ -140,14 +154,18 @@ func (s *TorznabIndexerStore) Create(ctx context.Context, name, baseURL, apiKey 
 		return nil, fmt.Errorf("failed to get last insert ID: %w", err)
 	}
 
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
 	return s.Get(ctx, int(id))
 }
 
-// Get retrieves a Torznab indexer by ID
+// Get retrieves a Torznab indexer by ID using the view
 func (s *TorznabIndexerStore) Get(ctx context.Context, id int) (*TorznabIndexer, error) {
 	query := `
 		SELECT id, name, base_url, api_key_encrypted, enabled, priority, timeout_seconds, created_at, updated_at
-		FROM torznab_indexers
+		FROM torznab_indexers_view
 		WHERE id = ?
 	`
 
@@ -174,11 +192,11 @@ func (s *TorznabIndexerStore) Get(ctx context.Context, id int) (*TorznabIndexer,
 	return &indexer, nil
 }
 
-// List retrieves all Torznab indexers, ordered by priority (descending) and name
+// List retrieves all Torznab indexers using the view, ordered by priority (descending) and name
 func (s *TorznabIndexerStore) List(ctx context.Context) ([]*TorznabIndexer, error) {
 	query := `
 		SELECT id, name, base_url, api_key_encrypted, enabled, priority, timeout_seconds, created_at, updated_at
-		FROM torznab_indexers
+		FROM torznab_indexers_view
 		ORDER BY priority DESC, name ASC
 	`
 
@@ -215,11 +233,11 @@ func (s *TorznabIndexerStore) List(ctx context.Context) ([]*TorznabIndexer, erro
 	return indexers, nil
 }
 
-// ListEnabled retrieves all enabled Torznab indexers, ordered by priority
+// ListEnabled retrieves all enabled Torznab indexers using the view, ordered by priority
 func (s *TorznabIndexerStore) ListEnabled(ctx context.Context) ([]*TorznabIndexer, error) {
 	query := `
 		SELECT id, name, base_url, api_key_encrypted, enabled, priority, timeout_seconds, created_at, updated_at
-		FROM torznab_indexers
+		FROM torznab_indexers_view
 		WHERE enabled = 1
 		ORDER BY priority DESC, name ASC
 	`
@@ -292,15 +310,29 @@ func (s *TorznabIndexerStore) Update(ctx context.Context, id int, name, baseURL,
 		existing.APIKeyEncrypted = encryptedAPIKey
 	}
 
+	// Begin transaction for string interning and update
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Intern strings into string_pool
+	ids, err := dbinterface.InternStrings(ctx, tx, existing.Name, existing.BaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to intern strings: %w", err)
+	}
+	nameID, baseURLID := ids[0], ids[1]
+
 	query := `
 		UPDATE torznab_indexers
-		SET name = ?, base_url = ?, api_key_encrypted = ?, enabled = ?, priority = ?, timeout_seconds = ?
+		SET name_id = ?, base_url_id = ?, api_key_encrypted = ?, enabled = ?, priority = ?, timeout_seconds = ?
 		WHERE id = ?
 	`
 
-	_, err = s.db.ExecContext(ctx, query,
-		existing.Name,
-		existing.BaseURL,
+	_, err = tx.ExecContext(ctx, query,
+		nameID,
+		baseURLID,
 		existing.APIKeyEncrypted,
 		existing.Enabled,
 		existing.Priority,
@@ -312,10 +344,15 @@ func (s *TorznabIndexerStore) Update(ctx context.Context, id int, name, baseURL,
 		return nil, fmt.Errorf("failed to update torznab indexer: %w", err)
 	}
 
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
 	return s.Get(ctx, id)
 }
 
 // Delete deletes a Torznab indexer
+// String pool cleanup is handled by the centralized CleanupUnusedStrings() function
 func (s *TorznabIndexerStore) Delete(ctx context.Context, id int) error {
 	query := `DELETE FROM torznab_indexers WHERE id = ?`
 
