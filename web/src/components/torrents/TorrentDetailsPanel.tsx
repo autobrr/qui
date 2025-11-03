@@ -203,30 +203,51 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   })
 
   // Fetch all instances for cross-seed tab
-  const { data: allInstances } = useQuery({
+  const { data: allInstances, isLoading: isLoadingInstances } = useQuery({
     queryKey: ["instances"],
     queryFn: api.getInstances,
     enabled: isCrossSeedTabActive,
+    staleTime: 60000, // Instances rarely change, cache for 60 seconds
   })
 
-  // Fetch matching torrents from all instances
-  const matchingTorrentsQueries = useQueries({
-    queries: (allInstances || []).map((instance) => ({
-      queryKey: ["torrents", instance.id, "crossseed", resolvedInfohashV1, resolvedInfohashV2, torrent?.name, torrent?.content_path, currentTorrentFiles?.length],
+  // Create stable instance IDs array to use as useMemo dependency
+  // This prevents rebuilding queries when allInstances reference changes but content is same
+  const instanceIds = useMemo(
+    () => allInstances?.map(i => i.id).sort().join(',') || '',
+    [allInstances]
+  )
+
+  // Memoize the queries array to prevent unnecessary re-runs
+  // Only build queries once instances are loaded
+  const crossSeedQueries = useMemo(() => {
+    if (!allInstances || allInstances.length === 0 || !torrent) {
+      console.log(`[CrossSeed] ⏳ Waiting for data: instances=${!!allInstances}, instanceCount=${allInstances?.length || 0}, torrent=${!!torrent}`)
+      return []
+    }
+    
+    console.log(`[CrossSeed] 🔄 REBUILDING queries for torrent "${torrent.name}" (hash: ${torrent.hash})`)
+    console.log(`[CrossSeed] - Instances: ${allInstances.length} (${allInstances.map(i => i.name).join(', ')})`)
+    console.log(`[CrossSeed] - Tab active: ${isCrossSeedTabActive}`)
+    console.log(`[CrossSeed] - InfoHash v1: ${resolvedInfohashV1}`)
+    console.log(`[CrossSeed] - InfoHash v2: ${resolvedInfohashV2}`)
+    
+    return allInstances.map((instance) => ({
+      queryKey: ["torrents", instance.id, "crossseed", resolvedInfohashV1, resolvedInfohashV2, torrent.name, torrent.content_path, isDiscContent],
       queryFn: async () => {
         if (!torrent) return []
         
-        console.log(`[CrossSeed] Starting match search for torrent: "${torrent.name}" on instance: ${instance.name}`)
+        console.log(`[CrossSeed] ========== Starting match search for torrent: "${torrent.name}" on instance: ${instance.name} ==========`)
         console.log(`[CrossSeed] - Hash: ${torrent.hash}`)
         console.log(`[CrossSeed] - Content path: ${torrent.content_path}`)
         console.log(`[CrossSeed] - Save path: ${torrent.save_path}`)
         console.log(`[CrossSeed] - Size: ${torrent.size}`)
         console.log(`[CrossSeed] - InfoHash v1: ${resolvedInfohashV1}`)
         console.log(`[CrossSeed] - InfoHash v2: ${resolvedInfohashV2}`)
+        console.log(`[CrossSeed] - Is disc content: ${isDiscContent}`)
         
         // Use pre-fetched current torrent files for deep matching
         const currentFiles = currentTorrentFiles || []
-        console.log(`[CrossSeed] Current torrent has ${currentFiles.length} files`)
+        console.log(`[CrossSeed] Current torrent has ${currentFiles.length} files (for deep matching)`)
         
         // Strategy: Make multiple targeted searches to find matches efficiently
         // 1. Search by torrent name (will match name-based matches)
@@ -477,7 +498,12 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
       refetchOnMount: false, // Don't refetch when component remounts
       refetchOnWindowFocus: false, // Don't refetch when window regains focus
-    })),
+    }))
+  }, [instanceIds, torrent?.hash, resolvedInfohashV1, resolvedInfohashV2, isDiscContent, isCrossSeedTabActive, instanceId])
+
+  // Fetch matching torrents from all instances
+  const matchingTorrentsQueries = useQueries({
+    queries: crossSeedQueries,
   })
 
   // Flatten matching torrents from all instances and sort by match quality (memoized for performance)
@@ -493,8 +519,8 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       })
   }, [matchingTorrentsQueries])
   
-  // Show loading indicator only if ANY query is still loading AND we have no results yet
-  const isLoadingMatches = matchingTorrents.length === 0 && matchingTorrentsQueries.some((query: { isLoading: boolean }) => query.isLoading)
+  // Show loading indicator if instances are loading OR if ANY query is still loading AND we have no results yet
+  const isLoadingMatches = isLoadingInstances || (matchingTorrents.length === 0 && matchingTorrentsQueries.some((query: { isLoading: boolean }) => query.isLoading))
 
   // Create a stable key string for detecting changes in matching torrents
   const matchingTorrentsKeys = useMemo(() => {
