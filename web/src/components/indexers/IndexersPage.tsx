@@ -26,9 +26,10 @@ export function IndexersPage() {
     try {
       setLoading(true)
       const data = await api.listTorznabIndexers()
-      setIndexers(data)
+      setIndexers(data || [])
     } catch (error) {
       toast.error('Failed to load indexers')
+      setIndexers([])
     } finally {
       setLoading(false)
     }

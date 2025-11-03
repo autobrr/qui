@@ -35,7 +35,7 @@ export function IndexerTable({
     return <div className="text-center py-8 text-muted-foreground">Loading...</div>
   }
 
-  if (indexers.length === 0) {
+  if (!indexers || indexers.length === 0) {
     return (
       <div className="text-center py-8 text-muted-foreground">
         No indexers configured. Add one to get started.
@@ -56,7 +56,7 @@ export function IndexerTable({
         </TableRow>
       </TableHeader>
       <TableBody>
-        {indexers.map((indexer) => (
+        {indexers?.map((indexer) => (
           <TableRow key={indexer.id}>
             <TableCell className="font-medium">{indexer.name}</TableCell>
             <TableCell className="text-muted-foreground">

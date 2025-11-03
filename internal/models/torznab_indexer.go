@@ -206,7 +206,7 @@ func (s *TorznabIndexerStore) List(ctx context.Context) ([]*TorznabIndexer, erro
 	}
 	defer rows.Close()
 
-	var indexers []*TorznabIndexer
+	indexers := make([]*TorznabIndexer, 0)
 	for rows.Next() {
 		var indexer TorznabIndexer
 		err := rows.Scan(
@@ -248,7 +248,7 @@ func (s *TorznabIndexerStore) ListEnabled(ctx context.Context) ([]*TorznabIndexe
 	}
 	defer rows.Close()
 
-	var indexers []*TorznabIndexer
+	indexers := make([]*TorznabIndexer, 0)
 	for rows.Next() {
 		var indexer TorznabIndexer
 		err := rows.Scan(
