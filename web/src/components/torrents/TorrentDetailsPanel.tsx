@@ -281,21 +281,42 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
         
         const allMatches: Torrent[] = []
         
-        // Extract base name without extension for broader search
-        // e.g., "Movie.mkv" -> "Movie" to also find "Movie" folder
+        // Extract a distinctive search term from the torrent name
+        // This helps with special characters and improves search recall
+        // The actual matching is done later with fuzzy matching and file comparison
+        
+        // Strip file extension if present (e.g., "Movie.mkv" -> "Movie")
+        // This helps match single-file torrents against folder torrents
         let searchName = currentName
-        const hasVideoExtension = /\.(mkv|mp4|avi|mov|wmv|flv|webm|m4v|mpg|mpeg)$/i.test(currentName)
-        if (hasVideoExtension) {
-          searchName = currentName.replace(/\.(mkv|mp4|avi|mov|wmv|flv|webm|m4v|mpg|mpeg)$/i, '')
-          console.log(`[CrossSeed] Stripped video extension: "${currentName}" -> "${searchName}"`)
-        } else {
-          console.log(`[CrossSeed] No video extension detected, searching with full name: "${searchName}"`)
+        const lastDot = currentName.lastIndexOf('.')
+        if (lastDot > 0 && lastDot > currentName.lastIndexOf('/')) {
+          // Has extension and it's not in a folder name
+          const extension = currentName.slice(lastDot + 1)
+          // Only strip if it looks like a real extension (2-5 chars, alphanumeric)
+          if (extension.length >= 2 && extension.length <= 5 && /^[a-z0-9]+$/i.test(extension)) {
+            searchName = currentName.slice(0, lastDot)
+          }
         }
         
-        // First, try searching by base name - this catches both "name.mkv" and "name" folder
-        console.log(`[CrossSeed] Searching by name: "${searchName}"`)
+        // Remove metadata patterns to extract core content name
+        // Keep separators like - to preserve "Artist - Album" structure
+        let cleanedName = searchName
+          .replace(/\(\d{4}\)/g, '') // Remove years like (2025)
+          .replace(/\[[^\]]+\]/g, '') // Remove brackets like [WEB FLAC]
+          .replace(/\{[^}]+\}/g, '') // Remove braces
+          .trim()
+        
+        // Strip everything from special characters onwards (: etc) to avoid search issues
+        // This handles cases like "Album꞉ Subtitle" or "Title: Part 2"
+        cleanedName = cleanedName.split(/[꞉:]/)[0].trim()
+        
+        // Use the cleaned name for search (without metadata but with full artist/title)
+        // Fallback to original if cleaning removed everything
+        const searchTerm = cleanedName || searchName
+        
+        console.log(`[CrossSeed] Searching with term: "${searchTerm}" (from: "${currentName}")`)
         const nameSearchResponse = await api.getTorrents(instance.id, {
-          search: searchName,
+          search: searchTerm,
           limit: 2000,
         })
         
