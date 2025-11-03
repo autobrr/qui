@@ -18,6 +18,7 @@ import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticatedBackupsRouteImport } from './routes/_authenticated/backups'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedIndexersRouteImport } from './routes/_authenticated/indexers'
+import { Route as AuthenticatedSearchRouteImport } from './routes/_authenticated/search'
 import { Route as AuthenticatedInstancesRouteImport } from './routes/_authenticated/instances'
 import { Route as AuthenticatedInstancesInstanceIdRouteImport } from './routes/_authenticated/instances.$instanceId'
 import { Route as AuthenticatedInstancesIndexRouteImport } from './routes/_authenticated/instances.index'
@@ -70,6 +71,11 @@ const AuthenticatedIndexersRoute = AuthenticatedIndexersRouteImport.update({
   path: '/indexers',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedSearchRoute = AuthenticatedSearchRouteImport.update({
+  id: '/search',
+  path: '/search',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedInstancesIndexRoute =
   AuthenticatedInstancesIndexRouteImport.update({
     id: '/',
@@ -90,6 +96,7 @@ export interface FileRoutesByFullPath {
   '/backups': typeof AuthenticatedBackupsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/indexers': typeof AuthenticatedIndexersRoute
+  '/search': typeof AuthenticatedSearchRoute
   '/instances': typeof AuthenticatedInstancesRouteWithChildren
   '/settings': typeof AuthenticatedSettingsRoute
   '/instances/$instanceId': typeof AuthenticatedInstancesInstanceIdRouteWithChildren
@@ -102,6 +109,7 @@ export interface FileRoutesByTo {
   '/backups': typeof AuthenticatedBackupsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/indexers': typeof AuthenticatedIndexersRoute
+  '/search': typeof AuthenticatedSearchRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/instances/$instanceId': typeof AuthenticatedInstancesInstanceIdRouteWithChildren
   '/instances': typeof AuthenticatedInstancesIndexRoute
@@ -115,6 +123,7 @@ export interface FileRoutesById {
   '/_authenticated/backups': typeof AuthenticatedBackupsRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/indexers': typeof AuthenticatedIndexersRoute
+  '/_authenticated/search': typeof AuthenticatedSearchRoute
   '/_authenticated/instances': typeof AuthenticatedInstancesRouteWithChildren
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/instances/$instanceId': typeof AuthenticatedInstancesInstanceIdRouteWithChildren
@@ -129,6 +138,7 @@ export interface FileRouteTypes {
     | '/backups'
     | '/dashboard'
     | '/indexers'
+    | '/search'
     | '/instances'
     | '/settings'
     | '/instances/$instanceId'
@@ -142,12 +152,25 @@ export interface FileRouteTypes {
     | '/backups'
     | '/dashboard'
     | '/indexers'
+    | '/search'
     | '/settings'
     | '/instances/$instanceId'
     | '/instances'
     | '/instances/$instanceId/backups'
   id:
     | '__root__'
+    | '/'
+    | '/_authenticated'
+    | '/login'
+    | '/setup'
+    | '/_authenticated/backups'
+    | '/_authenticated/dashboard'
+    | '/_authenticated/indexers'
+    | '/_authenticated/search'
+    | '/_authenticated/instances'
+    | '/_authenticated/settings'
+    | '/_authenticated/instances/$instanceId'
+    | '/_authenticated/instances/'
     | '/'
     | '/_authenticated'
     | '/login'
@@ -234,6 +257,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedIndexersRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/search': {
+      id: '/_authenticated/search'
+      path: '/search'
+      fullPath: '/search'
+      preLoaderRoute: typeof AuthenticatedSearchRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/instances/': {
       id: '/_authenticated/instances/'
       path: '/'
@@ -275,6 +305,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedBackupsRoute: typeof AuthenticatedBackupsRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedIndexersRoute: typeof AuthenticatedIndexersRoute
+  AuthenticatedSearchRoute: typeof AuthenticatedSearchRoute
   AuthenticatedInstancesRoute: typeof AuthenticatedInstancesRouteWithChildren
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
 }
@@ -283,6 +314,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedBackupsRoute: AuthenticatedBackupsRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedIndexersRoute: AuthenticatedIndexersRoute,
+  AuthenticatedSearchRoute: AuthenticatedSearchRoute,
   AuthenticatedInstancesRoute: AuthenticatedInstancesRouteWithChildren,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
 }
