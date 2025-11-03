@@ -20,6 +20,7 @@ import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { usePersistedTabState } from "@/hooks/usePersistedTabState"
 import { api } from "@/lib/api"
+import { useCrossSeedMatches } from "@/lib/cross-seed-utils"
 import { getLinuxCategory, getLinuxComment, getLinuxCreatedBy, getLinuxFileName, getLinuxHash, getLinuxIsoName, getLinuxSavePath, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { renderTextWithLinks } from "@/lib/linkUtils"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
@@ -28,7 +29,7 @@ import { getStateLabel } from "@/lib/torrent-state-utils"
 import { resolveTorrentHashes } from "@/lib/torrent-utils"
 import { cn, copyTextToClipboard, formatBytes, formatDuration } from "@/lib/utils"
 import type { SortedPeersResponse, Torrent, TorrentFile, TorrentPeer } from "@/types"
-import { useQueries, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import "flag-icons/css/flag-icons.min.css"
 import { Ban, Copy, Loader2, Trash2, UserPlus } from "lucide-react"
 import { memo, useCallback, useEffect, useMemo, useState } from "react"
@@ -48,61 +49,7 @@ function isTabValue(value: string): value is TabValue {
   return TAB_VALUES.includes(value as TabValue)
 }
 
-// Helper functions for cross-seed matching
-const normalizePath = (path: string) => path?.toLowerCase().replace(/[\\\/]+/g, '/').replace(/\/$/, '') || ''
-const normalizeName = (name: string) => name?.toLowerCase().trim() || ''
 
-const getBaseFileName = (path: string): string => {
-  const normalized = path.replace(/\\/g, '/').trim()
-  const parts = normalized.split('/')
-  return parts[parts.length - 1].toLowerCase()
-}
-
-const normalizeFileName = (name: string): string => {
-  return name.toLowerCase()
-    .replace(/\.(mkv|mp4|avi|mov|wmv|flv|webm|m4v|mpg|mpeg)$/i, '') // Remove extension
-    .replace(/[._\-\s]+/g, '') // Remove separators
-}
-
-const calculateSimilarity = (str1: string, str2: string): number => {
-  if (str1 === str2) return 1.0
-  if (!str1 || !str2) return 0
-  
-  // Use the longer string as reference
-  const longer = str1.length >= str2.length ? str1 : str2
-  const shorter = str1.length < str2.length ? str1 : str2
-  
-  // If shorter string is contained in longer, high similarity
-  if (longer.includes(shorter)) {
-    return shorter.length / longer.length
-  }
-  
-  // Calculate Levenshtein distance
-  const matrix: number[][] = []
-  for (let i = 0; i <= longer.length; i++) {
-    matrix[i] = [i]
-  }
-  for (let j = 0; j <= shorter.length; j++) {
-    matrix[0][j] = j
-  }
-  
-  for (let i = 1; i <= longer.length; i++) {
-    for (let j = 1; j <= shorter.length; j++) {
-      if (longer[i - 1] === shorter[j - 1]) {
-        matrix[i][j] = matrix[i - 1][j - 1]
-      } else {
-        matrix[i][j] = Math.min(
-          matrix[i - 1][j - 1] + 1, // substitution
-          matrix[i][j - 1] + 1,     // insertion
-          matrix[i - 1][j] + 1      // deletion
-        )
-      }
-    }
-  }
-  
-  const distance = matrix[longer.length][shorter.length]
-  return 1 - (distance / longer.length)
-}
 
 function getTrackerStatusBadge(status: number) {
   switch (status) {
@@ -183,403 +130,10 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
   const { infohashV1: resolvedInfohashV1, infohashV2: resolvedInfohashV2 } = resolveTorrentHashes(properties as { hash?: string; infohash_v1?: string; infohash_v2?: string } | undefined, torrent ?? undefined)
 
-  // Detect if this is Blu-ray/DVD content by folder structure (skip deep file matching for these)
-  const discContentPatterns = [
-    /\bBDMV\b/i,        // Blu-ray folder structure
-    /\bVIDEO_TS\b/i,    // DVD folder structure
-    /\bAUDIO_TS\b/i,    // DVD audio folder structure
-  ]
-  const isDiscContent = torrent ? discContentPatterns.some(pattern => 
-    pattern.test(torrent.name) || pattern.test(torrent.content_path || '')
-  ) : false
 
-  // Fetch current torrent's files once for cross-seed deep matching (skip for disc content)
-  const { data: currentTorrentFiles, isLoading: isLoadingCurrentFiles } = useQuery({
-    queryKey: ["torrent-files-crossseed", instanceId, torrent?.hash],
-    queryFn: () => api.getTorrentFiles(instanceId, torrent!.hash),
-    enabled: isCrossSeedTabActive && !!torrent && !isDiscContent,
-    staleTime: 60000,
-    gcTime: 5 * 60 * 1000,
-  })
 
-  // Fetch all instances for cross-seed tab
-  const { data: allInstances, isLoading: isLoadingInstances } = useQuery({
-    queryKey: ["instances"],
-    queryFn: api.getInstances,
-    enabled: isCrossSeedTabActive,
-    staleTime: 60000, // Instances rarely change, cache for 60 seconds
-  })
-
-  // Create stable instance IDs array to use as useMemo dependency
-  // This prevents rebuilding queries when allInstances reference changes but content is same
-  const instanceIds = useMemo(
-    () => allInstances?.map(i => i.id).sort().join(',') || '',
-    [allInstances]
-  )
-
-  // Create stable identifier for current torrent files (to avoid rebuilding queries when array reference changes)
-  const currentFilesKey = useMemo(
-    () => currentTorrentFiles?.map(f => `${f.name}:${f.size}`).sort().join('|') || '',
-    [currentTorrentFiles]
-  )
-
-  // Memoize the queries array to prevent unnecessary re-runs
-  // Only build queries once instances are loaded
-  const crossSeedQueries = useMemo(() => {
-    if (!allInstances || allInstances.length === 0 || !torrent) {
-      console.log(`[CrossSeed] ⏳ Waiting for data: instances=${!!allInstances}, instanceCount=${allInstances?.length || 0}, torrent=${!!torrent}`)
-      return []
-    }
-    
-    // Wait for currentFiles to finish loading (if we're fetching them)
-    // This prevents rebuilding queries when files load after initial render
-    if (isLoadingCurrentFiles) {
-      console.log(`[CrossSeed] ⏳ Waiting for current torrent files to finish loading...`)
-      return []
-    }
-    
-    const timestamp = new Date().toISOString()
-    console.log(`[CrossSeed] 🔄 REBUILDING queries for torrent "${torrent.name}" (hash: ${torrent.hash}) at ${timestamp}`)
-    console.log(`[CrossSeed] - Dependency values: instanceIds="${instanceIds}", hash="${torrent.hash}", v1="${resolvedInfohashV1}", v2="${resolvedInfohashV2}", disc=${isDiscContent}, tabActive=${isCrossSeedTabActive}, filesKey="${currentFilesKey}"`)
-    console.log(`[CrossSeed] - Instances: ${allInstances.length} (${allInstances.map(i => i.name).join(', ')})`)
-    console.log(`[CrossSeed] - Tab active: ${isCrossSeedTabActive}`)
-    console.log(`[CrossSeed] - InfoHash v1: ${resolvedInfohashV1}`)
-    console.log(`[CrossSeed] - InfoHash v2: ${resolvedInfohashV2}`)
-    
-    // Capture values that will be used in queryFn to avoid closure issues
-    const currentInstanceId = instanceId
-    const currentHash = torrent.hash
-    const currentName = torrent.name
-    const currentContentPath = torrent.content_path
-    const currentSavePath = torrent.save_path
-    const currentSize = torrent.size
-    const v1Hash = resolvedInfohashV1
-    const v2Hash = resolvedInfohashV2
-    const isDisc = isDiscContent
-    const currentFiles = currentTorrentFiles || []
-    
-    return allInstances.map((instance) => ({
-      queryKey: ["torrents", instance.id, "crossseed", v1Hash, v2Hash, currentName, currentContentPath, isDisc],
-      queryFn: async () => {
-        const executionId = Math.random().toString(36).substring(7)
-        try {
-          console.log(`[CrossSeed] ========== Starting match search [ID: ${executionId}] for torrent: "${currentName}" on instance: ${instance.name} ==========`)
-          console.log(`[CrossSeed] [${executionId}] - Hash: ${currentHash}`)
-          console.log(`[CrossSeed] [${executionId}] - Content path: ${currentContentPath}`)
-          console.log(`[CrossSeed] [${executionId}] - Save path: ${currentSavePath}`)
-          console.log(`[CrossSeed] [${executionId}] - Size: ${currentSize}`)
-          console.log(`[CrossSeed] [${executionId}] - InfoHash v1: ${v1Hash}`)
-          console.log(`[CrossSeed] [${executionId}] - InfoHash v2: ${v2Hash}`)
-          console.log(`[CrossSeed] [${executionId}] - Is disc content: ${isDisc}`)
-        
-        // Use pre-fetched current torrent files for deep matching
-        console.log(`[CrossSeed] Current torrent has ${currentFiles.length} files (for deep matching)`)
-        
-        // Strategy: Make multiple targeted searches to find matches efficiently
-        // 1. Search by torrent name (will match name-based matches)
-        // 2. Search by base name without extension (to catch folder vs file variants)
-        
-        const allMatches: Torrent[] = []
-        
-        // Extract a distinctive search term from the torrent name
-        // This helps with special characters and improves search recall
-        // The actual matching is done later with fuzzy matching and file comparison
-        
-        // Strip file extension if present (e.g., "Movie.mkv" -> "Movie")
-        // This helps match single-file torrents against folder torrents
-        let searchName = currentName
-        const lastDot = currentName.lastIndexOf('.')
-        if (lastDot > 0 && lastDot > currentName.lastIndexOf('/')) {
-          // Has extension and it's not in a folder name
-          const extension = currentName.slice(lastDot + 1)
-          // Only strip if it looks like a real extension (2-5 chars, alphanumeric)
-          if (extension.length >= 2 && extension.length <= 5 && /^[a-z0-9]+$/i.test(extension)) {
-            searchName = currentName.slice(0, lastDot)
-          }
-        }
-        
-        // Remove metadata patterns to extract core content name
-        // Keep separators like - to preserve "Artist - Album" structure
-        let cleanedName = searchName
-          .replace(/\(\d{4}\)/g, '') // Remove years like (2025)
-          .replace(/\[[^\]]+\]/g, '') // Remove brackets like [WEB FLAC]
-          .replace(/\{[^}]+\}/g, '') // Remove braces
-          .trim()
-        
-        // Strip everything from special characters onwards (: etc) to avoid search issues
-        // This handles cases like "Album꞉ Subtitle" or "Title: Part 2"
-        cleanedName = cleanedName.split(/[꞉:]/)[0].trim()
-        
-        // Use the cleaned name for search (without metadata but with full artist/title)
-        // Fallback to original if cleaning removed everything
-        const searchTerm = cleanedName || searchName
-        
-        console.log(`[CrossSeed] Searching with term: "${searchTerm}" (from: "${currentName}")`)
-        const nameSearchResponse = await api.getTorrents(instance.id, {
-          search: searchTerm,
-          limit: 2000,
-        })
-        
-        const nameTorrents = nameSearchResponse.torrents || []
-        console.log(`[CrossSeed] Name search found ${nameTorrents.length} potential matches`)
-        
-        // Add name search results
-        allMatches.push(...nameTorrents)
-        
-        // If we have info hashes, also search by them
-        if (v1Hash || v2Hash) {
-          const hashToSearch = v1Hash || v2Hash
-          console.log(`[CrossSeed] Searching by info hash: ${hashToSearch}`)
-          const hashSearchResponse = await api.getTorrents(instance.id, {
-            search: hashToSearch,
-            limit: 2000,
-          })
-          
-          const hashTorrents = hashSearchResponse.torrents || []
-          console.log(`[CrossSeed] Hash search found ${hashTorrents.length} potential matches`)
-          
-          // Merge results, avoiding duplicates
-          let newHashMatches = 0
-          for (const t of hashTorrents) {
-            if (!allMatches.some(m => m.hash === t.hash)) {
-              allMatches.push(t)
-              newHashMatches++
-            }
-          }
-          console.log(`[CrossSeed] Added ${newHashMatches} new matches from hash search`)
-        }
-        
-        console.log(`[CrossSeed] Total potential matches before filtering: ${allMatches.length}`)
-        
-        // Normalize strings for comparison using module-scope helpers
-        const normalizedContentPath = normalizePath(currentContentPath || '')
-        const normalizedName = normalizeName(currentName)
-        
-        // Filter matching torrents with different matching strategies
-        console.log(`[CrossSeed] Starting match filtering with ${allMatches.length} candidates`)
-        const matches = allMatches.filter((t: Torrent) => {
-          console.log(`[CrossSeed] Evaluating: "${t.name}" (hash: ${t.hash})`)
-          
-          // Exclude the exact current torrent (same instance AND same hash)
-          if (instance.id === currentInstanceId && t.hash === currentHash) {
-            console.log(`[CrossSeed]   ❌ Skipped: Same instance and hash (current torrent)`)
-            return false
-          }
-          
-          // Strategy 1: Exact info hash match (cross-seeding same torrent)
-          if ((v1Hash && t.infohash_v1 === v1Hash) || 
-              (v2Hash && t.infohash_v2 === v2Hash)) {
-            console.log(`[CrossSeed]   ✅ Match: Info hash (v1: ${t.infohash_v1 === v1Hash}, v2: ${t.infohash_v2 === v2Hash})`)
-            return true
-          }
-          
-          // Strategy 2: Same content path (same files, different torrent)
-          if (normalizedContentPath && t.content_path) {
-            const otherContentPath = normalizePath(t.content_path)
-            if (otherContentPath === normalizedContentPath) {
-              console.log(`[CrossSeed]   ✅ Match: Content path ("${normalizedContentPath}")`)
-              return true
-            }
-          }
-          
-          // Strategy 3: Same torrent name (likely same content)
-          if (normalizedName && t.name) {
-            const otherName = normalizeName(t.name)
-            if (otherName === normalizedName) {
-              console.log(`[CrossSeed]   ✅ Match: Torrent name (exact: "${normalizedName}")`)
-              return true
-            }
-          }
-          
-          // Strategy 4: Similar save path (for single-file torrents)
-          if (currentSavePath && t.save_path) {
-            const normalizedCurrentSavePath = normalizePath(currentSavePath)
-            const otherSavePath = normalizePath(t.save_path)
-            if (normalizedCurrentSavePath && otherSavePath === normalizedCurrentSavePath) {
-              // Also check if file names match for single files
-              const currentBaseName = normalizedName.split('/').pop() || ''
-              const otherBaseName = normalizeName(t.name).split('/').pop() || ''
-              console.log(`[CrossSeed]   Checking save path: "${normalizedCurrentSavePath}" vs "${otherSavePath}"`)
-              console.log(`[CrossSeed]   Base names: "${currentBaseName}" vs "${otherBaseName}"`)
-              if (currentBaseName === otherBaseName) {
-                console.log(`[CrossSeed]   ✅ Match: Save path + filename`)
-                return true
-              }
-            }
-          }
-          
-          // Strategy 5: Fuzzy file name matching with similarity threshold
-          // Compare base file names (stripped of paths) and also full names, both normalized
-          const currentBaseFile = getBaseFileName(currentName)
-          const otherBaseFile = getBaseFileName(t.name)
-          
-          // Try base file comparison (handles folder/file.mkv scenarios)
-          if (currentBaseFile && otherBaseFile) {
-            const currentNormalized = normalizeFileName(currentBaseFile)
-            const otherNormalized = normalizeFileName(otherBaseFile)
-            
-            // Calculate similarity - check if one string contains most of the other
-            // or if they share a significant portion
-            const similarity = calculateSimilarity(currentNormalized, otherNormalized)
-            
-            console.log(`[CrossSeed]   Fuzzy match (base): "${currentNormalized}" vs "${otherNormalized}" = ${(similarity * 100).toFixed(1)}%`)
-            
-            // If similarity is high (>= 90%), consider it a potential match
-            if (similarity >= 0.9 && currentNormalized.length > 0) {
-              console.log(`[CrossSeed]   ✅ Match: Fuzzy base filename (${(similarity * 100).toFixed(1)}% similar)`)
-              return true
-            }
-          }
-          
-          // Also try full name comparison with normalization (catches "name.mkv" vs "name")
-          const currentFullNormalized = normalizeFileName(currentName)
-          const otherFullNormalized = normalizeFileName(t.name)
-          const fullSimilarity = calculateSimilarity(currentFullNormalized, otherFullNormalized)
-          
-          console.log(`[CrossSeed]   Fuzzy match (full): "${currentFullNormalized}" vs "${otherFullNormalized}" = ${(fullSimilarity * 100).toFixed(1)}%`)
-          
-          if (fullSimilarity >= 0.9 && currentFullNormalized.length > 0) {
-            console.log(`[CrossSeed]   ✅ Match: Fuzzy full name (${(fullSimilarity * 100).toFixed(1)}% similar)`)
-            return true
-          }
-          
-          console.log(`[CrossSeed]   ❌ No match: All strategies failed`)
-          return false
-        })
-        
-        console.log(`[CrossSeed] Filtered to ${matches.length} matches after strategy evaluation`)
-        
-        // For each match, check if we should do deep file matching (using pre-fetched currentFiles)
-        console.log(`[CrossSeed] Starting deep file matching for ${matches.length} matches`)
-        const deepMatchResults = await Promise.all(
-          matches.map(async (t: Torrent) => {
-            // Skip deep matching if we already have strong matches (info hash, content path, or torrent name)
-            const hasStrongMatch = 
-              (v1Hash && t.infohash_v1 === v1Hash) ||
-              (v2Hash && t.infohash_v2 === v2Hash) ||
-              (normalizedContentPath && normalizePath(t.content_path) === normalizedContentPath) ||
-              (normalizedName && normalizeName(t.name) === normalizedName)
-            
-            if (hasStrongMatch) {
-              console.log(`[CrossSeed] Deep match: "${t.name}" - STRONG match, skipping deep file check`)
-              return { torrent: t, isMatch: true, matchType: 'strong' }
-            }
-            
-            // If we have files, do deep comparison
-            if (currentFiles.length > 0) {
-              console.log(`[CrossSeed] Deep match: "${t.name}" - Fetching files for deep comparison (current has ${currentFiles.length} files)`)
-              try {
-                const otherFiles = await api.getTorrentFiles(instance.id, t.hash)
-                console.log(`[CrossSeed] Deep match: "${t.name}" - Other torrent has ${otherFiles.length} files`)
-                
-                // Compare file structures
-                const currentFileSet = new Set(
-                  currentFiles.map(f => ({
-                    name: normalizeFileName(getBaseFileName(f.name)),
-                    size: f.size
-                  })).map(f => `${f.name}:${f.size}`)
-                )
-                
-                const otherFileSet = new Set(
-                  otherFiles.map(f => ({
-                    name: normalizeFileName(getBaseFileName(f.name)),
-                    size: f.size
-                  })).map(f => `${f.name}:${f.size}`)
-                )
-                
-                // Check overlap - if significant overlap, it's a match
-                const intersection = new Set([...currentFileSet].filter(x => otherFileSet.has(x)))
-                const overlapPercent = intersection.size / Math.max(currentFileSet.size, otherFileSet.size)
-                
-                console.log(`[CrossSeed] Deep match: "${t.name}" - File overlap: ${intersection.size}/${Math.max(currentFileSet.size, otherFileSet.size)} (${(overlapPercent * 100).toFixed(1)}%)`)
-                
-                if (overlapPercent > 0.8) { // 80% of files match
-                  console.log(`[CrossSeed] Deep match: "${t.name}" - ✅ MATCH via deep file content (${(overlapPercent * 100).toFixed(1)}% overlap)`)
-                  return { torrent: t, isMatch: true, matchType: 'file_content' }
-                } else {
-                  console.log(`[CrossSeed] Deep match: "${t.name}" - ❌ Insufficient file overlap (${(overlapPercent * 100).toFixed(1)}% < 80%)`)
-                }
-              } catch (err) {
-                console.log(`[CrossSeed] Deep match: "${t.name}" - ⚠️  Could not fetch files for deep matching:`, err)
-              }
-            } else {
-              console.log(`[CrossSeed] Deep match: "${t.name}" - No current files available, keeping as weak match`)
-            }
-            
-            // Keep weak matches (name, path) without deep verification
-            console.log(`[CrossSeed] Deep match: "${t.name}" - Keeping as WEAK match`)
-            return { torrent: t, isMatch: true, matchType: 'weak' }
-          })
-        )
-        
-        console.log(`[CrossSeed] Deep matching complete, processing ${deepMatchResults.length} results`)
-        
-        const finalMatches = deepMatchResults.filter(r => r.isMatch).map(r => r.torrent)
-        
-        console.log(`[CrossSeed] Final matches after deep filtering: ${finalMatches.length}`)
-        
-        const enrichedMatches = finalMatches.map((t: Torrent) => {
-          // Determine match type for display
-          let matchType = 'name'
-          if ((resolvedInfohashV1 && t.infohash_v1 === resolvedInfohashV1) || 
-              (resolvedInfohashV2 && t.infohash_v2 === resolvedInfohashV2)) {
-            matchType = 'infohash'
-            console.log(`[CrossSeed] Final: "${t.name}" -> Match type: INFO HASH`)
-          } else if (normalizedContentPath && normalizePath(t.content_path) === normalizedContentPath) {
-            matchType = 'content_path'
-            console.log(`[CrossSeed] Final: "${t.name}" -> Match type: CONTENT PATH`)
-          } else if (currentSavePath && normalizePath(t.save_path) === normalizePath(currentSavePath)) {
-            matchType = 'save_path'
-            console.log(`[CrossSeed] Final: "${t.name}" -> Match type: SAVE PATH`)
-          } else {
-            console.log(`[CrossSeed] Final: "${t.name}" -> Match type: NAME`)
-          }
-          
-          return { ...t, instanceId: instance.id, instanceName: instance.name, matchType }
-        })
-        
-        console.log(`[CrossSeed] ========== Completed search for instance ${instance.name}: ${enrichedMatches.length} matches ==========\n`)
-        
-        return enrichedMatches
-        } catch (error) {
-          console.error(`[CrossSeed] ❌ ERROR in query [ID: ${executionId}] for instance ${instance.name}:`, error)
-          throw error // Re-throw to let React Query handle it
-        }
-      },
-      enabled: isCrossSeedTabActive,
-      staleTime: 60000, // Consider data fresh for 60 seconds
-      gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
-      refetchOnMount: false, // Don't refetch when component remounts
-      refetchOnWindowFocus: false, // Don't refetch when window regains focus
-      retry: false, // Don't retry failed queries
-    }))
-  }, [instanceIds, torrent?.hash, resolvedInfohashV1, resolvedInfohashV2, isDiscContent, isCrossSeedTabActive, currentFilesKey])
-
-  // Fetch matching torrents from all instances
-  const matchingTorrentsQueries = useQueries({
-    queries: crossSeedQueries,
-    combine: (results) => {
-      // Log when queries change to debug re-execution
-      console.log(`[CrossSeed] useQueries combine called with ${results.length} queries, statuses:`, results.map((r, i) => `${crossSeedQueries[i]?.queryKey?.[1] || i}: ${r.status}`).join(', '))
-      return results
-    }
-  })
-
-  // Flatten matching torrents from all instances and sort by match quality (memoized for performance)
-  // Show results as they arrive - don't wait for all queries to complete
-  const matchingTorrents = useMemo(() => {
-    return matchingTorrentsQueries
-      .filter((query: { isSuccess: boolean }) => query.isSuccess) // Only include successful queries
-      .flatMap((query: { data?: unknown }) => (query.data as Array<Torrent & { instanceId: number; instanceName: string; matchType: string }>) || [])
-      .sort((a, b) => {
-        // Prioritize: infohash > content_path > save_path > name
-        const priority = { infohash: 0, content_path: 1, save_path: 2, name: 3 }
-        return priority[a.matchType as keyof typeof priority] - priority[b.matchType as keyof typeof priority]
-      })
-  }, [matchingTorrentsQueries])
-  
-  // Show loading indicator if instances are loading OR if ANY query is still loading AND we have no results yet
-  const isLoadingMatches = isLoadingInstances || (matchingTorrents.length === 0 && matchingTorrentsQueries.some((query: { isLoading: boolean }) => query.isLoading))
+  // Use the cross-seed hook to find matching torrents
+  const { matchingTorrents, isLoadingMatches } = useCrossSeedMatches(instanceId, torrent, isCrossSeedTabActive)
 
   // Create a stable key string for detecting changes in matching torrents
   const matchingTorrentsKeys = useMemo(() => {
@@ -1673,14 +1227,14 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                       <div className="flex flex-col gap-1">
                         <div className="flex items-center gap-2">
                           <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Cross-Seed Matches</h3>
-                          {matchingTorrentsQueries.some((q: { isLoading: boolean }) => q.isLoading) && (
+                          {isLoadingMatches && (
                             <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
                           )}
                         </div>
                         <span className="text-xs text-muted-foreground">
                           {selectedCrossSeedTorrents.size > 0
                             ? `${selectedCrossSeedTorrents.size} of ${matchingTorrents.length} selected`
-                            : matchingTorrentsQueries.some((q: { isLoading: boolean }) => q.isLoading)
+                            : isLoadingMatches
                             ? `${matchingTorrents.length} matching torrent${matchingTorrents.length !== 1 ? 's' : ''} found, checking more instances...`
                             : `${matchingTorrents.length} matching torrent${matchingTorrents.length !== 1 ? 's' : ''} found across all instances`}
                         </span>
@@ -1860,11 +1414,11 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                         )
                       })}
                     </div>
-                    {matchingTorrentsQueries.some((q: { isLoading: boolean }) => q.isLoading) && (
+                    {isLoadingMatches && (
                       <div className="flex items-center justify-center gap-2 p-3 rounded-lg bg-muted/50 text-xs text-muted-foreground">
                         <Loader2 className="h-3 w-3 animate-spin" />
                         <span>
-                          Checking {matchingTorrentsQueries.filter((q: { isLoading: boolean }) => q.isLoading).length} more instance{matchingTorrentsQueries.filter((q: { isLoading: boolean }) => q.isLoading).length !== 1 ? 's' : ''}...
+                          Checking more instances...
                         </span>
                       </div>
                     )}
