@@ -240,8 +240,34 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 				}
 			}
 
-			// Perform search
-			results, err := client.SearchAll(paramsMap)
+			// Determine if this is a direct Torznab endpoint or a Jackett/Prowlarr aggregator
+			// Direct endpoints: https://tracker.com/api/torznab
+			// Jackett/Prowlarr: http://jackett:9117/api/v2.0/indexers/{id}
+			isDirect := !strings.Contains(idx.BaseURL, "/indexers/")
+
+			var results []Result
+			if isDirect {
+				// Direct Torznab endpoint - search without indexer path
+				log.Debug().
+					Int("indexer_id", idx.ID).
+					Str("indexer_name", idx.Name).
+					Str("base_url", idx.BaseURL).
+					Msg("Searching direct Torznab endpoint")
+				results, err = client.SearchDirect(paramsMap)
+			} else {
+				// Jackett/Prowlarr - use stored indexer_id
+				indexerID := idx.IndexerID
+				if indexerID == "" {
+					indexerID = extractIndexerIDFromURL(idx.BaseURL, idx.Name)
+				}
+
+				log.Debug().
+					Int("indexer_id", idx.ID).
+					Str("indexer_name", idx.Name).
+					Str("jackett_indexer_id", indexerID).
+					Msg("Searching Jackett/Prowlarr indexer")
+				results, err = client.Search(indexerID, paramsMap)
+			}
 			if err != nil {
 				log.Warn().
 					Err(err).
@@ -380,6 +406,25 @@ func (s *Service) parseTVDbID(r Result) string {
 	// TVDb ID might be in various places depending on indexer
 	// This is a placeholder - would need to check actual Jackett response structure
 	return ""
+}
+
+// extractIndexerIDFromURL extracts the indexer ID from a Jackett URL
+// e.g., http://jackett:9117/api/v2.0/indexers/aither/ -> aither
+// If URL doesn't contain an indexer path, returns the indexer name as fallback
+func extractIndexerIDFromURL(baseURL, indexerName string) string {
+	// Parse the URL to find the indexer ID
+	parts := strings.Split(strings.TrimSuffix(baseURL, "/"), "/")
+
+	// Look for "indexers" in the path and get the next segment
+	for i, part := range parts {
+		if part == "indexers" && i+1 < len(parts) {
+			return parts[i+1]
+		}
+	}
+
+	// If no indexer ID found in URL, return the indexer name
+	// This handles cases where BaseURL is just the Jackett base URL
+	return strings.ToLower(strings.ReplaceAll(indexerName, " ", ""))
 }
 
 // contentType represents the type of content being searched (internal use only)

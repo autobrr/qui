@@ -25,6 +25,7 @@ type TorznabIndexer struct {
 	ID              int                      `json:"id"`
 	Name            string                   `json:"name"`
 	BaseURL         string                   `json:"base_url"`
+	IndexerID       string                   `json:"indexer_id"` // Jackett/Prowlarr indexer ID (e.g., "aither")
 	APIKeyEncrypted string                   `json:"-"`
 	Enabled         bool                     `json:"enabled"`
 	Priority        int                      `json:"priority"`
@@ -171,6 +172,10 @@ func (s *TorznabIndexerStore) decrypt(ciphertext string) (string, error) {
 
 // Create creates a new Torznab indexer
 func (s *TorznabIndexerStore) Create(ctx context.Context, name, baseURL, apiKey string, enabled bool, priority, timeoutSeconds int) (*TorznabIndexer, error) {
+	return s.CreateWithIndexerID(ctx, name, baseURL, "", apiKey, enabled, priority, timeoutSeconds)
+}
+
+func (s *TorznabIndexerStore) CreateWithIndexerID(ctx context.Context, name, baseURL, indexerID, apiKey string, enabled bool, priority, timeoutSeconds int) (*TorznabIndexer, error) {
 	if name == "" {
 		return nil, errors.New("name cannot be empty")
 	}
@@ -199,19 +204,29 @@ func (s *TorznabIndexerStore) Create(ctx context.Context, name, baseURL, apiKey 
 	}
 	defer tx.Rollback()
 
-	// Intern strings into string_pool
-	ids, err := dbinterface.InternStrings(ctx, tx, name, baseURL)
+	// Intern strings into string_pool (name, baseURL, optionally indexerID)
+	stringsToIntern := []string{name, baseURL}
+	if indexerID != "" {
+		stringsToIntern = append(stringsToIntern, indexerID)
+	}
+
+	ids, err := dbinterface.InternStrings(ctx, tx, stringsToIntern...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to intern strings: %w", err)
 	}
 	nameID, baseURLID := ids[0], ids[1]
 
+	var indexerIDStringID sql.NullInt64
+	if indexerID != "" {
+		indexerIDStringID = sql.NullInt64{Int64: ids[2], Valid: true}
+	}
+
 	query := `
-		INSERT INTO torznab_indexers (name_id, base_url_id, api_key_encrypted, enabled, priority, timeout_seconds)
-		VALUES (?, ?, ?, ?, ?, ?)
+		INSERT INTO torznab_indexers (name_id, base_url_id, indexer_id_string_id, api_key_encrypted, enabled, priority, timeout_seconds)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
 	`
 
-	result, err := tx.ExecContext(ctx, query, nameID, baseURLID, encryptedAPIKey, enabled, priority, timeoutSeconds)
+	result, err := tx.ExecContext(ctx, query, nameID, baseURLID, indexerIDStringID, encryptedAPIKey, enabled, priority, timeoutSeconds)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create torznab indexer: %w", err)
 	}
@@ -231,16 +246,18 @@ func (s *TorznabIndexerStore) Create(ctx context.Context, name, baseURL, apiKey 
 // Get retrieves a Torznab indexer by ID using the view
 func (s *TorznabIndexerStore) Get(ctx context.Context, id int) (*TorznabIndexer, error) {
 	query := `
-		SELECT id, name, base_url, api_key_encrypted, enabled, priority, timeout_seconds, last_test_at, last_test_status, last_test_error, created_at, updated_at
+		SELECT id, name, base_url, indexer_id, api_key_encrypted, enabled, priority, timeout_seconds, last_test_at, last_test_status, last_test_error, created_at, updated_at
 		FROM torznab_indexers_view
 		WHERE id = ?
 	`
 
 	var indexer TorznabIndexer
+	var indexerID sql.NullString
 	err := s.db.QueryRowContext(ctx, query, id).Scan(
 		&indexer.ID,
 		&indexer.Name,
 		&indexer.BaseURL,
+		&indexerID,
 		&indexer.APIKeyEncrypted,
 		&indexer.Enabled,
 		&indexer.Priority,
@@ -251,6 +268,9 @@ func (s *TorznabIndexerStore) Get(ctx context.Context, id int) (*TorznabIndexer,
 		&indexer.CreatedAt,
 		&indexer.UpdatedAt,
 	)
+	if indexerID.Valid {
+		indexer.IndexerID = indexerID.String
+	}
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -279,7 +299,7 @@ func (s *TorznabIndexerStore) Get(ctx context.Context, id int) (*TorznabIndexer,
 // List retrieves all Torznab indexers using the view, ordered by priority (descending) and name
 func (s *TorznabIndexerStore) List(ctx context.Context) ([]*TorznabIndexer, error) {
 	query := `
-		SELECT id, name, base_url, api_key_encrypted, enabled, priority, timeout_seconds, last_test_at, last_test_status, last_test_error, created_at, updated_at
+		SELECT id, name, base_url, indexer_id, api_key_encrypted, enabled, priority, timeout_seconds, last_test_at, last_test_status, last_test_error, created_at, updated_at
 		FROM torznab_indexers_view
 		ORDER BY priority DESC, name ASC
 	`
@@ -293,10 +313,12 @@ func (s *TorznabIndexerStore) List(ctx context.Context) ([]*TorznabIndexer, erro
 	indexers := make([]*TorznabIndexer, 0)
 	for rows.Next() {
 		var indexer TorznabIndexer
+		var indexerID sql.NullString
 		err := rows.Scan(
 			&indexer.ID,
 			&indexer.Name,
 			&indexer.BaseURL,
+			&indexerID,
 			&indexer.APIKeyEncrypted,
 			&indexer.Enabled,
 			&indexer.Priority,
@@ -307,6 +329,9 @@ func (s *TorznabIndexerStore) List(ctx context.Context) ([]*TorznabIndexer, erro
 			&indexer.CreatedAt,
 			&indexer.UpdatedAt,
 		)
+		if indexerID.Valid {
+			indexer.IndexerID = indexerID.String
+		}
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan torznab indexer: %w", err)
 		}
@@ -338,7 +363,7 @@ func (s *TorznabIndexerStore) List(ctx context.Context) ([]*TorznabIndexer, erro
 // ListEnabled retrieves all enabled Torznab indexers using the view, ordered by priority
 func (s *TorznabIndexerStore) ListEnabled(ctx context.Context) ([]*TorznabIndexer, error) {
 	query := `
-		SELECT id, name, base_url, api_key_encrypted, enabled, priority, timeout_seconds, last_test_at, last_test_status, last_test_error, created_at, updated_at
+		SELECT id, name, base_url, indexer_id, api_key_encrypted, enabled, priority, timeout_seconds, last_test_at, last_test_status, last_test_error, created_at, updated_at
 		FROM torznab_indexers_view
 		WHERE enabled = 1
 		ORDER BY priority DESC, name ASC
@@ -353,10 +378,12 @@ func (s *TorznabIndexerStore) ListEnabled(ctx context.Context) ([]*TorznabIndexe
 	indexers := make([]*TorznabIndexer, 0)
 	for rows.Next() {
 		var indexer TorznabIndexer
+		var indexerID sql.NullString
 		err := rows.Scan(
 			&indexer.ID,
 			&indexer.Name,
 			&indexer.BaseURL,
+			&indexerID,
 			&indexer.APIKeyEncrypted,
 			&indexer.Enabled,
 			&indexer.Priority,
@@ -367,6 +394,9 @@ func (s *TorznabIndexerStore) ListEnabled(ctx context.Context) ([]*TorznabIndexe
 			&indexer.CreatedAt,
 			&indexer.UpdatedAt,
 		)
+		if indexerID.Valid {
+			indexer.IndexerID = indexerID.String
+		}
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan torznab indexer: %w", err)
 		}

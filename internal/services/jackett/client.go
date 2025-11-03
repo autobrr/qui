@@ -49,6 +49,12 @@ func (c *Client) SearchAll(params map[string]string) ([]Result, error) {
 	return c.Search("all", params)
 }
 
+// SearchDirect searches a direct Torznab endpoint (not through Jackett/Prowlarr aggregator)
+// For direct endpoints, we pass empty string to avoid the library adding /indexers/{id} path
+func (c *Client) SearchDirect(params map[string]string) ([]Result, error) {
+	return c.Search("", params)
+}
+
 // Search performs a search on a specific indexer or "all"
 func (c *Client) Search(indexer string, params map[string]string) ([]Result, error) {
 	// Use go-jackett library to perform the search

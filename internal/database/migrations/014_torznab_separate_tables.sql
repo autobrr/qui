@@ -1,5 +1,9 @@
 -- Refactor torznab indexer data into separate tables for better performance and normalization
 
+-- Add indexer_id column to store the Jackett/Prowlarr indexer ID for targeted searches
+ALTER TABLE torznab_indexers ADD COLUMN indexer_id_string_id INTEGER REFERENCES string_pool(id);
+CREATE INDEX IF NOT EXISTS idx_torznab_indexers_indexer_id ON torznab_indexers(indexer_id_string_id);
+
 -- Create table for indexer capabilities
 CREATE TABLE IF NOT EXISTS torznab_indexer_capabilities (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -83,6 +87,7 @@ SELECT
     ti.id,
     sp_name.value AS name,
     sp_base_url.value AS base_url,
+    sp_indexer_id.value AS indexer_id,
     ti.api_key_encrypted,
     ti.enabled,
     ti.priority,
@@ -94,7 +99,8 @@ SELECT
     ti.updated_at
 FROM torznab_indexers ti
 INNER JOIN string_pool sp_name ON ti.name_id = sp_name.id
-INNER JOIN string_pool sp_base_url ON ti.base_url_id = sp_base_url.id;
+INNER JOIN string_pool sp_base_url ON ti.base_url_id = sp_base_url.id
+LEFT JOIN string_pool sp_indexer_id ON ti.indexer_id_string_id = sp_indexer_id.id;
 
 -- Simple views for capabilities and categories (join in application code)
 CREATE VIEW IF NOT EXISTS torznab_indexer_capabilities_view AS

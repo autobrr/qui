@@ -798,6 +798,7 @@ export interface TorznabIndexer {
   id: number
   name: string
   base_url: string
+  indexer_id: string
   enabled: boolean
   priority: number
   timeout_seconds: number
@@ -855,6 +856,7 @@ export interface TorznabIndexerHealth {
 export interface TorznabIndexerFormData {
   name: string
   base_url: string
+  indexer_id?: string
   api_key: string
   enabled?: boolean
   priority?: number

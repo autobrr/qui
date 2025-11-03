@@ -170,6 +170,7 @@ func (h *JackettHandler) CreateIndexer(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name           string `json:"name"`
 		BaseURL        string `json:"base_url"`
+		IndexerID      string `json:"indexer_id"`
 		APIKey         string `json:"api_key"`
 		Enabled        *bool  `json:"enabled"`
 		Priority       *int   `json:"priority"`
@@ -210,7 +211,7 @@ func (h *JackettHandler) CreateIndexer(w http.ResponseWriter, r *http.Request) {
 		timeoutSeconds = *req.TimeoutSeconds
 	}
 
-	indexer, err := h.indexerStore.Create(r.Context(), req.Name, req.BaseURL, req.APIKey, enabled, priority, timeoutSeconds)
+	indexer, err := h.indexerStore.CreateWithIndexerID(r.Context(), req.Name, req.BaseURL, req.IndexerID, req.APIKey, enabled, priority, timeoutSeconds)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create indexer")
 		RespondError(w, http.StatusInternalServerError, "Failed to create indexer")
