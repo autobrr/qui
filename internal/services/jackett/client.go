@@ -139,14 +139,17 @@ func (c *Client) Search(indexer string, params url.Values) ([]Result, error) {
 	// Build URL: /api/v2.0/indexers/{indexer}/results/torznab/api
 	searchURL := fmt.Sprintf("%s/api/v2.0/indexers/%s/results/torznab/api", c.baseURL, indexer)
 
-	// Add API key
-	if params == nil {
-		params = url.Values{}
+	// Create a copy of params to avoid concurrent modification
+	queryParams := url.Values{}
+	if params != nil {
+		for k, v := range params {
+			queryParams[k] = v
+		}
 	}
-	params.Set("apikey", c.apiKey)
-	params.Set("t", "search") // Torznab search type
+	queryParams.Set("apikey", c.apiKey)
+	queryParams.Set("t", "search") // Torznab search type
 
-	fullURL := fmt.Sprintf("%s?%s", searchURL, params.Encode())
+	fullURL := fmt.Sprintf("%s?%s", searchURL, queryParams.Encode())
 
 	// Make HTTP request
 	resp, err := c.client.Get(fullURL)
