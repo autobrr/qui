@@ -50,9 +50,17 @@ func (c *Client) SearchAll(params map[string]string) ([]Result, error) {
 }
 
 // SearchDirect searches a direct Torznab endpoint (not through Jackett/Prowlarr aggregator)
-// For direct endpoints, we pass empty string to avoid the library adding /indexers/{id} path
+// Uses the native SearchDirectCtx method from go-jackett library
 func (c *Client) SearchDirect(params map[string]string) ([]Result, error) {
-	return c.Search("", params)
+	query := params["q"]
+	
+	// Use go-jackett's native SearchDirect method
+	rss, err := c.client.SearchDirectCtx(context.Background(), query, params)
+	if err != nil {
+		return nil, fmt.Errorf("direct search failed: %w", err)
+	}
+
+	return c.convertRssToResults(rss), nil
 }
 
 // Search performs a search on a specific indexer or "all"
@@ -63,7 +71,11 @@ func (c *Client) Search(indexer string, params map[string]string) ([]Result, err
 		return nil, fmt.Errorf("search failed: %w", err)
 	}
 
-	// Convert go-jackett RSS response to our Result format
+	return c.convertRssToResults(rss), nil
+}
+
+// convertRssToResults converts go-jackett RSS response to our Result format
+func (c *Client) convertRssToResults(rss gojackett.Rss) []Result {
 	results := make([]Result, 0, len(rss.Channel.Item))
 	for _, item := range rss.Channel.Item {
 		result := Result{
@@ -124,7 +136,7 @@ func (c *Client) Search(indexer string, params map[string]string) ([]Result, err
 		results = append(results, result)
 	}
 
-	return results, nil
+	return results
 }
 
 // JackettIndexer represents an indexer from Jackett's indexer list
@@ -163,4 +175,13 @@ func DiscoverJackettIndexers(baseURL, apiKey string) ([]JackettIndexer, error) {
 	}
 
 	return indexers, nil
+}
+
+// GetCapabilitiesDirect gets capabilities from a direct Torznab endpoint
+func (c *Client) GetCapabilitiesDirect() (*gojackett.Indexers, error) {
+	indexers, err := c.client.GetCapsDirectCtx(context.Background())
+	if err != nil {
+		return nil, fmt.Errorf("failed to get capabilities: %w", err)
+	}
+	return &indexers, nil
 }
