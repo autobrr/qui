@@ -20,7 +20,7 @@ import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { usePersistedTabState } from "@/hooks/usePersistedTabState"
 import { api } from "@/lib/api"
-import { getLinuxComment, getLinuxCreatedBy, getLinuxFileName, getLinuxHash, getLinuxIsoName, getLinuxSavePath, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
+import { getLinuxCategory, getLinuxComment, getLinuxCreatedBy, getLinuxFileName, getLinuxHash, getLinuxIsoName, getLinuxSavePath, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { renderTextWithLinks } from "@/lib/linkUtils"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { getPeerFlagDetails } from "@/lib/torrent-peer-flags"
@@ -1810,16 +1810,22 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                                         <p>{matchDescription}</p>
                                       </TooltipContent>
                                     </Tooltip>
-                                    {!incognitoMode && trackerHostname && (
+                                    {trackerHostname && (
                                       <>
                                         <span className="shrink-0">•</span>
-                                        <span className="break-all">Tracker: {trackerHostname}</span>
+                                        <span className="break-all">Tracker: {incognitoMode ? getLinuxTracker(`${match.hash}-0`) : trackerHostname}</span>
                                       </>
                                     )}
-                                    {!incognitoMode && match.category && (
+                                    {match.category && (
                                       <>
                                         <span className="shrink-0">•</span>
-                                        <span className="break-all">Category: {match.category}</span>
+                                        <span className="break-all">Category: {incognitoMode ? getLinuxCategory(match.hash) : match.category}</span>
+                                      </>
+                                    )}
+                                    {match.tags && (
+                                      <>
+                                        <span className="shrink-0">•</span>
+                                        <span className="break-all">Tags: {incognitoMode ? getLinuxTags(match.hash) : match.tags}</span>
                                       </>
                                     )}
                                   </div>
