@@ -8,6 +8,7 @@ import react from "@vitejs/plugin-react"
 import tailwindcss from "@tailwindcss/vite"
 import { VitePWA } from "vite-plugin-pwa"
 import { nodePolyfills } from "vite-plugin-node-polyfills"
+import { TanStackRouterVite } from "@tanstack/router-plugin/vite"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
@@ -16,6 +17,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 // https://vite.dev/config/
 export default defineConfig(() => ({
   plugins: [
+    TanStackRouterVite(),
     react({
       // React 19 requires the new JSX transform
       jsxRuntime: "automatic",
