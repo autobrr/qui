@@ -30,6 +30,8 @@ import type {
   TorrentTracker,
   TorznabIndexer,
   TorznabIndexerFormData,
+  TorznabSearchRequest,
+  TorznabSearchResponse,
   User
 } from "@/types"
 import { getApiBaseUrl, withBasePath } from "./base-url"
@@ -845,6 +847,13 @@ class ApiClient {
     return this.request<JackettIndexer[]>("/torznab/indexers/discover", {
       method: "POST",
       body: JSON.stringify({ base_url: baseUrl, api_key: apiKey }),
+    })
+  }
+
+  async searchTorznab(request: TorznabSearchRequest): Promise<TorznabSearchResponse> {
+    return this.request<TorznabSearchResponse>("/jackett/search", {
+      method: "POST",
+      body: JSON.stringify(request),
     })
   }
 }

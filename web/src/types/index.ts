@@ -826,6 +826,41 @@ export interface TorznabIndexerUpdate {
   timeout_seconds?: number
 }
 
+export interface TorznabSearchRequest {
+  query: string
+  categories?: number[]
+  imdb_id?: string
+  tvdb_id?: string
+  season?: number
+  episode?: number
+  limit?: number
+  offset?: number
+  indexer_ids?: number[]
+}
+
+export interface TorznabSearchResponse {
+  results: TorznabSearchResult[]
+  total: number
+}
+
+export interface TorznabSearchResult {
+  indexer: string
+  title: string
+  download_url: string
+  info_url?: string
+  size: number
+  seeders: number
+  leechers: number
+  category_id: number
+  category_name: string
+  publish_date: string
+  download_volume_factor: number
+  upload_volume_factor: number
+  guid: string
+  imdb_id?: string
+  tvdb_id?: string
+}
+
 export interface JackettIndexer {
   id: string
   name: string
@@ -844,23 +879,3 @@ export interface DiscoverJackettResponse {
   indexers: JackettIndexer[]
 }
 
-export interface TorznabSearchRequest {
-  query: string
-  category?: string
-  indexer_ids?: number[]
-}
-
-export interface TorznabSearchResult {
-  title: string
-  size: number
-  link: string
-  pubDate: string
-  indexer: string
-  seeders?: number
-  peers?: number
-  category?: string
-}
-
-export interface TorznabSearchResponse {
-  results: TorznabSearchResult[]
-}
