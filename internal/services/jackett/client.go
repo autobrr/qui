@@ -5,26 +5,67 @@ package jackett
 
 import (
 	"context"
+	"encoding/xml"
 	"fmt"
+	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/autobrr/qui/internal/models"
 	gojackett "github.com/kylesanderson/go-jackett"
 )
 
-// Client wraps the go-jackett client
+// Client wraps the Torznab backend client implementation
 type Client struct {
-	client *gojackett.Client
+	backend    models.TorznabBackend
+	baseURL    string
+	apiKey     string
+	jackett    *gojackett.Client
+	httpClient *http.Client
+	timeout    time.Duration
 }
 
-// NewClient creates a new Jackett client
-func NewClient(baseURL, apiKey string) *Client {
-	return &Client{
-		client: gojackett.NewClient(gojackett.Config{
-			Host:   baseURL,
-			APIKey: apiKey,
-		}),
+// NewClient creates a new Torznab client for the desired backend
+func NewClient(baseURL, apiKey string, backend models.TorznabBackend, timeoutSeconds int) *Client {
+	if backend == "" {
+		backend = models.TorznabBackendJackett
 	}
+	if timeoutSeconds <= 0 {
+		timeoutSeconds = 30
+	}
+
+	c := &Client{
+		backend: backend,
+		baseURL: strings.TrimRight(baseURL, "/"),
+		apiKey:  apiKey,
+		timeout: time.Duration(timeoutSeconds) * time.Second,
+	}
+
+	switch backend {
+	case models.TorznabBackendProwlarr:
+		c.httpClient = &http.Client{Timeout: c.timeout}
+	case models.TorznabBackendNative:
+		c.jackett = gojackett.NewClient(gojackett.Config{
+			Host:       baseURL,
+			APIKey:     apiKey,
+			Timeout:    timeoutSeconds,
+			DirectMode: true,
+		})
+	default: // jackett + fallback
+		c.jackett = gojackett.NewClient(gojackett.Config{
+			Host:    baseURL,
+			APIKey:  apiKey,
+			Timeout: timeoutSeconds,
+		})
+	}
+
+	if c.httpClient == nil {
+		c.httpClient = &http.Client{Timeout: c.timeout}
+	}
+
+	return c
 }
 
 // Result represents a single search result (simplified format)
@@ -44,18 +85,27 @@ type Result struct {
 	Imdb                 string
 }
 
-// SearchAll searches across all indexers using the "all" endpoint
+// SearchAll searches across all indexers when supported by the backend
 func (c *Client) SearchAll(params map[string]string) ([]Result, error) {
-	return c.Search("all", params)
+	switch c.backend {
+	case models.TorznabBackendJackett:
+		return c.Search("all", params)
+	case models.TorznabBackendNative:
+		return c.SearchDirect(params)
+	default:
+		return nil, fmt.Errorf("search all not supported for backend %s", c.backend)
+	}
 }
 
 // SearchDirect searches a direct Torznab endpoint (not through Jackett/Prowlarr aggregator)
 // Uses the native SearchDirectCtx method from go-jackett library
 func (c *Client) SearchDirect(params map[string]string) ([]Result, error) {
+	if c.jackett == nil {
+		return nil, fmt.Errorf("direct search not supported for backend %s", c.backend)
+	}
 	query := params["q"]
-	
-	// Use go-jackett's native SearchDirect method
-	rss, err := c.client.SearchDirectCtx(context.Background(), query, params)
+
+	rss, err := c.jackett.SearchDirectCtx(context.Background(), query, params)
 	if err != nil {
 		return nil, fmt.Errorf("direct search failed: %w", err)
 	}
@@ -65,10 +115,65 @@ func (c *Client) SearchDirect(params map[string]string) ([]Result, error) {
 
 // Search performs a search on a specific indexer or "all"
 func (c *Client) Search(indexer string, params map[string]string) ([]Result, error) {
-	// Use go-jackett library to perform the search
-	rss, err := c.client.GetTorrentsCtx(context.Background(), indexer, params)
+	switch c.backend {
+	case models.TorznabBackendProwlarr:
+		return c.searchProwlarr(indexer, params)
+	case models.TorznabBackendNative:
+		return c.SearchDirect(params)
+	default:
+		if c.jackett == nil {
+			return nil, fmt.Errorf("jackett client not configured for backend %s", c.backend)
+		}
+		rss, err := c.jackett.GetTorrentsCtx(context.Background(), indexer, params)
+		if err != nil {
+			return nil, fmt.Errorf("search failed: %w", err)
+		}
+		return c.convertRssToResults(rss), nil
+	}
+}
+
+func (c *Client) searchProwlarr(indexerID string, params map[string]string) ([]Result, error) {
+	if strings.TrimSpace(indexerID) == "" {
+		return nil, fmt.Errorf("prowlarr indexer ID is required")
+	}
+
+	values := url.Values{}
+	for key, value := range params {
+		if value == "" {
+			continue
+		}
+		values.Set(key, value)
+	}
+
+	if values.Get("t") == "" {
+		values.Set("t", "search")
+	}
+	values.Set("apikey", c.apiKey)
+
+	endpoint, err := url.JoinPath(c.baseURL, "api/v1/indexer", indexerID, "newznab")
 	if err != nil {
-		return nil, fmt.Errorf("search failed: %w", err)
+		return nil, fmt.Errorf("failed to build prowlarr endpoint: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build prowlarr request: %w", err)
+	}
+	req.URL.RawQuery = values.Encode()
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("prowlarr request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf("prowlarr returned status %d", resp.StatusCode)
+	}
+
+	var rss gojackett.Rss
+	if err := xml.NewDecoder(resp.Body).Decode(&rss); err != nil {
+		return nil, fmt.Errorf("failed to decode prowlarr response: %w", err)
 	}
 
 	return c.convertRssToResults(rss), nil
@@ -179,7 +284,10 @@ func DiscoverJackettIndexers(baseURL, apiKey string) ([]JackettIndexer, error) {
 
 // GetCapabilitiesDirect gets capabilities from a direct Torznab endpoint
 func (c *Client) GetCapabilitiesDirect() (*gojackett.Indexers, error) {
-	indexers, err := c.client.GetCapsDirectCtx(context.Background())
+	if c.jackett == nil {
+		return nil, fmt.Errorf("capabilities not supported for backend %s", c.backend)
+	}
+	indexers, err := c.jackett.GetCapsDirectCtx(context.Background())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get capabilities: %w", err)
 	}

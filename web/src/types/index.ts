@@ -799,6 +799,7 @@ export interface TorznabIndexer {
   name: string
   base_url: string
   indexer_id: string
+  backend: "jackett" | "prowlarr" | "native"
   enabled: boolean
   priority: number
   timeout_seconds: number
@@ -858,6 +859,7 @@ export interface TorznabIndexerFormData {
   base_url: string
   indexer_id?: string
   api_key: string
+  backend?: "jackett" | "prowlarr" | "native"
   enabled?: boolean
   priority?: number
   timeout_seconds?: number
@@ -867,6 +869,8 @@ export interface TorznabIndexerUpdate {
   name?: string
   base_url?: string
   api_key?: string
+  indexer_id?: string
+  backend?: "jackett" | "prowlarr" | "native"
   enabled?: boolean
   priority?: number
   timeout_seconds?: number
@@ -924,4 +928,3 @@ export interface DiscoverJackettRequest {
 export interface DiscoverJackettResponse {
   indexers: JackettIndexer[]
 }
-

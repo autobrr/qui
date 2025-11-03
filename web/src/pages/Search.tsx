@@ -31,6 +31,16 @@ export function Search() {
   const [indexers, setIndexers] = useState<TorznabIndexer[]>([])
   const [selectedIndexers, setSelectedIndexers] = useState<Set<number>>(new Set())
   const [loadingIndexers, setLoadingIndexers] = useState(true)
+  const formatBackend = (backend: TorznabIndexer['backend']) => {
+    switch (backend) {
+      case 'prowlarr':
+        return 'Prowlarr'
+      case 'native':
+        return 'Native'
+      default:
+        return 'Jackett'
+    }
+  }
 
   useEffect(() => {
     const loadIndexers = async () => {
@@ -193,7 +203,7 @@ export function Search() {
                         htmlFor={`indexer-${indexer.id}`}
                         className="text-sm cursor-pointer"
                       >
-                        {indexer.name}
+                        {indexer.name} ({formatBackend(indexer.backend)})
                       </label>
                     </div>
                   ))}

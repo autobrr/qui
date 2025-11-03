@@ -48,6 +48,7 @@ export function IndexerTable({
       <TableHeader>
         <TableRow>
           <TableHead>Name</TableHead>
+          <TableHead>Backend</TableHead>
           <TableHead>URL</TableHead>
           <TableHead>Status</TableHead>
           <TableHead>Test Status</TableHead>
@@ -60,6 +61,13 @@ export function IndexerTable({
         {indexers?.map((indexer) => (
           <TableRow key={indexer.id}>
             <TableCell className="font-medium">{indexer.name}</TableCell>
+            <TableCell>
+              <Badge variant="outline">
+                {indexer.backend === 'jackett' && 'Jackett'}
+                {indexer.backend === 'prowlarr' && 'Prowlarr'}
+                {indexer.backend === 'native' && 'Native'}
+              </Badge>
+            </TableCell>
             <TableCell className="text-muted-foreground">
               {indexer.base_url}
             </TableCell>

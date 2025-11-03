@@ -230,7 +230,7 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 			}
 
 			// Create client for this indexer
-			client := NewClient(idx.BaseURL, apiKey)
+			client := NewClient(idx.BaseURL, apiKey, idx.Backend, idx.TimeoutSeconds)
 
 			// Convert url.Values to map[string]string (take first value for each key)
 			paramsMap := make(map[string]string)
@@ -240,32 +240,58 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 				}
 			}
 
-			// Determine if this is a direct Torznab endpoint or a Jackett/Prowlarr aggregator
-			// Direct endpoints: https://tracker.com/api/torznab
-			// Jackett/Prowlarr: http://jackett:9117/api/v2.0/indexers/{id}
-			isDirect := !strings.Contains(idx.BaseURL, "/indexers/")
-
 			var results []Result
-			if isDirect {
+			switch idx.Backend {
+			case models.TorznabBackendNative:
 				// Direct Torznab endpoint - search without indexer path
 				log.Debug().
 					Int("indexer_id", idx.ID).
 					Str("indexer_name", idx.Name).
 					Str("base_url", idx.BaseURL).
-					Msg("Searching direct Torznab endpoint")
+					Str("backend", string(idx.Backend)).
+					Msg("Searching native Torznab endpoint")
 				results, err = client.SearchDirect(paramsMap)
-			} else {
-				// Jackett/Prowlarr - use stored indexer_id
-				indexerID := idx.IndexerID
+			case models.TorznabBackendProwlarr:
+				indexerID := strings.TrimSpace(idx.IndexerID)
 				if indexerID == "" {
-					indexerID = extractIndexerIDFromURL(idx.BaseURL, idx.Name)
+					log.Warn().
+						Int("indexer_id", idx.ID).
+						Str("indexer", idx.Name).
+						Str("backend", string(idx.Backend)).
+						Msg("Skipping prowlarr indexer without numeric identifier")
+					resultsChan <- indexerResult{nil, fmt.Errorf("missing prowlarr indexer identifier")}
+					return
 				}
 
 				log.Debug().
 					Int("indexer_id", idx.ID).
 					Str("indexer_name", idx.Name).
-					Str("jackett_indexer_id", indexerID).
-					Msg("Searching Jackett/Prowlarr indexer")
+					Str("backend", string(idx.Backend)).
+					Str("torznab_indexer_id", indexerID).
+					Msg("Searching Prowlarr indexer")
+				results, err = client.Search(indexerID, paramsMap)
+			default:
+				// Jackett/Prowlarr aggregator - use stored indexer_id
+				indexerID := idx.IndexerID
+				if indexerID == "" {
+					indexerID = extractIndexerIDFromURL(idx.BaseURL, idx.Name)
+				}
+				if strings.TrimSpace(indexerID) == "" {
+					log.Warn().
+						Int("indexer_id", idx.ID).
+						Str("indexer", idx.Name).
+						Str("backend", string(idx.Backend)).
+						Msg("Skipping indexer without resolved identifier")
+					resultsChan <- indexerResult{nil, fmt.Errorf("missing indexer identifier")}
+					return
+				}
+
+				log.Debug().
+					Int("indexer_id", idx.ID).
+					Str("indexer_name", idx.Name).
+					Str("backend", string(idx.Backend)).
+					Str("torznab_indexer_id", indexerID).
+					Msg("Searching Torznab aggregator indexer")
 				results, err = client.Search(indexerID, paramsMap)
 			}
 			if err != nil {
@@ -297,6 +323,7 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 // buildSearchParams builds URL parameters from a TorznabSearchRequest
 func (s *Service) buildSearchParams(req *TorznabSearchRequest) url.Values {
 	params := url.Values{}
+	params.Set("t", "search")
 	params.Set("q", req.Query)
 
 	if len(req.Categories) > 0 {
@@ -417,7 +444,7 @@ func extractIndexerIDFromURL(baseURL, indexerName string) string {
 
 	// Look for "indexers" in the path and get the next segment
 	for i, part := range parts {
-		if part == "indexers" && i+1 < len(parts) {
+		if (part == "indexers" || part == "indexer") && i+1 < len(parts) {
 			return parts[i+1]
 		}
 	}

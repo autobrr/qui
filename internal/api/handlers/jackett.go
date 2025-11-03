@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
@@ -172,6 +173,7 @@ func (h *JackettHandler) CreateIndexer(w http.ResponseWriter, r *http.Request) {
 		BaseURL        string `json:"base_url"`
 		IndexerID      string `json:"indexer_id"`
 		APIKey         string `json:"api_key"`
+		Backend        string `json:"backend"`
 		Enabled        *bool  `json:"enabled"`
 		Priority       *int   `json:"priority"`
 		TimeoutSeconds *int   `json:"timeout_seconds"`
@@ -197,6 +199,17 @@ func (h *JackettHandler) CreateIndexer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	backend, err := models.ParseTorznabBackend(req.Backend)
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if backend == models.TorznabBackendProwlarr && strings.TrimSpace(req.IndexerID) == "" {
+		RespondError(w, http.StatusBadRequest, "indexer_id is required when backend is prowlarr")
+		return
+	}
+
 	// Apply defaults
 	enabled := true
 	if req.Enabled != nil {
@@ -211,7 +224,7 @@ func (h *JackettHandler) CreateIndexer(w http.ResponseWriter, r *http.Request) {
 		timeoutSeconds = *req.TimeoutSeconds
 	}
 
-	indexer, err := h.indexerStore.CreateWithIndexerID(r.Context(), req.Name, req.BaseURL, req.IndexerID, req.APIKey, enabled, priority, timeoutSeconds)
+	indexer, err := h.indexerStore.CreateWithIndexerID(r.Context(), req.Name, req.BaseURL, req.IndexerID, req.APIKey, enabled, priority, timeoutSeconds, backend)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create indexer")
 		RespondError(w, http.StatusInternalServerError, "Failed to create indexer")
@@ -274,12 +287,14 @@ func (h *JackettHandler) UpdateIndexer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Name           string `json:"name"`
-		BaseURL        string `json:"base_url"`
-		APIKey         string `json:"api_key"`
-		Enabled        *bool  `json:"enabled"`
-		Priority       *int   `json:"priority"`
-		TimeoutSeconds *int   `json:"timeout_seconds"`
+		Name           string  `json:"name"`
+		BaseURL        string  `json:"base_url"`
+		IndexerID      *string `json:"indexer_id"`
+		APIKey         string  `json:"api_key"`
+		Backend        *string `json:"backend"`
+		Enabled        *bool   `json:"enabled"`
+		Priority       *int    `json:"priority"`
+		TimeoutSeconds *int    `json:"timeout_seconds"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -288,7 +303,29 @@ func (h *JackettHandler) UpdateIndexer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	indexer, err := h.indexerStore.Update(r.Context(), id, req.Name, req.BaseURL, req.APIKey, req.Enabled, req.Priority, req.TimeoutSeconds)
+	params := models.TorznabIndexerUpdateParams{
+		Name:           req.Name,
+		BaseURL:        req.BaseURL,
+		APIKey:         req.APIKey,
+		Enabled:        req.Enabled,
+		Priority:       req.Priority,
+		TimeoutSeconds: req.TimeoutSeconds,
+	}
+
+	if req.IndexerID != nil {
+		params.IndexerID = req.IndexerID
+	}
+
+	if req.Backend != nil {
+		backend, err := models.ParseTorznabBackend(*req.Backend)
+		if err != nil {
+			RespondError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		params.Backend = &backend
+	}
+
+	indexer, err := h.indexerStore.Update(r.Context(), id, params)
 	if err != nil {
 		if err == models.ErrTorznabIndexerNotFound {
 			RespondError(w, http.StatusNotFound, "Indexer not found")
@@ -361,17 +398,17 @@ func (h *JackettHandler) TestIndexer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get decrypted API key
-	apiKey, err := h.indexerStore.GetDecryptedAPIKey(indexer)
-	if err != nil {
-		log.Error().Err(err).Int("indexer_id", id).Msg("Failed to decrypt API key")
-		RespondError(w, http.StatusInternalServerError, "Failed to decrypt API key")
-		return
-	}
+	log.Debug().
+		Int("indexer_id", id).
+		Str("indexer_name", indexer.Name).
+		Msg("Testing torznab indexer connectivity")
 
-	// Create client and test connection with a simple search
-	client := jackett.NewClient(indexer.BaseURL, apiKey)
-	_, err = client.Search("all", map[string]string{"q": "test", "limit": "1"})
+	// Run a lightweight search via the service to validate connectivity
+	_, err = h.service.SearchGeneric(r.Context(), &jackett.TorznabSearchRequest{
+		Query:      "test",
+		Limit:      1,
+		IndexerIDs: []int{id},
+	})
 
 	// Update test status in database
 	if err != nil {

@@ -191,6 +191,7 @@ func TestBuildSearchParams(t *testing.T) {
 				Query: "test movie",
 			},
 			expected: map[string]string{
+				"t": "search",
 				"q": "test movie",
 			},
 		},
@@ -201,6 +202,7 @@ func TestBuildSearchParams(t *testing.T) {
 				Categories: []int{CategoryTV, CategoryTVHD},
 			},
 			expected: map[string]string{
+				"t":   "search",
 				"q":   "test show",
 				"cat": "5000,5040",
 			},
@@ -212,6 +214,7 @@ func TestBuildSearchParams(t *testing.T) {
 				IMDbID: "tt0133093",
 			},
 			expected: map[string]string{
+				"t":      "search",
 				"q":      "The Matrix",
 				"imdbid": "0133093",
 			},
@@ -223,6 +226,7 @@ func TestBuildSearchParams(t *testing.T) {
 				IMDbID: "0133093",
 			},
 			expected: map[string]string{
+				"t":      "search",
 				"q":      "The Matrix",
 				"imdbid": "0133093",
 			},
@@ -234,6 +238,7 @@ func TestBuildSearchParams(t *testing.T) {
 				TVDbID: "81189",
 			},
 			expected: map[string]string{
+				"t":      "search",
 				"q":      "Breaking Bad",
 				"tvdbid": "81189",
 			},
@@ -246,6 +251,7 @@ func TestBuildSearchParams(t *testing.T) {
 				Episode: intPtr(1),
 			},
 			expected: map[string]string{
+				"t":      "search",
 				"q":      "Game of Thrones",
 				"season": "1",
 				"ep":     "1",
@@ -259,6 +265,7 @@ func TestBuildSearchParams(t *testing.T) {
 				Offset: 50,
 			},
 			expected: map[string]string{
+				"t":      "search",
 				"q":      "test",
 				"limit":  "100",
 				"offset": "50",
@@ -276,6 +283,7 @@ func TestBuildSearchParams(t *testing.T) {
 				Offset:     10,
 			},
 			expected: map[string]string{
+				"t":      "search",
 				"q":      "Breaking Bad",
 				"cat":    "5000",
 				"tvdbid": "81189",

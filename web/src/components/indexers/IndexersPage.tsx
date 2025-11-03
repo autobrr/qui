@@ -118,7 +118,7 @@ export function IndexersPage() {
             <div>
               <CardTitle>Torznab Indexers</CardTitle>
               <CardDescription>
-                Manage Torznab/Jackett indexers for cross-seed discovery
+                Manage Torznab indexers powered by Jackett, Prowlarr, or native tracker endpoints
               </CardDescription>
             </div>
             <div className="flex gap-2">
