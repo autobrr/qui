@@ -32,6 +32,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/polar"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/internal/services/license"
 	"github.com/autobrr/qui/internal/services/trackericons"
@@ -490,6 +491,10 @@ func (app *Application) runServer() {
 	// Initialize files manager for caching torrent file information
 	filesManagerService := filesmanager.NewService(db) // implements qbittorrent.FilesManager
 	syncManager.SetFilesManager(filesManagerService)
+
+	// Initialize cross-seed service
+	crossSeedService := crossseed.NewService(instanceStore, syncManager, filesManagerService)
+
 	backupStore := models.NewBackupStore(db)
 	backupService := backups.NewService(backupStore, syncManager, backups.Config{DataDir: cfg.GetDataDir()})
 	backupService.Start(context.Background())
@@ -557,6 +562,8 @@ func (app *Application) runServer() {
 		UpdateService:      updateService,
 		TrackerIconService: trackerIconService,
 		BackupService:      backupService,
+		FilesManager:       filesManagerService,
+		CrossSeedService:   crossSeedService,
 	})
 
 	errorChannel := make(chan error)

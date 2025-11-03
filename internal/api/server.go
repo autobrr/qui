@@ -27,6 +27,8 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/proxy"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/crossseed"
+	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/internal/services/license"
 	"github.com/autobrr/qui/internal/services/trackericons"
 	"github.com/autobrr/qui/internal/update"
@@ -51,6 +53,8 @@ type Server struct {
 	updateService      *update.Service
 	trackerIconService *trackericons.Service
 	backupService      *backups.Service
+	filesManager       *filesmanager.Service
+	crossSeedService   *crossseed.Service
 }
 
 type Dependencies struct {
@@ -67,6 +71,8 @@ type Dependencies struct {
 	UpdateService      *update.Service
 	TrackerIconService *trackericons.Service
 	BackupService      *backups.Service
+	FilesManager       *filesmanager.Service
+	CrossSeedService   *crossseed.Service
 }
 
 func NewServer(deps *Dependencies) *Server {
@@ -90,6 +96,8 @@ func NewServer(deps *Dependencies) *Server {
 		updateService:      deps.UpdateService,
 		trackerIconService: deps.TrackerIconService,
 		backupService:      deps.BackupService,
+		filesManager:       deps.FilesManager,
+		crossSeedService:   deps.CrossSeedService,
 	}
 
 	return &s
@@ -207,6 +215,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	trackerIconHandler := handlers.NewTrackerIconHandler(s.trackerIconService)
 	proxyHandler := proxy.NewHandler(s.clientPool, s.clientAPIKeyStore, s.instanceStore, s.syncManager, s.config.Config.BaseURL)
 	licenseHandler := handlers.NewLicenseHandler(s.licenseService)
+	crossSeedHandler := handlers.NewCrossSeedHandler(s.crossSeedService)
 
 	// API routes
 	apiRouter := chi.NewRouter()
@@ -245,6 +254,9 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			r.Put("/auth/change-password", authHandler.ChangePassword)
 
 			r.Route("/license", licenseHandler.Routes)
+
+			// Cross-seed routes
+			crossSeedHandler.Routes(r)
 
 			// API key management
 			r.Route("/api-keys", func(r chi.Router) {
