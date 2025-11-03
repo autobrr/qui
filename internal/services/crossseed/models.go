@@ -74,21 +74,24 @@ type TorrentFile struct {
 }
 
 // FindCandidatesRequest represents a request to find cross-seed candidates
+// Use case: "I have a torrent NAME (just a string) - which existing torrents already have matching files?"
 type FindCandidatesRequest struct {
-	// SourceInstanceID is the instance to search for potential cross-seeds
-	SourceInstanceID int `json:"source_instance_id"`
-	// TorrentHash is the hash of the torrent to find candidates for (deprecated: use TorrentName)
-	TorrentHash string `json:"torrent_hash,omitempty"`
-	// TorrentName is the name of the torrent to find candidates for
-	TorrentName string `json:"torrent_name,omitempty"`
+	// TorrentName is the title/name of the torrent you want to add (just a string, torrent doesn't exist yet)
+	TorrentName string `json:"torrent_name"`
 	// IgnorePatterns are file patterns to ignore when matching (e.g., "*.srt", "*sample*.mkv")
 	IgnorePatterns []string `json:"ignore_patterns,omitempty"`
-	// TargetInstanceIDs specifies which instances to search for candidates
-	// If empty, will search all instances except source
+	// TargetInstanceIDs specifies which instances to search for EXISTING torrents with matching files
+	// If empty, will search all instances
 	TargetInstanceIDs []int `json:"target_instance_ids,omitempty"`
 }
 
-// FindCandidatesResponse represents potential cross-seed candidates (original format)
+// FindCandidatesResponse represents potential cross-seed candidates
+// SourceTorrent: The NEW torrent you want to add
+// Candidates: EXISTING torrents across your instances that have the files needed by the source
+// Multiple candidates may be returned because:
+//   - You may have multiple single episodes that collectively provide a season pack's files
+//   - Different quality/group versions may exist across instances
+//   - You can choose which existing torrent(s) to use as the data source
 type FindCandidatesResponse struct {
 	SourceTorrent *TorrentInfo         `json:"source_torrent"`
 	Candidates    []CrossSeedCandidate `json:"candidates"`
@@ -100,15 +103,21 @@ type FindCandidatesResponseV2 struct {
 	Candidates    []TorrentInfo `json:"candidates"`
 }
 
-// CrossSeedCandidate represents a potential torrent to cross-seed
+// CrossSeedCandidate represents EXISTING torrents that can provide data for cross-seeding
+// Each candidate is an existing torrent in your client that has files matching what the new torrent needs
+// There may be multiple candidates because:
+//   - Multiple episodes can collectively provide a season pack
+//   - The same content may exist in different qualities/groups across instances
 type CrossSeedCandidate struct {
-	InstanceID   int           `json:"instance_id"`
-	InstanceName string        `json:"instance_name"`
-	Torrents     []qbt.Torrent `json:"torrents"`
+	InstanceID   int    `json:"instance_id"`
+	InstanceName string `json:"instance_name"`
+	// Torrents: The EXISTING torrents in this instance that have matching files
+	// Multiple torrents may be listed because they can collectively or individually provide the needed data
+	Torrents []qbt.Torrent `json:"torrents"`
 	// MatchType indicates the type of match:
 	//   "exact" - 100% duplicate files (same paths and sizes)
-	//   "partial-in-pack" - source episode(s) found within candidate season pack
-	//   "partial-contains" - source season pack contains candidate episode(s)
+	//   "partial-in-pack" - new torrent's files are found within existing season pack
+	//   "partial-contains" - new torrent is a season pack containing existing episode(s)
 	//   "size" - total size matches but structure differs
 	MatchType string `json:"match_type"`
 }

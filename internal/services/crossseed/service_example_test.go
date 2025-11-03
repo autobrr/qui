@@ -9,65 +9,94 @@ import (
 	"github.com/moistari/rls"
 )
 
-// TestExtractBasename tests the basename extraction logic using rls parser
-func TestExtractBasename(t *testing.T) {
-	// Create a service with release cache for testing
-	s := &Service{
-		releaseCache: NewReleaseCache(),
-	}
+// TestMakeReleaseKey tests the release key extraction logic using rls parser
+func TestMakeReleaseKey(t *testing.T) {
+	cache := NewReleaseCache()
 
 	tests := []struct {
 		name     string
 		input    string
-		expected string
+		expected releaseKey
 	}{
 		{
-			name:     "simple episode",
-			input:    "Show.Name.S01E05.1080p.mkv",
-			expected: "S01E05",
+			name:  "simple episode",
+			input: "Show.Name.S01E05.1080p.mkv",
+			expected: releaseKey{
+				series:  1,
+				episode: 5,
+			},
 		},
 		{
-			name:     "with directory",
-			input:    "dir/Show.S01E05.mkv",
-			expected: "S01E05",
+			name:  "with directory",
+			input: "dir/Show.S01E05.mkv",
+			expected: releaseKey{
+				series:  1,
+				episode: 5,
+			},
 		},
 		{
-			name:     "season pack",
-			input:    "Show.Name.S01.1080p.mkv",
-			expected: "S01",
+			name:  "season pack",
+			input: "Show.Name.S01.1080p.mkv",
+			expected: releaseKey{
+				series: 1,
+			},
 		},
 		{
-			name:     "lowercase",
-			input:    "show.name.s01e05.mkv",
-			expected: "S01E05",
+			name:  "lowercase",
+			input: "show.name.s01e05.mkv",
+			expected: releaseKey{
+				series:  1,
+				episode: 5,
+			},
 		},
 		{
-			name:     "multi-episode",
-			input:    "Show.S01E05E06.mkv",
-			expected: "S01E05", // rls parses first episode
+			name:  "multi-episode",
+			input: "Show.S01E05E06.mkv",
+			expected: releaseKey{
+				series:  1,
+				episode: 5, // rls parses first episode
+			},
 		},
 		{
-			name:     "no season info",
-			input:    "Movie.2020.1080p.mkv",
-			expected: "",
+			name:  "movie with year",
+			input: "Movie.2020.1080p.mkv",
+			expected: releaseKey{
+				year: 2020,
+			},
 		},
 		{
-			name:     "episode with group",
-			input:    "Show.Name.S02E10.1080p.WEB-DL.x264-GROUP.mkv",
-			expected: "S02E10",
+			name:  "episode with group",
+			input: "Show.Name.S02E10.1080p.WEB-DL.x264-GROUP.mkv",
+			expected: releaseKey{
+				series:  2,
+				episode: 10,
+			},
 		},
 		{
-			name:     "single digit season/episode",
-			input:    "Show.S1E2.mkv",
-			expected: "S01E02",
+			name:  "single digit season/episode",
+			input: "Show.S1E2.mkv",
+			expected: releaseKey{
+				series:  1,
+				episode: 2,
+			},
+		},
+		{
+			name:  "date-based release",
+			input: "Show.2024.01.15.1080p.mkv",
+			expected: releaseKey{
+				year:  2024,
+				month: 1,
+				day:   15,
+			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := s.extractBasename(tt.input)
+			release := cache.Parse(tt.input)
+			result := makeReleaseKey(release)
 			if result != tt.expected {
-				t.Errorf("extractBasename(%q) = %q, want %q", tt.input, result, tt.expected)
+				t.Errorf("makeReleaseKey(%q) = %+v, want %+v", tt.input, result, tt.expected)
 			}
 		})
 	}
@@ -147,79 +176,100 @@ func TestCheckPartialMatch(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		subset   map[string]int64
-		superset map[string]int64
+		subset   map[releaseKey]int64
+		superset map[releaseKey]int64
 		expected bool
 	}{
 		{
 			name: "single episode in pack",
-			subset: map[string]int64{
-				"S01E05": 1000000000,
+			subset: map[releaseKey]int64{
+				{series: 1, episode: 5}: 1000000000,
 			},
-			superset: map[string]int64{
-				"S01E01": 1000000000,
-				"S01E02": 1000000000,
-				"S01E03": 1000000000,
-				"S01E04": 1000000000,
-				"S01E05": 1000000000,
-				"S01E06": 1000000000,
-				"S01E07": 1000000000,
+			superset: map[releaseKey]int64{
+				{series: 1, episode: 1}: 1000000000,
+				{series: 1, episode: 2}: 1000000000,
+				{series: 1, episode: 3}: 1000000000,
+				{series: 1, episode: 4}: 1000000000,
+				{series: 1, episode: 5}: 1000000000,
+				{series: 1, episode: 6}: 1000000000,
+				{series: 1, episode: 7}: 1000000000,
 			},
 			expected: true,
 		},
 		{
 			name: "multiple episodes in pack",
-			subset: map[string]int64{
-				"S01E05": 1000000000,
-				"S01E06": 1000000000,
+			subset: map[releaseKey]int64{
+				{series: 1, episode: 5}: 1000000000,
+				{series: 1, episode: 6}: 1000000000,
 			},
-			superset: map[string]int64{
-				"S01E01": 1000000000,
-				"S01E02": 1000000000,
-				"S01E03": 1000000000,
-				"S01E04": 1000000000,
-				"S01E05": 1000000000,
-				"S01E06": 1000000000,
-				"S01E07": 1000000000,
+			superset: map[releaseKey]int64{
+				{series: 1, episode: 1}: 1000000000,
+				{series: 1, episode: 2}: 1000000000,
+				{series: 1, episode: 3}: 1000000000,
+				{series: 1, episode: 4}: 1000000000,
+				{series: 1, episode: 5}: 1000000000,
+				{series: 1, episode: 6}: 1000000000,
+				{series: 1, episode: 7}: 1000000000,
 			},
 			expected: true,
 		},
 		{
 			name: "no match",
-			subset: map[string]int64{
-				"S01E08": 1000000000,
+			subset: map[releaseKey]int64{
+				{series: 1, episode: 8}: 1000000000,
 			},
-			superset: map[string]int64{
-				"S01E01": 1000000000,
-				"S01E02": 1000000000,
+			superset: map[releaseKey]int64{
+				{series: 1, episode: 1}: 1000000000,
+				{series: 1, episode: 2}: 1000000000,
 			},
 			expected: false,
 		},
 		{
 			name: "size mismatch",
-			subset: map[string]int64{
-				"S01E05": 1000000000,
+			subset: map[releaseKey]int64{
+				{series: 1, episode: 5}: 1000000000,
 			},
-			superset: map[string]int64{
-				"S01E05": 2000000000, // different size
+			superset: map[releaseKey]int64{
+				{series: 1, episode: 5}: 2000000000, // different size
 			},
 			expected: false,
 		},
 		{
 			name: "partial match above threshold",
-			subset: map[string]int64{
-				"S01E01": 1000000000,
-				"S01E02": 1000000000,
-				"S01E03": 1000000000,
-				"S01E04": 1000000000,
-				"S01E05": 1000000000,
+			subset: map[releaseKey]int64{
+				{series: 1, episode: 1}: 1000000000,
+				{series: 1, episode: 2}: 1000000000,
+				{series: 1, episode: 3}: 1000000000,
+				{series: 1, episode: 4}: 1000000000,
+				{series: 1, episode: 5}: 1000000000,
 			},
-			superset: map[string]int64{
-				"S01E01": 1000000000,
-				"S01E02": 1000000000,
-				"S01E03": 1000000000,
-				"S01E04": 1000000000,
-				// S01E05 missing, but 4/5 = 80% matches threshold
+			superset: map[releaseKey]int64{
+				{series: 1, episode: 1}: 1000000000,
+				{series: 1, episode: 2}: 1000000000,
+				{series: 1, episode: 3}: 1000000000,
+				{series: 1, episode: 4}: 1000000000,
+				// episode 5 missing, but 4/5 = 80% matches threshold
+			},
+			expected: true,
+		},
+		{
+			name: "date-based releases match",
+			subset: map[releaseKey]int64{
+				{year: 2024, month: 1, day: 15}: 1000000000,
+			},
+			superset: map[releaseKey]int64{
+				{year: 2024, month: 1, day: 15}: 1000000000,
+				{year: 2024, month: 1, day: 16}: 1000000000,
+			},
+			expected: true,
+		},
+		{
+			name: "year-based releases match",
+			subset: map[releaseKey]int64{
+				{year: 2020}: 1000000000,
+			},
+			superset: map[releaseKey]int64{
+				{year: 2020}: 1000000000,
 			},
 			expected: true,
 		},

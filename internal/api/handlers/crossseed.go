@@ -55,13 +55,8 @@ func (h *CrossSeedHandler) FindCandidates(w http.ResponseWriter, r *http.Request
 	}
 
 	// Validate request
-	if req.SourceInstanceID == 0 {
-		RespondError(w, http.StatusBadRequest, "source_instance_id is required")
-		return
-	}
-
-	if req.TorrentHash == "" {
-		RespondError(w, http.StatusBadRequest, "torrent_hash is required")
+	if req.TorrentName == "" {
+		RespondError(w, http.StatusBadRequest, "torrent_name is required")
 		return
 	}
 
@@ -70,8 +65,7 @@ func (h *CrossSeedHandler) FindCandidates(w http.ResponseWriter, r *http.Request
 	if err != nil {
 		log.Error().
 			Err(err).
-			Int("source_instance_id", req.SourceInstanceID).
-			Str("torrent_hash", req.TorrentHash).
+			Str("torrent_name", req.TorrentName).
 			Msg("Failed to find cross-seed candidates")
 		RespondError(w, http.StatusInternalServerError, "Failed to find candidates")
 		return
