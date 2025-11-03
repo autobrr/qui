@@ -265,18 +265,34 @@ func DiscoverJackettIndexers(baseURL, apiKey string) ([]JackettIndexer, error) {
 		Timeout: 30 * time.Second,
 	}
 
-	// Build URL: /api/v2.0/indexers/all/results/torznab/api?t=indexers
-	// Note: Jackett doesn't have a dedicated indexers endpoint in the standard API
-	// We'll use the /api/v2.0/indexers endpoint which is Jackett-specific
-	// Pass API key as query parameter to match Torznab API pattern
-	indexersURL := fmt.Sprintf("%s/api/v2.0/indexers?configured=true&apikey=%s", baseURL, url.QueryEscape(apiKey))
+	// Build URL: baseURL/api/v2.0/indexers
+	// Jackett's admin API endpoint for listing indexers
+	// Join the base URL with the API path
+	u, err := url.Parse(baseURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid base URL: %w", err)
+	}
 
-	req, err := http.NewRequest("GET", indexersURL, nil)
+	// Use url.JoinPath to properly append the API path
+	u, err = u.Parse("/api/v2.0/indexers")
+	if err != nil {
+		return nil, fmt.Errorf("failed to construct API URL: %w", err)
+	}
+
+	// Add query parameters
+	q := u.Query()
+	q.Set("configured", "true")
+	q.Set("apikey", apiKey)
+	u.RawQuery = q.Encode()
+
+	req, err := http.NewRequest("GET", u.String(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	// Also add API key header as fallback for different Jackett configurations
+	// Add API key as Authorization header (some Jackett versions prefer this)
+	req.Header.Set("Authorization", apiKey)
+	// Also add X-Api-Key header as fallback for different Jackett configurations
 	req.Header.Set("X-Api-Key", apiKey)
 
 	resp, err := client.Do(req)
@@ -287,7 +303,7 @@ func DiscoverJackettIndexers(baseURL, apiKey string) ([]JackettIndexer, error) {
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("jackett returned status %d: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("jackett returned status %d: %s (URL: %s)", resp.StatusCode, string(body), u.String())
 	}
 
 	// Parse JSON response
