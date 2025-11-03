@@ -30,6 +30,24 @@ type TorrentsHandler struct {
 	syncManager *qbittorrent.SyncManager
 }
 
+// normalizeSort maps various sort field names to canonical forms
+func normalizeSort(s string) string {
+	switch strings.ToLower(s) {
+	case "addedon", "added_on":
+		return "added_on"
+	default:
+		return s
+	}
+}
+
+// truncateExpr truncates long filter expressions for cleaner logging
+func truncateExpr(expr string, maxLen int) string {
+	if len(expr) <= maxLen {
+		return expr
+	}
+	return expr[:maxLen-3] + "..."
+}
+
 const addTorrentMaxFormMemory int64 = 256 << 20 // 256 MiB cap for multi-file uploads
 
 // SortedPeer represents a peer with its key for sorting
@@ -80,7 +98,9 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if s := r.URL.Query().Get("sort"); s != "" {
-		sort = s
+		sort = normalizeSort(s)
+	} else {
+		sort = normalizeSort(sort) // Normalize the default too
 	}
 
 	if o := r.URL.Query().Get("order"); o != "" {
@@ -100,16 +120,31 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Debug logging
-	log.Debug().
+	// Debug logging with truncated expression to prevent log bloat
+	logEvent := log.Debug().
+		Int("instanceID", instanceID).
 		Str("sort", sort).
 		Str("order", order).
 		Int("page", page).
 		Int("limit", limit).
 		Str("search", search).
-		Interface("filters", filters).
-		Str("sessionID", sessionID).
-		Msg("Torrent list request parameters")
+		Str("sessionID", sessionID)
+
+	// Log filters but truncate long expressions
+	if filters.Expr != "" {
+		logEvent = logEvent.Str("expr", truncateExpr(filters.Expr, 150))
+	}
+	if len(filters.Status) > 0 {
+		logEvent = logEvent.Strs("status", filters.Status)
+	}
+	if len(filters.Categories) > 0 {
+		logEvent = logEvent.Strs("categories", filters.Categories)
+	}
+	if len(filters.Tags) > 0 {
+		logEvent = logEvent.Strs("tags", filters.Tags)
+	}
+
+	logEvent.Msg("Torrent list request parameters")
 
 	// Calculate offset from page
 	offset := page * limit
@@ -1580,7 +1615,9 @@ func (h *TorrentsHandler) ListCrossInstanceTorrents(w http.ResponseWriter, r *ht
 	}
 
 	if s := r.URL.Query().Get("sort"); s != "" {
-		sort = s
+		sort = normalizeSort(s)
+	} else {
+		sort = normalizeSort(sort) // Normalize the default too
 	}
 
 	if o := r.URL.Query().Get("order"); o != "" {
@@ -1604,15 +1641,29 @@ func (h *TorrentsHandler) ListCrossInstanceTorrents(w http.ResponseWriter, r *ht
 		return
 	}
 
-	// Debug logging
-	log.Debug().
+	// Debug logging with truncated expression to prevent log bloat
+	logEvent := log.Debug().
 		Str("sort", sort).
 		Str("order", order).
 		Int("page", page).
 		Int("limit", limit).
-		Str("search", search).
-		Interface("filters", filters).
-		Msg("Cross-instance torrent list request parameters")
+		Str("search", search)
+
+	// Log filters but truncate long expressions
+	if filters.Expr != "" {
+		logEvent = logEvent.Str("expr", truncateExpr(filters.Expr, 150))
+	}
+	if len(filters.Status) > 0 {
+		logEvent = logEvent.Strs("status", filters.Status)
+	}
+	if len(filters.Categories) > 0 {
+		logEvent = logEvent.Strs("categories", filters.Categories)
+	}
+	if len(filters.Tags) > 0 {
+		logEvent = logEvent.Strs("tags", filters.Tags)
+	}
+
+	logEvent.Msg("Cross-instance torrent list request parameters")
 
 	// Calculate offset from page
 	offset := page * limit
