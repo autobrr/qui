@@ -1784,6 +1784,101 @@ paths:
         '500':
           description: Failed to list tracker icons
 
+  /api/cross-seed/find-candidates:
+    post:
+      tags:
+        - Cross-Seed
+      summary: Find cross-seed candidates
+      description: Search for potential cross-seed matches for a torrent across configured indexers
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - torrent_hash
+                - instance_id
+              properties:
+                torrent_hash:
+                  type: string
+                  description: Hash of the torrent to find candidates for
+                instance_id:
+                  type: integer
+                  description: qBittorrent instance ID
+      responses:
+        '200':
+          description: Successfully found candidates
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  candidates:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        title:
+                          type: string
+                        size:
+                          type: integer
+                        link:
+                          type: string
+                        indexer:
+                          type: string
+                        seeders:
+                          type: integer
+                        peers:
+                          type: integer
+        '400':
+          description: Invalid request
+        '500':
+          description: Failed to find candidates
+
+  /api/cross-seed/cross:
+    post:
+      tags:
+        - Cross-Seed
+      summary: Perform cross-seed operation
+      description: Download and cross-seed a torrent from a candidate match
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - original_hash
+                - candidate_link
+                - instance_id
+              properties:
+                original_hash:
+                  type: string
+                  description: Hash of the original torrent
+                candidate_link:
+                  type: string
+                  description: Download link for the candidate torrent
+                instance_id:
+                  type: integer
+                  description: qBittorrent instance ID
+      responses:
+        '200':
+          description: Successfully cross-seeded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+        '400':
+          description: Invalid request
+        '500':
+          description: Failed to cross-seed
+
   /api/version/latest:
     get:
       tags:
@@ -2365,5 +2460,7 @@ tags:
     description: Category management
   - name: Tags
     description: Tag management
+  - name: Cross-Seed
+    description: Cross-seeding operations for finding and adding duplicate torrents
   - name: Theme Licenses
     description: Theme license management (optional feature)
