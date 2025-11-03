@@ -367,10 +367,22 @@ func (h *JackettHandler) TestIndexer(w http.ResponseWriter, r *http.Request) {
 	// Create client and test connection with a simple search
 	client := jackett.NewClient(indexer.BaseURL, apiKey)
 	_, err = client.Search("all", map[string]string{"q": "test", "limit": "1"})
+
+	// Update test status in database
 	if err != nil {
+		errorMsg := err.Error()
+		if updateErr := h.indexerStore.UpdateTestStatus(r.Context(), id, "error", &errorMsg); updateErr != nil {
+			log.Error().Err(updateErr).Int("indexer_id", id).Msg("Failed to update test status")
+		}
+
 		log.Error().Err(err).Int("indexer_id", id).Msg("Failed to test indexer connection")
 		RespondError(w, http.StatusInternalServerError, "Failed to connect to indexer: "+err.Error())
 		return
+	}
+
+	// Test succeeded - update status
+	if updateErr := h.indexerStore.UpdateTestStatus(r.Context(), id, "ok", nil); updateErr != nil {
+		log.Error().Err(updateErr).Int("indexer_id", id).Msg("Failed to update test status")
 	}
 
 	RespondJSON(w, http.StatusOK, map[string]string{"status": "ok"})

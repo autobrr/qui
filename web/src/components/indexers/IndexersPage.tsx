@@ -73,6 +73,7 @@ export function IndexersPage() {
 
     let successCount = 0
     let failCount = 0
+    const results: { name: string; success: boolean; error?: string }[] = []
 
     toast.info(`Testing ${indexers.length} indexers...`)
 
@@ -80,16 +81,25 @@ export function IndexersPage() {
       try {
         await api.testTorznabIndexer(indexer.id)
         successCount++
+        results.push({ name: indexer.name, success: true })
       } catch (error) {
         failCount++
+        const errorMsg = error instanceof Error ? error.message : String(error)
+        results.push({ name: indexer.name, success: false, error: errorMsg })
         console.error(`Failed to test ${indexer.name}:`, error)
       }
     }
+
+    // Reload indexers to show updated test status
+    await loadIndexers()
 
     if (failCount === 0) {
       toast.success(`All ${successCount} indexers tested successfully`)
     } else {
       toast.warning(`${successCount} passed, ${failCount} failed`)
+      // Show details of failed indexers
+      const failedNames = results.filter(r => !r.success).map(r => r.name).join(', ')
+      toast.error(`Failed indexers: ${failedNames}`)
     }
   }
 

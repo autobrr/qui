@@ -50,6 +50,7 @@ export function IndexerTable({
           <TableHead>Name</TableHead>
           <TableHead>URL</TableHead>
           <TableHead>Status</TableHead>
+          <TableHead>Test Status</TableHead>
           <TableHead>Priority</TableHead>
           <TableHead>Timeout</TableHead>
           <TableHead className="text-right">Actions</TableHead>
@@ -60,7 +61,7 @@ export function IndexerTable({
           <TableRow key={indexer.id}>
             <TableCell className="font-medium">{indexer.name}</TableCell>
             <TableCell className="text-muted-foreground">
-              {indexer.baseUrl}
+              {indexer.base_url}
             </TableCell>
             <TableCell>
               {indexer.enabled ? (
@@ -75,8 +76,25 @@ export function IndexerTable({
                 </Badge>
               )}
             </TableCell>
+            <TableCell>
+              {indexer.last_test_status === 'ok' ? (
+                <Badge variant="default" className="gap-1">
+                  <Check className="h-3 w-3" />
+                  Working
+                </Badge>
+              ) : indexer.last_test_status === 'error' ? (
+                <Badge variant="destructive" className="gap-1" title={indexer.last_test_error || 'Unknown error'}>
+                  <X className="h-3 w-3" />
+                  Failed
+                </Badge>
+              ) : (
+                <Badge variant="secondary" className="gap-1">
+                  Untested
+                </Badge>
+              )}
+            </TableCell>
             <TableCell>{indexer.priority}</TableCell>
-            <TableCell>{indexer.timeoutSeconds}s</TableCell>
+            <TableCell>{indexer.timeout_seconds}s</TableCell>
             <TableCell className="text-right">
               <div className="flex justify-end gap-2">
                 <Button

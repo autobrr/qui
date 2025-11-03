@@ -797,12 +797,15 @@ export interface TorrentCreationTaskResponse {
 export interface TorznabIndexer {
   id: number
   name: string
-  baseUrl: string
+  base_url: string
   enabled: boolean
   priority: number
-  timeoutSeconds: number
-  createdAt: string
-  updatedAt: string
+  timeout_seconds: number
+  last_test_at?: string
+  last_test_status: string
+  last_test_error?: string
+  created_at: string
+  updated_at: string
 }
 
 export interface TorznabIndexerFormData {

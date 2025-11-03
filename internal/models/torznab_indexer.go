@@ -22,15 +22,18 @@ var ErrTorznabIndexerNotFound = errors.New("torznab indexer not found")
 
 // TorznabIndexer represents a Torznab API indexer (Jackett, Prowlarr, etc.)
 type TorznabIndexer struct {
-	ID              int       `json:"id"`
-	Name            string    `json:"name"`
-	BaseURL         string    `json:"base_url"`
-	APIKeyEncrypted string    `json:"-"`
-	Enabled         bool      `json:"enabled"`
-	Priority        int       `json:"priority"`
-	TimeoutSeconds  int       `json:"timeout_seconds"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	ID              int        `json:"id"`
+	Name            string     `json:"name"`
+	BaseURL         string     `json:"base_url"`
+	APIKeyEncrypted string     `json:"-"`
+	Enabled         bool       `json:"enabled"`
+	Priority        int        `json:"priority"`
+	TimeoutSeconds  int        `json:"timeout_seconds"`
+	LastTestAt      *time.Time `json:"last_test_at,omitempty"`
+	LastTestStatus  string     `json:"last_test_status"`
+	LastTestError   *string    `json:"last_test_error,omitempty"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
 }
 
 // TorznabIndexerStore manages Torznab indexers in the database
@@ -164,7 +167,7 @@ func (s *TorznabIndexerStore) Create(ctx context.Context, name, baseURL, apiKey 
 // Get retrieves a Torznab indexer by ID using the view
 func (s *TorznabIndexerStore) Get(ctx context.Context, id int) (*TorznabIndexer, error) {
 	query := `
-		SELECT id, name, base_url, api_key_encrypted, enabled, priority, timeout_seconds, created_at, updated_at
+		SELECT id, name, base_url, api_key_encrypted, enabled, priority, timeout_seconds, last_test_at, last_test_status, last_test_error, created_at, updated_at
 		FROM torznab_indexers_view
 		WHERE id = ?
 	`
@@ -178,6 +181,9 @@ func (s *TorznabIndexerStore) Get(ctx context.Context, id int) (*TorznabIndexer,
 		&indexer.Enabled,
 		&indexer.Priority,
 		&indexer.TimeoutSeconds,
+		&indexer.LastTestAt,
+		&indexer.LastTestStatus,
+		&indexer.LastTestError,
 		&indexer.CreatedAt,
 		&indexer.UpdatedAt,
 	)
@@ -195,7 +201,7 @@ func (s *TorznabIndexerStore) Get(ctx context.Context, id int) (*TorznabIndexer,
 // List retrieves all Torznab indexers using the view, ordered by priority (descending) and name
 func (s *TorznabIndexerStore) List(ctx context.Context) ([]*TorznabIndexer, error) {
 	query := `
-		SELECT id, name, base_url, api_key_encrypted, enabled, priority, timeout_seconds, created_at, updated_at
+		SELECT id, name, base_url, api_key_encrypted, enabled, priority, timeout_seconds, last_test_at, last_test_status, last_test_error, created_at, updated_at
 		FROM torznab_indexers_view
 		ORDER BY priority DESC, name ASC
 	`
@@ -217,6 +223,9 @@ func (s *TorznabIndexerStore) List(ctx context.Context) ([]*TorznabIndexer, erro
 			&indexer.Enabled,
 			&indexer.Priority,
 			&indexer.TimeoutSeconds,
+			&indexer.LastTestAt,
+			&indexer.LastTestStatus,
+			&indexer.LastTestError,
 			&indexer.CreatedAt,
 			&indexer.UpdatedAt,
 		)
@@ -236,7 +245,7 @@ func (s *TorznabIndexerStore) List(ctx context.Context) ([]*TorznabIndexer, erro
 // ListEnabled retrieves all enabled Torznab indexers using the view, ordered by priority
 func (s *TorznabIndexerStore) ListEnabled(ctx context.Context) ([]*TorznabIndexer, error) {
 	query := `
-		SELECT id, name, base_url, api_key_encrypted, enabled, priority, timeout_seconds, created_at, updated_at
+		SELECT id, name, base_url, api_key_encrypted, enabled, priority, timeout_seconds, last_test_at, last_test_status, last_test_error, created_at, updated_at
 		FROM torznab_indexers_view
 		WHERE enabled = 1
 		ORDER BY priority DESC, name ASC
@@ -259,6 +268,9 @@ func (s *TorznabIndexerStore) ListEnabled(ctx context.Context) ([]*TorznabIndexe
 			&indexer.Enabled,
 			&indexer.Priority,
 			&indexer.TimeoutSeconds,
+			&indexer.LastTestAt,
+			&indexer.LastTestStatus,
+			&indexer.LastTestError,
 			&indexer.CreatedAt,
 			&indexer.UpdatedAt,
 		)
@@ -359,6 +371,31 @@ func (s *TorznabIndexerStore) Delete(ctx context.Context, id int) error {
 	result, err := s.db.ExecContext(ctx, query, id)
 	if err != nil {
 		return fmt.Errorf("failed to delete torznab indexer: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return ErrTorznabIndexerNotFound
+	}
+
+	return nil
+}
+
+// UpdateTestStatus updates the test status of an indexer
+func (s *TorznabIndexerStore) UpdateTestStatus(ctx context.Context, id int, status string, errorMsg *string) error {
+	query := `
+		UPDATE torznab_indexers
+		SET last_test_at = CURRENT_TIMESTAMP, last_test_status = ?, last_test_error = ?
+		WHERE id = ?
+	`
+
+	result, err := s.db.ExecContext(ctx, query, status, errorMsg, id)
+	if err != nil {
+		return fmt.Errorf("failed to update test status: %w", err)
 	}
 
 	rowsAffected, err := result.RowsAffected()

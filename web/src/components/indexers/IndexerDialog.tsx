@@ -42,11 +42,11 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
     if (mode === 'edit' && indexer) {
       setFormData({
         name: indexer.name,
-        base_url: indexer.baseUrl,
+        base_url: indexer.base_url,
         api_key: '', // API key not returned from backend for security
         enabled: indexer.enabled,
         priority: indexer.priority,
-        timeout_seconds: indexer.timeoutSeconds,
+        timeout_seconds: indexer.timeout_seconds,
       })
     } else {
       setFormData({
