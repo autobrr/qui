@@ -72,23 +72,9 @@ FROM torznab_indexer_latency
 WHERE measured_at > datetime('now', '-7 days') -- Rolling 7-day window
 GROUP BY indexer_id, operation_type;
 
--- Note: Migration of existing capabilities from JSON column will need to be handled in application code
--- since we're avoiding JSON operations in SQL
-
--- Migrate existing last_test_error to errors table
-INSERT INTO torznab_indexer_errors (indexer_id, error_message_id, error_code, occurred_at, resolved_at)
-SELECT 
-    ti.id as indexer_id,
-    sp.id as error_message_id,
-    'test_failure' as error_code,
-    ti.last_test_at as occurred_at,
-    CASE WHEN ti.last_test_status = 'success' THEN ti.last_test_at ELSE NULL END as resolved_at
-FROM torznab_indexers ti
-INNER JOIN string_pool sp ON sp.value = COALESCE(ti.last_test_error, '')
-WHERE ti.last_test_error IS NOT NULL AND ti.last_test_error != '';
-
--- Drop the old capabilities column from torznab_indexers
-ALTER TABLE torznab_indexers DROP COLUMN capabilities;
+-- Note: Migration of existing capabilities and last_test_error will be handled in application code
+-- The old 'capabilities' column from migration 013 is kept for backward compatibility
+-- but the application will now use the new torznab_indexer_capabilities table instead
 
 -- Update the main view to use the new structure (simple version, aggregate in application code)
 DROP VIEW IF EXISTS torznab_indexers_view;
