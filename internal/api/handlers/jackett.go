@@ -37,10 +37,14 @@ func (h *JackettHandler) Routes(r chi.Router) {
 			r.Get("/", h.ListIndexers)
 			r.Post("/", h.CreateIndexer)
 			r.Post("/discover", h.DiscoverIndexers)
+			r.Get("/health", h.GetAllHealth)
 			r.Get("/{indexerID}", h.GetIndexer)
 			r.Put("/{indexerID}", h.UpdateIndexer)
 			r.Delete("/{indexerID}", h.DeleteIndexer)
 			r.Post("/{indexerID}/test", h.TestIndexer)
+			r.Get("/{indexerID}/health", h.GetIndexerHealth)
+			r.Get("/{indexerID}/errors", h.GetIndexerErrors)
+			r.Get("/{indexerID}/stats", h.GetIndexerStats)
 		})
 
 		// Cross-seed search - intelligent category detection
@@ -428,4 +432,120 @@ func (h *JackettHandler) DiscoverIndexers(w http.ResponseWriter, r *http.Request
 	}
 
 	RespondJSON(w, http.StatusOK, indexers)
+}
+
+// GetAllHealth godoc
+// @Summary Get health status for all indexers
+// @Description Retrieves health statistics for all Torznab indexers
+// @Tags torznab
+// @Produce json
+// @Success 200 {array} models.TorznabIndexerHealth
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/torznab/indexers/health [get]
+func (h *JackettHandler) GetAllHealth(w http.ResponseWriter, r *http.Request) {
+	health, err := h.indexerStore.GetAllHealth(r.Context())
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to get all indexer health")
+		RespondError(w, http.StatusInternalServerError, "Failed to get health status")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, health)
+}
+
+// GetIndexerHealth godoc
+// @Summary Get health status for an indexer
+// @Description Retrieves health statistics for a specific Torznab indexer
+// @Tags torznab
+// @Produce json
+// @Param indexerID path int true "Indexer ID"
+// @Success 200 {object} models.TorznabIndexerHealth
+// @Failure 404 {object} httphelpers.ErrorResponse
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/torznab/indexers/{indexerID}/health [get]
+func (h *JackettHandler) GetIndexerHealth(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(chi.URLParam(r, "indexerID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid indexer ID")
+		return
+	}
+
+	health, err := h.indexerStore.GetHealth(r.Context(), id)
+	if err != nil {
+		if err == models.ErrTorznabIndexerNotFound {
+			RespondError(w, http.StatusNotFound, "Indexer not found")
+			return
+		}
+		log.Error().Err(err).Int("indexer_id", id).Msg("Failed to get indexer health")
+		RespondError(w, http.StatusInternalServerError, "Failed to get health status")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, health)
+}
+
+// GetIndexerErrors godoc
+// @Summary Get recent errors for an indexer
+// @Description Retrieves recent error history for a specific Torznab indexer
+// @Tags torznab
+// @Produce json
+// @Param indexerID path int true "Indexer ID"
+// @Param limit query int false "Maximum number of errors to return" default(50)
+// @Success 200 {array} models.TorznabIndexerError
+// @Failure 400 {object} httphelpers.ErrorResponse
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/torznab/indexers/{indexerID}/errors [get]
+func (h *JackettHandler) GetIndexerErrors(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(chi.URLParam(r, "indexerID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid indexer ID")
+		return
+	}
+
+	limit := 50
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if parsedLimit, err := strconv.Atoi(limitStr); err == nil && parsedLimit > 0 {
+			limit = parsedLimit
+		}
+	}
+
+	errors, err := h.indexerStore.GetRecentErrors(r.Context(), id, limit)
+	if err != nil {
+		log.Error().Err(err).Int("indexer_id", id).Msg("Failed to get indexer errors")
+		RespondError(w, http.StatusInternalServerError, "Failed to get errors")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, errors)
+}
+
+// GetIndexerStats godoc
+// @Summary Get latency statistics for an indexer
+// @Description Retrieves aggregated latency statistics for a specific Torznab indexer
+// @Tags torznab
+// @Produce json
+// @Param indexerID path int true "Indexer ID"
+// @Success 200 {array} models.TorznabIndexerLatencyStats
+// @Failure 400 {object} httphelpers.ErrorResponse
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/torznab/indexers/{indexerID}/stats [get]
+func (h *JackettHandler) GetIndexerStats(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(chi.URLParam(r, "indexerID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid indexer ID")
+		return
+	}
+
+	stats, err := h.indexerStore.GetLatencyStats(r.Context(), id)
+	if err != nil {
+		log.Error().Err(err).Int("indexer_id", id).Msg("Failed to get indexer stats")
+		RespondError(w, http.StatusInternalServerError, "Failed to get statistics")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, stats)
 }

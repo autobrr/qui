@@ -801,11 +801,55 @@ export interface TorznabIndexer {
   enabled: boolean
   priority: number
   timeout_seconds: number
+  capabilities: string[]
+  categories: TorznabIndexerCategory[]
   last_test_at?: string
   last_test_status: string
   last_test_error?: string
   created_at: string
   updated_at: string
+}
+
+export interface TorznabIndexerCategory {
+  indexer_id: number
+  category_id: number
+  category_name: string
+  parent_category_id?: number
+}
+
+export interface TorznabIndexerError {
+  id: number
+  indexer_id: number
+  error_message: string
+  error_code: string
+  occurred_at: string
+  resolved_at?: string
+  error_count: number
+}
+
+export interface TorznabIndexerLatencyStats {
+  indexer_id: number
+  operation_type: string
+  total_requests: number
+  successful_requests: number
+  avg_latency_ms?: number
+  min_latency_ms?: number
+  max_latency_ms?: number
+  success_rate_pct: number
+  last_measured_at: string
+}
+
+export interface TorznabIndexerHealth {
+  indexer_id: number
+  indexer_name: string
+  enabled: boolean
+  last_test_status: string
+  errors_last_24h: number
+  unresolved_errors: number
+  avg_latency_ms?: number
+  success_rate_pct?: number
+  requests_last_7d?: number
+  last_measured_at?: string
 }
 
 export interface TorznabIndexerFormData {

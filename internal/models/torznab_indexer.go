@@ -22,18 +22,82 @@ var ErrTorznabIndexerNotFound = errors.New("torznab indexer not found")
 
 // TorznabIndexer represents a Torznab API indexer (Jackett, Prowlarr, etc.)
 type TorznabIndexer struct {
-	ID              int        `json:"id"`
-	Name            string     `json:"name"`
-	BaseURL         string     `json:"base_url"`
-	APIKeyEncrypted string     `json:"-"`
-	Enabled         bool       `json:"enabled"`
-	Priority        int        `json:"priority"`
-	TimeoutSeconds  int        `json:"timeout_seconds"`
-	LastTestAt      *time.Time `json:"last_test_at,omitempty"`
-	LastTestStatus  string     `json:"last_test_status"`
-	LastTestError   *string    `json:"last_test_error,omitempty"`
-	CreatedAt       time.Time  `json:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at"`
+	ID              int                      `json:"id"`
+	Name            string                   `json:"name"`
+	BaseURL         string                   `json:"base_url"`
+	APIKeyEncrypted string                   `json:"-"`
+	Enabled         bool                     `json:"enabled"`
+	Priority        int                      `json:"priority"`
+	TimeoutSeconds  int                      `json:"timeout_seconds"`
+	Capabilities    []string                 `json:"capabilities"`
+	Categories      []TorznabIndexerCategory `json:"categories"`
+	LastTestAt      *time.Time               `json:"last_test_at,omitempty"`
+	LastTestStatus  string                   `json:"last_test_status"`
+	LastTestError   *string                  `json:"last_test_error,omitempty"`
+	CreatedAt       time.Time                `json:"created_at"`
+	UpdatedAt       time.Time                `json:"updated_at"`
+}
+
+// TorznabIndexerCapability represents a search capability
+type TorznabIndexerCapability struct {
+	IndexerID      int    `json:"indexer_id"`
+	CapabilityType string `json:"capability_type"`
+}
+
+// TorznabIndexerCategory represents a category supported by an indexer
+type TorznabIndexerCategory struct {
+	IndexerID      int    `json:"indexer_id"`
+	CategoryID     int    `json:"category_id"`
+	CategoryName   string `json:"category_name"`
+	ParentCategory *int   `json:"parent_category_id,omitempty"`
+}
+
+// TorznabIndexerError represents an error that occurred with an indexer
+type TorznabIndexerError struct {
+	ID           int        `json:"id"`
+	IndexerID    int        `json:"indexer_id"`
+	ErrorMessage string     `json:"error_message"`
+	ErrorCode    string     `json:"error_code"`
+	OccurredAt   time.Time  `json:"occurred_at"`
+	ResolvedAt   *time.Time `json:"resolved_at,omitempty"`
+	ErrorCount   int        `json:"error_count"`
+}
+
+// TorznabIndexerLatency represents a latency measurement
+type TorznabIndexerLatency struct {
+	ID            int       `json:"id"`
+	IndexerID     int       `json:"indexer_id"`
+	OperationType string    `json:"operation_type"`
+	LatencyMs     int       `json:"latency_ms"`
+	Success       bool      `json:"success"`
+	MeasuredAt    time.Time `json:"measured_at"`
+}
+
+// TorznabIndexerLatencyStats represents aggregated latency statistics
+type TorznabIndexerLatencyStats struct {
+	IndexerID          int       `json:"indexer_id"`
+	OperationType      string    `json:"operation_type"`
+	TotalRequests      int       `json:"total_requests"`
+	SuccessfulRequests int       `json:"successful_requests"`
+	AvgLatencyMs       *float64  `json:"avg_latency_ms,omitempty"`
+	MinLatencyMs       *int      `json:"min_latency_ms,omitempty"`
+	MaxLatencyMs       *int      `json:"max_latency_ms,omitempty"`
+	SuccessRatePct     float64   `json:"success_rate_pct"`
+	LastMeasuredAt     time.Time `json:"last_measured_at"`
+}
+
+// TorznabIndexerHealth represents the health status of an indexer
+type TorznabIndexerHealth struct {
+	IndexerID        int        `json:"indexer_id"`
+	IndexerName      string     `json:"indexer_name"`
+	Enabled          bool       `json:"enabled"`
+	LastTestStatus   string     `json:"last_test_status"`
+	ErrorsLast24h    int        `json:"errors_last_24h"`
+	UnresolvedErrors int        `json:"unresolved_errors"`
+	AvgLatencyMs     *float64   `json:"avg_latency_ms,omitempty"`
+	SuccessRatePct   *float64   `json:"success_rate_pct,omitempty"`
+	RequestsLast7d   *int       `json:"requests_last_7d,omitempty"`
+	LastMeasuredAt   *time.Time `json:"last_measured_at,omitempty"`
 }
 
 // TorznabIndexerStore manages Torznab indexers in the database
@@ -195,6 +259,20 @@ func (s *TorznabIndexerStore) Get(ctx context.Context, id int) (*TorznabIndexer,
 		return nil, fmt.Errorf("failed to get torznab indexer: %w", err)
 	}
 
+	// Load capabilities
+	caps, err := s.GetCapabilities(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get capabilities: %w", err)
+	}
+	indexer.Capabilities = caps
+
+	// Load categories
+	categories, err := s.GetCategories(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get categories: %w", err)
+	}
+	indexer.Categories = categories
+
 	return &indexer, nil
 }
 
@@ -237,6 +315,21 @@ func (s *TorznabIndexerStore) List(ctx context.Context) ([]*TorznabIndexer, erro
 
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating torznab indexers: %w", err)
+	}
+
+	// Load capabilities and categories for all indexers
+	for _, indexer := range indexers {
+		caps, err := s.GetCapabilities(ctx, indexer.ID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get capabilities for indexer %d: %w", indexer.ID, err)
+		}
+		indexer.Capabilities = caps
+
+		categories, err := s.GetCategories(ctx, indexer.ID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get categories for indexer %d: %w", indexer.ID, err)
+		}
+		indexer.Categories = categories
 	}
 
 	return indexers, nil
@@ -282,6 +375,21 @@ func (s *TorznabIndexerStore) ListEnabled(ctx context.Context) ([]*TorznabIndexe
 
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating enabled torznab indexers: %w", err)
+	}
+
+	// Load capabilities and categories for all indexers
+	for _, indexer := range indexers {
+		caps, err := s.GetCapabilities(ctx, indexer.ID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get capabilities for indexer %d: %w", indexer.ID, err)
+		}
+		indexer.Capabilities = caps
+
+		categories, err := s.GetCategories(ctx, indexer.ID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get categories for indexer %d: %w", indexer.ID, err)
+		}
+		indexer.Categories = categories
 	}
 
 	return indexers, nil
@@ -426,4 +534,371 @@ func (s *TorznabIndexerStore) Test(ctx context.Context, baseURL, apiKey string) 
 		return errors.New("API key is required")
 	}
 	return nil
+}
+
+// GetCapabilities retrieves all capabilities for an indexer
+func (s *TorznabIndexerStore) GetCapabilities(ctx context.Context, indexerID int) ([]string, error) {
+	query := `
+		SELECT capability_type
+		FROM torznab_indexer_capabilities_view
+		WHERE indexer_id = ?
+		ORDER BY capability_type
+	`
+
+	rows, err := s.db.QueryContext(ctx, query, indexerID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query capabilities: %w", err)
+	}
+	defer rows.Close()
+
+	capabilities := make([]string, 0)
+	for rows.Next() {
+		var cap string
+		if err := rows.Scan(&cap); err != nil {
+			return nil, fmt.Errorf("failed to scan capability: %w", err)
+		}
+		capabilities = append(capabilities, cap)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating capabilities: %w", err)
+	}
+
+	return capabilities, nil
+}
+
+// SetCapabilities replaces all capabilities for an indexer
+func (s *TorznabIndexerStore) SetCapabilities(ctx context.Context, indexerID int, capabilities []string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Delete existing capabilities
+	_, err = tx.ExecContext(ctx, "DELETE FROM torznab_indexer_capabilities WHERE indexer_id = ?", indexerID)
+	if err != nil {
+		return fmt.Errorf("failed to delete existing capabilities: %w", err)
+	}
+
+	// Insert new capabilities
+	if len(capabilities) > 0 {
+		// Intern capability strings
+		capIDs, err := dbinterface.InternStrings(ctx, tx, capabilities...)
+		if err != nil {
+			return fmt.Errorf("failed to intern capability strings: %w", err)
+		}
+
+		// Insert capabilities
+		for _, capID := range capIDs {
+			_, err = tx.ExecContext(ctx, "INSERT INTO torznab_indexer_capabilities (indexer_id, capability_type_id) VALUES (?, ?)", indexerID, capID)
+			if err != nil {
+				return fmt.Errorf("failed to insert capability: %w", err)
+			}
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
+}
+
+// GetCategories retrieves all categories for an indexer
+func (s *TorznabIndexerStore) GetCategories(ctx context.Context, indexerID int) ([]TorznabIndexerCategory, error) {
+	query := `
+		SELECT indexer_id, category_id, category_name, parent_category_id
+		FROM torznab_indexer_categories_view
+		WHERE indexer_id = ?
+		ORDER BY category_id
+	`
+
+	rows, err := s.db.QueryContext(ctx, query, indexerID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query categories: %w", err)
+	}
+	defer rows.Close()
+
+	categories := make([]TorznabIndexerCategory, 0)
+	for rows.Next() {
+		var cat TorznabIndexerCategory
+		if err := rows.Scan(&cat.IndexerID, &cat.CategoryID, &cat.CategoryName, &cat.ParentCategory); err != nil {
+			return nil, fmt.Errorf("failed to scan category: %w", err)
+		}
+		categories = append(categories, cat)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating categories: %w", err)
+	}
+
+	return categories, nil
+}
+
+// SetCategories replaces all categories for an indexer
+func (s *TorznabIndexerStore) SetCategories(ctx context.Context, indexerID int, categories []TorznabIndexerCategory) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Delete existing categories
+	_, err = tx.ExecContext(ctx, "DELETE FROM torznab_indexer_categories WHERE indexer_id = ?", indexerID)
+	if err != nil {
+		return fmt.Errorf("failed to delete existing categories: %w", err)
+	}
+
+	// Insert new categories
+	if len(categories) > 0 {
+		// Intern category names
+		names := make([]string, len(categories))
+		for i, cat := range categories {
+			names[i] = cat.CategoryName
+		}
+		nameIDs, err := dbinterface.InternStrings(ctx, tx, names...)
+		if err != nil {
+			return fmt.Errorf("failed to intern category names: %w", err)
+		}
+
+		// Insert categories
+		for i, cat := range categories {
+			_, err = tx.ExecContext(ctx, "INSERT INTO torznab_indexer_categories (indexer_id, category_id, category_name_id, parent_category_id) VALUES (?, ?, ?, ?)", indexerID, cat.CategoryID, nameIDs[i], cat.ParentCategory)
+			if err != nil {
+				return fmt.Errorf("failed to insert category: %w", err)
+			}
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
+}
+
+// RecordError records an error for an indexer
+func (s *TorznabIndexerStore) RecordError(ctx context.Context, indexerID int, errorMessage, errorCode string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Intern error message
+	ids, err := dbinterface.InternStrings(ctx, tx, errorMessage)
+	if err != nil {
+		return fmt.Errorf("failed to intern error message: %w", err)
+	}
+	errorMessageID := ids[0]
+
+	// Check if there's a recent unresolved error with the same message
+	var existingID sql.NullInt64
+	err = tx.QueryRowContext(ctx, `
+		SELECT id FROM torznab_indexer_errors
+		WHERE indexer_id = ? AND error_message_id = ? AND resolved_at IS NULL
+		ORDER BY occurred_at DESC
+		LIMIT 1
+	`, indexerID, errorMessageID).Scan(&existingID)
+
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("failed to check for existing error: %w", err)
+	}
+
+	if existingID.Valid {
+		// Increment error count for existing error
+		_, err = tx.ExecContext(ctx, `
+			UPDATE torznab_indexer_errors
+			SET error_count = error_count + 1, occurred_at = CURRENT_TIMESTAMP
+			WHERE id = ?
+		`, existingID.Int64)
+		if err != nil {
+			return fmt.Errorf("failed to increment error count: %w", err)
+		}
+	} else {
+		// Insert new error
+		_, err = tx.ExecContext(ctx, `
+			INSERT INTO torznab_indexer_errors (indexer_id, error_message_id, error_code)
+			VALUES (?, ?, ?)
+		`, indexerID, errorMessageID, errorCode)
+		if err != nil {
+			return fmt.Errorf("failed to insert error: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
+}
+
+// ResolveErrors marks all unresolved errors for an indexer as resolved
+func (s *TorznabIndexerStore) ResolveErrors(ctx context.Context, indexerID int) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE torznab_indexer_errors
+		SET resolved_at = CURRENT_TIMESTAMP
+		WHERE indexer_id = ? AND resolved_at IS NULL
+	`, indexerID)
+	if err != nil {
+		return fmt.Errorf("failed to resolve errors: %w", err)
+	}
+	return nil
+}
+
+// GetRecentErrors retrieves recent errors for an indexer
+func (s *TorznabIndexerStore) GetRecentErrors(ctx context.Context, indexerID int, limit int) ([]TorznabIndexerError, error) {
+	query := `
+		SELECT tie.id, tie.indexer_id, sp.value as error_message, tie.error_code, tie.occurred_at, tie.resolved_at, tie.error_count
+		FROM torznab_indexer_errors tie
+		INNER JOIN string_pool sp ON tie.error_message_id = sp.id
+		WHERE tie.indexer_id = ?
+		ORDER BY tie.occurred_at DESC
+		LIMIT ?
+	`
+
+	rows, err := s.db.QueryContext(ctx, query, indexerID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query errors: %w", err)
+	}
+	defer rows.Close()
+
+	errors := make([]TorznabIndexerError, 0)
+	for rows.Next() {
+		var e TorznabIndexerError
+		if err := rows.Scan(&e.ID, &e.IndexerID, &e.ErrorMessage, &e.ErrorCode, &e.OccurredAt, &e.ResolvedAt, &e.ErrorCount); err != nil {
+			return nil, fmt.Errorf("failed to scan error: %w", err)
+		}
+		errors = append(errors, e)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating errors: %w", err)
+	}
+
+	return errors, nil
+}
+
+// RecordLatency records a latency measurement for an indexer
+func (s *TorznabIndexerStore) RecordLatency(ctx context.Context, indexerID int, operationType string, latencyMs int, success bool) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO torznab_indexer_latency (indexer_id, operation_type, latency_ms, success)
+		VALUES (?, ?, ?, ?)
+	`, indexerID, operationType, latencyMs, success)
+	if err != nil {
+		return fmt.Errorf("failed to record latency: %w", err)
+	}
+	return nil
+}
+
+// GetLatencyStats retrieves aggregated latency statistics for an indexer
+func (s *TorznabIndexerStore) GetLatencyStats(ctx context.Context, indexerID int) ([]TorznabIndexerLatencyStats, error) {
+	query := `
+		SELECT indexer_id, operation_type, total_requests, successful_requests, avg_latency_ms, min_latency_ms, max_latency_ms, success_rate_pct, last_measured_at
+		FROM torznab_indexer_latency_stats
+		WHERE indexer_id = ?
+		ORDER BY operation_type
+	`
+
+	rows, err := s.db.QueryContext(ctx, query, indexerID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query latency stats: %w", err)
+	}
+	defer rows.Close()
+
+	stats := make([]TorznabIndexerLatencyStats, 0)
+	for rows.Next() {
+		var s TorznabIndexerLatencyStats
+		if err := rows.Scan(&s.IndexerID, &s.OperationType, &s.TotalRequests, &s.SuccessfulRequests, &s.AvgLatencyMs, &s.MinLatencyMs, &s.MaxLatencyMs, &s.SuccessRatePct, &s.LastMeasuredAt); err != nil {
+			return nil, fmt.Errorf("failed to scan latency stats: %w", err)
+		}
+		stats = append(stats, s)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating latency stats: %w", err)
+	}
+
+	return stats, nil
+}
+
+// GetHealth retrieves health information for an indexer
+func (s *TorznabIndexerStore) GetHealth(ctx context.Context, indexerID int) (*TorznabIndexerHealth, error) {
+	query := `
+		SELECT indexer_id, indexer_name, enabled, last_test_status, errors_last_24h, unresolved_errors, avg_latency_ms, success_rate_pct, requests_last_7d, last_measured_at
+		FROM torznab_indexer_health
+		WHERE indexer_id = ?
+	`
+
+	var health TorznabIndexerHealth
+	err := s.db.QueryRowContext(ctx, query, indexerID).Scan(
+		&health.IndexerID,
+		&health.IndexerName,
+		&health.Enabled,
+		&health.LastTestStatus,
+		&health.ErrorsLast24h,
+		&health.UnresolvedErrors,
+		&health.AvgLatencyMs,
+		&health.SuccessRatePct,
+		&health.RequestsLast7d,
+		&health.LastMeasuredAt,
+	)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrTorznabIndexerNotFound
+		}
+		return nil, fmt.Errorf("failed to get health: %w", err)
+	}
+
+	return &health, nil
+}
+
+// GetAllHealth retrieves health information for all indexers
+func (s *TorznabIndexerStore) GetAllHealth(ctx context.Context) ([]TorznabIndexerHealth, error) {
+	query := `
+		SELECT indexer_id, indexer_name, enabled, last_test_status, errors_last_24h, unresolved_errors, avg_latency_ms, success_rate_pct, requests_last_7d, last_measured_at
+		FROM torznab_indexer_health
+		ORDER BY indexer_name
+	`
+
+	rows, err := s.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query health: %w", err)
+	}
+	defer rows.Close()
+
+	healthList := make([]TorznabIndexerHealth, 0)
+	for rows.Next() {
+		var health TorznabIndexerHealth
+		if err := rows.Scan(&health.IndexerID, &health.IndexerName, &health.Enabled, &health.LastTestStatus, &health.ErrorsLast24h, &health.UnresolvedErrors, &health.AvgLatencyMs, &health.SuccessRatePct, &health.RequestsLast7d, &health.LastMeasuredAt); err != nil {
+			return nil, fmt.Errorf("failed to scan health: %w", err)
+		}
+		healthList = append(healthList, health)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating health: %w", err)
+	}
+
+	return healthList, nil
+}
+
+// CleanupOldLatency removes latency records older than the specified duration
+func (s *TorznabIndexerStore) CleanupOldLatency(ctx context.Context, olderThan time.Duration) (int64, error) {
+	result, err := s.db.ExecContext(ctx, `
+		DELETE FROM torznab_indexer_latency
+		WHERE measured_at < datetime('now', ?)
+	`, fmt.Sprintf("-%d seconds", int(olderThan.Seconds())))
+	if err != nil {
+		return 0, fmt.Errorf("failed to cleanup old latency: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	return rowsAffected, nil
 }

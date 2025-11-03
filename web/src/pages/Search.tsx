@@ -3,13 +3,14 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
 import { Search as SearchIcon, Download, ExternalLink } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Table,
   TableBody,
@@ -19,7 +20,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import type { TorznabSearchResult } from '@/types'
+import type { TorznabSearchResult, TorznabIndexer } from '@/types'
 import { api } from '@/lib/api'
 
 export function Search() {
@@ -27,6 +28,45 @@ export function Search() {
   const [loading, setLoading] = useState(false)
   const [results, setResults] = useState<TorznabSearchResult[]>([])
   const [total, setTotal] = useState(0)
+  const [indexers, setIndexers] = useState<TorznabIndexer[]>([])
+  const [selectedIndexers, setSelectedIndexers] = useState<Set<number>>(new Set())
+  const [loadingIndexers, setLoadingIndexers] = useState(true)
+
+  useEffect(() => {
+    const loadIndexers = async () => {
+      try {
+        const data = await api.listTorznabIndexers()
+        const enabledIndexers = data.filter(idx => idx.enabled)
+        setIndexers(enabledIndexers)
+        // Select all enabled indexers by default
+        setSelectedIndexers(new Set(enabledIndexers.map(idx => idx.id)))
+      } catch (error) {
+        toast.error('Failed to load indexers')
+        console.error('Load indexers error:', error)
+      } finally {
+        setLoadingIndexers(false)
+      }
+    }
+    loadIndexers()
+  }, [])
+
+  const toggleIndexer = (id: number) => {
+    const newSelected = new Set(selectedIndexers)
+    if (newSelected.has(id)) {
+      newSelected.delete(id)
+    } else {
+      newSelected.add(id)
+    }
+    setSelectedIndexers(newSelected)
+  }
+
+  const handleSelectAll = () => {
+    setSelectedIndexers(new Set(indexers.map(idx => idx.id)))
+  }
+
+  const handleDeselectAll = () => {
+    setSelectedIndexers(new Set())
+  }
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -36,9 +76,22 @@ export function Search() {
       return
     }
 
+    if (selectedIndexers.size === 0) {
+      toast.error('Please select at least one indexer')
+      return
+    }
+
+    if (indexers.length === 0) {
+      toast.error('No enabled indexers available. Please add and enable indexers first.')
+      return
+    }
+
     setLoading(true)
     try {
-      const response = await api.searchTorznab({ query })
+      const response = await api.searchTorznab({ 
+        query,
+        indexer_ids: Array.from(selectedIndexers)
+      })
       setResults(response.results)
       setTotal(response.total)
       
@@ -48,7 +101,8 @@ export function Search() {
         toast.success(`Found ${response.total} results`)
       }
     } catch (error) {
-      toast.error('Search failed')
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+      toast.error(`Search failed: ${errorMsg}`)
       console.error('Search error:', error)
     } finally {
       setLoading(false)
@@ -97,11 +151,61 @@ export function Search() {
                   disabled={loading}
                 />
               </div>
-              <Button type="submit" disabled={loading || !query.trim()}>
+              <Button type="submit" disabled={loading || !query.trim() || selectedIndexers.size === 0}>
                 <SearchIcon className="mr-2 h-4 w-4" />
                 {loading ? 'Searching...' : 'Search'}
               </Button>
             </div>
+
+            {/* Indexer Selection */}
+            {!loadingIndexers && indexers.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-medium">Indexers ({selectedIndexers.size} of {indexers.length} selected)</Label>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleSelectAll}
+                    >
+                      Select All
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleDeselectAll}
+                    >
+                      Deselect All
+                    </Button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 p-4 border rounded-md max-h-32 overflow-y-auto">
+                  {indexers.map((indexer) => (
+                    <div key={indexer.id} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`indexer-${indexer.id}`}
+                        checked={selectedIndexers.has(indexer.id)}
+                        onCheckedChange={() => toggleIndexer(indexer.id)}
+                      />
+                      <label
+                        htmlFor={`indexer-${indexer.id}`}
+                        className="text-sm cursor-pointer"
+                      >
+                        {indexer.name}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {!loadingIndexers && indexers.length === 0 && (
+              <div className="text-sm text-muted-foreground">
+                No enabled indexers available. Please add and enable indexers in the <a href="/indexers" className="text-primary hover:underline">Indexers page</a>.
+              </div>
+            )}
           </form>
 
           {results.length > 0 && (

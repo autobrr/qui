@@ -29,7 +29,10 @@ import type {
   TorrentResponse,
   TorrentTracker,
   TorznabIndexer,
+  TorznabIndexerError,
   TorznabIndexerFormData,
+  TorznabIndexerHealth,
+  TorznabIndexerLatencyStats,
   TorznabSearchRequest,
   TorznabSearchResponse,
   User
@@ -851,10 +854,27 @@ class ApiClient {
   }
 
   async searchTorznab(request: TorznabSearchRequest): Promise<TorznabSearchResponse> {
-    return this.request<TorznabSearchResponse>("/jackett/search", {
+    return this.request<TorznabSearchResponse>("/torznab/search", {
       method: "POST",
       body: JSON.stringify(request),
     })
+  }
+
+  async getAllIndexerHealth(): Promise<TorznabIndexerHealth[]> {
+    return this.request<TorznabIndexerHealth[]>("/torznab/indexers/health")
+  }
+
+  async getIndexerHealth(id: number): Promise<TorznabIndexerHealth> {
+    return this.request<TorznabIndexerHealth>(`/torznab/indexers/${id}/health`)
+  }
+
+  async getIndexerErrors(id: number, limit?: number): Promise<TorznabIndexerError[]> {
+    const params = limit ? `?limit=${limit}` : ""
+    return this.request<TorznabIndexerError[]>(`/torznab/indexers/${id}/errors${params}`)
+  }
+
+  async getIndexerStats(id: number): Promise<TorznabIndexerLatencyStats[]> {
+    return this.request<TorznabIndexerLatencyStats[]>(`/torznab/indexers/${id}/stats`)
   }
 }
 
