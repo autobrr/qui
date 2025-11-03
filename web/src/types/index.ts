@@ -238,6 +238,7 @@ export interface TorrentFilters {
 
 export interface TorrentResponse {
   torrents: Torrent[]
+  crossInstanceTorrents?: CrossInstanceTorrent[]
   total: number
   stats?: TorrentStats
   counts?: TorrentCounts
@@ -248,6 +249,12 @@ export interface TorrentResponse {
   cacheMetadata?: CacheMetadata
   hasMore?: boolean
   trackerHealthSupported?: boolean
+  isCrossInstance?: boolean
+}
+
+export interface CrossInstanceTorrent extends Torrent {
+  instanceId: number
+  instanceName: string
 }
 
 // Simplified MainData - only used for Dashboard server stats

@@ -298,6 +298,29 @@ class ApiClient {
     )
   }
 
+  async getCrossInstanceTorrents(
+    params: {
+      page?: number
+      limit?: number
+      sort?: string
+      order?: "asc" | "desc"
+      search?: string
+      filters?: TorrentFilters
+    }
+  ): Promise<TorrentResponse> {
+    const searchParams = new URLSearchParams()
+    if (params.page !== undefined) searchParams.set("page", params.page.toString())
+    if (params.limit !== undefined) searchParams.set("limit", params.limit.toString())
+    if (params.sort) searchParams.set("sort", params.sort)
+    if (params.order) searchParams.set("order", params.order)
+    if (params.search) searchParams.set("search", params.search)
+    if (params.filters) searchParams.set("filters", JSON.stringify(params.filters))
+
+    return this.request<TorrentResponse>(
+      `/torrents/cross-instance?${searchParams}`
+    )
+  }
+
   async addTorrent(
     instanceId: number,
     data: {

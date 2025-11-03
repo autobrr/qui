@@ -394,7 +394,8 @@ export const createColumns = (
   trackerIcons?: Record<string, string>,
   formatTimestamp?: (timestamp: number) => string,
   instancePreferences?: AppPreferences | null,
-  supportsTrackerHealth: boolean = true
+  supportsTrackerHealth: boolean = true,
+  showInstanceColumn: boolean = false
 ): ColumnDef<Torrent>[] => [
   {
     id: "select",
@@ -546,6 +547,22 @@ export const createColumns = (
     },
     size: 200,
   },
+  ...(showInstanceColumn ? [{
+    id: "instance",
+    accessorKey: "instanceName",
+    header: "Instance",
+    cell: ({ row }: { row: any }) => {
+      const instanceName = row.original.instanceName || ""
+      return (
+        <div className="overflow-hidden whitespace-nowrap text-sm font-medium" title={instanceName}>
+          <Badge variant="outline" className="text-xs">
+            {instanceName}
+          </Badge>
+        </div>
+      )
+    },
+    size: calculateMinWidth("Instance"),
+  }] : []),
   {
     accessorKey: "size",
     header: "Size",

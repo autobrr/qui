@@ -921,6 +921,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     isLoadingMore,
     hasLoadedAll,
     loadMore: backendLoadMore,
+    isCrossSeedFiltering,
   } = useTorrentsList(instanceId, {
     search: effectiveSearch,
     filters: {
@@ -1182,8 +1183,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       onRowSelection: handleRowSelection,
       isAllSelected,
       excludedFromSelectAll,
-    }, speedUnit, trackerIcons, formatTimestamp, preferences, supportsTrackerHealth),
-    [incognitoMode, speedUnit, trackerIcons, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, isAllSelected, excludedFromSelectAll, preferences, supportsTrackerHealth]
+    }, speedUnit, trackerIcons, formatTimestamp, preferences, supportsTrackerHealth, isCrossSeedFiltering),
+    [incognitoMode, speedUnit, trackerIcons, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, isAllSelected, excludedFromSelectAll, preferences, supportsTrackerHealth, isCrossSeedFiltering]
   )
 
   const torrentIdentityCounts = useMemo(() => {

@@ -59,19 +59,28 @@ type TorrentView struct {
 	TrackerHealth TrackerHealth `json:"tracker_health,omitempty"`
 }
 
+// CrossInstanceTorrentView represents a torrent with instance information
+type CrossInstanceTorrentView struct {
+	TorrentView
+	InstanceID   int    `json:"instanceId"`
+	InstanceName string `json:"instanceName"`
+}
+
 type TorrentResponse struct {
-	Torrents               []TorrentView           `json:"torrents"`
-	Total                  int                     `json:"total"`
-	Stats                  *TorrentStats           `json:"stats,omitempty"`
-	Counts                 *TorrentCounts          `json:"counts,omitempty"`      // Include counts for sidebar
-	Categories             map[string]qbt.Category `json:"categories,omitempty"`  // Include categories for sidebar
-	Tags                   []string                `json:"tags,omitempty"`        // Include tags for sidebar
-	ServerState            *qbt.ServerState        `json:"serverState,omitempty"` // Include server state for Dashboard
-	UseSubcategories       bool                    `json:"useSubcategories"`      // Whether subcategories are enabled
-	HasMore                bool                    `json:"hasMore"`               // Whether more pages are available
-	SessionID              string                  `json:"sessionId,omitempty"`   // Optional session tracking
-	CacheMetadata          *CacheMetadata          `json:"cacheMetadata,omitempty"`
-	TrackerHealthSupported bool                    `json:"trackerHealthSupported"`
+	Torrents               []TorrentView              `json:"torrents"`
+	CrossInstanceTorrents  []CrossInstanceTorrentView `json:"crossInstanceTorrents,omitempty"` // For cross-instance responses
+	Total                  int                        `json:"total"`
+	Stats                  *TorrentStats              `json:"stats,omitempty"`
+	Counts                 *TorrentCounts             `json:"counts,omitempty"`      // Include counts for sidebar
+	Categories             map[string]qbt.Category    `json:"categories,omitempty"`  // Include categories for sidebar
+	Tags                   []string                   `json:"tags,omitempty"`        // Include tags for sidebar
+	ServerState            *qbt.ServerState           `json:"serverState,omitempty"` // Include server state for Dashboard
+	UseSubcategories       bool                       `json:"useSubcategories"`      // Whether subcategories are enabled
+	HasMore                bool                       `json:"hasMore"`               // Whether more pages are available
+	SessionID              string                     `json:"sessionId,omitempty"`   // Optional session tracking
+	CacheMetadata          *CacheMetadata             `json:"cacheMetadata,omitempty"`
+	TrackerHealthSupported bool                       `json:"trackerHealthSupported"`
+	IsCrossInstance        bool                       `json:"isCrossInstance"` // Indicates if this is a cross-instance response
 }
 
 // TorrentStats represents aggregated torrent statistics
@@ -582,6 +591,133 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		Interface("filters", filters).
 		Bool("hasMore", hasMore).
 		Msg("Fresh torrent data fetched and cached")
+
+	return response, nil
+}
+
+// GetCrossInstanceTorrentsWithFilters gets torrents matching filters from all instances
+func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, limit, offset int, sort, order, search string, filters FilterOptions) (*TorrentResponse, error) {
+	// Get all instances
+	instances, err := sm.clientPool.instanceStore.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get instances: %w", err)
+	}
+
+	// Sort instances by ID for deterministic processing order
+	slices.SortFunc(instances, func(a, b *models.Instance) int {
+		return a.ID - b.ID
+	})
+
+	var allTorrents []CrossInstanceTorrentView
+	var totalCount int
+
+	// Iterate through all instances and collect matching torrents
+	for _, instance := range instances {
+		instanceResponse, err := sm.GetTorrentsWithFilters(ctx, instance.ID, 0, 0, "", "", search, filters)
+		if err != nil {
+			log.Warn().
+				Int("instanceID", instance.ID).
+				Str("instanceName", instance.Name).
+				Err(err).
+				Msg("Failed to get torrents from instance for cross-instance filtering")
+			continue
+		}
+
+		// Convert TorrentView to CrossInstanceTorrentView
+		for _, torrentView := range instanceResponse.Torrents {
+			crossInstanceTorrent := CrossInstanceTorrentView{
+				TorrentView:  torrentView,
+				InstanceID:   instance.ID,
+				InstanceName: instance.Name,
+			}
+			allTorrents = append(allTorrents, crossInstanceTorrent)
+		}
+		totalCount += len(instanceResponse.Torrents)
+	}
+
+	// Apply sorting if specified - always use deterministic secondary sort
+	if sort != "" {
+		switch sort {
+		case "name":
+			slices.SortFunc(allTorrents, func(a, b CrossInstanceTorrentView) int {
+				result := strings.Compare(a.Name, b.Name)
+				if result == 0 {
+					// Secondary sort by hash for deterministic ordering
+					result = strings.Compare(a.Hash, b.Hash)
+				}
+				if order == "desc" {
+					result = -result
+				}
+				return result
+			})
+		case "size":
+			slices.SortFunc(allTorrents, func(a, b CrossInstanceTorrentView) int {
+				result := int(a.Size - b.Size)
+				if result == 0 {
+					// Secondary sort by name for deterministic ordering
+					result = strings.Compare(a.Name, b.Name)
+				}
+				if order == "desc" {
+					result = -result
+				}
+				return result
+			})
+		case "progress":
+			slices.SortFunc(allTorrents, func(a, b CrossInstanceTorrentView) int {
+				result := int((a.Progress * 1000) - (b.Progress * 1000))
+				if result == 0 {
+					// Secondary sort by name for deterministic ordering
+					result = strings.Compare(a.Name, b.Name)
+				}
+				if order == "desc" {
+					result = -result
+				}
+				return result
+			})
+		case "instance":
+			slices.SortFunc(allTorrents, func(a, b CrossInstanceTorrentView) int {
+				result := strings.Compare(a.InstanceName, b.InstanceName)
+				if result == 0 {
+					// Secondary sort by name for deterministic ordering
+					result = strings.Compare(a.Name, b.Name)
+				}
+				if order == "desc" {
+					result = -result
+				}
+				return result
+			})
+		}
+	} else {
+		// Default sort by name if no sort specified for consistent ordering
+		slices.SortFunc(allTorrents, func(a, b CrossInstanceTorrentView) int {
+			result := strings.Compare(a.Name, b.Name)
+			if result == 0 {
+				result = strings.Compare(a.Hash, b.Hash)
+			}
+			return result
+		})
+	}
+
+	// Apply pagination
+	start := offset
+	end := offset + limit
+	if start > len(allTorrents) {
+		start = len(allTorrents)
+	}
+	if end > len(allTorrents) {
+		end = len(allTorrents)
+	}
+
+	paginatedTorrents := allTorrents[start:end]
+	hasMore := end < len(allTorrents)
+
+	response := &TorrentResponse{
+		CrossInstanceTorrents:  paginatedTorrents,
+		Total:                  totalCount,
+		HasMore:                hasMore,
+		TrackerHealthSupported: false, // Cross-instance doesn't support tracker health
+		IsCrossInstance:        true,
+	}
 
 	return response, nil
 }
