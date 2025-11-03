@@ -31,31 +31,31 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
   const [loading, setLoading] = useState(false)
   const [formData, setFormData] = useState<TorznabIndexerFormData>({
     name: '',
-    baseUrl: '',
-    apiKey: '',
+    base_url: '',
+    api_key: '',
     enabled: true,
     priority: 0,
-    timeoutSeconds: 30,
+    timeout_seconds: 30,
   })
 
   useEffect(() => {
     if (mode === 'edit' && indexer) {
       setFormData({
         name: indexer.name,
-        baseUrl: indexer.baseUrl,
-        apiKey: '', // API key not returned from backend for security
+        base_url: indexer.baseUrl,
+        api_key: '', // API key not returned from backend for security
         enabled: indexer.enabled,
         priority: indexer.priority,
-        timeoutSeconds: indexer.timeoutSeconds,
+        timeout_seconds: indexer.timeoutSeconds,
       })
     } else {
       setFormData({
         name: '',
-        baseUrl: '',
-        apiKey: '',
+        base_url: '',
+        api_key: '',
         enabled: true,
         priority: 0,
-        timeoutSeconds: 30,
+        timeout_seconds: 30,
       })
     }
   }, [mode, indexer, open])
@@ -112,9 +112,9 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
               <Input
                 id="baseUrl"
                 type="url"
-                value={formData.baseUrl}
+                value={formData.base_url}
                 onChange={(e) =>
-                  setFormData({ ...formData, baseUrl: e.target.value })
+                  setFormData({ ...formData, base_url: e.target.value })
                 }
                 placeholder="http://localhost:9117"
                 required
@@ -125,9 +125,9 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
               <Input
                 id="apiKey"
                 type="password"
-                value={formData.apiKey}
+                value={formData.api_key}
                 onChange={(e) =>
-                  setFormData({ ...formData, apiKey: e.target.value })
+                  setFormData({ ...formData, api_key: e.target.value })
                 }
                 placeholder={mode === 'edit' ? 'Leave blank to keep existing' : 'Your API key'}
                 required={mode === 'create'}
@@ -152,9 +152,9 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
                 <Input
                   id="timeout"
                   type="number"
-                  value={formData.timeoutSeconds}
+                  value={formData.timeout_seconds}
                   onChange={(e) =>
-                    setFormData({ ...formData, timeoutSeconds: parseInt(e.target.value) })
+                    setFormData({ ...formData, timeout_seconds: parseInt(e.target.value) })
                   }
                   min="5"
                   max="120"

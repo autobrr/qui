@@ -64,17 +64,18 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
     setLoading(true)
     let successCount = 0
     let errorCount = 0
+    const errors: string[] = []
 
     for (const indexer of discoveredIndexers) {
       if (!selectedIndexers.has(indexer.id)) continue
 
       const formData: TorznabIndexerFormData = {
         name: indexer.name,
-        baseUrl: `${baseUrl}/api/v2.0/indexers/${indexer.id}/results/torznab`,
-        apiKey: apiKey,
+        base_url: `${baseUrl}/api/v2.0/indexers/${indexer.id}/results/torznab`,
+        api_key: apiKey,
         enabled: true,
         priority: 0,
-        timeoutSeconds: 30,
+        timeout_seconds: 30,
       }
 
       try {
@@ -82,6 +83,9 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
         successCount++
       } catch (error) {
         errorCount++
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        errors.push(`${indexer.name}: ${errorMessage}`)
+        console.error(`Failed to import ${indexer.name}:`, error)
       }
     }
 
@@ -91,9 +95,22 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
       toast.success(`Imported ${successCount} indexers`)
     } else {
       toast.error(`Imported ${successCount} indexers, ${errorCount} failed`)
+      // Show first error detail
+      if (errors.length > 0) {
+        toast.error(errors[0])
+      }
     }
 
     handleClose()
+  }
+
+  const handleSelectAll = () => {
+    const allIds = new Set(discoveredIndexers.map(idx => idx.id))
+    setSelectedIndexers(allIds)
+  }
+
+  const handleDeselectAll = () => {
+    setSelectedIndexers(new Set())
   }
 
   const handleClose = () => {
@@ -154,6 +171,29 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
           </form>
         ) : (
           <>
+            {discoveredIndexers.length > 0 && (
+              <div className="flex gap-2 pb-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSelectAll}
+                >
+                  Select All
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleDeselectAll}
+                >
+                  Deselect All
+                </Button>
+                <span className="text-sm text-muted-foreground ml-auto self-center">
+                  {selectedIndexers.size} of {discoveredIndexers.length} selected
+                </span>
+              </div>
+            )}
             <ScrollArea className="h-[400px] pr-4">
               <div className="space-y-2">
                 {discoveredIndexers.length === 0 ? (

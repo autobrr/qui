@@ -807,11 +807,11 @@ export interface TorznabIndexer {
 
 export interface TorznabIndexerFormData {
   name: string
-  baseUrl: string
-  apiKey: string
+  base_url: string
+  api_key: string
   enabled: boolean
   priority: number
-  timeoutSeconds: number
+  timeout_seconds: number
 }
 
 export interface JackettIndexer {
