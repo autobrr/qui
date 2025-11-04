@@ -280,6 +280,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			r.Route("/instances", func(r chi.Router) {
 				r.Get("/", instancesHandler.ListInstances)
 				r.Post("/", instancesHandler.CreateInstance)
+				r.Put("/order", instancesHandler.UpdateInstanceOrder)
 
 				r.Route("/{instanceID}", func(r chi.Router) {
 					r.Put("/", instancesHandler.UpdateInstance)

@@ -103,6 +103,7 @@ func (h *InstancesHandler) buildInstanceResponsesParallel(ctx context.Context, i
 				TLSSkipVerify:      instances[i].TLSSkipVerify,
 				Connected:          false,
 				HasDecryptionError: false,
+				SortOrder:          instances[i].SortOrder,
 			}
 		}
 	}
@@ -136,6 +137,7 @@ func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *
 		Connected:          healthy,
 		HasDecryptionError: hasDecryptionError,
 		ConnectionStatus:   connectionStatus,
+		SortOrder:          instance.SortOrder,
 	}
 
 	// Fetch recent errors for disconnected instances
@@ -163,6 +165,7 @@ func (h *InstancesHandler) buildQuickInstanceResponse(instance *models.Instance)
 		TLSSkipVerify:      instance.TLSSkipVerify,
 		Connected:          false, // Will be updated asynchronously
 		HasDecryptionError: false,
+		SortOrder:          instance.SortOrder,
 	}
 }
 
@@ -221,6 +224,7 @@ type InstanceResponse struct {
 	HasDecryptionError bool                   `json:"hasDecryptionError"`
 	RecentErrors       []models.InstanceError `json:"recentErrors,omitempty"`
 	ConnectionStatus   string                 `json:"connectionStatus,omitempty"`
+	SortOrder          int                    `json:"sortOrder"`
 }
 
 // TestConnectionResponse represents connection test results
@@ -246,6 +250,69 @@ func (h *InstancesHandler) ListInstances(w http.ResponseWriter, r *http.Request)
 
 	response := h.buildInstanceResponsesParallel(r.Context(), instances)
 
+	RespondJSON(w, http.StatusOK, response)
+}
+
+// UpdateInstanceOrder updates the display order for all instances
+func (h *InstancesHandler) UpdateInstanceOrder(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		InstanceIDs []int `json:"instanceIds"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if len(req.InstanceIDs) == 0 {
+		RespondError(w, http.StatusBadRequest, "instanceIds must not be empty")
+		return
+	}
+
+	instances, err := h.instanceStore.List(r.Context())
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to list instances for reorder")
+		RespondError(w, http.StatusInternalServerError, "Failed to list instances")
+		return
+	}
+
+	if len(req.InstanceIDs) != len(instances) {
+		RespondError(w, http.StatusBadRequest, "instanceIds must include all instances")
+		return
+	}
+
+	validIDs := make(map[int]struct{}, len(instances))
+	for _, inst := range instances {
+		validIDs[inst.ID] = struct{}{}
+	}
+
+	seen := make(map[int]struct{}, len(req.InstanceIDs))
+	for _, id := range req.InstanceIDs {
+		if _, ok := validIDs[id]; !ok {
+			RespondError(w, http.StatusBadRequest, "instanceIds contains an unknown instance")
+			return
+		}
+		if _, ok := seen[id]; ok {
+			RespondError(w, http.StatusBadRequest, "instanceIds must not contain duplicates")
+			return
+		}
+		seen[id] = struct{}{}
+	}
+
+	if err := h.instanceStore.UpdateOrder(r.Context(), req.InstanceIDs); err != nil {
+		log.Error().Err(err).Msg("Failed to update instance order")
+		RespondError(w, http.StatusInternalServerError, "Failed to update instance order")
+		return
+	}
+
+	updatedInstances, err := h.instanceStore.List(r.Context())
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to list instances after reorder")
+		RespondError(w, http.StatusInternalServerError, "Failed to list instances")
+		return
+	}
+
+	response := h.buildInstanceResponsesParallel(r.Context(), updatedInstances)
 	RespondJSON(w, http.StatusOK, response)
 }
 

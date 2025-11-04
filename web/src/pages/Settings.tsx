@@ -425,7 +425,7 @@ function ApiKeysManager() {
 }
 
 function InstancesManager() {
-  const { instances, isLoading } = useInstances()
+  const { instances, isLoading, reorderInstances, isReordering } = useInstances()
   const navigate = useNavigate()
   const search = useSearch({ strict: false }) as Record<string, unknown> | undefined
   const tab = isSettingsTab(search?.tab) ? search?.tab : undefined
@@ -453,6 +453,28 @@ function InstancesManager() {
     navigate({ search: nextSearch as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
   }
 
+  const handleReorder = (instanceId: number, direction: -1 | 1) => {
+    if (!instances || isReordering) return
+
+    const currentIndex = instances.findIndex(instance => instance.id === instanceId)
+    if (currentIndex === -1) return
+
+    const targetIndex = currentIndex + direction
+    if (targetIndex < 0 || targetIndex >= instances.length) return
+
+    const orderedIds = instances.map(instance => instance.id)
+    const [moved] = orderedIds.splice(currentIndex, 1)
+    orderedIds.splice(targetIndex, 0, moved)
+
+    reorderInstances(orderedIds, {
+      onError: (error) => {
+        toast.error("Failed to update instance order", {
+          description: error instanceof Error ? error.message : undefined,
+        })
+      },
+    })
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:justify-end">
@@ -473,11 +495,15 @@ function InstancesManager() {
           <>
             {instances && instances.length > 0 ? (
               <div className="grid gap-4 lg:grid-cols-2">
-                {instances.map((instance) => (
+                {instances.map((instance, index) => (
                   <InstanceCard
                     key={instance.id}
                     instance={instance}
                     onEdit={() => handleOpenDialog(instance)}
+                    onMoveUp={index > 0 ? () => handleReorder(instance.id, -1) : undefined}
+                    onMoveDown={index < instances.length - 1 ? () => handleReorder(instance.id, 1) : undefined}
+                    disableMoveUp={isReordering}
+                    disableMoveDown={isReordering}
                   />
                 ))}
               </div>
