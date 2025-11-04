@@ -5,7 +5,7 @@
 
 import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
-import { Search as SearchIcon, Download, ExternalLink } from 'lucide-react'
+import { Search as SearchIcon, Download, ExternalLink, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -22,6 +22,9 @@ import {
 import { Badge } from '@/components/ui/badge'
 import type { TorznabSearchResult, TorznabIndexer } from '@/types'
 import { api } from '@/lib/api'
+import { AddTorrentDialog, type AddTorrentDropPayload } from '@/components/torrents/AddTorrentDialog'
+import { useInstances } from '@/hooks/useInstances'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 export function Search() {
   const [query, setQuery] = useState('')
@@ -31,6 +34,10 @@ export function Search() {
   const [indexers, setIndexers] = useState<TorznabIndexer[]>([])
   const [selectedIndexers, setSelectedIndexers] = useState<Set<number>>(new Set())
   const [loadingIndexers, setLoadingIndexers] = useState(true)
+  const { instances, isLoading: loadingInstances } = useInstances()
+  const [selectedInstanceId, setSelectedInstanceId] = useState<number | null>(null)
+  const [addDialogOpen, setAddDialogOpen] = useState(false)
+  const [addDialogPayload, setAddDialogPayload] = useState<AddTorrentDropPayload | null>(null)
   const formatBackend = (backend: TorznabIndexer['backend']) => {
     switch (backend) {
       case 'prowlarr':
@@ -59,6 +66,22 @@ export function Search() {
     }
     loadIndexers()
   }, [])
+
+  useEffect(() => {
+    if (!instances || instances.length === 0) {
+      setSelectedInstanceId(null)
+      return
+    }
+
+    setSelectedInstanceId((prev) => {
+      if (prev && instances.some(instance => instance.id === prev)) {
+        return prev
+      }
+
+      const preferred = instances.find(instance => instance.connected)?.id ?? instances[0]?.id ?? null
+      return preferred
+    })
+  }, [instances])
 
   const toggleIndexer = (id: number) => {
     const newSelected = new Set(selectedIndexers)
@@ -133,10 +156,32 @@ export function Search() {
   }
 
   const handleDownload = (result: TorznabSearchResult) => {
-    // TODO: Open AddTorrent dialog with the download URL
-    // For now, just open the URL
     window.open(result.download_url, '_blank')
   }
+
+  const handleAddTorrent = (result: TorznabSearchResult) => {
+    if (!selectedInstanceId) {
+      toast.error('Select an instance to add torrents')
+      return
+    }
+
+    if (!result.download_url) {
+      toast.error('No download URL available for this result')
+      return
+    }
+
+    setAddDialogPayload({ type: 'url', urls: [result.download_url] })
+    setAddDialogOpen(true)
+  }
+
+  const handleDialogOpenChange = (open: boolean) => {
+    setAddDialogOpen(open)
+    if (!open) {
+      setAddDialogPayload(null)
+    }
+  }
+
+  const canAddTorrent = !!selectedInstanceId
 
   return (
     <div className="container mx-auto p-6">
@@ -165,6 +210,29 @@ export function Search() {
                 <SearchIcon className="mr-2 h-4 w-4" />
                 {loading ? 'Searching...' : 'Search'}
               </Button>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="instance-select" className="text-sm font-medium">Add torrents to</Label>
+              <Select
+                value={selectedInstanceId ? String(selectedInstanceId) : undefined}
+                onValueChange={(value) => setSelectedInstanceId(Number(value))}
+                disabled={loadingInstances || !instances || instances.length === 0}
+              >
+                <SelectTrigger id="instance-select" className="w-full md:w-80">
+                  <SelectValue placeholder={loadingInstances ? 'Loading instances...' : 'No instances available'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {instances?.map((instance) => (
+                    <SelectItem key={instance.id} value={String(instance.id)}>
+                      {instance.name}{instance.connected ? '' : ' (offline)'}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {!loadingInstances && (!instances || instances.length === 0) && (
+                <p className="text-xs text-muted-foreground">Add a download instance under Settings -&gt; Instances to enable quick adding.</p>
+              )}
             </div>
 
             {/* Indexer Selection */}
@@ -268,20 +336,29 @@ export function Search() {
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
                           {result.info_url && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => window.open(result.info_url, '_blank')}
-                              title="View details"
-                            >
-                              <ExternalLink className="h-4 w-4" />
-                            </Button>
-                          )}
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => handleDownload(result)}
-                            title="Download"
+                            onClick={() => window.open(result.info_url, '_blank')}
+                            title="View details"
+                          >
+                            <ExternalLink className="h-4 w-4" />
+                          </Button>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleAddTorrent(result)}
+                          title={canAddTorrent ? 'Add to instance' : 'Select an instance to add torrents'}
+                          disabled={!canAddTorrent}
+                        >
+                          <Plus className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDownload(result)}
+                          title="Download"
                           >
                             <Download className="h-4 w-4" />
                           </Button>
@@ -307,6 +384,16 @@ export function Search() {
           )}
         </CardContent>
       </Card>
+
+      {selectedInstanceId && (
+        <AddTorrentDialog
+          instanceId={selectedInstanceId}
+          open={addDialogOpen}
+          onOpenChange={handleDialogOpenChange}
+          dropPayload={addDialogPayload}
+          onDropPayloadConsumed={() => setAddDialogPayload(null)}
+        />
+      )}
     </div>
   )
 }
