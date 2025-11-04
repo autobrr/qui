@@ -64,6 +64,13 @@ func TestDetectContentType(t *testing.T) {
 			expected: contentTypeXXX,
 		},
 		{
+			name: "detects movie via year and quality heuristics",
+			req: &TorznabSearchRequest{
+				Query: "Black.Phone.2.2025.1080p.AMZN.WEB-DL.DDP5.1.H.264-KyoGo",
+			},
+			expected: contentTypeMovie,
+		},
+		{
 			name: "returns unknown for ambiguous query",
 			req: &TorznabSearchRequest{
 				Query: "random search",

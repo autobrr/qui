@@ -35,6 +35,8 @@ type Service struct {
 var (
 	tvSeasonEpisodePattern = regexp.MustCompile(`(?i)\bs\d{1,2}e\d{1,2}\b`)
 	tvSeasonOnlyPattern    = regexp.MustCompile(`(?i)(?:\bseason\s*\d{1,2}\b|\bs\d{1,2}\b)`)
+	movieYearPattern       = regexp.MustCompile(`\b(19|20)\d{2}\b`)
+	movieQualityPattern    = regexp.MustCompile(`\b(480p|720p|1080p|1440p|2160p|4k|webrip|web[- ]?dl|bluray|bdrip|hdrip|dvdrip|remux)\b`)
 )
 
 // searchContext carries additional metadata about the current Torznab search.
@@ -799,6 +801,9 @@ func detectContentType(req *TorznabSearchRequest) contentType {
 
 	// If we have year but no season/episode, likely a movie
 	if req.IMDbID != "" {
+		return contentTypeMovie
+	}
+	if movieYearPattern.MatchString(queryLower) && movieQualityPattern.MatchString(queryLower) {
 		return contentTypeMovie
 	}
 
