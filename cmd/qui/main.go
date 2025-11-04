@@ -466,6 +466,7 @@ func (app *Application) runServer() {
 	}
 
 	clientAPIKeyStore := models.NewClientAPIKeyStore(db)
+	externalProgramStore := models.NewExternalProgramStore(db)
 	errorStore := models.NewInstanceErrorStore(db)
 
 	// Initialize services
@@ -545,18 +546,19 @@ func (app *Application) runServer() {
 
 	// Start server in goroutine
 	httpServer := api.NewServer(&api.Dependencies{
-		Config:             cfg,
-		Version:            buildinfo.Version,
-		AuthService:        authService,
-		SessionManager:     sessionManager,
-		InstanceStore:      instanceStore,
-		ClientAPIKeyStore:  clientAPIKeyStore,
-		ClientPool:         clientPool,
-		SyncManager:        syncManager,
-		LicenseService:     licenseService,
-		UpdateService:      updateService,
-		TrackerIconService: trackerIconService,
-		BackupService:      backupService,
+		Config:               cfg,
+		Version:              buildinfo.Version,
+		AuthService:          authService,
+		SessionManager:       sessionManager,
+		InstanceStore:        instanceStore,
+		ClientAPIKeyStore:    clientAPIKeyStore,
+		ExternalProgramStore: externalProgramStore,
+		ClientPool:           clientPool,
+		SyncManager:          syncManager,
+		LicenseService:       licenseService,
+		UpdateService:        updateService,
+		TrackerIconService:   trackerIconService,
+		BackupService:        backupService,
 	})
 
 	errorChannel := make(chan error)

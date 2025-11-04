@@ -8,6 +8,7 @@ import { InstanceForm } from "@/components/instances/InstanceForm"
 import { PasswordIssuesBanner } from "@/components/instances/PasswordIssuesBanner"
 import { ClientApiKeysManager } from "@/components/settings/ClientApiKeysManager"
 import { DateTimePreferencesForm } from "@/components/settings/DateTimePreferencesForm"
+import { ExternalProgramsManager } from "@/components/settings/ExternalProgramsManager"
 import { LicenseManager } from "@/components/themes/LicenseManager.tsx"
 import { ThemeSelector } from "@/components/themes/ThemeSelector"
 import {
@@ -49,11 +50,11 @@ import type { Instance } from "@/types"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useNavigate, useSearch } from "@tanstack/react-router"
-import { Clock, Copy, ExternalLink, Key, Palette, Plus, Server, Share2, Shield, Trash2 } from "lucide-react"
+import { Clock, Copy, ExternalLink, Key, Palette, Plus, Server, Share2, Shield, Terminal, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { toast } from "sonner"
 
-const settingsTabs = ["instances", "client-api", "api", "datetime", "themes", "security"] as const
+const settingsTabs = ["instances", "client-api", "api", "external-programs", "datetime", "themes", "security"] as const
 type SettingsTab = (typeof settingsTabs)[number]
 
 const isSettingsTab = (value: unknown): value is SettingsTab => {
@@ -602,6 +603,12 @@ export function Settings() {
                 API Keys
               </div>
             </SelectItem>
+            <SelectItem value="external-programs">
+              <div className="flex items-center">
+                <Terminal className="w-4 h-4 mr-2" />
+                External Programs
+              </div>
+            </SelectItem>
             <SelectItem value="datetime">
               <div className="flex items-center">
                 <Clock className="w-4 h-4 mr-2" />
@@ -654,6 +661,15 @@ export function Settings() {
             >
               <Key className="w-4 h-4 mr-2" />
               API Keys
+            </button>
+            <button
+              onClick={() => handleTabChange("external-programs")}
+              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                activeTab === "external-programs"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+              }`}
+            >
+              <Terminal className="w-4 h-4 mr-2" />
+              External Programs
             </button>
             <button
               onClick={() => handleTabChange("datetime")}
@@ -745,6 +761,22 @@ export function Settings() {
                 </CardHeader>
                 <CardContent>
                   <ApiKeysManager />
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {activeTab === "external-programs" && (
+            <div className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>External Programs</CardTitle>
+                  <CardDescription>
+                    Configure external programs or scripts that can be executed from the torrent context menu
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ExternalProgramsManager />
                 </CardContent>
               </Card>
             </div>
