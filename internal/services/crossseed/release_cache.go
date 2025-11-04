@@ -3,43 +3,13 @@
 
 package crossseed
 
-import (
-	"time"
+import "github.com/autobrr/qui/pkg/releases"
 
-	"github.com/autobrr/autobrr/pkg/ttlcache"
-	"github.com/moistari/rls"
-)
+// ReleaseCache is preserved for backwards compatibility within the crossseed package.
+// It is an alias to the shared releases.Parser.
+type ReleaseCache = releases.Parser
 
-// ReleaseCache provides cached rls parsing to avoid expensive re-parsing
-type ReleaseCache struct {
-	cache *ttlcache.Cache[string, rls.Release]
-}
-
-// NewReleaseCache creates a new release cache with 5 minute expiration
+// NewReleaseCache creates a cached parser for release metadata.
 func NewReleaseCache() *ReleaseCache {
-	cache := ttlcache.New(ttlcache.Options[string, rls.Release]{}.
-		SetDefaultTTL(5 * time.Minute))
-
-	return &ReleaseCache{
-		cache: cache,
-	}
-}
-
-// Parse parses a release name using rls, with caching
-func (rc *ReleaseCache) Parse(name string) rls.Release {
-	// Check cache first
-	if cached, found := rc.cache.Get(name); found {
-		return cached
-	}
-
-	// Parse and cache
-	release := rls.ParseString(name)
-	rc.cache.Set(name, release, ttlcache.DefaultTTL)
-
-	return release
-}
-
-// Clear removes a specific entry from cache
-func (rc *ReleaseCache) Clear(name string) {
-	rc.cache.Delete(name)
+	return releases.NewDefaultParser()
 }

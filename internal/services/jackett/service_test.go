@@ -11,6 +11,8 @@ import (
 )
 
 func TestDetectContentType(t *testing.T) {
+	s := NewService(nil)
+
 	tests := []struct {
 		name     string
 		req      *TorznabSearchRequest
@@ -42,13 +44,6 @@ func TestDetectContentType(t *testing.T) {
 			expected: contentTypeTVShow,
 		},
 		{
-			name: "detects TV show via query season pattern",
-			req: &TorznabSearchRequest{
-				Query: "Breaking Bad S01",
-			},
-			expected: contentTypeTVShow,
-		},
-		{
 			name: "detects movie by IMDbID",
 			req: &TorznabSearchRequest{
 				Query:  "The Matrix",
@@ -64,11 +59,81 @@ func TestDetectContentType(t *testing.T) {
 			expected: contentTypeXXX,
 		},
 		{
-			name: "detects movie via year and quality heuristics",
+			name: "detects TV show via release parser",
+			req: &TorznabSearchRequest{
+				Query: "Breaking.Bad.S01.1080p.WEB-DL.DD5.1.H.264-NTb",
+			},
+			expected: contentTypeTVShow,
+		},
+		{
+			name: "detects movie via release parser",
 			req: &TorznabSearchRequest{
 				Query: "Black.Phone.2.2025.1080p.AMZN.WEB-DL.DDP5.1.H.264-KyoGo",
 			},
 			expected: contentTypeMovie,
+		},
+		{
+			name: "detects music release",
+			req: &TorznabSearchRequest{
+				Query: "Lane 8 & Jyll - Stay Still, A Little While (2025) [WEB FLAC]",
+			},
+			expected: contentTypeMusic,
+		},
+		{
+			name: "detects music even if parser extracts episode number",
+			req: &TorznabSearchRequest{
+				Query: "Various Artists - 25 Years Of Anjuna Mixed By Marsh (2025) - WEB FLAC 16-48",
+			},
+			expected: contentTypeMusic,
+		},
+		{
+			name: "detects app release",
+			req: &TorznabSearchRequest{
+				Query: "Screen Studio 3.2.1-3520 ARM",
+			},
+			expected: contentTypeApp,
+		},
+		{
+			name: "detects game release",
+			req: &TorznabSearchRequest{
+				Query: "Super.Mario.Bros.Wonder.NSW-BigBlueBox",
+			},
+			expected: contentTypeGame,
+		},
+		{
+			name: "detects audiobook release",
+			req: &TorznabSearchRequest{
+				Query: "Some.Audiobook.Title.2024.MP3",
+			},
+			expected: contentTypeAudiobook,
+		},
+		{
+			name: "detects book release",
+			req: &TorznabSearchRequest{
+				Query: "Harry.Potter.and.the.Sorcerers.Stone.EPUB",
+			},
+			expected: contentTypeBook,
+		},
+		{
+			name: "detects comic release",
+			req: &TorznabSearchRequest{
+				Query: "Amazing.Spider-Man.2025.01.Comic",
+			},
+			expected: contentTypeComic,
+		},
+		{
+			name: "detects magazine release",
+			req: &TorznabSearchRequest{
+				Query: "National.Geographic.MAGAZiNE.2024.01",
+			},
+			expected: contentTypeMagazine,
+		},
+		{
+			name: "detects education release",
+			req: &TorznabSearchRequest{
+				Query: "Udemy-Python.Programming.Masterclass",
+			},
+			expected: contentTypeEducation,
 		},
 		{
 			name: "returns unknown for ambiguous query",
@@ -81,7 +146,7 @@ func TestDetectContentType(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := detectContentType(tt.req)
+			result := s.detectContentType(tt.req)
 			if result != tt.expected {
 				t.Errorf("detectContentType() = %v, want %v", result, tt.expected)
 			}
@@ -114,6 +179,46 @@ func TestGetCategoriesForContentType(t *testing.T) {
 			name:     "returns XXX categories",
 			ct:       contentTypeXXX,
 			expected: []int{CategoryXXX, CategoryXXXDVD, CategoryXXXx264, CategoryXXXPack},
+		},
+		{
+			name:     "returns audio categories",
+			ct:       contentTypeMusic,
+			expected: []int{CategoryAudio},
+		},
+		{
+			name:     "returns audio categories for audiobooks",
+			ct:       contentTypeAudiobook,
+			expected: []int{CategoryAudio},
+		},
+		{
+			name:     "returns book categories",
+			ct:       contentTypeBook,
+			expected: []int{CategoryBooks, CategoryBooksEbook},
+		},
+		{
+			name:     "returns comic categories",
+			ct:       contentTypeComic,
+			expected: []int{CategoryBooksComics},
+		},
+		{
+			name:     "returns magazine categories",
+			ct:       contentTypeMagazine,
+			expected: []int{CategoryBooks},
+		},
+		{
+			name:     "returns education categories",
+			ct:       contentTypeEducation,
+			expected: []int{CategoryBooks},
+		},
+		{
+			name:     "returns PC categories for apps",
+			ct:       contentTypeApp,
+			expected: []int{CategoryPC},
+		},
+		{
+			name:     "returns PC categories for games",
+			ct:       contentTypeGame,
+			expected: []int{CategoryPC},
 		},
 		{
 			name:     "returns default categories for unknown",

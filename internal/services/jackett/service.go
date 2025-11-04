@@ -8,14 +8,15 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/moistari/rls"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/releases"
 )
 
 // IndexerStore defines the interface for indexer storage operations
@@ -30,17 +31,12 @@ type IndexerStore interface {
 
 // Service provides Jackett integration for Torznab searching
 type Service struct {
-	indexerStore IndexerStore
+	indexerStore  IndexerStore
+	releaseParser *releases.Parser
 }
 
-var (
-	tvSeasonEpisodePattern = regexp.MustCompile(`(?i)\bs\d{1,2}e\d{1,2}\b`)
-	tvSeasonOnlyPattern    = regexp.MustCompile(`(?i)(?:\bseason\s*\d{1,2}\b|\bs\d{1,2}\b)`)
-	movieYearPattern       = regexp.MustCompile(`\b(19|20)\d{2}\b`)
-	movieQualityPattern    = regexp.MustCompile(`\b(480p|720p|1080p|1440p|2160p|4k|webrip|web[- ]?dl|bluray|bdrip|hdrip|dvdrip|remux)\b`)
-	// ErrMissingIndexerIdentifier signals that the Torznab backend requires an indexer ID to fetch caps.
-	ErrMissingIndexerIdentifier = errors.New("torznab indexer identifier is required for caps sync")
-)
+// ErrMissingIndexerIdentifier signals that the Torznab backend requires an indexer ID to fetch caps.
+var ErrMissingIndexerIdentifier = errors.New("torznab indexer identifier is required for caps sync")
 
 // searchContext carries additional metadata about the current Torznab search.
 type searchContext struct {
@@ -51,7 +47,8 @@ type searchContext struct {
 // NewService creates a new Jackett service
 func NewService(indexerStore IndexerStore) *Service {
 	return &Service{
-		indexerStore: indexerStore,
+		indexerStore:  indexerStore,
+		releaseParser: releases.NewDefaultParser(),
 	}
 }
 
@@ -82,7 +79,7 @@ func (s *Service) Search(ctx context.Context, req *TorznabSearchRequest) (*Searc
 		return nil, fmt.Errorf("query is required")
 	}
 
-	detectedType := detectContentType(req)
+	detectedType := s.detectContentType(req)
 	// Auto-detect content type if categories not provided
 	if len(req.Categories) == 0 {
 		req.Categories = getCategoriesForContentType(detectedType)
@@ -145,7 +142,7 @@ func (s *Service) SearchGeneric(ctx context.Context, req *TorznabSearchRequest) 
 		return nil, fmt.Errorf("query is required")
 	}
 
-	detectedType := detectContentType(req)
+	detectedType := s.detectContentType(req)
 	if len(req.Categories) == 0 {
 		req.Categories = getCategoriesForContentType(detectedType)
 
@@ -840,41 +837,70 @@ const (
 	contentTypeTVShow
 	contentTypeTVDaily
 	contentTypeXXX
+	contentTypeMusic
+	contentTypeAudiobook
+	contentTypeBook
+	contentTypeComic
+	contentTypeMagazine
+	contentTypeEducation
+	contentTypeApp
+	contentTypeGame
 )
 
 // detectContentType attempts to detect the content type from search parameters
-func detectContentType(req *TorznabSearchRequest) contentType {
-	queryLower := strings.ReplaceAll(strings.ToLower(req.Query), ".", " ")
+func (s *Service) detectContentType(req *TorznabSearchRequest) contentType {
+	query := strings.TrimSpace(req.Query)
+	queryLower := strings.ReplaceAll(strings.ToLower(query), ".", " ")
+
 	if strings.Contains(queryLower, "xxx") {
 		return contentTypeXXX
 	}
 
-	// If we have episode info, it's TV
+	// Structured hints take precedence.
 	if req.Episode != nil && *req.Episode > 0 {
 		return contentTypeTVShow
 	}
-
-	// If we have season but no episode, could be season pack
 	if req.Season != nil && *req.Season > 0 {
 		return contentTypeTVShow
 	}
-
-	// If we have TVDbID, it's TV
 	if req.TVDbID != "" {
 		return contentTypeTVShow
 	}
-
-	// Heuristics: detect SxxExx or Sxx patterns in the query string
-	if tvSeasonEpisodePattern.MatchString(queryLower) || tvSeasonOnlyPattern.MatchString(queryLower) {
-		return contentTypeTVShow
-	}
-
-	// If we have year but no season/episode, likely a movie
 	if req.IMDbID != "" {
 		return contentTypeMovie
 	}
-	if movieYearPattern.MatchString(queryLower) && movieQualityPattern.MatchString(queryLower) {
+
+	release := s.releaseParser.Parse(query)
+	switch release.Type {
+	case rls.Movie:
 		return contentTypeMovie
+	case rls.Episode, rls.Series:
+		return contentTypeTVShow
+	case rls.Music:
+		return contentTypeMusic
+	case rls.Audiobook:
+		return contentTypeAudiobook
+	case rls.Book:
+		return contentTypeBook
+	case rls.Comic:
+		return contentTypeComic
+	case rls.Magazine:
+		return contentTypeMagazine
+	case rls.Education:
+		return contentTypeEducation
+	case rls.App:
+		return contentTypeApp
+	case rls.Game:
+		return contentTypeGame
+	}
+
+	if release.Type == rls.Unknown {
+		if release.Series > 0 || release.Episode > 0 {
+			return contentTypeTVShow
+		}
+		if release.Year > 0 {
+			return contentTypeMovie
+		}
 	}
 
 	return contentTypeUnknown
@@ -889,6 +915,20 @@ func getCategoriesForContentType(ct contentType) []int {
 		return []int{CategoryTV, CategoryTVSD, CategoryTVHD, CategoryTV4K}
 	case contentTypeXXX:
 		return []int{CategoryXXX, CategoryXXXDVD, CategoryXXXx264, CategoryXXXPack}
+	case contentTypeMusic:
+		return []int{CategoryAudio}
+	case contentTypeAudiobook:
+		return []int{CategoryAudio}
+	case contentTypeBook:
+		return []int{CategoryBooks, CategoryBooksEbook}
+	case contentTypeComic:
+		return []int{CategoryBooksComics}
+	case contentTypeMagazine:
+		return []int{CategoryBooks}
+	case contentTypeEducation:
+		return []int{CategoryBooks}
+	case contentTypeApp, contentTypeGame:
+		return []int{CategoryPC}
 	default:
 		// Return common categories
 		return []int{CategoryMovies, CategoryTV}
