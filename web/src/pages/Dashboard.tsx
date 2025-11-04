@@ -326,7 +326,7 @@ function InstanceCard({
     versionInfo: qbittorrentVersionInfo,
   } = useQBittorrentAppInfo(instance.id, {
     initialData: appInfo ?? undefined,
-    fetchIfMissing: false,
+    fetchIfMissing: !appInfo,
   })
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const [speedUnit] = useSpeedUnits()
@@ -832,7 +832,9 @@ function GlobalAllTimeStats({ statsData }: { statsData: DashboardInstanceStats[]
                 {globalStats.totalPeers > 0 && (
                   <div>
                     <span className="text-xs text-muted-foreground">Peers: </span>
-                    <span className="font-semibold">{globalStats.totalPeers}</span>
+                    <span className="font-semibold tabular-nums inline-block min-w-[3rem] text-right">
+                      {globalStats.totalPeers}
+                    </span>
                   </div>
                 )}
               </div>
@@ -867,7 +869,9 @@ function GlobalAllTimeStats({ statsData }: { statsData: DashboardInstanceStats[]
               {globalStats.totalPeers > 0 && (
                 <div className="flex items-center gap-2">
                   <span className="text-muted-foreground">Peers:</span>
-                  <span className="text-lg font-semibold">{globalStats.totalPeers}</span>
+                  <span className="text-lg font-semibold tabular-nums inline-block min-w-[3rem] text-right">
+                    {globalStats.totalPeers}
+                  </span>
                 </div>
               )}
             </div>
