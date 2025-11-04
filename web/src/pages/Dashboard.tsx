@@ -39,7 +39,7 @@ import type {
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
 import { Activity, Ban, BrickWallFire, ChevronDown, ChevronRight, ChevronUp, Download, ExternalLink, Eye, EyeOff, Globe, HardDrive, Minus, Plus, Rabbit, Turtle, Upload, Zap } from "lucide-react"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import {
   DropdownMenu,
@@ -95,6 +95,47 @@ const createDefaultInstanceStreamData = (): InstanceStreamData => ({
   cacheMetadata: null,
 })
 
+const STREAM_REFRESH_INTERVAL_MS = 2000
+
+type InstanceUpdateResult =
+  | InstanceStreamData
+  | {
+      data: InstanceStreamData
+      immediate?: boolean
+    }
+
+function cloneInstanceDataRecord(source: Record<number, InstanceStreamData>) {
+  const next: Record<number, InstanceStreamData> = {}
+  for (const [key, value] of Object.entries(source)) {
+    next[Number(key)] = value
+  }
+  return next
+}
+
+function recordsShallowEqual(
+  a: Record<number, InstanceStreamData>,
+  b: Record<number, InstanceStreamData>
+) {
+  if (a === b) {
+    return true
+  }
+
+  const aKeys = Object.keys(a)
+  const bKeys = Object.keys(b)
+  if (aKeys.length !== bKeys.length) {
+    return false
+  }
+
+  for (const key of aKeys) {
+    const numericKey = Number(key)
+    if (a[numericKey] !== b[numericKey]) {
+      return false
+    }
+  }
+
+  return true
+}
+
 // Optimized hook to get all instance stats using shared TorrentResponse cache
 function useAllInstanceStats(instances: InstanceResponse[]): DashboardInstanceStats[] {
   const syncStream = useSyncStreamManager()
@@ -119,16 +160,106 @@ function useAllInstanceStats(instances: InstanceResponse[]): DashboardInstanceSt
     []
   )
   const [instanceData, setInstanceData] = useState<Record<number, InstanceStreamData>>({})
+  const latestDataRef = useRef<Record<number, InstanceStreamData>>({})
+  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const flushInstanceData = useCallback(
+    (force = false) => {
+      const snapshot = latestDataRef.current
+      setInstanceData(prev => {
+        if (!force && recordsShallowEqual(prev, snapshot)) {
+          return prev
+        }
+        return cloneInstanceDataRecord(snapshot)
+      })
+    },
+    []
+  )
+
+  const scheduleFlush = useCallback(() => {
+    if (flushTimerRef.current) {
+      return
+    }
+
+    flushTimerRef.current = setTimeout(() => {
+      flushTimerRef.current = null
+      flushInstanceData()
+    }, STREAM_REFRESH_INTERVAL_MS)
+  }, [flushInstanceData])
+
+  const applyInstanceData = useCallback(
+    (instanceId: number, buildUpdate: (current: InstanceStreamData) => InstanceUpdateResult) => {
+      const currentRecord = latestDataRef.current
+      let current = currentRecord[instanceId]
+      if (!current) {
+        current = createDefaultInstanceStreamData()
+        currentRecord[instanceId] = current
+      }
+
+      const result = buildUpdate(current)
+      const { data: next, immediate } =
+        "data" in result ? result : { data: result }
+
+      if (next === current) {
+        return
+      }
+
+      currentRecord[instanceId] = next
+
+      if (immediate) {
+        flushInstanceData(true)
+      } else {
+        scheduleFlush()
+      }
+    },
+    [flushInstanceData, scheduleFlush]
+  )
 
   useEffect(() => {
-    setInstanceData(prev => {
-      const next: Record<number, InstanceStreamData> = {}
-      instances.forEach(instance => {
-        next[instance.id] = prev[instance.id] ?? createDefaultInstanceStreamData()
-      })
-      return next
+    const nextRecord: Record<number, InstanceStreamData> = {}
+    instances.forEach(instance => {
+      nextRecord[instance.id] = latestDataRef.current[instance.id] ?? createDefaultInstanceStreamData()
     })
-  }, [instances])
+    latestDataRef.current = nextRecord
+    flushInstanceData(true)
+  }, [instances, flushInstanceData])
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return
+    }
+
+    const flushIfVisible = () => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+        return
+      }
+
+      if (flushTimerRef.current) {
+        if (typeof window !== "undefined") {
+          window.clearTimeout(flushTimerRef.current)
+        } else {
+          clearTimeout(flushTimerRef.current)
+        }
+        flushTimerRef.current = null
+      }
+
+      flushInstanceData(true)
+    }
+
+    document.addEventListener("visibilitychange", flushIfVisible)
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("focus", flushIfVisible)
+    }
+
+    return () => {
+      document.removeEventListener("visibilitychange", flushIfVisible)
+
+      if (typeof window !== "undefined") {
+        window.removeEventListener("focus", flushIfVisible)
+      }
+    }
+  }, [flushInstanceData])
 
   useEffect(() => {
     const activeInstanceIds = new Set<number>()
@@ -155,16 +286,16 @@ function useAllInstanceStats(instances: InstanceResponse[]): DashboardInstanceSt
         }
 
         if (payload.type === "error") {
-          setInstanceData(prev => {
-            const current = prev[instance.id] ?? createDefaultInstanceStreamData()
+          applyInstanceData(instance.id, current => {
             return {
-              ...prev,
-              [instance.id]: {
+              data: {
                 ...current,
                 isLoading: false,
                 error: payload.error ?? current.error,
                 streamError: payload.error ?? current.streamError,
+                streamConnected: false,
               },
+              immediate: true,
             }
           })
           return
@@ -179,30 +310,29 @@ function useAllInstanceStats(instances: InstanceResponse[]): DashboardInstanceSt
           queryClient.setQueryData(["qbittorrent-app-info", instance.id], data.appInfo)
         }
 
-        setInstanceData(prev => {
-          const current = prev[instance.id] ?? createDefaultInstanceStreamData()
+        applyInstanceData(instance.id, current => {
+          const next: InstanceStreamData = {
+            stats: data.stats ?? null,
+            serverState: data.serverState ?? null,
+            torrentCounts: data.counts,
+            appInfo: data.appInfo ?? current.appInfo,
+            altSpeedEnabled: data.serverState?.use_alt_speed_limits || false,
+            isLoading: false,
+            error: null,
+            streamConnected: true,
+            streamError: null,
+            cacheMetadata: data.cacheMetadata ?? null,
+          }
 
           return {
-            ...prev,
-            [instance.id]: {
-              stats: data.stats ?? null,
-              serverState: data.serverState ?? null,
-              torrentCounts: data.counts,
-              appInfo: data.appInfo ?? current.appInfo,
-              altSpeedEnabled: data.serverState?.use_alt_speed_limits || false,
-              isLoading: false,
-              error: null,
-              streamConnected: true,
-              streamError: null,
-              cacheMetadata: data.cacheMetadata ?? null,
-            },
+            data: next,
+            immediate: current.isLoading && !next.isLoading,
           }
         })
       })
 
       const unsubscribe = syncStream.subscribe(streamKey, snapshot => {
-        setInstanceData(prev => {
-          const current = prev[instance.id] ?? createDefaultInstanceStreamData()
+        applyInstanceData(instance.id, current => {
           const next: InstanceStreamData = {
             ...current,
             streamConnected: snapshot.connected,
@@ -216,17 +346,13 @@ function useAllInstanceStats(instances: InstanceResponse[]): DashboardInstanceSt
             next.error = null
           }
 
-          return {
-            ...prev,
-            [instance.id]: next,
-          }
+          return next
         })
       })
 
       const initialSnapshot = syncStream.getState(streamKey)
       if (initialSnapshot) {
-        setInstanceData(prev => {
-          const current = prev[instance.id] ?? createDefaultInstanceStreamData()
+        applyInstanceData(instance.id, current => {
           const next: InstanceStreamData = {
             ...current,
             streamConnected: initialSnapshot.connected,
@@ -238,10 +364,7 @@ function useAllInstanceStats(instances: InstanceResponse[]): DashboardInstanceSt
             next.isLoading = false
           }
 
-          return {
-            ...prev,
-            [instance.id]: next,
-          }
+          return next
         })
       }
 
@@ -255,7 +378,7 @@ function useAllInstanceStats(instances: InstanceResponse[]): DashboardInstanceSt
         streamConnectionsRef.current.delete(instanceId)
       }
     })
-  }, [instances, syncStream, baseStreamParams, queryClient])
+  }, [instances, syncStream, baseStreamParams, queryClient, applyInstanceData])
 
   useEffect(() => {
     return () => {
@@ -264,6 +387,10 @@ function useAllInstanceStats(instances: InstanceResponse[]): DashboardInstanceSt
         entry.unsubscribe()
       })
       streamConnectionsRef.current.clear()
+      if (flushTimerRef.current) {
+        clearTimeout(flushTimerRef.current)
+        flushTimerRef.current = null
+      }
     }
   }, [])
 
