@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -152,6 +153,144 @@ func (c *Client) searchProwlarr(indexerID string, params map[string]string) ([]R
 	}
 
 	return c.convertRssToResults(rss), nil
+}
+
+// FetchCaps retrieves the Torznab caps document for the configured backend/indexer.
+func (c *Client) FetchCaps(ctx context.Context, indexerID string) (*torznabCaps, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	switch c.backend {
+	case models.TorznabBackendJackett:
+		return c.fetchCapsFromJackett(ctx, indexerID)
+	case models.TorznabBackendProwlarr:
+		return c.fetchCapsFromProwlarr(ctx, indexerID)
+	case models.TorznabBackendNative:
+		return c.fetchCapsFromNative(ctx)
+	default:
+		return nil, fmt.Errorf("caps not supported for backend %s", c.backend)
+	}
+}
+
+func (c *Client) fetchCapsFromJackett(ctx context.Context, indexerID string) (*torznabCaps, error) {
+	baseRoot := strings.TrimRight(c.baseURL, "/")
+	trimmedID := strings.Trim(strings.TrimSpace(indexerID), "/")
+
+	const jackettIndexerPrefix = "/api/v2.0/indexers/"
+	if strings.Contains(baseRoot, jackettIndexerPrefix) {
+		parts := strings.SplitN(baseRoot, jackettIndexerPrefix, 2)
+		baseRoot = strings.TrimRight(parts[0], "/")
+		if trimmedID == "" && len(parts) == 2 {
+			remainder := parts[1]
+			if idx := strings.Index(remainder, "/"); idx != -1 {
+				remainder = remainder[:idx]
+			}
+			trimmedID = strings.Trim(remainder, "/")
+		}
+	}
+
+	if trimmedID == "" {
+		return nil, fmt.Errorf("jackett indexer identifier is required for caps fetch")
+	}
+
+	endpoint, err := url.JoinPath(baseRoot, "api", "v2.0", "indexers", trimmedID, "results", "torznab", "api")
+	if err != nil {
+		return nil, fmt.Errorf("build jackett caps url: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("build jackett caps request: %w", err)
+	}
+	query := req.URL.Query()
+	query.Set("t", "caps")
+	if c.apiKey != "" {
+		query.Set("apikey", c.apiKey)
+	}
+	req.URL.RawQuery = query.Encode()
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("jackett caps request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf("jackett caps returned status %d", resp.StatusCode)
+	}
+
+	return parseTorznabCaps(resp.Body)
+}
+
+func (c *Client) fetchCapsFromProwlarr(ctx context.Context, indexerID string) (*torznabCaps, error) {
+	trimmed := strings.TrimSpace(indexerID)
+	if trimmed == "" {
+		return nil, fmt.Errorf("prowlarr indexer identifier is required for caps fetch")
+	}
+
+	endpoint, err := url.JoinPath(strings.TrimRight(c.baseURL, "/"), "api", "v1", "indexer", trimmed, "newznab")
+	if err != nil {
+		return nil, fmt.Errorf("build prowlarr caps url: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("build prowlarr caps request: %w", err)
+	}
+	query := req.URL.Query()
+	query.Set("t", "caps")
+	if c.apiKey != "" {
+		query.Set("apikey", c.apiKey)
+	}
+	req.URL.RawQuery = query.Encode()
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("prowlarr caps request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf("prowlarr caps returned status %d", resp.StatusCode)
+	}
+
+	return parseTorznabCaps(resp.Body)
+}
+
+func (c *Client) fetchCapsFromNative(ctx context.Context) (*torznabCaps, error) {
+	endpoint := strings.TrimRight(c.baseURL, "/")
+	if endpoint == "" {
+		return nil, fmt.Errorf("native torznab endpoint not configured")
+	}
+
+	parsed, err := url.Parse(endpoint)
+	if err != nil {
+		return nil, fmt.Errorf("parse native torznab endpoint: %w", err)
+	}
+	query := parsed.Query()
+	query.Set("t", "caps")
+	if c.apiKey != "" {
+		query.Set("apikey", c.apiKey)
+	}
+	parsed.RawQuery = query.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, parsed.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("build native caps request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("native caps request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf("native caps returned status %d", resp.StatusCode)
+	}
+
+	return parseTorznabCaps(resp.Body)
 }
 
 // Download retrieves the raw torrent bytes for the provided download URL.

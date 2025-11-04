@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -22,11 +23,24 @@ type IndexerStore interface {
 	List(ctx context.Context) ([]*models.TorznabIndexer, error)
 	ListEnabled(ctx context.Context) ([]*models.TorznabIndexer, error)
 	GetDecryptedAPIKey(indexer *models.TorznabIndexer) (string, error)
+	SetCapabilities(ctx context.Context, indexerID int, capabilities []string) error
+	SetCategories(ctx context.Context, indexerID int, categories []models.TorznabIndexerCategory) error
 }
 
 // Service provides Jackett integration for Torznab searching
 type Service struct {
 	indexerStore IndexerStore
+}
+
+var (
+	tvSeasonEpisodePattern = regexp.MustCompile(`(?i)\bs\d{1,2}e\d{1,2}\b`)
+	tvSeasonOnlyPattern    = regexp.MustCompile(`(?i)(?:\bseason\s*\d{1,2}\b|\bs\d{1,2}\b)`)
+)
+
+// searchContext carries additional metadata about the current Torznab search.
+type searchContext struct {
+	categories  []int
+	contentType contentType
 }
 
 // NewService creates a new Jackett service
@@ -63,14 +77,14 @@ func (s *Service) Search(ctx context.Context, req *TorznabSearchRequest) (*Searc
 		return nil, fmt.Errorf("query is required")
 	}
 
+	detectedType := detectContentType(req)
 	// Auto-detect content type if categories not provided
 	if len(req.Categories) == 0 {
-		contentType := detectContentType(req)
-		req.Categories = getCategoriesForContentType(contentType)
+		req.Categories = getCategoriesForContentType(detectedType)
 
 		log.Debug().
 			Str("query", req.Query).
-			Int("content_type", int(contentType)).
+			Int("content_type", int(detectedType)).
 			Ints("categories", req.Categories).
 			Msg("Auto-detected content type and categories")
 	}
@@ -90,9 +104,13 @@ func (s *Service) Search(ctx context.Context, req *TorznabSearchRequest) (*Searc
 
 	// Build search parameters
 	params := s.buildSearchParams(req)
+	meta := &searchContext{
+		categories:  append([]int(nil), req.Categories...),
+		contentType: detectedType,
+	}
 
 	// Search all enabled indexers
-	allResults := s.searchMultipleIndexers(ctx, indexers, params)
+	allResults := s.searchMultipleIndexers(ctx, indexers, params, meta)
 
 	// Convert results
 	searchResults := s.convertResults(allResults)
@@ -120,6 +138,17 @@ func (s *Service) Search(ctx context.Context, req *TorznabSearchRequest) (*Searc
 func (s *Service) SearchGeneric(ctx context.Context, req *TorznabSearchRequest) (*SearchResponse, error) {
 	if req.Query == "" {
 		return nil, fmt.Errorf("query is required")
+	}
+
+	detectedType := detectContentType(req)
+	if len(req.Categories) == 0 {
+		req.Categories = getCategoriesForContentType(detectedType)
+
+		log.Debug().
+			Str("query", req.Query).
+			Int("content_type", int(detectedType)).
+			Ints("categories", req.Categories).
+			Msg("Auto-detected content type and categories for general search")
 	}
 
 	// Build search parameters
@@ -158,6 +187,11 @@ func (s *Service) SearchGeneric(ctx context.Context, req *TorznabSearchRequest) 
 		params.Set("offset", strconv.Itoa(req.Offset))
 	}
 
+	meta := &searchContext{
+		categories:  append([]int(nil), req.Categories...),
+		contentType: detectedType,
+	}
+
 	var indexersToSearch []*models.TorznabIndexer
 	var err error
 
@@ -192,7 +226,7 @@ func (s *Service) SearchGeneric(ctx context.Context, req *TorznabSearchRequest) 
 	}
 
 	// Search all indexers
-	allResults := s.searchMultipleIndexers(ctx, indexersToSearch, params)
+	allResults := s.searchMultipleIndexers(ctx, indexersToSearch, params, meta)
 
 	// Convert and sort results
 	searchResults := s.convertResults(allResults)
@@ -249,7 +283,7 @@ func (s *Service) Recent(ctx context.Context, limit int, indexerIDs []int) (*Sea
 		}, nil
 	}
 
-	results := s.searchMultipleIndexers(ctx, indexersToSearch, params)
+	results := s.searchMultipleIndexers(ctx, indexersToSearch, params, nil)
 	searchResults := s.convertResults(results)
 
 	if len(searchResults) > limit {
@@ -288,7 +322,7 @@ func (s *Service) DownloadTorrent(ctx context.Context, indexerID int, downloadUR
 }
 
 // searchMultipleIndexers searches multiple indexers in parallel and aggregates results
-func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values) []Result {
+func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext) []Result {
 	type indexerResult struct {
 		results []Result
 		err     error
@@ -324,7 +358,11 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 			var results []Result
 			switch idx.Backend {
 			case models.TorznabBackendNative:
-				// Direct Torznab endpoint - search without indexer path
+				if s.applyIndexerRestrictions(ctx, client, idx, "", meta, paramsMap) {
+					resultsChan <- indexerResult{nil, nil}
+					return
+				}
+
 				log.Debug().
 					Int("indexer_id", idx.ID).
 					Str("indexer_name", idx.Name).
@@ -341,6 +379,11 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 						Str("backend", string(idx.Backend)).
 						Msg("Skipping prowlarr indexer without numeric identifier")
 					resultsChan <- indexerResult{nil, fmt.Errorf("missing prowlarr indexer identifier")}
+					return
+				}
+
+				if s.applyIndexerRestrictions(ctx, client, idx, indexerID, meta, paramsMap) {
+					resultsChan <- indexerResult{nil, nil}
 					return
 				}
 
@@ -364,6 +407,11 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 						Str("backend", string(idx.Backend)).
 						Msg("Skipping indexer without resolved identifier")
 					resultsChan <- indexerResult{nil, fmt.Errorf("missing indexer identifier")}
+					return
+				}
+
+				if s.applyIndexerRestrictions(ctx, client, idx, indexerID, meta, paramsMap) {
+					resultsChan <- indexerResult{nil, nil}
 					return
 				}
 
@@ -408,6 +456,144 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 	}
 
 	return allResults
+}
+
+func (s *Service) applyIndexerRestrictions(ctx context.Context, client *Client, idx *models.TorznabIndexer, identifier string, meta *searchContext, params map[string]string) bool {
+	requested := requestedCategories(meta, params)
+	if len(requested) == 0 {
+		return false
+	}
+
+	if len(idx.Categories) == 0 {
+		if caps, err := client.FetchCaps(ctx, identifier); err != nil {
+			log.Debug().
+				Err(err).
+				Int("indexer_id", idx.ID).
+				Str("indexer", idx.Name).
+				Msg("Failed to fetch caps for torznab indexer")
+		} else {
+			if len(caps.Capabilities) > 0 {
+				if err := s.indexerStore.SetCapabilities(ctx, idx.ID, caps.Capabilities); err != nil {
+					log.Warn().
+						Err(err).
+						Int("indexer_id", idx.ID).
+						Msg("Failed to persist torznab capabilities")
+				} else {
+					idx.Capabilities = caps.Capabilities
+				}
+			}
+			if len(caps.Categories) > 0 {
+				if err := s.indexerStore.SetCategories(ctx, idx.ID, caps.Categories); err != nil {
+					log.Warn().
+						Err(err).
+						Int("indexer_id", idx.ID).
+						Msg("Failed to persist torznab categories")
+				} else {
+					idx.Categories = caps.Categories
+				}
+			}
+		}
+	}
+
+	if len(idx.Categories) == 0 {
+		return false
+	}
+
+	filtered, ok := filterCategoriesForIndexer(idx.Categories, requested)
+	if !ok {
+		log.Info().
+			Int("indexer_id", idx.ID).
+			Str("indexer", idx.Name).
+			Ints("requested_categories", requested).
+			Msg("Skipping torznab indexer due to unsupported categories")
+		return true
+	}
+
+	params["cat"] = formatCategoryList(filtered)
+	return false
+}
+
+func requestedCategories(meta *searchContext, params map[string]string) []int {
+	if meta != nil && len(meta.categories) > 0 {
+		return meta.categories
+	}
+	if catStr, ok := params["cat"]; ok {
+		return parseCategoryList(catStr)
+	}
+	return nil
+}
+
+func parseCategoryList(value string) []int {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	parts := strings.Split(value, ",")
+	categories := make([]int, 0, len(parts))
+	for _, part := range parts {
+		if id, err := strconv.Atoi(strings.TrimSpace(part)); err == nil {
+			categories = append(categories, id)
+		}
+	}
+	return categories
+}
+
+func formatCategoryList(categories []int) string {
+	if len(categories) == 0 {
+		return ""
+	}
+	parts := make([]string, len(categories))
+	for i, cat := range categories {
+		parts[i] = strconv.Itoa(cat)
+	}
+	return strings.Join(parts, ",")
+}
+
+func filterCategoriesForIndexer(indexerCats []models.TorznabIndexerCategory, requested []int) ([]int, bool) {
+	if len(requested) == 0 {
+		return nil, true
+	}
+
+	allowed := make(map[int]struct{}, len(indexerCats))
+	parentsWithChildren := make(map[int]struct{})
+	for _, cat := range indexerCats {
+		allowed[cat.CategoryID] = struct{}{}
+		if cat.ParentCategory != nil {
+			parentsWithChildren[*cat.ParentCategory] = struct{}{}
+		}
+	}
+
+	filtered := make([]int, 0, len(requested))
+	for _, cat := range requested {
+		if _, ok := allowed[cat]; ok {
+			filtered = append(filtered, cat)
+			continue
+		}
+		if _, ok := parentsWithChildren[cat]; ok {
+			filtered = append(filtered, cat)
+			continue
+		}
+		parent := deriveParentCategory(cat)
+		if parent != cat {
+			if _, ok := allowed[parent]; ok {
+				filtered = append(filtered, cat)
+				continue
+			}
+		}
+	}
+
+	if len(filtered) == 0 {
+		return nil, false
+	}
+
+	return filtered, true
+}
+
+func deriveParentCategory(cat int) int {
+	if cat < 1000 {
+		return cat
+	}
+	return (cat / 100) * 100
 }
 
 // buildSearchParams builds URL parameters from a TorznabSearchRequest
@@ -603,6 +789,11 @@ func detectContentType(req *TorznabSearchRequest) contentType {
 
 	// If we have TVDbID, it's TV
 	if req.TVDbID != "" {
+		return contentTypeTVShow
+	}
+
+	// Heuristics: detect SxxExx or Sxx patterns in the query string
+	if tvSeasonEpisodePattern.MatchString(queryLower) || tvSeasonOnlyPattern.MatchString(queryLower) {
 		return contentTypeTVShow
 	}
 

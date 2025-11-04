@@ -42,6 +42,13 @@ func TestDetectContentType(t *testing.T) {
 			expected: contentTypeTVShow,
 		},
 		{
+			name: "detects TV show via query season pattern",
+			req: &TorznabSearchRequest{
+				Query: "Breaking Bad S01",
+			},
+			expected: contentTypeTVShow,
+		},
+		{
 			name: "detects movie by IMDbID",
 			req: &TorznabSearchRequest{
 				Query:  "The Matrix",
@@ -522,6 +529,55 @@ func TestSearchAutoDetectCategories(t *testing.T) {
 	}
 }
 
+func TestFilterCategoriesForIndexer(t *testing.T) {
+	movieParent := CategoryMovies
+	indexerCats := []models.TorznabIndexerCategory{
+		{CategoryID: CategoryMovies},
+		{CategoryID: CategoryMoviesHD, ParentCategory: &movieParent},
+	}
+
+	t.Run("allows matching categories", func(t *testing.T) {
+		filtered, ok := filterCategoriesForIndexer(indexerCats, []int{CategoryMoviesHD})
+		if !ok {
+			t.Fatalf("expected categories to be permitted")
+		}
+		if len(filtered) != 1 || filtered[0] != CategoryMoviesHD {
+			t.Fatalf("unexpected filtered categories: %+v", filtered)
+		}
+	})
+
+	t.Run("skips unsupported categories", func(t *testing.T) {
+		_, ok := filterCategoriesForIndexer(indexerCats, []int{CategoryTV})
+		if ok {
+			t.Fatalf("expected unsupported categories to be rejected")
+		}
+	})
+}
+
+func TestSearchGenericAutoDetectCategories(t *testing.T) {
+	store := &mockTorznabIndexerStore{indexers: []*models.TorznabIndexer{}}
+	s := NewService(store)
+	req := &TorznabSearchRequest{Query: "Breaking Bad S01"}
+
+	resp, err := s.SearchGeneric(context.Background(), req)
+	if err != nil {
+		t.Fatalf("SearchGeneric returned error: %v", err)
+	}
+	if resp == nil {
+		t.Fatalf("expected response, got nil")
+	}
+
+	expected := []int{CategoryTV, CategoryTVSD, CategoryTVHD, CategoryTV4K}
+	if len(req.Categories) != len(expected) {
+		t.Fatalf("expected %d categories, got %d", len(expected), len(req.Categories))
+	}
+	for i, cat := range expected {
+		if req.Categories[i] != cat {
+			t.Fatalf("category %d = %d, want %d", i, req.Categories[i], cat)
+		}
+	}
+}
+
 func TestSearchWithLimit(t *testing.T) {
 	store := &mockTorznabIndexerStore{
 		indexers: []*models.TorznabIndexer{},
@@ -660,4 +716,12 @@ func (m *mockTorznabIndexerStore) ListEnabled(ctx context.Context) ([]*models.To
 
 func (m *mockTorznabIndexerStore) GetDecryptedAPIKey(indexer *models.TorznabIndexer) (string, error) {
 	return "mock-api-key", nil
+}
+
+func (m *mockTorznabIndexerStore) SetCapabilities(ctx context.Context, indexerID int, capabilities []string) error {
+	return nil
+}
+
+func (m *mockTorznabIndexerStore) SetCategories(ctx context.Context, indexerID int, categories []models.TorznabIndexerCategory) error {
+	return nil
 }

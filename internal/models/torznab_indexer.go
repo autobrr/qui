@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 	"time"
 
@@ -801,9 +802,21 @@ func (s *TorznabIndexerStore) SetCategories(ctx context.Context, indexerID int, 
 
 	// Insert new categories
 	if len(categories) > 0 {
-		// Intern category names
-		names := make([]string, len(categories))
-		for i, cat := range categories {
+		unique := make(map[int]TorznabIndexerCategory, len(categories))
+		for _, cat := range categories {
+			if _, exists := unique[cat.CategoryID]; !exists {
+				unique[cat.CategoryID] = cat
+			}
+		}
+
+		ordered := make([]TorznabIndexerCategory, 0, len(unique))
+		for _, cat := range unique {
+			ordered = append(ordered, cat)
+		}
+		sort.Slice(ordered, func(i, j int) bool { return ordered[i].CategoryID < ordered[j].CategoryID })
+
+		names := make([]string, len(ordered))
+		for i, cat := range ordered {
 			names[i] = cat.CategoryName
 		}
 		nameIDs, err := dbinterface.InternStrings(ctx, tx, names...)
@@ -811,8 +824,7 @@ func (s *TorznabIndexerStore) SetCategories(ctx context.Context, indexerID int, 
 			return fmt.Errorf("failed to intern category names: %w", err)
 		}
 
-		// Insert categories
-		for i, cat := range categories {
+		for i, cat := range ordered {
 			_, err = tx.ExecContext(ctx, "INSERT INTO torznab_indexer_categories (indexer_id, category_id, category_name_id, parent_category_id) VALUES (?, ?, ?, ?)", indexerID, cat.CategoryID, nameIDs[i], cat.ParentCategory)
 			if err != nil {
 				return fmt.Errorf("failed to insert category: %w", err)
