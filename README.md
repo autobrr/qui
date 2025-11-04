@@ -15,6 +15,7 @@ A fast, modern web interface for qBittorrent. Supports managing multiple qBittor
 - **Multiple Themes**: Choose from various color themes
 - **Base URL Support**: Serve from a subdirectory (e.g., `/qui/`) for reverse proxy setups
 - **OIDC Single Sign-On**: Authenticate through your OpenID Connect provider
+- **External Programs**: Launch custom scripts from the torrent context menu ([guide](internal/api/handlers/EXTERNAL_PROGRAMS.md))
 
 
 ## Installation
