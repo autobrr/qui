@@ -24,11 +24,18 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger
+} from "@/components/ui/tooltip"
 import { useInstances } from "@/hooks/useInstances"
 import { useIncognitoMode } from "@/lib/incognito"
 import { cn, formatErrorMessage } from "@/lib/utils"
 import type { InstanceResponse } from "@/types"
 import {
+  ArrowDown,
+  ArrowUp,
   CheckCircle,
   Edit,
   Eye,
@@ -44,9 +51,20 @@ import { toast } from "sonner"
 interface InstanceCardProps {
   instance: InstanceResponse
   onEdit: () => void
+  onMoveUp?: () => void
+  onMoveDown?: () => void
+  disableMoveUp?: boolean
+  disableMoveDown?: boolean
 }
 
-export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
+export function InstanceCard({
+  instance,
+  onEdit,
+  onMoveUp,
+  onMoveDown,
+  disableMoveUp = false,
+  disableMoveDown = false,
+}: InstanceCardProps) {
   const { deleteInstance, testConnection, isDeleting, isTesting } = useInstances()
   const [testResult, setTestResult] = useState<{ success: boolean; message: string | undefined } | null>(null)
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
@@ -112,6 +130,56 @@ export function InstanceCard({ instance, onEdit }: InstanceCardProps) {
             >
               {instance.connected ? "Connected" : "Disconnected"}
             </Badge>
+            {(onMoveUp || onMoveDown) && (
+              <div className="flex items-center gap-1">
+                {onMoveUp && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 p-0"
+                        disabled={disableMoveUp}
+                        aria-label="Move instance up"
+                        onClick={(event) => {
+                          event.preventDefault()
+                          event.stopPropagation()
+                          if (!disableMoveUp) {
+                            onMoveUp()
+                          }
+                        }}
+                      >
+                        <ArrowUp className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Move up</TooltipContent>
+                  </Tooltip>
+                )}
+                {onMoveDown && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 p-0"
+                        disabled={disableMoveDown}
+                        aria-label="Move instance down"
+                        onClick={(event) => {
+                          event.preventDefault()
+                          event.stopPropagation()
+                          if (!disableMoveDown) {
+                            onMoveDown()
+                          }
+                        }}
+                      >
+                        <ArrowDown className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Move down</TooltipContent>
+                  </Tooltip>
+                )}
+              </div>
+            )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="sm" className="h-8 w-8 p-0">

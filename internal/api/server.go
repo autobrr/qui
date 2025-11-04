@@ -44,40 +44,42 @@ type Server struct {
 	config  *config.AppConfig
 	version string
 
-	authService         *auth.Service
-	sessionManager      *scs.SessionManager
-	instanceStore       *models.InstanceStore
-	clientAPIKeyStore   *models.ClientAPIKeyStore
-	clientPool          *qbittorrent.ClientPool
-	syncManager         *qbittorrent.SyncManager
-	licenseService      *license.Service
-	updateService       *update.Service
-	trackerIconService  *trackericons.Service
-	backupService       *backups.Service
-	filesManager        *filesmanager.Service
-	crossSeedService    *crossseed.Service
-	jackettService      *jackett.Service
-	torznabIndexerStore *models.TorznabIndexerStore
+	authService          *auth.Service
+	sessionManager       *scs.SessionManager
+	instanceStore        *models.InstanceStore
+	clientAPIKeyStore    *models.ClientAPIKeyStore
+	externalProgramStore *models.ExternalProgramStore
+	clientPool           *qbittorrent.ClientPool
+	syncManager          *qbittorrent.SyncManager
+	licenseService       *license.Service
+	updateService        *update.Service
+	trackerIconService   *trackericons.Service
+	backupService        *backups.Service
+	filesManager         *filesmanager.Service
+	crossSeedService     *crossseed.Service
+	jackettService       *jackett.Service
+	torznabIndexerStore  *models.TorznabIndexerStore
 }
 
 type Dependencies struct {
-	Config              *config.AppConfig
-	Version             string
-	AuthService         *auth.Service
-	SessionManager      *scs.SessionManager
-	InstanceStore       *models.InstanceStore
-	ClientAPIKeyStore   *models.ClientAPIKeyStore
-	ClientPool          *qbittorrent.ClientPool
-	SyncManager         *qbittorrent.SyncManager
-	WebHandler          *web.Handler
-	LicenseService      *license.Service
-	UpdateService       *update.Service
-	TrackerIconService  *trackericons.Service
-	BackupService       *backups.Service
-	FilesManager        *filesmanager.Service
-	CrossSeedService    *crossseed.Service
-	JackettService      *jackett.Service
-	TorznabIndexerStore *models.TorznabIndexerStore
+	Config               *config.AppConfig
+	Version              string
+	AuthService          *auth.Service
+	SessionManager       *scs.SessionManager
+	InstanceStore        *models.InstanceStore
+	ClientAPIKeyStore    *models.ClientAPIKeyStore
+	ExternalProgramStore *models.ExternalProgramStore
+	ClientPool           *qbittorrent.ClientPool
+	SyncManager          *qbittorrent.SyncManager
+	WebHandler           *web.Handler
+	LicenseService       *license.Service
+	UpdateService        *update.Service
+	TrackerIconService   *trackericons.Service
+	BackupService        *backups.Service
+	FilesManager         *filesmanager.Service
+	CrossSeedService     *crossseed.Service
+	JackettService       *jackett.Service
+	TorznabIndexerStore  *models.TorznabIndexerStore
 }
 
 func NewServer(deps *Dependencies) *Server {
@@ -88,23 +90,24 @@ func NewServer(deps *Dependencies) *Server {
 			WriteTimeout:      120 * time.Second,
 			IdleTimeout:       180 * time.Second,
 		},
-		logger:              log.Logger.With().Str("module", "api").Logger(),
-		config:              deps.Config,
-		version:             deps.Version,
-		authService:         deps.AuthService,
-		sessionManager:      deps.SessionManager,
-		instanceStore:       deps.InstanceStore,
-		clientAPIKeyStore:   deps.ClientAPIKeyStore,
-		clientPool:          deps.ClientPool,
-		syncManager:         deps.SyncManager,
-		licenseService:      deps.LicenseService,
-		updateService:       deps.UpdateService,
-		trackerIconService:  deps.TrackerIconService,
-		backupService:       deps.BackupService,
-		filesManager:        deps.FilesManager,
-		crossSeedService:    deps.CrossSeedService,
-		jackettService:      deps.JackettService,
-		torznabIndexerStore: deps.TorznabIndexerStore,
+		logger:               log.Logger.With().Str("module", "api").Logger(),
+		config:               deps.Config,
+		version:              deps.Version,
+		authService:          deps.AuthService,
+		sessionManager:       deps.SessionManager,
+		instanceStore:        deps.InstanceStore,
+		clientAPIKeyStore:    deps.ClientAPIKeyStore,
+		externalProgramStore: deps.ExternalProgramStore,
+		clientPool:           deps.ClientPool,
+		syncManager:          deps.SyncManager,
+		licenseService:       deps.LicenseService,
+		updateService:        deps.UpdateService,
+		trackerIconService:   deps.TrackerIconService,
+		backupService:        deps.BackupService,
+		filesManager:         deps.FilesManager,
+		crossSeedService:     deps.CrossSeedService,
+		jackettService:       deps.JackettService,
+		torznabIndexerStore:  deps.TorznabIndexerStore,
 	}
 
 	return &s
@@ -216,6 +219,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	torrentsHandler := handlers.NewTorrentsHandler(s.syncManager)
 	preferencesHandler := handlers.NewPreferencesHandler(s.syncManager)
 	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(s.clientAPIKeyStore, s.instanceStore, s.config.Config.BaseURL)
+	externalProgramsHandler := handlers.NewExternalProgramsHandler(s.externalProgramStore, s.clientPool)
 	versionHandler := handlers.NewVersionHandler(s.updateService)
 	qbittorrentInfoHandler := handlers.NewQBittorrentInfoHandler(s.clientPool)
 	backupsHandler := handlers.NewBackupsHandler(s.backupService)
@@ -290,6 +294,15 @@ func (s *Server) Handler() (*chi.Mux, error) {
 				r.Delete("/{id}", clientAPIKeysHandler.DeleteClientAPIKey)
 			})
 
+			// External programs management
+			r.Route("/external-programs", func(r chi.Router) {
+				r.Get("/", externalProgramsHandler.ListExternalPrograms)
+				r.Post("/", externalProgramsHandler.CreateExternalProgram)
+				r.Put("/{id}", externalProgramsHandler.UpdateExternalProgram)
+				r.Delete("/{id}", externalProgramsHandler.DeleteExternalProgram)
+				r.Post("/execute", externalProgramsHandler.ExecuteExternalProgram)
+			})
+
 			// Version endpoint for update checks
 			r.Get("/version/latest", versionHandler.GetLatestVersion)
 
@@ -297,6 +310,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			r.Route("/instances", func(r chi.Router) {
 				r.Get("/", instancesHandler.ListInstances)
 				r.Post("/", instancesHandler.CreateInstance)
+				r.Put("/order", instancesHandler.UpdateInstanceOrder)
 
 				r.Route("/{instanceID}", func(r chi.Router) {
 					r.Put("/", instancesHandler.UpdateInstance)

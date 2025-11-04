@@ -9,6 +9,7 @@ import { InstanceForm } from "@/components/instances/InstanceForm"
 import { PasswordIssuesBanner } from "@/components/instances/PasswordIssuesBanner"
 import { ClientApiKeysManager } from "@/components/settings/ClientApiKeysManager"
 import { DateTimePreferencesForm } from "@/components/settings/DateTimePreferencesForm"
+import { ExternalProgramsManager } from "@/components/settings/ExternalProgramsManager"
 import { LicenseManager } from "@/components/themes/LicenseManager.tsx"
 import { ThemeSelector } from "@/components/themes/ThemeSelector"
 import {
@@ -50,11 +51,11 @@ import type { Instance } from "@/types"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useNavigate, useSearch } from "@tanstack/react-router"
-import { Clock, Copy, Database, ExternalLink, Key, Palette, Plus, Server, Share2, Shield, Trash2 } from "lucide-react"
+import { Clock, Copy, Database, ExternalLink, Key, Palette, Plus, Server, Share2, Shield, Terminal, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { toast } from "sonner"
 
-const settingsTabs = ["instances", "indexers", "client-api", "api", "datetime", "themes", "security"] as const
+const settingsTabs = ["instances", "indexers", "client-api", "api", "external-programs", "datetime", "themes", "security"] as const
 type SettingsTab = (typeof settingsTabs)[number]
 
 const isSettingsTab = (value: unknown): value is SettingsTab => {
@@ -425,7 +426,7 @@ function ApiKeysManager() {
 }
 
 function InstancesManager() {
-  const { instances, isLoading } = useInstances()
+  const { instances, isLoading, reorderInstances, isReordering } = useInstances()
   const navigate = useNavigate()
   const search = useSearch({ strict: false }) as Record<string, unknown> | undefined
   const tab = isSettingsTab(search?.tab) ? search?.tab : undefined
@@ -453,6 +454,28 @@ function InstancesManager() {
     navigate({ search: nextSearch as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
   }
 
+  const handleReorder = (instanceId: number, direction: -1 | 1) => {
+    if (!instances || isReordering) return
+
+    const currentIndex = instances.findIndex(instance => instance.id === instanceId)
+    if (currentIndex === -1) return
+
+    const targetIndex = currentIndex + direction
+    if (targetIndex < 0 || targetIndex >= instances.length) return
+
+    const orderedIds = instances.map(instance => instance.id)
+    const [moved] = orderedIds.splice(currentIndex, 1)
+    orderedIds.splice(targetIndex, 0, moved)
+
+    reorderInstances(orderedIds, {
+      onError: (error) => {
+        toast.error("Failed to update instance order", {
+          description: error instanceof Error ? error.message : undefined,
+        })
+      },
+    })
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:justify-end">
@@ -473,11 +496,15 @@ function InstancesManager() {
           <>
             {instances && instances.length > 0 ? (
               <div className="grid gap-4 lg:grid-cols-2">
-                {instances.map((instance) => (
+                {instances.map((instance, index) => (
                   <InstanceCard
                     key={instance.id}
                     instance={instance}
                     onEdit={() => handleOpenDialog(instance)}
+                    onMoveUp={index > 0 ? () => handleReorder(instance.id, -1) : undefined}
+                    onMoveDown={index < instances.length - 1 ? () => handleReorder(instance.id, 1) : undefined}
+                    disableMoveUp={isReordering}
+                    disableMoveDown={isReordering}
                   />
                 ))}
               </div>
@@ -583,6 +610,12 @@ export function Settings() {
                 API Keys
               </div>
             </SelectItem>
+            <SelectItem value="external-programs">
+              <div className="flex items-center">
+                <Terminal className="w-4 h-4 mr-2" />
+                External Programs
+              </div>
+            </SelectItem>
             <SelectItem value="datetime">
               <div className="flex items-center">
                 <Clock className="w-4 h-4 mr-2" />
@@ -644,6 +677,15 @@ export function Settings() {
             >
               <Key className="w-4 h-4 mr-2" />
               API Keys
+            </button>
+            <button
+              onClick={() => handleTabChange("external-programs")}
+              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                activeTab === "external-programs"? "bg-accent text-accent-foreground": "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+              }`}
+            >
+              <Terminal className="w-4 h-4 mr-2" />
+              External Programs
             </button>
             <button
               onClick={() => handleTabChange("datetime")}
@@ -741,6 +783,22 @@ export function Settings() {
                 </CardHeader>
                 <CardContent>
                   <ApiKeysManager />
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {activeTab === "external-programs" && (
+            <div className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>External Programs</CardTitle>
+                  <CardDescription>
+                    Configure external programs or scripts that can be executed from the torrent context menu
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ExternalProgramsManager />
                 </CardContent>
               </Card>
             </div>
