@@ -40,7 +40,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Switch } from "@/components/ui/switch"
 import { useDebounce } from "@/hooks/useDebounce"
 import { TORRENT_ACTIONS, useTorrentActions, type TorrentAction } from "@/hooks/useTorrentActions"
-import { useTorrentsList, TORRENT_STREAM_POLL_INTERVAL_SECONDS } from "@/hooks/useTorrentsList"
+import { useTorrentsList } from "@/hooks/useTorrentsList"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { useNavigate, useSearch } from "@tanstack/react-router"
 import { useVirtualizer } from "@tanstack/react-virtual"
@@ -1160,13 +1160,6 @@ export function TorrentCardsMobile({
     categories,
     tags,
     stats,
-    streamConnected,
-    isStreaming,
-    streamError,
-    streamMeta,
-    streamRetrying,
-    streamNextRetryAt,
-    streamRetryAttempt,
 
     isLoading,
     isLoadingMore,
@@ -1182,79 +1175,6 @@ export function TorrentCardsMobile({
   const { data: capabilities } = useInstanceCapabilities(instanceId)
   const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? true
   const supportsTorrentCreation = capabilities?.supportsTorrentCreation ?? true
-
-  const streamStatus = useMemo(() => {
-    const now = Date.now()
-    const clientRetrySeconds =
-      typeof streamNextRetryAt === "number"
-        ? Math.max(0, Math.ceil((streamNextRetryAt - now) / 1000))
-        : null
-    const serverRetrySeconds =
-      typeof streamMeta?.retryInSeconds === "number" && streamMeta.retryInSeconds > 0
-        ? streamMeta.retryInSeconds
-        : null
-    const safeRetryAttempt =
-      typeof streamRetryAttempt === "number" && streamRetryAttempt > 0 ? streamRetryAttempt : 1
-
-    if (streamRetrying || (clientRetrySeconds !== null && clientRetrySeconds > 0)) {
-      const baseHelper =
-        clientRetrySeconds && clientRetrySeconds > 0
-          ? `Retry in ${clientRetrySeconds}s (attempt ${safeRetryAttempt})`
-          : "Retry scheduled shortly"
-      return {
-        label: "Reconnecting…",
-        helper: streamError ? `${streamError} · ${baseHelper}` : baseHelper,
-        tone: "warning" as const,
-      }
-    }
-
-    if (streamError) {
-      const helper =
-        serverRetrySeconds && serverRetrySeconds > 0
-          ? `${streamError} · Server retry in ${serverRetrySeconds}s`
-          : streamError
-      return {
-        label: "Polling fallback",
-        helper,
-        tone: "error" as const,
-      }
-    }
-
-    if (isStreaming) {
-      return {
-        label: "Live via SSE",
-        helper: "Polling paused",
-        tone: "success" as const,
-      }
-    }
-
-    return {
-      label: "Connecting to stream…",
-      helper: `Polling every ${TORRENT_STREAM_POLL_INTERVAL_SECONDS}s`,
-      tone: streamConnected ? ("warning" as const) : ("muted" as const),
-    }
-  }, [
-    isStreaming,
-    streamConnected,
-    streamError,
-    streamRetrying,
-    streamNextRetryAt,
-    streamRetryAttempt,
-    streamMeta,
-  ])
-
-  const streamBadgeClass = useMemo(() => {
-    switch (streamStatus.tone) {
-      case "success":
-        return "border-emerald-500/40 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10"
-      case "error":
-        return "border-destructive/40 text-destructive bg-destructive/10"
-      case "warning":
-        return "border-amber-400/50 text-amber-600 dark:text-amber-400 bg-amber-400/10"
-      default:
-        return "border-muted-foreground/20 text-muted-foreground"
-    }
-  }, [streamStatus.tone])
 
   // Call the callback when filtered data updates
   useEffect(() => {
@@ -1768,18 +1688,6 @@ export function TorrentCardsMobile({
               </span>
             </button>
           </div>
-        </div>
-
-        <div className="mb-3 flex items-center justify-between gap-3 rounded-md border border-border/60 bg-muted/40 px-3 py-2 text-xs">
-          <Badge variant="outline" className={cn("h-5 px-2 py-0 font-medium", streamBadgeClass)}>
-            {streamStatus.label}
-          </Badge>
-          <span
-            className="ml-auto max-w-[60%] truncate text-[11px] text-muted-foreground/80"
-            title={streamStatus.helper}
-          >
-            {streamStatus.helper}
-          </span>
         </div>
 
         {effectiveSearch && (
