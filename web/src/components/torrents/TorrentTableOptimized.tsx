@@ -2397,6 +2397,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                   return (
                     <TorrentContextMenu
                       key={row.id}
+                      instanceId={instanceId}
                       torrent={torrent}
                       isSelected={isRowSelected}
                       isAllSelected={isAllSelected}
@@ -2491,6 +2492,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                 return (
                   <TorrentContextMenu
                     key={row.id}
+                    instanceId={instanceId}
                     torrent={torrent}
                     isSelected={isRowSelected}
                     isAllSelected={isAllSelected}

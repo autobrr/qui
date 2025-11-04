@@ -23,6 +23,7 @@ export interface Instance {
   username: string
   basicUsername?: string
   tlsSkipVerify: boolean
+  sortOrder: number
 }
 
 export interface InstanceFormData {
@@ -811,4 +812,58 @@ export interface TorrentCreationTask {
 
 export interface TorrentCreationTaskResponse {
   taskID: string
+}
+
+// External Program Types
+export interface PathMapping {
+  from: string
+  to: string
+}
+
+export interface ExternalProgram {
+  id: number
+  name: string
+  path: string
+  args_template: string
+  enabled: boolean
+  use_terminal: boolean
+  path_mappings: PathMapping[]
+  created_at: string
+  updated_at: string
+}
+
+export interface ExternalProgramCreate {
+  name: string
+  path: string
+  args_template: string
+  enabled: boolean
+  use_terminal: boolean
+  path_mappings: PathMapping[]
+}
+
+export interface ExternalProgramUpdate {
+  name: string
+  path: string
+  args_template: string
+  enabled: boolean
+  use_terminal: boolean
+  path_mappings: PathMapping[]
+}
+
+export interface ExternalProgramExecute {
+  program_id: number
+  instance_id: number
+  hashes: string[]
+}
+
+export interface ExternalProgramExecuteResult {
+  hash: string
+  success: boolean
+  stdout?: string
+  stderr?: string
+  error?: string
+}
+
+export interface ExternalProgramExecuteResponse {
+  results: ExternalProgramExecuteResult[]
 }

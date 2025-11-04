@@ -33,6 +33,7 @@ type Instance struct {
 	BasicUsername          *string `json:"basic_username,omitempty"`
 	BasicPasswordEncrypted *string `json:"-"`
 	TLSSkipVerify          bool    `json:"tlsSkipVerify"`
+	SortOrder              int     `json:"sortOrder"`
 }
 
 func (i Instance) MarshalJSON() ([]byte, error) {
@@ -50,6 +51,7 @@ func (i Instance) MarshalJSON() ([]byte, error) {
 		LastConnectedAt *time.Time `json:"last_connected_at,omitempty"`
 		CreatedAt       time.Time  `json:"created_at"`
 		UpdatedAt       time.Time  `json:"updated_at"`
+		SortOrder       int        `json:"sortOrder"`
 	}{
 		ID:            i.ID,
 		Name:          i.Name,
@@ -64,6 +66,7 @@ func (i Instance) MarshalJSON() ([]byte, error) {
 			return ""
 		}(),
 		TLSSkipVerify: i.TLSSkipVerify,
+		SortOrder:     i.SortOrder,
 	})
 }
 
@@ -82,6 +85,7 @@ func (i *Instance) UnmarshalJSON(data []byte) error {
 		LastConnectedAt *time.Time `json:"last_connected_at,omitempty"`
 		CreatedAt       time.Time  `json:"created_at"`
 		UpdatedAt       time.Time  `json:"updated_at"`
+		SortOrder       *int       `json:"sortOrder,omitempty"`
 	}
 
 	if err := json.Unmarshal(data, &temp); err != nil {
@@ -97,6 +101,10 @@ func (i *Instance) UnmarshalJSON(data []byte) error {
 
 	if temp.TLSSkipVerify != nil {
 		i.TLSSkipVerify = *temp.TLSSkipVerify
+	}
+
+	if temp.SortOrder != nil {
+		i.SortOrder = *temp.SortOrder
 	}
 
 	// Handle password - don't overwrite if redacted
@@ -254,16 +262,38 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 	var passwordEncrypted sql.NullString
 	var basicPasswordEncrypted sql.NullString
 	var tlsSkipVerifyResult bool
+	var sortOrder int
 
 	err = tx.QueryRowContext(ctx, `
-		INSERT INTO instances (name_id, host_id, username_id, password_encrypted, basic_username_id, basic_password_encrypted, tls_skip_verify) 
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-		RETURNING id, password_encrypted, basic_password_encrypted, tls_skip_verify
-	`, allIDs[0], allIDs[1], allIDs[2], encryptedPassword, allIDs[3], encryptedBasicPassword, tlsSkipVerify).Scan(
+		WITH next_sort AS (
+			SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_order FROM instances
+		)
+		INSERT INTO instances (
+			name_id,
+			host_id,
+			username_id,
+			password_encrypted,
+			basic_username_id,
+			basic_password_encrypted,
+			tls_skip_verify,
+			sort_order
+		)
+		SELECT ?, ?, ?, ?, ?, ?, ?, next_order FROM next_sort
+		RETURNING id, password_encrypted, basic_password_encrypted, tls_skip_verify, sort_order
+	`,
+		allIDs[0],
+		allIDs[1],
+		allIDs[2],
+		encryptedPassword,
+		allIDs[3],
+		encryptedBasicPassword,
+		tlsSkipVerify,
+	).Scan(
 		&instanceID,
 		&passwordEncrypted,
 		&basicPasswordEncrypted,
 		&tlsSkipVerifyResult,
+		&sortOrder,
 	)
 
 	if err != nil {
@@ -277,6 +307,7 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 		Username:          username,
 		PasswordEncrypted: passwordEncrypted.String,
 		TLSSkipVerify:     tlsSkipVerifyResult,
+		SortOrder:         sortOrder,
 	}
 
 	if basicUsername != nil {
@@ -295,7 +326,7 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 
 func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 	query := `
-		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify 
+		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order 
 		FROM instances_view 
 		WHERE id = ?
 	`
@@ -304,6 +335,7 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 	var name, host, username, passwordEncrypted string
 	var basicUsername, basicPasswordEncrypted sql.NullString
 	var tlsSkipVerify bool
+	var sortOrder int
 
 	err := s.db.QueryRowContext(ctx, query, id).Scan(
 		&instanceID,
@@ -314,6 +346,7 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 		&basicUsername,
 		&basicPasswordEncrypted,
 		&tlsSkipVerify,
+		&sortOrder,
 	)
 
 	if err != nil {
@@ -330,6 +363,7 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 		Username:          username,
 		PasswordEncrypted: passwordEncrypted,
 		TLSSkipVerify:     tlsSkipVerify,
+		SortOrder:         sortOrder,
 	}
 
 	if basicUsername.Valid {
@@ -344,9 +378,9 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 
 func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 	query := `
-		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify 
+		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order 
 		FROM instances_view
-		ORDER BY name ASC
+		ORDER BY sort_order ASC, name COLLATE NOCASE ASC, id ASC
 	`
 
 	rows, err := s.db.QueryContext(ctx, query)
@@ -361,6 +395,7 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 		var name, host, username, passwordEncrypted string
 		var basicUsername, basicPasswordEncrypted sql.NullString
 		var tlsSkipVerify bool
+		var sortOrder int
 
 		err := rows.Scan(
 			&id,
@@ -371,6 +406,7 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 			&basicUsername,
 			&basicPasswordEncrypted,
 			&tlsSkipVerify,
+			&sortOrder,
 		)
 		if err != nil {
 			return nil, err
@@ -383,6 +419,7 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 			Username:          username,
 			PasswordEncrypted: passwordEncrypted,
 			TLSSkipVerify:     tlsSkipVerify,
+			SortOrder:         sortOrder,
 		}
 
 		if basicUsername.Valid {
@@ -498,6 +535,55 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 	}
 
 	return s.Get(ctx, id)
+}
+
+func (s *InstanceStore) UpdateOrder(ctx context.Context, instanceIDs []int) error {
+	if len(instanceIDs) == 0 {
+		return errors.New("instance ids cannot be empty")
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var totalInstances int
+	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM instances").Scan(&totalInstances); err != nil {
+		return fmt.Errorf("failed to validate instance list: %w", err)
+	}
+	if len(instanceIDs) != totalInstances {
+		return fmt.Errorf("partial reordering not allowed: expected %d instances, got %d", totalInstances, len(instanceIDs))
+	}
+
+	seen := make(map[int]struct{}, len(instanceIDs))
+	updateQuery := `UPDATE instances SET sort_order = ? WHERE id = ?`
+	for order, id := range instanceIDs {
+		if _, exists := seen[id]; exists {
+			return fmt.Errorf("duplicate instance id %d in reorder payload", id)
+		}
+		seen[id] = struct{}{}
+
+		result, err := tx.ExecContext(ctx, updateQuery, order, id)
+		if err != nil {
+			return err
+		}
+
+		rows, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+
+		if rows != 1 {
+			return ErrInstanceNotFound
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
 }
 
 func (s *InstanceStore) Delete(ctx context.Context, id int) error {
