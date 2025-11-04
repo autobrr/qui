@@ -111,13 +111,14 @@ export function useInstanceMetadata(instanceId: number, options: UseInstanceMeta
         const preferences = await api.getInstancePreferences(instanceId)
 
         setMetadata(previous => {
+          const cached = queryClient.getQueryData<InstanceMetadata>(queryKey)
           const next: InstanceMetadata = {
-            categories: previous?.categories ?? {},
-            tags: previous?.tags ?? [],
+            categories: cached?.categories ?? previous?.categories ?? {},
+            tags: cached?.tags ?? previous?.tags ?? [],
             preferences,
           }
           queryClient.setQueryData(queryKey, next)
-          return next
+          return previous
         })
         setError(null)
       } catch (err) {
