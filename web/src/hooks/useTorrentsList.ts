@@ -183,11 +183,13 @@ export function useTorrentsList(
         const leading = leadingSliceEnd > 0 ? prev.slice(0, leadingSliceEnd) : []
         const trailingStart = Math.min(pageEnd, prev.length)
         const trailing = trailingStart < prev.length ? prev.slice(trailingStart) : []
+        const displacedSlice = prev.slice(pageStart, Math.min(pageEnd, prev.length))
 
         const dedupedLeading = leading.filter(torrent => !seen.has(torrent.hash))
+        const dedupedDisplaced = displacedSlice.filter(torrent => !seen.has(torrent.hash))
         const dedupedTrailing = trailing.filter(torrent => !seen.has(torrent.hash))
 
-        const merged = [...dedupedLeading, ...nextTorrents, ...dedupedTrailing]
+        const merged = [...dedupedLeading, ...nextTorrents, ...dedupedDisplaced, ...dedupedTrailing]
 
         if (totalFromPayload !== undefined && merged.length > totalFromPayload) {
           return merged.slice(0, totalFromPayload)
