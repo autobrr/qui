@@ -11,6 +11,11 @@ import type {
   BackupSettings,
   Category,
   DuplicateTorrentMatch,
+  ExternalProgram,
+  ExternalProgramCreate,
+  ExternalProgramExecute,
+  ExternalProgramExecuteResponse,
+  ExternalProgramUpdate,
   InstanceCapabilities,
   InstanceFormData,
   InstanceResponse,
@@ -176,6 +181,13 @@ class ApiClient {
 
   async getInstanceCapabilities(id: number): Promise<InstanceCapabilities> {
     return this.request<InstanceCapabilities>(`/instances/${id}/capabilities`)
+  }
+
+  async reorderInstances(instanceIds: number[]): Promise<InstanceResponse[]> {
+    return this.request<InstanceResponse[]>("/instances/order", {
+      method: "PUT",
+      body: JSON.stringify({ instanceIds }),
+    })
   }
 
   async getBackupSettings(instanceId: number): Promise<BackupSettings> {
@@ -824,6 +836,38 @@ class ApiClient {
 
   async getTrackerIcons(): Promise<Record<string, string>> {
     return this.request<Record<string, string>>("/tracker-icons")
+  }
+
+  // External Programs endpoints
+  async listExternalPrograms(): Promise<ExternalProgram[]> {
+    return this.request<ExternalProgram[]>("/external-programs")
+  }
+
+  async createExternalProgram(program: ExternalProgramCreate): Promise<ExternalProgram> {
+    return this.request<ExternalProgram>("/external-programs", {
+      method: "POST",
+      body: JSON.stringify(program),
+    })
+  }
+
+  async updateExternalProgram(id: number, program: ExternalProgramUpdate): Promise<ExternalProgram> {
+    return this.request<ExternalProgram>(`/external-programs/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(program),
+    })
+  }
+
+  async deleteExternalProgram(id: number): Promise<void> {
+    return this.request(`/external-programs/${id}`, {
+      method: "DELETE",
+    })
+  }
+
+  async executeExternalProgram(request: ExternalProgramExecute): Promise<ExternalProgramExecuteResponse> {
+    return this.request<ExternalProgramExecuteResponse>("/external-programs/execute", {
+      method: "POST",
+      body: JSON.stringify(request),
+    })
   }
 }
 
