@@ -269,6 +269,7 @@ func newTestInstanceStore(t *testing.T) (*models.InstanceStore, func()) {
 			basic_username_id INTEGER,
 			basic_password_encrypted TEXT,
 			tls_skip_verify BOOLEAN NOT NULL DEFAULT 0,
+			sort_order INTEGER NOT NULL DEFAULT 0,
 			is_active BOOLEAN DEFAULT 1,
 			last_connected_at TIMESTAMP,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -287,7 +288,8 @@ func newTestInstanceStore(t *testing.T) (*models.InstanceStore, func()) {
 				i.password_encrypted,
 				sp_basic_username.value AS basic_username,
 				i.basic_password_encrypted,
-				i.tls_skip_verify
+				i.tls_skip_verify,
+				i.sort_order
 			FROM instances i
 			INNER JOIN string_pool sp_name ON i.name_id = sp_name.id
 			INNER JOIN string_pool sp_host ON i.host_id = sp_host.id
