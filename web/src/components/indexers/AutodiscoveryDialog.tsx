@@ -182,7 +182,7 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
         </DialogHeader>
 
         {step === 'input' ? (
-          <form onSubmit={handleDiscover}>
+          <form onSubmit={handleDiscover} autoComplete="off" data-1p-ignore>
             <div className="grid gap-4 py-4">
               <div className="grid gap-2">
                 <Label htmlFor="torznabUrl">Indexer URL</Label>

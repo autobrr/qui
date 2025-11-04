@@ -129,7 +129,7 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
               : 'Update indexer settings'}
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} autoComplete="off" data-1p-ignore>
           <div className="grid gap-4 py-4">
           <div className="grid gap-2">
             <Label htmlFor="name">Name</Label>
@@ -140,6 +140,8 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
                   setFormData({ ...formData, name: e.target.value })
               }
               placeholder="My Indexer"
+              autoComplete="off"
+              data-1p-ignore
               required
             />
           </div>
@@ -175,6 +177,8 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
                   setFormData({ ...formData, base_url: e.target.value })
               }
               placeholder={baseUrlPlaceholder}
+              autoComplete="off"
+              data-1p-ignore
               required
             />
           </div>
@@ -190,6 +194,8 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
                   setFormData({ ...formData, indexer_id: e.target.value })
                 }
                 placeholder={backend === 'prowlarr' ? 'Prowlarr indexer ID (e.g., 1)' : 'Optional Jackett indexer ID (e.g., aither)'}
+                autoComplete="off"
+                data-1p-ignore
                 required={requiresIndexerId}
               />
               <p className="text-xs text-muted-foreground">
@@ -209,6 +215,8 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
                   setFormData({ ...formData, api_key: e.target.value })
                 }
                 placeholder={mode === 'edit' ? 'Leave blank to keep existing' : 'Your API key'}
+                autoComplete="off"
+                data-1p-ignore
                 required={mode === 'create'}
               />
             </div>
@@ -223,6 +231,8 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
                     setFormData({ ...formData, priority: parseInt(e.target.value) })
                   }
                   min="0"
+                  autoComplete="off"
+                  data-1p-ignore
                   required
                 />
               </div>
@@ -237,6 +247,8 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
                   }
                   min="5"
                   max="120"
+                  autoComplete="off"
+                  data-1p-ignore
                   required
                 />
               </div>
