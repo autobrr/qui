@@ -5,6 +5,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -43,6 +44,7 @@ func (h *JackettHandler) Routes(r chi.Router) {
 			r.Put("/{indexerID}", h.UpdateIndexer)
 			r.Delete("/{indexerID}", h.DeleteIndexer)
 			r.Post("/{indexerID}/test", h.TestIndexer)
+			r.Post("/{indexerID}/caps/sync", h.SyncIndexerCaps)
 			r.Get("/{indexerID}/health", h.GetIndexerHealth)
 			r.Get("/{indexerID}/errors", h.GetIndexerErrors)
 			r.Get("/{indexerID}/stats", h.GetIndexerStats)
@@ -231,6 +233,18 @@ func (h *JackettHandler) CreateIndexer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.service != nil {
+		if updated, err := h.service.SyncIndexerCaps(r.Context(), indexer.ID); err != nil {
+			log.Warn().
+				Err(err).
+				Int("indexer_id", indexer.ID).
+				Str("indexer", indexer.Name).
+				Msg("Failed to sync torznab caps after creation")
+		} else if updated != nil {
+			indexer = updated
+		}
+	}
+
 	RespondJSON(w, http.StatusCreated, indexer)
 }
 
@@ -336,6 +350,18 @@ func (h *JackettHandler) UpdateIndexer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.service != nil {
+		if updated, err := h.service.SyncIndexerCaps(r.Context(), indexer.ID); err != nil {
+			log.Warn().
+				Err(err).
+				Int("indexer_id", indexer.ID).
+				Str("indexer", indexer.Name).
+				Msg("Failed to sync torznab caps after update")
+		} else if updated != nil {
+			indexer = updated
+		}
+	}
+
 	RespondJSON(w, http.StatusOK, indexer)
 }
 
@@ -428,6 +454,48 @@ func (h *JackettHandler) TestIndexer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	RespondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// SyncIndexerCaps godoc
+// @Summary Refresh Torznab caps from the backend
+// @Description Fetches the latest capabilities and categories from Jackett, Prowlarr, or a native Torznab endpoint and persists them.
+// @Tags torznab
+// @Param indexerID path int true "Indexer ID"
+// @Success 200 {object} models.TorznabIndexer
+// @Failure 400 {object} httphelpers.ErrorResponse
+// @Failure 404 {object} httphelpers.ErrorResponse
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/torznab/indexers/{indexerID}/caps/sync [post]
+func (h *JackettHandler) SyncIndexerCaps(w http.ResponseWriter, r *http.Request) {
+	if h.service == nil {
+		RespondError(w, http.StatusServiceUnavailable, "Jackett service not configured")
+		return
+	}
+
+	id, err := strconv.Atoi(chi.URLParam(r, "indexerID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid indexer ID")
+		return
+	}
+
+	indexer, err := h.service.SyncIndexerCaps(r.Context(), id)
+	if err != nil {
+		switch {
+		case errors.Is(err, models.ErrTorznabIndexerNotFound):
+			RespondError(w, http.StatusNotFound, "Indexer not found")
+			return
+		case errors.Is(err, jackett.ErrMissingIndexerIdentifier):
+			RespondError(w, http.StatusBadRequest, err.Error())
+			return
+		default:
+			log.Error().Err(err).Int("indexer_id", id).Msg("Failed to sync torznab caps")
+			RespondError(w, http.StatusInternalServerError, "Failed to sync caps: "+err.Error())
+			return
+		}
+	}
+
+	RespondJSON(w, http.StatusOK, indexer)
 }
 
 // DiscoverIndexers godoc

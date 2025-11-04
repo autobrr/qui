@@ -5,6 +5,7 @@ package jackett
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"regexp"
@@ -37,6 +38,8 @@ var (
 	tvSeasonOnlyPattern    = regexp.MustCompile(`(?i)(?:\bseason\s*\d{1,2}\b|\bs\d{1,2}\b)`)
 	movieYearPattern       = regexp.MustCompile(`\b(19|20)\d{2}\b`)
 	movieQualityPattern    = regexp.MustCompile(`\b(480p|720p|1080p|1440p|2160p|4k|webrip|web[- ]?dl|bluray|bdrip|hdrip|dvdrip|remux)\b`)
+	// ErrMissingIndexerIdentifier signals that the Torznab backend requires an indexer ID to fetch caps.
+	ErrMissingIndexerIdentifier = errors.New("torznab indexer identifier is required for caps sync")
 )
 
 // searchContext carries additional metadata about the current Torznab search.
@@ -321,6 +324,52 @@ func (s *Service) DownloadTorrent(ctx context.Context, indexerID int, downloadUR
 	}
 
 	return data, nil
+}
+
+// SyncIndexerCaps fetches and persists Torznab capabilities and categories for an indexer.
+func (s *Service) SyncIndexerCaps(ctx context.Context, indexerID int) (*models.TorznabIndexer, error) {
+	if indexerID <= 0 {
+		return nil, fmt.Errorf("indexer ID must be positive")
+	}
+
+	indexer, err := s.indexerStore.Get(ctx, indexerID)
+	if err != nil {
+		return nil, fmt.Errorf("load torznab indexer: %w", err)
+	}
+
+	apiKey, err := s.indexerStore.GetDecryptedAPIKey(indexer)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt torznab api key: %w", err)
+	}
+
+	client := NewClient(indexer.BaseURL, apiKey, indexer.Backend, indexer.TimeoutSeconds)
+
+	identifier, err := resolveCapsIdentifier(indexer)
+	if err != nil {
+		return nil, err
+	}
+
+	caps, err := client.FetchCaps(ctx, identifier)
+	if err != nil {
+		return nil, fmt.Errorf("fetch torznab caps: %w", err)
+	}
+	if caps == nil {
+		return nil, fmt.Errorf("torznab caps response was empty")
+	}
+
+	if err := s.indexerStore.SetCapabilities(ctx, indexer.ID, caps.Capabilities); err != nil {
+		return nil, fmt.Errorf("persist torznab capabilities: %w", err)
+	}
+	if err := s.indexerStore.SetCategories(ctx, indexer.ID, caps.Categories); err != nil {
+		return nil, fmt.Errorf("persist torznab categories: %w", err)
+	}
+
+	updated, err := s.indexerStore.Get(ctx, indexer.ID)
+	if err != nil {
+		return nil, fmt.Errorf("reload torznab indexer: %w", err)
+	}
+
+	return updated, nil
 }
 
 // searchMultipleIndexers searches multiple indexers in parallel and aggregates results
@@ -759,6 +808,27 @@ func extractIndexerIDFromURL(baseURL, indexerName string) string {
 	// If no indexer ID found in URL, return the indexer name
 	// This handles cases where BaseURL is just the Jackett base URL
 	return strings.ToLower(strings.ReplaceAll(indexerName, " ", ""))
+}
+
+func resolveCapsIdentifier(indexer *models.TorznabIndexer) (string, error) {
+	switch indexer.Backend {
+	case models.TorznabBackendProwlarr:
+		if trimmed := strings.TrimSpace(indexer.IndexerID); trimmed != "" {
+			return trimmed, nil
+		}
+		return "", fmt.Errorf("prowlarr indexer identifier is required for caps sync: %w", ErrMissingIndexerIdentifier)
+	case models.TorznabBackendNative:
+		return "", nil
+	default:
+		identifier := strings.TrimSpace(indexer.IndexerID)
+		if identifier == "" {
+			identifier = extractIndexerIDFromURL(indexer.BaseURL, indexer.Name)
+		}
+		if trimmed := strings.TrimSpace(identifier); trimmed != "" {
+			return trimmed, nil
+		}
+		return "", fmt.Errorf("jackett indexer identifier is required for caps sync: %w", ErrMissingIndexerIdentifier)
+	}
 }
 
 // contentType represents the type of content being searched (internal use only)

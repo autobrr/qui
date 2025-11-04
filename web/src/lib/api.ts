@@ -1180,6 +1180,12 @@ class ApiClient {
     })
   }
 
+  async syncTorznabCaps(id: number): Promise<TorznabIndexer> {
+    return this.request<TorznabIndexer>(`/torznab/indexers/${id}/caps/sync`, {
+      method: "POST",
+    })
+  }
+
   async deleteTorznabIndexer(id: number): Promise<void> {
     return this.request<void>(`/torznab/indexers/${id}`, {
       method: "DELETE",

@@ -153,6 +153,16 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
             onEdit={handleEdit}
             onDelete={handleDelete}
             onTest={handleTest}
+            onSyncCaps={async (id) => {
+              try {
+                const updated = await api.syncTorznabCaps(id)
+                toast.success("Capabilities synced from backend")
+                setIndexers((prev) => prev.map((idx) => (idx.id === updated.id ? updated : idx)))
+              } catch (error) {
+                const message = error instanceof Error ? error.message : "Failed to sync caps"
+                toast.error(message)
+              }
+            }}
           />
         </CardContent>
       </Card>
@@ -177,6 +187,7 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
           loadIndexers()
         }}
       />
+
     </>
   )
 

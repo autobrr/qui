@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { Edit2, Trash2, TestTube, Check, X } from 'lucide-react'
+import { Edit2, Trash2, TestTube, Check, X, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Table,
@@ -22,6 +22,7 @@ interface IndexerTableProps {
   onEdit: (indexer: TorznabIndexer) => void
   onDelete: (id: number) => void
   onTest: (id: number) => void
+  onSyncCaps: (id: number) => void
 }
 
 export function IndexerTable({
@@ -30,6 +31,7 @@ export function IndexerTable({
   onEdit,
   onDelete,
   onTest,
+  onSyncCaps,
 }: IndexerTableProps) {
   if (loading) {
     return <div className="text-center py-8 text-muted-foreground">Loading...</div>
@@ -112,6 +114,14 @@ export function IndexerTable({
                   title="Test connection"
                 >
                   <TestTube className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => onSyncCaps(indexer.id)}
+                  title="Sync capabilities"
+                >
+                  <RefreshCw className="h-4 w-4" />
                 </Button>
                 <Button
                   variant="ghost"
