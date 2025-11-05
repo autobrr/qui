@@ -1353,9 +1353,40 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		return nil, fmt.Errorf("torrent %s is not fully downloaded (progress %.2f)", sourceTorrent.Name, sourceTorrent.Progress)
 	}
 
+	sourceRelease := s.releaseCache.Parse(sourceTorrent.Name)
+
 	query := strings.TrimSpace(opts.Query)
 	if query == "" {
-		query = sourceTorrent.Name
+		// Build a better search query from parsed release info instead of using full filename
+		if sourceRelease.Title != "" {
+			// Start with the title
+			query = sourceRelease.Title
+
+			// Add year if available
+			if sourceRelease.Year > 0 {
+				query += fmt.Sprintf(" %d", sourceRelease.Year)
+			}
+
+			// For series, add season/episode info
+			if sourceRelease.Series > 0 {
+				if sourceRelease.Episode > 0 {
+					query += fmt.Sprintf(" S%02dE%02d", sourceRelease.Series, sourceRelease.Episode)
+				} else {
+					query += fmt.Sprintf(" S%02d", sourceRelease.Series)
+				}
+			}
+
+			log.Debug().
+				Str("originalName", sourceTorrent.Name).
+				Str("generatedQuery", query).
+				Msg("[CROSSSEED-SEARCH] Generated search query from parsed release")
+		} else {
+			// Fallback to full name if parsing failed
+			query = sourceTorrent.Name
+			log.Debug().
+				Str("originalName", sourceTorrent.Name).
+				Msg("[CROSSSEED-SEARCH] Using full filename as query (parsing failed)")
+		}
 	}
 
 	limit := opts.Limit
@@ -1373,12 +1404,79 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		IndexerIDs: opts.IndexerIDs,
 	}
 
+	// Add content type detection and appropriate categories using RLS release parsing
+	// This ensures we only search indexers with the correct content type
+	var categories []int
+	contentTypeStr := "unknown"
+
+	switch sourceRelease.Type {
+	case rls.Movie:
+		categories = []int{2000, 2010, 2040, 2050} // Movies, MoviesSD, MoviesHD, Movies4K
+		contentTypeStr = "movie"
+	case rls.Episode, rls.Series:
+		categories = []int{5000, 5010, 5040, 5050} // TV, TVSD, TVHD, TV4K
+		contentTypeStr = "tv"
+	case rls.Music:
+		categories = []int{3000} // Audio
+		contentTypeStr = "music"
+	case rls.Audiobook:
+		categories = []int{3000} // Audio (audiobooks use same category)
+		contentTypeStr = "audiobook"
+	case rls.Book:
+		categories = []int{8000, 8010} // Books, BooksEbook
+		contentTypeStr = "book"
+	case rls.Comic:
+		categories = []int{8020} // BooksComics
+		contentTypeStr = "comic"
+	case rls.Game:
+		categories = []int{4000} // PC
+		contentTypeStr = "game"
+	case rls.App:
+		categories = []int{4000} // PC
+		contentTypeStr = "app"
+	default:
+		// Fallback logic based on series/episode/year detection for unknown types
+		if sourceRelease.Series > 0 || sourceRelease.Episode > 0 {
+			categories = []int{5000, 5010, 5040, 5050} // TV categories
+			contentTypeStr = "tv"
+		} else if sourceRelease.Year > 0 {
+			categories = []int{2000, 2010, 2040, 2050} // Movie categories
+			contentTypeStr = "movie"
+		}
+		// If we can't determine type, search all categories (don't set any)
+		// TODO: probably flag to stop any other content type matching
+	}
+
+	// Apply category filtering to the search request
+	if len(categories) > 0 {
+		searchReq.Categories = categories
+
+		// Add season/episode info for TV content
+		if sourceRelease.Series > 0 {
+			season := sourceRelease.Series
+			searchReq.Season = &season
+
+			if sourceRelease.Episode > 0 {
+				episode := sourceRelease.Episode
+				searchReq.Episode = &episode
+			}
+		}
+
+		log.Debug().
+			Str("torrentName", sourceTorrent.Name).
+			Str("contentType", contentTypeStr).
+			Str("releaseType", sourceRelease.Type.String()).
+			Ints("categories", categories).
+			Int("series", sourceRelease.Series).
+			Int("episode", sourceRelease.Episode).
+			Int("year", sourceRelease.Year).
+			Msg("[CROSSSEED-SEARCH] Applied RLS-based content type filtering")
+	}
+
 	searchResp, err := s.jackettService.Search(ctx, searchReq)
 	if err != nil {
 		return nil, fmt.Errorf("torznab search failed: %w", err)
 	}
-
-	sourceRelease := s.releaseCache.Parse(sourceTorrent.Name)
 
 	type scoredResult struct {
 		result jackett.SearchResult
