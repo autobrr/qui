@@ -1326,6 +1326,43 @@ func (s *Service) determineSavePath(newTorrentName string, matchedTorrent *qbt.T
 	return baseSavePath
 }
 
+// parseMusicReleaseFromTorrentName extracts music-specific metadata from torrent name
+// using "Artist - Album" format parsing, handling release groups and years
+func parseMusicReleaseFromTorrentName(baseRelease rls.Release, torrentName string) rls.Release {
+	musicRelease := baseRelease
+	musicRelease.Type = rls.Music // Ensure it's marked as music
+
+	cleanName := torrentName
+
+	// Extract release group if present [GROUP]
+	if strings.Contains(cleanName, "[") && strings.Contains(cleanName, "]") {
+		groupStart := strings.LastIndex(cleanName, "[")
+		groupEnd := strings.LastIndex(cleanName, "]")
+		if groupEnd > groupStart {
+			musicRelease.Group = strings.TrimSpace(cleanName[groupStart+1 : groupEnd])
+			cleanName = strings.TrimSpace(cleanName[:groupStart])
+		}
+	}
+
+	// Remove year (YYYY) from the end for parsing
+	if strings.Contains(cleanName, "(") && strings.Contains(cleanName, ")") {
+		yearStart := strings.LastIndex(cleanName, "(")
+		yearEnd := strings.LastIndex(cleanName, ")")
+		if yearEnd > yearStart {
+			cleanName = strings.TrimSpace(cleanName[:yearStart])
+		}
+	}
+
+	// Parse "Artist - Album" format
+	if parts := strings.Split(cleanName, " - "); len(parts) >= 2 {
+		musicRelease.Artist = strings.TrimSpace(parts[0])
+		// Join remaining parts as album title (in case there are multiple " - " separators)
+		musicRelease.Title = strings.TrimSpace(strings.Join(parts[1:], " - "))
+	}
+
+	return musicRelease
+}
+
 // SearchTorrentMatches queries Torznab indexers for candidate torrents that match an existing torrent.
 func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash string, opts TorrentSearchOptions) (*TorrentSearchResponse, error) {
 	if s.jackettService == nil {
@@ -1438,38 +1475,7 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		var queryRelease rls.Release
 		if isMusic && contentDetectionRelease.Type == rls.Music {
 			// For music, create a proper music release object by parsing the torrent name as music
-			queryRelease = sourceRelease
-			queryRelease.Type = rls.Music // Ensure it's marked as music
-
-			// Parse "Artist - Album" format from torrent name for better music metadata
-			torrentName := sourceTorrent.Name
-			cleanName := torrentName
-
-			// Extract release group if present [GROUP]
-			if strings.Contains(cleanName, "[") && strings.Contains(cleanName, "]") {
-				groupStart := strings.LastIndex(cleanName, "[")
-				groupEnd := strings.LastIndex(cleanName, "]")
-				if groupEnd > groupStart {
-					queryRelease.Group = strings.TrimSpace(cleanName[groupStart+1 : groupEnd])
-					cleanName = strings.TrimSpace(cleanName[:groupStart])
-				}
-			}
-
-			// Remove year (YYYY) from the end for parsing
-			if strings.Contains(cleanName, "(") && strings.Contains(cleanName, ")") {
-				yearStart := strings.LastIndex(cleanName, "(")
-				yearEnd := strings.LastIndex(cleanName, ")")
-				if yearEnd > yearStart {
-					cleanName = strings.TrimSpace(cleanName[:yearStart])
-				}
-			}
-
-			// Parse "Artist - Album" format
-			if parts := strings.Split(cleanName, " - "); len(parts) >= 2 {
-				queryRelease.Artist = strings.TrimSpace(parts[0])
-				// Join remaining parts as album title (in case there are multiple " - " separators)
-				queryRelease.Title = strings.TrimSpace(strings.Join(parts[1:], " - "))
-			}
+			queryRelease = parseMusicReleaseFromTorrentName(sourceRelease, sourceTorrent.Name)
 		} else {
 			// For other content types, use the torrent name release
 			queryRelease = sourceRelease
@@ -1551,38 +1557,7 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		var logRelease rls.Release
 		if isMusic && contentDetectionRelease.Type == rls.Music {
 			// For music, create a proper music release object by parsing the torrent name as music
-			logRelease = sourceRelease
-			logRelease.Type = rls.Music // Ensure it's marked as music
-
-			// Parse "Artist - Album" format from torrent name for better music metadata
-			torrentName := sourceTorrent.Name
-			cleanName := torrentName
-
-			// Extract release group if present [GROUP]
-			if strings.Contains(cleanName, "[") && strings.Contains(cleanName, "]") {
-				groupStart := strings.LastIndex(cleanName, "[")
-				groupEnd := strings.LastIndex(cleanName, "]")
-				if groupEnd > groupStart {
-					logRelease.Group = strings.TrimSpace(cleanName[groupStart+1 : groupEnd])
-					cleanName = strings.TrimSpace(cleanName[:groupStart])
-				}
-			}
-
-			// Remove year (YYYY) from the end for parsing
-			if strings.Contains(cleanName, "(") && strings.Contains(cleanName, ")") {
-				yearStart := strings.LastIndex(cleanName, "(")
-				yearEnd := strings.LastIndex(cleanName, ")")
-				if yearEnd > yearStart {
-					cleanName = strings.TrimSpace(cleanName[:yearStart])
-				}
-			}
-
-			// Parse "Artist - Album" format
-			if parts := strings.Split(cleanName, " - "); len(parts) >= 2 {
-				logRelease.Artist = strings.TrimSpace(parts[0])
-				// Join remaining parts as album title (in case there are multiple " - " separators)
-				logRelease.Title = strings.TrimSpace(strings.Join(parts[1:], " - "))
-			}
+			logRelease = parseMusicReleaseFromTorrentName(sourceRelease, sourceTorrent.Name)
 		} else {
 			logRelease = sourceRelease
 		}
