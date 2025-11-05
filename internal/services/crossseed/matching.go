@@ -97,6 +97,20 @@ func (s *Service) releasesMatch(source, candidate rls.Release) bool {
 		// Don't enforce episode matching here - handled later in file matching.
 	}
 
+	// Group tags should match for proper cross-seeding compatibility.
+	// Different release groups often have different encoding settings and file structures.
+	sourceGroup := strings.ToUpper(strings.TrimSpace(source.Group))
+	candidateGroup := strings.ToUpper(strings.TrimSpace(candidate.Group))
+
+	// Only enforce group matching if the source has a group tag
+	if sourceGroup != "" {
+		// If source has a group, candidate must have the same group
+		if candidateGroup == "" || sourceGroup != candidateGroup {
+			return false
+		}
+	}
+	// If source has no group, we don't care about candidate's group
+
 	// Resolution matching is optional - different qualities can cross-seed if files match.
 	return true
 }
