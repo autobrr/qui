@@ -505,9 +505,10 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 	}
 
 	findReq := &FindCandidatesRequest{
-		TorrentName:    result.Title,
-		IgnorePatterns: append([]string(nil), settings.IgnorePatterns...),
-		SourceIndexer:  sourceIndexer,
+		TorrentName:            result.Title,
+		IgnorePatterns:         append([]string(nil), settings.IgnorePatterns...),
+		SourceIndexer:          sourceIndexer,
+		FindIndividualEpisodes: settings.FindIndividualEpisodes,
 	}
 	if len(settings.TargetInstanceIDs) > 0 {
 		findReq.TargetInstanceIDs = append([]int(nil), settings.TargetInstanceIDs...)
@@ -739,7 +740,7 @@ func (s *Service) FindCandidates(ctx context.Context, req *FindCandidatesRequest
 			candidateRelease := s.releaseCache.Parse(torrent.Name)
 
 			// Check if releases are related (quick filter)
-			if !s.releasesMatch(targetRelease, candidateRelease) {
+			if !s.releasesMatch(targetRelease, candidateRelease, req.FindIndividualEpisodes) {
 				continue
 			}
 
@@ -820,8 +821,9 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 
 	// Use FindCandidates to locate matching torrents
 	findReq := &FindCandidatesRequest{
-		TorrentName:       torrentName,
-		TargetInstanceIDs: req.TargetInstanceIDs,
+		TorrentName:            torrentName,
+		TargetInstanceIDs:      req.TargetInstanceIDs,
+		FindIndividualEpisodes: req.FindIndividualEpisodes,
 	}
 	if len(req.IgnorePatterns) > 0 {
 		findReq.IgnorePatterns = append([]string(nil), req.IgnorePatterns...)
@@ -1529,7 +1531,7 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		}
 
 		candidateRelease := s.releaseCache.Parse(res.Title)
-		if !s.releasesMatch(sourceRelease, candidateRelease) {
+		if !s.releasesMatch(sourceRelease, candidateRelease, opts.FindIndividualEpisodes) {
 			continue
 		}
 

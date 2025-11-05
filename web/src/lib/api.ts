@@ -441,12 +441,14 @@ class ApiClient {
     torrentName: string
     ignorePatterns?: string[]
     targetInstanceIds?: number[]
+    findIndividualEpisodes?: boolean
   }): Promise<CrossSeedFindCandidatesResponse> {
     const body: Record<string, unknown> = {
       torrent_name: payload.torrentName,
     }
     if (payload.ignorePatterns) body.ignore_patterns = payload.ignorePatterns
     if (payload.targetInstanceIds) body.target_instance_ids = payload.targetInstanceIds
+    if (payload.findIndividualEpisodes !== undefined) body.find_individual_episodes = payload.findIndividualEpisodes
 
     type RawTorrentInfo = {
       instance_id?: number
@@ -527,6 +529,7 @@ class ApiClient {
     tags?: string[]
     skipIfExists?: boolean
     startPaused?: boolean
+    findIndividualEpisodes?: boolean
   }): Promise<CrossSeedResponse> {
     const body: Record<string, unknown> = {
       torrent_data: payload.torrentData,
@@ -536,6 +539,7 @@ class ApiClient {
     if (payload.tags) body.tags = payload.tags
     if (payload.skipIfExists !== undefined) body.skip_if_exists = payload.skipIfExists
     if (payload.startPaused !== undefined) body.start_paused = payload.startPaused
+    if (payload.findIndividualEpisodes !== undefined) body.find_individual_episodes = payload.findIndividualEpisodes
 
     return this.request<CrossSeedResponse>("/cross-seed/cross", {
       method: "POST",
@@ -550,6 +554,7 @@ class ApiClient {
       query?: string
       limit?: number
       indexerIds?: number[]
+      findIndividualEpisodes?: boolean
     } = {}
   ): Promise<CrossSeedTorrentSearchResponse> {
     const body: Record<string, unknown> = {}
@@ -562,6 +567,9 @@ class ApiClient {
     }
     if (options.indexerIds && options.indexerIds.length > 0) {
       body.indexer_ids = options.indexerIds
+    }
+    if (options.findIndividualEpisodes !== undefined) {
+      body.find_individual_episodes = options.findIndividualEpisodes
     }
 
     type RawTorrentInfo = {

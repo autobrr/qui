@@ -27,6 +27,9 @@ type CrossSeedRequest struct {
 	// AddCrossSeedTag controls whether the service should automatically tag added torrents as cross-seeds.
 	// Defaults to true when omitted.
 	AddCrossSeedTag *bool `json:"add_cross_seed_tag,omitempty"`
+	// FindIndividualEpisodes controls whether to find individual episodes when searching with season packs
+	// If false (default), season packs will only match with other season packs
+	FindIndividualEpisodes bool `json:"find_individual_episodes,omitempty"`
 }
 
 // CrossSeedResponse represents the result of a cross-seed operation
@@ -93,6 +96,9 @@ type FindCandidatesRequest struct {
 	// TargetInstanceIDs specifies which instances to search for EXISTING torrents with matching files
 	// If empty, will search all instances
 	TargetInstanceIDs []int `json:"target_instance_ids,omitempty"`
+	// FindIndividualEpisodes controls whether to find individual episodes when searching with season packs
+	// If false (default), season packs will only match with other season packs
+	FindIndividualEpisodes bool `json:"find_individual_episodes,omitempty"`
 }
 
 // FindCandidatesResponse represents potential cross-seed candidates
@@ -140,6 +146,9 @@ type TorrentSearchOptions struct {
 	Limit int `json:"limit,omitempty"`
 	// IndexerIDs restricts the search to specific Torznab indexers.
 	IndexerIDs []int `json:"indexer_ids,omitempty"`
+	// FindIndividualEpisodes controls whether to find individual episodes when searching with season packs
+	// If false (default), season packs will only match with other season packs
+	FindIndividualEpisodes bool `json:"find_individual_episodes,omitempty"`
 }
 
 // TorrentSearchResult represents an indexer search result that appears to match the seeded torrent.

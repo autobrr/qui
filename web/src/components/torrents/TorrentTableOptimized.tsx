@@ -673,6 +673,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     staleTime: 5 * 60 * 1000,
   })
 
+  const { data: crossSeedSettings } = useQuery({
+    queryKey: ["cross-seed", "settings"],
+    queryFn: () => api.getCrossSeedSettings(),
+    staleTime: 5 * 60 * 1000,
+  })
+
   const hasEnabledCrossSeedIndexers = useMemo(
     () => (torznabIndexers ?? []).some(indexer => indexer.enabled),
     [torznabIndexers]
@@ -1482,7 +1488,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       setCrossSeedTagName("cross-seed")
 
       void api
-        .searchCrossSeedTorrent(instanceId, torrent.hash)
+        .searchCrossSeedTorrent(instanceId, torrent.hash, {
+          findIndividualEpisodes: crossSeedSettings?.findIndividualEpisodes ?? false
+        })
         .then((response) => {
           setCrossSeedSearchResponse(response)
 
@@ -1505,7 +1513,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           setCrossSeedSearchLoading(false)
         })
     },
-    [getCrossSeedResultKey, hasEnabledCrossSeedIndexers, instanceId]
+    [getCrossSeedResultKey, hasEnabledCrossSeedIndexers, instanceId, crossSeedSettings]
   )
 
   const handleRetryCrossSeedSearch = useCallback(() => {

@@ -67,7 +67,7 @@ func makeReleaseKey(r rls.Release) releaseKey {
 
 // releasesMatch checks if two releases are related using fuzzy matching.
 // This allows matching similar content that isn't exactly the same.
-func (s *Service) releasesMatch(source, candidate rls.Release) bool {
+func (s *Service) releasesMatch(source, candidate rls.Release, findIndividualEpisodes bool) bool {
 	// Title should match closely but not necessarily exactly.
 	sourceTitleLower := strings.ToLower(strings.TrimSpace(source.Title))
 	candidateTitleLower := strings.ToLower(strings.TrimSpace(candidate.Title))
@@ -88,13 +88,42 @@ func (s *Service) releasesMatch(source, candidate rls.Release) bool {
 		return false
 	}
 
-	// For TV shows, season must match but episodes can differ.
+	// For TV shows, season and episode structure must match based on settings.
 	if source.Series > 0 || candidate.Series > 0 {
-		// If one has a season but the other doesn't, skip season check.
+		// Both must have series info if either does
+		if source.Series > 0 && candidate.Series == 0 {
+			return false
+		}
+		if candidate.Series > 0 && source.Series == 0 {
+			return false
+		}
+
+		// Series numbers must match
 		if source.Series > 0 && candidate.Series > 0 && source.Series != candidate.Series {
 			return false
 		}
-		// Don't enforce episode matching here - handled later in file matching.
+
+		// Episode structure matching depends on user setting
+		sourceIsPack := source.Series > 0 && source.Episode == 0
+		candidateIsPack := candidate.Series > 0 && candidate.Episode == 0
+
+		if !findIndividualEpisodes {
+			// Strict matching: season packs only match season packs, episodes only match episodes
+			if sourceIsPack != candidateIsPack {
+				return false // Don't match season packs with individual episodes
+			}
+
+			// If both are individual episodes, episodes must match
+			if !sourceIsPack && !candidateIsPack && source.Episode != candidate.Episode {
+				return false
+			}
+		} else {
+			// Flexible matching: allow season packs to match individual episodes
+			// But individual episodes still need exact episode matching
+			if !sourceIsPack && !candidateIsPack && source.Episode != candidate.Episode {
+				return false
+			}
+		}
 	}
 
 	// Group tags should match for proper cross-seeding compatibility.

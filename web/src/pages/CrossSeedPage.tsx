@@ -52,6 +52,10 @@ interface AutomationFormState {
   maxResultsPerRun: number
 }
 
+interface GlobalCrossSeedSettings {
+  findIndividualEpisodes: boolean
+}
+
 const DEFAULT_AUTOMATION_FORM: AutomationFormState = {
   enabled: false,
   runIntervalMinutes: 120,
@@ -62,6 +66,10 @@ const DEFAULT_AUTOMATION_FORM: AutomationFormState = {
   targetInstanceIds: [],
   targetIndexerIds: [],
   maxResultsPerRun: 50,
+}
+
+const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
+  findIndividualEpisodes: false,
 }
 
 function parseList(value: string): string[] {
@@ -96,12 +104,16 @@ function formatDate(value?: string | null): string {
 export function CrossSeedPage() {
   const queryClient = useQueryClient()
   const [automationForm, setAutomationForm] = useState<AutomationFormState>(DEFAULT_AUTOMATION_FORM)
+  const [globalSettings, setGlobalSettings] = useState<GlobalCrossSeedSettings>(DEFAULT_GLOBAL_SETTINGS)
   const [formInitialized, setFormInitialized] = useState(false)
+  const [globalSettingsInitialized, setGlobalSettingsInitialized] = useState(false)
   const [dryRun, setDryRun] = useState(false)
 
   const { data: settings } = useQuery({
     queryKey: ["cross-seed", "settings"],
     queryFn: () => api.getCrossSeedSettings(),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
   })
 
   const { data: status, refetch: refetchStatus } = useQuery({
@@ -142,13 +154,35 @@ export function CrossSeedPage() {
     }
   }, [settings, formInitialized])
 
+  useEffect(() => {
+    if (settings && !globalSettingsInitialized) {
+      setGlobalSettings({
+        findIndividualEpisodes: settings.findIndividualEpisodes,
+      })
+      setGlobalSettingsInitialized(true)
+    }
+  }, [settings, globalSettingsInitialized])
+
   const updateSettingsMutation = useMutation({
     mutationFn: (payload: CrossSeedAutomationSettings) => api.updateCrossSeedSettings(payload),
     onSuccess: (data) => {
       toast.success("Automation settings updated")
-      setFormInitialized(false)
+      // Don't reinitialize the form since we just saved it
       queryClient.setQueryData(["cross-seed", "settings"], data)
       refetchStatus()
+    },
+    onError: (error: Error) => {
+      toast.error(error.message)
+    },
+  })
+
+  const updateGlobalSettingsMutation = useMutation({
+    mutationFn: (payload: CrossSeedAutomationSettings) => api.updateCrossSeedSettings(payload),
+    onSuccess: (data) => {
+      toast.success("Global settings updated")
+      // Update the cache and invalidate to ensure fresh data
+      queryClient.setQueryData(["cross-seed", "settings"], data)
+      queryClient.invalidateQueries({ queryKey: ["cross-seed", "settings"] })
     },
     onError: (error: Error) => {
       toast.error(error.message)
@@ -176,6 +210,7 @@ export function CrossSeedPage() {
       api.findCrossSeedCandidates({
         torrentName: payload.torrentName,
         ignorePatterns: payload.ignorePatterns,
+        findIndividualEpisodes: globalSettings.findIndividualEpisodes,
       }),
     onSuccess: (data) => {
       setCandidateResult(data)
@@ -205,6 +240,7 @@ export function CrossSeedPage() {
         category: crossSeedCategory.trim() || undefined,
         tags: parseList(crossSeedTags),
         startPaused: crossSeedStartPaused,
+        findIndividualEpisodes: globalSettings.findIndividualEpisodes,
       })
     },
     onSuccess: (data) => {
@@ -217,6 +253,27 @@ export function CrossSeedPage() {
     },
   })
 
+  const handleGlobalSettingsSave = () => {
+    // Get current settings to merge with global changes
+    if (!settings) return
+    
+    const payload: CrossSeedAutomationSettings = {
+      // Use current automation form values if they've been modified, otherwise use saved settings
+      enabled: formInitialized ? automationForm.enabled : settings.enabled,
+      runIntervalMinutes: formInitialized ? automationForm.runIntervalMinutes : settings.runIntervalMinutes,
+      startPaused: formInitialized ? automationForm.startPaused : settings.startPaused,
+      category: formInitialized ? (automationForm.category.trim() || null) : settings.category,
+      tags: formInitialized ? parseList(automationForm.tags) : settings.tags,
+      ignorePatterns: formInitialized ? parseList(automationForm.ignorePatterns.replace(/\r/g, "")) : settings.ignorePatterns,
+      targetInstanceIds: formInitialized ? automationForm.targetInstanceIds : settings.targetInstanceIds,
+      targetIndexerIds: formInitialized ? automationForm.targetIndexerIds : settings.targetIndexerIds,
+      maxResultsPerRun: formInitialized ? automationForm.maxResultsPerRun : settings.maxResultsPerRun,
+      // Only update the global setting
+      findIndividualEpisodes: globalSettings.findIndividualEpisodes,
+    }
+    updateGlobalSettingsMutation.mutate(payload)
+  }
+
   const handleAutomationSave = () => {
     const payload: CrossSeedAutomationSettings = {
       enabled: automationForm.enabled,
@@ -228,6 +285,7 @@ export function CrossSeedPage() {
       targetInstanceIds: automationForm.targetInstanceIds,
       targetIndexerIds: automationForm.targetIndexerIds,
       maxResultsPerRun: automationForm.maxResultsPerRun,
+      findIndividualEpisodes: globalSettings.findIndividualEpisodes,
     }
     updateSettingsMutation.mutate(payload)
   }
@@ -270,6 +328,37 @@ export function CrossSeedPage() {
         <h1 className="text-2xl font-semibold tracking-tight">Cross-Seed</h1>
         <p className="text-sm text-muted-foreground">Identify compatible torrents and automate cross-seeding across your instances.</p>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Global Cross-Seed Settings</CardTitle>
+          <CardDescription>Settings that apply to all cross-seed operations.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="global-find-individual-episodes" className="flex items-center gap-2">
+              <Switch
+                id="global-find-individual-episodes"
+                checked={globalSettings.findIndividualEpisodes}
+                onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, findIndividualEpisodes: !!value }))}
+              />
+              Find individual episodes
+            </Label>
+            <p className="text-xs text-muted-foreground">
+              When enabled, season packs will also match individual episodes. When disabled, season packs only match other season packs.
+            </p>
+          </div>
+        </CardContent>
+        <CardFooter className="flex items-center gap-3">
+          <Button
+            onClick={handleGlobalSettingsSave}
+            disabled={updateGlobalSettingsMutation.isPending}
+          >
+            {updateGlobalSettingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Save settings
+          </Button>
+        </CardFooter>
+      </Card>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
@@ -651,10 +740,8 @@ export function CrossSeedPage() {
           <Button
             variant="ghost"
             onClick={() => {
-              if (settings) {
-                setFormInitialized(false)
-                setAutomationForm(DEFAULT_AUTOMATION_FORM)
-              }
+              // Reset to defaults without triggering reinitialization
+              setAutomationForm(DEFAULT_AUTOMATION_FORM)
             }}
           >
             Reset

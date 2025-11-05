@@ -24,15 +24,16 @@ type CrossSeedHandler struct {
 }
 
 type automationSettingsRequest struct {
-	Enabled            bool     `json:"enabled"`
-	RunIntervalMinutes int      `json:"runIntervalMinutes"`
-	StartPaused        bool     `json:"startPaused"`
-	Category           *string  `json:"category"`
-	Tags               []string `json:"tags"`
-	IgnorePatterns     []string `json:"ignorePatterns"`
-	TargetInstanceIDs  []int    `json:"targetInstanceIds"`
-	TargetIndexerIDs   []int    `json:"targetIndexerIds"`
-	MaxResultsPerRun   int      `json:"maxResultsPerRun"`
+	Enabled                bool     `json:"enabled"`
+	RunIntervalMinutes     int      `json:"runIntervalMinutes"`
+	StartPaused            bool     `json:"startPaused"`
+	Category               *string  `json:"category"`
+	Tags                   []string `json:"tags"`
+	IgnorePatterns         []string `json:"ignorePatterns"`
+	TargetInstanceIDs      []int    `json:"targetInstanceIds"`
+	TargetIndexerIDs       []int    `json:"targetIndexerIds"`
+	MaxResultsPerRun       int      `json:"maxResultsPerRun"`
+	FindIndividualEpisodes bool     `json:"findIndividualEpisodes"`
 }
 
 type automationRunRequest struct {
@@ -333,15 +334,16 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 	}
 
 	settings := &models.CrossSeedAutomationSettings{
-		Enabled:            req.Enabled,
-		RunIntervalMinutes: req.RunIntervalMinutes,
-		StartPaused:        req.StartPaused,
-		Category:           category,
-		Tags:               req.Tags,
-		IgnorePatterns:     req.IgnorePatterns,
-		TargetInstanceIDs:  req.TargetInstanceIDs,
-		TargetIndexerIDs:   req.TargetIndexerIDs,
-		MaxResultsPerRun:   req.MaxResultsPerRun,
+		Enabled:                req.Enabled,
+		RunIntervalMinutes:     req.RunIntervalMinutes,
+		StartPaused:            req.StartPaused,
+		Category:               category,
+		Tags:                   req.Tags,
+		IgnorePatterns:         req.IgnorePatterns,
+		TargetInstanceIDs:      req.TargetInstanceIDs,
+		TargetIndexerIDs:       req.TargetIndexerIDs,
+		MaxResultsPerRun:       req.MaxResultsPerRun,
+		FindIndividualEpisodes: req.FindIndividualEpisodes,
 	}
 
 	updated, err := h.service.UpdateAutomationSettings(r.Context(), settings)
