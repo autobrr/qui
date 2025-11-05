@@ -62,6 +62,8 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
       start_paused_enabled: false,
       use_subcategories: false,
       save_path: "",
+      temp_path_enabled: false,
+      temp_path: "",
       torrent_content_layout: "Original",
     },
     onSubmit: async ({ value }) => {
@@ -74,6 +76,8 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
         const qbittorrentPrefs: Record<string, unknown> = {
           auto_tmm_enabled: value.auto_tmm_enabled,
           save_path: value.save_path,
+          temp_path_enabled: value.temp_path_enabled,
+          temp_path: value.temp_path,
           torrent_content_layout: value.torrent_content_layout ?? "Original",
         }
         if (supportsSubcategories) {
@@ -98,6 +102,8 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
         form.setFieldValue("use_subcategories", false)
       }
       form.setFieldValue("save_path", preferences.save_path)
+      form.setFieldValue("temp_path_enabled", preferences.temp_path_enabled)
+      form.setFieldValue("temp_path", preferences.temp_path)
       form.setFieldValue("torrent_content_layout", preferences.torrent_content_layout ?? "Original")
     }
   }, [preferences, form, supportsSubcategories])
@@ -178,6 +184,34 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
                 value={field.state.value as string}
                 onChange={(e) => field.handleChange(e.target.value)}
                 placeholder="/downloads"
+              />
+            </div>
+          )}
+        </form.Field>
+
+        <form.Field name="temp_path_enabled">
+          {(field) => (
+            <SwitchSetting
+              label="Use Temporary Path"
+              checked={field.state.value as boolean}
+              onCheckedChange={field.handleChange}
+              description="Download to temporary path before moving to final location"
+            />
+          )}
+        </form.Field>
+
+        <form.Field name="temp_path">
+          {(field) => (
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Temporary Download Path</Label>
+              <p className="text-xs text-muted-foreground">
+                Directory where torrents are downloaded before moving to save path
+              </p>
+              <Input
+                value={field.state.value as string}
+                onChange={(e) => field.handleChange(e.target.value)}
+                placeholder="/temp-downloads"
+                disabled={!(form.getFieldValue("temp_path_enabled") as boolean)}
               />
             </div>
           )}

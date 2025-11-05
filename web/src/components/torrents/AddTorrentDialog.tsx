@@ -128,6 +128,8 @@ interface FormData {
   limitSeedTime: number
   contentLayout: string
   rename: string
+  tempPathEnabled: boolean
+  tempPath: string
 }
 
 interface DuplicateEntryDetails {
@@ -504,6 +506,8 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
         limitSeedTime: data.limitSeedTime > 0 ? data.limitSeedTime : undefined,
         contentLayout: data.contentLayout === "__global__" ? undefined : data.contentLayout || undefined,
         rename: data.rename || undefined,
+        tempPathEnabled: data.tempPathEnabled,
+        tempPath: data.tempPath || undefined,
       }
 
       if (activeTab === "file" && data.torrentFiles && data.torrentFiles.length > 0) {
@@ -556,6 +560,8 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
       limitSeedTime: 0,
       contentLayout: preferences?.torrent_content_layout || "",
       rename: "",
+      tempPathEnabled: preferences?.temp_path_enabled ?? false,
+      tempPath: preferences?.temp_path || "",
     },
     onSubmit: async ({ value }) => {
       // Use the currently selected tags
@@ -700,7 +706,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                 onClick={() => setActiveTab("file")}
                 className={`flex-1 rounded-sm px-3 py-1.5 text-sm font-medium transition-colors flex items-center justify-center ${
                   activeTab === "file"? "bg-accent text-accent-foreground shadow-sm": "text-muted-foreground hover:text-foreground hover:bg-accent/50"
-                }`}
+                  }`}
               >
                 <Upload className="mr-2 h-4 w-4" />
                 File
@@ -710,7 +716,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                 onClick={() => setActiveTab("url")}
                 className={`flex-1 rounded-sm px-3 py-1.5 text-sm font-medium transition-colors flex items-center justify-center ${
                   activeTab === "url"? "bg-accent text-accent-foreground shadow-sm": "text-muted-foreground hover:text-foreground hover:bg-accent/50"
-                }`}
+                  }`}
               >
                 <Link className="mr-2 h-4 w-4" />
                 URL
@@ -1129,9 +1135,9 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                       </Label>
                       <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto">
                         {[...selectedTags.filter(tag => tagSearch === "" || tag.toLowerCase().includes(tagSearch.toLowerCase())),
-                          ...allAvailableTags
-                            .filter(tag => !selectedTags.includes(tag))
-                            .filter(tag => tagSearch === "" || tag.toLowerCase().includes(tagSearch.toLowerCase()))]
+                        ...allAvailableTags
+                          .filter(tag => !selectedTags.includes(tag))
+                          .filter(tag => tagSearch === "" || tag.toLowerCase().includes(tagSearch.toLowerCase()))]
                           .map((tag) => (
                             <Badge
                               key={tag}
@@ -1156,8 +1162,8 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                         [...selectedTags, ...allAvailableTags]
                           .filter(tag => tagSearch === "" || tag.toLowerCase().includes(tagSearch.toLowerCase()))
                           .length === 0 && (
-                        <p className="text-xs text-muted-foreground">No tags match "{tagSearch}"</p>
-                      )}
+                          <p className="text-xs text-muted-foreground">No tags match "{tagSearch}"</p>
+                        )}
                     </div>
                   )}
                 </div>
@@ -1184,23 +1190,63 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                   {(autoTMMField) => (
                     <>
                       {!autoTMMField.state.value ? (
-                        <form.Field name="savePath">
-                          {(field) => (
-                            <div className="space-y-2">
-                              <Label htmlFor="savePath">Save Path</Label>
-                              <Input
-                                id="savePath"
-                                placeholder={preferences?.save_path || "Leave empty for default"}
-                                value={field.state.value}
-                                onBlur={field.handleBlur}
-                                onChange={(e) => field.handleChange(e.target.value)}
-                              />
-                              <p className="text-xs text-muted-foreground">
-                                Manual save path (TMM disabled)
-                              </p>
-                            </div>
+                        <>
+                          <form.Field name="savePath">
+                            {(field) => (
+                              <div className="space-y-2">
+                                <Label htmlFor="savePath">Save Path</Label>
+                                <Input
+                                  id="savePath"
+                                  placeholder={preferences?.save_path || "Leave empty for default"}
+                                  value={field.state.value}
+                                  onBlur={field.handleBlur}
+                                  onChange={(e) => field.handleChange(e.target.value)}
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                  Manual save path (TMM disabled)
+                                </p>
+                              </div>
+                            )}
+                          </form.Field>
+
+                          <form.Field name="tempPathEnabled">
+                            {(field) => (
+                              <div className="space-y-2">
+                                <div className="flex items-center gap-2">
+                                  <Switch
+                                    id="tempPathEnabled"
+                                    checked={field.state.value}
+                                    onCheckedChange={field.handleChange}
+                                  />
+                                  <Label htmlFor="tempPathEnabled" className="text-sm font-medium">Use Temporary Path</Label>
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                  Download to temporary path before moving to save path
+                                </p>
+                              </div>
+                            )}
+                          </form.Field>
+
+                          {form.getFieldValue("tempPathEnabled") && (
+                            <form.Field name="tempPath">
+                              {(field) => (
+                                <div className="space-y-2 pl-4 border-l-2 border-primary animate-in fade-in slide-in-from-top-2 duration-200">
+                                  <Label htmlFor="tempPath">Temporary Download Path</Label>
+                                  <Input
+                                    id="tempPath"
+                                    placeholder={preferences?.temp_path || "Leave empty for default"}
+                                    value={field.state.value}
+                                    onBlur={field.handleBlur}
+                                    onChange={(e) => field.handleChange(e.target.value)}
+                                  />
+                                  <p className="text-xs text-muted-foreground">
+                                    Torrents will be downloaded here before moving to save path
+                                  </p>
+                                </div>
+                              )}
+                            </form.Field>
                           )}
-                        </form.Field>
+                        </>
                       ) : (
                         <div className="space-y-2">
                           <Label>Save Path</Label>
