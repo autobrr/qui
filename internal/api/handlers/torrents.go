@@ -359,13 +359,13 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 
 	if tempPath := r.FormValue("temppath"); tempPath != "" {
 		options["temppath"] = tempPath
-		// When savepath is provided, disable autoTMM
+		// When temppath is provided, disable autoTMM
 		options["autoTMM"] = "false"
 	}
 
 	if tempPathEnabled := r.FormValue("tempPathEnabled"); tempPathEnabled == "true" {
 		options["temp_path_enabled"] = "true"
-		// When savepath is provided, disable autoTMM
+		// When tempPathEnabled is true, disable autoTMM
 		options["autoTMM"] = "false"
 	}
 
