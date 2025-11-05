@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 
+	"slices"
+
 	"github.com/moistari/rls"
 	"github.com/rs/zerolog/log"
 
@@ -42,6 +44,7 @@ var ErrMissingIndexerIdentifier = errors.New("torznab indexer identifier is requ
 type searchContext struct {
 	categories  []int
 	contentType contentType
+	searchMode  string
 }
 
 // NewService creates a new Jackett service
@@ -105,10 +108,12 @@ func (s *Service) Search(ctx context.Context, req *TorznabSearchRequest) (*Searc
 	}
 
 	// Build search parameters
-	params := s.buildSearchParams(req)
+	searchMode := searchModeForContentType(detectedType)
+	params := s.buildSearchParams(req, searchMode)
 	meta := &searchContext{
 		categories:  append([]int(nil), req.Categories...),
 		contentType: detectedType,
+		searchMode:  searchMode,
 	}
 
 	// Search all enabled indexers
@@ -153,45 +158,12 @@ func (s *Service) SearchGeneric(ctx context.Context, req *TorznabSearchRequest) 
 			Msg("Auto-detected content type and categories for general search")
 	}
 
-	// Build search parameters
-	params := url.Values{}
-	params.Set("q", req.Query)
-
-	if len(req.Categories) > 0 {
-		catStr := make([]string, len(req.Categories))
-		for i, cat := range req.Categories {
-			catStr[i] = strconv.Itoa(cat)
-		}
-		params.Set("cat", strings.Join(catStr, ","))
-	}
-
-	if req.IMDbID != "" {
-		params.Set("imdbid", strings.TrimPrefix(req.IMDbID, "tt"))
-	}
-
-	if req.TVDbID != "" {
-		params.Set("tvdbid", req.TVDbID)
-	}
-
-	if req.Season != nil {
-		params.Set("season", strconv.Itoa(*req.Season))
-	}
-
-	if req.Episode != nil {
-		params.Set("ep", strconv.Itoa(*req.Episode))
-	}
-
-	if req.Limit > 0 {
-		params.Set("limit", strconv.Itoa(req.Limit))
-	}
-
-	if req.Offset > 0 {
-		params.Set("offset", strconv.Itoa(req.Offset))
-	}
-
+	searchMode := searchModeForContentType(detectedType)
+	params := s.buildSearchParams(req, searchMode)
 	meta := &searchContext{
 		categories:  append([]int(nil), req.Categories...),
 		contentType: detectedType,
+		searchMode:  searchMode,
 	}
 
 	var indexersToSearch []*models.TorznabIndexer
@@ -507,40 +479,26 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 }
 
 func (s *Service) applyIndexerRestrictions(ctx context.Context, client *Client, idx *models.TorznabIndexer, identifier string, meta *searchContext, params map[string]string) bool {
+	requiredCaps := requiredCapabilities(meta)
 	requested := requestedCategories(meta, params)
-	if len(requested) == 0 {
-		return false
+
+	needCaps := len(requiredCaps) > 0 && len(idx.Capabilities) == 0
+	needCategories := len(requested) > 0 && len(idx.Categories) == 0
+	if needCaps || needCategories {
+		s.ensureIndexerMetadata(ctx, client, idx, identifier, needCaps, needCategories)
 	}
 
-	if len(idx.Categories) == 0 {
-		if caps, err := client.FetchCaps(ctx, identifier); err != nil {
-			log.Debug().
-				Err(err).
-				Int("indexer_id", idx.ID).
-				Str("indexer", idx.Name).
-				Msg("Failed to fetch caps for torznab indexer")
-		} else {
-			if len(caps.Capabilities) > 0 {
-				if err := s.indexerStore.SetCapabilities(ctx, idx.ID, caps.Capabilities); err != nil {
-					log.Warn().
-						Err(err).
-						Int("indexer_id", idx.ID).
-						Msg("Failed to persist torznab capabilities")
-				} else {
-					idx.Capabilities = caps.Capabilities
-				}
-			}
-			if len(caps.Categories) > 0 {
-				if err := s.indexerStore.SetCategories(ctx, idx.ID, caps.Categories); err != nil {
-					log.Warn().
-						Err(err).
-						Int("indexer_id", idx.ID).
-						Msg("Failed to persist torznab categories")
-				} else {
-					idx.Categories = caps.Categories
-				}
-			}
-		}
+	if len(requiredCaps) > 0 && len(idx.Capabilities) > 0 && !supportsAnyCapability(idx.Capabilities, requiredCaps) {
+		log.Info().
+			Int("indexer_id", idx.ID).
+			Str("indexer", idx.Name).
+			Strs("required_caps", requiredCaps).
+			Msg("Skipping torznab indexer due to missing capabilities")
+		return true
+	}
+
+	if len(requested) == 0 {
+		return false
 	}
 
 	if len(idx.Categories) == 0 {
@@ -559,6 +517,44 @@ func (s *Service) applyIndexerRestrictions(ctx context.Context, client *Client, 
 
 	params["cat"] = formatCategoryList(filtered)
 	return false
+}
+
+func (s *Service) ensureIndexerMetadata(ctx context.Context, client *Client, idx *models.TorznabIndexer, identifier string, ensureCaps bool, ensureCategories bool) {
+	if !ensureCaps && !ensureCategories {
+		return
+	}
+
+	caps, err := client.FetchCaps(ctx, identifier)
+	if err != nil {
+		log.Debug().
+			Err(err).
+			Int("indexer_id", idx.ID).
+			Str("indexer", idx.Name).
+			Msg("Failed to fetch caps for torznab indexer")
+		return
+	}
+
+	if ensureCaps && len(caps.Capabilities) > 0 {
+		if err := s.indexerStore.SetCapabilities(ctx, idx.ID, caps.Capabilities); err != nil {
+			log.Warn().
+				Err(err).
+				Int("indexer_id", idx.ID).
+				Msg("Failed to persist torznab capabilities")
+		} else {
+			idx.Capabilities = caps.Capabilities
+		}
+	}
+
+	if ensureCategories && len(caps.Categories) > 0 {
+		if err := s.indexerStore.SetCategories(ctx, idx.ID, caps.Categories); err != nil {
+			log.Warn().
+				Err(err).
+				Int("indexer_id", idx.ID).
+				Msg("Failed to persist torznab categories")
+		} else {
+			idx.Categories = caps.Categories
+		}
+	}
 }
 
 func requestedCategories(meta *searchContext, params map[string]string) []int {
@@ -645,9 +641,13 @@ func deriveParentCategory(cat int) int {
 }
 
 // buildSearchParams builds URL parameters from a TorznabSearchRequest
-func (s *Service) buildSearchParams(req *TorznabSearchRequest) url.Values {
+func (s *Service) buildSearchParams(req *TorznabSearchRequest, searchMode string) url.Values {
 	params := url.Values{}
-	params.Set("t", "search")
+	mode := strings.TrimSpace(searchMode)
+	if mode == "" {
+		mode = "search"
+	}
+	params.Set("t", mode)
 	params.Set("q", req.Query)
 
 	if len(req.Categories) > 0 {
@@ -684,6 +684,61 @@ func (s *Service) buildSearchParams(req *TorznabSearchRequest) url.Values {
 	}
 
 	return params
+}
+
+func searchModeForContentType(ct contentType) string {
+	switch ct {
+	case contentTypeMovie:
+		return "movie"
+	case contentTypeTVShow, contentTypeTVDaily:
+		return "tvsearch"
+	case contentTypeMusic:
+		return "music"
+	case contentTypeAudiobook:
+		return "audio"
+	case contentTypeBook, contentTypeComic, contentTypeMagazine:
+		return "book"
+	default:
+		return "search"
+	}
+}
+
+func requiredCapabilities(meta *searchContext) []string {
+	if meta == nil {
+		return nil
+	}
+	switch meta.searchMode {
+	case "tvsearch":
+		return []string{"tv-search"}
+	case "movie":
+		return []string{"movie-search"}
+	case "music":
+		return []string{"music-search", "audio-search"}
+	case "audio":
+		return []string{"audio-search", "music-search"}
+	case "book":
+		return []string{"book-search"}
+	default:
+		return nil
+	}
+}
+
+func supportsAnyCapability(current []string, required []string) bool {
+	if len(required) == 0 {
+		return true
+	}
+	for _, candidate := range required {
+		candidate = strings.ToLower(strings.TrimSpace(candidate))
+		if candidate == "" {
+			continue
+		}
+		if slices.ContainsFunc(current, func(cap string) bool {
+			return strings.EqualFold(strings.TrimSpace(cap), candidate)
+		}) {
+			return true
+		}
+	}
+	return false
 }
 
 // convertResults converts Jackett results to our SearchResult format

@@ -300,9 +300,10 @@ func TestParseCategoryID(t *testing.T) {
 func TestBuildSearchParams(t *testing.T) {
 	s := &Service{}
 	tests := []struct {
-		name     string
-		req      *TorznabSearchRequest
-		expected map[string]string
+		name       string
+		req        *TorznabSearchRequest
+		searchMode string
+		expected   map[string]string
 	}{
 		{
 			name: "basic query",
@@ -356,8 +357,9 @@ func TestBuildSearchParams(t *testing.T) {
 				Query:  "Breaking Bad",
 				TVDbID: "81189",
 			},
+			searchMode: "tvsearch",
 			expected: map[string]string{
-				"t":      "search",
+				"t":      "tvsearch",
 				"q":      "Breaking Bad",
 				"tvdbid": "81189",
 			},
@@ -369,8 +371,9 @@ func TestBuildSearchParams(t *testing.T) {
 				Season:  intPtr(1),
 				Episode: intPtr(1),
 			},
+			searchMode: "tvsearch",
 			expected: map[string]string{
-				"t":      "search",
+				"t":      "tvsearch",
 				"q":      "Game of Thrones",
 				"season": "1",
 				"ep":     "1",
@@ -401,8 +404,9 @@ func TestBuildSearchParams(t *testing.T) {
 				Limit:      50,
 				Offset:     10,
 			},
+			searchMode: "tvsearch",
 			expected: map[string]string{
-				"t":      "search",
+				"t":      "tvsearch",
 				"q":      "Breaking Bad",
 				"cat":    "5000",
 				"tvdbid": "81189",
@@ -412,11 +416,28 @@ func TestBuildSearchParams(t *testing.T) {
 				"offset": "10",
 			},
 		},
+		{
+			name: "movie request",
+			req: &TorznabSearchRequest{
+				Query:  "The Matrix",
+				IMDbID: "tt0133093",
+			},
+			searchMode: "movie",
+			expected: map[string]string{
+				"t":      "movie",
+				"q":      "The Matrix",
+				"imdbid": "0133093",
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := s.buildSearchParams(tt.req)
+			mode := tt.searchMode
+			if mode == "" {
+				mode = "search"
+			}
+			result := s.buildSearchParams(tt.req, mode)
 			for key, expectedValue := range tt.expected {
 				actualValue := result.Get(key)
 				if actualValue != expectedValue {
