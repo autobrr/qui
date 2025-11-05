@@ -1387,59 +1387,10 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		}
 	}
 
-	query := strings.TrimSpace(opts.Query)
-	if query == "" {
-		// Build a better search query from parsed release info instead of using full filename
-		if sourceRelease.Title != "" {
-			// Start with the title
-			query = sourceRelease.Title
-
-			// Add year if available
-			if sourceRelease.Year > 0 {
-				query += fmt.Sprintf(" %d", sourceRelease.Year)
-			}
-
-			// For series, add season/episode info
-			if sourceRelease.Series > 0 {
-				if sourceRelease.Episode > 0 {
-					query += fmt.Sprintf(" S%02dE%02d", sourceRelease.Series, sourceRelease.Episode)
-				} else {
-					query += fmt.Sprintf(" S%02d", sourceRelease.Series)
-				}
-			}
-
-			log.Debug().
-				Str("originalName", sourceTorrent.Name).
-				Str("generatedQuery", query).
-				Msg("[CROSSSEED-SEARCH] Generated search query from parsed release")
-		} else {
-			// Fallback to full name if parsing failed
-			query = sourceTorrent.Name
-			log.Debug().
-				Str("originalName", sourceTorrent.Name).
-				Msg("[CROSSSEED-SEARCH] Using full filename as query (parsing failed)")
-		}
-	}
-
-	limit := opts.Limit
-	if limit <= 0 {
-		limit = 40
-	}
-	requestLimit := limit * 3
-	if requestLimit < limit {
-		requestLimit = limit
-	}
-
-	searchReq := &jackett.TorznabSearchRequest{
-		Query:      query,
-		Limit:      requestLimit,
-		IndexerIDs: opts.IndexerIDs,
-	}
-
-	// Add content type detection and appropriate categories using RLS release parsing
-	// This ensures we only search indexers with the correct content type
+	// Determine content type first to inform query generation
 	var categories []int
 	contentTypeStr := "unknown"
+	isMusic := false
 
 	switch contentDetectionRelease.Type {
 	case rls.Movie:
@@ -1451,9 +1402,11 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 	case rls.Music:
 		categories = []int{3000} // Audio
 		contentTypeStr = "music"
+		isMusic = true
 	case rls.Audiobook:
 		categories = []int{3000} // Audio (audiobooks use same category)
 		contentTypeStr = "audiobook"
+		isMusic = true
 	case rls.Book:
 		categories = []int{8000, 8010} // Books, BooksEbook
 		contentTypeStr = "book"
@@ -1479,6 +1432,106 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		// TODO: probably flag to stop any other content type matching
 	}
 
+	query := strings.TrimSpace(opts.Query)
+	if query == "" {
+		// Use the appropriate release object based on content type
+		var queryRelease rls.Release
+		if isMusic && contentDetectionRelease.Type == rls.Music {
+			// For music, create a proper music release object by parsing the torrent name as music
+			queryRelease = sourceRelease
+			queryRelease.Type = rls.Music // Ensure it's marked as music
+
+			// Parse "Artist - Album" format from torrent name for better music metadata
+			torrentName := sourceTorrent.Name
+			cleanName := torrentName
+
+			// Extract release group if present [GROUP]
+			if strings.Contains(cleanName, "[") && strings.Contains(cleanName, "]") {
+				groupStart := strings.LastIndex(cleanName, "[")
+				groupEnd := strings.LastIndex(cleanName, "]")
+				if groupEnd > groupStart {
+					queryRelease.Group = strings.TrimSpace(cleanName[groupStart+1 : groupEnd])
+					cleanName = strings.TrimSpace(cleanName[:groupStart])
+				}
+			}
+
+			// Remove year (YYYY) from the end for parsing
+			if strings.Contains(cleanName, "(") && strings.Contains(cleanName, ")") {
+				yearStart := strings.LastIndex(cleanName, "(")
+				yearEnd := strings.LastIndex(cleanName, ")")
+				if yearEnd > yearStart {
+					cleanName = strings.TrimSpace(cleanName[:yearStart])
+				}
+			}
+
+			// Parse "Artist - Album" format
+			if parts := strings.Split(cleanName, " - "); len(parts) >= 2 {
+				queryRelease.Artist = strings.TrimSpace(parts[0])
+				// Join remaining parts as album title (in case there are multiple " - " separators)
+				queryRelease.Title = strings.TrimSpace(strings.Join(parts[1:], " - "))
+			}
+		} else {
+			// For other content types, use the torrent name release
+			queryRelease = sourceRelease
+		}
+
+		// Build a better search query from parsed release info instead of using full filename
+		if queryRelease.Title != "" {
+			if isMusic {
+				// For music, use artist and title format if available
+				if queryRelease.Artist != "" {
+					query = queryRelease.Artist + " " + queryRelease.Title
+				} else {
+					query = queryRelease.Title
+				}
+			} else {
+				// For non-music, start with the title
+				query = queryRelease.Title
+			}
+
+			// Add year if available
+			if queryRelease.Year > 0 {
+				query += fmt.Sprintf(" %d", queryRelease.Year)
+			}
+
+			// For TV series, add season/episode info (but not for music)
+			if !isMusic && queryRelease.Series > 0 {
+				if queryRelease.Episode > 0 {
+					query += fmt.Sprintf(" S%02dE%02d", queryRelease.Series, queryRelease.Episode)
+				} else {
+					query += fmt.Sprintf(" S%02d", queryRelease.Series)
+				}
+			}
+
+			log.Debug().
+				Str("originalName", sourceTorrent.Name).
+				Str("generatedQuery", query).
+				Str("contentType", contentTypeStr).
+				Msg("[CROSSSEED-SEARCH] Generated search query from parsed release")
+		} else {
+			// Fallback to full name if parsing failed
+			query = sourceTorrent.Name
+			log.Debug().
+				Str("originalName", sourceTorrent.Name).
+				Msg("[CROSSSEED-SEARCH] Using full filename as query (parsing failed)")
+		}
+	}
+
+	limit := opts.Limit
+	if limit <= 0 {
+		limit = 40
+	}
+	requestLimit := limit * 3
+	if requestLimit < limit {
+		requestLimit = limit
+	}
+
+	searchReq := &jackett.TorznabSearchRequest{
+		Query:      query,
+		Limit:      requestLimit,
+		IndexerIDs: opts.IndexerIDs,
+	}
+
 	// Apply category filtering to the search request
 	if len(categories) > 0 {
 		searchReq.Categories = categories
@@ -1494,15 +1547,71 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 			}
 		}
 
-		log.Debug().
+		// Use the appropriate release object for logging based on content type
+		var logRelease rls.Release
+		if isMusic && contentDetectionRelease.Type == rls.Music {
+			// For music, create a proper music release object by parsing the torrent name as music
+			logRelease = sourceRelease
+			logRelease.Type = rls.Music // Ensure it's marked as music
+
+			// Parse "Artist - Album" format from torrent name for better music metadata
+			torrentName := sourceTorrent.Name
+			cleanName := torrentName
+
+			// Extract release group if present [GROUP]
+			if strings.Contains(cleanName, "[") && strings.Contains(cleanName, "]") {
+				groupStart := strings.LastIndex(cleanName, "[")
+				groupEnd := strings.LastIndex(cleanName, "]")
+				if groupEnd > groupStart {
+					logRelease.Group = strings.TrimSpace(cleanName[groupStart+1 : groupEnd])
+					cleanName = strings.TrimSpace(cleanName[:groupStart])
+				}
+			}
+
+			// Remove year (YYYY) from the end for parsing
+			if strings.Contains(cleanName, "(") && strings.Contains(cleanName, ")") {
+				yearStart := strings.LastIndex(cleanName, "(")
+				yearEnd := strings.LastIndex(cleanName, ")")
+				if yearEnd > yearStart {
+					cleanName = strings.TrimSpace(cleanName[:yearStart])
+				}
+			}
+
+			// Parse "Artist - Album" format
+			if parts := strings.Split(cleanName, " - "); len(parts) >= 2 {
+				logRelease.Artist = strings.TrimSpace(parts[0])
+				// Join remaining parts as album title (in case there are multiple " - " separators)
+				logRelease.Title = strings.TrimSpace(strings.Join(parts[1:], " - "))
+			}
+		} else {
+			logRelease = sourceRelease
+		}
+
+		logEvent := log.Debug().
 			Str("torrentName", sourceTorrent.Name).
 			Str("contentType", contentTypeStr).
-			Str("releaseType", sourceRelease.Type.String()).
 			Ints("categories", categories).
-			Int("series", sourceRelease.Series).
-			Int("episode", sourceRelease.Episode).
-			Int("year", sourceRelease.Year).
-			Msg("[CROSSSEED-SEARCH] Applied RLS-based content type filtering")
+			Int("year", logRelease.Year)
+
+		// Show different metadata based on content type
+		if !isMusic {
+			// For TV/Movies, show series/episode data
+			logEvent = logEvent.
+				Str("releaseType", logRelease.Type.String()).
+				Int("series", logRelease.Series).
+				Int("episode", logRelease.Episode)
+		} else {
+			// For music, show music-specific metadata
+			logEvent = logEvent.
+				Str("releaseType", "music").
+				Str("artist", logRelease.Artist).
+				Str("title", logRelease.Title).
+				Str("disc", logRelease.Disc).
+				Str("source", logRelease.Source).
+				Str("group", logRelease.Group)
+		}
+
+		logEvent.Msg("[CROSSSEED-SEARCH] Applied RLS-based content type filtering")
 	}
 
 	searchResp, err := s.jackettService.Search(ctx, searchReq)
