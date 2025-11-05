@@ -1393,6 +1393,135 @@ func parseMusicReleaseFromTorrentName(baseRelease rls.Release, torrentName strin
 	return musicRelease
 }
 
+// AnalyzeTorrentForSearch analyzes a torrent and returns metadata about how it would be searched,
+// without actually performing the search. This is useful for the UI to show what will be searched
+// and to filter indexers based on required capabilities.
+func (s *Service) AnalyzeTorrentForSearch(ctx context.Context, instanceID int, hash string) (*TorrentInfo, error) {
+	if instanceID <= 0 {
+		return nil, fmt.Errorf("invalid instance id: %d", instanceID)
+	}
+	if strings.TrimSpace(hash) == "" {
+		return nil, fmt.Errorf("torrent hash is required")
+	}
+
+	instance, err := s.instanceStore.Get(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("load instance: %w", err)
+	}
+	if instance == nil {
+		return nil, fmt.Errorf("instance %d not found", instanceID)
+	}
+
+	sourceTorrent, err := s.getTorrentByHash(ctx, instanceID, hash)
+	if err != nil {
+		return nil, err
+	}
+	if sourceTorrent.Progress < 1.0 {
+		return nil, fmt.Errorf("torrent %s is not fully downloaded (progress %.2f)", sourceTorrent.Name, sourceTorrent.Progress)
+	}
+
+	// Get files to find the largest file for better content type detection
+	sourceFiles, err := s.syncManager.GetTorrentFiles(ctx, instanceID, hash)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get torrent files: %w", err)
+	}
+
+	// Parse and detect content type
+	sourceRelease := s.releaseCache.Parse(sourceTorrent.Name)
+	contentDetectionRelease := sourceRelease
+
+	if sourceFiles != nil && len(*sourceFiles) > 0 {
+		largestFile := s.findLargestFile(*sourceFiles)
+		if largestFile != nil {
+			largestFileRelease := s.releaseCache.Parse(largestFile.Name)
+			largestFileRelease = enrichReleaseFromTorrent(largestFileRelease, sourceRelease)
+			if largestFileRelease.Type != rls.Unknown {
+				contentDetectionRelease = largestFileRelease
+			}
+		}
+	}
+
+	// Determine content type and categories
+	var categories []int
+	contentTypeStr := "unknown"
+
+	switch contentDetectionRelease.Type {
+	case rls.Movie:
+		categories = []int{2000, 2010, 2040, 2050}
+		contentTypeStr = "movie"
+	case rls.Episode, rls.Series:
+		categories = []int{5000, 5010, 5040, 5050}
+		contentTypeStr = "tv"
+	case rls.Music:
+		categories = []int{3000}
+		contentTypeStr = "music"
+	case rls.Audiobook:
+		categories = []int{3000}
+		contentTypeStr = "audiobook"
+	case rls.Book:
+		categories = []int{8000, 8010}
+		contentTypeStr = "book"
+	case rls.Comic:
+		categories = []int{8020}
+		contentTypeStr = "comic"
+	case rls.Game:
+		categories = []int{4000}
+		contentTypeStr = "game"
+	case rls.App:
+		categories = []int{4000}
+		contentTypeStr = "app"
+	default:
+		if contentDetectionRelease.Series > 0 || contentDetectionRelease.Episode > 0 {
+			categories = []int{5000, 5010, 5040, 5050}
+			contentTypeStr = "tv"
+		} else if contentDetectionRelease.Year > 0 {
+			categories = []int{2000, 2010, 2040, 2050}
+			contentTypeStr = "movie"
+		}
+	}
+
+	// Determine search type and required capabilities
+	searchType := "search"
+	var requiredCaps []string
+
+	switch contentDetectionRelease.Type {
+	case rls.Movie:
+		searchType = "movie"
+		requiredCaps = []string{"movie-search"}
+	case rls.Episode, rls.Series:
+		searchType = "tvsearch"
+		requiredCaps = []string{"tv-search"}
+	case rls.Music, rls.Audiobook:
+		searchType = "music"
+		requiredCaps = []string{"music-search"}
+	case rls.Book, rls.Comic:
+		searchType = "book"
+		requiredCaps = []string{"book-search"}
+	default:
+		if contentDetectionRelease.Series > 0 || contentDetectionRelease.Episode > 0 {
+			searchType = "tvsearch"
+			requiredCaps = []string{"tv-search"}
+		} else if contentDetectionRelease.Year > 0 {
+			searchType = "movie"
+			requiredCaps = []string{"movie-search"}
+		}
+	}
+
+	return &TorrentInfo{
+		InstanceID:       instanceID,
+		InstanceName:     instance.Name,
+		Hash:             sourceTorrent.Hash,
+		Name:             sourceTorrent.Name,
+		Category:         sourceTorrent.Category,
+		Size:             sourceTorrent.Size,
+		Progress:         sourceTorrent.Progress,
+		ContentType:      contentTypeStr,
+		SearchType:       searchType,
+		SearchCategories: categories,
+		RequiredCaps:     requiredCaps,
+	}, nil
+}
+
 // SearchTorrentMatches queries Torznab indexers for candidate torrents that match an existing torrent.
 func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash string, opts TorrentSearchOptions) (*TorrentSearchResponse, error) {
 	if s.jackettService == nil {
@@ -1699,14 +1828,46 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		Float64("tolerancePercent", settings.SizeMismatchTolerancePercent).
 		Msg("[CROSSSEED-SEARCH] Search filtering completed")
 
+	// Determine search type based on content type
+	searchType := "search" // Default fallback
+	var requiredCaps []string
+
+	switch contentDetectionRelease.Type {
+	case rls.Movie:
+		searchType = "movie"
+		requiredCaps = []string{"movie-search"}
+	case rls.Episode, rls.Series:
+		searchType = "tvsearch"
+		requiredCaps = []string{"tv-search"}
+	case rls.Music, rls.Audiobook:
+		searchType = "music"
+		requiredCaps = []string{"music-search"}
+	case rls.Book, rls.Comic:
+		searchType = "book"
+		requiredCaps = []string{"book-search"}
+	default:
+		// For unknown types that matched series/episode, use tvsearch
+		if contentDetectionRelease.Series > 0 || contentDetectionRelease.Episode > 0 {
+			searchType = "tvsearch"
+			requiredCaps = []string{"tv-search"}
+		} else if contentDetectionRelease.Year > 0 {
+			searchType = "movie"
+			requiredCaps = []string{"movie-search"}
+		}
+	}
+
 	sourceInfo := TorrentInfo{
-		InstanceID:   instanceID,
-		InstanceName: instance.Name,
-		Hash:         sourceTorrent.Hash,
-		Name:         sourceTorrent.Name,
-		Category:     sourceTorrent.Category,
-		Size:         sourceTorrent.Size,
-		Progress:     sourceTorrent.Progress,
+		InstanceID:       instanceID,
+		InstanceName:     instance.Name,
+		Hash:             sourceTorrent.Hash,
+		Name:             sourceTorrent.Name,
+		Category:         sourceTorrent.Category,
+		Size:             sourceTorrent.Size,
+		Progress:         sourceTorrent.Progress,
+		ContentType:      contentTypeStr,
+		SearchType:       searchType,
+		SearchCategories: categories,
+		RequiredCaps:     requiredCaps,
 	}
 
 	if len(scored) == 0 {

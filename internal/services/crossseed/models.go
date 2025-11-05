@@ -64,17 +64,21 @@ type MatchedTorrent struct {
 
 // TorrentInfo contains basic information about the torrent being cross-seeded
 type TorrentInfo struct {
-	InstanceID    int           `json:"instance_id,omitempty"`
-	InstanceName  string        `json:"instance_name,omitempty"`
-	Hash          string        `json:"hash,omitempty"`
-	Name          string        `json:"name"`
-	Category      string        `json:"category,omitempty"`
-	Size          int64         `json:"size"`
-	Progress      float64       `json:"progress,omitempty"`
-	TotalFiles    int           `json:"total_files,omitempty"`    // Total files in torrent
-	MatchingFiles int           `json:"matching_files,omitempty"` // Files that match source
-	FileCount     int           `json:"file_count"`               // Deprecated: use TotalFiles
-	Files         []TorrentFile `json:"files,omitempty"`
+	InstanceID       int           `json:"instance_id,omitempty"`
+	InstanceName     string        `json:"instance_name,omitempty"`
+	Hash             string        `json:"hash,omitempty"`
+	Name             string        `json:"name"`
+	Category         string        `json:"category,omitempty"`
+	Size             int64         `json:"size"`
+	Progress         float64       `json:"progress,omitempty"`
+	TotalFiles       int           `json:"total_files,omitempty"`    // Total files in torrent
+	MatchingFiles    int           `json:"matching_files,omitempty"` // Files that match source
+	FileCount        int           `json:"file_count"`               // Deprecated: use TotalFiles
+	Files            []TorrentFile `json:"files,omitempty"`
+	ContentType      string        `json:"content_type,omitempty"`      // Detected content type: movie, tv, music, audiobook, book, comic, game, app, unknown
+	SearchType       string        `json:"search_type,omitempty"`       // Search type to use: tvsearch, movie, music, book, search
+	SearchCategories []int         `json:"search_categories,omitempty"` // Torznab categories required for this search
+	RequiredCaps     []string      `json:"required_caps,omitempty"`     // Required indexer capabilities (e.g., "tv-search", "movie-search", "music-search")
 }
 
 // TorrentFile represents a file in the torrent

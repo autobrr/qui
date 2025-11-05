@@ -858,6 +858,8 @@ export interface TorznabIndexer {
   enabled: boolean
   priority: number
   timeout_seconds: number
+  hourly_request_limit?: number | null
+  daily_request_limit?: number | null
   capabilities: string[]
   categories: TorznabIndexerCategory[]
   last_test_at?: string
@@ -1014,6 +1016,10 @@ export interface CrossSeedTorrentInfo {
   totalFiles?: number
   matchingFiles?: number
   fileCount?: number
+  contentType?: string
+  searchType?: string
+  searchCategories?: number[]
+  requiredCaps?: string[]
 }
 
 export interface CrossSeedFindCandidatesResponse {

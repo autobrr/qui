@@ -55,6 +55,7 @@ func (h *CrossSeedHandler) Routes(r chi.Router) {
 		r.Post("/find-candidates", h.FindCandidates)
 		r.Post("/cross", h.CrossSeed)
 		r.Route("/torrents", func(r chi.Router) {
+			r.Get("/{instanceID}/{hash}/analyze", h.AnalyzeTorrentForSearch)
 			r.Post("/{instanceID}/{hash}/search", h.SearchTorrentMatches)
 			r.Post("/{instanceID}/{hash}/apply", h.ApplyTorrentSearchResults)
 		})
@@ -149,6 +150,50 @@ func (h *CrossSeedHandler) CrossSeed(w http.ResponseWriter, r *http.Request) {
 	}
 
 	RespondJSON(w, status, response)
+}
+
+// AnalyzeTorrentForSearch godoc
+// @Summary Analyze torrent for cross-seed search metadata
+// @Description Returns metadata about how a torrent would be searched (content type, search type, required categories/capabilities) without performing the actual search
+// @Tags cross-seed
+// @Produce json
+// @Param instanceID path int true "Instance ID"
+// @Param hash path string true "Torrent hash"
+// @Success 200 {object} crossseed.TorrentInfo
+// @Failure 400 {object} httphelpers.ErrorResponse
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/cross-seed/torrents/{instanceID}/{hash}/analyze [get]
+func (h *CrossSeedHandler) AnalyzeTorrentForSearch(w http.ResponseWriter, r *http.Request) {
+	instanceIDStr := chi.URLParam(r, "instanceID")
+	instanceID, err := strconv.Atoi(instanceIDStr)
+	if err != nil || instanceID <= 0 {
+		RespondError(w, http.StatusBadRequest, "instanceID must be a positive integer")
+		return
+	}
+
+	hash := strings.TrimSpace(chi.URLParam(r, "hash"))
+	if hash == "" {
+		RespondError(w, http.StatusBadRequest, "hash is required")
+		return
+	}
+
+	torrentInfo, err := h.service.AnalyzeTorrentForSearch(r.Context(), instanceID, hash)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if shouldReturnBadRequest(err) {
+			status = http.StatusBadRequest
+		}
+		log.Error().
+			Err(err).
+			Int("instanceID", instanceID).
+			Str("hash", hash).
+			Msg("Failed to analyze torrent for search")
+		RespondError(w, status, err.Error())
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, torrentInfo)
 }
 
 // SearchTorrentMatches godoc

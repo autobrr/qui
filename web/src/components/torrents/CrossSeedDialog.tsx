@@ -14,6 +14,15 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { formatBytes } from "@/lib/utils"
@@ -22,9 +31,14 @@ import type {
   CrossSeedTorrentSearchResponse,
   Torrent
 } from "@/types"
-import { Loader2 } from "lucide-react"
+import { ChevronDown, Loader2, SlidersHorizontal } from "lucide-react"
+import { memo, useCallback, useMemo } from "react"
 
 type CrossSeedSearchResult = CrossSeedTorrentSearchResponse["results"][number]
+type CrossSeedIndexerOption = {
+  id: number
+  name: string
+}
 
 export interface CrossSeedDialogProps {
   open: boolean
@@ -38,6 +52,14 @@ export interface CrossSeedDialogProps {
   isSubmitting: boolean
   error: string | null
   applyResult: CrossSeedApplyResponse | null
+  indexerOptions: CrossSeedIndexerOption[]
+  indexerMode: "all" | "custom"
+  selectedIndexerIds: number[]
+  onIndexerModeChange: (mode: "all" | "custom") => void
+  onToggleIndexer: (indexerId: number) => void
+  onSelectAllIndexers: () => void
+  onClearIndexerSelection: () => void
+  onScopeSearch: () => void
   getResultKey: (result: CrossSeedSearchResult, index: number) => string
   onToggleSelection: (result: CrossSeedSearchResult, index: number) => void
   onSelectAll: () => void
@@ -51,7 +73,7 @@ export interface CrossSeedDialogProps {
   onTagNameChange: (value: string) => void
 }
 
-export function CrossSeedDialog({
+const CrossSeedDialogComponent = ({
   open,
   onOpenChange,
   torrent,
@@ -63,6 +85,14 @@ export function CrossSeedDialog({
   isSubmitting,
   error,
   applyResult,
+  indexerOptions,
+  indexerMode,
+  selectedIndexerIds,
+  onIndexerModeChange,
+  onToggleIndexer,
+  onSelectAllIndexers,
+  onClearIndexerSelection,
+  onScopeSearch,
   getResultKey,
   onToggleSelection,
   onSelectAll,
@@ -74,7 +104,7 @@ export function CrossSeedDialog({
   onUseTagChange,
   tagName,
   onTagNameChange,
-}: CrossSeedDialogProps) {
+}: CrossSeedDialogProps) => {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[90vw] sm:max-w-3xl">
@@ -84,7 +114,50 @@ export function CrossSeedDialog({
             {torrent ? `Indexers scanned for "${torrent.name}"` : "Indexers scanned"}
           </DialogDescription>
         </DialogHeader>
-        <div className="min-w-0 space-y-4 overflow-hidden">
+        <div className="min-w-0 space-y-3 overflow-hidden">
+          {/* Metadata - Always visible when available */}
+          {sourceTorrent?.contentType && (
+            <div className="flex flex-wrap items-center gap-2 px-1">
+              <Badge variant="secondary" className="h-6 text-xs font-normal capitalize">
+                {sourceTorrent.contentType}
+              </Badge>
+              {sourceTorrent.searchType && (
+                <Badge variant="outline" className="h-6 text-xs font-normal">
+                  {sourceTorrent.searchType}
+                </Badge>
+              )}
+              {sourceTorrent.searchCategories && sourceTorrent.searchCategories.length > 0 && (
+                <Badge variant="outline" className="h-6 text-xs font-normal">
+                  {sourceTorrent.searchCategories.join(", ")}
+                </Badge>
+              )}
+            </div>
+          )}
+
+          {/* Search Scope Section */}
+          <div className="rounded-lg border border-border/60 bg-muted/30 p-4">
+            {indexerOptions.length > 0 ? (
+              <CrossSeedScopeSelector
+                indexerOptions={indexerOptions}
+                indexerMode={indexerMode}
+                selectedIndexerIds={selectedIndexerIds}
+                onIndexerModeChange={onIndexerModeChange}
+                onToggleIndexer={onToggleIndexer}
+                onSelectAllIndexers={onSelectAllIndexers}
+                onClearIndexerSelection={onClearIndexerSelection}
+                onScopeSearch={onScopeSearch}
+                isSearching={isLoading}
+              />
+            ) : sourceTorrent && (
+              <div className="space-y-2 text-sm text-yellow-600 dark:text-yellow-400">
+                <p className="font-medium">No compatible indexers found</p>
+                <p className="text-xs">
+                  None of your enabled indexers support the required capabilities ({sourceTorrent.requiredCaps?.join(", ")})
+                  or categories ({sourceTorrent.searchCategories?.join(", ")}) for this {sourceTorrent.contentType} content.
+                </p>
+              </div>
+            )}
+          </div>
           {isLoading ? (
             <div className="flex items-center justify-center gap-3 py-12 text-sm text-muted-foreground">
               <Loader2 className="h-5 w-5 animate-spin" />
@@ -251,6 +324,9 @@ export function CrossSeedDialog({
   )
 }
 
+export const CrossSeedDialog = memo(CrossSeedDialogComponent)
+CrossSeedDialog.displayName = "CrossSeedDialog"
+
 function formatCrossSeedPublishDate(value: string): string {
   const parsed = new Date(value)
   if (Number.isNaN(parsed.getTime())) {
@@ -258,3 +334,174 @@ function formatCrossSeedPublishDate(value: string): string {
   }
   return parsed.toLocaleString()
 }
+
+interface CrossSeedScopeSelectorProps {
+  indexerOptions: CrossSeedIndexerOption[]
+  indexerMode: "all" | "custom"
+  selectedIndexerIds: number[]
+  onIndexerModeChange: (mode: "all" | "custom") => void
+  onToggleIndexer: (indexerId: number) => void
+  onSelectAllIndexers: () => void
+  onClearIndexerSelection: () => void
+  onScopeSearch: () => void
+  isSearching: boolean
+}
+
+// Memoized indexer option component to prevent re-rendering
+const IndexerCheckboxItem = memo(({
+  option,
+  isChecked,
+  onToggle,
+}: {
+  option: CrossSeedIndexerOption
+  isChecked: boolean
+  onToggle: (id: number) => void
+}) => {
+  const handleChange = useCallback(() => {
+    onToggle(option.id)
+  }, [onToggle, option.id])
+
+  return (
+    <DropdownMenuCheckboxItem
+      key={option.id}
+      checked={isChecked}
+      onCheckedChange={handleChange}
+    >
+      {option.name}
+    </DropdownMenuCheckboxItem>
+  )
+})
+IndexerCheckboxItem.displayName = "IndexerCheckboxItem"
+
+const CrossSeedScopeSelector = memo(({
+  indexerOptions,
+  indexerMode,
+  selectedIndexerIds,
+  onIndexerModeChange,
+  onToggleIndexer,
+  onSelectAllIndexers,
+  onClearIndexerSelection,
+  onScopeSearch,
+  isSearching,
+}: CrossSeedScopeSelectorProps) => {
+  const total = indexerOptions.length
+  const selectedCount = selectedIndexerIds.length
+  const disableCustomSelection = total === 0
+  const scopeSearchDisabled = isSearching || (indexerMode === "custom" && selectedCount === 0)
+
+  const statusText = useMemo(() => {
+    if (indexerMode === "all") {
+      return `${total} ${total === 1 ? "indexer" : "indexers"}`
+    }
+    if (selectedCount === 0) {
+      return "None selected"
+    }
+    return `${selectedCount} of ${total} selected`
+  }, [indexerMode, total, selectedCount])
+
+  // Memoize the dropdown items to prevent recreation on each render
+  const indexerItems = useMemo(
+    () =>
+      indexerOptions.map(option => (
+        <IndexerCheckboxItem
+          key={option.id}
+          option={option}
+          isChecked={selectedIndexerIds.includes(option.id)}
+          onToggle={onToggleIndexer}
+        />
+      )),
+    [indexerOptions, selectedIndexerIds, onToggleIndexer]
+  )
+
+  // Memoize button callbacks
+  const handleAllIndexersClick = useCallback(() => {
+    onIndexerModeChange("all")
+  }, [onIndexerModeChange])
+
+  const handleCustomIndexersClick = useCallback(() => {
+    onIndexerModeChange("custom")
+  }, [onIndexerModeChange])
+
+  return (
+    <div className="space-y-3">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <SlidersHorizontal className="h-4 w-4 text-muted-foreground" />
+          <h3 className="text-sm font-medium">Search Scope</h3>
+        </div>
+        <div className="text-xs text-muted-foreground">
+          {statusText}
+        </div>
+      </div>
+
+      {/* Controls */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        {/* Mode Selection */}
+        <div className="flex items-center gap-2 rounded-md border border-border/60 bg-muted/30 p-1">
+          <Button
+            size="sm"
+            variant={indexerMode === "all" ? "secondary" : "ghost"}
+            onClick={handleAllIndexersClick}
+            disabled={isSearching}
+            className="h-8 flex-1 sm:flex-initial"
+          >
+            All Compatible
+          </Button>
+          <Button
+            size="sm"
+            variant={indexerMode === "custom" ? "secondary" : "ghost"}
+            onClick={handleCustomIndexersClick}
+            disabled={disableCustomSelection || isSearching}
+            className="h-8 flex-1 sm:flex-initial"
+          >
+            Select Custom
+          </Button>
+        </div>
+
+        {/* Custom Selection Dropdown + Search */}
+        <div className="flex items-center gap-2">
+          {indexerMode === "custom" && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={isSearching}
+                  className="h-8"
+                >
+                  {selectedCount > 0 ? `${selectedCount} selected` : "Select indexers"}
+                  <ChevronDown className="ml-2 h-3 w-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-64" align="end">
+                <DropdownMenuLabel>Available Indexers</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {indexerItems}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={onSelectAllIndexers}>Select all</DropdownMenuItem>
+                <DropdownMenuItem onClick={onClearIndexerSelection}>Clear selection</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+          <Button
+            size="sm"
+            onClick={onScopeSearch}
+            disabled={scopeSearchDisabled}
+            className="h-8"
+          >
+            {isSearching ? (
+              <>
+                <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                Searching
+              </>
+            ) : (
+              "Search"
+            )}
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+})
+CrossSeedScopeSelector.displayName = "CrossSeedScopeSelector"

@@ -640,6 +640,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const [crossSeedTagName, setCrossSeedTagName] = useState("cross-seed")
   const [crossSeedSubmitting, setCrossSeedSubmitting] = useState(false)
   const [crossSeedApplyResult, setCrossSeedApplyResult] = useState<CrossSeedApplyResponse | null>(null)
+  const [crossSeedIndexerMode, setCrossSeedIndexerMode] = useState<"all" | "custom">("all")
+  const [crossSeedIndexerSelection, setCrossSeedIndexerSelection] = useState<number[]>([])
 
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const { exportTorrents, isExporting: isExportingTorrent } = useTorrentExporter({ instanceId, incognitoMode })
@@ -673,16 +675,63 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     staleTime: 5 * 60 * 1000,
   })
 
+  const enabledTorznabIndexers = useMemo(
+    () => (torznabIndexers ?? []).filter(indexer => indexer.enabled),
+    [torznabIndexers]
+  )
+
+  const sortedEnabledIndexers = useMemo(() => {
+    if (enabledTorznabIndexers.length === 0) {
+      return [] as typeof enabledTorznabIndexers
+    }
+
+    return [...enabledTorznabIndexers].sort((a, b) => {
+      if (b.priority !== a.priority) {
+        return b.priority - a.priority
+      }
+      return a.name.localeCompare(b.name)
+    })
+  }, [enabledTorznabIndexers])
+
+  const crossSeedIndexerOptions = useMemo(() => {
+    const sourceTorrent = crossSeedSearchResponse?.sourceTorrent
+    if (!sourceTorrent) {
+      return sortedEnabledIndexers.map(indexer => ({ id: indexer.id, name: indexer.name }))
+    }
+
+    // Filter indexers based on required capabilities and categories
+    const requiredCaps = sourceTorrent.requiredCaps ?? []
+    const requiredCategories = sourceTorrent.searchCategories ?? []
+
+    const filteredIndexers = sortedEnabledIndexers.filter(indexer => {
+      // If no required caps/categories, include all indexers
+      if (requiredCaps.length === 0 && requiredCategories.length === 0) {
+        return true
+      }
+
+      // Check if indexer has all required capabilities
+      const indexerCaps = indexer.capabilities ?? []
+      const hasRequiredCaps = requiredCaps.length === 0 ||
+        requiredCaps.every(cap => indexerCaps.includes(cap))
+
+      // Check if indexer supports at least one of the required categories
+      const indexerCategoryIds = (indexer.categories ?? []).map(cat => cat.category_id)
+      const hasRequiredCategories = requiredCategories.length === 0 ||
+        requiredCategories.some(catId => indexerCategoryIds.includes(catId))
+
+      return hasRequiredCaps && hasRequiredCategories
+    })
+
+    return filteredIndexers.map(indexer => ({ id: indexer.id, name: indexer.name }))
+  }, [sortedEnabledIndexers, crossSeedSearchResponse])
+
   const { data: crossSeedSettings } = useQuery({
     queryKey: ["cross-seed", "settings"],
     queryFn: () => api.getCrossSeedSettings(),
     staleTime: 5 * 60 * 1000,
   })
 
-  const hasEnabledCrossSeedIndexers = useMemo(
-    () => (torznabIndexers ?? []).some(indexer => indexer.enabled),
-    [torznabIndexers]
-  )
+  const hasEnabledCrossSeedIndexers = sortedEnabledIndexers.length > 0
 
   // Detect platform for keyboard shortcuts
   const isMac = useMemo(() => {
@@ -1463,35 +1512,58 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     setCrossSeedTagName("cross-seed")
     setCrossSeedSubmitting(false)
     setCrossSeedApplyResult(null)
+    setCrossSeedIndexerMode("all")
+    setCrossSeedIndexerSelection([])
   }, [])
 
-  const handleCrossSeedSearch = useCallback(
-    (torrent: Torrent) => {
-      if (!hasEnabledCrossSeedIndexers) {
-        toast.error("Configure at least one Torznab indexer to search for cross-seeds")
+  const toggleCrossSeedIndexer = useCallback((indexerId: number) => {
+    setCrossSeedIndexerSelection(prev => {
+      if (prev.includes(indexerId)) {
+        return prev.filter(id => id !== indexerId)
+      }
+      return [...prev, indexerId]
+    })
+  }, [])
+
+  const selectAllCrossSeedIndexers = useCallback(() => {
+    setCrossSeedIndexerSelection(crossSeedIndexerOptions.map(option => option.id))
+  }, [crossSeedIndexerOptions])
+
+  const clearCrossSeedIndexerSelection = useCallback(() => {
+    setCrossSeedIndexerSelection([])
+  }, [])
+
+  const handleCrossSeedIndexerModeChange = useCallback((mode: "all" | "custom") => {
+    setCrossSeedIndexerMode(mode)
+    if (mode === "all") {
+      setCrossSeedIndexerSelection([])
+    }
+  }, [])
+
+  const runCrossSeedSearch = useCallback(
+    (torrent: Torrent, indexerOverride?: number[] | null) => {
+      if (!torrent) {
         return
       }
 
-      if (typeof torrent.progress === "number" && torrent.progress < 1) {
-        toast.info("Only completed torrents can be cross-seeded")
-        return
+      let resolvedIndexerIds: number[] | undefined
+      if (indexerOverride !== undefined) {
+        resolvedIndexerIds = indexerOverride ?? undefined
+      } else if (crossSeedIndexerMode === "custom" && crossSeedIndexerSelection.length > 0) {
+        resolvedIndexerIds = crossSeedIndexerSelection
       }
 
-      setCrossSeedTorrent(torrent)
-      setCrossSeedDialogOpen(true)
       setCrossSeedSearchLoading(true)
       setCrossSeedSearchError(null)
       setCrossSeedSearchResponse(null)
       setCrossSeedApplyResult(null)
-      setCrossSeedSelectedKeys(new Set())
-      setCrossSeedUseTag(true)
-      setCrossSeedTagName("cross-seed")
 
       void api
         .searchCrossSeedTorrent(instanceId, torrent.hash, {
-          findIndividualEpisodes: crossSeedSettings?.findIndividualEpisodes ?? false
+          findIndividualEpisodes: crossSeedSettings?.findIndividualEpisodes ?? false,
+          indexerIds: resolvedIndexerIds && resolvedIndexerIds.length > 0 ? resolvedIndexerIds : undefined,
         })
-        .then((response) => {
+        .then(response => {
           setCrossSeedSearchResponse(response)
 
           const defaultSelection = new Set<string>()
@@ -1513,14 +1585,79 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           setCrossSeedSearchLoading(false)
         })
     },
-    [getCrossSeedResultKey, hasEnabledCrossSeedIndexers, instanceId, crossSeedSettings]
+    [
+      api,
+      crossSeedIndexerMode,
+      crossSeedIndexerSelection,
+      crossSeedSettings?.findIndividualEpisodes,
+      getCrossSeedResultKey,
+      instanceId,
+    ]
+  )
+
+  const handleCrossSeedSearch = useCallback(
+    (torrent: Torrent) => {
+      if (!hasEnabledCrossSeedIndexers) {
+        toast.error("Configure at least one Torznab indexer to search for cross-seeds")
+        return
+      }
+
+      if (typeof torrent.progress === "number" && torrent.progress < 1) {
+        toast.info("Only completed torrents can be cross-seeded")
+        return
+      }
+
+      setCrossSeedTorrent(torrent)
+      setCrossSeedDialogOpen(true)
+      setCrossSeedSelectedKeys(new Set())
+      setCrossSeedUseTag(true)
+      setCrossSeedTagName("cross-seed")
+      setCrossSeedIndexerMode("all")
+      setCrossSeedIndexerSelection([])
+      setCrossSeedSearchLoading(true)
+      setCrossSeedSearchError(null)
+      setCrossSeedSearchResponse(null)
+
+      // Analyze the torrent to get search metadata
+      void api
+        .analyzeTorrentForCrossSeedSearch(instanceId, torrent.hash)
+        .then(torrentInfo => {
+          // Update the search response with the source torrent metadata
+          setCrossSeedSearchResponse({
+            sourceTorrent: torrentInfo,
+            results: [],
+          })
+        })
+        .catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : "Failed to analyze torrent"
+          setCrossSeedSearchError(message)
+          toast.error(message)
+        })
+        .finally(() => {
+          setCrossSeedSearchLoading(false)
+        })
+    },
+    [api, hasEnabledCrossSeedIndexers, instanceId]
   )
 
   const handleRetryCrossSeedSearch = useCallback(() => {
     if (crossSeedTorrent) {
-      handleCrossSeedSearch(crossSeedTorrent)
+      runCrossSeedSearch(crossSeedTorrent)
     }
-  }, [crossSeedTorrent, handleCrossSeedSearch])
+  }, [crossSeedTorrent, runCrossSeedSearch])
+
+  const handleCrossSeedScopeSearch = useCallback(() => {
+    if (!crossSeedTorrent) {
+      return
+    }
+
+    if (crossSeedIndexerMode === "custom" && crossSeedIndexerSelection.length === 0) {
+      toast.warning("Select at least one tracker to run a custom search")
+      return
+    }
+
+    runCrossSeedSearch(crossSeedTorrent)
+  }, [crossSeedIndexerMode, crossSeedIndexerSelection.length, crossSeedTorrent, runCrossSeedSearch])
 
   const toggleCrossSeedSelection = useCallback(
     (result: CrossSeedTorrentSearchResponse["results"][number], index: number) => {
@@ -2884,6 +3021,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         isSubmitting={crossSeedSubmitting}
         error={crossSeedSearchError}
         applyResult={crossSeedApplyResult}
+        indexerOptions={crossSeedIndexerOptions}
+        indexerMode={crossSeedIndexerMode}
+        selectedIndexerIds={crossSeedIndexerSelection}
+        onIndexerModeChange={handleCrossSeedIndexerModeChange}
+        onToggleIndexer={toggleCrossSeedIndexer}
+        onSelectAllIndexers={selectAllCrossSeedIndexers}
+        onClearIndexerSelection={clearCrossSeedIndexerSelection}
+        onScopeSearch={handleCrossSeedScopeSearch}
         getResultKey={getCrossSeedResultKey}
         onToggleSelection={toggleCrossSeedSelection}
         onSelectAll={selectAllCrossSeedResults}

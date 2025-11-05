@@ -461,6 +461,10 @@ class ApiClient {
       total_files?: number
       matching_files?: number
       file_count?: number
+      content_type?: string
+      search_type?: string
+      search_categories?: number[]
+      required_caps?: string[]
     } | null
 
     type RawCandidateTorrent = {
@@ -547,6 +551,50 @@ class ApiClient {
     })
   }
 
+  async analyzeTorrentForCrossSeedSearch(
+    instanceId: number,
+    hash: string
+  ): Promise<CrossSeedTorrentInfo> {
+    type RawTorrentInfo = {
+      instance_id?: number
+      instance_name?: string
+      hash?: string
+      name: string
+      category?: string
+      size?: number
+      progress?: number
+      total_files?: number
+      matching_files?: number
+      file_count?: number
+      content_type?: string
+      search_type?: string
+      search_categories?: number[]
+      required_caps?: string[]
+    }
+
+    const raw = await this.request<RawTorrentInfo>(
+      `/cross-seed/torrents/${instanceId}/${hash}/analyze`,
+      { method: "GET" }
+    )
+
+    return {
+      instanceId: raw.instance_id,
+      instanceName: raw.instance_name,
+      hash: raw.hash,
+      name: raw.name,
+      category: raw.category,
+      size: raw.size,
+      progress: raw.progress,
+      totalFiles: raw.total_files,
+      matchingFiles: raw.matching_files,
+      fileCount: raw.file_count,
+      contentType: raw.content_type,
+      searchType: raw.search_type,
+      searchCategories: raw.search_categories,
+      requiredCaps: raw.required_caps,
+    }
+  }
+
   async searchCrossSeedTorrent(
     instanceId: number,
     hash: string,
@@ -583,6 +631,10 @@ class ApiClient {
       total_files?: number
       matching_files?: number
       file_count?: number
+      content_type?: string
+      search_type?: string
+      search_categories?: number[]
+      required_caps?: string[]
     } | null
 
     type RawSearchResult = {
@@ -627,6 +679,10 @@ class ApiClient {
       totalFiles: torrent?.total_files ?? undefined,
       matchingFiles: torrent?.matching_files ?? undefined,
       fileCount: torrent?.file_count ?? undefined,
+      contentType: torrent?.content_type ?? undefined,
+      searchType: torrent?.search_type ?? undefined,
+      searchCategories: torrent?.search_categories ?? undefined,
+      requiredCaps: torrent?.required_caps ?? undefined,
     })
 
     return {
