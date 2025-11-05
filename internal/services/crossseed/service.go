@@ -1353,7 +1353,37 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		return nil, fmt.Errorf("torrent %s is not fully downloaded (progress %.2f)", sourceTorrent.Name, sourceTorrent.Progress)
 	}
 
+	// Get files to find the largest file for better content type detection
+	sourceFiles, err := s.syncManager.GetTorrentFiles(ctx, instanceID, hash)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get torrent files: %w", err)
+	}
+
+	// Parse both torrent name and largest file for content detection
 	sourceRelease := s.releaseCache.Parse(sourceTorrent.Name)
+
+	// For content type detection, use the largest file if available
+	var contentDetectionRelease rls.Release = sourceRelease
+	if sourceFiles != nil && len(*sourceFiles) > 0 {
+		largestFile := s.findLargestFile(*sourceFiles)
+		if largestFile != nil {
+			largestFileRelease := s.releaseCache.Parse(largestFile.Name)
+			// Use the largest file for content type detection, but enrich with torrent metadata
+			largestFileRelease = enrichReleaseFromTorrent(largestFileRelease, sourceRelease)
+
+			// Use largest file release for content type if it's more specific than torrent name
+			if largestFileRelease.Type != rls.Unknown {
+				contentDetectionRelease = largestFileRelease
+
+				log.Debug().
+					Str("torrentName", sourceTorrent.Name).
+					Str("largestFile", largestFile.Name).
+					Str("fileContentType", largestFileRelease.Type.String()).
+					Str("torrentContentType", sourceRelease.Type.String()).
+					Msg("[CROSSSEED-SEARCH] Using largest file for content type detection")
+			}
+		}
+	}
 
 	query := strings.TrimSpace(opts.Query)
 	if query == "" {
@@ -1391,7 +1421,7 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 
 	limit := opts.Limit
 	if limit <= 0 {
-		limit = 20
+		limit = 40
 	}
 	requestLimit := limit * 3
 	if requestLimit < limit {
@@ -1409,7 +1439,7 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 	var categories []int
 	contentTypeStr := "unknown"
 
-	switch sourceRelease.Type {
+	switch contentDetectionRelease.Type {
 	case rls.Movie:
 		categories = []int{2000, 2010, 2040, 2050} // Movies, MoviesSD, MoviesHD, Movies4K
 		contentTypeStr = "movie"
@@ -1436,10 +1466,10 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		contentTypeStr = "app"
 	default:
 		// Fallback logic based on series/episode/year detection for unknown types
-		if sourceRelease.Series > 0 || sourceRelease.Episode > 0 {
+		if contentDetectionRelease.Series > 0 || contentDetectionRelease.Episode > 0 {
 			categories = []int{5000, 5010, 5040, 5050} // TV categories
 			contentTypeStr = "tv"
-		} else if sourceRelease.Year > 0 {
+		} else if contentDetectionRelease.Year > 0 {
 			categories = []int{2000, 2010, 2040, 2050} // Movie categories
 			contentTypeStr = "movie"
 		}
@@ -1960,4 +1990,33 @@ func (s *Service) waitForTorrentRecheck(ctx context.Context, instanceID int, tor
 
 		return torrent
 	}
+}
+
+// findLargestFile returns the file with the largest size from a list of torrent files.
+// This is useful for content type detection as the largest file usually represents the main content.
+func (s *Service) findLargestFile(files qbt.TorrentFiles) *struct {
+	Availability float32 `json:"availability"`
+	Index        int     `json:"index"`
+	IsSeed       bool    `json:"is_seed,omitempty"`
+	Name         string  `json:"name"`
+	PieceRange   []int   `json:"piece_range"`
+	Priority     int     `json:"priority"`
+	Progress     float32 `json:"progress"`
+	Size         int64   `json:"size"`
+} {
+	if len(files) == 0 {
+		return nil
+	}
+
+	largestIndex := 0
+	largestSize := files[0].Size
+
+	for i := 1; i < len(files); i++ {
+		if files[i].Size > largestSize {
+			largestIndex = i
+			largestSize = files[i].Size
+		}
+	}
+
+	return &files[largestIndex]
 }
