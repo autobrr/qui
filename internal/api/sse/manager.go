@@ -24,13 +24,15 @@ import (
 )
 
 const (
-	defaultLimit        = 300
-	maxLimit            = 2000
-	streamEventInit     = "init"
-	streamEventUpdate   = "update"
-	streamEventError    = "error"
-	defaultSyncInterval = 2 * time.Second
-	maxSyncInterval     = 30 * time.Second
+	defaultLimit         = 300
+	maxLimit             = 2000
+	streamEventInit      = "init"
+	streamEventUpdate    = "update"
+	streamEventError     = "error"
+	streamEventHeartbeat = "heartbeat"
+	defaultSyncInterval  = 2 * time.Second
+	maxSyncInterval      = 30 * time.Second
+	heartbeatInterval    = 5 * time.Second
 )
 
 var (
@@ -92,6 +94,7 @@ type StreamManager struct {
 	groups         map[string]*subscriptionGroup
 	instanceGroups map[int]map[string]*subscriptionGroup
 	syncLoops      map[int]*syncLoopState
+	heartbeatLoops map[int]*heartbeatLoopState
 	syncBackoff    map[int]*backoffState
 
 	ctx    context.Context
@@ -123,6 +126,10 @@ type subscriptionGroup struct {
 type syncLoopState struct {
 	cancel   context.CancelFunc
 	interval time.Duration
+}
+
+type heartbeatLoopState struct {
+	cancel context.CancelFunc
 }
 
 type backoffState struct {
@@ -171,6 +178,7 @@ func NewStreamManager(clientPool *qbittorrent.ClientPool, syncManager *qbittorre
 		groups:         make(map[string]*subscriptionGroup),
 		instanceGroups: make(map[int]map[string]*subscriptionGroup),
 		syncLoops:      make(map[int]*syncLoopState),
+		heartbeatLoops: make(map[int]*heartbeatLoopState),
 		syncBackoff:    make(map[int]*backoffState),
 		ctx:            ctx,
 		cancel:         cancel,
@@ -262,6 +270,9 @@ func (m *StreamManager) registerSubscription(opts StreamOptions, clientKey strin
 	if _, running := m.syncLoops[opts.InstanceID]; !running {
 		m.syncLoops[opts.InstanceID] = m.startSyncLoop(opts.InstanceID, backoff.interval)
 	}
+	if _, running := m.heartbeatLoops[opts.InstanceID]; !running && heartbeatInterval > 0 {
+		m.heartbeatLoops[opts.InstanceID] = m.startHeartbeatLoop(opts.InstanceID)
+	}
 	m.mu.Unlock()
 
 	return id, nil
@@ -305,6 +316,10 @@ func (m *StreamManager) Unregister(id string) {
 				if loop, ok := m.syncLoops[instanceID]; ok {
 					loop.cancel()
 					delete(m.syncLoops, instanceID)
+				}
+				if hbLoop, ok := m.heartbeatLoops[instanceID]; ok {
+					hbLoop.cancel()
+					delete(m.heartbeatLoops, instanceID)
 				}
 				delete(m.syncBackoff, instanceID)
 			}
@@ -720,11 +735,21 @@ func (m *StreamManager) Shutdown(ctx context.Context) error {
 	for _, loop := range m.syncLoops {
 		loops = append(loops, loop)
 	}
+	heartbeatLoops := make([]*heartbeatLoopState, 0, len(m.heartbeatLoops))
+	for _, loop := range m.heartbeatLoops {
+		heartbeatLoops = append(heartbeatLoops, loop)
+	}
 	m.syncLoops = make(map[int]*syncLoopState)
+	m.heartbeatLoops = make(map[int]*heartbeatLoopState)
 	m.syncBackoff = make(map[int]*backoffState)
 	m.mu.Unlock()
 
 	for _, loop := range loops {
+		if loop != nil && loop.cancel != nil {
+			loop.cancel()
+		}
+	}
+	for _, loop := range heartbeatLoops {
 		if loop != nil && loop.cancel != nil {
 			loop.cancel()
 		}
@@ -871,6 +896,43 @@ func (m *StreamManager) forceSync(instanceID int) {
 	if err := syncMgr.Sync(ctx); err != nil {
 		log.Debug().Err(err).Int("instanceID", instanceID).Msg("Failed to force sync during SSE loop")
 	}
+}
+
+func (m *StreamManager) startHeartbeatLoop(instanceID int) *heartbeatLoopState {
+	ctx, cancel := context.WithCancel(m.ctx)
+	loop := &heartbeatLoopState{cancel: cancel}
+
+	go func() {
+		ticker := time.NewTicker(heartbeatInterval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				m.publishHeartbeat(instanceID)
+			}
+		}
+	}()
+
+	return loop
+}
+
+func (m *StreamManager) publishHeartbeat(instanceID int) {
+	if m.closing.Load() {
+		return
+	}
+
+	payload := &StreamPayload{
+		Type: streamEventHeartbeat,
+		Meta: &StreamMeta{
+			InstanceID: instanceID,
+			Timestamp:  time.Now(),
+		},
+	}
+
+	m.publishToInstance(instanceID, payload)
 }
 
 func (m *StreamManager) instanceExists(ctx context.Context, instanceID int) bool {

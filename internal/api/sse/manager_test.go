@@ -63,6 +63,35 @@ func TestStreamManagerHandleSyncErrorWithoutSubscribers(t *testing.T) {
 	require.Empty(t, provider.allMessages(), "no subscribers should result in no messages")
 }
 
+func TestStreamManagerHeartbeatPublishesEvent(t *testing.T) {
+	manager := NewStreamManager(nil, nil, nil)
+	provider := newRecordingProvider()
+	manager.server.Provider = provider
+
+	sub := &subscriptionState{
+		id:        "subscription-keepalive",
+		options:   StreamOptions{InstanceID: 21},
+		groupKey:  "group-keepalive",
+		clientKey: "client-keepalive",
+	}
+
+	manager.subscriptions[sub.id] = sub
+	manager.instanceIndex[sub.options.InstanceID] = map[string]*subscriptionState{
+		sub.id: sub,
+	}
+
+	manager.publishHeartbeat(sub.options.InstanceID)
+
+	messages := provider.messagesFor(sub.id)
+	require.Len(t, messages, 1, "expected heartbeat payload to be published")
+
+	payload := decodeStreamPayload(t, messages[0])
+	require.Equal(t, streamEventHeartbeat, payload.Type)
+	require.Equal(t, sub.options.InstanceID, payload.Meta.InstanceID)
+	require.Equal(t, sub.clientKey, payload.Meta.StreamKey)
+	require.False(t, payload.Meta.Timestamp.IsZero(), "heartbeat should include timestamp")
+}
+
 func TestStreamManagerServeInstanceNotFound(t *testing.T) {
 	store, cleanup := newTestInstanceStore(t)
 	defer cleanup()
