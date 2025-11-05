@@ -32,7 +32,7 @@ export function Search() {
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [addDialogPayload, setAddDialogPayload] = useState<AddTorrentDropPayload | null>(null)
   const [resultsFilter, setResultsFilter] = useState('')
-  const [sortColumn, setSortColumn] = useState<'title' | 'indexer' | 'size' | 'seeders' | 'category' | 'published' | null>('seeders')
+  const [sortColumn, setSortColumn] = useState<'title' | 'indexer' | 'size' | 'seeders' | 'category' | 'published' | 'source' | 'collection' | 'group' | null>('seeders')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
 
   const formatBackend = (backend: TorznabIndexer['backend']) => {
@@ -225,7 +225,10 @@ export function Search() {
       filtered = results.filter(result =>
         result.title.toLowerCase().includes(filter) ||
         result.indexer.toLowerCase().includes(filter) ||
-        (categoryMap.get(result.category_id) || result.category_name || '').toLowerCase().includes(filter)
+        (categoryMap.get(result.category_id) || result.category_name || '').toLowerCase().includes(filter) ||
+        (result.source || '').toLowerCase().includes(filter) ||
+        (result.collection || '').toLowerCase().includes(filter) ||
+        (result.group || '').toLowerCase().includes(filter)
       )
     }
 
@@ -262,6 +265,18 @@ export function Search() {
         case 'published':
           aVal = new Date(a.publish_date).getTime()
           bVal = new Date(b.publish_date).getTime()
+          break
+        case 'source':
+          aVal = (a.source || '').toLowerCase()
+          bVal = (b.source || '').toLowerCase()
+          break
+        case 'collection':
+          aVal = (a.collection || '').toLowerCase()
+          bVal = (b.collection || '').toLowerCase()
+          break
+        case 'group':
+          aVal = (a.group || '').toLowerCase()
+          bVal = (b.group || '').toLowerCase()
           break
         default:
           return 0
@@ -511,6 +526,24 @@ export function Search() {
                           {getSortIcon('category')}
                         </div>
                       </th>
+                      <th className="text-foreground h-10 px-2 text-left align-middle font-medium whitespace-nowrap cursor-pointer select-none sticky top-0 z-10 bg-card" onClick={() => handleSort('source')}>
+                        <div className="flex items-center gap-1">
+                          Source
+                          {getSortIcon('source')}
+                        </div>
+                      </th>
+                      <th className="text-foreground h-10 px-2 text-left align-middle font-medium whitespace-nowrap cursor-pointer select-none sticky top-0 z-10 bg-card" onClick={() => handleSort('collection')}>
+                        <div className="flex items-center gap-1">
+                          Collection
+                          {getSortIcon('collection')}
+                        </div>
+                      </th>
+                      <th className="text-foreground h-10 px-2 text-left align-middle font-medium whitespace-nowrap cursor-pointer select-none sticky top-0 z-10 bg-card" onClick={() => handleSort('group')}>
+                        <div className="flex items-center gap-1">
+                          Group
+                          {getSortIcon('group')}
+                        </div>
+                      </th>
                       <th className="text-foreground h-10 px-2 text-left align-middle font-medium whitespace-nowrap sticky top-0 z-10 bg-card">Freeleech</th>
                       <th className="text-foreground h-10 px-2 text-left align-middle font-medium whitespace-nowrap cursor-pointer select-none sticky top-0 z-10 bg-card" onClick={() => handleSort('published')}>
                         <div className="flex items-center gap-1">
@@ -538,6 +571,27 @@ export function Search() {
                       </td>
                       <td className="p-2 align-middle whitespace-nowrap text-sm text-muted-foreground">
                         {categoryMap.get(result.category_id) || result.category_name || `Category ${result.category_id}`}
+                      </td>
+                      <td className="p-2 align-middle whitespace-nowrap text-sm">
+                        {result.source ? (
+                          <Badge variant="outline">{result.source}</Badge>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </td>
+                      <td className="p-2 align-middle whitespace-nowrap text-sm">
+                        {result.collection ? (
+                          <Badge variant="outline">{result.collection}</Badge>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </td>
+                      <td className="p-2 align-middle whitespace-nowrap text-sm">
+                        {result.group ? (
+                          <Badge variant="outline">{result.group}</Badge>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
                       </td>
                       <td className="p-2 align-middle whitespace-nowrap">
                         {result.download_volume_factor === 0 && (

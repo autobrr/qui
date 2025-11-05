@@ -746,6 +746,15 @@ func (s *Service) convertResults(results []Result) []SearchResult {
 	searchResults := make([]SearchResult, 0, len(results))
 
 	for _, r := range results {
+		// Parse release info to extract source, collection, and group
+		var source, collection, group string
+		if r.Title != "" {
+			parsed := s.releaseParser.Parse(r.Title)
+			source = parsed.Source
+			collection = parsed.Collection
+			group = parsed.Group
+		}
+
 		result := SearchResult{
 			Indexer:              r.Tracker,
 			IndexerID:            r.IndexerID,
@@ -763,6 +772,9 @@ func (s *Service) convertResults(results []Result) []SearchResult {
 			GUID:                 r.GUID,
 			IMDbID:               r.Imdb,
 			TVDbID:               s.parseTVDbID(r),
+			Source:               source,
+			Collection:           collection,
+			Group:                group,
 		}
 		searchResults = append(searchResults, result)
 	}

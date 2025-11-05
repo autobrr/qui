@@ -964,6 +964,9 @@ export interface TorznabSearchResult {
   guid: string
   imdb_id?: string
   tvdb_id?: string
+  source?: string
+  collection?: string
+  group?: string
 }
 
 export interface JackettIndexer {

@@ -69,6 +69,12 @@ type SearchResult struct {
 	IMDbID string `json:"imdb_id,omitempty"`
 	// TVDb ID if available
 	TVDbID string `json:"tvdb_id,omitempty"`
+	// Source parsed from release name (e.g., "WEB-DL", "BluRay", "HDTV")
+	Source string `json:"source,omitempty"`
+	// Collection/streaming service parsed from release name (e.g., "AMZN", "NF", "HULU", "MAX")
+	Collection string `json:"collection,omitempty"`
+	// Release group parsed from release name
+	Group string `json:"group,omitempty"`
 }
 
 // IndexersResponse represents the list of available indexers
