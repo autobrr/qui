@@ -54,6 +54,7 @@ interface AutomationFormState {
 
 interface GlobalCrossSeedSettings {
   findIndividualEpisodes: boolean
+  sizeMismatchTolerancePercent: number
 }
 
 const DEFAULT_AUTOMATION_FORM: AutomationFormState = {
@@ -70,6 +71,7 @@ const DEFAULT_AUTOMATION_FORM: AutomationFormState = {
 
 const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   findIndividualEpisodes: false,
+  sizeMismatchTolerancePercent: 5.0,
 }
 
 function parseList(value: string): string[] {
@@ -158,6 +160,7 @@ export function CrossSeedPage() {
     if (settings && !globalSettingsInitialized) {
       setGlobalSettings({
         findIndividualEpisodes: settings.findIndividualEpisodes,
+        sizeMismatchTolerancePercent: settings.sizeMismatchTolerancePercent ?? 5.0,
       })
       setGlobalSettingsInitialized(true)
     }
@@ -268,8 +271,9 @@ export function CrossSeedPage() {
       targetInstanceIds: formInitialized ? automationForm.targetInstanceIds : settings.targetInstanceIds,
       targetIndexerIds: formInitialized ? automationForm.targetIndexerIds : settings.targetIndexerIds,
       maxResultsPerRun: formInitialized ? automationForm.maxResultsPerRun : settings.maxResultsPerRun,
-      // Only update the global setting
+      // Only update the global settings
       findIndividualEpisodes: globalSettings.findIndividualEpisodes,
+      sizeMismatchTolerancePercent: globalSettings.sizeMismatchTolerancePercent,
     }
     updateGlobalSettingsMutation.mutate(payload)
   }
@@ -286,6 +290,7 @@ export function CrossSeedPage() {
       targetIndexerIds: automationForm.targetIndexerIds,
       maxResultsPerRun: automationForm.maxResultsPerRun,
       findIndividualEpisodes: globalSettings.findIndividualEpisodes,
+      sizeMismatchTolerancePercent: globalSettings.sizeMismatchTolerancePercent,
     }
     updateSettingsMutation.mutate(payload)
   }
@@ -346,6 +351,24 @@ export function CrossSeedPage() {
             </Label>
             <p className="text-xs text-muted-foreground">
               When enabled, season packs will also match individual episodes. When disabled, season packs only match other season packs.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="global-size-tolerance">Size mismatch tolerance (%)</Label>
+            <Input
+              id="global-size-tolerance"
+              type="number"
+              min="0"
+              max="100"
+              step="0.1"
+              value={globalSettings.sizeMismatchTolerancePercent}
+              onChange={event => setGlobalSettings(prev => ({ 
+                ...prev, 
+                sizeMismatchTolerancePercent: Math.max(0, Math.min(100, Number(event.target.value) || 0))
+              }))}
+            />
+            <p className="text-xs text-muted-foreground">
+              Filters out search results with sizes differing by more than this percentage. Set to 0 for exact size matching.
             </p>
           </div>
         </CardContent>

@@ -1124,6 +1124,7 @@ export interface CrossSeedAutomationSettings {
   targetIndexerIds: number[]
   maxResultsPerRun: number
   findIndividualEpisodes: boolean
+  sizeMismatchTolerancePercent: number
   createdAt?: string
   updatedAt?: string
 }

@@ -116,18 +116,15 @@ func (s *Service) GetAutomationSettings(ctx context.Context) (*models.CrossSeedA
 
 // UpdateAutomationSettings persists automation configuration and wakes the scheduler.
 func (s *Service) UpdateAutomationSettings(ctx context.Context, settings *models.CrossSeedAutomationSettings) (*models.CrossSeedAutomationSettings, error) {
-	if s.automationStore == nil {
-		return nil, errors.New("automation storage not configured")
-	}
 	if settings == nil {
 		return nil, errors.New("settings cannot be nil")
 	}
 
-	if settings.RunIntervalMinutes <= 0 {
-		settings.RunIntervalMinutes = 120
-	}
-	if settings.MaxResultsPerRun <= 0 {
-		settings.MaxResultsPerRun = 50
+	// Validate and normalize settings before checking store
+	s.validateAndNormalizeSettings(settings)
+
+	if s.automationStore == nil {
+		return nil, errors.New("automation storage not configured")
 	}
 
 	updated, err := s.automationStore.UpsertSettings(ctx, settings)
@@ -138,6 +135,23 @@ func (s *Service) UpdateAutomationSettings(ctx context.Context, settings *models
 	s.signalAutomationWake()
 
 	return updated, nil
+}
+
+// validateAndNormalizeSettings validates and normalizes automation settings
+func (s *Service) validateAndNormalizeSettings(settings *models.CrossSeedAutomationSettings) {
+	if settings.RunIntervalMinutes <= 0 {
+		settings.RunIntervalMinutes = 120
+	}
+	if settings.MaxResultsPerRun <= 0 {
+		settings.MaxResultsPerRun = 50
+	}
+	if settings.SizeMismatchTolerancePercent < 0 {
+		settings.SizeMismatchTolerancePercent = 5.0 // Default to 5% if negative
+	}
+	// Cap at 100% to prevent unreasonable tolerances
+	if settings.SizeMismatchTolerancePercent > 100.0 {
+		settings.SizeMismatchTolerancePercent = 100.0
+	}
 }
 
 // StartAutomation launches the background scheduler loop.
@@ -1327,8 +1341,24 @@ func (s *Service) determineSavePath(newTorrentName string, matchedTorrent *qbt.T
 }
 
 // parseMusicReleaseFromTorrentName extracts music-specific metadata from torrent name
-// using "Artist - Album" format parsing, handling release groups and years
+// First tries RLS's built-in parsing, then falls back to manual "Artist - Album" format parsing
 func parseMusicReleaseFromTorrentName(baseRelease rls.Release, torrentName string) rls.Release {
+	// First, try RLS's built-in parsing on the torrent name directly
+	// This can handle complex release names like "Artist-Album-Edition-Source-Year-GROUP"
+	torrentRelease := rls.ParseString(torrentName)
+
+	// If RLS detected it as music and extracted artist/title, use that
+	if torrentRelease.Type == rls.Music && torrentRelease.Artist != "" && torrentRelease.Title != "" {
+		// Use RLS's parsed results but preserve any content-based detection from baseRelease
+		musicRelease := torrentRelease
+		// Keep any fields from content detection that might be more accurate
+		if baseRelease.Type == rls.Music {
+			musicRelease.Type = rls.Music
+		}
+		return musicRelease
+	}
+
+	// Fallback: use our manual parsing approach for simpler names
 	musicRelease := baseRelease
 	musicRelease.Type = rls.Music // Ensure it's marked as music
 
@@ -1594,6 +1624,15 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 		return nil, fmt.Errorf("torznab search failed: %w", err)
 	}
 
+	// Load automation settings to get size tolerance percentage
+	settings, err := s.GetAutomationSettings(ctx)
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to load cross-seed settings for size validation, using default tolerance")
+		settings = &models.CrossSeedAutomationSettings{
+			SizeMismatchTolerancePercent: 5.0, // Default to 5% tolerance
+		}
+	}
+
 	type scoredResult struct {
 		result jackett.SearchResult
 		score  float64
@@ -1602,6 +1641,9 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 
 	scored := make([]scoredResult, 0, len(searchResp.Results))
 	seen := make(map[string]struct{})
+	sizeFilteredCount := 0
+	releaseFilteredCount := 0
+
 	for _, res := range searchResp.Results {
 		key := res.GUID
 		if key == "" {
@@ -1616,6 +1658,20 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 
 		candidateRelease := s.releaseCache.Parse(res.Title)
 		if !s.releasesMatch(sourceRelease, candidateRelease, opts.FindIndividualEpisodes) {
+			releaseFilteredCount++
+			continue
+		}
+
+		// Size validation: check if candidate size is within tolerance of source size
+		if !s.isSizeWithinTolerance(sourceTorrent.Size, res.Size, settings.SizeMismatchTolerancePercent) {
+			sizeFilteredCount++
+			log.Debug().
+				Str("sourceTitle", sourceTorrent.Name).
+				Str("candidateTitle", res.Title).
+				Int64("sourceSize", sourceTorrent.Size).
+				Int64("candidateSize", res.Size).
+				Float64("tolerancePercent", settings.SizeMismatchTolerancePercent).
+				Msg("[CROSSSEED-SEARCH] Candidate filtered out due to size mismatch")
 			continue
 		}
 
@@ -1630,6 +1686,18 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 			reason: reason,
 		})
 	}
+
+	// Log filtering statistics
+	totalResults := len(searchResp.Results)
+	matchedResults := len(scored)
+	log.Info().
+		Str("torrentName", sourceTorrent.Name).
+		Int("totalResults", totalResults).
+		Int("releaseFiltered", releaseFilteredCount).
+		Int("sizeFiltered", sizeFilteredCount).
+		Int("finalMatches", matchedResults).
+		Float64("tolerancePercent", settings.SizeMismatchTolerancePercent).
+		Msg("[CROSSSEED-SEARCH] Search filtering completed")
 
 	sourceInfo := TorrentInfo{
 		InstanceID:   instanceID,
@@ -2105,4 +2173,29 @@ func (s *Service) findLargestFile(files qbt.TorrentFiles) *struct {
 	}
 
 	return &files[largestIndex]
+}
+
+// isSizeWithinTolerance checks if two torrent sizes are within the specified tolerance percentage.
+// A tolerance of 5.0 means the candidate size can be ±5% of the source size.
+func (s *Service) isSizeWithinTolerance(sourceSize, candidateSize int64, tolerancePercent float64) bool {
+	if sourceSize == 0 || candidateSize == 0 {
+		return sourceSize == candidateSize // Both must be zero to match
+	}
+
+	if tolerancePercent < 0 {
+		tolerancePercent = 0 // Negative tolerance doesn't make sense
+	}
+
+	// If tolerance is 0, require exact match
+	if tolerancePercent == 0 {
+		return sourceSize == candidateSize
+	}
+
+	// Calculate acceptable size range
+	tolerance := float64(sourceSize) * (tolerancePercent / 100.0)
+	minAcceptableSize := float64(sourceSize) - tolerance
+	maxAcceptableSize := float64(sourceSize) + tolerance
+
+	candidateSizeFloat := float64(candidateSize)
+	return candidateSizeFloat >= minAcceptableSize && candidateSizeFloat <= maxAcceptableSize
 }
