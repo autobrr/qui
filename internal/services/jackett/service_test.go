@@ -6,6 +6,7 @@ package jackett
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/autobrr/qui/internal/models"
 )
@@ -856,5 +857,21 @@ func (m *mockTorznabIndexerStore) SetCapabilities(ctx context.Context, indexerID
 }
 
 func (m *mockTorznabIndexerStore) SetCategories(ctx context.Context, indexerID int, categories []models.TorznabIndexerCategory) error {
+	return nil
+}
+
+func (m *mockTorznabIndexerStore) RecordLatency(ctx context.Context, indexerID int, operationType string, latencyMs int, success bool) error {
+	return nil
+}
+
+func (m *mockTorznabIndexerStore) RecordError(ctx context.Context, indexerID int, errorMessage, errorCode string) error {
+	return nil
+}
+
+func (m *mockTorznabIndexerStore) CountRequests(ctx context.Context, indexerID int, window time.Duration) (int, error) {
+	return 0, nil
+}
+
+func (m *mockTorznabIndexerStore) UpdateRequestLimits(ctx context.Context, indexerID int, hourly, daily *int) error {
 	return nil
 }

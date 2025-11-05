@@ -8,9 +8,11 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"slices"
 
@@ -29,16 +31,25 @@ type IndexerStore interface {
 	GetDecryptedAPIKey(indexer *models.TorznabIndexer) (string, error)
 	SetCapabilities(ctx context.Context, indexerID int, capabilities []string) error
 	SetCategories(ctx context.Context, indexerID int, categories []models.TorznabIndexerCategory) error
+	RecordLatency(ctx context.Context, indexerID int, operationType string, latencyMs int, success bool) error
+	RecordError(ctx context.Context, indexerID int, errorMessage, errorCode string) error
+	CountRequests(ctx context.Context, indexerID int, window time.Duration) (int, error)
+	UpdateRequestLimits(ctx context.Context, indexerID int, hourly, daily *int) error
 }
 
 // Service provides Jackett integration for Torznab searching
 type Service struct {
 	indexerStore  IndexerStore
 	releaseParser *releases.Parser
+	rateLimiter   *RateLimiter
 }
 
 // ErrMissingIndexerIdentifier signals that the Torznab backend requires an indexer ID to fetch caps.
 var ErrMissingIndexerIdentifier = errors.New("torznab indexer identifier is required for caps sync")
+
+const (
+	defaultRateLimitCooldown = 30 * time.Minute
+)
 
 // searchContext carries additional metadata about the current Torznab search.
 type searchContext struct {
@@ -52,6 +63,7 @@ func NewService(indexerStore IndexerStore) *Service {
 	return &Service{
 		indexerStore:  indexerStore,
 		releaseParser: releases.NewDefaultParser(),
+		rateLimiter:   NewRateLimiter(defaultMinRequestInterval),
 	}
 }
 
@@ -375,7 +387,7 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 				}
 			}
 
-			var results []Result
+			var searchFn func() ([]Result, error)
 			switch idx.Backend {
 			case models.TorznabBackendNative:
 				if s.applyIndexerRestrictions(ctx, client, idx, "", meta, paramsMap) {
@@ -389,7 +401,9 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 					Str("base_url", idx.BaseURL).
 					Str("backend", string(idx.Backend)).
 					Msg("Searching native Torznab endpoint")
-				results, err = client.SearchDirect(paramsMap)
+				searchFn = func() ([]Result, error) {
+					return client.SearchDirect(paramsMap)
+				}
 			case models.TorznabBackendProwlarr:
 				indexerID := strings.TrimSpace(idx.IndexerID)
 				if indexerID == "" {
@@ -413,7 +427,9 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 					Str("backend", string(idx.Backend)).
 					Str("torznab_indexer_id", indexerID).
 					Msg("Searching Prowlarr indexer")
-				results, err = client.Search(indexerID, paramsMap)
+				searchFn = func() ([]Result, error) {
+					return client.Search(indexerID, paramsMap)
+				}
 			default:
 				// Jackett/Prowlarr aggregator - use stored indexer_id
 				indexerID := idx.IndexerID
@@ -441,9 +457,31 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 					Str("backend", string(idx.Backend)).
 					Str("torznab_indexer_id", indexerID).
 					Msg("Searching Torznab aggregator indexer")
-				results, err = client.Search(indexerID, paramsMap)
+				searchFn = func() ([]Result, error) {
+					return client.Search(indexerID, paramsMap)
+				}
 			}
+			if searchFn == nil {
+				resultsChan <- indexerResult{nil, fmt.Errorf("no search function for indexer")}
+				return
+			}
+
+			if err := s.rateLimiter.BeforeRequest(ctx, idx); err != nil {
+				resultsChan <- indexerResult{nil, err}
+				return
+			}
+
+			start := time.Now()
+			results, err := searchFn()
+			latencyMs := int(time.Since(start).Milliseconds())
+			if recErr := s.indexerStore.RecordLatency(ctx, idx.ID, "search", latencyMs, err == nil); recErr != nil {
+				log.Debug().Err(recErr).Int("indexer_id", idx.ID).Msg("Failed to record torznab latency")
+			}
+
 			if err != nil {
+				if cooldown, reason := detectRateLimit(err); reason {
+					s.handleRateLimit(ctx, idx, cooldown, err)
+				}
 				log.Warn().
 					Err(err).
 					Int("indexer_id", idx.ID).
@@ -701,6 +739,113 @@ func searchModeForContentType(ct contentType) string {
 	default:
 		return "search"
 	}
+}
+
+var retryAfterRegex = regexp.MustCompile(`retry[- ]?after[:= ]*(\d+)`)
+
+var rateLimitTokens = []string{"429", "rate limit", "too many requests"}
+
+func detectRateLimit(err error) (time.Duration, bool) {
+	if err == nil {
+		return 0, false
+	}
+	msg := strings.ToLower(err.Error())
+	matched := false
+	for _, token := range rateLimitTokens {
+		if strings.Contains(msg, token) {
+			matched = true
+			break
+		}
+	}
+	if !matched {
+		return 0, false
+	}
+	if dur := extractRetryAfter(msg); dur > 0 {
+		return dur, true
+	}
+	return defaultRateLimitCooldown, true
+}
+
+func extractRetryAfter(msg string) time.Duration {
+	matches := retryAfterRegex.FindStringSubmatch(msg)
+	if len(matches) == 2 {
+		if seconds, err := strconv.Atoi(matches[1]); err == nil && seconds > 0 {
+			return time.Duration(seconds) * time.Second
+		}
+	}
+	return 0
+}
+
+func (s *Service) handleRateLimit(ctx context.Context, idx *models.TorznabIndexer, cooldown time.Duration, cause error) {
+	if idx == nil {
+		return
+	}
+	if cooldown <= 0 {
+		cooldown = defaultRateLimitCooldown
+	}
+	resumeAt := time.Now().Add(cooldown)
+	s.rateLimiter.SetCooldown(idx.ID, resumeAt)
+
+	message := fmt.Sprintf("Rate limit triggered for %s, pausing until %s", idx.Name, resumeAt.Format(time.RFC3339))
+	if err := s.indexerStore.RecordError(ctx, idx.ID, message, "rate_limit"); err != nil {
+		log.Debug().Err(err).Int("indexer_id", idx.ID).Msg("Failed to record rate-limit error")
+	}
+
+	s.adaptRequestLimits(ctx, idx)
+}
+
+func (s *Service) adaptRequestLimits(ctx context.Context, idx *models.TorznabIndexer) {
+	if idx == nil {
+		return
+	}
+	if hourCount, err := s.indexerStore.CountRequests(ctx, idx.ID, time.Hour); err == nil {
+		if limit, ok := inferredLimitFromCount(hourCount); ok {
+			if idx.HourlyRequestLimit == nil || limit < *idx.HourlyRequestLimit {
+				if err := s.indexerStore.UpdateRequestLimits(ctx, idx.ID, &limit, nil); err != nil {
+					log.Debug().Err(err).Int("indexer_id", idx.ID).Msg("Failed to persist hourly request limit")
+				} else {
+					idx.HourlyRequestLimit = &limit
+					log.Info().
+						Int("indexer_id", idx.ID).
+						Str("indexer", idx.Name).
+						Int("hourly_limit", limit).
+						Msg("Updated inferred hourly request limit")
+				}
+			}
+		}
+	} else {
+		log.Debug().Err(err).Int("indexer_id", idx.ID).Msg("Failed to count hourly requests for rate limit")
+	}
+
+	if dayCount, err := s.indexerStore.CountRequests(ctx, idx.ID, 24*time.Hour); err == nil {
+		if limit, ok := inferredLimitFromCount(dayCount); ok {
+			if idx.DailyRequestLimit == nil || limit < *idx.DailyRequestLimit {
+				if err := s.indexerStore.UpdateRequestLimits(ctx, idx.ID, nil, &limit); err != nil {
+					log.Debug().Err(err).Int("indexer_id", idx.ID).Msg("Failed to persist daily request limit")
+				} else {
+					idx.DailyRequestLimit = &limit
+					log.Info().
+						Int("indexer_id", idx.ID).
+						Str("indexer", idx.Name).
+						Int("daily_limit", limit).
+						Msg("Updated inferred daily request limit")
+				}
+			}
+		}
+	} else {
+		log.Debug().Err(err).Int("indexer_id", idx.ID).Msg("Failed to count daily requests for rate limit")
+	}
+}
+
+func inferredLimitFromCount(count int) (int, bool) {
+	if count <= 0 {
+		return 0, false
+	}
+	limit := count - 1
+	if limit <= 0 {
+		limit = 1
+	}
+	return limit, true
 }
 
 func requiredCapabilities(meta *searchContext) []string {
