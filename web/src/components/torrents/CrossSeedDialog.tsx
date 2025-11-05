@@ -3,6 +3,9 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -11,9 +14,6 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { formatBytes } from "@/lib/utils"
@@ -78,9 +78,9 @@ export function CrossSeedDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[90vw] sm:max-w-3xl">
-        <DialogHeader>
+        <DialogHeader className="min-w-0">
           <DialogTitle>Search Cross-Seeds</DialogTitle>
-          <DialogDescription className="truncate">
+          <DialogDescription className="min-w-0 truncate" title={torrent?.name}>
             {torrent ? `Indexers scanned for "${torrent.name}"` : "Indexers scanned"}
           </DialogDescription>
         </DialogHeader>
@@ -106,7 +106,7 @@ export function CrossSeedDialog({
             <>
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">
+                  <p className="truncate text-sm font-medium" title={sourceTorrent?.name ?? torrent?.name}>
                     {sourceTorrent?.name ?? torrent?.name ?? "Torrent"}
                   </p>
                   <p className="text-xs text-muted-foreground">
@@ -153,7 +153,7 @@ export function CrossSeedDialog({
                           />
                           <div className="min-w-0 flex-1 space-y-1">
                             <div className="flex items-start justify-between gap-3">
-                              <span className="min-w-0 flex-1 truncate font-medium leading-tight">{result.title}</span>
+                              <span className="min-w-0 flex-1 truncate font-medium leading-tight" title={result.title}>{result.title}</span>
                               <Badge variant="outline" className="shrink-0">{result.indexer}</Badge>
                             </div>
                             <div className="flex min-w-0 flex-wrap gap-x-3 text-xs text-muted-foreground">
@@ -203,7 +203,7 @@ export function CrossSeedDialog({
                             {result.success ? "Queued" : "Check"}
                           </Badge>
                         </div>
-                        <p className="truncate text-xs text-muted-foreground">{result.torrentName ?? result.title}</p>
+                        <p className="truncate text-xs text-muted-foreground" title={result.torrentName ?? result.title}>{result.torrentName ?? result.title}</p>
                         {result.error && <p className="break-words text-xs text-destructive">{result.error}</p>}
                         {result.instanceResults && result.instanceResults.length > 0 && (
                           <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
