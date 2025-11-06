@@ -462,6 +462,9 @@ func (h *ExternalProgramsHandler) isPathAllowed(programPath string) bool {
 		cleanedProgramPath = filepath.Clean(programPath)
 	}
 	cleanedProgramPath = filepath.Clean(cleanedProgramPath)
+	if resolved, err := filepath.EvalSymlinks(cleanedProgramPath); err == nil {
+		cleanedProgramPath = resolved
+	}
 	normalizedProgramPath := normalizePathCase(cleanedProgramPath)
 
 	sep := string(os.PathSeparator)
@@ -477,6 +480,9 @@ func (h *ExternalProgramsHandler) isPathAllowed(programPath string) bool {
 			allowedPath = filepath.Clean(allowed)
 		}
 		allowedPath = filepath.Clean(allowedPath)
+		if resolved, err := filepath.EvalSymlinks(allowedPath); err == nil {
+			allowedPath = resolved
+		}
 		normalizedAllowedPath := normalizePathCase(allowedPath)
 
 		if normalizedProgramPath == normalizedAllowedPath {
