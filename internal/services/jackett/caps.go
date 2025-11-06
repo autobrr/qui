@@ -32,7 +32,8 @@ type torznabSearchingCaps struct {
 }
 
 type torznabSearchNode struct {
-	Available string `xml:"available,attr"`
+	Available       string `xml:"available,attr"`
+	SupportedParams string `xml:"supportedParams,attr"`
 }
 
 type torznabCategoryNode struct {
@@ -54,12 +55,12 @@ func parseTorznabCaps(r io.Reader) (*torznabCaps, error) {
 
 	caps := &torznabCaps{}
 
-	caps.Capabilities = appendCapabilityIf(caps.Capabilities, "search", resp.Searching.Search.Available)
-	caps.Capabilities = appendCapabilityIf(caps.Capabilities, "tv-search", resp.Searching.TVSearch.Available)
-	caps.Capabilities = appendCapabilityIf(caps.Capabilities, "movie-search", resp.Searching.MovieSearch.Available)
-	caps.Capabilities = appendCapabilityIf(caps.Capabilities, "music-search", resp.Searching.MusicSearch.Available)
-	caps.Capabilities = appendCapabilityIf(caps.Capabilities, "audio-search", resp.Searching.AudioSearch.Available)
-	caps.Capabilities = appendCapabilityIf(caps.Capabilities, "book-search", resp.Searching.BookSearch.Available)
+	caps.Capabilities = appendSearchCapabilities(caps.Capabilities, "search", resp.Searching.Search)
+	caps.Capabilities = appendSearchCapabilities(caps.Capabilities, "tv-search", resp.Searching.TVSearch)
+	caps.Capabilities = appendSearchCapabilities(caps.Capabilities, "movie-search", resp.Searching.MovieSearch)
+	caps.Capabilities = appendSearchCapabilities(caps.Capabilities, "music-search", resp.Searching.MusicSearch)
+	caps.Capabilities = appendSearchCapabilities(caps.Capabilities, "audio-search", resp.Searching.AudioSearch)
+	caps.Capabilities = appendSearchCapabilities(caps.Capabilities, "book-search", resp.Searching.BookSearch)
 
 	for _, cat := range resp.Categories {
 		parentID, err := strconv.Atoi(strings.TrimSpace(cat.ID))
@@ -87,10 +88,27 @@ func parseTorznabCaps(r io.Reader) (*torznabCaps, error) {
 	return caps, nil
 }
 
-func appendCapabilityIf(capabilities []string, name, available string) []string {
-	if isCapsAvailable(available) {
-		return append(capabilities, name)
+func appendSearchCapabilities(capabilities []string, searchType string, searchNode torznabSearchNode) []string {
+	if !isCapsAvailable(searchNode.Available) {
+		return capabilities
 	}
+
+	// Add the basic search capability
+	capabilities = append(capabilities, searchType)
+
+	// Add detailed parameter support capabilities if available
+	if searchNode.SupportedParams != "" {
+		params := strings.Split(searchNode.SupportedParams, ",")
+		for _, param := range params {
+			param = strings.TrimSpace(param)
+			if param != "" {
+				// Create specific capability names for supported parameters
+				capName := fmt.Sprintf("%s-%s", searchType, param)
+				capabilities = append(capabilities, capName)
+			}
+		}
+	}
+
 	return capabilities
 }
 

@@ -106,12 +106,17 @@ func (s *Service) Search(ctx context.Context, req *TorznabSearchRequest) (*Searc
 			Ints("categories", req.Categories).
 			Msg("Auto-detected content type and categories")
 	} else {
-		// When categories are provided, skip content detection
-		detectedType = contentTypeUnknown
+		// When categories are provided, try to infer content type from categories
+		detectedType = detectContentTypeFromCategories(req.Categories)
+		if detectedType == contentTypeUnknown {
+			// Fallback to query-based detection
+			detectedType = s.detectContentType(req)
+		}
 		log.Debug().
 			Str("query", req.Query).
 			Ints("categories", req.Categories).
-			Msg("Using provided categories, skipping content detection")
+			Int("inferred_content_type", int(detectedType)).
+			Msg("Using provided categories with inferred content type")
 	}
 
 	// Get enabled indexers
@@ -178,12 +183,17 @@ func (s *Service) SearchGeneric(ctx context.Context, req *TorznabSearchRequest) 
 			Ints("categories", req.Categories).
 			Msg("Auto-detected content type and categories for general search")
 	} else {
-		// When categories are provided, skip content detection
-		detectedType = contentTypeUnknown
+		// When categories are provided, try to infer content type from categories
+		detectedType = detectContentTypeFromCategories(req.Categories)
+		if detectedType == contentTypeUnknown {
+			// Fallback to query-based detection
+			detectedType = s.detectContentType(req)
+		}
 		log.Debug().
 			Str("query", req.Query).
 			Ints("categories", req.Categories).
-			Msg("Using provided categories for general search, skipping content detection")
+			Int("inferred_content_type", int(detectedType)).
+			Msg("Using provided categories with inferred content type for general search")
 	}
 
 	searchMode := searchModeForContentType(detectedType)
@@ -603,15 +613,75 @@ func (s *Service) applyIndexerRestrictions(ctx context.Context, client *Client, 
 		s.ensureIndexerMetadata(ctx, client, idx, identifier, needCaps, needCategories)
 	}
 
-	// Check capabilities first
-	if len(requiredCaps) > 0 && len(idx.Capabilities) > 0 && !supportsAnyCapability(idx.Capabilities, requiredCaps) {
-		log.Info().
-			Int("indexer_id", idx.ID).
-			Str("indexer", idx.Name).
-			Strs("required_caps", requiredCaps).
-			Strs("indexer_caps", idx.Capabilities).
-			Msg("Skipping torznab indexer due to missing capabilities")
-		return true
+	// Check capabilities first - use enhanced capability checking if we have search parameters
+	if len(requiredCaps) > 0 && len(idx.Capabilities) > 0 {
+		// Try to build a TorznabSearchRequest from params for enhanced checking
+		var searchReq *TorznabSearchRequest
+		if meta != nil {
+			searchReq = &TorznabSearchRequest{}
+			if query, exists := params["q"]; exists {
+				searchReq.Query = query
+			}
+			if imdbid, exists := params["imdbid"]; exists {
+				searchReq.IMDbID = imdbid
+			}
+			if tvdbid, exists := params["tvdbid"]; exists {
+				searchReq.TVDbID = tvdbid
+			}
+			if yearStr, exists := params["year"]; exists {
+				if year, err := strconv.Atoi(yearStr); err == nil {
+					searchReq.Year = year
+				}
+			}
+			if seasonStr, exists := params["season"]; exists {
+				if season, err := strconv.Atoi(seasonStr); err == nil {
+					searchReq.Season = &season
+				}
+			}
+			if epStr, exists := params["ep"]; exists {
+				if episode, err := strconv.Atoi(epStr); err == nil {
+					searchReq.Episode = &episode
+				}
+			}
+		}
+
+		// Get preferred capabilities based on search parameters
+		var capsToCheck []string
+		if searchReq != nil {
+			capsToCheck = getPreferredCapabilities(searchReq, meta.searchMode)
+		} else {
+			capsToCheck = requiredCaps
+		}
+
+		// Use enhanced capability checking if we have preferred capabilities
+		var hasRequiredCaps bool
+		var usingEnhanced bool
+		if len(capsToCheck) > len(requiredCaps) {
+			hasRequiredCaps = supportsPreferredCapabilities(idx.Capabilities, capsToCheck)
+			usingEnhanced = true
+		} else {
+			hasRequiredCaps = supportsAnyCapability(idx.Capabilities, requiredCaps)
+		}
+
+		if !hasRequiredCaps {
+			log.Info().
+				Int("indexer_id", idx.ID).
+				Str("indexer", idx.Name).
+				Strs("required_caps", requiredCaps).
+				Strs("preferred_caps", capsToCheck).
+				Strs("indexer_caps", idx.Capabilities).
+				Bool("enhanced_checking", usingEnhanced).
+				Msg("Skipping torznab indexer due to missing capabilities")
+			return true
+		} else if usingEnhanced {
+			log.Debug().
+				Int("indexer_id", idx.ID).
+				Str("indexer", idx.Name).
+				Strs("required_caps", requiredCaps).
+				Strs("preferred_caps", capsToCheck).
+				Strs("indexer_caps", idx.Capabilities).
+				Msg("Using enhanced capability checking for indexer")
+		}
 	}
 
 	// If no categories requested, continue with search
@@ -650,7 +720,49 @@ func (s *Service) applyIndexerRestrictions(ctx context.Context, client *Client, 
 		Ints("filtered_categories", filtered).
 		Msg("Applied category mapping and filtering for indexer")
 
+	// Handle conditional parameter addition based on indexer capabilities
+	s.applyCapabilitySpecificParams(idx, meta, params)
+
 	return false
+}
+
+func (s *Service) applyCapabilitySpecificParams(idx *models.TorznabIndexer, meta *searchContext, params map[string]string) {
+	if meta == nil || len(idx.Capabilities) == 0 {
+		return
+	}
+
+	// Handle year parameter - only add if indexer supports parameter-specific year capability
+	if yearStr, hasYear := params["_year"]; hasYear {
+		delete(params, "_year") // Remove temporary storage
+
+		var yearCapability string
+		switch meta.searchMode {
+		case "movie":
+			yearCapability = "movie-search-year"
+		case "tvsearch":
+			yearCapability = "tv-search-year"
+		}
+
+		if yearCapability != "" && supportsAnyCapability(idx.Capabilities, []string{yearCapability}) {
+			params["year"] = yearStr
+			log.Debug().
+				Int("indexer_id", idx.ID).
+				Str("indexer", idx.Name).
+				Str("search_mode", meta.searchMode).
+				Str("year", yearStr).
+				Str("capability", yearCapability).
+				Msg("Adding year parameter - indexer supports capability-specific year search")
+		} else {
+			log.Debug().
+				Int("indexer_id", idx.ID).
+				Str("indexer", idx.Name).
+				Str("search_mode", meta.searchMode).
+				Str("year", yearStr).
+				Str("missing_capability", yearCapability).
+				Strs("indexer_caps", idx.Capabilities).
+				Msg("Skipping year parameter - indexer does not support capability-specific year search")
+		}
+	}
 }
 
 func (s *Service) ensureIndexerMetadata(ctx context.Context, client *Client, idx *models.TorznabIndexer, identifier string, ensureCaps bool, ensureCategories bool) {
@@ -676,6 +788,11 @@ func (s *Service) ensureIndexerMetadata(ctx context.Context, client *Client, idx
 				Msg("Failed to persist torznab capabilities")
 		} else {
 			idx.Capabilities = caps.Capabilities
+			log.Debug().
+				Int("indexer_id", idx.ID).
+				Str("indexer", idx.Name).
+				Strs("capabilities", caps.Capabilities).
+				Msg("Successfully fetched and stored indexer capabilities")
 		}
 	}
 
@@ -792,21 +909,44 @@ func (s *Service) buildSearchParams(req *TorznabSearchRequest, searchMode string
 		params.Set("cat", strings.Join(catStr, ","))
 	}
 
+	// Always add basic parameters - these are widely supported
 	if req.IMDbID != "" {
 		// Strip "tt" prefix if present
-		params.Set("imdbid", strings.TrimPrefix(req.IMDbID, "tt"))
+		cleanIMDbID := strings.TrimPrefix(req.IMDbID, "tt")
+		params.Set("imdbid", cleanIMDbID)
+		log.Debug().
+			Str("search_mode", mode).
+			Str("imdb_id", cleanIMDbID).
+			Msg("Adding IMDb ID parameter to torznab search")
 	}
 
 	if req.TVDbID != "" {
 		params.Set("tvdbid", req.TVDbID)
+		log.Debug().
+			Str("search_mode", mode).
+			Str("tvdb_id", req.TVDbID).
+			Msg("Adding TVDb ID parameter to torznab search")
 	}
 
 	if req.Season != nil {
 		params.Set("season", strconv.Itoa(*req.Season))
+		log.Debug().
+			Str("search_mode", mode).
+			Int("season", *req.Season).
+			Msg("Adding season parameter to torznab search")
 	}
 
 	if req.Episode != nil {
 		params.Set("ep", strconv.Itoa(*req.Episode))
+		log.Debug().
+			Str("search_mode", mode).
+			Int("episode", *req.Episode).
+			Msg("Adding episode parameter to torznab search")
+	}
+
+	// Store year in params but don't set it yet - will be handled per-indexer
+	if req.Year > 0 {
+		params.Set("_year", strconv.Itoa(req.Year)) // Temporary storage
 	}
 
 	if req.Limit > 0 {
@@ -964,6 +1104,44 @@ func requiredCapabilities(meta *searchContext) []string {
 	}
 }
 
+// getPreferredCapabilities returns enhanced capabilities to look for based on search parameters
+func getPreferredCapabilities(req *TorznabSearchRequest, searchMode string) []string {
+	var preferred []string
+
+	// Base capability requirement
+	required := requiredCapabilities(&searchContext{searchMode: searchMode})
+	preferred = append(preferred, required...)
+
+	// Add parameter-specific preferences
+	switch searchMode {
+	case "movie":
+		if req.IMDbID != "" {
+			preferred = append(preferred, "movie-search-imdbid")
+		}
+		if req.TVDbID != "" { // Some indexers use TMDB for movies
+			preferred = append(preferred, "movie-search-tmdbid")
+		}
+		if req.Year > 0 {
+			preferred = append(preferred, "movie-search-year")
+		}
+	case "tvsearch":
+		if req.TVDbID != "" {
+			preferred = append(preferred, "tv-search-tvdbid")
+		}
+		if req.Season != nil && *req.Season > 0 {
+			preferred = append(preferred, "tv-search-season")
+		}
+		if req.Episode != nil && *req.Episode > 0 {
+			preferred = append(preferred, "tv-search-ep")
+		}
+		if req.Year > 0 {
+			preferred = append(preferred, "tv-search-year")
+		}
+	}
+
+	return preferred
+}
+
 func supportsAnyCapability(current []string, required []string) bool {
 	if len(required) == 0 {
 		return true
@@ -980,6 +1158,35 @@ func supportsAnyCapability(current []string, required []string) bool {
 		}
 	}
 	return false
+}
+
+// supportsPreferredCapabilities checks if indexer supports preferred capabilities with fallback to basic requirements
+func supportsPreferredCapabilities(current []string, preferred []string) bool {
+	if len(preferred) <= 1 {
+		return supportsAnyCapability(current, preferred)
+	}
+
+	// Check if indexer supports any parameter-specific capabilities
+	paramSpecific := make([]string, 0)
+	basic := make([]string, 0)
+
+	for _, cap := range preferred {
+		if strings.Contains(cap, "-") && len(strings.Split(cap, "-")) > 2 {
+			// This is a parameter-specific capability like "movie-search-imdbid"
+			paramSpecific = append(paramSpecific, cap)
+		} else {
+			// This is a basic capability like "movie-search"
+			basic = append(basic, cap)
+		}
+	}
+
+	// If indexer supports any parameter-specific capabilities, that's preferred
+	if len(paramSpecific) > 0 && supportsAnyCapability(current, paramSpecific) {
+		return true
+	}
+
+	// Otherwise, fall back to basic capability requirements
+	return supportsAnyCapability(current, basic)
 }
 
 // convertResults converts Jackett results to our SearchResult format
@@ -1263,6 +1470,60 @@ func (s *Service) detectContentType(req *TorznabSearchRequest) contentType {
 		if release.Year > 0 {
 			return contentTypeMovie
 		}
+	}
+
+	return contentTypeUnknown
+}
+
+// detectContentTypeFromCategories attempts to detect content type from provided categories
+func detectContentTypeFromCategories(categories []int) contentType {
+	if len(categories) == 0 {
+		return contentTypeUnknown
+	}
+
+	// Check if categories contain specific content type indicators
+	hasMovieCategories := false
+	hasTVCategories := false
+	hasAudioCategories := false
+	hasBookCategories := false
+	hasXXXCategories := false
+	hasPCCategories := false
+
+	for _, cat := range categories {
+		switch {
+		case cat >= CategoryMovies && cat < 3000: // 2000-2999 range
+			hasMovieCategories = true
+		case cat >= CategoryAudio && cat < 4000: // 3000-3999 range
+			hasAudioCategories = true
+		case cat >= CategoryPC && cat < 5000: // 4000-4999 range
+			hasPCCategories = true
+		case cat >= CategoryTV && cat < 6000: // 5000-5999 range
+			hasTVCategories = true
+		case cat >= CategoryXXX && cat < 7000: // 6000-6999 range
+			hasXXXCategories = true
+		case cat >= CategoryBooks && cat < 8000: // 7000-7999 range
+			hasBookCategories = true
+		}
+	}
+
+	// Return the most specific content type detected - prioritize audio/music first
+	if hasAudioCategories {
+		return contentTypeMusic // Default to music for audio categories
+	}
+	if hasMovieCategories {
+		return contentTypeMovie
+	}
+	if hasTVCategories {
+		return contentTypeTVShow
+	}
+	if hasBookCategories {
+		return contentTypeBook
+	}
+	if hasXXXCategories {
+		return contentTypeXXX
+	}
+	if hasPCCategories {
+		return contentTypeApp // Default to app for PC categories
 	}
 
 	return contentTypeUnknown

@@ -1400,11 +1400,6 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 				query = queryRelease.Title
 			}
 
-			// Add year if available
-			if queryRelease.Year > 0 {
-				query += fmt.Sprintf(" %d", queryRelease.Year)
-			}
-
 			// For TV series, add season/episode info (but not for music)
 			if !contentInfo.IsMusic && queryRelease.Series > 0 {
 				if queryRelease.Episode > 0 {
@@ -1471,6 +1466,11 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 				episode := sourceRelease.Episode
 				searchReq.Episode = &episode
 			}
+		}
+
+		// Add year info if available
+		if sourceRelease.Year > 0 {
+			searchReq.Year = sourceRelease.Year
 		}
 
 		// Use the appropriate release object for logging based on content type

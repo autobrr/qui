@@ -54,7 +54,7 @@ func TestDetermineContentType(t *testing.T) {
 			wantType:    "music",
 			wantCats:    []int{3000},
 			wantSearch:  "music",
-			wantCaps:    []string{"music-search"},
+			wantCaps:    []string{"music-search", "audio-search"},
 			wantIsMusic: true,
 		},
 		{
@@ -63,7 +63,7 @@ func TestDetermineContentType(t *testing.T) {
 			wantType:    "audiobook",
 			wantCats:    []int{3000},
 			wantSearch:  "music",
-			wantCaps:    []string{"music-search"},
+			wantCaps:    []string{"audio-search", "music-search"},
 			wantIsMusic: true,
 		},
 		{
@@ -79,7 +79,7 @@ func TestDetermineContentType(t *testing.T) {
 			name:        "Comic",
 			release:     rls.Release{Type: rls.Comic, Title: "Test Comic"},
 			wantType:    "comic",
-			wantCats:    []int{8020},
+			wantCats:    []int{8000},
 			wantSearch:  "book",
 			wantCaps:    []string{"book-search"},
 			wantIsMusic: false,

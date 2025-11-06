@@ -17,6 +17,8 @@ type TorznabSearchRequest struct {
 	IMDbID string `json:"imdb_id,omitempty"`
 	// TVDbID for TV shows (optional)
 	TVDbID string `json:"tvdb_id,omitempty"`
+	// Year for movies/shows (optional)
+	Year int `json:"year,omitempty"`
 	// Season for TV shows (optional)
 	Season *int `json:"season,omitempty"`
 	// Episode for TV shows (optional)
