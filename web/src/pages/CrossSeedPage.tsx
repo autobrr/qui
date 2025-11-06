@@ -31,6 +31,7 @@ import type {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   Check,
+  Info,
   Loader2,
   Play,
   Rocket,
@@ -39,6 +40,7 @@ import {
 } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
 interface AutomationFormState {
   enabled: boolean
@@ -680,22 +682,54 @@ export function CrossSeedPage() {
             </div>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="automation-category">Category</Label>
-              <Input
-                id="automation-category"
-                placeholder="Optional"
-                value={automationForm.category}
-                onChange={event => setAutomationForm(prev => ({ ...prev, category: event.target.value }))}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="automation-tags">Tags</Label>
-              <Input
-                id="automation-tags"
-                placeholder="Comma separated"
-                value={automationForm.tags}
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="automation-category">Category</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        className="text-muted-foreground hover:text-foreground"
+                        aria-label="Category help"
+                      >
+                        <Info className="h-4 w-4" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent align="start" className="max-w-xs text-xs">
+                      Leave this blank to reuse the matched torrent&apos;s category. Only set it when every automated add should force a specific qBittorrent category.
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+                <Input
+                  id="automation-category"
+                  placeholder="Optional"
+                  value={automationForm.category}
+                  onChange={event => setAutomationForm(prev => ({ ...prev, category: event.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="automation-tags">Tags</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        className="text-muted-foreground hover:text-foreground"
+                        aria-label="Tags help"
+                      >
+                        <Info className="h-4 w-4" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent align="start" className="max-w-xs text-xs">
+                      Comma-separated list applied to every cross-seeded torrent. If left empty the service reuses the source torrent tags and still adds the default <span className="font-semibold">cross-seed</span> tag.
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+                <Input
+                  id="automation-tags"
+                  placeholder="Comma separated"
+                  value={automationForm.tags}
                 onChange={event => setAutomationForm(prev => ({ ...prev, tags: event.target.value }))}
               />
             </div>
