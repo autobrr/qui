@@ -560,10 +560,6 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 					return client.Search(indexerID, paramsMap)
 				}
 			}
-			if searchFn == nil {
-				resultsChan <- indexerResult{nil, fmt.Errorf("no search function for indexer")}
-				return
-			}
 
 			if err := s.rateLimiter.BeforeRequest(ctx, idx); err != nil {
 				resultsChan <- indexerResult{nil, err}
