@@ -93,30 +93,29 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
       const backend = indexer.backend ?? 'jackett'
       const indexerId = indexer.id?.trim() ?? ''
       const normalizedIndexerId = indexerId !== '' ? indexerId : undefined
-      const enabled = indexer.configured
 
       try {
         const existing = existingIndexersMap.get(indexer.name)
         if (existing) {
           // Update existing indexer - keep base URL, API key, and backend aligned
+          // Omit enabled to preserve the user's current enabled state
           const updateData: TorznabIndexerUpdate = {
             base_url: normalizedBaseUrl,
             api_key: apiKey,
             backend,
-            enabled,
             indexer_id: normalizedIndexerId,
             capabilities: indexer.caps, // Include capabilities if discovered
           }
           await api.updateTorznabIndexer(existing.id, updateData)
           updatedCount++
         } else {
-          // Create new indexer - backend applies defaults
+          // Create new indexer - enable by default for newly discovered indexers
           const createData: TorznabIndexerFormData = {
             name: indexer.name,
             base_url: normalizedBaseUrl,
             api_key: apiKey,
             backend,
-            enabled,
+            enabled: true,
             indexer_id: normalizedIndexerId,
             capabilities: indexer.caps, // Include capabilities if discovered
           }
@@ -172,7 +171,7 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
   }
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
+    <Dialog open={open} onOpenChange={(open) => { if (!open) handleClose(); }}>
       <DialogContent className="sm:max-w-[525px]">
         <DialogHeader>
           <DialogTitle>Discover Indexers</DialogTitle>
