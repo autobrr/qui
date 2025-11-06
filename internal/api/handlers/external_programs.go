@@ -442,6 +442,19 @@ func (h *ExternalProgramsHandler) buildArguments(template string, torrentData ma
 	return args
 }
 
+func normalizePath(p string) string {
+	cleaned, err := filepath.Abs(p)
+	if err != nil {
+		cleaned = filepath.Clean(p)
+	}
+
+	if resolved, err := filepath.EvalSymlinks(cleaned); err == nil {
+		cleaned = resolved
+	}
+
+	return normalizePathCase(cleaned)
+}
+
 func (h *ExternalProgramsHandler) isPathAllowed(programPath string) bool {
 	programPath = strings.TrimSpace(programPath)
 	if programPath == "" {
@@ -457,15 +470,7 @@ func (h *ExternalProgramsHandler) isPathAllowed(programPath string) bool {
 		return true
 	}
 
-	cleanedProgramPath, err := filepath.Abs(programPath)
-	if err != nil {
-		cleanedProgramPath = filepath.Clean(programPath)
-	}
-	cleanedProgramPath = filepath.Clean(cleanedProgramPath)
-	if resolved, err := filepath.EvalSymlinks(cleanedProgramPath); err == nil {
-		cleanedProgramPath = resolved
-	}
-	normalizedProgramPath := normalizePathCase(cleanedProgramPath)
+	normalizedProgramPath := normalizePath(programPath)
 
 	sep := string(os.PathSeparator)
 
@@ -475,27 +480,18 @@ func (h *ExternalProgramsHandler) isPathAllowed(programPath string) bool {
 			continue
 		}
 
-		allowedPath, err := filepath.Abs(allowed)
-		if err != nil {
-			allowedPath = filepath.Clean(allowed)
-		}
-		allowedPath = filepath.Clean(allowedPath)
-		if resolved, err := filepath.EvalSymlinks(allowedPath); err == nil {
-			allowedPath = resolved
-		}
-		normalizedAllowedPath := normalizePathCase(allowedPath)
+		normalizedAllowedPath := normalizePath(allowed)
 
 		if normalizedProgramPath == normalizedAllowedPath {
 			return true
 		}
 
-		allowedPrefix := allowedPath
+		allowedPrefix := normalizedAllowedPath
 		if !strings.HasSuffix(allowedPrefix, sep) {
 			allowedPrefix += sep
 		}
-		normalizedAllowedPrefix := normalizePathCase(allowedPrefix)
 
-		if strings.HasPrefix(normalizedProgramPath, normalizedAllowedPrefix) {
+		if strings.HasPrefix(normalizedProgramPath, allowedPrefix) {
 			return true
 		}
 	}
