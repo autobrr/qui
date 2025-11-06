@@ -92,35 +92,6 @@ func DetermineContentType(release rls.Release) ContentTypeInfo {
 	return info
 }
 
-// DetermineContentTypeForSearch returns expanded categories for comprehensive search coverage
-func DetermineContentTypeForSearch(release rls.Release) ContentTypeInfo {
-	info := DetermineContentType(release)
-
-	// Expand categories for better search coverage
-	switch info.ContentType {
-	case "movie":
-		info.Categories = []int{2000, 2010, 2040, 2050} // Movies, MoviesSD, MoviesHD, Movies4K
-	case "tv":
-		info.Categories = []int{5000, 5010, 5040, 5050} // TV, TVSD, TVHD, TV4K
-	case "book":
-		info.Categories = []int{8000, 8010} // Books, BooksEbook
-	default:
-		// Keep single categories for other content types (music, audiobook, comic, game, app)
-		// as they don't have quality-based subcategories
-	}
-
-	// Apply expanded categories to fallback cases
-	if info.ContentType == "unknown" {
-		if release.Series > 0 || release.Episode > 0 {
-			info.Categories = []int{5000, 5010, 5040, 5050} // TV categories
-		} else if release.Year > 0 {
-			info.Categories = []int{2000, 2010, 2040, 2050} // Movie categories
-		}
-	}
-
-	return info
-}
-
 // ParseMusicReleaseFromTorrentName extracts music-specific metadata from torrent name
 // First tries RLS's built-in parsing, then falls back to manual "Artist - Album" format parsing
 func ParseMusicReleaseFromTorrentName(baseRelease rls.Release, torrentName string) rls.Release {

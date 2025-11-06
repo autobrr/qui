@@ -1372,7 +1372,7 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 	}
 
 	// Use unified content type detection with expanded categories for search
-	contentInfo := DetermineContentTypeForSearch(contentDetectionRelease)
+	contentInfo := DetermineContentType(contentDetectionRelease)
 
 	query := strings.TrimSpace(opts.Query)
 	if query == "" {

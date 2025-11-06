@@ -94,9 +94,10 @@ func (s *Service) Search(ctx context.Context, req *TorznabSearchRequest) (*Searc
 		return nil, fmt.Errorf("query is required")
 	}
 
-	detectedType := s.detectContentType(req)
-	// Auto-detect content type if categories not provided
+	var detectedType contentType
+	// Auto-detect content type only if categories not provided
 	if len(req.Categories) == 0 {
+		detectedType = s.detectContentType(req)
 		req.Categories = getCategoriesForContentType(detectedType)
 
 		log.Debug().
@@ -104,6 +105,13 @@ func (s *Service) Search(ctx context.Context, req *TorznabSearchRequest) (*Searc
 			Int("content_type", int(detectedType)).
 			Ints("categories", req.Categories).
 			Msg("Auto-detected content type and categories")
+	} else {
+		// When categories are provided, skip content detection
+		detectedType = contentTypeUnknown
+		log.Debug().
+			Str("query", req.Query).
+			Ints("categories", req.Categories).
+			Msg("Using provided categories, skipping content detection")
 	}
 
 	// Get enabled indexers
@@ -159,8 +167,9 @@ func (s *Service) SearchGeneric(ctx context.Context, req *TorznabSearchRequest) 
 		return nil, fmt.Errorf("query is required")
 	}
 
-	detectedType := s.detectContentType(req)
+	var detectedType contentType
 	if len(req.Categories) == 0 {
+		detectedType = s.detectContentType(req)
 		req.Categories = getCategoriesForContentType(detectedType)
 
 		log.Debug().
@@ -168,6 +177,13 @@ func (s *Service) SearchGeneric(ctx context.Context, req *TorznabSearchRequest) 
 			Int("content_type", int(detectedType)).
 			Ints("categories", req.Categories).
 			Msg("Auto-detected content type and categories for general search")
+	} else {
+		// When categories are provided, skip content detection
+		detectedType = contentTypeUnknown
+		log.Debug().
+			Str("query", req.Query).
+			Ints("categories", req.Categories).
+			Msg("Using provided categories for general search, skipping content detection")
 	}
 
 	searchMode := searchModeForContentType(detectedType)
