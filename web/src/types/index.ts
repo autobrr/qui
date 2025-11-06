@@ -920,6 +920,7 @@ export interface TorznabIndexerFormData {
   enabled?: boolean
   priority?: number
   timeout_seconds?: number
+  capabilities?: string[]
 }
 
 export interface TorznabIndexerUpdate {
@@ -931,6 +932,7 @@ export interface TorznabIndexerUpdate {
   enabled?: boolean
   priority?: number
   timeout_seconds?: number
+  capabilities?: string[]
 }
 
 export interface TorznabSearchRequest {

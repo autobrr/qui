@@ -412,6 +412,7 @@ type JackettIndexer struct {
 	Type        string                `json:"type"`
 	Configured  bool                  `json:"configured"`
 	Backend     models.TorznabBackend `json:"backend"`
+	Caps        []string              `json:"caps,omitempty"`
 }
 
 // DiscoverJackettIndexers discovers all configured indexers from a Jackett instance
@@ -448,14 +449,23 @@ func DiscoverJackettIndexers(baseURL, apiKey string) ([]JackettIndexer, error) {
 				backendType = idx.ImplementationName
 			}
 
-			indexers = append(indexers, JackettIndexer{
+			indexer := JackettIndexer{
 				ID:          strconv.Itoa(idx.ID),
 				Name:        idx.Name,
 				Description: description,
 				Type:        backendType,
 				Configured:  idx.Enable,
 				Backend:     models.TorznabBackendProwlarr,
-			})
+			}
+
+			// Try to fetch capabilities for enabled indexers
+			if indexer.Configured {
+				if caps := fetchCapabilitiesForDiscovery(baseURL, apiKey, models.TorznabBackendProwlarr, strconv.Itoa(idx.ID)); caps != nil {
+					indexer.Caps = caps
+				}
+			}
+
+			indexers = append(indexers, indexer)
 		}
 		return indexers, nil
 	}
@@ -476,20 +486,52 @@ func discoverJackettIndexers(baseURL, apiKey string) ([]JackettIndexer, error) {
 		return nil, fmt.Errorf("failed to get indexers: %w", err)
 	}
 
-	// Convert to our JackettIndexer format
+	// Convert to our JackettIndexer format and optionally fetch capabilities
 	indexers := make([]JackettIndexer, 0, len(indexersResp.Indexer))
 	for _, idx := range indexersResp.Indexer {
-		indexers = append(indexers, JackettIndexer{
+		indexer := JackettIndexer{
 			ID:          idx.ID,
 			Name:        idx.Title,
 			Description: idx.Description,
 			Type:        idx.Type,
 			Configured:  idx.Configured == "true",
 			Backend:     models.TorznabBackendJackett,
-		})
+		}
+
+		// Try to fetch capabilities for configured indexers
+		if indexer.Configured {
+			if caps := fetchCapabilitiesForDiscovery(baseURL, apiKey, models.TorznabBackendJackett, idx.ID); caps != nil {
+				indexer.Caps = caps
+			}
+		}
+
+		indexers = append(indexers, indexer)
 	}
 
 	return indexers, nil
+}
+
+// fetchCapabilitiesForDiscovery tries to fetch capabilities for an indexer during discovery
+// Returns nil if capabilities cannot be fetched (to avoid failing the entire discovery process)
+func fetchCapabilitiesForDiscovery(baseURL, apiKey string, backend models.TorznabBackend, indexerID string) []string {
+	// Create a client with a short timeout for discovery
+	client := NewClient(baseURL, apiKey, backend, 10) // 10 second timeout
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	caps, err := client.FetchCaps(ctx, indexerID)
+	if err != nil {
+		// Don't fail discovery if we can't fetch caps - just log a debug message
+		// This could happen if the indexer is down, misconfigured, etc.
+		return nil
+	}
+
+	if caps != nil {
+		return caps.Capabilities
+	}
+
+	return nil
 }
 
 // GetCapabilitiesDirect gets capabilities from a direct Torznab endpoint

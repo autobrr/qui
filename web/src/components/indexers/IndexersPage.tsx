@@ -121,6 +121,12 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
               <CardTitle>Torznab Indexers</CardTitle>
               <CardDescription>
                 Manage Torznab indexers powered by Jackett, Prowlarr, or native tracker endpoints
+                {indexers.length > 0 && (
+                  <span className="block mt-1">
+                    {indexers.filter(idx => idx.enabled).length} enabled, {' '}
+                    {indexers.filter(idx => idx.capabilities && idx.capabilities.length > 0).length} with capabilities
+                  </span>
+                )}
               </CardDescription>
             </div>
             <div className="flex flex-wrap gap-2 justify-end">

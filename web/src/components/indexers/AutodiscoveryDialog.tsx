@@ -105,6 +105,7 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
             backend,
             enabled,
             indexer_id: normalizedIndexerId,
+            capabilities: indexer.caps, // Include capabilities if discovered
           }
           await api.updateTorznabIndexer(existing.id, updateData)
           updatedCount++
@@ -117,6 +118,7 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
             backend,
             enabled,
             indexer_id: normalizedIndexerId,
+            capabilities: indexer.caps, // Include capabilities if discovered
           }
           await api.createTorznabIndexer(createData)
           createdCount++
