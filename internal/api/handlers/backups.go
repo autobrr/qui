@@ -174,6 +174,11 @@ type backupRunWithProgress struct {
 	ProgressPercentage float64 `json:"progressPercentage"`
 }
 
+type backupRunsResponse struct {
+	Runs    []*backupRunWithProgress `json:"runs"`
+	HasMore bool                     `json:"hasMore"`
+}
+
 func (h *BackupsHandler) ListRuns(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
@@ -195,10 +200,18 @@ func (h *BackupsHandler) ListRuns(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	runs, err := h.service.ListRuns(r.Context(), instanceID, limit, offset)
+	requestedLimit := limit
+	effectiveLimit := requestedLimit + 1
+
+	runs, err := h.service.ListRuns(r.Context(), instanceID, effectiveLimit, offset)
 	if err != nil {
 		RespondError(w, http.StatusInternalServerError, "Failed to list backup runs")
 		return
+	}
+
+	hasMore := len(runs) > requestedLimit
+	if hasMore {
+		runs = runs[:requestedLimit]
 	}
 
 	// Merge progress data for running backups
@@ -215,7 +228,12 @@ func (h *BackupsHandler) ListRuns(w http.ResponseWriter, r *http.Request) {
 		runsWithProgress[i] = runWithProgress
 	}
 
-	RespondJSON(w, http.StatusOK, runsWithProgress)
+	response := &backupRunsResponse{
+		Runs:    runsWithProgress,
+		HasMore: hasMore,
+	}
+
+	RespondJSON(w, http.StatusOK, response)
 }
 
 func (h *BackupsHandler) GetManifest(w http.ResponseWriter, r *http.Request) {
